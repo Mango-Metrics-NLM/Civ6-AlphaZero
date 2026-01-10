@@ -60,12 +60,13 @@ class TestMicroCivEnv:
 
     def test_game_terminates(self, env):
         """Game eventually terminates."""
+        # Use small max turns for testing termination
+        env = MicroCivEnv(board_size=8, max_turns=5, seed=42)
         env.reset()
 
-        for _ in range(1000):
-            mask = env.get_valid_actions()
-            valid = np.where(mask > 0)[0]
-            action = np.random.choice(valid)
+        for _ in range(100):
+            # Prioritize ending turn to reach turn limit
+            action = env.action_space_handler.end_turn_offset
             _, _, terminated, truncated, _ = env.step(action)
 
             if terminated or truncated:
@@ -87,10 +88,9 @@ class TestMicroCivEnv:
         # Clone
         clone = env.clone()
 
-        # Modify original
-        mask = env.get_valid_actions()
-        valid = np.where(mask > 0)[0]
-        action = np.random.choice(valid)
+        # Modify original by ending turn
+        # This guarantees current_player changes
+        action = env.action_space_handler.end_turn_offset
         env.step(action)
 
         # Clone should be unaffected

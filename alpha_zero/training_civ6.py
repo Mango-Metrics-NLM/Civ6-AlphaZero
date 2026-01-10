@@ -15,13 +15,13 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, TypedDict, cast
 
 import numpy as np
 import torch
 import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset
-from tqdm import tqdm
+from torch.utils.data import DataLoader, Dataset # type: ignore
+from tqdm import tqdm  # type: ignore
 
 from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig, SimpleMCTS
 from alpha_zero.core.civ6_network import Civ6Network, MicroCivNetwork, compute_loss
@@ -87,6 +87,16 @@ class TrainingExample:
     action_mask: np.ndarray
     policy: np.ndarray
     value: float
+
+
+class GameHistoryItem(TypedDict):
+    """Type for game history items."""
+
+    spatial: np.ndarray
+    vector: np.ndarray
+    action_mask: np.ndarray
+    policy: np.ndarray
+    player: int
 
 
 class ReplayBuffer:
@@ -168,7 +178,7 @@ def self_play_game(
     examples = []
     obs, _ = env.reset()
 
-    game_history = []  # (state, policy, player)
+    game_history: list[GameHistoryItem] = []
 
     while True:
         # Get MCTS policy
@@ -209,10 +219,10 @@ def self_play_game(
 
         examples.append(
             TrainingExample(
-                spatial=hist["spatial"],
-                vector=hist["vector"],
-                action_mask=hist["action_mask"],
-                policy=hist["policy"],
+                spatial=cast(np.ndarray, hist["spatial"]),
+                vector=cast(np.ndarray, hist["vector"]),
+                action_mask=cast(np.ndarray, hist["action_mask"]),
+                policy=cast(np.ndarray, hist["policy"]),
                 value=value,
             )
         )
@@ -241,7 +251,7 @@ def run_self_play(
     env = MicroCivEnv(board_size=config.board_size, max_turns=config.max_turns)
 
     if use_simple_mcts:
-        mcts = SimpleMCTS(
+        mcts: Civ6MCTS | SimpleMCTS = SimpleMCTS(
             num_simulations=config.num_simulations,
             c_puct=config.c_puct,
         )

@@ -436,7 +436,7 @@ class Civ6Network(nn.Module):
         Returns:
             Loaded model.
         """
-        checkpoint = torch.load(path, map_location=device)
+        checkpoint = torch.load(path, map_location=device, weights_only=False)
         model = cls(config=checkpoint["config"])
         model.load_state_dict(checkpoint["state_dict"])
         model.to(device)
@@ -455,6 +455,8 @@ class MicroCivNetwork(Civ6Network):
         action_space_size: int = 381,
         num_res_blocks: int = 6,
         num_filters: int = 64,
+        config: NetworkConfig | None = None,
+        **kwargs,
     ):
         """Initialize MicroCiv network.
 
@@ -463,18 +465,21 @@ class MicroCivNetwork(Civ6Network):
             action_space_size: Total number of actions.
             num_res_blocks: Number of residual blocks.
             num_filters: Number of convolutional filters.
+            config: Optional network configuration.
+            **kwargs: Additional arguments passed to Civ6Network.
         """
-        config = NetworkConfig(
-            spatial_channels=13,  # MicroCivEncoder.TOTAL_CHANNELS
-            spatial_size=board_size,
-            vector_dim=64,
-            num_res_blocks=num_res_blocks,
-            num_filters=num_filters,
-            fc_hidden_dim=128,
-            action_space_size=action_space_size,
-            value_head_hidden=64,
-        )
-        super().__init__(config=config)
+        if config is None:
+            config = NetworkConfig(
+                spatial_channels=13,  # MicroCivEncoder.TOTAL_CHANNELS
+                spatial_size=board_size,
+                vector_dim=64,
+                num_res_blocks=num_res_blocks,
+                num_filters=num_filters,
+                fc_hidden_dim=128,
+                action_space_size=action_space_size,
+                value_head_hidden=64,
+            )
+        super().__init__(config=config, **kwargs)
 
 
 def compute_loss(
