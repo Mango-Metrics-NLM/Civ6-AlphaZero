@@ -9,11 +9,17 @@ Implements a ResNet-style architecture with:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+try:
+    import numpy as np
+    torch.serialization.add_safe_globals([np.core.multiarray.scalar])
+except (ImportError, AttributeError):
+    pass
 
 
 @dataclass
@@ -417,9 +423,16 @@ class Civ6Network(nn.Module):
         Args:
             path: Path to save checkpoint.
         """
+        # Convert to dictionary with primitive Python types
+        config_dict = asdict(self.config)
+        # Ensure all values are primitives (not numpy types) for safe loading
+        for k, v in config_dict.items():
+            if hasattr(v, "item"):  # Handle numpy scalars
+                config_dict[k] = v.item()
+
         torch.save(
             {
-                "config": self.config,
+                "config": config_dict,
                 "state_dict": self.state_dict(),
             },
             path,
@@ -436,8 +449,14 @@ class Civ6Network(nn.Module):
         Returns:
             Loaded model.
         """
-        checkpoint = torch.load(path, map_location=device, weights_only=False)
-        model = cls(config=checkpoint["config"])
+        checkpoint = torch.load(path, map_location=device, weights_only=True)
+        config_dict = checkpoint["config"]
+        if isinstance(config_dict, dict):
+            config = NetworkConfig(**config_dict)
+        else:
+            config = config_dict  # Fallback for old checkpoints if any
+
+        model = cls(config=config)
         model.load_state_dict(checkpoint["state_dict"])
         model.to(device)
         return model

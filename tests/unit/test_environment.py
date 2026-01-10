@@ -58,7 +58,7 @@ class TestMicroCivEnv:
         # Mask should be binary
         assert np.all((mask == 0) | (mask == 1))
 
-    def test_game_terminates(self, env):
+    def test_game_terminates(self):
         """Game eventually terminates."""
         # Use small max turns for testing termination
         env = MicroCivEnv(board_size=8, max_turns=5, seed=42)

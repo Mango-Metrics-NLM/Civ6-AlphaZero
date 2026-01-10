@@ -15,7 +15,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator, TypedDict, cast
+from typing import TypedDict, cast
 
 import numpy as np
 import torch
@@ -219,10 +219,10 @@ def self_play_game(
 
         examples.append(
             TrainingExample(
-                spatial=cast(np.ndarray, hist["spatial"]),
-                vector=cast(np.ndarray, hist["vector"]),
-                action_mask=cast(np.ndarray, hist["action_mask"]),
-                policy=cast(np.ndarray, hist["policy"]),
+                spatial=hist["spatial"],
+                vector=hist["vector"],
+                action_mask=hist["action_mask"],
+                policy=hist["policy"],
                 value=value,
             )
         )

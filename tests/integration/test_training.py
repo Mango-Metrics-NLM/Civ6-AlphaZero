@@ -545,7 +545,7 @@ class TestCheckpointIntegration:
         # Create MCTS with original network
         config = MCTSConfig(num_simulations=5)
         orig_mcts = Civ6MCTS(network, config, device="cpu")
-        orig_probs, orig_value = orig_mcts.search(env, add_noise=False)
+        orig_mcts.search(env, add_noise=False)
 
         # Save and load
         with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as f:
