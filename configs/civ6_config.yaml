@@ -1,0 +1,57 @@
+# Civ6 AlphaZero Configuration
+
+environment:
+  type: microciv  # microciv, unciv, or civ6
+  board_size: 16
+  num_players: 2
+  max_turns: 200
+
+network:
+  spatial_channels: 84
+  vector_dim: 512
+  num_res_blocks: 10
+  num_filters: 128
+  num_heads: 4
+  value_head_hidden: 256
+  dropout: 0.0
+
+mcts:
+  num_simulations: 200
+  c_puct: 1.5
+  dirichlet_alpha: 0.3
+  dirichlet_epsilon: 0.25
+  temperature: 1.0
+  temperature_threshold: 30
+
+training:
+  batch_size: 256
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  lr_decay_steps: [100000, 300000, 500000]
+  lr_decay_rate: 0.1
+  replay_buffer_size: 500000
+  min_replay_size: 10000
+  gradient_clip: 1.0
+
+selfplay:
+  num_actors: 64
+  games_per_checkpoint: 500
+  save_interval: 100
+
+rewards:
+  win: 1.0
+  loss: -1.0
+  draw: 0.0
+  city_founded: 0.1
+  tech_researched: 0.05
+  unit_killed: 0.02
+  unit_lost: -0.02
+  wonder_built: 0.15
+
+# MicroCiv-specific settings for Phase 1
+microciv:
+  board_size: 16
+  num_res_blocks: 6
+  num_filters: 64
+  num_simulations: 50
+  batch_size: 128
