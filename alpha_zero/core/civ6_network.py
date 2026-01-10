@@ -10,6 +10,7 @@ Implements a ResNet-style architecture with:
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -17,7 +18,22 @@ import torch.nn.functional as F
 
 try:
     import numpy as np
-    torch.serialization.add_safe_globals([np.core.multiarray.scalar])
+    # Register common public types for safe loading
+    safe_types: list[Any] = [np.ndarray, np.dtype, np.generic]
+    
+    # Try to find the internal scalar type for legacy compatibility
+    # This varies between NumPy 1.x and 2.x
+    try:
+        import numpy.core.multiarray as _ma_legacy
+        safe_types.append(_ma_legacy.scalar)
+    except (ImportError, AttributeError):
+        try:
+            import numpy._core.multiarray as _ma_modern
+            safe_types.append(_ma_modern.scalar)
+        except (ImportError, AttributeError):
+            pass
+            
+    torch.serialization.add_safe_globals(safe_types)
 except (ImportError, AttributeError):
     pass
 
