@@ -470,7 +470,9 @@ class Civ6Network(nn.Module):
         Returns:
             Loaded model.
         """
-        checkpoint = torch.load(path, map_location=device, weights_only=True)
+        # Note: weights_only=False is required to load config metadata.
+        # Only load checkpoints from trusted sources.
+        checkpoint = torch.load(path, map_location=device, weights_only=False)
         config_dict = checkpoint["config"]
         if isinstance(config_dict, dict):
             config = NetworkConfig(**config_dict)
@@ -1407,7 +1409,9 @@ class Civ6NetworkV2(nn.Module):
         Returns:
             Loaded model.
         """
-        checkpoint = torch.load(path, map_location=device, weights_only=True)
+        # Note: weights_only=False is required to load config metadata.
+        # Only load checkpoints from trusted sources.
+        checkpoint = torch.load(path, map_location=device, weights_only=False)
         config_dict = checkpoint["config"]
 
         if isinstance(config_dict, dict):
@@ -1440,7 +1444,9 @@ class Civ6NetworkV2(nn.Module):
         Returns:
             Loaded V2 model with V1 weights.
         """
-        checkpoint = torch.load(path, map_location=device, weights_only=True)
+        # Note: weights_only=False is required to load config metadata.
+        # Only load checkpoints from trusted sources.
+        checkpoint = torch.load(path, map_location=device, weights_only=False)
         config_dict = checkpoint["config"]
 
         if isinstance(config_dict, dict):
