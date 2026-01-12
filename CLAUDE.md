@@ -387,7 +387,7 @@ logger = get_logger(__name__)
 # Game logging
 game_logger = GameLogger(config, game_id="game_001")
 game_logger.log_action(turn=1, player=0, action_type="MOVE", action_details={...})
-game_logger.finalize(winner=0, reason="elimination")
+game_logger.end_game(winner=0, total_turns=50, reason="elimination")
 
 # Training metrics
 training_logger = TrainingLogger(config)

@@ -188,11 +188,11 @@ class TestDistributedComponentIntegration:
             dirichlet_epsilon=config.mcts.dirichlet_epsilon,
             temperature=config.mcts.temperature,
             temperature_threshold=config.mcts.temperature_threshold,
-            games_per_batch=config.distributed.actor_batch_size,
+            games_per_update=config.distributed.actor_batch_size,
         )
 
         assert actor_config.num_simulations == 200
-        assert actor_config.games_per_batch == 8
+        assert actor_config.games_per_update == 8
 
     def test_learner_config_creation(self) -> None:
         """Test Learner can be configured from Civ6Config."""
@@ -291,8 +291,8 @@ class TestLoggingIntegration:
                 action_details={},
             )
 
-            # Finalize
-            logger.finalize(winner=0, reason="elimination")
+            # End the game
+            logger.end_game(winner=0, total_turns=1, reason="elimination")
 
             # Check log file was created
             log_files = list(Path(tmpdir).glob("*.json"))
@@ -389,14 +389,14 @@ class TestTrainingExampleFormat:
 
         trajectory = GameTrajectory(
             examples=examples,
-            game_id="test_game",
+            game_id=1,
             winner=0,
-            num_turns=10,
+            game_length=10,
         )
 
         assert len(trajectory.examples) == 10
         assert trajectory.winner == 0
-        assert trajectory.num_turns == 10
+        assert trajectory.game_length == 10
 
 
 class TestEncoderCompatibility:
@@ -472,7 +472,7 @@ class TestEndToEndWorkflow:
 
         actor_config = ActorConfig(
             num_simulations=config.mcts.num_simulations,
-            games_per_batch=config.distributed.actor_batch_size,
+            games_per_update=config.distributed.actor_batch_size,
         )
 
         learner_config = LearnerConfig(
