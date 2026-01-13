@@ -48,6 +48,37 @@ rewards:
   unit_lost: -0.02
   wonder_built: 0.15
 
+# Distributed training settings for Phase 2
+distributed:
+  enabled: true
+  num_actors: 64
+  actor_batch_size: 8  # Games per actor before syncing
+  learner_batch_size: 256
+  weight_sync_interval: 100  # Learner steps before publishing weights
+  max_queue_size: 10000
+  compression_enabled: true
+  evaluation_interval: 1000  # Steps between evaluations
+  checkpoint_interval: 5000
+  max_training_steps: 1000000
+
+# Unciv interface settings
+unciv:
+  save_dir: "saves/unciv"
+  auto_save: true
+  auto_save_interval: 10  # Turns
+  board_size: 80  # Unciv maps are typically larger
+  max_players: 8
+
+# Logging and debugging
+logging:
+  level: "INFO"
+  log_dir: "logs"
+  game_logging: true
+  training_metrics: true
+  metrics_window: 100  # Rolling window for metrics
+  tensorboard: false
+  profile_enabled: false
+
 # MicroCiv-specific settings for Phase 1
 microciv:
   board_size: 16
@@ -55,3 +86,12 @@ microciv:
   num_filters: 64
   num_simulations: 50
   batch_size: 128
+
+# Hierarchical action space settings
+action_space:
+  hierarchical: true
+  max_units: 100
+  max_cities: 20
+  num_directions: 8
+  tech_count: 73
+  civic_count: 56
