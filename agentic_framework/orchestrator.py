@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from .config import AgenticConfig, load_config
+from .config import AgenticConfig, ConfigLoader
 from .core.constraint_manager import ConstraintManager
 from .core.permission_manager import PermissionManager
 from .core.session_memory import SessionMemory
@@ -95,13 +95,13 @@ class Orchestrator:
         """
         self.working_dir = working_dir or Path.cwd()
 
-        # Load configuration
+        # Load configuration using instance-based loader (not global)
         if config is not None:
             self.config = config
-        elif config_path is not None:
-            self.config = load_config(project_config_path=config_path)
+            self.config_loader = None  # Config provided directly
         else:
-            self.config = load_config()
+            self.config_loader = ConfigLoader()
+            self.config = self.config_loader.load(project_config_path=config_path)
 
         # Set up logging
         setup_logging(
@@ -160,19 +160,19 @@ class Orchestrator:
             ),
             "implementation": ImplementationAgent(
                 timeout_seconds=agents_config.implementation.timeout_seconds,
-                max_lines_per_file=agents_config.implementation.extra.get("max_lines_per_file", 500),
+                max_lines_per_file=agents_config.implementation.extra.get("max_lines_per_file"),
             ),
             "testing": TestingAgent(
                 timeout_seconds=agents_config.testing.timeout_seconds,
-                coverage_threshold=agents_config.testing.extra.get("coverage_threshold", 80),
+                coverage_threshold=agents_config.testing.extra.get("coverage_threshold"),
             ),
             "verification": VerificationAgent(
                 timeout_seconds=agents_config.verification.timeout_seconds,
-                strict_mode=agents_config.verification.extra.get("strict_mode", False),
+                strict_mode=agents_config.verification.extra.get("strict_mode"),
             ),
             "documentation": DocumentationAgent(
                 timeout_seconds=agents_config.documentation.timeout_seconds,
-                auto_update_memory=agents_config.documentation.extra.get("auto_update_memory", True),
+                auto_update_memory=agents_config.documentation.extra.get("auto_update_memory"),
             ),
         }
 

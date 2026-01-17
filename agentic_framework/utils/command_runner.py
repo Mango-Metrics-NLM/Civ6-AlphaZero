@@ -9,14 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shlex
-import signal
 import subprocess
 import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 from .logging_config import get_logger
 

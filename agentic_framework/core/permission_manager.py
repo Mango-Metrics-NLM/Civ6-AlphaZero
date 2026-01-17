@@ -7,8 +7,6 @@ Implements the permission architecture from the template.
 
 from __future__ import annotations
 
-import fnmatch
-import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -193,14 +191,16 @@ class ScopeChecker:
 
         Returns:
             True if path matches pattern.
+            
+        Note:
+            Uses pathlib.Path.match() which has some limitations:
+            - `src/**/*.py` won't match `src/file.py` (requires nested path)
+            - Patterns without path separators match as suffixes
+            For exact shell-like globbing, consider using the pathspec library.
         """
-        # Handle ** patterns
-        if "**" in pattern:
-            # Convert to regex for proper matching
-            regex_pattern = pattern.replace(".", r"\.").replace("**", ".*").replace("*", "[^/]*")
-            return bool(re.match(regex_pattern, path))
-        else:
-            return fnmatch.fnmatch(path, pattern)
+        # Use pathlib.Path.match() which handles ** patterns better than the
+        # previous regex implementation
+        return Path(path).match(pattern)
 
     def filter_in_scope(self, paths: list[Path]) -> list[Path]:
         """Filter a list of paths to only those in scope.

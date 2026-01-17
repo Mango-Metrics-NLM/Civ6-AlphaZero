@@ -12,7 +12,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypeVar, Generic, Optional
+from typing import Any, TypeVar, Optional
 
 import yaml
 
@@ -619,6 +619,10 @@ def load_config(
 ) -> AgenticConfig:
     """Load configuration (convenience function).
 
+    Warning: This function uses global state and may cause issues in tests
+    or when running multiple orchestrators. Consider using ConfigLoader
+    directly for better encapsulation.
+
     Args:
         project_config_path: Path to project-specific configuration.
         overrides: Runtime configuration overrides.
@@ -634,6 +638,10 @@ def load_config(
 
 def get_config() -> AgenticConfig:
     """Get the current global configuration.
+
+    Warning: This function uses global state and may cause issues in tests
+    or when running multiple orchestrators. Consider using ConfigLoader
+    directly for better encapsulation.
 
     Returns:
         Current configuration object.

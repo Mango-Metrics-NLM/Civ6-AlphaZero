@@ -371,7 +371,6 @@ class UncivActionSerializer:
 
         target_pos = f"{action.target_position.x},{action.target_position.y}"
         attacker_strength = 20
-        defender_strength = 20
 
         # Find attacker
         civs = data.get("civilizations", [])

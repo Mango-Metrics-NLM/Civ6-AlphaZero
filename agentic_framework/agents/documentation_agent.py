@@ -6,9 +6,9 @@ Updates documentation and session memory (CLAUDE.md).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import re
+from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Optional
 
 from .base_agent import BaseAgent, AgentContext, AgentResult, AgentStatus
@@ -254,11 +254,61 @@ class DocumentationAgent(BaseAgent):
             lines.append("## Success Criteria")
             for criterion in success_criteria:
                 criterion_text = criterion.get("criterion", str(criterion))
-                # TODO: Actually check if criteria are met
-                lines.append(f"- [ ] {criterion_text}")
+                # Check if criterion is met based on available information
+                is_met = self._check_criterion(criterion, context)
+                checkbox = "[x]" if is_met else "[ ]"
+                lines.append(f"- {checkbox} {criterion_text}")
             lines.append("")
 
         return "\n".join(lines)
+
+    def _check_criterion(self, criterion: dict[str, Any], context: AgentContext) -> bool:
+        """Check if a success criterion is met.
+
+        Args:
+            criterion: The criterion to check.
+            context: Execution context with shared data.
+
+        Returns:
+            True if the criterion appears to be met, False otherwise.
+        """
+        criterion_text = criterion.get("criterion", "").lower()
+        
+        # Check test-related criteria
+        if "test" in criterion_text or "passing" in criterion_text:
+            test_results = context.get_shared("test_results", {})
+            if test_results:
+                failed = test_results.get("failed", 0)
+                return failed == 0
+        
+        # Check verification-related criteria
+        if "verification" in criterion_text or "lint" in criterion_text or "type" in criterion_text:
+            verification_results = context.get_shared("verification_results", [])
+            if verification_results:
+                return all(vr.get("success", False) for vr in verification_results)
+        
+        # Check coverage criteria
+        if "coverage" in criterion_text:
+            coverage_report = context.get_shared("coverage_report", {})
+            if coverage_report:
+                total_coverage = coverage_report.get("total_coverage", 0.0)
+                # Extract percentage from criterion text if present
+                import re
+                match = re.search(r'(\d+)%', criterion_text)
+                if match:
+                    threshold = float(match.group(1))
+                    return total_coverage >= threshold
+        
+        # If we have a verification command defined for this criterion
+        verification_cmd = criterion.get("verification")
+        if verification_cmd:
+            verification_results = context.get_shared("verification_results", [])
+            for vr in verification_results:
+                if vr.get("name") == verification_cmd:
+                    return vr.get("success", False)
+        
+        # Default to unchecked if we can't determine
+        return False
 
     def record_decision(
         self,

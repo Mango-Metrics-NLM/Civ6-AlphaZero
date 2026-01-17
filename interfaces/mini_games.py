@@ -58,6 +58,9 @@ class MiniGameConfig:
     difficulty: float = 0.5  # 0.0 = easy, 1.0 = hard
     random_seed: Optional[int] = None
     custom_params: dict[str, Any] = field(default_factory=dict)
+    # Combat formula parameters
+    attacker_damage_multiplier: float = 30.0
+    defender_damage_multiplier: float = 20.0
 
     def with_difficulty(self, difficulty: float) -> MiniGameConfig:
         """Create copy with different difficulty."""
@@ -270,9 +273,13 @@ class MiniGame(ABC):
             attack_strength = attacker.strength
             defense_strength = defender.strength
 
-            # Simple combat formula
-            damage_to_defender = int(30 * attack_strength / max(defense_strength, 1))
-            damage_to_attacker = int(20 * defense_strength / max(attack_strength, 1))
+            # Simple combat formula (configurable via MiniGameConfig)
+            damage_to_defender = int(
+                self.config.attacker_damage_multiplier * attack_strength / max(defense_strength, 1)
+            )
+            damage_to_attacker = int(
+                self.config.defender_damage_multiplier * defense_strength / max(attack_strength, 1)
+            )
 
             defender.health -= damage_to_defender
             attacker.health -= damage_to_attacker
