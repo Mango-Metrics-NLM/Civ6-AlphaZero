@@ -50,6 +50,7 @@ def agent_context(basic_config, tmp_path):
         session_memory=SessionMemory(memory_file=tmp_path / "CLAUDE.md"),
         command_runner=CommandRunner(default_cwd=tmp_path),
         request_id="test123",
+        max_iterations=basic_config.permissions.resource_budget.max_iterations,
     )
 
 

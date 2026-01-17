@@ -15,7 +15,7 @@ from typing import Any, Callable, Optional
 
 from ..config import AgenticConfig
 from ..utils.logging_config import get_logger
-from ..utils.command_runner import CommandRunner, CommandResult
+from ..utils.command_runner import CommandRunner
 
 logger = get_logger("constraint_manager")
 

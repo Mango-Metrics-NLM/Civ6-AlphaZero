@@ -121,13 +121,9 @@ class TestingAgent(BaseAgent):
         self.report_progress(0.0, "Starting tests")
         self._test_results.clear()
 
-        # Get files that were modified
-        modified_files = context.get_shared("files_modified", [])
-        implementation_changes = context.get_shared("changes", [])
-
         # Discover existing tests
         self.report_progress(0.1, "Discovering tests")
-        test_files = self._discover_tests(context.working_dir)
+        self._discover_tests(context.working_dir)
 
         # Run existing tests
         self.report_progress(0.3, "Running tests")
@@ -369,11 +365,7 @@ class TestingAgent(BaseAgent):
         )
         match = func_pattern.search(content)
 
-        args = ""
-        return_type = "None"
         if match:
-            args = match.group(1)
-            return_type = match.group(2) or "None"
 
         # Generate basic test structure
         test_name = f"test_{function_name}"

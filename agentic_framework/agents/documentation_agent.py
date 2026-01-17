@@ -6,9 +6,8 @@ Updates documentation and session memory (CLAUDE.md).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Optional
 
 from .base_agent import BaseAgent, AgentContext, AgentResult, AgentStatus

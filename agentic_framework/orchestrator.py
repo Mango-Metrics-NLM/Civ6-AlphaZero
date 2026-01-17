@@ -160,19 +160,19 @@ class Orchestrator:
             ),
             "implementation": ImplementationAgent(
                 timeout_seconds=agents_config.implementation.timeout_seconds,
-                max_lines_per_file=agents_config.implementation.extra.get("max_lines_per_file", 500),
+                max_lines_per_file=agents_config.implementation.extra.get("max_lines_per_file"),
             ),
             "testing": TestingAgent(
                 timeout_seconds=agents_config.testing.timeout_seconds,
-                coverage_threshold=agents_config.testing.extra.get("coverage_threshold", 80),
+                coverage_threshold=agents_config.testing.extra.get("coverage_threshold"),
             ),
             "verification": VerificationAgent(
                 timeout_seconds=agents_config.verification.timeout_seconds,
-                strict_mode=agents_config.verification.extra.get("strict_mode", False),
+                strict_mode=agents_config.verification.extra.get("strict_mode"),
             ),
             "documentation": DocumentationAgent(
                 timeout_seconds=agents_config.documentation.timeout_seconds,
-                auto_update_memory=agents_config.documentation.extra.get("auto_update_memory", True),
+                auto_update_memory=agents_config.documentation.extra.get("auto_update_memory"),
             ),
         }
 

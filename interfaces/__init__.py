@@ -9,6 +9,7 @@ actual game instances, supporting multiple integration paths:
 - MiniGameGenerator: Curriculum training scenarios
 
 Example:
+    from pathlib import Path
     from interfaces import Civ6Bridge, UncivInterface
 
     # For Civ6 with Lua mod
