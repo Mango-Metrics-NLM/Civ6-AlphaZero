@@ -15,7 +15,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
+from typing import TypedDict
 
 import numpy as np
 import torch
@@ -87,6 +87,16 @@ class TrainingExample:
     action_mask: np.ndarray
     policy: np.ndarray
     value: float
+
+
+class GameHistoryItem(TypedDict):
+    """Type for game history items."""
+
+    spatial: np.ndarray
+    vector: np.ndarray
+    action_mask: np.ndarray
+    policy: np.ndarray
+    player: int
 
 
 class ReplayBuffer:
@@ -168,7 +178,7 @@ def self_play_game(
     examples = []
     obs, _ = env.reset()
 
-    game_history = []  # (state, policy, player)
+    game_history: list[GameHistoryItem] = []
 
     while True:
         # Get MCTS policy
@@ -241,7 +251,7 @@ def run_self_play(
     env = MicroCivEnv(board_size=config.board_size, max_turns=config.max_turns)
 
     if use_simple_mcts:
-        mcts = SimpleMCTS(
+        mcts: Civ6MCTS | SimpleMCTS = SimpleMCTS(
             num_simulations=config.num_simulations,
             c_puct=config.c_puct,
         )

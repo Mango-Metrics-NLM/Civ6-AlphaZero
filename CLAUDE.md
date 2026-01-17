@@ -56,6 +56,33 @@ Implemented components:
 - [x] Training pipeline with self-play (`alpha_zero/training_civ6.py`)
 - [x] Unit and integration tests
 
+**Phase 2: Distributed Training & Game Integration - COMPLETE**
+
+Implemented components:
+- [x] Distributed training system (`alpha_zero/distributed/`)
+  - SharedStorage for process-safe weight sharing
+  - DistributedReplayBuffer with compression support
+  - SelfPlayActor for parallel game generation
+  - Learner with gradient accumulation
+  - TrainingCoordinator for orchestration
+- [x] Unciv JSON interface (`alpha_zero/interfaces/unciv_interface.py`)
+  - Full save file parsing and conversion
+  - Bidirectional state conversion
+  - Action encoding/decoding for Unciv
+- [x] Enhanced neural network with attention (`alpha_zero/core/civ6_network.py`)
+  - Multi-head self-attention for spatial reasoning
+  - Support for 84-channel full state encoding
+  - Hierarchical policy head support
+- [x] Logging and debugging infrastructure (`alpha_zero/utils/logging.py`)
+  - GameLogger for per-game action logging
+  - TrainingLogger for training metrics
+  - MetricsTracker for aggregation and analysis
+- [x] Dynamic configuration system (`alpha_zero/utils/config.py`)
+  - YAML configuration loading
+  - Environment variable overrides
+  - ConfigManager for runtime access
+- [x] Full test suite for Phase 2 components
+
 ## Architecture Decisions
 
 | Date | Decision | Rationale |
@@ -64,6 +91,10 @@ Implemented components:
 | 2026-01-10 | Hierarchical action space | Reduces effective branching factor from ~10^6 to ~10^3 |
 | 2026-01-10 | SimpleMCTS + Civ6MCTS | SimpleMCTS for testing, Civ6MCTS for training |
 | 2026-01-10 | ResNet backbone | Proven architecture from AlphaZero, good spatial reasoning |
+| 2026-01-11 | Multi-head attention in network | Better spatial reasoning for complex game states |
+| 2026-01-11 | Process-based distributed training | Avoid GIL, maximize CPU utilization for self-play |
+| 2026-01-11 | Unciv JSON interface | Open-source Civ V clone with accessible save format |
+| 2026-01-11 | YAML config with env overrides | Flexible configuration for different environments |
 
 ## File Structure
 
@@ -73,16 +104,26 @@ alpha_zero/
 ├── envs/
 │   ├── __init__.py
 │   ├── microciv.py          # Simplified training environment
-│   └── civ6_encoder.py      # State → Tensor encoding
+│   └── civ6_encoder.py      # State → Tensor encoding (13 & 84 channel)
 ├── core/
 │   ├── __init__.py
-│   ├── civ6_network.py      # Neural network architecture
+│   ├── civ6_network.py      # Neural networks (MicroCiv & full Civ6 with attention)
 │   ├── civ6_mcts.py         # MCTS implementation
-│   └── civ6_actions.py      # Action space definition
+│   └── civ6_actions.py      # Action space definition (flat & hierarchical)
+├── distributed/             # Phase 2: Distributed training
+│   ├── __init__.py
+│   ├── actor.py             # Self-play actor processes
+│   ├── learner.py           # Central learner with gradient accumulation
+│   ├── coordinator.py       # Training orchestration
+│   └── shared_storage.py    # Process-safe weight & replay buffer sharing
+├── interfaces/              # Phase 2: Game interfaces
+│   ├── __init__.py
+│   └── unciv_interface.py   # Unciv JSON save file interface
+├── utils/                   # Phase 2: Utilities
+│   ├── __init__.py
+│   ├── logging.py           # Game & training loggers, metrics tracker
+│   └── config.py            # Configuration loading & management
 └── training_civ6.py         # Training entry point
-
-interfaces/                   # (Future: game interfaces)
-├── __init__.py
 
 tests/
 ├── __init__.py
@@ -91,15 +132,20 @@ tests/
 │   ├── test_encoder.py
 │   ├── test_environment.py
 │   ├── test_network.py
-│   └── test_mcts.py
+│   ├── test_mcts.py
+│   ├── test_logging.py      # Phase 2: Logging tests
+│   ├── test_config.py       # Phase 2: Config tests
+│   └── test_unciv_interface.py  # Phase 2: Unciv interface tests
 └── integration/
-    └── test_training.py
+    ├── test_training.py
+    └── test_phase2.py       # Phase 2: Integration tests
 
 configs/
-└── civ6_config.yaml         # Configuration file
+└── civ6_config.yaml         # Full configuration (Phase 1 & 2)
 
 checkpoints/civ6/            # Saved model checkpoints
 logs/civ6/                   # Training logs
+saves/unciv/                 # Unciv save files
 ```
 
 ## MicroCiv Environment
@@ -238,16 +284,148 @@ print(f'Value: {value.item():.3f}')
 "
 ```
 
-## Next Steps (Phase 2+)
+## Phase 2: Distributed Training
 
-1. **Hierarchical Actions**: Implement full hierarchical action selection
-2. **Full State Encoding**: 84-channel encoder for complete Civ 6 state
-3. **Game Integration**: Unciv JSON interface
-4. **Distributed Training**: Multi-process self-play
-5. **Scale Up**: Larger network, more simulations
+### Running Distributed Training
+
+```bash
+# Start distributed training with default settings
+python -m alpha_zero.distributed.coordinator
+
+# With custom configuration
+python -m alpha_zero.distributed.coordinator \
+    --num_actors=8 \
+    --batch_size=256 \
+    --max_games=10000
+
+# Dry run for testing
+python -m alpha_zero.distributed.coordinator --dry_run
+```
+
+### Distributed Architecture
+
+```
+                    ┌─────────────────┐
+                    │   Coordinator   │
+                    │  (orchestrates) │
+                    └────────┬────────┘
+                             │
+         ┌───────────────────┼───────────────────┐
+         │                   │                   │
+         ▼                   ▼                   ▼
+   ┌──────────┐        ┌──────────┐        ┌──────────┐
+   │  Actor 1 │        │  Actor 2 │   ...  │  Actor N │
+   │(self-play)│        │(self-play)│        │(self-play)│
+   └─────┬────┘        └─────┬────┘        └─────┬────┘
+         │                   │                   │
+         └───────────────────┼───────────────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │ Shared Storage  │
+                    │ (weights+buffer)│
+                    └────────┬────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │    Learner      │
+                    │ (trains network)│
+                    └─────────────────┘
+```
+
+### Configuration
+
+Phase 2 settings in `configs/civ6_config.yaml`:
+
+```yaml
+distributed:
+  enabled: true
+  num_actors: 64
+  actor_batch_size: 8
+  learner_batch_size: 256
+  weight_sync_interval: 100
+  max_queue_size: 10000
+  compression_enabled: true
+```
+
+## Phase 2: Unciv Interface
+
+### Loading Unciv Save Files
+
+```python
+from alpha_zero.interfaces import UncivInterface, create_unciv_interface
+
+# Create interface
+interface = create_unciv_interface(board_size=80, max_players=8)
+
+# Load save file
+game_state = interface.load_game("saves/unciv/autosave.json")
+
+# Convert to internal format for encoder
+internal_state = interface.to_internal_state(game_state)
+
+# Convert action to Unciv format
+unciv_action = interface.to_unciv_action(action_dict)
+```
+
+## Phase 2: Logging & Debugging
+
+### Using the Logging System
+
+```python
+from alpha_zero.utils import (
+    setup_logging, get_logger,
+    GameLogger, TrainingLogger, MetricsTracker,
+    LogConfig
+)
+
+# Setup logging
+config = LogConfig(level="INFO", log_dir="logs")
+setup_logging(config)
+logger = get_logger(__name__)
+
+# Game logging
+game_logger = GameLogger(config, game_id="game_001")
+game_logger.log_action(turn=1, player=0, action_type="MOVE", action_details={...})
+game_logger.end_game(winner=0, total_turns=50, reason="elimination")
+
+# Training metrics
+training_logger = TrainingLogger(config)
+training_logger.log_epoch(epoch=1, total_loss=0.5, policy_loss=0.3, value_loss=0.2)
+
+# Metrics tracking
+tracker = MetricsTracker(window_size=100)
+tracker.add("loss", 0.5)
+stats = tracker.get_stats("loss")  # Returns mean, std, min, max
+```
+
+## Phase 2: Configuration System
+
+### Loading Configuration
+
+```python
+from alpha_zero.utils import load_config, ConfigManager, get_default_config
+
+# Load from file
+config = load_config("configs/civ6_config.yaml")
+
+# Or use ConfigManager with environment variable overrides
+# Set CIV6AZ_TRAINING_BATCH_SIZE=512 to override
+manager = ConfigManager("configs/civ6_config.yaml")
+training_config = manager.get_training_config()
+distributed_config = manager.get_distributed_config()
+```
+
+## Next Steps (Phase 3+)
+
+1. **Multi-GPU Training**: Extend distributed training to multiple GPUs
+2. **Population-Based Training**: Adaptive hyperparameter tuning
+3. **Full Civ 6 Integration**: Direct game interface (mod or API)
+4. **Tournament System**: ELO-based opponent selection
+5. **Human vs AI**: Interface for human players to challenge trained models
 
 ---
 
-*Last updated: 2026-01-10*
-*Phase: 1 - MicroCiv Environment*
-*Status: Phase 1 Complete*
+*Last updated: 2026-01-11*
+*Phase: 2 - Distributed Training & Game Integration*
+*Status: Phase 2 Complete*
