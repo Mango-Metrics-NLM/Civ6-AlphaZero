@@ -44,12 +44,12 @@ class AgentContext:
     permission_manager: PermissionManager
     session_memory: SessionMemory
     command_runner: CommandRunner
+    max_iterations: int  # Should be set from config.permissions.resource_budget.max_iterations
 
     # Runtime state
     request_id: str = ""
     parent_agent: Optional[str] = None
     iteration: int = 0
-    max_iterations: int  # Should be set from config.permissions.resource_budget.max_iterations
 
     # Shared data between agents
     shared_data: dict[str, Any] = field(default_factory=dict)

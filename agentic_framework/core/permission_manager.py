@@ -191,8 +191,15 @@ class ScopeChecker:
 
         Returns:
             True if path matches pattern.
+            
+        Note:
+            Uses pathlib.Path.match() which has some limitations:
+            - `src/**/*.py` won't match `src/file.py` (requires nested path)
+            - Patterns without path separators match as suffixes
+            For exact shell-like globbing, consider using the pathspec library.
         """
-        # Use pathlib.Path.match() which properly handles ** patterns
+        # Use pathlib.Path.match() which handles ** patterns better than the
+        # previous regex implementation
         return Path(path).match(pattern)
 
     def filter_in_scope(self, paths: list[Path]) -> list[Path]:
