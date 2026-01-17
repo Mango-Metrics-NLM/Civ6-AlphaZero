@@ -7,8 +7,6 @@ Implements the permission architecture from the template.
 
 from __future__ import annotations
 
-import fnmatch
-import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -194,13 +192,8 @@ class ScopeChecker:
         Returns:
             True if path matches pattern.
         """
-        # Handle ** patterns
-        if "**" in pattern:
-            # Convert to regex for proper matching
-            regex_pattern = pattern.replace(".", r"\.").replace("**", ".*").replace("*", "[^/]*")
-            return bool(re.match(regex_pattern, path))
-        else:
-            return fnmatch.fnmatch(path, pattern)
+        # Use pathlib.Path.match() which properly handles ** patterns
+        return Path(path).match(pattern)
 
     def filter_in_scope(self, paths: list[Path]) -> list[Path]:
         """Filter a list of paths to only those in scope.

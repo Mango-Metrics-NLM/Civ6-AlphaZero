@@ -217,18 +217,43 @@ class TestingAgent(BaseAgent):
             "errors": [],
         }
 
-        # Build test command
-        if self.test_framework == "pytest":
-            command = "python -m pytest -v --tb=short"
+        # Get test commands from config verification commands
+        test_commands = [
+            cmd for cmd in context.config.feedback.verification_commands
+            if "test" in cmd.name.lower()
+        ]
+        
+        if not test_commands:
+            # Fallback to basic pytest command if no test commands in config
+            logger.warning("No test commands found in config, using default pytest")
+            if self.test_framework == "pytest":
+                command = "python -m pytest -v --tb=short"
+            else:
+                command = f"python -m {self.test_framework}"
+            
+            success, stdout, stderr = self.run_command(command, timeout=self.timeout_seconds)
+            if self.test_framework == "pytest":
+                result = self._parse_pytest_output(stdout + stderr)
         else:
-            command = f"python -m {self.test_framework}"
-
-        # Run tests
-        success, stdout, stderr = self.run_command(command, timeout=self.timeout_seconds)
-
-        # Parse pytest output
-        if self.test_framework == "pytest":
-            result = self._parse_pytest_output(stdout + stderr)
+            # Run all test commands from config
+            all_success = True
+            all_output = []
+            
+            for test_cmd in test_commands:
+                logger.info(f"Running test command: {test_cmd.name}")
+                success, stdout, stderr = self.run_command(
+                    test_cmd.command, 
+                    timeout=test_cmd.timeout_seconds
+                )
+                all_output.append(stdout + stderr)
+                if not success:
+                    all_success = False
+            
+            # Parse combined output if using pytest
+            if self.test_framework == "pytest":
+                result = self._parse_pytest_output("\n".join(all_output))
+            
+            result["success"] = all_success
 
         return result
 

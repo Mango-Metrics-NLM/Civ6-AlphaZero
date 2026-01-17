@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from .config import AgenticConfig, load_config
+from .config import AgenticConfig, ConfigLoader
 from .core.constraint_manager import ConstraintManager
 from .core.permission_manager import PermissionManager
 from .core.session_memory import SessionMemory
@@ -95,13 +95,13 @@ class Orchestrator:
         """
         self.working_dir = working_dir or Path.cwd()
 
-        # Load configuration
+        # Load configuration using instance-based loader (not global)
         if config is not None:
             self.config = config
-        elif config_path is not None:
-            self.config = load_config(project_config_path=config_path)
+            self.config_loader = None  # Config provided directly
         else:
-            self.config = load_config()
+            self.config_loader = ConfigLoader()
+            self.config = self.config_loader.load(project_config_path=config_path)
 
         # Set up logging
         setup_logging(

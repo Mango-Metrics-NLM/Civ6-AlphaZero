@@ -13,6 +13,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from packaging.version import parse as parse_version
+
 from ..config import AgenticConfig
 from ..utils.logging_config import get_logger
 from ..utils.command_runner import CommandRunner
@@ -412,15 +414,15 @@ class ConstraintManager:
             # Check Python version
             result = self.command_runner.run("python --version")
             if result.success:
-                version_match = re.search(r"(\d+\.\d+)", result.stdout)
+                version_match = re.search(r"(\d+\.\d+(?:\.\d+)?)", result.stdout)
                 if version_match:
                     current_version = version_match.group(1)
-                    required_version = re.search(r"(\d+\.\d+)", value)
+                    required_version_match = re.search(r"(\d+\.\d+(?:\.\d+)?)", value)
 
-                    if required_version:
-                        req = required_version.group(1)
+                    if required_version_match:
+                        req = required_version_match.group(1)
                         if ">=" in value:
-                            if float(current_version) < float(req):
+                            if parse_version(current_version) < parse_version(req):
                                 return ConstraintViolation(
                                     constraint=constraint,
                                     message=f"Python version {current_version} does not meet requirement {value}",
