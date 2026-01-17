@@ -253,17 +253,95 @@ class ImplementationAgent(BaseAgent):
         Returns:
             Transformed content.
         """
-        # This is a placeholder - in a real implementation,
-        # this would use the LLM or code generation logic
+        # Note: Full implementation would use an LLM for code generation.
+        # This provides basic structural changes for common tasks.
         transformed = content
-
-        # Apply any registered generators
         task_lower = task_description.lower()
+
+        # Apply any registered custom generators first
         for name, generator in self._code_generators.items():
             if name.lower() in task_lower:
                 generated = generator(content, task_description, context)
                 if generated:
-                    transformed = generated
+                    return generated
+
+        # Basic structural modifications for common tasks
+        if "add import" in task_lower or "import" in task_lower:
+            # Extract module name from task description
+            import_match = re.search(r"import\s+(\w+(?:\.\w+)*)", task_description)
+            if import_match and import_match.group(1) not in content:
+                module = import_match.group(1)
+                # Add import at the top after any existing imports or docstring
+                lines = content.split("\n")
+                insert_idx = 0
+                in_docstring = False
+                
+                for i, line in enumerate(lines):
+                    if '"""' in line or "'''" in line:
+                        in_docstring = not in_docstring
+                    if not in_docstring and (line.startswith("import ") or line.startswith("from ")):
+                        insert_idx = i + 1
+                    elif not in_docstring and line.strip() and not line.startswith("#"):
+                        break
+                
+                lines.insert(insert_idx, f"import {module}")
+                transformed = "\n".join(lines)
+
+        elif "add function" in task_lower or "create function" in task_lower:
+            # Add a basic function template at the end
+            func_match = re.search(r"function\s+(?:named\s+)?(\w+)", task_description)
+            if func_match:
+                func_name = func_match.group(1)
+                if f"def {func_name}" not in content:
+                    function_template = f'''
+
+def {func_name}():
+    """TODO: Implement {func_name}.
+    
+    This function was generated as part of: {task_description}
+    """
+    pass
+'''
+                    transformed = content + function_template
+
+        elif "add docstring" in task_lower:
+            # Add docstrings to functions without them
+            lines = content.split("\n")
+            result = []
+            i = 0
+            while i < len(lines):
+                line = lines[i]
+                result.append(line)
+                
+                # Check if this is a function definition
+                if line.strip().startswith("def ") and ":" in line:
+                    # Check if next non-empty line is a docstring
+                    j = i + 1
+                    while j < len(lines) and not lines[j].strip():
+                        result.append(lines[j])
+                        j += 1
+                    
+                    if j < len(lines) and not (lines[j].strip().startswith('"""') or lines[j].strip().startswith("'''")):
+                        # No docstring, add one
+                        indent = len(line) - len(line.lstrip())
+                        result.append(" " * (indent + 4) + '"""TODO: Add docstring."""')
+                i += 1
+            transformed = "\n".join(result)
+
+        elif "fix" in task_lower and ("import" in task_lower or "syntax" in task_lower):
+            # Basic syntax fixes
+            # Remove duplicate imports
+            lines = content.split("\n")
+            seen_imports = set()
+            result = []
+            for line in lines:
+                if line.strip().startswith(("import ", "from ")):
+                    if line.strip() not in seen_imports:
+                        seen_imports.add(line.strip())
+                        result.append(line)
+                else:
+                    result.append(line)
+            transformed = "\n".join(result)
 
         return transformed
 

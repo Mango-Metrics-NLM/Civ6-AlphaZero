@@ -390,25 +390,59 @@ class TestingAgent(BaseAgent):
         )
         match = func_pattern.search(content)
 
+        # Parse function signature to generate appropriate test
+        args_str = ""
+        return_type = "None"
         if match:
+            args_str = match.group(1)
+            return_type = match.group(2) or "None"
 
-        # Generate basic test structure
+        # Parse arguments
+        args = []
+        if args_str:
+            for arg in args_str.split(","):
+                arg = arg.strip()
+                if arg and arg != "self":
+                    # Extract arg name (before : or = if present)
+                    arg_name = arg.split(":")[0].split("=")[0].strip()
+                    args.append(arg_name)
+
+        # Generate basic test structure with improved logic
         test_name = f"test_{function_name}"
         module_name = file_path.stem
 
+        # Build test arguments
+        test_args = ", ".join([f"{arg}_value" for arg in args])
+        
+        # Build setup section
+        setup_lines = []
+        for arg in args:
+            setup_lines.append(f"    {arg}_value = None  # TODO: Provide appropriate test value")
+
+        setup_section = "\n".join(setup_lines) if setup_lines else "    # No arguments needed"
+
+        # Build assertion based on return type
+        if return_type.lower() == "none":
+            assertion = "    # Function returns None - verify side effects or state changes"
+        elif return_type.lower() == "bool":
+            assertion = "    assert isinstance(result, bool)"
+        elif return_type.lower() in ["int", "float", "str", "list", "dict", "tuple", "set"]:
+            assertion = f"    assert isinstance(result, {return_type})"
+        else:
+            assertion = "    assert result is not None"
+
         test_code = f'''def {test_name}():
     """Test {function_name}."""
-    # TODO: Implement test
     from {module_name} import {function_name}
 
     # Arrange
-    # ... setup test data
+{setup_section}
 
     # Act
-    result = {function_name}()
+    result = {function_name}({test_args})
 
     # Assert
-    assert result is not None
+{assertion}
 '''
 
         return TestCase(

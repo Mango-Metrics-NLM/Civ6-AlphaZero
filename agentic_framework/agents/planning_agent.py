@@ -299,7 +299,7 @@ class PlanningAgent(BaseAgent):
         structure: dict[str, Any],
         critical_files: list[str],
     ) -> ImplementationPlan:
-        """Generate an implementation plan.
+        """Generate a dynamic implementation plan based on the objective.
 
         Args:
             context: Execution context.
@@ -320,6 +320,15 @@ class PlanningAgent(BaseAgent):
             criterion_text = criterion.get("criterion", str(criterion))
             plan.success_criteria.append(criterion_text)
 
+        # Analyze objective to determine plan structure dynamically
+        objective_lower = objective.lower()
+        
+        # Determine if this is a feature, bugfix, refactoring, or testing task
+        is_feature = any(word in objective_lower for word in ["add", "implement", "create", "new"])
+        is_bugfix = any(word in objective_lower for word in ["fix", "bug", "error", "issue"])
+        is_refactor = any(word in objective_lower for word in ["refactor", "improve", "optimize", "clean"])
+        is_test = any(word in objective_lower for word in ["test", "testing", "coverage"])
+
         # Generate steps based on objective and structure
         step_num = 1
 
@@ -335,15 +344,92 @@ class PlanningAgent(BaseAgent):
         )
         step_num += 1
 
-        # Step 2: Core implementation
-        plan.steps.append(
-            ImplementationStep(
+        # Different paths based on objective type
+        if is_test:
+            # Test-focused workflow
+            plan.steps.append(
+                ImplementationStep(
+                    step_number=step_num,
+                    description=f"Generate tests for: {objective}",
+                    files_involved=critical_files,
+                    dependencies=[1],
+                    agent="testing",
+                    estimated_complexity="medium",
+                )
+            )
+            step_num += 1
+            
+        elif is_bugfix:
+            # Bug fix workflow
+            plan.steps.append(
+                ImplementationStep(
+                    step_number=step_num,
+                    description=f"Fix bug: {objective}",
+                    files_involved=critical_files,
+                    dependencies=[1],
+                    agent="implementation",
+                    estimated_complexity="medium",
+                )
+            )
+            step_num += 1
+            
+            plan.steps.append(
+                ImplementationStep(
+                    step_number=step_num,
+                    description="Add tests to prevent regression",
+                    dependencies=[2],
+                    agent="testing",
+                    estimated_complexity="low",
+                )
+            )
+            step_num += 1
+            
+        elif is_refactor:
+            # Refactoring workflow
+            plan.steps.append(
+                ImplementationStep(
+                    step_number=step_num,
+                    description="Run existing tests to establish baseline",
+                    dependencies=[1],
+                    agent="testing",
+                    estimated_complexity="low",
+                )
+            )
+            step_num += 1
+            
+            plan.steps.append(
+                ImplementationStep(
+                    step_number=step_num,
+                    description=f"Refactor code: {objective}",
+                    files_involved=critical_files,
+                    dependencies=[2],
+                    agent="implementation",
+                    estimated_complexity="high",
+                )
+            )
+            step_num += 1
+            
+            plan.steps.append(
+                ImplementationStep(
+                    step_number=step_num,
+                    description="Verify all tests still pass after refactoring",
+                    dependencies=[3],
+                    agent="testing",
+                    estimated_complexity="low",
+                )
+            )
+            step_num += 1
+            
+        else:
+            # Default/Feature workflow - Step 2: Core implementation
+            plan.steps.append(
+                ImplementationStep(
                 step_number=step_num,
                 description=f"Implement core logic for: {objective}",
                 files_involved=critical_files,
                 dependencies=[1],
                 agent="implementation",
-                estimated_complexity="high",
+                estimated_complexity="high" if is_feature else "medium",
             )
         )
         step_num += 1
@@ -360,7 +446,7 @@ class PlanningAgent(BaseAgent):
         )
         step_num += 1
 
-        # Step 4: Tests
+        # Step 4: Tests (if test directories exist)
         if structure.get("test_directories"):
             plan.steps.append(
                 ImplementationStep(
@@ -374,7 +460,7 @@ class PlanningAgent(BaseAgent):
             )
             step_num += 1
 
-        # Step 5: Verification
+        # Final step: Always end with verification
         plan.steps.append(
             ImplementationStep(
                 step_number=step_num,
