@@ -608,7 +608,59 @@ print(env.render())
 
 ---
 
-## SECTION 11: NEXT STEPS
+## SECTION 11: RAG SYSTEM
+
+### 11.1 RAG Overview
+The RAG (Retrieval-Augmented Generation) system enhances agent workflows with context from a vector database.
+
+### 11.2 RAG Architecture
+```
+alpha_zero/rag/
+├── config/         # Configuration management (Pydantic models)
+├── stores/         # Vector store backends (Memory, Chroma, FAISS)
+├── processors/     # Document processing and embeddings
+├── agents/         # Agent workflow integration
+├── utils/          # Logging, metrics, caching
+└── pipeline.py     # Unified RAG pipeline
+```
+
+### 11.3 RAG Commands
+
+| Command | Purpose |
+|---------|---------|
+| `pytest tests/unit/test_rag/ -v` | Run RAG unit tests |
+| `pytest tests/integration/test_rag/ -v` | Run RAG integration tests |
+| `pip install -e ".[rag]"` | Install with RAG dependencies |
+| `pip install -e ".[all]"` | Install all dependencies |
+
+### 11.4 RAG Usage Example
+
+```python
+from alpha_zero.rag import RAGPipeline, RAGConfig
+
+# Create pipeline
+config = RAGConfig.from_env()
+pipeline = await RAGPipeline.create(config)
+
+# Ingest documents
+await pipeline.ingest_text("Strategy guide content...", source="guide.txt")
+
+# Query with context
+result = await pipeline.query("How to win early game?", top_k=5)
+print(result.context)
+
+await pipeline.close()
+```
+
+### 11.5 RAG Environment Variables
+- `RAG_VECTOR_STORE_TYPE` - Backend: memory, chroma, faiss
+- `RAG_EMBEDDING_MODEL` - Embedding model name
+- `RAG_EMBEDDING_API_KEY` - API key for OpenAI embeddings
+- `RAG_LOG_LEVEL` - Logging level
+
+---
+
+## SECTION 12: NEXT STEPS
 
 ### Phase 3+ (Planned)
 1. **Multi-GPU Training**: Extend distributed training to multiple GPUs
@@ -616,9 +668,10 @@ print(env.render())
 3. **Full Civ 6 Integration**: Direct game interface (mod or API)
 4. **Tournament System**: ELO-based opponent selection
 5. **Human vs AI**: Interface for human players to challenge trained models
+6. **RAG Enhancement**: LLM-powered strategy recommendations using RAG context
 
 ---
 
 *Last updated: 2026-01-19*
 *Phase: 2 - Distributed Training & Game Integration (Complete)*
-*Current Focus: Claude Code Integration & Testing Infrastructure*
+*Current Focus: RAG DB Integration & Agent Workflow Enhancement*

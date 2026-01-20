@@ -16,6 +16,7 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - **Environment Tuning**: Configurable game mechanics for faster iteration
 - **W&B Integration**: Full experiment tracking with Weights & Biases
 - **MicroCiv Environment**: Gymnasium-compliant simulation of Civ6 core mechanics
+- **RAG Integration**: Retrieval-Augmented Generation for knowledge-enhanced decision making
 
 ## Architecture (C4 Model)
 
@@ -442,6 +443,97 @@ WANDB_ENTITY=your_team_name
 CUDA_VISIBLE_DEVICES=0
 ```
 
+## RAG Integration
+
+The RAG (Retrieval-Augmented Generation) system enables knowledge-enhanced agent decision making by retrieving relevant context from a vector database.
+
+### Installation
+
+```bash
+# Install RAG dependencies
+pip install -e ".[rag]"
+
+# Or install all dependencies including RAG
+pip install -e ".[all]"
+```
+
+### Quick Start
+
+```python
+import asyncio
+from alpha_zero.rag import RAGPipeline, RAGConfig
+
+async def main():
+    # Create pipeline with default configuration
+    pipeline = await RAGPipeline.create()
+
+    # Ingest strategy documents
+    await pipeline.ingest_text(
+        "Early game strategy: Focus on expanding territory and building settlers.",
+        source="strategy_guide.txt",
+        metadata={"category": "early_game"}
+    )
+
+    # Query for relevant context
+    result = await pipeline.query(
+        "How should I play the early game?",
+        top_k=5
+    )
+
+    print(f"Context: {result.context}")
+    print(f"Retrieved {len(result.documents)} documents")
+
+    await pipeline.close()
+
+asyncio.run(main())
+```
+
+### Configuration
+
+RAG can be configured via environment variables or YAML:
+
+```bash
+# Environment variables
+export RAG_VECTOR_STORE_TYPE=chroma
+export RAG_EMBEDDING_MODEL_TYPE=openai
+export OPENAI_API_KEY=your_key_here
+```
+
+```python
+from alpha_zero.rag import RAGConfig, VectorStoreType, EmbeddingModelType
+
+config = RAGConfig()
+config.vector_store.store_type = VectorStoreType.CHROMA
+config.embedding.model_type = EmbeddingModelType.OPENAI
+
+pipeline = await RAGPipeline.create(config)
+```
+
+### Agent Workflow Integration
+
+```python
+from alpha_zero.rag.agents import RAGAgentWorkflow
+from alpha_zero.rag.stores import MemoryVectorStore
+from alpha_zero.rag.processors import LocalEmbeddings
+
+# Create workflow
+workflow = RAGAgentWorkflow(
+    vector_store=MemoryVectorStore(dimension=384),
+    embedding_generator=LocalEmbeddings(dimension=384),
+)
+await workflow.initialize()
+
+# Register hooks for custom processing
+async def pre_retrieve_hook(context):
+    print(f"Searching for: {context.query}")
+
+workflow.register_hook("pre_retrieve", pre_retrieve_hook)
+
+# Execute workflow
+result = await workflow.execute("What is the best opening strategy?")
+print(result.context)
+```
+
 ## Testing
 
 The project maintains comprehensive test coverage:
@@ -488,6 +580,26 @@ Civ6-AlphaZero/
 │   ├── envs/                 # Game environments
 │   │   ├── microciv.py       # MicroCiv environment
 │   │   └── civ6_encoder.py   # State encoding
+│   ├── rag/                  # RAG Integration
+│   │   ├── config/           # Configuration management
+│   │   │   └── settings.py   # RAG configuration classes
+│   │   ├── stores/           # Vector store implementations
+│   │   │   ├── base.py       # Abstract interfaces
+│   │   │   ├── memory_store.py
+│   │   │   ├── chroma_store.py
+│   │   │   └── faiss_store.py
+│   │   ├── processors/       # Document processing
+│   │   │   ├── text_processor.py
+│   │   │   └── embeddings.py
+│   │   ├── agents/           # Agent workflow
+│   │   │   ├── workflow.py   # RAG workflow orchestration
+│   │   │   ├── context_builder.py
+│   │   │   └── query_enhancer.py
+│   │   ├── utils/            # RAG utilities
+│   │   │   ├── logging.py    # Structured logging
+│   │   │   ├── metrics.py    # Performance metrics
+│   │   │   └── cache.py      # Caching implementations
+│   │   └── pipeline.py       # Main RAG pipeline
 │   └── utils/                # Utilities & enhancements
 │       ├── curriculum_learning.py
 │       ├── enhanced_rewards.py
@@ -496,7 +608,9 @@ Civ6-AlphaZero/
 │       └── wandb_logger.py
 ├── tests/
 │   ├── unit/                 # Unit tests
+│   │   └── test_rag/         # RAG unit tests
 │   └── integration/          # Integration tests
+│       └── test_rag/         # RAG integration tests
 ├── scripts/                  # Utility scripts
 ├── run_enhanced_training.py  # Main training entry point
 ├── requirements.txt          # Dependencies
@@ -511,7 +625,9 @@ Civ6-AlphaZero/
 | Deep Learning | PyTorch 2.0+ |
 | Environment | Gymnasium |
 | Experiment Tracking | Weights & Biases |
-| Testing | Pytest, Hypothesis |
+| RAG / Vector DB | ChromaDB, FAISS, Pinecone |
+| Embeddings | OpenAI, Sentence Transformers |
+| Testing | Pytest, pytest-asyncio |
 | Visualization | Mermaid.js, Matplotlib |
 | Code Quality | MyPy, Ruff, Black |
 
