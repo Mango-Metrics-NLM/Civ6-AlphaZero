@@ -132,7 +132,7 @@ class TestWandbLoggerEnabled:
         # Create logger and force enabled state by setting config
         with patch("alpha_zero.utils.wandb_logger.WANDB_AVAILABLE", True):
             logger = WandbLogger(config)
-            run = logger.init(config_dict={"lr": 0.001})
+            logger.init(config_dict={"lr": 0.001})
 
         mock_wandb.init.assert_called_once()
 

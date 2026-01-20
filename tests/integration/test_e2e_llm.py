@@ -48,7 +48,6 @@ class TestEnvironmentSetup:
     def test_env_file_exists(self):
         """Test that .env file exists."""
         project_root = Path(__file__).parent.parent.parent
-        env_file = project_root / ".env"
         env_template = project_root / ".env.template"
 
         # At least the template should exist
@@ -159,8 +158,8 @@ class TestAgentToolsIntegration:
 
         # Add tasks
         task1 = tracker.add("Setup environment")
-        task2 = tracker.add("Run tests")
-        task3 = tracker.add("Deploy")
+        _task2 = tracker.add("Run tests")
+        _task3 = tracker.add("Deploy")
 
         # Start first task
         tracker.start(task1.id)
@@ -391,7 +390,7 @@ class TestFullSystemIntegration:
         # Load configuration
         manager = ConfigManager(config_file)
         env_config = manager.get_environment_config()
-        network_config = manager.get_network_config()
+        _network_config = manager.get_network_config()
 
         # Create environment from config
         env = MicroCivEnv(board_size=env_config.board_size)

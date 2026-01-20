@@ -51,7 +51,7 @@ def main():
     
     try:
         # Run using subprocess to properly handle standard I/O
-        process = subprocess.run(cmd, check=True)
+        subprocess.run(cmd, check=True)
         print("Training completed successfully.")
     except subprocess.CalledProcessError as e:
         print(f"Training failed with exit code {e.returncode}")

@@ -254,7 +254,7 @@ def run_self_play_enhanced(
         mcts = Civ6MCTS(network, mcts_config, device=device)
 
     wins = 0
-    for game_idx in tqdm(range(num_games), desc="Self-play"):
+    for _ in tqdm(range(num_games), desc="Self-play"):
         examples, stats = self_play_game_enhanced(
             env, mcts, reward_shaper,
             temperature=1.0,

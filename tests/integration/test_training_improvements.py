@@ -263,7 +263,7 @@ class TestFullTrainingPipeline:
         training_config = get_fast_training_config()
 
         # 5. Run a few games
-        for game_idx in range(5):
+        for _ in range(5):
             obs, info = env.reset()
             reward_shaper.reset()
 
