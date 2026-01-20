@@ -91,6 +91,12 @@ logs/
 
 # RAG Data
 data/knowledge_db/
+*.chroma/
+chroma_data/
+faiss_index/
+*.faiss
+vector_store/
+embeddings_cache/
 
 # Weights & Biases
 wandb/

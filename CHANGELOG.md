@@ -9,6 +9,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### RAG (Retrieval-Augmented Generation) Integration
+A comprehensive RAG system for enhancing agent decision-making with external knowledge retrieval.
+
+##### Configuration Module (`alpha_zero/rag/config/settings.py`)
+- **VectorStoreConfig**: Vector database configuration
+  - Support for Memory, ChromaDB, FAISS, and Pinecone backends
+  - Configurable dimensions, distance metrics, and collection names
+- **EmbeddingConfig**: Embedding model configuration
+  - Support for OpenAI, Sentence Transformers, and Local embeddings
+  - Batch size and dimension configuration
+- **ProcessorConfig**: Text processing configuration
+  - Chunk size and overlap settings
+  - Recursive text splitting parameters
+- **RAGConfig**: Unified configuration with YAML serialization
+  - Environment variable loading
+  - Configuration validation
+
+##### Vector Store Abstraction (`alpha_zero/rag/stores/`)
+- **VectorStore Protocol**: Abstract interface for vector databases
+  - Async CRUD operations (add, search, delete, get)
+  - Metadata filtering support
+- **MemoryVectorStore**: In-memory implementation for testing
+  - Cosine similarity and Euclidean distance metrics
+  - NumPy-based efficient search
+- **ChromaStore**: ChromaDB integration
+  - Persistent and ephemeral collection support
+- **FAISSStore**: FAISS integration
+  - High-performance similarity search
+- **VectorStoreFactory**: Factory pattern for store creation
+
+##### Document Processing (`alpha_zero/rag/processors/`)
+- **RecursiveTextSplitter**: Intelligent text chunking
+  - Configurable separators and chunk sizes
+  - Overlap for context preservation
+- **TextDocumentProcessor**: Document processing pipeline
+  - Async file and text processing
+  - Chunk metadata tracking
+- **EmbeddingGenerator Protocol**: Abstract embedding interface
+- **LocalEmbeddings**: Random embeddings for testing
+- **OpenAIEmbeddings**: OpenAI API integration
+- **SentenceTransformerEmbeddings**: Local transformer models
+
+##### Agent Workflow Integration (`alpha_zero/rag/agents/`)
+- **RAGAgentWorkflow**: Complete workflow orchestration
+  - Document ingestion and indexing
+  - Query processing with context retrieval
+  - Hook system for extensibility
+  - Step-by-step execution tracking
+- **ContextBuilder**: Context assembly strategies
+  - Relevance-based, recency-based, diversity-based, and hybrid strategies
+  - Deduplication and character limits
+- **QueryEnhancer**: Query preprocessing
+  - Keyword extraction
+  - Query expansion with synonyms
+  - Query normalization
+
+##### Utilities (`alpha_zero/rag/utils/`)
+- **RAGLogger**: Structured logging with correlation IDs
+  - Multiple output formats (JSON, text)
+  - Configurable log levels
+- **MetricsCollector**: Performance metrics
+  - Timer, Counter, and Gauge types
+  - Context manager support for timing
+- **TTLCache & LRUCache**: Caching implementations
+  - Time-to-live expiration
+  - Size-based eviction
+
+##### Main Pipeline (`alpha_zero/rag/pipeline.py`)
+- **RAGPipeline**: Unified interface for RAG operations
+  - Text and file ingestion
+  - Query with context enhancement
+  - Caching and metrics collection
+  - Factory methods for testing configuration
+  - Async context manager support
+
+##### Test Suite (100 new tests)
+- `tests/unit/test_rag/test_config.py`: Configuration tests (20 tests)
+- `tests/unit/test_rag/test_vector_stores.py`: Vector store tests (22 tests)
+- `tests/unit/test_rag/test_processors.py`: Processor tests (25 tests)
+- `tests/unit/test_rag/test_pipeline.py`: Pipeline tests (19 tests)
+- `tests/integration/test_rag/test_rag_workflow.py`: Integration tests (14 tests)
+
+##### Dependencies
+- `chromadb>=0.4.0`: ChromaDB vector database
+- `faiss-cpu>=1.7.0`: Facebook AI Similarity Search
+- `openai>=1.0.0`: OpenAI API client
+- `sentence-transformers>=2.2.0`: Local embedding models
+- `pinecone-client>=2.0.0` (optional): Pinecone cloud vector database
+
 #### Phase 3: Enhanced Training Pipeline
 A comprehensive suite of training improvements designed to accelerate learning convergence and improve agent performance.
 
