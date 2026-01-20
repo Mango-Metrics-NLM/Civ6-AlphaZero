@@ -6,6 +6,7 @@ gymnasium>=0.29.0
 # Development dependencies
 pytest>=7.0.0
 pytest-cov>=4.0.0
+pytest-timeout>=2.2.0
 mypy>=1.0.0
 ruff>=0.1.0
 
@@ -14,4 +15,16 @@ pyyaml>=6.0
 tensorboard>=2.12.0
 tqdm>=4.65.0
 types-tqdm>=4.65.0
+python-dotenv>=1.0.0
+
+# Experiment Tracking
+wandb>=0.15.0
+
+# LLM Integration (optional - install if using LLM features)
+# openai>=1.0.0
+# anthropic>=0.18.0
+
+# RAG Integration
+chromadb>=0.4.0
+sentence-transformers>=2.2.0
 
