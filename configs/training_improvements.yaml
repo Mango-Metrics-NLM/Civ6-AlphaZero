@@ -1,0 +1,259 @@
+# Training Improvements Configuration
+#
+# This configuration file contains all parameters for the training improvement
+# modules: environment tuning, enhanced rewards, curriculum learning, and
+# training configuration enhancements.
+#
+# All values are configurable via environment variables with prefix CIV6AZ_
+
+# =============================================================================
+# Environment Tuning
+# =============================================================================
+# Adjusts game mechanics for faster training convergence
+
+environment_tuning:
+  enabled: true
+  max_turns: 100
+  fog_of_war_enabled: true
+  board_size: null  # null = use default
+
+  early_termination:
+    enabled: true
+    advantage_threshold: 3  # units + cities*2 advantage to trigger
+    check_interval: 5  # turns between checks
+    min_turns: 10  # minimum turns before early termination
+    stalemate_threshold: 20  # turns without change to declare draw
+
+  production:
+    multiplier: 1.5  # 1.0 = normal, >1.0 = faster
+    base_production: 3
+    population_bonus: 1
+    unit_costs:
+      warrior: 3
+      settler: 5
+      archer: 4
+
+  combat:
+    simplified: false
+    damage_multiplier: 1.0
+    min_damage: 10
+    terrain_bonus_enabled: true
+
+# =============================================================================
+# Enhanced Rewards
+# =============================================================================
+# Stronger intermediate reward signals
+
+enhanced_rewards:
+  enabled: true
+  scale_factor: 1.0  # global multiplier
+  gamma: 0.99  # discount for potential-based shaping
+  normalize: true  # clip to [-2, 2]
+
+  intermediate:
+    territory_control: 0.02
+    unit_preservation: 0.01
+    city_proximity: 0.005
+    exploration: 0.001
+    production_progress: 0.002
+    combat_engagement: 0.01
+    city_founding: 0.1
+    tech_progress: 0.05
+
+  victory_bonuses:
+    domination: 1.0
+    elimination: 1.0
+    score: 0.5
+    territory: 0.3
+
+  active_win_conditions:
+    - domination
+    - elimination
+
+  potential_weights:
+    unit_advantage: 0.1
+    city_advantage: 0.2
+    health_advantage: 0.05
+    territory_advantage: 0.05
+    production_advantage: 0.03
+
+# =============================================================================
+# Curriculum Learning
+# =============================================================================
+# Progressive difficulty training
+
+curriculum:
+  enabled: true
+  allow_demotion: true
+  metrics_window: 100  # games to consider for promotion
+  adaptive_enabled: false
+  adaptive_step_size: 0.1
+  save_path: checkpoints/curriculum_state.json
+
+  stages:
+    - name: beginner
+      level: 0
+      board_size: 8
+      max_turns: 30
+      num_opponents: 1
+      starting_units: 2
+      starting_cities: 0
+      production_multiplier: 2.0
+      fog_of_war_enabled: false
+      promotion_threshold: 0.7
+      demotion_threshold: 0.3
+      min_games: 50
+      description: "Small board, short games, fast production"
+
+    - name: intermediate
+      level: 1
+      board_size: 12
+      max_turns: 60
+      num_opponents: 1
+      starting_units: 2
+      starting_cities: 0
+      production_multiplier: 1.5
+      fog_of_war_enabled: false
+      promotion_threshold: 0.6
+      demotion_threshold: 0.35
+      min_games: 75
+      description: "Medium board, moderate length"
+
+    - name: advanced
+      level: 2
+      board_size: 16
+      max_turns: 100
+      num_opponents: 1
+      starting_units: 2
+      starting_cities: 0
+      production_multiplier: 1.0
+      fog_of_war_enabled: true
+      promotion_threshold: 0.55
+      demotion_threshold: 0.4
+      min_games: 100
+      description: "Full board, fog of war enabled"
+
+# =============================================================================
+# Enhanced Training Configuration
+# =============================================================================
+# Scalable training parameters with schedules
+
+training:
+  # Base parameters
+  batch_size: 256
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  gradient_clip: 1.0
+  gradient_accumulation_steps: 1
+
+  # Training loop
+  num_iterations: 100000
+  games_per_iteration: 100
+  replay_buffer_size: 500000
+  min_replay_size: 10000
+  num_epochs: 10
+
+  # Evaluation and checkpointing
+  evaluation_interval: 500
+  checkpoint_interval: 1000
+
+  # Batch size schedule (optional)
+  batch_size_schedule:
+    schedule_type: step
+    initial_value: 64
+    points:
+      - iteration: 1000
+        value: 128
+      - iteration: 5000
+        value: 256
+      - iteration: 10000
+        value: 512
+
+  # Learning rate schedule
+  learning_rate_schedule:
+    schedule_type: warmup_cosine
+    initial_value: 0.001
+    final_value: 0.00001
+    decay_steps: 100000
+    warmup_steps: 5000
+
+  # Resource management
+  resources:
+    max_memory_gb: 8.0
+    gradient_checkpointing: false
+    mixed_precision: false
+    num_workers: 4
+    pin_memory: true
+    prefetch_factor: 2
+
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+
+logging:
+  level: INFO
+  log_dir: logs
+  metrics_window: 100
+  tensorboard: true
+  tensorboard_dir: logs/tensorboard
+  json_format: false
+  console_output: true
+  file_output: true
+
+# =============================================================================
+# Presets
+# =============================================================================
+# Quick reference for common configurations
+
+presets:
+  # For quick development/testing
+  fast:
+    environment_tuning:
+      max_turns: 30
+      early_termination:
+        enabled: true
+        advantage_threshold: 2
+        min_turns: 5
+      production:
+        multiplier: 3.0
+    curriculum:
+      stages:
+        - name: fast_test
+          level: 0
+          board_size: 6
+          max_turns: 20
+          min_games: 10
+    training:
+      num_iterations: 100
+      games_per_iteration: 10
+      batch_size: 32
+
+  # For production training
+  production:
+    environment_tuning:
+      max_turns: 150
+      early_termination:
+        enabled: true
+        advantage_threshold: 4
+    curriculum:
+      stages:
+        - name: easy
+          level: 0
+          board_size: 10
+          max_turns: 50
+          min_games: 200
+        - name: medium
+          level: 1
+          board_size: 14
+          max_turns: 100
+          min_games: 300
+        - name: hard
+          level: 2
+          board_size: 16
+          max_turns: 150
+          min_games: 500
+    training:
+      num_iterations: 500000
+      games_per_iteration: 200
+      batch_size: 512
+      gradient_accumulation_steps: 2
