@@ -1,10 +1,8 @@
 """Integration tests for RAG agent workflow."""
 
-import numpy as np
 import pytest
 import pytest_asyncio
 
-from alpha_zero.rag.config.settings import RAGConfig, VectorStoreType, EmbeddingModelType
 from alpha_zero.rag.pipeline import RAGPipeline
 from alpha_zero.rag.agents.workflow import (
     RAGAgentWorkflow,

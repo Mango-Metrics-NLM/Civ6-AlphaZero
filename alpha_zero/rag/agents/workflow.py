@@ -9,13 +9,12 @@ This module provides the main workflow orchestration for RAG-enhanced agents:
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, TypeVar
-
-import numpy as np
 
 from alpha_zero.rag.config.settings import RAGConfig
 from alpha_zero.rag.processors.embeddings import EmbeddingGenerator
@@ -190,7 +189,7 @@ class RAGAgentWorkflow:
 
     async def initialize(self) -> None:
         """Initialize the workflow components."""
-        if not self.vector_store._is_initialized:
+        if not self.vector_store.is_initialized:
             await self.vector_store.initialize()
         self._is_initialized = True
 
@@ -247,7 +246,7 @@ class RAGAgentWorkflow:
         if not self._is_initialized:
             raise RuntimeError("Workflow not initialized. Call initialize() first.")
 
-        start_time = datetime.utcnow()
+        start_time = time.perf_counter()
         context = WorkflowContext(query=query)
         context.state = WorkflowState.RUNNING
 
@@ -268,7 +267,7 @@ class RAGAgentWorkflow:
             context.state = WorkflowState.COMPLETED
 
             # Calculate total time
-            total_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+            total_time = (time.perf_counter() - start_time) * 1000
 
             return WorkflowResult(
                 context=context,
@@ -280,7 +279,7 @@ class RAGAgentWorkflow:
 
         except Exception as e:
             context.state = WorkflowState.FAILED
-            total_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+            total_time = (time.perf_counter() - start_time) * 1000
 
             return WorkflowResult(
                 context=context,

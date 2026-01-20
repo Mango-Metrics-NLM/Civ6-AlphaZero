@@ -11,7 +11,6 @@ from __future__ import annotations
 import re
 import time
 from pathlib import Path
-from typing import Any
 
 from alpha_zero.rag.config.settings import ProcessorConfig
 from alpha_zero.rag.processors.base import (

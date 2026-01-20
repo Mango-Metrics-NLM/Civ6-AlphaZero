@@ -16,7 +16,7 @@ from typing import Any
 
 import numpy as np
 
-from alpha_zero.rag.stores.base import Document, DocumentMetadata, SearchResult, VectorStore
+from alpha_zero.rag.stores.base import Document, SearchResult, VectorStore
 
 
 class FAISSVectorStore(VectorStore):
@@ -310,16 +310,27 @@ class FAISSVectorStore(VectorStore):
             return results
 
     async def delete(self, ids: list[str]) -> int:
-        """Delete documents by ID.
+        """Delete documents by ID (logical deletion).
 
-        Note: FAISS doesn't support deletion natively. This marks documents
-        as deleted and they'll be filtered from search results.
+        Important: FAISS does not support native vector deletion. This method
+        performs a logical delete by removing documents from the metadata
+        mappings, but the vectors remain in the FAISS index.
+
+        Implications:
+            - Memory: The index size (index.ntotal) does not decrease
+            - Search: Deleted vectors are filtered out during search, but may
+              cause fewer than top_k results if many deletions have occurred
+            - Rebuild: For production use with frequent deletions, periodically
+              rebuild the index to reclaim space and maintain performance
+
+        To rebuild the index, export all remaining documents and create a new
+        FAISSVectorStore instance.
 
         Args:
             ids: List of document IDs to delete
 
         Returns:
-            Number of documents deleted
+            Number of documents logically deleted
         """
         if not self._is_initialized:
             raise RuntimeError("Store not initialized. Call initialize() first.")

@@ -6,6 +6,7 @@ data structures for processing results.
 
 from __future__ import annotations
 
+import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -138,7 +139,7 @@ class DocumentProcessor(ABC):
         self,
         contents: list[tuple[str, str]],
     ) -> list[ProcessingResult]:
-        """Process multiple documents.
+        """Process multiple documents concurrently.
 
         Args:
             contents: List of (content, source) tuples
@@ -146,11 +147,8 @@ class DocumentProcessor(ABC):
         Returns:
             List of ProcessingResults
         """
-        results = []
-        for content, source in contents:
-            result = await self.process(content, source)
-            results.append(result)
-        return results
+        tasks = [self.process(content, source) for content, source in contents]
+        return await asyncio.gather(*tasks)
 
 
 class TextSplitter(ABC):

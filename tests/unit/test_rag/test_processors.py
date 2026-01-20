@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from alpha_zero.rag.processors.base import DocumentProcessor, ProcessingResult, TextChunk
+from alpha_zero.rag.processors.base import ProcessingResult, TextChunk
 from alpha_zero.rag.processors.text_processor import (
     RecursiveTextSplitter,
     TextDocumentProcessor,

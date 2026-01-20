@@ -342,10 +342,10 @@ class RAGConfig:
             logging_data["level"] = LogLevel(logging_data["level"])
 
         return cls(
-            vector_store=VectorStoreConfig(**vector_store_data) if vector_store_data else VectorStoreConfig(),
-            embedding=EmbeddingConfig(**embedding_data) if embedding_data else EmbeddingConfig(),
-            processor=ProcessorConfig(**data.get("processor", {})) if data.get("processor") else ProcessorConfig(),
-            logging=LoggingConfig(**logging_data) if logging_data else LoggingConfig(),
+            vector_store=VectorStoreConfig(**vector_store_data),
+            embedding=EmbeddingConfig(**embedding_data),
+            processor=ProcessorConfig(**data.get("processor", {})),
+            logging=LoggingConfig(**logging_data),
             cache_ttl=data.get("cache_ttl", 3600),
             enable_caching=data.get("enable_caching", True),
         )

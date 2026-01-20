@@ -173,7 +173,9 @@ class QueryEnhancer:
         for keyword in keywords:
             if keyword in self.SYNONYMS:
                 for synonym in self.SYNONYMS[keyword]:
-                    expanded = query.lower().replace(keyword, synonym)
+                    # Use word boundaries to avoid replacing substrings within words
+                    pattern = r'\b' + re.escape(keyword) + r'\b'
+                    expanded = re.sub(pattern, synonym, query.lower())
                     if expanded != query.lower():
                         expansions.append(expanded)
 

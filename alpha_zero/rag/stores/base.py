@@ -185,6 +185,15 @@ class VectorStore(ABC):
         self.dimension = dimension
         self._is_initialized = False
 
+    @property
+    def is_initialized(self) -> bool:
+        """Check if the store is initialized.
+
+        Returns:
+            True if initialized, False otherwise
+        """
+        return self._is_initialized
+
     @abstractmethod
     async def initialize(self) -> None:
         """Initialize the vector store connection/resources.
