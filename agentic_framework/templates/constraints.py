@@ -8,10 +8,10 @@ All constraints are configurable with no hardcoded values.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 from ..utils.logging_config import get_logger
 
@@ -104,22 +104,22 @@ class Constraint:
     constraint_type: ConstraintType
     category: ConstraintCategory = ConstraintCategory.CUSTOM
     description: str = ""
-    check_function: Optional[Callable[[Any], tuple[bool, str]]] = None
-    pattern: Optional[str] = None
+    check_function: Callable[[Any], tuple[bool, str]] | None = None
+    pattern: str | None = None
     value: Any = None
     severity: int = 5
     enabled: bool = True
     fix_template: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
 
-    _compiled_pattern: Optional[re.Pattern[str]] = field(default=None, repr=False)
+    _compiled_pattern: re.Pattern[str] | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         """Compile pattern after initialization."""
         if self.pattern:
             self._compiled_pattern = re.compile(self.pattern)
 
-    def check(self, context: Any) -> tuple[bool, Optional[ConstraintViolation]]:
+    def check(self, context: Any) -> tuple[bool, ConstraintViolation | None]:
         """Check if constraint is satisfied.
 
         Args:
@@ -250,7 +250,7 @@ class ConstraintValidator:
 
     def __init__(
         self,
-        constraints: Optional[list[Constraint]] = None,
+        constraints: list[Constraint] | None = None,
         stop_on_hard_violation: bool = True,
     ) -> None:
         """Initialize the validator.
@@ -374,7 +374,7 @@ class ConstraintValidator:
                 return True
         return False
 
-    def get_constraint(self, name: str) -> Optional[Constraint]:
+    def get_constraint(self, name: str) -> Constraint | None:
         """Get a constraint by name.
 
         Args:
@@ -407,8 +407,8 @@ class ConstraintValidator:
     def validate(
         self,
         context: Any,
-        constraint_type: Optional[ConstraintType] = None,
-        category: Optional[ConstraintCategory] = None,
+        constraint_type: ConstraintType | None = None,
+        category: ConstraintCategory | None = None,
     ) -> list[ConstraintViolation]:
         """Validate context against constraints.
 
@@ -499,8 +499,8 @@ class ConstraintValidator:
 
     def list_constraints(
         self,
-        constraint_type: Optional[ConstraintType] = None,
-        category: Optional[ConstraintCategory] = None,
+        constraint_type: ConstraintType | None = None,
+        category: ConstraintCategory | None = None,
         enabled_only: bool = False,
     ) -> list[Constraint]:
         """List constraints with filters.

@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import re
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, TypeVar
 
 import yaml
 
@@ -58,9 +59,9 @@ class TemplateVariable:
     description: str = ""
     default: Any = None
     required: bool = False
-    validator: Optional[Callable[[Any], bool]] = None
+    validator: Callable[[Any], bool] | None = None
     enum_values: list[str] = field(default_factory=list)
-    transform: Optional[Callable[[Any], Any]] = None
+    transform: Callable[[Any], Any] | None = None
 
     def validate(self, value: Any) -> tuple[bool, str]:
         """Validate a value against this variable definition.
@@ -126,7 +127,7 @@ class TemplateContext:
 
     variables: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
-    parent_context: Optional[TemplateContext] = None
+    parent_context: TemplateContext | None = None
 
     # Standard metadata populated automatically
     generated_at: str = field(default_factory=lambda: datetime.now().isoformat())
@@ -232,8 +233,8 @@ class TemplateGenerator:
 
     def __init__(
         self,
-        template_dir: Optional[Path] = None,
-        variable_definitions: Optional[list[TemplateVariable]] = None,
+        template_dir: Path | None = None,
+        variable_definitions: list[TemplateVariable] | None = None,
     ) -> None:
         """Initialize the template generator.
 
@@ -431,7 +432,7 @@ class TemplateGenerator:
         Returns:
             Template content.
         """
-        with open(file_path, "r") as f:
+        with open(file_path) as f:
             content = f.read()
 
         name = file_path.stem
@@ -584,7 +585,7 @@ class TemplateGenerator:
     def generate(
         self,
         template_name: str,
-        context: Optional[TemplateContext] = None,
+        context: TemplateContext | None = None,
         **kwargs: Any,
     ) -> str:
         """Generate output from a template.
@@ -636,7 +637,7 @@ class TemplateGenerator:
     def generate_from_file(
         self,
         file_path: Path,
-        context: Optional[TemplateContext] = None,
+        context: TemplateContext | None = None,
         **kwargs: Any,
     ) -> str:
         """Generate output from a template file.
@@ -687,8 +688,8 @@ class TemplateGenerator:
 
 
 def create_template_generator(
-    template_dir: Optional[Path] = None,
-    extra_variables: Optional[list[TemplateVariable]] = None,
+    template_dir: Path | None = None,
+    extra_variables: list[TemplateVariable] | None = None,
 ) -> TemplateGenerator:
     """Factory function to create a configured template generator.
 

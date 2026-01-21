@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Optional
+from typing import Any
 
 from ..utils.logging_config import get_logger
 
@@ -66,7 +67,7 @@ class ErrorPattern:
     fix_template: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
 
-    _compiled: Optional[re.Pattern[str]] = field(default=None, repr=False)
+    _compiled: re.Pattern[str] | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         """Compile the pattern after initialization."""
@@ -166,7 +167,7 @@ class FeedbackEvent:
     event_type: str
     source: str
     message: str
-    pattern_name: Optional[str] = None
+    pattern_name: str | None = None
     match_data: dict[str, Any] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
     handled: bool = False
@@ -199,10 +200,10 @@ class FeedbackHandler:
 
     def __init__(
         self,
-        patterns: Optional[list[ErrorPattern]] = None,
-        on_error: Optional[Callable[[FeedbackEvent], FeedbackStrategy]] = None,
-        on_fix_request: Optional[Callable[[FeedbackEvent, str], bool]] = None,
-        on_escalate: Optional[Callable[[FeedbackEvent], None]] = None,
+        patterns: list[ErrorPattern] | None = None,
+        on_error: Callable[[FeedbackEvent], FeedbackStrategy] | None = None,
+        on_fix_request: Callable[[FeedbackEvent, str], bool] | None = None,
+        on_escalate: Callable[[FeedbackEvent], None] | None = None,
         max_total_errors: int = 10,
         auto_fix_enabled: bool = True,
     ) -> None:
@@ -324,7 +325,7 @@ class FeedbackHandler:
                 return True
         return False
 
-    def get_pattern(self, name: str) -> Optional[ErrorPattern]:
+    def get_pattern(self, name: str) -> ErrorPattern | None:
         """Get a pattern by name.
 
         Args:
@@ -563,7 +564,7 @@ class FeedbackHandler:
 
 def create_feedback_handler(
     config: dict[str, Any],
-    on_fix_request: Optional[Callable[[FeedbackEvent, str], bool]] = None,
+    on_fix_request: Callable[[FeedbackEvent, str], bool] | None = None,
 ) -> FeedbackHandler:
     """Factory function to create a feedback handler from configuration.
 

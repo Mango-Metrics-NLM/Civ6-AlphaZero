@@ -8,13 +8,14 @@ All verification commands and thresholds are configurable.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
+from ..utils.command_runner import CommandRunner
 from ..utils.logging_config import get_logger
-from ..utils.command_runner import CommandRunner, CommandResult
 
 logger = get_logger("verification")
 
@@ -121,7 +122,7 @@ class VerificationStep:
     name: str
     verification_type: VerificationType
     command: str
-    working_dir: Optional[Path] = None
+    working_dir: Path | None = None
     timeout_seconds: float = 300.0
     fail_fast: bool = False
     retry_count: int = 0
@@ -129,8 +130,8 @@ class VerificationStep:
     success_exit_codes: list[int] = field(default_factory=lambda: [0])
     error_patterns: list[str] = field(default_factory=list)
     warning_patterns: list[str] = field(default_factory=list)
-    pre_hook: Optional[Callable[[VerificationStep], bool]] = None
-    post_hook: Optional[Callable[[VerificationStep, VerificationResult], None]] = None
+    pre_hook: Callable[[VerificationStep], bool] | None = None
+    post_hook: Callable[[VerificationStep, VerificationResult], None] | None = None
     enabled: bool = True
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -193,12 +194,12 @@ class VerificationPipeline:
 
     def __init__(
         self,
-        steps: Optional[list[VerificationStep]] = None,
-        command_runner: Optional[CommandRunner] = None,
+        steps: list[VerificationStep] | None = None,
+        command_runner: CommandRunner | None = None,
         stop_on_failure: bool = False,
         parallel_execution: bool = False,
-        on_step_start: Optional[Callable[[VerificationStep], None]] = None,
-        on_step_complete: Optional[Callable[[VerificationStep, VerificationResult], None]] = None,
+        on_step_start: Callable[[VerificationStep], None] | None = None,
+        on_step_complete: Callable[[VerificationStep, VerificationResult], None] | None = None,
     ) -> None:
         """Initialize the verification pipeline.
 
@@ -243,7 +244,7 @@ class VerificationPipeline:
                 return True
         return False
 
-    def get_step(self, name: str) -> Optional[VerificationStep]:
+    def get_step(self, name: str) -> VerificationStep | None:
         """Get a verification step by name.
 
         Args:
@@ -380,7 +381,7 @@ class VerificationPipeline:
 
     def run(
         self,
-        working_dir: Optional[Path] = None,
+        working_dir: Path | None = None,
     ) -> list[VerificationResult]:
         """Run all verification steps.
 
@@ -460,7 +461,7 @@ class VerificationPipeline:
 
 def create_verification_pipeline(
     config: dict[str, Any],
-    command_runner: Optional[CommandRunner] = None,
+    command_runner: CommandRunner | None = None,
 ) -> VerificationPipeline:
     """Factory function to create a verification pipeline from configuration.
 
@@ -488,8 +489,8 @@ def create_standard_pipeline(
     type_check_command: str = "mypy src/",
     unit_test_command: str = "pytest tests/unit -v",
     integration_test_command: str = "pytest tests/integration -v",
-    working_dir: Optional[Path] = None,
-    command_runner: Optional[CommandRunner] = None,
+    working_dir: Path | None = None,
+    command_runner: CommandRunner | None = None,
 ) -> VerificationPipeline:
     """Create a standard verification pipeline.
 

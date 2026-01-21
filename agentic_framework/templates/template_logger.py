@@ -13,11 +13,12 @@ import sys
 import threading
 import time
 from collections import deque
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Generator, Optional, TextIO
+from typing import Any, TextIO
 
 from ..utils.logging_config import get_logger
 
@@ -82,10 +83,10 @@ class LogEntry:
     message: str
     source: str = ""
     context: dict[str, Any] = field(default_factory=dict)
-    template_id: Optional[str] = None
-    agent_name: Optional[str] = None
-    step_name: Optional[str] = None
-    duration_ms: Optional[float] = None
+    template_id: str | None = None
+    agent_name: str | None = None
+    step_name: str | None = None
+    duration_ms: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary.
@@ -156,7 +157,7 @@ class DebugContext:
     """
 
     name: str
-    parent: Optional[DebugContext] = None
+    parent: DebugContext | None = None
     start_time: float = field(default_factory=time.time)
     metadata: dict[str, Any] = field(default_factory=dict)
     entries: list[LogEntry] = field(default_factory=list)
@@ -210,10 +211,10 @@ class TemplateLogger:
         name: str = "template",
         level: LogLevel = LogLevel.INFO,
         console_output: bool = True,
-        file_output: Optional[Path] = None,
-        json_output: Optional[Path] = None,
+        file_output: Path | None = None,
+        json_output: Path | None = None,
         max_entries: int = 10000,
-        format_string: Optional[str] = None,
+        format_string: str | None = None,
     ) -> None:
         """Initialize the template logger.
 
@@ -239,12 +240,12 @@ class TemplateLogger:
         self._lock = threading.Lock()
 
         # File handles
-        self._file_handle: Optional[TextIO] = None
-        self._json_handle: Optional[TextIO] = None
+        self._file_handle: TextIO | None = None
+        self._json_handle: TextIO | None = None
 
         # Callbacks
-        self._on_log: Optional[Callable[[LogEntry], None]] = None
-        self._on_error: Optional[Callable[[LogEntry], None]] = None
+        self._on_log: Callable[[LogEntry], None] | None = None
+        self._on_error: Callable[[LogEntry], None] | None = None
 
         # Initialize file outputs
         if self._file_output:
@@ -264,8 +265,8 @@ class TemplateLogger:
 
     def set_callback(
         self,
-        on_log: Optional[Callable[[LogEntry], None]] = None,
-        on_error: Optional[Callable[[LogEntry], None]] = None,
+        on_log: Callable[[LogEntry], None] | None = None,
+        on_error: Callable[[LogEntry], None] | None = None,
     ) -> None:
         """Set logging callbacks.
 
@@ -293,7 +294,7 @@ class TemplateLogger:
         level: LogLevel,
         message: str,
         source: str = "",
-        context: Optional[dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> LogEntry:
         """Create a log entry.
@@ -359,9 +360,9 @@ class TemplateLogger:
         level: LogLevel,
         message: str,
         source: str = "",
-        context: Optional[dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
         **kwargs: Any,
-    ) -> Optional[LogEntry]:
+    ) -> LogEntry | None:
         """Internal logging method.
 
         Args:
@@ -390,7 +391,7 @@ class TemplateLogger:
 
         return entry
 
-    def debug(self, message: str, **kwargs: Any) -> Optional[LogEntry]:
+    def debug(self, message: str, **kwargs: Any) -> LogEntry | None:
         """Log a debug message.
 
         Args:
@@ -402,7 +403,7 @@ class TemplateLogger:
         """
         return self._log(LogLevel.DEBUG, message, **kwargs)
 
-    def info(self, message: str, **kwargs: Any) -> Optional[LogEntry]:
+    def info(self, message: str, **kwargs: Any) -> LogEntry | None:
         """Log an info message.
 
         Args:
@@ -414,7 +415,7 @@ class TemplateLogger:
         """
         return self._log(LogLevel.INFO, message, **kwargs)
 
-    def warning(self, message: str, **kwargs: Any) -> Optional[LogEntry]:
+    def warning(self, message: str, **kwargs: Any) -> LogEntry | None:
         """Log a warning message.
 
         Args:
@@ -426,7 +427,7 @@ class TemplateLogger:
         """
         return self._log(LogLevel.WARNING, message, **kwargs)
 
-    def error(self, message: str, **kwargs: Any) -> Optional[LogEntry]:
+    def error(self, message: str, **kwargs: Any) -> LogEntry | None:
         """Log an error message.
 
         Args:
@@ -438,7 +439,7 @@ class TemplateLogger:
         """
         return self._log(LogLevel.ERROR, message, **kwargs)
 
-    def critical(self, message: str, **kwargs: Any) -> Optional[LogEntry]:
+    def critical(self, message: str, **kwargs: Any) -> LogEntry | None:
         """Log a critical message.
 
         Args:
@@ -512,10 +513,10 @@ class TemplateLogger:
 
     def get_entries(
         self,
-        level: Optional[LogLevel] = None,
-        source: Optional[str] = None,
-        since: Optional[float] = None,
-        limit: Optional[int] = None,
+        level: LogLevel | None = None,
+        source: str | None = None,
+        since: float | None = None,
+        limit: int | None = None,
     ) -> list[LogEntry]:
         """Get log entries with filters.
 
@@ -598,15 +599,15 @@ class TemplateLogger:
 
 
 # Global logger instance
-_global_logger: Optional[TemplateLogger] = None
+_global_logger: TemplateLogger | None = None
 
 
 def setup_template_logging(
     name: str = "template",
     level: LogLevel | str = LogLevel.INFO,
     console_output: bool = True,
-    file_output: Optional[Path] = None,
-    json_output: Optional[Path] = None,
+    file_output: Path | None = None,
+    json_output: Path | None = None,
 ) -> TemplateLogger:
     """Set up global template logging.
 

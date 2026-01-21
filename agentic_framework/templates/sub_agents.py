@@ -7,9 +7,10 @@ All configurations are dynamic with no hardcoded values.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Optional
+from typing import Any
 
 from ..utils.logging_config import get_logger
 
@@ -96,7 +97,7 @@ class SubAgentConfig:
     capabilities: list[SubAgentCapability] = field(default_factory=list)
     timeout_seconds: float = 300.0
     max_retries: int = 3
-    model: Optional[str] = None
+    model: str | None = None
     run_in_background: bool = False
     tools: list[str] = field(default_factory=list)
     context_access: bool = True
@@ -506,7 +507,7 @@ class SubAgentRegistry:
         self._factories[name] = factory
         logger.debug(f"Registered sub-agent factory: {name}")
 
-    def get(self, agent_type: str | SubAgentType) -> Optional[SubAgentConfig]:
+    def get(self, agent_type: str | SubAgentType) -> SubAgentConfig | None:
         """Get a sub-agent configuration.
 
         Args:
@@ -591,7 +592,7 @@ class SubAgentRegistry:
 
 
 # Global registry instance
-_registry: Optional[SubAgentRegistry] = None
+_registry: SubAgentRegistry | None = None
 
 
 def get_registry() -> SubAgentRegistry:
