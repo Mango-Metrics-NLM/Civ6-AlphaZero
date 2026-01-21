@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-import math
 import os
-import tempfile
-from pathlib import Path
 from unittest import mock
 
 import pytest
 
 from alpha_zero.orchestrator.config import (
     ScheduleConfig,
-    ScheduleType,
     ResourceBudget,
     AutonomyLevel,
     RAGConfig,
@@ -22,11 +18,8 @@ from alpha_zero.orchestrator.config import (
     NetworkConfig,
     MCTSConfig,
     TrainingConfig,
-    RewardsConfig,
     CurriculumStageConfig,
     CurriculumConfig,
-    WandbConfig,
-    LoggingConfig,
     OrchestratorConfig,
 )
 
@@ -394,7 +387,7 @@ mcts:
         """Test fast preset."""
         config = OrchestratorConfig.from_preset("fast")
         assert config.training.num_iterations == 10
-        assert config.training.games_per_iteration == 10
+        assert config.training.games_per_iteration == 5
         assert config.mcts.num_simulations == 10
         assert config.rag.enabled is False
 

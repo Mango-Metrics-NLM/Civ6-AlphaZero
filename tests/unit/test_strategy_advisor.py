@@ -13,8 +13,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from unittest.mock import MagicMock
 
-import pytest
-
 
 @dataclass
 class MockStrategyAdvisorConfig:

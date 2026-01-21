@@ -138,7 +138,7 @@ class TestCheckpointManagerInit:
         checkpoint_dir = tmp_path / "new_checkpoints"
         assert not checkpoint_dir.exists()
 
-        manager = CheckpointManager(checkpoint_dir=checkpoint_dir)
+        _ = CheckpointManager(checkpoint_dir=checkpoint_dir)
 
         assert checkpoint_dir.exists()
 
