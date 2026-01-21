@@ -562,51 +562,59 @@ class MicroCivActionSpace:
         cities = game_state.get("cities", [])
         terrain = game_state.get("terrain", {})
 
-        # Unit movement and attacks
-        for i, unit in enumerate(units):
-            if i >= self.max_units:
+        # Get enemy positions for attack checking
+        enemy_positions = {
+            tuple(u.get("position", (-1, -1)))
+            for u in units
+            if u.get("player") != current_player
+        }
+
+        # Unit movement and attacks - use own_unit_idx for current player's units
+        own_unit_idx = 0
+        for unit in units:
+            if own_unit_idx >= self.max_units:
                 break
             if unit.get("player") != current_player:
                 continue
-            if unit.get("moves_remaining", 0) <= 0:
-                continue
 
-            pos = unit.get("position", (0, 0))
+            # Now own_unit_idx matches the index in _get_player_units()
+            if unit.get("moves_remaining", 0) > 0:
+                pos = unit.get("position", (0, 0))
 
-            # Movement
-            for dir_idx, (dx, dy) in enumerate(self.directions):
-                nx, ny = pos[0] + dx, pos[1] + dy
-                if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
-                    # Check terrain is passable
-                    tile = terrain.get((nx, ny), {})
-                    if tile.get("type") != "mountain":
-                        mask[self.move_offset + i * 8 + dir_idx] = 1.0
+                # Movement
+                for dir_idx, (dx, dy) in enumerate(self.directions):
+                    nx, ny = pos[0] + dx, pos[1] + dy
+                    if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
+                        # Check terrain is passable
+                        tile = terrain.get((nx, ny), {})
+                        if tile.get("type") != "mountain":
+                            mask[self.move_offset + own_unit_idx * 8 + dir_idx] = 1.0
 
-            # Attacks
-            enemy_positions = {
-                tuple(u.get("position", (-1, -1)))
-                for u in units
-                if u.get("player") != current_player
-            }
-            for dir_idx, (dx, dy) in enumerate(self.directions):
-                nx, ny = pos[0] + dx, pos[1] + dy
-                if (nx, ny) in enemy_positions:
-                    mask[self.attack_offset + i * 8 + dir_idx] = 1.0
+                # Attacks
+                for dir_idx, (dx, dy) in enumerate(self.directions):
+                    nx, ny = pos[0] + dx, pos[1] + dy
+                    if (nx, ny) in enemy_positions:
+                        mask[self.attack_offset + own_unit_idx * 8 + dir_idx] = 1.0
 
-            # Skip
-            mask[self.skip_offset + i] = 1.0
+                # Skip
+                mask[self.skip_offset + own_unit_idx] = 1.0
 
-        # City production
-        for i, city in enumerate(cities):
-            if i >= self.max_cities:
+            own_unit_idx += 1
+
+        # City production - use own_city_idx for current player's cities
+        own_city_idx = 0
+        for city in cities:
+            if own_city_idx >= self.max_cities:
                 break
             if city.get("player") != current_player:
                 continue
-            if city.get("producing") is not None:
-                continue  # Already producing something
 
-            for unit_type in range(self.num_unit_types):
-                mask[self.produce_offset + i * self.num_unit_types + unit_type] = 1.0
+            # Now own_city_idx matches the index in _get_player_cities()
+            if city.get("producing") is None:
+                for unit_type in range(self.num_unit_types):
+                    mask[self.produce_offset + own_city_idx * self.num_unit_types + unit_type] = 1.0
+
+            own_city_idx += 1
 
         return mask
 

@@ -1,0 +1,122 @@
+# =============================================================================
+# Production Training Preset Configuration
+# =============================================================================
+# Use this preset for full-scale training runs.
+# Command: python -m alpha_zero.orchestrator --config configs/orchestrator_production.yaml
+
+mode: local
+experiment_name: production_training
+random_seed: 42
+
+environment:
+  type: microciv
+  board_size: 16
+  num_players: 2
+  max_turns: 100
+  fog_of_war_enabled: true
+  early_termination:
+    enabled: true
+    advantage_threshold: 3
+    min_turns: 10
+
+network:
+  num_res_blocks: 10
+  num_filters: 128
+  num_heads: 8
+
+mcts:
+  num_simulations: 200
+  c_puct: 1.5
+  dirichlet_alpha: 0.3
+
+training:
+  num_iterations: 500000
+  games_per_iteration: 200
+  batch_size: 512
+  num_epochs: 10
+  replay_buffer_size: 1000000
+  min_replay_size: 50000
+  checkpoint_interval: 5000
+  evaluation_interval: 2500
+  evaluation_games: 50
+
+lr_schedule:
+  schedule_type: warmup_cosine
+  initial_value: 0.001
+  final_value: 0.00001
+  decay_steps: 500000
+  warmup_steps: 10000
+
+batch_size_schedule:
+  schedule_type: step
+  initial_value: 256
+  step_points:
+    - iteration: 50000
+      value: 512
+    - iteration: 200000
+      value: 1024
+
+rewards:
+  enabled: true
+  scale_factor: 1.0
+  gamma: 0.99
+  normalize: true
+  intermediate:
+    territory_control: 0.02
+    unit_preservation: 0.01
+    city_founding: 0.1
+
+curriculum:
+  enabled: true
+  allow_demotion: true
+  metrics_window: 200
+  stages:
+    - name: beginner
+      level: 0
+      board_size: 8
+      max_turns: 30
+      promotion_threshold: 0.7
+      min_games: 100
+    - name: intermediate
+      level: 1
+      board_size: 12
+      max_turns: 60
+      promotion_threshold: 0.65
+      min_games: 200
+    - name: advanced
+      level: 2
+      board_size: 16
+      max_turns: 100
+      promotion_threshold: 0.6
+      min_games: 300
+
+rag:
+  enabled: true
+  persist_directory: data/knowledge_db
+  collection_name: civ6_knowledge
+  store_insights: true
+
+llm:
+  enabled: true
+  provider: auto
+
+strategy_advisor:
+  enabled: true
+  analysis_interval: 500
+  summarize_interval: 5000
+  suggest_improvements: true
+
+wandb:
+  enabled: true
+  project: civ6-alphazero
+  tags:
+    - production
+    - full-pipeline
+
+logging:
+  level: INFO
+  tensorboard: true
+  tensorboard_dir: logs/tensorboard/production
+
+checkpoint_dir: checkpoints/production
+log_dir: logs/production
