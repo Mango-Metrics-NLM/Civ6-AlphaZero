@@ -9,10 +9,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Phase 4: Unified Training Orchestrator
+
+A single, configurable entry point for full AlphaZero training with integrated self-play, MCTS, neural networks, reward shaping, curriculum learning, and comprehensive logging.
+
+##### Core Orchestrator Module (`alpha_zero/orchestrator/`)
+
+- **OrchestratorConfig** (`config.py`): Unified configuration system
+  - YAML-based configuration with environment variable overrides (`CIV6AZ_` prefix)
+  - Preset loading: `fast`, `balanced`, `production`
+  - Full validation with warnings for invalid combinations
+  - Nested configs for environment, network, MCTS, training, rewards, curriculum
+
+- **TrainingOrchestrator** (`orchestrator.py`): Main training loop controller
+  - Single entry point replacing multiple training scripts
+  - Integrated self-play with MCTS-guided game generation
+  - Automatic curriculum stage progression
+  - Periodic evaluation and checkpointing
+  - Graceful shutdown with signal handlers (SIGINT, SIGTERM)
+  - Resume from checkpoint support
+
+- **HyperparameterScheduler** (`scheduler.py`): Dynamic hyperparameter control
+  - Six schedule types: constant, linear, cosine, step, warmup_cosine, exponential
+  - Learning rate, batch size, temperature, and exploration scheduling
+  - Step-based progression with configurable decay
+
+- **CheckpointManager** (`checkpointer.py`): Model persistence
+  - Automatic checkpoint rotation (configurable retention)
+  - Best model tracking by win rate
+  - Full training state save/resume
+  - JSON metadata for checkpoint history
+
+- **PaddedEnvironmentWrapper**: Curriculum board size handling
+  - Pads observations for smaller curriculum boards to network's expected size
+  - Consistent interface across all board sizes
+  - Proper cloning support for MCTS simulations
+
+##### Component Factories (`alpha_zero/utils/factories.py`)
+
+- `create_network()`: Neural network instantiation with board/action size config
+- `create_mcts()`: MCTS with optional SimpleMCTS fallback
+- `create_environment()`: Environment creation with override support
+- `create_reward_shaper()`: Reward shaping initialization
+- `create_curriculum_manager()`: Curriculum system setup
+- `create_replay_buffer()`: Experience replay initialization
+- `create_wandb_logger()`: W&B logging setup
+
+##### CLI Entry Point (`alpha_zero/orchestrator/__main__.py`)
+
+- `python -m alpha_zero.orchestrator` command
+- Preset selection: `--preset fast|balanced|production`
+- Custom config: `--config path/to/config.yaml`
+- Dry run mode: `--dry_run`
+- Resume support: `--resume`
+
+##### Configuration Files
+
+- `configs/orchestrator.yaml`: Master configuration template
+- `configs/orchestrator_fast.yaml`: Fast testing preset (6x6 board, 10 iterations)
+- `configs/orchestrator_production.yaml`: Production training settings
+
 #### RAG (Retrieval-Augmented Generation) Integration
+
 A comprehensive RAG system for enhancing agent decision-making with external knowledge retrieval.
 
 ##### Configuration Module (`alpha_zero/rag/config/settings.py`)
+
 - **VectorStoreConfig**: Vector database configuration
   - Support for Memory, ChromaDB, FAISS, and Pinecone backends
   - Configurable dimensions, distance metrics, and collection names
@@ -27,6 +89,7 @@ A comprehensive RAG system for enhancing agent decision-making with external kno
   - Configuration validation
 
 ##### Vector Store Abstraction (`alpha_zero/rag/stores/`)
+
 - **VectorStore Protocol**: Abstract interface for vector databases
   - Async CRUD operations (add, search, delete, get)
   - Metadata filtering support
@@ -40,6 +103,7 @@ A comprehensive RAG system for enhancing agent decision-making with external kno
 - **VectorStoreFactory**: Factory pattern for store creation
 
 ##### Document Processing (`alpha_zero/rag/processors/`)
+
 - **RecursiveTextSplitter**: Intelligent text chunking
   - Configurable separators and chunk sizes
   - Overlap for context preservation
@@ -52,6 +116,7 @@ A comprehensive RAG system for enhancing agent decision-making with external kno
 - **SentenceTransformerEmbeddings**: Local transformer models
 
 ##### Agent Workflow Integration (`alpha_zero/rag/agents/`)
+
 - **RAGAgentWorkflow**: Complete workflow orchestration
   - Document ingestion and indexing
   - Query processing with context retrieval
@@ -66,6 +131,7 @@ A comprehensive RAG system for enhancing agent decision-making with external kno
   - Query normalization
 
 ##### Utilities (`alpha_zero/rag/utils/`)
+
 - **RAGLogger**: Structured logging with correlation IDs
   - Multiple output formats (JSON, text)
   - Configurable log levels
@@ -77,6 +143,7 @@ A comprehensive RAG system for enhancing agent decision-making with external kno
   - Size-based eviction
 
 ##### Main Pipeline (`alpha_zero/rag/pipeline.py`)
+
 - **RAGPipeline**: Unified interface for RAG operations
   - Text and file ingestion
   - Query with context enhancement
@@ -84,19 +151,47 @@ A comprehensive RAG system for enhancing agent decision-making with external kno
   - Factory methods for testing configuration
   - Async context manager support
 
-##### Test Suite (100 new tests)
+##### RAG Test Suite (100 new tests)
+
 - `tests/unit/test_rag/test_config.py`: Configuration tests (20 tests)
 - `tests/unit/test_rag/test_vector_stores.py`: Vector store tests (22 tests)
 - `tests/unit/test_rag/test_processors.py`: Processor tests (25 tests)
 - `tests/unit/test_rag/test_pipeline.py`: Pipeline tests (19 tests)
 - `tests/integration/test_rag/test_rag_workflow.py`: Integration tests (14 tests)
 
-##### Dependencies
+##### RAG Dependencies
+
 - `chromadb>=0.4.0`: ChromaDB vector database
 - `faiss-cpu>=1.7.0`: Facebook AI Similarity Search
 - `openai>=1.0.0`: OpenAI API client
 - `sentence-transformers>=2.2.0`: Local embedding models
 - `pinecone-client>=2.0.0` (optional): Pinecone cloud vector database
+
+### Fixed
+
+#### Action Mask Indexing Bug (`alpha_zero/core/civ6_actions.py`)
+
+- Fixed critical bug where action mask indices didn't match action execution
+- Changed from using global unit/city indices to player-relative indices
+- Ensures valid actions map correctly to game state modifications
+- Reduced average game length from 700+ steps to 70-90 steps
+
+#### Evaluation Environment Handling
+
+- Fixed `'MicroCivEnv' object has no attribute '_env'` error during evaluation
+- Always create fresh wrapped environment for each game
+- Consistent interface between self-play and evaluation
+
+#### Value Tensor Shape Mismatch
+
+- Fixed shape mismatch in training loss computation
+- Added `value.unsqueeze(1)` for proper [batch_size, 1] shape
+
+#### Curriculum Manager API
+
+- Fixed `record_game(win=...)` to `record_game(won=...)` parameter name
+
+### Changed
 
 #### Phase 3: Enhanced Training Pipeline
 A comprehensive suite of training improvements designed to accelerate learning convergence and improve agent performance.

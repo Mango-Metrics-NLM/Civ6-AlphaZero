@@ -344,71 +344,68 @@ pytest tests/unit -v
 
 ## Usage
 
-### Basic Training
+### Unified Training Orchestrator (Recommended)
+
+The new `TrainingOrchestrator` provides a single entry point for all training:
 
 ```bash
 # Quick training run (development/testing)
-python run_enhanced_training.py --preset fast --device cpu
+python -m alpha_zero.orchestrator --preset fast
 
 # Balanced training (recommended for initial experiments)
+python -m alpha_zero.orchestrator --preset balanced
+
+# Production training
+python -m alpha_zero.orchestrator --preset production
+
+# Dry run (validate configuration without training)
+python -m alpha_zero.orchestrator --preset fast --dry_run
+
+# Resume from checkpoint
+python -m alpha_zero.orchestrator --preset balanced --resume
+
+# Custom YAML configuration
+python -m alpha_zero.orchestrator --config configs/orchestrator.yaml
+```
+
+### Orchestrator Presets
+
+| Preset | Iterations | Games/Iter | Board | Simulations | Use Case |
+| ------ | ---------- | ---------- | ----- | ----------- | -------- |
+| `fast` | 10 | 5 | 6x6 | 10 | Quick testing |
+| `balanced` | 100 | 20 | 8x8 | 50 | Experiments |
+| `production` | 1000 | 100 | 16x16 | 200 | Full training |
+
+### Legacy Training Scripts
+
+The previous training entry points are still available:
+
+```bash
+# Enhanced training script
 python run_enhanced_training.py --preset balanced --device cuda
 
-# Full training (production)
-python run_enhanced_training.py --preset full --device cuda --checkpoint-dir ./checkpoints
-```
-
-### Training with Weights & Biases
-
-```bash
-# Enable W&B tracking
-python run_enhanced_training.py \
-    --preset balanced \
-    --wandb \
-    --wandb-project "civ6-alphazero" \
-    --wandb-tags "experiment" "curriculum"
-```
-
-### Custom Configuration
-
-```bash
-python run_enhanced_training.py \
-    --num-iterations 25 \
-    --games-per-iteration 50 \
-    --batch-size 128 \
-    --learning-rate 0.001 \
-    --num-simulations 100 \
-    --board-size 8 \
-    --max-turns 100 \
-    --use-curriculum \
-    --use-reward-shaping \
-    --device cuda
+# With W&B tracking
+python run_enhanced_training.py --preset balanced --wandb --wandb-project "civ6-alphazero"
 ```
 
 ### Programmatic Usage
 
 ```python
-from run_enhanced_training import run_enhanced_training
+from alpha_zero.orchestrator import TrainingOrchestrator, OrchestratorConfig
 
-# Run training with custom parameters
-history = run_enhanced_training(
-    num_iterations=10,
-    games_per_iteration=20,
-    batch_size=64,
-    learning_rate=0.001,
-    num_simulations=50,
-    board_size=8,
-    max_turns=50,
-    use_curriculum=True,
-    use_reward_shaping=True,
-    use_env_tuning=True,
-    device="cuda",
-    wandb_enabled=True,
-    wandb_project="my-experiment",
-)
+# Load configuration from YAML
+config = OrchestratorConfig.from_yaml("configs/orchestrator.yaml")
 
-# Access training results
-print(f"Final win rate: {history['final_metrics']['win_rate']:.2%}")
-print(f"Total games: {history['final_metrics']['total_games']}")
+# Or use a preset
+config = OrchestratorConfig.from_preset("balanced")
+
+# Create and run orchestrator
+orchestrator = TrainingOrchestrator(config)
+orchestrator.run()
+
+# Access training state
+print(f"Total games: {orchestrator.state.total_games}")
+print(f"Best win rate: {orchestrator.state.best_win_rate:.2%}")
 ```
 
 ## Configuration
@@ -569,6 +566,13 @@ pytest -k "curriculum" -v
 ```
 Civ6-AlphaZero/
 ├── alpha_zero/
+│   ├── orchestrator/         # Unified training orchestrator (Phase 4)
+│   │   ├── __init__.py       # Module exports
+│   │   ├── __main__.py       # CLI entry point
+│   │   ├── config.py         # OrchestratorConfig
+│   │   ├── orchestrator.py   # TrainingOrchestrator
+│   │   ├── scheduler.py      # HyperparameterScheduler
+│   │   └── checkpointer.py   # CheckpointManager
 │   ├── core/                 # Core AlphaZero components
 │   │   ├── civ6_network.py   # Neural network architecture
 │   │   ├── civ6_mcts.py      # MCTS implementation
@@ -601,18 +605,23 @@ Civ6-AlphaZero/
 │   │   │   └── cache.py      # Caching implementations
 │   │   └── pipeline.py       # Main RAG pipeline
 │   └── utils/                # Utilities & enhancements
+│       ├── factories.py      # Component factory functions
 │       ├── curriculum_learning.py
 │       ├── enhanced_rewards.py
 │       ├── environment_tuning.py
 │       ├── training_config_enhanced.py
 │       └── wandb_logger.py
+├── configs/                  # Configuration files
+│   ├── orchestrator.yaml     # Master configuration
+│   ├── orchestrator_fast.yaml
+│   └── orchestrator_production.yaml
 ├── tests/
 │   ├── unit/                 # Unit tests
 │   │   └── test_rag/         # RAG unit tests
 │   └── integration/          # Integration tests
 │       └── test_rag/         # RAG integration tests
 ├── scripts/                  # Utility scripts
-├── run_enhanced_training.py  # Main training entry point
+├── run_enhanced_training.py  # Legacy training entry point
 ├── requirements.txt          # Dependencies
 └── README.md                 # This file
 ```

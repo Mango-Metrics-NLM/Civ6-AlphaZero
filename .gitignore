@@ -83,6 +83,9 @@ credentials.json
 # mypy
 .mypy_cache/
 
+# Ruff
+.ruff_cache/
+
 # Project specific
 checkpoints/
 logs/
@@ -115,3 +118,21 @@ artifacts/
 tmp/
 temp/
 *.tmp
+
+# Curriculum and training state
+curriculum_state.json
+replay_buffer.pkl
+*.replay
+
+# Coverage reports
+.coverage
+coverage/
+htmlcov/
+
+# Documentation builds
+docs/_build/
+site/
+
+# OS files
+.DS_Store
+Thumbs.db
