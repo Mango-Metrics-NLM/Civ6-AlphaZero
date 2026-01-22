@@ -1,6 +1,6 @@
 """Utility modules for Civ6 AlphaZero.
 
-This package provides logging, debugging, configuration, and profiling utilities.
+This package provides logging, debugging, configuration, profiling, and benchmarking utilities.
 """
 
 from alpha_zero.utils.logging import (
@@ -30,6 +30,16 @@ from alpha_zero.utils.config import (
     merge_configs,
     save_config,
 )
+from alpha_zero.utils.benchmarks import (
+    BenchmarkConfig,
+    BenchmarkResult,
+    Benchmarker,
+    BenchmarkSuite,
+    benchmark_function,
+    create_mechanics_benchmarks,
+    run_all_benchmarks,
+    time_function,
+)
 
 __all__ = [
     # Logging
@@ -57,4 +67,13 @@ __all__ = [
     "load_config",
     "merge_configs",
     "save_config",
+    # Benchmarks
+    "BenchmarkConfig",
+    "BenchmarkResult",
+    "Benchmarker",
+    "BenchmarkSuite",
+    "benchmark_function",
+    "create_mechanics_benchmarks",
+    "run_all_benchmarks",
+    "time_function",
 ]
