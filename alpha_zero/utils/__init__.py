@@ -1,6 +1,6 @@
 """Utility modules for Civ6 AlphaZero.
 
-This package provides logging, debugging, configuration, profiling utilities,
+This package provides logging, debugging, configuration, profiling, benchmarking utilities,
 LLM client integration, test runner, agent tools, and training improvement modules.
 
 Training Improvement Modules:
@@ -36,6 +36,16 @@ from alpha_zero.utils.config import (
     load_config,
     merge_configs,
     save_config,
+)
+from alpha_zero.utils.benchmarks import (
+    BenchmarkConfig,
+    BenchmarkResult,
+    Benchmarker,
+    BenchmarkSuite,
+    benchmark_function,
+    create_mechanics_benchmarks,
+    run_all_benchmarks,
+    time_function,
 )
 
 # LLM Client (optional - depends on openai/anthropic packages)
@@ -105,6 +115,15 @@ __all__ = [
     "load_config",
     "merge_configs",
     "save_config",
+    # Benchmarks
+    "BenchmarkConfig",
+    "BenchmarkResult",
+    "Benchmarker",
+    "BenchmarkSuite",
+    "benchmark_function",
+    "create_mechanics_benchmarks",
+    "run_all_benchmarks",
+    "time_function",
     # Test Runner
     "TestRunner",
     "TestConfig",
