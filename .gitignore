@@ -50,12 +50,25 @@ coverage.xml
 
 # Environments
 .env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+!.env.template
+!.env.example
 .venv
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Secrets and credentials
+*.pem
+*.key
+secrets.json
+credentials.json
+*.credentials
 
 # IDE
 .idea/
@@ -75,3 +88,24 @@ checkpoints/
 logs/
 *.pt
 *.pth
+
+# RAG Data
+data/knowledge_db/
+
+# Weights & Biases
+wandb/
+*.wandb
+
+# Training artifacts
+training_results/
+models/
+artifacts/
+
+# Profiling
+*.prof
+*.lprof
+
+# Temporary files
+tmp/
+temp/
+*.tmp
