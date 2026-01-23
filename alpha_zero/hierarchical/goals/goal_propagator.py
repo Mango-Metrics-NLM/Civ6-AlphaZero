@@ -547,10 +547,9 @@ class GoalPropagator:
             return result
 
         # Aggregate progress from all children
-        children = [
-            self.hierarchy.get_goal(cid)
-            for cid in parent.child_goal_ids
-            if self.hierarchy.get_goal(cid)
+        children: list[Goal] = [
+            g for cid in parent.child_goal_ids
+            if (g := self.hierarchy.get_goal(cid)) is not None
         ]
 
         if children:

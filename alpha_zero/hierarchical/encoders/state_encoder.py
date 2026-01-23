@@ -21,9 +21,9 @@ from typing import Any
 import numpy as np
 
 try:
-    import torch
-    import torch.nn as nn
-    import torch.nn.functional as F
+    import torch  # noqa: F401
+    import torch.nn as nn  # noqa: F401
+    import torch.nn.functional as F  # noqa: F401
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
@@ -156,7 +156,7 @@ class StateEncoder(ABC):
 
         # Unit count by type
         units = game_state.get("units", [])
-        unit_counts = {}
+        unit_counts: dict[str, int] = {}
         for unit in units:
             unit_type = unit.get("type", "unknown")
             unit_counts[unit_type] = unit_counts.get(unit_type, 0) + 1

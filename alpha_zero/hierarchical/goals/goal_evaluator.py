@@ -49,6 +49,7 @@ class EvaluationResult:
         progress: Progress value (0.0 to 1.0).
         is_complete: Whether goal is complete.
         is_failed: Whether goal has failed.
+        achieved: Whether goal's success condition was met.
         reward_delta: Change in reward due to progress.
         metrics: Additional evaluation metrics.
     """
@@ -57,6 +58,7 @@ class EvaluationResult:
     progress: float
     is_complete: bool = False
     is_failed: bool = False
+    achieved: bool = False
     reward_delta: float = 0.0
     metrics: dict[str, float] = field(default_factory=dict)
 

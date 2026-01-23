@@ -21,7 +21,7 @@ from typing import Any
 import numpy as np
 
 try:
-    import torch
+    import torch  # noqa: F401
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
@@ -313,7 +313,7 @@ class HierarchicalController:
         Returns:
             Dictionary with training samples for each level.
         """
-        data = {
+        data: dict[str, list[dict[str, Any]]] = {
             "strategic": [],
             "tactical": [],
             "operational": [],
