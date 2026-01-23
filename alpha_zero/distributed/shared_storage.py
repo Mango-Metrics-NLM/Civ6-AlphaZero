@@ -15,9 +15,8 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from multiprocessing import Queue, Manager
+from multiprocessing import Manager, Queue
 from multiprocessing.managers import DictProxy, SyncManager
-from typing import Any, Optional
 
 import numpy as np
 import torch
@@ -87,7 +86,7 @@ class GameTrajectory:
     game_id: int = 0
     actor_id: int = 0
     game_length: int = 0
-    winner: Optional[int] = None
+    winner: int | None = None
 
     def to_bytes(self, compress: bool = False) -> bytes:
         """Serialize to bytes."""
@@ -148,8 +147,8 @@ class SharedStorage:
 
     def __init__(
         self,
-        config: Optional[SharedStorageConfig] = None,
-        manager: Optional[SyncManager] = None,
+        config: SharedStorageConfig | None = None,
+        manager: SyncManager | None = None,
     ):
         """Initialize shared storage.
 
@@ -226,7 +225,7 @@ class SharedStorage:
             logger.debug(f"Stored model weights v{version} ({len(weights_bytes)} bytes)")
             return version
 
-    def get_model_weights(self) -> Optional[dict[str, torch.Tensor]]:
+    def get_model_weights(self) -> dict[str, torch.Tensor] | None:
         """Retrieve current model weights.
 
         Returns:
@@ -395,8 +394,8 @@ class DistributedReplayBuffer:
 
     def __init__(
         self,
-        config: Optional[ReplayBufferConfig] = None,
-        manager: Optional[SyncManager] = None,
+        config: ReplayBufferConfig | None = None,
+        manager: SyncManager | None = None,
     ):
         """Initialize replay buffer.
 
@@ -450,7 +449,7 @@ class DistributedReplayBuffer:
     def submit_trajectory(
         self,
         trajectory: GameTrajectory,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
     ) -> bool:
         """Submit a game trajectory to the buffer.
 
@@ -545,7 +544,7 @@ class DistributedReplayBuffer:
 
     def sample_batch(
         self,
-        batch_size: Optional[int] = None,
+        batch_size: int | None = None,
     ) -> dict[str, torch.Tensor]:
         """Sample and collate a batch for training.
 

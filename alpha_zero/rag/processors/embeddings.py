@@ -83,7 +83,7 @@ class EmbeddingGenerator(ABC):
         texts = [doc.content for doc in documents]
         embeddings = await self.embed_texts(texts)
 
-        for doc, embedding in zip(documents, embeddings):
+        for doc, embedding in zip(documents, embeddings, strict=True):
             doc.embedding = embedding
 
         return documents

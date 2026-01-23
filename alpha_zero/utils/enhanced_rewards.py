@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -122,7 +122,7 @@ class EnhancedRewardsConfig:
     })
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "EnhancedRewardsConfig":
+    def from_dict(cls, data: dict[str, Any]) -> EnhancedRewardsConfig:
         """Create configuration from dictionary.
 
         Args:
@@ -367,7 +367,7 @@ class EnhancedRewardShaper:
         self.board_size = board_size
 
         self._win_evaluator = WinConditionEvaluator(self.config)
-        self._prev_features: Optional[EnhancedStateFeatures] = None
+        self._prev_features: EnhancedStateFeatures | None = None
         self._episode_rewards: list[float] = []
         self._episode_base_rewards: list[float] = []
         self._logger = get_logger(f"{__name__}.EnhancedRewardShaper")
@@ -562,7 +562,7 @@ class EnhancedRewardShaper:
 
         # Intermediate rewards
         intermediate = self.compute_intermediate_rewards(self._prev_features, curr_features)
-        for component, value in intermediate.items():
+        for _component, value in intermediate.items():
             total_reward += value * self.config.scale_factor
 
         # Victory bonus

@@ -21,7 +21,6 @@ Example usage:
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from typing import Any, SupportsFloat
 
@@ -117,7 +116,7 @@ class EnvironmentTuningConfig:
     seed: int | None = None
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "EnvironmentTuningConfig":
+    def from_dict(cls, data: dict[str, Any]) -> EnvironmentTuningConfig:
         """Create configuration from dictionary.
 
         Args:

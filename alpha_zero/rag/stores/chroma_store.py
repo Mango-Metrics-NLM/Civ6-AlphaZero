@@ -183,7 +183,7 @@ class ChromaVectorStore(VectorStore):
             distances = result["distances"][0] if result["distances"] else [0.0] * len(ids)
 
             for rank, (doc_id, content, embedding, metadata, distance) in enumerate(
-                zip(ids, documents, embeddings, metadatas, distances), start=1
+                zip(ids, documents, embeddings, metadatas, distances, strict=True), start=1
             ):
                 # Convert distance to similarity score
                 if self.distance_metric == "cosine":

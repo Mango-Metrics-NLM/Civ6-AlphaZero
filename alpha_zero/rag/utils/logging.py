@@ -13,11 +13,9 @@ import logging
 import sys
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any
 
 from alpha_zero.rag.config.settings import LoggingConfig, LogLevel
-
 
 # Context variable for correlation ID
 _correlation_id: contextvars.ContextVar[str] = contextvars.ContextVar(

@@ -16,7 +16,6 @@ from typing import Any, SupportsFloat
 
 import gymnasium as gym
 import numpy as np
-import torch
 from gymnasium import spaces
 
 from alpha_zero.core.civ6_actions import MicroCivActionSpace

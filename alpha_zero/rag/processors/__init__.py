@@ -2,18 +2,18 @@
 
 from alpha_zero.rag.processors.base import (
     DocumentProcessor,
-    TextChunk,
     ProcessingResult,
-)
-from alpha_zero.rag.processors.text_processor import (
-    TextDocumentProcessor,
-    RecursiveTextSplitter,
+    TextChunk,
 )
 from alpha_zero.rag.processors.embeddings import (
     EmbeddingGenerator,
-    OpenAIEmbeddings,
     LocalEmbeddings,
+    OpenAIEmbeddings,
     create_embedding_generator,
+)
+from alpha_zero.rag.processors.text_processor import (
+    RecursiveTextSplitter,
+    TextDocumentProcessor,
 )
 
 __all__ = [

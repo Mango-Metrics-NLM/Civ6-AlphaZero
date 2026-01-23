@@ -7,7 +7,6 @@ similarity computation. Useful for testing and small-scale applications.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 

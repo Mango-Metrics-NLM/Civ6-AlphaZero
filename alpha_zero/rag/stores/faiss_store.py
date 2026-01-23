@@ -67,7 +67,7 @@ class FAISSVectorStore(VectorStore):
     async def initialize(self) -> None:
         """Initialize FAISS index."""
         try:
-            import faiss
+            import faiss  # noqa: F401
         except ImportError as e:
             raise ImportError(
                 "FAISS is not installed. Install with: pip install faiss-cpu"
@@ -271,7 +271,7 @@ class FAISSVectorStore(VectorStore):
 
             # Build results
             results = []
-            for dist, idx in zip(distances[0], indices[0]):
+            for dist, idx in zip(distances[0], indices[0], strict=True):
                 if idx < 0:  # FAISS returns -1 for invalid results
                     continue
 

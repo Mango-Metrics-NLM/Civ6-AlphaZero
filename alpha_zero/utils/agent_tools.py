@@ -23,16 +23,14 @@ Usage:
 from __future__ import annotations
 
 import ast
-import json
 import logging
 import os
 import re
-import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 logger = logging.getLogger(__name__)
 

@@ -8,20 +8,18 @@ This module provides the unified interface for RAG operations:
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
+from alpha_zero.rag.agents.context_builder import ContextBuilder, ContextStrategy
+from alpha_zero.rag.agents.query_enhancer import QueryEnhancer
 from alpha_zero.rag.config.settings import (
     EmbeddingModelType,
     RAGConfig,
     VectorStoreType,
 )
-from alpha_zero.rag.processors.base import ProcessingResult
 from alpha_zero.rag.processors.embeddings import (
     EmbeddingGenerator,
     LocalEmbeddings,
@@ -30,9 +28,6 @@ from alpha_zero.rag.processors.embeddings import (
 from alpha_zero.rag.processors.text_processor import TextDocumentProcessor
 from alpha_zero.rag.stores.base import Document, SearchResult, VectorStore
 from alpha_zero.rag.stores.factory import create_vector_store
-from alpha_zero.rag.stores.memory_store import MemoryVectorStore
-from alpha_zero.rag.agents.context_builder import ContextBuilder, ContextStrategy
-from alpha_zero.rag.agents.query_enhancer import QueryEnhancer
 from alpha_zero.rag.utils.cache import TTLCache, cache_key
 from alpha_zero.rag.utils.logging import RAGLogger, get_logger, set_correlation_id
 from alpha_zero.rag.utils.metrics import MetricsCollector

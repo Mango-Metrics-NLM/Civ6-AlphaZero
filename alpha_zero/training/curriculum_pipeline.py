@@ -885,10 +885,11 @@ class DefaultEnvironmentFactory(EnvironmentFactory):
             except ImportError as e:
                 raise RuntimeError("MicroCiv environment not available") from e
 
-        return self._microciv_class(
+        env: EnvironmentProtocol = self._microciv_class(
             board_size=stage.board_size,
             max_turns=stage.max_turns,
         )
+        return env
 
     def _create_unciv(self, stage: DifficultyStage) -> EnvironmentProtocol:
         """Create Unciv-wrapped environment."""

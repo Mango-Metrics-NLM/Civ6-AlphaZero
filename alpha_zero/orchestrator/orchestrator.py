@@ -181,7 +181,7 @@ class PaddedEnvironmentWrapper:
             return padded_obs, reward, terminated, truncated, info
         return obs, reward, terminated, truncated, info
 
-    def clone(self) -> "PaddedEnvironmentWrapper":
+    def clone(self) -> PaddedEnvironmentWrapper:
         """Clone the wrapper and underlying environment.
 
         This ensures MCTS simulations also use padded observations.

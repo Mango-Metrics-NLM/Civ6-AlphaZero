@@ -7,8 +7,7 @@ faster by providing more frequent feedback than sparse terminal rewards.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -142,7 +141,7 @@ def compute_state_potential(
 
 def compute_shaped_reward(
     base_reward: float,
-    prev_features: Optional[StateFeatures],
+    prev_features: StateFeatures | None,
     curr_features: StateFeatures,
     config: RewardShapingConfig,
     terminated: bool = False,
@@ -189,7 +188,7 @@ def compute_shaped_reward(
 class RewardShaper:
     """Stateful reward shaper that tracks previous state for shaping calculations."""
 
-    def __init__(self, config: Optional[RewardShapingConfig] = None, board_size: int = 8):
+    def __init__(self, config: RewardShapingConfig | None = None, board_size: int = 8):
         """Initialize the reward shaper.
 
         Args:
@@ -198,7 +197,7 @@ class RewardShaper:
         """
         self.config = config or RewardShapingConfig()
         self.board_size = board_size
-        self._prev_features: Optional[StateFeatures] = None
+        self._prev_features: StateFeatures | None = None
         self._episode_rewards: list[float] = []
         self._episode_shaped_rewards: list[float] = []
 

@@ -7,8 +7,8 @@ that uses a neural network for policy priors and value estimation.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from dataclasses import dataclass
 
 import numpy as np
 import torch
@@ -32,8 +32,8 @@ class MCTSNode:
     def __init__(
         self,
         prior: float = 0.0,
-        parent: Optional["MCTSNode"] = None,
-        action: Optional[int] = None,
+        parent: MCTSNode | None = None,
+        action: int | None = None,
     ):
         """Initialize MCTS node.
 
@@ -52,7 +52,7 @@ class MCTSNode:
 
         # For leaf evaluation
         self.is_terminal = False
-        self.terminal_value: Optional[float] = None
+        self.terminal_value: float | None = None
 
     @property
     def value(self) -> float:
@@ -84,7 +84,7 @@ class MCTSNode:
 
         return q_value + exploration
 
-    def select_child(self, c_puct: float) -> "MCTSNode":
+    def select_child(self, c_puct: float) -> MCTSNode:
         """Select child with highest UCB score.
 
         Args:
@@ -153,8 +153,8 @@ class MCTS:
 
     def __init__(
         self,
-        config: Optional[MCTSConfig] = None,
-        network_fn: Optional[Callable[[dict[str, np.ndarray]], tuple[np.ndarray, float]]] = None,
+        config: MCTSConfig | None = None,
+        network_fn: Callable[[dict[str, np.ndarray]], tuple[np.ndarray, float]] | None = None,
     ):
         """Initialize MCTS.
 
@@ -164,7 +164,7 @@ class MCTS:
         """
         self.config = config or MCTSConfig()
         self.network_fn = network_fn
-        self.root: Optional[MCTSNode] = None
+        self.root: MCTSNode | None = None
 
     def set_network(self, network_fn: Callable[[dict[str, np.ndarray]], tuple[np.ndarray, float]]) -> None:
         """Set the network function for evaluation.
@@ -363,7 +363,7 @@ class SimpleMCTS:
 
     def __init__(
         self,
-        config: Optional[MCTSConfig] = None,
+        config: MCTSConfig | None = None,
     ):
         """Initialize simplified MCTS.
 
@@ -466,7 +466,7 @@ def create_mcts(
     dirichlet_alpha: float = 0.3,
     dirichlet_epsilon: float = 0.25,
     use_full_mcts: bool = False,
-    network: Optional[torch.nn.Module] = None,
+    network: torch.nn.Module | None = None,
 ) -> MCTS | SimpleMCTS:
     """Factory function to create MCTS instance.
 

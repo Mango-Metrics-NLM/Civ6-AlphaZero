@@ -559,7 +559,7 @@ class CheckpointManager:
         latest = candidates[-1]
         try:
             with open(latest) as f:
-                data = json.load(f)
+                data: dict[str, Any] = json.load(f)
             self._logger.info(f"Loaded checkpoint: {latest.name}")
             return data
         except Exception as e:
@@ -714,12 +714,14 @@ class MicroCivBackend(GameBackend):
         """Get current game state."""
         if not self.is_connected():
             raise StateRetrievalError("Not connected")
-        return self._env._get_game_state()
+        assert self._env is not None  # Type narrowing for mypy
+        return self._env._get_game_state()  # type: ignore[no-any-return]
 
     def apply_action(self, action: Any) -> dict[str, Any]:
         """Apply action to game."""
         if not self.is_connected():
             raise ActionExecutionError("Not connected", action)
+        assert self._env is not None  # Type narrowing for mypy
 
         obs, reward, terminated, truncated, info = self._env.step(action)
         return {
@@ -734,6 +736,7 @@ class MicroCivBackend(GameBackend):
         """Reset game to initial state."""
         if not self.is_connected():
             raise StateRetrievalError("Not connected")
+        assert self._env is not None  # Type narrowing for mypy
 
         obs, info = self._env.reset(**options or {})
         return {"observation": obs, "info": info}
@@ -742,6 +745,7 @@ class MicroCivBackend(GameBackend):
         """Get valid action mask."""
         if not self.is_connected():
             raise StateRetrievalError("Not connected")
+        assert self._env is not None  # Type narrowing for mypy
         return self._env.get_valid_actions()
 
 
@@ -792,6 +796,7 @@ class UncivBackend(GameBackend):
         """Apply action to game."""
         if not self.is_connected() or self._state is None:
             raise ActionExecutionError("Not connected", action)
+        assert self._interface is not None  # Type narrowing for mypy
 
         try:
             new_state = self._interface.apply_action(self._state, action)
@@ -804,6 +809,7 @@ class UncivBackend(GameBackend):
         """Reset/load new game."""
         if not self.is_connected():
             raise StateRetrievalError("Not connected")
+        assert self._interface is not None  # Type narrowing for mypy
 
         save_path = options.get("save_path") if options else None
         if save_path:
@@ -819,6 +825,7 @@ class UncivBackend(GameBackend):
         """Get valid action mask."""
         if not self.is_connected() or self._state is None:
             raise StateRetrievalError("No state available")
+        assert self._interface is not None  # Type narrowing for mypy
         return self._interface.get_valid_actions(self._state)
 
 

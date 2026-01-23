@@ -6,10 +6,9 @@ identify issues, and provide actionable insights during AlphaZero training.
 
 from __future__ import annotations
 
-import math
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -41,7 +40,7 @@ class EpisodeMetrics:
     avg_policy_entropy: float
     avg_value_prediction: float
     action_counts: dict[int, int] = field(default_factory=dict)
-    shaped_reward: Optional[float] = None
+    shaped_reward: float | None = None
 
 
 @dataclass
@@ -76,7 +75,7 @@ class PolicyEntropyTracker:
         self._entropies: deque[float] = deque(maxlen=window_size)
         self._all_entropies: list[float] = []
 
-    def add(self, policy: np.ndarray, action_mask: Optional[np.ndarray] = None) -> float:
+    def add(self, policy: np.ndarray, action_mask: np.ndarray | None = None) -> float:
         """Add a policy observation and compute entropy.
 
         Args:
@@ -272,7 +271,7 @@ class TrainingDiagnostics:
     def __init__(
         self,
         num_actions: int,
-        config: Optional[DiagnosticsConfig] = None,
+        config: DiagnosticsConfig | None = None,
     ):
         """Initialize training diagnostics.
 
@@ -305,7 +304,7 @@ class TrainingDiagnostics:
         policy: np.ndarray,
         value: float,
         action: int,
-        action_mask: Optional[np.ndarray] = None,
+        action_mask: np.ndarray | None = None,
     ) -> None:
         """Record a training step.
 
@@ -334,7 +333,7 @@ class TrainingDiagnostics:
         turns: int,
         total_reward: float,
         outcome: str,
-        shaped_reward: Optional[float] = None,
+        shaped_reward: float | None = None,
     ) -> EpisodeMetrics:
         """Record episode completion.
 

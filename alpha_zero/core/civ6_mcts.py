@@ -9,7 +9,6 @@ Implements PUCT-based MCTS with neural network guidance, supporting:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable
 
 import numpy as np
 import torch

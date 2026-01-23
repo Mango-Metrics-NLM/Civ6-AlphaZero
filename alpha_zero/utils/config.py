@@ -154,7 +154,7 @@ class Civ6Config:
     rewards: RewardsConfig = field(default_factory=RewardsConfig)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "Civ6Config":
+    def from_dict(cls, data: dict[str, Any]) -> Civ6Config:
         """Create configuration from dictionary.
 
         Args:

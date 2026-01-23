@@ -8,14 +8,12 @@ replay buffer.
 from __future__ import annotations
 
 import logging
-import os
 import signal
 import time
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
-import torch
 import torch.multiprocessing as mp
 
 from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig, SimpleMCTS
@@ -110,11 +108,11 @@ class SelfPlayActor:
         self.action_space_size = self.env.action_space.n
 
         # Create network (will load weights from storage)
-        self.network: Optional[MicroCivNetwork] = None
-        self.mcts: Optional[Civ6MCTS | SimpleMCTS] = None
+        self.network: MicroCivNetwork | None = None
+        self.mcts: Civ6MCTS | SimpleMCTS | None = None
 
         # Weight synchronizer
-        self.weight_sync: Optional[WeightSynchronizer] = None
+        self.weight_sync: WeightSynchronizer | None = None
 
         # Statistics
         self.games_played = 0
