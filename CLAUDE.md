@@ -312,6 +312,7 @@ When making changes, update the relevant sections below:
 | 2026-01-20 | RAG-LLM integration layer | ChromaDB knowledge base with strategy advisor for training insights |
 | 2026-01-20 | Hyperparameter scheduling | Multiple schedule types (warmup_cosine, step, exponential) |
 | 2026-01-20 | Factory pattern for components | Testable, flexible component creation |
+| 2026-01-23 | Military strategy knowledge base | Classical warfare principles applied to Civ6 for RAG retrieval |
 
 ### 5.3 Known Issues
 
@@ -469,7 +470,8 @@ Civ6-AlphaZero/
 │   └── knowledge/               # RAG knowledge base documents
 │       ├── civ6_strategies.md
 │       ├── unit_tactics.md
-│       └── build_orders.md
+│       ├── build_orders.md
+│       └── military_strategy.md # Comprehensive military doctrine
 ├── .env                         # Environment variables (DO NOT COMMIT)
 ├── .env.template                # Environment template
 ├── requirements.txt             # Dependencies
@@ -797,6 +799,32 @@ await pipeline.close()
 - `RAG_EMBEDDING_API_KEY` - API key for OpenAI embeddings
 - `RAG_LOG_LEVEL` - Logging level
 
+### 11.6 Knowledge Base Files
+
+The `data/knowledge/` directory contains Markdown files automatically ingested by the RAG system:
+
+| File | Description |
+|------|-------------|
+| `civ6_strategies.md` | General strategies for all victory types, economy, diplomacy |
+| `unit_tactics.md` | Unit classes, combat mechanics, army composition |
+| `build_orders.md` | Optimal build orders for different openings and focuses |
+| `military_strategy.md` | Comprehensive military doctrine based on classical warfare principles |
+
+#### military_strategy.md Topics
+The military strategy knowledge base covers:
+- **Force Concentration**: Lanchester's Laws, mass at decisive points
+- **Economy of Force**: Balanced resource allocation, calculated risk
+- **Terrain Advantage**: Combat modifiers (+3/+6 bonuses), defensive positioning
+- **Flanking/Envelopment**: Siege mechanics, besieged status triggers
+- **Combined Arms**: Unit synergy, balanced force composition
+- **Timing Attacks**: Key tech rushes (Knights, Crossbowmen, Cavalry)
+- **Intelligence**: Reconnaissance, diplomatic visibility bonuses
+- **Logistics**: Strategic resource management (Iron, Niter, Oil, Aluminum)
+- **Pillaging**: Economic warfare, self-sustaining armies
+- **Zone of Control**: Movement restrictions, siege mechanics
+- **Deception**: Strategic surprise, upgrade ambushes
+- **Campaign Phases**: Preparation, offensive, exploitation, consolidation
+
 ---
 
 ## SECTION 12: NEXT STEPS
@@ -811,6 +839,6 @@ await pipeline.close()
 
 ---
 
-*Last updated: 2026-01-20*
+*Last updated: 2026-01-23*
 *Phase: 4 - Unified Training Orchestrator (Complete)*
-*Current Focus: Training Pipeline Validation & Performance Optimization*
+*Current Focus: Training Pipeline Validation & Knowledge Base Enhancement*
