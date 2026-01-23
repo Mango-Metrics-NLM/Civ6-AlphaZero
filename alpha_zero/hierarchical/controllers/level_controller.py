@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 
@@ -27,28 +27,23 @@ except ImportError:
     TORCH_AVAILABLE = False
 
 from alpha_zero.hierarchical.config import (
-    HierarchicalConfig,
     HierarchyLevel,
     LevelConfig,
 )
+from alpha_zero.hierarchical.encoders.goal_encoder import (
+    GoalEncoder,
+)
+from alpha_zero.hierarchical.encoders.state_encoder import (
+    StateEncoder,
+)
+from alpha_zero.hierarchical.goals.goal_evaluator import GoalEvaluator
+from alpha_zero.hierarchical.goals.goal_hierarchy import GoalHierarchy
+from alpha_zero.hierarchical.goals.goal_propagator import GoalPropagator
 from alpha_zero.hierarchical.goals.goal_types import (
     Goal,
     GoalStatus,
-    GoalTarget,
-    OperationalGoalType,
     StrategicGoalType,
     TacticalGoalType,
-)
-from alpha_zero.hierarchical.goals.goal_hierarchy import GoalHierarchy
-from alpha_zero.hierarchical.goals.goal_evaluator import GoalEvaluator
-from alpha_zero.hierarchical.goals.goal_propagator import GoalPropagator
-from alpha_zero.hierarchical.encoders.state_encoder import (
-    HierarchicalStateEncoder,
-    StateEncoder,
-)
-from alpha_zero.hierarchical.encoders.goal_encoder import (
-    HierarchicalGoalEncoder,
-    GoalEncoder,
 )
 from alpha_zero.hierarchical.mcts.hierarchical_mcts import (
     HierarchicalMCTS,
@@ -357,7 +352,7 @@ class StrategicController(LevelController):
         game_state: dict[str, Any],
     ) -> dict[str, float]:
         """Evaluate current strategic position."""
-        victory = game_state.get("victory_progress", {})
+        game_state.get("victory_progress", {})
         military = game_state.get("military", {})
         resources = game_state.get("resources", {})
         tech = game_state.get("technology", {})
@@ -388,7 +383,7 @@ class StrategicController(LevelController):
 
     def _assess_science_viability(self, game_state: dict[str, Any]) -> float:
         """Assess viability of science victory."""
-        tech = game_state.get("technology", {})
+        game_state.get("technology", {})
         victory = game_state.get("victory_progress", {})
 
         science_per_turn = game_state.get("yields", {}).get("science_per_turn", 0)
@@ -465,7 +460,7 @@ class StrategicController(LevelController):
     ) -> None:
         """Set new victory path and create corresponding goal."""
         self.current_victory_path = path
-        current_turn = game_state.get("turn", 0)
+        game_state.get("turn", 0)
 
         # Remove old victory goal if exists
         for goal in self.state.active_goals:

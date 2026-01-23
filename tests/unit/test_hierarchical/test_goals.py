@@ -69,8 +69,8 @@ class TestGoal:
         """Test GoalTarget dataclass."""
         target = GoalTarget(
             target_type="city",
-            entity_id="city_123",
-            location=(10, 15),
+            target_id="city_123",
+            position=(10, 15),
             quantity=1,
         )
 
@@ -81,7 +81,7 @@ class TestGoal:
 
     def test_goal_with_target(self) -> None:
         """Test creating goal with target."""
-        target = GoalTarget(location=(5, 5))
+        target = GoalTarget(position=(5, 5))
         goal = Goal.tactical(
             TacticalGoalType.SETTLE_CITY,
             target=target,
@@ -185,8 +185,8 @@ class TestGoalHierarchy:
         child = Goal.tactical(TacticalGoalType.RESEARCH_TECH)
         hierarchy.add_goal(child, parent_id=parent.id)
 
-        assert child.parent_id == parent.id
-        assert child.id in parent.children_ids
+        assert child.parent_goal_id == parent.id
+        assert child.id in parent.child_goal_ids
 
     def test_get_active_goals(self) -> None:
         """Test getting active goals by level."""
@@ -278,7 +278,7 @@ class TestGoalEvaluator:
         """Test evaluating operational goal progress."""
         evaluator = GoalEvaluator()
         goal = Goal.operational(OperationalGoalType.MOVE_UNIT)
-        goal.target = GoalTarget(location=(5, 5))
+        goal.target = GoalTarget(position=(5, 5))
 
         game_state = {
             "units": [{"player": 0, "x": 4, "y": 5}],

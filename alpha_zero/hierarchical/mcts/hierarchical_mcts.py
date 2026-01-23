@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import logging
 import math
-from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Callable, Generic, TypeVar
+from typing import Any
 
 import numpy as np
 
@@ -520,7 +520,7 @@ class HierarchicalMCTS:
 
         # Run simulations
         max_depth = 0
-        for sim in range(self.config.num_simulations):
+        for _sim in range(self.config.num_simulations):
             node = root
             depth = 0
 
@@ -650,7 +650,7 @@ class HierarchicalMCTS:
             return np.ones(action_space) / action_space, 0.0
 
         # Encode state
-        state_encoding = self.state_encoder.encode(state, self.level)
+        self.state_encoder.encode(state, self.level)
 
         # Encode goals
         level_goals = [g for g in goals if g.level == self.level]
@@ -772,7 +772,7 @@ class HierarchicalMCTS:
         best_visits = -1
         best_option = None
 
-        for opt_id, child in root.option_children.items():
+        for _opt_id, child in root.option_children.items():
             if child.visit_count > best_visits:
                 best_visits = child.visit_count
                 best_option = child.option

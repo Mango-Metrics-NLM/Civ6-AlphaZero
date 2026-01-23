@@ -14,11 +14,11 @@ from __future__ import annotations
 
 from alpha_zero.hierarchical.mcts.hierarchical_mcts import (
     HierarchicalMCTS,
-    MCTSNode,
     MCTSConfig,
-    SearchStats,
+    MCTSNode,
     Option,
     OptionTermination,
+    SearchStats,
 )
 
 __all__ = [

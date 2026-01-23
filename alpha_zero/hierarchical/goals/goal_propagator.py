@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from alpha_zero.hierarchical.goals.goal_types import (
     Goal,
@@ -235,11 +236,11 @@ class StrategicDecomposition(DecompositionStrategy):
         )
 
         # Specialize target based on tactic type and game state
-        cities = game_state.get("cities", [])
-        units = game_state.get("units", [])
+        game_state.get("cities", [])
+        game_state.get("units", [])
 
-        if tactic_type == TacticalGoalType.CAPTURE_CITY and parent.target.location:
-            target.location = parent.target.location
+        if tactic_type == TacticalGoalType.CAPTURE_CITY and parent.target.position:
+            target.position = parent.target.position
         elif tactic_type == TacticalGoalType.BUILD_ARMY:
             target.quantity = max(1, parent.target.quantity // 3) if parent.target.quantity else 3
         elif tactic_type == TacticalGoalType.SETTLE_CITY:
@@ -400,8 +401,8 @@ class TacticalDecomposition(DecompositionStrategy):
         )
 
         # Inherit location from parent if applicable
-        if parent.target.location:
-            target.location = parent.target.location
+        if parent.target.position:
+            target.position = parent.target.position
 
         # Set quantities for production goals
         if op_type in (OperationalGoalType.PRODUCE_UNIT, OperationalGoalType.BUILD_BUILDING):
@@ -503,7 +504,7 @@ class GoalPropagator:
                 logger.error("Failed to add sub-goal %s: %s", sub_goal.id, e)
 
         # Update parent goal
-        goal.children_ids.extend([g.id for g in sub_goals])
+        goal.child_goal_ids.extend([g.id for g in sub_goals])
         result.goals_updated.append(goal)
         result.messages.append(
             f"Decomposed {goal.id} into {len(sub_goals)} sub-goals"
@@ -534,21 +535,21 @@ class GoalPropagator:
         """
         result = PropagationResult()
 
-        if not goal.parent_id:
+        if not goal.parent_goal_id:
             result.messages.append(f"Goal {goal.id} has no parent")
             return result
 
         # Get parent
-        parent = self.hierarchy.get_goal(goal.parent_id)
+        parent = self.hierarchy.get_goal(goal.parent_goal_id)
         if not parent:
             result.success = False
-            result.messages.append(f"Parent {goal.parent_id} not found")
+            result.messages.append(f"Parent {goal.parent_goal_id} not found")
             return result
 
         # Aggregate progress from all children
         children = [
             self.hierarchy.get_goal(cid)
-            for cid in parent.children_ids
+            for cid in parent.child_goal_ids
             if self.hierarchy.get_goal(cid)
         ]
 
@@ -713,7 +714,7 @@ class GoalPropagator:
                     continue
 
                 # Propagate up if leaf goal with parent
-                if not goal.children_ids and goal.parent_id:
+                if not goal.children_ids and goal.parent_goal_id:
                     up_result = self.propagate_up(goal, game_state)
                     result.merge(up_result)
 

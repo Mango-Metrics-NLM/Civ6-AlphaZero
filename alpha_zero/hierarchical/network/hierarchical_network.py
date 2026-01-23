@@ -13,10 +13,8 @@ Example:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
-
-import numpy as np
 
 try:
     import torch
@@ -401,7 +399,7 @@ if TORCH_AVAILABLE:
             super().__init__()
 
             # Use level-specific configs or derive from base/defaults
-            base_config = config or HierarchicalNetworkConfig()
+            config or HierarchicalNetworkConfig()
 
             self.strategic_network = LevelNetwork(
                 strategic_config or HierarchicalNetworkConfig.for_level(HierarchyLevel.STRATEGIC),

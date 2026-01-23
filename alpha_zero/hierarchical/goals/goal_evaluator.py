@@ -16,11 +16,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
-import numpy as np
-
 from alpha_zero.hierarchical.goals.goal_types import (
     Goal,
-    GoalStatus,
     HierarchyLevel,
     OperationalGoalType,
     StrategicGoalType,
@@ -552,8 +549,8 @@ class GoalEvaluator:
             if goal.goal_type == TacticalGoalType.CONQUER_CITY:
                 target_city = goal.target.target_id
                 if target_city:
-                    owner = state.get("city_owners", {}).get(target_city)
-                    player = state.get("current_player", 0)
+                    state.get("city_owners", {}).get(target_city)
+                    state.get("current_player", 0)
                     other_captured = state.get("captured_by_others", [])
                     if target_city in other_captured:
                         return True

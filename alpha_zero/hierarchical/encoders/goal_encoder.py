@@ -12,7 +12,7 @@ Example:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -236,7 +236,7 @@ class GoalEncoder:
         )
 
         for i, goal in enumerate(goals[:self.config.max_goals]):
-            parent = parent_goals.get(goal.parent_id) if goal.parent_id else None
+            parent = parent_goals.get(goal.parent_goal_id) if goal.parent_goal_id else None
             embedding = self.encode(goal, game_state, parent)
             batch[i] = embedding.embedding
 
@@ -270,9 +270,9 @@ class GoalEncoder:
         target_vec = np.zeros(self._target_dim, dtype=np.float32)
 
         # Location (normalized)
-        if target.location:
-            target_vec[0] = target.location[0] / self.board_size[0]
-            target_vec[1] = target.location[1] / self.board_size[1]
+        if target.position:
+            target_vec[0] = target.position[0] / self.board_size[0]
+            target_vec[1] = target.position[1] / self.board_size[1]
         else:
             target_vec[0] = 0.5  # Default to center
             target_vec[1] = 0.5
@@ -292,7 +292,7 @@ class GoalEncoder:
             target_vec[4] = type_hash
 
         # Distance to target (if location known and game state available)
-        if target.location and game_state:
+        if target.position and game_state:
             own_cities = [
                 c for c in game_state.get("cities", [])
                 if c.get("player") == game_state.get("current_player", 0)
@@ -300,28 +300,28 @@ class GoalEncoder:
             if own_cities:
                 # Distance from nearest own city
                 min_dist = min(
-                    abs(c.get("x", 0) - target.location[0]) +
-                    abs(c.get("y", 0) - target.location[1])
+                    abs(c.get("x", 0) - target.position[0]) +
+                    abs(c.get("y", 0) - target.position[1])
                     for c in own_cities
                 )
                 target_vec[5] = min(min_dist / 20.0, 1.0)
 
         # Visibility (if target location is visible)
-        if target.location and game_state:
+        if target.position and game_state:
             visibility = game_state.get("visibility", {})
-            x, y = target.location
+            x, y = target.position
             target_vec[6] = 1.0 if visibility.get(f"{x},{y}", False) else 0.0
 
         # Threat level at target
-        if target.location and game_state:
+        if target.position and game_state:
             enemies = [
                 u for u in game_state.get("units", [])
                 if u.get("player") != game_state.get("current_player", 0)
             ]
             nearby_enemies = sum(
                 1 for e in enemies
-                if abs(e.get("x", 0) - target.location[0]) <= 3 and
-                abs(e.get("y", 0) - target.location[1]) <= 3
+                if abs(e.get("x", 0) - target.position[0]) <= 3 and
+                abs(e.get("y", 0) - target.position[1]) <= 3
             )
             target_vec[7] = min(nearby_enemies / 5.0, 1.0)
 
@@ -368,7 +368,7 @@ class GoalEncoder:
         context_vec[10] = (parent_goal.status.value - 1) / (len(GoalStatus) - 1)
 
         # Number of siblings (children of parent)
-        context_vec[11] = min(len(parent_goal.children_ids) / 10.0, 1.0)
+        context_vec[11] = min(len(parent_goal.child_goal_ids) / 10.0, 1.0)
 
         # Parent level
         level_idx = list(HierarchyLevel).index(parent_goal.level)
@@ -493,8 +493,8 @@ class HierarchicalGoalEncoder:
         parent_goals = {}
         if goal_lookup:
             for goal in level_goals:
-                if goal.parent_id and goal.parent_id in goal_lookup:
-                    parent_goals[goal.parent_id] = goal_lookup[goal.parent_id]
+                if goal.parent_goal_id and goal.parent_goal_id in goal_lookup:
+                    parent_goals[goal.parent_goal_id] = goal_lookup[goal.parent_goal_id]
 
         encoder = self._encoders.get(level, self.operational_encoder)
         return encoder.encode_batch(level_goals, game_state, parent_goals)

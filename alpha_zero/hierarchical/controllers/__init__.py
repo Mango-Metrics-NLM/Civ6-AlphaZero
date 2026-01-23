@@ -14,12 +14,12 @@ Example:
 from __future__ import annotations
 
 from alpha_zero.hierarchical.controllers.level_controller import (
+    ControllerDecision,
+    ControllerState,
     LevelController,
+    OperationalController,
     StrategicController,
     TacticalController,
-    OperationalController,
-    ControllerState,
-    ControllerDecision,
 )
 
 __all__ = [

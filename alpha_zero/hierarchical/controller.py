@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 
@@ -29,23 +29,22 @@ except ImportError:
 from alpha_zero.hierarchical.config import (
     HierarchicalConfig,
     HierarchyLevel,
-    LevelConfig,
 )
-from alpha_zero.hierarchical.goals.goal_types import Goal, GoalStatus
-from alpha_zero.hierarchical.goals.goal_hierarchy import GoalHierarchy
-from alpha_zero.hierarchical.goals.goal_evaluator import GoalEvaluator
-from alpha_zero.hierarchical.goals.goal_propagator import GoalPropagator
-from alpha_zero.hierarchical.encoders.state_encoder import HierarchicalStateEncoder
+from alpha_zero.hierarchical.controllers.level_controller import (
+    ControllerDecision,
+    OperationalController,
+    StrategicController,
+    TacticalController,
+)
 from alpha_zero.hierarchical.encoders.goal_encoder import HierarchicalGoalEncoder
+from alpha_zero.hierarchical.encoders.state_encoder import HierarchicalStateEncoder
+from alpha_zero.hierarchical.goals.goal_evaluator import GoalEvaluator
+from alpha_zero.hierarchical.goals.goal_hierarchy import GoalHierarchy
+from alpha_zero.hierarchical.goals.goal_propagator import GoalPropagator
+from alpha_zero.hierarchical.goals.goal_types import Goal, GoalStatus
 from alpha_zero.hierarchical.network.hierarchical_network import (
     HierarchicalNetwork,
     HierarchicalNetworkConfig,
-)
-from alpha_zero.hierarchical.controllers.level_controller import (
-    StrategicController,
-    TacticalController,
-    OperationalController,
-    ControllerDecision,
 )
 
 logger = logging.getLogger(__name__)

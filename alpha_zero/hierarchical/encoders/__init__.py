@@ -14,17 +14,17 @@ Example:
 """
 from __future__ import annotations
 
+from alpha_zero.hierarchical.encoders.goal_encoder import (
+    GoalEmbedding,
+    GoalEncoder,
+    HierarchicalGoalEncoder,
+)
 from alpha_zero.hierarchical.encoders.state_encoder import (
+    HierarchicalStateEncoder,
+    OperationalStateEncoder,
     StateEncoder,
     StrategicStateEncoder,
     TacticalStateEncoder,
-    OperationalStateEncoder,
-    HierarchicalStateEncoder,
-)
-from alpha_zero.hierarchical.encoders.goal_encoder import (
-    GoalEncoder,
-    GoalEmbedding,
-    HierarchicalGoalEncoder,
 )
 
 __all__ = [

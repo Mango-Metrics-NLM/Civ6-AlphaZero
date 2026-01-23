@@ -13,19 +13,19 @@ Example:
 """
 from __future__ import annotations
 
+from alpha_zero.hierarchical.goals.goal_evaluator import GoalEvaluator
+from alpha_zero.hierarchical.goals.goal_hierarchy import GoalHierarchy
+from alpha_zero.hierarchical.goals.goal_node import GoalNode
+from alpha_zero.hierarchical.goals.goal_propagator import GoalPropagator
 from alpha_zero.hierarchical.goals.goal_types import (
+    Goal,
     GoalStatus,
+    GoalTarget,
     HierarchyLevel,
+    OperationalGoalType,
     StrategicGoalType,
     TacticalGoalType,
-    OperationalGoalType,
-    Goal,
-    GoalTarget,
 )
-from alpha_zero.hierarchical.goals.goal_node import GoalNode
-from alpha_zero.hierarchical.goals.goal_hierarchy import GoalHierarchy
-from alpha_zero.hierarchical.goals.goal_evaluator import GoalEvaluator
-from alpha_zero.hierarchical.goals.goal_propagator import GoalPropagator
 
 __all__ = [
     # Types and enums

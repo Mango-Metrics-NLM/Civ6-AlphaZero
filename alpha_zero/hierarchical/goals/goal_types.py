@@ -93,6 +93,15 @@ class StrategicGoalType(Enum):
     ISOLATION_POLICY = auto()     # Avoid entanglements
     OPPORTUNISTIC_WARFARE = auto() # Strike when advantageous
 
+    # Aliases for backwards compatibility
+    EXPAND_TERRITORY = auto()     # Alias for TERRITORIAL_EXPANSION
+    DEFEND_EMPIRE = auto()        # Alias for DEFENSIVE_CONSOLIDATION
+    ESTABLISH_ALLIANCE = auto()   # Form strategic alliance
+    SABOTAGE_ENEMY = auto()       # Disrupt enemy operations
+    CONTROL_CONTINENT = auto()    # Dominate geographic region
+    TECHNOLOGICAL_LEAD = auto()   # Lead in technology
+    RESOURCE_MONOPOLY = auto()    # Control key resources
+
     @property
     def category(self) -> str:
         """Get the category of this strategic goal."""
@@ -105,7 +114,8 @@ class StrategicGoalType(Enum):
             self.MILITARY_SUPREMACY, self.ECONOMIC_DOMINANCE,
             self.TECH_LEADERSHIP, self.CULTURAL_INFLUENCE,
             self.RELIGIOUS_SPREAD, self.TERRITORIAL_EXPANSION,
-            self.DEFENSIVE_CONSOLIDATION,
+            self.DEFENSIVE_CONSOLIDATION, self.EXPAND_TERRITORY,
+            self.DEFEND_EMPIRE,
         }
         if self in victory_goals:
             return "victory"
@@ -156,17 +166,35 @@ class TacticalGoalType(Enum):
     DECLARE_WAR = auto()          # Start conflict
     TRADE_AGREEMENT = auto()      # Establish trade deal
 
+    # Aliases for backwards compatibility
+    CAPTURE_CITY = auto()         # Alias for CONQUER_CITY
+    SETTLE_CITY = auto()          # Alias for ESTABLISH_OUTPOST
+    BUILD_ENCAMPMENT = auto()     # Build encampment district
+    GENERATE_TOURISM = auto()     # Generate tourism output
+    BUILD_COMMERCIAL = auto()     # Build commercial hub
+    FORTIFY_POSITION = auto()     # Fortify and hold position
+    ELIMINATE_UNIT = auto()       # Destroy enemy unit
+    SPREAD_RELIGION = auto()      # Spread religious beliefs
+    BUILD_HOLY_SITE = auto()      # Build holy site district
+    IMPROVE_TILE = auto()         # Build tile improvement
+    ESTABLISH_TRADE = auto()      # Establish trade route
+    UPGRADE_UNIT = auto()         # Upgrade military unit
+    PILLAGE_IMPROVEMENT = auto()  # Pillage enemy improvements
+
     @property
     def category(self) -> str:
         """Get the category of this tactical goal."""
         military = {
             self.CONQUER_CITY, self.DEFEND_CITY, self.BUILD_ARMY,
             self.DESTROY_ARMY, self.SIEGE_OPERATION, self.RAID_TERRITORY,
-            self.NAVAL_BLOCKADE,
+            self.NAVAL_BLOCKADE, self.CAPTURE_CITY, self.FORTIFY_POSITION,
+            self.ELIMINATE_UNIT, self.PILLAGE_IMPROVEMENT, self.UPGRADE_UNIT,
         }
         infrastructure = {
             self.DEVELOP_CITY, self.BUILD_WONDER, self.IMPROVE_REGION,
-            self.CONNECT_CITIES, self.ESTABLISH_OUTPOST,
+            self.CONNECT_CITIES, self.ESTABLISH_OUTPOST, self.SETTLE_CITY,
+            self.BUILD_ENCAMPMENT, self.BUILD_COMMERCIAL, self.IMPROVE_TILE,
+            self.BUILD_HOLY_SITE, self.ESTABLISH_TRADE,
         }
         economy = {
             self.SECURE_RESOURCE, self.MAXIMIZE_INCOME,
@@ -175,7 +203,8 @@ class TacticalGoalType(Enum):
         research = {
             self.RESEARCH_TECH, self.RESEARCH_CIVIC,
             self.BUILD_CAMPUS, self.BUILD_THEATER,
-            self.RECRUIT_GREAT_PERSON,
+            self.RECRUIT_GREAT_PERSON, self.GENERATE_TOURISM,
+            self.SPREAD_RELIGION,
         }
         if self in military:
             return "military"
@@ -228,20 +257,44 @@ class OperationalGoalType(Enum):
     SKIP_TURN = auto()            # Pass action
     END_TURN = auto()             # Complete turn
 
+    # Aliases for backwards compatibility
+    MOVE_UNIT = auto()            # Alias for MOVE_TO_POSITION
+    SELECT_RESEARCH = auto()      # Select research option
+    BUILD_DISTRICT = auto()       # Alias for PRODUCE_DISTRICT
+    SIEGE_CITY = auto()           # Siege a city
+    FORTIFY_UNIT = auto()         # Fortify unit in place
+    HEAL_UNIT = auto()            # Heal unit
+    UPGRADE_UNIT = auto()         # Upgrade unit
+    FOUND_CITY = auto()           # Found a new city
+    BUILD_BUILDING = auto()       # Build city building
+    ESTABLISH_TRADE_ROUTE = auto() # Establish trade route
+    SPREAD_RELIGION = auto()      # Spread religious influence
+    PILLAGE = auto()              # Pillage tile
+    CREATE_GREAT_WORK = auto()    # Create great work
+    MAKE_DEAL = auto()            # Make diplomatic deal
+
     @property
     def category(self) -> str:
         """Get the category of this operational goal."""
         movement = {
             self.MOVE_TO_POSITION, self.ATTACK_TARGET, self.DEFEND_POSITION,
             self.RETREAT, self.ESCORT_UNIT, self.SCOUT_AREA, self.FORTIFY,
+            self.MOVE_UNIT, self.SIEGE_CITY, self.FORTIFY_UNIT, self.HEAL_UNIT,
         }
         production = {
             self.PRODUCE_UNIT, self.PRODUCE_BUILDING, self.PRODUCE_DISTRICT,
             self.PRODUCE_WONDER, self.PRODUCE_PROJECT, self.BUY_ITEM,
+            self.SELECT_RESEARCH, self.BUILD_DISTRICT, self.UPGRADE_UNIT,
+            self.BUILD_BUILDING, self.FOUND_CITY, self.CREATE_GREAT_WORK,
         }
         improvement = {
             self.BUILD_IMPROVEMENT, self.REPAIR_IMPROVEMENT,
-            self.HARVEST_RESOURCE, self.PLANT_FOREST,
+            self.HARVEST_RESOURCE, self.PLANT_FOREST, self.PILLAGE,
+            self.ESTABLISH_TRADE_ROUTE,
+        }
+        diplomacy = {
+            self.SEND_DELEGATION, self.TRADE_RESOURCES, self.DENOUNCE_PLAYER,
+            self.MAKE_PROMISE, self.MAKE_DEAL, self.SPREAD_RELIGION,
         }
         if self in movement:
             return "movement"
@@ -249,6 +302,8 @@ class OperationalGoalType(Enum):
             return "production"
         if self in improvement:
             return "improvement"
+        if self in diplomacy:
+            return "diplomacy"
         if self in {self.SKIP_TURN, self.END_TURN}:
             return "turn_management"
         return "diplomacy"
@@ -264,15 +319,38 @@ class GoalTarget:
 
     Attributes:
         target_type: Type of target (city, unit, position, etc.)
-        target_id: Identifier for the target.
-        position: Board position if applicable (x, y).
+        target_id: Identifier for the target (alias: entity_id).
+        position: Board position if applicable (x, y) (alias: location).
+        quantity: Target quantity for numeric goals.
         metadata: Additional target-specific data.
     """
 
     target_type: str
     target_id: str | None = None
     position: tuple[int, int] | None = None
+    quantity: int | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    # Aliases for compatibility
+    @property
+    def entity_id(self) -> str | None:
+        """Alias for target_id."""
+        return self.target_id
+
+    @entity_id.setter
+    def entity_id(self, value: str | None) -> None:
+        """Set target_id via entity_id alias."""
+        self.target_id = value
+
+    @property
+    def location(self) -> tuple[int, int] | None:
+        """Alias for position."""
+        return self.position
+
+    @location.setter
+    def location(self, value: tuple[int, int] | None) -> None:
+        """Set position via location alias."""
+        self.position = value
 
     @classmethod
     def position_target(cls, x: int, y: int) -> GoalTarget:
@@ -341,10 +419,12 @@ class Goal:
         created_turn: Turn when goal was created.
         deadline_turn: Optional deadline turn.
         estimated_duration: Estimated turns to complete.
+        last_progress_turn: Turn when progress was last updated.
         parent_goal_id: ID of parent goal in hierarchy.
         child_goal_ids: IDs of child goals.
         strategic_value: Estimated contribution to winning.
         urgency: Time sensitivity factor.
+        reward_modifier: Reward shaping multiplier for this goal.
         metadata: Additional goal-specific data.
     """
 
@@ -366,6 +446,7 @@ class Goal:
     created_turn: int = 0
     deadline_turn: int | None = None
     estimated_duration: int = 1
+    last_progress_turn: int = 0
 
     # Hierarchy links
     parent_goal_id: str | None = None
@@ -374,6 +455,7 @@ class Goal:
     # Value estimates
     strategic_value: float = 0.0
     urgency: float = 0.0
+    reward_modifier: float = 1.0
 
     # Metadata
     metadata: dict[str, Any] = field(default_factory=dict)

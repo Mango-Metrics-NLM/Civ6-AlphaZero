@@ -292,7 +292,7 @@ class TestGoalEncoder:
         """Test encoding tactical goal."""
         encoder = GoalEncoder()
         goal = Goal.tactical(TacticalGoalType.CAPTURE_CITY)
-        goal.target = GoalTarget(location=(10, 10))
+        goal.target = GoalTarget(position=(10, 10))
 
         embedding = encoder.encode(goal)
 
@@ -315,7 +315,7 @@ class TestGoalEncoder:
 
         parent = Goal.strategic(StrategicGoalType.DOMINATION_VICTORY)
         child = Goal.tactical(TacticalGoalType.BUILD_ARMY)
-        child.parent_id = parent.id
+        child.parent_goal_id = parent.id
 
         embedding = encoder.encode(child, parent_goal=parent)
 

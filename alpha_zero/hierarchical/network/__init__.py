@@ -13,10 +13,10 @@ Example:
 from __future__ import annotations
 
 from alpha_zero.hierarchical.network.hierarchical_network import (
+    GoalConditionedHead,
     HierarchicalNetwork,
     HierarchicalNetworkConfig,
     LevelNetwork,
-    GoalConditionedHead,
 )
 
 __all__ = [

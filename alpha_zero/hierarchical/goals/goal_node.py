@@ -13,8 +13,9 @@ Example:
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Any
 
 from alpha_zero.hierarchical.goals.goal_types import (
     Goal,

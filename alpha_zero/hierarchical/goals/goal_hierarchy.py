@@ -17,16 +17,12 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from alpha_zero.hierarchical.goals.goal_node import GoalNode
 from alpha_zero.hierarchical.goals.goal_types import (
     Goal,
     GoalStatus,
-    GoalTarget,
     HierarchyLevel,
-    OperationalGoalType,
-    StrategicGoalType,
-    TacticalGoalType,
 )
-from alpha_zero.hierarchical.goals.goal_node import GoalNode
 
 if TYPE_CHECKING:
     pass
@@ -521,8 +517,8 @@ class GoalHierarchy:
         Returns:
             Dictionary of statistics.
         """
-        by_level = {level: 0 for level in HierarchyLevel}
-        by_status = {status: 0 for status in GoalStatus}
+        by_level = dict.fromkeys(HierarchyLevel, 0)
+        by_status = dict.fromkeys(GoalStatus, 0)
 
         for node in self.nodes_by_id.values():
             by_level[node.level] += 1

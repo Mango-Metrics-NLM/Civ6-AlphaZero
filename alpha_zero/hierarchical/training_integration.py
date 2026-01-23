@@ -13,9 +13,10 @@ Example:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 
@@ -28,10 +29,9 @@ except ImportError:
 from alpha_zero.hierarchical.config import HierarchicalConfig, HierarchyLevel
 from alpha_zero.hierarchical.controller import (
     HierarchicalController,
-    HierarchicalDecision,
     create_hierarchical_controller,
 )
-from alpha_zero.hierarchical.goals.goal_types import Goal, GoalStatus
+from alpha_zero.hierarchical.goals.goal_types import GoalStatus
 
 logger = logging.getLogger(__name__)
 
@@ -416,7 +416,7 @@ class HierarchicalTrainingIntegration:
 
         # Simple training step (placeholder - actual implementation would be more complex)
         network.train()
-        optimizer = torch.optim.Adam(network.parameters(), lr=0.001)
+        torch.optim.Adam(network.parameters(), lr=0.001)
 
         total_loss = 0.0
         for sample in data[-100:]:  # Use recent data
