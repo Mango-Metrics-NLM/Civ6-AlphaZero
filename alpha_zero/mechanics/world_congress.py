@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ class ResolutionEffect:
     """
 
     effect_type: str
-    target: Optional[str | int] = None
+    target: str | int | None = None
     value: float = 0.0
     duration: int = -1
 
@@ -136,8 +136,8 @@ class Resolution:
     options: list[str] = field(default_factory=lambda: ["Option A", "Option B"])
     effects_a: list[ResolutionEffect] = field(default_factory=list)
     effects_b: list[ResolutionEffect] = field(default_factory=list)
-    proposer_id: Optional[int] = None
-    target_id: Optional[int] = None
+    proposer_id: int | None = None
+    target_id: int | None = None
 
 
 # Default resolutions
@@ -227,7 +227,7 @@ class ActiveResolution:
     votes_against: int = 0
     player_votes: dict[int, Vote] = field(default_factory=dict)
     turn_proposed: int = 0
-    winning_option: Optional[str] = None
+    winning_option: str | None = None
 
 
 @dataclass
@@ -248,7 +248,7 @@ class Emergency:
     emergency_id: str
     emergency_type: EmergencyType
     target_player: int
-    target_city: Optional[str] = None
+    target_city: str | None = None
     reward_pool: dict[str, float] = field(default_factory=dict)
     turns_remaining: int = 30
     participants: dict[int, float] = field(default_factory=dict)
@@ -290,7 +290,7 @@ class WorldCongressManager:
         self._resolutions = {r.resolution_id: r for r in (resolutions or DEFAULT_RESOLUTIONS)}
 
         self._phase = CongressPhase.INACTIVE
-        self._favor: dict[int, float] = {i: 0.0 for i in range(num_players)}
+        self._favor: dict[int, float] = dict.fromkeys(range(num_players), 0.0)
         self._active_resolutions: dict[str, ActiveResolution] = {}
         self._passed_resolutions: list[ActiveResolution] = []
         self._active_effects: list[tuple[ResolutionEffect, int]] = []  # (effect, turns_remaining)
@@ -374,7 +374,7 @@ class WorldCongressManager:
         self,
         player_id: int,
         resolution_id: str,
-        target_id: Optional[int] = None,
+        target_id: int | None = None,
     ) -> bool:
         """Propose a resolution.
 
@@ -602,7 +602,7 @@ class WorldCongressManager:
         self,
         emergency_type: EmergencyType,
         target_player: int,
-        target_city: Optional[str] = None,
+        target_city: str | None = None,
         reward_pool: dict[str, float] | None = None,
     ) -> Emergency:
         """Call an emergency session.
@@ -699,7 +699,7 @@ class WorldCongressManager:
             Dictionary of encoded features
         """
         status = self.get_congress_status()
-        effects = self.get_active_effects()
+        _ = self.get_active_effects()  # Called for potential side effects
 
         # Phase encoding
         phase_encoding = [0.0] * len(CongressPhase)
@@ -719,7 +719,7 @@ class WorldCongressManager:
     def reset(self) -> None:
         """Reset all congress state."""
         self._phase = CongressPhase.INACTIVE
-        self._favor = {i: 0.0 for i in range(self._num_players)}
+        self._favor = dict.fromkeys(range(self._num_players), 0.0)
         self._active_resolutions.clear()
         self._passed_resolutions.clear()
         self._active_effects.clear()

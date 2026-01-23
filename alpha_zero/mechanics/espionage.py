@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import logging
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +119,7 @@ class MissionConfig:
     base_difficulty: float = 0.0
     required_rank: SpyRank = SpyRank.RECRUIT
     turns_required: int = 5
-    target_district: Optional[str] = None
+    target_district: str | None = None
     effect_value: float = 1.0
     can_be_lethal: bool = False
 
@@ -218,10 +218,10 @@ class Spy:
     rank: SpyRank = SpyRank.RECRUIT
     status: SpyStatus = SpyStatus.AVAILABLE
     experience: int = 0
-    location: Optional[str] = None
-    home_city: Optional[str] = None
-    current_mission: Optional[MissionType] = None
-    mission_target: Optional[str] = None
+    location: str | None = None
+    home_city: str | None = None
+    current_mission: MissionType | None = None
+    mission_target: str | None = None
     turns_remaining: int = 0
     times_captured: int = 0
     missions_completed: int = 0
@@ -402,7 +402,7 @@ class EspionageManager:
         self,
         spy_id: str,
         mission_type: MissionType,
-        target_city: Optional[str] = None,
+        target_city: str | None = None,
     ) -> Mission | None:
         """Assign a mission to a spy.
 

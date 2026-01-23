@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +127,7 @@ class GreatPersonDefinition:
     era: GreatPersonEra
     passive_bonus: str = ""
     passive_effects: dict[str, float] = field(default_factory=dict)
-    active_ability: Optional[GreatPersonAbility] = None
+    active_ability: GreatPersonAbility | None = None
     recruitment_cost: int = 60
 
 
@@ -576,7 +576,7 @@ class GreatPeopleManager:
     def activate_ability(
         self,
         instance_id: str,
-        target: Optional[tuple[int, int] | str] = None,
+        target: tuple[int, int] | str | None = None,
     ) -> dict[str, Any] | None:
         """Activate a Great Person's ability.
 
@@ -601,11 +601,11 @@ class GreatPeopleManager:
             return None
 
         if ability.target_required and target is None:
-            logger.warning(f"Ability requires target")
+            logger.warning("Ability requires target")
             return None
 
         if ability.charges > 0 and person.charges_remaining <= 0:
-            logger.warning(f"No charges remaining")
+            logger.warning("No charges remaining")
             return None
 
         # Consume charge

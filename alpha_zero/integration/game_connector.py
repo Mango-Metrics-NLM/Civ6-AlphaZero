@@ -27,15 +27,15 @@ Example usage:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any, Callable, Generic, Optional, Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -271,7 +271,7 @@ class GameConnectionError(Exception):
         self,
         message: str,
         severity: ErrorSeverity = ErrorSeverity.RECOVERABLE,
-        original_error: Optional[Exception] = None,
+        original_error: Exception | None = None,
     ):
         super().__init__(message)
         self.severity = severity
@@ -292,7 +292,7 @@ class ActionExecutionError(GameConnectionError):
         self,
         message: str,
         action: Any = None,
-        original_error: Optional[Exception] = None,
+        original_error: Exception | None = None,
     ):
         super().__init__(message, ErrorSeverity.RECOVERABLE, original_error)
         self.action = action
@@ -301,7 +301,7 @@ class ActionExecutionError(GameConnectionError):
 class StateRetrievalError(GameConnectionError):
     """Error retrieving game state."""
 
-    def __init__(self, message: str, original_error: Optional[Exception] = None):
+    def __init__(self, message: str, original_error: Exception | None = None):
         super().__init__(message, ErrorSeverity.RECOVERABLE, original_error)
 
 
@@ -422,8 +422,8 @@ class ConnectionMetrics:
     checkpoints_created: int = 0
     recoveries: int = 0
     uptime_seconds: float = 0.0
-    last_error: Optional[str] = None
-    last_error_time: Optional[float] = None
+    last_error: str | None = None
+    last_error_time: float | None = None
 
     @property
     def success_rate(self) -> float:
@@ -493,7 +493,7 @@ class CheckpointManager:
         state: dict[str, Any],
         game_id: str,
         turn: int,
-    ) -> Optional[Path]:
+    ) -> Path | None:
         """Save a state checkpoint.
 
         Args:
@@ -531,8 +531,8 @@ class CheckpointManager:
 
     def load_latest_checkpoint(
         self,
-        game_id: Optional[str] = None,
-    ) -> Optional[dict[str, Any]]:
+        game_id: str | None = None,
+    ) -> dict[str, Any] | None:
         """Load the latest checkpoint.
 
         Args:
@@ -576,7 +576,7 @@ class CheckpointManager:
             except Exception as e:
                 self._logger.warning(f"Failed to remove checkpoint: {e}")
 
-    def clear_checkpoints(self, game_id: Optional[str] = None) -> int:
+    def clear_checkpoints(self, game_id: str | None = None) -> int:
         """Clear checkpoints.
 
         Args:
@@ -656,7 +656,7 @@ class GameBackend(ABC):
         pass
 
     @abstractmethod
-    def reset(self, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    def reset(self, options: dict[str, Any] | None = None) -> dict[str, Any]:
         """Reset game to initial state.
 
         Args:
@@ -686,7 +686,7 @@ class MicroCivBackend(GameBackend):
         Args:
             **env_kwargs: Arguments for MicroCiv environment.
         """
-        self._env: Optional[Any] = None
+        self._env: Any | None = None
         self._env_kwargs = env_kwargs
         self._connected = False
 
@@ -730,7 +730,7 @@ class MicroCivBackend(GameBackend):
             "info": info,
         }
 
-    def reset(self, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    def reset(self, options: dict[str, Any] | None = None) -> dict[str, Any]:
         """Reset game to initial state."""
         if not self.is_connected():
             raise StateRetrievalError("Not connected")
@@ -748,7 +748,7 @@ class MicroCivBackend(GameBackend):
 class UncivBackend(GameBackend):
     """Backend for Unciv interface."""
 
-    def __init__(self, interface: Optional[Any] = None, **kwargs: Any):
+    def __init__(self, interface: Any | None = None, **kwargs: Any):
         """Initialize Unciv backend.
 
         Args:
@@ -756,7 +756,7 @@ class UncivBackend(GameBackend):
             **kwargs: Additional arguments.
         """
         self._interface = interface
-        self._state: Optional[dict[str, Any]] = None
+        self._state: dict[str, Any] | None = None
         self._connected = False
         self._kwargs = kwargs
 
@@ -798,9 +798,9 @@ class UncivBackend(GameBackend):
             self._state = new_state
             return {"state": new_state}
         except Exception as e:
-            raise ActionExecutionError(str(e), action, e)
+            raise ActionExecutionError(str(e), action, e) from e
 
-    def reset(self, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    def reset(self, options: dict[str, Any] | None = None) -> dict[str, Any]:
         """Reset/load new game."""
         if not self.is_connected():
             raise StateRetrievalError("Not connected")
@@ -845,7 +845,7 @@ class GameConnector:
         self,
         config: ConnectionConfig,
         game_type: GameType = GameType.MICROCIV,
-        backend: Optional[GameBackend] = None,
+        backend: GameBackend | None = None,
         **backend_kwargs: Any,
     ):
         """Initialize game connector.
@@ -864,7 +864,7 @@ class GameConnector:
         self._metrics = ConnectionMetrics()
         self._checkpoint_manager = CheckpointManager(config.recovery)
         self._logger = logging.getLogger(f"{__name__}.GameConnector")
-        self._start_time: Optional[float] = None
+        self._start_time: float | None = None
         self._game_id: str = ""
         self._turn: int = 0
         self._callbacks: dict[str, list[Callable]] = {
@@ -1086,7 +1086,7 @@ class GameConnector:
         self._latency.record_sample(latency_ms, is_action=True)
         return result
 
-    def reset(self, options: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    def reset(self, options: dict[str, Any] | None = None) -> dict[str, Any]:
         """Reset game with retry.
 
         Args:
@@ -1145,7 +1145,7 @@ class GameConnector:
             error_class: If all retries fail.
         """
         start_time = time.time()
-        last_error: Optional[Exception] = None
+        last_error: Exception | None = None
 
         for attempt in range(self.config.retry.max_retries):
             # Check timeout
@@ -1324,7 +1324,7 @@ def create_microciv_connector(
 
 
 def create_unciv_connector(
-    interface: Optional[Any] = None,
+    interface: Any | None = None,
     **kwargs: Any,
 ) -> GameConnector:
     """Factory function for Unciv connector.

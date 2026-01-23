@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -118,8 +118,8 @@ class StatModifier:
 
     modifier_type: StatModifierType
     value: float
-    condition: Optional[str] = None  # e.g., "vs_ranged", "in_forest"
-    condition_value: Optional[str] = None
+    condition: str | None = None  # e.g., "vs_ranged", "in_forest"
+    condition_value: str | None = None
 
 
 @dataclass
@@ -590,7 +590,7 @@ class PromotionManager:
     def get_unit_stat_modifiers(
         self,
         unit_id: str,
-        context: Optional[dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
     ) -> dict[StatModifierType, float]:
         """Get total stat modifiers for a unit.
 
@@ -654,7 +654,7 @@ class PromotionManager:
         self,
         unit_id: str,
         ability_type: AbilityType,
-        context: Optional[dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
     ) -> bool:
         """Check if unit has a specific ability.
 

@@ -15,12 +15,13 @@ All mechanics are designed to be:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +211,7 @@ class Trader:
     position: tuple[int, int]
     home_city: str
     status: TraderStatus = TraderStatus.IDLE
-    current_route: Optional[str] = None
+    current_route: str | None = None
     movement_remaining: int = 3
     max_movement: int = 3
     level: int = 1

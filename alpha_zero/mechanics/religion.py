@@ -660,7 +660,7 @@ class ReligionManager:
         """Deserialize religion state."""
         manager = cls(config=config)
 
-        for key, rel_data in data.get("religions", {}).items():
+        for _key, rel_data in data.get("religions", {}).items():
             religion = Religion.from_dict(rel_data)
             manager._religions[religion.id] = religion
 

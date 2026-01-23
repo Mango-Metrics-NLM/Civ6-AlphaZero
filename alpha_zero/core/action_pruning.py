@@ -14,10 +14,10 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from functools import lru_cache
-from typing import Any, Callable, Optional, Protocol, TypeVar
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -106,7 +106,7 @@ class PrunedActions:
 
     mask: np.ndarray
     action_indices: np.ndarray
-    priorities: Optional[np.ndarray] = None
+    priorities: np.ndarray | None = None
     stats: PruningStats = field(default_factory=PruningStats)
 
 
@@ -155,7 +155,7 @@ class FeasibilityPruner(BasePruner):
     def __init__(
         self,
         config: PrunerConfig,
-        action_decoder: Optional[Callable[[int], dict[str, Any]]] = None,
+        action_decoder: Callable[[int], dict[str, Any]] | None = None,
     ) -> None:
         """Initialize feasibility pruner.
 
@@ -346,7 +346,7 @@ class StrategicPruner(BasePruner):
     def __init__(
         self,
         config: PrunerConfig,
-        threat_evaluator: Optional[Callable[[dict[str, Any]], dict[str, float]]] = None,
+        threat_evaluator: Callable[[dict[str, Any]], dict[str, float]] | None = None,
     ) -> None:
         """Initialize strategic pruner.
 
@@ -689,7 +689,7 @@ class MacroAction:
     estimated_turns: int = 1
     priority: float = 0.5
     units_involved: list[str] = field(default_factory=list)
-    target: Optional[tuple[int, int] | str] = None
+    target: tuple[int, int] | str | None = None
     prerequisites: list[str] = field(default_factory=list)
     success_conditions: list[str] = field(default_factory=list)
 
@@ -775,7 +775,7 @@ class MacroActionPlanner:
         self,
         state: dict[str, Any],
         macro_type: MacroActionType,
-        target: Optional[Any] = None,
+        target: Any | None = None,
         **kwargs: Any,
     ) -> MacroAction | None:
         """Plan a macro-action.
@@ -813,7 +813,7 @@ class MacroActionPlanner:
     def _plan_settle_city(
         self,
         state: dict[str, Any],
-        target: Optional[tuple[int, int]],
+        target: tuple[int, int] | None,
         **kwargs: Any,
     ) -> MacroAction | None:
         """Plan settling a new city."""
@@ -892,7 +892,7 @@ class MacroActionPlanner:
     def _plan_explore(
         self,
         state: dict[str, Any],
-        target: Optional[tuple[int, int]],
+        target: tuple[int, int] | None,
         **kwargs: Any,
     ) -> MacroAction | None:
         """Plan exploration pattern."""
@@ -912,7 +912,7 @@ class MacroActionPlanner:
     def _plan_trade_network(
         self,
         state: dict[str, Any],
-        target: Optional[str],
+        target: str | None,
         **kwargs: Any,
     ) -> MacroAction | None:
         """Plan establishing trade routes."""

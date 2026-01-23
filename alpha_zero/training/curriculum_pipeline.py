@@ -30,12 +30,11 @@ from __future__ import annotations
 import json
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any, Callable, Optional, Protocol, TypeVar
-
-import numpy as np
+from typing import Any, Protocol, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +87,7 @@ class EnvironmentTier(Enum):
         }
         return scores[self]
 
-    def next_tier(self) -> Optional[EnvironmentTier]:
+    def next_tier(self) -> EnvironmentTier | None:
         """Get the next tier in the curriculum."""
         order = [EnvironmentTier.MICROCIV, EnvironmentTier.UNCIV, EnvironmentTier.CIV6]
         try:
@@ -99,7 +98,7 @@ class EnvironmentTier(Enum):
             pass
         return None
 
-    def previous_tier(self) -> Optional[EnvironmentTier]:
+    def previous_tier(self) -> EnvironmentTier | None:
         """Get the previous tier in the curriculum."""
         order = [EnvironmentTier.MICROCIV, EnvironmentTier.UNCIV, EnvironmentTier.CIV6]
         try:
@@ -483,7 +482,7 @@ class CurriculumPipelineConfig:
         """Create production config (standard settings)."""
         return cls(enabled=True, allow_tier_demotion=True)
 
-    def get_tier_config(self, tier: EnvironmentTier) -> Optional[EnvironmentTierConfig]:
+    def get_tier_config(self, tier: EnvironmentTier) -> EnvironmentTierConfig | None:
         """Get configuration for a specific tier."""
         for tier_config in self.environment_tiers:
             if tier_config.tier == tier and tier_config.enabled:
@@ -763,7 +762,7 @@ class WeightTransferManager:
             )
             return self._partial_transfer(source_network, target_network)
 
-    def _align_tensor(self, source: Any, target_shape: tuple) -> Optional[Any]:
+    def _align_tensor(self, source: Any, target_shape: tuple) -> Any | None:
         """Attempt to align source tensor to target shape.
 
         Args:
@@ -788,7 +787,6 @@ class WeightTransferManager:
             if len(source.shape) == 4:  # Conv weight: [out, in, h, w]
                 if source.shape[1] < target_shape[1]:
                     # Target has more input channels - pad with zeros
-                    padding = target_shape[1] - source.shape[1]
                     new_weight = torch.zeros(target_shape)
                     new_weight[:, :source.shape[1], :, :] = source
                     return new_weight
@@ -848,9 +846,9 @@ class DefaultEnvironmentFactory(EnvironmentFactory):
 
     def __init__(
         self,
-        microciv_class: Optional[type] = None,
-        unciv_interface: Optional[Any] = None,
-        civ6_interface: Optional[Any] = None,
+        microciv_class: type | None = None,
+        unciv_interface: Any | None = None,
+        civ6_interface: Any | None = None,
     ):
         """Initialize factory.
 
@@ -884,8 +882,8 @@ class DefaultEnvironmentFactory(EnvironmentFactory):
             try:
                 from alpha_zero.envs.microciv import MicroCivEnv
                 self._microciv_class = MicroCivEnv
-            except ImportError:
-                raise RuntimeError("MicroCiv environment not available")
+            except ImportError as e:
+                raise RuntimeError("MicroCiv environment not available") from e
 
         return self._microciv_class(
             board_size=stage.board_size,
@@ -941,7 +939,7 @@ class CurriculumPipeline:
     def __init__(
         self,
         config: CurriculumPipelineConfig,
-        environment_factory: Optional[EnvironmentFactory] = None,
+        environment_factory: EnvironmentFactory | None = None,
     ):
         """Initialize curriculum pipeline.
 
@@ -1037,7 +1035,7 @@ class CurriculumPipeline:
         self,
         won: bool,
         opponent_elo: float = 1000.0,
-        metrics: Optional[dict[str, Any]] = None,
+        metrics: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Record a completed game.
 
@@ -1578,9 +1576,9 @@ def create_curriculum_pipeline(
 
 
 def create_environment_factory(
-    microciv_class: Optional[type] = None,
-    unciv_interface: Optional[Any] = None,
-    civ6_interface: Optional[Any] = None,
+    microciv_class: type | None = None,
+    unciv_interface: Any | None = None,
+    civ6_interface: Any | None = None,
 ) -> EnvironmentFactory:
     """Factory function to create environment factory.
 

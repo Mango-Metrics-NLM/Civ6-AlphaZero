@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Callable, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +127,7 @@ class GovernmentType:
     inherent_effects: dict[str, float] = field(default_factory=dict)
     legacy_name: str = ""
     legacy_effects: dict[str, float] = field(default_factory=dict)
-    required_civic: Optional[str] = None
+    required_civic: str | None = None
 
 
 # Default government types
@@ -253,8 +253,8 @@ class PolicyCard:
     effect_description: str
     effects: dict[str, float] = field(default_factory=dict)
     effect_type: PolicyEffectType = PolicyEffectType.FLAT_BONUS
-    required_civic: Optional[str] = None
-    obsolete_civic: Optional[str] = None
+    required_civic: str | None = None
+    obsolete_civic: str | None = None
     is_dark_age: bool = False
 
 
@@ -473,7 +473,7 @@ class GovernmentManager:
             PolicySlotType.WILDCARD: government.slots.wildcard,
         }
 
-        used_counts: dict[PolicySlotType, int] = {t: 0 for t in PolicySlotType}
+        used_counts: dict[PolicySlotType, int] = dict.fromkeys(PolicySlotType, 0)
 
         # Remove policies that exceed slot limits
         to_remove: list[int] = []
