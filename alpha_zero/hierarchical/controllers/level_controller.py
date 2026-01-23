@@ -68,7 +68,7 @@ class ControllerState:
     """
 
     active_goals: list[Goal] = field(default_factory=list)
-    last_decision_turn: int = 0
+    last_decision_turn: int = -9999  # Sentinel: ensures first should_update returns True
     decision_history: list[ControllerDecision] = field(default_factory=list)
     cumulative_reward: float = 0.0
     episodes_completed: int = 0

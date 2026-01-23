@@ -96,17 +96,25 @@ class GoalNode:
         """Get the total number of nodes in this subtree."""
         return 1 + sum(child.subtree_size for child in self.children)
 
-    def add_child(self, child: GoalNode) -> None:
-        """Add a child node.
+    def add_child(self, child: GoalNode | Goal) -> GoalNode:
+        """Add a child node or goal.
 
         Args:
-            child: Child node to add.
+            child: Child node or goal to add.
+
+        Returns:
+            The child GoalNode.
         """
+        # Wrap Goal in GoalNode if needed
+        if not isinstance(child, GoalNode):
+            child = GoalNode(goal=child)
+
         child.parent = self
         child.goal.parent_goal_id = self.goal.id
         self.children.append(child)
         self.goal.child_goal_ids.append(child.goal.id)
         logger.debug(f"Added child {child.id} to node {self.id}")
+        return child
 
     def remove_child(self, child_id: str) -> GoalNode | None:
         """Remove a child node by ID.

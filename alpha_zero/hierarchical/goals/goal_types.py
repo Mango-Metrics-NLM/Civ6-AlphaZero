@@ -325,7 +325,7 @@ class GoalTarget:
         metadata: Additional target-specific data.
     """
 
-    target_type: str
+    target_type: str = "generic"
     target_id: str | None = None
     position: tuple[int, int] | None = None
     quantity: int | None = None

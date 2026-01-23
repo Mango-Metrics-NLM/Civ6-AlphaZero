@@ -4,7 +4,6 @@ from __future__ import annotations
 import pytest
 import numpy as np
 
-from alpha_zero.hierarchical.config import HierarchyLevel
 from alpha_zero.hierarchical.encoders.state_encoder import (
     EncoderConfig,
     StrategicStateEncoder,
@@ -21,6 +20,7 @@ from alpha_zero.hierarchical.encoders.goal_encoder import (
 from alpha_zero.hierarchical.goals.goal_types import (
     Goal,
     GoalTarget,
+    HierarchyLevel,
     StrategicGoalType,
     TacticalGoalType,
     OperationalGoalType,

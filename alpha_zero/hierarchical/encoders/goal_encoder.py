@@ -24,11 +24,11 @@ try:
 except ImportError:
     TORCH_AVAILABLE = False
 
-from alpha_zero.hierarchical.config import HierarchyLevel
 from alpha_zero.hierarchical.goals.goal_types import (
     Goal,
     GoalStatus,
     GoalTarget,
+    HierarchyLevel,
     OperationalGoalType,
     StrategicGoalType,
     TacticalGoalType,

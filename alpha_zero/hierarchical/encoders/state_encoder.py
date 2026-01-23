@@ -28,7 +28,8 @@ try:
 except ImportError:
     TORCH_AVAILABLE = False
 
-from alpha_zero.hierarchical.config import HierarchyLevel, LevelConfig
+from alpha_zero.hierarchical.config import LevelConfig
+from alpha_zero.hierarchical.goals.goal_types import HierarchyLevel
 
 logger = logging.getLogger(__name__)
 

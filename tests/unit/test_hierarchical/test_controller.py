@@ -40,7 +40,7 @@ class TestControllerState:
         state = ControllerState()
 
         assert state.active_goals == []
-        assert state.last_decision_turn == 0
+        assert state.last_decision_turn == -9999  # Sentinel for first update
         assert state.cumulative_reward == 0.0
         assert state.episodes_completed == 0
 
@@ -138,7 +138,7 @@ class TestStrategicController:
         controller.reset()
 
         assert controller.state.cumulative_reward == 0.0
-        assert controller.state.last_decision_turn == 0
+        assert controller.state.last_decision_turn == -9999  # Reset to sentinel
 
 
 class TestTacticalController:

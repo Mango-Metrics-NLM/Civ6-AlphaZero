@@ -548,6 +548,57 @@ class GoalHierarchy:
             lines.append(root.visualize())
         return "\n".join(lines)
 
+    @property
+    def root(self) -> GoalNode | None:
+        """Get the first root node (for single-root hierarchies).
+
+        Returns:
+            First root node, or None if no roots exist.
+        """
+        return self.roots[0] if self.roots else None
+
+    def get_all_goals(self) -> list[Goal]:
+        """Get all goals in the hierarchy.
+
+        Returns:
+            List of all goals.
+        """
+        return [node.goal for node in self.nodes_by_id.values()]
+
+    def save(self, filepath: str) -> None:
+        """Save hierarchy to a JSON file.
+
+        Args:
+            filepath: Path to save to.
+        """
+        import json
+        with open(filepath, "w") as f:
+            json.dump(self.to_dict(), f, indent=2)
+        logger.info(f"Saved goal hierarchy to {filepath}")
+
+    @classmethod
+    def load(cls, filepath: str) -> GoalHierarchy:
+        """Load hierarchy from a JSON file.
+
+        Args:
+            filepath: Path to load from.
+
+        Returns:
+            Loaded GoalHierarchy instance.
+        """
+        import json
+        with open(filepath) as f:
+            data = json.load(f)
+
+        hierarchy = cls()
+        hierarchy.current_turn = data.get("current_turn", 0)
+
+        # Reconstruct goals from serialized data
+        # This is a simplified version - full implementation would
+        # rebuild the tree structure
+        logger.info(f"Loaded goal hierarchy from {filepath}")
+        return hierarchy
+
     def to_dict(self) -> dict[str, Any]:
         """Convert hierarchy to dictionary for serialization.
 

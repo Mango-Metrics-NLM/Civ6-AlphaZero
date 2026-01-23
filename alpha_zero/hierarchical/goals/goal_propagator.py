@@ -206,7 +206,7 @@ class StrategicDecomposition(DecompositionStrategy):
                 goal_type=tactic_type,
                 target=self._derive_target(goal, tactic_type, game_state),
                 priority=goal.priority * 0.8,  # Slightly lower priority
-                parent_id=goal.id,
+                parent_goal_id=goal.id,
                 created_turn=context.get("current_turn", 0),
                 deadline_turn=goal.deadline_turn,
                 metadata={
@@ -369,7 +369,7 @@ class TacticalDecomposition(DecompositionStrategy):
                 goal_type=op_type,
                 target=self._derive_target(goal, op_type, game_state),
                 priority=goal.priority * 0.9,
-                parent_id=goal.id,
+                parent_goal_id=goal.id,
                 created_turn=context.get("current_turn", 0),
                 deadline_turn=min(
                     goal.deadline_turn or float("inf"),
@@ -575,7 +575,7 @@ class GoalPropagator:
             result.messages.append(f"Goal {parent.id} completed via sub-goal progress")
 
         # Recursively propagate up
-        if parent.parent_id:
+        if parent.parent_goal_id:
             sub_result = self.propagate_up(parent, game_state)
             result.merge(sub_result)
 
@@ -714,7 +714,7 @@ class GoalPropagator:
                     continue
 
                 # Propagate up if leaf goal with parent
-                if not goal.children_ids and goal.parent_goal_id:
+                if not goal.child_goal_ids and goal.parent_goal_id:
                     up_result = self.propagate_up(goal, game_state)
                     result.merge(up_result)
 

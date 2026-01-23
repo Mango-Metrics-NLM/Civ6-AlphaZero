@@ -643,3 +643,96 @@ class GoalEvaluator:
                 hierarchy.update_progress(goal.id, result.progress)
 
         return total_reward
+
+    def evaluate_strategic_goal(
+        self,
+        goal: Goal,
+        game_state: dict[str, Any],
+    ) -> EvaluationResult:
+        """Evaluate a strategic-level goal.
+
+        Args:
+            goal: Strategic goal to evaluate.
+            game_state: Current game state.
+
+        Returns:
+            Evaluation result.
+        """
+        return self.evaluate_progress(goal, game_state)
+
+    def evaluate_tactical_goal(
+        self,
+        goal: Goal,
+        game_state: dict[str, Any],
+    ) -> EvaluationResult:
+        """Evaluate a tactical-level goal.
+
+        Args:
+            goal: Tactical goal to evaluate.
+            game_state: Current game state.
+
+        Returns:
+            Evaluation result.
+        """
+        return self.evaluate_progress(goal, game_state)
+
+    def evaluate_operational_goal(
+        self,
+        goal: Goal,
+        game_state: dict[str, Any],
+    ) -> EvaluationResult:
+        """Evaluate an operational-level goal.
+
+        Args:
+            goal: Operational goal to evaluate.
+            game_state: Current game state.
+
+        Returns:
+            Evaluation result.
+        """
+        return self.evaluate_progress(goal, game_state)
+
+    def compute_goal_reward(
+        self,
+        goal: Goal,
+        prev_state: dict[str, Any] | None = None,
+        next_state: dict[str, Any] | None = None,
+        base_reward: float = 0.0,
+    ) -> float:
+        """Compute reward for a single goal based on state changes.
+
+        Args:
+            goal: Goal to compute reward for.
+            prev_state: Previous game state (optional).
+            next_state: Next game state (optional).
+            base_reward: Base reward to add to.
+
+        Returns:
+            Total reward value.
+        """
+        level_weight = self.level_weights.get(goal.level, 0.1)
+        reward = base_reward
+
+        # Evaluate progress change if states provided
+        if prev_state is not None and next_state is not None:
+            prev_result = self.evaluate_progress(goal, prev_state)
+            next_result = self.evaluate_progress(goal, next_state)
+            progress_delta = next_result.progress - prev_result.progress
+
+            # Progress-based reward
+            if progress_delta > 0:
+                reward += progress_delta * self.progress_weight * level_weight * 10
+
+            # Completion bonus
+            if next_result.is_complete and not prev_result.is_complete:
+                reward += self.completion_bonus * level_weight
+
+        else:
+            # Simple progress-based reward
+            reward += goal.progress * self.progress_weight * level_weight
+
+            # Completion bonus
+            if goal.progress >= 1.0:
+                reward += self.completion_bonus * level_weight
+
+        return reward
