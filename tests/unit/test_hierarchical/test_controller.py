@@ -1,35 +1,29 @@
 """Tests for hierarchical controller and level controllers."""
 from __future__ import annotations
 
-import pytest
 import numpy as np
 
 from alpha_zero.hierarchical.config import (
     HierarchicalConfig,
-    LevelConfig,
     HierarchyLevel,
+    LevelConfig,
 )
 from alpha_zero.hierarchical.controller import (
     HierarchicalController,
-    HierarchicalState,
     HierarchicalDecision,
     create_hierarchical_controller,
 )
 from alpha_zero.hierarchical.controllers.level_controller import (
-    LevelController,
+    ControllerDecision,
+    ControllerState,
+    OperationalController,
     StrategicController,
     TacticalController,
-    OperationalController,
-    ControllerState,
-    ControllerDecision,
 )
 from alpha_zero.hierarchical.goals.goal_types import (
     Goal,
-    GoalStatus,
     StrategicGoalType,
-    TacticalGoalType,
 )
-from alpha_zero.hierarchical.goals.goal_hierarchy import GoalHierarchy
 
 
 class TestControllerState:

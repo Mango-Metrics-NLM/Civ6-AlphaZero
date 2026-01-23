@@ -1,29 +1,28 @@
 """Tests for hierarchical state and goal encoders."""
 from __future__ import annotations
 
-import pytest
 import numpy as np
 
+from alpha_zero.hierarchical.encoders.goal_encoder import (
+    GoalEmbedding,
+    GoalEncoder,
+    GoalEncoderConfig,
+    HierarchicalGoalEncoder,
+)
 from alpha_zero.hierarchical.encoders.state_encoder import (
     EncoderConfig,
+    HierarchicalStateEncoder,
+    OperationalStateEncoder,
     StrategicStateEncoder,
     TacticalStateEncoder,
-    OperationalStateEncoder,
-    HierarchicalStateEncoder,
-)
-from alpha_zero.hierarchical.encoders.goal_encoder import (
-    GoalEncoderConfig,
-    GoalEncoder,
-    GoalEmbedding,
-    HierarchicalGoalEncoder,
 )
 from alpha_zero.hierarchical.goals.goal_types import (
     Goal,
     GoalTarget,
     HierarchyLevel,
+    OperationalGoalType,
     StrategicGoalType,
     TacticalGoalType,
-    OperationalGoalType,
 )
 
 

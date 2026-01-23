@@ -1,26 +1,22 @@
 """Tests for hierarchical goal management system."""
 from __future__ import annotations
 
-import pytest
-import numpy as np
-
-from alpha_zero.hierarchical.goals.goal_types import (
-    Goal,
-    GoalTarget,
-    GoalStatus,
-    HierarchyLevel,
-    StrategicGoalType,
-    TacticalGoalType,
-    OperationalGoalType,
-)
-from alpha_zero.hierarchical.goals.goal_node import GoalNode
-from alpha_zero.hierarchical.goals.goal_hierarchy import GoalHierarchy
 from alpha_zero.hierarchical.goals.goal_evaluator import GoalEvaluator
+from alpha_zero.hierarchical.goals.goal_hierarchy import GoalHierarchy
+from alpha_zero.hierarchical.goals.goal_node import GoalNode
 from alpha_zero.hierarchical.goals.goal_propagator import (
     GoalPropagator,
     StrategicDecomposition,
     TacticalDecomposition,
-    PropagationResult,
+)
+from alpha_zero.hierarchical.goals.goal_types import (
+    Goal,
+    GoalStatus,
+    GoalTarget,
+    HierarchyLevel,
+    OperationalGoalType,
+    StrategicGoalType,
+    TacticalGoalType,
 )
 
 
@@ -131,8 +127,8 @@ class TestGoalNode:
         """Test pre-order traversal."""
         root = GoalNode(Goal.strategic(StrategicGoalType.SCIENCE_VICTORY))
         child1 = root.add_child(Goal.tactical(TacticalGoalType.RESEARCH_TECH))
-        child2 = root.add_child(Goal.tactical(TacticalGoalType.BUILD_CAMPUS))
-        grandchild = child1.add_child(Goal.operational(OperationalGoalType.SELECT_RESEARCH))
+        root.add_child(Goal.tactical(TacticalGoalType.BUILD_CAMPUS))  # child2 - added for traversal test
+        child1.add_child(Goal.operational(OperationalGoalType.SELECT_RESEARCH))  # grandchild
 
         visited = []
         for node in root.traverse_preorder():
@@ -392,7 +388,7 @@ class TestGoalPropagator:
 
         # Simulate time passing beyond deadline
         context = {"current_turn": 10}
-        result = propagator.synchronize_hierarchy({}, context)
+        propagator.synchronize_hierarchy({}, context)
 
         # Goal should be marked failed
         assert goal.status == GoalStatus.FAILED
