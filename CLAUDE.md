@@ -291,6 +291,7 @@ When making changes, update the relevant sections below:
 | `pytest tests/unit/test_factories.py -v` | Test component factories |
 | `pytest tests/unit/test_rag_integration.py -v` | Test RAG integration |
 | `pytest tests/unit/test_strategy_advisor.py -v` | Test strategy advisor |
+| `pytest tests/unit/test_logic_agent.py -v` | Test LogicAgent strategic reasoning |
 | `pytest -k "test_name" -v` | Run specific test by name |
 
 ### 5.2 Architecture Decisions
@@ -313,6 +314,7 @@ When making changes, update the relevant sections below:
 | 2026-01-20 | Hyperparameter scheduling | Multiple schedule types (warmup_cosine, step, exponential) |
 | 2026-01-20 | Factory pattern for components | Testable, flexible component creation |
 | 2026-01-23 | Military strategy knowledge base | Classical warfare principles applied to Civ6 for RAG retrieval |
+| 2026-01-23 | LogicAgent framework | Uncertainty-aware strategic reasoning with honesty constraints |
 
 ### 5.3 Known Issues
 
@@ -448,6 +450,9 @@ Civ6-AlphaZero/
 │   ├── interfaces/              # Game interfaces
 │   │   ├── __init__.py
 │   │   └── unciv_interface.py   # Unciv JSON interface
+│   ├── agents/                  # Strategic reasoning agents
+│   │   ├── __init__.py
+│   │   └── logic_agent.py       # Uncertainty-aware decision agent
 │   ├── utils/                   # Utilities
 │   │   ├── __init__.py
 │   │   ├── logging.py           # Logging infrastructure
@@ -695,6 +700,64 @@ rag.store_training_insight("Found that aggressive expansion wins more games")
 
 rag.close()
 ```
+
+### 9.9 LogicAgent (Strategic Reasoning)
+
+The LogicAgent provides uncertainty-aware strategic decision-making with:
+- **Honesty Constraints**: Refuses to state uncertain information as fact
+- **Strategic Context**: Analyzes game phase, threats, and opportunities
+- **Sacrifice Logic**: Hierarchical utility (Victory > Survival > Efficiency)
+- **Pattern Memory**: Observes and learns from strategic situations
+
+```python
+from alpha_zero.agents import LogicAgent, LogicAgentConfig
+
+# Create agent with custom confidence threshold
+config = LogicAgentConfig(
+    confidence_threshold=0.85,  # Minimum confidence to act
+    sacrifice_threshold=0.3,    # Utility gain for sacrifice
+    enable_uncertainty_disclosure=True,
+)
+agent = LogicAgent(config, rag=rag_integration, name="StrategicAgent")
+
+# Evaluate a position with full transparency
+decision = agent.evaluate_position(
+    state={"turn": 100, "cities": [...], "military_strength": 500},
+    mcts_stats={"best_action": 42, "visit_count": 150, "value": 0.7},
+    policy=[0.8, 0.1, 0.05, 0.05],
+)
+
+# Check if confident enough to act
+if decision.is_actionable(config.confidence_threshold):
+    action = decision.recommended_action
+else:
+    print(f"Uncertain: {decision.uncertainty_report.explain()}")
+
+# Apply honesty constraint to any response
+honest_response = agent.check_honesty_constraint(
+    response="The answer is 42",
+    confidence=0.6,
+)
+# Returns: "[Confidence: 60%] I cannot state this with certainty..."
+```
+
+**Key Classes:**
+
+| Class | Purpose |
+|-------|---------|
+| `LogicAgent` | Main agent with analysis, uncertainty, sacrifice logic |
+| `LogicAgentConfig` | Configuration (thresholds, memory size) |
+| `GameContext` | Detected phase, threats, opportunities, patterns |
+| `StrategicDecision` | Action + confidence + reasoning + alternatives |
+| `UncertaintyReport` | Detailed uncertainty breakdown |
+
+**Utility Priority Hierarchy:**
+1. `VICTORY_CONDITION` (100) - Win the game
+2. `SURVIVAL` (90) - Prevent loss
+3. `STRATEGIC_ADVANTAGE` (70) - Long-term gains
+4. `TACTICAL_EFFICIENCY` (50) - Short-term optimization
+5. `RESOURCE_PRESERVATION` (30) - Minimize losses
+6. `AGENT_COMPUTATION` (10) - Self-efficiency (lowest)
 
 ---
 
