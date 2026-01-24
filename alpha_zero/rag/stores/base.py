@@ -200,12 +200,10 @@ class VectorStore(ABC):
 
         Must be called before any other operations.
         """
-        pass
 
     @abstractmethod
     async def close(self) -> None:
         """Close connections and release resources."""
-        pass
 
     @abstractmethod
     async def add_documents(self, documents: list[Document]) -> list[str]:
@@ -220,7 +218,6 @@ class VectorStore(ABC):
         Raises:
             ValueError: If documents lack embeddings
         """
-        pass
 
     @abstractmethod
     async def search(
@@ -239,7 +236,6 @@ class VectorStore(ABC):
         Returns:
             List of search results ordered by relevance
         """
-        pass
 
     @abstractmethod
     async def delete(self, ids: list[str]) -> int:
@@ -251,7 +247,6 @@ class VectorStore(ABC):
         Returns:
             Number of documents deleted
         """
-        pass
 
     @abstractmethod
     async def get(self, ids: list[str]) -> list[Document | None]:
@@ -263,7 +258,6 @@ class VectorStore(ABC):
         Returns:
             List of documents (None for missing IDs)
         """
-        pass
 
     @abstractmethod
     async def count(self) -> int:
@@ -272,7 +266,6 @@ class VectorStore(ABC):
         Returns:
             Document count
         """
-        pass
 
     async def update_documents(self, documents: list[Document]) -> int:
         """Update existing documents.
@@ -335,7 +328,7 @@ class VectorStore(ABC):
             if len(doc.embedding) != self.dimension:
                 raise ValueError(
                     f"Document {i} (id={doc.id}) has wrong dimension: "
-                    f"expected {self.dimension}, got {len(doc.embedding)}"
+                    f"expected {self.dimension}, got {len(doc.embedding)}",
                 )
 
     @staticmethod

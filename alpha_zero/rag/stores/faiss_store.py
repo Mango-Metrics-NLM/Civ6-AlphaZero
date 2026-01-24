@@ -12,9 +12,12 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+
+if TYPE_CHECKING:
+    import faiss
 
 from alpha_zero.rag.stores.base import Document, SearchResult, VectorStore
 
@@ -56,21 +59,21 @@ class FAISSVectorStore(VectorStore):
         self.distance_metric = distance_metric
         self.nlist = nlist
 
-        self._index = None
+        self._index: faiss.Index | None = None
         self._id_to_idx: dict[str, int] = {}
         self._idx_to_id: dict[int, str] = {}
         self._documents: dict[str, Document] = {}
         self._next_idx = 0
-        self._loop = None
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         """Initialize FAISS index."""
         try:
-            import faiss
+            import faiss  # noqa: F401
         except ImportError as e:
             raise ImportError(
-                "FAISS is not installed. Install with: pip install faiss-cpu"
+                "FAISS is not installed. Install with: pip install faiss-cpu",
             ) from e
 
         self._loop = asyncio.get_event_loop()
@@ -110,6 +113,7 @@ class FAISSVectorStore(VectorStore):
 
             return index
 
+        assert self._loop is not None
         self._index = await self._loop.run_in_executor(None, _create)
 
     async def _load_index(self) -> None:
@@ -125,6 +129,7 @@ class FAISSVectorStore(VectorStore):
 
             return index, metadata
 
+        assert self._loop is not None
         self._index, metadata = await self._loop.run_in_executor(None, _load)
 
         self._id_to_idx = metadata.get("id_to_idx", {})
@@ -143,10 +148,14 @@ class FAISSVectorStore(VectorStore):
 
         import faiss
 
+        assert self._loop is not None
+        assert self._index is not None
         self.persist_directory.mkdir(parents=True, exist_ok=True)
 
-        def _save():
-            faiss.write_index(self._index, str(self._index_file))
+        index = self._index  # Capture for closure
+
+        def _save() -> None:
+            faiss.write_index(index, str(self._index_file))
 
             # Save metadata
             metadata = {
@@ -164,11 +173,13 @@ class FAISSVectorStore(VectorStore):
     @property
     def _index_file(self) -> Path:
         """Get path to index file."""
+        assert self.persist_directory is not None
         return self.persist_directory / f"{self.collection_name}.index"
 
     @property
     def _metadata_file(self) -> Path:
         """Get path to metadata file."""
+        assert self.persist_directory is not None
         return self.persist_directory / f"{self.collection_name}.json"
 
     async def close(self) -> None:
@@ -191,6 +202,9 @@ class FAISSVectorStore(VectorStore):
             raise RuntimeError("Store not initialized. Call initialize() first.")
 
         self._validate_documents(documents)
+        assert self._loop is not None
+        assert self._index is not None
+        index = self._index  # Capture for closures
 
         async with self._lock:
             # Prepare embeddings
@@ -203,14 +217,14 @@ class FAISSVectorStore(VectorStore):
                 embeddings = embeddings / norms
 
             # Train index if IVF and not trained
-            if self.index_type == "IVF" and not self._index.is_trained:
-                def _train():
-                    self._index.train(embeddings)
+            if self.index_type == "IVF" and not index.is_trained:
+                def _train() -> None:
+                    index.train(embeddings)
                 await self._loop.run_in_executor(None, _train)
 
             # Add to index
-            def _add():
-                self._index.add(embeddings)
+            def _add() -> None:
+                index.add(embeddings)
 
             await self._loop.run_in_executor(None, _add)
 
@@ -248,7 +262,11 @@ class FAISSVectorStore(VectorStore):
         if not self._is_initialized:
             raise RuntimeError("Store not initialized. Call initialize() first.")
 
-        if self._index.ntotal == 0:
+        assert self._loop is not None
+        assert self._index is not None
+        index = self._index  # Capture for closure
+
+        if index.ntotal == 0:
             return []
 
         async with self._lock:
@@ -264,14 +282,14 @@ class FAISSVectorStore(VectorStore):
             # Search with extra results for filtering
             search_k = top_k * 3 if filter_metadata else top_k
 
-            def _search():
-                return self._index.search(query, min(search_k, self._index.ntotal))
+            def _search() -> tuple[np.ndarray, np.ndarray]:
+                return index.search(query, min(search_k, index.ntotal))  # type: ignore[no-any-return]
 
             distances, indices = await self._loop.run_in_executor(None, _search)
 
             # Build results
-            results = []
-            for dist, idx in zip(distances[0], indices[0]):
+            results: list[SearchResult] = []
+            for dist, idx in zip(distances[0], indices[0], strict=True):
                 if idx < 0:  # FAISS returns -1 for invalid results
                     continue
 
@@ -301,7 +319,7 @@ class FAISSVectorStore(VectorStore):
                         score=score,
                         distance=float(dist) if self.distance_metric != "cosine" else 1 - float(dist),
                         rank=len(results) + 1,
-                    )
+                    ),
                 )
 
                 if len(results) >= top_k:

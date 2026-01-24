@@ -7,7 +7,6 @@ similarity computation. Useful for testing and small-scale applications.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -160,7 +159,7 @@ class MemoryVectorStore(VectorStore):
                         score=score,
                         distance=1 - score if self.distance_metric == "cosine" else float(distances[idx]),
                         rank=rank,
-                    )
+                    ),
                 )
 
             return results
@@ -213,7 +212,7 @@ class MemoryVectorStore(VectorStore):
             self._state = MemoryStoreState()
 
     def _apply_metadata_filter(
-        self, filter_metadata: dict[str, Any]
+        self, filter_metadata: dict[str, Any],
     ) -> list[int]:
         """Apply metadata filter and return matching indices.
 
@@ -239,7 +238,7 @@ class MemoryVectorStore(VectorStore):
         return matching_indices
 
     def _compute_cosine_similarities(
-        self, query: np.ndarray, embeddings: np.ndarray
+        self, query: np.ndarray, embeddings: np.ndarray,
     ) -> np.ndarray:
         """Compute cosine similarities between query and all embeddings.
 
@@ -262,7 +261,7 @@ class MemoryVectorStore(VectorStore):
         return np.dot(embeddings_normalized, query_normalized)
 
     def _compute_euclidean_distances(
-        self, query: np.ndarray, embeddings: np.ndarray
+        self, query: np.ndarray, embeddings: np.ndarray,
     ) -> np.ndarray:
         """Compute Euclidean distances between query and all embeddings.
 

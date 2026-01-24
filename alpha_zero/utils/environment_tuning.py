@@ -21,7 +21,6 @@ Example usage:
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from typing import Any, SupportsFloat
 
@@ -110,14 +109,14 @@ class EnvironmentTuningConfig:
     fog_of_war_enabled: bool = True
     board_size: int | None = None
     early_termination: EarlyTerminationConfig = field(
-        default_factory=EarlyTerminationConfig
+        default_factory=EarlyTerminationConfig,
     )
     production: ProductionConfig = field(default_factory=ProductionConfig)
     combat: CombatConfig = field(default_factory=CombatConfig)
     seed: int | None = None
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "EnvironmentTuningConfig":
+    def from_dict(cls, data: dict[str, Any]) -> EnvironmentTuningConfig:
         """Create configuration from dictionary.
 
         Args:
@@ -272,13 +271,13 @@ class EarlyTerminationChecker:
 
         if total_advantage >= self.config.advantage_threshold:
             self._logger.debug(
-                f"Early termination: player advantage={total_advantage} at turn {turn}"
+                f"Early termination: player advantage={total_advantage} at turn {turn}",
             )
             return True, 0, f"player_advantage_{total_advantage}"
 
         if total_advantage <= -self.config.advantage_threshold:
             self._logger.debug(
-                f"Early termination: opponent advantage={-total_advantage} at turn {turn}"
+                f"Early termination: opponent advantage={-total_advantage} at turn {turn}",
             )
             return True, 1, f"opponent_advantage_{-total_advantage}"
 
@@ -324,7 +323,7 @@ class TunedEnvironmentWrapper(gym.Wrapper):
 
         self.config = config or EnvironmentTuningConfig()
         self._early_termination_checker = EarlyTerminationChecker(
-            self.config.early_termination
+            self.config.early_termination,
         )
         self._logger = get_logger(f"{__name__}.TunedEnvironmentWrapper")
 

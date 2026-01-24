@@ -10,15 +10,15 @@ Training Improvement Modules:
 - training_config_enhanced: Scalable training configurations
 """
 
-from alpha_zero.utils.logging import (
-    GameLogger,
-    LogConfig,
-    MetricsTracker,
-    TrainingLogger,
-    get_logger,
-    setup_logging,
-    timer,
-    timed_section,
+from alpha_zero.utils.benchmarks import (
+    BenchmarkConfig,
+    Benchmarker,
+    BenchmarkResult,
+    BenchmarkSuite,
+    benchmark_function,
+    create_mechanics_benchmarks,
+    run_all_benchmarks,
+    time_function,
 )
 from alpha_zero.utils.config import (
     ActionSpaceConfig,
@@ -37,27 +37,29 @@ from alpha_zero.utils.config import (
     merge_configs,
     save_config,
 )
-from alpha_zero.utils.benchmarks import (
-    BenchmarkConfig,
-    BenchmarkResult,
-    Benchmarker,
-    BenchmarkSuite,
-    benchmark_function,
-    create_mechanics_benchmarks,
-    run_all_benchmarks,
-    time_function,
+from alpha_zero.utils.logging import (
+    GameLogger,
+    LogConfig,
+    MetricsTracker,
+    TrainingLogger,
+    get_logger,
+    setup_logging,
+    timed_section,
+    timer,
 )
 
 # LLM Client (optional - depends on openai/anthropic packages)
 try:
-    from alpha_zero.utils.llm_client import (
+    from alpha_zero.utils.llm_client import (  # noqa: F401
         LLMClient,
         LLMConfig,
-        LLMMessage,
-        LLMResponse,
-        LLMProvider,
         LLMError,
+        LLMMessage,
+        LLMProvider,
+        LLMResponse,
         create_llm_client,
+    )
+    from alpha_zero.utils.llm_client import (  # noqa: F401
         generate_sync as llm_generate,
     )
     _LLM_AVAILABLE = True
@@ -65,29 +67,36 @@ except ImportError:
     _LLM_AVAILABLE = False
 
 # Test Runner
-from alpha_zero.utils.test_runner import (
-    TestRunner,
-    TestConfig,
-    TestResult,
-    TestStatus,
-    run_tests,
-    quick_test,
-)
-
 # Agent Tools
 from alpha_zero.utils.agent_tools import (
     CodeExplorer,
     CodeLocation,
     CodeSymbol,
-    FileManager,
-    TaskTracker,
-    TaskStatus as AgentTaskStatus,
-    Task,
     DebugHelper,
+    FileManager,
+    Task,
+    TaskTracker,
     explore,
-    search,
     find_definition,
+    search,
 )
+from alpha_zero.utils.agent_tools import (
+    TaskStatus as AgentTaskStatus,
+)
+from alpha_zero.utils.test_runner import (
+    PytestRunner,
+    RunConfig,
+    RunResult,
+    RunStatus,
+    quick_test,
+    run_tests,
+)
+
+# Backwards compatibility aliases
+TestRunner = PytestRunner
+TestConfig = RunConfig
+TestResult = RunResult
+TestStatus = RunStatus
 
 __all__ = [
     # Logging
@@ -124,7 +133,12 @@ __all__ = [
     "create_mechanics_benchmarks",
     "run_all_benchmarks",
     "time_function",
-    # Test Runner
+    # Test Runner (new names)
+    "PytestRunner",
+    "RunConfig",
+    "RunResult",
+    "RunStatus",
+    # Test Runner (backwards compatibility)
     "TestRunner",
     "TestConfig",
     "TestResult",
@@ -160,9 +174,9 @@ if _LLM_AVAILABLE:
 
 # W&B Logger (optional - depends on wandb package)
 try:
-    from alpha_zero.utils.wandb_logger import (
-        WandbLogger,
+    from alpha_zero.utils.wandb_logger import (  # noqa: F401
         WandbConfig,
+        WandbLogger,
         get_wandb_logger,
         init_wandb,
         log_metrics,
@@ -180,12 +194,12 @@ except ImportError:
 
 # RAG Integration (optional - depends on chromadb/sentence-transformers)
 try:
-    from alpha_zero.utils.rag_client import (
+    from alpha_zero.utils.knowledge_base import (  # noqa: F401
+        KnowledgeBase,
+    )
+    from alpha_zero.utils.rag_client import (  # noqa: F401
         RAGClient,
         RAGConfig,
-    )
-    from alpha_zero.utils.knowledge_base import (
-        KnowledgeBase,
     )
     _RAG_AVAILABLE = True
     __all__.extend([
@@ -197,50 +211,47 @@ except ImportError:
     _RAG_AVAILABLE = False
 
 # Training Improvement Modules
-from alpha_zero.utils.environment_tuning import (
-    EnvironmentTuningConfig,
-    EarlyTerminationConfig,
-    ProductionConfig,
-    CombatConfig,
-    TunedEnvironmentWrapper,
-    EarlyTerminationChecker,
-    create_tuned_environment,
-    get_default_fast_config,
-    get_default_balanced_config,
-    get_default_realistic_config,
+from alpha_zero.utils.curriculum_learning import (  # noqa: F401, E402
+    AdaptiveDifficultyController,
+    CurriculumConfig,
+    CurriculumManager,
+    CurriculumStage,
+    CurriculumState,
+    DifficultyDimension,
+    create_curriculum_manager,
 )
-
-from alpha_zero.utils.enhanced_rewards import (
+from alpha_zero.utils.enhanced_rewards import (  # noqa: F401, E402
     EnhancedRewardsConfig,
+    EnhancedRewardShaper,
+    EnhancedStateFeatures,
     IntermediateRewardsConfig,
     VictoryBonusConfig,
-    EnhancedStateFeatures,
-    EnhancedRewardShaper,
     WinCondition,
     WinConditionEvaluator,
     create_enhanced_reward_shaper,
     get_aggressive_rewards_config,
-    get_defensive_rewards_config,
     get_balanced_rewards_config,
+    get_defensive_rewards_config,
 )
-
-from alpha_zero.utils.curriculum_learning import (
-    CurriculumConfig,
-    CurriculumStage,
-    CurriculumState,
-    CurriculumManager,
-    DifficultyDimension,
-    AdaptiveDifficultyController,
-    create_curriculum_manager,
+from alpha_zero.utils.environment_tuning import (  # noqa: F401, E402
+    CombatConfig,
+    EarlyTerminationChecker,
+    EarlyTerminationConfig,
+    EnvironmentTuningConfig,
+    ProductionConfig,
+    TunedEnvironmentWrapper,
+    create_tuned_environment,
+    get_default_balanced_config,
+    get_default_fast_config,
+    get_default_realistic_config,
 )
-
-from alpha_zero.utils.training_config_enhanced import (
+from alpha_zero.utils.training_config_enhanced import (  # noqa: F401, E402
     EnhancedTrainingConfig,
     ParameterSchedule,
-    SchedulePoint,
-    ScheduleType,
     ResourceConfig,
     ResourceManager,
+    SchedulePoint,
+    ScheduleType,
     create_training_config,
     get_fast_training_config,
     get_production_training_config,

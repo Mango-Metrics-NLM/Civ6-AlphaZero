@@ -271,7 +271,7 @@ class HyperparameterScheduler:
         if schedule_name not in schedule_map:
             raise ValueError(
                 f"Unknown schedule: {schedule_name}. "
-                f"Choose from: {list(schedule_map.keys())}"
+                f"Choose from: {list(schedule_map.keys())}",
             )
 
         schedule = schedule_map[schedule_name]

@@ -13,8 +13,9 @@ All thresholds and parameters are configurable.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 T = TypeVar("T")
 
@@ -179,9 +180,12 @@ class Benchmarker:
         results = []
         for batch_size in batch_sizes:
             benchmark_name = f"{name} (batch={batch_size})"
+            # Capture batch_size in closure with explicit type
+            def make_func(bs: int = batch_size) -> T:
+                return func(bs)
             result = self.run_benchmark(
                 name=benchmark_name,
-                func=lambda bs=batch_size: func(bs),
+                func=make_func,
                 threshold_ops_per_second=threshold_ops_per_second,
             )
             result.extra_info["batch_size"] = batch_size
@@ -222,7 +226,7 @@ class Benchmarker:
             f"Total: {summary['total_benchmarks']}, "
             f"Passed: {summary['passed']}, "
             f"Failed: {summary['failed']}, "
-            f"Pass Rate: {summary['pass_rate']*100:.1f}%"
+            f"Pass Rate: {summary['pass_rate']*100:.1f}%",
         )
         print("=" * 60)
 

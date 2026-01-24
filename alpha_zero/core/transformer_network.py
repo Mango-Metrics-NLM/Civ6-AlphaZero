@@ -14,7 +14,6 @@ All values are configurable - no hardcoded parameters.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -536,7 +535,7 @@ class MixtureOfExperts(nn.Module):
 
         # Select top-k experts
         top_k_probs, top_k_indices = torch.topk(
-            router_probs, self.experts_per_token, dim=-1
+            router_probs, self.experts_per_token, dim=-1,
         )  # (B, N, k)
 
         # Normalize selected probabilities
@@ -699,7 +698,7 @@ class PatchEmbed(nn.Module):
         self.patch_size = patch_size
         self.num_patches = (spatial_size // patch_size) ** 2
         self.proj = nn.Conv2d(
-            in_channels, embed_dim, kernel_size=patch_size, stride=patch_size
+            in_channels, embed_dim, kernel_size=patch_size, stride=patch_size,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -1215,13 +1214,15 @@ def create_transformer_network(
 
     preset = presets.get(model_size, presets["small"])
 
+    # Merge preset with kwargs, allowing kwargs to override preset values
+    merged_config = {**preset, **kwargs}
+
     config = TransformerConfig(
         spatial_channels=spatial_channels,
         spatial_size=spatial_size,
         vector_dim=vector_dim,
         action_space_size=action_space_size,
-        **preset,
-        **kwargs,
+        **merged_config,  # type: ignore[arg-type]
     )
 
     return Civ6TransformerNetwork(config=config)

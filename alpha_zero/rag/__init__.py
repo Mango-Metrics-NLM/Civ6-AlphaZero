@@ -19,17 +19,17 @@ Example usage:
     results = await pipeline.query("What strategy should I use?", top_k=5)
 """
 
+from alpha_zero.rag.agents.workflow import RAGAgentWorkflow, WorkflowContext
 from alpha_zero.rag.config.settings import (
+    EmbeddingConfig,
+    LoggingConfig,
+    ProcessorConfig,
     RAGConfig,
     VectorStoreConfig,
-    EmbeddingConfig,
-    ProcessorConfig,
-    LoggingConfig,
 )
 from alpha_zero.rag.pipeline import RAGPipeline
-from alpha_zero.rag.stores.base import VectorStore, Document, SearchResult
 from alpha_zero.rag.processors.base import DocumentProcessor
-from alpha_zero.rag.agents.workflow import RAGAgentWorkflow, WorkflowContext
+from alpha_zero.rag.stores.base import Document, SearchResult, VectorStore
 
 __all__ = [
     # Configuration

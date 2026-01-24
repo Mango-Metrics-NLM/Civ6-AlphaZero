@@ -497,7 +497,7 @@ class DiplomacyManager:
 
         if action.action_type == DiplomaticActionType.DECLARE_WAR:
             can_declare, reason = self.can_declare_war(
-                action.source_player, action.target_player, current_turn
+                action.source_player, action.target_player, current_turn,
             )
             if not can_declare:
                 return False
@@ -510,7 +510,7 @@ class DiplomacyManager:
 
         elif action.action_type == DiplomaticActionType.MAKE_PEACE:
             can_peace, _ = self.can_make_peace(
-                action.source_player, action.target_player
+                action.source_player, action.target_player,
             )
             if not can_peace:
                 return False
@@ -556,7 +556,7 @@ class DiplomacyManager:
             relation.decay_modifiers(self.config.modifier_decay_per_turn)
 
             # Expire treaties
-            expired = relation.expire_treaties(current_turn)
+            _ = relation.expire_treaties(current_turn)
 
             # Update relation type based on score
             if relation.relation_type not in (DiplomacyType.WAR, DiplomacyType.ALLIANCE):
@@ -632,7 +632,7 @@ class DiplomacyManager:
         """Deserialize diplomacy state."""
         manager = cls(config=config)
 
-        for key, rel_data in data.get("relations", {}).items():
+        for _key, rel_data in data.get("relations", {}).items():
             relation = DiplomaticRelation.from_dict(rel_data)
             manager.set_relation(relation)
 

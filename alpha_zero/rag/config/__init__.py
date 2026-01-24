@@ -1,13 +1,13 @@
 """Configuration management for RAG system."""
 
 from alpha_zero.rag.config.settings import (
+    EmbeddingConfig,
+    EmbeddingModelType,
+    LoggingConfig,
+    ProcessorConfig,
     RAGConfig,
     VectorStoreConfig,
-    EmbeddingConfig,
-    ProcessorConfig,
-    LoggingConfig,
     VectorStoreType,
-    EmbeddingModelType,
 )
 
 __all__ = [

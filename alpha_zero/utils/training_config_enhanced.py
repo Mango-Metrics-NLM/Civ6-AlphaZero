@@ -28,7 +28,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -69,7 +69,7 @@ class SchedulePoint:
         return {"iteration": self.iteration, "value": self.value}
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "SchedulePoint":
+    def from_dict(cls, data: dict[str, Any]) -> SchedulePoint:
         """Create from dictionary.
 
         Args:
@@ -244,7 +244,7 @@ class ParameterSchedule:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ParameterSchedule":
+    def from_dict(cls, data: dict[str, Any]) -> ParameterSchedule:
         """Create from dictionary.
 
         Args:
@@ -304,7 +304,7 @@ class ResourceConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ResourceConfig":
+    def from_dict(cls, data: dict[str, Any]) -> ResourceConfig:
         """Create from dictionary.
 
         Args:
@@ -348,11 +348,11 @@ class EnhancedTrainingConfig:
 
     # Batch size
     batch_size: int = 256
-    batch_size_schedule: Optional[ParameterSchedule] = None
+    batch_size_schedule: ParameterSchedule | None = None
 
     # Learning rate
     learning_rate: float = 0.001
-    learning_rate_schedule: Optional[ParameterSchedule] = None
+    learning_rate_schedule: ParameterSchedule | None = None
 
     # Optimizer
     weight_decay: float = 0.0001
@@ -473,7 +473,7 @@ class EnhancedTrainingConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "EnhancedTrainingConfig":
+    def from_dict(cls, data: dict[str, Any]) -> EnhancedTrainingConfig:
         """Create from dictionary.
 
         Args:
@@ -559,7 +559,7 @@ class ResourceManager:
         total_bytes = spatial_bytes + vector_bytes + model_bytes + activation_bytes
         total_gb = total_bytes / (1024 ** 3)
 
-        return total_gb
+        return float(total_gb)
 
     def recommend_batch_size(
         self,
@@ -586,7 +586,7 @@ class ResourceManager:
         while low <= high:
             mid = (low + high) // 2
             mem_usage = self.estimate_memory_usage(
-                mid, spatial_size, vector_size, model_params
+                mid, spatial_size, vector_size, model_params,
             )
 
             if mem_usage <= self.config.max_memory_gb * 0.8:  # 80% safety margin
@@ -602,7 +602,7 @@ class ResourceManager:
         self._logger.info(
             f"Recommended batch_size={actual_batch}, "
             f"accumulation_steps={accumulation_steps} "
-            f"(effective={actual_batch * accumulation_steps})"
+            f"(effective={actual_batch * accumulation_steps})",
         )
 
         return actual_batch, accumulation_steps
@@ -618,7 +618,7 @@ class ResourceManager:
         if usage_gb > self.config.max_memory_gb * 0.9:
             self._logger.warning(
                 f"High memory usage: {usage_gb:.2f}GB "
-                f"(limit: {self.config.max_memory_gb}GB)"
+                f"(limit: {self.config.max_memory_gb}GB)",
             )
 
     def get_memory_stats(self) -> dict[str, float]:

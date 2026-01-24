@@ -75,7 +75,7 @@ class VectorStoreFactory:
             available = [t.value for t in cls._registry.keys()]
             raise ValueError(
                 f"Unsupported store type: {config.store_type}. "
-                f"Available types: {available}"
+                f"Available types: {available}",
             )
 
         # Create instance with appropriate parameters
@@ -102,7 +102,7 @@ class VectorStoreFactory:
         else:
             # Use generic from_config if available
             if hasattr(store_class, "from_config"):
-                return store_class.from_config(config)
+                return store_class.from_config(config)  # type: ignore[no-any-return]
             return store_class(
                 collection_name=config.collection_name,
                 dimension=config.dimension,

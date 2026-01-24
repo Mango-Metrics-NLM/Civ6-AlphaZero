@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Protocol
+from typing import Any
 
 
 class GreatWorkType(Enum):
@@ -242,7 +242,7 @@ class CulturalVictoryProgress:
         """
         total_foreign = self.get_total_foreign_tourists()
 
-        for other_player, their_domestic in other_players_domestic.items():
+        for _other_player, their_domestic in other_players_domestic.items():
             if total_foreign <= their_domestic:
                 self.is_victory_achieved = False
                 return False
@@ -545,7 +545,7 @@ class CultureManager:
         """Deserialize culture state."""
         manager = cls(config=config)
 
-        for key, work_data in data.get("great_works", {}).items():
+        for _key, work_data in data.get("great_works", {}).items():
             work = GreatWork.from_dict(work_data)
             manager._great_works[work.id] = work
 

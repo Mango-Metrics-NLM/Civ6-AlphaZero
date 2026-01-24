@@ -70,7 +70,7 @@ def create_network(
     if board_size <= 16 and config.spatial_channels <= 13:
         logger.info(
             f"Creating MicroCivNetwork: board={board_size}, "
-            f"actions={action_space_size}, filters={config.num_filters}"
+            f"actions={action_space_size}, filters={config.num_filters}",
         )
         network = MicroCivNetwork(
             board_size=board_size,
@@ -81,7 +81,7 @@ def create_network(
     else:
         logger.info(
             f"Creating Civ6Network: board={board_size}, "
-            f"channels={config.spatial_channels}, filters={config.num_filters}"
+            f"channels={config.spatial_channels}, filters={config.num_filters}",
         )
         network = Civ6Network(
             board_size=board_size,
@@ -129,7 +129,7 @@ def create_mcts(
     if use_simple:
         logger.info(
             f"Creating SimpleMCTS: simulations={config.num_simulations}, "
-            f"c_puct={config.c_puct}"
+            f"c_puct={config.c_puct}",
         )
         return SimpleMCTS(
             num_simulations=config.num_simulations,
@@ -150,7 +150,7 @@ def create_mcts(
 
     logger.info(
         f"Creating Civ6MCTS: simulations={config.num_simulations}, "
-        f"c_puct={config.c_puct}, device={device}"
+        f"c_puct={config.c_puct}, device={device}",
     )
     return Civ6MCTS(network, mcts_config, device=device)
 
@@ -280,7 +280,7 @@ def create_curriculum_manager(
         manager = CurriculumManager(curriculum_config)
 
         if save_path:
-            manager.save_path = save_path
+            manager.config.save_path = save_path
 
         return manager
     except ImportError:
@@ -316,7 +316,7 @@ def create_rag_client(
 
         logger.info(
             f"Creating RAG client: collection={config.collection_name}, "
-            f"embedding={config.embedding_model}"
+            f"embedding={config.embedding_model}",
         )
         return RAGClient(rag_config)
     except ImportError as e:
@@ -431,7 +431,7 @@ def create_strategy_advisor(
     # Strategy advisor will be implemented in rag_integration.py
     # For now, return a placeholder that can be replaced later
     logger.info(
-        f"Strategy advisor configured: analysis_interval={config.analysis_interval}"
+        f"Strategy advisor configured: analysis_interval={config.analysis_interval}",
     )
 
     return {

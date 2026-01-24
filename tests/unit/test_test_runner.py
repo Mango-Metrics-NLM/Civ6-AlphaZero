@@ -12,13 +12,19 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from alpha_zero.utils.test_runner import (
-    TestConfig,
-    TestResult,
-    TestRunner,
-    TestStatus,
+    PytestRunner,
+    RunConfig,
+    RunResult,
+    RunStatus,
     run_tests,
     quick_test,
 )
+
+# Use new names in tests
+TestRunner = PytestRunner
+TestConfig = RunConfig
+TestResult = RunResult
+TestStatus = RunStatus
 
 
 class TestTestStatus:
@@ -329,7 +335,7 @@ class TestTestRunner:
 class TestConvenienceFunctions:
     """Tests for convenience functions."""
 
-    @patch("alpha_zero.utils.test_runner.TestRunner")
+    @patch("alpha_zero.utils.test_runner.PytestRunner")
     def test_run_tests_basic(self, mock_runner_class):
         """Test run_tests convenience function."""
         mock_runner = MagicMock()
@@ -341,7 +347,7 @@ class TestConvenienceFunctions:
         assert result.status == TestStatus.PASSED
         mock_runner.run_all.assert_called_once()
 
-    @patch("alpha_zero.utils.test_runner.TestRunner")
+    @patch("alpha_zero.utils.test_runner.PytestRunner")
     def test_run_tests_with_path(self, mock_runner_class):
         """Test run_tests with specific path."""
         mock_runner = MagicMock()
@@ -354,7 +360,7 @@ class TestConvenienceFunctions:
             "tests/unit", with_coverage=True
         )
 
-    @patch("alpha_zero.utils.test_runner.TestRunner")
+    @patch("alpha_zero.utils.test_runner.PytestRunner")
     def test_quick_test_passes(self, mock_runner_class):
         """Test quick_test returns True on success."""
         mock_runner = MagicMock()
@@ -367,7 +373,7 @@ class TestConvenienceFunctions:
 
         assert quick_test() is True
 
-    @patch("alpha_zero.utils.test_runner.TestRunner")
+    @patch("alpha_zero.utils.test_runner.PytestRunner")
     def test_quick_test_fails(self, mock_runner_class):
         """Test quick_test returns False on failure."""
         mock_runner = MagicMock()

@@ -14,10 +14,8 @@ Design Principles:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from enum import Enum
+from dataclasses import dataclass
 from typing import Any
-
 
 # =============================================================================
 # ENCODER CONSTANTS
@@ -509,4 +507,4 @@ _validation_errors = validate_constants()
 if _validation_errors:
     import warnings
     for error in _validation_errors:
-        warnings.warn(f"Constant validation error: {error}")
+        warnings.warn(f"Constant validation error: {error}", stacklevel=2)

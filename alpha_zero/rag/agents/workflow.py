@@ -11,10 +11,11 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 from alpha_zero.rag.config.settings import RAGConfig
 from alpha_zero.rag.processors.embeddings import EmbeddingGenerator
@@ -392,7 +393,7 @@ class RAGAgentWorkflow:
             doc = result.document
             source = doc.metadata.source or "Unknown"
             context_parts.append(
-                f"[Source {i}: {source} (relevance: {result.score:.3f})]\n{doc.content}"
+                f"[Source {i}: {source} (relevance: {result.score:.3f})]\n{doc.content}",
             )
 
         context.context_text = "\n\n---\n\n".join(context_parts)

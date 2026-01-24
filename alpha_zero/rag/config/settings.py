@@ -47,14 +47,14 @@ class LogLevel(str, Enum):
 T = TypeVar("T")
 
 
-def _get_env(key: str, default: T, type_: type[T] = str) -> T:
+def _get_env(key: str, default: T, type_: type[T] = str) -> T:  # type: ignore[assignment]
     """Get environment variable with type conversion."""
     value = os.getenv(key)
     if value is None:
         return default
     if type_ is bool:
-        return value.lower() in ("true", "1", "yes")
-    return type_(value)
+        return value.lower() in ("true", "1", "yes")  # type: ignore[return-value]
+    return type_(value)  # type: ignore[return-value, call-arg]
 
 
 @dataclass
@@ -242,7 +242,7 @@ class LoggingConfig:
             level=level,
             enable_tracing=_get_env(f"{prefix}_ENABLE_TRACING", False, bool),
             correlation_id_header=_get_env(
-                f"{prefix}_CORRELATION_HEADER", "X-Correlation-ID"
+                f"{prefix}_CORRELATION_HEADER", "X-Correlation-ID",
             ),
             enable_metrics=_get_env(f"{prefix}_ENABLE_METRICS", True, bool),
         )
@@ -324,17 +324,17 @@ class RAGConfig:
         vector_store_data = data.get("vector_store", {})
         if "store_type" in vector_store_data:
             vector_store_data["store_type"] = VectorStoreType(
-                vector_store_data["store_type"]
+                vector_store_data["store_type"],
             )
         if "persist_directory" in vector_store_data and vector_store_data["persist_directory"]:
             vector_store_data["persist_directory"] = Path(
-                vector_store_data["persist_directory"]
+                vector_store_data["persist_directory"],
             )
 
         embedding_data = data.get("embedding", {})
         if "model_type" in embedding_data:
             embedding_data["model_type"] = EmbeddingModelType(
-                embedding_data["model_type"]
+                embedding_data["model_type"],
             )
 
         logging_data = data.get("logging", {})

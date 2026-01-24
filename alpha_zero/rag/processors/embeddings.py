@@ -57,7 +57,6 @@ class EmbeddingGenerator(ABC):
         Returns:
             Embedding vector
         """
-        pass
 
     @abstractmethod
     async def embed_texts(self, texts: list[str]) -> list[np.ndarray]:
@@ -69,7 +68,6 @@ class EmbeddingGenerator(ABC):
         Returns:
             List of embedding vectors
         """
-        pass
 
     async def embed_documents(self, documents: list[Document]) -> list[Document]:
         """Generate embeddings for documents in place.
@@ -83,7 +81,7 @@ class EmbeddingGenerator(ABC):
         texts = [doc.content for doc in documents]
         embeddings = await self.embed_texts(texts)
 
-        for doc, embedding in zip(documents, embeddings):
+        for doc, embedding in zip(documents, embeddings, strict=True):
             doc.embedding = embedding
 
         return documents
@@ -146,7 +144,7 @@ class OpenAIEmbeddings(EmbeddingGenerator):
                 self._client = AsyncOpenAI(api_key=self.api_key, timeout=self.timeout)
             except ImportError as e:
                 raise ImportError(
-                    "OpenAI package not installed. Install with: pip install openai"
+                    "OpenAI package not installed. Install with: pip install openai",
                 ) from e
         return self._client
 
@@ -186,7 +184,7 @@ class OpenAIEmbeddings(EmbeddingGenerator):
         return all_embeddings
 
     async def _embed_batch_with_retry(
-        self, client, texts: list[str]
+        self, client, texts: list[str],
     ) -> list[np.ndarray]:
         """Embed a batch of texts with retry logic.
 
@@ -335,7 +333,7 @@ class SentenceTransformerEmbeddings(EmbeddingGenerator):
         except ImportError as e:
             raise ImportError(
                 "sentence-transformers not installed. "
-                "Install with: pip install sentence-transformers"
+                "Install with: pip install sentence-transformers",
             ) from e
 
         self._model = SentenceTransformer(model_name, device=device)
@@ -344,7 +342,7 @@ class SentenceTransformerEmbeddings(EmbeddingGenerator):
 
         self.model_name = model_name
         self.batch_size = batch_size
-        self._loop = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     async def embed_text(self, text: str) -> np.ndarray:
         """Generate embedding for a single text.
@@ -378,6 +376,7 @@ class SentenceTransformerEmbeddings(EmbeddingGenerator):
                 convert_to_numpy=True,
             )
 
+        assert self._loop is not None
         embeddings = await self._loop.run_in_executor(None, _encode)
         return [emb.astype(np.float32) for emb in embeddings]
 

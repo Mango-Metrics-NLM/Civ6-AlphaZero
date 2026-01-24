@@ -32,7 +32,6 @@ class Cache(ABC, Generic[K, V]):
         Returns:
             Cached value or None
         """
-        pass
 
     @abstractmethod
     def set(self, key: K, value: V) -> None:
@@ -42,7 +41,6 @@ class Cache(ABC, Generic[K, V]):
             key: Cache key
             value: Value to cache
         """
-        pass
 
     @abstractmethod
     def delete(self, key: K) -> bool:
@@ -54,12 +52,10 @@ class Cache(ABC, Generic[K, V]):
         Returns:
             True if key existed
         """
-        pass
 
     @abstractmethod
     def clear(self) -> None:
         """Clear all cached values."""
-        pass
 
     @abstractmethod
     def size(self) -> int:
@@ -68,7 +64,6 @@ class Cache(ABC, Generic[K, V]):
         Returns:
             Number of cached items
         """
-        pass
 
     def __contains__(self, key: K) -> bool:
         """Check if key is in cache."""
