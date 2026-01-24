@@ -257,10 +257,10 @@ class TrainingOrchestrator:
             log_dir = Path(self.config.log_dir)
             log_dir.mkdir(parents=True, exist_ok=True)
             file_handler = logging.FileHandler(
-                log_dir / f"training_{self.config.experiment_name}.log"
+                log_dir / f"training_{self.config.experiment_name}.log",
             )
             file_handler.setFormatter(
-                logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+                logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"),
             )
             logging.getLogger().addHandler(file_handler)
 
@@ -530,7 +530,7 @@ class TrainingOrchestrator:
             logger.info(
                 f"Game {game_idx + 1}/{num_games}: "
                 f"turns={result.turns}, winner={result.winner}, "
-                f"reward={result.total_reward:.2f}, time={game_time:.1f}s"
+                f"reward={result.total_reward:.2f}, time={game_time:.1f}s",
             )
 
         return results
@@ -610,7 +610,7 @@ class TrainingOrchestrator:
             # Apply reward shaping
             if self._reward_shaper:
                 reward = self._reward_shaper.shape_reward(
-                    next_state, reward, info, done
+                    next_state, reward, info, done,
                 )
 
             total_reward += reward
@@ -757,19 +757,19 @@ class TrainingOrchestrator:
 
             # Prepare batch tensors
             spatial = torch.FloatTensor(
-                np.array([b["spatial"] for b in batch])
+                np.array([b["spatial"] for b in batch]),
             ).to(self._device)
             vector = torch.FloatTensor(
-                np.array([b["vector"] for b in batch])
+                np.array([b["vector"] for b in batch]),
             ).to(self._device)
             action_mask = torch.FloatTensor(
-                np.array([b["action_mask"] for b in batch])
+                np.array([b["action_mask"] for b in batch]),
             ).to(self._device)
             target_policy = torch.FloatTensor(
-                np.array([b["policy"] for b in batch])
+                np.array([b["policy"] for b in batch]),
             ).to(self._device)
             target_value = torch.FloatTensor(
-                np.array([b["value"] for b in batch])
+                np.array([b["value"] for b in batch]),
             ).to(self._device).unsqueeze(1)
 
             # Forward pass
@@ -952,7 +952,7 @@ class TrainingOrchestrator:
                 f"win_rate={win_rate:.3f}, "
                 f"loss={train_metrics.get('total_loss', 0):.4f}, "
                 f"stage={self.state.curriculum_stage}, "
-                f"time={iteration_time:.1f}s"
+                f"time={iteration_time:.1f}s",
             )
 
         # Log to W&B
@@ -997,7 +997,7 @@ class TrainingOrchestrator:
         logger.info(
             f"Training complete: {self.state.iteration} iterations, "
             f"{self.state.total_games} games, "
-            f"{elapsed / 3600:.1f} hours"
+            f"{elapsed / 3600:.1f} hours",
         )
 
     def dry_run(self) -> bool:

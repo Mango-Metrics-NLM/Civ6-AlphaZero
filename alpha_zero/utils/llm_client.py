@@ -180,22 +180,18 @@ class LLMResponse:
 
 class LLMError(Exception):
     """Base exception for LLM errors."""
-    pass
 
 
 class LLMConfigError(LLMError):
     """Configuration error."""
-    pass
 
 
 class LLMConnectionError(LLMError):
     """Connection error."""
-    pass
 
 
 class LLMRateLimitError(LLMError):
     """Rate limit exceeded."""
-    pass
 
 
 class LLMProviderError(LLMError):
@@ -217,7 +213,6 @@ class BaseLLMClient(ABC):
         **kwargs: Any,
     ) -> LLMResponse:
         """Generate a response from the LLM."""
-        pass
 
     @abstractmethod
     async def generate_stream(
@@ -228,7 +223,6 @@ class BaseLLMClient(ABC):
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """Generate a streaming response from the LLM."""
-        pass
 
     def generate_sync(
         self,
@@ -498,7 +492,7 @@ class LLMClient:
         if not self._clients:
             raise LLMConfigError(
                 "No LLM clients could be initialized. "
-                "Please configure OPENAI_API_KEY or ANTHROPIC_API_KEY"
+                "Please configure OPENAI_API_KEY or ANTHROPIC_API_KEY",
             )
 
     @classmethod
@@ -553,7 +547,7 @@ class LLMClient:
             for attempt in range(self.config.max_retries):
                 try:
                     return await client.generate(
-                        prompt, system_prompt, messages, **kwargs
+                        prompt, system_prompt, messages, **kwargs,
                     )
                 except Exception as e:
                     last_error = e
@@ -562,7 +556,7 @@ class LLMClient:
                     )
                     logger.warning(
                         f"Provider {provider.value} attempt {attempt + 1} failed: {e}. "
-                        f"Retrying in {delay:.1f}s"
+                        f"Retrying in {delay:.1f}s",
                     )
                     if attempt < self.config.max_retries - 1:
                         await asyncio.sleep(delay)
@@ -598,7 +592,7 @@ class LLMClient:
             client = self._clients[provider]
             try:
                 stream = client.generate_stream(
-                    prompt, system_prompt, messages, **kwargs
+                    prompt, system_prompt, messages, **kwargs,
                 )
                 async for chunk in stream:  # type: ignore[attr-defined]
                     yield chunk

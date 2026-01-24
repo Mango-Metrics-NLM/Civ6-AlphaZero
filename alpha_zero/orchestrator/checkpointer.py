@@ -182,7 +182,7 @@ class CheckpointManager:
         torch.save(checkpoint_data, best_path)
         logger.info(
             f"Saved best model with {self.best_metric}="
-            f"{metrics.get(self.best_metric, 'N/A')}"
+            f"{metrics.get(self.best_metric, 'N/A')}",
         )
 
         self._metadata["best"] = {

@@ -586,7 +586,7 @@ class ResourceManager:
         while low <= high:
             mid = (low + high) // 2
             mem_usage = self.estimate_memory_usage(
-                mid, spatial_size, vector_size, model_params
+                mid, spatial_size, vector_size, model_params,
             )
 
             if mem_usage <= self.config.max_memory_gb * 0.8:  # 80% safety margin
@@ -602,7 +602,7 @@ class ResourceManager:
         self._logger.info(
             f"Recommended batch_size={actual_batch}, "
             f"accumulation_steps={accumulation_steps} "
-            f"(effective={actual_batch * accumulation_steps})"
+            f"(effective={actual_batch * accumulation_steps})",
         )
 
         return actual_batch, accumulation_steps
@@ -618,7 +618,7 @@ class ResourceManager:
         if usage_gb > self.config.max_memory_gb * 0.9:
             self._logger.warning(
                 f"High memory usage: {usage_gb:.2f}GB "
-                f"(limit: {self.config.max_memory_gb}GB)"
+                f"(limit: {self.config.max_memory_gb}GB)",
             )
 
     def get_memory_stats(self) -> dict[str, float]:

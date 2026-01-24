@@ -482,7 +482,7 @@ class WorldCongressManager:
             ar.votes_against += total_votes
 
         logger.info(
-            f"Player {player_id} voted {choice.name} ({total_votes} votes) on {resolution_id}"
+            f"Player {player_id} voted {choice.name} ({total_votes} votes) on {resolution_id}",
         )
         return True
 
@@ -595,7 +595,7 @@ class WorldCongressManager:
 
             logger.info(
                 f"Resolution {resolution_id} resolved: {ar.winning_option} "
-                f"(For: {ar.votes_for}, Against: {ar.votes_against})"
+                f"(For: {ar.votes_for}, Against: {ar.votes_against})",
             )
 
     def call_emergency(
@@ -685,7 +685,7 @@ class WorldCongressManager:
             "active_effects": len(self._active_effects),
             "active_emergencies": len([e for e in self._emergencies.values() if e.is_active]),
             "turns_until_next_session": max(
-                0, self.config.session_interval_turns - (self._turn - self._session_turn)
+                0, self.config.session_interval_turns - (self._turn - self._session_turn),
             ) if self._phase == CongressPhase.INACTIVE else 0,
         }
 

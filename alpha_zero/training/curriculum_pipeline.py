@@ -428,7 +428,7 @@ class CurriculumPipelineConfig:
     enabled: bool = True
     environment_tiers: list[EnvironmentTierConfig] = field(default_factory=list)
     transfer_learning: TransferLearningConfig = field(
-        default_factory=TransferLearningConfig
+        default_factory=TransferLearningConfig,
     )
     allow_tier_demotion: bool = False
     metrics_window: int = 100
@@ -509,7 +509,7 @@ class CurriculumPipelineConfig:
             for t in data.get("environment_tiers", [])
         ]
         transfer = TransferLearningConfig.from_dict(
-            data.get("transfer_learning", {})
+            data.get("transfer_learning", {}),
         )
         return cls(
             enabled=data.get("enabled", True),
@@ -643,7 +643,7 @@ class WeightTransferManager:
             return self._partial_transfer(source_network, target_network)
         elif self.config.strategy == "progressive":
             return self._progressive_transfer(
-                source_network, target_network, source_tier, target_tier
+                source_network, target_network, source_tier, target_tier,
             )
         else:
             self._logger.warning(f"Unknown transfer strategy: {self.config.strategy}")
@@ -674,13 +674,13 @@ class WeightTransferManager:
                 else:
                     self._logger.debug(
                         f"Shape mismatch for {name}: "
-                        f"{param.shape} vs {target_state[name].shape}"
+                        f"{param.shape} vs {target_state[name].shape}",
                     )
 
         target_network.load_state_dict(target_state)
 
         self._logger.info(
-            f"Full transfer: {transferred}/{total} layers transferred"
+            f"Full transfer: {transferred}/{total} layers transferred",
         )
         return {
             "transferred_layers": transferred,
@@ -730,7 +730,7 @@ class WeightTransferManager:
         target_network.load_state_dict(target_state)
 
         self._logger.info(
-            f"Partial transfer: {transferred}/{total} layers transferred"
+            f"Partial transfer: {transferred}/{total} layers transferred",
         )
         return {
             "transferred_layers": transferred,
@@ -758,7 +758,7 @@ class WeightTransferManager:
         else:
             # Large step up - minimal transfer, mostly reinitialize
             self._logger.info(
-                f"Large complexity jump ({complexity_diff}), minimal transfer"
+                f"Large complexity jump ({complexity_diff}), minimal transfer",
             )
             return self._partial_transfer(source_network, target_network)
 
@@ -838,7 +838,6 @@ class EnvironmentFactory(ABC):
         Returns:
             Environment instance.
         """
-        pass
 
 
 class DefaultEnvironmentFactory(EnvironmentFactory):
@@ -897,7 +896,7 @@ class DefaultEnvironmentFactory(EnvironmentFactory):
         # In production, this would interface with actual Unciv
         logger.warning(
             "Unciv environment not fully implemented, "
-            "using MicroCiv with Unciv-like settings"
+            "using MicroCiv with Unciv-like settings",
         )
         return self._create_microciv(stage)
 
@@ -906,7 +905,7 @@ class DefaultEnvironmentFactory(EnvironmentFactory):
         # Civ6 requires special handling
         logger.warning(
             "Civ6 environment not fully implemented, "
-            "using MicroCiv with Civ6-like settings"
+            "using MicroCiv with Civ6-like settings",
         )
         return self._create_microciv(stage)
 
@@ -1188,7 +1187,7 @@ class CurriculumPipeline:
                 callback(old_stage.name, new_stage.name)
 
             self._logger.info(
-                f"Stage promotion: {old_stage.name} -> {new_stage.name}"
+                f"Stage promotion: {old_stage.name} -> {new_stage.name}",
             )
 
             return {
@@ -1226,7 +1225,7 @@ class CurriculumPipeline:
                 callback(old_stage.name, new_stage.name)
 
             self._logger.info(
-                f"Stage demotion: {old_stage.name} -> {new_stage.name}"
+                f"Stage demotion: {old_stage.name} -> {new_stage.name}",
             )
 
             return {
@@ -1276,7 +1275,7 @@ class CurriculumPipeline:
             callback(old_tier, new_tier)
 
         self._logger.info(
-            f"Tier promotion: {old_tier.name} -> {new_tier.name}"
+            f"Tier promotion: {old_tier.name} -> {new_tier.name}",
         )
 
         return {
@@ -1321,7 +1320,7 @@ class CurriculumPipeline:
             callback(old_tier, new_tier)
 
         self._logger.info(
-            f"Tier demotion: {old_tier.name} -> {new_tier.name}"
+            f"Tier demotion: {old_tier.name} -> {new_tier.name}",
         )
 
         return {
@@ -1355,7 +1354,7 @@ class CurriculumPipeline:
             Dictionary with transfer statistics.
         """
         return self._weight_manager.transfer_weights(
-            source_network, target_network, source_tier, target_tier
+            source_network, target_network, source_tier, target_tier,
         )
 
     # -------------------------------------------------------------------------
@@ -1427,7 +1426,7 @@ class CurriculumPipeline:
                 self._logger.info(
                     f"Loaded curriculum state: tier={self._state.current_tier.name}, "
                     f"stage={self._state.current_stage_index}, "
-                    f"games={self._state.total_games}"
+                    f"games={self._state.total_games}",
                 )
             except Exception as e:
                 self._logger.warning(f"Failed to load curriculum state: {e}")
@@ -1456,7 +1455,7 @@ class CurriculumPipeline:
         self._on_stage_change.append(callback)
 
     def on_tier_change(
-        self, callback: Callable[[EnvironmentTier, EnvironmentTier], None]
+        self, callback: Callable[[EnvironmentTier, EnvironmentTier], None],
     ) -> None:
         """Register callback for tier changes.
 

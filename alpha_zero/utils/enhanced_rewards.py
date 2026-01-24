@@ -105,13 +105,13 @@ class EnhancedRewardsConfig:
     gamma: float = 0.99
     normalize: bool = True
     intermediate: IntermediateRewardsConfig = field(
-        default_factory=IntermediateRewardsConfig
+        default_factory=IntermediateRewardsConfig,
     )
     victory_bonuses: VictoryBonusConfig = field(
-        default_factory=VictoryBonusConfig
+        default_factory=VictoryBonusConfig,
     )
     active_win_conditions: set[WinCondition] = field(
-        default_factory=lambda: {WinCondition.DOMINATION, WinCondition.ELIMINATION}
+        default_factory=lambda: {WinCondition.DOMINATION, WinCondition.ELIMINATION},
     )
     potential_weights: dict[str, float] = field(default_factory=lambda: {
         "unit_advantage": 0.1,
@@ -288,7 +288,7 @@ class WinConditionEvaluator:
 
         self._logger.debug(
             f"Victory evaluation: type={victory_type}, "
-            f"bonus={bonus * multiplier:.3f}"
+            f"bonus={bonus * multiplier:.3f}",
         )
 
         return bonus * multiplier, victory_type

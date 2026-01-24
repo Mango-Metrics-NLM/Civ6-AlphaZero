@@ -312,7 +312,7 @@ class ClimateManager:
             self._current_phase = phases[expected_idx]
             logger.warning(
                 f"Climate phase advanced: {old_phase.name} -> {self._current_phase.name} "
-                f"(CO2: {self._total_co2:.0f})"
+                f"(CO2: {self._total_co2:.0f})",
             )
             return True
 
@@ -473,7 +473,7 @@ class ClimateManager:
 
         logger.info(
             f"{disaster_type.name} ({severity.name}) at {epicenter}: "
-            f"{len(affected_tiles)} tiles affected"
+            f"{len(affected_tiles)} tiles affected",
         )
 
         return event
@@ -547,7 +547,7 @@ class ClimateManager:
 
             logger.warning(
                 f"Sea level rise: {len(newly_flooded)} tiles flooded "
-                f"(total flooded: {len(self._flooded_tiles)})"
+                f"(total flooded: {len(self._flooded_tiles)})",
             )
 
         return newly_flooded

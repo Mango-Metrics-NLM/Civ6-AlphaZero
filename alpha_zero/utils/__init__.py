@@ -84,13 +84,19 @@ from alpha_zero.utils.agent_tools import (
     TaskStatus as AgentTaskStatus,
 )
 from alpha_zero.utils.test_runner import (
-    TestConfig,
-    TestResult,
-    TestRunner,
-    TestStatus,
+    PytestRunner,
+    RunConfig,
+    RunResult,
+    RunStatus,
     quick_test,
     run_tests,
 )
+
+# Backwards compatibility aliases
+TestRunner = PytestRunner
+TestConfig = RunConfig
+TestResult = RunResult
+TestStatus = RunStatus
 
 __all__ = [
     # Logging
@@ -127,7 +133,12 @@ __all__ = [
     "create_mechanics_benchmarks",
     "run_all_benchmarks",
     "time_function",
-    # Test Runner
+    # Test Runner (new names)
+    "PytestRunner",
+    "RunConfig",
+    "RunResult",
+    "RunStatus",
+    # Test Runner (backwards compatibility)
     "TestRunner",
     "TestConfig",
     "TestResult",
@@ -200,7 +211,7 @@ except ImportError:
     _RAG_AVAILABLE = False
 
 # Training Improvement Modules
-from alpha_zero.utils.curriculum_learning import (  # noqa: F401
+from alpha_zero.utils.curriculum_learning import (  # noqa: F401, E402
     AdaptiveDifficultyController,
     CurriculumConfig,
     CurriculumManager,
@@ -209,7 +220,7 @@ from alpha_zero.utils.curriculum_learning import (  # noqa: F401
     DifficultyDimension,
     create_curriculum_manager,
 )
-from alpha_zero.utils.enhanced_rewards import (  # noqa: F401
+from alpha_zero.utils.enhanced_rewards import (  # noqa: F401, E402
     EnhancedRewardsConfig,
     EnhancedRewardShaper,
     EnhancedStateFeatures,
@@ -222,7 +233,7 @@ from alpha_zero.utils.enhanced_rewards import (  # noqa: F401
     get_balanced_rewards_config,
     get_defensive_rewards_config,
 )
-from alpha_zero.utils.environment_tuning import (  # noqa: F401
+from alpha_zero.utils.environment_tuning import (  # noqa: F401, E402
     CombatConfig,
     EarlyTerminationChecker,
     EarlyTerminationConfig,
@@ -234,7 +245,7 @@ from alpha_zero.utils.environment_tuning import (  # noqa: F401
     get_default_fast_config,
     get_default_realistic_config,
 )
-from alpha_zero.utils.training_config_enhanced import (  # noqa: F401
+from alpha_zero.utils.training_config_enhanced import (  # noqa: F401, E402
     EnhancedTrainingConfig,
     ParameterSchedule,
     ResourceConfig,

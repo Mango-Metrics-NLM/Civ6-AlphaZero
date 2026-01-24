@@ -165,18 +165,18 @@ class Civ6Config:
         """
         return cls(
             environment=_dict_to_dataclass(
-                EnvironmentConfig, data.get("environment", {})
+                EnvironmentConfig, data.get("environment", {}),
             ),
             network=_dict_to_dataclass(NetworkConfig, data.get("network", {})),
             mcts=_dict_to_dataclass(MCTSConfig, data.get("mcts", {})),
             training=_dict_to_dataclass(TrainingConfig, data.get("training", {})),
             distributed=_dict_to_dataclass(
-                DistributedConfig, data.get("distributed", {})
+                DistributedConfig, data.get("distributed", {}),
             ),
             unciv=_dict_to_dataclass(UncivConfig, data.get("unciv", {})),
             logging=_dict_to_dataclass(LoggingConfig, data.get("logging", {})),
             action_space=_dict_to_dataclass(
-                ActionSpaceConfig, data.get("action_space", {})
+                ActionSpaceConfig, data.get("action_space", {}),
             ),
             rewards=_dict_to_dataclass(RewardsConfig, data.get("rewards", {})),
         )

@@ -191,7 +191,7 @@ def self_play_game(
                 "action_mask": obs["action_mask"].copy(),
                 "policy": action_probs.copy(),
                 "player": env.current_player,
-            }
+            },
         )
 
         # Select action
@@ -223,7 +223,7 @@ def self_play_game(
                 action_mask=hist["action_mask"],
                 policy=hist["policy"],
                 value=value,
-            )
+            ),
         )
 
     return examples
@@ -309,7 +309,7 @@ def train_epoch(
 
         # Compute loss
         loss, p_loss, v_loss = compute_loss(
-            policy_logits, value, target_policy, target_value, action_mask
+            policy_logits, value, target_policy, target_value, action_mask,
         )
 
         # Backward pass
@@ -438,7 +438,7 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
         self_play_time = time.time() - start_time
         logger.info(
             f"Self-play: {len(examples)} examples from {num_games} games "
-            f"({self_play_time:.1f}s)"
+            f"({self_play_time:.1f}s)",
         )
 
         # Training
@@ -465,7 +465,7 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
                 losses = train_epoch(network, optimizer, dataloader, config)
                 logger.info(
                     f"Epoch {epoch + 1}: loss={losses['total_loss']:.4f}, "
-                    f"policy={losses['policy_loss']:.4f}, value={losses['value_loss']:.4f}"
+                    f"policy={losses['policy_loss']:.4f}, value={losses['value_loss']:.4f}",
                 )
 
             train_time = time.time() - start_time
@@ -475,13 +475,13 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
         if (iteration + 1) % config.save_interval == 0 or dry_run:
             logger.info("Evaluating against random...")
             win_rate = evaluate_against_random(
-                network, config, num_games=10 if dry_run else 20
+                network, config, num_games=10 if dry_run else 20,
             )
             logger.info(f"Win rate vs random: {win_rate:.1%}")
 
             # Save checkpoint
             checkpoint_path = os.path.join(
-                config.checkpoint_dir, f"checkpoint_{iteration + 1}.pt"
+                config.checkpoint_dir, f"checkpoint_{iteration + 1}.pt",
             )
             network.save(checkpoint_path)
             logger.info(f"Saved checkpoint: {checkpoint_path}")

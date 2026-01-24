@@ -251,7 +251,7 @@ class TrainingCoordinator:
         logger.info(
             f"TrainingCoordinator initialized: "
             f"{config.num_actors} actors, "
-            f"buffer size {config.replay_buffer_size}"
+            f"buffer size {config.replay_buffer_size}",
         )
 
     def _setup_signal_handlers(self) -> None:
@@ -384,7 +384,7 @@ class TrainingCoordinator:
             status_lines.append(
                 f"Loss: {latest.get('total_loss', 0):.4f} "
                 f"(p={latest.get('policy_loss', 0):.4f}, "
-                f"v={latest.get('value_loss', 0):.4f})"
+                f"v={latest.get('value_loss', 0):.4f})",
             )
 
         # Add latest eval if available
@@ -445,7 +445,7 @@ class TrainingCoordinator:
                 if not self.replay_buffer.is_ready():
                     logger.info(
                         f"Waiting for buffer: "
-                        f"{self.replay_buffer.size()}/{self.config.min_replay_size}"
+                        f"{self.replay_buffer.size()}/{self.config.min_replay_size}",
                     )
                     time.sleep(1.0)
                     continue
@@ -489,7 +489,7 @@ class TrainingCoordinator:
                     if self.learner.training_step >= self.config.max_training_steps:
                         logger.info(
                             f"Reached max training steps "
-                            f"({self.config.max_training_steps})"
+                            f"({self.config.max_training_steps})",
                         )
                         break
 
@@ -531,7 +531,7 @@ class TrainingCoordinator:
             f"Training complete: "
             f"{games} games, "
             f"{self.learner.training_step if self.learner else 0} steps, "
-            f"{elapsed / 60:.1f} minutes"
+            f"{elapsed / 60:.1f} minutes",
         )
 
 

@@ -139,7 +139,6 @@ class BasePruner(ABC):
         Returns:
             Updated action mask with pruned actions
         """
-        pass
 
 
 class FeasibilityPruner(BasePruner):
@@ -224,7 +223,6 @@ class FeasibilityPruner(BasePruner):
         """Disable all actions for a unit."""
         # This would use actual action space encoding
         # Simplified: assume unit actions are in a contiguous range
-        pass
 
     def _disable_movement_actions(
         self,
@@ -233,7 +231,6 @@ class FeasibilityPruner(BasePruner):
         total_actions: int,
     ) -> None:
         """Disable movement actions for a unit."""
-        pass
 
     def _disable_city_actions(
         self,
@@ -242,7 +239,6 @@ class FeasibilityPruner(BasePruner):
         total_actions: int,
     ) -> None:
         """Disable all actions for a city."""
-        pass
 
     def _prune_unbuildable(
         self,
@@ -252,7 +248,6 @@ class FeasibilityPruner(BasePruner):
         total_actions: int,
     ) -> None:
         """Prune production items not available."""
-        pass
 
 
 class ResourcePruner(BasePruner):
@@ -312,7 +307,6 @@ class ResourcePruner(BasePruner):
     ) -> None:
         """Prune gold purchase actions."""
         # Would check purchase costs and disable unaffordable
-        pass
 
     def _prune_faith_purchases(
         self,
@@ -321,7 +315,6 @@ class ResourcePruner(BasePruner):
         state: dict[str, Any],
     ) -> None:
         """Prune faith purchase actions."""
-        pass
 
     def _prune_resource_requirements(
         self,
@@ -330,7 +323,6 @@ class ResourcePruner(BasePruner):
         state: dict[str, Any],
     ) -> None:
         """Prune actions requiring strategic resources."""
-        pass
 
 
 class StrategicPruner(BasePruner):
@@ -407,7 +399,6 @@ class StrategicPruner(BasePruner):
         state: dict[str, Any],
     ) -> None:
         """Reduce priority of peacetime actions during war."""
-        pass
 
     def _prune_wartime_actions(
         self,
@@ -415,7 +406,6 @@ class StrategicPruner(BasePruner):
         state: dict[str, Any],
     ) -> None:
         """Reduce priority of military actions during peace."""
-        pass
 
     def _prune_wonder_races(
         self,
@@ -423,7 +413,6 @@ class StrategicPruner(BasePruner):
         state: dict[str, Any],
     ) -> None:
         """Prune wonders we're unlikely to complete first."""
-        pass
 
     def _prune_distant_exploration(
         self,
@@ -432,7 +421,6 @@ class StrategicPruner(BasePruner):
         threats: dict[str, float],
     ) -> None:
         """Prune exploration of distant, low-priority areas."""
-        pass
 
 
 class ActionPruner:
@@ -560,7 +548,7 @@ class ActionPruner:
 
         logger.debug(
             f"Pruned {stats.total_actions} -> {stats.final_actions} actions "
-            f"({stats.pruning_ratio:.1%} reduction) in {stats.pruning_time_ms:.2f}ms"
+            f"({stats.pruning_ratio:.1%} reduction) in {stats.pruning_time_ms:.2f}ms",
         )
 
         return result
@@ -803,7 +791,7 @@ class MacroActionPlanner:
 
             logger.info(
                 f"Planned {macro_type.name}: {len(macro.steps)} steps, "
-                f"~{macro.estimated_turns} turns"
+                f"~{macro.estimated_turns} turns",
             )
 
             return macro

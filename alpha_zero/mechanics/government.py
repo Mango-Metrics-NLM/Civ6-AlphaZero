@@ -533,7 +533,7 @@ class GovernmentManager:
         if policy.slot_type != slot_type and slot_type != PolicySlotType.WILDCARD:
             logger.warning(
                 f"Policy {policy_id} ({policy.slot_type.name}) doesn't fit in "
-                f"slot {slot_idx} ({slot_type.name})"
+                f"slot {slot_idx} ({slot_type.name})",
             )
             return False
 

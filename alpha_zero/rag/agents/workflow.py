@@ -393,7 +393,7 @@ class RAGAgentWorkflow:
             doc = result.document
             source = doc.metadata.source or "Unknown"
             context_parts.append(
-                f"[Source {i}: {source} (relevance: {result.score:.3f})]\n{doc.content}"
+                f"[Source {i}: {source} (relevance: {result.score:.3f})]\n{doc.content}",
             )
 
         context.context_text = "\n\n---\n\n".join(context_parts)

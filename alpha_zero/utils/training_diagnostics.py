@@ -474,14 +474,14 @@ class TrainingDiagnostics:
         if metrics.avg_entropy < self.config.entropy_min_threshold:
             self._warnings.append(
                 f"Iteration {metrics.iteration}: Policy entropy collapse "
-                f"({metrics.avg_entropy:.4f} < {self.config.entropy_min_threshold})"
+                f"({metrics.avg_entropy:.4f} < {self.config.entropy_min_threshold})",
             )
 
         # Check value loss stagnation
         if metrics.value_loss < self.config.value_loss_threshold:
             self._warnings.append(
                 f"Iteration {metrics.iteration}: Value loss very low "
-                f"({metrics.value_loss:.6f}), value head may not be learning"
+                f"({metrics.value_loss:.6f}), value head may not be learning",
             )
 
         # Check for no wins
@@ -489,7 +489,7 @@ class TrainingDiagnostics:
             recent_wins = [m.win_rate for m in self._iteration_metrics[-3:]]
             if all(w == 0 for w in recent_wins):
                 self._warnings.append(
-                    f"Iteration {metrics.iteration}: No wins in last 3 iterations"
+                    f"Iteration {metrics.iteration}: No wins in last 3 iterations",
                 )
 
     @property

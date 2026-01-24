@@ -121,7 +121,6 @@ class DocumentProcessor(ABC):
         Returns:
             ProcessingResult with extracted chunks
         """
-        pass
 
     @abstractmethod
     async def process_file(self, file_path: str) -> ProcessingResult:
@@ -133,7 +132,6 @@ class DocumentProcessor(ABC):
         Returns:
             ProcessingResult with extracted chunks
         """
-        pass
 
     async def process_batch(
         self,
@@ -164,4 +162,3 @@ class TextSplitter(ABC):
         Returns:
             List of text chunks
         """
-        pass

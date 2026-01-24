@@ -226,7 +226,7 @@ class Benchmarker:
             f"Total: {summary['total_benchmarks']}, "
             f"Passed: {summary['passed']}, "
             f"Failed: {summary['failed']}, "
-            f"Pass Rate: {summary['pass_rate']*100:.1f}%"
+            f"Pass Rate: {summary['pass_rate']*100:.1f}%",
         )
         print("=" * 60)
 

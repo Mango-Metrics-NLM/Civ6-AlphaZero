@@ -506,7 +506,7 @@ class TrainingLogger:
         # Log to standard logger
         self._logger.info(
             f"Step {iteration}: loss={loss:.4f} "
-            f"(policy={policy_loss:.4f}, value={value_loss:.4f})"
+            f"(policy={policy_loss:.4f}, value={value_loss:.4f})",
         )
 
         # Log to TensorBoard
@@ -563,7 +563,7 @@ class TrainingLogger:
 
         self._logger.info(
             f"Self-play: {num_games} games, {total_examples} examples, "
-            f"avg_len={avg_game_length:.1f}, time={time_elapsed:.1f}s"
+            f"avg_len={avg_game_length:.1f}, time={time_elapsed:.1f}s",
         )
 
         if self._tb_writer is not None:
@@ -605,7 +605,7 @@ class TrainingLogger:
         self._metrics.update(f"win_rate_{opponent}", win_rate)
 
         self._logger.info(
-            f"Evaluation vs {opponent}: win_rate={win_rate:.1%} ({games_played} games)"
+            f"Evaluation vs {opponent}: win_rate={win_rate:.1%} ({games_played} games)",
         )
 
         if self._tb_writer is not None:
@@ -859,7 +859,7 @@ class GameLogger:
             self._current_game = None
 
         self._logger.debug(
-            f"Game {game_data['game_id']} ended: winner={winner}, turns={total_turns}"
+            f"Game {game_data['game_id']} ended: winner={winner}, turns={total_turns}",
         )
 
         return game_data
@@ -1279,7 +1279,7 @@ def setup_logging(
         console_handler.setFormatter(
             ColoredFormatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
             if not config.json_format
-            else formatter
+            else formatter,
         )
         root_logger.addHandler(console_handler)
 

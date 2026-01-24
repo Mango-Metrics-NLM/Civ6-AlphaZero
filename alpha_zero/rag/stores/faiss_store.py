@@ -73,7 +73,7 @@ class FAISSVectorStore(VectorStore):
             import faiss  # noqa: F401
         except ImportError as e:
             raise ImportError(
-                "FAISS is not installed. Install with: pip install faiss-cpu"
+                "FAISS is not installed. Install with: pip install faiss-cpu",
             ) from e
 
         self._loop = asyncio.get_event_loop()
@@ -319,7 +319,7 @@ class FAISSVectorStore(VectorStore):
                         score=score,
                         distance=float(dist) if self.distance_metric != "cosine" else 1 - float(dist),
                         rank=len(results) + 1,
-                    )
+                    ),
                 )
 
                 if len(results) >= top_k:

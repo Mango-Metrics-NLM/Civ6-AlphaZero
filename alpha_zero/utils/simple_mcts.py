@@ -412,7 +412,7 @@ class SimpleMCTS:
         if add_noise:
             noise = np.zeros_like(policy)
             noise[valid_actions] = np.random.dirichlet(
-                [self.config.dirichlet_alpha] * len(valid_actions)
+                [self.config.dirichlet_alpha] * len(valid_actions),
             )
 
             eps = self.config.dirichlet_epsilon

@@ -149,12 +149,12 @@ class ResourceBudget:
         """Create from dictionary."""
         return cls(
             max_iterations_before_guidance=int(
-                data.get("max_iterations_before_guidance", 5)
+                data.get("max_iterations_before_guidance", 5),
             ),
             max_files_per_pass=int(data.get("max_files_per_pass", 20)),
             max_lines_per_edit=int(data.get("max_lines_per_edit", 500)),
             exploration_timeout_minutes=float(
-                data.get("exploration_timeout_minutes", 10.0)
+                data.get("exploration_timeout_minutes", 10.0),
             ),
             test_timeout_seconds=int(data.get("test_timeout_seconds", 300)),
             max_memory_gb=float(data.get("max_memory_gb", 8.0)),
@@ -310,14 +310,14 @@ class EnvironmentConfig:
             fog_of_war_enabled=data.get("fog_of_war_enabled", True),
             early_termination_enabled=early_term.get("enabled", True),
             early_termination_advantage_threshold=int(
-                early_term.get("advantage_threshold", 3)
+                early_term.get("advantage_threshold", 3),
             ),
             early_termination_min_turns=int(early_term.get("min_turns", 10)),
             early_termination_stalemate_threshold=int(
-                early_term.get("stalemate_threshold", 20)
+                early_term.get("stalemate_threshold", 20),
             ),
             production_multiplier=float(
-                data.get("production", {}).get("multiplier", 1.5)
+                data.get("production", {}).get("multiplier", 1.5),
             ),
             base_production=int(data.get("production", {}).get("base_production", 3)),
         )
@@ -612,7 +612,7 @@ class OrchestratorConfig:
     rag: RAGConfig = field(default_factory=RAGConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     strategy_advisor: StrategyAdvisorConfig = field(
-        default_factory=StrategyAdvisorConfig
+        default_factory=StrategyAdvisorConfig,
     )
 
     # Resource management
@@ -622,13 +622,13 @@ class OrchestratorConfig:
     # Schedules for dynamic hyperparameters
     lr_schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     batch_size_schedule: ScheduleConfig = field(
-        default_factory=lambda: ScheduleConfig(initial_value=64)
+        default_factory=lambda: ScheduleConfig(initial_value=64),
     )
     temperature_schedule: ScheduleConfig = field(
-        default_factory=lambda: ScheduleConfig(initial_value=1.0)
+        default_factory=lambda: ScheduleConfig(initial_value=1.0),
     )
     exploration_schedule: ScheduleConfig = field(
-        default_factory=lambda: ScheduleConfig(initial_value=0.25)
+        default_factory=lambda: ScheduleConfig(initial_value=0.25),
     )
 
     # Paths
@@ -677,19 +677,19 @@ class OrchestratorConfig:
             rag=RAGConfig.from_dict(data.get("rag", {})),
             llm=LLMConfig.from_dict(data.get("llm", {})),
             strategy_advisor=StrategyAdvisorConfig.from_dict(
-                data.get("strategy_advisor", {})
+                data.get("strategy_advisor", {}),
             ),
             resources=ResourceBudget.from_dict(data.get("resources", {})),
             autonomy=AutonomyLevel.from_dict(data.get("autonomy", {})),
             lr_schedule=ScheduleConfig.from_dict(data.get("lr_schedule", {})),
             batch_size_schedule=ScheduleConfig.from_dict(
-                data.get("batch_size_schedule", {"initial_value": 64})
+                data.get("batch_size_schedule", {"initial_value": 64}),
             ),
             temperature_schedule=ScheduleConfig.from_dict(
-                data.get("temperature_schedule", {"initial_value": 1.0})
+                data.get("temperature_schedule", {"initial_value": 1.0}),
             ),
             exploration_schedule=ScheduleConfig.from_dict(
-                data.get("exploration_schedule", {"initial_value": 0.25})
+                data.get("exploration_schedule", {"initial_value": 0.25}),
             ),
             checkpoint_dir=data.get("checkpoint_dir", "checkpoints/orchestrator"),
             log_dir=data.get("log_dir", "logs/orchestrator"),
@@ -742,7 +742,7 @@ class OrchestratorConfig:
                 max_turns=20,
                 promotion_threshold=0.5,
                 min_games=5,
-            )
+            ),
         ]
         config.rag.enabled = False
         config.llm.enabled = False
@@ -861,7 +861,7 @@ class OrchestratorConfig:
         if self.training.replay_buffer_size < self.training.batch_size * 10:
             warnings.append(
                 f"Replay buffer ({self.training.replay_buffer_size}) should be "
-                f"at least 10x batch size ({self.training.batch_size})"
+                f"at least 10x batch size ({self.training.batch_size})",
             )
 
         # Check curriculum stages
@@ -871,7 +871,7 @@ class OrchestratorConfig:
         # Check MCTS simulations
         if self.mcts.num_simulations < 10:
             warnings.append(
-                f"MCTS simulations ({self.mcts.num_simulations}) is very low"
+                f"MCTS simulations ({self.mcts.num_simulations}) is very low",
             )
 
         # Check RAG dependencies
@@ -882,7 +882,7 @@ class OrchestratorConfig:
         if self.mode == "distributed":
             if not self.autonomy.auto_restart_actors:
                 warnings.append(
-                    "Distributed mode without auto_restart_actors may cause issues"
+                    "Distributed mode without auto_restart_actors may cause issues",
                 )
 
         return warnings

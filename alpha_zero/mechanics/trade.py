@@ -356,7 +356,7 @@ class TradeManager:
 
         logger.info(
             f"Created trade route {route_id}: {origin} -> {destination} "
-            f"(type={route_type.name}, distance={distance}, yields={yields.total():.1f})"
+            f"(type={route_type.name}, distance={distance}, yields={yields.total():.1f})",
         )
 
         return route

@@ -141,7 +141,7 @@ class MicroCivEnv(gym.Env):
 
         # Action and observation spaces
         self.action_space_handler = MicroCivActionSpace(
-            board_size=board_size, max_units=20, max_cities=5
+            board_size=board_size, max_units=20, max_cities=5,
         )
         self.encoder = MicroCivEncoder(board_size=board_size)
 
@@ -156,7 +156,7 @@ class MicroCivEnv(gym.Env):
                     dtype=np.float32,
                 ),
                 "vector": spaces.Box(
-                    low=-1.0, high=1.0, shape=(64,), dtype=np.float32
+                    low=-1.0, high=1.0, shape=(64,), dtype=np.float32,
                 ),
                 "action_mask": spaces.Box(
                     low=0.0,
@@ -164,7 +164,7 @@ class MicroCivEnv(gym.Env):
                     shape=(self.action_space_handler.total_size,),
                     dtype=np.float32,
                 ),
-            }
+            },
         )
 
         # Game state
@@ -209,7 +209,7 @@ class MicroCivEnv(gym.Env):
         return obs, info
 
     def step(
-        self, action: int
+        self, action: int,
     ) -> tuple[dict[str, np.ndarray], SupportsFloat, bool, bool, dict[str, Any]]:
         """Execute action and return new state.
 
@@ -285,7 +285,7 @@ class MicroCivEnv(gym.Env):
         p0_start = self._find_valid_position(2, 2, 5)
         # Player 1 starts in top-right area
         p1_start = self._find_valid_position(
-            self.board_size - 5, self.board_size - 5, 5
+            self.board_size - 5, self.board_size - 5, 5,
         )
 
         # Create starting units
@@ -299,7 +299,7 @@ class MicroCivEnv(gym.Env):
                     position=pos,
                     strength=0,
                     moves_remaining=2,
-                )
+                ),
             )
             self._next_unit_id += 1
 
@@ -313,12 +313,12 @@ class MicroCivEnv(gym.Env):
                     position=warrior_pos,
                     strength=20,
                     moves_remaining=2,
-                )
+                ),
             )
             self._next_unit_id += 1
 
     def _find_valid_position(
-        self, start_x: int, start_y: int, range_: int
+        self, start_x: int, start_y: int, range_: int,
     ) -> tuple[int, int]:
         """Find a valid (non-mountain) position in a range."""
         for _ in range(100):
@@ -465,7 +465,7 @@ class MicroCivEnv(gym.Env):
                             position=spawn_pos,
                             strength=self.UNIT_STRENGTH.get(city.production_queue, 20),
                             moves_remaining=0,
-                        )
+                        ),
                     )
                     self._next_unit_id += 1
                     city.production = 0
@@ -504,7 +504,7 @@ class MicroCivEnv(gym.Env):
                             player=unit.player,
                             name=city_name,
                             position=unit.position,
-                        )
+                        ),
                     )
                     self._next_city_id += 1
                     settlers_to_remove.append(unit)

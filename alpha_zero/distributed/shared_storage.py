@@ -244,7 +244,7 @@ class SharedStorage:
         # Deserialize
         buffer = io.BytesIO(weights_bytes)
         state_dict: dict[str, torch.Tensor] = torch.load(
-            buffer, map_location='cpu', weights_only=True
+            buffer, map_location='cpu', weights_only=True,
         )
         return state_dict
 
@@ -417,7 +417,7 @@ class DistributedReplayBuffer:
 
         # Trajectory input queue (actors -> buffer)
         self._trajectory_queue: Queue = mp.Queue(
-            maxsize=self.config.trajectory_queue_size
+            maxsize=self.config.trajectory_queue_size,
         )
 
         # Internal buffer storage (managed by learner process)
@@ -431,7 +431,7 @@ class DistributedReplayBuffer:
         self._stats['buffer_size'] = 0
 
         logger.info(
-            f"DistributedReplayBuffer initialized (max_size={self.config.max_size})"
+            f"DistributedReplayBuffer initialized (max_size={self.config.max_size})",
         )
 
     def shutdown(self) -> None:

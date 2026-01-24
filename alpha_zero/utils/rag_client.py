@@ -80,12 +80,12 @@ class RAGClient:
             embedding_func = None
             if SENTENCE_TRANSFORMERS_AVAILABLE:
                 embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(
-                    model_name=self.config.embedding_model
+                    model_name=self.config.embedding_model,
                 )
 
             self.collection = self.client.get_or_create_collection(
                 name=self.config.collection_name,
-                embedding_function=embedding_func
+                embedding_function=embedding_func,
             )
             logger.info(f"RAG initialized at {self.config.persist_directory}, collection: {self.config.collection_name}")
 
@@ -98,7 +98,7 @@ class RAGClient:
         self,
         documents: list[str],
         metadatas: list[dict[str, Any]] | None = None,
-        ids: list[str] | None = None
+        ids: list[str] | None = None,
     ) -> bool:
         """Add documents to the knowledge base.
 
@@ -127,7 +127,7 @@ class RAGClient:
             self.collection.add(
                 documents=documents,
                 metadatas=metadatas,
-                ids=ids
+                ids=ids,
             )
             logger.info(f"Added {count} documents to RAG.")
             return True
@@ -152,7 +152,7 @@ class RAGClient:
             k = n_results or self.config.top_k
             results = self.collection.query(
                 query_texts=[query_text],
-                n_results=k
+                n_results=k,
             )
 
             # results['documents'] is list of list of str

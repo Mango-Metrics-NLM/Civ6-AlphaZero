@@ -224,7 +224,7 @@ class Learner:
         ).to(config.device)
 
         logger.info(
-            f"Network parameters: {sum(p.numel() for p in self.network.parameters()):,}"
+            f"Network parameters: {sum(p.numel() for p in self.network.parameters()):,}",
         )
 
         # Initialize optimizer
@@ -346,7 +346,7 @@ class Learner:
 
         # Compute loss
         total_loss, p_loss, v_loss = compute_loss(
-            policy_logits, value, target_policy, target_value, action_mask
+            policy_logits, value, target_policy, target_value, action_mask,
         )
 
         # Accumulate gradients and step
@@ -389,7 +389,7 @@ class Learner:
                 break
             logger.info(
                 f"Waiting for replay buffer "
-                f"({self.replay_buffer.size()}/{self.config.min_buffer_size})"
+                f"({self.replay_buffer.size()}/{self.config.min_buffer_size})",
             )
             time.sleep(1.0)
 
@@ -410,7 +410,7 @@ class Learner:
                 and self.training_step >= self.config.max_training_steps
             ):
                 logger.info(
-                    f"Reached max training steps ({self.config.max_training_steps})"
+                    f"Reached max training steps ({self.config.max_training_steps})",
                 )
                 break
 
@@ -442,7 +442,7 @@ class Learner:
                     f"loss={avg_total:.4f} "
                     f"(policy={avg_policy:.4f}, value={avg_value:.4f}), "
                     f"lr={losses['learning_rate']:.6f}, "
-                    f"{steps_per_sec:.1f} steps/sec"
+                    f"{steps_per_sec:.1f} steps/sec",
                 )
 
                 # Store in shared storage

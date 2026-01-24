@@ -430,7 +430,7 @@ class EspionageManager:
         # Check rank requirement
         if spy.rank.value < config.required_rank.value:
             logger.warning(
-                f"Spy {spy_id} rank {spy.rank.name} insufficient for {mission_type.name}"
+                f"Spy {spy_id} rank {spy.rank.name} insufficient for {mission_type.name}",
             )
             return None
 
@@ -594,7 +594,7 @@ class EspionageManager:
 
         logger.info(
             f"Mission {mission.mission_type.name} by {spy.name}: {outcome.name} "
-            f"(chance: {success_chance:.1%}, roll: {roll:.2f})"
+            f"(chance: {success_chance:.1%}, roll: {roll:.2f})",
         )
 
         return result

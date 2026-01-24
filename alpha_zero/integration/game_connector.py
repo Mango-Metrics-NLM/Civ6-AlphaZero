@@ -618,12 +618,10 @@ class GameBackend(ABC):
         Returns:
             True if connection successful.
         """
-        pass
 
     @abstractmethod
     def disconnect(self) -> None:
         """Disconnect from game."""
-        pass
 
     @abstractmethod
     def is_connected(self) -> bool:
@@ -632,7 +630,6 @@ class GameBackend(ABC):
         Returns:
             True if connected.
         """
-        pass
 
     @abstractmethod
     def get_state(self) -> dict[str, Any]:
@@ -641,7 +638,6 @@ class GameBackend(ABC):
         Returns:
             Game state dictionary.
         """
-        pass
 
     @abstractmethod
     def apply_action(self, action: Any) -> dict[str, Any]:
@@ -653,7 +649,6 @@ class GameBackend(ABC):
         Returns:
             Result of action application.
         """
-        pass
 
     @abstractmethod
     def reset(self, options: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -665,7 +660,6 @@ class GameBackend(ABC):
         Returns:
             Initial game state.
         """
-        pass
 
     @abstractmethod
     def get_valid_actions(self) -> Any:
@@ -674,7 +668,6 @@ class GameBackend(ABC):
         Returns:
             Valid actions (format depends on backend).
         """
-        pass
 
 
 class MicroCivBackend(GameBackend):
@@ -923,7 +916,7 @@ class GameConnector:
                     raise ConnectionTimeoutError()
 
                 self._logger.info(
-                    f"Connection attempt {attempt + 1}/{self.config.retry.max_retries}"
+                    f"Connection attempt {attempt + 1}/{self.config.retry.max_retries}",
                 )
 
                 if self._backend.connect():
@@ -1059,7 +1052,7 @@ class GameConnector:
             ):
                 state = self.get_state()
                 self._checkpoint_manager.save_checkpoint(
-                    state, self._game_id, self._turn
+                    state, self._game_id, self._turn,
                 )
                 self._metrics.checkpoints_created += 1
 
@@ -1167,7 +1160,7 @@ class GameConnector:
             except Exception as e:
                 last_error = e
                 self._logger.warning(
-                    f"Operation failed (attempt {attempt + 1}): {e}"
+                    f"Operation failed (attempt {attempt + 1}): {e}",
                 )
 
                 # Check if we should retry

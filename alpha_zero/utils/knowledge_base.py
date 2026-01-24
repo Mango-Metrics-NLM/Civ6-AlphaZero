@@ -58,7 +58,7 @@ class KnowledgeBase:
                     documents.append(chunk)
                     metadatas.append({
                         "source": str(file_path),
-                        "chunk_index": i
+                        "chunk_index": i,
                     })
                     ids.append(f"{file_path.name}_{i}")
 
@@ -122,4 +122,3 @@ class KnowledgeBase:
         """Clear the backend database (if supported)."""
         # Chroma's delete collection or reset logic if needed
         # For now, not exposed to avoid accidental data loss via this API
-        pass

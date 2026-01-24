@@ -75,7 +75,7 @@ class VectorStoreFactory:
             available = [t.value for t in cls._registry.keys()]
             raise ValueError(
                 f"Unsupported store type: {config.store_type}. "
-                f"Available types: {available}"
+                f"Available types: {available}",
             )
 
         # Create instance with appropriate parameters

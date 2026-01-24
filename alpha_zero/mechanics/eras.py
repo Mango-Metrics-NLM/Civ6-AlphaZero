@@ -428,7 +428,7 @@ class EraManager:
 
         logger.info(
             f"Player {player_id} achieved {moment_type.name}: +{score} era score "
-            f"(total: {progress.era_score})"
+            f"(total: {progress.era_score})",
         )
 
         return moment
@@ -528,7 +528,7 @@ class EraManager:
 
         logger.info(
             f"Player {player_id} advanced to {progress.current_era.name} "
-            f"({new_age.name} Age, score: {final_score})"
+            f"({new_age.name} Age, score: {final_score})",
         )
 
         return result

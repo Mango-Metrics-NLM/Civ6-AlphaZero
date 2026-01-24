@@ -497,7 +497,7 @@ class DiplomacyManager:
 
         if action.action_type == DiplomaticActionType.DECLARE_WAR:
             can_declare, reason = self.can_declare_war(
-                action.source_player, action.target_player, current_turn
+                action.source_player, action.target_player, current_turn,
             )
             if not can_declare:
                 return False
@@ -510,7 +510,7 @@ class DiplomacyManager:
 
         elif action.action_type == DiplomaticActionType.MAKE_PEACE:
             can_peace, _ = self.can_make_peace(
-                action.source_player, action.target_player
+                action.source_player, action.target_player,
             )
             if not can_peace:
                 return False

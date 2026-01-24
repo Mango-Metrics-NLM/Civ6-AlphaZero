@@ -57,7 +57,6 @@ class EmbeddingGenerator(ABC):
         Returns:
             Embedding vector
         """
-        pass
 
     @abstractmethod
     async def embed_texts(self, texts: list[str]) -> list[np.ndarray]:
@@ -69,7 +68,6 @@ class EmbeddingGenerator(ABC):
         Returns:
             List of embedding vectors
         """
-        pass
 
     async def embed_documents(self, documents: list[Document]) -> list[Document]:
         """Generate embeddings for documents in place.
@@ -146,7 +144,7 @@ class OpenAIEmbeddings(EmbeddingGenerator):
                 self._client = AsyncOpenAI(api_key=self.api_key, timeout=self.timeout)
             except ImportError as e:
                 raise ImportError(
-                    "OpenAI package not installed. Install with: pip install openai"
+                    "OpenAI package not installed. Install with: pip install openai",
                 ) from e
         return self._client
 
@@ -186,7 +184,7 @@ class OpenAIEmbeddings(EmbeddingGenerator):
         return all_embeddings
 
     async def _embed_batch_with_retry(
-        self, client, texts: list[str]
+        self, client, texts: list[str],
     ) -> list[np.ndarray]:
         """Embed a batch of texts with retry logic.
 
@@ -335,7 +333,7 @@ class SentenceTransformerEmbeddings(EmbeddingGenerator):
         except ImportError as e:
             raise ImportError(
                 "sentence-transformers not installed. "
-                "Install with: pip install sentence-transformers"
+                "Install with: pip install sentence-transformers",
             ) from e
 
         self._model = SentenceTransformer(model_name, device=device)

@@ -108,7 +108,7 @@ class HierarchicalAction:
 
     @classmethod
     def from_flat_index(
-        cls, flat_index: int, action_space: ActionSpace
+        cls, flat_index: int, action_space: ActionSpace,
     ) -> HierarchicalAction:
         """Create hierarchical action from flat index."""
         return action_space.decode(flat_index)
@@ -307,7 +307,7 @@ class ActionSpace:
         return mask
 
     def _get_unit_valid_actions(
-        self, unit: dict, game_state: dict
+        self, unit: dict, game_state: dict,
     ) -> dict[int, list[tuple[int, int]]]:
         """Get valid actions and targets for a unit.
 

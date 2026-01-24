@@ -19,7 +19,7 @@ from alpha_zero.rag.config.settings import LoggingConfig, LogLevel
 
 # Context variable for correlation ID
 _correlation_id: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "correlation_id", default=""
+    "correlation_id", default="",
 )
 
 
@@ -87,7 +87,6 @@ class LogContext:
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         """Exit context."""
-        pass
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for logging."""

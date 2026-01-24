@@ -535,7 +535,7 @@ class MixtureOfExperts(nn.Module):
 
         # Select top-k experts
         top_k_probs, top_k_indices = torch.topk(
-            router_probs, self.experts_per_token, dim=-1
+            router_probs, self.experts_per_token, dim=-1,
         )  # (B, N, k)
 
         # Normalize selected probabilities
@@ -698,7 +698,7 @@ class PatchEmbed(nn.Module):
         self.patch_size = patch_size
         self.num_patches = (spatial_size // patch_size) ** 2
         self.proj = nn.Conv2d(
-            in_channels, embed_dim, kernel_size=patch_size, stride=patch_size
+            in_channels, embed_dim, kernel_size=patch_size, stride=patch_size,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

@@ -510,7 +510,7 @@ class ReligionManager:
         # Apply pressure
         self._ensure_city_pressure(target_city_position)
         self._city_pressure[target_city_position].add_pressure(
-            unit.religion_id, float(strength)
+            unit.religion_id, float(strength),
         )
 
         # Remove unit if out of charges
@@ -565,7 +565,7 @@ class ReligionManager:
                         (1.0 - distance / (self.config.natural_spread_range + 1))
                     )
                     self._city_pressure[target_city.position].add_pressure(
-                        majority, spread_amount
+                        majority, spread_amount,
                     )
 
     def process_turn(self) -> None:
