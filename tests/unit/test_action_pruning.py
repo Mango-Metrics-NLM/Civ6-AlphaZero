@@ -25,9 +25,9 @@ class TestActionPruningImports:
     """Tests for action pruning module imports."""
 
     def test_import_pruning_config(self):
-        """Test PruningConfig can be imported."""
-        from alpha_zero.core.action_pruning import PruningConfig
-        assert PruningConfig is not None
+        """Test PrunerConfig can be imported."""
+        from alpha_zero.core.action_pruning import PrunerConfig
+        assert PrunerConfig is not None
 
     def test_import_pruning_level(self):
         """Test PruningLevel can be imported."""
@@ -56,15 +56,15 @@ class TestActionPruningImports:
 # =============================================================================
 
 
-class TestPruningConfig:
-    """Tests for PruningConfig dataclass."""
+class TestPrunerConfig:
+    """Tests for PrunerConfig dataclass."""
 
     def test_default_config(self):
         """Test default configuration values."""
-        from alpha_zero.core.action_pruning import PruningConfig
-        config = PruningConfig()
-        assert config.max_actions > 0
-        assert config.enable_feasibility_pruning is True
+        from alpha_zero.core.action_pruning import PrunerConfig
+        config = PrunerConfig()
+        assert config.min_pruned_actions >= 0
+        assert config.enable_feasibility is True
 
     def test_pruning_levels_exist(self):
         """Test pruning levels are defined."""
@@ -101,17 +101,17 @@ class TestActionPruner:
 
     def test_pruner_creation(self):
         """Test ActionPruner can be created."""
-        from alpha_zero.core.action_pruning import ActionPruner, PruningConfig
-        config = PruningConfig()
+        from alpha_zero.core.action_pruning import ActionPruner, PrunerConfig
+        config = PrunerConfig()
         pruner = ActionPruner(config)
         assert pruner is not None
 
     def test_prune_returns_result(self, sample_state, sample_mask):
         """Test prune method returns a result."""
         from alpha_zero.core.action_pruning import (
-            ActionPruner, PruningConfig, PrunedActions
+            ActionPruner, PrunerConfig, PrunedActions
         )
-        config = PruningConfig()
+        config = PrunerConfig()
         pruner = ActionPruner(config)
         result = pruner.prune(sample_state, sample_mask)
         assert isinstance(result, PrunedActions)
@@ -120,12 +120,12 @@ class TestActionPruner:
     def test_prune_reduces_actions(self, sample_state, sample_mask):
         """Test pruning can reduce action count."""
         from alpha_zero.core.action_pruning import (
-            ActionPruner, PruningConfig, PruningLevel
+            ActionPruner, PrunerConfig, PruningLevel
         )
-        config = PruningConfig(pruning_level=PruningLevel.AGGRESSIVE)
+        config = PrunerConfig(pruning_level=PruningLevel.AGGRESSIVE)
         pruner = ActionPruner(config)
         result = pruner.prune(sample_state, sample_mask)
-        assert result.pruned_count <= sample_mask.sum()
+        assert result.stats.final_actions <= sample_mask.sum()
 
 
 # =============================================================================
@@ -140,22 +140,22 @@ class TestMacroAction:
         """Test MacroAction can be created."""
         from alpha_zero.core.action_pruning import MacroAction, MacroActionType
         macro = MacroAction(
-            id="test",
-            macro_type=MacroActionType.EXPAND,
-            actions=[1, 2, 3],
+            macro_type=MacroActionType.EXPAND_TO_RESOURCE,
+            goal="test_goal",
+            steps=[1, 2, 3],
             priority=0.5,
         )
-        assert macro.id == "test"
-        assert macro.macro_type == MacroActionType.EXPAND
-        assert len(macro.actions) == 3
+        assert macro.goal == "test_goal"
+        assert macro.macro_type == MacroActionType.EXPAND_TO_RESOURCE
+        assert len(macro.steps) == 3
 
     def test_macro_types_exist(self):
         """Test macro action types are defined."""
         from alpha_zero.core.action_pruning import MacroActionType
         types = list(MacroActionType)
-        assert MacroActionType.EXPAND in types
-        assert MacroActionType.ATTACK in types
-        assert MacroActionType.DEFEND in types
+        assert MacroActionType.EXPAND_TO_RESOURCE in types
+        assert MacroActionType.CONQUER_CITY in types
+        assert MacroActionType.DEFEND_POSITION in types
 
 
 # =============================================================================
@@ -184,12 +184,12 @@ class TestMacroActionPlanner:
         planner = MacroActionPlanner(config)
         assert planner is not None
 
-    def test_get_available_macros(self, sample_state):
+    def test_get_suggested_macros(self, sample_state):
         """Test getting available macro actions."""
         from alpha_zero.core.action_pruning import (
             MacroActionPlanner, MacroActionConfig
         )
         config = MacroActionConfig()
         planner = MacroActionPlanner(config)
-        macros = planner.get_available_macros(sample_state)
+        macros = planner.get_suggested_macros(sample_state)
         assert isinstance(macros, list)

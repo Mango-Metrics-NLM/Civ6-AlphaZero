@@ -1214,13 +1214,15 @@ def create_transformer_network(
 
     preset = presets.get(model_size, presets["small"])
 
+    # Merge preset with kwargs, allowing kwargs to override preset values
+    merged_config = {**preset, **kwargs}
+
     config = TransformerConfig(
         spatial_channels=spatial_channels,
         spatial_size=spatial_size,
         vector_dim=vector_dim,
         action_space_size=action_space_size,
-        **preset,  # type: ignore[arg-type]
-        **kwargs,
+        **merged_config,  # type: ignore[arg-type]
     )
 
     return Civ6TransformerNetwork(config=config)
