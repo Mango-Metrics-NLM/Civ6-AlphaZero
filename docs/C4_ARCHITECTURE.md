@@ -2,6 +2,19 @@
 
 > Architecture documentation using the C4 model for comprehensive system visualization.
 
+## Project Status
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Phase 1 | Core AlphaZero (MCTS + Neural Network) | ✅ Complete |
+| Phase 2 | Hierarchical Reinforcement Learning | ✅ Complete |
+| Phase 3 | Training Improvements (Curriculum, Rewards) | ✅ Complete |
+| Phase 4 | Unified Training Orchestrator | ✅ Complete |
+| Phase 5 | RAG-LLM Integration | ✅ Complete |
+| Phase 6 | Agentic Framework for Claude Code | ✅ Complete |
+
+**Codebase Statistics:** ~51,800 LOC core + ~14,600 LOC agentic framework, 350+ tests
+
 ---
 
 ## Level 1: System Context Diagram
@@ -79,6 +92,22 @@ Legend:
 │  │                    │  Action Pruning  │                                     │ │
 │  │                    │  & Macro Actions │                                     │ │
 │  │                    └──────────────────┘                                     │ │
+│  └────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                  │
+│  ┌────────────────────────────────────────────────────────────────────────────┐ │
+│  │                       HIERARCHICAL RL LAYER (Phase 2)                       │ │
+│  │                                                                             │ │
+│  │   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                 │ │
+│  │   │  Strategic   │    │   Tactical   │    │ Operational  │                 │ │
+│  │   │   Level      │───►│    Level     │───►│    Level     │                 │ │
+│  │   │ (30-100 trn) │    │  (5-15 trn)  │    │  (1-3 trn)   │                 │ │
+│  │   └──────────────┘    └──────────────┘    └──────────────┘                 │ │
+│  │          │                   │                   │                          │ │
+│  │          ▼                   ▼                   ▼                          │ │
+│  │   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                 │ │
+│  │   │    Goals     │    │   Encoders   │    │ Controllers  │                 │ │
+│  │   │  Management  │    │ (Per-Level)  │    │ (Per-Level)  │                 │ │
+│  │   └──────────────┘    └──────────────┘    └──────────────┘                 │ │
 │  └────────────────────────────────────────────────────────────────────────────┘ │
 │                                                                                  │
 │  ┌────────────────────────────────────────────────────────────────────────────┐ │
@@ -625,8 +654,138 @@ Legend:
 | YAML configuration | Readable, environment overrides | Schema validation needed |
 | Action pruning | Reduce search space intelligently | May prune good actions |
 | Macro actions | Multi-turn planning abstraction | Learning complexity |
+| Hierarchical RL | Multi-level decision making | Coordination complexity |
+| RAG integration | Knowledge-enhanced decisions | Latency for queries |
 
 ---
 
-*Last updated: 2026-01-23*
-*Architecture version: 2.0*
+## Level 3: Component Diagram - Hierarchical RL Layer
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                      HIERARCHICAL RL LAYER COMPONENTS                         │
+│                                                                               │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │                       DECISION HIERARCHY                                │  │
+│  │                                                                         │  │
+│  │   ┌─────────────────────────────────────────────────────────────────┐  │  │
+│  │   │                    STRATEGIC LEVEL (30-100 turns)               │  │  │
+│  │   │   Goals: Victory condition, Long-term expansion, Tech path      │  │  │
+│  │   │   Encoder: Global state features, Player relations              │  │  │
+│  │   │   Output: High-level objectives, Resource allocation            │  │  │
+│  │   └─────────────────────────────────────────────────────────────────┘  │  │
+│  │                              │                                          │  │
+│  │                              ▼                                          │  │
+│  │   ┌─────────────────────────────────────────────────────────────────┐  │  │
+│  │   │                    TACTICAL LEVEL (5-15 turns)                  │  │  │
+│  │   │   Goals: Regional control, Army composition, City development   │  │  │
+│  │   │   Encoder: Regional features, Unit positions, Threats           │  │  │
+│  │   │   Output: Unit group commands, Production priorities            │  │  │
+│  │   └─────────────────────────────────────────────────────────────────┘  │  │
+│  │                              │                                          │  │
+│  │                              ▼                                          │  │
+│  │   ┌─────────────────────────────────────────────────────────────────┐  │  │
+│  │   │                   OPERATIONAL LEVEL (1-3 turns)                 │  │  │
+│  │   │   Goals: Individual unit actions, Immediate threats             │  │  │
+│  │   │   Encoder: Local tile features, Combat modifiers                │  │  │
+│  │   │   Output: Specific move/attack/build actions                    │  │  │
+│  │   └─────────────────────────────────────────────────────────────────┘  │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                               │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │                       HIERARCHICAL CONTROLLER                           │  │
+│  │                                                                         │  │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐         │  │
+│  │  │ GoalManager     │  │ LevelScheduler  │  │ RewardPropagator│         │  │
+│  │  │ - goal_stack    │  │ - active_level  │  │ - intrinsic_rwd │         │  │
+│  │  │ - propagate()   │  │ - switch_level()│  │ - extrinsic_rwd │         │  │
+│  │  │ - evaluate()    │  │ - time_horizon  │  │ - backprop()    │         │  │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘         │  │
+│  │                                                                         │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐   │  │
+│  │  │                    LLM GUIDANCE INTEGRATION                      │   │  │
+│  │  │  - Strategy advice from RAG knowledge base                       │   │  │
+│  │  │  - Goal suggestions based on game state                          │   │  │
+│  │  │  - Explanation generation for decisions                          │   │  │
+│  │  └─────────────────────────────────────────────────────────────────┘   │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Level 2: Agentic Framework (Phase 6)
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         AGENTIC FRAMEWORK (~14,600 LOC)                       │
+│                                                                               │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │                           CORE COMPONENTS                               │  │
+│  │                                                                         │  │
+│  │   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐             │  │
+│  │   │  Constraint  │    │  Permission  │    │   Session    │             │  │
+│  │   │  Manager     │    │  Manager     │    │   Memory     │             │  │
+│  │   │ - hard/soft  │    │ - scope      │    │ - CLAUDE.md  │             │  │
+│  │   │ - validate() │    │ - autonomy   │    │ - persist()  │             │  │
+│  │   └──────────────┘    └──────────────┘    └──────────────┘             │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                               │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │                          SPECIALIZED AGENTS                             │  │
+│  │                                                                         │  │
+│  │   ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐     │  │
+│  │   │  Planning   │ │Implementation│ │  Testing   │ │Verification │     │  │
+│  │   │   Agent     │ │    Agent    │ │   Agent    │ │   Agent     │     │  │
+│  │   │ - analyze   │ │ - write code│ │ - pytest   │ │ - lint/type │     │  │
+│  │   │ - plan      │ │ - rollback  │ │ - coverage │ │ - verify    │     │  │
+│  │   └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘     │  │
+│  │                                                                         │  │
+│  │   ┌─────────────────────────────────────────────────────────────────┐  │  │
+│  │   │                    DOCUMENTATION AGENT                          │  │  │
+│  │   │  - Update CLAUDE.md with new patterns                           │  │  │
+│  │   │  - Generate docstrings and README updates                       │  │  │
+│  │   │  - Track architectural decisions                                │  │  │
+│  │   └─────────────────────────────────────────────────────────────────┘  │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                               │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │                           FEEDBACK LOOP                                 │  │
+│  │                                                                         │  │
+│  │   ┌──────────────────────────────────────────────────────────────────┐ │  │
+│  │   │ 1. Lint → 2. Type Check → 3. Unit Test → 4. Integration Test    │ │  │
+│  │   │         ↓ (on failure)                                           │ │  │
+│  │   │ 5. Auto-fix → 6. Retry (max 3x) → 7. Report with hypothesis     │ │  │
+│  │   └──────────────────────────────────────────────────────────────────┘ │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Roadmap
+
+### Completed Phases
+
+1. **Phase 1**: Core AlphaZero - MCTS + Neural Network ✅
+2. **Phase 2**: Hierarchical RL - Multi-level decision making ✅
+3. **Phase 3**: Training Improvements - Curriculum, rewards, tuning ✅
+4. **Phase 4**: Unified Orchestrator - Single training entry point ✅
+5. **Phase 5**: RAG Integration - Knowledge-enhanced decisions ✅
+6. **Phase 6**: Agentic Framework - Claude Code automation ✅
+
+### Planned Features
+
+| Priority | Feature | Description |
+|----------|---------|-------------|
+| P1 | Training Validation | Achieve >50% win rate vs random |
+| P2 | Multi-GPU Training | DistributedDataParallel support |
+| P3 | Tournament System | ELO-based agent ranking |
+| P4 | Population-Based Training | Adaptive hyperparameters |
+| P5 | Human vs AI Interface | Web-based gameplay UI |
+| P6 | Full Civ 6 Integration | Direct game modding API |
+
+---
+
+*Last updated: 2026-01-24*
+*Architecture version: 3.0*

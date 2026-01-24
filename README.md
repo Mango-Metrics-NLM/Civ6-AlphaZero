@@ -6,17 +6,37 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+## Project Status
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Phase 1 | Core AlphaZero (MCTS + Neural Network) | ✅ Complete |
+| Phase 2 | Hierarchical Reinforcement Learning | ✅ Complete |
+| Phase 3 | Training Improvements (Curriculum, Rewards) | ✅ Complete |
+| Phase 4 | Unified Training Orchestrator | ✅ Complete |
+| Phase 5 | RAG-LLM Integration | ✅ Complete |
+| Phase 6 | Agentic Framework for Claude Code | ✅ Complete |
+
+**Codebase Statistics:**
+- ~51,800 lines of core implementation
+- ~14,600 lines of agentic framework
+- 350+ tests with >80% coverage on core modules
+- 11 game mechanics modules
+
 ## Key Features
 
 - **AlphaZero Core**: Full implementation of the AlphaZero self-play reinforcement learning loop
 - **Hierarchical MCTS**: Advanced tree search supporting complex, multi-category action spaces
-- **Residual Network**: Dual-headed (Policy & Value) architecture for joint estimation
+- **Hierarchical RL**: Multi-level decision hierarchy (Strategic → Tactical → Operational) with goal-based learning
+- **Residual Network**: Dual-headed (Policy & Value) architecture with optional Transformer support
 - **Curriculum Learning**: Multi-stage difficulty progression for accelerated training
 - **Reward Shaping**: Potential-based shaping that preserves optimal policy
 - **Environment Tuning**: Configurable game mechanics for faster iteration
+- **Comprehensive Game Mechanics**: 11 modules covering diplomacy, trade, espionage, religion, and more
 - **W&B Integration**: Full experiment tracking with Weights & Biases
 - **MicroCiv Environment**: Gymnasium-compliant simulation of Civ6 core mechanics
 - **RAG Integration**: Retrieval-Augmented Generation for knowledge-enhanced decision making
+- **Agentic Framework**: Reusable framework for Claude Code autonomous development workflows
 
 ## Architecture (C4 Model)
 
@@ -565,63 +585,90 @@ pytest -k "curriculum" -v
 
 ```
 Civ6-AlphaZero/
-├── alpha_zero/
+├── alpha_zero/               # Core AI system (~51,800 LOC)
 │   ├── orchestrator/         # Unified training orchestrator (Phase 4)
 │   │   ├── __init__.py       # Module exports
 │   │   ├── __main__.py       # CLI entry point
 │   │   ├── config.py         # OrchestratorConfig
 │   │   ├── orchestrator.py   # TrainingOrchestrator
 │   │   ├── scheduler.py      # HyperparameterScheduler
-│   │   └── checkpointer.py   # CheckpointManager
+│   │   ├── checkpointer.py   # CheckpointManager
+│   │   ├── rag_integration.py # RAG-LLM integration
+│   │   └── strategy_advisor.py # LLM-based strategy guidance
 │   ├── core/                 # Core AlphaZero components
 │   │   ├── civ6_network.py   # Neural network architecture
 │   │   ├── civ6_mcts.py      # MCTS implementation
-│   │   └── civ6_actions.py   # Action space handling
+│   │   ├── civ6_actions.py   # Action space handling
+│   │   ├── transformer_network.py # Transformer/ViT architecture
+│   │   └── action_pruning.py # Strategic action pruning
+│   ├── hierarchical/         # Hierarchical RL (Phase 2)
+│   │   ├── goals/            # Goal definitions and management
+│   │   ├── encoders/         # Level-specific state encoders
+│   │   ├── network/          # Hierarchical policy networks
+│   │   ├── mcts/             # Hierarchical MCTS
+│   │   ├── controllers/      # Level controllers
+│   │   ├── controller.py     # Main HierarchicalController
+│   │   └── training_integration.py # Training pipeline integration
+│   ├── mechanics/            # Civ6 game mechanics (11 modules)
+│   │   ├── diplomacy.py      # Diplomatic relations & actions
+│   │   ├── trade.py          # Trade routes & commerce
+│   │   ├── espionage.py      # Spy operations
+│   │   ├── religion.py       # Faith & religious systems
+│   │   ├── government.py     # Government & policies
+│   │   ├── great_people.py   # Great person generation
+│   │   ├── promotions.py     # Unit experience & upgrades
+│   │   ├── eras.py           # Era progression & ages
+│   │   ├── climate.py        # Climate & disasters
+│   │   ├── congress.py       # World Congress
+│   │   └── culture.py        # Culture & tourism
 │   ├── distributed/          # Distributed training
 │   │   ├── actor.py          # Self-play actors
 │   │   ├── learner.py        # Training workers
-│   │   └── coordinator.py    # Orchestration
+│   │   ├── coordinator.py    # Orchestration
+│   │   └── shared_storage.py # Weight/buffer synchronization
 │   ├── envs/                 # Game environments
 │   │   ├── microciv.py       # MicroCiv environment
 │   │   └── civ6_encoder.py   # State encoding
-│   ├── rag/                  # RAG Integration
+│   ├── interfaces/           # Game interfaces
+│   │   └── unciv_interface.py # Unciv JSON interface
+│   ├── integration/          # External integrations
+│   │   └── game_connector.py # AI-to-game bridge
+│   ├── rag/                  # RAG Integration (Phase 5)
 │   │   ├── config/           # Configuration management
-│   │   │   └── settings.py   # RAG configuration classes
-│   │   ├── stores/           # Vector store implementations
-│   │   │   ├── base.py       # Abstract interfaces
-│   │   │   ├── memory_store.py
-│   │   │   ├── chroma_store.py
-│   │   │   └── faiss_store.py
-│   │   ├── processors/       # Document processing
-│   │   │   ├── text_processor.py
-│   │   │   └── embeddings.py
+│   │   ├── stores/           # Vector stores (Memory, Chroma, FAISS)
+│   │   ├── processors/       # Document processing & embeddings
 │   │   ├── agents/           # Agent workflow
-│   │   │   ├── workflow.py   # RAG workflow orchestration
-│   │   │   ├── context_builder.py
-│   │   │   └── query_enhancer.py
-│   │   ├── utils/            # RAG utilities
-│   │   │   ├── logging.py    # Structured logging
-│   │   │   ├── metrics.py    # Performance metrics
-│   │   │   └── cache.py      # Caching implementations
+│   │   ├── utils/            # Logging, metrics, caching
 │   │   └── pipeline.py       # Main RAG pipeline
 │   └── utils/                # Utilities & enhancements
-│       ├── factories.py      # Component factory functions
-│       ├── curriculum_learning.py
-│       ├── enhanced_rewards.py
-│       ├── environment_tuning.py
-│       ├── training_config_enhanced.py
-│       └── wandb_logger.py
+│       ├── curriculum_learning.py  # Multi-stage difficulty
+│       ├── enhanced_rewards.py     # Intermediate rewards
+│       ├── environment_tuning.py   # Game mechanics tuning
+│       ├── reward_shaping.py       # Potential-based shaping
+│       ├── training_diagnostics.py # Learning metrics
+│       ├── llm_client.py           # LLM API integration
+│       ├── factories.py            # Component factories
+│       └── wandb_logger.py         # W&B integration
+├── agentic_framework/        # Claude Code agent system (~14,600 LOC)
+│   ├── config/               # Configuration management
+│   ├── core/                 # Template parser, constraints, permissions
+│   ├── agents/               # Planning, Implementation, Testing agents
+│   ├── templates/            # Built-in agent templates
+│   ├── utils/                # Command execution, logging
+│   └── orchestrator.py       # Main orchestrator
 ├── configs/                  # Configuration files
 │   ├── orchestrator.yaml     # Master configuration
 │   ├── orchestrator_fast.yaml
-│   └── orchestrator_production.yaml
-├── tests/
+│   ├── orchestrator_production.yaml
+│   └── civ6_config.yaml      # Game-specific configuration
+├── data/
+│   └── knowledge/            # RAG knowledge base
+├── docs/
+│   └── C4_ARCHITECTURE.md    # Architecture documentation
+├── tests/                    # Test suite (350+ tests)
 │   ├── unit/                 # Unit tests
-│   │   └── test_rag/         # RAG unit tests
 │   └── integration/          # Integration tests
-│       └── test_rag/         # RAG integration tests
-├── scripts/                  # Utility scripts
-├── run_enhanced_training.py  # Legacy training entry point
+├── CLAUDE.md                 # Agent instructions & constraints
 ├── requirements.txt          # Dependencies
 └── README.md                 # This file
 ```
@@ -632,13 +679,36 @@ Civ6-AlphaZero/
 |----------|-------------|
 | Core | Python 3.11+ |
 | Deep Learning | PyTorch 2.0+ |
-| Environment | Gymnasium |
-| Experiment Tracking | Weights & Biases |
+| Environment | Gymnasium 0.29+ |
+| Experiment Tracking | Weights & Biases, TensorBoard |
 | RAG / Vector DB | ChromaDB, FAISS, Pinecone |
 | Embeddings | OpenAI, Sentence Transformers |
-| Testing | Pytest, pytest-asyncio |
+| LLM Integration | OpenAI, Anthropic |
+| Configuration | PyYAML, Pydantic |
+| Testing | Pytest 7.0+, pytest-asyncio, pytest-cov |
 | Visualization | Mermaid.js, Matplotlib |
-| Code Quality | MyPy, Ruff, Black |
+| Code Quality | MyPy, Ruff |
+| Numerical | NumPy 1.23+ |
+
+## Roadmap
+
+### Planned Features
+
+| Priority | Feature | Description |
+|----------|---------|-------------|
+| P1 | Training Validation | Extended training to achieve >50% win rate |
+| P2 | Multi-GPU Training | DistributedDataParallel support for faster training |
+| P3 | Tournament System | ELO-based agent ranking and matchmaking |
+| P4 | Population-Based Training | Adaptive hyperparameter optimization |
+| P5 | Human vs AI Interface | Web-based UI for human gameplay |
+| P6 | Full Civ 6 Integration | Direct game interface via modding API |
+| P7 | RAG Strategy Recommendations | LLM-powered move explanations |
+
+### Current Priorities
+
+1. **Validate training produces competent agents** - Current win rate vs random is 0%, needs extended training
+2. **Add GPU cluster support** - Enable faster iteration with multi-GPU training
+3. **Implement evaluation framework** - Tournament system for systematic agent comparison
 
 ## Contributing
 
