@@ -810,7 +810,7 @@ class GameLogger:
             if self._current_game is None:
                 return
 
-            mcts_data = {
+            mcts_data: dict[str, Any] = {
                 "root_visits": root_visits,
                 "max_depth": max_depth,
                 "search_time": search_time,

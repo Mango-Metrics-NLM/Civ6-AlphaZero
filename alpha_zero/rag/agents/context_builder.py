@@ -264,7 +264,7 @@ class ContextBuilder:
         Returns:
             Formatted context string
         """
-        parts = []
+        parts: list[str] = []
         total_chars = 0
 
         for i, result in enumerate(results, start=1):

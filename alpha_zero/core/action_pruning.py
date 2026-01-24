@@ -794,7 +794,7 @@ class MacroActionPlanner:
             return None
 
         planner = self._planners[macro_type]
-        macro = planner(state, target, **kwargs)
+        macro: MacroAction | None = planner(state, target, **kwargs)
 
         if macro and macro.steps:
             self._macro_counter += 1
@@ -873,8 +873,8 @@ class MacroActionPlanner:
         # 3. Siege
         # 4. Capture
 
-        steps = []
-        units_involved = []
+        steps: list[int] = []
+        units_involved: list[str] = []
 
         # Simplified: just plan attack sequence
         steps.extend([10, 11, 12, 13, 14])  # Placeholder
@@ -884,7 +884,7 @@ class MacroActionPlanner:
             goal=f"Conquer {target}",
             steps=steps,
             estimated_turns=10,
-            units_involved=units_involved,
+            units_involved=list(units_involved),
             target=target,
             priority=0.8,
         )

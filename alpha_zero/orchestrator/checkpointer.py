@@ -33,7 +33,7 @@ import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import torch
 
@@ -251,7 +251,7 @@ class CheckpointManager:
 
         checkpoint = torch.load(path, map_location="cpu", weights_only=False)
         logger.info(f"Loaded checkpoint: {path}")
-        return checkpoint
+        return cast(dict[str, Any], checkpoint)
 
     def load_latest(self) -> dict[str, Any]:
         """Load the most recent checkpoint.
@@ -315,7 +315,7 @@ class CheckpointManager:
         if not checkpoints:
             return None
         latest = max(checkpoints, key=lambda x: x.get("iteration", 0))
-        return latest["path"]
+        return cast(str, latest["path"])
 
     def get_latest_iteration(self) -> int:
         """Get iteration number of latest checkpoint.
@@ -326,7 +326,7 @@ class CheckpointManager:
         checkpoints = self._metadata.get("checkpoints", [])
         if not checkpoints:
             return 0
-        return max(c.get("iteration", 0) for c in checkpoints)
+        return cast(int, max(c.get("iteration", 0) for c in checkpoints))
 
     def get_best_metric(self) -> float | None:
         """Get best metric value.
@@ -337,7 +337,7 @@ class CheckpointManager:
         best_info = self._metadata.get("best")
         if not best_info:
             return None
-        return best_info.get("metrics", {}).get(self.best_metric)
+        return cast(float | None, best_info.get("metrics", {}).get(self.best_metric))
 
     def list_checkpoints(self) -> list[CheckpointInfo]:
         """List all checkpoints.
@@ -437,7 +437,7 @@ class CheckpointManager:
         if self._metadata_path.exists():
             try:
                 with open(self._metadata_path, encoding="utf-8") as f:
-                    return json.load(f)
+                    return cast(dict[str, Any], json.load(f))
             except json.JSONDecodeError:
                 logger.warning("Corrupted metadata file, starting fresh")
                 return {"checkpoints": []}

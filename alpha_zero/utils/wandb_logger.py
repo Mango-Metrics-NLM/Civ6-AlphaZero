@@ -628,7 +628,7 @@ class WandbLogger:
         Returns:
             Cleaned dictionary with Python native types.
         """
-        cleaned = {}
+        cleaned: dict[str, Any] = {}
         for key, value in data.items():
             if isinstance(value, np.ndarray):
                 if value.size == 1:

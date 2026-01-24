@@ -94,7 +94,7 @@ class KnowledgeBase:
         # Split by headers or paragraphs
         paragraphs = text.split("\n\n")
 
-        current_chunk = []
+        current_chunk: list[str] = []
         current_len = 0
 
         for para in paragraphs:

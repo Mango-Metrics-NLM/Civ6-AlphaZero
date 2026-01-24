@@ -360,7 +360,7 @@ class TrainingDiagnostics:
         )
 
         # Count actions
-        action_counts = {}
+        action_counts: dict[int, int] = {}
         for action in self._current_episode_actions:
             action_counts[action] = action_counts.get(action, 0) + 1
 

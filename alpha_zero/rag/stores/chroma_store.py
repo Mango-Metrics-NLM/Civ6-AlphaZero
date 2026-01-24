@@ -50,9 +50,9 @@ class ChromaVectorStore(VectorStore):
         super().__init__(collection_name, dimension)
         self.persist_directory = persist_directory
         self.distance_metric = distance_metric
-        self._client = None
-        self._collection = None
-        self._loop = None
+        self._client: Any = None
+        self._collection: Any = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     async def initialize(self) -> None:
         """Initialize ChromaDB client and collection."""
@@ -79,6 +79,7 @@ class ChromaVectorStore(VectorStore):
                     settings=Settings(anonymized_telemetry=False)
                 )
 
+        assert self._loop is not None
         self._client = await self._loop.run_in_executor(None, _create_client)
 
         # Get or create collection
@@ -96,6 +97,7 @@ class ChromaVectorStore(VectorStore):
                 metadata={"hnsw:space": distance_fn},
             )
 
+        assert self._loop is not None
         self._collection = await self._loop.run_in_executor(None, _get_collection)
         self._is_initialized = True
 
@@ -122,7 +124,8 @@ class ChromaVectorStore(VectorStore):
         self._validate_documents(documents)
 
         ids = [doc.id for doc in documents]
-        embeddings = [doc.embedding.tolist() for doc in documents]
+        # Embeddings are validated by _validate_documents above
+        embeddings = [doc.embedding.tolist() for doc in documents]  # type: ignore[union-attr]
         contents = [doc.content for doc in documents]
         metadatas = [
             self._serialize_metadata(doc.metadata.to_dict())
@@ -137,6 +140,7 @@ class ChromaVectorStore(VectorStore):
                 metadatas=metadatas,
             )
 
+        assert self._loop is not None
         await self._loop.run_in_executor(None, _add)
         return ids
 
@@ -171,6 +175,7 @@ class ChromaVectorStore(VectorStore):
                 include=["embeddings", "documents", "metadatas", "distances"],
             )
 
+        assert self._loop is not None
         result = await self._loop.run_in_executor(None, _query)
 
         # Parse results
@@ -228,6 +233,7 @@ class ChromaVectorStore(VectorStore):
         def _delete():
             self._collection.delete(ids=ids)
 
+        assert self._loop is not None
         await self._loop.run_in_executor(None, _delete)
         return count_before
 
@@ -249,6 +255,7 @@ class ChromaVectorStore(VectorStore):
                 include=["embeddings", "documents", "metadatas"],
             )
 
+        assert self._loop is not None
         result = await self._loop.run_in_executor(None, _get)
 
         # Build ID to result mapping
@@ -277,9 +284,10 @@ class ChromaVectorStore(VectorStore):
         if not self._is_initialized:
             raise RuntimeError("Store not initialized. Call initialize() first.")
 
-        def _count():
-            return self._collection.count()
+        def _count() -> int:
+            return self._collection.count()  # type: ignore[no-any-return]
 
+        assert self._loop is not None
         return await self._loop.run_in_executor(None, _count)
 
     def _serialize_metadata(self, metadata: dict[str, Any]) -> dict[str, Any]:

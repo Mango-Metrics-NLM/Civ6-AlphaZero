@@ -488,7 +488,7 @@ class EnhancedRewardShaper:
         Returns:
             Dictionary of intermediate reward components.
         """
-        rewards = {}
+        rewards: dict[str, float] = {}
         cfg = self.config.intermediate
 
         if prev_features is None:

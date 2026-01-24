@@ -559,7 +559,7 @@ class ResourceManager:
         total_bytes = spatial_bytes + vector_bytes + model_bytes + activation_bytes
         total_gb = total_bytes / (1024 ** 3)
 
-        return total_gb
+        return float(total_gb)
 
     def recommend_batch_size(
         self,

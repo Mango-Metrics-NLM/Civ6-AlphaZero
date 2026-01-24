@@ -214,7 +214,7 @@ def _dict_to_dataclass(cls: type, data: dict[str, Any]) -> Any:
         return cls()
 
     # Get valid field names for the dataclass
-    valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
+    valid_fields = {f.name for f in cls.__dataclass_fields__.values()}  # type: ignore[attr-defined]
 
     # Filter out unknown fields
     filtered_data = {k: v for k, v in data.items() if k in valid_fields}
@@ -338,6 +338,7 @@ class ConfigManager:
             # Convert value to appropriate type
             current_value = getattr(section_config, param)
             try:
+                typed_value: Any
                 if isinstance(current_value, bool):
                     typed_value = value.lower() in ("true", "1", "yes")
                 elif isinstance(current_value, int):

@@ -344,7 +344,7 @@ class SentenceTransformerEmbeddings(EmbeddingGenerator):
 
         self.model_name = model_name
         self.batch_size = batch_size
-        self._loop = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     async def embed_text(self, text: str) -> np.ndarray:
         """Generate embedding for a single text.
@@ -378,6 +378,7 @@ class SentenceTransformerEmbeddings(EmbeddingGenerator):
                 convert_to_numpy=True,
             )
 
+        assert self._loop is not None
         embeddings = await self._loop.run_in_executor(None, _encode)
         return [emb.astype(np.float32) for emb in embeddings]
 

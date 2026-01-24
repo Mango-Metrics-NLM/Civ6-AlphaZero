@@ -171,6 +171,7 @@ class RAGPipeline:
         vector_store = create_vector_store(config.vector_store)
 
         # Create embedding generator
+        embedding_generator: EmbeddingGenerator
         if use_local_embeddings:
             embedding_generator = LocalEmbeddings(dimension=config.vector_store.dimension)
         else:

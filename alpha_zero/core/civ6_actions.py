@@ -495,7 +495,7 @@ class ActionSpace:
         if len(valid_indices) == 0:
             # Fallback to END_TURN
             return self.category_offsets[ActionCategory.END_TURN]
-        return rng.choice(valid_indices)
+        return int(rng.choice(valid_indices))
 
 
 # Simplified action space for MicroCiv (Phase 1)
@@ -673,23 +673,23 @@ class MicroCivActionSpace:
             return self.end_turn_offset
 
         if action_type == "move":
-            unit_idx = action.get("unit_idx", 0)
+            unit_idx = int(action.get("unit_idx", 0))
             direction = action.get("direction", (0, 0))
             dir_idx = self.directions.index(direction) if direction in self.directions else 0
             return self.move_offset + unit_idx * 8 + dir_idx
 
         if action_type == "attack":
-            unit_idx = action.get("unit_idx", 0)
+            unit_idx = int(action.get("unit_idx", 0))
             direction = action.get("direction", (0, 0))
             dir_idx = self.directions.index(direction) if direction in self.directions else 0
             return self.attack_offset + unit_idx * 8 + dir_idx
 
         if action_type == "skip":
-            unit_idx = action.get("unit_idx", 0)
+            unit_idx = int(action.get("unit_idx", 0))
             return self.skip_offset + unit_idx
 
         if action_type == "produce":
-            city_idx = action.get("city_idx", 0)
+            city_idx = int(action.get("city_idx", 0))
             unit_names = ["warrior", "settler", "archer"]
             unit_type_name = action.get("unit_type", "warrior")
             unit_type = (

@@ -221,7 +221,7 @@ class SharedStorage:
             if increment_version:
                 self._state['model_version'] = self._state['model_version'] + 1
 
-            version = self._state['model_version']
+            version = int(self._state['model_version'])
             logger.debug(f"Stored model weights v{version} ({len(weights_bytes)} bytes)")
             return version
 
@@ -243,12 +243,14 @@ class SharedStorage:
 
         # Deserialize
         buffer = io.BytesIO(weights_bytes)
-        state_dict = torch.load(buffer, map_location='cpu', weights_only=True)
+        state_dict: dict[str, torch.Tensor] = torch.load(
+            buffer, map_location='cpu', weights_only=True
+        )
         return state_dict
 
     def get_model_version(self) -> int:
         """Get current model version."""
-        return self._state['model_version']
+        return int(self._state['model_version'])
 
     def increment_games_played(self, count: int = 1) -> int:
         """Increment games played counter.
@@ -261,7 +263,7 @@ class SharedStorage:
         """
         with self._lock:
             self._state['games_played'] = self._state['games_played'] + count
-            return self._state['games_played']
+            return int(self._state['games_played'])
 
     def increment_examples(self, count: int) -> int:
         """Increment total examples counter.
@@ -274,7 +276,7 @@ class SharedStorage:
         """
         with self._lock:
             self._state['total_examples'] = self._state['total_examples'] + count
-            return self._state['total_examples']
+            return int(self._state['total_examples'])
 
     def set_training_step(self, step: int) -> None:
         """Set current training step."""
@@ -282,15 +284,15 @@ class SharedStorage:
 
     def get_training_step(self) -> int:
         """Get current training step."""
-        return self._state['training_step']
+        return int(self._state['training_step'])
 
     def get_games_played(self) -> int:
         """Get total games played."""
-        return self._state['games_played']
+        return int(self._state['games_played'])
 
     def get_total_examples(self) -> int:
         """Get total training examples generated."""
-        return self._state['total_examples']
+        return int(self._state['total_examples'])
 
     def set_training(self, is_training: bool) -> None:
         """Set training flag."""
@@ -298,7 +300,7 @@ class SharedStorage:
 
     def is_training(self) -> bool:
         """Check if training is in progress."""
-        return self._state['is_training']
+        return bool(self._state['is_training'])
 
     def request_stop(self) -> None:
         """Request all processes to stop."""
@@ -307,7 +309,7 @@ class SharedStorage:
 
     def should_stop(self) -> bool:
         """Check if stop has been requested."""
-        return self._state['should_stop']
+        return bool(self._state['should_stop'])
 
     def add_loss_entry(self, entry: dict) -> None:
         """Add a loss history entry.
@@ -463,6 +465,7 @@ class DistributedReplayBuffer:
             True if successfully submitted.
         """
         try:
+            data: bytes | GameTrajectory
             if self.config.compress:
                 data = trajectory.to_bytes(compress=True)
             else:

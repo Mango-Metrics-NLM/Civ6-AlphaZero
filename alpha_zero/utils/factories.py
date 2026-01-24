@@ -280,7 +280,7 @@ def create_curriculum_manager(
         manager = CurriculumManager(curriculum_config)
 
         if save_path:
-            manager.save_path = save_path
+            manager.config.save_path = save_path
 
         return manager
     except ImportError:

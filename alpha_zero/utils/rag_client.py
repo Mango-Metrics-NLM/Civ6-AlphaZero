@@ -157,7 +157,7 @@ class RAGClient:
 
             # results['documents'] is list of list of str
             if results and results['documents']:
-                return results['documents'][0]
+                return list(results['documents'][0])
             return []
 
         except Exception as e:
@@ -168,4 +168,4 @@ class RAGClient:
         """Get number of documents in collection."""
         if not self.collection:
             return 0
-        return self.collection.count()
+        return int(self.collection.count())

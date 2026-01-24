@@ -83,6 +83,7 @@ class MCTSNode:
                 best_action = action
                 best_child = child
 
+        assert best_child is not None, "select_child called on node with no children"
         return best_action, best_child
 
     def expand(self, policy: np.ndarray, action_mask: np.ndarray) -> None:
@@ -113,7 +114,7 @@ class MCTSNode:
         Args:
             value: Value to propagate.
         """
-        node = self
+        node: MCTSNode | None = self
         while node is not None:
             node.visit_count += 1
             node.value_sum += value

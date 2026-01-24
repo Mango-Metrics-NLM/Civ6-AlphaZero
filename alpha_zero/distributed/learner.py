@@ -124,7 +124,7 @@ class LearningRateScheduler:
 
     def get_lr(self) -> float:
         """Get current learning rate."""
-        return self.optimizer.param_groups[0]['lr']
+        return float(self.optimizer.param_groups[0]['lr'])
 
 
 class GradientAccumulator:
@@ -310,7 +310,7 @@ class Learner:
         self.network.load_state_dict(checkpoint['network_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.lr_scheduler.current_step = checkpoint['lr_scheduler_step']
-        step = checkpoint['step']
+        step = int(checkpoint['step'])
 
         logger.info(f"Loaded checkpoint from {path} (step {step})")
         return step

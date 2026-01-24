@@ -47,14 +47,14 @@ class LogLevel(str, Enum):
 T = TypeVar("T")
 
 
-def _get_env(key: str, default: T, type_: type[T] = str) -> T:
+def _get_env(key: str, default: T, type_: type[T] = str) -> T:  # type: ignore[assignment]
     """Get environment variable with type conversion."""
     value = os.getenv(key)
     if value is None:
         return default
     if type_ is bool:
-        return value.lower() in ("true", "1", "yes")
-    return type_(value)
+        return value.lower() in ("true", "1", "yes")  # type: ignore[return-value]
+    return type_(value)  # type: ignore[return-value, call-arg]
 
 
 @dataclass

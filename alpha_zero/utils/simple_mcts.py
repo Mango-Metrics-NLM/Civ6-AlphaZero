@@ -84,17 +84,17 @@ class MCTSNode:
 
         return q_value + exploration
 
-    def select_child(self, c_puct: float) -> MCTSNode:
+    def select_child(self, c_puct: float) -> MCTSNode | None:
         """Select child with highest UCB score.
 
         Args:
             c_puct: Exploration constant.
 
         Returns:
-            Child node with highest UCB score.
+            Child node with highest UCB score, or None if no children.
         """
         best_score = float("-inf")
-        best_child = None
+        best_child: MCTSNode | None = None
 
         for child in self.children.values():
             score = child.ucb_score(self.visit_count, c_puct)
@@ -222,6 +222,8 @@ class MCTS:
 
                 # Simulate step
                 action = child.action
+                if action is None:
+                    break
                 next_obs, reward, done = step_fn(current_obs, action)
 
                 node = child

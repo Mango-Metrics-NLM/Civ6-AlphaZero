@@ -616,7 +616,7 @@ class GreatPeopleManager:
         if ability.activation_type == ActivationType.RETIRE:
             person.is_active = False
 
-        effects = dict(ability.effects)
+        effects: dict[str, Any] = dict(ability.effects)
         effects["person_name"] = person.name
         effects["ability_name"] = ability.name
 

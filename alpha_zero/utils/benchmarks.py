@@ -180,9 +180,12 @@ class Benchmarker:
         results = []
         for batch_size in batch_sizes:
             benchmark_name = f"{name} (batch={batch_size})"
+            # Capture batch_size in closure with explicit type
+            def make_func(bs: int = batch_size) -> T:
+                return func(bs)
             result = self.run_benchmark(
                 name=benchmark_name,
-                func=lambda bs=batch_size: func(bs),
+                func=make_func,
                 threshold_ops_per_second=threshold_ops_per_second,
             )
             result.extra_info["batch_size"] = batch_size

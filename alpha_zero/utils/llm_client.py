@@ -305,7 +305,7 @@ class OpenAIClient(BaseLLMClient):
             raw_response=response,
         )
 
-    async def generate_stream(
+    async def generate_stream(  # type: ignore[override]
         self,
         prompt: str,
         system_prompt: str | None = None,
@@ -420,7 +420,7 @@ class AnthropicClient(BaseLLMClient):
             raw_response=response,
         )
 
-    async def generate_stream(
+    async def generate_stream(  # type: ignore[override]
         self,
         prompt: str,
         system_prompt: str | None = None,
@@ -597,9 +597,10 @@ class LLMClient:
         for provider in providers:
             client = self._clients[provider]
             try:
-                async for chunk in client.generate_stream(
+                stream = client.generate_stream(
                     prompt, system_prompt, messages, **kwargs
-                ):
+                )
+                async for chunk in stream:  # type: ignore[attr-defined]
                     yield chunk
                 return
             except Exception as e:

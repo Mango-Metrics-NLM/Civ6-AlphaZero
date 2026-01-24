@@ -632,7 +632,7 @@ class DebugHelper:
                     },
                 }
 
-        return _inspect(obj, 0)
+        return dict(_inspect(obj, 0))
 
     @staticmethod
     def trace_call(func_name: str, args: tuple, kwargs: dict) -> str:

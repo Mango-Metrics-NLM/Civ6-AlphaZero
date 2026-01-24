@@ -141,7 +141,7 @@ class PaddedEnvironmentWrapper:
             if "action_mask" in padded_obs:
                 padded_obs["action_mask"] = self._pad_actions(padded_obs["action_mask"])
             return padded_obs
-        return obs
+        return obs  # type: ignore[no-any-return]
 
     def get_valid_actions(self) -> np.ndarray:
         """Get padded action mask."""
@@ -385,6 +385,11 @@ class TrainingOrchestrator:
 
     def _resume_from_checkpoint(self) -> None:
         """Resume training from latest checkpoint."""
+        assert self._checkpointer is not None
+        assert self._network is not None
+        assert self._optimizer is not None
+        assert self._scheduler is not None
+
         checkpoint = self._checkpointer.load_latest()
 
         self._network.load_state_dict(checkpoint["model_state_dict"])
@@ -437,6 +442,9 @@ class TrainingOrchestrator:
 
     def _training_iteration(self) -> None:
         """Execute a single training iteration."""
+        assert self._scheduler is not None
+        assert self._network is not None
+
         iteration = self.state.iteration
         start_time = time.time()
 
@@ -508,6 +516,8 @@ class TrainingOrchestrator:
         Returns:
             List of game results.
         """
+        assert self._network is not None
+
         results = []
         self._network.eval()
 
@@ -537,6 +547,8 @@ class TrainingOrchestrator:
         Returns:
             Game result with trajectory.
         """
+        assert self._scheduler is not None
+
         # Create environment with optional overrides
         # Always create a fresh environment for each game to ensure clean state
         if env_params:
@@ -726,6 +738,10 @@ class TrainingOrchestrator:
         Returns:
             Training metrics.
         """
+        assert self._network is not None
+        assert self._optimizer is not None
+        assert self._scheduler is not None
+
         self._network.train()
         total_policy_loss = 0.0
         total_value_loss = 0.0
@@ -806,6 +822,9 @@ class TrainingOrchestrator:
 
     def _update_optimizer_lr(self) -> None:
         """Update optimizer learning rate from scheduler."""
+        assert self._scheduler is not None
+        assert self._optimizer is not None
+
         lr = self._scheduler.get_learning_rate()
         for param_group in self._optimizer.param_groups:
             param_group["lr"] = lr
@@ -816,6 +835,9 @@ class TrainingOrchestrator:
         Returns:
             Evaluation metrics.
         """
+        assert self._network is not None
+        assert self._checkpointer is not None
+
         logger.info("Running evaluation...")
         self._network.eval()
 
@@ -850,6 +872,11 @@ class TrainingOrchestrator:
 
     def _save_checkpoint(self) -> None:
         """Save training checkpoint."""
+        assert self._network is not None
+        assert self._optimizer is not None
+        assert self._scheduler is not None
+        assert self._checkpointer is not None
+
         checkpoint_data = {
             "model_state_dict": self._network.state_dict(),
             "optimizer_state_dict": self._optimizer.state_dict(),
@@ -929,7 +956,7 @@ class TrainingOrchestrator:
             )
 
         # Log to W&B
-        if self._wandb_logger:
+        if self._wandb_logger and self._scheduler is not None:
             self._wandb_logger.log({
                 "iteration": iteration,
                 "games": len(game_results),
