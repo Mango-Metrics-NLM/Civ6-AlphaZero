@@ -92,8 +92,27 @@ __all__ = [
 ]
 
 # Lazy imports for heavier modules
+# NOTE: We use module-level __getattr__ for lazy loading to improve import times.
+# FileBridge, StateConverter, and ActionConverter depend on heavier dependencies
+# (asyncio, torch, numpy) that are not needed for basic protocol definitions.
+# This pattern allows users who only need protocol types to import faster.
+# IDE auto-completion may not recognize these lazy-loaded attributes.
 def __getattr__(name: str):
-    """Lazy import for FileBridge and converters."""
+    """Lazy import for FileBridge and converters.
+
+    This function enables lazy loading of heavier modules to optimize import times.
+    FileBridge, StateConverter, and ActionConverter are imported on first access
+    rather than at module import time.
+
+    Args:
+        name: The attribute name being accessed.
+
+    Returns:
+        The requested class.
+
+    Raises:
+        AttributeError: If the attribute doesn't exist.
+    """
     if name == "FileBridge":
         from alpha_zero.bridge.file_bridge import FileBridge
         return FileBridge

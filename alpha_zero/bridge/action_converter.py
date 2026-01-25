@@ -22,10 +22,13 @@ Usage:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 from alpha_zero.bridge.protocol import (
     ActionType,
@@ -511,13 +514,26 @@ class ActionConverter:
                     action_type = UnitActionType(decoded.action_type)
                     if action_type == UnitActionType.MOVE and action.action_type == "move":
                         # Check if target is in valid targets
+                        # Scale decoded target back to original coordinates for comparison
                         target = decoded.target
-                        if isinstance(target, tuple) and target in action.targets:
-                            return True
+                        if isinstance(target, tuple):
+                            map_size = game_state.get("_map_size")
+                            if map_size:
+                                orig_target = self._scale_to_original(target[0], target[1], map_size)
+                            else:
+                                orig_target = target
+                            if orig_target in action.targets:
+                                return True
                     elif action_type == UnitActionType.ATTACK and action.action_type == "attack":
                         target = decoded.target
-                        if isinstance(target, tuple) and target in action.targets:
-                            return True
+                        if isinstance(target, tuple):
+                            map_size = game_state.get("_map_size")
+                            if map_size:
+                                orig_target = self._scale_to_original(target[0], target[1], map_size)
+                            else:
+                                orig_target = target
+                            if orig_target in action.targets:
+                                return True
             return False
 
         # Check city actions
@@ -607,8 +623,11 @@ class ActionConverter:
                         ))
                         if flat_idx < self.action_space_size:
                             mask[flat_idx] = 1.0
-                    except Exception:
-                        pass  # Skip invalid encodings
+                    except Exception as e:
+                        logger.warning(
+                            f"Skipping invalid unit action encoding: unit_idx={unit_idx}, "
+                            f"action_type={action_type.name}, target={scaled_target}: {e}"
+                        )
 
             elif action.action_type == "produce":
                 # Find city index
@@ -629,8 +648,11 @@ class ActionConverter:
                                 ))
                                 if flat_idx < self.action_space_size:
                                     mask[flat_idx] = 1.0
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning(
+                                f"Skipping invalid city action encoding: city_idx={city_idx}, "
+                                f"action_type={action_type.name}, item_id={item_id}: {e}"
+                            )
 
         # Ensure at least END_TURN is valid
         if mask.sum() == 0:

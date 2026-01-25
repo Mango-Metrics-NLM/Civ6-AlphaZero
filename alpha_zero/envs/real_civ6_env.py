@@ -397,6 +397,12 @@ class RealCiv6Env(gym.Env):
             "is_connected": self._bridge.is_connected if self._bridge else False,
         }
 
+    # Reward scaling constants
+    SCORE_REWARD_SCALE = 0.001    # Per-point score change reward
+    CITY_REWARD_SCALE = 0.1       # Per-city count change reward
+    UNIT_REWARD_SCALE = 0.01      # Per-unit count change reward
+    GOLD_REWARD_SCALE = 0.0001    # Per-gold change reward
+
     def _calculate_reward(
         self,
         prev_state: dict[str, Any],
@@ -416,26 +422,26 @@ class RealCiv6Env(gym.Env):
         # Score change
         prev_score = prev_state.get("score", 0)
         curr_score = curr_state.get("score", 0)
-        reward += (curr_score - prev_score) * 0.001
+        reward += (curr_score - prev_score) * self.SCORE_REWARD_SCALE
 
         # City count
         prev_cities = len([c for c in prev_state.get("cities", [])
                           if c.get("player") == 0])
         curr_cities = len([c for c in curr_state.get("cities", [])
                           if c.get("player") == 0])
-        reward += (curr_cities - prev_cities) * 0.1
+        reward += (curr_cities - prev_cities) * self.CITY_REWARD_SCALE
 
         # Unit count (small bonus for military)
         prev_units = len([u for u in prev_state.get("units", [])
                          if u.get("player") == 0])
         curr_units = len([u for u in curr_state.get("units", [])
                          if u.get("player") == 0])
-        reward += (curr_units - prev_units) * 0.01
+        reward += (curr_units - prev_units) * self.UNIT_REWARD_SCALE
 
         # Gold change
         prev_gold = prev_state.get("gold", 0)
         curr_gold = curr_state.get("gold", 0)
-        reward += (curr_gold - prev_gold) * 0.0001
+        reward += (curr_gold - prev_gold) * self.GOLD_REWARD_SCALE
 
         return reward
 

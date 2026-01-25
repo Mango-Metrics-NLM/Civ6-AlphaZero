@@ -24,10 +24,13 @@ Usage:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
 import torch
+
+logger = logging.getLogger(__name__)
 
 from alpha_zero.bridge.config import MapSizeConfig, get_map_config
 from alpha_zero.bridge.protocol import (
@@ -193,6 +196,12 @@ class UnitMapping:
         for key, value in self.UNITS.items():
             if key in civ6_upper or civ6_upper in key:
                 return value
+
+        # Log warning for unknown unit types to help identify mapping gaps
+        logger.warning(
+            f"Unknown Civ6 unit type '{civ6_type}', defaulting to 'melee'. "
+            "Consider adding this unit to the UnitMapping."
+        )
 
         # Default to melee for unknown military units
         return "melee"
