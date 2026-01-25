@@ -582,6 +582,14 @@ class MockCiv6Env(RealCiv6Env):
         # Call gym.Env.reset directly (not RealCiv6Env.reset which uses real bridge)
         gym.Env.reset(self, seed=seed)
 
+        # Stop old bridge if it exists to prevent resource leaks
+        if self._bridge is not None:
+            try:
+                self._run_async(self._bridge.stop())
+            except Exception as e:
+                logger.debug(f"Error stopping old mock bridge: {e}")
+            self._bridge = None
+
         # Use mock bridge
         self._bridge = MockFileBridge(self.bridge_config)
         self._run_async(self._bridge.start())

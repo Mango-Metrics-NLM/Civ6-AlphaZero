@@ -137,6 +137,46 @@ class CityItemTypes:
     DISTRICT = "district"
 
 
+def _convert_item_id_to_int(item_id: Any) -> int | None:
+    """Convert an item ID to integer, handling various input formats.
+
+    This function handles backwards compatibility with different formats
+    that the Lua mod might send:
+    - Integer: returned as-is
+    - Numeric string (e.g., "42"): converted to int
+    - Type name string (e.g., "UNIT_WARRIOR"): hashed to consistent int
+
+    Args:
+        item_id: The item ID in various formats.
+
+    Returns:
+        Integer item ID, or None if conversion fails.
+    """
+    if item_id is None:
+        return None
+
+    if isinstance(item_id, int):
+        return item_id
+
+    if isinstance(item_id, str):
+        # Try numeric string first
+        try:
+            return int(item_id)
+        except ValueError:
+            pass
+
+        # Handle Civ6 type name strings by hashing to consistent int
+        # Use modulo to keep in reasonable range for action space
+        if item_id:
+            # Use hash with modulo to get consistent positive int in range [0, 199]
+            # This matches typical production item counts in Civ6
+            return abs(hash(item_id)) % 200
+
+    # Log unexpected types at debug level
+    logger.debug(f"Could not convert item_id '{item_id}' (type: {type(item_id).__name__}) to int")
+    return None
+
+
 class InvalidActionError(Exception):
     """Raised when an action cannot be converted or is invalid."""
 
@@ -215,13 +255,15 @@ class ActionConverter:
             action_idx: Flat action index from policy network.
             game_state: Current game state (converted format).
             legal_actions: Legal actions from Lua (for validation).
-            validate: Whether to validate against legal actions.
+            validate: Whether to validate against legal actions. If True and
+                the action is not in legal_actions, raises InvalidActionError.
 
         Returns:
             LuaCommand ready for execution.
 
         Raises:
-            InvalidActionError: If action cannot be converted or is invalid.
+            InvalidActionError: If action cannot be converted, or if validate=True
+                and action is not in legal_actions list.
         """
         # Decode the hierarchical action
         try:
@@ -229,15 +271,24 @@ class ActionConverter:
         except Exception as e:
             raise InvalidActionError(f"Failed to decode action {action_idx}: {e}", action_idx) from e
 
+        # Validate against legal actions if requested
+        if validate and legal_actions:
+            if not self._is_action_legal(decoded, game_state, legal_actions):
+                raise InvalidActionError(
+                    f"Action {action_idx} (category={decoded.category.name}) "
+                    f"is not in the legal actions list",
+                    action_idx,
+                )
+
         # Convert to Lua command based on category
         if decoded.category == ActionCategory.END_TURN:
             return LuaCommand(action_type=ActionType.END_TURN)
 
         elif decoded.category == ActionCategory.UNIT_ACTION:
-            return self._convert_unit_action(decoded, game_state, legal_actions, validate)
+            return self._convert_unit_action(decoded, game_state, legal_actions)
 
         elif decoded.category == ActionCategory.CITY_ACTION:
-            return self._convert_city_action(decoded, game_state, legal_actions, validate)
+            return self._convert_city_action(decoded, game_state, legal_actions)
 
         elif decoded.category == ActionCategory.RESEARCH_TECH:
             return self._convert_tech_action(decoded, game_state)
@@ -300,16 +351,14 @@ class ActionConverter:
         self,
         decoded: HierarchicalAction,
         game_state: dict[str, Any],
-        legal_actions: list | None,
-        validate: bool,
+        legal_actions: list | None = None,
     ) -> LuaCommand:
         """Convert unit action to Lua command.
 
         Args:
             decoded: Decoded hierarchical action.
             game_state: Current game state.
-            legal_actions: Legal actions for validation.
-            validate: Whether to validate.
+            legal_actions: Legal actions (for future use, validation done in convert()).
 
         Returns:
             LuaCommand for unit action.
@@ -408,16 +457,14 @@ class ActionConverter:
         self,
         decoded: HierarchicalAction,
         game_state: dict[str, Any],
-        legal_actions: list | None,
-        validate: bool,
+        legal_actions: list | None = None,
     ) -> LuaCommand:
         """Convert city action to Lua command.
 
         Args:
             decoded: Decoded hierarchical action.
             game_state: Current game state.
-            legal_actions: Legal actions for validation.
-            validate: Whether to validate.
+            legal_actions: Legal actions (for future use, validation done in convert()).
 
         Returns:
             LuaCommand for city action.
@@ -747,15 +794,15 @@ class ActionConverter:
 
                 if city_idx is not None:
                     for item_id in action.items:
-                        # Convert item_id to int if it's a string (backwards compatibility)
-                        if isinstance(item_id, str):
-                            try:
-                                item_id = int(item_id)
-                            except ValueError:
-                                logger.warning(
-                                    f"Invalid item_id '{item_id}' for city production, skipping"
-                                )
-                                continue
+                        # Convert item_id to int using robust conversion
+                        converted_id = _convert_item_id_to_int(item_id)
+                        if converted_id is None:
+                            logger.debug(
+                                f"Skipping unconvertible item_id '{item_id}' "
+                                f"for city {action.city_id} production"
+                            )
+                            continue
+                        item_id = converted_id
 
                         # Determine item type from action metadata if available
                         item_type = action.item_type

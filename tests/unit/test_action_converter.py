@@ -337,3 +337,141 @@ class TestActionConverterEdgeCases:
 
         # Should handle many actions without error
         assert mask.shape == (converter.action_space_size,)
+
+
+class TestItemIdConversion:
+    """Tests for _convert_item_id_to_int helper function."""
+
+    def test_integer_passthrough(self):
+        """Test that integers are returned as-is."""
+        from alpha_zero.bridge.action_converter import _convert_item_id_to_int
+
+        assert _convert_item_id_to_int(42) == 42
+        assert _convert_item_id_to_int(0) == 0
+        assert _convert_item_id_to_int(100) == 100
+
+    def test_numeric_string_conversion(self):
+        """Test that numeric strings are converted to int."""
+        from alpha_zero.bridge.action_converter import _convert_item_id_to_int
+
+        assert _convert_item_id_to_int("42") == 42
+        assert _convert_item_id_to_int("0") == 0
+        assert _convert_item_id_to_int("100") == 100
+
+    def test_type_name_string_hashing(self):
+        """Test that Civ6 type name strings are hashed consistently."""
+        from alpha_zero.bridge.action_converter import _convert_item_id_to_int
+
+        # Should return a consistent integer for the same string
+        result1 = _convert_item_id_to_int("UNIT_WARRIOR")
+        result2 = _convert_item_id_to_int("UNIT_WARRIOR")
+        assert result1 == result2
+        assert isinstance(result1, int)
+        assert 0 <= result1 < 200  # Should be in valid range
+
+        # Different strings should (likely) produce different hashes
+        warrior = _convert_item_id_to_int("UNIT_WARRIOR")
+        settler = _convert_item_id_to_int("UNIT_SETTLER")
+        # Note: They might collide but unlikely
+        assert isinstance(warrior, int)
+        assert isinstance(settler, int)
+
+    def test_none_returns_none(self):
+        """Test that None input returns None."""
+        from alpha_zero.bridge.action_converter import _convert_item_id_to_int
+
+        assert _convert_item_id_to_int(None) is None
+
+    def test_empty_string_returns_none(self):
+        """Test that empty string returns None."""
+        from alpha_zero.bridge.action_converter import _convert_item_id_to_int
+
+        assert _convert_item_id_to_int("") is None
+
+
+class TestValidateParameter:
+    """Tests for the validate parameter in ActionConverter.convert()."""
+
+    @pytest.fixture
+    def converter(self):
+        """Create an ActionConverter instance."""
+        config = ActionSpaceConfig(board_size=16, max_units=100, max_cities=20)
+        return ActionConverter(board_size=16, action_space_config=config)
+
+    @pytest.fixture
+    def state_with_unit(self):
+        """Create state with a unit."""
+        return {
+            "turn": 1,
+            "current_player": 0,
+            "units": [
+                {
+                    "id": 1,
+                    "_id": 1,
+                    "type": "melee",
+                    "player": 0,
+                    "position": (5, 5),
+                }
+            ],
+            "cities": [],
+        }
+
+    def test_validate_true_raises_on_illegal_action(self, converter, state_with_unit):
+        """Test that validate=True raises InvalidActionError for illegal actions."""
+        # Create legal actions that only allow end_turn
+        legal_actions = [LegalAction(action_type="end_turn")]
+
+        # Try to convert a unit move action (which is not in legal_actions)
+        # First, find a unit action index
+        from alpha_zero.core.civ6_actions import (
+            ActionCategory,
+            HierarchicalAction,
+            UnitActionType,
+        )
+
+        unit_action = HierarchicalAction(
+            category=ActionCategory.UNIT_ACTION,
+            selector=0,
+            action_type=UnitActionType.MOVE.value,
+            target=(6, 5),
+        )
+        action_idx = converter.action_space.encode(unit_action)
+
+        # With validate=True, should raise
+        with pytest.raises(InvalidActionError) as exc_info:
+            converter.convert(action_idx, state_with_unit, legal_actions, validate=True)
+
+        assert "not in the legal actions list" in str(exc_info.value)
+
+    def test_validate_false_allows_illegal_action(self, converter, state_with_unit):
+        """Test that validate=False allows illegal actions to be converted."""
+        legal_actions = [LegalAction(action_type="end_turn")]
+
+        from alpha_zero.core.civ6_actions import (
+            ActionCategory,
+            HierarchicalAction,
+            UnitActionType,
+        )
+
+        unit_action = HierarchicalAction(
+            category=ActionCategory.UNIT_ACTION,
+            selector=0,
+            action_type=UnitActionType.MOVE.value,
+            target=(6, 5),
+        )
+        action_idx = converter.action_space.encode(unit_action)
+
+        # With validate=False, should NOT raise
+        command = converter.convert(action_idx, state_with_unit, legal_actions, validate=False)
+
+        # Should return a valid command
+        assert command is not None
+
+    def test_validate_true_allows_legal_action(self, converter, state_with_unit):
+        """Test that validate=True allows legal actions."""
+        legal_actions = [LegalAction(action_type="end_turn")]
+
+        # End turn action should be allowed
+        command = converter.convert(0, state_with_unit, legal_actions, validate=True)
+
+        assert command.action_type == ActionType.END_TURN

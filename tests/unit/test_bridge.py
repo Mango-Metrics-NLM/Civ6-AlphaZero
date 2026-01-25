@@ -833,6 +833,51 @@ class TestMockFileBridge:
         bridge = MockFileBridge()
         assert bridge.check_heartbeat()
 
+    @pytest.mark.asyncio
+    async def test_mock_bridge_no_file_io_on_start(self):
+        """Test that MockFileBridge.start() does not create files or directories."""
+        # Use a non-existent directory path
+        nonexistent_path = Path("/this/path/definitely/does/not/exist/mock_test")
+        config = BridgeConfig(comm_dir=nonexistent_path)
+        bridge = MockFileBridge(config)
+
+        # Start should NOT create directory or write heartbeat
+        await bridge.start()
+
+        # The directory should NOT exist (mock doesn't do file I/O)
+        assert not nonexistent_path.exists()
+        assert bridge._running
+
+        await bridge.stop()
+
+    @pytest.mark.asyncio
+    async def test_mock_bridge_no_heartbeat_file_write(self):
+        """Test that MockFileBridge._write_heartbeat() is a no-op."""
+        with tempfile.TemporaryDirectory() as tmp:
+            config = BridgeConfig(comm_dir=Path(tmp))
+            bridge = MockFileBridge(config)
+
+            await bridge.start()
+
+            # Heartbeat file should NOT exist (mock doesn't write it)
+            assert not config.heartbeat_file.exists()
+
+            # But stats should be updated
+            assert bridge.stats.last_heartbeat_time > 0
+
+    @pytest.mark.asyncio
+    async def test_mock_bridge_start_sets_running(self):
+        """Test that MockFileBridge.start() properly sets _running flag."""
+        bridge = MockFileBridge()
+
+        assert not bridge._running
+
+        await bridge.start()
+        assert bridge._running
+
+        await bridge.stop()
+        assert not bridge._running
+
 
 # ==============================================================================
 # Run tests

@@ -513,7 +513,8 @@ class FileBridge:
 class MockFileBridge(FileBridge):
     """Mock file bridge for testing.
 
-    Uses in-memory state instead of actual files.
+    Uses in-memory state instead of actual files. No file I/O is performed
+    by this class - all operations are simulated in memory.
     """
 
     def __init__(self, config: BridgeConfig | None = None):
@@ -522,6 +523,32 @@ class MockFileBridge(FileBridge):
         self._mock_state: dict[str, Any] | None = None
         self._mock_ack: dict[str, Any] | None = None
         self._commands_sent: list[CommandMessage] = []
+
+    async def start(self) -> None:
+        """Start the mock bridge (no file I/O).
+
+        Unlike the real FileBridge, this does not create directories
+        or write heartbeat files, but still updates stats for consistency.
+        """
+        logger.debug("Starting mock file bridge (no file I/O)")
+        self._running = True
+        self._msg_counter = int(time.time() * 1000)
+        # Update heartbeat stats without file I/O
+        self._write_heartbeat()
+        logger.debug("Mock file bridge started")
+
+    async def stop(self) -> None:
+        """Stop the mock bridge (no file I/O)."""
+        logger.debug("Stopping mock file bridge")
+        self._running = False
+        logger.debug("Mock file bridge stopped")
+
+    def _write_heartbeat(self) -> None:
+        """Mock heartbeat write (no-op).
+
+        Overrides parent to avoid file I/O.
+        """
+        self.stats.last_heartbeat_time = time.time()
 
     def set_mock_state(self, state: dict[str, Any]) -> None:
         """Set mock state data."""

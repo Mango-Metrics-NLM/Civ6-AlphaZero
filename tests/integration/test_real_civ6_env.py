@@ -187,6 +187,48 @@ class TestMockCiv6Env:
         env.render()
         env.close()
 
+    def test_reset_stops_old_bridge(self, bridge_config):
+        """Test that reset() properly stops old bridge before creating new one."""
+        env = MockCiv6Env(bridge_config=bridge_config, board_size=16)
+
+        # First reset creates a bridge
+        env.reset()
+        first_bridge = env._bridge
+        assert first_bridge is not None
+        assert first_bridge._running
+
+        # Second reset should stop the old bridge and create a new one
+        env.reset()
+        second_bridge = env._bridge
+
+        # Old bridge should be stopped
+        assert not first_bridge._running
+
+        # New bridge should be running
+        assert second_bridge is not None
+        assert second_bridge._running
+        assert second_bridge is not first_bridge
+
+        env.close()
+
+    def test_multiple_resets_no_resource_leak(self, bridge_config):
+        """Test multiple resets don't leak resources."""
+        env = MockCiv6Env(bridge_config=bridge_config, board_size=16)
+
+        bridges = []
+        for i in range(5):
+            env.reset()
+            bridges.append(env._bridge)
+
+        # All previous bridges should be stopped
+        for i, bridge in enumerate(bridges[:-1]):
+            assert not bridge._running, f"Bridge {i} should be stopped"
+
+        # Only the last bridge should be running
+        assert bridges[-1]._running
+
+        env.close()
+
 
 # ==============================================================================
 # Gymnasium Compliance Tests
