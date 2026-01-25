@@ -59,11 +59,16 @@ class BridgeConfig:
         poll_interval_ms: How often to poll for new state files (milliseconds)
         command_timeout_ms: How long to wait for command acknowledgment
         heartbeat_timeout_s: Consider game disconnected after this many seconds
-        max_retries: Maximum reconnection attempts on error
-        retry_delay_s: Base delay between retries (uses exponential backoff)
+        max_retries: Maximum reconnection attempts on error (reserved for future use)
+        retry_delay_s: Base delay between retries (reserved for future use)
         board_size: Internal board size for coordinate scaling
         log_level: Logging verbosity level
         debug_mode: Enable debug features (extra logging, state dumps)
+
+    Note:
+        The max_retries and retry_delay_s fields are defined for future
+        automatic reconnection logic but are not currently used by FileBridge.
+        Implement retry logic in the calling code if needed.
     """
 
     comm_dir: Path = field(default_factory=_get_default_comm_dir)

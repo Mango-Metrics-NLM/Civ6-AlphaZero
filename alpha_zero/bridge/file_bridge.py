@@ -10,7 +10,8 @@ Communication Protocol:
     3. Python writes action command to commands.json
     4. Lua reads commands.json and executes
     5. Lua writes acknowledgment to ack.json
-    6. Both sides write heartbeat.txt periodically
+    6. Heartbeat: Python writes initial heartbeat at start; Lua writes
+       heartbeat periodically. Python checks Lua's heartbeat for liveness.
 
 Usage:
     from alpha_zero.bridge import FileBridge, BridgeConfig

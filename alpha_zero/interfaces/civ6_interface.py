@@ -356,6 +356,18 @@ class Civ6Interface(BaseGameInterface):
         )
 
 
+def _create_mock_civ6_interface(config: GameConfig | None = None) -> Civ6Interface:
+    """Factory function for creating mock Civ6 interface.
+
+    Args:
+        config: Game configuration.
+
+    Returns:
+        Civ6Interface with use_mock=True.
+    """
+    return Civ6Interface(config, use_mock=True)
+
+
 # Register with GameAdapter
 def register_civ6_backend():
     """Register Civ6 backend with GameAdapter.
@@ -364,4 +376,4 @@ def register_civ6_backend():
     """
     from alpha_zero.interfaces.base_interface import GameAdapter
     GameAdapter.register_backend("civ6", Civ6Interface)
-    GameAdapter.register_backend("civ6_mock", lambda config: Civ6Interface(config, use_mock=True))
+    GameAdapter.register_backend("civ6_mock", _create_mock_civ6_interface)

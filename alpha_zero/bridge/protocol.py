@@ -159,6 +159,9 @@ class TileData:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TileData:
         """Create from dictionary."""
+        # Handle both 'owner' and 'owner_id' keys (consistent with UnitData/CityData)
+        raw_owner = data.get("owner", data.get("owner_id", -1))
+        owner_id = raw_owner if raw_owner != -1 else None
         return cls(
             x=data.get("x", 0),
             y=data.get("y", 0),
@@ -166,7 +169,7 @@ class TileData:
             features=data.get("features", []),
             resource=data.get("resource"),
             improvement=data.get("improvement"),
-            owner_id=data.get("owner_id") if data.get("owner_id", -1) != -1 else None,
+            owner_id=owner_id,
             is_visible=data.get("is_visible", True),
             is_revealed=data.get("is_revealed", True),
             yields=data.get("yields", {}),
@@ -301,13 +304,22 @@ class PlayerData:
 
 @dataclass
 class LegalAction:
-    """A legal action from the Lua mod."""
+    """A legal action from the Lua mod.
+
+    Attributes:
+        action_type: Type of action (e.g., "move", "attack", "produce").
+        unit_id: Unit ID for unit-related actions.
+        city_id: City ID for city-related actions.
+        targets: Valid target positions as (x, y) tuples.
+        items: Item identifiers (int for production IDs, str for tech/civic names).
+        item_type: Type of item (e.g., "unit", "building", "tech").
+    """
 
     action_type: str
     unit_id: int | None = None
     city_id: int | None = None
     targets: list[tuple[int, int]] = field(default_factory=list)
-    items: list[int] = field(default_factory=list)
+    items: list[int | str] = field(default_factory=list)
     item_type: str | None = None
 
     @classmethod
@@ -321,12 +333,31 @@ class LegalAction:
             elif isinstance(t, (list, tuple)) and len(t) >= 2:
                 targets.append((t[0], t[1]))
 
+        # Parse items - can be int IDs or string names (e.g., tech names)
+        raw_items = data.get("items", data.get("item", []))
+        if raw_items is None:
+            raw_items = []
+        elif not isinstance(raw_items, list):
+            raw_items = [raw_items]  # Wrap single item in list
+
+        # Convert numeric strings to int, keep non-numeric strings as-is
+        items: list[int | str] = []
+        for item in raw_items:
+            if isinstance(item, int):
+                items.append(item)
+            elif isinstance(item, str):
+                # Try to convert numeric strings to int
+                if item.isdigit() or (item.startswith("-") and item[1:].isdigit()):
+                    items.append(int(item))
+                else:
+                    items.append(item)  # Keep as string (e.g., tech name)
+
         return cls(
             action_type=data.get("action", data.get("type", "end_turn")),
             unit_id=data.get("unit_id"),
             city_id=data.get("city_id"),
             targets=targets,
-            items=data.get("items", data.get("item", [])),
+            items=items,
             item_type=data.get("item_type"),
         )
 
@@ -378,6 +409,10 @@ class GameStateData:
         if not players_data and player_summary:
             players_data = [player_summary]
 
+        # Parse era from top-level or player summary (handles both int and string)
+        era_value = data.get("era", player_summary.get("era"))
+        era = _parse_era(era_value, default=0)
+
         return cls(
             turn_id=data.get("turn_id", data.get("turn", 0)),
             player_id=data.get("player_id", player_summary.get("id", 0)),
@@ -387,7 +422,7 @@ class GameStateData:
             players=[PlayerData.from_dict(p) for p in players_data],
             legal_actions=[LegalAction.from_dict(a) for a in data.get("legal_actions", [])],
             current_player_civ=data.get("current_player", ""),
-            era=data.get("era", 0),
+            era=era,
             game_speed=data.get("game_speed", "GAMESPEED_STANDARD"),
             is_game_over=data.get("is_game_over", data.get("game_over", False)),
             winner_id=data.get("winner_id"),
@@ -602,6 +637,39 @@ class ErrorCode:
     CONNECTION_LOST = "E008"
     INVALID_STATE = "E009"
     GAME_OVER = "E010"
+
+
+# Era name to index mapping for Civ6
+ERA_NAME_TO_INDEX: dict[str, int] = {
+    "ERA_ANCIENT": 0,
+    "ERA_CLASSICAL": 1,
+    "ERA_MEDIEVAL": 2,
+    "ERA_RENAISSANCE": 3,
+    "ERA_INDUSTRIAL": 4,
+    "ERA_MODERN": 5,
+    "ERA_ATOMIC": 6,
+    "ERA_INFORMATION": 7,
+    "ERA_FUTURE": 8,
+}
+
+
+def _parse_era(era_value: int | str | None, default: int = 0) -> int:
+    """Parse era value from int or string.
+
+    Args:
+        era_value: Era as int index or string name (e.g., "ERA_ANCIENT").
+        default: Default value if era_value is None or invalid.
+
+    Returns:
+        Era index as int.
+    """
+    if era_value is None:
+        return default
+    if isinstance(era_value, int):
+        return era_value
+    if isinstance(era_value, str):
+        return ERA_NAME_TO_INDEX.get(era_value, default)
+    return default
 
 
 def validate_state_json(json_str: str) -> tuple[bool, str | None]:
