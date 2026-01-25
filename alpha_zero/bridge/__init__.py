@@ -1,0 +1,106 @@
+"""Civ6 Bridge - File-based IPC for real game communication.
+
+This package provides the bridge system for communication between
+the Python AlphaZero agent and the Civilization VI game via a Lua mod.
+
+The bridge uses file-based IPC (polling) instead of TCP sockets because
+Civ6's Lua runtime is sandboxed and blocks external libraries.
+
+Modules:
+    config: Configuration dataclasses for the bridge.
+    protocol: Message types and JSON schemas.
+    file_bridge: File-based IPC implementation.
+    state_converter: Civ6 JSON to neural network tensor conversion.
+    action_converter: Action index to Lua command conversion.
+
+Usage:
+    from alpha_zero.bridge import FileBridge, BridgeConfig
+
+    config = BridgeConfig()
+    bridge = FileBridge(config)
+
+    # Wait for game state
+    state = await bridge.poll_state()
+
+    # Send action command
+    await bridge.send_command(command)
+
+    # Check if game is alive
+    if bridge.check_heartbeat():
+        print("Game is connected")
+"""
+
+from alpha_zero.bridge.config import (
+    MAP_SIZES,
+    BridgeConfig,
+    MapSizeConfig,
+    get_map_config,
+)
+from alpha_zero.bridge.protocol import (
+    AckMessage,
+    ActionType,
+    CityData,
+    CommandMessage,
+    ErrorCode,
+    ErrorMessage,
+    GameStateData,
+    LegalAction,
+    LuaCommand,
+    MapData,
+    MessageType,
+    PlayerData,
+    Position,
+    StateMessage,
+    TileData,
+    UnitData,
+    create_city_produce_command,
+    create_end_turn_command,
+    create_unit_move_command,
+    validate_state_json,
+)
+
+__all__ = [
+    # Config
+    "BridgeConfig",
+    "MapSizeConfig",
+    "MAP_SIZES",
+    "get_map_config",
+    # Protocol - Enums
+    "MessageType",
+    "ActionType",
+    "ErrorCode",
+    # Protocol - Data classes
+    "Position",
+    "LuaCommand",
+    "TileData",
+    "UnitData",
+    "CityData",
+    "PlayerData",
+    "LegalAction",
+    "MapData",
+    "GameStateData",
+    # Protocol - Messages
+    "StateMessage",
+    "CommandMessage",
+    "AckMessage",
+    "ErrorMessage",
+    # Protocol - Utilities
+    "validate_state_json",
+    "create_end_turn_command",
+    "create_unit_move_command",
+    "create_city_produce_command",
+]
+
+# Lazy imports for heavier modules
+def __getattr__(name: str):
+    """Lazy import for FileBridge and converters."""
+    if name == "FileBridge":
+        from alpha_zero.bridge.file_bridge import FileBridge
+        return FileBridge
+    if name == "StateConverter":
+        from alpha_zero.bridge.state_converter import StateConverter
+        return StateConverter
+    if name == "ActionConverter":
+        from alpha_zero.bridge.action_converter import ActionConverter
+        return ActionConverter
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

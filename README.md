@@ -11,6 +11,8 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - **AlphaZero Core**: Full implementation of the AlphaZero self-play reinforcement learning loop
 - **Hierarchical MCTS**: Advanced tree search supporting complex, multi-category action spaces
 - **Residual Network**: Dual-headed (Policy & Value) architecture for joint estimation
+- **Real Civ6 Bridge**: File-based IPC bridge for playing actual Civilization VI
+- **Lua Mod Integration**: Complete Civ6 mod for game state export and action execution
 - **Curriculum Learning**: Multi-stage difficulty progression for accelerated training
 - **Reward Shaping**: Potential-based shaping that preserves optimal policy
 - **Environment Tuning**: Configurable game mechanics for faster iteration
@@ -72,13 +74,25 @@ graph TB
             EnvTuner["Environment Tuner<br/><i>Game mechanics</i>"]
         end
 
-        subgraph "Environment"
+        subgraph "Environment Layer"
             MicroCiv["MicroCiv Environment<br/><i>Simplified Civ6</i>"]
+            RealCiv6Env["RealCiv6Env<br/><i>Gymnasium wrapper</i>"]
+        end
+
+        subgraph "Bridge Layer"
+            FileBridge["FileBridge<br/><i>File-based IPC</i>"]
+            StateConverter["StateConverter<br/><i>JSON → Tensor</i>"]
+            ActionConverter["ActionConverter<br/><i>Action → Lua Command</i>"]
         end
 
         subgraph "Observability"
             WandbLogger["W&B Logger<br/><i>Experiment tracking</i>"]
         end
+    end
+
+    subgraph "Civilization VI"
+        LuaMod["AlphaZeroAI Mod<br/><i>Lua Scripts</i>"]
+        GameEngine["Civ6 Game Engine"]
     end
 
     Orchestrator --> SelfPlay
@@ -98,11 +112,99 @@ graph TB
     Evaluator --> MCTS
     Curriculum --> EnvTuner
     EnvTuner --> MicroCiv
+    EnvTuner --> RealCiv6Env
+
+    RealCiv6Env --> FileBridge
+    FileBridge --> StateConverter
+    FileBridge --> ActionConverter
+    FileBridge <-->|"JSON Files"| LuaMod
+    LuaMod --> GameEngine
 
     style Orchestrator fill:#1168bd,stroke:#0b4884,color:#ffffff
     style Network fill:#438dd5,stroke:#2e6295,color:#ffffff
     style MCTS fill:#438dd5,stroke:#2e6295,color:#ffffff
     style MicroCiv fill:#85bbf0,stroke:#5d82a8,color:#000000
+    style RealCiv6Env fill:#85bbf0,stroke:#5d82a8,color:#000000
+    style FileBridge fill:#f5a623,stroke:#c78000,color:#000000
+    style LuaMod fill:#7ed321,stroke:#5a9a18,color:#000000
+```
+
+### Level 3: Component Diagram - Real Civ6 Bridge
+
+Architecture of the file-based IPC bridge for real Civilization VI gameplay.
+
+```mermaid
+graph TB
+    subgraph "Python Side"
+        subgraph "Bridge Core"
+            BridgeConfig["BridgeConfig<br/><i>Communication settings</i>"]
+            FileBridge["FileBridge<br/><i>Async file polling</i>"]
+            Protocol["Protocol<br/><i>Message schemas</i>"]
+        end
+
+        subgraph "State Processing"
+            StateConv["StateConverter<br/><i>Civ6 JSON → Encoder dict</i>"]
+            Encoder["Civ6StateEncoder<br/><i>Dict → 84-channel tensor</i>"]
+        end
+
+        subgraph "Action Processing"
+            ActionConv["ActionConverter<br/><i>Index → Lua command</i>"]
+            ActionSpace["ActionSpace<br/><i>~483K hierarchical actions</i>"]
+        end
+
+        subgraph "Environment"
+            RealEnv["RealCiv6Env<br/><i>Gymnasium API</i>"]
+            Interface["Civ6Interface<br/><i>BaseGameInterface</i>"]
+        end
+    end
+
+    subgraph "File System IPC"
+        StateFile["state.json<br/><i>Game state from Lua</i>"]
+        CmdFile["commands.json<br/><i>Actions to Lua</i>"]
+        AckFile["ack.json<br/><i>Execution results</i>"]
+        Heartbeat["heartbeat.txt<br/><i>Liveness check</i>"]
+    end
+
+    subgraph "Lua Side (Civ6 Mod)"
+        subgraph "Modules"
+            Main["Main.lua<br/><i>Event handlers</i>"]
+            StateExp["StateExporter<br/><i>Game → JSON</i>"]
+            ActionExec["ActionExecutor<br/><i>Commands → Game API</i>"]
+            FileIO["FileIO<br/><i>Read/Write files</i>"]
+            JsonEnc["JsonEncoder<br/><i>Pure Lua JSON</i>"]
+        end
+    end
+
+    RealEnv --> FileBridge
+    Interface --> RealEnv
+    FileBridge --> BridgeConfig
+    FileBridge --> Protocol
+
+    FileBridge --> StateFile
+    FileBridge --> CmdFile
+    FileBridge --> AckFile
+    FileBridge --> Heartbeat
+
+    StateFile --> StateConv
+    StateConv --> Encoder
+    ActionConv --> CmdFile
+    ActionSpace --> ActionConv
+
+    Main --> StateExp
+    Main --> ActionExec
+    StateExp --> FileIO
+    ActionExec --> FileIO
+    FileIO --> JsonEnc
+
+    StateExp --> StateFile
+    ActionExec --> AckFile
+    FileIO --> CmdFile
+
+    style FileBridge fill:#f5a623,stroke:#c78000,color:#000000
+    style StateFile fill:#e0e0e0,stroke:#999999,color:#000000
+    style CmdFile fill:#e0e0e0,stroke:#999999,color:#000000
+    style AckFile fill:#e0e0e0,stroke:#999999,color:#000000
+    style Main fill:#7ed321,stroke:#5a9a18,color:#000000
 ```
 
 ### Level 3: Component Diagram - Neural Network
@@ -481,22 +583,45 @@ Civ6-AlphaZero/
 │   │   ├── civ6_network.py   # Neural network architecture
 │   │   ├── civ6_mcts.py      # MCTS implementation
 │   │   └── civ6_actions.py   # Action space handling
+│   ├── bridge/               # Real Civ6 bridge system
+│   │   ├── config.py         # Bridge configuration
+│   │   ├── protocol.py       # Message types & schemas
+│   │   ├── file_bridge.py    # File-based IPC
+│   │   ├── state_converter.py # Civ6 JSON → tensor
+│   │   └── action_converter.py # Action → Lua command
 │   ├── distributed/          # Distributed training
 │   │   ├── actor.py          # Self-play actors
 │   │   ├── learner.py        # Training workers
 │   │   └── coordinator.py    # Orchestration
 │   ├── envs/                 # Game environments
 │   │   ├── microciv.py       # MicroCiv environment
+│   │   ├── real_civ6_env.py  # Real Civ6 Gymnasium env
 │   │   └── civ6_encoder.py   # State encoding
+│   ├── interfaces/           # Game interfaces
+│   │   ├── base_interface.py # Abstract interface
+│   │   └── civ6_interface.py # Civ6 implementation
 │   └── utils/                # Utilities & enhancements
 │       ├── curriculum_learning.py
 │       ├── enhanced_rewards.py
 │       ├── environment_tuning.py
 │       ├── training_config_enhanced.py
 │       └── wandb_logger.py
+├── mod/                      # Civilization VI Lua mod
+│   └── AlphaZeroAI/
+│       ├── AlphaZeroAI.modinfo
+│       └── Scripts/
+│           ├── Main.lua      # Entry point & event handlers
+│           ├── StateExporter.lua
+│           ├── ActionExecutor.lua
+│           ├── FileIO.lua
+│           ├── JsonEncoder.lua
+│           ├── Config.lua
+│           └── Logger.lua
 ├── tests/
 │   ├── unit/                 # Unit tests
-│   └── integration/          # Integration tests
+│   ├── integration/          # Integration tests
+│   └── fixtures/             # Test fixtures
+│       └── game_states/      # Sample JSON states
 ├── scripts/                  # Utility scripts
 ├── run_enhanced_training.py  # Main training entry point
 ├── requirements.txt          # Dependencies

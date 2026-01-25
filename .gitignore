@@ -109,3 +109,16 @@ artifacts/
 tmp/
 temp/
 *.tmp
+nul
+
+# Civ6 Bridge Communication
+AlphaZeroAI/
+state.json
+commands.json
+ack.json
+heartbeat.txt
+errors.json
+
+# Civ6 Mod Development
+*.modinfo.bak
+*.lua.bak
