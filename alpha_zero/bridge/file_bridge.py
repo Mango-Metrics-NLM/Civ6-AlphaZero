@@ -262,16 +262,21 @@ class FileBridge:
 
         logger.debug(f"Waiting for state (timeout={timeout}s, require_new={require_new})")
 
+        # Track heartbeat check timing separately
+        last_heartbeat_check = start_time
+
         while True:
             # Check timeout
             elapsed = time.time() - start_time
             if elapsed > timeout:
                 raise StateTimeoutError(timeout)
 
-            # Check heartbeat periodically
-            if not self.check_heartbeat():
-                # Only raise if we've been waiting for a while
-                if elapsed > self.config.heartbeat_timeout_s:
+            # Check heartbeat after grace period (allow initial startup time)
+            # Only check periodically to avoid excessive file I/O
+            now = time.time()
+            if elapsed > self.config.heartbeat_timeout_s and now - last_heartbeat_check > 0.5:
+                last_heartbeat_check = now
+                if not self.check_heartbeat():
                     raise ConnectionLostError()
 
             # Poll for state

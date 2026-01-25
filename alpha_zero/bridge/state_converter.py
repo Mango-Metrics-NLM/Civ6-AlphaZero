@@ -379,7 +379,11 @@ class StateConverter:
         return (scaled_x, scaled_y)
 
     def _convert_terrain(self, state: GameStateData) -> dict[tuple[int, int], dict]:
-        """Convert terrain data.
+        """Convert terrain data with collision handling.
+
+        When multiple Civ6 tiles map to the same scaled position (due to
+        coordinate scaling), this method uses majority voting for terrain type
+        and aggregates features from all contributing tiles.
 
         Args:
             state: Game state data.
@@ -398,7 +402,10 @@ class StateConverter:
                     "yields": {},
                 }
 
-        # Process tiles from state
+        # Track collisions: position -> list of (terrain_type, features, yields)
+        collision_data: dict[tuple[int, int], list[tuple[str, list[str], dict]]] = {}
+
+        # Process tiles from state, collecting collision data
         for tile in state.map_data.tiles:
             scaled_pos = self._scale_coords(tile.x, tile.y)
 
@@ -422,13 +429,104 @@ class StateConverter:
                 elif feature.lower() in ["hills", "mountains", "forest", "jungle", "marsh"]:
                     mapped_features.append(feature.lower())
 
-            terrain[scaled_pos] = {
-                "type": terrain_type,
-                "features": mapped_features,
-                "yields": tile.yields,
-            }
+            # Track collision data
+            if scaled_pos not in collision_data:
+                collision_data[scaled_pos] = []
+            collision_data[scaled_pos].append((terrain_type, mapped_features, tile.yields))
+
+        # Resolve collisions using majority voting and feature aggregation
+        collision_count = 0
+        for pos, tiles_data in collision_data.items():
+            if len(tiles_data) == 1:
+                # No collision - use the single tile directly
+                terrain_type, mapped_features, yields = tiles_data[0]
+                terrain[pos] = {
+                    "type": terrain_type,
+                    "features": mapped_features,
+                    "yields": yields,
+                }
+            else:
+                # Collision detected - resolve it
+                collision_count += 1
+                resolved = self._resolve_terrain_collision(tiles_data)
+                terrain[pos] = resolved
+
+        if collision_count > 0:
+            logger.debug(
+                f"Resolved {collision_count} terrain collisions during coordinate scaling "
+                f"(map {state.map_data.width}x{state.map_data.height} -> {self.board_size}x{self.board_size})"
+            )
 
         return terrain
+
+    def _resolve_terrain_collision(
+        self,
+        tiles_data: list[tuple[str, list[str], dict]],
+    ) -> dict[str, Any]:
+        """Resolve terrain collision when multiple tiles map to same position.
+
+        Uses majority voting for terrain type and aggregates all features.
+        For yields, uses average values.
+
+        Args:
+            tiles_data: List of (terrain_type, features, yields) tuples.
+
+        Returns:
+            Resolved terrain dictionary.
+        """
+        from collections import Counter
+
+        # Majority vote for terrain type
+        terrain_types = [t[0] for t in tiles_data]
+        terrain_counter = Counter(terrain_types)
+        # Get most common, with fallback priority for strategic terrains
+        most_common = terrain_counter.most_common()
+
+        # Terrain priority for ties (prefer more strategic/visible terrain)
+        terrain_priority = {
+            "mountains": 10,  # Impassable - important to preserve
+            "coast": 9,
+            "ocean": 8,
+            "desert": 7,
+            "tundra": 6,
+            "snow": 5,
+            "plains": 4,
+            "grassland": 3,
+        }
+
+        if len(most_common) > 1 and most_common[0][1] == most_common[1][1]:
+            # Tie - use priority
+            tied_terrains = [t for t, c in most_common if c == most_common[0][1]]
+            resolved_terrain = max(
+                tied_terrains,
+                key=lambda t: terrain_priority.get(t, 0)
+            )
+        else:
+            resolved_terrain = most_common[0][0]
+
+        # Aggregate features (union of all features, deduplicated)
+        all_features: set[str] = set()
+        for _, features, _ in tiles_data:
+            all_features.update(features)
+
+        # Average yields
+        yield_sums: dict[str, float] = {}
+        yield_counts: dict[str, int] = {}
+        for _, _, yields in tiles_data:
+            for key, value in yields.items():
+                yield_sums[key] = yield_sums.get(key, 0) + value
+                yield_counts[key] = yield_counts.get(key, 0) + 1
+
+        averaged_yields = {
+            key: int(yield_sums[key] / yield_counts[key])
+            for key in yield_sums
+        }
+
+        return {
+            "type": resolved_terrain,
+            "features": list(all_features),
+            "yields": averaged_yields,
+        }
 
     def _convert_units(self, state: GameStateData) -> list[dict]:
         """Convert unit data.
@@ -514,7 +612,11 @@ class StateConverter:
     def _convert_visibility(
         self, state: GameStateData
     ) -> dict[tuple[int, int], str]:
-        """Convert visibility data.
+        """Convert visibility data with collision handling.
+
+        When multiple tiles map to the same position, uses the highest
+        visibility level (visible > seen > fog) to ensure important
+        visibility information is preserved.
 
         Args:
             state: Game state data.
@@ -524,20 +626,29 @@ class StateConverter:
         """
         visibility: dict[tuple[int, int], str] = {}
 
+        # Visibility priority (higher = more visible)
+        visibility_priority = {"fog": 0, "seen": 1, "visible": 2}
+
         # Default to fog
         for y in range(self.board_size):
             for x in range(self.board_size):
                 visibility[(x, y)] = "fog"
 
-        # Update from tiles
+        # Update from tiles, keeping highest visibility on collision
         for tile in state.map_data.tiles:
             scaled_pos = self._scale_coords(tile.x, tile.y)
 
             if tile.is_visible:
-                visibility[scaled_pos] = "visible"
+                new_vis = "visible"
             elif tile.is_revealed:
-                visibility[scaled_pos] = "seen"
-            # else: remains "fog"
+                new_vis = "seen"
+            else:
+                new_vis = "fog"
+
+            # Only update if new visibility is higher priority (handles collisions)
+            current_vis = visibility[scaled_pos]
+            if visibility_priority[new_vis] > visibility_priority[current_vis]:
+                visibility[scaled_pos] = new_vis
 
         return visibility
 

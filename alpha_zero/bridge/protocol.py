@@ -32,10 +32,333 @@ Usage:
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Callable
+
+logger = logging.getLogger(__name__)
+
+
+class ProtocolValidationError(ValueError):
+    """Exception raised when protocol data validation fails.
+
+    Attributes:
+        field_name: Name of the field that failed validation.
+        expected: Description of expected value/type.
+        actual: The actual value received.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        field_name: str | None = None,
+        expected: str | None = None,
+        actual: Any = None,
+    ):
+        self.field_name = field_name
+        self.expected = expected
+        self.actual = actual
+
+        # Build detailed message
+        parts = [message]
+        if field_name:
+            parts.append(f"field='{field_name}'")
+        if expected:
+            parts.append(f"expected={expected}")
+        if actual is not None:
+            actual_repr = repr(actual) if len(repr(actual)) < 100 else f"{type(actual).__name__}"
+            parts.append(f"got={actual_repr}")
+
+        super().__init__(" | ".join(parts))
+
+
+def _validate_required(data: dict, field: str, context: str = "") -> Any:
+    """Validate that a required field exists.
+
+    Args:
+        data: Dictionary to check.
+        field: Field name to validate.
+        context: Context string for error message.
+
+    Returns:
+        The field value.
+
+    Raises:
+        ProtocolValidationError: If field is missing.
+    """
+    if field not in data:
+        ctx = f" in {context}" if context else ""
+        raise ProtocolValidationError(
+            f"Missing required field{ctx}",
+            field_name=field,
+            expected="present",
+            actual="missing",
+        )
+    return data[field]
+
+
+def _validate_type(
+    value: Any,
+    expected_types: type | tuple[type, ...],
+    field: str,
+    context: str = "",
+    allow_none: bool = False,
+) -> Any:
+    """Validate that a value has the expected type.
+
+    Args:
+        value: Value to validate.
+        expected_types: Expected type or tuple of types.
+        field: Field name for error message.
+        context: Context string for error message.
+        allow_none: Whether None is acceptable.
+
+    Returns:
+        The value if valid.
+
+    Raises:
+        ProtocolValidationError: If type is invalid.
+    """
+    if allow_none and value is None:
+        return value
+
+    if not isinstance(value, expected_types):
+        type_names = (
+            expected_types.__name__
+            if isinstance(expected_types, type)
+            else "|".join(t.__name__ for t in expected_types)
+        )
+        ctx = f" in {context}" if context else ""
+        raise ProtocolValidationError(
+            f"Invalid type{ctx}",
+            field_name=field,
+            expected=type_names,
+            actual=value,
+        )
+    return value
+
+
+def _validate_int(
+    value: Any,
+    field: str,
+    context: str = "",
+    default: int | None = None,
+    min_val: int | None = None,
+    max_val: int | None = None,
+) -> int:
+    """Validate and convert to integer.
+
+    Args:
+        value: Value to validate.
+        field: Field name for error message.
+        context: Context string for error message.
+        default: Default value if value is None.
+        min_val: Minimum allowed value.
+        max_val: Maximum allowed value.
+
+    Returns:
+        Integer value.
+
+    Raises:
+        ProtocolValidationError: If validation fails.
+    """
+    if value is None:
+        if default is not None:
+            return default
+        raise ProtocolValidationError(
+            f"Missing required integer",
+            field_name=field,
+            expected="int",
+            actual=None,
+        )
+
+    try:
+        int_val = int(value)
+    except (TypeError, ValueError):
+        ctx = f" in {context}" if context else ""
+        raise ProtocolValidationError(
+            f"Cannot convert to integer{ctx}",
+            field_name=field,
+            expected="int-convertible",
+            actual=value,
+        )
+
+    if min_val is not None and int_val < min_val:
+        raise ProtocolValidationError(
+            f"Value below minimum",
+            field_name=field,
+            expected=f">={min_val}",
+            actual=int_val,
+        )
+
+    if max_val is not None and int_val > max_val:
+        raise ProtocolValidationError(
+            f"Value above maximum",
+            field_name=field,
+            expected=f"<={max_val}",
+            actual=int_val,
+        )
+
+    return int_val
+
+
+def _validate_float(
+    value: Any,
+    field: str,
+    context: str = "",
+    default: float | None = None,
+) -> float:
+    """Validate and convert to float.
+
+    Args:
+        value: Value to validate.
+        field: Field name for error message.
+        context: Context string for error message.
+        default: Default value if value is None.
+
+    Returns:
+        Float value.
+
+    Raises:
+        ProtocolValidationError: If validation fails.
+    """
+    if value is None:
+        if default is not None:
+            return default
+        raise ProtocolValidationError(
+            f"Missing required float",
+            field_name=field,
+            expected="float",
+            actual=None,
+        )
+
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        ctx = f" in {context}" if context else ""
+        raise ProtocolValidationError(
+            f"Cannot convert to float{ctx}",
+            field_name=field,
+            expected="float-convertible",
+            actual=value,
+        )
+
+
+def _validate_string(
+    value: Any,
+    field: str,
+    context: str = "",
+    default: str | None = None,
+    allowed_values: list[str] | None = None,
+) -> str:
+    """Validate string value.
+
+    Args:
+        value: Value to validate.
+        field: Field name for error message.
+        context: Context string for error message.
+        default: Default value if value is None.
+        allowed_values: List of allowed string values.
+
+    Returns:
+        String value.
+
+    Raises:
+        ProtocolValidationError: If validation fails.
+    """
+    if value is None:
+        if default is not None:
+            return default
+        raise ProtocolValidationError(
+            f"Missing required string",
+            field_name=field,
+            expected="str",
+            actual=None,
+        )
+
+    str_val = str(value)
+
+    if allowed_values is not None and str_val not in allowed_values:
+        raise ProtocolValidationError(
+            f"Value not in allowed set",
+            field_name=field,
+            expected=f"one of {allowed_values[:5]}{'...' if len(allowed_values) > 5 else ''}",
+            actual=str_val,
+        )
+
+    return str_val
+
+
+def _validate_list(
+    value: Any,
+    field: str,
+    context: str = "",
+    default_factory: Callable[[], list] = list,
+) -> list:
+    """Validate list value.
+
+    Args:
+        value: Value to validate.
+        field: Field name for error message.
+        context: Context string for error message.
+        default_factory: Factory to create default list.
+
+    Returns:
+        List value.
+
+    Raises:
+        ProtocolValidationError: If validation fails.
+    """
+    if value is None:
+        return default_factory()
+
+    if not isinstance(value, list):
+        ctx = f" in {context}" if context else ""
+        raise ProtocolValidationError(
+            f"Expected list{ctx}",
+            field_name=field,
+            expected="list",
+            actual=value,
+        )
+
+    return value
+
+
+def _validate_dict(
+    value: Any,
+    field: str,
+    context: str = "",
+    default_factory: Callable[[], dict] = dict,
+) -> dict:
+    """Validate dict value.
+
+    Args:
+        value: Value to validate.
+        field: Field name for error message.
+        context: Context string for error message.
+        default_factory: Factory to create default dict.
+
+    Returns:
+        Dict value.
+
+    Raises:
+        ProtocolValidationError: If validation fails.
+    """
+    if value is None:
+        return default_factory()
+
+    if not isinstance(value, dict):
+        ctx = f" in {context}" if context else ""
+        raise ProtocolValidationError(
+            f"Expected dict{ctx}",
+            field_name=field,
+            expected="dict",
+            actual=value,
+        )
+
+    return value
 
 
 class MessageType(str, Enum):
@@ -78,8 +401,21 @@ class Position:
 
     @classmethod
     def from_dict(cls, data: dict) -> Position:
-        """Create from dictionary."""
-        return cls(x=data["x"], y=data["y"])
+        """Create from dictionary.
+
+        Args:
+            data: Dictionary with 'x' and 'y' keys.
+
+        Returns:
+            Position instance.
+
+        Raises:
+            ProtocolValidationError: If required fields are missing or invalid.
+        """
+        _validate_type(data, dict, "data", context="Position.from_dict")
+        x = _validate_int(data.get("x"), "x", context="Position")
+        y = _validate_int(data.get("y"), "y", context="Position")
+        return cls(x=x, y=y)
 
 
 @dataclass
@@ -125,19 +461,64 @@ class LuaCommand:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LuaCommand:
-        """Create from dictionary."""
+        """Create from dictionary.
+
+        Args:
+            data: Dictionary with command data.
+
+        Returns:
+            LuaCommand instance.
+
+        Raises:
+            ProtocolValidationError: If required fields are missing or invalid.
+        """
+        _validate_type(data, dict, "data", context="LuaCommand.from_dict")
+
+        # Validate and parse action_type
+        action_type_raw = _validate_required(data, "action_type", context="LuaCommand")
+        try:
+            action_type = ActionType(action_type_raw)
+        except ValueError:
+            valid_actions = [a.value for a in ActionType]
+            raise ProtocolValidationError(
+                "Invalid action type",
+                field_name="action_type",
+                expected=f"one of {valid_actions}",
+                actual=action_type_raw,
+            )
+
+        # Parse optional target
         target = None
-        if "target" in data:
-            target = Position.from_dict(data["target"])
+        if "target" in data and data["target"] is not None:
+            target_data = _validate_type(
+                data["target"], dict, "target", context="LuaCommand", allow_none=True
+            )
+            if target_data:
+                target = Position.from_dict(target_data)
+
+        # Validate optional IDs are integers if present
+        unit_id = data.get("unit_id")
+        if unit_id is not None:
+            unit_id = _validate_int(unit_id, "unit_id", context="LuaCommand")
+
+        city_id = data.get("city_id")
+        if city_id is not None:
+            city_id = _validate_int(city_id, "city_id", context="LuaCommand")
+
+        item_id = data.get("item_id")
+        if item_id is not None:
+            item_id = _validate_int(item_id, "item_id", context="LuaCommand")
+
+        metadata = _validate_dict(data.get("metadata"), "metadata", context="LuaCommand")
 
         return cls(
-            action_type=ActionType(data["action_type"]),
-            unit_id=data.get("unit_id"),
-            city_id=data.get("city_id"),
+            action_type=action_type,
+            unit_id=unit_id,
+            city_id=city_id,
             target=target,
-            item_id=data.get("item_id"),
+            item_id=item_id,
             item_type=data.get("item_type"),
-            metadata=data.get("metadata", {}),
+            metadata=metadata,
         )
 
 
@@ -158,21 +539,50 @@ class TileData:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TileData:
-        """Create from dictionary."""
+        """Create from dictionary.
+
+        Args:
+            data: Dictionary with tile data.
+
+        Returns:
+            TileData instance.
+
+        Raises:
+            ProtocolValidationError: If data is not a dictionary.
+        """
+        _validate_type(data, dict, "data", context="TileData.from_dict")
+
+        # Parse coordinates with defaults
+        x = _validate_int(data.get("x"), "x", context="TileData", default=0)
+        y = _validate_int(data.get("y"), "y", context="TileData", default=0)
+
         # Handle both 'owner' and 'owner_id' keys (consistent with UnitData/CityData)
         raw_owner = data.get("owner", data.get("owner_id", -1))
-        owner_id = raw_owner if raw_owner != -1 else None
+        owner_id = None
+        if raw_owner is not None and raw_owner != -1:
+            owner_id = _validate_int(raw_owner, "owner_id", context="TileData", default=-1)
+            if owner_id == -1:
+                owner_id = None
+
+        # Validate features list
+        features = _validate_list(data.get("features"), "features", context="TileData")
+
+        # Validate yields dict
+        yields = _validate_dict(data.get("yields"), "yields", context="TileData")
+
         return cls(
-            x=data.get("x", 0),
-            y=data.get("y", 0),
-            terrain=data.get("terrain", "TERRAIN_PLAINS"),
-            features=data.get("features", []),
+            x=x,
+            y=y,
+            terrain=_validate_string(
+                data.get("terrain"), "terrain", context="TileData", default="TERRAIN_PLAINS"
+            ),
+            features=features,
             resource=data.get("resource"),
             improvement=data.get("improvement"),
             owner_id=owner_id,
-            is_visible=data.get("is_visible", True),
-            is_revealed=data.get("is_revealed", True),
-            yields=data.get("yields", {}),
+            is_visible=bool(data.get("is_visible", True)),
+            is_revealed=bool(data.get("is_revealed", True)),
+            yields=yields,
         )
 
 
@@ -199,24 +609,88 @@ class UnitData:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> UnitData:
-        """Create from dictionary."""
+        """Create from dictionary.
+
+        Args:
+            data: Dictionary with unit data.
+
+        Returns:
+            UnitData instance.
+
+        Raises:
+            ProtocolValidationError: If data is not a dictionary.
+        """
+        _validate_type(data, dict, "data", context="UnitData.from_dict")
+
+        # Parse required and optional fields with validation
+        unit_id = _validate_int(data.get("id"), "id", context="UnitData", default=0)
+        unit_type = _validate_string(
+            data.get("type", data.get("type_name")),
+            "unit_type",
+            context="UnitData",
+            default="UNIT_WARRIOR",
+        )
+        owner_id = _validate_int(
+            data.get("owner", data.get("owner_id")),
+            "owner_id",
+            context="UnitData",
+            default=0,
+        )
+        x = _validate_int(data.get("x"), "x", context="UnitData", default=0)
+        y = _validate_int(data.get("y"), "y", context="UnitData", default=0)
+        health = _validate_int(
+            data.get("hp", data.get("health")),
+            "health",
+            context="UnitData",
+            default=100,
+            min_val=0,
+        )
+        max_health = _validate_int(
+            data.get("max_hp", data.get("max_health")),
+            "max_health",
+            context="UnitData",
+            default=100,
+            min_val=1,
+        )
+        damage = _validate_int(data.get("damage"), "damage", context="UnitData", default=0, min_val=0)
+        moves_remaining = _validate_float(
+            data.get("movement", data.get("moves_remaining")),
+            "moves_remaining",
+            context="UnitData",
+            default=0.0,
+        )
+        max_moves = _validate_float(
+            data.get("max_movement", data.get("max_moves")),
+            "max_moves",
+            context="UnitData",
+            default=2.0,
+        )
+        combat_strength = _validate_int(
+            data.get("combat_strength"), "combat_strength", context="UnitData", default=0
+        )
+        ranged_strength = _validate_int(
+            data.get("ranged_strength"), "ranged_strength", context="UnitData", default=0
+        )
+        range_val = _validate_int(data.get("range"), "range", context="UnitData", default=0)
+        promotions = _validate_list(data.get("promotions"), "promotions", context="UnitData")
+
         return cls(
-            id=data.get("id", 0),
-            unit_type=data.get("type", data.get("type_name", "UNIT_WARRIOR")),
-            owner_id=data.get("owner", data.get("owner_id", 0)),
-            x=data.get("x", 0),
-            y=data.get("y", 0),
-            health=data.get("hp", data.get("health", 100)),
-            max_health=data.get("max_hp", data.get("max_health", 100)),
-            damage=data.get("damage", 0),
-            moves_remaining=float(data.get("movement", data.get("moves_remaining", 0))),
-            max_moves=float(data.get("max_movement", data.get("max_moves", 2))),
-            combat_strength=data.get("combat_strength", 0),
-            ranged_strength=data.get("ranged_strength", 0),
-            range=data.get("range", 0),
-            is_civilian=data.get("is_civilian", False),
-            can_attack=data.get("can_attack", True),
-            promotions=data.get("promotions", []),
+            id=unit_id,
+            unit_type=unit_type,
+            owner_id=owner_id,
+            x=x,
+            y=y,
+            health=health,
+            max_health=max_health,
+            damage=damage,
+            moves_remaining=moves_remaining,
+            max_moves=max_moves,
+            combat_strength=combat_strength,
+            ranged_strength=ranged_strength,
+            range=range_val,
+            is_civilian=bool(data.get("is_civilian", False)),
+            can_attack=bool(data.get("can_attack", True)),
+            promotions=promotions,
         )
 
     @property
@@ -245,21 +719,64 @@ class CityData:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CityData:
-        """Create from dictionary."""
+        """Create from dictionary.
+
+        Args:
+            data: Dictionary with city data.
+
+        Returns:
+            CityData instance.
+
+        Raises:
+            ProtocolValidationError: If data is not a dictionary.
+        """
+        _validate_type(data, dict, "data", context="CityData.from_dict")
+
+        city_id = _validate_int(data.get("id"), "id", context="CityData", default=0)
+        name = _validate_string(data.get("name"), "name", context="CityData", default="Unknown")
+        owner_id = _validate_int(
+            data.get("owner", data.get("owner_id")),
+            "owner_id",
+            context="CityData",
+            default=0,
+        )
+        x = _validate_int(data.get("x"), "x", context="CityData", default=0)
+        y = _validate_int(data.get("y"), "y", context="CityData", default=0)
+        population = _validate_int(
+            data.get("population"), "population", context="CityData", default=1, min_val=1
+        )
+        defense_strength = _validate_int(
+            data.get("defense_strength", data.get("defense")),
+            "defense_strength",
+            context="CityData",
+            default=0,
+        )
+        production_progress = _validate_int(
+            data.get("production_progress"),
+            "production_progress",
+            context="CityData",
+            default=0,
+        )
+        buildings = _validate_list(data.get("buildings"), "buildings", context="CityData")
+        districts = _validate_list(data.get("districts"), "districts", context="CityData")
+        available_production = _validate_list(
+            data.get("available_production"), "available_production", context="CityData"
+        )
+
         return cls(
-            id=data.get("id", 0),
-            name=data.get("name", "Unknown"),
-            owner_id=data.get("owner", data.get("owner_id", 0)),
-            x=data.get("x", 0),
-            y=data.get("y", 0),
-            population=data.get("population", 1),
-            is_capital=data.get("is_capital", False),
-            defense_strength=data.get("defense_strength", data.get("defense", 0)),
-            buildings=data.get("buildings", []),
-            districts=data.get("districts", []),
+            id=city_id,
+            name=name,
+            owner_id=owner_id,
+            x=x,
+            y=y,
+            population=population,
+            is_capital=bool(data.get("is_capital", False)),
+            defense_strength=defense_strength,
+            buildings=buildings,
+            districts=districts,
             current_production=data.get("current_production"),
-            production_progress=data.get("production_progress", 0),
-            available_production=data.get("available_production", []),
+            production_progress=production_progress,
+            available_production=available_production,
         )
 
     @property
@@ -286,18 +803,56 @@ class PlayerData:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> PlayerData:
-        """Create from dictionary."""
+        """Create from dictionary.
+
+        Args:
+            data: Dictionary with player data.
+
+        Returns:
+            PlayerData instance.
+
+        Raises:
+            ProtocolValidationError: If data is not a dictionary.
+        """
+        _validate_type(data, dict, "data", context="PlayerData.from_dict")
+
+        player_id = _validate_int(data.get("id"), "id", context="PlayerData", default=0)
+        civilization = _validate_string(
+            data.get("civilization", data.get("civ")),
+            "civilization",
+            context="PlayerData",
+            default="UNKNOWN",
+        )
+        gold = _validate_float(data.get("gold"), "gold", context="PlayerData", default=0.0)
+        science_per_turn = _validate_float(
+            data.get("science_per_turn", data.get("science")),
+            "science_per_turn",
+            context="PlayerData",
+            default=0.0,
+        )
+        culture_per_turn = _validate_float(
+            data.get("culture_per_turn", data.get("culture")),
+            "culture_per_turn",
+            context="PlayerData",
+            default=0.0,
+        )
+        faith = _validate_float(data.get("faith"), "faith", context="PlayerData", default=0.0)
+        score = _validate_int(data.get("score"), "score", context="PlayerData", default=0)
+        techs_researched = _validate_list(
+            data.get("techs_researched"), "techs_researched", context="PlayerData"
+        )
+
         return cls(
-            id=data.get("id", 0),
-            civilization=data.get("civilization", data.get("civ", "UNKNOWN")),
-            gold=float(data.get("gold", 0)),
-            science_per_turn=float(data.get("science_per_turn", data.get("science", 0))),
-            culture_per_turn=float(data.get("culture_per_turn", data.get("culture", 0))),
-            faith=float(data.get("faith", 0)),
-            score=data.get("score", 0),
-            is_alive=data.get("is_alive", True),
-            is_human=data.get("is_human", True),
-            techs_researched=data.get("techs_researched", []),
+            id=player_id,
+            civilization=civilization,
+            gold=gold,
+            science_per_turn=science_per_turn,
+            culture_per_turn=culture_per_turn,
+            faith=faith,
+            score=score,
+            is_alive=bool(data.get("is_alive", True)),
+            is_human=bool(data.get("is_human", True)),
+            techs_researched=techs_researched,
             current_research=data.get("current_research"),
         )
 
@@ -324,14 +879,35 @@ class LegalAction:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LegalAction:
-        """Create from dictionary."""
+        """Create from dictionary.
+
+        Args:
+            data: Dictionary with legal action data.
+
+        Returns:
+            LegalAction instance.
+
+        Raises:
+            ProtocolValidationError: If data is not a dictionary.
+        """
+        _validate_type(data, dict, "data", context="LegalAction.from_dict")
+
+        # Parse targets
         targets = []
         raw_targets = data.get("targets", [])
-        for t in raw_targets:
-            if isinstance(t, dict):
-                targets.append((t.get("x", 0), t.get("y", 0)))
-            elif isinstance(t, (list, tuple)) and len(t) >= 2:
-                targets.append((t[0], t[1]))
+        if raw_targets is not None:
+            _validate_type(raw_targets, list, "targets", context="LegalAction")
+            for i, t in enumerate(raw_targets):
+                if isinstance(t, dict):
+                    x = _validate_int(t.get("x"), f"targets[{i}].x", context="LegalAction", default=0)
+                    y = _validate_int(t.get("y"), f"targets[{i}].y", context="LegalAction", default=0)
+                    targets.append((x, y))
+                elif isinstance(t, (list, tuple)) and len(t) >= 2:
+                    x = _validate_int(t[0], f"targets[{i}][0]", context="LegalAction", default=0)
+                    y = _validate_int(t[1], f"targets[{i}][1]", context="LegalAction", default=0)
+                    targets.append((x, y))
+                else:
+                    logger.warning(f"Skipping invalid target format at index {i}: {t}")
 
         # Parse items - can be int IDs or string names (e.g., tech names)
         raw_items = data.get("items", data.get("item", []))
@@ -351,11 +927,29 @@ class LegalAction:
                     items.append(int(item))
                 else:
                     items.append(item)  # Keep as string (e.g., tech name)
+            else:
+                logger.warning(f"Skipping invalid item type: {type(item).__name__}")
+
+        # Validate unit_id and city_id if present
+        unit_id = data.get("unit_id")
+        if unit_id is not None:
+            unit_id = _validate_int(unit_id, "unit_id", context="LegalAction")
+
+        city_id = data.get("city_id")
+        if city_id is not None:
+            city_id = _validate_int(city_id, "city_id", context="LegalAction")
+
+        action_type = _validate_string(
+            data.get("action", data.get("type")),
+            "action_type",
+            context="LegalAction",
+            default="end_turn",
+        )
 
         return cls(
-            action_type=data.get("action", data.get("type", "end_turn")),
-            unit_id=data.get("unit_id"),
-            city_id=data.get("city_id"),
+            action_type=action_type,
+            unit_id=unit_id,
+            city_id=city_id,
             targets=targets,
             items=items,
             item_type=data.get("item_type"),
@@ -372,13 +966,31 @@ class MapData:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MapData:
-        """Create from dictionary."""
-        tiles = [TileData.from_dict(t) for t in data.get("tiles", [])]
-        return cls(
-            width=data.get("width", 0),
-            height=data.get("height", 0),
-            tiles=tiles,
-        )
+        """Create from dictionary.
+
+        Args:
+            data: Dictionary with map data.
+
+        Returns:
+            MapData instance.
+
+        Raises:
+            ProtocolValidationError: If data is not a dictionary.
+        """
+        _validate_type(data, dict, "data", context="MapData.from_dict")
+
+        width = _validate_int(data.get("width"), "width", context="MapData", default=0, min_val=0)
+        height = _validate_int(data.get("height"), "height", context="MapData", default=0, min_val=0)
+
+        raw_tiles = _validate_list(data.get("tiles"), "tiles", context="MapData")
+        tiles = []
+        for i, t in enumerate(raw_tiles):
+            try:
+                tiles.append(TileData.from_dict(t))
+            except ProtocolValidationError as e:
+                logger.warning(f"Skipping invalid tile at index {i}: {e}")
+
+        return cls(width=width, height=height, tiles=tiles)
 
 
 @dataclass
@@ -400,12 +1012,24 @@ class GameStateData:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GameStateData:
-        """Create from dictionary."""
+        """Create from dictionary.
+
+        Args:
+            data: Dictionary with game state data.
+
+        Returns:
+            GameStateData instance.
+
+        Raises:
+            ProtocolValidationError: If data is not a dictionary.
+        """
+        _validate_type(data, dict, "data", context="GameStateData.from_dict")
+
         # Handle the 'player' field which contains summary data
-        player_summary = data.get("player", {})
+        player_summary = _validate_dict(data.get("player"), "player", context="GameStateData")
 
         # Build player data from summary if no players array
-        players_data = data.get("players", [])
+        players_data = _validate_list(data.get("players"), "players", context="GameStateData")
         if not players_data and player_summary:
             players_data = [player_summary]
 
@@ -413,19 +1037,88 @@ class GameStateData:
         era_value = data.get("era", player_summary.get("era"))
         era = _parse_era(era_value, default=0)
 
+        # Parse turn_id
+        turn_id = _validate_int(
+            data.get("turn_id", data.get("turn")),
+            "turn_id",
+            context="GameStateData",
+            default=0,
+        )
+
+        # Parse player_id
+        player_id = _validate_int(
+            data.get("player_id", player_summary.get("id")),
+            "player_id",
+            context="GameStateData",
+            default=0,
+        )
+
+        # Parse map with validation
+        map_dict = _validate_dict(data.get("map"), "map", context="GameStateData")
+        map_data = MapData.from_dict(map_dict)
+
+        # Parse units with error handling
+        raw_units = _validate_list(data.get("units"), "units", context="GameStateData")
+        units = []
+        for i, u in enumerate(raw_units):
+            try:
+                units.append(UnitData.from_dict(u))
+            except ProtocolValidationError as e:
+                logger.warning(f"Skipping invalid unit at index {i}: {e}")
+
+        # Parse cities with error handling
+        raw_cities = _validate_list(data.get("cities"), "cities", context="GameStateData")
+        cities = []
+        for i, c in enumerate(raw_cities):
+            try:
+                cities.append(CityData.from_dict(c))
+            except ProtocolValidationError as e:
+                logger.warning(f"Skipping invalid city at index {i}: {e}")
+
+        # Parse players with error handling
+        players = []
+        for i, p in enumerate(players_data):
+            try:
+                players.append(PlayerData.from_dict(p))
+            except ProtocolValidationError as e:
+                logger.warning(f"Skipping invalid player at index {i}: {e}")
+
+        # Parse legal actions with error handling
+        raw_legal_actions = _validate_list(
+            data.get("legal_actions"), "legal_actions", context="GameStateData"
+        )
+        legal_actions = []
+        for i, a in enumerate(raw_legal_actions):
+            try:
+                legal_actions.append(LegalAction.from_dict(a))
+            except ProtocolValidationError as e:
+                logger.warning(f"Skipping invalid legal action at index {i}: {e}")
+
+        # Parse winner_id if present
+        winner_id = data.get("winner_id")
+        if winner_id is not None:
+            winner_id = _validate_int(winner_id, "winner_id", context="GameStateData")
+
         return cls(
-            turn_id=data.get("turn_id", data.get("turn", 0)),
-            player_id=data.get("player_id", player_summary.get("id", 0)),
-            map_data=MapData.from_dict(data.get("map", {})),
-            units=[UnitData.from_dict(u) for u in data.get("units", [])],
-            cities=[CityData.from_dict(c) for c in data.get("cities", [])],
-            players=[PlayerData.from_dict(p) for p in players_data],
-            legal_actions=[LegalAction.from_dict(a) for a in data.get("legal_actions", [])],
-            current_player_civ=data.get("current_player", ""),
+            turn_id=turn_id,
+            player_id=player_id,
+            map_data=map_data,
+            units=units,
+            cities=cities,
+            players=players,
+            legal_actions=legal_actions,
+            current_player_civ=_validate_string(
+                data.get("current_player"), "current_player", context="GameStateData", default=""
+            ),
             era=era,
-            game_speed=data.get("game_speed", "GAMESPEED_STANDARD"),
-            is_game_over=data.get("is_game_over", data.get("game_over", False)),
-            winner_id=data.get("winner_id"),
+            game_speed=_validate_string(
+                data.get("game_speed"),
+                "game_speed",
+                context="GameStateData",
+                default="GAMESPEED_STANDARD",
+            ),
+            is_game_over=bool(data.get("is_game_over", data.get("game_over", False))),
+            winner_id=winner_id,
         )
 
 
@@ -468,23 +1161,69 @@ class StateMessage:
 
     @classmethod
     def from_json(cls, json_str: str) -> StateMessage:
-        """Parse from JSON string."""
-        data = json.loads(json_str)
+        """Parse from JSON string.
+
+        Args:
+            json_str: JSON string to parse.
+
+        Returns:
+            StateMessage instance.
+
+        Raises:
+            ProtocolValidationError: If JSON is invalid or data is malformed.
+            json.JSONDecodeError: If JSON parsing fails.
+        """
+        _validate_type(json_str, str, "json_str", context="StateMessage.from_json")
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            raise ProtocolValidationError(
+                f"Invalid JSON: {e}",
+                field_name="json_str",
+                expected="valid JSON string",
+            ) from e
         return cls.from_dict(data)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> StateMessage:
-        """Create from dictionary."""
+        """Create from dictionary.
+
+        Args:
+            data: Dictionary with state message data.
+
+        Returns:
+            StateMessage instance.
+
+        Raises:
+            ProtocolValidationError: If data is not a dictionary.
+        """
+        _validate_type(data, dict, "data", context="StateMessage.from_dict")
+
         # Handle both wrapped and unwrapped formats
         if "state" in data:
-            state_data = data["state"]
+            state_data = _validate_type(
+                data["state"], dict, "state", context="StateMessage"
+            )
         else:
             # The entire dict is the state (direct Lua output)
             state_data = data
 
+        msg_id = _validate_int(
+            data.get("msg_id"),
+            "msg_id",
+            context="StateMessage",
+            default=int(time.time() * 1000),
+        )
+        timestamp = _validate_float(
+            data.get("timestamp"),
+            "timestamp",
+            context="StateMessage",
+            default=time.time(),
+        )
+
         return cls(
-            msg_id=data.get("msg_id", int(time.time() * 1000)),
-            timestamp=data.get("timestamp", time.time()),
+            msg_id=msg_id,
+            timestamp=timestamp,
             state=GameStateData.from_dict(state_data),
         )
 
@@ -514,13 +1253,53 @@ class CommandMessage:
 
     @classmethod
     def from_json(cls, json_str: str) -> CommandMessage:
-        """Parse from JSON string."""
-        data = json.loads(json_str)
-        return cls(
-            msg_id=data["msg_id"],
-            timestamp=data.get("timestamp", time.time()),
-            commands=[LuaCommand.from_dict(c) for c in data.get("commands", [])],
+        """Parse from JSON string.
+
+        Args:
+            json_str: JSON string to parse.
+
+        Returns:
+            CommandMessage instance.
+
+        Raises:
+            ProtocolValidationError: If JSON is invalid or data is malformed.
+            json.JSONDecodeError: If JSON parsing fails.
+        """
+        _validate_type(json_str, str, "json_str", context="CommandMessage.from_json")
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            raise ProtocolValidationError(
+                f"Invalid JSON: {e}",
+                field_name="json_str",
+                expected="valid JSON string",
+            ) from e
+
+        _validate_type(data, dict, "data", context="CommandMessage.from_json")
+
+        # msg_id is required for command messages
+        msg_id = _validate_int(
+            _validate_required(data, "msg_id", context="CommandMessage"),
+            "msg_id",
+            context="CommandMessage",
         )
+        timestamp = _validate_float(
+            data.get("timestamp"),
+            "timestamp",
+            context="CommandMessage",
+            default=time.time(),
+        )
+
+        # Parse commands with error handling
+        raw_commands = _validate_list(data.get("commands"), "commands", context="CommandMessage")
+        commands = []
+        for i, c in enumerate(raw_commands):
+            try:
+                commands.append(LuaCommand.from_dict(c))
+            except ProtocolValidationError as e:
+                logger.warning(f"Skipping invalid command at index {i}: {e}")
+
+        return cls(msg_id=msg_id, timestamp=timestamp, commands=commands)
 
 
 @dataclass
@@ -562,21 +1341,67 @@ class AckMessage:
 
     @classmethod
     def from_json(cls, json_str: str) -> AckMessage:
-        """Parse from JSON string."""
-        data = json.loads(json_str)
+        """Parse from JSON string.
+
+        Args:
+            json_str: JSON string to parse.
+
+        Returns:
+            AckMessage instance.
+
+        Raises:
+            ProtocolValidationError: If JSON is invalid or data is malformed.
+            json.JSONDecodeError: If JSON parsing fails.
+        """
+        _validate_type(json_str, str, "json_str", context="AckMessage.from_json")
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            raise ProtocolValidationError(
+                f"Invalid JSON: {e}",
+                field_name="json_str",
+                expected="valid JSON string",
+            ) from e
         return cls.from_dict(data)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AckMessage:
-        """Create from dictionary."""
-        success = data.get("success", data.get("status") == "success")
+        """Create from dictionary.
+
+        Args:
+            data: Dictionary with ack message data.
+
+        Returns:
+            AckMessage instance.
+
+        Raises:
+            ProtocolValidationError: If data is not a dictionary.
+        """
+        _validate_type(data, dict, "data", context="AckMessage.from_dict")
+
+        # Parse success from 'success' field or 'status' field
+        success_raw = data.get("success")
+        if success_raw is not None:
+            success = bool(success_raw)
+        else:
+            success = data.get("status") == "success"
+
+        msg_id = _validate_int(data.get("msg_id"), "msg_id", context="AckMessage", default=0)
+        timestamp = _validate_float(
+            data.get("timestamp"),
+            "timestamp",
+            context="AckMessage",
+            default=time.time(),
+        )
+        executed = _validate_list(data.get("executed"), "executed", context="AckMessage")
+
         return cls(
-            msg_id=data.get("msg_id", 0),
-            timestamp=data.get("timestamp", time.time()),
+            msg_id=msg_id,
+            timestamp=timestamp,
             success=success,
             error_code=data.get("error_code", data.get("code")),
             error_message=data.get("error_message", data.get("message")),
-            executed=data.get("executed", []),
+            executed=executed,
         )
 
 
@@ -611,14 +1436,60 @@ class ErrorMessage:
 
     @classmethod
     def from_json(cls, json_str: str) -> ErrorMessage:
-        """Parse from JSON string."""
-        data = json.loads(json_str)
+        """Parse from JSON string.
+
+        Args:
+            json_str: JSON string to parse.
+
+        Returns:
+            ErrorMessage instance.
+
+        Raises:
+            ProtocolValidationError: If JSON is invalid or data is malformed.
+            json.JSONDecodeError: If JSON parsing fails.
+        """
+        _validate_type(json_str, str, "json_str", context="ErrorMessage.from_json")
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            raise ProtocolValidationError(
+                f"Invalid JSON: {e}",
+                field_name="json_str",
+                expected="valid JSON string",
+            ) from e
+
+        _validate_type(data, dict, "data", context="ErrorMessage.from_json")
+
+        msg_id = data.get("msg_id")
+        if msg_id is not None:
+            msg_id = _validate_int(msg_id, "msg_id", context="ErrorMessage")
+
+        timestamp = _validate_float(
+            data.get("timestamp"),
+            "timestamp",
+            context="ErrorMessage",
+            default=time.time(),
+        )
+        error_code = _validate_string(
+            data.get("error_code"),
+            "error_code",
+            context="ErrorMessage",
+            default="E000",
+        )
+        message = _validate_string(
+            data.get("message"),
+            "message",
+            context="ErrorMessage",
+            default="Unknown error",
+        )
+        details = _validate_dict(data.get("details"), "details", context="ErrorMessage")
+
         return cls(
-            msg_id=data.get("msg_id"),
-            timestamp=data.get("timestamp", time.time()),
-            error_code=data.get("error_code", "E000"),
-            message=data.get("message", "Unknown error"),
-            details=data.get("details", {}),
+            msg_id=msg_id,
+            timestamp=timestamp,
+            error_code=error_code,
+            message=message,
+            details=details,
         )
 
 

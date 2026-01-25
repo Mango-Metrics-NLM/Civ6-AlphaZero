@@ -404,10 +404,16 @@ class RealCiv6Env(gym.Env):
         """Get current info dictionary.
 
         Returns:
-            Info dictionary with game state details.
+            Info dictionary with game state details including winner_id
+            for proper game end detection.
         """
         if self._current_state is None:
-            return {"turn": 0}
+            return {"turn": 0, "winner_id": None}
+
+        # Extract winner_id from raw state if available
+        winner_id = None
+        if self._raw_state is not None:
+            winner_id = self._raw_state.winner_id
 
         return {
             "turn": self._turn,
@@ -415,6 +421,8 @@ class RealCiv6Env(gym.Env):
             "cities": len(self._current_state.get("cities", [])),
             "gold": self._current_state.get("gold", 0),
             "is_connected": self._bridge.is_connected if self._bridge else False,
+            "winner_id": winner_id,
+            "is_game_over": self._raw_state.is_game_over if self._raw_state else False,
         }
 
     # Legacy class attributes for backwards compatibility
@@ -472,16 +480,31 @@ class RealCiv6Env(gym.Env):
     def _run_async(self, coro):
         """Run async coroutine from sync context.
 
+        Manages the event loop lifecycle safely, handling closed loops
+        and cancellation errors.
+
         Args:
             coro: Coroutine to run.
 
         Returns:
             Result of the coroutine.
+
+        Raises:
+            RuntimeError: If the event loop cannot be created or is closed.
         """
-        if self._loop is None:
+        # Create new loop if none exists or if existing loop is closed
+        if self._loop is None or self._loop.is_closed():
             self._loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self._loop)
-        return self._loop.run_until_complete(coro)
+
+        try:
+            return self._loop.run_until_complete(coro)
+        except asyncio.CancelledError:
+            logger.warning("Async operation was cancelled")
+            raise
+        except Exception as e:
+            logger.debug(f"Async operation error: {e}")
+            raise
 
     def render(self) -> np.ndarray | None:
         """Render the environment.
@@ -500,13 +523,35 @@ class RealCiv6Env(gym.Env):
         return None
 
     def close(self) -> None:
-        """Close the environment and clean up resources."""
+        """Close the environment and clean up resources.
+
+        Properly cleans up the bridge connection and event loop,
+        cancelling any pending async tasks before closing.
+        """
+        # Stop bridge first
         if self._bridge is not None:
-            self._run_async(self._bridge.stop())
+            try:
+                self._run_async(self._bridge.stop())
+            except Exception as e:
+                logger.warning(f"Error stopping bridge: {e}")
             self._bridge = None
 
+        # Clean up event loop
         if self._loop is not None:
-            self._loop.close()
+            try:
+                # Cancel all pending tasks
+                if not self._loop.is_closed():
+                    pending = asyncio.all_tasks(self._loop)
+                    for task in pending:
+                        task.cancel()
+                    # Allow cancelled tasks to complete
+                    if pending:
+                        self._loop.run_until_complete(
+                            asyncio.gather(*pending, return_exceptions=True)
+                        )
+                    self._loop.close()
+            except Exception as e:
+                logger.warning(f"Error closing event loop: {e}")
             self._loop = None
 
         logger.info("Environment closed")

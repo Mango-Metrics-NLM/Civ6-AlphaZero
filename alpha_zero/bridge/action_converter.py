@@ -52,30 +52,79 @@ class LegalActionTypes:
 
     These map to the action types sent by the Civ6 Lua mod in legal_actions.
     Keeping them centralized ensures consistency and easy updates if protocol changes.
+
+    Unit actions include all 17 UnitActionType values for completeness.
     """
+    # Turn management
     END_TURN = "end_turn"
+
+    # Basic unit actions
     MOVE = "move"
     ATTACK = "attack"
     RANGED_ATTACK = "ranged_attack"
     FORTIFY = "fortify"
     SKIP = "skip"
+    SLEEP = "sleep"
+
+    # Special unit actions
     FOUND_CITY = "found_city"
     BUILD = "build"
+    PILLAGE = "pillage"
+    REPAIR = "repair"
+
+    # Naval/transport actions
+    EMBARK = "embark"
+    DISEMBARK = "disembark"
+
+    # Unit management
+    PROMOTE = "promote"
+    HEAL = "heal"
+    DELETE = "delete"
+
+    # Air unit actions
+    AIRLIFT = "airlift"
+    PARADROP = "paradrop"
+
+    # City actions
     PRODUCE = "produce"
     BUY = "buy"
+
+    # Research actions
     RESEARCH_TECH = "research_tech"
     RESEARCH_CIVIC = "research_civic"
 
 
 # Mapping from legal action strings to UnitActionType enum
+# Maps all 17 UnitActionType values for comprehensive coverage
 LEGAL_ACTION_TO_UNIT_TYPE: dict[str, UnitActionType] = {
+    # Basic movement and combat
     LegalActionTypes.MOVE: UnitActionType.MOVE,
     LegalActionTypes.ATTACK: UnitActionType.ATTACK,
     LegalActionTypes.RANGED_ATTACK: UnitActionType.RANGED_ATTACK,
+
+    # Defensive/wait actions
     LegalActionTypes.FORTIFY: UnitActionType.FORTIFY,
     LegalActionTypes.SKIP: UnitActionType.SKIP,
+    LegalActionTypes.SLEEP: UnitActionType.SLEEP,
+
+    # Special actions
     LegalActionTypes.FOUND_CITY: UnitActionType.FOUND_CITY,
     LegalActionTypes.BUILD: UnitActionType.BUILD_IMPROVEMENT,
+    LegalActionTypes.PILLAGE: UnitActionType.PILLAGE,
+    LegalActionTypes.REPAIR: UnitActionType.REPAIR,
+
+    # Naval actions
+    LegalActionTypes.EMBARK: UnitActionType.EMBARK,
+    LegalActionTypes.DISEMBARK: UnitActionType.DISEMBARK,
+
+    # Unit management
+    LegalActionTypes.PROMOTE: UnitActionType.PROMOTE,
+    LegalActionTypes.HEAL: UnitActionType.HEAL,
+    LegalActionTypes.DELETE: UnitActionType.DELETE,
+
+    # Air unit actions
+    LegalActionTypes.AIRLIFT: UnitActionType.AIRLIFT,
+    LegalActionTypes.PARADROP: UnitActionType.PARADROP,
 }
 
 
