@@ -23,20 +23,15 @@ Usage:
     # python -m alpha_zero.distributed.coordinator --num_actors=4 --dry_run
 """
 
-from alpha_zero.distributed.shared_storage import (
-    DistributedReplayBuffer,
-    GameTrajectory,
-    ReplayBufferConfig,
-    SharedStorage,
-    SharedStorageConfig,
-    TrainingExample,
-    WeightSynchronizer,
-)
 from alpha_zero.distributed.actor import (
     ActorConfig,
     ActorPool,
     SelfPlayActor,
     actor_process,
+)
+from alpha_zero.distributed.coordinator import (
+    CoordinatorConfig,
+    TrainingCoordinator,
 )
 from alpha_zero.distributed.learner import (
     GradientAccumulator,
@@ -45,9 +40,14 @@ from alpha_zero.distributed.learner import (
     LearningRateScheduler,
     learner_process,
 )
-from alpha_zero.distributed.coordinator import (
-    CoordinatorConfig,
-    TrainingCoordinator,
+from alpha_zero.distributed.shared_storage import (
+    DistributedReplayBuffer,
+    GameTrajectory,
+    ReplayBufferConfig,
+    SharedStorage,
+    SharedStorageConfig,
+    TrainingExample,
+    WeightSynchronizer,
 )
 
 __all__ = [

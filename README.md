@@ -6,18 +6,39 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+## Project Status
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Phase 1 | Core AlphaZero (MCTS + Neural Network) | ✅ Complete |
+| Phase 2 | Hierarchical Reinforcement Learning | ✅ Complete |
+| Phase 3 | Training Improvements (Curriculum, Rewards) | ✅ Complete |
+| Phase 4 | Unified Training Orchestrator | ✅ Complete |
+| Phase 5 | RAG-LLM Integration | ✅ Complete |
+| Phase 6 | Agentic Framework for Claude Code | ✅ Complete |
+
+**Codebase Statistics:**
+- ~51,800 lines of core implementation
+- ~14,600 lines of agentic framework
+- 350+ tests with >80% coverage on core modules
+- 11 game mechanics modules
+
 ## Key Features
 
 - **AlphaZero Core**: Full implementation of the AlphaZero self-play reinforcement learning loop
 - **Hierarchical MCTS**: Advanced tree search supporting complex, multi-category action spaces
-- **Residual Network**: Dual-headed (Policy & Value) architecture for joint estimation
-- **Real Civ6 Bridge**: File-based IPC bridge for playing actual Civilization VI
-- **Lua Mod Integration**: Complete Civ6 mod for game state export and action execution
+- **Hierarchical RL**: Multi-level decision hierarchy (Strategic → Tactical → Operational) with goal-based learning
+- **Residual Network**: Dual-headed (Policy & Value) architecture with optional Transformer support
 - **Curriculum Learning**: Multi-stage difficulty progression for accelerated training
 - **Reward Shaping**: Potential-based shaping that preserves optimal policy
 - **Environment Tuning**: Configurable game mechanics for faster iteration
+- **Comprehensive Game Mechanics**: 11 modules covering diplomacy, trade, espionage, religion, and more
 - **W&B Integration**: Full experiment tracking with Weights & Biases
 - **MicroCiv Environment**: Gymnasium-compliant simulation of Civ6 core mechanics
+- **Real Civ6 Bridge**: File-based IPC bridge for playing actual Civilization VI
+- **Lua Mod Integration**: Complete Civ6 mod for game state export and action execution
+- **RAG Integration**: Retrieval-Augmented Generation for knowledge-enhanced decision making
+- **Agentic Framework**: Reusable framework for Claude Code autonomous development workflows
 
 ## Architecture (C4 Model)
 
@@ -74,25 +95,13 @@ graph TB
             EnvTuner["Environment Tuner<br/><i>Game mechanics</i>"]
         end
 
-        subgraph "Environment Layer"
+        subgraph "Environment"
             MicroCiv["MicroCiv Environment<br/><i>Simplified Civ6</i>"]
-            RealCiv6Env["RealCiv6Env<br/><i>Gymnasium wrapper</i>"]
-        end
-
-        subgraph "Bridge Layer"
-            FileBridge["FileBridge<br/><i>File-based IPC</i>"]
-            StateConverter["StateConverter<br/><i>JSON → Tensor</i>"]
-            ActionConverter["ActionConverter<br/><i>Action → Lua Command</i>"]
         end
 
         subgraph "Observability"
             WandbLogger["W&B Logger<br/><i>Experiment tracking</i>"]
         end
-    end
-
-    subgraph "Civilization VI"
-        LuaMod["AlphaZeroAI Mod<br/><i>Lua Scripts</i>"]
-        GameEngine["Civ6 Game Engine"]
     end
 
     Orchestrator --> SelfPlay
@@ -112,99 +121,11 @@ graph TB
     Evaluator --> MCTS
     Curriculum --> EnvTuner
     EnvTuner --> MicroCiv
-    EnvTuner --> RealCiv6Env
-
-    RealCiv6Env --> FileBridge
-    FileBridge --> StateConverter
-    FileBridge --> ActionConverter
-    FileBridge <-->|"JSON Files"| LuaMod
-    LuaMod --> GameEngine
 
     style Orchestrator fill:#1168bd,stroke:#0b4884,color:#ffffff
     style Network fill:#438dd5,stroke:#2e6295,color:#ffffff
     style MCTS fill:#438dd5,stroke:#2e6295,color:#ffffff
     style MicroCiv fill:#85bbf0,stroke:#5d82a8,color:#000000
-    style RealCiv6Env fill:#85bbf0,stroke:#5d82a8,color:#000000
-    style FileBridge fill:#f5a623,stroke:#c78000,color:#000000
-    style LuaMod fill:#7ed321,stroke:#5a9a18,color:#000000
-```
-
-### Level 3: Component Diagram - Real Civ6 Bridge
-
-Architecture of the file-based IPC bridge for real Civilization VI gameplay.
-
-```mermaid
-graph TB
-    subgraph "Python Side"
-        subgraph "Bridge Core"
-            BridgeConfig["BridgeConfig<br/><i>Communication settings</i>"]
-            FileBridge["FileBridge<br/><i>Async file polling</i>"]
-            Protocol["Protocol<br/><i>Message schemas</i>"]
-        end
-
-        subgraph "State Processing"
-            StateConv["StateConverter<br/><i>Civ6 JSON → Encoder dict</i>"]
-            Encoder["Civ6StateEncoder<br/><i>Dict → 84-channel tensor</i>"]
-        end
-
-        subgraph "Action Processing"
-            ActionConv["ActionConverter<br/><i>Index → Lua command</i>"]
-            ActionSpace["ActionSpace<br/><i>~483K hierarchical actions</i>"]
-        end
-
-        subgraph "Environment"
-            RealEnv["RealCiv6Env<br/><i>Gymnasium API</i>"]
-            Interface["Civ6Interface<br/><i>BaseGameInterface</i>"]
-        end
-    end
-
-    subgraph "File System IPC"
-        StateFile["state.json<br/><i>Game state from Lua</i>"]
-        CmdFile["commands.json<br/><i>Actions to Lua</i>"]
-        AckFile["ack.json<br/><i>Execution results</i>"]
-        Heartbeat["heartbeat.txt<br/><i>Liveness check</i>"]
-    end
-
-    subgraph "Lua Side (Civ6 Mod)"
-        subgraph "Modules"
-            Main["Main.lua<br/><i>Event handlers</i>"]
-            StateExp["StateExporter<br/><i>Game → JSON</i>"]
-            ActionExec["ActionExecutor<br/><i>Commands → Game API</i>"]
-            FileIO["FileIO<br/><i>Read/Write files</i>"]
-            JsonEnc["JsonEncoder<br/><i>Pure Lua JSON</i>"]
-        end
-    end
-
-    RealEnv --> FileBridge
-    Interface --> RealEnv
-    FileBridge --> BridgeConfig
-    FileBridge --> Protocol
-
-    FileBridge --> StateFile
-    FileBridge --> CmdFile
-    FileBridge --> AckFile
-    FileBridge --> Heartbeat
-
-    StateFile --> StateConv
-    StateConv --> Encoder
-    ActionConv --> CmdFile
-    ActionSpace --> ActionConv
-
-    Main --> StateExp
-    Main --> ActionExec
-    StateExp --> FileIO
-    ActionExec --> FileIO
-    FileIO --> JsonEnc
-
-    StateExp --> StateFile
-    ActionExec --> AckFile
-    FileIO --> CmdFile
-
-    style FileBridge fill:#f5a623,stroke:#c78000,color:#000000
-    style StateFile fill:#e0e0e0,stroke:#999999,color:#000000
-    style CmdFile fill:#e0e0e0,stroke:#999999,color:#000000
-    style AckFile fill:#e0e0e0,stroke:#999999,color:#000000
-    style Main fill:#7ed321,stroke:#5a9a18,color:#000000
 ```
 
 ### Level 3: Component Diagram - Neural Network
@@ -445,71 +366,68 @@ pytest tests/unit -v
 
 ## Usage
 
-### Basic Training
+### Unified Training Orchestrator (Recommended)
+
+The new `TrainingOrchestrator` provides a single entry point for all training:
 
 ```bash
 # Quick training run (development/testing)
-python run_enhanced_training.py --preset fast --device cpu
+python -m alpha_zero.orchestrator --preset fast
 
 # Balanced training (recommended for initial experiments)
+python -m alpha_zero.orchestrator --preset balanced
+
+# Production training
+python -m alpha_zero.orchestrator --preset production
+
+# Dry run (validate configuration without training)
+python -m alpha_zero.orchestrator --preset fast --dry_run
+
+# Resume from checkpoint
+python -m alpha_zero.orchestrator --preset balanced --resume
+
+# Custom YAML configuration
+python -m alpha_zero.orchestrator --config configs/orchestrator.yaml
+```
+
+### Orchestrator Presets
+
+| Preset | Iterations | Games/Iter | Board | Simulations | Use Case |
+| ------ | ---------- | ---------- | ----- | ----------- | -------- |
+| `fast` | 10 | 5 | 6x6 | 10 | Quick testing |
+| `balanced` | 100 | 20 | 8x8 | 50 | Experiments |
+| `production` | 1000 | 100 | 16x16 | 200 | Full training |
+
+### Legacy Training Scripts
+
+The previous training entry points are still available:
+
+```bash
+# Enhanced training script
 python run_enhanced_training.py --preset balanced --device cuda
 
-# Full training (production)
-python run_enhanced_training.py --preset full --device cuda --checkpoint-dir ./checkpoints
-```
-
-### Training with Weights & Biases
-
-```bash
-# Enable W&B tracking
-python run_enhanced_training.py \
-    --preset balanced \
-    --wandb \
-    --wandb-project "civ6-alphazero" \
-    --wandb-tags "experiment" "curriculum"
-```
-
-### Custom Configuration
-
-```bash
-python run_enhanced_training.py \
-    --num-iterations 25 \
-    --games-per-iteration 50 \
-    --batch-size 128 \
-    --learning-rate 0.001 \
-    --num-simulations 100 \
-    --board-size 8 \
-    --max-turns 100 \
-    --use-curriculum \
-    --use-reward-shaping \
-    --device cuda
+# With W&B tracking
+python run_enhanced_training.py --preset balanced --wandb --wandb-project "civ6-alphazero"
 ```
 
 ### Programmatic Usage
 
 ```python
-from run_enhanced_training import run_enhanced_training
+from alpha_zero.orchestrator import TrainingOrchestrator, OrchestratorConfig
 
-# Run training with custom parameters
-history = run_enhanced_training(
-    num_iterations=10,
-    games_per_iteration=20,
-    batch_size=64,
-    learning_rate=0.001,
-    num_simulations=50,
-    board_size=8,
-    max_turns=50,
-    use_curriculum=True,
-    use_reward_shaping=True,
-    use_env_tuning=True,
-    device="cuda",
-    wandb_enabled=True,
-    wandb_project="my-experiment",
-)
+# Load configuration from YAML
+config = OrchestratorConfig.from_yaml("configs/orchestrator.yaml")
 
-# Access training results
-print(f"Final win rate: {history['final_metrics']['win_rate']:.2%}")
-print(f"Total games: {history['final_metrics']['total_games']}")
+# Or use a preset
+config = OrchestratorConfig.from_preset("balanced")
+
+# Create and run orchestrator
+orchestrator = TrainingOrchestrator(config)
+orchestrator.run()
+
+# Access training state
+print(f"Total games: {orchestrator.state.total_games}")
+print(f"Best win rate: {orchestrator.state.best_win_rate:.2%}")
 ```
 
 ## Configuration
@@ -542,6 +460,97 @@ WANDB_ENTITY=your_team_name
 
 # Training
 CUDA_VISIBLE_DEVICES=0
+```
+
+## RAG Integration
+
+The RAG (Retrieval-Augmented Generation) system enables knowledge-enhanced agent decision making by retrieving relevant context from a vector database.
+
+### Installation
+
+```bash
+# Install RAG dependencies
+pip install -e ".[rag]"
+
+# Or install all dependencies including RAG
+pip install -e ".[all]"
+```
+
+### Quick Start
+
+```python
+import asyncio
+from alpha_zero.rag import RAGPipeline, RAGConfig
+
+async def main():
+    # Create pipeline with default configuration
+    pipeline = await RAGPipeline.create()
+
+    # Ingest strategy documents
+    await pipeline.ingest_text(
+        "Early game strategy: Focus on expanding territory and building settlers.",
+        source="strategy_guide.txt",
+        metadata={"category": "early_game"}
+    )
+
+    # Query for relevant context
+    result = await pipeline.query(
+        "How should I play the early game?",
+        top_k=5
+    )
+
+    print(f"Context: {result.context}")
+    print(f"Retrieved {len(result.documents)} documents")
+
+    await pipeline.close()
+
+asyncio.run(main())
+```
+
+### Configuration
+
+RAG can be configured via environment variables or YAML:
+
+```bash
+# Environment variables
+export RAG_VECTOR_STORE_TYPE=chroma
+export RAG_EMBEDDING_MODEL_TYPE=openai
+export OPENAI_API_KEY=your_key_here
+```
+
+```python
+from alpha_zero.rag import RAGConfig, VectorStoreType, EmbeddingModelType
+
+config = RAGConfig()
+config.vector_store.store_type = VectorStoreType.CHROMA
+config.embedding.model_type = EmbeddingModelType.OPENAI
+
+pipeline = await RAGPipeline.create(config)
+```
+
+### Agent Workflow Integration
+
+```python
+from alpha_zero.rag.agents import RAGAgentWorkflow
+from alpha_zero.rag.stores import MemoryVectorStore
+from alpha_zero.rag.processors import LocalEmbeddings
+
+# Create workflow
+workflow = RAGAgentWorkflow(
+    vector_store=MemoryVectorStore(dimension=384),
+    embedding_generator=LocalEmbeddings(dimension=384),
+)
+await workflow.initialize()
+
+# Register hooks for custom processing
+async def pre_retrieve_hook(context):
+    print(f"Searching for: {context.query}")
+
+workflow.register_hook("pre_retrieve", pre_retrieve_hook)
+
+# Execute workflow
+result = await workflow.execute("What is the best opening strategy?")
+print(result.context)
 ```
 
 ## Testing
@@ -578,52 +587,110 @@ pytest -k "curriculum" -v
 
 ```
 Civ6-AlphaZero/
-├── alpha_zero/
+├── alpha_zero/               # Core AI system (~51,800 LOC)
+│   ├── orchestrator/         # Unified training orchestrator (Phase 4)
+│   │   ├── __init__.py       # Module exports
+│   │   ├── __main__.py       # CLI entry point
+│   │   ├── config.py         # OrchestratorConfig
+│   │   ├── orchestrator.py   # TrainingOrchestrator
+│   │   ├── scheduler.py      # HyperparameterScheduler
+│   │   ├── checkpointer.py   # CheckpointManager
+│   │   ├── rag_integration.py # RAG-LLM integration
+│   │   └── strategy_advisor.py # LLM-based strategy guidance
 │   ├── core/                 # Core AlphaZero components
 │   │   ├── civ6_network.py   # Neural network architecture
 │   │   ├── civ6_mcts.py      # MCTS implementation
-│   │   └── civ6_actions.py   # Action space handling
+│   │   ├── civ6_actions.py   # Action space handling
+│   │   ├── transformer_network.py # Transformer/ViT architecture
+│   │   └── action_pruning.py # Strategic action pruning
+│   ├── hierarchical/         # Hierarchical RL (Phase 2)
+│   │   ├── goals/            # Goal definitions and management
+│   │   ├── encoders/         # Level-specific state encoders
+│   │   ├── network/          # Hierarchical policy networks
+│   │   ├── mcts/             # Hierarchical MCTS
+│   │   ├── controllers/      # Level controllers
+│   │   ├── controller.py     # Main HierarchicalController
+│   │   └── training_integration.py # Training pipeline integration
+│   ├── mechanics/            # Civ6 game mechanics (11 modules)
+│   │   ├── diplomacy.py      # Diplomatic relations & actions
+│   │   ├── trade.py          # Trade routes & commerce
+│   │   ├── espionage.py      # Spy operations
+│   │   ├── religion.py       # Faith & religious systems
+│   │   ├── government.py     # Government & policies
+│   │   ├── great_people.py   # Great person generation
+│   │   ├── promotions.py     # Unit experience & upgrades
+│   │   ├── eras.py           # Era progression & ages
+│   │   ├── climate.py        # Climate & disasters
+│   │   ├── congress.py       # World Congress
+│   │   └── culture.py        # Culture & tourism
+│   ├── distributed/          # Distributed training
+│   │   ├── actor.py          # Self-play actors
+│   │   ├── learner.py        # Training workers
+│   │   ├── coordinator.py    # Orchestration
+│   │   └── shared_storage.py # Weight/buffer synchronization
 │   ├── bridge/               # Real Civ6 bridge system
 │   │   ├── config.py         # Bridge configuration
 │   │   ├── protocol.py       # Message types & schemas
 │   │   ├── file_bridge.py    # File-based IPC
 │   │   ├── state_converter.py # Civ6 JSON → tensor
 │   │   └── action_converter.py # Action → Lua command
-│   ├── distributed/          # Distributed training
-│   │   ├── actor.py          # Self-play actors
-│   │   ├── learner.py        # Training workers
-│   │   └── coordinator.py    # Orchestration
 │   ├── envs/                 # Game environments
 │   │   ├── microciv.py       # MicroCiv environment
-│   │   ├── real_civ6_env.py  # Real Civ6 Gymnasium env
-│   │   └── civ6_encoder.py   # State encoding
+│   │   ├── civ6_encoder.py   # State encoding
+│   │   └── real_civ6_env.py  # Real Civ6 Gymnasium env
 │   ├── interfaces/           # Game interfaces
-│   │   ├── base_interface.py # Abstract interface
-│   │   └── civ6_interface.py # Civ6 implementation
+│   │   ├── base_interface.py # BaseGameInterface contract
+│   │   ├── civ6_interface.py # Real Civ6 interface
+│   │   └── unciv_interface.py # Unciv JSON interface
+│   ├── integration/          # External integrations
+│   │   └── game_connector.py # AI-to-game bridge
+│   ├── rag/                  # RAG Integration (Phase 5)
+│   │   ├── config/           # Configuration management
+│   │   ├── stores/           # Vector stores (Memory, Chroma, FAISS)
+│   │   ├── processors/       # Document processing & embeddings
+│   │   ├── agents/           # Agent workflow
+│   │   ├── utils/            # Logging, metrics, caching
+│   │   └── pipeline.py       # Main RAG pipeline
 │   └── utils/                # Utilities & enhancements
-│       ├── curriculum_learning.py
-│       ├── enhanced_rewards.py
-│       ├── environment_tuning.py
-│       ├── training_config_enhanced.py
-│       └── wandb_logger.py
-├── mod/                      # Civilization VI Lua mod
-│   └── AlphaZeroAI/
-│       ├── AlphaZeroAI.modinfo
-│       └── Scripts/
-│           ├── Main.lua      # Entry point & event handlers
-│           ├── StateExporter.lua
-│           ├── ActionExecutor.lua
-│           ├── FileIO.lua
-│           ├── JsonEncoder.lua
-│           ├── Config.lua
-│           └── Logger.lua
-├── tests/
+│       ├── curriculum_learning.py  # Multi-stage difficulty
+│       ├── enhanced_rewards.py     # Intermediate rewards
+│       ├── environment_tuning.py   # Game mechanics tuning
+│       ├── reward_shaping.py       # Potential-based shaping
+│       ├── training_diagnostics.py # Learning metrics
+│       ├── llm_client.py           # LLM API integration
+│       ├── factories.py            # Component factories
+│       └── wandb_logger.py         # W&B integration
+├── agentic_framework/        # Claude Code agent system (~14,600 LOC)
+│   ├── config/               # Configuration management
+│   ├── core/                 # Template parser, constraints, permissions
+│   ├── agents/               # Planning, Implementation, Testing agents
+│   ├── templates/            # Built-in agent templates
+│   ├── utils/                # Command execution, logging
+│   └── orchestrator.py       # Main orchestrator
+├── configs/                  # Configuration files
+│   ├── orchestrator.yaml     # Master configuration
+│   ├── orchestrator_fast.yaml
+│   ├── orchestrator_production.yaml
+│   └── civ6_config.yaml      # Game-specific configuration
+├── data/
+│   └── knowledge/            # RAG knowledge base
+├── docs/
+│   └── C4_ARCHITECTURE.md    # Architecture documentation
+├── mod/                      # Civ6 Lua mod
+│   └── AlphaZeroAI/          # Mod package
+│       ├── AlphaZeroAI.modinfo # Mod definition
+│       └── Scripts/          # Lua scripts
+│           ├── Main.lua      # Entry point & events
+│           ├── StateExporter.lua # Game state serialization
+│           ├── ActionExecutor.lua # Command execution
+│           ├── FileIO.lua    # File operations
+│           └── JsonEncoder.lua # Pure Lua JSON
+├── tests/                    # Test suite (350+ tests)
 │   ├── unit/                 # Unit tests
 │   ├── integration/          # Integration tests
-│   └── fixtures/             # Test fixtures
-│       └── game_states/      # Sample JSON states
-├── scripts/                  # Utility scripts
-├── run_enhanced_training.py  # Main training entry point
+│   └── fixtures/             # Test data
+│       └── game_states/      # Sample Civ6 states
+├── CLAUDE.md                 # Agent instructions & constraints
 ├── requirements.txt          # Dependencies
 └── README.md                 # This file
 ```
@@ -634,11 +701,36 @@ Civ6-AlphaZero/
 |----------|-------------|
 | Core | Python 3.11+ |
 | Deep Learning | PyTorch 2.0+ |
-| Environment | Gymnasium |
-| Experiment Tracking | Weights & Biases |
-| Testing | Pytest, Hypothesis |
+| Environment | Gymnasium 0.29+ |
+| Experiment Tracking | Weights & Biases, TensorBoard |
+| RAG / Vector DB | ChromaDB, FAISS, Pinecone |
+| Embeddings | OpenAI, Sentence Transformers |
+| LLM Integration | OpenAI, Anthropic |
+| Configuration | PyYAML, Pydantic |
+| Testing | Pytest 7.0+, pytest-asyncio, pytest-cov |
 | Visualization | Mermaid.js, Matplotlib |
-| Code Quality | MyPy, Ruff, Black |
+| Code Quality | MyPy, Ruff |
+| Numerical | NumPy 1.23+ |
+
+## Roadmap
+
+### Planned Features
+
+| Priority | Feature | Description |
+|----------|---------|-------------|
+| P1 | Training Validation | Extended training to achieve >50% win rate |
+| P2 | Multi-GPU Training | DistributedDataParallel support for faster training |
+| P3 | Tournament System | ELO-based agent ranking and matchmaking |
+| P4 | Population-Based Training | Adaptive hyperparameter optimization |
+| P5 | Human vs AI Interface | Web-based UI for human gameplay |
+| P6 | Full Civ 6 Integration | Direct game interface via modding API |
+| P7 | RAG Strategy Recommendations | LLM-powered move explanations |
+
+### Current Priorities
+
+1. **Validate training produces competent agents** - Current win rate vs random is 0%, needs extended training
+2. **Add GPU cluster support** - Enable faster iteration with multi-GPU training
+3. **Implement evaluation framework** - Tournament system for systematic agent comparison
 
 ## Contributing
 

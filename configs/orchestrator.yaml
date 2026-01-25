@@ -1,0 +1,261 @@
+# =============================================================================
+# Civ6 AlphaZero Training Orchestrator Configuration
+# =============================================================================
+# All values can be overridden via environment variables with CIV6AZ_ prefix
+# Example: CIV6AZ_TRAINING_BATCH_SIZE=512
+
+# Mode: local (single process), distributed, evaluation
+mode: local
+
+# Experiment metadata
+experiment_name: civ6_alphazero_v1
+experiment_tags:
+  - alphazero
+  - curriculum
+  - reward-shaping
+random_seed: 42
+
+# =============================================================================
+# Environment Configuration
+# =============================================================================
+environment:
+  type: microciv
+  board_size: 16
+  num_players: 2
+  max_turns: 100
+  fog_of_war_enabled: true
+
+  early_termination:
+    enabled: true
+    advantage_threshold: 3
+    min_turns: 10
+    stalemate_threshold: 20
+
+  production:
+    multiplier: 1.5
+    base_production: 3
+
+# =============================================================================
+# Neural Network Configuration
+# =============================================================================
+network:
+  spatial_channels: 13
+  vector_dim: 64
+  num_res_blocks: 6
+  num_filters: 64
+  num_heads: 4
+  value_head_hidden: 256
+  dropout: 0.0
+
+# =============================================================================
+# MCTS Configuration
+# =============================================================================
+mcts:
+  num_simulations: 50
+  c_puct: 1.5
+  dirichlet_alpha: 0.3
+  dirichlet_epsilon: 0.25
+  temperature: 1.0
+  temperature_threshold: 30
+
+# =============================================================================
+# Training Configuration
+# =============================================================================
+training:
+  num_iterations: 100000
+  games_per_iteration: 100
+  batch_size: 256
+  num_epochs: 10
+  weight_decay: 0.0001
+  gradient_clip: 1.0
+
+  # Buffer settings
+  replay_buffer_size: 500000
+  min_replay_size: 10000
+
+  # Checkpointing and evaluation
+  checkpoint_interval: 1000
+  evaluation_interval: 500
+  evaluation_games: 20
+
+# =============================================================================
+# Hyperparameter Schedules
+# =============================================================================
+lr_schedule:
+  schedule_type: warmup_cosine
+  initial_value: 0.001
+  final_value: 0.00001
+  decay_steps: 100000
+  warmup_steps: 5000
+
+batch_size_schedule:
+  schedule_type: step
+  initial_value: 64
+  step_points:
+    - iteration: 1000
+      value: 128
+    - iteration: 5000
+      value: 256
+    - iteration: 10000
+      value: 512
+
+temperature_schedule:
+  schedule_type: linear
+  initial_value: 1.0
+  final_value: 0.5
+  decay_steps: 50000
+
+exploration_schedule:
+  schedule_type: exponential
+  initial_value: 0.25
+  final_value: 0.1
+  decay_steps: 100000
+
+# =============================================================================
+# Enhanced Rewards Configuration
+# =============================================================================
+rewards:
+  enabled: true
+  scale_factor: 1.0
+  gamma: 0.99
+  normalize: true
+
+  intermediate:
+    territory_control: 0.02
+    unit_preservation: 0.01
+    city_proximity: 0.005
+    exploration: 0.001
+    combat_engagement: 0.01
+    city_founding: 0.1
+
+  potential_weights:
+    unit_advantage: 0.1
+    city_advantage: 0.2
+    health_advantage: 0.05
+    territory_advantage: 0.05
+
+# =============================================================================
+# Curriculum Learning Configuration
+# =============================================================================
+curriculum:
+  enabled: true
+  allow_demotion: true
+  metrics_window: 100
+
+  stages:
+    - name: beginner
+      level: 0
+      board_size: 8
+      max_turns: 30
+      promotion_threshold: 0.7
+      min_games: 50
+
+    - name: intermediate
+      level: 1
+      board_size: 12
+      max_turns: 60
+      promotion_threshold: 0.6
+      min_games: 75
+
+    - name: advanced
+      level: 2
+      board_size: 16
+      max_turns: 100
+      promotion_threshold: 0.55
+      min_games: 100
+
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+logging:
+  level: INFO
+  console_output: true
+  file_output: true
+  json_format: false
+  tensorboard: true
+  tensorboard_dir: logs/tensorboard
+
+# =============================================================================
+# Weights & Biases Configuration
+# =============================================================================
+wandb:
+  enabled: false
+  project: civ6-alphazero
+  # entity: your-team  # Set via WANDB_ENTITY or CIV6AZ_WANDB_ENTITY
+  tags:
+    - orchestrator
+    - full-pipeline
+  log_model: true
+  log_code: true
+  mode: online
+
+# =============================================================================
+# RAG Configuration
+# =============================================================================
+rag:
+  enabled: true
+  persist_directory: data/knowledge_db
+  collection_name: civ6_knowledge
+  embedding_model: all-MiniLM-L6-v2
+  top_k: 5
+  auto_ingest: true
+  knowledge_dir: data/knowledge
+  store_insights: true
+
+# =============================================================================
+# LLM Configuration
+# =============================================================================
+llm:
+  enabled: true
+  provider: auto  # auto | openai | anthropic
+  openai_model: gpt-4
+  anthropic_model: claude-sonnet-4-20250514
+  max_tokens: 4096
+  temperature: 0.7
+  max_retries: 3
+  timeout: 60.0
+
+# =============================================================================
+# Strategy Advisor Configuration
+# =============================================================================
+strategy_advisor:
+  enabled: true
+  analysis_interval: 100  # Analyze every N games
+  explain_moves: false    # Generate move explanations (expensive)
+  summarize_interval: 1000  # Summarize training every N iterations
+  suggest_improvements: true
+  store_reports: true
+  max_context_length: 2000
+
+# =============================================================================
+# Resource Budgets
+# =============================================================================
+resources:
+  max_iterations_before_guidance: 5
+  max_files_per_pass: 20
+  max_lines_per_edit: 500
+  exploration_timeout_minutes: 10.0
+  test_timeout_seconds: 300
+  max_memory_gb: 8.0
+
+# =============================================================================
+# Autonomy Levels
+# =============================================================================
+autonomy:
+  auto_checkpoint: true
+  auto_log_metrics: true
+  auto_adjust_lr: true
+  auto_curriculum_transition: true
+  auto_restart_actors: true
+  confirm_architecture_changes: true
+  confirm_distributed_changes: true
+  confirm_large_deletions: true
+  prohibit_main_commits: true
+  prohibit_env_modification: true
+  prohibit_checkpoint_deletion: true
+
+# =============================================================================
+# Paths
+# =============================================================================
+checkpoint_dir: checkpoints/orchestrator
+log_dir: logs/orchestrator
