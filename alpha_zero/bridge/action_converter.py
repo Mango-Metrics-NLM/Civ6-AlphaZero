@@ -227,15 +227,20 @@ class ActionConverter:
             InvalidActionError: If unit not found or action invalid.
         """
         units = game_state.get("units", [])
+        current_player = game_state.get("current_player", 0)
+
+        # Filter to current player's units to match action encoding
+        # (action mask encodes with player-filtered indices)
+        player_units = [u for u in units if u.get("player") == current_player]
         unit_idx = decoded.selector
 
-        if unit_idx >= len(units):
+        if unit_idx >= len(player_units):
             raise InvalidActionError(
-                f"Unit index {unit_idx} out of range (have {len(units)} units)",
+                f"Unit index {unit_idx} out of range (have {len(player_units)} player units)",
                 decoded.to_flat_index(self.action_space),
             )
 
-        unit = units[unit_idx]
+        unit = player_units[unit_idx]
         unit_id = unit.get("_id", unit_idx)
 
         # Get target position
@@ -503,10 +508,14 @@ class ActionConverter:
         # Check unit actions
         if decoded.category == ActionCategory.UNIT_ACTION:
             units = game_state.get("units", [])
-            if decoded.selector >= len(units):
+            current_player = game_state.get("current_player", 0)
+            # Filter to player units to match action encoding
+            player_units = [u for u in units if u.get("player") == current_player]
+
+            if decoded.selector >= len(player_units):
                 return False
 
-            unit = units[decoded.selector]
+            unit = player_units[decoded.selector]
             unit_id = unit.get("_id")
 
             for action in parsed_actions:

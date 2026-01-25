@@ -45,10 +45,13 @@ class TerrainMapping:
 
     # Civ6 terrain type -> internal type (matches Civ6StateEncoder.TERRAIN_TYPES)
     TERRAIN: dict[str, str] = field(default_factory=lambda: {
-        # Base terrains
+        # Base terrains - handle both naming conventions (GRASS vs GRASSLAND)
         "TERRAIN_GRASS": "grassland",
+        "TERRAIN_GRASSLAND": "grassland",
         "TERRAIN_GRASS_HILLS": "grassland",  # Hills treated as feature
+        "TERRAIN_GRASSLAND_HILLS": "grassland",
         "TERRAIN_GRASS_MOUNTAIN": "grassland",  # Mountains treated as feature
+        "TERRAIN_GRASSLAND_MOUNTAIN": "grassland",
         "TERRAIN_PLAINS": "plains",
         "TERRAIN_PLAINS_HILLS": "plains",
         "TERRAIN_PLAINS_MOUNTAIN": "plains",
