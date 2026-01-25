@@ -118,6 +118,19 @@ artifacts/
 tmp/
 temp/
 *.tmp
+nul
+
+# Civ6 Bridge Communication
+AlphaZeroAI/
+state.json
+commands.json
+ack.json
+heartbeat.txt
+errors.json
+
+# Civ6 Mod Development
+*.modinfo.bak
+*.lua.bak
 
 # Curriculum and training state
 curriculum_state.json
@@ -125,9 +138,7 @@ replay_buffer.pkl
 *.replay
 
 # Coverage reports
-.coverage
 coverage/
-htmlcov/
 
 # Documentation builds
 docs/_build/

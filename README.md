@@ -35,6 +35,8 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - **Comprehensive Game Mechanics**: 11 modules covering diplomacy, trade, espionage, religion, and more
 - **W&B Integration**: Full experiment tracking with Weights & Biases
 - **MicroCiv Environment**: Gymnasium-compliant simulation of Civ6 core mechanics
+- **Real Civ6 Bridge**: File-based IPC bridge for playing actual Civilization VI
+- **Lua Mod Integration**: Complete Civ6 mod for game state export and action execution
 - **RAG Integration**: Retrieval-Augmented Generation for knowledge-enhanced decision making
 - **Agentic Framework**: Reusable framework for Claude Code autonomous development workflows
 
@@ -626,10 +628,19 @@ Civ6-AlphaZero/
 │   │   ├── learner.py        # Training workers
 │   │   ├── coordinator.py    # Orchestration
 │   │   └── shared_storage.py # Weight/buffer synchronization
+│   ├── bridge/               # Real Civ6 bridge system
+│   │   ├── config.py         # Bridge configuration
+│   │   ├── protocol.py       # Message types & schemas
+│   │   ├── file_bridge.py    # File-based IPC
+│   │   ├── state_converter.py # Civ6 JSON → tensor
+│   │   └── action_converter.py # Action → Lua command
 │   ├── envs/                 # Game environments
 │   │   ├── microciv.py       # MicroCiv environment
-│   │   └── civ6_encoder.py   # State encoding
+│   │   ├── civ6_encoder.py   # State encoding
+│   │   └── real_civ6_env.py  # Real Civ6 Gymnasium env
 │   ├── interfaces/           # Game interfaces
+│   │   ├── base_interface.py # BaseGameInterface contract
+│   │   ├── civ6_interface.py # Real Civ6 interface
 │   │   └── unciv_interface.py # Unciv JSON interface
 │   ├── integration/          # External integrations
 │   │   └── game_connector.py # AI-to-game bridge
@@ -665,9 +676,20 @@ Civ6-AlphaZero/
 │   └── knowledge/            # RAG knowledge base
 ├── docs/
 │   └── C4_ARCHITECTURE.md    # Architecture documentation
+├── mod/                      # Civ6 Lua mod
+│   └── AlphaZeroAI/          # Mod package
+│       ├── AlphaZeroAI.modinfo # Mod definition
+│       └── Scripts/          # Lua scripts
+│           ├── Main.lua      # Entry point & events
+│           ├── StateExporter.lua # Game state serialization
+│           ├── ActionExecutor.lua # Command execution
+│           ├── FileIO.lua    # File operations
+│           └── JsonEncoder.lua # Pure Lua JSON
 ├── tests/                    # Test suite (350+ tests)
 │   ├── unit/                 # Unit tests
-│   └── integration/          # Integration tests
+│   ├── integration/          # Integration tests
+│   └── fixtures/             # Test data
+│       └── game_states/      # Sample Civ6 states
 ├── CLAUDE.md                 # Agent instructions & constraints
 ├── requirements.txt          # Dependencies
 └── README.md                 # This file

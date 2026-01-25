@@ -9,6 +9,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Real Civ6 Bridge System
+A complete bridge system enabling the AlphaZero agent to play actual Civilization VI through file-based IPC.
+
+##### Python Bridge (`alpha_zero/bridge/`)
+- **config.py**: `BridgeConfig` dataclass with validation
+  - Communication directory configuration
+  - Polling intervals, timeouts, retry settings
+  - Map size configurations for coordinate scaling
+  - Environment variable support (`CIV6_BRIDGE_*`)
+- **protocol.py**: Message types and JSON schemas
+  - `GameStateData`, `UnitData`, `CityData`, `TileData` for state representation
+  - `LuaCommand`, `CommandMessage`, `AckMessage` for action communication
+  - `LegalAction` for action masking
+  - Serialization/deserialization with validation
+- **file_bridge.py**: Async file-based IPC
+  - `FileBridge`: Polls state.json, writes commands.json, reads ack.json
+  - Heartbeat monitoring for connection health
+  - Automatic retry with exponential backoff
+  - `MockFileBridge` for testing without real files
+- **state_converter.py**: State format transformation
+  - Converts Civ6 Lua JSON to encoder-compatible dict
+  - Coordinate scaling from Civ6 map to 16x16 board
+  - Terrain, unit, city type mappings
+  - Legal action preservation
+- **action_converter.py**: Action index to Lua command
+  - Maps ~483K hierarchical actions to `LuaCommand`
+  - Action mask generation from legal actions
+  - Validation with detailed error reporting
+
+##### Gymnasium Environment (`alpha_zero/envs/real_civ6_env.py`)
+- **RealCiv6Env**: Full Gymnasium-compliant environment
+  - Dict observation space: spatial (84, 16, 16), vector (512,), action_mask
+  - Discrete action space from hierarchical action encoding
+  - Async bridge communication with configurable timeouts
+- **MockCiv6Env**: Testing environment
+  - Built-in mock state generation
+  - No file I/O required
+  - Compatible with all training code
+
+##### Game Interface (`alpha_zero/interfaces/civ6_interface.py`)
+- **Civ6Interface**: Implements `BaseGameInterface`
+  - `connect()`, `disconnect()` for session management
+  - `reset()`, `step()` for game control
+  - `get_observation()`, `get_valid_actions()` for state access
+  - `save_state()`, `load_state()` for checkpointing
+  - Registered as "civ6" backend with `GameAdapter`
+
+##### Civilization VI Lua Mod (`mod/AlphaZeroAI/`)
+- **AlphaZeroAI.modinfo**: Mod metadata and configuration
+  - File references and dependencies
+  - Action criteria for enabling AI control
+- **Config.lua**: Centralized configuration management
+  - Communication directory, file names
+  - Polling intervals, feature flags
+  - Dynamic configuration overrides
+- **Logger.lua**: Logging system
+  - Log levels: DEBUG, INFO, WARN, ERROR
+  - Console and file output
+  - Scoped loggers per module
+- **JsonEncoder.lua**: Pure Lua JSON encoder/decoder
+  - No external dependencies (Civ6 Lua is sandboxed)
+  - Handles all JSON types, escaping, unicode
+- **FileIO.lua**: File operations
+  - Read/write with error handling
+  - Change tracking for efficient updates
+  - Heartbeat, state, command, ack file management
+- **StateExporter.lua**: Game state serialization
+  - Map tiles with terrain, features, resources
+  - Units with full stats and capabilities
+  - Cities with production, buildings, population
+  - Legal actions enumeration
+- **ActionExecutor.lua**: Command execution
+  - Unit actions: move, attack, fortify, sleep, etc.
+  - City actions: production, purchase
+  - Research: technology and civic selection
+  - Validation and error reporting
+- **Main.lua**: Entry point and orchestration
+  - Event handlers for turn start/end
+  - Command polling loop
+  - Acknowledgment writing
+
+##### Test Suite
+- **tests/unit/test_bridge.py**: 93 unit tests for bridge components
+- **tests/unit/test_state_converter.py**: State conversion tests
+- **tests/unit/test_action_converter.py**: Action conversion tests
+- **tests/integration/test_bridge_integration.py**: End-to-end pipeline tests
+- **tests/integration/test_real_civ6_env.py**: Environment integration tests
+- **tests/fixtures/game_states/**: Sample JSON fixtures
+  - `turn_1_start.json`: Initial game state
+  - `turn_10_mid.json`: Mid-game with units and cities
+  - `turn_50_combat.json`: Combat scenario
+
 #### Phase 4: Unified Training Orchestrator
 
 A single, configurable entry point for full AlphaZero training with integrated self-play, MCTS, neural networks, reward shaping, curriculum learning, and comprehensive logging.
@@ -320,8 +412,6 @@ A comprehensive suite of training improvements designed to accelerate learning c
 - `TRAINING_IMPROVEMENTS_TEMPLATE.md`: Template for training experiments
 - `.env.template`: Environment variable template for W&B configuration
 - Updated `CLAUDE.md`: Comprehensive project documentation refresh
-
-### Changed
 
 #### Modified Files
 - **`.gitignore`**: Added W&B directories, training artifacts, profiling files
