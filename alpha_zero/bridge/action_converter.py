@@ -46,6 +46,48 @@ from alpha_zero.core.civ6_actions import (
 )
 
 
+# Legal action type strings from Lua mod (centralized for backwards compatibility)
+class LegalActionTypes:
+    """Constants for legal action type strings from Lua mod.
+
+    These map to the action types sent by the Civ6 Lua mod in legal_actions.
+    Keeping them centralized ensures consistency and easy updates if protocol changes.
+    """
+    END_TURN = "end_turn"
+    MOVE = "move"
+    ATTACK = "attack"
+    RANGED_ATTACK = "ranged_attack"
+    FORTIFY = "fortify"
+    SKIP = "skip"
+    FOUND_CITY = "found_city"
+    BUILD = "build"
+    PRODUCE = "produce"
+    BUY = "buy"
+    RESEARCH_TECH = "research_tech"
+    RESEARCH_CIVIC = "research_civic"
+
+
+# Mapping from legal action strings to UnitActionType enum
+LEGAL_ACTION_TO_UNIT_TYPE: dict[str, UnitActionType] = {
+    LegalActionTypes.MOVE: UnitActionType.MOVE,
+    LegalActionTypes.ATTACK: UnitActionType.ATTACK,
+    LegalActionTypes.RANGED_ATTACK: UnitActionType.RANGED_ATTACK,
+    LegalActionTypes.FORTIFY: UnitActionType.FORTIFY,
+    LegalActionTypes.SKIP: UnitActionType.SKIP,
+    LegalActionTypes.FOUND_CITY: UnitActionType.FOUND_CITY,
+    LegalActionTypes.BUILD: UnitActionType.BUILD_IMPROVEMENT,
+}
+
+
+# City item type strings (centralized for protocol consistency)
+class CityItemTypes:
+    """Constants for city production item types."""
+    UNIT = "unit"
+    BUILDING = "building"
+    WONDER = "wonder"
+    DISTRICT = "district"
+
+
 class InvalidActionError(Exception):
     """Raised when an action cannot be converted or is invalid."""
 
@@ -503,7 +545,7 @@ class ActionConverter:
 
         # END_TURN is always legal if in list
         if decoded.category == ActionCategory.END_TURN:
-            return any(a.action_type == "end_turn" for a in parsed_actions)
+            return any(a.action_type == LegalActionTypes.END_TURN for a in parsed_actions)
 
         # Check unit actions
         if decoded.category == ActionCategory.UNIT_ACTION:
@@ -517,32 +559,44 @@ class ActionConverter:
 
             unit = player_units[decoded.selector]
             unit_id = unit.get("_id")
+            if unit_id is None:
+                logger.warning(f"Unit at index {decoded.selector} has no _id field")
+                return False
+
+            action_type = UnitActionType(decoded.action_type)
+            map_size = game_state.get("_map_size")
 
             for action in parsed_actions:
-                if action.unit_id == unit_id:
-                    action_type = UnitActionType(decoded.action_type)
-                    if action_type == UnitActionType.MOVE and action.action_type == "move":
-                        # Check if target is in valid targets
-                        # Scale decoded target back to original coordinates for comparison
-                        target = decoded.target
-                        if isinstance(target, tuple):
-                            map_size = game_state.get("_map_size")
-                            if map_size:
-                                orig_target = self._scale_to_original(target[0], target[1], map_size)
-                            else:
-                                orig_target = target
-                            if orig_target in action.targets:
-                                return True
-                    elif action_type == UnitActionType.ATTACK and action.action_type == "attack":
-                        target = decoded.target
-                        if isinstance(target, tuple):
-                            map_size = game_state.get("_map_size")
-                            if map_size:
-                                orig_target = self._scale_to_original(target[0], target[1], map_size)
-                            else:
-                                orig_target = target
-                            if orig_target in action.targets:
-                                return True
+                if action.unit_id != unit_id:
+                    continue
+
+                # Get expected legal action string for this unit action type
+                expected_legal_type = None
+                for legal_str, unit_type in LEGAL_ACTION_TO_UNIT_TYPE.items():
+                    if unit_type == action_type:
+                        expected_legal_type = legal_str
+                        break
+
+                if expected_legal_type is None:
+                    continue
+
+                if action.action_type != expected_legal_type:
+                    continue
+
+                # For actions with targets, validate target is in legal targets
+                if action.targets:
+                    target = decoded.target
+                    if isinstance(target, tuple):
+                        if map_size:
+                            orig_target = self._scale_to_original(target[0], target[1], map_size)
+                        else:
+                            orig_target = target
+                        if orig_target in action.targets:
+                            return True
+                else:
+                    # Actions without targets (fortify, skip, found_city)
+                    return True
+
             return False
 
         # Check city actions
@@ -556,9 +610,12 @@ class ActionConverter:
 
             city = player_cities[decoded.selector]
             city_id = city.get("_id")
+            if city_id is None:
+                logger.warning(f"City at index {decoded.selector} has no _id field")
+                return False
 
             for action in parsed_actions:
-                if action.city_id == city_id and action.action_type == "produce":
+                if action.city_id == city_id and action.action_type == LegalActionTypes.PRODUCE:
                     item_id = decoded.target
                     if isinstance(item_id, int) and item_id in action.items:
                         return True
@@ -596,7 +653,7 @@ class ActionConverter:
 
         # Always check for END_TURN
         for action in parsed_actions:
-            if action.action_type == "end_turn":
+            if action.action_type == LegalActionTypes.END_TURN:
                 end_turn_idx = self.action_space.category_offsets[ActionCategory.END_TURN]
                 mask[end_turn_idx] = 1.0
                 break
@@ -604,41 +661,36 @@ class ActionConverter:
         # Process unit actions
         units = game_state.get("units", [])
         current_player = game_state.get("current_player", 0)
+        map_size = game_state.get("_map_size", (self.board_size, self.board_size))
 
         for action in parsed_actions:
-            if action.action_type in ("move", "attack"):
+            # Handle unit actions with targets (move, attack, ranged_attack)
+            if action.action_type in LEGAL_ACTION_TO_UNIT_TYPE:
+                unit_action_type = LEGAL_ACTION_TO_UNIT_TYPE[action.action_type]
+
                 # Find unit index
                 unit_idx = self._find_unit_idx(action.unit_id, units, current_player)
                 if unit_idx is None:
+                    logger.debug(
+                        f"Unit {action.unit_id} not found for action {action.action_type}"
+                    )
                     continue
 
-                # Add valid targets
-                action_type = (
-                    UnitActionType.MOVE if action.action_type == "move"
-                    else UnitActionType.ATTACK
-                )
-
-                for target in action.targets:
-                    # Scale target to board coordinates
-                    map_size = game_state.get("_map_size", (self.board_size, self.board_size))
-                    scaled_target = self._scale_from_original(target[0], target[1], map_size)
-
-                    try:
-                        flat_idx = self.action_space.encode(HierarchicalAction(
-                            category=ActionCategory.UNIT_ACTION,
-                            selector=unit_idx,
-                            action_type=action_type.value,
-                            target=scaled_target,
-                        ))
-                        if flat_idx < self.action_space_size:
-                            mask[flat_idx] = 1.0
-                    except Exception as e:
-                        logger.warning(
-                            f"Skipping invalid unit action encoding: unit_idx={unit_idx}, "
-                            f"action_type={action_type.name}, target={scaled_target}: {e}"
+                # Actions with targets (move, attack, ranged_attack, build)
+                if action.targets:
+                    for target in action.targets:
+                        scaled_target = self._scale_from_original(target[0], target[1], map_size)
+                        self._try_encode_unit_action(
+                            mask, unit_idx, unit_action_type, scaled_target
                         )
+                else:
+                    # Actions without targets (fortify, skip, found_city)
+                    # Use (0, 0) as dummy target for targetless actions
+                    self._try_encode_unit_action(
+                        mask, unit_idx, unit_action_type, (0, 0)
+                    )
 
-            elif action.action_type == "produce":
+            elif action.action_type == LegalActionTypes.PRODUCE:
                 # Find city index
                 cities = game_state.get("cities", [])
                 player_cities = [c for c in cities if c.get("player") == current_player]
@@ -646,29 +698,124 @@ class ActionConverter:
 
                 if city_idx is not None:
                     for item_id in action.items:
-                        try:
-                            # Try both unit and building production
-                            for action_type in [CityActionType.PRODUCE_UNIT, CityActionType.PRODUCE_BUILDING]:
-                                flat_idx = self.action_space.encode(HierarchicalAction(
-                                    category=ActionCategory.CITY_ACTION,
-                                    selector=city_idx,
-                                    action_type=action_type.value,
-                                    target=item_id,
-                                ))
-                                if flat_idx < self.action_space_size:
-                                    mask[flat_idx] = 1.0
-                        except Exception as e:
-                            logger.warning(
-                                f"Skipping invalid city action encoding: city_idx={city_idx}, "
-                                f"action_type={action_type.name}, item_id={item_id}: {e}"
+                        # Convert item_id to int if it's a string (backwards compatibility)
+                        if isinstance(item_id, str):
+                            try:
+                                item_id = int(item_id)
+                            except ValueError:
+                                logger.warning(
+                                    f"Invalid item_id '{item_id}' for city production, skipping"
+                                )
+                                continue
+
+                        # Determine item type from action metadata if available
+                        item_type = action.item_type
+                        if item_type == CityItemTypes.UNIT:
+                            self._try_encode_city_action(
+                                mask, city_idx, CityActionType.PRODUCE_UNIT, item_id
+                            )
+                        elif item_type == CityItemTypes.BUILDING:
+                            self._try_encode_city_action(
+                                mask, city_idx, CityActionType.PRODUCE_BUILDING, item_id
+                            )
+                        elif item_type == CityItemTypes.WONDER:
+                            self._try_encode_city_action(
+                                mask, city_idx, CityActionType.PRODUCE_WONDER, item_id
+                            )
+                        elif item_type == CityItemTypes.DISTRICT:
+                            self._try_encode_city_action(
+                                mask, city_idx, CityActionType.PRODUCE_DISTRICT, item_id
+                            )
+                        else:
+                            # Unknown type - try both unit and building (backwards compat)
+                            self._try_encode_city_action(
+                                mask, city_idx, CityActionType.PRODUCE_UNIT, item_id
+                            )
+                            self._try_encode_city_action(
+                                mask, city_idx, CityActionType.PRODUCE_BUILDING, item_id
                             )
 
         # Ensure at least END_TURN is valid
         if mask.sum() == 0:
+            logger.warning(
+                "No legal actions could be encoded in action mask. "
+                "Falling back to END_TURN. This may indicate a mismatch between "
+                "legal_actions format and ActionSpace configuration."
+            )
             end_turn_idx = self.action_space.category_offsets[ActionCategory.END_TURN]
             mask[end_turn_idx] = 1.0
 
         return mask
+
+    def _try_encode_unit_action(
+        self,
+        mask: np.ndarray,
+        unit_idx: int,
+        action_type: UnitActionType,
+        target: tuple[int, int],
+    ) -> None:
+        """Try to encode a unit action into the mask.
+
+        Args:
+            mask: Action mask to update.
+            unit_idx: Unit index.
+            action_type: Type of unit action.
+            target: Target coordinates (scaled).
+        """
+        try:
+            flat_idx = self.action_space.encode(HierarchicalAction(
+                category=ActionCategory.UNIT_ACTION,
+                selector=unit_idx,
+                action_type=action_type.value,
+                target=target,
+            ))
+            if flat_idx < self.action_space_size:
+                mask[flat_idx] = 1.0
+        except (IndexError, ValueError) as e:
+            logger.debug(
+                f"Could not encode unit action: unit_idx={unit_idx}, "
+                f"action_type={action_type.name}, target={target}: {e}"
+            )
+        except Exception as e:
+            logger.warning(
+                f"Unexpected error encoding unit action: unit_idx={unit_idx}, "
+                f"action_type={action_type.name}, target={target}: {e}"
+            )
+
+    def _try_encode_city_action(
+        self,
+        mask: np.ndarray,
+        city_idx: int,
+        action_type: CityActionType,
+        item_id: int,
+    ) -> None:
+        """Try to encode a city action into the mask.
+
+        Args:
+            mask: Action mask to update.
+            city_idx: City index.
+            action_type: Type of city action.
+            item_id: Production item ID.
+        """
+        try:
+            flat_idx = self.action_space.encode(HierarchicalAction(
+                category=ActionCategory.CITY_ACTION,
+                selector=city_idx,
+                action_type=action_type.value,
+                target=item_id,
+            ))
+            if flat_idx < self.action_space_size:
+                mask[flat_idx] = 1.0
+        except (IndexError, ValueError) as e:
+            logger.debug(
+                f"Could not encode city action: city_idx={city_idx}, "
+                f"action_type={action_type.name}, item_id={item_id}: {e}"
+            )
+        except Exception as e:
+            logger.warning(
+                f"Unexpected error encoding city action: city_idx={city_idx}, "
+                f"action_type={action_type.name}, item_id={item_id}: {e}"
+            )
 
     def _find_unit_idx(
         self,

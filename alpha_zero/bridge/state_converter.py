@@ -271,6 +271,13 @@ class StateConverter:
         else:
             state = civ6_state
 
+        # Validate map size before scaling
+        if state.map_data.width <= 0 or state.map_data.height <= 0:
+            raise ValueError(
+                f"Invalid map size: {state.map_data.width}x{state.map_data.height}. "
+                "Map dimensions must be positive."
+            )
+
         # Set up coordinate scaling
         self._setup_scaling(state.map_data.width, state.map_data.height)
 
@@ -299,6 +306,8 @@ class StateConverter:
             "faith_per_turn": player_data.get("faith", 0),
             # Military
             "military_strength": player_data.get("military_strength", 0),
+            # Score (for reward calculation)
+            "score": player_data.get("score", 0),
             # Era and progress
             "era": state.era,
             "resources": {},  # TODO: Extract resources
@@ -347,6 +356,10 @@ class StateConverter:
     def _scale_coords(self, x: int, y: int) -> tuple[int, int]:
         """Scale coordinates from Civ6 map to board_size.
 
+        Uses proper rounding (round half up) instead of truncation to avoid
+        systematic bias toward (0,0). This ensures more accurate position
+        mapping especially for entities near tile boundaries.
+
         Args:
             x: Original X coordinate.
             y: Original Y coordinate.
@@ -354,10 +367,12 @@ class StateConverter:
         Returns:
             Scaled (x, y) coordinates clamped to valid range.
         """
-        scaled_x = int(x * self._scale_x)
-        scaled_y = int(y * self._scale_y)
+        # Use round() for proper rounding instead of int() truncation
+        # This avoids systematic error where entities cluster toward origin
+        scaled_x = round(x * self._scale_x)
+        scaled_y = round(y * self._scale_y)
 
-        # Clamp to valid range
+        # Clamp to valid range [0, board_size - 1]
         scaled_x = max(0, min(self.board_size - 1, scaled_x))
         scaled_y = max(0, min(self.board_size - 1, scaled_y))
 

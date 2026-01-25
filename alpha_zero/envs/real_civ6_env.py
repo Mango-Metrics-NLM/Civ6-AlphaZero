@@ -72,6 +72,16 @@ class RealCiv6Env(gym.Env):
         "render_fps": 1,
     }
 
+    # Default reward scaling constants (can be overridden via reward_config)
+    DEFAULT_REWARD_CONFIG: dict[str, float] = {
+        "score_scale": 0.001,    # Per-point score change reward
+        "city_scale": 0.1,       # Per-city count change reward
+        "unit_scale": 0.01,      # Per-unit count change reward
+        "gold_scale": 0.0001,    # Per-gold change reward
+        "win_bonus": 1.0,        # Bonus for winning
+        "loss_penalty": -1.0,    # Penalty for losing
+    }
+
     def __init__(
         self,
         bridge_config: BridgeConfig | None = None,
@@ -82,6 +92,7 @@ class RealCiv6Env(gym.Env):
         state_timeout: float = 60.0,
         action_timeout: float = 30.0,
         invalid_action_penalty: float = -0.1,
+        reward_config: dict[str, float] | None = None,
     ):
         """Initialize the Civ6 environment.
 
@@ -94,6 +105,9 @@ class RealCiv6Env(gym.Env):
             state_timeout: Timeout for initial state (game load).
             action_timeout: Timeout for action acknowledgment.
             invalid_action_penalty: Penalty for invalid actions.
+            reward_config: Optional dict to override reward scaling constants.
+                Keys: score_scale, city_scale, unit_scale, gold_scale,
+                      win_bonus, loss_penalty.
         """
         super().__init__()
 
@@ -103,6 +117,11 @@ class RealCiv6Env(gym.Env):
         self.state_timeout = state_timeout
         self.action_timeout = action_timeout
         self.invalid_action_penalty = invalid_action_penalty
+
+        # Merge reward config with defaults
+        self._reward_config = {**self.DEFAULT_REWARD_CONFIG}
+        if reward_config:
+            self._reward_config.update(reward_config)
 
         # Create components
         self._state_converter = StateConverter(
@@ -332,11 +351,12 @@ class RealCiv6Env(gym.Env):
         terminated = self._raw_state.is_game_over
         if terminated:
             self._done = True
-            # Add win/loss reward
+            # Add win/loss reward from config
             if self._raw_state.winner_id == self._raw_state.player_id:
-                reward += 1.0  # Win
-            else:
-                reward -= 1.0  # Loss
+                reward += self._reward_config["win_bonus"]
+            elif self._raw_state.winner_id is not None:
+                reward += self._reward_config["loss_penalty"]
+            # Draw or unknown outcome: no additional reward
 
         # Check for turn change
         new_turn = self._current_state.get("turn", 0)
@@ -397,11 +417,12 @@ class RealCiv6Env(gym.Env):
             "is_connected": self._bridge.is_connected if self._bridge else False,
         }
 
-    # Reward scaling constants
-    SCORE_REWARD_SCALE = 0.001    # Per-point score change reward
-    CITY_REWARD_SCALE = 0.1       # Per-city count change reward
-    UNIT_REWARD_SCALE = 0.01      # Per-unit count change reward
-    GOLD_REWARD_SCALE = 0.0001    # Per-gold change reward
+    # Legacy class attributes for backwards compatibility
+    # New code should use _reward_config dict instead
+    SCORE_REWARD_SCALE = 0.001
+    CITY_REWARD_SCALE = 0.1
+    UNIT_REWARD_SCALE = 0.01
+    GOLD_REWARD_SCALE = 0.0001
 
     def _calculate_reward(
         self,
@@ -410,38 +431,41 @@ class RealCiv6Env(gym.Env):
     ) -> float:
         """Calculate reward based on state transition.
 
+        Uses configurable reward scaling from self._reward_config.
+
         Args:
             prev_state: Previous game state.
             curr_state: Current game state.
 
         Returns:
-            Reward value.
+            Reward value (unbounded, caller should clip if needed).
         """
         reward = 0.0
+        config = self._reward_config
 
-        # Score change
+        # Score change (filtered for current player)
         prev_score = prev_state.get("score", 0)
         curr_score = curr_state.get("score", 0)
-        reward += (curr_score - prev_score) * self.SCORE_REWARD_SCALE
+        reward += (curr_score - prev_score) * config["score_scale"]
 
-        # City count
+        # City count (for current player only)
         prev_cities = len([c for c in prev_state.get("cities", [])
                           if c.get("player") == 0])
         curr_cities = len([c for c in curr_state.get("cities", [])
                           if c.get("player") == 0])
-        reward += (curr_cities - prev_cities) * self.CITY_REWARD_SCALE
+        reward += (curr_cities - prev_cities) * config["city_scale"]
 
-        # Unit count (small bonus for military)
+        # Unit count (for current player only)
         prev_units = len([u for u in prev_state.get("units", [])
                          if u.get("player") == 0])
         curr_units = len([u for u in curr_state.get("units", [])
                          if u.get("player") == 0])
-        reward += (curr_units - prev_units) * self.UNIT_REWARD_SCALE
+        reward += (curr_units - prev_units) * config["unit_scale"]
 
-        # Gold change
+        # Gold change (top-level, already player-specific from StateConverter)
         prev_gold = prev_state.get("gold", 0)
         curr_gold = curr_state.get("gold", 0)
-        reward += (curr_gold - prev_gold) * self.GOLD_REWARD_SCALE
+        reward += (curr_gold - prev_gold) * config["gold_scale"]
 
         return reward
 
@@ -580,6 +604,8 @@ class MockCiv6Env(RealCiv6Env):
                 "gold": 100,
                 "science_per_turn": 10,
                 "culture_per_turn": 5,
+                "faith": 0,
+                "score": turn_id * 10,  # Score scales with turn for testing
             },
             "legal_actions": [
                 {"action": "end_turn"},
