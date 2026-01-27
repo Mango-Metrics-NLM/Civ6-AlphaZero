@@ -90,7 +90,7 @@ logs/
 *.pth
 
 # RAG Data
-data/knowledge_db/
+data/
 
 # Weights & Biases
 wandb/
@@ -109,3 +109,7 @@ artifacts/
 tmp/
 temp/
 *.tmp
+
+mod/
+
+nul
