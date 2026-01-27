@@ -83,6 +83,9 @@ credentials.json
 # mypy
 .mypy_cache/
 
+# Ruff
+.ruff_cache/
+
 # Project specific
 checkpoints/
 logs/

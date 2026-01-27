@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -105,13 +105,13 @@ class EnhancedRewardsConfig:
     gamma: float = 0.99
     normalize: bool = True
     intermediate: IntermediateRewardsConfig = field(
-        default_factory=IntermediateRewardsConfig
+        default_factory=IntermediateRewardsConfig,
     )
     victory_bonuses: VictoryBonusConfig = field(
-        default_factory=VictoryBonusConfig
+        default_factory=VictoryBonusConfig,
     )
     active_win_conditions: set[WinCondition] = field(
-        default_factory=lambda: {WinCondition.DOMINATION, WinCondition.ELIMINATION}
+        default_factory=lambda: {WinCondition.DOMINATION, WinCondition.ELIMINATION},
     )
     potential_weights: dict[str, float] = field(default_factory=lambda: {
         "unit_advantage": 0.1,
@@ -122,7 +122,7 @@ class EnhancedRewardsConfig:
     })
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "EnhancedRewardsConfig":
+    def from_dict(cls, data: dict[str, Any]) -> EnhancedRewardsConfig:
         """Create configuration from dictionary.
 
         Args:
@@ -288,7 +288,7 @@ class WinConditionEvaluator:
 
         self._logger.debug(
             f"Victory evaluation: type={victory_type}, "
-            f"bonus={bonus * multiplier:.3f}"
+            f"bonus={bonus * multiplier:.3f}",
         )
 
         return bonus * multiplier, victory_type
@@ -367,7 +367,7 @@ class EnhancedRewardShaper:
         self.board_size = board_size
 
         self._win_evaluator = WinConditionEvaluator(self.config)
-        self._prev_features: Optional[EnhancedStateFeatures] = None
+        self._prev_features: EnhancedStateFeatures | None = None
         self._episode_rewards: list[float] = []
         self._episode_base_rewards: list[float] = []
         self._logger = get_logger(f"{__name__}.EnhancedRewardShaper")
@@ -488,7 +488,7 @@ class EnhancedRewardShaper:
         Returns:
             Dictionary of intermediate reward components.
         """
-        rewards = {}
+        rewards: dict[str, float] = {}
         cfg = self.config.intermediate
 
         if prev_features is None:
@@ -562,7 +562,7 @@ class EnhancedRewardShaper:
 
         # Intermediate rewards
         intermediate = self.compute_intermediate_rewards(self._prev_features, curr_features)
-        for component, value in intermediate.items():
+        for _component, value in intermediate.items():
             total_reward += value * self.config.scale_factor
 
         # Victory bonus

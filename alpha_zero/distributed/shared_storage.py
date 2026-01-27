@@ -15,9 +15,8 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from multiprocessing import Queue, Manager
+from multiprocessing import Manager, Queue
 from multiprocessing.managers import DictProxy, SyncManager
-from typing import Any, Optional
 
 import numpy as np
 import torch
@@ -87,7 +86,7 @@ class GameTrajectory:
     game_id: int = 0
     actor_id: int = 0
     game_length: int = 0
-    winner: Optional[int] = None
+    winner: int | None = None
 
     def to_bytes(self, compress: bool = False) -> bytes:
         """Serialize to bytes."""
@@ -148,8 +147,8 @@ class SharedStorage:
 
     def __init__(
         self,
-        config: Optional[SharedStorageConfig] = None,
-        manager: Optional[SyncManager] = None,
+        config: SharedStorageConfig | None = None,
+        manager: SyncManager | None = None,
     ):
         """Initialize shared storage.
 
@@ -222,11 +221,11 @@ class SharedStorage:
             if increment_version:
                 self._state['model_version'] = self._state['model_version'] + 1
 
-            version = self._state['model_version']
+            version = int(self._state['model_version'])
             logger.debug(f"Stored model weights v{version} ({len(weights_bytes)} bytes)")
             return version
 
-    def get_model_weights(self) -> Optional[dict[str, torch.Tensor]]:
+    def get_model_weights(self) -> dict[str, torch.Tensor] | None:
         """Retrieve current model weights.
 
         Returns:
@@ -244,12 +243,14 @@ class SharedStorage:
 
         # Deserialize
         buffer = io.BytesIO(weights_bytes)
-        state_dict = torch.load(buffer, map_location='cpu', weights_only=True)
+        state_dict: dict[str, torch.Tensor] = torch.load(
+            buffer, map_location='cpu', weights_only=True,
+        )
         return state_dict
 
     def get_model_version(self) -> int:
         """Get current model version."""
-        return self._state['model_version']
+        return int(self._state['model_version'])
 
     def increment_games_played(self, count: int = 1) -> int:
         """Increment games played counter.
@@ -262,7 +263,7 @@ class SharedStorage:
         """
         with self._lock:
             self._state['games_played'] = self._state['games_played'] + count
-            return self._state['games_played']
+            return int(self._state['games_played'])
 
     def increment_examples(self, count: int) -> int:
         """Increment total examples counter.
@@ -275,7 +276,7 @@ class SharedStorage:
         """
         with self._lock:
             self._state['total_examples'] = self._state['total_examples'] + count
-            return self._state['total_examples']
+            return int(self._state['total_examples'])
 
     def set_training_step(self, step: int) -> None:
         """Set current training step."""
@@ -283,15 +284,15 @@ class SharedStorage:
 
     def get_training_step(self) -> int:
         """Get current training step."""
-        return self._state['training_step']
+        return int(self._state['training_step'])
 
     def get_games_played(self) -> int:
         """Get total games played."""
-        return self._state['games_played']
+        return int(self._state['games_played'])
 
     def get_total_examples(self) -> int:
         """Get total training examples generated."""
-        return self._state['total_examples']
+        return int(self._state['total_examples'])
 
     def set_training(self, is_training: bool) -> None:
         """Set training flag."""
@@ -299,7 +300,7 @@ class SharedStorage:
 
     def is_training(self) -> bool:
         """Check if training is in progress."""
-        return self._state['is_training']
+        return bool(self._state['is_training'])
 
     def request_stop(self) -> None:
         """Request all processes to stop."""
@@ -308,7 +309,7 @@ class SharedStorage:
 
     def should_stop(self) -> bool:
         """Check if stop has been requested."""
-        return self._state['should_stop']
+        return bool(self._state['should_stop'])
 
     def add_loss_entry(self, entry: dict) -> None:
         """Add a loss history entry.
@@ -395,8 +396,8 @@ class DistributedReplayBuffer:
 
     def __init__(
         self,
-        config: Optional[ReplayBufferConfig] = None,
-        manager: Optional[SyncManager] = None,
+        config: ReplayBufferConfig | None = None,
+        manager: SyncManager | None = None,
     ):
         """Initialize replay buffer.
 
@@ -416,7 +417,7 @@ class DistributedReplayBuffer:
 
         # Trajectory input queue (actors -> buffer)
         self._trajectory_queue: Queue = mp.Queue(
-            maxsize=self.config.trajectory_queue_size
+            maxsize=self.config.trajectory_queue_size,
         )
 
         # Internal buffer storage (managed by learner process)
@@ -430,7 +431,7 @@ class DistributedReplayBuffer:
         self._stats['buffer_size'] = 0
 
         logger.info(
-            f"DistributedReplayBuffer initialized (max_size={self.config.max_size})"
+            f"DistributedReplayBuffer initialized (max_size={self.config.max_size})",
         )
 
     def shutdown(self) -> None:
@@ -450,7 +451,7 @@ class DistributedReplayBuffer:
     def submit_trajectory(
         self,
         trajectory: GameTrajectory,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
     ) -> bool:
         """Submit a game trajectory to the buffer.
 
@@ -464,6 +465,7 @@ class DistributedReplayBuffer:
             True if successfully submitted.
         """
         try:
+            data: bytes | GameTrajectory
             if self.config.compress:
                 data = trajectory.to_bytes(compress=True)
             else:
@@ -545,7 +547,7 @@ class DistributedReplayBuffer:
 
     def sample_batch(
         self,
-        batch_size: Optional[int] = None,
+        batch_size: int | None = None,
     ) -> dict[str, torch.Tensor]:
         """Sample and collate a batch for training.
 

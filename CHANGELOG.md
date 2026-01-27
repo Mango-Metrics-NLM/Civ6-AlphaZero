@@ -9,6 +9,282 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Real Civ6 Bridge System
+A complete bridge system enabling the AlphaZero agent to play actual Civilization VI through file-based IPC.
+
+##### Python Bridge (`alpha_zero/bridge/`)
+- **config.py**: `BridgeConfig` dataclass with validation
+  - Communication directory configuration
+  - Polling intervals, timeouts, retry settings
+  - Map size configurations for coordinate scaling
+  - Environment variable support (`CIV6_BRIDGE_*`)
+- **protocol.py**: Message types and JSON schemas
+  - `GameStateData`, `UnitData`, `CityData`, `TileData` for state representation
+  - `LuaCommand`, `CommandMessage`, `AckMessage` for action communication
+  - `LegalAction` for action masking
+  - Serialization/deserialization with validation
+- **file_bridge.py**: Async file-based IPC
+  - `FileBridge`: Polls state.json, writes commands.json, reads ack.json
+  - Heartbeat monitoring for connection health
+  - Automatic retry with exponential backoff
+  - `MockFileBridge` for testing without real files
+- **state_converter.py**: State format transformation
+  - Converts Civ6 Lua JSON to encoder-compatible dict
+  - Coordinate scaling from Civ6 map to 16x16 board
+  - Terrain, unit, city type mappings
+  - Legal action preservation
+- **action_converter.py**: Action index to Lua command
+  - Maps ~483K hierarchical actions to `LuaCommand`
+  - Action mask generation from legal actions
+  - Validation with detailed error reporting
+
+##### Gymnasium Environment (`alpha_zero/envs/real_civ6_env.py`)
+- **RealCiv6Env**: Full Gymnasium-compliant environment
+  - Dict observation space: spatial (84, 16, 16), vector (512,), action_mask
+  - Discrete action space from hierarchical action encoding
+  - Async bridge communication with configurable timeouts
+- **MockCiv6Env**: Testing environment
+  - Built-in mock state generation
+  - No file I/O required
+  - Compatible with all training code
+
+##### Game Interface (`alpha_zero/interfaces/civ6_interface.py`)
+- **Civ6Interface**: Implements `BaseGameInterface`
+  - `connect()`, `disconnect()` for session management
+  - `reset()`, `step()` for game control
+  - `get_observation()`, `get_valid_actions()` for state access
+  - `save_state()`, `load_state()` for checkpointing
+  - Registered as "civ6" backend with `GameAdapter`
+
+##### Civilization VI Lua Mod (`mod/AlphaZeroAI/`)
+- **AlphaZeroAI.modinfo**: Mod metadata and configuration
+  - File references and dependencies
+  - Action criteria for enabling AI control
+- **Config.lua**: Centralized configuration management
+  - Communication directory, file names
+  - Polling intervals, feature flags
+  - Dynamic configuration overrides
+- **Logger.lua**: Logging system
+  - Log levels: DEBUG, INFO, WARN, ERROR
+  - Console and file output
+  - Scoped loggers per module
+- **JsonEncoder.lua**: Pure Lua JSON encoder/decoder
+  - No external dependencies (Civ6 Lua is sandboxed)
+  - Handles all JSON types, escaping, unicode
+- **FileIO.lua**: File operations
+  - Read/write with error handling
+  - Change tracking for efficient updates
+  - Heartbeat, state, command, ack file management
+- **StateExporter.lua**: Game state serialization
+  - Map tiles with terrain, features, resources
+  - Units with full stats and capabilities
+  - Cities with production, buildings, population
+  - Legal actions enumeration
+- **ActionExecutor.lua**: Command execution
+  - Unit actions: move, attack, fortify, sleep, etc.
+  - City actions: production, purchase
+  - Research: technology and civic selection
+  - Validation and error reporting
+- **Main.lua**: Entry point and orchestration
+  - Event handlers for turn start/end
+  - Command polling loop
+  - Acknowledgment writing
+
+##### Test Suite
+- **tests/unit/test_bridge.py**: 93 unit tests for bridge components
+- **tests/unit/test_state_converter.py**: State conversion tests
+- **tests/unit/test_action_converter.py**: Action conversion tests
+- **tests/integration/test_bridge_integration.py**: End-to-end pipeline tests
+- **tests/integration/test_real_civ6_env.py**: Environment integration tests
+- **tests/fixtures/game_states/**: Sample JSON fixtures
+  - `turn_1_start.json`: Initial game state
+  - `turn_10_mid.json`: Mid-game with units and cities
+  - `turn_50_combat.json`: Combat scenario
+
+#### Phase 4: Unified Training Orchestrator
+
+A single, configurable entry point for full AlphaZero training with integrated self-play, MCTS, neural networks, reward shaping, curriculum learning, and comprehensive logging.
+
+##### Core Orchestrator Module (`alpha_zero/orchestrator/`)
+
+- **OrchestratorConfig** (`config.py`): Unified configuration system
+  - YAML-based configuration with environment variable overrides (`CIV6AZ_` prefix)
+  - Preset loading: `fast`, `balanced`, `production`
+  - Full validation with warnings for invalid combinations
+  - Nested configs for environment, network, MCTS, training, rewards, curriculum
+
+- **TrainingOrchestrator** (`orchestrator.py`): Main training loop controller
+  - Single entry point replacing multiple training scripts
+  - Integrated self-play with MCTS-guided game generation
+  - Automatic curriculum stage progression
+  - Periodic evaluation and checkpointing
+  - Graceful shutdown with signal handlers (SIGINT, SIGTERM)
+  - Resume from checkpoint support
+
+- **HyperparameterScheduler** (`scheduler.py`): Dynamic hyperparameter control
+  - Six schedule types: constant, linear, cosine, step, warmup_cosine, exponential
+  - Learning rate, batch size, temperature, and exploration scheduling
+  - Step-based progression with configurable decay
+
+- **CheckpointManager** (`checkpointer.py`): Model persistence
+  - Automatic checkpoint rotation (configurable retention)
+  - Best model tracking by win rate
+  - Full training state save/resume
+  - JSON metadata for checkpoint history
+
+- **PaddedEnvironmentWrapper**: Curriculum board size handling
+  - Pads observations for smaller curriculum boards to network's expected size
+  - Consistent interface across all board sizes
+  - Proper cloning support for MCTS simulations
+
+##### Component Factories (`alpha_zero/utils/factories.py`)
+
+- `create_network()`: Neural network instantiation with board/action size config
+- `create_mcts()`: MCTS with optional SimpleMCTS fallback
+- `create_environment()`: Environment creation with override support
+- `create_reward_shaper()`: Reward shaping initialization
+- `create_curriculum_manager()`: Curriculum system setup
+- `create_replay_buffer()`: Experience replay initialization
+- `create_wandb_logger()`: W&B logging setup
+
+##### CLI Entry Point (`alpha_zero/orchestrator/__main__.py`)
+
+- `python -m alpha_zero.orchestrator` command
+- Preset selection: `--preset fast|balanced|production`
+- Custom config: `--config path/to/config.yaml`
+- Dry run mode: `--dry_run`
+- Resume support: `--resume`
+
+##### Configuration Files
+
+- `configs/orchestrator.yaml`: Master configuration template
+- `configs/orchestrator_fast.yaml`: Fast testing preset (6x6 board, 10 iterations)
+- `configs/orchestrator_production.yaml`: Production training settings
+
+#### RAG (Retrieval-Augmented Generation) Integration
+
+A comprehensive RAG system for enhancing agent decision-making with external knowledge retrieval.
+
+##### Configuration Module (`alpha_zero/rag/config/settings.py`)
+
+- **VectorStoreConfig**: Vector database configuration
+  - Support for Memory, ChromaDB, FAISS, and Pinecone backends
+  - Configurable dimensions, distance metrics, and collection names
+- **EmbeddingConfig**: Embedding model configuration
+  - Support for OpenAI, Sentence Transformers, and Local embeddings
+  - Batch size and dimension configuration
+- **ProcessorConfig**: Text processing configuration
+  - Chunk size and overlap settings
+  - Recursive text splitting parameters
+- **RAGConfig**: Unified configuration with YAML serialization
+  - Environment variable loading
+  - Configuration validation
+
+##### Vector Store Abstraction (`alpha_zero/rag/stores/`)
+
+- **VectorStore Protocol**: Abstract interface for vector databases
+  - Async CRUD operations (add, search, delete, get)
+  - Metadata filtering support
+- **MemoryVectorStore**: In-memory implementation for testing
+  - Cosine similarity and Euclidean distance metrics
+  - NumPy-based efficient search
+- **ChromaStore**: ChromaDB integration
+  - Persistent and ephemeral collection support
+- **FAISSStore**: FAISS integration
+  - High-performance similarity search
+- **VectorStoreFactory**: Factory pattern for store creation
+
+##### Document Processing (`alpha_zero/rag/processors/`)
+
+- **RecursiveTextSplitter**: Intelligent text chunking
+  - Configurable separators and chunk sizes
+  - Overlap for context preservation
+- **TextDocumentProcessor**: Document processing pipeline
+  - Async file and text processing
+  - Chunk metadata tracking
+- **EmbeddingGenerator Protocol**: Abstract embedding interface
+- **LocalEmbeddings**: Random embeddings for testing
+- **OpenAIEmbeddings**: OpenAI API integration
+- **SentenceTransformerEmbeddings**: Local transformer models
+
+##### Agent Workflow Integration (`alpha_zero/rag/agents/`)
+
+- **RAGAgentWorkflow**: Complete workflow orchestration
+  - Document ingestion and indexing
+  - Query processing with context retrieval
+  - Hook system for extensibility
+  - Step-by-step execution tracking
+- **ContextBuilder**: Context assembly strategies
+  - Relevance-based, recency-based, diversity-based, and hybrid strategies
+  - Deduplication and character limits
+- **QueryEnhancer**: Query preprocessing
+  - Keyword extraction
+  - Query expansion with synonyms
+  - Query normalization
+
+##### Utilities (`alpha_zero/rag/utils/`)
+
+- **RAGLogger**: Structured logging with correlation IDs
+  - Multiple output formats (JSON, text)
+  - Configurable log levels
+- **MetricsCollector**: Performance metrics
+  - Timer, Counter, and Gauge types
+  - Context manager support for timing
+- **TTLCache & LRUCache**: Caching implementations
+  - Time-to-live expiration
+  - Size-based eviction
+
+##### Main Pipeline (`alpha_zero/rag/pipeline.py`)
+
+- **RAGPipeline**: Unified interface for RAG operations
+  - Text and file ingestion
+  - Query with context enhancement
+  - Caching and metrics collection
+  - Factory methods for testing configuration
+  - Async context manager support
+
+##### RAG Test Suite (100 new tests)
+
+- `tests/unit/test_rag/test_config.py`: Configuration tests (20 tests)
+- `tests/unit/test_rag/test_vector_stores.py`: Vector store tests (22 tests)
+- `tests/unit/test_rag/test_processors.py`: Processor tests (25 tests)
+- `tests/unit/test_rag/test_pipeline.py`: Pipeline tests (19 tests)
+- `tests/integration/test_rag/test_rag_workflow.py`: Integration tests (14 tests)
+
+##### RAG Dependencies
+
+- `chromadb>=0.4.0`: ChromaDB vector database
+- `faiss-cpu>=1.7.0`: Facebook AI Similarity Search
+- `openai>=1.0.0`: OpenAI API client
+- `sentence-transformers>=2.2.0`: Local embedding models
+- `pinecone-client>=2.0.0` (optional): Pinecone cloud vector database
+
+### Fixed
+
+#### Action Mask Indexing Bug (`alpha_zero/core/civ6_actions.py`)
+
+- Fixed critical bug where action mask indices didn't match action execution
+- Changed from using global unit/city indices to player-relative indices
+- Ensures valid actions map correctly to game state modifications
+- Reduced average game length from 700+ steps to 70-90 steps
+
+#### Evaluation Environment Handling
+
+- Fixed `'MicroCivEnv' object has no attribute '_env'` error during evaluation
+- Always create fresh wrapped environment for each game
+- Consistent interface between self-play and evaluation
+
+#### Value Tensor Shape Mismatch
+
+- Fixed shape mismatch in training loss computation
+- Added `value.unsqueeze(1)` for proper [batch_size, 1] shape
+
+#### Curriculum Manager API
+
+- Fixed `record_game(win=...)` to `record_game(won=...)` parameter name
+
+### Changed
+
 #### Phase 3: Enhanced Training Pipeline
 A comprehensive suite of training improvements designed to accelerate learning convergence and improve agent performance.
 
@@ -136,8 +412,6 @@ A comprehensive suite of training improvements designed to accelerate learning c
 - `TRAINING_IMPROVEMENTS_TEMPLATE.md`: Template for training experiments
 - `.env.template`: Environment variable template for W&B configuration
 - Updated `CLAUDE.md`: Comprehensive project documentation refresh
-
-### Changed
 
 #### Modified Files
 - **`.gitignore`**: Added W&B directories, training artifacts, profiling files

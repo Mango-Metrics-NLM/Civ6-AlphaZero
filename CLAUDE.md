@@ -23,7 +23,9 @@ This succeeds when:
 - [ ] Linting passes: `ruff check alpha_zero/` exits with code 0
 - [ ] Training smoke test: `python -m alpha_zero.training_civ6 --dry_run` completes
 - [ ] Distributed smoke test: `python -m alpha_zero.distributed.coordinator --dry_run` completes
+- [ ] Orchestrator smoke test: `python -m alpha_zero.orchestrator --preset fast --dry_run` completes
 - [ ] LLM integration test: `python -c "from alpha_zero.utils import create_llm_client"` imports
+- [ ] RAG integration test: `python -c "from alpha_zero.orchestrator import RAGIntegration"` imports
 ```
 
 ### 1.3 Problem Description
@@ -270,6 +272,9 @@ When making changes, update the relevant sections below:
 | `mypy alpha_zero/` | Type check |
 | `python -m alpha_zero.training_civ6 --dry_run` | Training smoke test |
 | `python -m alpha_zero.distributed.coordinator --dry_run` | Distributed smoke test |
+| `python -m alpha_zero.orchestrator --help` | Show orchestrator options |
+| `python -m alpha_zero.orchestrator --preset fast --dry_run` | Fast preset smoke test |
+| `python -m alpha_zero.orchestrator --config configs/orchestrator.yaml --dry_run` | Config file smoke test |
 
 #### Test Commands
 
@@ -280,6 +285,12 @@ When making changes, update the relevant sections below:
 | `pytest tests/unit/test_mcts.py -v` | Test MCTS algorithm |
 | `pytest tests/unit/test_config.py -v` | Test configuration system |
 | `pytest tests/unit/test_logging.py -v` | Test logging infrastructure |
+| `pytest tests/unit/test_orchestrator_config.py -v` | Test orchestrator configuration |
+| `pytest tests/unit/test_scheduler.py -v` | Test hyperparameter scheduler |
+| `pytest tests/unit/test_checkpointer.py -v` | Test checkpoint manager |
+| `pytest tests/unit/test_factories.py -v` | Test component factories |
+| `pytest tests/unit/test_rag_integration.py -v` | Test RAG integration |
+| `pytest tests/unit/test_strategy_advisor.py -v` | Test strategy advisor |
 | `pytest -k "test_name" -v` | Run specific test by name |
 
 ### 5.2 Architecture Decisions
@@ -297,6 +308,10 @@ When making changes, update the relevant sections below:
 | 2026-01-19 | LLM client with provider fallback | Unified API for OpenAI/Anthropic with auto-failover |
 | 2026-01-19 | Test runner utility | Programmatic test execution with coverage tracking |
 | 2026-01-19 | Agent tools module | Reusable utilities for Claude Code sub-agents |
+| 2026-01-20 | Unified Training Orchestrator | Single entry point for all training modes with dynamic config |
+| 2026-01-20 | RAG-LLM integration layer | ChromaDB knowledge base with strategy advisor for training insights |
+| 2026-01-20 | Hyperparameter scheduling | Multiple schedule types (warmup_cosine, step, exponential) |
+| 2026-01-20 | Factory pattern for components | Testable, flexible component creation |
 
 ### 5.3 Known Issues
 
@@ -307,7 +322,16 @@ When making changes, update the relevant sections below:
 | Windows multiprocessing spawn | Use `if __name__ == "__main__"` guard |
 | pytest-xdist not always installed | Tests run without parallel flag if missing |
 
-### 5.4 Information to Preserve
+### 5.4 Bug Fixes (2026-01-20)
+
+| Bug | Fix |
+|-----|-----|
+| Action mask indices mismatch | Changed to player-relative indices in `civ6_actions.py` |
+| Evaluation `_env` attribute error | Always create fresh wrapped environment per game |
+| Value tensor shape mismatch | Added `value.unsqueeze(1)` in training loss |
+| Curriculum `record_game` API | Changed `win=` to `won=` parameter |
+
+### 5.5 Information to Preserve
 
 - Build/test commands that work
 - Non-obvious environment setup steps
@@ -411,6 +435,15 @@ Civ6-AlphaZero/
 │   │   ├── learner.py           # Central learner
 │   │   ├── coordinator.py       # Training orchestration
 │   │   └── shared_storage.py    # Weight & buffer sharing
+│   ├── orchestrator/            # Unified Training Orchestrator (NEW)
+│   │   ├── __init__.py
+│   │   ├── config.py            # OrchestratorConfig with schedules
+│   │   ├── orchestrator.py      # TrainingOrchestrator main class
+│   │   ├── scheduler.py         # HyperparameterScheduler
+│   │   ├── checkpointer.py      # CheckpointManager
+│   │   ├── rag_integration.py   # RAG-LLM integration layer
+│   │   ├── strategy_advisor.py  # LLM-based strategy advisor
+│   │   └── __main__.py          # CLI entry point
 │   ├── interfaces/              # Game interfaces
 │   │   ├── __init__.py
 │   │   └── unciv_interface.py   # Unciv JSON interface
@@ -419,6 +452,7 @@ Civ6-AlphaZero/
 │   │   ├── logging.py           # Logging infrastructure
 │   │   ├── config.py            # Configuration management
 │   │   ├── llm_client.py        # LLM API integration
+│   │   ├── factories.py         # Component factory functions
 │   │   ├── test_runner.py       # Test execution utilities
 │   │   └── agent_tools.py       # Claude Code agent tools
 │   └── training_civ6.py         # Training entry point
@@ -427,7 +461,15 @@ Civ6-AlphaZero/
 │   ├── unit/                    # Unit tests
 │   └── integration/             # Integration tests
 ├── configs/
-│   └── civ6_config.yaml         # Configuration file
+│   ├── civ6_config.yaml         # Original configuration file
+│   ├── orchestrator.yaml        # Orchestrator master config
+│   ├── orchestrator_fast.yaml   # Fast testing preset
+│   └── orchestrator_production.yaml  # Production preset
+├── data/
+│   └── knowledge/               # RAG knowledge base documents
+│       ├── civ6_strategies.md
+│       ├── unit_tactics.md
+│       └── build_orders.md
 ├── .env                         # Environment variables (DO NOT COMMIT)
 ├── .env.template                # Environment template
 ├── requirements.txt             # Dependencies
@@ -555,6 +597,103 @@ manager = ConfigManager("configs/civ6_config.yaml")
 training_config = manager.get_training_config()
 ```
 
+### 9.6 Training Orchestrator
+
+The unified training orchestrator provides a single entry point for all training modes.
+
+```python
+from alpha_zero.orchestrator import TrainingOrchestrator, OrchestratorConfig
+
+# Load from preset
+config = OrchestratorConfig.from_preset("fast")
+
+# Or from YAML file
+config = OrchestratorConfig.from_yaml("configs/orchestrator.yaml")
+
+# Apply environment overrides (CIV6AZ_TRAINING_BATCH_SIZE=512)
+config = config.apply_env_overrides()
+
+# Create and run orchestrator
+orchestrator = TrainingOrchestrator(config)
+orchestrator.run()  # Full training loop
+```
+
+CLI usage:
+
+```bash
+# Show help
+python -m alpha_zero.orchestrator --help
+
+# Run with preset
+python -m alpha_zero.orchestrator --preset fast
+
+# Run with config file
+python -m alpha_zero.orchestrator --config configs/orchestrator.yaml
+
+# Dry run (validate configuration)
+python -m alpha_zero.orchestrator --preset fast --dry_run
+
+# Override settings
+python -m alpha_zero.orchestrator --preset balanced \
+    --iterations 10000 \
+    --games-per-iteration 50 \
+    --no-wandb --no-rag
+```
+
+### 9.7 Hyperparameter Scheduling
+
+```python
+from alpha_zero.orchestrator import HyperparameterScheduler
+from alpha_zero.orchestrator.config import ScheduleConfig
+
+# Create schedule configurations
+lr_schedule = ScheduleConfig(
+    schedule_type="warmup_cosine",
+    initial_value=0.001,
+    final_value=0.00001,
+    decay_steps=100000,
+    warmup_steps=5000,
+)
+
+# Create scheduler
+scheduler = HyperparameterScheduler(
+    lr_schedule=lr_schedule,
+    batch_size_schedule=ScheduleConfig(initial_value=64),
+)
+
+# Get values at any step
+lr = scheduler.get_learning_rate(step=1000)
+batch_size = scheduler.get_batch_size(step=1000)
+all_values = scheduler.get_all_values(step=1000)
+```
+
+### 9.8 RAG Integration
+
+```python
+from alpha_zero.orchestrator import RAGIntegration
+from alpha_zero.orchestrator.config import RAGConfig
+
+# Create RAG config
+rag_config = RAGConfig(
+    enabled=True,
+    persist_directory="data/knowledge_db",
+    knowledge_dir="data/knowledge",
+    store_insights=True,
+)
+
+# Initialize RAG
+rag = RAGIntegration(rag_config)
+rag.initialize()  # Ingests knowledge base
+
+# Query strategies
+results = rag.query_strategy("early game expansion strategy")
+
+# Store training insights
+rag.store_training_insight("Found that aggressive expansion wins more games")
+
+rag.close()
+```
+
 ---
 
 ## SECTION 10: DEBUG COMMANDS
@@ -608,7 +747,59 @@ print(env.render())
 
 ---
 
-## SECTION 11: NEXT STEPS
+## SECTION 11: RAG SYSTEM
+
+### 11.1 RAG Overview
+The RAG (Retrieval-Augmented Generation) system enhances agent workflows with context from a vector database.
+
+### 11.2 RAG Architecture
+```
+alpha_zero/rag/
+├── config/         # Configuration management (Pydantic models)
+├── stores/         # Vector store backends (Memory, Chroma, FAISS)
+├── processors/     # Document processing and embeddings
+├── agents/         # Agent workflow integration
+├── utils/          # Logging, metrics, caching
+└── pipeline.py     # Unified RAG pipeline
+```
+
+### 11.3 RAG Commands
+
+| Command | Purpose |
+|---------|---------|
+| `pytest tests/unit/test_rag/ -v` | Run RAG unit tests |
+| `pytest tests/integration/test_rag/ -v` | Run RAG integration tests |
+| `pip install -e ".[rag]"` | Install with RAG dependencies |
+| `pip install -e ".[all]"` | Install all dependencies |
+
+### 11.4 RAG Usage Example
+
+```python
+from alpha_zero.rag import RAGPipeline, RAGConfig
+
+# Create pipeline
+config = RAGConfig.from_env()
+pipeline = await RAGPipeline.create(config)
+
+# Ingest documents
+await pipeline.ingest_text("Strategy guide content...", source="guide.txt")
+
+# Query with context
+result = await pipeline.query("How to win early game?", top_k=5)
+print(result.context)
+
+await pipeline.close()
+```
+
+### 11.5 RAG Environment Variables
+- `RAG_VECTOR_STORE_TYPE` - Backend: memory, chroma, faiss
+- `RAG_EMBEDDING_MODEL` - Embedding model name
+- `RAG_EMBEDDING_API_KEY` - API key for OpenAI embeddings
+- `RAG_LOG_LEVEL` - Logging level
+
+---
+
+## SECTION 12: NEXT STEPS
 
 ### Phase 3+ (Planned)
 1. **Multi-GPU Training**: Extend distributed training to multiple GPUs
@@ -616,9 +807,10 @@ print(env.render())
 3. **Full Civ 6 Integration**: Direct game interface (mod or API)
 4. **Tournament System**: ELO-based opponent selection
 5. **Human vs AI**: Interface for human players to challenge trained models
+6. **RAG Enhancement**: LLM-powered strategy recommendations using RAG context
 
 ---
 
-*Last updated: 2026-01-19*
-*Phase: 2 - Distributed Training & Game Integration (Complete)*
-*Current Focus: Claude Code Integration & Testing Infrastructure*
+*Last updated: 2026-01-20*
+*Phase: 4 - Unified Training Orchestrator (Complete)*
+*Current Focus: Training Pipeline Validation & Performance Optimization*
