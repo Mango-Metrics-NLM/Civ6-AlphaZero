@@ -23,6 +23,7 @@ from alpha_zero.distributed.shared_storage import (
     SharedStorage,
 )
 from alpha_zero.envs.microciv import MicroCivEnv
+from alpha_zero.utils.checkpoint import safe_load_checkpoint
 
 logger = logging.getLogger(__name__)
 
@@ -303,15 +304,29 @@ class Learner:
 
         Returns:
             Training step from checkpoint.
+
+        Note:
+            Checkpoints containing optimizer state may require unsafe loading.
+            Only load checkpoints from trusted sources.
         """
-        # Note: weights_only=False is required to load optimizer state.
-        # Only load checkpoints from trusted sources.
-        checkpoint = torch.load(path, map_location=self.config.device, weights_only=False)
+        result = safe_load_checkpoint(
+            path,
+            map_location=self.config.device,
+            strict_security=False,
+            allow_unsafe_fallback=True,
+        )
+        checkpoint = result.data
+
         self.network.load_state_dict(checkpoint['network_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.lr_scheduler.current_step = checkpoint['lr_scheduler_step']
         step = int(checkpoint['step'])
 
+        if not result.loaded_safely:
+            logger.warning(
+                "Checkpoint loaded with weights_only=False due to optimizer state. "
+                "Ensure checkpoint is from a trusted source."
+            )
         logger.info(f"Loaded checkpoint from {path} (step {step})")
         return step
 

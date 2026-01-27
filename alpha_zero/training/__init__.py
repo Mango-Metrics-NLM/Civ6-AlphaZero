@@ -1,12 +1,17 @@
-"""Training infrastructure for Civ6-AlphaZero.
+"""Training modules for Civ6 AlphaZero.
 
-This module provides training utilities including:
-- Multi-environment curriculum learning pipeline
-- Transfer learning between environments
-- Training orchestration and scheduling
+This package contains training infrastructure including:
+- MuZero trainer with trajectory-based training
+- Curriculum learning and transfer learning
+- Replay buffers for experience storage
 """
 
-from __future__ import annotations
+from alpha_zero.training.muzero_trainer import (
+    GameTrajectory,
+    MuZeroTrainer,
+    MuZeroTrainingConfig,
+    TrajectoryBuffer,
+)
 
 from .curriculum_pipeline import (
     CurriculumPipeline,
@@ -23,6 +28,11 @@ from .curriculum_pipeline import (
 )
 
 __all__ = [
+    # MuZero components
+    "GameTrajectory",
+    "MuZeroTrainer",
+    "MuZeroTrainingConfig",
+    "TrajectoryBuffer",
     # Main pipeline
     "CurriculumPipeline",
     "CurriculumPipelineConfig",

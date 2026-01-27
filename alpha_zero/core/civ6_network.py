@@ -12,9 +12,16 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+import logging
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from alpha_zero.utils.checkpoint import safe_load_checkpoint
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 try:
     import numpy as np
@@ -469,10 +476,17 @@ class Civ6Network(nn.Module):
 
         Returns:
             Loaded model.
+
+        Note:
+            Only load checkpoints from trusted sources.
         """
-        # Note: weights_only=False is required to load config metadata.
-        # Only load checkpoints from trusted sources.
-        checkpoint = torch.load(path, map_location=device, weights_only=False)
+        result = safe_load_checkpoint(
+            path,
+            map_location=device,
+            strict_security=False,
+            allow_unsafe_fallback=True,
+        )
+        checkpoint = result.data
         config_dict = checkpoint["config"]
         if isinstance(config_dict, dict):
             config = NetworkConfig(**config_dict)
@@ -482,6 +496,12 @@ class Civ6Network(nn.Module):
         model = cls(config=config)
         model.load_state_dict(checkpoint["state_dict"])
         model.to(device)
+
+        if not result.loaded_safely:
+            logger.warning(
+                "Checkpoint loaded with weights_only=False. "
+                "Ensure checkpoint is from a trusted source."
+            )
         return model
 
 
@@ -1408,10 +1428,17 @@ class Civ6NetworkV2(nn.Module):
 
         Returns:
             Loaded model.
+
+        Note:
+            Only load checkpoints from trusted sources.
         """
-        # Note: weights_only=False is required to load config metadata.
-        # Only load checkpoints from trusted sources.
-        checkpoint = torch.load(path, map_location=device, weights_only=False)
+        result = safe_load_checkpoint(
+            path,
+            map_location=device,
+            strict_security=False,
+            allow_unsafe_fallback=True,
+        )
+        checkpoint = result.data
         config_dict = checkpoint["config"]
 
         if isinstance(config_dict, dict):
@@ -1422,6 +1449,12 @@ class Civ6NetworkV2(nn.Module):
         model = cls(config=config)
         model.load_state_dict(checkpoint["state_dict"])
         model.to(device)
+
+        if not result.loaded_safely:
+            logger.warning(
+                "Checkpoint loaded with weights_only=False. "
+                "Ensure checkpoint is from a trusted source."
+            )
         return model
 
     @classmethod
@@ -1443,10 +1476,17 @@ class Civ6NetworkV2(nn.Module):
 
         Returns:
             Loaded V2 model with V1 weights.
+
+        Note:
+            Only load checkpoints from trusted sources.
         """
-        # Note: weights_only=False is required to load config metadata.
-        # Only load checkpoints from trusted sources.
-        checkpoint = torch.load(path, map_location=device, weights_only=False)
+        result = safe_load_checkpoint(
+            path,
+            map_location=device,
+            strict_security=False,
+            allow_unsafe_fallback=True,
+        )
+        checkpoint = result.data
         config_dict = checkpoint["config"]
 
         if isinstance(config_dict, dict):
@@ -1479,6 +1519,11 @@ class Civ6NetworkV2(nn.Module):
         model.load_state_dict(v2_state)
         model.to(device)
 
+        if not result.loaded_safely:
+            logger.warning(
+                "Checkpoint loaded with weights_only=False. "
+                "Ensure checkpoint is from a trusted source."
+            )
         return model
 
     def get_num_parameters(self) -> dict[str, int]:
