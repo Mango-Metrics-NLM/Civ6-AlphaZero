@@ -19,6 +19,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
+import logging
+import warnings
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -31,6 +34,19 @@ from alpha_zero.core.civ6_network import (
     ValueHead,
     VectorEncoder,
 )
+
+# Import centralized loss functions (canonical implementations)
+# These imports provide backward compatibility for code using this module
+from alpha_zero.core.losses import (
+    categorical_to_scalar,
+    compute_consistency_loss,
+    compute_muzero_loss,
+    scalar_to_categorical,
+)
+from alpha_zero.utils.checkpoint import safe_load_checkpoint
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -845,8 +861,17 @@ class MuZeroNetwork(nn.Module):
 
         Returns:
             Loaded model.
+
+        Note:
+            Only load checkpoints from trusted sources.
         """
-        checkpoint = torch.load(path, map_location=device, weights_only=False)
+        result = safe_load_checkpoint(
+            path,
+            map_location=device,
+            strict_security=False,
+            allow_unsafe_fallback=True,
+        )
+        checkpoint = result.data
         config_dict = checkpoint["config"]
 
         if isinstance(config_dict, dict):
@@ -857,6 +882,12 @@ class MuZeroNetwork(nn.Module):
         model = cls(config=config)
         model.load_state_dict(checkpoint["state_dict"])
         model.to(device)
+
+        if not result.loaded_safely:
+            logger.warning(
+                "Checkpoint loaded with weights_only=False. "
+                "Ensure checkpoint is from a trusted source."
+            )
         return model
 
     def get_num_parameters(self) -> dict[str, int]:
@@ -898,161 +929,14 @@ class MuZeroNetwork(nn.Module):
 # =============================================================================
 # Loss functions for MuZero training
 # =============================================================================
-
-
-def scalar_to_categorical(
-    scalar: torch.Tensor,
-    support_size: int = 601,
-    min_value: float = -300,
-    max_value: float = 300,
-) -> torch.Tensor:
-    """Convert scalar values to categorical distribution.
-
-    Uses the transformation from MuZero paper to handle large value ranges.
-
-    Args:
-        scalar: Scalar values (B,).
-        support_size: Size of categorical support.
-        min_value: Minimum value in support.
-        max_value: Maximum value in support.
-
-    Returns:
-        Categorical distribution (B, support_size).
-    """
-    # Clamp to valid range
-    scalar = torch.clamp(scalar, min_value, max_value)
-
-    # Transform to support indices
-    support = torch.linspace(min_value, max_value, support_size, device=scalar.device)
-
-    # Find two nearest support points
-    lower_idx = torch.searchsorted(support, scalar) - 1
-    lower_idx = torch.clamp(lower_idx, 0, support_size - 2)
-    upper_idx = lower_idx + 1
-
-    # Compute weights (linear interpolation)
-    lower_val = support[lower_idx]
-    upper_val = support[upper_idx]
-    upper_weight = (scalar - lower_val) / (upper_val - lower_val + 1e-8)
-    lower_weight = 1.0 - upper_weight
-
-    # Create categorical distribution
-    categorical = torch.zeros(scalar.size(0), support_size, device=scalar.device)
-    categorical.scatter_(1, lower_idx.unsqueeze(1), lower_weight.unsqueeze(1))
-    categorical.scatter_(1, upper_idx.unsqueeze(1), upper_weight.unsqueeze(1))
-
-    return categorical
-
-
-def categorical_to_scalar(
-    categorical: torch.Tensor,
-    support_size: int = 601,
-    min_value: float = -300,
-    max_value: float = 300,
-    apply_softmax: bool = False,
-) -> torch.Tensor:
-    """Convert categorical distribution back to scalar.
-
-    Args:
-        categorical: Categorical distribution or logits (B, support_size).
-        support_size: Size of categorical support.
-        min_value: Minimum value in support.
-        max_value: Maximum value in support.
-        apply_softmax: If True, apply softmax to convert logits to probs.
-            If False, assume input is already a probability distribution.
-
-    Returns:
-        Scalar values (B,).
-    """
-    support = torch.linspace(
-        min_value, max_value, support_size, device=categorical.device
-    )
-    if apply_softmax:
-        probs = F.softmax(categorical, dim=-1)
-    else:
-        # Input is already a probability distribution
-        probs = categorical
-    return (probs * support.unsqueeze(0)).sum(dim=-1)
-
-
-def compute_muzero_loss(
-    policy_logits: torch.Tensor,
-    value: torch.Tensor,
-    reward: torch.Tensor | None,
-    target_policy: torch.Tensor,
-    target_value: torch.Tensor,
-    target_reward: torch.Tensor | None = None,
-    action_mask: torch.Tensor | None = None,
-    use_categorical: bool = True,
-    support_size: int = 601,
-) -> dict[str, torch.Tensor]:
-    """Compute MuZero losses for a single step.
-
-    Args:
-        policy_logits: Predicted policy logits (B, A).
-        value: Predicted value (B,) or (B, support_size) if categorical.
-        reward: Predicted reward (B,) or (B, support_size), or None for initial.
-        target_policy: Target MCTS policy (B, A).
-        target_value: Target value (B,).
-        target_reward: Target reward (B,), or None for initial.
-        action_mask: Valid action mask (B, A).
-        use_categorical: Whether predictions are categorical.
-        support_size: Size of categorical support.
-
-    Returns:
-        Dictionary of losses: policy_loss, value_loss, reward_loss (if applicable).
-    """
-    losses = {}
-
-    # Policy loss (cross-entropy)
-    if action_mask is not None:
-        target_policy = target_policy * action_mask
-        target_policy = target_policy / (target_policy.sum(dim=-1, keepdim=True) + 1e-8)
-
-    log_probs = F.log_softmax(policy_logits, dim=-1)
-    policy_loss = -torch.sum(target_policy * log_probs, dim=-1).mean()
-    losses["policy_loss"] = policy_loss
-
-    # Value loss
-    if use_categorical:
-        target_value_cat = scalar_to_categorical(target_value, support_size)
-        value_loss = F.cross_entropy(value, target_value_cat)
-    else:
-        value_loss = F.mse_loss(value, target_value)
-    losses["value_loss"] = value_loss
-
-    # Reward loss (if applicable)
-    if reward is not None and target_reward is not None:
-        if use_categorical:
-            target_reward_cat = scalar_to_categorical(target_reward, support_size)
-            reward_loss = F.cross_entropy(reward, target_reward_cat)
-        else:
-            reward_loss = F.mse_loss(reward, target_reward)
-        losses["reward_loss"] = reward_loss
-
-    return losses
-
-
-def compute_consistency_loss(
-    projected_dynamics: torch.Tensor,
-    projected_target: torch.Tensor,
-) -> torch.Tensor:
-    """Compute EfficientZero consistency loss.
-
-    Uses SimSiam-style loss: negative cosine similarity.
-
-    Args:
-        projected_dynamics: Projection of dynamics-predicted state (B, D).
-        projected_target: Projection of target state (detached) (B, D).
-
-    Returns:
-        Consistency loss (scalar).
-    """
-    # Normalize
-    projected_dynamics = F.normalize(projected_dynamics, dim=-1)
-    projected_target = F.normalize(projected_target, dim=-1)
-
-    # Negative cosine similarity
-    loss = -(projected_dynamics * projected_target).sum(dim=-1).mean()
-
-    return loss
+# NOTE: Loss functions have been moved to alpha_zero/core/losses.py for
+# centralized, reusable implementations. The following functions are imported
+# at the top of this module for backward compatibility:
+#
+#   - scalar_to_categorical
+#   - categorical_to_scalar
+#   - compute_muzero_loss
+#   - compute_consistency_loss
+#
+# See alpha_zero/core/losses.py for the canonical implementations.
+# =============================================================================

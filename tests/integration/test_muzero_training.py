@@ -33,7 +33,6 @@ from alpha_zero.core.losses import (
     compute_policy_loss,
     compute_reward_loss,
     compute_value_loss,
-    scalar_to_categorical,
 )
 from alpha_zero.core.muzero_network import (
     MuZeroConfig,

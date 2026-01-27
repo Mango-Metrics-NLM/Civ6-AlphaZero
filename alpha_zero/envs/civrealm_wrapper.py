@@ -1557,16 +1557,31 @@ class CivRealmWrapper(gym.Env):
         logger.info("CivRealmWrapper closed")
 
     def clone(self) -> CivRealmWrapper:
-        """Create a copy of the environment.
+        """Create a new environment instance with the same configuration.
 
-        Note: Full cloning not supported for CivRealm due to server state.
+        IMPORTANT LIMITATION:
+            CivRealm runs on a Freeciv server, so true state cloning is not possible.
+            This method creates a FRESH environment instance, NOT a clone of the
+            current game state. The new instance will:
+            - Start a new game with the same configuration
+            - Have its own independent game state
+            - NOT preserve any game progress from the original
+
+        This limitation affects MCTS algorithms that rely on environment cloning
+        for tree search. Use hidden-state MCTS (MuZero-style) instead, which uses
+        a learned dynamics model rather than environment cloning.
+
+        For algorithms requiring true state cloning, consider:
+        - Using MicroCiv environment (supports full cloning)
+        - Using MuZero with learned dynamics (no cloning needed)
 
         Returns:
-            New wrapper instance with same config.
+            New CivRealmWrapper instance with same config (fresh game state).
         """
         logger.warning(
-            "CivRealm does not support full environment cloning. "
-            "Creating new instance with same config."
+            "CivRealm does not support full environment cloning due to server-based "
+            "architecture. Creating new instance with same config - game state will "
+            "NOT be preserved. Use MuZero-style MCTS with learned dynamics instead."
         )
         return CivRealmWrapper(self.config, self.curriculum)
 

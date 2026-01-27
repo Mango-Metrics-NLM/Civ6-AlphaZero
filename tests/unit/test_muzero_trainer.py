@@ -449,7 +449,8 @@ class TestTrajectoryBuffer:
         buffer = TrajectoryBuffer(max_trajectories=100)
         buffer.add_trajectory(sample_trajectory)
 
-        initial_priority = sample_trajectory.priority
+        # Store initial priority for comparison
+        _initial_priority = sample_trajectory.priority  # noqa: F841 - stored for debugging
 
         buffer.update_priorities(
             indices=[(0, 5), (0, 10)],
@@ -707,8 +708,41 @@ class TestMuZeroTrainer:
 
         assert weights_changed, "Network weights should change after training step"
 
-    def test_train_step_with_consistency_loss(self, mock_network, sample_batch):
-        """Train step computes consistency loss when enabled."""
+    def test_train_step_with_consistency_loss(self, mock_network):
+        """Train step computes consistency loss when enabled and observations provided."""
+        batch_size = 4
+        action_size = 100
+        unroll_steps = 3
+
+        # Create batch WITH observations for consistency loss
+        # (consistency loss requires actual next observations)
+        batch_with_obs = TrajectoryBatchSample(
+            spatial=torch.randn(batch_size, 13, 16, 16),
+            vector=torch.randn(batch_size, 64),
+            action_mask=torch.ones(batch_size, action_size),
+            actions=torch.randint(0, action_size, (batch_size, unroll_steps)),
+            target_policies=[
+                torch.softmax(torch.randn(batch_size, action_size), dim=-1)
+                for _ in range(unroll_steps + 1)
+            ],
+            target_values=[
+                torch.randn(batch_size) for _ in range(unroll_steps + 1)
+            ],
+            target_rewards=[
+                torch.randn(batch_size) for _ in range(unroll_steps)
+            ],
+            action_masks_unroll=[
+                torch.ones(batch_size, action_size) for _ in range(unroll_steps)
+            ],
+            # Add observations for consistency loss computation
+            observations_spatial_unroll=[
+                torch.randn(batch_size, 13, 16, 16) for _ in range(unroll_steps)
+            ],
+            observations_vector_unroll=[
+                torch.randn(batch_size, 64) for _ in range(unroll_steps)
+            ],
+        )
+
         config = MuZeroTrainingConfig(
             unroll_steps=3,
             batch_size=4,
@@ -720,10 +754,13 @@ class TestMuZeroTrainer:
             device="cpu",
         )
 
-        metrics = trainer.train_step(sample_batch)
+        metrics = trainer.train_step(batch_with_obs)
 
-        # Consistency loss should be computed
-        assert "consistency_loss" in metrics or metrics.get("consistency_loss") is not None
+        # Consistency loss should be computed when observations are provided
+        assert "consistency_loss" in metrics, (
+            "consistency_loss should be in metrics when use_consistency_loss=True "
+            "and observations_spatial_unroll/observations_vector_unroll are provided"
+        )
 
     def test_train_step_without_consistency_loss(self, mock_network, sample_batch):
         """Train step skips consistency loss when disabled."""

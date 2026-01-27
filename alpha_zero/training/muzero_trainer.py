@@ -40,6 +40,7 @@ from alpha_zero.core.losses import (
     compute_value_loss,
     scalar_to_categorical,
 )
+from alpha_zero.utils.checkpoint import safe_load_checkpoint
 
 if TYPE_CHECKING:
     from alpha_zero.core.muzero_network import MuZeroNetwork
@@ -355,6 +356,11 @@ class TrajectoryBatchSample:
         target_values: Target values for steps 0..K, list of (B,).
         target_rewards: Target rewards for steps 1..K, list of (B,).
         action_masks_unroll: Action masks for steps 1..K, list of (B, A).
+        observations_spatial_unroll: Spatial observations for steps 1..K, list of (B, C, H, W).
+            Used for EfficientZero consistency loss (comparing dynamics predictions
+            with actual next observation representations).
+        observations_vector_unroll: Vector observations for steps 1..K, list of (B, V).
+            Used for EfficientZero consistency loss.
         weights: Importance sampling weights, shape (B,).
         indices: Sample indices in buffer (for priority updates).
     """
@@ -367,6 +373,8 @@ class TrajectoryBatchSample:
     target_values: list[torch.Tensor]  # K+1 tensors of shape (B,)
     target_rewards: list[torch.Tensor]  # K tensors of shape (B,)
     action_masks_unroll: list[torch.Tensor]  # K tensors of shape (B, A)
+    observations_spatial_unroll: list[torch.Tensor] | None = None  # K tensors of shape (B, C, H, W)
+    observations_vector_unroll: list[torch.Tensor] | None = None  # K tensors of shape (B, V)
     weights: torch.Tensor | None = None
     indices: list[tuple[int, int]] | None = None
 
@@ -504,6 +512,9 @@ class TrajectoryBuffer:
         all_target_values = [[] for _ in range(unroll_steps + 1)]
         all_target_rewards = [[] for _ in range(unroll_steps)]
         all_action_masks_unroll = [[] for _ in range(unroll_steps)]
+        # For EfficientZero consistency loss: collect next observations
+        all_obs_spatial_unroll = [[] for _ in range(unroll_steps)]
+        all_obs_vector_unroll = [[] for _ in range(unroll_steps)]
         sample_indices = []
 
         for _ in range(batch_size):
@@ -559,14 +570,21 @@ class TrajectoryBuffer:
                         reward = 0.0
                     all_target_rewards[k].append(reward)
 
-                    # Get action mask for next state
+                    # Get action mask and observation for next state (for consistency loss)
                     next_obs_idx = pos_idx + k + 1
                     if next_obs_idx < len(traj):
-                        next_mask = traj.observations[next_obs_idx]["action_mask"]
+                        next_obs = traj.observations[next_obs_idx]
+                        next_mask = next_obs["action_mask"]
+                        next_spatial = next_obs["spatial"]
+                        next_vector = next_obs["vector"]
                     else:
-                        # Absorbing state: all actions valid (won't be used)
+                        # Absorbing state: reuse last observation (consistency loss will be skipped)
                         next_mask = np.ones_like(obs["action_mask"])
+                        next_spatial = obs["spatial"]
+                        next_vector = obs["vector"]
                     all_action_masks_unroll[k].append(next_mask)
+                    all_obs_spatial_unroll[k].append(next_spatial)
+                    all_obs_vector_unroll[k].append(next_vector)
 
             all_actions.append(actions_segment)
 
@@ -592,6 +610,15 @@ class TrajectoryBuffer:
             torch.from_numpy(np.stack(m)).float().to(device)
             for m in all_action_masks_unroll
         ]
+        # Observations for EfficientZero consistency loss
+        obs_spatial_unroll_tensors = [
+            torch.from_numpy(np.stack(s)).float().to(device)
+            for s in all_obs_spatial_unroll
+        ]
+        obs_vector_unroll_tensors = [
+            torch.from_numpy(np.stack(v)).float().to(device)
+            for v in all_obs_vector_unroll
+        ]
 
         return TrajectoryBatchSample(
             spatial=spatial_tensor,
@@ -602,6 +629,8 @@ class TrajectoryBuffer:
             target_values=target_values_tensors,
             target_rewards=target_rewards_tensors,
             action_masks_unroll=action_masks_unroll_tensors,
+            observations_spatial_unroll=obs_spatial_unroll_tensors,
+            observations_vector_unroll=obs_vector_unroll_tensors,
             indices=sample_indices,
         )
 
@@ -1018,33 +1047,62 @@ class MuZeroTrainer:
                 total_reward_loss = total_reward_loss + reward_loss_k
 
             # Consistency loss (EfficientZero)
+            # Compares dynamics model prediction with actual next observation representation
             if (
                 self.config.use_consistency_loss
                 and k > 0
                 and hasattr(self.network, "project")
+                and batch.observations_spatial_unroll is not None
+                and batch.observations_vector_unroll is not None
             ):
                 try:
-                    # Project dynamics prediction
+                    # Get actual next observation from batch (k-1 index since unroll starts at step 1)
+                    next_obs_spatial = batch.observations_spatial_unroll[k - 1]
+                    next_obs_vector = batch.observations_vector_unroll[k - 1]
+
+                    # Compute representation of actual next observation
+                    with torch.no_grad():
+                        if hasattr(self.network, "representation"):
+                            # MuZero network: use representation function
+                            actual_next_hidden = self.network.representation(
+                                next_obs_spatial, next_obs_vector
+                            )
+                        else:
+                            # AlphaZero fallback: use initial inference
+                            output = self.network.initial_inference(
+                                next_obs_spatial, next_obs_vector
+                            )
+                            # Handle both tuple and namedtuple/object returns
+                            if hasattr(output, "hidden_state"):
+                                actual_next_hidden = output.hidden_state
+                            elif isinstance(output, tuple):
+                                actual_next_hidden = output[0]
+                            else:
+                                actual_next_hidden = output
+                        # Project the actual next observation representation (stop gradient)
+                        proj_target = self.network.project(actual_next_hidden).detach()
+
+                    # Project dynamics prediction (dynamics model's predicted next state)
                     proj_dynamics = self.network.project(all_hidden_states[k])
 
-                    # Get target observation and project
-                    # Note: Would need actual next observations for proper consistency
-                    # For now, skip if not available
-                    if k < len(batch.target_policies):
+                    # Apply prediction head (SimSiam-style asymmetry)
+                    if hasattr(self.network, "predict_projection"):
                         proj_prediction = self.network.predict_projection(proj_dynamics)
+                    else:
+                        proj_prediction = proj_dynamics
 
-                        # Use the current hidden state as target (self-consistency)
-                        with torch.no_grad():
-                            proj_target = self.network.project(all_hidden_states[k - 1])
+                    consistency_loss_k = compute_consistency_loss(
+                        proj_prediction, proj_target
+                    )
 
-                        consistency_loss_k = compute_consistency_loss(
-                            proj_prediction, proj_target
-                        )
+                    if total_consistency_loss is None:
+                        total_consistency_loss = consistency_loss_k
+                    else:
+                        total_consistency_loss = total_consistency_loss + consistency_loss_k
 
-                        if total_consistency_loss is None:
-                            total_consistency_loss = consistency_loss_k
-                        else:
-                            total_consistency_loss = total_consistency_loss + consistency_loss_k
+                    logger.debug(
+                        f"Consistency loss at step {k}: {consistency_loss_k.item():.4f}"
+                    )
                 except (ValueError, RuntimeError) as e:
                     logger.debug(f"Skipping consistency loss at step {k}: {e}")
 
@@ -1168,11 +1226,28 @@ class MuZeroTrainer:
 
         Args:
             path: Path to checkpoint.
+
+        Note:
+            Checkpoints containing optimizer state may require unsafe loading.
+            Only load checkpoints from trusted sources.
         """
-        checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+        result = safe_load_checkpoint(
+            path,
+            map_location=self.device,
+            strict_security=False,
+            allow_unsafe_fallback=True,
+        )
+        checkpoint = result.data
+
         self.network.load_state_dict(checkpoint["network_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.step_count = checkpoint.get("step_count", 0)
+
+        if not result.loaded_safely:
+            logger.warning(
+                "Checkpoint loaded with weights_only=False due to optimizer state. "
+                "Ensure checkpoint is from a trusted source."
+            )
         logger.info(f"Loaded checkpoint from {path}, step={self.step_count}")
 
 

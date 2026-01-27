@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-import torch
 
 from alpha_zero.core.civ6_mcts import (
     GumbelMCTS,
