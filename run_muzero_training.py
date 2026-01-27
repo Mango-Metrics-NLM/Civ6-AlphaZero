@@ -28,13 +28,13 @@ from typing import Any
 
 import numpy as np
 import torch
-import torch.optim as optim
+
 from tqdm import tqdm
 
 # Core imports
 from alpha_zero.core.muzero_network import MuZeroConfig, MuZeroNetwork
 from alpha_zero.core.civ6_mcts import MuZeroMCTS, MuZeroMCTSConfig
-from alpha_zero.core.losses import LossConfig, MuZeroLossCalculator
+
 from alpha_zero.training.muzero_trainer import (
     MuZeroTrainingConfig,
     MuZeroTrainer,

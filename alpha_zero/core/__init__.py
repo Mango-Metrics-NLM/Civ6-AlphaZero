@@ -1,7 +1,6 @@
 """Core AlphaZero components: network, MCTS, action space, and losses."""
 
-from alpha_zero.core.civ6_actions import ActionSpace, HierarchicalAction
-from alpha_zero.core.civ6_mcts import Civ6MCTS
+
 from alpha_zero.core.civ6_network import (
     AttentionSpatialEncoder,
     Civ6Network,
