@@ -1,19 +1,29 @@
 """Core AlphaZero components: network, MCTS, action space, and losses."""
 
+from alpha_zero.core.civ6_actions import ActionSpace, HierarchicalAction
+from alpha_zero.core.civ6_mcts import Civ6MCTS
 from alpha_zero.core.civ6_network import (
+    AttentionSpatialEncoder,
     Civ6Network,
     Civ6NetworkV2,
+    CrossModalAttention,
+    HierarchicalPolicyHead,
     MicroCivNetwork,
     NetworkConfig,
     PositionalEncoding2D,
     SpatialSelfAttention,
-    CrossModalAttention,
-    AttentionSpatialEncoder,
-    HierarchicalPolicyHead,
     compute_loss,
 )
 from alpha_zero.core.civ6_mcts import Civ6MCTS
 from alpha_zero.core.civ6_actions import ActionSpace, HierarchicalAction
+from alpha_zero.core.transformer_network import (
+    AttentionType,
+    Civ6TransformerNetwork,
+    NormType,
+    TransformerConfig,
+    compute_transformer_loss,
+    create_transformer_network,
+)
 from alpha_zero.core.losses import (
     # Config and data structures
     LossConfig,
@@ -42,7 +52,7 @@ from alpha_zero.core.losses import (
 )
 
 __all__ = [
-    # Network components
+    # Original network components
     "Civ6Network",
     "Civ6NetworkV2",
     "MicroCivNetwork",
@@ -53,9 +63,15 @@ __all__ = [
     "AttentionSpatialEncoder",
     "HierarchicalPolicyHead",
     "compute_loss",
-    # MCTS
+    # Transformer network
+    "Civ6TransformerNetwork",
+    "TransformerConfig",
+    "AttentionType",
+    "NormType",
+    "compute_transformer_loss",
+    "create_transformer_network",
+    # MCTS and actions
     "Civ6MCTS",
-    # Actions
     "ActionSpace",
     "HierarchicalAction",
     # Loss config and data structures

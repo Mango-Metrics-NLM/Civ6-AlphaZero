@@ -154,7 +154,7 @@ class Civ6Config:
     rewards: RewardsConfig = field(default_factory=RewardsConfig)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "Civ6Config":
+    def from_dict(cls, data: dict[str, Any]) -> Civ6Config:
         """Create configuration from dictionary.
 
         Args:
@@ -165,18 +165,18 @@ class Civ6Config:
         """
         return cls(
             environment=_dict_to_dataclass(
-                EnvironmentConfig, data.get("environment", {})
+                EnvironmentConfig, data.get("environment", {}),
             ),
             network=_dict_to_dataclass(NetworkConfig, data.get("network", {})),
             mcts=_dict_to_dataclass(MCTSConfig, data.get("mcts", {})),
             training=_dict_to_dataclass(TrainingConfig, data.get("training", {})),
             distributed=_dict_to_dataclass(
-                DistributedConfig, data.get("distributed", {})
+                DistributedConfig, data.get("distributed", {}),
             ),
             unciv=_dict_to_dataclass(UncivConfig, data.get("unciv", {})),
             logging=_dict_to_dataclass(LoggingConfig, data.get("logging", {})),
             action_space=_dict_to_dataclass(
-                ActionSpaceConfig, data.get("action_space", {})
+                ActionSpaceConfig, data.get("action_space", {}),
             ),
             rewards=_dict_to_dataclass(RewardsConfig, data.get("rewards", {})),
         )
@@ -214,7 +214,7 @@ def _dict_to_dataclass(cls: type, data: dict[str, Any]) -> Any:
         return cls()
 
     # Get valid field names for the dataclass
-    valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
+    valid_fields = {f.name for f in cls.__dataclass_fields__.values()}  # type: ignore[attr-defined]
 
     # Filter out unknown fields
     filtered_data = {k: v for k, v in data.items() if k in valid_fields}
@@ -338,6 +338,7 @@ class ConfigManager:
             # Convert value to appropriate type
             current_value = getattr(section_config, param)
             try:
+                typed_value: Any
                 if isinstance(current_value, bool):
                     typed_value = value.lower() in ("true", "1", "yes")
                 elif isinstance(current_value, int):

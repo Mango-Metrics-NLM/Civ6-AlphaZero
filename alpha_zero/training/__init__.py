@@ -2,8 +2,8 @@
 
 This package contains training infrastructure including:
 - MuZero trainer with trajectory-based training
+- Curriculum learning and transfer learning
 - Replay buffers for experience storage
-- Training utilities and helpers
 """
 
 from alpha_zero.training.muzero_trainer import (
@@ -13,9 +13,40 @@ from alpha_zero.training.muzero_trainer import (
     TrajectoryBuffer,
 )
 
+from .curriculum_pipeline import (
+    CurriculumPipeline,
+    CurriculumPipelineConfig,
+    CurriculumState,
+    DifficultyStage,
+    EnvironmentFactory,
+    EnvironmentTier,
+    EnvironmentTierConfig,
+    TransferLearningConfig,
+    WeightTransferManager,
+    create_curriculum_pipeline,
+    create_environment_factory,
+)
+
 __all__ = [
+    # MuZero components
     "GameTrajectory",
     "MuZeroTrainer",
     "MuZeroTrainingConfig",
     "TrajectoryBuffer",
+    # Main pipeline
+    "CurriculumPipeline",
+    "CurriculumPipelineConfig",
+    "CurriculumState",
+    # Configuration
+    "DifficultyStage",
+    "EnvironmentTierConfig",
+    "TransferLearningConfig",
+    # Environment management
+    "EnvironmentTier",
+    "EnvironmentFactory",
+    # Weight transfer
+    "WeightTransferManager",
+    # Factory functions
+    "create_curriculum_pipeline",
+    "create_environment_factory",
 ]

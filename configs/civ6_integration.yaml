@@ -1,0 +1,345 @@
+# Civ6 AlphaZero Integration Configuration
+# Based on the Agentic Coding System Prompt Template
+
+version: "1.0"
+
+# ============================================================================
+# SECTION 1: OBJECTIVE FUNCTION
+# ============================================================================
+
+objective:
+  system_intent: "A Python-to-Civ6 interface bridge enabling neural network self-play on PC"
+
+  success_criteria:
+    - criterion: "Game state can be read from Civ6 log files or Lua exports"
+      verifiable: true
+      verification_command: "pytest tests/integration/test_civ6_interface.py -v"
+
+    - criterion: "Actions can be serialized and sent to game"
+      verifiable: true
+      verification_command: "pytest tests/unit/test_action_serialization.py -v"
+
+    - criterion: "Unciv JSON save format can be parsed and modified"
+      verifiable: true
+      verification_command: "pytest tests/unit/test_unciv_interface.py -v"
+
+    - criterion: "Mini-game curriculum scenarios work correctly"
+      verifiable: true
+      verification_command: "pytest tests/unit/test_mini_games.py -v"
+
+    - criterion: "All existing MicroCiv tests continue to pass"
+      verifiable: true
+      verification_command: "pytest tests/ -v"
+
+  problem_description:
+    problem_statement: >
+      The system bridges Python AlphaZero implementation with Civilization 6 for
+      self-play training. It supports multiple integration paths: Civ6 Lua mod
+      interface (via file IPC), log file parsing for passive observation, and
+      Unciv JSON format for open-source alternative. The bridge must translate
+      between the existing 13-channel state encoding and game-specific formats.
+
+    data_flows: >
+      Data flows bidirectionally: Game State → Parser → State Encoder → Neural
+      Network → MCTS → Action Decoder → Action Serializer → Game Interface.
+      For Civ6 Lua: JSON files written to shared directory. For Unciv: direct
+      JSON save file manipulation. State includes units, cities, resources,
+      visibility, and diplomatic relations.
+
+    failure_modes: >
+      Failure modes: game state desync (validation checksums), action rejection
+      (invalid move detection), timeout during game response (exponential backoff),
+      and encoding mismatch (schema validation). Invariants: action space must
+      match current game state, state encoding must be reversible for debugging.
+
+# ============================================================================
+# SECTION 2: FEASIBLE REGION (Constraints)
+# ============================================================================
+
+constraints:
+  hard:
+    - name: "python_version"
+      type: "language"
+      value: ">=3.10"
+      validation_command: "python --version"
+
+    - name: "preserve_existing_api"
+      type: "compatibility"
+      value: "MicroCivEnv interface must remain unchanged"
+
+    - name: "no_hardcoded_paths"
+      type: "security"
+      value: "All file paths must be configurable"
+
+    - name: "safe_file_operations"
+      type: "security"
+      value: "Validate all file paths before read/write"
+
+    - name: "torch_load_safety"
+      type: "security"
+      value: "Use weights_only=True for torch.load"
+
+  soft:
+    - name: "type_hints"
+      type: "style"
+      value: "Use type hints on all public functions"
+      priority: 9
+
+    - name: "docstrings"
+      type: "style"
+      value: "All public classes and methods need docstrings"
+      priority: 8
+
+    - name: "test_coverage"
+      type: "testing"
+      value: "Maintain >80% coverage on new code"
+      priority: 9
+
+    - name: "async_io"
+      type: "performance"
+      value: "Use async for file watching and game communication"
+      priority: 7
+
+    - name: "dataclasses"
+      type: "architecture"
+      value: "Prefer dataclasses over plain dicts for state"
+      priority: 6
+
+  anti:
+    - permission: "Add new dependencies for JSON/YAML parsing"
+      scope: "standard library preferred"
+
+    - permission: "Create new file structure under interfaces/"
+      scope: "following existing project patterns"
+
+    - permission: "Add configuration files for game paths"
+      scope: "in configs/ directory"
+
+    - permission: "Modify encoder to support additional channels"
+      scope: "backwards compatible changes only"
+
+# ============================================================================
+# SECTION 3: PERMISSION ARCHITECTURE
+# ============================================================================
+
+permissions:
+  scope:
+    in_scope:
+      - "alpha_zero/**/*.py"
+      - "interfaces/**/*.py"
+      - "tests/**/*.py"
+      - "configs/**/*.yaml"
+
+    out_of_scope:
+      - "checkpoints/**"
+      - "logs/**"
+      - ".git/**"
+      - "**/__pycache__/**"
+      - "venv/**"
+
+  autonomy:
+    autonomous:
+      - "file_creation_in_interfaces"
+      - "file_creation_in_tests"
+      - "running_tests"
+      - "adding_type_hints"
+      - "refactoring_for_consistency"
+
+    confirm_first:
+      - "modifying_existing_encoder"
+      - "changing_action_space"
+      - "architectural_changes"
+
+    prohibited:
+      - "commits_to_main"
+      - "modifying_training_checkpoints"
+      - "external_network_calls"
+
+  resource_budget:
+    max_iterations: 5
+    max_files_per_pass: 15
+    exploration_timeout_seconds: 300
+
+# ============================================================================
+# SECTION 4: FEEDBACK LOOP SPECIFICATION
+# ============================================================================
+
+feedback:
+  verification_commands:
+    - name: "lint"
+      command: "ruff check alpha_zero/ interfaces/ tests/ --ignore E501"
+      timeout_seconds: 60
+      fail_fast: false
+
+    - name: "type_check"
+      command: "python -m mypy alpha_zero/ interfaces/ --ignore-missing-imports"
+      timeout_seconds: 120
+      fail_fast: false
+
+    - name: "unit_tests"
+      command: "python -m pytest tests/unit/ -v --tb=short"
+      timeout_seconds: 300
+      fail_fast: false
+      retry_count: 1
+
+    - name: "integration_tests"
+      command: "python -m pytest tests/integration/ -v --tb=short"
+      timeout_seconds: 600
+      fail_fast: false
+      retry_count: 1
+
+  error_handling:
+    auto_fix_patterns:
+      - error_type: "lint_error"
+        action: "auto_fix"
+        max_retries: 3
+
+      - error_type: "import_error"
+        action: "analyze_fix"
+        max_retries: 2
+
+      - error_type: "type_error"
+        action: "analyze_fix"
+        max_retries: 3
+
+      - error_type: "test_failure"
+        action: "analyze_fix"
+        max_retries: 3
+
+  success_verification:
+    - check: "all_tests_pass"
+      command: "python -m pytest tests/ -v -q"
+
+    - check: "smoke_test"
+      command: "python -c \"from interfaces import Civ6Bridge; print('Import OK')\""
+
+# ============================================================================
+# SECTION 5: CONTEXT PERSISTENCE
+# ============================================================================
+
+session:
+  memory_file: "CLAUDE.md"
+
+  sections:
+    - name: "Build Commands"
+      persist: true
+      format: "markdown_list"
+
+    - name: "Test Commands"
+      persist: true
+      format: "markdown_list"
+
+    - name: "Architecture Decisions"
+      persist: true
+      format: "markdown_table"
+
+    - name: "Known Issues"
+      persist: true
+      format: "markdown_table"
+
+    - name: "Civ6 Integration Notes"
+      persist: true
+      format: "markdown_list"
+
+# ============================================================================
+# SECTION 6: EXECUTION PROTOCOL
+# ============================================================================
+
+execution:
+  initial_actions:
+    - action: "read_session_memory"
+      required: false
+
+    - action: "scan_project_structure"
+      command: "find . -type f -name '*.py' -not -path './venv/*' | head -50"
+      required: true
+
+    - action: "run_existing_tests"
+      command: "python -m pytest tests/ -v -q --tb=line 2>/dev/null || true"
+      required: false
+
+  implementation_order:
+    - phase: "understand"
+      description: "Analyze existing codebase patterns"
+      agent: "planning"
+
+    - phase: "implement_base"
+      description: "Create base interface classes"
+      agent: "implementation"
+
+    - phase: "implement_civ6"
+      description: "Implement Civ6 Lua bridge"
+      agent: "implementation"
+
+    - phase: "implement_unciv"
+      description: "Implement Unciv JSON interface"
+      agent: "implementation"
+
+    - phase: "implement_curriculum"
+      description: "Add mini-game training scenarios"
+      agent: "implementation"
+
+    - phase: "write_tests"
+      description: "Create comprehensive tests"
+      agent: "testing"
+
+    - phase: "verify"
+      description: "Run verification loop"
+      agent: "verification"
+
+    - phase: "document"
+      description: "Update CLAUDE.md"
+      agent: "documentation"
+
+  completion_checklist:
+    - item: "All success criteria met"
+      verification: "check_success_criteria"
+
+    - item: "All tests pass"
+      verification: "run_all_verifications"
+
+    - item: "Documentation updated"
+      verification: "check_memory_updated"
+
+    - item: "No regressions in existing tests"
+      verification: "pytest tests/ -v"
+
+# ============================================================================
+# LOGGING
+# ============================================================================
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+  handlers:
+    - type: "console"
+      level: "INFO"
+
+# ============================================================================
+# AGENTS
+# ============================================================================
+
+agents:
+  planning:
+    timeout_seconds: 300
+    max_context_files: 30
+
+  implementation:
+    timeout_seconds: 600
+    max_lines_per_file: 400
+    prefer_small_changes: true
+
+  testing:
+    timeout_seconds: 600
+    coverage_threshold: 80
+    test_frameworks:
+      - "pytest"
+
+  verification:
+    timeout_seconds: 300
+    strict_mode: false
+
+  documentation:
+    timeout_seconds: 120
+    auto_update_memory: true

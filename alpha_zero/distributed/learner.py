@@ -11,14 +11,11 @@ import os
 import signal
 import time
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.optim.lr_scheduler import MultiStepLR
 
 from alpha_zero.core.civ6_network import MicroCivNetwork, compute_loss
 from alpha_zero.distributed.shared_storage import (
@@ -80,7 +77,7 @@ class LearningRateScheduler:
     def __init__(
         self,
         optimizer: optim.Optimizer,
-        decay_steps: Optional[list[int]] = None,
+        decay_steps: list[int] | None = None,
         decay_rate: float = 0.1,
         warmup_steps: int = 0,
         base_lr: float = 0.001,
@@ -128,7 +125,7 @@ class LearningRateScheduler:
 
     def get_lr(self) -> float:
         """Get current learning rate."""
-        return self.optimizer.param_groups[0]['lr']
+        return float(self.optimizer.param_groups[0]['lr'])
 
 
 class GradientAccumulator:
@@ -228,7 +225,7 @@ class Learner:
         ).to(config.device)
 
         logger.info(
-            f"Network parameters: {sum(p.numel() for p in self.network.parameters()):,}"
+            f"Network parameters: {sum(p.numel() for p in self.network.parameters()):,}",
         )
 
         # Initialize optimizer
@@ -323,7 +320,7 @@ class Learner:
         self.network.load_state_dict(checkpoint['network_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.lr_scheduler.current_step = checkpoint['lr_scheduler_step']
-        step = checkpoint['step']
+        step = int(checkpoint['step'])
 
         if not result.loaded_safely:
             logger.warning(
@@ -333,7 +330,7 @@ class Learner:
         logger.info(f"Loaded checkpoint from {path} (step {step})")
         return step
 
-    def train_step(self) -> Optional[dict[str, float]]:
+    def train_step(self) -> dict[str, float] | None:
         """Perform a single training step.
 
         Returns:
@@ -364,7 +361,7 @@ class Learner:
 
         # Compute loss
         total_loss, p_loss, v_loss = compute_loss(
-            policy_logits, value, target_policy, target_value, action_mask
+            policy_logits, value, target_policy, target_value, action_mask,
         )
 
         # Accumulate gradients and step
@@ -407,7 +404,7 @@ class Learner:
                 break
             logger.info(
                 f"Waiting for replay buffer "
-                f"({self.replay_buffer.size()}/{self.config.min_buffer_size})"
+                f"({self.replay_buffer.size()}/{self.config.min_buffer_size})",
             )
             time.sleep(1.0)
 
@@ -428,7 +425,7 @@ class Learner:
                 and self.training_step >= self.config.max_training_steps
             ):
                 logger.info(
-                    f"Reached max training steps ({self.config.max_training_steps})"
+                    f"Reached max training steps ({self.config.max_training_steps})",
                 )
                 break
 
@@ -460,7 +457,7 @@ class Learner:
                     f"loss={avg_total:.4f} "
                     f"(policy={avg_policy:.4f}, value={avg_value:.4f}), "
                     f"lr={losses['learning_rate']:.6f}, "
-                    f"{steps_per_sec:.1f} steps/sec"
+                    f"{steps_per_sec:.1f} steps/sec",
                 )
 
                 # Store in shared storage

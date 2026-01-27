@@ -83,6 +83,9 @@ credentials.json
 # mypy
 .mypy_cache/
 
+# Ruff
+.ruff_cache/
+
 # Project specific
 checkpoints/
 logs/
@@ -91,6 +94,12 @@ logs/
 
 # RAG Data
 data/knowledge_db/
+*.chroma/
+chroma_data/
+faiss_index/
+*.faiss
+vector_store/
+embeddings_cache/
 
 # Weights & Biases
 wandb/
@@ -109,3 +118,32 @@ artifacts/
 tmp/
 temp/
 *.tmp
+nul
+
+# Civ6 Bridge Communication
+AlphaZeroAI/
+state.json
+commands.json
+ack.json
+heartbeat.txt
+errors.json
+
+# Civ6 Mod Development
+*.modinfo.bak
+*.lua.bak
+
+# Curriculum and training state
+curriculum_state.json
+replay_buffer.pkl
+*.replay
+
+# Coverage reports
+coverage/
+
+# Documentation builds
+docs/_build/
+site/
+
+# OS files
+.DS_Store
+Thumbs.db

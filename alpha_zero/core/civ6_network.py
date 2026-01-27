@@ -27,7 +27,7 @@ try:
     import numpy as np
     # Register common public types for safe loading
     safe_types: list[Any] = [np.ndarray, np.dtype, np.generic]
-    
+
     # Try to find the internal scalar type for legacy compatibility
     # This varies between NumPy 1.x and 2.x
     try:
@@ -39,7 +39,7 @@ try:
             safe_types.append(_ma_modern.scalar)
         except (ImportError, AttributeError):
             pass
-            
+
     torch.serialization.add_safe_globals(safe_types)
 except (ImportError, AttributeError):
     pass
@@ -128,7 +128,7 @@ class SpatialEncoder(nn.Module):
 
         # Residual blocks
         self.res_blocks = nn.ModuleList(
-            [ResidualBlock(num_filters) for _ in range(num_res_blocks)]
+            [ResidualBlock(num_filters) for _ in range(num_res_blocks)],
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -581,11 +581,11 @@ class PositionalEncoding2D(nn.Module):
         else:
             # Pre-compute sinusoidal encodings
             self.register_buffer(
-                "pos_encoding", self._create_sinusoidal_encoding(max_size, num_channels)
+                "pos_encoding", self._create_sinusoidal_encoding(max_size, num_channels),
             )
 
     def _create_sinusoidal_encoding(
-        self, max_size: int, num_channels: int
+        self, max_size: int, num_channels: int,
     ) -> torch.Tensor:
         """Create sinusoidal positional encoding.
 
@@ -606,7 +606,7 @@ class PositionalEncoding2D(nn.Module):
         # Create frequency bands
         div_term = torch.exp(
             torch.arange(0, half_channels, 2).float()
-            * (-torch.log(torch.tensor(10000.0)) / half_channels)
+            * (-torch.log(torch.tensor(10000.0)) / half_channels),
         )
 
         # Apply sinusoidal encoding to x and y separately
@@ -723,7 +723,7 @@ class SpatialSelfAttention(nn.Module):
         # Create relative position bias table
         num_relative_positions = (2 * h - 1) * (2 * w - 1)
         self.relative_pos_bias_table = nn.Parameter(
-            torch.zeros(num_relative_positions, self.num_heads)
+            torch.zeros(num_relative_positions, self.num_heads),
         )
         nn.init.trunc_normal_(self.relative_pos_bias_table, std=0.02)
 
@@ -979,7 +979,7 @@ class AttentionSpatialEncoder(nn.Module):
                         num_heads=num_heads,
                         dropout=attention_dropout,
                         use_relative_pos=True,
-                    )
+                    ),
                 )
 
         # Final attention layer
@@ -1263,7 +1263,7 @@ class Civ6NetworkV2(nn.Module):
         # Cross-modal attention (if enabled)
         if self.cross_attention is not None:
             spatial_features, vector_features = self.cross_attention(
-                spatial_features, vector_features
+                spatial_features, vector_features,
             )
 
         # Get policy logits and value
@@ -1300,12 +1300,12 @@ class Civ6NetworkV2(nn.Module):
         # Cross-modal attention (if enabled)
         if self.cross_attention is not None:
             spatial_features, vector_features = self.cross_attention(
-                spatial_features, vector_features
+                spatial_features, vector_features,
             )
 
         # Get policy logits with category probabilities
         policy_logits, category_probs = self.policy_head(
-            spatial_features, vector_features, return_category_probs=True
+            spatial_features, vector_features, return_category_probs=True,
         )
         value = self.value_head(spatial_features, vector_features)
 
@@ -1390,7 +1390,7 @@ class Civ6NetworkV2(nn.Module):
             action_mask = action_mask.unsqueeze(0)
 
         policy_logits, category_probs, value = self.forward_with_categories(
-            spatial, vector, action_mask
+            spatial, vector, action_mask,
         )
         policy_probs = F.softmax(policy_logits, dim=-1)
 
