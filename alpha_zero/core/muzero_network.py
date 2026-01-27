@@ -20,14 +20,12 @@ from dataclasses import dataclass, field
 from typing import NamedTuple
 
 import logging
-import warnings
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from alpha_zero.core.civ6_network import (
-    NetworkConfig,
     PolicyHead,
     ResidualBlock,
     SpatialEncoder,
@@ -47,6 +45,26 @@ from alpha_zero.utils.checkpoint import safe_load_checkpoint
 
 # Module logger
 logger = logging.getLogger(__name__)
+
+# Public API - includes backward-compatible re-exports from losses.py
+__all__ = [
+    # Config
+    "MuZeroConfig",
+    # Network classes
+    "MuZeroNetwork",
+    "DynamicsNetwork",
+    "ProjectionHead",
+    "PredictionHead",
+    "ValuePrefixHead",
+    # Output types
+    "MuZeroOutput",
+    "DynamicsOutput",
+    # Re-exported from losses.py for backward compatibility
+    "scalar_to_categorical",
+    "categorical_to_scalar",
+    "compute_muzero_loss",
+    "compute_consistency_loss",
+]
 
 
 @dataclass

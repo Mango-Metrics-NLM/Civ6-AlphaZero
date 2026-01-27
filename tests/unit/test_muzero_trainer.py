@@ -449,9 +449,6 @@ class TestTrajectoryBuffer:
         buffer = TrajectoryBuffer(max_trajectories=100)
         buffer.add_trajectory(sample_trajectory)
 
-        # Store initial priority for comparison
-        _initial_priority = sample_trajectory.priority  # noqa: F841 - stored for debugging
-
         buffer.update_priorities(
             indices=[(0, 5), (0, 10)],
             priorities=[3.0, 4.0],
@@ -619,7 +616,6 @@ class TestMuZeroTrainer:
         batch_size = 4
         action_size = 100
         unroll_steps = 3
-        support_size = 601
 
         return TrajectoryBatchSample(
             spatial=torch.randn(batch_size, 13, 16, 16),

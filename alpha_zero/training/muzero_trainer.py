@@ -1018,10 +1018,9 @@ class MuZeroTrainer:
             # Value loss
             value_k = all_values[k]
             # Ensure correct shape for loss function
-            if not value_is_categorical and value_k.dim() == 1:
-                value_k = value_k  # Keep as (B,) for MSE
-            elif not value_is_categorical and value_k.dim() == 2:
+            if not value_is_categorical and value_k.dim() == 2:
                 value_k = value_k.squeeze(-1)  # (B, 1) -> (B,)
+            # If dim() == 1, keep as-is (already (B,) for MSE)
 
             value_loss_k = compute_value_loss(
                 value_k,
@@ -1034,10 +1033,9 @@ class MuZeroTrainer:
             if k > 0:
                 reward_k = all_rewards[k - 1]
                 # Ensure correct shape for loss function
-                if not reward_is_categorical and reward_k.dim() == 1:
-                    reward_k = reward_k  # Keep as (B,) for MSE
-                elif not reward_is_categorical and reward_k.dim() == 2:
+                if not reward_is_categorical and reward_k.dim() == 2:
                     reward_k = reward_k.squeeze(-1)  # (B, 1) -> (B,)
+                # If dim() == 1, keep as-is (already (B,) for MSE)
 
                 reward_loss_k = compute_reward_loss(
                     reward_k,
