@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Callable, Protocol
+from typing import Any, Protocol
 
 import numpy as np
 import torch
@@ -46,6 +46,47 @@ class MCTSNetwork(Protocol):
         Returns:
             Tuple of (policy_probs, value).
         """
+        ...
+
+
+class ActionSpace(Protocol):
+    """Protocol for action space with size attribute."""
+
+    n: int
+
+
+class MCTSEnvironment(Protocol):
+    """Protocol for environments compatible with MCTS.
+
+    MCTS requires environments that can be cloned for simulation,
+    stepped through, and queried for observations and valid actions.
+
+    Attributes:
+        action_space: Action space with `n` attribute for size.
+        current_player: Index of the current player (for two-player games).
+    """
+
+    action_space: ActionSpace
+    current_player: int
+
+    def clone(self) -> MCTSEnvironment:
+        """Create a deep copy of the environment for simulation."""
+        ...
+
+    def step(self, action: int) -> tuple[Any, float, bool, bool, dict[str, Any]]:
+        """Execute action and return (obs, reward, terminated, truncated, info)."""
+        ...
+
+    def _get_observation(self) -> dict[str, np.ndarray]:
+        """Get current observation dict with 'spatial', 'vector', 'action_mask'."""
+        ...
+
+    def _get_info(self) -> dict[str, Any]:
+        """Get environment info dict (may contain 'winner' key)."""
+        ...
+
+    def get_valid_actions(self) -> np.ndarray:
+        """Get mask of valid actions (1 = valid, 0 = invalid)."""
         ...
 
 
@@ -213,7 +254,7 @@ class Civ6MCTS:
 
     def search(
         self,
-        env,
+        env: MCTSEnvironment,
         add_noise: bool = True,
     ) -> tuple[np.ndarray, float]:
         """Run MCTS search from current state.
@@ -416,11 +457,11 @@ class SimpleMCTS:
         self.rollout_depth = rollout_depth
         self._rng = np.random.default_rng()
 
-    def search(self, env) -> tuple[np.ndarray, float]:
+    def search(self, env: MCTSEnvironment) -> tuple[np.ndarray, float]:
         """Run MCTS search.
 
         Args:
-            env: Game environment.
+            env: Game environment (must support clone(), step(), get_valid_actions()).
 
         Returns:
             Tuple of (action_probs, root_value).
@@ -482,7 +523,7 @@ class SimpleMCTS:
 
         return action_probs, root.value
 
-    def _rollout(self, env) -> float:
+    def _rollout(self, env: MCTSEnvironment) -> float:
         """Perform random rollout.
 
         Args:
@@ -769,7 +810,7 @@ class GumbelMCTS:
 
     def search(
         self,
-        env,
+        env: MCTSEnvironment,
         add_noise: bool = False,  # Not used - Gumbel provides stochasticity
     ) -> tuple[np.ndarray, float]:
         """Run Gumbel MCTS search from current state.
@@ -835,7 +876,7 @@ class GumbelMCTS:
 
     def _sequential_halving(
         self,
-        env,
+        env: MCTSEnvironment,
         root: GumbelMCTSNode,
         candidate_actions: np.ndarray,
         gumbel_scores: np.ndarray,
@@ -905,7 +946,7 @@ class GumbelMCTS:
 
     def _simple_search(
         self,
-        env,
+        env: MCTSEnvironment,
         root: GumbelMCTSNode,
         candidate_actions: np.ndarray,
     ) -> int:
@@ -969,7 +1010,7 @@ class GumbelMCTS:
 
     def _run_simulation_from_action(
         self,
-        env,
+        env: MCTSEnvironment,
         root: GumbelMCTSNode,
         action: int,
     ) -> None:
