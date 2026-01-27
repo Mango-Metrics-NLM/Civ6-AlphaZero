@@ -81,9 +81,11 @@ class MuZeroTrainingConfig:
         support_size: Size of categorical support (for categorical mode).
         min_value: Minimum value in categorical support.
         max_value: Maximum value in categorical support.
-        priority_alpha: Prioritized replay exponent (0 = uniform).
-        priority_beta: Prioritized replay importance sampling exponent.
-        min_priority: Minimum priority to prevent starvation.
+
+    Note:
+        Prioritized experience replay is not yet implemented. Trajectories are
+        sampled uniformly weighted by length. Priority-based sampling (PER)
+        can be added in a future version for improved sample efficiency.
     """
 
     # Unrolling
@@ -117,10 +119,7 @@ class MuZeroTrainingConfig:
     min_value: float = -300.0
     max_value: float = 300.0
 
-    # Priority replay (optional)
-    priority_alpha: float = 0.0  # 0 = uniform sampling
-    priority_beta: float = 1.0
-    min_priority: float = 1e-6
+
 
     def to_loss_config(self) -> LossConfig:
         """Convert to LossConfig for loss computation."""
@@ -163,7 +162,7 @@ class GameTrajectory:
         values: Value targets (e.g., game outcome or n-step return), shape (T,).
         dones: Episode termination flags at each step, shape (T,).
         game_id: Optional identifier for this game.
-        priority: Priority for sampling (used in prioritized replay).
+        priority: Sampling priority for prioritized replay (default 1.0).
     """
 
     observations: list[dict[str, np.ndarray]] = field(default_factory=list)
@@ -361,7 +360,7 @@ class TrajectoryBatchSample:
         observations_vector_unroll: Vector observations for steps 1..K, list of (B, V).
             Used for EfficientZero consistency loss.
         weights: Importance sampling weights, shape (B,).
-        indices: Sample indices in buffer (for priority updates).
+        indices: Source indices for priority updates, list of (traj_idx, pos_idx).
     """
 
     spatial: torch.Tensor
@@ -375,7 +374,8 @@ class TrajectoryBatchSample:
     observations_spatial_unroll: list[torch.Tensor] | None = None  # K tensors of shape (B, C, H, W)
     observations_vector_unroll: list[torch.Tensor] | None = None  # K tensors of shape (B, V)
     weights: torch.Tensor | None = None
-    indices: list[tuple[int, int]] | None = None
+    indices: list[tuple[int, int]] | None = None  # (traj_idx, pos_idx) for each sample
+
 
 
 class TrajectoryBuffer:
@@ -467,6 +467,53 @@ class TrajectoryBuffer:
             f"total={len(self.trajectories)}, positions={self.total_positions}"
         )
 
+    def update_priorities(
+        self,
+        indices: list[tuple[int, int]],
+        priorities: list[float],
+    ) -> None:
+        """Update priorities for sampled positions.
+
+        For prioritized experience replay (PER), this updates trajectory
+        priorities based on TD errors from training. Each trajectory's
+        priority is set to the maximum priority of its sampled positions.
+
+        Args:
+            indices: List of (trajectory_idx, position_idx) tuples.
+            priorities: New priority values for each position.
+
+        Note:
+            Currently updates trajectory-level priorities. Position-level
+            priorities can be implemented for finer-grained control.
+        """
+        if len(indices) != len(priorities):
+            raise ValueError(
+                f"indices ({len(indices)}) and priorities ({len(priorities)}) "
+                "must have same length"
+            )
+
+        # Group priorities by trajectory
+        traj_max_priorities: dict[int, float] = {}
+        for (traj_idx, _pos_idx), priority in zip(indices, priorities):
+            if traj_idx not in traj_max_priorities:
+                traj_max_priorities[traj_idx] = priority
+            else:
+                traj_max_priorities[traj_idx] = max(
+                    traj_max_priorities[traj_idx], priority
+                )
+
+        # Update trajectory priorities
+        for traj_idx, max_priority in traj_max_priorities.items():
+            if 0 <= traj_idx < len(self.trajectories):
+                self.trajectories[traj_idx].priority = max(
+                    self.trajectories[traj_idx].priority,
+                    max_priority,
+                )
+
+        logger.debug(
+            f"Updated priorities for {len(traj_max_priorities)} trajectories"
+        )
+
     def sample_positions(
         self,
         batch_size: int,
@@ -514,7 +561,8 @@ class TrajectoryBuffer:
         # For EfficientZero consistency loss: collect next observations
         all_obs_spatial_unroll = [[] for _ in range(unroll_steps)]
         all_obs_vector_unroll = [[] for _ in range(unroll_steps)]
-        sample_indices = []
+        # Track sampled indices for priority updates
+        sampled_indices: list[tuple[int, int]] = []
 
         for _ in range(batch_size):
             # Sample trajectory
@@ -523,7 +571,9 @@ class TrajectoryBuffer:
 
             # Sample position within trajectory
             pos_idx = np.random.randint(0, len(traj))
-            sample_indices.append((traj_idx, pos_idx))
+
+            # Track index for priority updates
+            sampled_indices.append((int(traj_idx), int(pos_idx)))
 
             # Get initial observation
             obs = traj.observations[pos_idx]
@@ -630,27 +680,10 @@ class TrajectoryBuffer:
             action_masks_unroll=action_masks_unroll_tensors,
             observations_spatial_unroll=obs_spatial_unroll_tensors,
             observations_vector_unroll=obs_vector_unroll_tensors,
-            indices=sample_indices,
+            indices=sampled_indices,
         )
 
-    def update_priorities(
-        self,
-        indices: list[tuple[int, int]],
-        priorities: Sequence[float],
-    ) -> None:
-        """Update priorities for sampled positions.
 
-        Args:
-            indices: List of (trajectory_idx, position_idx) tuples.
-            priorities: New priority values.
-        """
-        for (traj_idx, _), priority in zip(indices, priorities):
-            if traj_idx < len(self.trajectories):
-                self.trajectories[traj_idx].priority = max(
-                    self.trajectories[traj_idx].priority, priority
-                )
-
-        logger.debug(f"Updated priorities for {len(indices)} positions")
 
     @classmethod
     def from_replay_buffer(
