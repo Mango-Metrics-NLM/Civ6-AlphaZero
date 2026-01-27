@@ -1,0 +1,32 @@
+program: run_sweep.py
+method: bayes
+metric:
+  name: training/total_loss
+  goal: minimize
+
+parameters:
+  # Learning rate - critical for convergence
+  lr:
+    distribution: log_uniform_values
+    min: 0.0001
+    max: 0.01
+
+  # Batch size - affects gradient quality
+  batch_size:
+    values: [64, 128, 256]
+
+  # MCTS simulations - quality vs speed tradeoff
+  simulations:
+    values: [4, 8, 16]
+
+  # Network architecture
+  res_blocks:
+    values: [2, 4, 6]
+
+  filters:
+    values: [32, 64, 128]
+
+command:
+  - ${env}
+  - python
+  - ${program}

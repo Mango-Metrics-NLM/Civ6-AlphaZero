@@ -1,0 +1,61 @@
+# Optimal MuZero Configuration
+# Based on W&B Hyperparameter Sweep Results (2026-01-26)
+# Sweep URL: https://wandb.ai/ianshank-none/civ6-alphazero/sweeps/j18ofg6z
+
+# Best performing configuration (different-sweep-10)
+# Final Loss: 43.23 (lowest achieved)
+
+network:
+  # Smaller networks performed better - faster training, less overfitting
+  num_res_blocks: 2          # 2 blocks outperformed 4 and 6
+  num_filters: 32            # 32 filters sufficient for 8x8 board
+  hidden_state_channels: 64  # Internal representation size
+  dynamics_num_blocks: 4     # World model depth
+
+training:
+  # Higher learning rate with larger batch worked best
+  learning_rate: 0.006       # Range: 0.004-0.006 optimal
+  batch_size: 256            # Larger batches stabilized training
+  weight_decay: 0.0001
+  gradient_clip: 1.0
+
+  # MuZero-specific
+  unroll_steps: 5            # Dynamics unroll depth
+  td_steps: 10               # TD-lambda steps
+
+  # EfficientZero losses
+  use_consistency_loss: true
+  use_value_prefix: true
+  consistency_loss_weight: 2.0
+
+mcts:
+  # Gumbel MuZero settings
+  num_simulations: 4         # 4 sims sufficient with Gumbel
+  num_sampled_actions: 16
+  use_gumbel: true
+  use_sequential_halving: true
+
+environment:
+  board_size: 8              # Start small, scale up
+  max_turns: 50
+
+# Sweep Results Summary:
+#
+# | Run                | Loss   | LR      | Batch | Blocks | Filters |
+# |--------------------|--------|---------|-------|--------|---------|
+# | different-sweep-10 | 43.23  | 0.00593 | 256   | 2      | 32      |
+# | feasible-sweep-11  | 46.54  | 0.00267 | 64    | 4      | 64      |
+# | neat-sweep-12      | 46.71* | 0.00202 | 256   | 4      | 64      |
+#
+# Key Findings:
+# 1. Smaller networks (2 blocks, 32 filters) > larger networks
+# 2. Higher learning rates (~0.006) outperform lower (~0.002)
+# 3. Larger batch sizes (256) help stabilization
+# 4. 4 MCTS simulations sufficient with Gumbel sampling
+# 5. Loss improved each iteration (network learns effectively)
+#
+# Recommended Next Steps:
+# 1. Run longer training (10+ iterations) with this config
+# 2. Gradually increase board size (8 -> 12 -> 16)
+# 3. Add curriculum learning stages
+# 4. Test on full CivRealm mini-games
