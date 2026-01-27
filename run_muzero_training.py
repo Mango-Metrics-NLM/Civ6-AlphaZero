@@ -218,7 +218,7 @@ def self_play_game(
 
 
 def _self_play_worker(
-    game_idx: int,
+    _game_idx: int,
     network_state: dict,
     network_config: MuZeroConfig,
     run_config_dict: dict,
