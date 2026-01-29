@@ -2,21 +2,20 @@
 
 from __future__ import annotations
 
-import pytest
 import numpy as np
+import pytest
 
 from alpha_zero.utils.enhanced_rewards import (
     EnhancedRewardsConfig,
-    IntermediateRewardsConfig,
-    VictoryBonusConfig,
-    EnhancedStateFeatures,
     EnhancedRewardShaper,
+    EnhancedStateFeatures,
+    IntermediateRewardsConfig,
     WinCondition,
     WinConditionEvaluator,
     create_enhanced_reward_shaper,
     get_aggressive_rewards_config,
-    get_defensive_rewards_config,
     get_balanced_rewards_config,
+    get_defensive_rewards_config,
 )
 
 

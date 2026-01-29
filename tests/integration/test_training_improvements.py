@@ -5,23 +5,22 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-import pytest
 import numpy as np
+import pytest
 
-from alpha_zero.utils.environment_tuning import (
-    EnvironmentTuningConfig,
-    create_tuned_environment,
-    get_default_fast_config,
-)
-from alpha_zero.utils.enhanced_rewards import (
-    EnhancedRewardsConfig,
-    EnhancedRewardShaper,
-    create_enhanced_reward_shaper,
-)
 from alpha_zero.utils.curriculum_learning import (
     CurriculumConfig,
     CurriculumManager,
     create_curriculum_manager,
+)
+from alpha_zero.utils.enhanced_rewards import (
+    EnhancedRewardsConfig,
+    create_enhanced_reward_shaper,
+)
+from alpha_zero.utils.environment_tuning import (
+    EnvironmentTuningConfig,
+    create_tuned_environment,
+    get_default_fast_config,
 )
 from alpha_zero.utils.training_config_enhanced import (
     EnhancedTrainingConfig,
@@ -384,7 +383,7 @@ class TestResourceManagement:
 
     def test_batch_size_recommendation(self):
         """Test batch size recommendation with real model size."""
-        from alpha_zero.utils.training_config_enhanced import ResourceManager, ResourceConfig
+        from alpha_zero.utils.training_config_enhanced import ResourceConfig, ResourceManager
 
         config = ResourceConfig(max_memory_gb=4.0)  # Simulate limited memory
         manager = ResourceManager(config)

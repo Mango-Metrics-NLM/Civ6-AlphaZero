@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-import json
 import tempfile
 from pathlib import Path
 
 import pytest
 
 from alpha_zero.utils.curriculum_learning import (
+    AdaptiveDifficultyController,
     CurriculumConfig,
+    CurriculumManager,
     CurriculumStage,
     CurriculumState,
-    CurriculumManager,
     DifficultyDimension,
-    AdaptiveDifficultyController,
     create_curriculum_manager,
 )
 

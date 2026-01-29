@@ -6,26 +6,26 @@ including LLM integration with the Civ6 AlphaZero system.
 
 from __future__ import annotations
 
-import asyncio
 import os
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from alpha_zero.core.civ6_network import MicroCivNetwork
+
 # Import core components
 from alpha_zero.envs.microciv import MicroCivEnv
-from alpha_zero.core.civ6_network import MicroCivNetwork
-from alpha_zero.utils.config import ConfigManager, load_config, Civ6Config
-
-# Import new utilities
-from alpha_zero.utils.test_runner import TestRunner, TestConfig, TestResult, TestStatus
 from alpha_zero.utils.agent_tools import (
     CodeExplorer,
+    DebugHelper,
     FileManager,
     TaskTracker,
-    DebugHelper,
 )
+from alpha_zero.utils.config import Civ6Config, ConfigManager, load_config
+
+# Import new utilities
+from alpha_zero.utils.test_runner import TestConfig, TestRunner
 
 # LLM imports (optional)
 try:
@@ -33,8 +33,8 @@ try:
         LLMClient,
         LLMConfig,
         LLMMessage,
-        LLMResponse,
         LLMProvider,
+        LLMResponse,
         create_llm_client,
     )
     LLM_AVAILABLE = True
@@ -338,7 +338,6 @@ class TestFullSystemIntegration:
     def test_game_to_network_pipeline(self):
         """Test complete pipeline from game to network."""
         import torch
-        import numpy as np
 
         # Create environment
         env = MicroCivEnv(board_size=8, seed=42)
@@ -406,11 +405,7 @@ class TestUtilsImports:
         """Test importing logging utilities."""
         from alpha_zero.utils import (
             GameLogger,
-            LogConfig,
-            MetricsTracker,
-            TrainingLogger,
             get_logger,
-            setup_logging,
         )
 
         assert GameLogger is not None
@@ -421,8 +416,6 @@ class TestUtilsImports:
         from alpha_zero.utils import (
             Civ6Config,
             ConfigManager,
-            load_config,
-            save_config,
         )
 
         assert Civ6Config is not None
@@ -432,11 +425,7 @@ class TestUtilsImports:
         """Test importing test runner utilities."""
         from alpha_zero.utils import (
             TestRunner,
-            TestConfig,
-            TestResult,
             TestStatus,
-            run_tests,
-            quick_test,
         )
 
         assert TestRunner is not None
@@ -447,10 +436,6 @@ class TestUtilsImports:
         from alpha_zero.utils import (
             CodeExplorer,
             FileManager,
-            TaskTracker,
-            DebugHelper,
-            explore,
-            search,
         )
 
         assert CodeExplorer is not None
@@ -461,7 +446,6 @@ class TestUtilsImports:
         """Test importing LLM client."""
         from alpha_zero.utils import (
             LLMClient,
-            LLMConfig,
             create_llm_client,
         )
 

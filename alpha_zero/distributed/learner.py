@@ -11,14 +11,11 @@ import os
 import signal
 import time
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.optim.lr_scheduler import MultiStepLR
 
 from alpha_zero.core.civ6_network import MicroCivNetwork, compute_loss
 from alpha_zero.distributed.shared_storage import (
@@ -79,7 +76,7 @@ class LearningRateScheduler:
     def __init__(
         self,
         optimizer: optim.Optimizer,
-        decay_steps: Optional[list[int]] = None,
+        decay_steps: list[int] | None = None,
         decay_rate: float = 0.1,
         warmup_steps: int = 0,
         base_lr: float = 0.001,
@@ -318,7 +315,7 @@ class Learner:
         logger.info(f"Loaded checkpoint from {path} (step {step})")
         return step
 
-    def train_step(self) -> Optional[dict[str, float]]:
+    def train_step(self) -> dict[str, float] | None:
         """Perform a single training step.
 
         Returns:

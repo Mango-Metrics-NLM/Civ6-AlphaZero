@@ -28,7 +28,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -69,7 +69,7 @@ class SchedulePoint:
         return {"iteration": self.iteration, "value": self.value}
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "SchedulePoint":
+    def from_dict(cls, data: dict[str, Any]) -> SchedulePoint:
         """Create from dictionary.
 
         Args:
@@ -244,7 +244,7 @@ class ParameterSchedule:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ParameterSchedule":
+    def from_dict(cls, data: dict[str, Any]) -> ParameterSchedule:
         """Create from dictionary.
 
         Args:
@@ -304,7 +304,7 @@ class ResourceConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ResourceConfig":
+    def from_dict(cls, data: dict[str, Any]) -> ResourceConfig:
         """Create from dictionary.
 
         Args:
@@ -348,11 +348,11 @@ class EnhancedTrainingConfig:
 
     # Batch size
     batch_size: int = 256
-    batch_size_schedule: Optional[ParameterSchedule] = None
+    batch_size_schedule: ParameterSchedule | None = None
 
     # Learning rate
     learning_rate: float = 0.001
-    learning_rate_schedule: Optional[ParameterSchedule] = None
+    learning_rate_schedule: ParameterSchedule | None = None
 
     # Optimizer
     weight_decay: float = 0.0001
@@ -473,7 +473,7 @@ class EnhancedTrainingConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "EnhancedTrainingConfig":
+    def from_dict(cls, data: dict[str, Any]) -> EnhancedTrainingConfig:
         """Create from dictionary.
 
         Args:

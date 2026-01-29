@@ -17,59 +17,50 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import logging
 import os
 import time
 from collections import deque
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
-from tqdm import tqdm
+from tqdm import tqdm  # type: ignore
 
 from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig, SimpleMCTS
 from alpha_zero.core.civ6_network import MicroCivNetwork, compute_loss
 from alpha_zero.envs.microciv import MicroCivEnv
-from alpha_zero.utils.environment_tuning import (
-    create_tuned_environment,
-    get_default_fast_config,
-    get_default_balanced_config,
-    EnvironmentTuningConfig,
+from alpha_zero.utils.curriculum_learning import (
+    CurriculumConfig,
+    CurriculumManager,
 )
 from alpha_zero.utils.enhanced_rewards import (
-    create_enhanced_reward_shaper,
     EnhancedRewardShaper,
+    create_enhanced_reward_shaper,
 )
-from alpha_zero.utils.curriculum_learning import (
-    CurriculumManager,
-    CurriculumConfig,
-)
-from alpha_zero.utils.training_config_enhanced import (
-    create_training_config,
-    get_fast_training_config,
-    EnhancedTrainingConfig,
+from alpha_zero.utils.environment_tuning import (
+    EnvironmentTuningConfig,
+    create_tuned_environment,
+    get_default_balanced_config,
+    get_default_fast_config,
 )
 
 # Import W&B logger (optional)
 try:
-    from alpha_zero.utils.wandb_logger import WandbLogger, WandbConfig
+    from alpha_zero.utils.wandb_logger import WandbConfig, WandbLogger
     WANDB_AVAILABLE = True
 except ImportError:
     WANDB_AVAILABLE = False
     WandbLogger = None  # type: ignore
     WandbConfig = None  # type: ignore
 
+from alpha_zero.utils.logging import get_logger, setup_logging
+
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler()],
-)
-logger = logging.getLogger(__name__)
+setup_logging(log_dir="logs", level="INFO")
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -146,7 +137,18 @@ def self_play_game_enhanced(
     total_base_reward = 0.0
     step_count = 0
 
+    # Hard step limit to prevent infinite loops (e.g. if agent never ends turn)
+    # Use max_turns if available, otherwise default to a safe value
+    max_turns = getattr(env, 'max_turns', 100) or 100
+    max_steps = max_turns * 20
+
     while True:
+        if step_count >= max_steps:
+            logger.warning(f"Game hit hard step limit ({max_steps}) - forcing termination.")
+            # Record truncation in info for statistics
+            info["truncated_by_step_limit"] = True
+            break
+
         # Get MCTS policy
         # Use underlying environment for MCTS
         underlying_env = env.env if hasattr(env, 'env') else env
@@ -182,9 +184,14 @@ def self_play_game_enhanced(
 
     # Assign values based on game outcome
     winner = info.get("winner")
+
+    # Bootstrap value for draws using shaped rewards
+    # Map shaped reward sum to [-0.8, 0.8] range to leave room for terminal win/loss (1.0/-1.0)
+    draw_value = np.tanh(total_shaped_reward) * 0.8 if total_shaped_reward != 0 else 0.0
+
     for hist in game_history:
         if winner is None:
-            value = 0.0  # Draw
+            value = draw_value
         elif winner == hist["player"]:
             value = 1.0
         else:
@@ -338,7 +345,12 @@ def evaluate_network(
     Returns:
         Dictionary with evaluation metrics.
     """
-    env = MicroCivEnv(board_size=board_size, max_turns=max_turns)
+    tuning_config = get_default_balanced_config()
+    tuning_config.max_turns = max_turns
+    tuning_config.board_size = board_size
+    tuning_config.early_termination.enabled = True
+
+    env = create_tuned_environment(tuning_config)
     mcts_config = MCTSConfig(num_simulations=num_simulations)
     mcts = Civ6MCTS(network, mcts_config, device=device)
 
@@ -346,12 +358,15 @@ def evaluate_network(
     total_steps = 0
     rng = np.random.default_rng()
 
+    # Safety limit: max steps per game to prevent infinite loops
+    max_steps_per_game = max_turns * 4  # Allow some margin
+
     for game_idx in range(num_games):
         obs, _ = env.reset()
         network_player = game_idx % 2  # Alternate who goes first
         steps = 0
 
-        while True:
+        while steps < max_steps_per_game:
             if env.current_player == network_player:
                 # Network's turn
                 action_probs, _ = mcts.search(env, add_noise=False)
@@ -371,6 +386,11 @@ def evaluate_network(
                     wins += 1
                 total_steps += steps
                 break
+
+        # Handle step limit reached (treat as draw)
+        if steps >= max_steps_per_game:
+            total_steps += steps
+            logger.warning(f"Eval game {game_idx} hit step limit ({max_steps_per_game})")
 
     return {
         "win_rate": wins / num_games,
@@ -427,7 +447,7 @@ def run_enhanced_training(
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     # Initialize W&B logger
-    wandb_logger: Optional[WandbLogger] = None
+    wandb_logger: WandbLogger | None = None
     if wandb_enabled and WANDB_AVAILABLE:
         wandb_config = WandbConfig(
             enabled=True,
@@ -506,7 +526,7 @@ def run_enhanced_training(
 
     # Initialize environment to get action space size
     temp_env = MicroCivEnv(board_size=current_board_size)
-    action_space_size = temp_env.action_space.n
+    action_space_size = getattr(temp_env.action_space, "n", 391) # MicroCiv has ~391 actions
 
     # Initialize network
     network = MicroCivNetwork(
@@ -540,7 +560,7 @@ def run_enhanced_training(
     replay_buffer = ReplayBuffer(max_size=50000)
 
     # Training history
-    history = {
+    history: dict[str, Any] = {
         "iterations": [],
         "losses": [],
         "win_rates": [],
@@ -590,12 +610,15 @@ def run_enhanced_training(
         if wandb_logger and wandb_logger.is_initialized:
             wins = sum(1 for s in game_stats if s.get("winner") == 0)
             avg_steps = sum(s["steps"] for s in game_stats) / len(game_stats)
+
+            # Use iteration as the step for non-training metrics to keep them sync'd
             wandb_logger.log_selfplay(
                 games_completed=curriculum.get_progress()["total_games"],
                 buffer_size=len(replay_buffer),
                 samples_generated=len(examples),
                 win_rate=wins / len(game_stats),
                 avg_game_length=avg_steps,
+                step=iteration # Explicitly set step to iteration
             )
             # Log curriculum progress
             wandb_logger.log({
@@ -603,7 +626,7 @@ def run_enhanced_training(
                 "curriculum/stage_name": progress["current_stage"],
                 "curriculum/win_rate": progress["win_rate"],
                 "curriculum/total_games": progress["total_games"],
-            })
+            }, step=iteration)
 
         # Training
         if len(replay_buffer) >= batch_size:
@@ -648,8 +671,8 @@ def run_enhanced_training(
             logger.info("Evaluating...")
             eval_metrics = evaluate_network(
                 network=network,
-                board_size=env_config.board_size,
-                max_turns=env_config.max_turns,
+                board_size=int(env_config.board_size or 8),
+                max_turns=int(env_config.max_turns or 100),
                 device=device,
                 num_games=10,
                 num_simulations=num_simulations // 2,
@@ -665,6 +688,7 @@ def run_enhanced_training(
                     games_played=10,
                     average_reward=eval_metrics["win_rate"] * 2 - 1,  # Map to [-1, 1]
                     average_turns=eval_metrics["avg_game_length"],
+                    step=iteration # Use current iteration as step
                 )
 
             # Save checkpoint
@@ -691,8 +715,8 @@ def run_enhanced_training(
 
     final_metrics = evaluate_network(
         network=network,
-        board_size=env_config.board_size,
-        max_turns=env_config.max_turns,
+        board_size=int(env_config.board_size or 8),
+        max_turns=int(env_config.max_turns or 100),
         device=device,
         num_games=20,
         num_simulations=num_simulations,
@@ -762,6 +786,7 @@ def main():
     parser.add_argument("--games", type=int, default=None, help="Override games per iteration")
     parser.add_argument("--batch_size", type=int, default=None, help="Override batch size")
     parser.add_argument("--board_size", type=int, default=None, help="Override board size")
+    parser.add_argument("--simulations", type=int, default=None, help="Override MCTS simulations")
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/enhanced")
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--no-curriculum", action="store_true", help="Disable curriculum learning")
@@ -821,6 +846,8 @@ def main():
         config["batch_size"] = args.batch_size
     if args.board_size:
         config["board_size"] = args.board_size
+    if args.simulations:
+        config["num_simulations"] = args.simulations
 
     # Run training
     history = run_enhanced_training(

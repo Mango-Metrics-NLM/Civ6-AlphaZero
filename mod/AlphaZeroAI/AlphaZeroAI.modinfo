@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Mod id="ALPHAZERO_AI_BRIDGE" version="1.0.0">
+    <Properties>
+        <Name>AlphaZero AI Bridge</Name>
+        <Description>Bridge system for AlphaZero-style AI to play Civilization VI through file-based IPC.</Description>
+        <Teaser>AI agent interface for Civilization VI</Teaser>
+        <Authors>AlphaZero Civ6 Project</Authors>
+        <CompatibleVersions>1.2,2.0</CompatibleVersions>
+    </Properties>
+
+    <ActionCriteria>
+        <Criteria id="ALPHAZERO_AI_ENABLED">
+            <ConfigurationValueMatches>
+                <Group>Game</Group>
+                <ConfigurationId>ALPHAZERO_AI</ConfigurationId>
+                <Value>1</Value>
+            </ConfigurationValueMatches>
+        </Criteria>
+    </ActionCriteria>
+
+    <FrontEndActions>
+        <UpdateDatabase id="ALPHAZERO_AI_SETTINGS">
+            <File>Config/AlphaZeroSettings.xml</File>
+        </UpdateDatabase>
+    </FrontEndActions>
+
+    <InGameActions>
+        <AddGameplayScripts id="ALPHAZERO_AI_SCRIPTS">
+            <Properties>
+                <LoadOrder>100</LoadOrder>
+            </Properties>
+            <File>Scripts/Config.lua</File>
+            <File>Scripts/Logger.lua</File>
+            <File>Scripts/JsonEncoder.lua</File>
+            <File>Scripts/FileIO.lua</File>
+            <File>Scripts/StateExporter.lua</File>
+            <File>Scripts/ActionExecutor.lua</File>
+            <File>Scripts/Main.lua</File>
+        </AddGameplayScripts>
+    </InGameActions>
+
+    <Files>
+        <File>Config/AlphaZeroSettings.xml</File>
+        <File>Scripts/Config.lua</File>
+        <File>Scripts/Logger.lua</File>
+        <File>Scripts/JsonEncoder.lua</File>
+        <File>Scripts/FileIO.lua</File>
+        <File>Scripts/StateExporter.lua</File>
+        <File>Scripts/ActionExecutor.lua</File>
+        <File>Scripts/Main.lua</File>
+    </Files>
+</Mod>

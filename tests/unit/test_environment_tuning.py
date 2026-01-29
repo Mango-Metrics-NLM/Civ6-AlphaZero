@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-import pytest
 import numpy as np
+import pytest
 
 from alpha_zero.utils.environment_tuning import (
-    EnvironmentTuningConfig,
-    EarlyTerminationConfig,
-    ProductionConfig,
     CombatConfig,
     EarlyTerminationChecker,
+    EarlyTerminationConfig,
+    EnvironmentTuningConfig,
+    ProductionConfig,
     TunedEnvironmentWrapper,
     create_tuned_environment,
-    get_default_fast_config,
     get_default_balanced_config,
+    get_default_fast_config,
     get_default_realistic_config,
 )
 

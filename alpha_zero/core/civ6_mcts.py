@@ -9,7 +9,6 @@ Implements PUCT-based MCTS with neural network guidance, supporting:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable
 
 import numpy as np
 import torch
@@ -164,7 +163,7 @@ class Civ6MCTS:
         root = MCTSNode()
 
         # Get initial policy and value from network
-        obs = env._get_observation()
+        obs = env.get_observation()
         spatial = torch.from_numpy(obs["spatial"]).float().to(self.device)
         vector = torch.from_numpy(obs["vector"]).float().to(self.device)
         action_mask = obs["action_mask"]
@@ -197,7 +196,7 @@ class Civ6MCTS:
             # Evaluation
             if terminated or truncated:
                 # Game over: use actual result
-                info = sim_env._get_info()
+                info = sim_env.get_info()
                 winner = info.get("winner")
                 if winner is None:
                     value = 0.0  # Draw
@@ -207,7 +206,7 @@ class Civ6MCTS:
                     value = -1.0
             else:
                 # Use neural network
-                obs = sim_env._get_observation()
+                obs = sim_env.get_observation()
                 spatial = torch.from_numpy(obs["spatial"]).float().to(self.device)
                 vector = torch.from_numpy(obs["vector"]).float().to(self.device)
                 action_mask = obs["action_mask"]
@@ -384,7 +383,7 @@ class SimpleMCTS:
 
             # Evaluation
             if terminated or truncated:
-                info = sim_env._get_info()
+                info = sim_env.get_info()
                 winner = info.get("winner")
                 if winner is None:
                     value = 0.0
@@ -439,7 +438,7 @@ class SimpleMCTS:
             _, _, terminated, truncated, _ = env.step(action)
 
             if terminated or truncated:
-                info = env._get_info()
+                info = env.get_info()
                 winner = info.get("winner")
                 if winner is None:
                     return 0.0

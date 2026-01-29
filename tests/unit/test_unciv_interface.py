@@ -8,29 +8,24 @@ Tests the UncivInterface class and related dataclasses for:
 - Error handling
 """
 
-import json
 import os
 import tempfile
-from pathlib import Path
 
 import numpy as np
 import pytest
 
 from alpha_zero.interfaces import (
-    UncivInterface,
+    UncivActionError,
+    UncivCity,
     UncivGameState,
+    UncivInterface,
+    UncivLoadError,
+    UncivMappings,
+    UncivPlayer,
     UncivTile,
     UncivUnit,
-    UncivCity,
-    UncivPlayer,
-    UncivMappings,
-    UncivLoadError,
-    UncivSaveError,
-    UncivConversionError,
-    UncivActionError,
     create_unciv_interface,
 )
-
 
 # =============================================================================
 # Fixtures

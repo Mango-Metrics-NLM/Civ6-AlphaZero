@@ -13,16 +13,13 @@ import argparse
 import logging
 import os
 import signal
-import sys
 import time
-import yaml
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Optional
 
 import numpy as np
 import torch
 import torch.multiprocessing as mp
+import yaml
 
 from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig
 from alpha_zero.core.civ6_network import MicroCivNetwork
@@ -105,7 +102,7 @@ class CoordinatorConfig:
         Returns:
             CoordinatorConfig instance.
         """
-        with open(path, 'r') as f:
+        with open(path) as f:
             data = yaml.safe_load(f)
 
         # Flatten nested config
@@ -239,11 +236,11 @@ class TrainingCoordinator:
         )
 
         # Actor pool and learner
-        self.actor_pool: Optional[ActorPool] = None
-        self.learner: Optional[Learner] = None
+        self.actor_pool: ActorPool | None = None
+        self.learner: Learner | None = None
 
         # Evaluation network
-        self.eval_network: Optional[MicroCivNetwork] = None
+        self.eval_network: MicroCivNetwork | None = None
 
         # Statistics
         self.start_time = 0.0
@@ -371,7 +368,7 @@ class TrainingCoordinator:
         games_per_hour = (games / elapsed) * 3600 if elapsed > 0 else 0
 
         status_lines = [
-            f"=== Training Status ===",
+            "=== Training Status ===",
             f"Elapsed: {elapsed / 60:.1f} min",
             f"Games: {games} ({games_per_hour:.0f}/hour)",
             f"Training step: {storage_stats['training_step']}",
@@ -615,7 +612,7 @@ def main() -> None:
         logger.info("Dry run mode: using minimal settings")
 
     # Log configuration
-    logger.info(f"Configuration:")
+    logger.info("Configuration:")
     logger.info(f"  Actors: {config.num_actors}")
     logger.info(f"  Batch size: {config.batch_size}")
     logger.info(f"  Learning rate: {config.learning_rate}")

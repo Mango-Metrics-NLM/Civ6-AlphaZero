@@ -14,13 +14,13 @@ Unciv GitHub: https://github.com/yairm210/Unciv
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
-import copy
 from dataclasses import dataclass, field
-from enum import Enum, IntEnum
+from enum import Enum
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import numpy as np
 
@@ -226,13 +226,13 @@ class UncivTile:
     position: tuple[int, int]
     base_terrain: str = "Grassland"
     terrain_features: list[str] = field(default_factory=list)
-    resource: Optional[str] = None
-    improvement: Optional[str] = None
+    resource: str | None = None
+    improvement: str | None = None
     road_status: str = "None"
-    owner: Optional[str] = None
-    worked_by_city: Optional[str] = None
-    military_unit: Optional[str] = None
-    civilian_unit: Optional[str] = None
+    owner: str | None = None
+    worked_by_city: str | None = None
+    military_unit: str | None = None
+    civilian_unit: str | None = None
 
     @classmethod
     def from_unciv_dict(cls, tile_data: dict, position: tuple[int, int]) -> UncivTile:
@@ -318,7 +318,7 @@ class UncivUnit:
     range: int = 1
     promotions: list[str] = field(default_factory=list)
     is_embarked: bool = False
-    action: Optional[str] = None
+    action: str | None = None
 
     @classmethod
     def from_unciv_dict(cls, unit_data: dict) -> UncivUnit:
@@ -421,11 +421,11 @@ class UncivCity:
     is_capital: bool = False
     is_being_razed: bool = False
     is_puppet: bool = False
-    current_construction: Optional[str] = None
+    current_construction: str | None = None
     production_stored: int = 0
     worked_tiles: list[tuple[int, int]] = field(default_factory=list)
     buildings: list[str] = field(default_factory=list)
-    religion: Optional[str] = None
+    religion: str | None = None
     food_stored: int = 0
 
     @classmethod
@@ -526,7 +526,7 @@ class UncivPlayer:
     culture: int = 0
     faith: int = 0
     happiness: int = 0
-    tech_in_progress: Optional[str] = None
+    tech_in_progress: str | None = None
     tech_progress: int = 0
     researched_techs: list[str] = field(default_factory=list)
     policies_adopted: list[str] = field(default_factory=list)
@@ -1039,11 +1039,11 @@ class UncivInterface:
             raise UncivLoadError(f"Game file not found: {path}")
 
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 json_data = json.load(f)
         except json.JSONDecodeError as e:
             raise UncivLoadError(f"Invalid JSON in game file: {e}")
-        except IOError as e:
+        except OSError as e:
             raise UncivLoadError(f"Cannot read game file: {e}")
 
         try:
@@ -1079,12 +1079,12 @@ class UncivInterface:
                 json.dump(json_data, f, indent=2)
 
             logger.info(f"Saved game to {path}")
-        except IOError as e:
+        except OSError as e:
             raise UncivSaveError(f"Cannot write game file: {e}")
         except Exception as e:
             raise UncivSaveError(f"Error saving game state: {e}")
 
-    def convert_to_internal(self, unciv_state: Union[UncivGameState, dict]) -> dict:
+    def convert_to_internal(self, unciv_state: UncivGameState | dict) -> dict:
         """Convert Unciv game state to internal encoder format.
 
         This method converts the Unciv JSON format to the dictionary format
@@ -1531,7 +1531,7 @@ class UncivInterface:
                                     logger.debug(f"Enemy unit destroyed at {target}")
                                 if unit["health"] <= 0:
                                     units.remove(unit)
-                                    logger.debug(f"Attacker unit destroyed")
+                                    logger.debug("Attacker unit destroyed")
 
                                 unit["moves_remaining"] = 0
                                 break
@@ -1666,7 +1666,7 @@ class UncivInterface:
 
     def _map_position_to_internal(
         self, pos: tuple[int, int], map_size: tuple[int, int]
-    ) -> Optional[tuple[int, int]]:
+    ) -> tuple[int, int] | None:
         """Map Unciv coordinates to internal board coordinates.
 
         Args:
@@ -1691,7 +1691,7 @@ class UncivInterface:
 
     def _map_position_from_internal(
         self, pos: tuple[int, int], map_size: tuple[int, int]
-    ) -> Optional[tuple[int, int]]:
+    ) -> tuple[int, int] | None:
         """Map internal board coordinates back to Unciv coordinates.
 
         Args:
@@ -1828,7 +1828,7 @@ class UncivInterface:
 
         return capitals_held / total_players
 
-    def _calculate_science_progress(self, player: Optional[UncivPlayer]) -> float:
+    def _calculate_science_progress(self, player: UncivPlayer | None) -> float:
         """Calculate science victory progress.
 
         Args:
@@ -1844,7 +1844,7 @@ class UncivInterface:
         total_techs = 75  # Approximate total techs in game
         return min(1.0, len(player.researched_techs) / total_techs)
 
-    def _calculate_culture_progress(self, player: Optional[UncivPlayer]) -> float:
+    def _calculate_culture_progress(self, player: UncivPlayer | None) -> float:
         """Calculate culture victory progress.
 
         Args:
@@ -1860,7 +1860,7 @@ class UncivInterface:
         total_policies = 30  # Approximate total policies
         return min(1.0, len(player.policies_adopted) / total_policies)
 
-    def _get_available_techs(self, player: Optional[UncivPlayer]) -> list[int]:
+    def _get_available_techs(self, player: UncivPlayer | None) -> list[int]:
         """Get available technologies for research.
 
         Args:
@@ -1877,7 +1877,7 @@ class UncivInterface:
         # Return next 5 available techs
         return list(range(researched_count, min(researched_count + 5, 73)))
 
-    def _get_available_civics(self, player: Optional[UncivPlayer]) -> list[int]:
+    def _get_available_civics(self, player: UncivPlayer | None) -> list[int]:
         """Get available civics for adoption.
 
         Args:

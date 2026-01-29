@@ -14,8 +14,8 @@ Usage:
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 from alpha_zero.utils.rag_client import RAGClient
 
@@ -41,19 +41,19 @@ class KnowledgeBase:
         if not path.exists():
             logger.warning(f"Directory not found: {path}")
             return 0
-            
+
         logger.info(f"Scanning {path} for {pattern}...")
-        
+
         total_chunks = 0
         documents = []
         metadatas = []
         ids = []
-        
+
         for file_path in path.glob(pattern):
             try:
                 content = file_path.read_text(encoding="utf-8")
                 chunks = list(self._chunk_text(content))
-                
+
                 for i, chunk in enumerate(chunks):
                     documents.append(chunk)
                     metadatas.append({
@@ -61,10 +61,10 @@ class KnowledgeBase:
                         "chunk_index": i
                     })
                     ids.append(f"{file_path.name}_{i}")
-                    
+
                 total_chunks += len(chunks)
                 logger.debug(f"Processed {file_path.name}: {len(chunks)} chunks")
-                
+
             except Exception as e:
                 logger.error(f"Error processing {file_path}: {e}")
 
@@ -74,7 +74,7 @@ class KnowledgeBase:
                 logger.info(f"Successfully ingested {len(documents)} chunks from {directory}")
             else:
                 logger.error("Failed to ingest documents into RAG client")
-        
+
         return total_chunks
 
     def _chunk_text(self, text: str, chunk_size: int = 1000, overlap: int = 100) -> Iterator[str]:
@@ -93,28 +93,28 @@ class KnowledgeBase:
         """
         # Split by headers or paragraphs
         paragraphs = text.split("\n\n")
-        
+
         current_chunk = []
         current_len = 0
-        
+
         for para in paragraphs:
             para = para.strip()
             if not para:
                 continue
-                
+
             para_len = len(para)
-            
+
             # If adding this paragraph exceeds chunk size, yield current chunk
             if current_len + para_len > chunk_size and current_chunk:
                 yield "\n\n".join(current_chunk)
                 current_chunk = []
                 current_len = 0
-            
-            # If paragraph itself is huge, strictly we should split it, 
+
+            # If paragraph itself is huge, strictly we should split it,
             # but for now we just accept it (or specific handling could be added)
             current_chunk.append(para)
             current_len += para_len
-            
+
         if current_chunk:
             yield "\n\n".join(current_chunk)
 

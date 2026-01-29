@@ -28,7 +28,7 @@ import json
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -107,7 +107,7 @@ class CurriculumStage:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "CurriculumStage":
+    def from_dict(cls, data: dict[str, Any]) -> CurriculumStage:
         """Create stage from dictionary.
 
         Args:
@@ -210,7 +210,7 @@ class CurriculumConfig:
         ]
 
     @classmethod
-    def default_three_stage(cls) -> "CurriculumConfig":
+    def default_three_stage(cls) -> CurriculumConfig:
         """Create default three-stage curriculum.
 
         Returns:
@@ -222,7 +222,7 @@ class CurriculumConfig:
         )
 
     @classmethod
-    def default_five_stage(cls) -> "CurriculumConfig":
+    def default_five_stage(cls) -> CurriculumConfig:
         """Create five-stage curriculum for gradual progression.
 
         Returns:
@@ -283,7 +283,7 @@ class CurriculumConfig:
         )
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "CurriculumConfig":
+    def from_dict(cls, data: dict[str, Any]) -> CurriculumConfig:
         """Create configuration from dictionary.
 
         Args:

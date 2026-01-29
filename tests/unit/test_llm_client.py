@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from alpha_zero.utils.llm_client import (
     LLMConfig,
+    LLMConfigError,
+    LLMError,
     LLMMessage,
     LLMProvider,
     LLMResponse,
-    LLMError,
-    LLMConfigError,
 )
 
 
@@ -207,7 +207,7 @@ class TestLLMClientInitialization:
         """Test client initialization with API key."""
         # This test only runs if the openai or anthropic package is installed
         try:
-            from alpha_zero.utils.llm_client import LLMClient, OPENAI_AVAILABLE, ANTHROPIC_AVAILABLE
+            from alpha_zero.utils.llm_client import ANTHROPIC_AVAILABLE, OPENAI_AVAILABLE, LLMClient
 
             if not OPENAI_AVAILABLE and not ANTHROPIC_AVAILABLE:
                 pytest.skip("No LLM packages installed")

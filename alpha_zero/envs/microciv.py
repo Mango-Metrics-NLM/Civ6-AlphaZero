@@ -16,8 +16,8 @@ from typing import Any, SupportsFloat
 
 import gymnasium as gym
 import numpy as np
-import torch
 from gymnasium import spaces
+from gymnasium.core import RenderFrame
 
 from alpha_zero.core.civ6_actions import MicroCivActionSpace
 from alpha_zero.envs.civ6_encoder import MicroCivEncoder
@@ -178,6 +178,7 @@ class MicroCivEnv(gym.Env):
         self.winner: int | None = None
         self._next_unit_id: int = 0
         self._next_city_id: int = 0
+        self.visited: set[tuple[int, int]] = set()  # Track visited tiles
 
     def reset(
         self,
@@ -197,15 +198,15 @@ class MicroCivEnv(gym.Env):
         if seed is not None:
             self._rng = np.random.default_rng(seed)
 
+        self.visited = set()
         self._generate_map()
         self._place_starting_units()
         self.turn = 0
-        self.current_player = 0
         self.done = False
         self.winner = None
 
-        obs = self._get_observation()
-        info = self._get_info()
+        obs = self.get_observation()
+        info = self.get_info()
 
         return obs, info
 
@@ -221,7 +222,7 @@ class MicroCivEnv(gym.Env):
             Tuple of (observation, reward, terminated, truncated, info).
         """
         if self.done:
-            return self._get_observation(), 0.0, True, False, self._get_info()
+            return self.get_observation(), 0.0, True, False, self.get_info()
 
         # Decode and execute action
         action_dict = self.action_space_handler.decode_action(action)
@@ -251,8 +252,8 @@ class MicroCivEnv(gym.Env):
             elif self.winner is not None:
                 reward -= 1.0
 
-        obs = self._get_observation()
-        info = self._get_info()
+        obs = self.get_observation()
+        info = self.get_info()
 
         return obs, reward, terminated, truncated, info
 
@@ -298,10 +299,9 @@ class MicroCivEnv(gym.Env):
                     player=player,
                     unit_type="settler",
                     position=pos,
-                    strength=0,
-                    moves_remaining=2,
                 )
             )
+            self.visited.add(pos)  # Mark start pos as visited
             self._next_unit_id += 1
 
             # Warrior nearby
@@ -316,6 +316,7 @@ class MicroCivEnv(gym.Env):
                     moves_remaining=2,
                 )
             )
+            self.visited.add(warrior_pos)  # Mark warrior pos as visited
             self._next_unit_id += 1
 
     def _find_valid_position(
@@ -368,7 +369,12 @@ class MicroCivEnv(gym.Env):
                     )
                     if self._is_valid_move(new_pos):
                         unit.position = new_pos
+                        if unit.player == self.current_player:
+                            self.visited.add(new_pos)  # Track visitation
                         unit.moves_remaining -= 1
+                    else:
+                        # Move failed, treat as end of unit's actions to prevent lock
+                        unit.moves_remaining = 0
 
         elif action_type == "attack":
             unit_idx = action.get("unit_idx", 0)
@@ -389,6 +395,39 @@ class MicroCivEnv(gym.Env):
             own_units = self._get_player_units(self.current_player)
             if unit_idx < len(own_units):
                 own_units[unit_idx].moves_remaining = 0
+
+        elif action_type == "found_city":
+            unit_idx = action.get("unit_idx", 0)
+            own_units = self._get_player_units(self.current_player)
+            if unit_idx < len(own_units):
+                unit = own_units[unit_idx]
+                if unit.unit_type == "settler":
+                    # Check for nearby cities
+                    has_nearby_city = any(
+                        abs(c.position[0] - unit.position[0]) <= 3
+                        and abs(c.position[1] - unit.position[1]) <= 3
+                        for c in self.cities
+                    )
+                    if not has_nearby_city:
+                        # Found city
+                        city_name = f"City {self._next_city_id}"
+                        self.cities.append(
+                            City(
+                                id=self._next_city_id,
+                                player=unit.player,
+                                name=city_name,
+                                position=unit.position,
+                            )
+                        )
+                        self._next_city_id += 1
+                        unit.moves_remaining = 0  # Action used
+
+                        # Reward for founding city
+                        reward += 1.0
+
+                        # Remove settler
+                        if unit in self.units:
+                            self.units.remove(unit)
 
         elif action_type == "produce":
             city_idx = action.get("city_idx", 0)
@@ -489,7 +528,7 @@ class MicroCivEnv(gym.Env):
         """Process settlers that should found cities."""
         settlers_to_remove = []
         for unit in self.units:
-            if unit.unit_type == "settler" and unit.moves_remaining > 0:
+            if unit.unit_type == "settler":
                 # Auto-found city if on good terrain and no city nearby
                 has_nearby_city = any(
                     abs(c.position[0] - unit.position[0]) <= 3
@@ -569,7 +608,7 @@ class MicroCivEnv(gym.Env):
             "num_players": 2,
         }
 
-    def _get_observation(self) -> dict[str, np.ndarray]:
+    def get_observation(self) -> dict[str, np.ndarray]:
         """Get observation for current player."""
         game_state = self._get_game_state()
         spatial, vector = self.encoder.encode(game_state)
@@ -581,7 +620,7 @@ class MicroCivEnv(gym.Env):
             "action_mask": action_mask,
         }
 
-    def _get_info(self) -> dict[str, Any]:
+    def get_info(self) -> dict[str, Any]:
         """Get info dictionary."""
         return {
             "turn": self.turn,
@@ -595,6 +634,7 @@ class MicroCivEnv(gym.Env):
                 len(self._get_player_cities(0)),
                 len(self._get_player_cities(1)),
             ],
+            "visited_count": len(self.visited),
         }
 
     def get_valid_actions(self) -> np.ndarray:
@@ -606,7 +646,7 @@ class MicroCivEnv(gym.Env):
         game_state = self._get_game_state()
         return self.action_space_handler.get_valid_mask(game_state)
 
-    def render(self) -> str | None:
+    def render(self) -> RenderFrame | list[RenderFrame] | None:
         """Render the environment.
 
         Returns:
@@ -652,7 +692,7 @@ class MicroCivEnv(gym.Env):
         lines.append(f"P1: {len(self._get_player_units(1))} units, "
                     f"{len(self._get_player_cities(1))} cities")
 
-        return "\n".join(lines)
+        return "\n".join(lines)  # type: ignore[return-value]
 
     def clone(self) -> MicroCivEnv:
         """Create a deep copy of the environment.
@@ -675,5 +715,5 @@ class MicroCivEnv(gym.Env):
         new_env.done = self.done
         new_env.winner = self.winner
         new_env._next_unit_id = self._next_unit_id
-        new_env._next_city_id = self._next_city_id
+        new_env.visited = copy.deepcopy(self.visited)
         return new_env

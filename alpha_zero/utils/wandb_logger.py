@@ -36,7 +36,6 @@ import atexit
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -44,8 +43,9 @@ import numpy as np
 
 # Optional wandb import
 try:
-    import wandb
     from wandb.sdk.wandb_run import Run
+
+    import wandb
     WANDB_AVAILABLE = True
 except ImportError:
     WANDB_AVAILABLE = False
@@ -95,7 +95,7 @@ class WandbConfig:
     sweep_id: str | None = None
 
     @classmethod
-    def from_env(cls) -> "WandbConfig":
+    def from_env(cls) -> WandbConfig:
         """Create configuration from environment variables."""
         enabled = os.getenv("WANDB_ENABLED", "false").lower() == "true"
 
@@ -147,7 +147,7 @@ class WandbLogger:
             self.config.enabled = False
 
     @classmethod
-    def from_env(cls) -> "WandbLogger":
+    def from_env(cls) -> WandbLogger:
         """Create logger from environment variables."""
         return cls(WandbConfig.from_env())
 

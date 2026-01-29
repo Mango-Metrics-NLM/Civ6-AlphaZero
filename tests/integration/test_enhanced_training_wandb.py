@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -230,8 +229,9 @@ class TestWandbErrorHandling:
     @patch("run_enhanced_training.WANDB_AVAILABLE", False)
     def test_warning_when_wandb_requested_but_unavailable(self, caplog):
         """Test warning is logged when W&B requested but unavailable."""
-        from run_enhanced_training import run_enhanced_training
         import logging
+
+        from run_enhanced_training import run_enhanced_training
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with caplog.at_level(logging.WARNING):

@@ -6,35 +6,22 @@ logging, and configuration systems.
 
 from __future__ import annotations
 
-import json
-import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-import pytest
 import numpy as np
+import pytest
+
 
 # Test imports work correctly
 def test_distributed_imports() -> None:
     """Test that distributed module imports work."""
     from alpha_zero.distributed import (
-        SharedStorage,
-        SharedStorageConfig,
-        DistributedReplayBuffer,
-        ReplayBufferConfig,
-        TrainingExample,
-        GameTrajectory,
-        WeightSynchronizer,
-        SelfPlayActor,
         ActorConfig,
-        ActorPool,
-        Learner,
-        LearnerConfig,
-        LearningRateScheduler,
-        GradientAccumulator,
-        TrainingCoordinator,
         CoordinatorConfig,
+        LearnerConfig,
+        ReplayBufferConfig,
+        SharedStorageConfig,
     )
     # Verify we can instantiate config classes
     storage_config = SharedStorageConfig()
@@ -53,24 +40,8 @@ def test_distributed_imports() -> None:
 def test_interfaces_imports() -> None:
     """Test that interfaces module imports work."""
     from alpha_zero.interfaces import (
-        UncivInterface,
-        create_unciv_interface,
-        UncivGameState,
-        UncivTile,
-        UncivUnit,
-        UncivCity,
-        UncivPlayer,
         UncivTerrainType,
-        UncivTerrainFeature,
-        UncivResource,
         UncivUnitType,
-        UncivImprovementType,
-        UncivInterfaceError,
-        UncivLoadError,
-        UncivSaveError,
-        UncivConversionError,
-        UncivActionError,
-        UncivMappings,
     )
     # Verify enums have values
     assert len(UncivTerrainType) > 0
@@ -80,22 +51,8 @@ def test_interfaces_imports() -> None:
 def test_utils_imports() -> None:
     """Test that utils module imports work."""
     from alpha_zero.utils import (
-        # Logging
-        GameLogger,
-        LogConfig,
-        MetricsTracker,
-        TrainingLogger,
-        get_logger,
-        setup_logging,
-        timer,
-        timed_section,
         # Configuration
-        Civ6Config,
-        ConfigManager,
-        load_config,
-        save_config,
         get_default_config,
-        merge_configs,
     )
     # Verify we can get defaults
     config = get_default_config()
@@ -127,7 +84,7 @@ class TestConfigIntegration:
 
     def test_config_with_logging_setup(self) -> None:
         """Test configuration integrates with logging setup."""
-        from alpha_zero.utils import get_default_config, setup_logging, LogConfig
+        from alpha_zero.utils import LogConfig, get_default_config
 
         config = get_default_config()
         log_config = LogConfig(
@@ -146,8 +103,8 @@ class TestDistributedComponentIntegration:
 
     def test_shared_storage_config_creation(self) -> None:
         """Test SharedStorage can be configured from Civ6Config."""
-        from alpha_zero.utils import get_default_config
         from alpha_zero.distributed import SharedStorageConfig
+        from alpha_zero.utils import get_default_config
 
         config = get_default_config()
 
@@ -160,8 +117,8 @@ class TestDistributedComponentIntegration:
 
     def test_replay_buffer_config_creation(self) -> None:
         """Test ReplayBuffer can be configured from Civ6Config."""
-        from alpha_zero.utils import get_default_config
         from alpha_zero.distributed import ReplayBufferConfig
+        from alpha_zero.utils import get_default_config
 
         config = get_default_config()
 
@@ -176,8 +133,8 @@ class TestDistributedComponentIntegration:
 
     def test_actor_config_creation(self) -> None:
         """Test Actor can be configured from Civ6Config."""
-        from alpha_zero.utils import get_default_config
         from alpha_zero.distributed import ActorConfig
+        from alpha_zero.utils import get_default_config
 
         config = get_default_config()
 
@@ -196,8 +153,8 @@ class TestDistributedComponentIntegration:
 
     def test_learner_config_creation(self) -> None:
         """Test Learner can be configured from Civ6Config."""
-        from alpha_zero.utils import get_default_config
         from alpha_zero.distributed import LearnerConfig
+        from alpha_zero.utils import get_default_config
 
         config = get_default_config()
 
@@ -215,8 +172,8 @@ class TestDistributedComponentIntegration:
 
     def test_coordinator_config_creation(self) -> None:
         """Test Coordinator can be configured from Civ6Config."""
-        from alpha_zero.utils import get_default_config
         from alpha_zero.distributed import CoordinatorConfig
+        from alpha_zero.utils import get_default_config
 
         config = get_default_config()
 
@@ -235,7 +192,7 @@ class TestUncivInterfaceIntegration:
 
     def test_unciv_terrain_mapping(self) -> None:
         """Test Unciv terrain types map correctly."""
-        from alpha_zero.interfaces import UncivTerrainType, UncivMappings
+        from alpha_zero.interfaces import UncivTerrainType
 
         # Verify all terrain types have mappings
         for terrain in UncivTerrainType:
@@ -244,7 +201,7 @@ class TestUncivInterfaceIntegration:
 
     def test_unciv_unit_mapping(self) -> None:
         """Test Unciv unit types map correctly."""
-        from alpha_zero.interfaces import UncivUnitType, UncivMappings
+        from alpha_zero.interfaces import UncivUnitType
 
         # Verify all unit types have mappings
         for unit_type in UncivUnitType:
@@ -301,7 +258,7 @@ class TestLoggingIntegration:
 
     def test_training_logger_creation(self) -> None:
         """Test TrainingLogger can be created and used."""
-        from alpha_zero.utils import TrainingLogger, LogConfig
+        from alpha_zero.utils import LogConfig, TrainingLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             config = LogConfig(log_dir=tmpdir)
@@ -453,13 +410,13 @@ class TestEndToEndWorkflow:
 
     def test_config_to_components_workflow(self) -> None:
         """Test creating all components from config."""
-        from alpha_zero.utils import load_config, get_default_config
         from alpha_zero.distributed import (
-            CoordinatorConfig,
             ActorConfig,
+            CoordinatorConfig,
             LearnerConfig,
             ReplayBufferConfig,
         )
+        from alpha_zero.utils import get_default_config
 
         # Use default config
         config = get_default_config()
@@ -494,9 +451,9 @@ class TestEndToEndWorkflow:
     def test_logging_with_metrics_workflow(self) -> None:
         """Test logging and metrics tracking workflow."""
         from alpha_zero.utils import (
-            TrainingLogger,
-            MetricsTracker,
             LogConfig,
+            MetricsTracker,
+            TrainingLogger,
             get_default_config,
         )
 

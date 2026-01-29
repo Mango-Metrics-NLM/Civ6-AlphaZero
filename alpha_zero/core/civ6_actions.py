@@ -507,6 +507,7 @@ class MicroCivActionSpace:
     - UNIT_MOVE: max_units * 8 (8 directions)
     - UNIT_ATTACK: max_units * 8 (8 directions)
     - UNIT_SKIP: max_units
+    - UNIT_FOUND_CITY: max_units
     - CITY_PRODUCE: max_cities * num_unit_types
     """
 
@@ -528,7 +529,8 @@ class MicroCivActionSpace:
         self.move_offset = 1
         self.attack_offset = self.move_offset + max_units * 8
         self.skip_offset = self.attack_offset + max_units * 8
-        self.produce_offset = self.skip_offset + max_units
+        self.found_city_offset = self.skip_offset + max_units
+        self.produce_offset = self.found_city_offset + max_units
         self.total_size = self.produce_offset + max_cities * self.num_unit_types
 
         # Direction deltas (8 directions)
@@ -563,11 +565,10 @@ class MicroCivActionSpace:
         terrain = game_state.get("terrain", {})
 
         # Unit movement and attacks
-        for i, unit in enumerate(units):
+        own_units = [u for u in units if u.get("player") == current_player]
+        for i, unit in enumerate(own_units):
             if i >= self.max_units:
                 break
-            if unit.get("player") != current_player:
-                continue
             if unit.get("moves_remaining", 0) <= 0:
                 continue
 
@@ -596,12 +597,22 @@ class MicroCivActionSpace:
             # Skip
             mask[self.skip_offset + i] = 1.0
 
+            # Found City (only for settlers)
+            if unit.get("type") == "settler":
+                # Check for nearby cities
+                has_nearby_city = any(
+                    abs(c.get("position")[0] - pos[0]) <= 3
+                    and abs(c.get("position")[1] - pos[1]) <= 3
+                    for c in cities
+                )
+                if not has_nearby_city:
+                    mask[self.found_city_offset + i] = 1.0
+
         # City production
-        for i, city in enumerate(cities):
+        own_cities = [c for c in cities if c.get("player") == current_player]
+        for i, city in enumerate(own_cities):
             if i >= self.max_cities:
                 break
-            if city.get("player") != current_player:
-                continue
             if city.get("producing") is not None:
                 continue  # Already producing something
 
@@ -638,10 +649,15 @@ class MicroCivActionSpace:
             dx, dy = self.directions[dir_idx]
             return {"type": "attack", "unit_idx": unit_idx, "direction": (dx, dy)}
 
-        if action_idx < self.produce_offset:
+        if action_idx < self.found_city_offset:
             # Skip
             unit_idx = action_idx - self.skip_offset
             return {"type": "skip", "unit_idx": unit_idx}
+
+        if action_idx < self.produce_offset:
+            # Found City
+            unit_idx = action_idx - self.found_city_offset
+            return {"type": "found_city", "unit_idx": unit_idx}
 
         # City production
         local_idx = action_idx - self.produce_offset
@@ -679,6 +695,10 @@ class MicroCivActionSpace:
         if action_type == "skip":
             unit_idx = action.get("unit_idx", 0)
             return self.skip_offset + unit_idx
+
+        if action_type == "found_city":
+            unit_idx = action.get("unit_idx", 0)
+            return self.found_city_offset + unit_idx
 
         if action_type == "produce":
             city_idx = action.get("city_idx", 0)

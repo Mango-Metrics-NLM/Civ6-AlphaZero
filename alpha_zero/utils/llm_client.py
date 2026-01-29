@@ -22,12 +22,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import time
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable, Iterator, TypeVar
+from typing import Any, TypeVar
 
 # Optional imports - gracefully handle missing dependencies
 try:
@@ -39,7 +39,7 @@ except ImportError:
     OpenAI = None
 
 try:
-    from anthropic import AsyncAnthropic, Anthropic
+    from anthropic import Anthropic, AsyncAnthropic
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
@@ -100,7 +100,7 @@ class LLMConfig:
     log_responses: bool = False  # Set to True for debugging, but be careful with sensitive data
 
     @classmethod
-    def from_env(cls) -> "LLMConfig":
+    def from_env(cls) -> LLMConfig:
         """Create configuration from environment variables.
 
         Returns:
@@ -502,7 +502,7 @@ class LLMClient:
             )
 
     @classmethod
-    def from_env(cls) -> "LLMClient":
+    def from_env(cls) -> LLMClient:
         """Create client from environment variables."""
         config = LLMConfig.from_env()
         return cls(config)

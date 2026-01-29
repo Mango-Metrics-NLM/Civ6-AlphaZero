@@ -1,6 +1,5 @@
 """Unit tests for state encoder."""
 
-import numpy as np
 import pytest
 import torch
 

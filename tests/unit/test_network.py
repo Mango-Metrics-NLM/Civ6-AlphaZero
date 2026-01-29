@@ -1,6 +1,5 @@
 """Unit tests for neural network."""
 
-import numpy as np
 import pytest
 import torch
 

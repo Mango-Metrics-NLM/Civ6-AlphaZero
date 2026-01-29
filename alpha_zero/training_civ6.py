@@ -13,8 +13,7 @@ import logging
 import os
 import time
 from collections import deque
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from typing import TypedDict
 
 import numpy as np
@@ -24,7 +23,7 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig, SimpleMCTS
-from alpha_zero.core.civ6_network import Civ6Network, MicroCivNetwork, compute_loss
+from alpha_zero.core.civ6_network import MicroCivNetwork, compute_loss
 from alpha_zero.envs.microciv import MicroCivEnv
 
 # Configure logging

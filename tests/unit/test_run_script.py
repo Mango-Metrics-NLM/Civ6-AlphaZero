@@ -1,9 +1,12 @@
 
 import subprocess
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
+
 import pytest
+
 from run_civ6_ai import main
+
 
 @pytest.fixture
 def mock_subprocess():
@@ -19,11 +22,11 @@ def test_run_script_defaults(mock_subprocess, mock_sys_exit):
     """Test that default arguments construct the correct command."""
     with patch.object(sys, "argv", ["run_civ6_ai.py"]):
         main()
-        
+
     mock_subprocess.assert_called_once()
     args, _ = mock_subprocess.call_args
     cmd = args[0]
-    
+
     assert cmd[0] == sys.executable
     assert "-m" in cmd
     assert "alpha_zero.training_civ6" in cmd
@@ -36,7 +39,7 @@ def test_run_script_debug(mock_subprocess, mock_sys_exit):
     """Test that --debug flag is passed through."""
     with patch.object(sys, "argv", ["run_civ6_ai.py", "--debug"]):
         main()
-        
+
     args, _ = mock_subprocess.call_args
     cmd = args[0]
     assert "--debug" in cmd
@@ -45,7 +48,7 @@ def test_run_script_custom_log_dir(mock_subprocess, mock_sys_exit):
     """Test custom log directory."""
     with patch.object(sys, "argv", ["run_civ6_ai.py", "--log-dir=custom_logs"]):
         main()
-        
+
     args, _ = mock_subprocess.call_args
     cmd = args[0]
     assert "--log_dir=custom_logs" in cmd
@@ -54,7 +57,7 @@ def test_run_script_passthrough(mock_subprocess, mock_sys_exit):
     """Test that unknown args are passed through."""
     with patch.object(sys, "argv", ["run_civ6_ai.py", "--some-arg=value"]):
         main()
-        
+
     args, _ = mock_subprocess.call_args
     cmd = args[0]
     assert "--some-arg=value" in cmd
@@ -62,8 +65,8 @@ def test_run_script_passthrough(mock_subprocess, mock_sys_exit):
 def test_run_script_failure(mock_subprocess, mock_sys_exit):
     """Test error handling."""
     mock_subprocess.side_effect = subprocess.CalledProcessError(1, "cmd")
-    
+
     with patch.object(sys, "argv", ["run_civ6_ai.py"]):
         main()
-        
+
     mock_sys_exit.assert_called_with(1)

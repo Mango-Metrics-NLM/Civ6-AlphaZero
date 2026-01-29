@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -62,10 +62,11 @@ class IntermediateRewardsConfig:
     unit_preservation: float = 0.01
     city_proximity: float = 0.005
     exploration: float = 0.001
-    production_progress: float = 0.002
+    production_progress: float = 0.01  # Increased from 0.002
     combat_engagement: float = 0.01
-    city_founding: float = 0.1
+    city_founding: float = 0.5  # Increased from 0.1
     tech_progress: float = 0.05
+    step_penalty: float = -0.001  # Reduced from -0.005
 
 
 @dataclass
@@ -115,14 +116,14 @@ class EnhancedRewardsConfig:
     )
     potential_weights: dict[str, float] = field(default_factory=lambda: {
         "unit_advantage": 0.1,
-        "city_advantage": 0.2,
+        "city_advantage": 0.3,  # Increased from 0.2
         "health_advantage": 0.05,
-        "territory_advantage": 0.05,
+        "territory_advantage": 0.2, # Increased from 0.05
         "production_advantage": 0.03,
     })
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "EnhancedRewardsConfig":
+    def from_dict(cls, data: dict[str, Any]) -> EnhancedRewardsConfig:
         """Create configuration from dictionary.
 
         Args:
@@ -233,7 +234,7 @@ class EnhancedStateFeatures:
     own_production: int = 0
     enemy_production: int = 0
     units_near_enemy_cities: int = 0
-    explored_tiles: int = 0
+    visited_tiles: int = 0  # Changed from explored_tiles
     total_tiles: int = 64
     turn: int = 0
     max_turns: int = 100
@@ -367,7 +368,7 @@ class EnhancedRewardShaper:
         self.board_size = board_size
 
         self._win_evaluator = WinConditionEvaluator(self.config)
-        self._prev_features: Optional[EnhancedStateFeatures] = None
+        self._prev_features: EnhancedStateFeatures | None = None
         self._episode_rewards: list[float] = []
         self._episode_base_rewards: list[float] = []
         self._logger = get_logger(f"{__name__}.EnhancedRewardShaper")
@@ -430,6 +431,7 @@ class EnhancedRewardShaper:
             max_turns=info.get("max_turns", 200),
             combat_this_turn=info.get("combat_this_turn", False),
             city_founded_this_turn=info.get("city_founded_this_turn", False),
+            visited_tiles=info.get("visited_count", own_territory),  # Use visited count
         )
 
     def compute_potential(self, features: EnhancedStateFeatures) -> float:
@@ -488,7 +490,7 @@ class EnhancedRewardShaper:
         Returns:
             Dictionary of intermediate reward components.
         """
-        rewards = {}
+        rewards: dict[str, float] = {}
         cfg = self.config.intermediate
 
         if prev_features is None:
@@ -514,6 +516,15 @@ class EnhancedRewardShaper:
         # City proximity reward
         if curr_features.units_near_enemy_cities > prev_features.units_near_enemy_cities:
             rewards["city_proximity"] = cfg.city_proximity
+
+        # Exploration reward (based on visited tiles)
+        if curr_features.visited_tiles > (prev_features.visited_tiles if prev_features else 0):
+            rewards["exploration"] = (
+                curr_features.visited_tiles - (prev_features.visited_tiles if prev_features else 0)
+            ) * cfg.exploration
+
+        # Step penalty
+        rewards["step_penalty"] = cfg.step_penalty
 
         return rewards
 
@@ -680,7 +691,7 @@ def get_defensive_rewards_config() -> EnhancedRewardsConfig:
             unit_preservation=0.02,  # Higher preservation
             city_proximity=0.002,  # Lower proximity
             combat_engagement=0.005,  # Lower combat reward
-            city_founding=0.15,  # Higher founding reward
+            city_founding=0.6,  # Higher founding reward (default is 0.5)
         ),
         potential_weights={
             "unit_advantage": 0.05,
