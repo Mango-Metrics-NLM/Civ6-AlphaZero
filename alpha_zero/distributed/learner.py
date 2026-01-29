@@ -23,6 +23,7 @@ from alpha_zero.distributed.shared_storage import (
     SharedStorage,
 )
 from alpha_zero.envs.microciv import MicroCivEnv
+from alpha_zero.utils.checkpoint import safe_load_checkpoint
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +125,7 @@ class LearningRateScheduler:
 
     def get_lr(self) -> float:
         """Get current learning rate."""
-        return self.optimizer.param_groups[0]['lr']
+        return float(self.optimizer.param_groups[0]['lr'])
 
 
 class GradientAccumulator:
@@ -224,7 +225,7 @@ class Learner:
         ).to(config.device)
 
         logger.info(
-            f"Network parameters: {sum(p.numel() for p in self.network.parameters()):,}"
+            f"Network parameters: {sum(p.numel() for p in self.network.parameters()):,}",
         )
 
         # Initialize optimizer
@@ -303,15 +304,29 @@ class Learner:
 
         Returns:
             Training step from checkpoint.
+
+        Note:
+            Checkpoints containing optimizer state may require unsafe loading.
+            Only load checkpoints from trusted sources.
         """
-        # Note: weights_only=False is required to load optimizer state.
-        # Only load checkpoints from trusted sources.
-        checkpoint = torch.load(path, map_location=self.config.device, weights_only=False)
+        result = safe_load_checkpoint(
+            path,
+            map_location=self.config.device,
+            strict_security=False,
+            allow_unsafe_fallback=True,
+        )
+        checkpoint = result.data
+
         self.network.load_state_dict(checkpoint['network_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.lr_scheduler.current_step = checkpoint['lr_scheduler_step']
-        step = checkpoint['step']
+        step = int(checkpoint['step'])
 
+        if not result.loaded_safely:
+            logger.warning(
+                "Checkpoint loaded with weights_only=False due to optimizer state. "
+                "Ensure checkpoint is from a trusted source."
+            )
         logger.info(f"Loaded checkpoint from {path} (step {step})")
         return step
 
@@ -346,7 +361,7 @@ class Learner:
 
         # Compute loss
         total_loss, p_loss, v_loss = compute_loss(
-            policy_logits, value, target_policy, target_value, action_mask
+            policy_logits, value, target_policy, target_value, action_mask,
         )
 
         # Accumulate gradients and step
@@ -389,7 +404,7 @@ class Learner:
                 break
             logger.info(
                 f"Waiting for replay buffer "
-                f"({self.replay_buffer.size()}/{self.config.min_buffer_size})"
+                f"({self.replay_buffer.size()}/{self.config.min_buffer_size})",
             )
             time.sleep(1.0)
 
@@ -410,7 +425,7 @@ class Learner:
                 and self.training_step >= self.config.max_training_steps
             ):
                 logger.info(
-                    f"Reached max training steps ({self.config.max_training_steps})"
+                    f"Reached max training steps ({self.config.max_training_steps})",
                 )
                 break
 
@@ -442,7 +457,7 @@ class Learner:
                     f"loss={avg_total:.4f} "
                     f"(policy={avg_policy:.4f}, value={avg_value:.4f}), "
                     f"lr={losses['learning_rate']:.6f}, "
-                    f"{steps_per_sec:.1f} steps/sec"
+                    f"{steps_per_sec:.1f} steps/sec",
                 )
 
                 # Store in shared storage

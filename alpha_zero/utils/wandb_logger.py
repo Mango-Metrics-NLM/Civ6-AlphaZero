@@ -629,11 +629,11 @@ class WandbLogger:
         Returns:
             Cleaned dictionary with Python native types.
         """
-        cleaned = {}
+        cleaned: dict[str, Any] = {}
         for key, value in data.items():
             if isinstance(value, np.ndarray):
                 if value.size == 1:
-                    cleaned[key] = float(value)
+                    cleaned[key] = float(value.item())
                 else:
                     cleaned[key] = value.tolist()
             elif isinstance(value, (np.floating, np.integer)):

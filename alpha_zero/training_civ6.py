@@ -22,8 +22,14 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig, SimpleMCTS
-from alpha_zero.core.civ6_network import MicroCivNetwork, compute_loss
+from alpha_zero.core.civ6_mcts import (
+    Civ6MCTS,
+    GumbelMCTS,
+    GumbelMCTSConfig,
+    MCTSConfig,
+    SimpleMCTS,
+)
+from alpha_zero.core.civ6_network import Civ6Network, MicroCivNetwork, compute_loss
 from alpha_zero.envs.microciv import MicroCivEnv
 
 # Configure logging
@@ -54,6 +60,13 @@ class TrainingConfig:
     dirichlet_epsilon: float = 0.25
     temperature: float = 1.0
     temperature_threshold: int = 30
+
+    # Gumbel MuZero MCTS (alternative to standard MCTS)
+    use_gumbel_mcts: bool = False
+    gumbel_num_simulations: int = 16
+    gumbel_num_sampled_actions: int = 16
+    gumbel_c_visit: float = 50.0
+    gumbel_use_sequential_halving: bool = True
 
     # Training
     batch_size: int = 128
@@ -161,7 +174,7 @@ class ReplayDataset(Dataset):
 
 def self_play_game(
     env: MicroCivEnv,
-    mcts: Civ6MCTS | SimpleMCTS,
+    mcts: Civ6MCTS | SimpleMCTS | GumbelMCTS,
     config: TrainingConfig,
 ) -> list[TrainingExample]:
     """Play a single self-play game.
@@ -191,7 +204,7 @@ def self_play_game(
                 "action_mask": obs["action_mask"].copy(),
                 "policy": action_probs.copy(),
                 "player": env.current_player,
-            }
+            },
         )
 
         # Select action
@@ -223,7 +236,7 @@ def self_play_game(
                 action_mask=hist["action_mask"],
                 policy=hist["policy"],
                 value=value,
-            )
+            ),
         )
 
     return examples
@@ -250,9 +263,23 @@ def run_self_play(
     env = MicroCivEnv(board_size=config.board_size, max_turns=config.max_turns)
 
     if use_simple_mcts:
-        mcts: Civ6MCTS | SimpleMCTS = SimpleMCTS(
+        mcts: Civ6MCTS | SimpleMCTS | GumbelMCTS = SimpleMCTS(
             num_simulations=config.num_simulations,
             c_puct=config.c_puct,
+        )
+    elif config.use_gumbel_mcts:
+        # Use Gumbel MuZero MCTS for efficient search with few simulations
+        gumbel_config = GumbelMCTSConfig(
+            num_simulations=config.gumbel_num_simulations,
+            num_sampled_actions=config.gumbel_num_sampled_actions,
+            c_visit=config.gumbel_c_visit,
+            use_sequential_halving=config.gumbel_use_sequential_halving,
+            temperature=config.temperature,
+            temperature_threshold=config.temperature_threshold,
+        )
+        mcts = GumbelMCTS(network, gumbel_config, device=config.device)
+        logger.info(
+            f"Using Gumbel MuZero MCTS with {config.gumbel_num_simulations} simulations"
         )
     else:
         mcts_config = MCTSConfig(
@@ -309,7 +336,7 @@ def train_epoch(
 
         # Compute loss
         loss, p_loss, v_loss = compute_loss(
-            policy_logits, value, target_policy, target_value, action_mask
+            policy_logits, value, target_policy, target_value, action_mask,
         )
 
         # Backward pass
@@ -438,7 +465,7 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
         self_play_time = time.time() - start_time
         logger.info(
             f"Self-play: {len(examples)} examples from {num_games} games "
-            f"({self_play_time:.1f}s)"
+            f"({self_play_time:.1f}s)",
         )
 
         # Training
@@ -465,7 +492,7 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
                 losses = train_epoch(network, optimizer, dataloader, config)
                 logger.info(
                     f"Epoch {epoch + 1}: loss={losses['total_loss']:.4f}, "
-                    f"policy={losses['policy_loss']:.4f}, value={losses['value_loss']:.4f}"
+                    f"policy={losses['policy_loss']:.4f}, value={losses['value_loss']:.4f}",
                 )
 
             train_time = time.time() - start_time
@@ -475,13 +502,13 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
         if (iteration + 1) % config.save_interval == 0 or dry_run:
             logger.info("Evaluating against random...")
             win_rate = evaluate_against_random(
-                network, config, num_games=10 if dry_run else 20
+                network, config, num_games=10 if dry_run else 20,
             )
             logger.info(f"Win rate vs random: {win_rate:.1%}")
 
             # Save checkpoint
             checkpoint_path = os.path.join(
-                config.checkpoint_dir, f"checkpoint_{iteration + 1}.pt"
+                config.checkpoint_dir, f"checkpoint_{iteration + 1}.pt",
             )
             network.save(checkpoint_path)
             logger.info(f"Saved checkpoint: {checkpoint_path}")

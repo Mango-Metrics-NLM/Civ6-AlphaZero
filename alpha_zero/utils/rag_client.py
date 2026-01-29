@@ -21,14 +21,14 @@ from typing import Any
 
 try:
     import chromadb
-    from chromadb.config import Settings
+    from chromadb.config import Settings  # noqa: F401
     from chromadb.utils import embedding_functions
     CHROMA_AVAILABLE = True
 except ImportError:
     CHROMA_AVAILABLE = False
 
 try:
-    from sentence_transformers import SentenceTransformer
+    from sentence_transformers import SentenceTransformer  # noqa: F401
     SENTENCE_TRANSFORMERS_AVAILABLE = True
 except ImportError:
     SENTENCE_TRANSFORMERS_AVAILABLE = False
@@ -80,12 +80,12 @@ class RAGClient:
             embedding_func = None
             if SENTENCE_TRANSFORMERS_AVAILABLE:
                 embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(
-                    model_name=self.config.embedding_model
+                    model_name=self.config.embedding_model,
                 )
 
             self.collection = self.client.get_or_create_collection(
                 name=self.config.collection_name,
-                embedding_function=embedding_func
+                embedding_function=embedding_func,
             )
             logger.info(f"RAG initialized at {self.config.persist_directory}, collection: {self.config.collection_name}")
 
@@ -95,18 +95,18 @@ class RAGClient:
             self.collection = None
 
     def add_documents(
-        self,
-        documents: list[str],
-        metadatas: list[dict[str, Any]] | None = None,
-        ids: list[str] | None = None
+        self, 
+        documents: list[str], 
+        metadatas: Optional[list[dict[str, Any]]] = None,
+        ids: Optional[list[str]] = None
     ) -> bool:
         """Add documents to the knowledge base.
-        
+
         Args:
             documents: List of text strings to add.
             metadatas: Optional list of metadata dictionaries.
             ids: Optional list of unique IDs. If None, auto-generated.
-            
+
         Returns:
             True if successful, False otherwise.
         """
@@ -127,7 +127,7 @@ class RAGClient:
             self.collection.add(
                 documents=documents,
                 metadatas=metadatas,
-                ids=ids
+                ids=ids,
             )
             logger.info(f"Added {count} documents to RAG.")
             return True
@@ -137,11 +137,11 @@ class RAGClient:
 
     def query(self, query_text: str, n_results: int | None = None) -> list[str]:
         """Query the knowledge base.
-        
+
         Args:
             query_text: The question or topic to search for.
             n_results: Number of results. Defaults to config.top_k.
-            
+
         Returns:
             List of matching document strings.
         """
@@ -152,12 +152,12 @@ class RAGClient:
             k = n_results or self.config.top_k
             results = self.collection.query(
                 query_texts=[query_text],
-                n_results=k
+                n_results=k,
             )
 
             # results['documents'] is list of list of str
             if results and results['documents']:
-                return results['documents'][0]
+                return list(results['documents'][0])
             return []
 
         except Exception as e:
@@ -168,4 +168,4 @@ class RAGClient:
         """Get number of documents in collection."""
         if not self.collection:
             return 0
-        return self.collection.count()
+        return int(self.collection.count())

@@ -83,6 +83,9 @@ credentials.json
 # mypy
 .mypy_cache/
 
+# Ruff
+.ruff_cache/
+
 # Project specific
 checkpoints/
 logs/
@@ -90,7 +93,7 @@ logs/
 *.pth
 
 # RAG Data
-data/knowledge_db/
+data/
 
 # Weights & Biases
 wandb/
@@ -115,4 +118,5 @@ end_of_log.txt
 end_of_log_utf8.txt
 latest_run_log.txt
 temp_log_tail.txt
+mod/
 nul

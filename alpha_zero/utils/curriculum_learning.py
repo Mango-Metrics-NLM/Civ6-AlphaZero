@@ -169,7 +169,7 @@ class CurriculumConfig:
                 logger.warning(
                     f"Stage levels should be strictly increasing: "
                     f"{self.stages[i-1].name} (level {self.stages[i-1].level}) "
-                    f"and {self.stages[i].name} (level {self.stages[i].level})"
+                    f"and {self.stages[i].name} (level {self.stages[i].level})",
                 )
 
     @staticmethod
@@ -492,7 +492,7 @@ class CurriculumManager:
 
         self._logger.info(
             f"Promoted from {old_stage.name} (level {old_stage.level}) "
-            f"to {new_stage.name} (level {new_stage.level})"
+            f"to {new_stage.name} (level {new_stage.level})",
         )
 
         return {
@@ -529,7 +529,7 @@ class CurriculumManager:
 
         self._logger.info(
             f"Demoted from {old_stage.name} (level {old_stage.level}) "
-            f"to {new_stage.name} (level {new_stage.level})"
+            f"to {new_stage.name} (level {new_stage.level})",
         )
 
         return {
@@ -712,7 +712,7 @@ class AdaptiveDifficultyController:
         if abs(adjustment) > 0.01:
             self._logger.debug(
                 f"Difficulty adjustment: modifier={self._difficulty_modifier:.3f}, "
-                f"win_rate={win_rate:.2f}"
+                f"win_rate={win_rate:.2f}",
             )
 
     def apply_modifier(self, base_params: dict[str, Any]) -> dict[str, Any]:

@@ -108,7 +108,7 @@ class HierarchicalAction:
 
     @classmethod
     def from_flat_index(
-        cls, flat_index: int, action_space: ActionSpace
+        cls, flat_index: int, action_space: ActionSpace,
     ) -> HierarchicalAction:
         """Create hierarchical action from flat index."""
         return action_space.decode(flat_index)
@@ -307,7 +307,7 @@ class ActionSpace:
         return mask
 
     def _get_unit_valid_actions(
-        self, unit: dict, game_state: dict
+        self, unit: dict, game_state: dict,
     ) -> dict[int, list[tuple[int, int]]]:
         """Get valid actions and targets for a unit.
 
@@ -495,7 +495,7 @@ class ActionSpace:
         if len(valid_indices) == 0:
             # Fallback to END_TURN
             return self.category_offsets[ActionCategory.END_TURN]
-        return rng.choice(valid_indices)
+        return int(rng.choice(valid_indices))
 
 
 # Simplified action space for MicroCiv (Phase 1)
@@ -564,60 +564,70 @@ class MicroCivActionSpace:
         cities = game_state.get("cities", [])
         terrain = game_state.get("terrain", {})
 
-        # Unit movement and attacks
-        own_units = [u for u in units if u.get("player") == current_player]
-        for i, unit in enumerate(own_units):
-            if i >= self.max_units:
+        # Get enemy positions for attack checking
+        enemy_positions = {
+            tuple(u.get("position", (-1, -1)))
+            for u in units
+            if u.get("player") != current_player
+        }
+
+        # Unit movement and attacks - use own_unit_idx for current player's units
+        own_unit_idx = 0
+        for unit in units:
+            if own_unit_idx >= self.max_units:
                 break
-            if unit.get("moves_remaining", 0) <= 0:
+            if unit.get("player") != current_player:
                 continue
 
-            pos = unit.get("position", (0, 0))
+            # Now own_unit_idx matches the index in _get_player_units()
+            if unit.get("moves_remaining", 0) > 0:
+                pos = unit.get("position", (0, 0))
 
-            # Movement
-            for dir_idx, (dx, dy) in enumerate(self.directions):
-                nx, ny = pos[0] + dx, pos[1] + dy
-                if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
-                    # Check terrain is passable
-                    tile = terrain.get((nx, ny), {})
-                    if tile.get("type") != "mountain":
-                        mask[self.move_offset + i * 8 + dir_idx] = 1.0
+                # Movement
+                for dir_idx, (dx, dy) in enumerate(self.directions):
+                    nx, ny = pos[0] + dx, pos[1] + dy
+                    if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
+                        # Check terrain is passable
+                        tile = terrain.get((nx, ny), {})
+                        if tile.get("type") != "mountain":
+                            mask[self.move_offset + own_unit_idx * 8 + dir_idx] = 1.0
 
-            # Attacks
-            enemy_positions = {
-                tuple(u.get("position", (-1, -1)))
-                for u in units
-                if u.get("player") != current_player
-            }
-            for dir_idx, (dx, dy) in enumerate(self.directions):
-                nx, ny = pos[0] + dx, pos[1] + dy
-                if (nx, ny) in enemy_positions:
-                    mask[self.attack_offset + i * 8 + dir_idx] = 1.0
+                # Attacks
+                for dir_idx, (dx, dy) in enumerate(self.directions):
+                    nx, ny = pos[0] + dx, pos[1] + dy
+                    if (nx, ny) in enemy_positions:
+                        mask[self.attack_offset + own_unit_idx * 8 + dir_idx] = 1.0
 
-            # Skip
-            mask[self.skip_offset + i] = 1.0
+                # Skip
+                mask[self.skip_offset + own_unit_idx] = 1.0
 
-            # Found City (only for settlers)
-            if unit.get("type") == "settler":
-                # Check for nearby cities
-                has_nearby_city = any(
-                    abs(c.get("position")[0] - pos[0]) <= 3
-                    and abs(c.get("position")[1] - pos[1]) <= 3
-                    for c in cities
-                )
-                if not has_nearby_city:
-                    mask[self.found_city_offset + i] = 1.0
+                # Found City (only for settlers)
+                if unit.get("type") == "settler":
+                    # Check for nearby cities
+                    has_nearby_city = any(
+                        abs(c.get("position")[0] - pos[0]) <= 3
+                        and abs(c.get("position")[1] - pos[1]) <= 3
+                        for c in cities
+                    )
+                    if not has_nearby_city:
+                        mask[self.found_city_offset + own_unit_idx] = 1.0
 
-        # City production
-        own_cities = [c for c in cities if c.get("player") == current_player]
-        for i, city in enumerate(own_cities):
-            if i >= self.max_cities:
+            own_unit_idx += 1
+
+        # City production - use own_city_idx for current player's cities
+        own_city_idx = 0
+        for city in cities:
+            if own_city_idx >= self.max_cities:
                 break
-            if city.get("producing") is not None:
-                continue  # Already producing something
+            if city.get("player") != current_player:
+                continue
 
-            for unit_type in range(self.num_unit_types):
-                mask[self.produce_offset + i * self.num_unit_types + unit_type] = 1.0
+            # Now own_city_idx matches the index in _get_player_cities()
+            if city.get("producing") is None:
+                for unit_type in range(self.num_unit_types):
+                    mask[self.produce_offset + own_city_idx * self.num_unit_types + unit_type] = 1.0
+
+            own_city_idx += 1
 
         return mask
 
@@ -681,19 +691,19 @@ class MicroCivActionSpace:
             return self.end_turn_offset
 
         if action_type == "move":
-            unit_idx = action.get("unit_idx", 0)
+            unit_idx = int(action.get("unit_idx", 0))
             direction = action.get("direction", (0, 0))
             dir_idx = self.directions.index(direction) if direction in self.directions else 0
             return self.move_offset + unit_idx * 8 + dir_idx
 
         if action_type == "attack":
-            unit_idx = action.get("unit_idx", 0)
+            unit_idx = int(action.get("unit_idx", 0))
             direction = action.get("direction", (0, 0))
             dir_idx = self.directions.index(direction) if direction in self.directions else 0
             return self.attack_offset + unit_idx * 8 + dir_idx
 
         if action_type == "skip":
-            unit_idx = action.get("unit_idx", 0)
+            unit_idx = int(action.get("unit_idx", 0))
             return self.skip_offset + unit_idx
 
         if action_type == "found_city":
@@ -701,7 +711,7 @@ class MicroCivActionSpace:
             return self.found_city_offset + unit_idx
 
         if action_type == "produce":
-            city_idx = action.get("city_idx", 0)
+            city_idx = int(action.get("city_idx", 0))
             unit_names = ["warrior", "settler", "archer"]
             unit_type_name = action.get("unit_type", "warrior")
             unit_type = (

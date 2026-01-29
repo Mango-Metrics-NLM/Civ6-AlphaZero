@@ -1,6 +1,6 @@
 """Utility modules for Civ6 AlphaZero.
 
-This package provides logging, debugging, configuration, profiling utilities,
+This package provides logging, debugging, configuration, profiling, benchmarking utilities,
 LLM client integration, test runner, agent tools, and training improvement modules.
 
 Training Improvement Modules:
@@ -10,6 +10,16 @@ Training Improvement Modules:
 - training_config_enhanced: Scalable training configurations
 """
 
+from alpha_zero.utils.logging import (
+    GameLogger,
+    LogConfig,
+    MetricsTracker,
+    TrainingLogger,
+    get_logger,
+    setup_logging,
+    timer,
+    timed_section,
+)
 from alpha_zero.utils.config import (
     ActionSpaceConfig,
     Civ6Config,
@@ -40,7 +50,7 @@ from alpha_zero.utils.logging import (
 
 # LLM Client (optional - depends on openai/anthropic packages)
 try:
-    from alpha_zero.utils.llm_client import (
+    from alpha_zero.utils.llm_client import (  # noqa: F401
         LLMClient,
         LLMConfig,
         LLMError,
@@ -48,8 +58,6 @@ try:
         LLMProvider,
         LLMResponse,
         create_llm_client,
-    )
-    from alpha_zero.utils.llm_client import (
         generate_sync as llm_generate,
     )
     _LLM_AVAILABLE = True
@@ -68,18 +76,6 @@ from alpha_zero.utils.agent_tools import (
     TaskTracker,
     explore,
     find_definition,
-    search,
-)
-from alpha_zero.utils.agent_tools import (
-    TaskStatus as AgentTaskStatus,
-)
-from alpha_zero.utils.test_runner import (
-    TestConfig,
-    TestResult,
-    TestRunner,
-    TestStatus,
-    quick_test,
-    run_tests,
 )
 
 __all__ = [
@@ -108,7 +104,21 @@ __all__ = [
     "load_config",
     "merge_configs",
     "save_config",
-    # Test Runner
+    # Benchmarks
+    "BenchmarkConfig",
+    "BenchmarkResult",
+    "Benchmarker",
+    "BenchmarkSuite",
+    "benchmark_function",
+    "create_mechanics_benchmarks",
+    "run_all_benchmarks",
+    "time_function",
+    # Test Runner (new names)
+    "PytestRunner",
+    "RunConfig",
+    "RunResult",
+    "RunStatus",
+    # Test Runner (backwards compatibility)
     "TestRunner",
     "TestConfig",
     "TestResult",
@@ -145,7 +155,6 @@ if _LLM_AVAILABLE:
 # W&B Logger (optional - depends on wandb package)
 try:
     from alpha_zero.utils.wandb_logger import (
-        WandbConfig,
         WandbLogger,
         get_wandb_logger,
         init_wandb,
@@ -164,9 +173,6 @@ except ImportError:
 
 # RAG Integration (optional - depends on chromadb/sentence-transformers)
 try:
-    from alpha_zero.utils.knowledge_base import (
-        KnowledgeBase,
-    )
     from alpha_zero.utils.rag_client import (
         RAGClient,
         RAGConfig,
@@ -181,15 +187,19 @@ except ImportError:
     _RAG_AVAILABLE = False
 
 # Training Improvement Modules
-from alpha_zero.utils.curriculum_learning import (
-    AdaptiveDifficultyController,
-    CurriculumConfig,
-    CurriculumManager,
-    CurriculumStage,
-    CurriculumState,
-    DifficultyDimension,
-    create_curriculum_manager,
+from alpha_zero.utils.environment_tuning import (
+    EnvironmentTuningConfig,
+    EarlyTerminationConfig,
+    ProductionConfig,
+    CombatConfig,
+    TunedEnvironmentWrapper,
+    EarlyTerminationChecker,
+    create_tuned_environment,
+    get_default_fast_config,
+    get_default_balanced_config,
+    get_default_realistic_config,
 )
+
 from alpha_zero.utils.enhanced_rewards import (
     EnhancedRewardsConfig,
     EnhancedRewardShaper,
@@ -202,19 +212,19 @@ from alpha_zero.utils.enhanced_rewards import (
     get_aggressive_rewards_config,
     get_balanced_rewards_config,
     get_defensive_rewards_config,
+    get_balanced_rewards_config,
 )
-from alpha_zero.utils.environment_tuning import (
-    CombatConfig,
-    EarlyTerminationChecker,
-    EarlyTerminationConfig,
-    EnvironmentTuningConfig,
-    ProductionConfig,
-    TunedEnvironmentWrapper,
-    create_tuned_environment,
-    get_default_balanced_config,
-    get_default_fast_config,
-    get_default_realistic_config,
+
+from alpha_zero.utils.curriculum_learning import (
+    CurriculumConfig,
+    CurriculumStage,
+    CurriculumState,
+    CurriculumManager,
+    DifficultyDimension,
+    AdaptiveDifficultyController,
+    create_curriculum_manager,
 )
+
 from alpha_zero.utils.training_config_enhanced import (
     EnhancedTrainingConfig,
     ParameterSchedule,

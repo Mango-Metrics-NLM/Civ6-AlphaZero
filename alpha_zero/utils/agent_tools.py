@@ -602,7 +602,7 @@ class DebugHelper:
     """Utility for debugging and diagnostics."""
 
     @staticmethod
-    def inspect_object(obj: Any, max_depth: int = 2) -> dict[str, Any]:
+    def inspect_object(obj: Any, max_depth: int = 2) -> Any:
         """Inspect an object and return its structure.
 
         Args:
@@ -610,7 +610,7 @@ class DebugHelper:
             max_depth: Maximum recursion depth.
 
         Returns:
-            Dictionary describing the object.
+            The object's structure (primitives returned as-is, complex objects as dicts).
         """
         def _inspect(o: Any, depth: int) -> Any:
             if depth > max_depth:

@@ -5,10 +5,10 @@ and generating test reports. It integrates with pytest and provides
 a programmatic interface for test execution.
 
 Usage:
-    from alpha_zero.utils.test_runner import TestRunner, TestConfig
+    from alpha_zero.utils.test_runner import PytestRunner, RunConfig
 
     # Create runner from environment
-    runner = TestRunner.from_env()
+    runner = PytestRunner.from_env()
 
     # Run all tests
     result = runner.run_all()
@@ -38,7 +38,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-class TestStatus(Enum):
+class RunStatus(Enum):
     """Test execution status."""
     PASSED = "passed"
     FAILED = "failed"
@@ -48,9 +48,9 @@ class TestStatus(Enum):
 
 
 @dataclass
-class TestResult:
+class RunResult:
     """Result of a test execution."""
-    status: TestStatus
+    status: RunStatus
     total_tests: int = 0
     passed: int = 0
     failed: int = 0
@@ -66,7 +66,7 @@ class TestResult:
     @property
     def success(self) -> bool:
         """Check if all tests passed."""
-        return self.status == TestStatus.PASSED and self.failed == 0 and self.errors == 0
+        return self.status == RunStatus.PASSED and self.failed == 0 and self.errors == 0
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -108,7 +108,7 @@ class TestResult:
 
 
 @dataclass
-class TestConfig:
+class RunConfig:
     """Configuration for test execution."""
 
     # Paths
@@ -141,7 +141,7 @@ class TestConfig:
     keywords: str | None = None
 
     @classmethod
-    def from_env(cls) -> TestConfig:
+    def from_env(cls) -> "TestConfig":
         """Create configuration from environment variables."""
         return cls(
             project_root=Path(os.getenv("PROJECT_ROOT", Path.cwd())),
@@ -154,16 +154,16 @@ class TestConfig:
         )
 
 
-class TestRunner:
+class PytestRunner:
     """Test runner with comprehensive test execution capabilities."""
 
-    def __init__(self, config: TestConfig | None = None):
+    def __init__(self, config: RunConfig | None = None):
         """Initialize test runner.
 
         Args:
             config: Test configuration. If None, uses defaults.
         """
-        self.config = config or TestConfig()
+        self.config = config or RunConfig()
         self._ensure_output_dir()
 
     def _ensure_output_dir(self) -> None:
@@ -172,9 +172,9 @@ class TestRunner:
         output_path.mkdir(parents=True, exist_ok=True)
 
     @classmethod
-    def from_env(cls) -> TestRunner:
+    def from_env(cls) -> "TestRunner":
         """Create runner from environment variables."""
-        return cls(TestConfig.from_env())
+        return cls(RunConfig.from_env())
 
     def _build_pytest_args(
         self,
@@ -253,7 +253,7 @@ class TestRunner:
         test_path: str | None = None,
         extra_args: list[str] | None = None,
         with_coverage: bool = False,
-    ) -> TestResult:
+    ) -> RunResult:
         """Execute pytest and parse results.
 
         Args:
@@ -262,7 +262,7 @@ class TestRunner:
             with_coverage: Whether to include coverage.
 
         Returns:
-            TestResult with execution details.
+            RunResult with execution details.
         """
         args = self._build_pytest_args(test_path, extra_args, with_coverage)
 
@@ -282,14 +282,14 @@ class TestRunner:
             return self._parse_pytest_output(result, duration, with_coverage)
 
         except subprocess.TimeoutExpired:
-            return TestResult(
-                status=TestStatus.ERROR,
+            return RunResult(
+                status=RunStatus.ERROR,
                 duration_seconds=time.time() - start_time,
                 error_output="Test execution timed out",
             )
         except Exception as e:
-            return TestResult(
-                status=TestStatus.ERROR,
+            return RunResult(
+                status=RunStatus.ERROR,
                 duration_seconds=time.time() - start_time,
                 error_output=str(e),
             )
@@ -299,7 +299,7 @@ class TestRunner:
         result: subprocess.CompletedProcess,
         duration: float,
         with_coverage: bool,
-    ) -> TestResult:
+    ) -> RunResult:
         """Parse pytest output to extract results.
 
         Args:
@@ -308,7 +308,7 @@ class TestRunner:
             with_coverage: Whether coverage was included.
 
         Returns:
-            Parsed TestResult.
+            Parsed RunResult.
         """
         output = result.stdout
         error_output = result.stderr
@@ -354,13 +354,13 @@ class TestRunner:
 
         # Determine status
         if result.returncode == 0:
-            status = TestStatus.PASSED
+            status = RunStatus.PASSED
         elif failed > 0 or errors > 0:
-            status = TestStatus.FAILED
+            status = RunStatus.FAILED
         else:
-            status = TestStatus.ERROR
+            status = RunStatus.ERROR
 
-        return TestResult(
+        return RunResult(
             status=status,
             total_tests=total,
             passed=passed,
@@ -374,26 +374,26 @@ class TestRunner:
             failed_tests=failed_tests,
         )
 
-    def run_all(self, with_coverage: bool = True) -> TestResult:
+    def run_all(self, with_coverage: bool = True) -> RunResult:
         """Run all tests.
 
         Args:
             with_coverage: Whether to include coverage reporting.
 
         Returns:
-            TestResult with execution details.
+            RunResult with execution details.
         """
         logger.info("Running all tests...")
         return self._run_pytest(with_coverage=with_coverage)
 
-    def run_unit_tests(self, with_coverage: bool = False) -> TestResult:
+    def run_unit_tests(self, with_coverage: bool = False) -> RunResult:
         """Run only unit tests.
 
         Args:
             with_coverage: Whether to include coverage reporting.
 
         Returns:
-            TestResult with execution details.
+            RunResult with execution details.
         """
         logger.info("Running unit tests...")
         return self._run_pytest(
@@ -401,14 +401,14 @@ class TestRunner:
             with_coverage=with_coverage,
         )
 
-    def run_integration_tests(self, with_coverage: bool = False) -> TestResult:
+    def run_integration_tests(self, with_coverage: bool = False) -> RunResult:
         """Run only integration tests.
 
         Args:
             with_coverage: Whether to include coverage reporting.
 
         Returns:
-            TestResult with execution details.
+            RunResult with execution details.
         """
         logger.info("Running integration tests...")
         return self._run_pytest(
@@ -420,7 +420,7 @@ class TestRunner:
         self,
         test_path: str,
         with_coverage: bool = False,
-    ) -> TestResult:
+    ) -> RunResult:
         """Run specific test file or directory.
 
         Args:
@@ -428,7 +428,7 @@ class TestRunner:
             with_coverage: Whether to include coverage reporting.
 
         Returns:
-            TestResult with execution details.
+            RunResult with execution details.
         """
         logger.info(f"Running tests: {test_path}")
         return self._run_pytest(
@@ -440,7 +440,7 @@ class TestRunner:
         self,
         marker: str,
         with_coverage: bool = False,
-    ) -> TestResult:
+    ) -> RunResult:
         """Run tests with specific marker.
 
         Args:
@@ -448,7 +448,7 @@ class TestRunner:
             with_coverage: Whether to include coverage reporting.
 
         Returns:
-            TestResult with execution details.
+            RunResult with execution details.
         """
         logger.info(f"Running tests with marker: {marker}")
         original_markers = self.config.markers
@@ -463,7 +463,7 @@ class TestRunner:
         self,
         keyword: str,
         with_coverage: bool = False,
-    ) -> TestResult:
+    ) -> RunResult:
         """Run tests matching keyword.
 
         Args:
@@ -471,7 +471,7 @@ class TestRunner:
             with_coverage: Whether to include coverage reporting.
 
         Returns:
-            TestResult with execution details.
+            RunResult with execution details.
         """
         logger.info(f"Running tests matching: {keyword}")
         original_keyword = self.config.keywords
@@ -482,15 +482,15 @@ class TestRunner:
         finally:
             self.config.keywords = original_keyword
 
-    def run_with_coverage(self) -> TestResult:
+    def run_with_coverage(self) -> RunResult:
         """Run all tests with coverage reporting.
 
         Returns:
-            TestResult with coverage details.
+            RunResult with coverage details.
         """
         return self.run_all(with_coverage=True)
 
-    def save_results(self, result: TestResult, filename: str | None = None) -> Path:
+    def save_results(self, result: RunResult, filename: str | None = None) -> Path:
         """Save test results to JSON file.
 
         Args:
@@ -512,7 +512,7 @@ class TestRunner:
         logger.info(f"Results saved to: {output_path}")
         return output_path
 
-    def verify_coverage(self, result: TestResult) -> bool:
+    def verify_coverage(self, result: RunResult) -> bool:
         """Verify coverage meets minimum threshold.
 
         Args:
@@ -529,7 +529,7 @@ class TestRunner:
         if not meets_threshold:
             logger.warning(
                 f"Coverage {result.coverage_percent:.1f}% below threshold "
-                f"{self.config.coverage_min_percent:.1f}%"
+                f"{self.config.coverage_min_percent:.1f}%",
             )
         return meets_threshold
 
@@ -539,7 +539,7 @@ def run_tests(
     test_path: str | None = None,
     with_coverage: bool = True,
     verbose: bool = True,
-) -> TestResult:
+) -> RunResult:
     """Quick function to run tests.
 
     Args:
@@ -548,12 +548,12 @@ def run_tests(
         verbose: Whether to show verbose output.
 
     Returns:
-        TestResult with execution details.
+        RunResult with execution details.
     """
-    config = TestConfig.from_env()
+    config = RunConfig.from_env()
     config.verbose = verbose
 
-    runner = TestRunner(config)
+    runner = PytestRunner(config)
 
     if test_path:
         return runner.run_specific(test_path, with_coverage=with_coverage)
@@ -569,12 +569,12 @@ def quick_test(keyword: str | None = None) -> bool:
     Returns:
         True if tests passed.
     """
-    config = TestConfig(
+    config = RunConfig(
         verbose=False,
         coverage_enabled=False,
         parallel=True,
     )
-    runner = TestRunner(config)
+    runner = PytestRunner(config)
 
     if keyword:
         result = runner.run_by_keyword(keyword)

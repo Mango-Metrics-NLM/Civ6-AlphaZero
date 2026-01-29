@@ -29,11 +29,11 @@ class KnowledgeBase:
 
     def ingest_directory(self, directory: str | Path, pattern: str = "**/*.md") -> int:
         """Ingest all matching files from a directory.
-        
+
         Args:
             directory: Root directory to scan.
             pattern: Glob pattern for files (default: markdown files).
-            
+
         Returns:
             Number of chunks ingested.
         """
@@ -58,7 +58,7 @@ class KnowledgeBase:
                     documents.append(chunk)
                     metadatas.append({
                         "source": str(file_path),
-                        "chunk_index": i
+                        "chunk_index": i,
                     })
                     ids.append(f"{file_path.name}_{i}")
 
@@ -79,21 +79,21 @@ class KnowledgeBase:
 
     def _chunk_text(self, text: str, chunk_size: int = 1000, overlap: int = 100) -> Iterator[str]:
         """Split text into chunks.
-        
+
         Currently implements a simple splitter based on double newlines (paragraphs)
         and then grouping them to fit chunk_size.
-        
+
         Args:
             text: Source text.
             chunk_size: Approximate size of chunk.
             overlap: (Not heavily used in this simple version yet).
-            
+
         Yields:
             Text chunks.
         """
         # Split by headers or paragraphs
         paragraphs = text.split("\n\n")
-
+        
         current_chunk = []
         current_len = 0
 
@@ -122,4 +122,3 @@ class KnowledgeBase:
         """Clear the backend database (if supported)."""
         # Chroma's delete collection or reset logic if needed
         # For now, not exposed to avoid accidental data loss via this API
-        pass

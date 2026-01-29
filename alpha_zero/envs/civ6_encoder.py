@@ -255,7 +255,7 @@ class Civ6StateEncoder:
 
         # Resources (20-69)
         resources = game_state.get("resources", {})
-        for i, (name, count) in enumerate(resources.items()):
+        for i, (_name, count) in enumerate(resources.items()):
             if 20 + i < 70:
                 vector[20 + i] = count / 20.0
 
