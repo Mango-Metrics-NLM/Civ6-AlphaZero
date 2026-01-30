@@ -14,9 +14,10 @@ from __future__ import annotations
 import logging
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Optional, Union
+from typing import Any
 
 from alpha_zero.human_interface.config import HumanInterfaceConfig, InputMode
 
@@ -50,10 +51,10 @@ class ParsedAction:
     """
 
     action_type: ActionType
-    action_index: Optional[int] = None
-    coordinate: Optional[str] = None
+    action_index: int | None = None
+    coordinate: str | None = None
     raw_input: str = ""
-    error_message: Optional[str] = None
+    error_message: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -116,7 +117,7 @@ class ActionParser:
     def parse(
         self,
         input_str: str,
-        valid_actions: Optional[list[int]] = None,
+        valid_actions: list[int] | None = None,
     ) -> ParsedAction:
         """Parse input string into an action.
 
@@ -147,7 +148,7 @@ class ActionParser:
     def _parse_coordinate(
         self,
         input_str: str,
-        valid_actions: Optional[list[int]] = None,
+        valid_actions: list[int] | None = None,
     ) -> ParsedAction:
         """Parse coordinate input (e.g., "A1", "B3").
 
@@ -165,7 +166,7 @@ class ActionParser:
             return ParsedAction(
                 action_type=ActionType.INVALID,
                 raw_input=input_str,
-                error_message=f"Invalid coordinate format. Use letter+number (e.g., A1, B3)",
+                error_message="Invalid coordinate format. Use letter+number (e.g., A1, B3)",
             )
 
         col_letter = match.group(1).upper()
@@ -207,7 +208,7 @@ class ActionParser:
     def _parse_index(
         self,
         input_str: str,
-        valid_actions: Optional[list[int]] = None,
+        valid_actions: list[int] | None = None,
     ) -> ParsedAction:
         """Parse index input (e.g., "0", "5").
 
@@ -224,7 +225,7 @@ class ActionParser:
             return ParsedAction(
                 action_type=ActionType.INVALID,
                 raw_input=input_str,
-                error_message=f"Invalid index. Enter a number.",
+                error_message="Invalid index. Enter a number.",
             )
 
         # Check bounds
@@ -271,7 +272,7 @@ class ActionParser:
         col = index % self._cols
         return f"{chr(ord('A') + col)}{row + 1}"
 
-    def coordinate_to_index(self, coord: str) -> Optional[int]:
+    def coordinate_to_index(self, coord: str) -> int | None:
         """Convert coordinate string to action index.
 
         Args:
@@ -302,7 +303,7 @@ class HumanInputHandler:
 
     def __init__(
         self,
-        config: Optional[HumanInterfaceConfig] = None,
+        config: HumanInterfaceConfig | None = None,
         board_size: tuple[int, int] = (10, 10),
     ):
         """Initialize input handler.
@@ -319,7 +320,7 @@ class HumanInputHandler:
         )
 
         # Callbacks
-        self._on_invalid_input: Optional[Callable[[str], None]] = None
+        self._on_invalid_input: Callable[[str], None] | None = None
         self._input_function: Callable[[str], str] = input
 
         logger.debug("HumanInputHandler initialized")
@@ -346,7 +347,7 @@ class HumanInputHandler:
         self,
         valid_actions: list[int],
         prompt: str = "Enter move: ",
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
     ) -> ParsedAction:
         """Get a valid action from the human player.
 
@@ -445,10 +446,10 @@ class HumanInputHandler:
     def get_number(
         self,
         prompt: str,
-        min_val: Optional[int] = None,
-        max_val: Optional[int] = None,
-        default: Optional[int] = None,
-    ) -> Optional[int]:
+        min_val: int | None = None,
+        max_val: int | None = None,
+        default: int | None = None,
+    ) -> int | None:
         """Get a number from user.
 
         Args:

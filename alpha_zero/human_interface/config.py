@@ -12,10 +12,10 @@ Usage:
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import yaml
 
@@ -126,22 +126,22 @@ class HumanInterfaceConfig:
         # Validate enums
         try:
             BoardTheme(self.board_theme)
-        except ValueError:
+        except ValueError as err:
             valid = [t.value for t in BoardTheme]
             raise ValueError(
                 f"Invalid board_theme: {self.board_theme}. Must be one of {valid}"
-            )
+            ) from err
 
         try:
             InputMode(self.input_mode)
-        except ValueError:
+        except ValueError as err:
             valid = [m.value for m in InputMode]
             raise ValueError(
                 f"Invalid input_mode: {self.input_mode}. Must be one of {valid}"
-            )
+            ) from err
 
     @classmethod
-    def from_yaml(cls, path: Union[str, Path]) -> "HumanInterfaceConfig":
+    def from_yaml(cls, path: str | Path) -> HumanInterfaceConfig:
         """Load configuration from YAML file.
 
         Args:
@@ -165,8 +165,8 @@ class HumanInterfaceConfig:
 
     @classmethod
     def from_env(
-        cls, base_config: Optional["HumanInterfaceConfig"] = None
-    ) -> "HumanInterfaceConfig":
+        cls, base_config: HumanInterfaceConfig | None = None
+    ) -> HumanInterfaceConfig:
         """Create configuration with environment variable overrides.
 
         Environment variables use prefix CIV6AZ_HUMAN_ followed by
@@ -236,7 +236,7 @@ class HumanInterfaceConfig:
             "verbose_logging": self.verbose_logging,
         }
 
-    def save(self, path: Union[str, Path]) -> None:
+    def save(self, path: str | Path) -> None:
         """Save configuration to YAML file.
 
         Args:

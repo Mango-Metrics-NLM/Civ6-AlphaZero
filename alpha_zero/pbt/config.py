@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import numpy as np
 import yaml
@@ -87,7 +87,7 @@ class HyperparameterRange:
                 f"min_value must be positive for log scale '{self.name}'"
             )
 
-    def sample(self, rng: Optional[np.random.Generator] = None) -> Union[float, int, Any]:
+    def sample(self, rng: np.random.Generator | None = None) -> float | int | Any:
         """Sample a value from this range.
 
         Args:
@@ -116,10 +116,10 @@ class HyperparameterRange:
 
     def mutate(
         self,
-        value: Union[float, int, Any],
-        rng: Optional[np.random.Generator] = None,
+        value: float | int | Any,
+        rng: np.random.Generator | None = None,
         mutation_strength: float = 0.2,
-    ) -> Union[float, int, Any]:
+    ) -> float | int | Any:
         """Mutate a value within valid bounds.
 
         Args:
@@ -160,7 +160,7 @@ class HyperparameterRange:
 
         return new_value
 
-    def clip(self, value: Union[float, int, Any]) -> Union[float, int, Any]:
+    def clip(self, value: float | int | Any) -> float | int | Any:
         """Clip value to valid bounds.
 
         Args:
@@ -191,7 +191,7 @@ class HyperparameterRange:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "HyperparameterRange":
+    def from_dict(cls, data: dict[str, Any]) -> HyperparameterRange:
         """Create from dictionary."""
         return cls(
             name=data["name"],
@@ -308,8 +308,8 @@ class HyperparameterSpace:
         return params
 
     def sample_all(
-        self, rng: Optional[np.random.Generator] = None
-    ) -> dict[str, Union[float, int, Any]]:
+        self, rng: np.random.Generator | None = None
+    ) -> dict[str, float | int | Any]:
         """Sample values for all hyperparameters.
 
         Args:
@@ -324,11 +324,11 @@ class HyperparameterSpace:
 
     def mutate_all(
         self,
-        values: dict[str, Union[float, int, Any]],
-        rng: Optional[np.random.Generator] = None,
+        values: dict[str, float | int | Any],
+        rng: np.random.Generator | None = None,
         mutation_strength: float = 0.2,
         mutation_probability: float = 0.8,
-    ) -> dict[str, Union[float, int, Any]]:
+    ) -> dict[str, float | int | Any]:
         """Mutate all hyperparameter values.
 
         Args:
@@ -369,7 +369,7 @@ class HyperparameterSpace:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "HyperparameterSpace":
+    def from_dict(cls, data: dict[str, Any]) -> HyperparameterSpace:
         """Create from dictionary."""
         custom_params = {}
         if "custom_params" in data:
@@ -430,14 +430,14 @@ class AgentState:
     """
 
     agent_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    hyperparameters: dict[str, Union[float, int, Any]] = field(default_factory=dict)
+    hyperparameters: dict[str, float | int | Any] = field(default_factory=dict)
     fitness_score: float = 0.0
     fitness_history: list[float] = field(default_factory=list)
     games_played: int = 0
     training_steps: int = 0
     generation: int = 0
-    parent_id: Optional[str] = None
-    model_path: Optional[str] = None
+    parent_id: str | None = None
+    model_path: str | None = None
     created_at: str = field(
         default_factory=lambda: datetime.utcnow().isoformat()
     )
@@ -475,10 +475,10 @@ class AgentState:
     def clone_with_mutations(
         self,
         hyperparameter_space: HyperparameterSpace,
-        rng: Optional[np.random.Generator] = None,
+        rng: np.random.Generator | None = None,
         mutation_strength: float = 0.2,
         mutation_probability: float = 0.8,
-    ) -> "AgentState":
+    ) -> AgentState:
         """Create a mutated clone of this agent.
 
         Args:
@@ -520,7 +520,7 @@ class AgentState:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "AgentState":
+    def from_dict(cls, data: dict[str, Any]) -> AgentState:
         """Create from dictionary."""
         return cls(
             agent_id=data.get("agent_id", str(uuid.uuid4())[:8]),
@@ -536,7 +536,7 @@ class AgentState:
             last_updated=data.get("last_updated", datetime.utcnow().isoformat()),
         )
 
-    def save(self, path: Union[str, Path]) -> None:
+    def save(self, path: str | Path) -> None:
         """Save agent state to JSON file.
 
         Args:
@@ -548,7 +548,7 @@ class AgentState:
             json.dump(self.to_dict(), f, indent=2)
 
     @classmethod
-    def load(cls, path: Union[str, Path]) -> "AgentState":
+    def load(cls, path: str | Path) -> AgentState:
         """Load agent state from JSON file.
 
         Args:
@@ -650,7 +650,7 @@ class PBTConfig:
             raise ValueError("mutation_strength must be between 0 and 1")
 
     @classmethod
-    def from_yaml(cls, path: Union[str, Path]) -> "PBTConfig":
+    def from_yaml(cls, path: str | Path) -> PBTConfig:
         """Load configuration from YAML file.
 
         Args:
@@ -669,7 +669,7 @@ class PBTConfig:
         return cls._from_dict(data)
 
     @classmethod
-    def from_env(cls, base_config: Optional["PBTConfig"] = None) -> "PBTConfig":
+    def from_env(cls, base_config: PBTConfig | None = None) -> PBTConfig:
         """Create configuration with environment variable overrides.
 
         Args:
@@ -711,7 +711,7 @@ class PBTConfig:
         return config
 
     @classmethod
-    def _from_dict(cls, data: dict[str, Any]) -> "PBTConfig":
+    def _from_dict(cls, data: dict[str, Any]) -> PBTConfig:
         """Create from dictionary, handling nested objects."""
         # Handle hyperparameter_space separately
         hp_space_data = data.pop("hyperparameter_space", None)
@@ -759,7 +759,7 @@ class PBTConfig:
             "convergence_window": self.convergence_window,
         }
 
-    def save(self, path: Union[str, Path]) -> None:
+    def save(self, path: str | Path) -> None:
         """Save configuration to YAML file.
 
         Args:

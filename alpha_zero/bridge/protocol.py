@@ -34,9 +34,10 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +169,7 @@ def _validate_int(
         if default is not None:
             return default
         raise ProtocolValidationError(
-            f"Missing required integer",
+            "Missing required integer",
             field_name=field,
             expected="int",
             actual=None,
@@ -176,18 +177,18 @@ def _validate_int(
 
     try:
         int_val = int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as err:
         ctx = f" in {context}" if context else ""
         raise ProtocolValidationError(
             f"Cannot convert to integer{ctx}",
             field_name=field,
             expected="int-convertible",
             actual=value,
-        )
+        ) from err
 
     if min_val is not None and int_val < min_val:
         raise ProtocolValidationError(
-            f"Value below minimum",
+            "Value below minimum",
             field_name=field,
             expected=f">={min_val}",
             actual=int_val,
@@ -195,7 +196,7 @@ def _validate_int(
 
     if max_val is not None and int_val > max_val:
         raise ProtocolValidationError(
-            f"Value above maximum",
+            "Value above maximum",
             field_name=field,
             expected=f"<={max_val}",
             actual=int_val,
@@ -228,7 +229,7 @@ def _validate_float(
         if default is not None:
             return default
         raise ProtocolValidationError(
-            f"Missing required float",
+            "Missing required float",
             field_name=field,
             expected="float",
             actual=None,
@@ -236,14 +237,14 @@ def _validate_float(
 
     try:
         return float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as err:
         ctx = f" in {context}" if context else ""
         raise ProtocolValidationError(
             f"Cannot convert to float{ctx}",
             field_name=field,
             expected="float-convertible",
             actual=value,
-        )
+        ) from err
 
 
 def _validate_string(
@@ -272,7 +273,7 @@ def _validate_string(
         if default is not None:
             return default
         raise ProtocolValidationError(
-            f"Missing required string",
+            "Missing required string",
             field_name=field,
             expected="str",
             actual=None,
@@ -282,7 +283,7 @@ def _validate_string(
 
     if allowed_values is not None and str_val not in allowed_values:
         raise ProtocolValidationError(
-            f"Value not in allowed set",
+            "Value not in allowed set",
             field_name=field,
             expected=f"one of {allowed_values[:5]}{'...' if len(allowed_values) > 5 else ''}",
             actual=str_val,
@@ -478,14 +479,14 @@ class LuaCommand:
         action_type_raw = _validate_required(data, "action_type", context="LuaCommand")
         try:
             action_type = ActionType(action_type_raw)
-        except ValueError:
+        except ValueError as err:
             valid_actions = [a.value for a in ActionType]
             raise ProtocolValidationError(
                 "Invalid action type",
                 field_name="action_type",
                 expected=f"one of {valid_actions}",
                 actual=action_type_raw,
-            )
+            ) from err
 
         # Parse optional target
         target = None

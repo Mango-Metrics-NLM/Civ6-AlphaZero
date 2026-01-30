@@ -30,13 +30,13 @@ from typing import Any
 
 import torch
 
-logger = logging.getLogger(__name__)
-
 from alpha_zero.bridge.config import MapSizeConfig, get_map_config
 from alpha_zero.bridge.protocol import (
     GameStateData,
 )
 from alpha_zero.envs.civ6_encoder import Civ6StateEncoder, EncoderConfig
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass

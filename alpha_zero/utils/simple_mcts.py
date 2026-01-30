@@ -84,7 +84,7 @@ class MCTSNode:
 
         return q_value + exploration
 
-    def select_child(self, c_puct: float) -> "MCTSNode":
+    def select_child(self, c_puct: float) -> MCTSNode | None:
         """Select child with highest UCB score.
 
         Args:

@@ -1037,9 +1037,9 @@ class UncivInterface:
             with open(file_path, encoding="utf-8") as f:
                 json_data = json.load(f)
         except json.JSONDecodeError as e:
-            raise UncivLoadError(f"Invalid JSON in game file: {e}")
-        except IOError as e:
-            raise UncivLoadError(f"Cannot read game file: {e}")
+            raise UncivLoadError(f"Invalid JSON in game file: {e}") from e
+        except OSError as e:
+            raise UncivLoadError(f"Cannot read game file: {e}") from e
 
         try:
             game_state = UncivGameState.from_unciv_json(json_data)
@@ -1074,8 +1074,8 @@ class UncivInterface:
                 json.dump(json_data, f, indent=2)
 
             logger.info(f"Saved game to {path}")
-        except IOError as e:
-            raise UncivSaveError(f"Cannot write game file: {e}")
+        except OSError as e:
+            raise UncivSaveError(f"Cannot write game file: {e}") from e
         except Exception as e:
             raise UncivSaveError(f"Error saving game state: {e}") from e
 
@@ -1661,7 +1661,7 @@ class UncivInterface:
 
     def _map_position_to_internal(
         self, pos: tuple[int, int], map_size: tuple[int, int]
-    ) -> Optional[tuple[int, int]]:
+    ) -> tuple[int, int] | None:
         """Map Unciv coordinates to internal board coordinates.
 
         Args:
@@ -1686,7 +1686,7 @@ class UncivInterface:
 
     def _map_position_from_internal(
         self, pos: tuple[int, int], map_size: tuple[int, int]
-    ) -> Optional[tuple[int, int]]:
+    ) -> tuple[int, int] | None:
         """Map internal board coordinates back to Unciv coordinates.
 
         Args:

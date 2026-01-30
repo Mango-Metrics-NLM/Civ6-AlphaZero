@@ -93,7 +93,7 @@ class KnowledgeBase:
         """
         # Split by headers or paragraphs
         paragraphs = text.split("\n\n")
-        
+
         current_chunk = []
         current_len = 0
 

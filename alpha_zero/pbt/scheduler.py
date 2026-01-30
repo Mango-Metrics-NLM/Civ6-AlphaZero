@@ -21,10 +21,11 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Optional
+from typing import Any
 
 import numpy as np
 
@@ -296,7 +297,7 @@ class FitnessEvaluator:
     def __init__(
         self,
         games_per_evaluation: int = 20,
-        rng: Optional[np.random.Generator] = None,
+        rng: np.random.Generator | None = None,
     ):
         """Initialize fitness evaluator.
 
@@ -308,13 +309,13 @@ class FitnessEvaluator:
         self.rng = rng or np.random.default_rng()
 
         # Evaluation callbacks
-        self._play_game_fn: Optional[Callable] = None
-        self._get_agent_policy_fn: Optional[Callable] = None
+        self._play_game_fn: Callable | None = None
+        self._get_agent_policy_fn: Callable | None = None
 
     def set_callbacks(
         self,
-        play_game_fn: Optional[Callable] = None,
-        get_agent_policy_fn: Optional[Callable] = None,
+        play_game_fn: Callable | None = None,
+        get_agent_policy_fn: Callable | None = None,
     ) -> None:
         """Set evaluation callbacks.
 
@@ -328,8 +329,8 @@ class FitnessEvaluator:
     def evaluate_agent(
         self,
         agent: AgentState,
-        opponent_agents: Optional[list[AgentState]] = None,
-        opponent_policy: Optional[Callable] = None,
+        opponent_agents: list[AgentState] | None = None,
+        opponent_policy: Callable | None = None,
     ) -> EvaluationResult:
         """Evaluate a single agent.
 
@@ -355,7 +356,7 @@ class FitnessEvaluator:
         draws = 0
         total_reward = 0.0
 
-        for i in range(self.games_per_evaluation):
+        for _i in range(self.games_per_evaluation):
             # Get agent policy
             if self._get_agent_policy_fn:
                 agent_policy = self._get_agent_policy_fn(agent.agent_id)
@@ -407,7 +408,7 @@ class FitnessEvaluator:
     def evaluate_population(
         self,
         agents: list[AgentState],
-        opponent_policy: Optional[Callable] = None,
+        opponent_policy: Callable | None = None,
     ) -> list[EvaluationResult]:
         """Evaluate all agents in the population.
 
@@ -440,7 +441,7 @@ class PBTScheduler:
     def __init__(
         self,
         config: PBTConfig,
-        rng: Optional[np.random.Generator] = None,
+        rng: np.random.Generator | None = None,
     ):
         """Initialize PBT scheduler.
 

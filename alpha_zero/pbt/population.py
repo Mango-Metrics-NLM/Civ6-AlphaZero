@@ -24,18 +24,17 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Any
 
 import numpy as np
 
 from alpha_zero.pbt.config import (
     AgentState,
-    HyperparameterSpace,
     PBTConfig,
     SelectionMethod,
 )
@@ -111,7 +110,7 @@ class PopulationManager:
     def __init__(
         self,
         config: PBTConfig,
-        rng: Optional[np.random.Generator] = None,
+        rng: np.random.Generator | None = None,
     ):
         """Initialize population manager.
 
@@ -127,15 +126,15 @@ class PopulationManager:
         self._stats_history: list[PopulationStats] = []
 
         # Callbacks for weight management
-        self._save_weights_fn: Optional[Callable[[str, str], None]] = None
-        self._load_weights_fn: Optional[Callable[[str, str], None]] = None
-        self._copy_weights_fn: Optional[Callable[[str, str], None]] = None
+        self._save_weights_fn: Callable[[str, str], None] | None = None
+        self._load_weights_fn: Callable[[str, str], None] | None = None
+        self._copy_weights_fn: Callable[[str, str], None] | None = None
 
         logger.info(
             f"PopulationManager initialized with population_size={config.population_size}"
         )
 
-    def initialize(self, existing_agents: Optional[list[AgentState]] = None) -> None:
+    def initialize(self, existing_agents: list[AgentState] | None = None) -> None:
         """Initialize the population with random hyperparameters.
 
         Args:
@@ -148,7 +147,7 @@ class PopulationManager:
                 self._agents[agent.agent_id] = agent
             logger.info(f"Initialized population with {len(existing_agents)} existing agents")
         else:
-            for i in range(self.config.population_size):
+            for _i in range(self.config.population_size):
                 hyperparameters = self.config.hyperparameter_space.sample_all(self.rng)
                 agent = AgentState(hyperparameters=hyperparameters)
                 self._agents[agent.agent_id] = agent
@@ -167,7 +166,7 @@ class PopulationManager:
         """
         return list(self._agents.keys())
 
-    def get_agent(self, agent_id: str) -> Optional[AgentState]:
+    def get_agent(self, agent_id: str) -> AgentState | None:
         """Get agent state by ID.
 
         Args:
@@ -442,7 +441,7 @@ class PopulationManager:
 
         return fitness_std < self.config.convergence_threshold
 
-    def get_best_agent(self) -> Optional[AgentState]:
+    def get_best_agent(self) -> AgentState | None:
         """Get the best performing agent.
 
         Returns:
@@ -457,9 +456,9 @@ class PopulationManager:
 
     def set_weight_callbacks(
         self,
-        save_fn: Optional[Callable[[str, str], None]] = None,
-        load_fn: Optional[Callable[[str, str], None]] = None,
-        copy_fn: Optional[Callable[[str, str], None]] = None,
+        save_fn: Callable[[str, str], None] | None = None,
+        load_fn: Callable[[str, str], None] | None = None,
+        copy_fn: Callable[[str, str], None] | None = None,
     ) -> None:
         """Set callbacks for weight management.
 
@@ -472,7 +471,7 @@ class PopulationManager:
         self._load_weights_fn = load_fn
         self._copy_weights_fn = copy_fn
 
-    def save_checkpoint(self, path: Union[str, Path]) -> None:
+    def save_checkpoint(self, path: str | Path) -> None:
         """Save population state to checkpoint.
 
         Args:
@@ -514,7 +513,7 @@ class PopulationManager:
 
         logger.info(f"Saved checkpoint to {path}")
 
-    def load_checkpoint(self, path: Union[str, Path]) -> None:
+    def load_checkpoint(self, path: str | Path) -> None:
         """Load population state from checkpoint.
 
         Args:
@@ -554,7 +553,7 @@ class PopulationManager:
         stats_file = path / "stats_history.json"
         if stats_file.exists():
             with open(stats_file) as f:
-                stats_data = json.load(f)
+                json.load(f)
             # Note: We don't fully restore stats objects, just keep the data
             self._stats_history = []
 
@@ -563,7 +562,7 @@ class PopulationManager:
             f"generation={self._generation}, agents={len(self._agents)}"
         )
 
-    def cleanup_old_checkpoints(self, checkpoint_dir: Union[str, Path]) -> None:
+    def cleanup_old_checkpoints(self, checkpoint_dir: str | Path) -> None:
         """Remove old checkpoints, keeping only the most recent.
 
         Args:

@@ -134,8 +134,9 @@ local function exportMap(playerId)
         return mapData
     end
 
-    mapData.width = Map.GetGridSize()
-    mapData.height = Map.GetGridSize()
+    local w, h = Map.GetGridSize()
+    mapData.width = w
+    mapData.height = h
 
     local maxTiles = AlphaZeroConfig.Get("MAX_TILES_PER_STATE") or 10000
     local tileCount = 0

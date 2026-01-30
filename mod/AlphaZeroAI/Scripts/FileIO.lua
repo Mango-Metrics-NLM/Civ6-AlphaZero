@@ -17,6 +17,13 @@ local fileModTimes = {}
 
 -- Ensure directory exists
 local function ensureDirectory(path)
+    -- Validate path to prevent command injection
+    -- Only allow alphanumeric, underscore, hyphen, dot, and path separators
+    if path:match('[^%w%._/\\-]') then
+        if Log then Log.Error("Security warning: Invalid characters in path: %s", path) end
+        return
+    end
+
     -- Try to create directory (may fail silently if exists)
     local cmd = 'mkdir "' .. path .. '" 2>nul'
     os.execute(cmd)

@@ -29,7 +29,7 @@ from alpha_zero.core.civ6_mcts import (
     MCTSConfig,
     SimpleMCTS,
 )
-from alpha_zero.core.civ6_network import Civ6Network, MicroCivNetwork, compute_loss
+from alpha_zero.core.civ6_network import MicroCivNetwork, compute_loss
 from alpha_zero.envs.microciv import MicroCivEnv
 
 # Configure logging

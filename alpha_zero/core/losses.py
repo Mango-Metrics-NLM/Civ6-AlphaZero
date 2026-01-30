@@ -32,7 +32,7 @@ Reference:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import NamedTuple, Protocol, runtime_checkable
 
 import torch
@@ -228,7 +228,7 @@ def compute_policy_loss(
 def compute_value_loss(
     pred: torch.Tensor,
     target: torch.Tensor,
-    config: "LossConfig | None" = None,
+    config: LossConfig | None = None,
     reduction: str = "mean",
 ) -> torch.Tensor:
     """Compute loss for value prediction.
@@ -289,7 +289,7 @@ def compute_value_loss(
 def compute_reward_loss(
     pred: torch.Tensor,
     target: torch.Tensor,
-    config: "LossConfig | None" = None,
+    config: LossConfig | None = None,
     reduction: str = "mean",
 ) -> torch.Tensor:
     """Compute loss for reward prediction.
@@ -412,7 +412,7 @@ def compute_consistency_loss(
 def compute_value_prefix_loss(
     pred: torch.Tensor,
     target: torch.Tensor,
-    config: "LossConfig | None" = None,
+    config: LossConfig | None = None,
     reduction: str = "mean",
 ) -> torch.Tensor:
     """Compute loss for value prefix (cumulative reward) prediction.
@@ -937,7 +937,7 @@ class MuZeroLossCalculator:
 
     def _is_alphazero_network(self, network: nn.Module) -> bool:
         """Check if network has AlphaZero interface."""
-        return hasattr(network, "forward") and callable(getattr(network, "forward"))
+        return hasattr(network, "forward") and callable(network.forward)
 
     def _compute_muzero_loss(
         self,
@@ -1068,7 +1068,7 @@ class MuZeroLossCalculator:
                 batch.observations_spatial,
                 batch.observations_vector,
                 batch.target_policies,
-                batch.target_values,
+                batch.target_values, strict=False,
             )
         ):
             action_mask = batch.action_masks[i] if batch.action_masks else None

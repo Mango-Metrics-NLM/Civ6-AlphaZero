@@ -54,8 +54,8 @@ class TestMicroCivActionSpace:
 
     def test_action_space_size(self, action_space):
         """Action space has expected size."""
-        # 1 end_turn + 20*8 move + 20*8 attack + 20 skip + 5*3 produce
-        expected = 1 + 160 + 160 + 20 + 15
+        # 1 end_turn + 20*8 move + 20*8 attack + 20 skip + 20 found_city + 5*3 produce
+        expected = 1 + 160 + 160 + 20 + 20 + 15
         assert action_space.total_size == expected
 
     def test_end_turn_always_valid(self, action_space, sample_game_state):
@@ -135,7 +135,7 @@ class TestMicroCivActionSpace:
         from alpha_zero.envs.microciv import MicroCivEnv
 
         env = MicroCivEnv(board_size=8, max_turns=50)
-        obs, info = env.reset()
+        env.reset()
 
         # Find a settler
         settler = next((u for u in env.units if u.unit_type == "settler"), None)
@@ -158,7 +158,7 @@ class TestMicroCivActionSpace:
         assert mask[action_idx] == 1.0, "FOUND_CITY action should be valid"
 
         # Execute action
-        obs, reward, terminated, truncated, info = env.step(action_idx)
+        obs, reward, terminated, _, info = env.step(action_idx)
 
         # Verify city was founded
         assert any(c.position == settler.position for c in env.cities), "City should be founded at settler position"

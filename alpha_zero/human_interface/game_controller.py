@@ -20,10 +20,11 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Optional, Union
+from typing import Any
 
 import numpy as np
 
@@ -67,11 +68,11 @@ class TurnResult:
     is_human: bool
     reward: float = 0.0
     game_over: bool = False
-    winner: Optional[int] = None
-    state_before: Optional[np.ndarray] = None
-    state_after: Optional[np.ndarray] = None
-    ai_evaluation: Optional[float] = None
-    move_probabilities: Optional[np.ndarray] = None
+    winner: int | None = None
+    state_before: np.ndarray | None = None
+    state_after: np.ndarray | None = None
+    ai_evaluation: float | None = None
+    move_probabilities: np.ndarray | None = None
     thinking_time: float = 0.0
     timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
 
@@ -109,7 +110,7 @@ class GameState:
     human_player: int = 0
     phase: GamePhase = GamePhase.NOT_STARTED
     history: list[TurnResult] = field(default_factory=list)
-    start_time: Optional[str] = None
+    start_time: str | None = None
     valid_actions: list[int] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -147,9 +148,9 @@ class GameController:
 
     def __init__(
         self,
-        config: Optional[HumanInterfaceConfig] = None,
-        game_interface: Optional[Any] = None,
-        ai_agent: Optional[Any] = None,
+        config: HumanInterfaceConfig | None = None,
+        game_interface: Any | None = None,
+        ai_agent: Any | None = None,
     ):
         """Initialize game controller.
 
@@ -163,13 +164,13 @@ class GameController:
         self._ai_agent = ai_agent
 
         self._state = GameState()
-        self._observation: Optional[np.ndarray] = None
+        self._observation: np.ndarray | None = None
         self._undo_stack: list[tuple[np.ndarray, TurnResult]] = []
 
         # Callbacks
-        self._on_turn_complete: Optional[Callable[[TurnResult], None]] = None
-        self._on_game_over: Optional[Callable[[int], None]] = None
-        self._on_ai_thinking: Optional[Callable[[float], None]] = None
+        self._on_turn_complete: Callable[[TurnResult], None] | None = None
+        self._on_game_over: Callable[[int], None] | None = None
+        self._on_ai_thinking: Callable[[float], None] | None = None
 
         logger.info("GameController initialized")
 
@@ -192,7 +193,7 @@ class GameController:
     def start_game(
         self,
         human_player: int = 0,
-        seed: Optional[int] = None,
+        seed: int | None = None,
     ) -> GameState:
         """Start a new game.
 
@@ -251,7 +252,7 @@ class GameController:
         return self._state
 
     @property
-    def current_observation(self) -> Optional[np.ndarray]:
+    def current_observation(self) -> np.ndarray | None:
         """Get current game observation."""
         return self._observation
 
@@ -315,7 +316,7 @@ class GameController:
 
     def play_ai_move(
         self,
-        thinking_time: Optional[float] = None,
+        thinking_time: float | None = None,
     ) -> TurnResult:
         """Let the AI play its move.
 
@@ -372,8 +373,8 @@ class GameController:
         self,
         action: int,
         is_human: bool,
-        ai_evaluation: Optional[float] = None,
-        move_probabilities: Optional[np.ndarray] = None,
+        ai_evaluation: float | None = None,
+        move_probabilities: np.ndarray | None = None,
         thinking_time: float = 0.0,
     ) -> TurnResult:
         """Execute a move and update game state.
@@ -491,7 +492,7 @@ class GameController:
                 self._state.phase = GamePhase.AI_TURN
             logger.info("Game resumed")
 
-    def resign(self, player: Optional[int] = None) -> TurnResult:
+    def resign(self, player: int | None = None) -> TurnResult:
         """Resign the game.
 
         Args:

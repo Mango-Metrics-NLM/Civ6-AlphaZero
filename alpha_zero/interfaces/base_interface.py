@@ -17,10 +17,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 
@@ -110,7 +109,7 @@ class GameConfig:
     observation_channels: int = 13
     vector_dim: int = 64
     action_space_size: int = 1000
-    seed: Optional[int] = None
+    seed: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -143,7 +142,7 @@ class BaseGameInterface(ABC):
         >>> result = interface.step(action)
     """
 
-    def __init__(self, config: Optional[GameConfig] = None):
+    def __init__(self, config: GameConfig | None = None):
         """Initialize the game interface.
 
         Args:
@@ -151,7 +150,7 @@ class BaseGameInterface(ABC):
         """
         self.config = config or GameConfig()
         self._connected = False
-        self._current_state: Optional[dict[str, Any]] = None
+        self._current_state: dict[str, Any] | None = None
 
     @abstractmethod
     def connect(self) -> bool:
@@ -168,7 +167,7 @@ class BaseGameInterface(ABC):
         pass
 
     @abstractmethod
-    def reset(self, seed: Optional[int] = None) -> GameObservation:
+    def reset(self, seed: int | None = None) -> GameObservation:
         """Reset game to initial state.
 
         Args:
@@ -228,7 +227,7 @@ class BaseGameInterface(ABC):
         pass
 
     @abstractmethod
-    def save_state(self, path: Union[str, Path]) -> None:
+    def save_state(self, path: str | Path) -> None:
         """Save current game state to file.
 
         Args:
@@ -237,7 +236,7 @@ class BaseGameInterface(ABC):
         pass
 
     @abstractmethod
-    def load_state(self, path: Union[str, Path]) -> GameObservation:
+    def load_state(self, path: str | Path) -> GameObservation:
         """Load game state from file.
 
         Args:
@@ -248,7 +247,7 @@ class BaseGameInterface(ABC):
         """
         pass
 
-    def render(self, mode: str = "human") -> Optional[np.ndarray]:
+    def render(self, mode: str = "human") -> np.ndarray | None:
         """Render the game state.
 
         Args:
@@ -287,7 +286,7 @@ class DummyGameInterface(BaseGameInterface):
     for testing without a real game backend.
     """
 
-    def __init__(self, config: Optional[GameConfig] = None):
+    def __init__(self, config: GameConfig | None = None):
         """Initialize dummy interface."""
         super().__init__(config)
         self._turn = 0
@@ -303,7 +302,7 @@ class DummyGameInterface(BaseGameInterface):
         """Disconnect."""
         self._connected = False
 
-    def reset(self, seed: Optional[int] = None) -> GameObservation:
+    def reset(self, seed: int | None = None) -> GameObservation:
         """Reset game."""
         if seed is not None:
             self._rng = np.random.default_rng(seed)
@@ -364,7 +363,7 @@ class DummyGameInterface(BaseGameInterface):
         """Get current player."""
         return self._turn % self.config.max_players
 
-    def save_state(self, path: Union[str, Path]) -> None:
+    def save_state(self, path: str | Path) -> None:
         """Save state."""
         import json
         path = Path(path)
@@ -376,7 +375,7 @@ class DummyGameInterface(BaseGameInterface):
                 "config": self.config.to_dict(),
             }, f)
 
-    def load_state(self, path: Union[str, Path]) -> GameObservation:
+    def load_state(self, path: str | Path) -> GameObservation:
         """Load state."""
         import json
         with open(path) as f:
@@ -407,7 +406,7 @@ class GameAdapter:
     def __init__(
         self,
         backend: str = "dummy",
-        config: Optional[GameConfig] = None,
+        config: GameConfig | None = None,
         **kwargs,
     ):
         """Initialize game adapter.
@@ -434,7 +433,7 @@ class GameAdapter:
         """Disconnect from backend."""
         self._interface.disconnect()
 
-    def reset(self, seed: Optional[int] = None) -> GameObservation:
+    def reset(self, seed: int | None = None) -> GameObservation:
         """Reset game."""
         return self._interface.reset(seed)
 
@@ -454,11 +453,11 @@ class GameAdapter:
         """Get game status."""
         return self._interface.get_game_status()
 
-    def save_state(self, path: Union[str, Path]) -> None:
+    def save_state(self, path: str | Path) -> None:
         """Save state."""
         self._interface.save_state(path)
 
-    def load_state(self, path: Union[str, Path]) -> GameObservation:
+    def load_state(self, path: str | Path) -> GameObservation:
         """Load state."""
         return self._interface.load_state(path)
 

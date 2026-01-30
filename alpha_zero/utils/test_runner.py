@@ -141,7 +141,7 @@ class RunConfig:
     keywords: str | None = None
 
     @classmethod
-    def from_env(cls) -> "TestConfig":
+    def from_env(cls) -> RunConfig:
         """Create configuration from environment variables."""
         return cls(
             project_root=Path(os.getenv("PROJECT_ROOT", Path.cwd())),
@@ -172,7 +172,7 @@ class PytestRunner:
         output_path.mkdir(parents=True, exist_ok=True)
 
     @classmethod
-    def from_env(cls) -> "TestRunner":
+    def from_env(cls) -> PytestRunner:
         """Create runner from environment variables."""
         return cls(RunConfig.from_env())
 

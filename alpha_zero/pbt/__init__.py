@@ -12,10 +12,10 @@ Components:
 """
 
 from alpha_zero.pbt.config import (
+    AgentState,
     HyperparameterRange,
     HyperparameterSpace,
     PBTConfig,
-    AgentState,
     SelectionMethod,
 )
 

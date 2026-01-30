@@ -25,12 +25,11 @@ import logging
 import math
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional, Tuple
+from typing import Any
 
 from alpha_zero.tournament.config import (
     ELOConfig,
     MatchOutcome,
-    MatchResult,
     PlayerStats,
     TournamentConfig,
 )
@@ -142,7 +141,7 @@ class ELORatingSystem:
         ... )
     """
 
-    def __init__(self, config: Optional[ELOConfig] = None):
+    def __init__(self, config: ELOConfig | None = None):
         """Initialize ELO rating system.
 
         Args:
@@ -158,7 +157,7 @@ class ELORatingSystem:
 
     def calculate_expected_scores(
         self, rating1: float, rating2: float
-    ) -> Tuple[float, float]:
+    ) -> tuple[float, float]:
         """Calculate expected scores for both players.
 
         Args:
@@ -182,7 +181,7 @@ class ELORatingSystem:
         games_played2: int = 0,
         is_provisional1: bool = True,
         is_provisional2: bool = True,
-    ) -> Tuple[float, float]:
+    ) -> tuple[float, float]:
         """Calculate rating changes for both players.
 
         Args:
@@ -232,7 +231,7 @@ class ELORatingSystem:
         score2: float,
         games_played1: int = 0,
         games_played2: int = 0,
-    ) -> Tuple[RatingUpdate, RatingUpdate]:
+    ) -> tuple[RatingUpdate, RatingUpdate]:
         """Process a complete match and return rating updates.
 
         Args:
@@ -311,8 +310,8 @@ class ELORatingSystem:
         player1: PlayerStats,
         player2: PlayerStats,
         outcome: MatchOutcome,
-        config: Optional[TournamentConfig] = None,
-    ) -> Tuple[RatingUpdate, RatingUpdate]:
+        config: TournamentConfig | None = None,
+    ) -> tuple[RatingUpdate, RatingUpdate]:
         """Process a game result and update player stats.
 
         Args:
@@ -398,7 +397,7 @@ class ELORatingSystem:
         return opponent_rating - 400 * math.log10(1.0 / win_probability - 1.0)
 
     def get_update_history(
-        self, player_id: Optional[str] = None, limit: int = 100
+        self, player_id: str | None = None, limit: int = 100
     ) -> list[RatingUpdate]:
         """Get recent rating updates.
 
@@ -482,7 +481,7 @@ class RatingLeaderboard:
         """
         self._ratings.pop(player_id, None)
 
-    def get_rank(self, player_id: str) -> Optional[int]:
+    def get_rank(self, player_id: str) -> int | None:
         """Get a player's rank (1-indexed).
 
         Args:
@@ -502,7 +501,7 @@ class RatingLeaderboard:
                 return i + 1
         return None
 
-    def get_top(self, n: int = 10) -> list[Tuple[str, float, int]]:
+    def get_top(self, n: int = 10) -> list[tuple[str, float, int]]:
         """Get top N players.
 
         Args:
@@ -518,7 +517,7 @@ class RatingLeaderboard:
             (pid, rating, i + 1) for i, (pid, rating) in enumerate(sorted_players[:n])
         ]
 
-    def get_rating(self, player_id: str) -> Optional[float]:
+    def get_rating(self, player_id: str) -> float | None:
         """Get a player's rating.
 
         Args:
@@ -531,7 +530,7 @@ class RatingLeaderboard:
 
     def get_players_in_range(
         self, min_rating: float, max_rating: float
-    ) -> list[Tuple[str, float]]:
+    ) -> list[tuple[str, float]]:
         """Get players within a rating range.
 
         Args:

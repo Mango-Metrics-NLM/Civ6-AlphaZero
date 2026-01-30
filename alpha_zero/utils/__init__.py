@@ -10,16 +10,6 @@ Training Improvement Modules:
 - training_config_enhanced: Scalable training configurations
 """
 
-from alpha_zero.utils.logging import (
-    GameLogger,
-    LogConfig,
-    MetricsTracker,
-    TrainingLogger,
-    get_logger,
-    setup_logging,
-    timer,
-    timed_section,
-)
 from alpha_zero.utils.config import (
     ActionSpaceConfig,
     Civ6Config,
@@ -58,6 +48,8 @@ try:
         LLMProvider,
         LLMResponse,
         create_llm_client,
+    )
+    from alpha_zero.utils.llm_client import (
         generate_sync as llm_generate,
     )
     _LLM_AVAILABLE = True
@@ -187,19 +179,15 @@ except ImportError:
     _RAG_AVAILABLE = False
 
 # Training Improvement Modules
-from alpha_zero.utils.environment_tuning import (
-    EnvironmentTuningConfig,
-    EarlyTerminationConfig,
-    ProductionConfig,
-    CombatConfig,
-    TunedEnvironmentWrapper,
-    EarlyTerminationChecker,
-    create_tuned_environment,
-    get_default_fast_config,
-    get_default_balanced_config,
-    get_default_realistic_config,
+from alpha_zero.utils.curriculum_learning import (
+    AdaptiveDifficultyController,
+    CurriculumConfig,
+    CurriculumManager,
+    CurriculumStage,
+    CurriculumState,
+    DifficultyDimension,
+    create_curriculum_manager,
 )
-
 from alpha_zero.utils.enhanced_rewards import (
     EnhancedRewardsConfig,
     EnhancedRewardShaper,
@@ -212,19 +200,19 @@ from alpha_zero.utils.enhanced_rewards import (
     get_aggressive_rewards_config,
     get_balanced_rewards_config,
     get_defensive_rewards_config,
-    get_balanced_rewards_config,
 )
-
-from alpha_zero.utils.curriculum_learning import (
-    CurriculumConfig,
-    CurriculumStage,
-    CurriculumState,
-    CurriculumManager,
-    DifficultyDimension,
-    AdaptiveDifficultyController,
-    create_curriculum_manager,
+from alpha_zero.utils.environment_tuning import (
+    CombatConfig,
+    EarlyTerminationChecker,
+    EarlyTerminationConfig,
+    EnvironmentTuningConfig,
+    ProductionConfig,
+    TunedEnvironmentWrapper,
+    create_tuned_environment,
+    get_default_balanced_config,
+    get_default_fast_config,
+    get_default_realistic_config,
 )
-
 from alpha_zero.utils.training_config_enhanced import (
     EnhancedTrainingConfig,
     ParameterSchedule,

@@ -13,8 +13,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from enum import Enum
-from typing import Any, Optional, Union
+from typing import Any
 
 import numpy as np
 
@@ -115,7 +114,7 @@ class StateVisualizer:
         >>> print(output)
     """
 
-    def __init__(self, config: Optional[HumanInterfaceConfig] = None):
+    def __init__(self, config: HumanInterfaceConfig | None = None):
         """Initialize visualizer.
 
         Args:
@@ -127,11 +126,11 @@ class StateVisualizer:
             THEMES[BoardTheme.CLASSIC]
         )
         self._use_colors = True
-        self._last_move: Optional[tuple[int, int]] = None
+        self._last_move: tuple[int, int] | None = None
 
         logger.debug(f"StateVisualizer initialized with theme {self.config.board_theme}")
 
-    def set_theme(self, theme: Union[str, BoardTheme]) -> None:
+    def set_theme(self, theme: str | BoardTheme) -> None:
         """Set the visualization theme.
 
         Args:
@@ -149,7 +148,7 @@ class StateVisualizer:
         """Enable color output."""
         self._use_colors = True
 
-    def set_last_move(self, position: Optional[tuple[int, int]]) -> None:
+    def set_last_move(self, position: tuple[int, int] | None) -> None:
         """Set the last move position for highlighting.
 
         Args:
@@ -174,10 +173,10 @@ class StateVisualizer:
     def render_board(
         self,
         observation: np.ndarray,
-        valid_actions: Optional[list[int]] = None,
-        board_size: Optional[tuple[int, int]] = None,
+        valid_actions: list[int] | None = None,
+        board_size: tuple[int, int] | None = None,
         player_channel: int = 0,
-        last_action: Optional[int] = None,
+        last_action: int | None = None,
     ) -> str:
         """Render the game board as ASCII.
 
@@ -425,10 +424,10 @@ class StateVisualizer:
         current_player: int,
         is_human_turn: bool,
         valid_actions: list[int],
-        ai_evaluation: Optional[float] = None,
-        move_probabilities: Optional[np.ndarray] = None,
-        mcts_stats: Optional[dict[str, Any]] = None,
-        board_size: Optional[tuple[int, int]] = None,
+        ai_evaluation: float | None = None,
+        move_probabilities: np.ndarray | None = None,
+        mcts_stats: dict[str, Any] | None = None,
+        board_size: tuple[int, int] | None = None,
     ) -> str:
         """Render complete game display.
 
@@ -480,7 +479,7 @@ class StateVisualizer:
 
     def render_game_over(
         self,
-        winner: Optional[int],
+        winner: int | None,
         human_player: int,
         summary: dict[str, Any],
     ) -> str:

@@ -18,7 +18,6 @@ MuZero MCTS variant that uses learned dynamics (no environment cloning):
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -856,7 +855,7 @@ class GumbelMCTS:
             return np.zeros(env.action_space.n, dtype=np.float32), 0.0
 
         # Store gumbel scores in children
-        for action, score in zip(sampled_actions, gumbel_scores):
+        for action, score in zip(sampled_actions, gumbel_scores, strict=False):
             if action in root.children:
                 root.children[action].gumbel_score = score
 
@@ -898,7 +897,7 @@ class GumbelMCTS:
             Best action index.
         """
         actions = list(candidate_actions)
-        scores = dict(zip(candidate_actions, gumbel_scores))
+        scores = dict(zip(candidate_actions, gumbel_scores, strict=False))
 
         if len(actions) == 0:
             return 0
@@ -910,7 +909,7 @@ class GumbelMCTS:
         num_rounds = max(1, int(np.ceil(np.log2(len(actions)))))
         sims_per_round = max(1, self.config.num_simulations // num_rounds)
 
-        for round_idx in range(num_rounds):
+        for _round_idx in range(num_rounds):
             if len(actions) <= self.config.min_actions_after_halving:
                 break
 
@@ -1450,7 +1449,7 @@ class MuZeroMCTS:
             return int(sampled_actions[0])
 
         # Store gumbel scores
-        scores = dict(zip(sampled_actions, gumbel_scores))
+        scores = dict(zip(sampled_actions, gumbel_scores, strict=False))
 
         if self.config.use_sequential_halving:
             return self._sequential_halving_muzero(
@@ -1485,7 +1484,7 @@ class MuZeroMCTS:
         num_rounds = max(1, int(np.ceil(np.log2(len(actions)))))
         sims_per_round = max(1, self.config.num_simulations // num_rounds)
 
-        for round_idx in range(num_rounds):
+        for _round_idx in range(num_rounds):
             if len(actions) <= 1:
                 break
 

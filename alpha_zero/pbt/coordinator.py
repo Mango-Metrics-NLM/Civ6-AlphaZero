@@ -18,22 +18,21 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import signal
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Any
 
 import numpy as np
 
-from alpha_zero.pbt.config import AgentState, PBTConfig
-from alpha_zero.pbt.mutations import MutationOperator, MutationConfig
+from alpha_zero.pbt.config import PBTConfig
+from alpha_zero.pbt.mutations import MutationConfig, MutationOperator
 from alpha_zero.pbt.population import PopulationManager, PopulationStats
 from alpha_zero.pbt.scheduler import (
     EvaluationResult,
-    FitnessEvaluator,
     PBTScheduler,
 )
 
@@ -109,8 +108,8 @@ class PBTCoordinator:
     def __init__(
         self,
         config: PBTConfig,
-        rng: Optional[np.random.Generator] = None,
-        wandb_logger: Optional[Any] = None,
+        rng: np.random.Generator | None = None,
+        wandb_logger: Any | None = None,
     ):
         """Initialize PBT coordinator.
 
@@ -136,17 +135,17 @@ class PBTCoordinator:
 
         # State tracking
         self._current_step = 0
-        self._start_time: Optional[float] = None
+        self._start_time: float | None = None
         self._last_checkpoint_step = 0
         self._running = False
         self._shutdown_requested = False
 
         # Training callbacks
-        self._train_step_fn: Optional[Callable[[str, dict], dict]] = None
-        self._evaluate_fn: Optional[Callable[[str], EvaluationResult]] = None
-        self._save_weights_fn: Optional[Callable[[str, str], None]] = None
-        self._load_weights_fn: Optional[Callable[[str, str], None]] = None
-        self._copy_weights_fn: Optional[Callable[[str, str], None]] = None
+        self._train_step_fn: Callable[[str, dict], dict] | None = None
+        self._evaluate_fn: Callable[[str], EvaluationResult] | None = None
+        self._save_weights_fn: Callable[[str, str], None] | None = None
+        self._load_weights_fn: Callable[[str, str], None] | None = None
+        self._copy_weights_fn: Callable[[str, str], None] | None = None
 
         # Progress history
         self._progress_history: list[PBTProgress] = []
@@ -158,11 +157,11 @@ class PBTCoordinator:
 
     def set_training_callbacks(
         self,
-        train_step_fn: Optional[Callable[[str, dict], dict]] = None,
-        evaluate_fn: Optional[Callable[[str], EvaluationResult]] = None,
-        save_weights_fn: Optional[Callable[[str, str], None]] = None,
-        load_weights_fn: Optional[Callable[[str, str], None]] = None,
-        copy_weights_fn: Optional[Callable[[str, str], None]] = None,
+        train_step_fn: Callable[[str, dict], dict] | None = None,
+        evaluate_fn: Callable[[str], EvaluationResult] | None = None,
+        save_weights_fn: Callable[[str, str], None] | None = None,
+        load_weights_fn: Callable[[str, str], None] | None = None,
+        copy_weights_fn: Callable[[str, str], None] | None = None,
     ) -> None:
         """Set callbacks for training operations.
 
@@ -188,7 +187,7 @@ class PBTCoordinator:
 
     def initialize(
         self,
-        checkpoint_path: Optional[Union[str, Path]] = None,
+        checkpoint_path: str | Path | None = None,
     ) -> None:
         """Initialize the coordinator.
 
@@ -207,7 +206,7 @@ class PBTCoordinator:
     def run(
         self,
         max_steps: int = 1000000,
-        max_generations: Optional[int] = None,
+        max_generations: int | None = None,
     ) -> dict[str, Any]:
         """Run the PBT training loop.
 
@@ -351,7 +350,7 @@ class PBTCoordinator:
         self.mutation_operator.increment_generation()
 
         # Log changes
-        for weak_id, strong_id, new_params in changes:
+        for weak_id, strong_id, _new_params in changes:
             logger.debug(
                 f"Replaced {weak_id} with mutated copy of {strong_id}"
             )
@@ -388,7 +387,7 @@ class PBTCoordinator:
 
         logger.info(f"Saved checkpoint: {checkpoint_path}")
 
-    def load_checkpoint(self, path: Union[str, Path]) -> None:
+    def load_checkpoint(self, path: str | Path) -> None:
         """Load from checkpoint.
 
         Args:

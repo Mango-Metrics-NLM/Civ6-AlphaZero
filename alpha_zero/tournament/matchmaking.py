@@ -23,13 +23,12 @@ import logging
 import time
 import uuid
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Callable, Optional
+from typing import Any
 
 from alpha_zero.tournament.config import (
     MatchmakingConfig,
-    MatchResult,
     PlayerStats,
     TournamentConfig,
 )
@@ -62,7 +61,7 @@ class QueueEntry:
 
     def is_compatible_with(
         self,
-        other: "QueueEntry",
+        other: QueueEntry,
         config: MatchmakingConfig,
     ) -> bool:
         """Check if this entry can be matched with another.
@@ -119,8 +118,8 @@ class PendingMatch:
     """
 
     match_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    player1: Optional[PlayerStats] = None
-    player2: Optional[PlayerStats] = None
+    player1: PlayerStats | None = None
+    player2: PlayerStats | None = None
     created_at: float = field(default_factory=time.time)
     expires_at: float = field(default_factory=lambda: time.time() + 60)
     status: str = "pending"
@@ -180,14 +179,14 @@ class MatchMaker:
         self._recent_matches: deque[str] = deque(maxlen=100)
 
         # Callbacks
-        self._on_match_found: Optional[Callable[[PendingMatch], None]] = None
+        self._on_match_found: Callable[[PendingMatch], None] | None = None
 
         logger.info("MatchMaker initialized")
 
     def add_to_queue(
         self,
         player: PlayerStats,
-        recent_opponents: Optional[list[str]] = None,
+        recent_opponents: list[str] | None = None,
         priority: int = 0,
     ) -> QueueEntry:
         """Add a player to the matchmaking queue.
@@ -242,7 +241,7 @@ class MatchMaker:
         """
         return player_id in self._queue
 
-    def get_queue_position(self, player_id: str) -> Optional[int]:
+    def get_queue_position(self, player_id: str) -> int | None:
         """Get player's position in queue.
 
         Args:
@@ -266,7 +265,7 @@ class MatchMaker:
 
         return None
 
-    def find_match(self, player_id: str) -> Optional[PendingMatch]:
+    def find_match(self, player_id: str) -> PendingMatch | None:
         """Try to find a match for a player.
 
         Args:
@@ -361,7 +360,7 @@ class MatchMaker:
 
         return matches
 
-    def get_pending_match(self, match_id: str) -> Optional[PendingMatch]:
+    def get_pending_match(self, match_id: str) -> PendingMatch | None:
         """Get a pending match by ID.
 
         Args:
@@ -478,8 +477,8 @@ class OpponentSelector:
 
     def __init__(
         self,
-        player_pool: Optional[list[PlayerStats]] = None,
-        config: Optional[TournamentConfig] = None,
+        player_pool: list[PlayerStats] | None = None,
+        config: TournamentConfig | None = None,
     ):
         """Initialize opponent selector.
 
@@ -502,7 +501,7 @@ class OpponentSelector:
         self,
         target_rating: float,
         num_opponents: int = 1,
-        exclude_ids: Optional[set[str]] = None,
+        exclude_ids: set[str] | None = None,
     ) -> list[PlayerStats]:
         """Select opponents closest to target rating.
 
@@ -532,7 +531,7 @@ class OpponentSelector:
         self,
         tier_name: str,
         num_opponents: int = 1,
-        exclude_ids: Optional[set[str]] = None,
+        exclude_ids: set[str] | None = None,
     ) -> list[PlayerStats]:
         """Select opponents from a specific tier.
 
@@ -561,8 +560,8 @@ class OpponentSelector:
     def select_diverse(
         self,
         num_opponents: int,
-        target_rating: Optional[float] = None,
-        exclude_ids: Optional[set[str]] = None,
+        target_rating: float | None = None,
+        exclude_ids: set[str] | None = None,
     ) -> list[PlayerStats]:
         """Select diverse opponents across rating range.
 
@@ -600,7 +599,7 @@ class OpponentSelector:
         player_rating: float,
         challenge_factor: float = 1.2,
         num_opponents: int = 1,
-        exclude_ids: Optional[set[str]] = None,
+        exclude_ids: set[str] | None = None,
     ) -> list[PlayerStats]:
         """Select slightly stronger opponents.
 

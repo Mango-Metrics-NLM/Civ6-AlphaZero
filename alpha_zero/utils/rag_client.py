@@ -95,10 +95,10 @@ class RAGClient:
             self.collection = None
 
     def add_documents(
-        self, 
-        documents: list[str], 
-        metadatas: Optional[list[dict[str, Any]]] = None,
-        ids: Optional[list[str]] = None
+        self,
+        documents: list[str],
+        metadatas: list[dict[str, Any]] | None = None,
+        ids: list[str] | None = None
     ) -> bool:
         """Add documents to the knowledge base.
 

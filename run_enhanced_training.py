@@ -59,7 +59,8 @@ except ImportError:
 from alpha_zero.utils.logging import get_logger, setup_logging
 
 # Configure logging
-setup_logging(log_dir="logs", level="INFO")
+# Configure logging
+# setup_logging moved to main to avoid side effects on import
 logger = get_logger(__name__)
 
 
@@ -369,7 +370,8 @@ def evaluate_network(
         while steps < max_steps_per_game:
             if env.current_player == network_player:
                 # Network's turn
-                action_probs, _ = mcts.search(env, add_noise=False)
+                underlying_env = env.env if hasattr(env, 'env') else env
+                action_probs, _ = mcts.search(underlying_env, add_noise=False)
                 action = mcts.select_action(action_probs, temperature=0.0)
             else:
                 # Random player's turn
@@ -526,7 +528,7 @@ def run_enhanced_training(
 
     # Initialize environment to get action space size
     temp_env = MicroCivEnv(board_size=current_board_size)
-    action_space_size = getattr(temp_env.action_space, "n", 391) # MicroCiv has ~391 actions
+    action_space_size = temp_env.action_space_handler.total_size
 
     # Initialize network
     network = MicroCivNetwork(
@@ -779,6 +781,7 @@ def run_enhanced_training(
 
 
 def main():
+    setup_logging(log_dir="logs", level="INFO")
     parser = argparse.ArgumentParser(description="Enhanced Civ6 AlphaZero Training")
     parser.add_argument("--preset", choices=["fast", "balanced", "full"], default="fast",
                         help="Training preset (fast=quick test, balanced=medium, full=production)")
