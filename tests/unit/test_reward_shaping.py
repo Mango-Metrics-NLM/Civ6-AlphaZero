@@ -6,13 +6,13 @@ import numpy as np
 import pytest
 
 from alpha_zero.utils.reward_shaping import (
-    StateFeatures,
-    RewardShapingConfig,
-    extract_features_from_obs,
-    compute_state_potential,
-    compute_shaped_reward,
     RewardShaper,
+    RewardShapingConfig,
+    StateFeatures,
+    compute_shaped_reward,
+    compute_state_potential,
     create_reward_shaper,
+    extract_features_from_obs,
 )
 
 

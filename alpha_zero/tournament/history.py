@@ -23,16 +23,15 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterator, Optional, Union
+from typing import Any
 
 from alpha_zero.tournament.config import (
-    MatchOutcome,
     MatchResult,
-    PlayerStats,
     TournamentConfig,
 )
 
@@ -75,7 +74,7 @@ class MatchRecord:
         result: MatchResult,
         player1_rating_after: float,
         player2_rating_after: float,
-    ) -> "MatchRecord":
+    ) -> MatchRecord:
         """Create from MatchResult.
 
         Args:
@@ -120,12 +119,12 @@ class MatchRecord:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "MatchRecord":
+    def from_dict(cls, data: dict[str, Any]) -> MatchRecord:
         """Create from dictionary."""
         return cls(**data)
 
     @classmethod
-    def from_row(cls, row: tuple) -> "MatchRecord":
+    def from_row(cls, row: tuple) -> MatchRecord:
         """Create from database row."""
         return cls(
             match_id=row[0],
@@ -174,7 +173,7 @@ class PlayerStatistics:
     current_streak: int = 0
     longest_win_streak: int = 0
     longest_loss_streak: int = 0
-    last_played: Optional[str] = None
+    last_played: str | None = None
 
     @property
     def win_rate(self) -> float:
@@ -227,8 +226,8 @@ class MatchHistory:
 
     def __init__(
         self,
-        database_path: Union[str, Path] = "tournament.db",
-        config: Optional[TournamentConfig] = None,
+        database_path: str | Path = "tournament.db",
+        config: TournamentConfig | None = None,
     ):
         """Initialize match history.
 
@@ -489,7 +488,7 @@ class MatchHistory:
                 ),
             )
 
-    def get_match(self, match_id: str) -> Optional[MatchRecord]:
+    def get_match(self, match_id: str) -> MatchRecord | None:
         """Get a specific match by ID.
 
         Args:
@@ -514,7 +513,7 @@ class MatchHistory:
         player_id: str,
         limit: int = 50,
         offset: int = 0,
-        opponent_id: Optional[str] = None,
+        opponent_id: str | None = None,
     ) -> list[MatchRecord]:
         """Get match history for a player.
 
@@ -554,7 +553,7 @@ class MatchHistory:
 
             return [MatchRecord.from_row(row) for row in cursor.fetchall()]
 
-    def get_player_statistics(self, player_id: str) -> Optional[PlayerStatistics]:
+    def get_player_statistics(self, player_id: str) -> PlayerStatistics | None:
         """Get statistics for a player.
 
         Args:
@@ -669,7 +668,7 @@ class MatchHistory:
     def get_recent_matches(
         self,
         limit: int = 20,
-        tier: Optional[str] = None,
+        tier: str | None = None,
     ) -> list[MatchRecord]:
         """Get recent matches across all players.
 
@@ -835,7 +834,7 @@ class MatchHistory:
 
         logger.warning("Cleared all match history data")
 
-    def export_to_json(self, output_path: Union[str, Path]) -> None:
+    def export_to_json(self, output_path: str | Path) -> None:
         """Export all data to JSON.
 
         Args:

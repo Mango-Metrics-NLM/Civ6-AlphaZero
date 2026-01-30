@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import math
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional, Union
+from typing import Any
 
 import numpy as np
 
@@ -79,11 +79,11 @@ class BaseMutation(ABC):
     @abstractmethod
     def mutate(
         self,
-        value: Union[float, int],
+        value: float | int,
         param_range: HyperparameterRange,
         rng: np.random.Generator,
         strength: float = 0.2,
-    ) -> Union[float, int]:
+    ) -> float | int:
         """Mutate a single value.
 
         Args:
@@ -106,11 +106,11 @@ class GaussianMutation(BaseMutation):
 
     def mutate(
         self,
-        value: Union[float, int],
+        value: float | int,
         param_range: HyperparameterRange,
         rng: np.random.Generator,
         strength: float = 0.2,
-    ) -> Union[float, int]:
+    ) -> float | int:
         """Apply Gaussian mutation."""
         if param_range.scale == "categorical":
             return param_range.mutate(value, rng, strength)
@@ -146,11 +146,11 @@ class UniformMutation(BaseMutation):
 
     def mutate(
         self,
-        value: Union[float, int],
+        value: float | int,
         param_range: HyperparameterRange,
         rng: np.random.Generator,
         strength: float = 0.2,
-    ) -> Union[float, int]:
+    ) -> float | int:
         """Apply uniform mutation."""
         if param_range.scale == "categorical":
             if rng.random() < strength:
@@ -194,11 +194,11 @@ class PolynomialMutation(BaseMutation):
 
     def mutate(
         self,
-        value: Union[float, int],
+        value: float | int,
         param_range: HyperparameterRange,
         rng: np.random.Generator,
         strength: float = 0.2,
-    ) -> Union[float, int]:
+    ) -> float | int:
         """Apply polynomial mutation."""
         if param_range.scale == "categorical":
             if rng.random() < strength:
@@ -256,9 +256,9 @@ class DifferentialMutation(BaseMutation):
             f: Scaling factor for difference vector
         """
         self.f = f
-        self._candidates: list[Union[float, int]] = []
+        self._candidates: list[float | int] = []
 
-    def set_candidates(self, candidates: list[Union[float, int]]) -> None:
+    def set_candidates(self, candidates: list[float | int]) -> None:
         """Set candidate values for differential mutation.
 
         Args:
@@ -268,11 +268,11 @@ class DifferentialMutation(BaseMutation):
 
     def mutate(
         self,
-        value: Union[float, int],
+        value: float | int,
         param_range: HyperparameterRange,
         rng: np.random.Generator,
         strength: float = 0.2,
-    ) -> Union[float, int]:
+    ) -> float | int:
         """Apply differential mutation."""
         if param_range.scale == "categorical":
             if rng.random() < strength:
@@ -349,11 +349,11 @@ class AdaptiveMutation(BaseMutation):
 
     def mutate(
         self,
-        value: Union[float, int],
+        value: float | int,
         param_range: HyperparameterRange,
         rng: np.random.Generator,
         strength: float = 0.2,
-    ) -> Union[float, int]:
+    ) -> float | int:
         """Apply adaptive mutation using adapted strength."""
         # Use adapted strength instead of provided strength
         effective_strength = self._adapted_strength
@@ -378,8 +378,8 @@ class MutationOperator:
 
     def __init__(
         self,
-        config: Optional[MutationConfig] = None,
-        rng: Optional[np.random.Generator] = None,
+        config: MutationConfig | None = None,
+        rng: np.random.Generator | None = None,
     ):
         """Initialize mutation operator.
 
@@ -402,10 +402,10 @@ class MutationOperator:
 
     def mutate(
         self,
-        value: Union[float, int, Any],
+        value: float | int | Any,
         param_range: HyperparameterRange,
-        generation: Optional[int] = None,
-    ) -> Union[float, int, Any]:
+        generation: int | None = None,
+    ) -> float | int | Any:
         """Mutate a single value.
 
         Args:
@@ -427,11 +427,11 @@ class MutationOperator:
 
     def mutate_all(
         self,
-        values: dict[str, Union[float, int, Any]],
+        values: dict[str, float | int | Any],
         hyperparameter_space: HyperparameterSpace,
         mutation_probability: float = 0.8,
-        generation: Optional[int] = None,
-    ) -> dict[str, Union[float, int, Any]]:
+        generation: int | None = None,
+    ) -> dict[str, float | int | Any]:
         """Mutate all hyperparameters.
 
         Args:
@@ -457,7 +457,7 @@ class MutationOperator:
         return result
 
     def set_candidates_for_differential(
-        self, param_name: str, candidates: list[Union[float, int]]
+        self, param_name: str, candidates: list[float | int]
     ) -> None:
         """Set candidates for differential mutation.
 
@@ -494,7 +494,7 @@ class MutationOperator:
 def create_mutation_operator(
     strategy: str = "gaussian",
     strength: float = 0.2,
-    rng: Optional[np.random.Generator] = None,
+    rng: np.random.Generator | None = None,
     **kwargs,
 ) -> MutationOperator:
     """Factory function to create a mutation operator.

@@ -2,28 +2,26 @@
 Tests for agents.
 """
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
+from agentic_framework.agents.base_agent import (
+    AgentContext,
+    AgentResult,
+    AgentStatus,
+    BaseAgent,
+    CompositeAgent,
+)
+from agentic_framework.agents.documentation_agent import DocumentationAgent
+from agentic_framework.agents.implementation_agent import ImplementationAgent
+from agentic_framework.agents.planning_agent import PlanningAgent
+from agentic_framework.agents.testing_agent import TestingAgent
+from agentic_framework.agents.verification_agent import VerificationAgent
 from agentic_framework.config import AgenticConfig
 from agentic_framework.core.constraint_manager import ConstraintManager
 from agentic_framework.core.permission_manager import PermissionManager
 from agentic_framework.core.session_memory import SessionMemory
 from agentic_framework.utils.command_runner import CommandRunner
-from agentic_framework.agents.base_agent import (
-    BaseAgent,
-    AgentContext,
-    AgentResult,
-    AgentStatus,
-    CompositeAgent,
-)
-from agentic_framework.agents.planning_agent import PlanningAgent, ImplementationPlan
-from agentic_framework.agents.implementation_agent import ImplementationAgent, FileChange
-from agentic_framework.agents.testing_agent import TestingAgent
-from agentic_framework.agents.verification_agent import VerificationAgent
-from agentic_framework.agents.documentation_agent import DocumentationAgent
 
 
 @pytest.fixture

@@ -10,16 +10,6 @@ Training Improvement Modules:
 - training_config_enhanced: Scalable training configurations
 """
 
-from alpha_zero.utils.benchmarks import (
-    BenchmarkConfig,
-    Benchmarker,
-    BenchmarkResult,
-    BenchmarkSuite,
-    benchmark_function,
-    create_mechanics_benchmarks,
-    run_all_benchmarks,
-    time_function,
-)
 from alpha_zero.utils.config import (
     ActionSpaceConfig,
     Civ6Config,
@@ -59,7 +49,7 @@ try:
         LLMResponse,
         create_llm_client,
     )
-    from alpha_zero.utils.llm_client import (  # noqa: F401
+    from alpha_zero.utils.llm_client import (
         generate_sync as llm_generate,
     )
     _LLM_AVAILABLE = True
@@ -78,25 +68,7 @@ from alpha_zero.utils.agent_tools import (
     TaskTracker,
     explore,
     find_definition,
-    search,
 )
-from alpha_zero.utils.agent_tools import (
-    TaskStatus as AgentTaskStatus,
-)
-from alpha_zero.utils.test_runner import (
-    PytestRunner,
-    RunConfig,
-    RunResult,
-    RunStatus,
-    quick_test,
-    run_tests,
-)
-
-# Backwards compatibility aliases
-TestRunner = PytestRunner
-TestConfig = RunConfig
-TestResult = RunResult
-TestStatus = RunStatus
 
 __all__ = [
     # Logging
@@ -174,8 +146,7 @@ if _LLM_AVAILABLE:
 
 # W&B Logger (optional - depends on wandb package)
 try:
-    from alpha_zero.utils.wandb_logger import (  # noqa: F401
-        WandbConfig,
+    from alpha_zero.utils.wandb_logger import (
         WandbLogger,
         get_wandb_logger,
         init_wandb,
@@ -194,10 +165,7 @@ except ImportError:
 
 # RAG Integration (optional - depends on chromadb/sentence-transformers)
 try:
-    from alpha_zero.utils.knowledge_base import (  # noqa: F401
-        KnowledgeBase,
-    )
-    from alpha_zero.utils.rag_client import (  # noqa: F401
+    from alpha_zero.utils.rag_client import (
         RAGClient,
         RAGConfig,
     )
@@ -211,7 +179,7 @@ except ImportError:
     _RAG_AVAILABLE = False
 
 # Training Improvement Modules
-from alpha_zero.utils.curriculum_learning import (  # noqa: F401, E402
+from alpha_zero.utils.curriculum_learning import (
     AdaptiveDifficultyController,
     CurriculumConfig,
     CurriculumManager,
@@ -220,7 +188,7 @@ from alpha_zero.utils.curriculum_learning import (  # noqa: F401, E402
     DifficultyDimension,
     create_curriculum_manager,
 )
-from alpha_zero.utils.enhanced_rewards import (  # noqa: F401, E402
+from alpha_zero.utils.enhanced_rewards import (
     EnhancedRewardsConfig,
     EnhancedRewardShaper,
     EnhancedStateFeatures,
@@ -233,7 +201,7 @@ from alpha_zero.utils.enhanced_rewards import (  # noqa: F401, E402
     get_balanced_rewards_config,
     get_defensive_rewards_config,
 )
-from alpha_zero.utils.environment_tuning import (  # noqa: F401, E402
+from alpha_zero.utils.environment_tuning import (
     CombatConfig,
     EarlyTerminationChecker,
     EarlyTerminationConfig,
@@ -245,7 +213,7 @@ from alpha_zero.utils.environment_tuning import (  # noqa: F401, E402
     get_default_fast_config,
     get_default_realistic_config,
 )
-from alpha_zero.utils.training_config_enhanced import (  # noqa: F401, E402
+from alpha_zero.utils.training_config_enhanced import (
     EnhancedTrainingConfig,
     ParameterSchedule,
     ResourceConfig,

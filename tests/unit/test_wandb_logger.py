@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import os
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
 from alpha_zero.utils.wandb_logger import (
+    WANDB_AVAILABLE,
     WandbConfig,
     WandbLogger,
     get_wandb_logger,
-    WANDB_AVAILABLE,
 )
 
 

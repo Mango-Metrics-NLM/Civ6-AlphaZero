@@ -21,28 +21,25 @@ from __future__ import annotations
 
 import logging
 from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol, Sequence
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 
 from alpha_zero.core.losses import (
     LossConfig,
     compute_consistency_loss,
-    compute_muzero_step_loss,
     compute_policy_loss,
     compute_reward_loss,
     compute_value_loss,
-    scalar_to_categorical,
 )
 from alpha_zero.utils.checkpoint import safe_load_checkpoint
 
 if TYPE_CHECKING:
-    from alpha_zero.core.muzero_network import MuZeroNetwork
     from alpha_zero.training_civ6 import ReplayBuffer, TrainingExample
 
 # Configure module logger
@@ -304,9 +301,9 @@ class GameTrajectory:
     @classmethod
     def from_examples(
         cls,
-        examples: Sequence["TrainingExample"],
+        examples: Sequence[TrainingExample],
         game_id: str | None = None,
-    ) -> "GameTrajectory":
+    ) -> GameTrajectory:
         """Create trajectory from list of TrainingExample (backwards compatibility).
 
         Args:
@@ -494,7 +491,7 @@ class TrajectoryBuffer:
 
         # Group priorities by trajectory
         traj_max_priorities: dict[int, float] = {}
-        for (traj_idx, _pos_idx), priority in zip(indices, priorities):
+        for (traj_idx, _pos_idx), priority in zip(indices, priorities, strict=False):
             if traj_idx not in traj_max_priorities:
                 traj_max_priorities[traj_idx] = priority
             else:
@@ -688,9 +685,9 @@ class TrajectoryBuffer:
     @classmethod
     def from_replay_buffer(
         cls,
-        replay_buffer: "ReplayBuffer",
+        replay_buffer: ReplayBuffer,
         max_trajectories: int = 1000,
-    ) -> "TrajectoryBuffer":
+    ) -> TrajectoryBuffer:
         """Create TrajectoryBuffer from existing ReplayBuffer.
 
         This provides backwards compatibility with the existing replay buffer.

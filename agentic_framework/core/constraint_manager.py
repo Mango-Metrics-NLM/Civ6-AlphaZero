@@ -8,14 +8,15 @@ and anti-constraints (explicit permissions). Provides validation and checking.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 from ..config import AgenticConfig
+from ..utils.command_runner import CommandRunner
 from ..utils.logging_config import get_logger
-from ..utils.command_runner import CommandRunner, CommandResult
 
 logger = get_logger("constraint_manager")
 
@@ -50,10 +51,10 @@ class Constraint:
     type: ConstraintType
     severity: ConstraintSeverity
     value: str
-    validation_command: Optional[str] = None
+    validation_command: str | None = None
     priority: int = 5  # 1-10, only for soft constraints
-    scope: Optional[str] = None
-    description: Optional[str] = None
+    scope: str | None = None
+    description: str | None = None
     enabled: bool = True
 
     @classmethod
@@ -83,10 +84,10 @@ class ConstraintViolation:
 
     constraint: Constraint
     message: str
-    details: Optional[str] = None
-    file_path: Optional[Path] = None
-    line_number: Optional[int] = None
-    suggested_fix: Optional[str] = None
+    details: str | None = None
+    file_path: Path | None = None
+    line_number: int | None = None
+    suggested_fix: str | None = None
 
     def __str__(self) -> str:
         """String representation of the violation."""
@@ -134,7 +135,7 @@ class ConstraintCheckResult:
 
 
 # Type alias for custom constraint validators
-ConstraintValidator = Callable[[Constraint, Path], Optional[ConstraintViolation]]
+ConstraintValidator = Callable[[Constraint, Path], ConstraintViolation | None]
 
 
 class ConstraintManager:
@@ -149,8 +150,8 @@ class ConstraintManager:
 
     def __init__(
         self,
-        config: Optional[AgenticConfig] = None,
-        command_runner: Optional[CommandRunner] = None,
+        config: AgenticConfig | None = None,
+        command_runner: CommandRunner | None = None,
     ) -> None:
         """Initialize the constraint manager.
 
@@ -251,8 +252,8 @@ class ConstraintManager:
 
     def get_constraints(
         self,
-        severity: Optional[ConstraintSeverity] = None,
-        constraint_type: Optional[ConstraintType] = None,
+        severity: ConstraintSeverity | None = None,
+        constraint_type: ConstraintType | None = None,
         enabled_only: bool = True,
     ) -> list[Constraint]:
         """Get constraints matching criteria.
@@ -346,7 +347,7 @@ class ConstraintManager:
 
     def _check_constraint(
         self, constraint: Constraint, target_path: Path
-    ) -> Optional[ConstraintViolation]:
+    ) -> ConstraintViolation | None:
         """Check a single constraint.
 
         Args:
@@ -374,7 +375,7 @@ class ConstraintManager:
 
     def _validate_with_command(
         self, constraint: Constraint, target_path: Path
-    ) -> Optional[ConstraintViolation]:
+    ) -> ConstraintViolation | None:
         """Validate a constraint using its validation command.
 
         Args:
@@ -403,7 +404,7 @@ class ConstraintManager:
 
     def _validate_language_constraint(
         self, constraint: Constraint, target_path: Path
-    ) -> Optional[ConstraintViolation]:
+    ) -> ConstraintViolation | None:
         """Validate a language constraint."""
         # Parse version requirement from value
         value = constraint.value.lower()
@@ -430,7 +431,7 @@ class ConstraintManager:
 
     def _validate_security_constraint(
         self, constraint: Constraint, target_path: Path
-    ) -> Optional[ConstraintViolation]:
+    ) -> ConstraintViolation | None:
         """Validate a security constraint."""
         value_lower = constraint.value.lower()
 
@@ -475,7 +476,7 @@ class ConstraintManager:
 
     def _validate_style_constraint(
         self, constraint: Constraint, target_path: Path
-    ) -> Optional[ConstraintViolation]:
+    ) -> ConstraintViolation | None:
         """Validate a style constraint."""
         value_lower = constraint.value.lower()
 
@@ -509,7 +510,7 @@ class ConstraintManager:
 
     def _validate_testing_constraint(
         self, constraint: Constraint, target_path: Path
-    ) -> Optional[ConstraintViolation]:
+    ) -> ConstraintViolation | None:
         """Validate a testing constraint."""
         value_lower = constraint.value.lower()
 

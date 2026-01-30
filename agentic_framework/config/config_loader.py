@@ -12,7 +12,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypeVar, Generic, Optional
+from typing import Any, TypeVar
 
 import yaml
 
@@ -150,7 +150,7 @@ class LoggingHandlerConfig:
 
     type: str = "console"
     level: str = "INFO"
-    destination: Optional[str] = None
+    destination: str | None = None
 
 
 @dataclass
@@ -436,7 +436,7 @@ class ConfigLoader:
 
     ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
-    def __init__(self, config_dir: Optional[Path] = None) -> None:
+    def __init__(self, config_dir: Path | None = None) -> None:
         """Initialize the config loader.
 
         Args:
@@ -446,7 +446,7 @@ class ConfigLoader:
         if config_dir is None:
             config_dir = Path(__file__).parent
         self.config_dir = Path(config_dir)
-        self._config: Optional[AgenticConfig] = None
+        self._config: AgenticConfig | None = None
         self._raw_config: dict[str, Any] = {}
 
     def _substitute_env_vars(self, value: Any) -> Any:
@@ -487,15 +487,15 @@ class ConfigLoader:
         """
         logger.debug(f"Loading configuration from {file_path}")
 
-        with open(file_path, "r") as f:
+        with open(file_path) as f:
             data = yaml.safe_load(f) or {}
 
         return self._substitute_env_vars(data)
 
     def load(
         self,
-        project_config_path: Optional[Path] = None,
-        overrides: Optional[dict[str, Any]] = None,
+        project_config_path: Path | None = None,
+        overrides: dict[str, Any] | None = None,
     ) -> AgenticConfig:
         """Load configuration with defaults, project config, and overrides.
 
@@ -547,7 +547,7 @@ class ConfigLoader:
         """Get the raw configuration dictionary."""
         return self._raw_config
 
-    def validate(self, config: Optional[AgenticConfig] = None) -> list[str]:
+    def validate(self, config: AgenticConfig | None = None) -> list[str]:
         """Validate the configuration.
 
         Args:
@@ -609,13 +609,13 @@ def merge_configs(base: dict[str, Any], override: dict[str, Any]) -> dict[str, A
 
 
 # Global config instance for convenience
-_global_loader: Optional[ConfigLoader] = None
+_global_loader: ConfigLoader | None = None
 
 
 def load_config(
-    project_config_path: Optional[Path] = None,
-    overrides: Optional[dict[str, Any]] = None,
-    config_dir: Optional[Path] = None,
+    project_config_path: Path | None = None,
+    overrides: dict[str, Any] | None = None,
+    config_dir: Path | None = None,
 ) -> AgenticConfig:
     """Load configuration (convenience function).
 

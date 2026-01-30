@@ -7,13 +7,13 @@ handles refactoring, and manages file operations.
 
 from __future__ import annotations
 
-import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional, Callable
+from typing import Any
 
-from .base_agent import BaseAgent, AgentContext, AgentResult, AgentStatus
 from ..utils.logging_config import get_logger
+from .base_agent import AgentContext, AgentResult, AgentStatus, BaseAgent
 
 logger = get_logger("implementation_agent")
 
@@ -24,8 +24,8 @@ class FileChange:
 
     path: Path
     change_type: str  # create, modify, delete
-    old_content: Optional[str] = None
-    new_content: Optional[str] = None
+    old_content: str | None = None
+    new_content: str | None = None
     description: str = ""
     line_changes: int = 0
 
@@ -47,7 +47,7 @@ class ImplementationTask:
     target_files: list[str] = field(default_factory=list)
     changes: list[FileChange] = field(default_factory=list)
     completed: bool = False
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class ImplementationAgent(BaseAgent):

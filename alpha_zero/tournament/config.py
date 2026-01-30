@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import yaml
 
@@ -83,7 +83,7 @@ class ELOConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ELOConfig":
+    def from_dict(cls, data: dict[str, Any]) -> ELOConfig:
         """Create from dictionary."""
         return cls(**{k: v for k, v in data.items() if hasattr(cls, k)})
 
@@ -108,7 +108,7 @@ class TierConfig:
     promotion_threshold: float = 0.55
     demotion_threshold: float = 0.45
     color: str = "#FFFFFF"
-    icon: Optional[str] = None
+    icon: str | None = None
 
     def contains_rating(self, rating: float) -> bool:
         """Check if rating falls within this tier.
@@ -134,7 +134,7 @@ class TierConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "TierConfig":
+    def from_dict(cls, data: dict[str, Any]) -> TierConfig:
         """Create from dictionary."""
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
@@ -195,7 +195,7 @@ class MatchmakingConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "MatchmakingConfig":
+    def from_dict(cls, data: dict[str, Any]) -> MatchmakingConfig:
         """Create from dictionary."""
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
@@ -230,7 +230,7 @@ class TournamentConfig:
 
     ENV_PREFIX: str = field(default="CIV6AZ_TOURNAMENT_", repr=False)
 
-    def get_tier_for_rating(self, rating: float) -> Optional[TierConfig]:
+    def get_tier_for_rating(self, rating: float) -> TierConfig | None:
         """Get the tier that contains the given rating.
 
         Args:
@@ -256,7 +256,7 @@ class TournamentConfig:
         tier = self.get_tier_for_rating(rating)
         return tier.name if tier else "Unknown"
 
-    def get_tier_by_name(self, name: str) -> Optional[TierConfig]:
+    def get_tier_by_name(self, name: str) -> TierConfig | None:
         """Get tier by name.
 
         Args:
@@ -271,7 +271,7 @@ class TournamentConfig:
         return None
 
     @classmethod
-    def from_yaml(cls, path: Union[str, Path]) -> "TournamentConfig":
+    def from_yaml(cls, path: str | Path) -> TournamentConfig:
         """Load from YAML file."""
         path = Path(path)
         if not path.exists():
@@ -283,7 +283,7 @@ class TournamentConfig:
         return cls._from_dict(data)
 
     @classmethod
-    def from_env(cls, base_config: Optional["TournamentConfig"] = None) -> "TournamentConfig":
+    def from_env(cls, base_config: TournamentConfig | None = None) -> TournamentConfig:
         """Create with environment variable overrides."""
         config = base_config or cls()
         prefix = config.ENV_PREFIX
@@ -323,7 +323,7 @@ class TournamentConfig:
         return value
 
     @classmethod
-    def _from_dict(cls, data: dict[str, Any]) -> "TournamentConfig":
+    def _from_dict(cls, data: dict[str, Any]) -> TournamentConfig:
         """Create from dictionary."""
         elo_data = data.pop("elo", {})
         matchmaking_data = data.pop("matchmaking", {})
@@ -359,7 +359,7 @@ class TournamentConfig:
             "season_duration_days": self.season_duration_days,
         }
 
-    def save(self, path: Union[str, Path]) -> None:
+    def save(self, path: str | Path) -> None:
         """Save to YAML file."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -405,7 +405,7 @@ class PlayerStats:
     is_provisional: bool = True
     rating_history: list[tuple[str, float]] = field(default_factory=list)
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    last_game_at: Optional[str] = None
+    last_game_at: str | None = None
 
     def __post_init__(self):
         """Initialize display name if not set."""
@@ -430,7 +430,7 @@ class PlayerStats:
         self,
         outcome: MatchOutcome,
         rating_change: float,
-        tier_config: Optional[TierConfig] = None,
+        tier_config: TierConfig | None = None,
     ) -> None:
         """Record a game result.
 
@@ -491,13 +491,13 @@ class PlayerStats:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PlayerStats":
+    def from_dict(cls, data: dict[str, Any]) -> PlayerStats:
         """Create from dictionary."""
         # Remove computed fields
         data = {k: v for k, v in data.items() if k != "win_rate"}
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
-    def save(self, path: Union[str, Path]) -> None:
+    def save(self, path: str | Path) -> None:
         """Save to JSON file."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -505,7 +505,7 @@ class PlayerStats:
             json.dump(self.to_dict(), f, indent=2)
 
     @classmethod
-    def load(cls, path: Union[str, Path]) -> "PlayerStats":
+    def load(cls, path: str | Path) -> PlayerStats:
         """Load from JSON file."""
         with open(path) as f:
             data = json.load(f)
@@ -541,7 +541,7 @@ class MatchResult:
     player2_rating_before: float = 1500.0
     player1_rating_change: float = 0.0
     player2_rating_change: float = 0.0
-    winner_id: Optional[str] = None
+    winner_id: str | None = None
     game_details: list[dict[str, Any]] = field(default_factory=list)
     duration_seconds: float = 0.0
     timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
@@ -586,7 +586,7 @@ class MatchResult:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "MatchResult":
+    def from_dict(cls, data: dict[str, Any]) -> MatchResult:
         """Create from dictionary."""
         # Remove computed fields
         data = {k: v for k, v in data.items() if k != "is_draw"}

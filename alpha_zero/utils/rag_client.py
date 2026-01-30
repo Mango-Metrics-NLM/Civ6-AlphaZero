@@ -98,7 +98,7 @@ class RAGClient:
         self,
         documents: list[str],
         metadatas: list[dict[str, Any]] | None = None,
-        ids: list[str] | None = None,
+        ids: list[str] | None = None
     ) -> bool:
         """Add documents to the knowledge base.
 

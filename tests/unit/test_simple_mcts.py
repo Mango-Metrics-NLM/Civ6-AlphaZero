@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 import torch
 
 from alpha_zero.utils.simple_mcts import (
+    MCTS,
     MCTSConfig,
     MCTSNode,
-    MCTS,
     SimpleMCTS,
-    create_network_fn,
     create_mcts,
+    create_network_fn,
 )
 
 

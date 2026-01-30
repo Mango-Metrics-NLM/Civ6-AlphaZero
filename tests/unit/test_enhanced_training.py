@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
-
 import numpy as np
 import pytest
 import torch
 
 from run_enhanced_training import (
-    TrainingExample,
     ReplayBuffer,
     ReplayDataset,
+    TrainingExample,
 )
 
 
@@ -218,8 +215,6 @@ class TestTrainingPresetsConfig:
 
     def test_fast_preset_values(self):
         """Test fast preset has expected values."""
-        from run_enhanced_training import main
-        import argparse
 
         # Verify preset structure
         presets = {
@@ -263,8 +258,9 @@ class TestTrainingFunctionSignatures:
 
     def test_run_enhanced_training_signature(self):
         """Test run_enhanced_training has expected parameters."""
-        from run_enhanced_training import run_enhanced_training
         import inspect
+
+        from run_enhanced_training import run_enhanced_training
 
         sig = inspect.signature(run_enhanced_training)
         params = list(sig.parameters.keys())
@@ -291,8 +287,9 @@ class TestTrainingFunctionSignatures:
 
     def test_train_epoch_signature(self):
         """Test train_epoch has expected parameters."""
-        from run_enhanced_training import train_epoch
         import inspect
+
+        from run_enhanced_training import train_epoch
 
         sig = inspect.signature(train_epoch)
         params = list(sig.parameters.keys())
@@ -304,8 +301,9 @@ class TestTrainingFunctionSignatures:
 
     def test_evaluate_network_signature(self):
         """Test evaluate_network has expected parameters."""
-        from run_enhanced_training import evaluate_network
         import inspect
+
+        from run_enhanced_training import evaluate_network
 
         sig = inspect.signature(evaluate_network)
         params = list(sig.parameters.keys())

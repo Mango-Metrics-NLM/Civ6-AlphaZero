@@ -16,10 +16,9 @@ Reference:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import NamedTuple
-
 import logging
+from dataclasses import dataclass
+from typing import NamedTuple
 
 import torch
 import torch.nn as nn

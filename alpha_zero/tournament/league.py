@@ -23,7 +23,7 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from alpha_zero.tournament.config import (
     MatchOutcome,
@@ -119,7 +119,7 @@ class TierProgress:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "TierProgress":
+    def from_dict(cls, data: dict[str, Any]) -> TierProgress:
         """Create from dictionary."""
         return cls(**data)
 
@@ -140,7 +140,7 @@ class SeasonInfo:
     season_id: str
     name: str = "Season 1"
     start_date: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    end_date: Optional[str] = None
+    end_date: str | None = None
     is_active: bool = True
     rewards: dict[str, Any] = field(default_factory=dict)
 
@@ -156,7 +156,7 @@ class SeasonInfo:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "SeasonInfo":
+    def from_dict(cls, data: dict[str, Any]) -> SeasonInfo:
         """Create from dictionary."""
         return cls(**data)
 
@@ -191,7 +191,7 @@ class LeagueManager:
         self.config = config
         self._player_progress: dict[str, TierProgress] = {}
         self._tier_populations: dict[str, set[str]] = defaultdict(set)
-        self._current_season: Optional[SeasonInfo] = None
+        self._current_season: SeasonInfo | None = None
         self._seasons: list[SeasonInfo] = []
 
         logger.info(f"LeagueManager initialized with {len(config.tiers)} tiers")
@@ -503,7 +503,7 @@ class LeagueManager:
         logger.info(f"Started season: {name}")
         return season
 
-    def end_season(self) -> Optional[SeasonInfo]:
+    def end_season(self) -> SeasonInfo | None:
         """End the current season.
 
         Returns:
@@ -521,7 +521,7 @@ class LeagueManager:
         logger.info(f"Ended season: {ended_season.name}")
         return ended_season
 
-    def get_current_season(self) -> Optional[SeasonInfo]:
+    def get_current_season(self) -> SeasonInfo | None:
         """Get the current active season."""
         return self._current_season
 

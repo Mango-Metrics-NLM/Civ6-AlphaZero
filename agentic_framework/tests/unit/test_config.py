@@ -2,17 +2,11 @@
 Tests for configuration management.
 """
 
-import os
-import tempfile
-from pathlib import Path
 
-import pytest
-import yaml
 
 from agentic_framework.config import (
     AgenticConfig,
     ConfigLoader,
-    ConfigValidationError,
     load_config,
     merge_configs,
 )

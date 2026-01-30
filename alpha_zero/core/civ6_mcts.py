@@ -18,13 +18,16 @@ MuZero MCTS variant that uses learned dynamics (no environment cloning):
 
 from __future__ import annotations
 
-import math
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+
+# Module logger for debug output
+logger = logging.getLogger(__name__)
 
 
 class MCTSNetwork(Protocol):
@@ -64,6 +67,12 @@ class MCTSEnvironment(Protocol):
     Attributes:
         action_space: Action space with `n` attribute for size.
         current_player: Index of the current player (for two-player games).
+
+    Note:
+        Implementations must provide the public `get_observation()` and
+        `get_info()` methods. The private `_get_observation()` and
+        `_get_info()` methods are deprecated and should not be used
+        in new code.
     """
 
     action_space: ActionSpace
@@ -77,11 +86,11 @@ class MCTSEnvironment(Protocol):
         """Execute action and return (obs, reward, terminated, truncated, info)."""
         ...
 
-    def _get_observation(self) -> dict[str, np.ndarray]:
+    def get_observation(self) -> dict[str, np.ndarray]:
         """Get current observation dict with 'spatial', 'vector', 'action_mask'."""
         ...
 
-    def _get_info(self) -> dict[str, Any]:
+    def get_info(self) -> dict[str, Any]:
         """Get environment info dict (may contain 'winner' key)."""
         ...
 
@@ -266,11 +275,16 @@ class Civ6MCTS:
         Returns:
             Tuple of (action_probs, root_value).
         """
+        logger.debug(
+            "MCTS search starting: num_simulations=%d, c_puct=%.2f, add_noise=%s",
+            self.config.num_simulations, self.config.c_puct, add_noise
+        )
+
         # Create root node
         root = MCTSNode()
 
         # Get initial policy and value from network
-        obs = env._get_observation()
+        obs = env.get_observation()
         spatial = torch.from_numpy(obs["spatial"]).float().to(self.device)
         vector = torch.from_numpy(obs["vector"]).float().to(self.device)
         action_mask = obs["action_mask"]
@@ -303,7 +317,7 @@ class Civ6MCTS:
             # Evaluation
             if terminated or truncated:
                 # Game over: use actual result
-                info = sim_env._get_info()
+                info = sim_env.get_info()
                 winner = info.get("winner")
                 if winner is None:
                     value = 0.0  # Draw
@@ -313,7 +327,7 @@ class Civ6MCTS:
                     value = -1.0
             else:
                 # Use neural network
-                obs = sim_env._get_observation()
+                obs = sim_env.get_observation()
                 spatial = torch.from_numpy(obs["spatial"]).float().to(self.device)
                 vector = torch.from_numpy(obs["vector"]).float().to(self.device)
                 action_mask = obs["action_mask"]
@@ -331,6 +345,17 @@ class Civ6MCTS:
 
         # Get action probabilities from visit counts
         action_probs = self._get_action_probs(root, env.action_space.n)
+
+        # Find top action for logging
+        top_action = int(np.argmax(action_probs))
+        top_prob = action_probs[top_action]
+        valid_actions = len(root.children)
+
+        logger.debug(
+            "MCTS search complete: root_visits=%d, root_value=%.3f, "
+            "valid_actions=%d, top_action=%d (prob=%.3f)",
+            root.visit_count, root.value, valid_actions, top_action, top_prob
+        )
 
         return action_probs, root.value
 
@@ -360,6 +385,11 @@ class Civ6MCTS:
             )
             policy = policy_probs.squeeze(0).cpu().numpy()
             value = value.item()
+
+        logger.debug(
+            "Network evaluation: value=%.3f, policy_entropy=%.3f",
+            value, -np.sum(policy * np.log(policy + 1e-8))
+        )
 
         return policy, value
 
@@ -490,7 +520,7 @@ class SimpleMCTS:
 
             # Evaluation
             if terminated or truncated:
-                info = sim_env._get_info()
+                info = sim_env.get_info()
                 winner = info.get("winner")
                 if winner is None:
                     value = 0.0
@@ -545,7 +575,7 @@ class SimpleMCTS:
             _, _, terminated, truncated, _ = env.step(action)
 
             if terminated or truncated:
-                info = env._get_info()
+                info = env.get_info()
                 winner = info.get("winner")
                 if winner is None:
                     return 0.0
@@ -830,7 +860,7 @@ class GumbelMCTS:
         root = GumbelMCTSNode()
 
         # Get initial policy and value from network
-        obs = env._get_observation()
+        obs = env.get_observation()
         spatial = torch.from_numpy(obs["spatial"]).float().to(self.device)
         vector = torch.from_numpy(obs["vector"]).float().to(self.device)
         action_mask = obs["action_mask"]
@@ -856,7 +886,7 @@ class GumbelMCTS:
             return np.zeros(env.action_space.n, dtype=np.float32), 0.0
 
         # Store gumbel scores in children
-        for action, score in zip(sampled_actions, gumbel_scores):
+        for action, score in zip(sampled_actions, gumbel_scores, strict=False):
             if action in root.children:
                 root.children[action].gumbel_score = score
 
@@ -898,7 +928,7 @@ class GumbelMCTS:
             Best action index.
         """
         actions = list(candidate_actions)
-        scores = dict(zip(candidate_actions, gumbel_scores))
+        scores = dict(zip(candidate_actions, gumbel_scores, strict=False))
 
         if len(actions) == 0:
             return 0
@@ -910,7 +940,7 @@ class GumbelMCTS:
         num_rounds = max(1, int(np.ceil(np.log2(len(actions)))))
         sims_per_round = max(1, self.config.num_simulations // num_rounds)
 
-        for round_idx in range(num_rounds):
+        for _round_idx in range(num_rounds):
             if len(actions) <= self.config.min_actions_after_halving:
                 break
 
@@ -1041,7 +1071,7 @@ class GumbelMCTS:
                 _, reward, terminated, truncated, _ = sim_env.step(action)
             else:
                 # Expansion and evaluation
-                obs = sim_env._get_observation()
+                obs = sim_env.get_observation()
                 spatial = torch.from_numpy(obs["spatial"]).float().to(self.device)
                 vector = torch.from_numpy(obs["vector"]).float().to(self.device)
                 action_mask = obs["action_mask"]
@@ -1054,7 +1084,7 @@ class GumbelMCTS:
                 return
 
         # Terminal state
-        info = sim_env._get_info()
+        info = sim_env.get_info()
         winner = info.get("winner")
         if winner is None:
             value = 0.0
@@ -1450,7 +1480,7 @@ class MuZeroMCTS:
             return int(sampled_actions[0])
 
         # Store gumbel scores
-        scores = dict(zip(sampled_actions, gumbel_scores))
+        scores = dict(zip(sampled_actions, gumbel_scores, strict=False))
 
         if self.config.use_sequential_halving:
             return self._sequential_halving_muzero(
@@ -1485,7 +1515,7 @@ class MuZeroMCTS:
         num_rounds = max(1, int(np.ceil(np.log2(len(actions)))))
         sims_per_round = max(1, self.config.num_simulations // num_rounds)
 
-        for round_idx in range(num_rounds):
+        for _round_idx in range(num_rounds):
             if len(actions) <= 1:
                 break
 
@@ -1857,11 +1887,11 @@ class MuZeroMCTS:
         Extracts observation and action mask from environment.
 
         Args:
-            env: Game environment with _get_observation() method.
+            env: Game environment with get_observation() method.
             add_noise: Whether to add exploration noise.
 
         Returns:
             Tuple of (action_probs, root_value).
         """
-        obs = env._get_observation()
+        obs = env.get_observation()
         return self.search(obs, obs["action_mask"], add_noise)

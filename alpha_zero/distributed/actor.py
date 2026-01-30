@@ -61,6 +61,9 @@ class ActorConfig:
     device: str = "cpu"
     weight_update_interval: float = 1.0  # Seconds between weight checks
 
+    # Timeout settings
+    trajectory_submission_timeout: float = 5.0  # Timeout for trajectory submission
+
     # Logging
     log_interval: int = 10  # Log every N games
 
@@ -300,7 +303,9 @@ class SelfPlayActor:
                 trajectory = self.play_game()
 
                 # Submit to replay buffer
-                if self.replay_buffer.submit_trajectory(trajectory, timeout=5.0):
+                if self.replay_buffer.submit_trajectory(
+                    trajectory, timeout=self.config.trajectory_submission_timeout
+                ):
                     self.games_played += 1
                     self.total_examples += len(trajectory.examples)
                     games_since_update += 1

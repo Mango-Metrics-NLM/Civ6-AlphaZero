@@ -10,17 +10,16 @@ Provides specialized agents for different phases of the agentic workflow:
 """
 
 from .base_agent import (
-    BaseAgent,
     AgentContext,
     AgentResult,
     AgentStatus,
+    BaseAgent,
 )
-
-from .planning_agent import PlanningAgent
+from .documentation_agent import DocumentationAgent
 from .implementation_agent import ImplementationAgent
+from .planning_agent import PlanningAgent
 from .testing_agent import TestingAgent
 from .verification_agent import VerificationAgent
-from .documentation_agent import DocumentationAgent
 
 __all__ = [
     # Base

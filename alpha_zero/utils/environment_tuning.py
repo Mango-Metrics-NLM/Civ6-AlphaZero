@@ -339,6 +339,29 @@ class TunedEnvironmentWrapper(gym.Wrapper):
 
         self._episode_stats: dict[str, Any] = {}
 
+    # Delegate common attributes to underlying environment
+    @property
+    def current_player(self) -> int:
+        """Get current player from underlying environment."""
+        return getattr(self.env, "current_player", 0)
+
+    @property
+    def turn(self) -> int:
+        """Get current turn from underlying environment."""
+        return getattr(self.env, "turn", 0)
+
+    def get_valid_actions(self) -> np.ndarray:
+        """Get valid actions from underlying environment."""
+        return self.env.get_valid_actions()
+
+    def get_observation(self) -> dict[str, np.ndarray]:
+        """Get observation from underlying environment."""
+        return self.env.get_observation()
+
+    def get_info(self) -> dict[str, Any]:
+        """Get info from underlying environment."""
+        return self.env.get_info()
+
     def reset(
         self,
         *,
@@ -455,6 +478,36 @@ class TunedEnvironmentWrapper(gym.Wrapper):
             Dictionary with episode statistics.
         """
         return self._episode_stats.copy()
+
+    def clone(self) -> TunedEnvironmentWrapper:
+        """Create a deep copy of the wrapped environment.
+
+        Returns:
+            Cloned TunedEnvironmentWrapper with cloned underlying environment.
+        """
+        # Clone the underlying environment
+        if hasattr(self.env, "clone"):
+            cloned_env = self.env.clone()
+        else:
+            import copy
+            cloned_env = copy.deepcopy(self.env)
+
+        # Create new wrapper with same config
+        cloned_wrapper = TunedEnvironmentWrapper(cloned_env, self.config)
+
+        # Copy episode stats
+        cloned_wrapper._episode_stats = self._episode_stats.copy()
+
+        # Copy early termination checker state
+        cloned_wrapper._early_termination_checker._stalemate_counter = (
+            self._early_termination_checker._stalemate_counter
+        )
+        if self._early_termination_checker._last_state is not None:
+            cloned_wrapper._early_termination_checker._last_state = (
+                self._early_termination_checker._last_state.copy()
+            )
+
+        return cloned_wrapper
 
 
 def create_tuned_environment(

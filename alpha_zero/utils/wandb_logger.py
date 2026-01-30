@@ -43,8 +43,9 @@ import numpy as np
 
 # Optional wandb import
 try:
-    import wandb
     from wandb.sdk.wandb_run import Run
+
+    import wandb
     WANDB_AVAILABLE = True
 except ImportError:
     WANDB_AVAILABLE = False

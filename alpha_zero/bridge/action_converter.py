@@ -28,8 +28,6 @@ from typing import Any
 
 import numpy as np
 
-logger = logging.getLogger(__name__)
-
 from alpha_zero.bridge.protocol import (
     ActionType,
     LegalAction,
@@ -44,6 +42,8 @@ from alpha_zero.core.civ6_actions import (
     HierarchicalAction,
     UnitActionType,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # Legal action type strings from Lua mod (centralized for backwards compatibility)

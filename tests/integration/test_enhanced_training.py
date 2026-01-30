@@ -9,24 +9,23 @@ import numpy as np
 import pytest
 import torch
 
-from run_enhanced_training import (
-    TrainingExample,
-    ReplayBuffer,
-    ReplayDataset,
-    self_play_game_enhanced,
-    run_self_play_enhanced,
-    train_epoch,
-    evaluate_network,
-    run_enhanced_training,
-)
 from alpha_zero.core.civ6_mcts import SimpleMCTS
 from alpha_zero.core.civ6_network import MicroCivNetwork
-from alpha_zero.utils.environment_tuning import (
-    get_default_fast_config,
-    create_tuned_environment,
-)
+from alpha_zero.utils.curriculum_learning import CurriculumConfig, CurriculumManager
 from alpha_zero.utils.enhanced_rewards import create_enhanced_reward_shaper
-from alpha_zero.utils.curriculum_learning import CurriculumManager, CurriculumConfig
+from alpha_zero.utils.environment_tuning import (
+    create_tuned_environment,
+    get_default_fast_config,
+)
+from run_enhanced_training import (
+    ReplayDataset,
+    TrainingExample,
+    evaluate_network,
+    run_enhanced_training,
+    run_self_play_enhanced,
+    self_play_game_enhanced,
+    train_epoch,
+)
 
 
 class TestSelfPlayEnhanced:
@@ -107,7 +106,7 @@ class TestRunSelfPlayEnhanced:
         """Create network."""
         return MicroCivNetwork(
             board_size=8,
-            action_space_size=200,
+            action_space_size=376,
             num_res_blocks=2,
             num_filters=16,
         )
@@ -250,7 +249,7 @@ class TestEvaluateNetwork:
         """Create trained network (random weights)."""
         return MicroCivNetwork(
             board_size=8,
-            action_space_size=200,
+            action_space_size=376,
             num_res_blocks=2,
             num_filters=16,
         )

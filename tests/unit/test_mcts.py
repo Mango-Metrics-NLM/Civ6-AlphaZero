@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-import torch
 
 from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig, MCTSNode, SimpleMCTS
 from alpha_zero.core.civ6_network import MicroCivNetwork

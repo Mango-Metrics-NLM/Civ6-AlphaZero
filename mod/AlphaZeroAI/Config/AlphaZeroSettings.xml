@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<GameData>
+    <Parameters>
+        <Row Key="ALPHAZERO_AI" Name="LOC_ALPHAZERO_AI_NAME" Description="LOC_ALPHAZERO_AI_DESC" Domain="bool" DefaultValue="0" ConfigurationGroup="Game" ConfigurationId="ALPHAZERO_AI" GroupId="AdvancedOptions" SortIndex="1000"/>
+    </Parameters>
+    <ParameterDependencies/>
+    <ParameterCriteria/>
+</GameData>

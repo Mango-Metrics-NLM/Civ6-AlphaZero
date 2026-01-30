@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+from dataclasses import asdict, dataclass
 from typing import Any
 
 import gymnasium as gym
@@ -45,6 +47,90 @@ from alpha_zero.bridge.state_converter import StateConverter
 from alpha_zero.core.civ6_actions import ActionSpaceConfig
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class RewardConfig:
+    """Configuration for reward scaling in Civ6 environment.
+
+    All reward scales are multiplied by the respective state change value
+    (e.g., score_scale * delta_score). This allows fine-tuning the relative
+    importance of different game metrics for reinforcement learning.
+
+    Attributes:
+        score_scale: Reward per point of score change (default: 0.001).
+        city_scale: Reward per city gained/lost (default: 0.1).
+        unit_scale: Reward per unit gained/lost (default: 0.01).
+        gold_scale: Reward per gold change (default: 0.0001).
+        win_bonus: Bonus reward for winning the game (default: 1.0).
+        loss_penalty: Penalty for losing the game (default: -1.0).
+
+    Example:
+        >>> config = RewardConfig(score_scale=0.002, win_bonus=2.0)
+        >>> env = RealCiv6Env(reward_config=config)
+    """
+
+    score_scale: float = 0.001
+    city_scale: float = 0.1
+    unit_scale: float = 0.01
+    gold_scale: float = 0.0001
+    win_bonus: float = 1.0
+    loss_penalty: float = -1.0
+
+    @classmethod
+    def from_dict(cls, data: dict[str, float]) -> RewardConfig:
+        """Create RewardConfig from dictionary.
+
+        Only recognized keys are used; unknown keys are ignored.
+        This enables loading from partial configs or YAML files.
+
+        Args:
+            data: Dictionary with reward configuration values.
+
+        Returns:
+            RewardConfig instance with values from dict.
+        """
+        valid_keys = {
+            "score_scale", "city_scale", "unit_scale",
+            "gold_scale", "win_bonus", "loss_penalty",
+        }
+        filtered = {k: v for k, v in data.items() if k in valid_keys}
+        return cls(**filtered)
+
+    @classmethod
+    def from_env(cls, prefix: str = "CIV6AZ_REWARD_") -> RewardConfig:
+        """Create RewardConfig from environment variables.
+
+        Environment variables:
+            {prefix}SCORE_SCALE: Score change reward scale (default: 0.001)
+            {prefix}CITY_SCALE: City change reward scale (default: 0.1)
+            {prefix}UNIT_SCALE: Unit change reward scale (default: 0.01)
+            {prefix}GOLD_SCALE: Gold change reward scale (default: 0.0001)
+            {prefix}WIN_BONUS: Win bonus reward (default: 1.0)
+            {prefix}LOSS_PENALTY: Loss penalty (default: -1.0)
+
+        Args:
+            prefix: Environment variable prefix (default: "CIV6AZ_REWARD_").
+
+        Returns:
+            RewardConfig instance with values from environment or defaults.
+        """
+        return cls(
+            score_scale=float(os.environ.get(f"{prefix}SCORE_SCALE", "0.001")),
+            city_scale=float(os.environ.get(f"{prefix}CITY_SCALE", "0.1")),
+            unit_scale=float(os.environ.get(f"{prefix}UNIT_SCALE", "0.01")),
+            gold_scale=float(os.environ.get(f"{prefix}GOLD_SCALE", "0.0001")),
+            win_bonus=float(os.environ.get(f"{prefix}WIN_BONUS", "1.0")),
+            loss_penalty=float(os.environ.get(f"{prefix}LOSS_PENALTY", "-1.0")),
+        )
+
+    def to_dict(self) -> dict[str, float]:
+        """Convert to dictionary.
+
+        Returns:
+            Dictionary with all reward configuration values.
+        """
+        return asdict(self)
 
 
 class RealCiv6Env(gym.Env):
@@ -72,15 +158,8 @@ class RealCiv6Env(gym.Env):
         "render_fps": 1,
     }
 
-    # Default reward scaling constants (can be overridden via reward_config)
-    DEFAULT_REWARD_CONFIG: dict[str, float] = {
-        "score_scale": 0.001,    # Per-point score change reward
-        "city_scale": 0.1,       # Per-city count change reward
-        "unit_scale": 0.01,      # Per-unit count change reward
-        "gold_scale": 0.0001,    # Per-gold change reward
-        "win_bonus": 1.0,        # Bonus for winning
-        "loss_penalty": -1.0,    # Penalty for losing
-    }
+    # Default reward configuration (use RewardConfig for customization)
+    DEFAULT_REWARD_CONFIG: RewardConfig = RewardConfig()
 
     def __init__(
         self,
@@ -92,7 +171,7 @@ class RealCiv6Env(gym.Env):
         state_timeout: float = 60.0,
         action_timeout: float = 30.0,
         invalid_action_penalty: float = -0.1,
-        reward_config: dict[str, float] | None = None,
+        reward_config: RewardConfig | dict[str, float] | None = None,
     ):
         """Initialize the Civ6 environment.
 
@@ -105,9 +184,11 @@ class RealCiv6Env(gym.Env):
             state_timeout: Timeout for initial state (game load).
             action_timeout: Timeout for action acknowledgment.
             invalid_action_penalty: Penalty for invalid actions.
-            reward_config: Optional dict to override reward scaling constants.
-                Keys: score_scale, city_scale, unit_scale, gold_scale,
-                      win_bonus, loss_penalty.
+            reward_config: Reward configuration. Can be:
+                - RewardConfig instance
+                - dict with keys: score_scale, city_scale, unit_scale,
+                  gold_scale, win_bonus, loss_penalty
+                - None (uses defaults)
         """
         super().__init__()
 
@@ -118,10 +199,18 @@ class RealCiv6Env(gym.Env):
         self.action_timeout = action_timeout
         self.invalid_action_penalty = invalid_action_penalty
 
-        # Merge reward config with defaults
-        self._reward_config = {**self.DEFAULT_REWARD_CONFIG}
-        if reward_config:
-            self._reward_config.update(reward_config)
+        # Initialize reward config with backwards compatibility
+        if reward_config is None:
+            self._reward_config = RewardConfig()
+        elif isinstance(reward_config, RewardConfig):
+            self._reward_config = reward_config
+        elif isinstance(reward_config, dict):
+            self._reward_config = RewardConfig.from_dict(reward_config)
+        else:
+            raise TypeError(
+                f"reward_config must be RewardConfig, dict, or None, "
+                f"got {type(reward_config).__name__}"
+            )
 
         # Create components
         self._state_converter = StateConverter(
@@ -229,7 +318,7 @@ class RealCiv6Env(gym.Env):
 
         logger.info(f"Received initial state: turn={self._turn}")
 
-        return self._get_observation(), self._get_info()
+        return self.get_observation(), self.get_info()
 
     def step(
         self,
@@ -245,7 +334,7 @@ class RealCiv6Env(gym.Env):
         """
         if self._done:
             logger.warning("Step called on terminated environment")
-            return self._get_observation(), 0.0, True, False, self._get_info()
+            return self.get_observation(), 0.0, True, False, self.get_info()
 
         if self._current_state is None:
             raise RuntimeError("Environment not reset. Call reset() first.")
@@ -264,7 +353,7 @@ class RealCiv6Env(gym.Env):
                 logger.warning(f"Invalid action {action}: {result.validation_error}")
                 # Return penalty but continue
                 return (
-                    self._get_observation(),
+                    self.get_observation(),
                     self.invalid_action_penalty,
                     False,
                     False,
@@ -274,7 +363,7 @@ class RealCiv6Env(gym.Env):
         except InvalidActionError as e:
             logger.warning(f"Action conversion failed: {e}")
             return (
-                self._get_observation(),
+                self.get_observation(),
                 self.invalid_action_penalty,
                 False,
                 False,
@@ -296,7 +385,7 @@ class RealCiv6Env(gym.Env):
             if not ack.success:
                 logger.warning(f"Action failed: {ack.error_message}")
                 return (
-                    self._get_observation(),
+                    self.get_observation(),
                     self.invalid_action_penalty,
                     False,
                     False,
@@ -306,7 +395,7 @@ class RealCiv6Env(gym.Env):
         except Exception as e:
             logger.error(f"Failed to send command: {e}")
             return (
-                self._get_observation(),
+                self.get_observation(),
                 0.0,
                 False,
                 True,  # Truncated due to error
@@ -326,7 +415,7 @@ class RealCiv6Env(gym.Env):
         except StateTimeoutError:
             logger.warning("Timeout waiting for next state")
             return (
-                self._get_observation(),
+                self.get_observation(),
                 0.0,
                 False,
                 True,
@@ -337,7 +426,7 @@ class RealCiv6Env(gym.Env):
             logger.error("Connection to game lost")
             self._done = True
             return (
-                self._get_observation(),
+                self.get_observation(),
                 0.0,
                 True,
                 False,
@@ -353,9 +442,9 @@ class RealCiv6Env(gym.Env):
             self._done = True
             # Add win/loss reward from config
             if self._raw_state.winner_id == self._raw_state.player_id:
-                reward += self._reward_config["win_bonus"]
+                reward += self._reward_config.win_bonus
             elif self._raw_state.winner_id is not None:
-                reward += self._reward_config["loss_penalty"]
+                reward += self._reward_config.loss_penalty
             # Draw or unknown outcome: no additional reward
 
         # Check for turn change
@@ -363,14 +452,17 @@ class RealCiv6Env(gym.Env):
         turn_changed = new_turn > self._turn
         self._turn = new_turn
 
-        info = self._get_info()
+        info = self.get_info()
         info["turn_changed"] = turn_changed
         info["action_executed"] = command.action_type.value
 
-        return self._get_observation(), reward, terminated, False, info
+        return self.get_observation(), reward, terminated, False, info
 
-    def _get_observation(self) -> dict[str, np.ndarray]:
+    def get_observation(self) -> dict[str, np.ndarray]:
         """Get current observation.
+
+        This is the public API for retrieving the current observation.
+        MCTS and other components should use this method.
 
         Returns:
             Observation dictionary with spatial, vector, and action_mask.
@@ -400,8 +492,29 @@ class RealCiv6Env(gym.Env):
             "action_mask": action_mask,
         }
 
-    def _get_info(self) -> dict[str, Any]:
+    def _get_observation(self) -> dict[str, np.ndarray]:
+        """Get current observation (deprecated).
+
+        .. deprecated::
+            Use :meth:`get_observation` instead. This method will be removed
+            in a future version.
+
+        Returns:
+            Observation dictionary with spatial, vector, and action_mask.
+        """
+        import warnings
+        warnings.warn(
+            "_get_observation() is deprecated, use get_observation() instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.get_observation()
+
+    def get_info(self) -> dict[str, Any]:
         """Get current info dictionary.
+
+        This is the public API for retrieving the current info.
+        MCTS and other components should use this method.
 
         Returns:
             Info dictionary with game state details including winner_id
@@ -425,12 +538,23 @@ class RealCiv6Env(gym.Env):
             "is_game_over": self._raw_state.is_game_over if self._raw_state else False,
         }
 
-    # Legacy class attributes for backwards compatibility
-    # New code should use _reward_config dict instead
-    SCORE_REWARD_SCALE = 0.001
-    CITY_REWARD_SCALE = 0.1
-    UNIT_REWARD_SCALE = 0.01
-    GOLD_REWARD_SCALE = 0.0001
+    def _get_info(self) -> dict[str, Any]:
+        """Get current info dictionary (deprecated).
+
+        .. deprecated::
+            Use :meth:`get_info` instead. This method will be removed
+            in a future version.
+
+        Returns:
+            Info dictionary with game state details.
+        """
+        import warnings
+        warnings.warn(
+            "_get_info() is deprecated, use get_info() instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.get_info()
 
     def _calculate_reward(
         self,
@@ -454,26 +578,26 @@ class RealCiv6Env(gym.Env):
         # Score change (filtered for current player)
         prev_score = prev_state.get("score", 0)
         curr_score = curr_state.get("score", 0)
-        reward += (curr_score - prev_score) * config["score_scale"]
+        reward += (curr_score - prev_score) * config.score_scale
 
         # City count (for current player only)
         prev_cities = len([c for c in prev_state.get("cities", [])
                           if c.get("player") == 0])
         curr_cities = len([c for c in curr_state.get("cities", [])
                           if c.get("player") == 0])
-        reward += (curr_cities - prev_cities) * config["city_scale"]
+        reward += (curr_cities - prev_cities) * config.city_scale
 
         # Unit count (for current player only)
         prev_units = len([u for u in prev_state.get("units", [])
                          if u.get("player") == 0])
         curr_units = len([u for u in curr_state.get("units", [])
                          if u.get("player") == 0])
-        reward += (curr_units - prev_units) * config["unit_scale"]
+        reward += (curr_units - prev_units) * config.unit_scale
 
         # Gold change (top-level, already player-specific from StateConverter)
         prev_gold = prev_state.get("gold", 0)
         curr_gold = curr_state.get("gold", 0)
-        reward += (curr_gold - prev_gold) * config["gold_scale"]
+        reward += (curr_gold - prev_gold) * config.gold_scale
 
         return reward
 
@@ -515,7 +639,7 @@ class RealCiv6Env(gym.Env):
             None (rendering is to console).
         """
         if self.render_mode == "human":
-            info = self._get_info()
+            info = self.get_info()
             print(f"Turn: {info.get('turn', 0)}")
             print(f"Units: {info.get('units', 0)}")
             print(f"Cities: {info.get('cities', 0)}")
@@ -600,7 +724,7 @@ class MockCiv6Env(RealCiv6Env):
         self._done = False
         self._msg_counter = 0
 
-        return self._get_observation(), self._get_info()
+        return self.get_observation(), self.get_info()
 
     def _set_mock_state(self, turn_id: int = 1) -> None:
         """Set a mock game state.
@@ -687,7 +811,7 @@ class MockCiv6Env(RealCiv6Env):
         """
         if self._done:
             logger.warning("Step called on terminated environment")
-            return self._get_observation(), 0.0, True, False, self._get_info()
+            return self.get_observation(), 0.0, True, False, self.get_info()
 
         if self._current_state is None:
             raise RuntimeError("Environment not reset. Call reset() first.")
@@ -705,7 +829,7 @@ class MockCiv6Env(RealCiv6Env):
             if not result.is_valid:
                 logger.debug(f"Invalid action {action}: {result.validation_error}")
                 return (
-                    self._get_observation(),
+                    self.get_observation(),
                     self.invalid_action_penalty,
                     False,
                     False,
@@ -715,7 +839,7 @@ class MockCiv6Env(RealCiv6Env):
         except InvalidActionError as e:
             logger.debug(f"Action conversion failed: {e}")
             return (
-                self._get_observation(),
+                self.get_observation(),
                 self.invalid_action_penalty,
                 False,
                 False,
@@ -741,8 +865,8 @@ class MockCiv6Env(RealCiv6Env):
         terminated = False
         truncated = False
 
-        info = self._get_info()
+        info = self.get_info()
         info["turn_changed"] = True
         info["action_executed"] = command.action_type.value
 
-        return self._get_observation(), reward, terminated, truncated, info
+        return self.get_observation(), reward, terminated, truncated, info

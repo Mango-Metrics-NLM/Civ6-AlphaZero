@@ -2,19 +2,18 @@
 Tests for constraint management.
 """
 
-import tempfile
 from pathlib import Path
 
 import pytest
 
 from agentic_framework.config import AgenticConfig
 from agentic_framework.core.constraint_manager import (
-    ConstraintManager,
     Constraint,
-    ConstraintType,
-    ConstraintSeverity,
-    ConstraintViolation,
     ConstraintCheckResult,
+    ConstraintManager,
+    ConstraintSeverity,
+    ConstraintType,
+    ConstraintViolation,
 )
 
 

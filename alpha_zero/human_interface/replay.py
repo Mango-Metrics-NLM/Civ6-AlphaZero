@@ -23,27 +23,28 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from dataclasses import asdict, dataclass, field
+from collections.abc import Iterator
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterator, Optional, Union
+from typing import Any
 
 import numpy as np
 
 from alpha_zero.human_interface.config import HumanInterfaceConfig
-from alpha_zero.human_interface.game_controller import GameState, TurnResult
+from alpha_zero.human_interface.game_controller import TurnResult
 
 logger = logging.getLogger(__name__)
 
 
-def _serialize_array(arr: Optional[np.ndarray]) -> Optional[list]:
+def _serialize_array(arr: np.ndarray | None) -> list | None:
     """Convert numpy array to list for JSON serialization."""
     if arr is None:
         return None
     return arr.tolist()
 
 
-def _deserialize_array(data: Optional[list]) -> Optional[np.ndarray]:
+def _deserialize_array(data: list | None) -> np.ndarray | None:
     """Convert list back to numpy array."""
     if data is None:
         return None
@@ -71,9 +72,9 @@ class GameRecording:
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     game_config: dict[str, Any] = field(default_factory=dict)
     human_player: int = 0
-    initial_state: Optional[list] = None
+    initial_state: list | None = None
     turns: list[dict[str, Any]] = field(default_factory=list)
-    final_result: Optional[dict[str, Any]] = None
+    final_result: dict[str, Any] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -91,7 +92,7 @@ class GameRecording:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "GameRecording":
+    def from_dict(cls, data: dict[str, Any]) -> GameRecording:
         """Create from dictionary."""
         return cls(
             game_id=data["game_id"],
@@ -105,7 +106,7 @@ class GameRecording:
             metadata=data.get("metadata", {}),
         )
 
-    def save(self, path: Union[str, Path]) -> None:
+    def save(self, path: str | Path) -> None:
         """Save recording to file.
 
         Args:
@@ -120,7 +121,7 @@ class GameRecording:
         logger.info(f"Saved recording to {path}")
 
     @classmethod
-    def load(cls, path: Union[str, Path]) -> "GameRecording":
+    def load(cls, path: str | Path) -> GameRecording:
         """Load recording from file.
 
         Args:
@@ -151,7 +152,7 @@ class ReplayState:
     total_turns: int = 0
     is_playing: bool = False
     playback_speed: float = 1.0
-    current_state: Optional[np.ndarray] = None
+    current_state: np.ndarray | None = None
 
 
 class GameReplay:
@@ -186,7 +187,7 @@ class GameReplay:
             self._state.current_state = np.array(recording.initial_state)
 
     @classmethod
-    def from_file(cls, path: Union[str, Path]) -> "GameReplay":
+    def from_file(cls, path: str | Path) -> GameReplay:
         """Create replay from file.
 
         Args:
@@ -219,11 +220,11 @@ class GameReplay:
         return self._state.current_turn >= self._state.total_turns
 
     @property
-    def current_state(self) -> Optional[np.ndarray]:
+    def current_state(self) -> np.ndarray | None:
         """Get current game state."""
         return self._state.current_state
 
-    def step_forward(self) -> Optional[dict[str, Any]]:
+    def step_forward(self) -> dict[str, Any] | None:
         """Advance one turn forward.
 
         Returns:
@@ -241,7 +242,7 @@ class GameReplay:
 
         return turn_data
 
-    def step_backward(self) -> Optional[dict[str, Any]]:
+    def step_backward(self) -> dict[str, Any] | None:
         """Go back one turn.
 
         Returns:
@@ -259,7 +260,7 @@ class GameReplay:
 
         return turn_data
 
-    def jump_to_turn(self, turn: int) -> Optional[dict[str, Any]]:
+    def jump_to_turn(self, turn: int) -> dict[str, Any] | None:
         """Jump to specific turn.
 
         Args:
@@ -290,7 +291,7 @@ class GameReplay:
         if self.recording.initial_state:
             self._state.current_state = np.array(self.recording.initial_state)
 
-    def get_turn(self, turn: int) -> Optional[dict[str, Any]]:
+    def get_turn(self, turn: int) -> dict[str, Any] | None:
         """Get data for specific turn.
 
         Args:
@@ -309,8 +310,7 @@ class GameReplay:
         Yields:
             Turn data dictionaries.
         """
-        for turn_data in self.recording.turns:
-            yield turn_data
+        yield from self.recording.turns
 
     def get_summary(self) -> dict[str, Any]:
         """Get replay summary.
@@ -345,14 +345,14 @@ class GameRecorder:
         >>> recording.save("game.replay")
     """
 
-    def __init__(self, config: Optional[HumanInterfaceConfig] = None):
+    def __init__(self, config: HumanInterfaceConfig | None = None):
         """Initialize recorder.
 
         Args:
             config: Human interface configuration
         """
         self.config = config or HumanInterfaceConfig()
-        self._recording: Optional[GameRecording] = None
+        self._recording: GameRecording | None = None
         self._is_recording = False
 
     @property
@@ -362,9 +362,9 @@ class GameRecorder:
 
     def start(
         self,
-        game_id: Optional[str] = None,
+        game_id: str | None = None,
         human_player: int = 0,
-        game_config: Optional[dict[str, Any]] = None,
+        game_config: dict[str, Any] | None = None,
     ) -> str:
         """Start a new recording.
 
@@ -445,7 +445,7 @@ class GameRecorder:
         if self._recording:
             self._recording.metadata[key] = value
 
-    def stop(self) -> Optional[GameRecording]:
+    def stop(self) -> GameRecording | None:
         """Stop recording and return the recording.
 
         Returns:
@@ -461,7 +461,7 @@ class GameRecorder:
         logger.info(f"Stopped recording. {len(recording.turns)} turns captured.")
         return recording
 
-    def get_current_recording(self) -> Optional[GameRecording]:
+    def get_current_recording(self) -> GameRecording | None:
         """Get the current recording without stopping.
 
         Returns:
@@ -488,7 +488,7 @@ class ReplayManager:
         >>> manager.save_recording(recording)
     """
 
-    def __init__(self, config: Optional[HumanInterfaceConfig] = None):
+    def __init__(self, config: HumanInterfaceConfig | None = None):
         """Initialize replay manager.
 
         Args:

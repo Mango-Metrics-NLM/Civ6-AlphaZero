@@ -1660,7 +1660,7 @@ class UncivInterface:
     # =========================================================================
 
     def _map_position_to_internal(
-        self, pos: tuple[int, int], map_size: tuple[int, int],
+        self, pos: tuple[int, int], map_size: tuple[int, int]
     ) -> tuple[int, int] | None:
         """Map Unciv coordinates to internal board coordinates.
 
@@ -1685,7 +1685,7 @@ class UncivInterface:
         return (internal_x, internal_y)
 
     def _map_position_from_internal(
-        self, pos: tuple[int, int], map_size: tuple[int, int],
+        self, pos: tuple[int, int], map_size: tuple[int, int]
     ) -> tuple[int, int] | None:
         """Map internal board coordinates back to Unciv coordinates.
 
