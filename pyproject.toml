@@ -49,4 +49,9 @@ addopts = "-v --tb=short"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
+    "network: tests requiring neural network instantiation",
+    "mcts: MCTS-related tests",
+    "distributed: distributed training tests",
+    "hierarchical: hierarchical planning tests",
+    "parametrized: parametrized configuration tests",
 ]
