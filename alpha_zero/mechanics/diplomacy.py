@@ -518,6 +518,15 @@ class DiplomacyManager:
             relation.relation_type = DiplomacyType.WAR
             relation.turn_started = current_turn
 
+            # Set cooldown to prevent immediate peace (minimum war duration)
+            peace_cooldown_key = (
+                action.source_player,
+                action.target_player,
+                DiplomaticActionType.MAKE_PEACE,
+            )
+            # Minimum 5 turns of war before peace can be negotiated
+            self._cooldowns[peace_cooldown_key] = current_turn + 5
+
             # Add modifier to other relations (attacked_friend for allies)
             return True
 

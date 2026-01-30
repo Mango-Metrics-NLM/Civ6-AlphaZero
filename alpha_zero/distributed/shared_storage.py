@@ -235,13 +235,26 @@ class SharedStorage:
         Returns:
             Model state dictionary, or None if not set.
         """
+        weights, _ = self.get_model_weights_with_version()
+        return weights
+
+    def get_model_weights_with_version(self) -> tuple[dict[str, torch.Tensor] | None, int]:
+        """Retrieve model weights and version atomically.
+
+        This method ensures that the returned weights match the returned version,
+        preventing race conditions where version changes during weight retrieval.
+
+        Returns:
+            Tuple of (state_dict, version). state_dict is None if weights not set.
+        """
         with self._lock:
             weights_bytes = self._state.get("model_weights")
+            version = int(self._state["model_version"])
 
         if weights_bytes is None:
-            return None
+            return None, version
 
-        # Decompress if needed
+        # Decompress if needed (outside lock - we have consistent bytes+version)
         if self.config.compress_weights:
             weights_bytes = lzma.decompress(weights_bytes)
 
@@ -252,7 +265,7 @@ class SharedStorage:
             map_location="cpu",
             weights_only=True,
         )
-        return state_dict
+        return state_dict, version
 
     def get_model_version(self) -> int:
         """Get current model version."""
@@ -506,17 +519,17 @@ class DistributedReplayBuffer:
                 else:
                     trajectory = data
 
-                # Add examples to buffer
+                # Add examples to buffer and update stats atomically
                 with self._buffer_lock:
                     for example in trajectory.examples:
                         self._buffer.append(example)
 
-                # Update stats
-                self._stats["total_trajectories"] = self._stats["total_trajectories"] + 1
-                self._stats["total_examples"] = self._stats["total_examples"] + len(
-                    trajectory.examples
-                )
-                self._stats["buffer_size"] = len(self._buffer)
+                    # Update stats inside lock to prevent race conditions
+                    self._stats["total_trajectories"] = self._stats["total_trajectories"] + 1
+                    self._stats["total_examples"] = self._stats["total_examples"] + len(
+                        trajectory.examples
+                    )
+                    self._stats["buffer_size"] = len(self._buffer)
 
                 processed += 1
 
@@ -652,18 +665,53 @@ class WeightSynchronizer:
         Returns:
             True if model was updated.
         """
-        weights = self.storage.get_model_weights()
+        # Use atomic method to get weights and version together
+        weights, version = self.storage.get_model_weights_with_version()
         if weights is None:
             return False
 
         try:
             model.load_state_dict(weights)
-            self._current_version = self.storage.get_model_version()
+            self._current_version = version
             logger.debug(f"Updated to model v{self._current_version}")
             return True
         except Exception as e:
             logger.error(f"Failed to load weights: {e}")
             return False
+
+    def update_if_available(self, model: torch.nn.Module) -> tuple[bool, int]:
+        """Atomically check for and apply weight updates.
+
+        This method combines should_update() and update_model() into a single
+        atomic operation to prevent race conditions where version changes
+        between check and update.
+
+        Args:
+            model: Model to update.
+
+        Returns:
+            Tuple of (was_updated, current_version).
+        """
+        current_time = time.time()
+        if current_time - self._last_check_time < self.update_interval:
+            return False, self._current_version
+
+        self._last_check_time = current_time
+
+        # Atomic get of weights and version
+        weights, latest_version = self.storage.get_model_weights_with_version()
+
+        if weights is None or latest_version <= self._current_version:
+            return False, self._current_version
+
+        try:
+            model.load_state_dict(weights)
+            self._current_version = latest_version
+            logger.debug(f"Updated to model v{self._current_version}")
+            return True, self._current_version
+        except Exception as e:
+            logger.error(f"Failed to load weights: {e}")
+            return False, self._current_version
 
     def get_current_version(self) -> int:
         """Get currently loaded model version."""

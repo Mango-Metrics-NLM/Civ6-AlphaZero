@@ -580,7 +580,11 @@ class EnhancedRewardShaper:
         for _component, value in intermediate.items():
             total_reward += value * self.config.scale_factor
 
-        # Victory bonus
+        # Clip intermediate rewards BEFORE victory bonus to preserve victory signal
+        if self.config.normalize and not terminated:
+            total_reward = np.clip(total_reward, -2.0, 2.0)
+
+        # Victory bonus (added after clipping to preserve signal)
         if terminated:
             winner = info.get("winner")
             current_player = info.get("current_player", 0)
@@ -593,9 +597,9 @@ class EnhancedRewardShaper:
             )
             total_reward += victory_bonus * self.config.scale_factor
 
-        # Normalize if configured
-        if self.config.normalize:
-            total_reward = np.clip(total_reward, -2.0, 2.0)
+            # Use wider bounds for terminal states to preserve victory signal
+            if self.config.normalize:
+                total_reward = np.clip(total_reward, -3.0, 3.0)
 
         # Track rewards
         self._episode_base_rewards.append(base_reward)
