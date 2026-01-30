@@ -875,7 +875,13 @@ class TransformerEncoder(nn.Module):
 
 
 class TransformerPolicyHead(nn.Module):
-    """Policy head for the transformer network."""
+    """Policy head for the transformer network.
+
+    Note:
+        For new code, consider using ``HeadFactory.create_transformer_policy_head()``
+        from ``alpha_zero.core.network_heads`` which provides a more flexible
+        and configurable implementation.
+    """
 
     def __init__(
         self,
@@ -917,7 +923,13 @@ class TransformerPolicyHead(nn.Module):
 
 
 class TransformerValueHead(nn.Module):
-    """Value head for the transformer network."""
+    """Value head for the transformer network.
+
+    Note:
+        For new code, consider using ``HeadFactory.create_transformer_value_head()``
+        from ``alpha_zero.core.network_heads`` which provides a more flexible
+        and configurable implementation.
+    """
 
     def __init__(
         self,

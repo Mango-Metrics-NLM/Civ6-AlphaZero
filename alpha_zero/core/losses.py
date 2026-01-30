@@ -32,7 +32,8 @@ Reference:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 from typing import NamedTuple, Protocol, runtime_checkable
 
 import torch
@@ -44,15 +45,86 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# Configuration Classes
+# =============================================================================
+
+
+@dataclass
+class CategoricalSupportConfig:
+    """Configuration for scalar-to-categorical conversion.
+
+    Used by value and reward heads in MuZero networks for representing
+    continuous values as categorical distributions over a discrete support.
+
+    The default configuration supports values from -300 to +300 with
+    601 bins (step size of 1.0), which is suitable for most game scores.
+
+    Attributes:
+        support_size: Number of discrete bins in the support (default 601).
+        min_value: Minimum value in support range (default -300.0).
+        max_value: Maximum value in support range (default 300.0).
+
+    Example:
+        >>> config = CategoricalSupportConfig(support_size=201, min_value=-100, max_value=100)
+        >>> # Now pass to scalar_to_categorical or categorical_to_scalar
+    """
+
+    support_size: int = 601
+    min_value: float = -300.0
+    max_value: float = 300.0
+
+    def __post_init__(self) -> None:
+        """Validate configuration values."""
+        if self.support_size < 3:
+            raise ValueError(f"support_size must be at least 3, got {self.support_size}")
+        if self.min_value >= self.max_value:
+            raise ValueError(
+                f"min_value ({self.min_value}) must be less than max_value ({self.max_value})"
+            )
+
+    @classmethod
+    def from_env(cls, prefix: str = "CIV6AZ_CATEGORICAL_") -> CategoricalSupportConfig:
+        """Create configuration from environment variables.
+
+        Environment variables:
+            {prefix}SUPPORT_SIZE: Number of support bins (default: 601)
+            {prefix}MIN_VALUE: Minimum value in range (default: -300.0)
+            {prefix}MAX_VALUE: Maximum value in range (default: 300.0)
+
+        Args:
+            prefix: Environment variable prefix (default: "CIV6AZ_CATEGORICAL_").
+
+        Returns:
+            Configuration instance with values from environment or defaults.
+        """
+        return cls(
+            support_size=int(os.environ.get(f"{prefix}SUPPORT_SIZE", "601")),
+            min_value=float(os.environ.get(f"{prefix}MIN_VALUE", "-300.0")),
+            max_value=float(os.environ.get(f"{prefix}MAX_VALUE", "300.0")),
+        )
+
+    @property
+    def step_size(self) -> float:
+        """Calculate the step size between support bins."""
+        return (self.max_value - self.min_value) / (self.support_size - 1)
+
+
+# Global default instance for backwards compatibility
+_DEFAULT_CATEGORICAL_CONFIG = CategoricalSupportConfig()
+
+
+# =============================================================================
 # Utility Functions: Scalar-Categorical Conversion
 # =============================================================================
 
 
 def scalar_to_categorical(
     scalar: torch.Tensor,
-    support_size: int = 601,
-    min_value: float = -300,
-    max_value: float = 300,
+    support_size: int | None = None,
+    min_value: float | None = None,
+    max_value: float | None = None,
+    *,
+    config: CategoricalSupportConfig | None = None,
 ) -> torch.Tensor:
     """Convert scalar values to categorical distribution.
 
@@ -63,8 +135,13 @@ def scalar_to_categorical(
     Args:
         scalar: Scalar values of shape (B,) or (B, 1).
         support_size: Number of discrete bins in the support.
+            Deprecated: Use config parameter instead.
         min_value: Minimum value in support range.
+            Deprecated: Use config parameter instead.
         max_value: Maximum value in support range.
+            Deprecated: Use config parameter instead.
+        config: Configuration object. If provided, individual parameters
+            are used as overrides. If None, uses global defaults.
 
     Returns:
         Categorical distribution of shape (B, support_size).
@@ -78,7 +155,18 @@ def scalar_to_categorical(
         torch.Size([3, 601])
         >>> categorical.sum(dim=-1)  # Each sums to 1
         tensor([1., 1., 1.])
+
+        >>> # Preferred: use config
+        >>> config = CategoricalSupportConfig(support_size=201, min_value=-100, max_value=100)
+        >>> categorical = scalar_to_categorical(scalars, config=config)
     """
+    # Resolve configuration: individual params override config, which overrides global default
+    if config is None:
+        config = _DEFAULT_CATEGORICAL_CONFIG
+    support_size = support_size if support_size is not None else config.support_size
+    min_value = min_value if min_value is not None else config.min_value
+    max_value = max_value if max_value is not None else config.max_value
+
     logger.debug(
         "Converting scalars to categorical: shape=%s, support_size=%d, range=[%f, %f]",
         scalar.shape, support_size, min_value, max_value
@@ -117,10 +205,12 @@ def scalar_to_categorical(
 
 def categorical_to_scalar(
     categorical: torch.Tensor,
-    support_size: int = 601,
-    min_value: float = -300,
-    max_value: float = 300,
+    support_size: int | None = None,
+    min_value: float | None = None,
+    max_value: float | None = None,
     apply_softmax: bool = False,
+    *,
+    config: CategoricalSupportConfig | None = None,
 ) -> torch.Tensor:
     """Convert categorical distribution back to scalar value.
 
@@ -129,10 +219,15 @@ def categorical_to_scalar(
     Args:
         categorical: Categorical distribution or logits of shape (B, support_size).
         support_size: Number of discrete bins in the support.
+            Deprecated: Use config parameter instead.
         min_value: Minimum value in support range.
+            Deprecated: Use config parameter instead.
         max_value: Maximum value in support range.
+            Deprecated: Use config parameter instead.
         apply_softmax: If True, apply softmax to convert logits to probabilities.
             If False, assume input is already a probability distribution.
+        config: Configuration object. If provided, individual parameters
+            are used as overrides. If None, uses global defaults.
 
     Returns:
         Scalar values of shape (B,).
@@ -144,7 +239,18 @@ def categorical_to_scalar(
         >>> recovered = categorical_to_scalar(categorical, support_size=601)
         >>> torch.allclose(scalars, recovered, atol=1.0)
         True
+
+        >>> # Preferred: use config
+        >>> config = CategoricalSupportConfig(support_size=201, min_value=-100, max_value=100)
+        >>> recovered = categorical_to_scalar(categorical, config=config)
     """
+    # Resolve configuration: individual params override config, which overrides global default
+    if config is None:
+        config = _DEFAULT_CATEGORICAL_CONFIG
+    support_size = support_size if support_size is not None else config.support_size
+    min_value = min_value if min_value is not None else config.min_value
+    max_value = max_value if max_value is not None else config.max_value
+
     logger.debug(
         "Converting categorical to scalar: shape=%s, apply_softmax=%s",
         categorical.shape, apply_softmax
@@ -481,9 +587,17 @@ class LossConfig:
         consistency_loss_weight: Weight for EfficientZero consistency loss (default: 2.0).
         value_prefix_loss_weight: Weight for value prefix loss (default: 1.0).
         use_categorical: Whether to use categorical distributions for value/reward.
-        support_size: Size of categorical support.
-        min_value: Minimum value in support range.
-        max_value: Maximum value in support range.
+        categorical_support: Configuration for categorical encoding of values/rewards.
+
+    Example:
+        >>> # New style with CategoricalSupportConfig
+        >>> config = LossConfig(
+        ...     policy_loss_weight=1.0,
+        ...     value_loss_weight=0.5,
+        ...     categorical_support=CategoricalSupportConfig(support_size=201),
+        ... )
+        >>> # Backwards-compatible style with individual parameters
+        >>> config = LossConfig(support_size=201, min_value=-100, max_value=100)
     """
 
     policy_loss_weight: float = 1.0
@@ -493,9 +607,80 @@ class LossConfig:
     value_prefix_loss_weight: float = 1.0
 
     use_categorical: bool = True
-    support_size: int = 601
-    min_value: float = -300.0
-    max_value: float = 300.0
+    categorical_support: CategoricalSupportConfig | None = None
+
+    # Backwards-compatible parameters (use categorical_support for new code)
+    _support_size: int | None = field(default=None, repr=False)
+    _min_value: float | None = field(default=None, repr=False)
+    _max_value: float | None = field(default=None, repr=False)
+
+    def __init__(
+        self,
+        policy_loss_weight: float = 1.0,
+        value_loss_weight: float = 1.0,
+        reward_loss_weight: float = 1.0,
+        consistency_loss_weight: float = 2.0,
+        value_prefix_loss_weight: float = 1.0,
+        use_categorical: bool = True,
+        categorical_support: CategoricalSupportConfig | None = None,
+        # Backwards-compatible parameters
+        support_size: int | None = None,
+        min_value: float | None = None,
+        max_value: float | None = None,
+    ):
+        """Initialize LossConfig with backwards compatibility.
+
+        Args:
+            policy_loss_weight: Weight for policy loss.
+            value_loss_weight: Weight for value loss.
+            reward_loss_weight: Weight for reward loss.
+            consistency_loss_weight: Weight for consistency loss.
+            value_prefix_loss_weight: Weight for value prefix loss.
+            use_categorical: Whether to use categorical distributions.
+            categorical_support: Configuration for categorical encoding.
+            support_size: (Deprecated) Use categorical_support instead.
+            min_value: (Deprecated) Use categorical_support instead.
+            max_value: (Deprecated) Use categorical_support instead.
+        """
+        self.policy_loss_weight = policy_loss_weight
+        self.value_loss_weight = value_loss_weight
+        self.reward_loss_weight = reward_loss_weight
+        self.consistency_loss_weight = consistency_loss_weight
+        self.value_prefix_loss_weight = value_prefix_loss_weight
+        self.use_categorical = use_categorical
+
+        # Handle backwards compatibility
+        if categorical_support is not None:
+            self.categorical_support = categorical_support
+        elif support_size is not None or min_value is not None or max_value is not None:
+            # Create from individual parameters
+            self.categorical_support = CategoricalSupportConfig(
+                support_size=support_size if support_size is not None else 601,
+                min_value=min_value if min_value is not None else -300.0,
+                max_value=max_value if max_value is not None else 300.0,
+            )
+        else:
+            self.categorical_support = CategoricalSupportConfig()
+
+        # Store for repr compatibility
+        self._support_size = None
+        self._min_value = None
+        self._max_value = None
+
+    @property
+    def support_size(self) -> int:
+        """Size of categorical support (backwards-compatible property)."""
+        return self.categorical_support.support_size
+
+    @property
+    def min_value(self) -> float:
+        """Minimum value in support range (backwards-compatible property)."""
+        return self.categorical_support.min_value
+
+    @property
+    def max_value(self) -> float:
+        """Maximum value in support range (backwards-compatible property)."""
+        return self.categorical_support.max_value
 
 
 class StepLossOutput(NamedTuple):

@@ -184,7 +184,13 @@ class VectorEncoder(nn.Module):
 
 
 class PolicyHead(nn.Module):
-    """Policy head for action prediction."""
+    """Policy head for action prediction.
+
+    Note:
+        For new code, consider using ``HeadFactory.create_cnn_policy_head()``
+        from ``alpha_zero.core.network_heads`` which provides a more flexible
+        and configurable implementation.
+    """
 
     def __init__(
         self,
@@ -245,7 +251,13 @@ class PolicyHead(nn.Module):
 
 
 class ValueHead(nn.Module):
-    """Value head for position evaluation."""
+    """Value head for position evaluation.
+
+    Note:
+        For new code, consider using ``HeadFactory.create_cnn_value_head()``
+        from ``alpha_zero.core.network_heads`` which provides a more flexible
+        and configurable implementation.
+    """
 
     def __init__(
         self,

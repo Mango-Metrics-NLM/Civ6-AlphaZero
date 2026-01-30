@@ -63,6 +63,12 @@ class MCTSEnvironment(Protocol):
     Attributes:
         action_space: Action space with `n` attribute for size.
         current_player: Index of the current player (for two-player games).
+
+    Note:
+        Implementations must provide the public `get_observation()` and
+        `get_info()` methods. The private `_get_observation()` and
+        `_get_info()` methods are deprecated and should not be used
+        in new code.
     """
 
     action_space: ActionSpace
@@ -76,11 +82,11 @@ class MCTSEnvironment(Protocol):
         """Execute action and return (obs, reward, terminated, truncated, info)."""
         ...
 
-    def _get_observation(self) -> dict[str, np.ndarray]:
+    def get_observation(self) -> dict[str, np.ndarray]:
         """Get current observation dict with 'spatial', 'vector', 'action_mask'."""
         ...
 
-    def _get_info(self) -> dict[str, Any]:
+    def get_info(self) -> dict[str, Any]:
         """Get environment info dict (may contain 'winner' key)."""
         ...
 
@@ -829,7 +835,7 @@ class GumbelMCTS:
         root = GumbelMCTSNode()
 
         # Get initial policy and value from network
-        obs = env._get_observation()
+        obs = env.get_observation()
         spatial = torch.from_numpy(obs["spatial"]).float().to(self.device)
         vector = torch.from_numpy(obs["vector"]).float().to(self.device)
         action_mask = obs["action_mask"]
@@ -1040,7 +1046,7 @@ class GumbelMCTS:
                 _, reward, terminated, truncated, _ = sim_env.step(action)
             else:
                 # Expansion and evaluation
-                obs = sim_env._get_observation()
+                obs = sim_env.get_observation()
                 spatial = torch.from_numpy(obs["spatial"]).float().to(self.device)
                 vector = torch.from_numpy(obs["vector"]).float().to(self.device)
                 action_mask = obs["action_mask"]
@@ -1053,7 +1059,7 @@ class GumbelMCTS:
                 return
 
         # Terminal state
-        info = sim_env._get_info()
+        info = sim_env.get_info()
         winner = info.get("winner")
         if winner is None:
             value = 0.0
@@ -1856,11 +1862,11 @@ class MuZeroMCTS:
         Extracts observation and action mask from environment.
 
         Args:
-            env: Game environment with _get_observation() method.
+            env: Game environment with get_observation() method.
             add_noise: Whether to add exploration noise.
 
         Returns:
             Tuple of (action_probs, root_value).
         """
-        obs = env._get_observation()
+        obs = env.get_observation()
         return self.search(obs, obs["action_mask"], add_noise)

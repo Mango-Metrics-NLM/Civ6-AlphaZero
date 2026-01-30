@@ -623,6 +623,24 @@ class MicroCivEnv(gym.Env):
             "action_mask": action_mask,
         }
 
+    def _get_observation(self) -> dict[str, np.ndarray]:
+        """Get observation for current player (deprecated).
+
+        .. deprecated::
+            Use :meth:`get_observation` instead. This method will be removed
+            in a future version.
+
+        Returns:
+            Observation dictionary with spatial, vector, and action_mask.
+        """
+        import warnings
+        warnings.warn(
+            "_get_observation() is deprecated, use get_observation() instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.get_observation()
+
     def get_info(self) -> dict[str, Any]:
         """Get info dictionary."""
         return {
@@ -639,6 +657,24 @@ class MicroCivEnv(gym.Env):
             ],
             "visited_count": len(self.visited),
         }
+
+    def _get_info(self) -> dict[str, Any]:
+        """Get info dictionary (deprecated).
+
+        .. deprecated::
+            Use :meth:`get_info` instead. This method will be removed
+            in a future version.
+
+        Returns:
+            Info dictionary with game state details.
+        """
+        import warnings
+        warnings.warn(
+            "_get_info() is deprecated, use get_info() instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.get_info()
 
     def get_valid_actions(self) -> np.ndarray:
         """Get valid action mask.

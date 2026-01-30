@@ -18,6 +18,7 @@ from alpha_zero.core.civ6_network import (
 from alpha_zero.core.losses import (
     AlphaZeroNetworkProtocol,
     # Config and data structures
+    CategoricalSupportConfig,
     LossConfig,
     # Calculator class
     MuZeroLossCalculator,
@@ -49,6 +50,15 @@ from alpha_zero.core.transformer_network import (
     compute_transformer_loss,
     create_transformer_network,
 )
+from alpha_zero.core.network_heads import (
+    ActivationType,
+    FeatureCombiner,
+    HeadFactory,
+    MLPHead,
+    MLPHeadConfig,
+    SpatialPreprocessor,
+    SpatialPreprocessorConfig,
+)
 
 __all__ = [
     # Original network components
@@ -74,6 +84,7 @@ __all__ = [
     "ActionSpace",
     "HierarchicalAction",
     # Loss config and data structures
+    "CategoricalSupportConfig",
     "LossConfig",
     "StepLossOutput",
     "TrajectoryLossOutput",
@@ -97,4 +108,12 @@ __all__ = [
     # Protocols
     "MuZeroNetworkProtocol",
     "AlphaZeroNetworkProtocol",
+    # Network heads (reusable components)
+    "ActivationType",
+    "MLPHeadConfig",
+    "MLPHead",
+    "SpatialPreprocessorConfig",
+    "SpatialPreprocessor",
+    "FeatureCombiner",
+    "HeadFactory",
 ]
