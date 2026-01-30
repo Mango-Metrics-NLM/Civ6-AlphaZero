@@ -575,13 +575,15 @@ class ReplayManager:
         for path in self._replay_dir.glob("*.json"):
             try:
                 recording = GameRecording.load(path)
-                replays.append({
-                    "game_id": recording.game_id,
-                    "created_at": recording.created_at,
-                    "turns": len(recording.turns),
-                    "final_result": recording.final_result,
-                    "path": str(path),
-                })
+                replays.append(
+                    {
+                        "game_id": recording.game_id,
+                        "created_at": recording.created_at,
+                        "turns": len(recording.turns),
+                        "final_result": recording.final_result,
+                        "path": str(path),
+                    }
+                )
             except Exception as e:
                 logger.warning(f"Failed to load replay {path}: {e}")
 
@@ -600,13 +602,15 @@ class ReplayManager:
         for path in self._save_dir.glob("*.json"):
             try:
                 recording = GameRecording.load(path)
-                saves.append({
-                    "game_id": recording.game_id,
-                    "created_at": recording.created_at,
-                    "turns": len(recording.turns),
-                    "human_player": recording.human_player,
-                    "path": str(path),
-                })
+                saves.append(
+                    {
+                        "game_id": recording.game_id,
+                        "created_at": recording.created_at,
+                        "turns": len(recording.turns),
+                        "human_player": recording.human_player,
+                        "path": str(path),
+                    }
+                )
             except Exception as e:
                 logger.warning(f"Failed to load save {path}: {e}")
 

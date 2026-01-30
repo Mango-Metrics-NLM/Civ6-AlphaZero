@@ -15,10 +15,10 @@ from typing import Any, Protocol
 class BeliefType(Enum):
     """Types of religious beliefs."""
 
-    FOUNDER = auto()      # Bonus for founding religion
-    FOLLOWER = auto()     # Bonus for followers
-    WORSHIP = auto()       # Building unlocks
-    ENHANCER = auto()      # Spread bonuses
+    FOUNDER = auto()  # Bonus for founding religion
+    FOLLOWER = auto()  # Bonus for followers
+    WORSHIP = auto()  # Building unlocks
+    ENHANCER = auto()  # Spread bonuses
 
 
 class ReligiousUnitType(Enum):
@@ -510,7 +510,8 @@ class ReligionManager:
         # Apply pressure
         self._ensure_city_pressure(target_city_position)
         self._city_pressure[target_city_position].add_pressure(
-            unit.religion_id, float(strength),
+            unit.religion_id,
+            float(strength),
         )
 
         # Remove unit if out of charges
@@ -560,12 +561,13 @@ class ReligionManager:
                 if distance <= self.config.natural_spread_range:
                     # Pressure falls off with distance
                     spread_amount = (
-                        self.config.base_pressure_per_citizen *
-                        source_city.population *
-                        (1.0 - distance / (self.config.natural_spread_range + 1))
+                        self.config.base_pressure_per_citizen
+                        * source_city.population
+                        * (1.0 - distance / (self.config.natural_spread_range + 1))
                     )
                     self._city_pressure[target_city.position].add_pressure(
-                        majority, spread_amount,
+                        majority,
+                        spread_amount,
                     )
 
     def process_turn(self) -> None:
@@ -637,12 +639,8 @@ class ReligionManager:
     def to_dict(self) -> dict[str, Any]:
         """Serialize religion state."""
         return {
-            "religions": {
-                str(k): v.to_dict() for k, v in self._religions.items()
-            },
-            "religious_units": {
-                str(k): v.to_dict() for k, v in self._religious_units.items()
-            },
+            "religions": {str(k): v.to_dict() for k, v in self._religions.items()},
+            "religious_units": {str(k): v.to_dict() for k, v in self._religious_units.items()},
             "city_pressure": {
                 f"{k[0]}_{k[1]}": v.to_dict() for k, v in self._city_pressure.items()
             },

@@ -2,15 +2,11 @@
 Integration tests for the orchestrator.
 """
 
-from pathlib import Path
-
 import pytest
 
 from agentic_framework import (
     Orchestrator,
     OrchestratorResult,
-    AgenticConfig,
-    load_config,
 )
 
 

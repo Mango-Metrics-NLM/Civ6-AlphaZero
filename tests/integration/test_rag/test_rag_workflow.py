@@ -3,16 +3,16 @@
 import pytest
 import pytest_asyncio
 
-from alpha_zero.rag.pipeline import RAGPipeline
+from alpha_zero.rag.agents.context_builder import ContextBuilder, ContextStrategy
+from alpha_zero.rag.agents.query_enhancer import QueryEnhancer
 from alpha_zero.rag.agents.workflow import (
     RAGAgentWorkflow,
     WorkflowContext,
     WorkflowState,
 )
-from alpha_zero.rag.agents.context_builder import ContextBuilder, ContextStrategy
-from alpha_zero.rag.agents.query_enhancer import QueryEnhancer
-from alpha_zero.rag.stores.memory_store import MemoryVectorStore
+from alpha_zero.rag.pipeline import RAGPipeline
 from alpha_zero.rag.processors.embeddings import LocalEmbeddings
+from alpha_zero.rag.stores.memory_store import MemoryVectorStore
 
 
 class TestRAGAgentWorkflowIntegration:
@@ -224,7 +224,11 @@ class TestQueryEnhancerIntegration:
 
         assert expansion.original == "How to win the early game?"
         assert len(expansion.keywords) > 0
-        assert "win" in expansion.keywords or "early" in expansion.keywords or "game" in expansion.keywords
+        assert (
+            "win" in expansion.keywords
+            or "early" in expansion.keywords
+            or "game" in expansion.keywords
+        )
 
     def test_extract_keywords(self, enhancer):
         """Test keyword extraction."""
@@ -356,6 +360,7 @@ class TestEndToEndRAGPipeline:
         pipeline = await RAGPipeline.create_for_testing()
         # Enable caching for this test
         from alpha_zero.rag.utils.cache import TTLCache
+
         pipeline._query_cache = TTLCache(ttl=300, maxsize=100)
 
         try:

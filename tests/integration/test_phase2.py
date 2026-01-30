@@ -23,6 +23,7 @@ def test_distributed_imports() -> None:
         ReplayBufferConfig,
         SharedStorageConfig,
     )
+
     # Verify we can instantiate config classes
     storage_config = SharedStorageConfig()
     buffer_config = ReplayBufferConfig()
@@ -43,6 +44,7 @@ def test_interfaces_imports() -> None:
         UncivTerrainType,
         UncivUnitType,
     )
+
     # Verify enums have values
     assert len(UncivTerrainType) > 0
     assert len(UncivUnitType) > 0
@@ -54,6 +56,7 @@ def test_utils_imports() -> None:
         # Configuration
         get_default_config,
     )
+
     # Verify we can get defaults
     config = get_default_config()
     assert config is not None
@@ -252,7 +255,7 @@ class TestLoggingIntegration:
             logger.end_game(winner=0, total_turns=1, reason="elimination")
 
             # Check log file was created
-            log_files = list(Path(tmpdir).glob("*.json"))
+            _log_files = list(Path(tmpdir).glob("*.json"))
             # GameLogger may or may not create files depending on config
             assert True  # Test passes if no exception
 
@@ -336,13 +339,15 @@ class TestTrainingExampleFormat:
         # Create examples
         examples = []
         for i in range(10):
-            examples.append(TrainingExample(
-                spatial=np.zeros((84, 16, 16), dtype=np.float32),
-                vector=np.zeros(512, dtype=np.float32),
-                action_mask=np.ones(1000, dtype=np.float32),
-                policy=np.zeros(1000, dtype=np.float32),
-                value=1.0 if i % 2 == 0 else -1.0,
-            ))
+            examples.append(
+                TrainingExample(
+                    spatial=np.zeros((84, 16, 16), dtype=np.float32),
+                    vector=np.zeros(512, dtype=np.float32),
+                    action_mask=np.ones(1000, dtype=np.float32),
+                    policy=np.zeros(1000, dtype=np.float32),
+                    value=1.0 if i % 2 == 0 else -1.0,
+                )
+            )
 
         trajectory = GameTrajectory(
             examples=examples,

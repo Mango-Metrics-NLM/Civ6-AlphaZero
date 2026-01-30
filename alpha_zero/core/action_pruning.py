@@ -542,7 +542,7 @@ class ActionPruner:
             # Limit cache size
             if len(self._cache) > self.config.cache_size:
                 # Remove oldest entries
-                keys_to_remove = list(self._cache.keys())[:len(self._cache) // 2]
+                keys_to_remove = list(self._cache.keys())[: len(self._cache) // 2]
                 for key in keys_to_remove:
                     del self._cache[key]
 
@@ -810,8 +810,7 @@ class MacroActionPlanner:
 
         # Find settler
         settlers = [
-            u for u in units
-            if u.get("player") == current_player and u.get("type") == "settler"
+            u for u in units if u.get("player") == current_player and u.get("type") == "settler"
         ]
 
         if not settlers:
@@ -1001,8 +1000,7 @@ class MacroActionPlanner:
         return {
             "active_macros": len(active),
             "avg_macro_progress": (
-                sum(m.progress for m in active) / len(active)
-                if active else 0.0
+                sum(m.progress for m in active) / len(active) if active else 0.0
             ),
             "completed_macros": len(self._completed_macros),
         }

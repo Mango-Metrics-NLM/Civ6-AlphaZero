@@ -9,6 +9,7 @@ Example:
     >>> encoder = GoalEncoder(embed_dim=64)
     >>> goal_tensor = encoder.encode(goal, game_state)
 """
+
 from __future__ import annotations
 
 import logging
@@ -20,6 +21,7 @@ import numpy as np
 try:
     import torch
     import torch.nn as nn
+
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
@@ -132,12 +134,12 @@ class GoalEncoder:
         self._context_dim = 16  # Parent goal context
 
         self._raw_features = (
-            self._type_dim +
-            self._status_dim +
-            self._level_dim +
-            self._target_dim +
-            self._progress_dim +
-            (self._context_dim if self.config.include_context else 0)
+            self._type_dim
+            + self._status_dim
+            + self._level_dim
+            + self._target_dim
+            + self._progress_dim
+            + (self._context_dim if self.config.include_context else 0)
         )
 
         logger.debug(
@@ -235,7 +237,7 @@ class GoalEncoder:
             dtype=np.float32,
         )
 
-        for i, goal in enumerate(goals[:self.config.max_goals]):
+        for i, goal in enumerate(goals[: self.config.max_goals]):
             parent = parent_goals.get(goal.parent_goal_id) if goal.parent_goal_id else None
             embedding = self.encode(goal, game_state, parent)
             batch[i] = embedding.embedding
@@ -294,14 +296,15 @@ class GoalEncoder:
         # Distance to target (if location known and game state available)
         if target.position and game_state:
             own_cities = [
-                c for c in game_state.get("cities", [])
+                c
+                for c in game_state.get("cities", [])
                 if c.get("player") == game_state.get("current_player", 0)
             ]
             if own_cities:
                 # Distance from nearest own city
                 min_dist = min(
-                    abs(c.get("x", 0) - target.position[0]) +
-                    abs(c.get("y", 0) - target.position[1])
+                    abs(c.get("x", 0) - target.position[0])
+                    + abs(c.get("y", 0) - target.position[1])
                     for c in own_cities
                 )
                 target_vec[5] = min(min_dist / 20.0, 1.0)
@@ -315,13 +318,15 @@ class GoalEncoder:
         # Threat level at target
         if target.position and game_state:
             enemies = [
-                u for u in game_state.get("units", [])
+                u
+                for u in game_state.get("units", [])
                 if u.get("player") != game_state.get("current_player", 0)
             ]
             nearby_enemies = sum(
-                1 for e in enemies
-                if abs(e.get("x", 0) - target.position[0]) <= 3 and
-                abs(e.get("y", 0) - target.position[1]) <= 3
+                1
+                for e in enemies
+                if abs(e.get("x", 0) - target.position[0]) <= 3
+                and abs(e.get("y", 0) - target.position[1]) <= 3
             )
             target_vec[7] = min(nearby_enemies / 5.0, 1.0)
 
@@ -335,18 +340,22 @@ class GoalEncoder:
         """Encode goal progress information."""
         current_turn = game_state.get("turn", 0) if game_state else 0
 
-        progress_vec = np.array([
-            goal.progress,  # Current progress (0-1)
-            # Turns since creation (normalized)
-            min((current_turn - goal.created_turn) / 100.0, 1.0),
-            # Turns until deadline (normalized, 1.0 if no deadline)
-            (
-                min((goal.deadline_turn - current_turn) / 50.0, 1.0)
-                if goal.deadline_turn else 1.0
-            ),
-            # Turns since last progress (normalized)
-            min((current_turn - goal.last_progress_turn) / 20.0, 1.0),
-        ], dtype=np.float32)
+        progress_vec = np.array(
+            [
+                goal.progress,  # Current progress (0-1)
+                # Turns since creation (normalized)
+                min((current_turn - goal.created_turn) / 100.0, 1.0),
+                # Turns until deadline (normalized, 1.0 if no deadline)
+                (
+                    min((goal.deadline_turn - current_turn) / 50.0, 1.0)
+                    if goal.deadline_turn
+                    else 1.0
+                ),
+                # Turns since last progress (normalized)
+                min((current_turn - goal.last_progress_turn) / 20.0, 1.0),
+            ],
+            dtype=np.float32,
+        )
 
         return progress_vec
 
@@ -356,7 +365,7 @@ class GoalEncoder:
 
         # Parent type encoding
         type_vec = self._encode_goal_type(parent_goal)
-        context_vec[:min(len(type_vec), 8)] = type_vec[:8]
+        context_vec[: min(len(type_vec), 8)] = type_vec[:8]
 
         # Parent progress
         context_vec[8] = parent_goal.progress
@@ -390,11 +399,11 @@ class GoalEncoder:
         """Project raw features to embedding dimension."""
         if len(features) >= self.config.embed_dim:
             # Truncate if too large
-            return features[:self.config.embed_dim].astype(np.float32)
+            return features[: self.config.embed_dim].astype(np.float32)
         else:
             # Pad if too small
             embedding = np.zeros(self.config.embed_dim, dtype=np.float32)
-            embedding[:len(features)] = features
+            embedding[: len(features)] = features
             return embedding
 
 
@@ -526,10 +535,7 @@ class HierarchicalGoalEncoder:
         Returns:
             Dictionary mapping levels to output dimensions.
         """
-        return {
-            level: encoder.output_dim
-            for level, encoder in self._encoders.items()
-        }
+        return {level: encoder.output_dim for level, encoder in self._encoders.items()}
 
     def get_encoder(self, level: HierarchyLevel) -> GoalEncoder:
         """Get encoder for a specific level.
@@ -544,6 +550,7 @@ class HierarchicalGoalEncoder:
 
 
 if TORCH_AVAILABLE:
+
     class LearnedGoalEmbedding(nn.Module):
         """Learned goal embedding using neural networks.
 
@@ -601,11 +608,11 @@ if TORCH_AVAILABLE:
 
             # Final projection
             input_dim = (
-                embed_dim // 2 +  # Type
-                embed_dim // 4 +  # Level
-                embed_dim // 4 +  # Status
-                (embed_dim // 4 if include_location else 0) +
-                (embed_dim // 4 if include_progress else 0)
+                embed_dim // 2  # Type
+                + embed_dim // 4  # Level
+                + embed_dim // 4  # Status
+                + (embed_dim // 4 if include_location else 0)
+                + (embed_dim // 4 if include_progress else 0)
             )
             self.projection = nn.Sequential(
                 nn.Linear(input_dim, embed_dim),

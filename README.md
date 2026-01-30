@@ -20,7 +20,7 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 **Codebase Statistics:**
 - ~51,800 lines of core implementation
 - ~14,600 lines of agentic framework
-- 350+ tests with >80% coverage on core modules
+- 2,250+ tests with >80% coverage on core modules
 - 11 game mechanics modules
 
 ## Key Features
@@ -272,6 +272,151 @@ graph TB
     style RewardOut fill:#85bbf0,stroke:#5d82a8,color:#000000
     style StageManager fill:#438dd5,stroke:#2e6295,color:#ffffff
     style ShapingFunc fill:#438dd5,stroke:#2e6295,color:#ffffff
+```
+
+### Level 3: Component Diagram - Population-Based Training
+
+Internal structure of the PBT hyperparameter optimization system.
+
+```mermaid
+graph TB
+    subgraph "Population-Based Training"
+        subgraph "Population Management"
+            PopMgr["PopulationManager<br/><i>Agent lifecycle</i>"]
+            AgentState["AgentState<br/><i>Fitness, hyperparameters</i>"]
+            Stats["PopulationStats<br/><i>Diversity metrics</i>"]
+        end
+
+        subgraph "Selection Strategies"
+            Truncation["Truncation<br/><i>Top-k selection</i>"]
+            Tournament["Tournament<br/><i>Competition-based</i>"]
+            Roulette["Roulette<br/><i>Fitness-proportional</i>"]
+            Rank["Rank<br/><i>Rank-based selection</i>"]
+        end
+
+        subgraph "Mutation Operators"
+            Gaussian["Gaussian Mutation<br/><i>Normal perturbation</i>"]
+            Uniform["Uniform Mutation<br/><i>Random within bounds</i>"]
+            Polynomial["Polynomial<br/><i>Non-linear mutation</i>"]
+            Differential["Differential<br/><i>Guided by population</i>"]
+            Adaptive["Adaptive Mutation<br/><i>Self-adjusting rates</i>"]
+        end
+
+        subgraph "Scheduling"
+            Scheduler["PBTScheduler<br/><i>Timing control</i>"]
+            Evaluator["FitnessEvaluator<br/><i>Game-based fitness</i>"]
+        end
+    end
+
+    PopMgr --> AgentState
+    PopMgr --> Stats
+    Scheduler --> PopMgr
+
+    PopMgr -->|"Exploit"| Truncation
+    PopMgr -->|"Exploit"| Tournament
+    Truncation --> AgentState
+    Tournament --> AgentState
+
+    PopMgr -->|"Explore"| Gaussian
+    PopMgr -->|"Explore"| Adaptive
+    Gaussian --> AgentState
+    Adaptive --> AgentState
+
+    Evaluator --> Scheduler
+    Evaluator -->|"Update fitness"| AgentState
+
+    style PopMgr fill:#1168bd,stroke:#0b4884,color:#ffffff
+    style Scheduler fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style Adaptive fill:#438dd5,stroke:#2e6295,color:#ffffff
+```
+
+### Level 3: Component Diagram - Hierarchical RL
+
+Internal structure of the multi-level decision hierarchy.
+
+```mermaid
+graph TB
+    subgraph "Hierarchical RL System"
+        subgraph "Decision Levels"
+            Strategic["Strategic Level<br/><i>Long-term goals (10+ turns)</i>"]
+            Tactical["Tactical Level<br/><i>Medium-term plans (3-10 turns)</i>"]
+            Operational["Operational Level<br/><i>Immediate actions (1-2 turns)</i>"]
+        end
+
+        subgraph "Network Architecture"
+            HierNet["HierarchicalNetwork<br/><i>Multi-level policies</i>"]
+            LevelNet["LevelNetwork<br/><i>Per-level encoding</i>"]
+            GoalHead["GoalConditionedHead<br/><i>Goal-aware outputs</i>"]
+            CrossLevel["Cross-Level Context<br/><i>Information flow</i>"]
+        end
+
+        subgraph "MCTS Integration"
+            HMCTS["HierarchicalMCTS<br/><i>Multi-level search</i>"]
+            Option["Option<br/><i>Temporal abstraction</i>"]
+            OptionTerm["OptionTermination<br/><i>Goal completion</i>"]
+        end
+    end
+
+    Strategic -->|"Goals"| Tactical
+    Tactical -->|"Subgoals"| Operational
+    Operational -->|"Feedback"| Tactical
+    Tactical -->|"Feedback"| Strategic
+
+    HierNet --> LevelNet
+    LevelNet --> GoalHead
+    CrossLevel --> LevelNet
+
+    HMCTS --> Option
+    Option --> OptionTerm
+    HMCTS --> HierNet
+
+    style Strategic fill:#1168bd,stroke:#0b4884,color:#ffffff
+    style Tactical fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style Operational fill:#85bbf0,stroke:#5d82a8,color:#000000
+    style HierNet fill:#1168bd,stroke:#0b4884,color:#ffffff
+```
+
+### Level 3: Component Diagram - Climate System
+
+Internal structure of the climate and disaster mechanics.
+
+```mermaid
+graph TB
+    subgraph "Climate System"
+        subgraph "Climate State"
+            ClimateManager["ClimateManager<br/><i>Global climate tracking</i>"]
+            ClimatePhase["ClimatePhase<br/><i>Warming stages (1-7)</i>"]
+            CO2Tracker["CO2 Tracking<br/><i>Emissions accounting</i>"]
+        end
+
+        subgraph "Disaster System"
+            DisasterType["DisasterType<br/><i>Flood, Storm, Drought, etc.</i>"]
+            DisasterSeverity["DisasterSeverity<br/><i>Minor to Catastrophic</i>"]
+            DisasterEvent["DisasterEvent<br/><i>Location, damage, bonuses</i>"]
+        end
+
+        subgraph "Effects"
+            SeaLevel["Sea Level Rise<br/><i>Coastal flooding</i>"]
+            TileEffects["Tile Effects<br/><i>Fertility changes</i>"]
+            UnitDamage["Unit/Building Damage<br/><i>Population loss</i>"]
+        end
+    end
+
+    ClimateManager --> ClimatePhase
+    ClimateManager --> CO2Tracker
+    CO2Tracker -->|"Triggers"| ClimatePhase
+
+    ClimatePhase -->|"Increases"| DisasterType
+    DisasterType --> DisasterSeverity
+    DisasterSeverity --> DisasterEvent
+
+    DisasterEvent --> UnitDamage
+    ClimatePhase --> SeaLevel
+    SeaLevel --> TileEffects
+
+    style ClimateManager fill:#1168bd,stroke:#0b4884,color:#ffffff
+    style ClimatePhase fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style DisasterEvent fill:#85bbf0,stroke:#5d82a8,color:#000000
 ```
 
 ### Level 4: Code Diagram - Training Flow
@@ -685,7 +830,7 @@ Civ6-AlphaZero/
 │           ├── ActionExecutor.lua # Command execution
 │           ├── FileIO.lua    # File operations
 │           └── JsonEncoder.lua # Pure Lua JSON
-├── tests/                    # Test suite (350+ tests)
+├── tests/                    # Test suite (2,250+ tests)
 │   ├── unit/                 # Unit tests
 │   ├── integration/          # Integration tests
 │   └── fixtures/             # Test data

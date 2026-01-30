@@ -116,8 +116,6 @@ class MuZeroTrainingConfig:
     min_value: float = -300.0
     max_value: float = 300.0
 
-
-
     def to_loss_config(self) -> LossConfig:
         """Convert to LossConfig for loss computation."""
         return LossConfig(
@@ -252,8 +250,7 @@ class GameTrajectory:
         self.values = np.full(len(self.observations), final_value, dtype=np.float32)
 
         logger.debug(
-            f"Finalized trajectory {self.game_id}: {len(self)} steps, "
-            f"final_value={final_value:.2f}"
+            f"Finalized trajectory {self.game_id}: {len(self)} steps, final_value={final_value:.2f}"
         )
 
     def compute_n_step_returns(
@@ -374,7 +371,6 @@ class TrajectoryBatchSample:
     indices: list[tuple[int, int]] | None = None  # (traj_idx, pos_idx) for each sample
 
 
-
 class TrajectoryBuffer:
     """Buffer for storing game trajectories for multi-step training.
 
@@ -485,8 +481,7 @@ class TrajectoryBuffer:
         """
         if len(indices) != len(priorities):
             raise ValueError(
-                f"indices ({len(indices)}) and priorities ({len(priorities)}) "
-                "must have same length"
+                f"indices ({len(indices)}) and priorities ({len(priorities)}) must have same length"
             )
 
         # Group priorities by trajectory
@@ -495,9 +490,7 @@ class TrajectoryBuffer:
             if traj_idx not in traj_max_priorities:
                 traj_max_priorities[traj_idx] = priority
             else:
-                traj_max_priorities[traj_idx] = max(
-                    traj_max_priorities[traj_idx], priority
-                )
+                traj_max_priorities[traj_idx] = max(traj_max_priorities[traj_idx], priority)
 
         # Update trajectory priorities
         for traj_idx, max_priority in traj_max_priorities.items():
@@ -507,9 +500,7 @@ class TrajectoryBuffer:
                     max_priority,
                 )
 
-        logger.debug(
-            f"Updated priorities for {len(traj_max_priorities)} trajectories"
-        )
+        logger.debug(f"Updated priorities for {len(traj_max_priorities)} trajectories")
 
     def sample_positions(
         self,
@@ -537,14 +528,12 @@ class TrajectoryBuffer:
         if len(self.trajectories) == 0:
             raise ValueError("Cannot sample from empty buffer")
 
-        logger.debug(
-            f"Sampling {batch_size} positions with {unroll_steps} unroll steps"
-        )
+        logger.debug(f"Sampling {batch_size} positions with {unroll_steps} unroll steps")
 
         # Sample trajectory indices weighted by length
         traj_lengths = [len(t) for t in self.trajectories]
         total_len = sum(traj_lengths)
-        traj_probs = [l / total_len for l in traj_lengths]
+        traj_probs = [length / total_len for length in traj_lengths]
 
         # Lists to collect batch data
         spatials = []
@@ -641,29 +630,23 @@ class TrajectoryBuffer:
         actions_tensor = torch.tensor(all_actions, dtype=torch.long, device=device)
 
         target_policies_tensors = [
-            torch.from_numpy(np.stack(p)).float().to(device)
-            for p in all_target_policies
+            torch.from_numpy(np.stack(p)).float().to(device) for p in all_target_policies
         ]
         target_values_tensors = [
-            torch.tensor(v, dtype=torch.float32, device=device)
-            for v in all_target_values
+            torch.tensor(v, dtype=torch.float32, device=device) for v in all_target_values
         ]
         target_rewards_tensors = [
-            torch.tensor(r, dtype=torch.float32, device=device)
-            for r in all_target_rewards
+            torch.tensor(r, dtype=torch.float32, device=device) for r in all_target_rewards
         ]
         action_masks_unroll_tensors = [
-            torch.from_numpy(np.stack(m)).float().to(device)
-            for m in all_action_masks_unroll
+            torch.from_numpy(np.stack(m)).float().to(device) for m in all_action_masks_unroll
         ]
         # Observations for EfficientZero consistency loss
         obs_spatial_unroll_tensors = [
-            torch.from_numpy(np.stack(s)).float().to(device)
-            for s in all_obs_spatial_unroll
+            torch.from_numpy(np.stack(s)).float().to(device) for s in all_obs_spatial_unroll
         ]
         obs_vector_unroll_tensors = [
-            torch.from_numpy(np.stack(v)).float().to(device)
-            for v in all_obs_vector_unroll
+            torch.from_numpy(np.stack(v)).float().to(device) for v in all_obs_vector_unroll
         ]
 
         return TrajectoryBatchSample(
@@ -679,8 +662,6 @@ class TrajectoryBuffer:
             observations_vector_unroll=obs_vector_unroll_tensors,
             indices=sampled_indices,
         )
-
-
 
     @classmethod
     def from_replay_buffer(
@@ -709,15 +690,10 @@ class TrajectoryBuffer:
         # Note: This treats all examples as one trajectory (not ideal but compatible)
         if len(replay_buffer) > 0:
             examples = list(replay_buffer.buffer)
-            trajectory = GameTrajectory.from_examples(
-                examples, game_id="legacy_replay"
-            )
+            trajectory = GameTrajectory.from_examples(examples, game_id="legacy_replay")
             buffer.add_trajectory(trajectory)
 
-        logger.info(
-            f"Created TrajectoryBuffer from ReplayBuffer: "
-            f"{len(replay_buffer)} examples"
-        )
+        logger.info(f"Created TrajectoryBuffer from ReplayBuffer: {len(replay_buffer)} examples")
 
         return buffer
 
@@ -841,9 +817,7 @@ class MuZeroTrainer:
             all_values.append(unroll_output["value"])
             all_rewards.append(unroll_output["reward"])
 
-            logger.debug(
-                f"  Unroll step {k+1}: hidden_norm={current_hidden.norm().item():.3f}"
-            )
+            logger.debug(f"  Unroll step {k + 1}: hidden_norm={current_hidden.norm().item():.3f}")
 
         # =====================================================================
         # Compute losses
@@ -963,9 +937,7 @@ class MuZeroTrainer:
         else:
             # AlphaZero network: can't do proper unrolling
             # Just return dummy values (training won't be correct but won't crash)
-            logger.warning(
-                "Using AlphaZero network for unrolling - reward prediction unavailable"
-            )
+            logger.warning("Using AlphaZero network for unrolling - reward prediction unavailable")
             batch_size = hidden_state.size(0)
             policy_logits, value = self.network(
                 hidden_state if hidden_state.dim() == 4 else hidden_state.unsqueeze(0),
@@ -1011,7 +983,9 @@ class MuZeroTrainer:
         # Determine if outputs are categorical based on shape
         # Networks may output scalar or categorical - handle both
         first_value = all_values[0]
-        value_is_categorical = first_value.dim() == 2 and first_value.size(-1) == self.config.support_size
+        value_is_categorical = (
+            first_value.dim() == 2 and first_value.size(-1) == self.config.support_size
+        )
 
         first_reward = all_rewards[0] if len(all_rewards) > 0 else None
         reward_is_categorical = (
@@ -1118,18 +1092,14 @@ class MuZeroTrainer:
                     else:
                         proj_prediction = proj_dynamics
 
-                    consistency_loss_k = compute_consistency_loss(
-                        proj_prediction, proj_target
-                    )
+                    consistency_loss_k = compute_consistency_loss(proj_prediction, proj_target)
 
                     if total_consistency_loss is None:
                         total_consistency_loss = consistency_loss_k
                     else:
                         total_consistency_loss = total_consistency_loss + consistency_loss_k
 
-                    logger.debug(
-                        f"Consistency loss at step {k}: {consistency_loss_k.item():.4f}"
-                    )
+                    logger.debug(f"Consistency loss at step {k}: {consistency_loss_k.item():.4f}")
                 except (ValueError, RuntimeError) as e:
                     logger.debug(f"Skipping consistency loss at step {k}: {e}")
 

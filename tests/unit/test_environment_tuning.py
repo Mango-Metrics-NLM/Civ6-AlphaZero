@@ -89,9 +89,7 @@ class TestEnvironmentTuningConfig:
 
     def test_validate_invalid_production_multiplier(self):
         """Test validation catches invalid production multiplier."""
-        config = EnvironmentTuningConfig(
-            production=ProductionConfig(multiplier=-1.0)
-        )
+        config = EnvironmentTuningConfig(production=ProductionConfig(multiplier=-1.0))
         errors = config.validate()
         assert any("production" in e.lower() or "multiplier" in e.lower() for e in errors)
 
@@ -115,27 +113,29 @@ class TestEarlyTerminationChecker:
         assert should_terminate is False
 
     def test_min_turns_respected(self):
-        """Test that termination doesn't occur before min_turns."""
+        """Test that advantage-based termination doesn't occur before min_turns."""
         config = EarlyTerminationConfig(
             enabled=True,
             min_turns=20,
             advantage_threshold=2,
+            check_interval=5,
         )
         checker = EarlyTerminationChecker(config)
 
-        # Even with huge advantage, shouldn't terminate before min_turns
+        # Big advantage but both players have cities (not elimination)
+        # Should NOT terminate before min_turns
         should_terminate, _, _ = checker.check(
-            turn=5,
+            turn=5,  # Turn is on interval but before min_turns
             player_units=10,
             player_cities=3,
-            opponent_units=0,
-            opponent_cities=0,
+            opponent_units=1,
+            opponent_cities=1,  # Opponent has cities so not elimination
         )
 
         assert should_terminate is False
 
     def test_player_advantage_termination(self):
-        """Test termination on player advantage."""
+        """Test termination on player advantage (not elimination)."""
         config = EarlyTerminationConfig(
             enabled=True,
             min_turns=5,
@@ -144,12 +144,13 @@ class TestEarlyTerminationChecker:
         )
         checker = EarlyTerminationChecker(config)
 
+        # Big advantage but both have cities (not elimination)
         should_terminate, winner, reason = checker.check(
             turn=10,
-            player_units=5,
-            player_cities=2,
+            player_units=6,
+            player_cities=3,
             opponent_units=1,
-            opponent_cities=0,
+            opponent_cities=1,  # Opponent still has cities so not elimination
         )
 
         assert should_terminate is True
@@ -217,6 +218,201 @@ class TestEarlyTerminationChecker:
         assert should_terminate is False
 
 
+class TestEliminationConditions:
+    """Tests for immediate elimination detection (Phase 3 fix)."""
+
+    def test_opponent_elimination_immediate(self):
+        """Test opponent elimination is detected immediately, not just on interval."""
+        config = EarlyTerminationConfig(
+            enabled=True,
+            min_turns=5,
+            check_interval=10,  # Interval is 10, but elimination should be immediate
+        )
+        checker = EarlyTerminationChecker(config)
+
+        # Turn 7 is not on interval (7 % 10 != 0), but elimination should still trigger
+        should_terminate, winner, reason = checker.check(
+            turn=7,
+            player_units=5,
+            player_cities=2,
+            opponent_units=3,
+            opponent_cities=0,  # Opponent eliminated
+        )
+
+        assert should_terminate is True
+        assert winner == 0  # Player wins
+        assert "eliminated" in reason.lower()
+
+    def test_player_elimination_immediate(self):
+        """Test player elimination is detected immediately."""
+        config = EarlyTerminationConfig(
+            enabled=True,
+            min_turns=5,
+            check_interval=10,
+        )
+        checker = EarlyTerminationChecker(config)
+
+        # Turn 13 is not on interval
+        should_terminate, winner, reason = checker.check(
+            turn=13,
+            player_units=0,
+            player_cities=0,  # Player eliminated
+            opponent_units=5,
+            opponent_cities=2,
+        )
+
+        assert should_terminate is True
+        assert winner == 1  # Opponent wins
+        assert "eliminated" in reason.lower()
+
+    def test_mutual_elimination_immediate(self):
+        """Test mutual elimination is detected immediately."""
+        config = EarlyTerminationConfig(
+            enabled=True,
+            min_turns=5,
+            check_interval=10,
+        )
+        checker = EarlyTerminationChecker(config)
+
+        should_terminate, winner, reason = checker.check(
+            turn=8,
+            player_units=2,
+            player_cities=0,  # Both have 0 cities
+            opponent_units=1,
+            opponent_cities=0,
+        )
+
+        assert should_terminate is True
+        assert winner is None  # Draw
+        assert "mutual" in reason.lower()
+
+    def test_elimination_detected_before_min_turns(self):
+        """Test elimination is NOT detected before min_turns (only advantage is blocked)."""
+        config = EarlyTerminationConfig(
+            enabled=True,
+            min_turns=20,
+            check_interval=5,
+        )
+        checker = EarlyTerminationChecker(config)
+
+        # Turn 5 is before min_turns, but elimination should still trigger
+        should_terminate, winner, reason = checker.check(
+            turn=5,
+            player_units=5,
+            player_cities=2,
+            opponent_units=0,
+            opponent_cities=0,  # Opponent eliminated
+        )
+
+        # Elimination should be detected even before min_turns
+        assert should_terminate is True
+        assert winner == 0
+        assert "eliminated" in reason.lower()
+
+    def test_advantage_still_respects_interval(self):
+        """Test advantage-based termination still respects check_interval."""
+        config = EarlyTerminationConfig(
+            enabled=True,
+            min_turns=5,
+            advantage_threshold=3,
+            check_interval=5,
+        )
+        checker = EarlyTerminationChecker(config)
+
+        # Turn 7 is not on interval - advantage should NOT trigger
+        should_terminate, winner, reason = checker.check(
+            turn=7,
+            player_units=10,
+            player_cities=5,
+            opponent_units=1,
+            opponent_cities=1,  # Big advantage but both have cities
+        )
+
+        assert should_terminate is False
+
+        # Turn 10 is on interval - advantage SHOULD trigger
+        should_terminate, winner, reason = checker.check(
+            turn=10,
+            player_units=10,
+            player_cities=5,
+            opponent_units=1,
+            opponent_cities=1,
+        )
+
+        assert should_terminate is True
+        assert winner == 0
+
+
+class TestHashBasedStalemate:
+    """Tests for hash-based stalemate detection (Phase 3 fix)."""
+
+    def test_stalemate_with_same_state_hash(self):
+        """Test stalemate detection uses hash comparison."""
+        config = EarlyTerminationConfig(
+            enabled=True,
+            min_turns=5,
+            stalemate_threshold=3,
+            check_interval=1,
+        )
+        checker = EarlyTerminationChecker(config)
+
+        # Same state multiple times
+        for i in range(4):
+            should_terminate, winner, reason = checker.check(
+                turn=10 + i,
+                player_units=2,
+                player_cities=1,
+                opponent_units=2,
+                opponent_cities=1,
+            )
+
+        assert should_terminate is True
+        assert winner is None
+        assert "stalemate" in reason.lower()
+
+    def test_stalemate_reset_on_state_change(self):
+        """Test stalemate counter resets when state changes."""
+        config = EarlyTerminationConfig(
+            enabled=True,
+            min_turns=5,
+            stalemate_threshold=5,
+            check_interval=1,
+        )
+        checker = EarlyTerminationChecker(config)
+
+        # Build up stalemate counter
+        for i in range(3):
+            checker.check(10 + i, 2, 1, 2, 1)
+
+        # State changes - counter should reset
+        checker.check(13, 3, 1, 2, 1)  # Different player_units
+
+        # Continue with new state - should need full threshold again
+        # Need 5 consecutive same states to trigger stalemate (threshold=5)
+        for i in range(5):
+            should_terminate, _, _ = checker.check(14 + i, 3, 1, 2, 1)
+
+        # After 6 turns with same state (13-18), should be stalemate
+        assert should_terminate is True
+
+    def test_hash_consistent_for_same_values(self):
+        """Test that hash is consistent for same game state values."""
+        config = EarlyTerminationConfig(
+            enabled=True,
+            min_turns=5,
+            stalemate_threshold=2,
+            check_interval=1,
+        )
+        checker = EarlyTerminationChecker(config)
+
+        # Same values should produce same hash
+        checker.check(10, 5, 2, 3, 1)
+        checker.check(11, 5, 2, 3, 1)  # Exact same values
+
+        should_terminate, _, _ = checker.check(12, 5, 2, 3, 1)
+        assert should_terminate is True  # Stalemate detected
+
+
 class TestTunedEnvironmentWrapper:
     """Tests for TunedEnvironmentWrapper."""
 
@@ -224,6 +420,7 @@ class TestTunedEnvironmentWrapper:
     def base_env(self):
         """Create base MicroCiv environment."""
         from alpha_zero.envs.microciv import MicroCivEnv
+
         return MicroCivEnv(board_size=8, max_turns=100)
 
     def test_wrapper_creation(self, base_env):
@@ -344,9 +541,7 @@ class TestProductionConfig:
 
     def test_custom_unit_costs(self):
         """Test custom unit costs."""
-        config = ProductionConfig(
-            unit_costs={"warrior": 1, "settler": 2}
-        )
+        config = ProductionConfig(unit_costs={"warrior": 1, "settler": 2})
 
         assert config.unit_costs["warrior"] == 1
         assert config.unit_costs["settler"] == 2

@@ -444,19 +444,12 @@ class LeagueManager:
             List of (player_id, rating, rank) tuples.
         """
         tier_players = self._tier_populations.get(tier_name, set())
-        tier_player_stats = [
-            (pid, players[pid].rating)
-            for pid in tier_players
-            if pid in players
-        ]
+        tier_player_stats = [(pid, players[pid].rating) for pid in tier_players if pid in players]
 
         # Sort by rating descending
         tier_player_stats.sort(key=lambda x: x[1], reverse=True)
 
-        return [
-            (pid, rating, i + 1)
-            for i, (pid, rating) in enumerate(tier_player_stats[:limit])
-        ]
+        return [(pid, rating, i + 1) for i, (pid, rating) in enumerate(tier_player_stats[:limit])]
 
     def start_season(
         self,
@@ -547,7 +540,5 @@ class LeagueManager:
             "tier_distribution": tier_distribution,
             "num_tiers": len(self.config.tiers),
             "season_active": self._current_season is not None,
-            "current_season": (
-                self._current_season.name if self._current_season else None
-            ),
+            "current_season": (self._current_season.name if self._current_season else None),
         }

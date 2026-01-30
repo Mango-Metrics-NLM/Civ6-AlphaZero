@@ -276,8 +276,10 @@ class ConstraintValidator:
                 description="Python version requirement",
                 check_function=lambda ctx: (
                     ctx.get("python_version", "3.10") >= "3.10",
-                    "Python 3.10+ required"
-                ) if isinstance(ctx, dict) else (True, ""),
+                    "Python 3.10+ required",
+                )
+                if isinstance(ctx, dict)
+                else (True, ""),
             ),
             # Security constraints
             Constraint(
@@ -321,8 +323,10 @@ class ConstraintValidator:
                 description="Minimum test coverage",
                 check_function=lambda ctx: (
                     ctx.get("coverage", 80) >= 80,
-                    f"Coverage {ctx.get('coverage', 0)}% below 80% threshold"
-                ) if isinstance(ctx, dict) else (True, ""),
+                    f"Coverage {ctx.get('coverage', 0)}% below 80% threshold",
+                )
+                if isinstance(ctx, dict)
+                else (True, ""),
                 severity=5,
             ),
             # Anti-constraints (explicit permissions)
@@ -442,8 +446,13 @@ class ConstraintValidator:
                 logger.debug(f"Constraint violation: {constraint.name} - {violation.message}")
 
                 # Stop on hard violation if configured
-                if self._stop_on_hard_violation and constraint.constraint_type == ConstraintType.HARD:
-                    logger.warning(f"Stopping validation: hard constraint '{constraint.name}' violated")
+                if (
+                    self._stop_on_hard_violation
+                    and constraint.constraint_type == ConstraintType.HARD
+                ):
+                    logger.warning(
+                        f"Stopping validation: hard constraint '{constraint.name}' violated"
+                    )
                     break
 
         return violations

@@ -65,11 +65,13 @@ class ProductionConfig:
     multiplier: float = 1.0
     base_production: int = 3
     population_bonus: int = 1
-    unit_costs: dict[str, int] = field(default_factory=lambda: {
-        "warrior": 3,
-        "settler": 5,
-        "archer": 4,
-    })
+    unit_costs: dict[str, int] = field(
+        default_factory=lambda: {
+            "warrior": 3,
+            "settler": 5,
+            "archer": 4,
+        }
+    )
 
 
 @dataclass
@@ -225,13 +227,13 @@ class EarlyTerminationChecker:
             config: Early termination configuration.
         """
         self.config = config
-        self._last_state: dict[str, Any] | None = None
+        self._last_state_hash: int | None = None
         self._stalemate_counter: int = 0
         self._logger = get_logger(f"{__name__}.EarlyTerminationChecker")
 
     def reset(self) -> None:
         """Reset state for a new episode."""
-        self._last_state = None
+        self._last_state_hash = None
         self._stalemate_counter = 0
 
     def check(
@@ -258,9 +260,31 @@ class EarlyTerminationChecker:
         if not self.config.enabled:
             return False, None, ""
 
+        # Always check elimination conditions (player has no cities)
+        # These are decisive and should not wait for check_interval
+        if opponent_cities == 0 and player_cities > 0:
+            self._logger.debug(
+                f"Early termination: opponent eliminated (0 cities) at turn {turn}",
+            )
+            return True, 0, "opponent_eliminated"
+
+        if player_cities == 0 and opponent_cities > 0:
+            self._logger.debug(
+                f"Early termination: player eliminated (0 cities) at turn {turn}",
+            )
+            return True, 1, "player_eliminated"
+
+        # Both have no cities - draw
+        if player_cities == 0 and opponent_cities == 0:
+            self._logger.debug(
+                f"Early termination: mutual elimination at turn {turn}",
+            )
+            return True, None, "mutual_elimination"
+
         if turn < self.config.min_turns:
             return False, None, ""
 
+        # Advantage-based checks only on interval turns
         if turn % self.config.check_interval != 0:
             return False, None, ""
 
@@ -281,15 +305,10 @@ class EarlyTerminationChecker:
             )
             return True, 1, f"opponent_advantage_{-total_advantage}"
 
-        # Check for stalemate
-        current_state = {
-            "player_units": player_units,
-            "player_cities": player_cities,
-            "opponent_units": opponent_units,
-            "opponent_cities": opponent_cities,
-        }
+        # Check for stalemate using hash-based comparison (more robust than dict equality)
+        current_state_hash = hash((player_units, player_cities, opponent_units, opponent_cities))
 
-        if self._last_state == current_state:
+        if self._last_state_hash == current_state_hash:
             self._stalemate_counter += 1
             if self._stalemate_counter >= self.config.stalemate_threshold:
                 self._logger.debug(f"Early termination: stalemate at turn {turn}")
@@ -297,7 +316,7 @@ class EarlyTerminationChecker:
         else:
             self._stalemate_counter = 0
 
-        self._last_state = current_state
+        self._last_state_hash = current_state_hash
         return False, None, ""
 
 
@@ -490,6 +509,7 @@ class TunedEnvironmentWrapper(gym.Wrapper):
             cloned_env = self.env.clone()
         else:
             import copy
+
             cloned_env = copy.deepcopy(self.env)
 
         # Create new wrapper with same config
@@ -502,10 +522,9 @@ class TunedEnvironmentWrapper(gym.Wrapper):
         cloned_wrapper._early_termination_checker._stalemate_counter = (
             self._early_termination_checker._stalemate_counter
         )
-        if self._early_termination_checker._last_state is not None:
-            cloned_wrapper._early_termination_checker._last_state = (
-                self._early_termination_checker._last_state.copy()
-            )
+        cloned_wrapper._early_termination_checker._last_state_hash = (
+            self._early_termination_checker._last_state_hash
+        )
 
         return cloned_wrapper
 

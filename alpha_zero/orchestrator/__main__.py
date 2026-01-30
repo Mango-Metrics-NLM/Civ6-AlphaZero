@@ -275,6 +275,7 @@ def main() -> int:
         logger.error(f"Training failed: {e}")
         if args.verbose >= 1:
             import traceback
+
             traceback.print_exc()
         return 1
 

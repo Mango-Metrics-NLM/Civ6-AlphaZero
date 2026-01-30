@@ -218,8 +218,10 @@ class FAISSVectorStore(VectorStore):
 
             # Train index if IVF and not trained
             if self.index_type == "IVF" and not index.is_trained:
+
                 def _train() -> None:
                     index.train(embeddings)
+
                 await self._loop.run_in_executor(None, _train)
 
             # Add to index
@@ -317,7 +319,9 @@ class FAISSVectorStore(VectorStore):
                     SearchResult(
                         document=doc,
                         score=score,
-                        distance=float(dist) if self.distance_metric != "cosine" else 1 - float(dist),
+                        distance=float(dist)
+                        if self.distance_metric != "cosine"
+                        else 1 - float(dist),
                         rank=len(results) + 1,
                     ),
                 )

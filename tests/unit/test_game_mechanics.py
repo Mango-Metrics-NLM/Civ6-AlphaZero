@@ -6,10 +6,6 @@ of game mechanics modules.
 
 from __future__ import annotations
 
-import pytest
-from typing import Any
-
-
 # =============================================================================
 # Trade Module Tests
 # =============================================================================
@@ -21,9 +17,11 @@ class TestTradeModule:
     def test_imports(self):
         """Test trade module imports successfully."""
         from alpha_zero.mechanics.trade import (
-            TradeManager, TradeRouteConfig, TradeRouteType,
-            TradeRoute, Trader, TradeYields, TradeAgreement,
+            TradeManager,
+            TradeRouteConfig,
+            TradeRouteType,
         )
+
         # All imports should work
         assert TradeManager is not None
         assert TradeRouteConfig is not None
@@ -33,8 +31,8 @@ class TestTradeModule:
         """Test trade route type enumeration."""
         from alpha_zero.mechanics.trade import TradeRouteType
 
-        assert hasattr(TradeRouteType, 'DOMESTIC')
-        assert hasattr(TradeRouteType, 'INTERNATIONAL')
+        assert hasattr(TradeRouteType, "DOMESTIC")
+        assert hasattr(TradeRouteType, "INTERNATIONAL")
 
     def test_trade_yields(self):
         """Test TradeYields dataclass."""
@@ -73,8 +71,10 @@ class TestEspionageModule:
     def test_imports(self):
         """Test espionage module imports successfully."""
         from alpha_zero.mechanics.espionage import (
-            EspionageManager, EspionageConfig, Spy, Mission, MissionType,
+            EspionageManager,
+            MissionType,
         )
+
         assert EspionageManager is not None
         assert MissionType is not None
 
@@ -82,13 +82,13 @@ class TestEspionageModule:
         """Test mission type enumeration."""
         from alpha_zero.mechanics.espionage import MissionType
 
-        assert hasattr(MissionType, 'GATHER_INTELLIGENCE')
-        assert hasattr(MissionType, 'STEAL_TECHNOLOGY')
-        assert hasattr(MissionType, 'SABOTAGE_PRODUCTION')
+        assert hasattr(MissionType, "GATHER_INTELLIGENCE")
+        assert hasattr(MissionType, "STEAL_TECHNOLOGY")
+        assert hasattr(MissionType, "SABOTAGE_PRODUCTION")
 
     def test_espionage_manager_creation(self):
         """Test EspionageManager can be created."""
-        from alpha_zero.mechanics.espionage import EspionageManager, EspionageConfig
+        from alpha_zero.mechanics.espionage import EspionageConfig, EspionageManager
 
         config = EspionageConfig()
         manager = EspionageManager(config)
@@ -106,9 +106,10 @@ class TestGovernmentModule:
     def test_imports(self):
         """Test government module imports successfully."""
         from alpha_zero.mechanics.government import (
-            GovernmentManager, GovernmentConfig, PolicyCard,
-            PolicySlots, PolicySlotType,
+            GovernmentManager,
+            PolicySlotType,
         )
+
         assert GovernmentManager is not None
         assert PolicySlotType is not None
 
@@ -116,10 +117,10 @@ class TestGovernmentModule:
         """Test policy slot type enumeration."""
         from alpha_zero.mechanics.government import PolicySlotType
 
-        assert hasattr(PolicySlotType, 'MILITARY')
-        assert hasattr(PolicySlotType, 'ECONOMIC')
-        assert hasattr(PolicySlotType, 'DIPLOMATIC')
-        assert hasattr(PolicySlotType, 'WILDCARD')
+        assert hasattr(PolicySlotType, "MILITARY")
+        assert hasattr(PolicySlotType, "ECONOMIC")
+        assert hasattr(PolicySlotType, "DIPLOMATIC")
+        assert hasattr(PolicySlotType, "WILDCARD")
 
     def test_policy_slots(self):
         """Test PolicySlots dataclass."""
@@ -132,7 +133,7 @@ class TestGovernmentModule:
 
     def test_government_manager_creation(self):
         """Test GovernmentManager can be created."""
-        from alpha_zero.mechanics.government import GovernmentManager, GovernmentConfig
+        from alpha_zero.mechanics.government import GovernmentConfig, GovernmentManager
 
         config = GovernmentConfig()
         manager = GovernmentManager(config)
@@ -150,9 +151,10 @@ class TestGreatPeopleModule:
     def test_imports(self):
         """Test great people module imports successfully."""
         from alpha_zero.mechanics.great_people import (
-            GreatPeopleManager, GreatPeopleConfig, GreatPerson,
-            GreatPersonType, GreatPersonDefinition,
+            GreatPeopleManager,
+            GreatPersonType,
         )
+
         assert GreatPeopleManager is not None
         assert GreatPersonType is not None
 
@@ -160,15 +162,15 @@ class TestGreatPeopleModule:
         """Test great person type enumeration."""
         from alpha_zero.mechanics.great_people import GreatPersonType
 
-        assert hasattr(GreatPersonType, 'GREAT_GENERAL')
-        assert hasattr(GreatPersonType, 'GREAT_SCIENTIST')
-        assert hasattr(GreatPersonType, 'GREAT_ENGINEER')
-        assert hasattr(GreatPersonType, 'GREAT_MERCHANT')
-        assert hasattr(GreatPersonType, 'GREAT_ARTIST')
+        assert hasattr(GreatPersonType, "GREAT_GENERAL")
+        assert hasattr(GreatPersonType, "GREAT_SCIENTIST")
+        assert hasattr(GreatPersonType, "GREAT_ENGINEER")
+        assert hasattr(GreatPersonType, "GREAT_MERCHANT")
+        assert hasattr(GreatPersonType, "GREAT_ARTIST")
 
     def test_great_people_manager_creation(self):
         """Test GreatPeopleManager can be created."""
-        from alpha_zero.mechanics.great_people import GreatPeopleManager, GreatPeopleConfig
+        from alpha_zero.mechanics.great_people import GreatPeopleConfig, GreatPeopleManager
 
         config = GreatPeopleConfig()
         manager = GreatPeopleManager(config)
@@ -186,9 +188,10 @@ class TestErasModule:
     def test_imports(self):
         """Test eras module imports successfully."""
         from alpha_zero.mechanics.eras import (
-            EraManager, EraConfig, HistoricMoment,
-            AgeType, HistoricMomentType,
+            AgeType,
+            EraManager,
         )
+
         assert EraManager is not None
         assert AgeType is not None
 
@@ -196,14 +199,14 @@ class TestErasModule:
         """Test age type enumeration."""
         from alpha_zero.mechanics.eras import AgeType
 
-        assert hasattr(AgeType, 'NORMAL')
-        assert hasattr(AgeType, 'GOLDEN')
-        assert hasattr(AgeType, 'DARK')
-        assert hasattr(AgeType, 'HEROIC')
+        assert hasattr(AgeType, "NORMAL")
+        assert hasattr(AgeType, "GOLDEN")
+        assert hasattr(AgeType, "DARK")
+        assert hasattr(AgeType, "HEROIC")
 
     def test_era_manager_creation(self):
         """Test EraManager can be created."""
-        from alpha_zero.mechanics.eras import EraManager, EraConfig
+        from alpha_zero.mechanics.eras import EraConfig, EraManager
 
         config = EraConfig()
         manager = EraManager(config)
@@ -221,9 +224,10 @@ class TestClimateModule:
     def test_imports(self):
         """Test climate module imports successfully."""
         from alpha_zero.mechanics.climate import (
-            ClimateManager, ClimateConfig, DisasterEvent,
-            DisasterType, ClimatePhase,
+            ClimateManager,
+            DisasterType,
         )
+
         assert ClimateManager is not None
         assert DisasterType is not None
 
@@ -231,10 +235,10 @@ class TestClimateModule:
         """Test disaster type enumeration."""
         from alpha_zero.mechanics.climate import DisasterType
 
-        assert hasattr(DisasterType, 'FLOOD')
-        assert hasattr(DisasterType, 'VOLCANIC_ERUPTION')
-        assert hasattr(DisasterType, 'HURRICANE')
-        assert hasattr(DisasterType, 'TORNADO')
+        assert hasattr(DisasterType, "FLOOD")
+        assert hasattr(DisasterType, "VOLCANIC_ERUPTION")
+        assert hasattr(DisasterType, "HURRICANE")
+        assert hasattr(DisasterType, "TORNADO")
 
     def test_climate_phases(self):
         """Test climate phase enumeration."""
@@ -246,7 +250,7 @@ class TestClimateModule:
 
     def test_climate_manager_creation(self):
         """Test ClimateManager can be created."""
-        from alpha_zero.mechanics.climate import ClimateManager, ClimateConfig
+        from alpha_zero.mechanics.climate import ClimateConfig, ClimateManager
 
         config = ClimateConfig()
         manager = ClimateManager(config)
@@ -264,9 +268,10 @@ class TestWorldCongressModule:
     def test_imports(self):
         """Test world congress module imports successfully."""
         from alpha_zero.mechanics.world_congress import (
-            WorldCongressManager, CongressConfig, Resolution,
-            ResolutionCategory, Vote,
+            ResolutionCategory,
+            WorldCongressManager,
         )
+
         assert WorldCongressManager is not None
         assert ResolutionCategory is not None
 
@@ -280,9 +285,7 @@ class TestWorldCongressModule:
 
     def test_world_congress_manager_creation(self):
         """Test WorldCongressManager can be created."""
-        from alpha_zero.mechanics.world_congress import (
-            WorldCongressManager, CongressConfig
-        )
+        from alpha_zero.mechanics.world_congress import CongressConfig, WorldCongressManager
 
         config = CongressConfig()
         manager = WorldCongressManager(config)
@@ -300,9 +303,10 @@ class TestPromotionsModule:
     def test_imports(self):
         """Test promotions module imports successfully."""
         from alpha_zero.mechanics.promotions import (
-            PromotionManager, PromotionConfig, Promotion,
-            UnitClass, StatModifier,
+            PromotionManager,
+            UnitClass,
         )
+
         assert PromotionManager is not None
         assert UnitClass is not None
 
@@ -310,14 +314,14 @@ class TestPromotionsModule:
         """Test unit class enumeration."""
         from alpha_zero.mechanics.promotions import UnitClass
 
-        assert hasattr(UnitClass, 'MELEE')
-        assert hasattr(UnitClass, 'RANGED')
-        assert hasattr(UnitClass, 'CAVALRY')
-        assert hasattr(UnitClass, 'SIEGE')
+        assert hasattr(UnitClass, "MELEE")
+        assert hasattr(UnitClass, "RANGED")
+        assert hasattr(UnitClass, "CAVALRY")
+        assert hasattr(UnitClass, "SIEGE")
 
     def test_promotion_manager_creation(self):
         """Test PromotionManager can be created."""
-        from alpha_zero.mechanics.promotions import PromotionManager, PromotionConfig
+        from alpha_zero.mechanics.promotions import PromotionConfig, PromotionManager
 
         config = PromotionConfig()
         manager = PromotionManager(config)
@@ -335,9 +339,14 @@ class TestMechanicsIntegration:
     def test_all_managers_can_be_created(self):
         """Test all managers can be instantiated."""
         from alpha_zero.mechanics import (
-            TradeManager, EspionageManager, GovernmentManager,
-            GreatPeopleManager, EraManager, ClimateManager,
-            WorldCongressManager, PromotionManager,
+            ClimateManager,
+            EraManager,
+            EspionageManager,
+            GovernmentManager,
+            GreatPeopleManager,
+            PromotionManager,
+            TradeManager,
+            WorldCongressManager,
         )
 
         managers = [
@@ -357,9 +366,14 @@ class TestMechanicsIntegration:
     def test_all_managers_have_reset(self):
         """Test all managers have reset method."""
         from alpha_zero.mechanics import (
-            TradeManager, EspionageManager, GovernmentManager,
-            GreatPeopleManager, EraManager, ClimateManager,
-            WorldCongressManager, PromotionManager,
+            ClimateManager,
+            EraManager,
+            EspionageManager,
+            GovernmentManager,
+            GreatPeopleManager,
+            PromotionManager,
+            TradeManager,
+            WorldCongressManager,
         )
 
         managers = [
@@ -374,15 +388,20 @@ class TestMechanicsIntegration:
         ]
 
         for manager in managers:
-            assert hasattr(manager, 'reset')
+            assert hasattr(manager, "reset")
             manager.reset()  # Should not raise
 
     def test_all_managers_have_encode_for_state(self):
         """Test all managers have encode_for_state method."""
         from alpha_zero.mechanics import (
-            TradeManager, EspionageManager, GovernmentManager,
-            GreatPeopleManager, EraManager, ClimateManager,
-            WorldCongressManager, PromotionManager,
+            ClimateManager,
+            EraManager,
+            EspionageManager,
+            GovernmentManager,
+            GreatPeopleManager,
+            PromotionManager,
+            TradeManager,
+            WorldCongressManager,
         )
 
         managers = [
@@ -397,6 +416,6 @@ class TestMechanicsIntegration:
         ]
 
         for manager in managers:
-            assert hasattr(manager, 'encode_for_state')
+            assert hasattr(manager, "encode_for_state")
             # encode_for_state signatures vary - just verify method exists
             # Actual encoding tested in individual module tests

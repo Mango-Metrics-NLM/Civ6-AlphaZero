@@ -327,8 +327,11 @@ class VerificationPipeline:
                     # Extract errors
                     if step.error_patterns:
                         import re
+
                         for pattern in step.error_patterns:
-                            for match in re.finditer(pattern, cmd_result.stdout + cmd_result.stderr):
+                            for match in re.finditer(
+                                pattern, cmd_result.stdout + cmd_result.stderr
+                            ):
                                 result.errors.append(match.group(0))
                     else:
                         # Use stderr as errors if no patterns
@@ -356,6 +359,7 @@ class VerificationPipeline:
         # Extract warnings
         if step.warning_patterns:
             import re
+
             output = result.stdout + result.stderr
             for pattern in step.warning_patterns:
                 for match in re.finditer(pattern, output):
@@ -373,8 +377,7 @@ class VerificationPipeline:
             self._on_step_complete(step, result)
 
         logger.info(
-            f"Verification step {step.name}: {result.status.value} "
-            f"({result.duration_seconds:.2f}s)"
+            f"Verification step {step.name}: {result.status.value} ({result.duration_seconds:.2f}s)"
         )
 
         return result
@@ -404,9 +407,7 @@ class VerificationPipeline:
 
             # Check fail fast
             if step.fail_fast and not result.passed:
-                logger.warning(
-                    f"Stopping pipeline: step '{step.name}' failed with fail_fast=True"
-                )
+                logger.warning(f"Stopping pipeline: step '{step.name}' failed with fail_fast=True")
                 break
 
             # Check stop on failure

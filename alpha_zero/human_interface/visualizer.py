@@ -121,10 +121,7 @@ class StateVisualizer:
             config: Human interface configuration
         """
         self.config = config or HumanInterfaceConfig()
-        self._theme = THEMES.get(
-            self.config.get_board_theme_enum(),
-            THEMES[BoardTheme.CLASSIC]
-        )
+        self._theme = THEMES.get(self.config.get_board_theme_enum(), THEMES[BoardTheme.CLASSIC])
         self._use_colors = True
         self._last_move: tuple[int, int] | None = None
 
@@ -210,7 +207,7 @@ class StateVisualizer:
                 # Assume square
                 size = int(np.sqrt(len(observation.flatten())))
                 height = width = size
-                board = observation.flatten()[:size*size].reshape(height, width)
+                board = observation.flatten()[: size * size].reshape(height, width)
 
         # Convert last action to position if provided
         if last_action is not None:
@@ -345,9 +342,8 @@ class StateVisualizer:
         positive_bars = int(win_prob / 100 * bar_length)
         negative_bars = bar_length - positive_bars
 
-        bar = (
-            self._color("█" * positive_bars, self._theme.player1) +
-            self._color("█" * negative_bars, self._theme.player2)
+        bar = self._color("█" * positive_bars, self._theme.player1) + self._color(
+            "█" * negative_bars, self._theme.player2
         )
 
         lines.append(f"  {bar}")
@@ -448,14 +444,12 @@ class StateVisualizer:
         sections = []
 
         # Game info
-        sections.append(self.render_game_info(
-            turn_number, current_player, is_human_turn, len(valid_actions)
-        ))
+        sections.append(
+            self.render_game_info(turn_number, current_player, is_human_turn, len(valid_actions))
+        )
 
         # Board
-        sections.append(self.render_board(
-            observation, valid_actions, board_size
-        ))
+        sections.append(self.render_board(observation, valid_actions, board_size))
 
         # AI evaluation (if enabled and available)
         if self.config.show_ai_evaluation and ai_evaluation is not None:
@@ -466,9 +460,7 @@ class StateVisualizer:
         if self.config.show_move_probabilities and move_probabilities is not None:
             sections.append("")
             board_shape = board_size or (10, 10)  # Default
-            sections.append(self.render_move_probabilities(
-                move_probabilities, board_shape
-            ))
+            sections.append(self.render_move_probabilities(move_probabilities, board_shape))
 
         # MCTS stats (if enabled and available)
         if self.config.show_mcts_stats and mcts_stats:
@@ -513,7 +505,7 @@ class StateVisualizer:
         lines.append(f"  Your moves: {summary.get('human_moves', 0)}")
         lines.append(f"  AI moves: {summary.get('ai_moves', 0)}")
 
-        if summary.get('avg_ai_time'):
+        if summary.get("avg_ai_time"):
             lines.append(f"  Avg AI time: {summary['avg_ai_time']:.2f}s")
 
         return "\n".join(lines)

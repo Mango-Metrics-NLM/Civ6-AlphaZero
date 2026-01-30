@@ -12,6 +12,7 @@ Example:
     >>> encoder = StrategicStateEncoder(config)
     >>> state_tensor = encoder.encode(game_state)
 """
+
 from __future__ import annotations
 
 from alpha_zero.hierarchical.encoders.goal_encoder import (

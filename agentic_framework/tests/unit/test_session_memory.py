@@ -2,16 +2,12 @@
 Tests for session memory management.
 """
 
-from pathlib import Path
-
-import pytest
-
 from agentic_framework.core.session_memory import (
-    SessionMemory,
-    MemorySection,
-    SectionFormat,
     ArchitectureDecision,
     KnownIssue,
+    MemorySection,
+    SectionFormat,
+    SessionMemory,
 )
 
 

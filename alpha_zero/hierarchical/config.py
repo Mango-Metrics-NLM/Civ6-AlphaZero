@@ -9,6 +9,7 @@ Example:
     >>> config = HierarchicalConfig.from_yaml("configs/hierarchical.yaml")
     >>> config = config.apply_env_overrides()
 """
+
 from __future__ import annotations
 
 import logging
@@ -20,6 +21,7 @@ from typing import Any, ClassVar
 
 try:
     import yaml
+
     YAML_AVAILABLE = True
 except ImportError:
     YAML_AVAILABLE = False
@@ -340,7 +342,7 @@ class HierarchicalConfig:
                 continue
 
             # Parse key path
-            config_key = key[len(self.ENV_PREFIX):].lower()
+            config_key = key[len(self.ENV_PREFIX) :].lower()
             parts = config_key.split("__")
 
             # Apply override
@@ -384,6 +386,7 @@ class HierarchicalConfig:
             Configuration as nested dictionary.
         """
         from dataclasses import asdict
+
         return asdict(self)
 
     @classmethod

@@ -10,6 +10,7 @@ Example:
     >>> child = GoalNode(Goal.tactical(TacticalGoalType.CONQUER_CITY))
     >>> root.add_child(child)
 """
+
 from __future__ import annotations
 
 import logging
@@ -311,16 +312,13 @@ class GoalNode:
         self.goal.status = new_status
 
         # Log status change
-        logger.debug(
-            f"Goal {self.id} status: {old_status.name} -> {new_status.name}"
-        )
+        logger.debug(f"Goal {self.id} status: {old_status.name} -> {new_status.name}")
 
         # Handle status transitions
         if new_status == GoalStatus.COMPLETED:
             # Check if parent can be completed
             if self.parent and all(
-                c.goal.status == GoalStatus.COMPLETED
-                for c in self.parent.children
+                c.goal.status == GoalStatus.COMPLETED for c in self.parent.children
             ):
                 logger.info(f"All children complete, parent {self.parent.id} eligible")
 
@@ -353,10 +351,9 @@ class GoalNode:
         if total_weight == 0:
             return self.goal.progress
 
-        weighted_progress = sum(
-            c.aggregate_progress() * c.goal.priority
-            for c in self.children
-        ) / total_weight
+        weighted_progress = (
+            sum(c.aggregate_progress() * c.goal.priority for c in self.children) / total_weight
+        )
 
         # Combine with self progress (self is 30%, children are 70%)
         return 0.3 * self.goal.progress + 0.7 * weighted_progress
@@ -388,11 +385,7 @@ class GoalNode:
 
     def __repr__(self) -> str:
         """String representation of node."""
-        return (
-            f"GoalNode(id={self.id}, "
-            f"level={self.level.value}, "
-            f"children={len(self.children)})"
-        )
+        return f"GoalNode(id={self.id}, level={self.level.value}, children={len(self.children)})"
 
     def visualize(self, indent: int = 0) -> str:
         """Create a visual tree representation.

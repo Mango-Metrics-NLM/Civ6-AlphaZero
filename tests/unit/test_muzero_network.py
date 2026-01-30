@@ -300,9 +300,7 @@ class TestMuZeroNetwork:
         actions = torch.randint(0, 100, (4,))
         mask = torch.ones(4, 100)
 
-        next_hidden, reward, policy, value = network.recurrent_inference(
-            hidden, actions, mask
-        )
+        next_hidden, reward, policy, value = network.recurrent_inference(hidden, actions, mask)
 
         assert next_hidden.shape == (4, 32, 8, 8)
         assert policy.shape == (4, 100)
@@ -428,7 +426,9 @@ class TestScalarCategoricalConversion:
     def test_extreme_values_clamped(self):
         """Extreme values are clamped to support range."""
         scalars = torch.tensor([1000.0, -1000.0])
-        categorical = scalar_to_categorical(scalars, support_size=601, min_value=-300, max_value=300)
+        categorical = scalar_to_categorical(
+            scalars, support_size=601, min_value=-300, max_value=300
+        )
 
         # Should not crash, values clamped
         assert categorical.shape == (2, 601)

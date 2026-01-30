@@ -608,7 +608,7 @@ class TestDiagnosticsIntegration:
             # Each iteration has 5 episodes
             for episode in range(5):
                 # Each episode has 10 steps
-                for step in range(10):
+                for _step in range(10):
                     policy = np.random.dirichlet([1] * 10)
                     value = np.random.uniform(-1, 1)
                     action = np.random.choice(10, p=policy)

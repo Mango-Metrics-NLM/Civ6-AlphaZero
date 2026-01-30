@@ -867,9 +867,7 @@ class GumbelMCTS:
 
         # Phase 2: Run simulations
         if self.config.use_sequential_halving:
-            best_action = self._sequential_halving(
-                env, root, sampled_actions, gumbel_scores, value
-            )
+            best_action = self._sequential_halving(env, root, sampled_actions, gumbel_scores, value)
         else:
             best_action = self._simple_search(env, root, sampled_actions)
 
@@ -928,9 +926,7 @@ class GumbelMCTS:
                     self._run_simulation_from_action(env, root, action)
 
             # Compute completed Q-values
-            max_visits = max(
-                root.children[a].visit_count for a in actions if a in root.children
-            )
+            max_visits = max(root.children[a].visit_count for a in actions if a in root.children)
 
             completed_qs = {}
             for action in actions:
@@ -1372,9 +1368,7 @@ class MuZeroMCTS:
         # Run simulations
         if self.config.use_gumbel:
             # Gumbel-based simulation allocation
-            best_action = self._gumbel_search(
-                root, valid_actions, policy, action_mask, root_value
-            )
+            best_action = self._gumbel_search(root, valid_actions, policy, action_mask, root_value)
             action_probs = np.zeros(len(action_mask), dtype=np.float32)
             action_probs[best_action] = 1.0
         else:
@@ -1385,9 +1379,7 @@ class MuZeroMCTS:
 
                 # Selection: traverse tree using PUCT until we find unexpanded node
                 while node.is_expanded():
-                    action, child = node.select_child(
-                        self.config.c_puct, min_q, max_q
-                    )
+                    action, child = node.select_child(self.config.c_puct, min_q, max_q)
                     if child is None:
                         break
                     search_path.append(child)
@@ -1395,7 +1387,9 @@ class MuZeroMCTS:
                     # If child has no hidden state, compute it but don't expand yet
                     if child.hidden_state is None:
                         if node.hidden_state is not None:
-                            self._compute_hidden_state(child, node.hidden_state, action, action_mask)
+                            self._compute_hidden_state(
+                                child, node.hidden_state, action, action_mask
+                            )
                         # Stop traversal - this is our leaf
                         node = child
                         break
@@ -1444,7 +1438,8 @@ class MuZeroMCTS:
         """
         # Gumbel sampling at root
         sampled_actions, gumbel_scores = gumbel_sample_actions(
-            policy, action_mask,
+            policy,
+            action_mask,
             min(self.config.num_sampled_actions, len(valid_actions)),
         )
 
@@ -1503,9 +1498,7 @@ class MuZeroMCTS:
                     self._run_muzero_simulation(root, action, action_mask)
 
             # Compute completed Q-values
-            max_visits = max(
-                root.children[a].visit_count for a in actions if a in root.children
-            )
+            max_visits = max(root.children[a].visit_count for a in actions if a in root.children)
 
             completed_qs = {}
             for action in actions:
@@ -1518,10 +1511,7 @@ class MuZeroMCTS:
                 )
 
             # Combine with Gumbel scores and halve
-            combined = {
-                a: completed_qs.get(a, 0.0) + gumbel_scores.get(a, 0.0)
-                for a in actions
-            }
+            combined = {a: completed_qs.get(a, 0.0) + gumbel_scores.get(a, 0.0) for a in actions}
             actions = sorted(actions, key=lambda a: -combined[a])
             actions = actions[: max(len(actions) // 2, 1)]
 
@@ -1558,10 +1548,12 @@ class MuZeroMCTS:
             self._run_muzero_simulation(root, best_action, action_mask)
 
         # Select by visit count
-        return int(max(
-            candidate_actions,
-            key=lambda a: root.children[a].visit_count if a in root.children else 0,
-        ))
+        return int(
+            max(
+                candidate_actions,
+                key=lambda a: root.children[a].visit_count if a in root.children else 0,
+            )
+        )
 
     def _run_muzero_simulation(
         self,
@@ -1652,6 +1644,7 @@ class MuZeroMCTS:
             node.reward = reward[0].item()
         else:
             from alpha_zero.core.muzero_network import categorical_to_scalar
+
             scalar_reward = categorical_to_scalar(reward, apply_softmax=True)
             node.reward = scalar_reward[0].item()
 
@@ -1722,6 +1715,7 @@ class MuZeroMCTS:
             # Categorical reward - convert to scalar
             # Import here to avoid circular dependency
             from alpha_zero.core.muzero_network import categorical_to_scalar
+
             scalar_reward = categorical_to_scalar(reward, apply_softmax=True)
             node.reward = scalar_reward[0].item()
 

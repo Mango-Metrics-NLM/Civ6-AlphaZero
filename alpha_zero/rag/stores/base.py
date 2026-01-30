@@ -50,7 +50,8 @@ class DocumentMetadata:
     def from_dict(cls, data: dict[str, Any]) -> DocumentMetadata:
         """Create from dictionary."""
         custom = {
-            k: v for k, v in data.items()
+            k: v
+            for k, v in data.items()
             if k not in ("source", "created_at", "updated_at", "chunk_index", "total_chunks")
         }
         created_at = data.get("created_at")

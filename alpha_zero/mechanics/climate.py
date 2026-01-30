@@ -377,12 +377,12 @@ class ClimateManager:
         phase_idx = self._current_phase.value - 1
 
         # Apply phase multiplier
-        multiplier = config.phase_frequency_multiplier ** phase_idx
+        multiplier = config.phase_frequency_multiplier**phase_idx
 
         # Apply global frequency modifiers
         global_mod = (
-            self.config.disaster_frequency_base +
-            self.config.disaster_frequency_per_phase * phase_idx
+            self.config.disaster_frequency_base
+            + self.config.disaster_frequency_per_phase * phase_idx
         )
 
         return base * multiplier * (1 + global_mod)
@@ -523,10 +523,7 @@ class ClimateManager:
         tiles_to_flood = phase_idx * self.config.sea_level_per_phase
 
         # Get eligible tiles (coastal, not already flooded)
-        eligible = [
-            t for t in coastal_tiles
-            if t not in self._flooded_tiles
-        ]
+        eligible = [t for t in coastal_tiles if t not in self._flooded_tiles]
 
         if not eligible:
             return newly_flooded
@@ -666,10 +663,7 @@ class ClimateManager:
         phase_encoding = [0.0] * len(ClimatePhase)
         phase_encoding[self._current_phase.value - 1] = 1.0
 
-        recent_disasters = [
-            d for d in self._disaster_history
-            if self._turn - d.turn <= 10
-        ]
+        recent_disasters = [d for d in self._disaster_history if self._turn - d.turn <= 10]
 
         return {
             "climate_phase": self._current_phase.value,

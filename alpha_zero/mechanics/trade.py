@@ -99,14 +99,7 @@ class TradeYields:
 
     def total(self) -> float:
         """Get total of all yields."""
-        return (
-            self.food
-            + self.production
-            + self.gold
-            + self.science
-            + self.culture
-            + self.faith
-        )
+        return self.food + self.production + self.gold + self.science + self.culture + self.faith
 
     def to_dict(self) -> dict[str, float]:
         """Convert to dictionary."""
@@ -270,7 +263,8 @@ class TradeManager:
     def __init__(
         self,
         config: TradeRouteConfig | None = None,
-        pathfinder: Callable[[tuple[int, int], tuple[int, int], Any], list[tuple[int, int]]] | None = None,
+        pathfinder: Callable[[tuple[int, int], tuple[int, int], Any], list[tuple[int, int]]]
+        | None = None,
     ) -> None:
         """Initialize trade manager.
 
@@ -600,7 +594,8 @@ class TradeManager:
         routes = [r for r in self._routes.values() if r.origin_player == player_id]
         traders = [t for t in self._traders.values() if t.player_id == player_id]
         agreements = [
-            a for a in self._agreements.values()
+            a
+            for a in self._agreements.values()
             if a.player_a == player_id or a.player_b == player_id
         ]
 

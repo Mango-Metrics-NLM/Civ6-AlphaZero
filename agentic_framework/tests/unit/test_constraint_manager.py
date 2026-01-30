@@ -2,19 +2,18 @@
 Tests for constraint management.
 """
 
-import tempfile
 from pathlib import Path
 
 import pytest
 
 from agentic_framework.config import AgenticConfig
 from agentic_framework.core.constraint_manager import (
-    ConstraintManager,
     Constraint,
-    ConstraintType,
-    ConstraintSeverity,
-    ConstraintViolation,
     ConstraintCheckResult,
+    ConstraintManager,
+    ConstraintSeverity,
+    ConstraintType,
+    ConstraintViolation,
 )
 
 
@@ -127,9 +126,7 @@ class TestConstraintManager:
         """Test getting constraints with filters."""
         manager = ConstraintManager(config=config_with_constraints)
 
-        language_constraints = manager.get_constraints(
-            constraint_type=ConstraintType.LANGUAGE
-        )
+        language_constraints = manager.get_constraints(constraint_type=ConstraintType.LANGUAGE)
 
         assert len(language_constraints) == 1
         assert language_constraints[0].name == "python_version"

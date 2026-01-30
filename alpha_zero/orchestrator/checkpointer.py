@@ -181,8 +181,7 @@ class CheckpointManager:
 
         torch.save(checkpoint_data, best_path)
         logger.info(
-            f"Saved best model with {self.best_metric}="
-            f"{metrics.get(self.best_metric, 'N/A')}",
+            f"Saved best model with {self.best_metric}={metrics.get(self.best_metric, 'N/A')}",
         )
 
         self._metadata["best"] = {
@@ -366,9 +365,7 @@ class CheckpointManager:
 
         # Update metadata
         checkpoints = self._metadata.get("checkpoints", [])
-        self._metadata["checkpoints"] = [
-            c for c in checkpoints if c.get("path") != str(path)
-        ]
+        self._metadata["checkpoints"] = [c for c in checkpoints if c.get("path") != str(path)]
         self._save_metadata()
 
         logger.info(f"Deleted checkpoint: {path}")

@@ -22,7 +22,6 @@ from alpha_zero.training.muzero_trainer import (
     TrajectoryBuffer,
 )
 
-
 # =============================================================================
 # Test MuZeroTrainingConfig
 # =============================================================================
@@ -130,7 +129,7 @@ class TestGameTrajectory:
         assert traj.actions[0] == 5
         assert np.isclose(traj.rewards[0], 0.1)
         assert np.isclose(traj.values[0], 0.5)
-        assert traj.dones[0] == False  # Use == instead of is for numpy bool
+        assert traj.dones[0] == False  # noqa: E712 - numpy bool comparison
 
     def test_append_multiple_steps(self):
         """Appending multiple steps works correctly."""
@@ -156,7 +155,7 @@ class TestGameTrajectory:
         assert len(traj) == 10
         assert len(traj.actions) == 10
         assert traj.actions[5] == 5
-        assert traj.dones[-1] == True  # Use == instead of is for numpy bool
+        assert traj.dones[-1] == True  # noqa: E712 - numpy bool comparison
 
     def test_finalize(self):
         """Finalizing trajectory sets values."""
@@ -491,7 +490,9 @@ class MockMuZeroNetwork(nn.Module):
 
         if use_categorical:
             self.value_head = nn.Linear(hidden_channels * spatial_size * spatial_size, support_size)
-            self.reward_head = nn.Linear(hidden_channels * spatial_size * spatial_size, support_size)
+            self.reward_head = nn.Linear(
+                hidden_channels * spatial_size * spatial_size, support_size
+            )
         else:
             self.value_head = nn.Linear(hidden_channels * spatial_size * spatial_size, 1)
             self.reward_head = nn.Linear(hidden_channels * spatial_size * spatial_size, 1)
@@ -626,18 +627,9 @@ class TestMuZeroTrainer:
                 torch.softmax(torch.randn(batch_size, action_size), dim=-1)
                 for _ in range(unroll_steps + 1)
             ],
-            target_values=[
-                torch.randn(batch_size)
-                for _ in range(unroll_steps + 1)
-            ],
-            target_rewards=[
-                torch.randn(batch_size)
-                for _ in range(unroll_steps)
-            ],
-            action_masks_unroll=[
-                torch.ones(batch_size, action_size)
-                for _ in range(unroll_steps)
-            ],
+            target_values=[torch.randn(batch_size) for _ in range(unroll_steps + 1)],
+            target_rewards=[torch.randn(batch_size) for _ in range(unroll_steps)],
+            action_masks_unroll=[torch.ones(batch_size, action_size) for _ in range(unroll_steps)],
         )
 
     def test_trainer_initialization(self, mock_network, config):
@@ -688,8 +680,7 @@ class TestMuZeroTrainer:
         """Train step updates network weights."""
         # Get initial weights
         initial_weights = {
-            name: param.clone()
-            for name, param in trainer.network.named_parameters()
+            name: param.clone() for name, param in trainer.network.named_parameters()
         }
 
         # Do training step
@@ -721,22 +712,14 @@ class TestMuZeroTrainer:
                 torch.softmax(torch.randn(batch_size, action_size), dim=-1)
                 for _ in range(unroll_steps + 1)
             ],
-            target_values=[
-                torch.randn(batch_size) for _ in range(unroll_steps + 1)
-            ],
-            target_rewards=[
-                torch.randn(batch_size) for _ in range(unroll_steps)
-            ],
-            action_masks_unroll=[
-                torch.ones(batch_size, action_size) for _ in range(unroll_steps)
-            ],
+            target_values=[torch.randn(batch_size) for _ in range(unroll_steps + 1)],
+            target_rewards=[torch.randn(batch_size) for _ in range(unroll_steps)],
+            action_masks_unroll=[torch.ones(batch_size, action_size) for _ in range(unroll_steps)],
             # Add observations for consistency loss computation
             observations_spatial_unroll=[
                 torch.randn(batch_size, 13, 16, 16) for _ in range(unroll_steps)
             ],
-            observations_vector_unroll=[
-                torch.randn(batch_size, 64) for _ in range(unroll_steps)
-            ],
+            observations_vector_unroll=[torch.randn(batch_size, 64) for _ in range(unroll_steps)],
         )
 
         config = MuZeroTrainingConfig(

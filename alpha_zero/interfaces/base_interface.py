@@ -321,7 +321,11 @@ class DummyGameInterface(BaseGameInterface):
             self._done = True
 
         obs = self.get_observation()
-        reward = self._rng.random() - 0.5 if not self._done else (1.0 if self._rng.random() > 0.5 else -1.0)
+        reward = (
+            self._rng.random() - 0.5
+            if not self._done
+            else (1.0 if self._rng.random() > 0.5 else -1.0)
+        )
 
         return StepResult(
             observation=obs,
@@ -366,18 +370,23 @@ class DummyGameInterface(BaseGameInterface):
     def save_state(self, path: str | Path) -> None:
         """Save state."""
         import json
+
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
-            json.dump({
-                "turn": self._turn,
-                "done": self._done,
-                "config": self.config.to_dict(),
-            }, f)
+            json.dump(
+                {
+                    "turn": self._turn,
+                    "done": self._done,
+                    "config": self.config.to_dict(),
+                },
+                f,
+            )
 
     def load_state(self, path: str | Path) -> GameObservation:
         """Load state."""
         import json
+
         with open(path) as f:
             data = json.load(f)
         self._turn = data["turn"]
@@ -423,7 +432,9 @@ class GameAdapter:
         self.config = config or GameConfig()
 
         interface_class = self.BACKENDS[backend]
-        self._interface = interface_class(self.config, **kwargs) if kwargs else interface_class(self.config)
+        self._interface = (
+            interface_class(self.config, **kwargs) if kwargs else interface_class(self.config)
+        )
 
     def connect(self) -> bool:
         """Connect to backend."""

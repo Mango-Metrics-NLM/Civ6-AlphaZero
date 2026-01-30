@@ -3,16 +3,16 @@
 import numpy as np
 import pytest
 
+from alpha_zero.rag.config.settings import EmbeddingConfig, EmbeddingModelType, ProcessorConfig
 from alpha_zero.rag.processors.base import ProcessingResult, TextChunk
-from alpha_zero.rag.processors.text_processor import (
-    RecursiveTextSplitter,
-    TextDocumentProcessor,
-)
 from alpha_zero.rag.processors.embeddings import (
     LocalEmbeddings,
     create_embedding_generator,
 )
-from alpha_zero.rag.config.settings import EmbeddingConfig, EmbeddingModelType, ProcessorConfig
+from alpha_zero.rag.processors.text_processor import (
+    RecursiveTextSplitter,
+    TextDocumentProcessor,
+)
 
 
 class TestTextChunk:

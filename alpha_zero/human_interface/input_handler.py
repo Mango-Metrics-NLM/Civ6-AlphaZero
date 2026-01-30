@@ -27,14 +27,14 @@ logger = logging.getLogger(__name__)
 class ActionType(str, Enum):
     """Type of action parsed from input."""
 
-    MOVE = "move"          # Regular game move
-    UNDO = "undo"          # Undo last move
-    RESIGN = "resign"      # Resign game
-    PAUSE = "pause"        # Pause game
-    SAVE = "save"          # Save game
-    HELP = "help"          # Show help
-    QUIT = "quit"          # Quit game
-    INVALID = "invalid"    # Invalid input
+    MOVE = "move"  # Regular game move
+    UNDO = "undo"  # Undo last move
+    RESIGN = "resign"  # Resign game
+    PAUSE = "pause"  # Pause game
+    SAVE = "save"  # Save game
+    HELP = "help"  # Show help
+    QUIT = "quit"  # Quit game
+    INVALID = "invalid"  # Invalid input
 
 
 @dataclass
@@ -173,7 +173,7 @@ class ActionParser:
         row_num = int(match.group(2))
 
         # Convert to indices (A=0, B=1, etc. and 1-indexed rows)
-        col = ord(col_letter) - ord('A')
+        col = ord(col_letter) - ord("A")
         row = row_num - 1
 
         # Check bounds
@@ -333,9 +333,7 @@ class HumanInputHandler:
         """
         self._input_function = func
 
-    def set_on_invalid_input(
-        self, callback: Callable[[str], None]
-    ) -> None:
+    def set_on_invalid_input(self, callback: Callable[[str], None]) -> None:
         """Set callback for invalid input.
 
         Args:
@@ -389,9 +387,14 @@ class HumanInputHandler:
                 continue
 
             # Handle special commands
-            if result.action_type in (ActionType.UNDO, ActionType.RESIGN,
-                                       ActionType.PAUSE, ActionType.SAVE,
-                                       ActionType.HELP, ActionType.QUIT):
+            if result.action_type in (
+                ActionType.UNDO,
+                ActionType.RESIGN,
+                ActionType.PAUSE,
+                ActionType.SAVE,
+                ActionType.HELP,
+                ActionType.QUIT,
+            ):
                 return result
 
             # Confirm move if required
@@ -411,9 +414,7 @@ class HumanInputHandler:
             True if confirmed.
         """
         try:
-            response = self._input_function(
-                f"Confirm {action.coordinate}? (y/n): "
-            ).strip().lower()
+            response = self._input_function(f"Confirm {action.coordinate}? (y/n): ").strip().lower()
             return response in ("y", "yes", "")
         except (EOFError, KeyboardInterrupt):
             return False

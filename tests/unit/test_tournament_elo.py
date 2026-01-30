@@ -8,9 +8,7 @@ Tests cover:
 - Match processing
 """
 
-import pytest
-
-from alpha_zero.tournament.config import ELOConfig, MatchOutcome, PlayerStats
+from alpha_zero.tournament.config import ELOConfig, MatchOutcome
 from alpha_zero.tournament.elo import (
     ELORatingSystem,
     RatingLeaderboard,
@@ -141,8 +139,10 @@ class TestELORatingSystem:
         """Test rating change calculation."""
         system = ELORatingSystem()
         change1, change2 = system.calculate_rating_changes(
-            rating1=1500, rating2=1500,
-            score1=1.0, score2=0.0,
+            rating1=1500,
+            rating2=1500,
+            score1=1.0,
+            score2=0.0,
         )
 
         assert change1 > 0
@@ -296,7 +296,7 @@ class TestRatingLeaderboard:
         top3 = leaderboard.get_top(3)
         assert len(top3) == 3
         assert top3[0][0] == "e"  # Highest rating
-        assert top3[0][2] == 1    # Rank 1
+        assert top3[0][2] == 1  # Rank 1
 
     def test_get_players_in_range(self):
         """Test getting players in rating range."""

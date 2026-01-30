@@ -192,9 +192,7 @@ class TestEndToEndTraining:
         optimizer.zero_grad()
 
         policy_logits, value = network(spatial, vector, action_mask)
-        loss, _, _ = compute_loss(
-            policy_logits, value, target_policy, target_value, action_mask
-        )
+        loss, _, _ = compute_loss(policy_logits, value, target_policy, target_value, action_mask)
 
         loss.backward()
         optimizer.step()
@@ -339,9 +337,7 @@ class TestFullGameSimulation:
         # Should have taken at least some steps
         assert steps > 0
 
-    def test_complete_game_with_neural_mcts(
-        self, small_env, small_network, neural_mcts
-    ):
+    def test_complete_game_with_neural_mcts(self, small_env, small_network, neural_mcts):
         """Play a full game using neural network MCTS."""
         obs, _ = small_env.reset()
         steps = 0
@@ -459,9 +455,7 @@ class TestCheckpointIntegration:
 
             # Get outputs from loaded network
             with torch.no_grad():
-                loaded_policy, loaded_value = loaded_network(
-                    spatial, vector, action_mask
-                )
+                loaded_policy, loaded_value = loaded_network(spatial, vector, action_mask)
 
             # Outputs should be identical
             assert torch.allclose(orig_policy, loaded_policy, atol=1e-6)
@@ -612,9 +606,7 @@ class TestFullPipeline:
         from torch.utils.data import DataLoader
 
         replay_buffer = ReplayBuffer(max_size=small_config.replay_buffer_size)
-        optimizer = torch.optim.Adam(
-            small_network.parameters(), lr=small_config.learning_rate
-        )
+        optimizer = torch.optim.Adam(small_network.parameters(), lr=small_config.learning_rate)
 
         losses = []
 
@@ -641,13 +633,9 @@ class TestFullPipeline:
                     min(len(replay_buffer), small_config.batch_size * 2)
                 )
                 dataset = ReplayDataset(train_examples)
-                dataloader = DataLoader(
-                    dataset, batch_size=small_config.batch_size, shuffle=True
-                )
+                dataloader = DataLoader(dataset, batch_size=small_config.batch_size, shuffle=True)
 
-                epoch_losses = train_epoch(
-                    small_network, optimizer, dataloader, small_config
-                )
+                epoch_losses = train_epoch(small_network, optimizer, dataloader, small_config)
                 losses.append(epoch_losses["total_loss"])
 
         # Should have completed iterations
@@ -662,7 +650,9 @@ class TestFullPipeline:
         """Test the evaluate_against_random function."""
         # Run evaluation with minimal games
         win_rate = evaluate_against_random(
-            small_network, small_config, num_games=4  # Small number for speed
+            small_network,
+            small_config,
+            num_games=4,  # Small number for speed
         )
 
         # Win rate should be between 0 and 1
@@ -670,9 +660,7 @@ class TestFullPipeline:
 
     def test_self_play_generates_diverse_data(self, small_config, small_network):
         """Verify self-play generates diverse training data."""
-        examples = run_self_play(
-            small_network, small_config, num_games=3, use_simple_mcts=True
-        )
+        examples = run_self_play(small_network, small_config, num_games=3, use_simple_mcts=True)
 
         # Should have multiple examples
         assert len(examples) >= 3  # At least one per game
@@ -696,13 +684,9 @@ class TestFullPipeline:
         from torch.utils.data import DataLoader
 
         # Generate fixed training data
-        examples = run_self_play(
-            small_network, small_config, num_games=2, use_simple_mcts=True
-        )
+        examples = run_self_play(small_network, small_config, num_games=2, use_simple_mcts=True)
         dataset = ReplayDataset(examples)
-        dataloader = DataLoader(
-            dataset, batch_size=min(8, len(examples)), shuffle=True
-        )
+        dataloader = DataLoader(dataset, batch_size=min(8, len(examples)), shuffle=True)
 
         optimizer = torch.optim.Adam(small_network.parameters(), lr=0.01)
 
@@ -711,9 +695,7 @@ class TestFullPipeline:
 
         # Train for more epochs on same data
         for _ in range(5):
-            final_losses = train_epoch(
-                small_network, optimizer, dataloader, small_config
-            )
+            final_losses = train_epoch(small_network, optimizer, dataloader, small_config)
 
         # Loss should decrease
         assert final_losses["total_loss"] < initial_losses["total_loss"]
@@ -727,21 +709,15 @@ class TestFullPipeline:
 
             # Phase 1: Generate data and train
             replay_buffer = ReplayBuffer(max_size=small_config.replay_buffer_size)
-            optimizer = torch.optim.Adam(
-                small_network.parameters(), lr=small_config.learning_rate
-            )
+            optimizer = torch.optim.Adam(small_network.parameters(), lr=small_config.learning_rate)
 
-            examples = run_self_play(
-                small_network, small_config, num_games=2, use_simple_mcts=True
-            )
+            examples = run_self_play(small_network, small_config, num_games=2, use_simple_mcts=True)
             replay_buffer.add_game(examples)
 
             if len(replay_buffer) >= small_config.batch_size:
                 train_examples = replay_buffer.sample(len(replay_buffer))
                 dataset = ReplayDataset(train_examples)
-                dataloader = DataLoader(
-                    dataset, batch_size=small_config.batch_size, shuffle=True
-                )
+                dataloader = DataLoader(dataset, batch_size=small_config.batch_size, shuffle=True)
                 train_epoch(small_network, optimizer, dataloader, small_config)
 
             # Save checkpoint

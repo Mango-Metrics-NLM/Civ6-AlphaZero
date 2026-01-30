@@ -14,6 +14,7 @@ Example:
     >>> goal = Goal.strategic(StrategicGoalType.DOMINATION_VICTORY)
     >>> print(goal.level, goal.goal_type)
 """
+
 from __future__ import annotations
 
 import uuid
@@ -56,65 +57,73 @@ class HierarchyLevel(Enum):
 class GoalStatus(Enum):
     """Status of a goal in the hierarchy."""
 
-    PENDING = auto()     # Not yet started
-    ACTIVE = auto()      # Currently being pursued
-    PAUSED = auto()      # Temporarily suspended
-    COMPLETED = auto()   # Successfully achieved
-    FAILED = auto()      # Failed to achieve
-    ABANDONED = auto()   # Intentionally dropped
+    PENDING = auto()  # Not yet started
+    ACTIVE = auto()  # Currently being pursued
+    PAUSED = auto()  # Temporarily suspended
+    COMPLETED = auto()  # Successfully achieved
+    FAILED = auto()  # Failed to achieve
+    ABANDONED = auto()  # Intentionally dropped
 
 
 # =============================================================================
 # Strategic Goal Types (30-100 turn horizon)
 # =============================================================================
 
+
 class StrategicGoalType(Enum):
     """Strategic-level goal types representing victory paths and long-term objectives."""
 
     # Victory conditions
-    DOMINATION_VICTORY = auto()   # Conquer all capitals
-    SCIENCE_VICTORY = auto()      # Launch Mars mission
-    CULTURE_VICTORY = auto()      # Achieve cultural hegemony
-    RELIGIOUS_VICTORY = auto()    # Convert all civs
-    DIPLOMATIC_VICTORY = auto()   # Win world congress
-    SCORE_VICTORY = auto()        # Highest score at turn limit
+    DOMINATION_VICTORY = auto()  # Conquer all capitals
+    SCIENCE_VICTORY = auto()  # Launch Mars mission
+    CULTURE_VICTORY = auto()  # Achieve cultural hegemony
+    RELIGIOUS_VICTORY = auto()  # Convert all civs
+    DIPLOMATIC_VICTORY = auto()  # Win world congress
+    SCORE_VICTORY = auto()  # Highest score at turn limit
 
     # Strategic postures
-    MILITARY_SUPREMACY = auto()   # Build strongest military
-    ECONOMIC_DOMINANCE = auto()   # Achieve highest GDP
-    TECH_LEADERSHIP = auto()      # Lead in technology
-    CULTURAL_INFLUENCE = auto()   # Spread culture globally
-    RELIGIOUS_SPREAD = auto()     # Expand religion
-    TERRITORIAL_EXPANSION = auto() # Maximize territory
-    DEFENSIVE_CONSOLIDATION = auto() # Fortify and defend
+    MILITARY_SUPREMACY = auto()  # Build strongest military
+    ECONOMIC_DOMINANCE = auto()  # Achieve highest GDP
+    TECH_LEADERSHIP = auto()  # Lead in technology
+    CULTURAL_INFLUENCE = auto()  # Spread culture globally
+    RELIGIOUS_SPREAD = auto()  # Expand religion
+    TERRITORIAL_EXPANSION = auto()  # Maximize territory
+    DEFENSIVE_CONSOLIDATION = auto()  # Fortify and defend
 
     # Diplomatic stances
-    ALLIANCE_BUILDING = auto()    # Form strong alliances
-    ISOLATION_POLICY = auto()     # Avoid entanglements
-    OPPORTUNISTIC_WARFARE = auto() # Strike when advantageous
+    ALLIANCE_BUILDING = auto()  # Form strong alliances
+    ISOLATION_POLICY = auto()  # Avoid entanglements
+    OPPORTUNISTIC_WARFARE = auto()  # Strike when advantageous
 
     # Aliases for backwards compatibility
-    EXPAND_TERRITORY = auto()     # Alias for TERRITORIAL_EXPANSION
-    DEFEND_EMPIRE = auto()        # Alias for DEFENSIVE_CONSOLIDATION
-    ESTABLISH_ALLIANCE = auto()   # Form strategic alliance
-    SABOTAGE_ENEMY = auto()       # Disrupt enemy operations
-    CONTROL_CONTINENT = auto()    # Dominate geographic region
-    TECHNOLOGICAL_LEAD = auto()   # Lead in technology
-    RESOURCE_MONOPOLY = auto()    # Control key resources
+    EXPAND_TERRITORY = auto()  # Alias for TERRITORIAL_EXPANSION
+    DEFEND_EMPIRE = auto()  # Alias for DEFENSIVE_CONSOLIDATION
+    ESTABLISH_ALLIANCE = auto()  # Form strategic alliance
+    SABOTAGE_ENEMY = auto()  # Disrupt enemy operations
+    CONTROL_CONTINENT = auto()  # Dominate geographic region
+    TECHNOLOGICAL_LEAD = auto()  # Lead in technology
+    RESOURCE_MONOPOLY = auto()  # Control key resources
 
     @property
     def category(self) -> str:
         """Get the category of this strategic goal."""
         victory_goals = {
-            self.DOMINATION_VICTORY, self.SCIENCE_VICTORY,
-            self.CULTURE_VICTORY, self.RELIGIOUS_VICTORY,
-            self.DIPLOMATIC_VICTORY, self.SCORE_VICTORY,
+            self.DOMINATION_VICTORY,
+            self.SCIENCE_VICTORY,
+            self.CULTURE_VICTORY,
+            self.RELIGIOUS_VICTORY,
+            self.DIPLOMATIC_VICTORY,
+            self.SCORE_VICTORY,
         }
         posture_goals = {
-            self.MILITARY_SUPREMACY, self.ECONOMIC_DOMINANCE,
-            self.TECH_LEADERSHIP, self.CULTURAL_INFLUENCE,
-            self.RELIGIOUS_SPREAD, self.TERRITORIAL_EXPANSION,
-            self.DEFENSIVE_CONSOLIDATION, self.EXPAND_TERRITORY,
+            self.MILITARY_SUPREMACY,
+            self.ECONOMIC_DOMINANCE,
+            self.TECH_LEADERSHIP,
+            self.CULTURAL_INFLUENCE,
+            self.RELIGIOUS_SPREAD,
+            self.TERRITORIAL_EXPANSION,
+            self.DEFENSIVE_CONSOLIDATION,
+            self.EXPAND_TERRITORY,
             self.DEFEND_EMPIRE,
         }
         if self in victory_goals:
@@ -128,82 +137,103 @@ class StrategicGoalType(Enum):
 # Tactical Goal Types (5-15 turn horizon)
 # =============================================================================
 
+
 class TacticalGoalType(Enum):
     """Tactical-level goal types representing medium-term objectives."""
 
     # Military operations
-    CONQUER_CITY = auto()         # Capture specific city
-    DEFEND_CITY = auto()          # Protect city from attack
-    BUILD_ARMY = auto()           # Raise military forces
-    DESTROY_ARMY = auto()         # Eliminate enemy forces
-    SIEGE_OPERATION = auto()      # Set up city siege
-    RAID_TERRITORY = auto()       # Pillage enemy improvements
-    NAVAL_BLOCKADE = auto()       # Block enemy sea routes
+    CONQUER_CITY = auto()  # Capture specific city
+    DEFEND_CITY = auto()  # Protect city from attack
+    BUILD_ARMY = auto()  # Raise military forces
+    DESTROY_ARMY = auto()  # Eliminate enemy forces
+    SIEGE_OPERATION = auto()  # Set up city siege
+    RAID_TERRITORY = auto()  # Pillage enemy improvements
+    NAVAL_BLOCKADE = auto()  # Block enemy sea routes
 
     # Infrastructure development
-    DEVELOP_CITY = auto()         # Grow and improve city
-    BUILD_WONDER = auto()         # Construct specific wonder
-    IMPROVE_REGION = auto()       # Build improvements in area
-    CONNECT_CITIES = auto()       # Build roads/trade routes
-    ESTABLISH_OUTPOST = auto()    # Settle new city
+    DEVELOP_CITY = auto()  # Grow and improve city
+    BUILD_WONDER = auto()  # Construct specific wonder
+    IMPROVE_REGION = auto()  # Build improvements in area
+    CONNECT_CITIES = auto()  # Build roads/trade routes
+    ESTABLISH_OUTPOST = auto()  # Settle new city
 
     # Resource and economy
-    SECURE_RESOURCE = auto()      # Control strategic resource
-    MAXIMIZE_INCOME = auto()      # Boost gold generation
-    BOOST_PRODUCTION = auto()     # Increase city production
-    GROW_POPULATION = auto()      # Increase city population
+    SECURE_RESOURCE = auto()  # Control strategic resource
+    MAXIMIZE_INCOME = auto()  # Boost gold generation
+    BOOST_PRODUCTION = auto()  # Increase city production
+    GROW_POPULATION = auto()  # Increase city population
 
     # Technology and culture
-    RESEARCH_TECH = auto()        # Complete specific tech
-    RESEARCH_CIVIC = auto()       # Complete specific civic
-    BUILD_CAMPUS = auto()         # Establish science district
-    BUILD_THEATER = auto()        # Establish culture district
-    RECRUIT_GREAT_PERSON = auto() # Acquire great person
+    RESEARCH_TECH = auto()  # Complete specific tech
+    RESEARCH_CIVIC = auto()  # Complete specific civic
+    BUILD_CAMPUS = auto()  # Establish science district
+    BUILD_THEATER = auto()  # Establish culture district
+    RECRUIT_GREAT_PERSON = auto()  # Acquire great person
 
     # Diplomacy
-    FORM_ALLIANCE = auto()        # Establish alliance
-    NEGOTIATE_PEACE = auto()      # End conflict
-    DECLARE_WAR = auto()          # Start conflict
-    TRADE_AGREEMENT = auto()      # Establish trade deal
+    FORM_ALLIANCE = auto()  # Establish alliance
+    NEGOTIATE_PEACE = auto()  # End conflict
+    DECLARE_WAR = auto()  # Start conflict
+    TRADE_AGREEMENT = auto()  # Establish trade deal
 
     # Aliases for backwards compatibility
-    CAPTURE_CITY = auto()         # Alias for CONQUER_CITY
-    SETTLE_CITY = auto()          # Alias for ESTABLISH_OUTPOST
-    BUILD_ENCAMPMENT = auto()     # Build encampment district
-    GENERATE_TOURISM = auto()     # Generate tourism output
-    BUILD_COMMERCIAL = auto()     # Build commercial hub
-    FORTIFY_POSITION = auto()     # Fortify and hold position
-    ELIMINATE_UNIT = auto()       # Destroy enemy unit
-    SPREAD_RELIGION = auto()      # Spread religious beliefs
-    BUILD_HOLY_SITE = auto()      # Build holy site district
-    IMPROVE_TILE = auto()         # Build tile improvement
-    ESTABLISH_TRADE = auto()      # Establish trade route
-    UPGRADE_UNIT = auto()         # Upgrade military unit
+    CAPTURE_CITY = auto()  # Alias for CONQUER_CITY
+    SETTLE_CITY = auto()  # Alias for ESTABLISH_OUTPOST
+    BUILD_ENCAMPMENT = auto()  # Build encampment district
+    GENERATE_TOURISM = auto()  # Generate tourism output
+    BUILD_COMMERCIAL = auto()  # Build commercial hub
+    FORTIFY_POSITION = auto()  # Fortify and hold position
+    ELIMINATE_UNIT = auto()  # Destroy enemy unit
+    SPREAD_RELIGION = auto()  # Spread religious beliefs
+    BUILD_HOLY_SITE = auto()  # Build holy site district
+    IMPROVE_TILE = auto()  # Build tile improvement
+    ESTABLISH_TRADE = auto()  # Establish trade route
+    UPGRADE_UNIT = auto()  # Upgrade military unit
     PILLAGE_IMPROVEMENT = auto()  # Pillage enemy improvements
 
     @property
     def category(self) -> str:
         """Get the category of this tactical goal."""
         military = {
-            self.CONQUER_CITY, self.DEFEND_CITY, self.BUILD_ARMY,
-            self.DESTROY_ARMY, self.SIEGE_OPERATION, self.RAID_TERRITORY,
-            self.NAVAL_BLOCKADE, self.CAPTURE_CITY, self.FORTIFY_POSITION,
-            self.ELIMINATE_UNIT, self.PILLAGE_IMPROVEMENT, self.UPGRADE_UNIT,
+            self.CONQUER_CITY,
+            self.DEFEND_CITY,
+            self.BUILD_ARMY,
+            self.DESTROY_ARMY,
+            self.SIEGE_OPERATION,
+            self.RAID_TERRITORY,
+            self.NAVAL_BLOCKADE,
+            self.CAPTURE_CITY,
+            self.FORTIFY_POSITION,
+            self.ELIMINATE_UNIT,
+            self.PILLAGE_IMPROVEMENT,
+            self.UPGRADE_UNIT,
         }
         infrastructure = {
-            self.DEVELOP_CITY, self.BUILD_WONDER, self.IMPROVE_REGION,
-            self.CONNECT_CITIES, self.ESTABLISH_OUTPOST, self.SETTLE_CITY,
-            self.BUILD_ENCAMPMENT, self.BUILD_COMMERCIAL, self.IMPROVE_TILE,
-            self.BUILD_HOLY_SITE, self.ESTABLISH_TRADE,
+            self.DEVELOP_CITY,
+            self.BUILD_WONDER,
+            self.IMPROVE_REGION,
+            self.CONNECT_CITIES,
+            self.ESTABLISH_OUTPOST,
+            self.SETTLE_CITY,
+            self.BUILD_ENCAMPMENT,
+            self.BUILD_COMMERCIAL,
+            self.IMPROVE_TILE,
+            self.BUILD_HOLY_SITE,
+            self.ESTABLISH_TRADE,
         }
         economy = {
-            self.SECURE_RESOURCE, self.MAXIMIZE_INCOME,
-            self.BOOST_PRODUCTION, self.GROW_POPULATION,
+            self.SECURE_RESOURCE,
+            self.MAXIMIZE_INCOME,
+            self.BOOST_PRODUCTION,
+            self.GROW_POPULATION,
         }
         research = {
-            self.RESEARCH_TECH, self.RESEARCH_CIVIC,
-            self.BUILD_CAMPUS, self.BUILD_THEATER,
-            self.RECRUIT_GREAT_PERSON, self.GENERATE_TOURISM,
+            self.RESEARCH_TECH,
+            self.RESEARCH_CIVIC,
+            self.BUILD_CAMPUS,
+            self.BUILD_THEATER,
+            self.RECRUIT_GREAT_PERSON,
+            self.GENERATE_TOURISM,
             self.SPREAD_RELIGION,
         }
         if self in military:
@@ -221,80 +251,104 @@ class TacticalGoalType(Enum):
 # Operational Goal Types (1-3 turn horizon)
 # =============================================================================
 
+
 class OperationalGoalType(Enum):
     """Operational-level goal types representing immediate actions."""
 
     # Unit movement
-    MOVE_TO_POSITION = auto()     # Move unit to location
-    ATTACK_TARGET = auto()        # Attack specific target
-    DEFEND_POSITION = auto()      # Hold current location
-    RETREAT = auto()              # Fall back from danger
-    ESCORT_UNIT = auto()          # Protect another unit
-    SCOUT_AREA = auto()           # Explore territory
-    FORTIFY = auto()              # Dig in for defense
+    MOVE_TO_POSITION = auto()  # Move unit to location
+    ATTACK_TARGET = auto()  # Attack specific target
+    DEFEND_POSITION = auto()  # Hold current location
+    RETREAT = auto()  # Fall back from danger
+    ESCORT_UNIT = auto()  # Protect another unit
+    SCOUT_AREA = auto()  # Explore territory
+    FORTIFY = auto()  # Dig in for defense
 
     # City production
-    PRODUCE_UNIT = auto()         # Build military unit
-    PRODUCE_BUILDING = auto()     # Build city building
-    PRODUCE_DISTRICT = auto()     # Build city district
-    PRODUCE_WONDER = auto()       # Build world wonder
-    PRODUCE_PROJECT = auto()      # Complete city project
-    BUY_ITEM = auto()             # Purchase with gold
+    PRODUCE_UNIT = auto()  # Build military unit
+    PRODUCE_BUILDING = auto()  # Build city building
+    PRODUCE_DISTRICT = auto()  # Build city district
+    PRODUCE_WONDER = auto()  # Build world wonder
+    PRODUCE_PROJECT = auto()  # Complete city project
+    BUY_ITEM = auto()  # Purchase with gold
 
     # Worker actions
-    BUILD_IMPROVEMENT = auto()    # Construct tile improvement
-    REPAIR_IMPROVEMENT = auto()   # Fix pillaged improvement
-    HARVEST_RESOURCE = auto()     # Remove and collect resource
-    PLANT_FOREST = auto()         # Add forest to tile
+    BUILD_IMPROVEMENT = auto()  # Construct tile improvement
+    REPAIR_IMPROVEMENT = auto()  # Fix pillaged improvement
+    HARVEST_RESOURCE = auto()  # Remove and collect resource
+    PLANT_FOREST = auto()  # Add forest to tile
 
     # Diplomatic actions
-    SEND_DELEGATION = auto()      # Establish embassy
-    TRADE_RESOURCES = auto()      # Resource exchange
-    DENOUNCE_PLAYER = auto()      # Public condemnation
-    MAKE_PROMISE = auto()         # Diplomatic promise
+    SEND_DELEGATION = auto()  # Establish embassy
+    TRADE_RESOURCES = auto()  # Resource exchange
+    DENOUNCE_PLAYER = auto()  # Public condemnation
+    MAKE_PROMISE = auto()  # Diplomatic promise
 
     # Turn management
-    SKIP_TURN = auto()            # Pass action
-    END_TURN = auto()             # Complete turn
+    SKIP_TURN = auto()  # Pass action
+    END_TURN = auto()  # Complete turn
 
     # Aliases for backwards compatibility
-    MOVE_UNIT = auto()            # Alias for MOVE_TO_POSITION
-    SELECT_RESEARCH = auto()      # Select research option
-    BUILD_DISTRICT = auto()       # Alias for PRODUCE_DISTRICT
-    SIEGE_CITY = auto()           # Siege a city
-    FORTIFY_UNIT = auto()         # Fortify unit in place
-    HEAL_UNIT = auto()            # Heal unit
-    UPGRADE_UNIT = auto()         # Upgrade unit
-    FOUND_CITY = auto()           # Found a new city
-    BUILD_BUILDING = auto()       # Build city building
-    ESTABLISH_TRADE_ROUTE = auto() # Establish trade route
-    SPREAD_RELIGION = auto()      # Spread religious influence
-    PILLAGE = auto()              # Pillage tile
-    CREATE_GREAT_WORK = auto()    # Create great work
-    MAKE_DEAL = auto()            # Make diplomatic deal
+    MOVE_UNIT = auto()  # Alias for MOVE_TO_POSITION
+    SELECT_RESEARCH = auto()  # Select research option
+    BUILD_DISTRICT = auto()  # Alias for PRODUCE_DISTRICT
+    SIEGE_CITY = auto()  # Siege a city
+    FORTIFY_UNIT = auto()  # Fortify unit in place
+    HEAL_UNIT = auto()  # Heal unit
+    UPGRADE_UNIT = auto()  # Upgrade unit
+    FOUND_CITY = auto()  # Found a new city
+    BUILD_BUILDING = auto()  # Build city building
+    ESTABLISH_TRADE_ROUTE = auto()  # Establish trade route
+    SPREAD_RELIGION = auto()  # Spread religious influence
+    PILLAGE = auto()  # Pillage tile
+    CREATE_GREAT_WORK = auto()  # Create great work
+    MAKE_DEAL = auto()  # Make diplomatic deal
 
     @property
     def category(self) -> str:
         """Get the category of this operational goal."""
         movement = {
-            self.MOVE_TO_POSITION, self.ATTACK_TARGET, self.DEFEND_POSITION,
-            self.RETREAT, self.ESCORT_UNIT, self.SCOUT_AREA, self.FORTIFY,
-            self.MOVE_UNIT, self.SIEGE_CITY, self.FORTIFY_UNIT, self.HEAL_UNIT,
+            self.MOVE_TO_POSITION,
+            self.ATTACK_TARGET,
+            self.DEFEND_POSITION,
+            self.RETREAT,
+            self.ESCORT_UNIT,
+            self.SCOUT_AREA,
+            self.FORTIFY,
+            self.MOVE_UNIT,
+            self.SIEGE_CITY,
+            self.FORTIFY_UNIT,
+            self.HEAL_UNIT,
         }
         production = {
-            self.PRODUCE_UNIT, self.PRODUCE_BUILDING, self.PRODUCE_DISTRICT,
-            self.PRODUCE_WONDER, self.PRODUCE_PROJECT, self.BUY_ITEM,
-            self.SELECT_RESEARCH, self.BUILD_DISTRICT, self.UPGRADE_UNIT,
-            self.BUILD_BUILDING, self.FOUND_CITY, self.CREATE_GREAT_WORK,
+            self.PRODUCE_UNIT,
+            self.PRODUCE_BUILDING,
+            self.PRODUCE_DISTRICT,
+            self.PRODUCE_WONDER,
+            self.PRODUCE_PROJECT,
+            self.BUY_ITEM,
+            self.SELECT_RESEARCH,
+            self.BUILD_DISTRICT,
+            self.UPGRADE_UNIT,
+            self.BUILD_BUILDING,
+            self.FOUND_CITY,
+            self.CREATE_GREAT_WORK,
         }
         improvement = {
-            self.BUILD_IMPROVEMENT, self.REPAIR_IMPROVEMENT,
-            self.HARVEST_RESOURCE, self.PLANT_FOREST, self.PILLAGE,
+            self.BUILD_IMPROVEMENT,
+            self.REPAIR_IMPROVEMENT,
+            self.HARVEST_RESOURCE,
+            self.PLANT_FOREST,
+            self.PILLAGE,
             self.ESTABLISH_TRADE_ROUTE,
         }
         diplomacy = {
-            self.SEND_DELEGATION, self.TRADE_RESOURCES, self.DENOUNCE_PLAYER,
-            self.MAKE_PROMISE, self.MAKE_DEAL, self.SPREAD_RELIGION,
+            self.SEND_DELEGATION,
+            self.TRADE_RESOURCES,
+            self.DENOUNCE_PLAYER,
+            self.MAKE_PROMISE,
+            self.MAKE_DEAL,
+            self.SPREAD_RELIGION,
         }
         if self in movement:
             return "movement"
@@ -312,6 +366,7 @@ class OperationalGoalType(Enum):
 # =============================================================================
 # Goal Target
 # =============================================================================
+
 
 @dataclass
 class GoalTarget:

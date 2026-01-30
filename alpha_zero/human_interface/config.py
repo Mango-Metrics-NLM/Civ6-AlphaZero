@@ -24,7 +24,7 @@ class InputMode(str, Enum):
     """Input mode for human player."""
 
     COORDINATE = "coordinate"  # e.g., "A1", "B3"
-    INDEX = "index"            # e.g., "0", "5"
+    INDEX = "index"  # e.g., "0", "5"
     INTERACTIVE = "interactive"  # Arrow keys + enter
 
 
@@ -110,9 +110,7 @@ class HumanInterfaceConfig:
             raise ValueError("thinking_time_seconds must be positive")
 
         if self.max_thinking_time < self.thinking_time_seconds:
-            raise ValueError(
-                "max_thinking_time must be >= thinking_time_seconds"
-            )
+            raise ValueError("max_thinking_time must be >= thinking_time_seconds")
 
         if self.input_timeout_seconds <= 0:
             raise ValueError("input_timeout_seconds must be positive")
@@ -164,9 +162,7 @@ class HumanInterfaceConfig:
         return cls(**{k: v for k, v in data.items() if hasattr(cls, k)})
 
     @classmethod
-    def from_env(
-        cls, base_config: HumanInterfaceConfig | None = None
-    ) -> HumanInterfaceConfig:
+    def from_env(cls, base_config: HumanInterfaceConfig | None = None) -> HumanInterfaceConfig:
         """Create configuration with environment variable overrides.
 
         Environment variables use prefix CIV6AZ_HUMAN_ followed by
@@ -183,8 +179,14 @@ class HumanInterfaceConfig:
         env_mapping = {
             "CIV6AZ_HUMAN_THINKING_TIME_SECONDS": ("thinking_time_seconds", float),
             "CIV6AZ_HUMAN_MAX_THINKING_TIME": ("max_thinking_time", float),
-            "CIV6AZ_HUMAN_SHOW_AI_EVALUATION": ("show_ai_evaluation", lambda x: x.lower() == "true"),
-            "CIV6AZ_HUMAN_SHOW_MOVE_PROBABILITIES": ("show_move_probabilities", lambda x: x.lower() == "true"),
+            "CIV6AZ_HUMAN_SHOW_AI_EVALUATION": (
+                "show_ai_evaluation",
+                lambda x: x.lower() == "true",
+            ),
+            "CIV6AZ_HUMAN_SHOW_MOVE_PROBABILITIES": (
+                "show_move_probabilities",
+                lambda x: x.lower() == "true",
+            ),
             "CIV6AZ_HUMAN_BOARD_THEME": ("board_theme", str),
             "CIV6AZ_HUMAN_INPUT_MODE": ("input_mode", str),
             "CIV6AZ_HUMAN_INPUT_TIMEOUT_SECONDS": ("input_timeout_seconds", float),

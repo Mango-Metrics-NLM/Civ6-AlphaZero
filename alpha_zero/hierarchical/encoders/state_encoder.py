@@ -11,6 +11,7 @@ Example:
     >>> encoder = StrategicStateEncoder(embed_dim=256)
     >>> strategic_state = encoder.encode(game_state)
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,6 +25,7 @@ try:
     import torch  # noqa: F401
     import torch.nn as nn  # noqa: F401
     import torch.nn.functional as F  # noqa: F401
+
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
@@ -141,14 +143,17 @@ class StateEncoder(ABC):
 
         # Resources (gold, science, culture, faith, etc.)
         resources = game_state.get("resources", {})
-        features["resources"] = np.array([
-            resources.get("gold", 0),
-            resources.get("science", 0),
-            resources.get("culture", 0),
-            resources.get("faith", 0),
-            resources.get("production", 0),
-            resources.get("food", 0),
-        ], dtype=np.float32)
+        features["resources"] = np.array(
+            [
+                resources.get("gold", 0),
+                resources.get("science", 0),
+                resources.get("culture", 0),
+                resources.get("faith", 0),
+                resources.get("production", 0),
+                resources.get("food", 0),
+            ],
+            dtype=np.float32,
+        )
 
         # City count
         cities = game_state.get("cities", [])
@@ -204,12 +209,12 @@ class StrategicStateEncoder(StateEncoder):
 
         # Calculate total input features
         self._input_features = (
-            self.VICTORY_FEATURES +
-            self.DIPLOMATIC_FEATURES +
-            self.RESOURCE_FEATURES +
-            self.MILITARY_FEATURES +
-            self.TERRITORY_FEATURES +
-            self.TECH_FEATURES
+            self.VICTORY_FEATURES
+            + self.DIPLOMATIC_FEATURES
+            + self.RESOURCE_FEATURES
+            + self.MILITARY_FEATURES
+            + self.TERRITORY_FEATURES
+            + self.TECH_FEATURES
         )
 
         logger.debug(
@@ -269,22 +274,25 @@ class StrategicStateEncoder(StateEncoder):
         # Pad or truncate to embed_dim
         if len(combined) < self.config.embed_dim:
             padded = np.zeros(self.config.embed_dim, dtype=np.float32)
-            padded[:len(combined)] = combined
+            padded[: len(combined)] = combined
             return padded
         else:
-            return combined[:self.config.embed_dim].astype(np.float32)
+            return combined[: self.config.embed_dim].astype(np.float32)
 
     def _encode_victory_progress(self, game_state: dict[str, Any]) -> np.ndarray:
         """Encode victory progress indicators."""
         victory = game_state.get("victory_progress", {})
-        return np.array([
-            victory.get("domination", 0.0),
-            victory.get("science", 0.0),
-            victory.get("culture", 0.0),
-            victory.get("religious", 0.0),
-            victory.get("diplomatic", 0.0),
-            victory.get("score", 0.0),
-        ], dtype=np.float32)
+        return np.array(
+            [
+                victory.get("domination", 0.0),
+                victory.get("science", 0.0),
+                victory.get("culture", 0.0),
+                victory.get("religious", 0.0),
+                victory.get("diplomatic", 0.0),
+                victory.get("score", 0.0),
+            ],
+            dtype=np.float32,
+        )
 
     def _encode_diplomatic_state(self, game_state: dict[str, Any]) -> np.ndarray:
         """Encode diplomatic relationships."""
@@ -307,23 +315,26 @@ class StrategicStateEncoder(StateEncoder):
         yields = game_state.get("yields", {})
         trends = game_state.get("resource_trends", {})
 
-        return np.array([
-            # Current levels (normalized)
-            min(resources.get("gold", 0) / 1000.0, 1.0),
-            min(resources.get("science", 0) / 500.0, 1.0),
-            min(resources.get("culture", 0) / 500.0, 1.0),
-            min(resources.get("faith", 0) / 500.0, 1.0),
-            # Per-turn yields (normalized)
-            min(yields.get("gold_per_turn", 0) / 100.0, 1.0),
-            min(yields.get("science_per_turn", 0) / 100.0, 1.0),
-            min(yields.get("culture_per_turn", 0) / 100.0, 1.0),
-            min(yields.get("faith_per_turn", 0) / 100.0, 1.0),
-            # Trends (positive/negative)
-            np.sign(trends.get("gold", 0)),
-            np.sign(trends.get("science", 0)),
-            np.sign(trends.get("culture", 0)),
-            np.sign(trends.get("faith", 0)),
-        ], dtype=np.float32)
+        return np.array(
+            [
+                # Current levels (normalized)
+                min(resources.get("gold", 0) / 1000.0, 1.0),
+                min(resources.get("science", 0) / 500.0, 1.0),
+                min(resources.get("culture", 0) / 500.0, 1.0),
+                min(resources.get("faith", 0) / 500.0, 1.0),
+                # Per-turn yields (normalized)
+                min(yields.get("gold_per_turn", 0) / 100.0, 1.0),
+                min(yields.get("science_per_turn", 0) / 100.0, 1.0),
+                min(yields.get("culture_per_turn", 0) / 100.0, 1.0),
+                min(yields.get("faith_per_turn", 0) / 100.0, 1.0),
+                # Trends (positive/negative)
+                np.sign(trends.get("gold", 0)),
+                np.sign(trends.get("science", 0)),
+                np.sign(trends.get("culture", 0)),
+                np.sign(trends.get("faith", 0)),
+            ],
+            dtype=np.float32,
+        )
 
     def _encode_military_strength(self, game_state: dict[str, Any]) -> np.ndarray:
         """Encode military strength metrics."""
@@ -336,44 +347,53 @@ class StrategicStateEncoder(StateEncoder):
         cavalry = sum(1 for u in units if u.get("class") == "cavalry")
         naval = sum(1 for u in units if u.get("class") == "naval")
 
-        return np.array([
-            min(military.get("strength", 0) / 1000.0, 1.0),
-            min(melee / 20.0, 1.0),
-            min(ranged / 20.0, 1.0),
-            min(cavalry / 10.0, 1.0),
-            min(naval / 10.0, 1.0),
-            min(len(units) / 50.0, 1.0),
-            military.get("at_war", 0),
-            military.get("defensive_pacts", 0) / 5.0,
-        ], dtype=np.float32)
+        return np.array(
+            [
+                min(military.get("strength", 0) / 1000.0, 1.0),
+                min(melee / 20.0, 1.0),
+                min(ranged / 20.0, 1.0),
+                min(cavalry / 10.0, 1.0),
+                min(naval / 10.0, 1.0),
+                min(len(units) / 50.0, 1.0),
+                military.get("at_war", 0),
+                military.get("defensive_pacts", 0) / 5.0,
+            ],
+            dtype=np.float32,
+        )
 
     def _encode_territory_control(self, game_state: dict[str, Any]) -> np.ndarray:
         """Encode territory control metrics."""
         territory = game_state.get("territory", {})
         cities = game_state.get("cities", [])
 
-        return np.array([
-            min(len(cities) / 20.0, 1.0),
-            min(territory.get("tiles_owned", 0) / 500.0, 1.0),
-            territory.get("continent_control", 0),
-            territory.get("strategic_resources", 0) / 10.0,
-        ], dtype=np.float32)
+        return np.array(
+            [
+                min(len(cities) / 20.0, 1.0),
+                min(territory.get("tiles_owned", 0) / 500.0, 1.0),
+                territory.get("continent_control", 0),
+                territory.get("strategic_resources", 0) / 10.0,
+            ],
+            dtype=np.float32,
+        )
 
     def _encode_tech_progress(self, game_state: dict[str, Any]) -> np.ndarray:
         """Encode technology and civic progress."""
         tech = game_state.get("technology", {})
         civics = game_state.get("civics", {})
 
-        return np.array([
-            tech.get("era", 0) / 8.0,  # Normalize era (0-8)
-            tech.get("techs_researched", 0) / 70.0,  # Total techs
-            tech.get("current_progress", 0),  # 0-1
-            tech.get("turns_to_complete", 10) / 50.0,
-            civics.get("civics_completed", 0) / 50.0,
-            civics.get("current_progress", 0),
-            civics.get("government_tier", 0) / 4.0,
-            civics.get("policy_slots", 4) / 10.0,
-        ], dtype=np.float32)
+        return np.array(
+            [
+                tech.get("era", 0) / 8.0,  # Normalize era (0-8)
+                tech.get("techs_researched", 0) / 70.0,  # Total techs
+                tech.get("current_progress", 0),  # 0-1
+                tech.get("turns_to_complete", 10) / 50.0,
+                civics.get("civics_completed", 0) / 50.0,
+                civics.get("current_progress", 0),
+                civics.get("government_tier", 0) / 4.0,
+                civics.get("policy_slots", 4) / 10.0,
+            ],
+            dtype=np.float32,
+        )
 
 
 class TacticalStateEncoder(StateEncoder):
@@ -462,7 +482,7 @@ class TacticalStateEncoder(StateEncoder):
 
         # Truncate or pad to embed_dim
         result = np.zeros(self.config.embed_dim, dtype=np.float32)
-        result[:min(len(combined), self.config.embed_dim)] = combined[:self.config.embed_dim]
+        result[: min(len(combined), self.config.embed_dim)] = combined[: self.config.embed_dim]
 
         return result
 
@@ -554,7 +574,7 @@ class TacticalStateEncoder(StateEncoder):
         encoded = np.zeros((self.MAX_CITIES, self.CITY_FEATURES), dtype=np.float32)
 
         own_cities = [c for c in cities if c.get("player") == own_player]
-        for i, city in enumerate(own_cities[:self.MAX_CITIES]):
+        for i, city in enumerate(own_cities[: self.MAX_CITIES]):
             encoded[i, 0] = city.get("population", 0) / 30.0
             encoded[i, 1] = city.get("production", 0) / 100.0
             encoded[i, 2] = city.get("food", 0) / 50.0
@@ -592,7 +612,7 @@ class TacticalStateEncoder(StateEncoder):
         own_units = [u for u in units if u.get("player") == own_player]
         groups = self._cluster_units(own_units, cluster_radius=3)
 
-        for i, group in enumerate(groups[:self.MAX_UNIT_GROUPS]):
+        for i, group in enumerate(groups[: self.MAX_UNIT_GROUPS]):
             # Group center
             cx = np.mean([u.get("x", 0) for u in group])
             cy = np.mean([u.get("y", 0) for u in group])
@@ -656,12 +676,15 @@ class TacticalStateEncoder(StateEncoder):
         resources = game_state.get("resources", {})
         yields = game_state.get("yields", {})
 
-        return np.array([
-            min(resources.get("gold", 0) / 500.0, 1.0),
-            min(yields.get("gold_per_turn", 0) / 50.0, 1.0),
-            min(resources.get("strategic_resources", 0) / 20.0, 1.0),
-            min(resources.get("luxury_resources", 0) / 10.0, 1.0),
-        ], dtype=np.float32)
+        return np.array(
+            [
+                min(resources.get("gold", 0) / 500.0, 1.0),
+                min(yields.get("gold_per_turn", 0) / 50.0, 1.0),
+                min(resources.get("strategic_resources", 0) / 20.0, 1.0),
+                min(resources.get("luxury_resources", 0) / 10.0, 1.0),
+            ],
+            dtype=np.float32,
+        )
 
 
 class OperationalStateEncoder(StateEncoder):
@@ -745,7 +768,7 @@ class OperationalStateEncoder(StateEncoder):
         # Concatenate and project
         combined = np.concatenate(features)
         result = np.zeros(self.config.embed_dim, dtype=np.float32)
-        result[:min(len(combined), self.config.embed_dim)] = combined[:self.config.embed_dim]
+        result[: min(len(combined), self.config.embed_dim)] = combined[: self.config.embed_dim]
 
         return result
 
@@ -838,7 +861,7 @@ class OperationalStateEncoder(StateEncoder):
         encoded = np.zeros((self.MAX_UNITS, self.UNIT_FEATURES), dtype=np.float32)
 
         own_units = [u for u in units if u.get("player") == own_player]
-        for i, unit in enumerate(own_units[:self.MAX_UNITS]):
+        for i, unit in enumerate(own_units[: self.MAX_UNITS]):
             encoded[i, 0] = unit.get("x", 0) / self.config.board_size[0]
             encoded[i, 1] = unit.get("y", 0) / self.config.board_size[1]
             encoded[i, 2] = unit.get("strength", 0) / 100.0
@@ -891,12 +914,15 @@ class OperationalStateEncoder(StateEncoder):
             elif dist <= 5:
                 threats_medium += 1
 
-        return np.array([
-            min(threats_close / 5.0, 1.0),
-            min(threats_medium / 10.0, 1.0),
-            min(total_threat_strength / 500.0, 1.0),
-            1 if threats_close > 0 else 0,
-        ], dtype=np.float32)
+        return np.array(
+            [
+                min(threats_close / 5.0, 1.0),
+                min(threats_medium / 10.0, 1.0),
+                min(total_threat_strength / 500.0, 1.0),
+                1 if threats_close > 0 else 0,
+            ],
+            dtype=np.float32,
+        )
 
     def _encode_available_actions(
         self,
@@ -907,16 +933,19 @@ class OperationalStateEncoder(StateEncoder):
         if not active_unit:
             return np.zeros(8, dtype=np.float32)
 
-        return np.array([
-            1 if active_unit.get("can_move") else 0,
-            1 if active_unit.get("can_attack") else 0,
-            1 if active_unit.get("can_ranged_attack") else 0,
-            1 if active_unit.get("can_fortify") else 0,
-            1 if active_unit.get("can_heal") else 0,
-            1 if active_unit.get("can_pillage") else 0,
-            1 if active_unit.get("can_found_city") else 0,
-            1 if active_unit.get("can_build") else 0,
-        ], dtype=np.float32)
+        return np.array(
+            [
+                1 if active_unit.get("can_move") else 0,
+                1 if active_unit.get("can_attack") else 0,
+                1 if active_unit.get("can_ranged_attack") else 0,
+                1 if active_unit.get("can_fortify") else 0,
+                1 if active_unit.get("can_heal") else 0,
+                1 if active_unit.get("can_pillage") else 0,
+                1 if active_unit.get("can_found_city") else 0,
+                1 if active_unit.get("can_build") else 0,
+            ],
+            dtype=np.float32,
+        )
 
 
 class HierarchicalStateEncoder:
@@ -994,8 +1023,7 @@ class HierarchicalStateEncoder:
             Dictionary mapping levels to encoded states.
         """
         return {
-            level: encoder.encode(game_state, **kwargs)
-            for level, encoder in self._encoders.items()
+            level: encoder.encode(game_state, **kwargs) for level, encoder in self._encoders.items()
         }
 
     def get_encoder(self, level: HierarchyLevel) -> StateEncoder:
@@ -1015,7 +1043,4 @@ class HierarchicalStateEncoder:
         Returns:
             Dictionary mapping levels to output dimensions.
         """
-        return {
-            level: encoder.output_dim
-            for level, encoder in self._encoders.items()
-        }
+        return {level: encoder.output_dim for level, encoder in self._encoders.items()}

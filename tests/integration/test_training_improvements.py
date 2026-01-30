@@ -202,7 +202,7 @@ class TestCurriculumProgression:
             manager = CurriculumManager(config)
 
             # Simulate training with high win rate
-            for i in range(50):
+            for _ in range(50):
                 won = np.random.random() > 0.2  # 80% win rate
                 result = manager.record_game(won=won)
 
@@ -258,8 +258,8 @@ class TestFullTrainingPipeline:
             board_size=env_params["board_size"],
         )
 
-        # 4. Create training config
-        training_config = get_fast_training_config()
+        # 4. Create training config (used for env configuration)
+        _training_config = get_fast_training_config()
 
         # 5. Run a few games
         for _ in range(5):
@@ -277,9 +277,7 @@ class TestFullTrainingPipeline:
 
                 obs, base_reward, terminated, truncated, info = env.step(action)
 
-                shaped = reward_shaper.shape_reward(
-                    obs, base_reward, info, terminated=terminated
-                )
+                shaped = reward_shaper.shape_reward(obs, base_reward, info, terminated=terminated)
                 total_reward += shaped
 
             # Record game in curriculum
@@ -304,7 +302,9 @@ class TestFullTrainingPipeline:
         batch_end = config.get_batch_size(100)
 
         # Note: warmup_cosine starts at 0 during warmup, so check after warmup
-        warmup_steps = config.learning_rate_schedule.warmup_steps if config.learning_rate_schedule else 0
+        warmup_steps = (
+            config.learning_rate_schedule.warmup_steps if config.learning_rate_schedule else 0
+        )
         lr_after_warmup = config.get_learning_rate(warmup_steps)
         lr_end = config.get_learning_rate(100)
 

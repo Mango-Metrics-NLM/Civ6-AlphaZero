@@ -75,17 +75,11 @@ class HyperparameterRange:
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
         if self.scale == "categorical" and not self.categories:
-            raise ValueError(
-                f"Categorical hyperparameter '{self.name}' requires categories"
-            )
+            raise ValueError(f"Categorical hyperparameter '{self.name}' requires categories")
         if self.scale != "categorical" and self.min_value >= self.max_value:
-            raise ValueError(
-                f"min_value must be less than max_value for '{self.name}'"
-            )
+            raise ValueError(f"min_value must be less than max_value for '{self.name}'")
         if self.scale == "log" and self.min_value <= 0:
-            raise ValueError(
-                f"min_value must be positive for log scale '{self.name}'"
-            )
+            raise ValueError(f"min_value must be positive for log scale '{self.name}'")
 
     def sample(self, rng: np.random.Generator | None = None) -> float | int | Any:
         """Sample a value from this range.
@@ -307,9 +301,7 @@ class HyperparameterSpace:
         params.update(self.custom_params)
         return params
 
-    def sample_all(
-        self, rng: np.random.Generator | None = None
-    ) -> dict[str, float | int | Any]:
+    def sample_all(self, rng: np.random.Generator | None = None) -> dict[str, float | int | Any]:
         """Sample values for all hyperparameters.
 
         Args:
@@ -318,9 +310,7 @@ class HyperparameterSpace:
         Returns:
             Dictionary mapping parameter names to sampled values.
         """
-        return {
-            name: param.sample(rng) for name, param in self.get_all_params().items()
-        }
+        return {name: param.sample(rng) for name, param in self.get_all_params().items()}
 
     def mutate_all(
         self,
@@ -363,9 +353,7 @@ class HyperparameterSpace:
             "batch_size": self.batch_size.to_dict(),
             "num_simulations": self.num_simulations.to_dict(),
             "replay_buffer_size": self.replay_buffer_size.to_dict(),
-            "custom_params": {
-                k: v.to_dict() for k, v in self.custom_params.items()
-            },
+            "custom_params": {k: v.to_dict() for k, v in self.custom_params.items()},
         }
 
     @classmethod
@@ -386,9 +374,7 @@ class HyperparameterSpace:
             c_puct=HyperparameterRange.from_dict(data.get("c_puct", {}))
             if "c_puct" in data
             else HyperparameterRange("c_puct", 0.5, 3.0),
-            dirichlet_alpha=HyperparameterRange.from_dict(
-                data.get("dirichlet_alpha", {})
-            )
+            dirichlet_alpha=HyperparameterRange.from_dict(data.get("dirichlet_alpha", {}))
             if "dirichlet_alpha" in data
             else HyperparameterRange("dirichlet_alpha", 0.1, 1.0),
             temperature=HyperparameterRange.from_dict(data.get("temperature", {}))
@@ -397,14 +383,10 @@ class HyperparameterSpace:
             batch_size=HyperparameterRange.from_dict(data.get("batch_size", {}))
             if "batch_size" in data
             else HyperparameterRange("batch_size", 32, 512, discrete=True),
-            num_simulations=HyperparameterRange.from_dict(
-                data.get("num_simulations", {})
-            )
+            num_simulations=HyperparameterRange.from_dict(data.get("num_simulations", {}))
             if "num_simulations" in data
             else HyperparameterRange("num_simulations", 25, 400, discrete=True),
-            replay_buffer_size=HyperparameterRange.from_dict(
-                data.get("replay_buffer_size", {})
-            )
+            replay_buffer_size=HyperparameterRange.from_dict(data.get("replay_buffer_size", {}))
             if "replay_buffer_size" in data
             else HyperparameterRange("replay_buffer_size", 10000, 200000, discrete=True),
             custom_params=custom_params,
@@ -438,12 +420,8 @@ class AgentState:
     generation: int = 0
     parent_id: str | None = None
     model_path: str | None = None
-    created_at: str = field(
-        default_factory=lambda: datetime.utcnow().isoformat()
-    )
-    last_updated: str = field(
-        default_factory=lambda: datetime.utcnow().isoformat()
-    )
+    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    last_updated: str = field(default_factory=lambda: datetime.utcnow().isoformat())
 
     def update_fitness(self, new_fitness: float, max_history: int = 100) -> None:
         """Update fitness score and history.
@@ -614,9 +592,7 @@ class PBTConfig:
     copy_weights: bool = True
 
     # Search space
-    hyperparameter_space: HyperparameterSpace = field(
-        default_factory=HyperparameterSpace
-    )
+    hyperparameter_space: HyperparameterSpace = field(default_factory=HyperparameterSpace)
 
     # Checkpointing
     checkpoint_dir: str = "checkpoints/pbt"
@@ -685,7 +661,7 @@ class PBTConfig:
             if not key.startswith(prefix):
                 continue
 
-            param_name = key[len(prefix):].lower()
+            param_name = key[len(prefix) :].lower()
 
             if not hasattr(config, param_name):
                 continue
@@ -717,11 +693,7 @@ class PBTConfig:
         hp_space_data = data.pop("hyperparameter_space", None)
 
         # Filter to only valid fields
-        valid_fields = {
-            f.name
-            for f in cls.__dataclass_fields__.values()
-            if f.name != "ENV_PREFIX"
-        }
+        valid_fields = {f.name for f in cls.__dataclass_fields__.values() if f.name != "ENV_PREFIX"}
         filtered_data = {k: v for k, v in data.items() if k in valid_fields}
 
         config = cls(**filtered_data)

@@ -328,7 +328,7 @@ class GreatPeopleManager:
 
         # Build definitions dictionary
         self._definitions: dict[str, GreatPersonDefinition] = {}
-        for defn in (definitions or DEFAULT_GREAT_PEOPLE):
+        for defn in definitions or DEFAULT_GREAT_PEOPLE:
             self._definitions[defn.person_id] = defn
 
         # Group definitions by type and era for recruitment order
@@ -734,9 +734,15 @@ class GreatPeopleManager:
         return {
             "num_great_people": len(people),
             "generals": len([p for p in people if p.person_type == GreatPersonType.GREAT_GENERAL]),
-            "scientists": len([p for p in people if p.person_type == GreatPersonType.GREAT_SCIENTIST]),
-            "engineers": len([p for p in people if p.person_type == GreatPersonType.GREAT_ENGINEER]),
-            "merchants": len([p for p in people if p.person_type == GreatPersonType.GREAT_MERCHANT]),
+            "scientists": len(
+                [p for p in people if p.person_type == GreatPersonType.GREAT_SCIENTIST]
+            ),
+            "engineers": len(
+                [p for p in people if p.person_type == GreatPersonType.GREAT_ENGINEER]
+            ),
+            "merchants": len(
+                [p for p in people if p.person_type == GreatPersonType.GREAT_MERCHANT]
+            ),
             "artists": len([p for p in people if p.person_type == GreatPersonType.GREAT_ARTIST]),
             "points_scientist": points.get(GreatPersonType.GREAT_SCIENTIST, 0.0),
             "points_engineer": points.get(GreatPersonType.GREAT_ENGINEER, 0.0),

@@ -11,6 +11,7 @@ Example:
     >>> hierarchy.add_goal(strategic)
     >>> active = hierarchy.get_active_goals(HierarchyLevel.STRATEGIC)
 """
+
 from __future__ import annotations
 
 import logging
@@ -103,16 +104,11 @@ class GoalHierarchy:
         else:
             # Root nodes should be strategic
             if goal.level != HierarchyLevel.STRATEGIC:
-                logger.warning(
-                    f"Adding non-strategic goal {goal.id} as root"
-                )
+                logger.warning(f"Adding non-strategic goal {goal.id} as root")
             self.roots.append(node)
 
         self._total_goals_created += 1
-        logger.info(
-            f"Added goal: {goal.goal_type.name} "
-            f"(level={goal.level.value}, id={goal.id})"
-        )
+        logger.info(f"Added goal: {goal.goal_type.name} (level={goal.level.value}, id={goal.id})")
         return node
 
     def remove_goal(self, goal_id: str) -> bool:
@@ -174,10 +170,7 @@ class GoalHierarchy:
         Returns:
             List of goals at the level.
         """
-        return [
-            node.goal for node in self.nodes_by_id.values()
-            if node.level == level
-        ]
+        return [node.goal for node in self.nodes_by_id.values() if node.level == level]
 
     def get_active_goals(self, level: HierarchyLevel | None = None) -> list[Goal]:
         """Get all active goals, optionally filtered by level.
@@ -189,8 +182,7 @@ class GoalHierarchy:
             List of active goals.
         """
         goals = [
-            node.goal for node in self.nodes_by_id.values()
-            if node.goal.status == GoalStatus.ACTIVE
+            node.goal for node in self.nodes_by_id.values() if node.goal.status == GoalStatus.ACTIVE
         ]
         if level is not None:
             goals = [g for g in goals if g.level == level]
@@ -206,7 +198,8 @@ class GoalHierarchy:
             List of pending goals.
         """
         goals = [
-            node.goal for node in self.nodes_by_id.values()
+            node.goal
+            for node in self.nodes_by_id.values()
             if node.goal.status == GoalStatus.PENDING
         ]
         if level is not None:
@@ -333,9 +326,7 @@ class GoalHierarchy:
         old_progress = node.goal.progress
         node.goal.update_progress(progress)
 
-        logger.debug(
-            f"Goal {goal_id} progress: {old_progress:.1%} -> {progress:.1%}"
-        )
+        logger.debug(f"Goal {goal_id} progress: {old_progress:.1%} -> {progress:.1%}")
         return True
 
     def set_turn(self, turn: int) -> None:
@@ -431,9 +422,7 @@ class GoalHierarchy:
             node = self.add_goal(subgoal, parent_id=goal_id)
             created_nodes.append(node)
 
-        logger.info(
-            f"Decomposed goal {goal_id} into {len(subgoals)} subgoals"
-        )
+        logger.info(f"Decomposed goal {goal_id} into {len(subgoals)} subgoals")
         return created_nodes
 
     def prune_completed(self) -> int:
@@ -572,6 +561,7 @@ class GoalHierarchy:
             filepath: Path to save to.
         """
         import json
+
         with open(filepath, "w") as f:
             json.dump(self.to_dict(), f, indent=2)
         logger.info(f"Saved goal hierarchy to {filepath}")
@@ -587,6 +577,7 @@ class GoalHierarchy:
             Loaded GoalHierarchy instance.
         """
         import json
+
         with open(filepath) as f:
             data = json.load(f)
 

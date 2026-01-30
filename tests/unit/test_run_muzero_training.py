@@ -1,24 +1,25 @@
 """Unit tests for run_muzero_training.py."""
 
+import os
+import tempfile
+
 import numpy as np
 import pytest
 import torch
-from unittest.mock import MagicMock, patch
-import tempfile
-import os
+
+from alpha_zero.core.civ6_mcts import MuZeroMCTS
+from alpha_zero.core.muzero_network import MuZeroNetwork
+from alpha_zero.envs.microciv import MicroCivEnv
+from alpha_zero.training.muzero_trainer import GameTrajectory
 
 # Import the modules we're testing
 from run_muzero_training import (
     MuZeroRunConfig,
-    create_network,
     create_mcts,
-    self_play_game,
+    create_network,
     run_self_play,
+    self_play_game,
 )
-from alpha_zero.core.muzero_network import MuZeroNetwork, MuZeroConfig
-from alpha_zero.core.civ6_mcts import MuZeroMCTS, MuZeroMCTSConfig
-from alpha_zero.training.muzero_trainer import GameTrajectory
-from alpha_zero.envs.microciv import MicroCivEnv
 
 
 class TestMuZeroRunConfig:
@@ -251,7 +252,8 @@ class TestTrainingIntegration:
         network = create_network(minimal_config, env.action_space.n)
 
         trajectories = run_self_play(
-            network, minimal_config,
+            network,
+            minimal_config,
             num_games=minimal_config.num_games_per_iteration,
         )
 

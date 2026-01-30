@@ -11,6 +11,7 @@ Example:
     >>> controller = StrategicController(config, network, goal_hierarchy)
     >>> decision = controller.decide(game_state, context)
 """
+
 from __future__ import annotations
 
 import logging
@@ -22,6 +23,7 @@ import numpy as np
 
 try:
     import torch  # noqa: F401
+
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
@@ -206,7 +208,8 @@ class LevelController(ABC):
     def get_active_goals(self) -> list[Goal]:
         """Get currently active goals at this level."""
         return [
-            g for g in self.state.active_goals
+            g
+            for g in self.state.active_goals
             if g.status in (GoalStatus.ACTIVE, GoalStatus.PENDING)
         ]
 
@@ -397,7 +400,12 @@ class StrategicController(LevelController):
         culture_per_turn = game_state.get("yields", {}).get("culture_per_turn", 0)
         tourism = game_state.get("tourism", 0)
 
-        return min(1.0, (culture_per_turn / 100.0) * 0.2 + (tourism / 500.0) * 0.2 + victory.get("culture", 0) * 0.6)
+        return min(
+            1.0,
+            (culture_per_turn / 100.0) * 0.2
+            + (tourism / 500.0) * 0.2
+            + victory.get("culture", 0) * 0.6,
+        )
 
     def _assess_religious_viability(self, game_state: dict[str, Any]) -> float:
         """Assess viability of religious victory."""
@@ -567,9 +575,7 @@ class TacticalController(LevelController):
         )
 
         # Decompose strategic goals into tactical goals
-        tactical_goals = self._decompose_strategic_goals(
-            strategic_goals, game_state
-        )
+        tactical_goals = self._decompose_strategic_goals(strategic_goals, game_state)
 
         # Add situational tactical goals
         situational = self._identify_situational_goals(game_state)
@@ -638,9 +644,7 @@ class TacticalController(LevelController):
 
             # Use goal propagator for decomposition
             propagator = GoalPropagator(self.goal_hierarchy)
-            result = propagator.propagate_down(
-                s_goal, game_state, {"current_turn": current_turn}
-            )
+            result = propagator.propagate_down(s_goal, game_state, {"current_turn": current_turn})
             tactical_goals.extend(result.goals_created)
 
         return tactical_goals
@@ -713,8 +717,7 @@ class TacticalController(LevelController):
         # Simple heuristic: expand if < 6 cities and have settler capacity
         units = game_state.get("units", [])
         settlers = [
-            u for u in units
-            if u.get("player") == own_player and u.get("type") == "settler"
+            u for u in units if u.get("player") == own_player and u.get("type") == "settler"
         ]
 
         return len(own_cities) < 6 or len(settlers) > 0
@@ -725,6 +728,7 @@ class TacticalController(LevelController):
         game_state: dict[str, Any],
     ) -> list[Goal]:
         """Prioritize tactical goals based on urgency and importance."""
+
         # Sort by priority and deadline
         def score(g: Goal) -> float:
             urgency = 0.0
@@ -875,9 +879,7 @@ class OperationalController(LevelController):
 
             # Create operational sub-goals
             propagator = GoalPropagator(self.goal_hierarchy)
-            result = propagator.propagate_down(
-                t_goal, game_state, {"current_turn": current_turn}
-            )
+            result = propagator.propagate_down(t_goal, game_state, {"current_turn": current_turn})
             operational.extend(result.goals_created)
 
         return operational

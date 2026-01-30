@@ -95,7 +95,9 @@ class RecursiveTextSplitter(TextSplitter):
         current_length = 0
 
         for i, split in enumerate(splits):
-            split_with_sep = split + separator if self.keep_separator and i < len(splits) - 1 else split
+            split_with_sep = (
+                split + separator if self.keep_separator and i < len(splits) - 1 else split
+            )
             split_length = len(split_with_sep)
 
             if current_length + split_length <= self.chunk_size:
@@ -111,7 +113,11 @@ class RecursiveTextSplitter(TextSplitter):
                 # Check if split itself is too large
                 if split_length > self.chunk_size:
                     # Recursively split with remaining separators
-                    remaining_seps = separators[separators.index(separator) + 1:] if separator in separators else [""]
+                    remaining_seps = (
+                        separators[separators.index(separator) + 1 :]
+                        if separator in separators
+                        else [""]
+                    )
                     sub_chunks = self._split_recursive(split, remaining_seps)
                     chunks.extend(sub_chunks)
                     current_chunk = []
@@ -143,7 +149,7 @@ class RecursiveTextSplitter(TextSplitter):
         """
         chunks = []
         for i in range(0, len(text), self.chunk_size - self.chunk_overlap):
-            chunk = text[i:i + self.chunk_size]
+            chunk = text[i : i + self.chunk_size]
             if chunk.strip():
                 chunks.append(chunk.strip())
         return chunks
@@ -167,7 +173,11 @@ class RecursiveTextSplitter(TextSplitter):
             curr_chunk = chunks[i]
 
             # Get overlap from end of previous chunk
-            overlap_text = prev_chunk[-self.chunk_overlap:] if len(prev_chunk) > self.chunk_overlap else prev_chunk
+            overlap_text = (
+                prev_chunk[-self.chunk_overlap :]
+                if len(prev_chunk) > self.chunk_overlap
+                else prev_chunk
+            )
 
             # Prepend overlap to current chunk
             merged = overlap_text + " " + curr_chunk
