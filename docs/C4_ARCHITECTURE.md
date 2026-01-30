@@ -763,6 +763,602 @@ Legend:
 
 ---
 
+## Level 4: Neural Network Architecture Diagrams
+
+### Network Family Overview
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                     NEURAL NETWORK ARCHITECTURE FAMILY                        │
+│                                                                               │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                       NETWORK HIERARCHY                                  │ │
+│  │                                                                          │ │
+│  │   ┌──────────────────┐                                                   │ │
+│  │   │  MicroCivNetwork │ ◄─── Training Entry Point                        │ │
+│  │   │   (13 channels)  │      Simple, fast iteration                      │ │
+│  │   │   381 actions    │                                                   │ │
+│  │   └────────┬─────────┘                                                   │ │
+│  │            │ Transfer Learning                                           │ │
+│  │            ▼                                                             │ │
+│  │   ┌──────────────────┐                                                   │ │
+│  │   │  Civ6NetworkV2   │ ◄─── Production Network                          │ │
+│  │   │   (84 channels)  │      Full feature set + attention                │ │
+│  │   │   50k+ actions   │                                                   │ │
+│  │   └────────┬─────────┘                                                   │ │
+│  │            │ Optional Upgrade                                            │ │
+│  │            ▼                                                             │ │
+│  │   ┌──────────────────┐                                                   │ │
+│  │   │TransformerNetwork│ ◄─── Advanced Architecture                       │ │
+│  │   │  (ViT + RoPE)    │      Global attention, MoE optional              │ │
+│  │   │   Configurable   │                                                   │ │
+│  │   └──────────────────┘                                                   │ │
+│  │                                                                          │ │
+│  │   ┌──────────────────┐                                                   │ │
+│  │   │  MuZeroNetwork   │ ◄─── Learned World Model                         │ │
+│  │   │ (dynamics model) │      Model-based RL extension                    │ │
+│  │   │   Latent space   │                                                   │ │
+│  │   └──────────────────┘                                                   │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### MicroCivNetwork Architecture (Training)
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                        MICROCIV NETWORK ARCHITECTURE                          │
+│                      (Lightweight Training Network)                           │
+│                                                                               │
+│  INPUT                                                                        │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                    DUAL-INPUT ENCODING                                   │ │
+│  │                                                                          │ │
+│  │   Spatial Input                    Vector Input                          │ │
+│  │   ┌──────────────────┐            ┌──────────────────┐                  │ │
+│  │   │ 13 Channels      │            │ 64 Dimensions    │                  │ │
+│  │   │ 16×16 Grid       │            │ Global Features  │                  │ │
+│  │   │                  │            │                  │                  │ │
+│  │   │ Ch 0: Terrain    │            │ - Turn number    │                  │ │
+│  │   │ Ch 1: Units      │            │ - Resources      │                  │ │
+│  │   │ Ch 2: Cities     │            │ - Score          │                  │ │
+│  │   │ Ch 3: Ownership  │            │ - Population     │                  │ │
+│  │   │ Ch 4: Visibility │            │ - Tech progress  │                  │ │
+│  │   │ Ch 5-7: Unit HP  │            │ - City count     │                  │ │
+│  │   │ Ch 8-12: Types   │            │ - Unit count     │                  │ │
+│  │   └────────┬─────────┘            └────────┬─────────┘                  │ │
+│  └────────────┼────────────────────────────────┼────────────────────────────┘ │
+│               │                                │                              │
+│               ▼                                ▼                              │
+│  ENCODER                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │   ┌──────────────────┐            ┌──────────────────┐                  │ │
+│  │   │ Initial Conv     │            │ Vector MLP       │                  │ │
+│  │   │ 13 → 64 channels │            │ 64 → 128 → 64    │                  │ │
+│  │   │ 3×3, stride 1    │            │ ReLU activation  │                  │ │
+│  │   │ BatchNorm + ReLU │            │                  │                  │ │
+│  │   └────────┬─────────┘            └────────┬─────────┘                  │ │
+│  │            │                                │                            │ │
+│  │            ▼                                │                            │ │
+│  │   ┌──────────────────┐                      │                            │ │
+│  │   │ ResNet Tower     │                      │                            │ │
+│  │   │ 6 Residual Blocks│                      │                            │ │
+│  │   │ 64 channels each │                      │                            │ │
+│  │   │                  │                      │                            │ │
+│  │   │ Block Structure: │                      │                            │ │
+│  │   │ ┌──────────────┐ │                      │                            │ │
+│  │   │ │Conv 3×3 → BN │ │                      │                            │ │
+│  │   │ │    → ReLU    │ │                      │                            │ │
+│  │   │ │Conv 3×3 → BN │ │                      │                            │ │
+│  │   │ │  + Skip Conn │ │                      │                            │ │
+│  │   │ │    → ReLU    │ │                      │                            │ │
+│  │   │ └──────────────┘ │                      │                            │ │
+│  │   └────────┬─────────┘                      │                            │ │
+│  │            │                                │                            │ │
+│  │            └─────────────┬──────────────────┘                            │ │
+│  │                          ▼                                               │ │
+│  │                 ┌──────────────────┐                                     │ │
+│  │                 │ Feature Fusion   │                                     │ │
+│  │                 │ Spatial flatten  │                                     │ │
+│  │                 │ + Vector concat  │                                     │ │
+│  │                 │ 64×16×16 + 64    │                                     │ │
+│  │                 │ = 16,448 total   │                                     │ │
+│  │                 └────────┬─────────┘                                     │ │
+│  └──────────────────────────┼───────────────────────────────────────────────┘ │
+│                             │                                                 │
+│                             ▼                                                 │
+│  OUTPUT HEADS                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                                                                          │ │
+│  │   ┌──────────────────────────┐    ┌──────────────────────────┐          │ │
+│  │   │      POLICY HEAD         │    │       VALUE HEAD          │          │ │
+│  │   │                          │    │                           │          │ │
+│  │   │  Conv 1×1 → 2 channels   │    │  Conv 1×1 → 1 channel     │          │ │
+│  │   │         ↓                │    │         ↓                 │          │ │
+│  │   │  Flatten (2×16×16=512)   │    │  Flatten (1×16×16=256)    │          │ │
+│  │   │         ↓                │    │         ↓                 │          │ │
+│  │   │  Linear: 512 → 381       │    │  Linear: 256 → 128        │          │ │
+│  │   │         ↓                │    │         ↓ (ReLU)          │          │ │
+│  │   │  Log-Softmax             │    │  Linear: 128 → 1          │          │ │
+│  │   │         ↓                │    │         ↓                 │          │ │
+│  │   │  π(a|s) distribution     │    │  Tanh → v(s) ∈ [-1, 1]    │          │ │
+│  │   │                          │    │                           │          │ │
+│  │   │  Action Space (381):     │    │  Value: Win probability   │          │ │
+│  │   │  - 1 end_turn            │    │   -1 = certain loss       │          │ │
+│  │   │  - 160 unit_move         │    │    0 = draw               │          │ │
+│  │   │  - 160 unit_attack       │    │   +1 = certain win        │          │ │
+│  │   │  - 20 unit_skip          │    │                           │          │ │
+│  │   │  - 20 found_city         │    │                           │          │ │
+│  │   │  - 15 city_produce       │    │                           │          │ │
+│  │   │  - 5 tech_research       │    │                           │          │ │
+│  │   └──────────────────────────┘    └──────────────────────────┘          │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                               │
+│  PARAMETERS: ~500K total (lightweight for rapid iteration)                    │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Civ6NetworkV2 Architecture (Production)
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                     CIV6 NETWORK V2 ARCHITECTURE                              │
+│                   (Production Network with Attention)                         │
+│                                                                               │
+│  INPUT                                                                        │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                    RICH STATE ENCODING                                   │ │
+│  │                                                                          │ │
+│  │   Spatial Input (84 Channels)         Vector Input (512 Dimensions)     │ │
+│  │   ┌──────────────────────────┐       ┌──────────────────────────┐       │ │
+│  │   │ Terrain (20 channels)    │       │ Player State (128 dim)   │       │ │
+│  │   │ - Base terrain type      │       │ - Gold, faith, culture   │       │ │
+│  │   │ - Features (forest,etc)  │       │ - Science per turn       │       │ │
+│  │   │ - Resources              │       │ - Era, government        │       │ │
+│  │   │ - Improvements           │       │ - Victory progress       │       │ │
+│  │   │                          │       │                          │       │ │
+│  │   │ Units (24 channels)      │       │ Diplomacy (64 dim)       │       │ │
+│  │   │ - Unit type one-hot      │       │ - Relations per civ      │       │ │
+│  │   │ - Health/movement        │       │ - War/peace status       │       │ │
+│  │   │ - Promotions             │       │ - Trade agreements       │       │ │
+│  │   │ - Owner                  │       │                          │       │ │
+│  │   │                          │       │ Tech/Civic (128 dim)     │       │ │
+│  │   │ Cities (20 channels)     │       │ - Completed techs        │       │ │
+│  │   │ - Population             │       │ - Current research       │       │ │
+│  │   │ - Districts              │       │ - Unlocked buildings     │       │ │
+│  │   │ - Buildings              │       │                          │       │ │
+│  │   │ - Production queue       │       │ Military (64 dim)        │       │ │
+│  │   │                          │       │ - Army strength          │       │ │
+│  │   │ Visibility (10 channels) │       │ - Threat assessment      │       │ │
+│  │   │ - Fog of war             │       │ - Strategic resources    │       │ │
+│  │   │ - Previously seen        │       │                          │       │ │
+│  │   │ - Ownership layers       │       │ Time (128 dim)           │       │ │
+│  │   │                          │       │ - Turn number            │       │ │
+│  │   │ Combat (10 channels)     │       │ - Era multipliers        │       │ │
+│  │   │ - Threat zones           │       │ - Game phase             │       │ │
+│  │   │ - Defense modifiers      │       │                          │       │ │
+│  │   └──────────────────────────┘       └──────────────────────────┘       │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                               │
+│  SPATIAL ENCODER (with Attention)                                            │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                                                                          │ │
+│  │   ┌──────────────────────────────────────────────────────────────────┐  │ │
+│  │   │              ATTENTION-AUGMENTED SPATIAL ENCODER                  │  │ │
+│  │   │                                                                   │  │ │
+│  │   │  Input: 84 × H × W                                                │  │ │
+│  │   │         ↓                                                         │  │ │
+│  │   │  ┌─────────────────────────────────────────────────────────────┐ │  │ │
+│  │   │  │ Positional Encoding 2D (Learned)                            │ │  │ │
+│  │   │  │ - Adds spatial position information                         │ │  │ │
+│  │   │  │ - sin/cos encoding + learned embeddings                     │ │  │ │
+│  │   │  └─────────────────────────────────────────────────────────────┘ │  │ │
+│  │   │         ↓                                                         │  │ │
+│  │   │  ┌─────────────────────────────────────────────────────────────┐ │  │ │
+│  │   │  │ Initial Conv Block: 84 → 128 channels                       │ │  │ │
+│  │   │  │ 3×3 conv, BatchNorm, ReLU                                   │ │  │ │
+│  │   │  └─────────────────────────────────────────────────────────────┘ │  │ │
+│  │   │         ↓                                                         │  │ │
+│  │   │  ┌─────────────────────────────────────────────────────────────┐ │  │ │
+│  │   │  │ ResNet Tower: 10 Residual Blocks (128 channels)             │ │  │ │
+│  │   │  │                                                              │ │  │ │
+│  │   │  │   Block 1-3: Standard ResBlocks                              │ │  │ │
+│  │   │  │        ↓                                                     │ │  │ │
+│  │   │  │   Block 4: ResBlock + Spatial Self-Attention                │ │  │ │
+│  │   │  │   ┌─────────────────────────────────────────┐               │ │  │ │
+│  │   │  │   │ Multi-Head Attention (4 heads)          │               │ │  │ │
+│  │   │  │   │ Q = W_q × features                      │               │ │  │ │
+│  │   │  │   │ K = W_k × features                      │               │ │  │ │
+│  │   │  │   │ V = W_v × features                      │               │ │  │ │
+│  │   │  │   │ Attn = softmax(QK^T/√d) × V             │               │ │  │ │
+│  │   │  │   └─────────────────────────────────────────┘               │ │  │ │
+│  │   │  │        ↓                                                     │ │  │ │
+│  │   │  │   Block 5-7: Standard ResBlocks                              │ │  │ │
+│  │   │  │        ↓                                                     │ │  │ │
+│  │   │  │   Block 8: ResBlock + Spatial Self-Attention                │ │  │ │
+│  │   │  │        ↓                                                     │ │  │ │
+│  │   │  │   Block 9-10: Standard ResBlocks                             │ │  │ │
+│  │   │  └─────────────────────────────────────────────────────────────┘ │  │ │
+│  │   │         ↓                                                         │  │ │
+│  │   │  Output: 128 × H × W (spatial features with global context)      │  │ │
+│  │   └──────────────────────────────────────────────────────────────────┘  │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                               │
+│  CROSS-MODAL FUSION                                                          │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │   ┌────────────────────────────────────────────────────────────────┐    │ │
+│  │   │              CROSS-MODAL ATTENTION                              │    │ │
+│  │   │                                                                 │    │ │
+│  │   │   Spatial Features (128×H×W)    Vector Features (512)          │    │ │
+│  │   │         │                              │                        │    │ │
+│  │   │         │    ┌─────────────────────────┘                        │    │ │
+│  │   │         │    │                                                  │    │ │
+│  │   │         ▼    ▼                                                  │    │ │
+│  │   │   ┌────────────────────────┐                                    │    │ │
+│  │   │   │ Cross-Attention Block  │                                    │    │ │
+│  │   │   │                        │                                    │    │ │
+│  │   │   │ Q = Spatial features   │                                    │    │ │
+│  │   │   │ K,V = Vector features  │                                    │    │ │
+│  │   │   │                        │                                    │    │ │
+│  │   │   │ Allows spatial to      │                                    │    │ │
+│  │   │   │ attend to global state │                                    │    │ │
+│  │   │   └────────────────────────┘                                    │    │ │
+│  │   │              │                                                  │    │ │
+│  │   │              ▼                                                  │    │ │
+│  │   │   ┌────────────────────────┐                                    │    │ │
+│  │   │   │ Fused Representation   │                                    │    │ │
+│  │   │   │ 128×H×W + 512 = embed  │                                    │    │ │
+│  │   │   └────────────────────────┘                                    │    │ │
+│  │   └────────────────────────────────────────────────────────────────┘    │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                               │
+│  HIERARCHICAL POLICY HEAD                                                    │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │   ┌────────────────────────────────────────────────────────────────┐    │ │
+│  │   │            HIERARCHICAL ACTION DECOMPOSITION                    │    │ │
+│  │   │                                                                 │    │ │
+│  │   │   Fused Features                                                │    │ │
+│  │   │         │                                                       │    │ │
+│  │   │         ▼                                                       │    │ │
+│  │   │   ┌──────────────┐                                              │    │ │
+│  │   │   │ Category Head│ → P(category) [9 categories]                │    │ │
+│  │   │   │ Linear → SM  │   END_TURN, UNIT_ACTION, CITY_ACTION,       │    │ │
+│  │   │   └──────┬───────┘   TECH, CIVIC, DIPLOMACY, ESPIONAGE...      │    │ │
+│  │   │          │                                                      │    │ │
+│  │   │          ▼                                                      │    │ │
+│  │   │   ┌──────────────┐                                              │    │ │
+│  │   │   │Selector Head │ → P(selector|category) [varies]             │    │ │
+│  │   │   │ Per-category │   Which unit? Which city?                   │    │ │
+│  │   │   └──────┬───────┘                                              │    │ │
+│  │   │          │                                                      │    │ │
+│  │   │          ▼                                                      │    │ │
+│  │   │   ┌──────────────┐                                              │    │ │
+│  │   │   │Action Type Hd│ → P(action_type|selector) [varies]          │    │ │
+│  │   │   │ Per-selector │   MOVE, ATTACK, FORTIFY, BUILD...           │    │ │
+│  │   │   └──────┬───────┘                                              │    │ │
+│  │   │          │                                                      │    │ │
+│  │   │          ▼                                                      │    │ │
+│  │   │   ┌──────────────┐                                              │    │ │
+│  │   │   │ Target Head  │ → P(target|action_type) [varies]            │    │ │
+│  │   │   │Spatial/Item  │   Position, building, tech, etc.            │    │ │
+│  │   │   └──────────────┘                                              │    │ │
+│  │   │                                                                 │    │ │
+│  │   │   Final: π(a|s) = P(cat) × P(sel|cat) × P(act|sel) × P(tgt|act)│    │ │
+│  │   └────────────────────────────────────────────────────────────────┘    │ │
+│  │                                                                          │ │
+│  │   ┌────────────────────────────────────────────────────────────────┐    │ │
+│  │   │                      VALUE HEAD                                 │    │ │
+│  │   │                                                                 │    │ │
+│  │   │   Fused Features → Conv 1×1 → Flatten → MLP(256→128→1) → Tanh  │    │ │
+│  │   │                                                                 │    │ │
+│  │   │   Output: v(s) ∈ [-1, 1] (expected game outcome)               │    │ │
+│  │   └────────────────────────────────────────────────────────────────┘    │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                               │
+│  PARAMETERS: ~8M total (production-grade)                                    │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### MuZero Network Architecture (World Model)
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                        MUZERO NETWORK ARCHITECTURE                            │
+│                    (Learned World Model for Planning)                         │
+│                                                                               │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                      THREE-FUNCTION ARCHITECTURE                         │ │
+│  │                                                                          │ │
+│  │                           Observation (o_t)                              │ │
+│  │                                 │                                        │ │
+│  │                                 ▼                                        │ │
+│  │   ┌─────────────────────────────────────────────────────────────────┐   │ │
+│  │   │              h = REPRESENTATION(o_t)                             │   │ │
+│  │   │                                                                  │   │ │
+│  │   │   ┌────────────────────────────────────────────────────────┐    │   │ │
+│  │   │   │ Observation Encoder (same as Civ6NetworkV2 encoder)    │    │   │ │
+│  │   │   │                                                         │    │   │ │
+│  │   │   │ Spatial: 84ch × H × W ──┐                               │    │   │ │
+│  │   │   │                         ├──► ResNet + Attention         │    │   │ │
+│  │   │   │ Vector: 512 dim ────────┘       │                       │    │   │ │
+│  │   │   │                                 ▼                       │    │   │ │
+│  │   │   │                    Hidden State h (256 dim latent)      │    │   │ │
+│  │   │   └────────────────────────────────────────────────────────┘    │   │ │
+│  │   └─────────────────────────────────────────────────────────────────┘   │ │
+│  │                                 │                                        │ │
+│  │                                 ▼                                        │ │
+│  │   ┌─────────────────────────────────────────────────────────────────┐   │ │
+│  │   │         (r, h') = DYNAMICS(h, a)                                 │   │ │
+│  │   │                                                                  │   │ │
+│  │   │   ┌────────────────────────────────────────────────────────┐    │   │ │
+│  │   │   │ Dynamics Function (Learned State Transition)           │    │   │ │
+│  │   │   │                                                         │    │   │ │
+│  │   │   │  Hidden State h ────┐                                   │    │   │ │
+│  │   │   │  (256 dim)          │                                   │    │   │ │
+│  │   │   │                     ├──► Concat ──► MLP (512→256→256)  │    │   │ │
+│  │   │   │  Action a ──────────┘              │                    │    │   │ │
+│  │   │   │  (one-hot encoded)                 ▼                    │    │   │ │
+│  │   │   │                          ┌─────────┴─────────┐          │    │   │ │
+│  │   │   │                          │                   │          │    │   │ │
+│  │   │   │                          ▼                   ▼          │    │   │ │
+│  │   │   │                    Next Hidden h'      Reward r         │    │   │ │
+│  │   │   │                     (256 dim)       (scalar or dist)    │    │   │ │
+│  │   │   │                                                         │    │   │ │
+│  │   │   │   Key: Predicts NEXT latent state without actual env    │    │   │ │
+│  │   │   │        Enables planning in imagination (MCTS in latent) │    │   │ │
+│  │   │   └────────────────────────────────────────────────────────┘    │   │ │
+│  │   └─────────────────────────────────────────────────────────────────┘   │ │
+│  │                                 │                                        │ │
+│  │                                 ▼                                        │ │
+│  │   ┌─────────────────────────────────────────────────────────────────┐   │ │
+│  │   │         (π, v) = PREDICTION(h)                                   │   │ │
+│  │   │                                                                  │   │ │
+│  │   │   ┌────────────────────────────────────────────────────────┐    │   │ │
+│  │   │   │ Prediction Function (Policy & Value from Latent)       │    │   │ │
+│  │   │   │                                                         │    │   │ │
+│  │   │   │   Hidden State h                                        │    │   │ │
+│  │   │   │        │                                                │    │   │ │
+│  │   │   │        ├──────────────────────────┐                     │    │   │ │
+│  │   │   │        │                          │                     │    │   │ │
+│  │   │   │        ▼                          ▼                     │    │   │ │
+│  │   │   │  ┌───────────────┐         ┌───────────────┐            │    │   │ │
+│  │   │   │  │  Policy Head  │         │  Value Head   │            │    │   │ │
+│  │   │   │  │ MLP(256→512   │         │ MLP(256→128   │            │    │   │ │
+│  │   │   │  │   →action_sz) │         │   →1) + Tanh  │            │    │   │ │
+│  │   │   │  │ + Log-Softmax │         │               │            │    │   │ │
+│  │   │   │  └───────────────┘         └───────────────┘            │    │   │ │
+│  │   │   │        │                          │                     │    │   │ │
+│  │   │   │        ▼                          ▼                     │    │   │ │
+│  │   │   │   π(a|h) policy             v(h) value                  │    │   │ │
+│  │   │   └────────────────────────────────────────────────────────┘    │   │ │
+│  │   └─────────────────────────────────────────────────────────────────┘   │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                               │
+│  MCTS IN LATENT SPACE                                                        │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                                                                          │ │
+│  │   Real Observation o_t                                                   │ │
+│  │          │                                                               │ │
+│  │          ▼                                                               │ │
+│  │   h_0 = representation(o_t)     ←── Root node                           │ │
+│  │          │                                                               │ │
+│  │   For each simulation:                                                   │ │
+│  │          │                                                               │ │
+│  │   ┌──────▼──────────────────────────────────────────────────────────┐   │ │
+│  │   │  SELECT: UCB-based selection using π(h), v(h)                   │   │ │
+│  │   │     │                                                            │   │ │
+│  │   │     ▼                                                            │   │ │
+│  │   │  EXPAND: h' = dynamics(h, a).next_state                         │   │ │
+│  │   │     │    r = dynamics(h, a).reward                               │   │ │
+│  │   │     │                                                            │   │ │
+│  │   │     ▼                                                            │   │ │
+│  │   │  EVALUATE: π', v' = prediction(h')                               │   │ │
+│  │   │     │                                                            │   │ │
+│  │   │     ▼                                                            │   │ │
+│  │   │  BACKUP: Propagate v' up the tree                                │   │ │
+│  │   └──────────────────────────────────────────────────────────────────┘   │ │
+│  │                                                                          │ │
+│  │   Key Advantage: No need for environment simulator during planning!     │ │
+│  │                  All rollouts happen in learned latent space            │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                               │
+│  TRAINING LOSSES                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                                                                          │ │
+│  │   L_total = L_policy + L_value + L_reward + L_consistency               │ │
+│  │                                                                          │ │
+│  │   L_policy = CrossEntropy(π_pred, π_mcts)     ← Match MCTS policy       │ │
+│  │   L_value  = MSE(v_pred, v_target)            ← Match game outcome      │ │
+│  │   L_reward = MSE(r_pred, r_actual)            ← Predict rewards         │ │
+│  │   L_consistency = ||h_repr - h_dyn||²         ← Latent alignment        │ │
+│  │                                                (EfficientZero addition)  │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                               │
+│  PARAMETERS: ~12M total (includes dynamics model)                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Transformer Network Architecture (Advanced)
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                    TRANSFORMER NETWORK ARCHITECTURE                           │
+│                  (Vision Transformer for Game State)                          │
+│                                                                               │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                     PATCH EMBEDDING INPUT                                │ │
+│  │                                                                          │ │
+│  │   Spatial Input (84 × H × W)                                             │ │
+│  │          │                                                               │ │
+│  │          ▼                                                               │ │
+│  │   ┌──────────────────────────────────────────────────────────────────┐  │ │
+│  │   │ Patch Embedding (patch_size = 4)                                  │  │ │
+│  │   │                                                                   │  │ │
+│  │   │   Split into non-overlapping patches:                             │  │ │
+│  │   │   84 × H × W → (H/4 × W/4) patches of 84 × 4 × 4                  │  │ │
+│  │   │                                                                   │  │ │
+│  │   │   Linear projection: 84 × 4 × 4 = 1344 → 256 (embed_dim)         │  │ │
+│  │   │                                                                   │  │ │
+│  │   │   Result: Sequence of (H/4 × W/4) tokens, each 256-dim           │  │ │
+│  │   └──────────────────────────────────────────────────────────────────┘  │ │
+│  │          │                                                               │ │
+│  │          ▼                                                               │ │
+│  │   ┌──────────────────────────────────────────────────────────────────┐  │ │
+│  │   │ Positional Encoding (RoPE - Rotary Position Embedding)            │  │ │
+│  │   │                                                                   │  │ │
+│  │   │   - 2D extension of RoPE for grid positions                       │  │ │
+│  │   │   - Encodes (row, col) position into rotation matrices            │  │ │
+│  │   │   - Applied directly to Q and K in attention                      │  │ │
+│  │   │   - Better extrapolation to larger boards than learned PE         │  │ │
+│  │   └──────────────────────────────────────────────────────────────────┘  │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                               │
+│  TRANSFORMER ENCODER                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                                                                          │ │
+│  │   ┌──────────────────────────────────────────────────────────────────┐  │ │
+│  │   │ Transformer Block (× num_layers, default 6)                       │  │ │
+│  │   │                                                                   │  │ │
+│  │   │   Input tokens                                                    │  │ │
+│  │   │        │                                                          │  │ │
+│  │   │        ▼                                                          │  │ │
+│  │   │   ┌────────────────────────────────────────────────────────────┐ │  │ │
+│  │   │   │ Pre-Norm (LayerNorm or RMSNorm)                            │ │  │ │
+│  │   │   │        │                                                   │ │  │ │
+│  │   │   │        ▼                                                   │ │  │ │
+│  │   │   │ Multi-Head Self-Attention (8 heads)                        │ │  │ │
+│  │   │   │                                                            │ │  │ │
+│  │   │   │   ┌─────────────────────────────────────────────────────┐ │ │  │ │
+│  │   │   │   │ Attention Types (configurable):                     │ │ │  │ │
+│  │   │   │   │                                                      │ │ │  │ │
+│  │   │   │   │ 1. STANDARD: Full O(n²) attention                   │ │ │  │ │
+│  │   │   │   │    Attn(Q,K,V) = softmax(QK^T/√d)V                  │ │ │  │ │
+│  │   │   │   │                                                      │ │ │  │ │
+│  │   │   │   │ 2. FLASH: Memory-efficient attention                │ │ │  │ │
+│  │   │   │   │    Fused kernel, reduced memory O(n) → O(√n)        │ │ │  │ │
+│  │   │   │   │                                                      │ │ │  │ │
+│  │   │   │   │ 3. LINEAR: O(n) approximation                       │ │ │  │ │
+│  │   │   │   │    φ(Q)φ(K)^T V (kernel feature maps)               │ │ │  │ │
+│  │   │   │   └─────────────────────────────────────────────────────┘ │ │  │ │
+│  │   │   │                                                            │ │  │ │
+│  │   │   │        + Residual Connection                               │ │  │ │
+│  │   │   └────────────────────────────────────────────────────────────┘ │  │ │
+│  │   │        │                                                          │  │ │
+│  │   │        ▼                                                          │  │ │
+│  │   │   ┌────────────────────────────────────────────────────────────┐ │  │ │
+│  │   │   │ Pre-Norm                                                   │ │  │ │
+│  │   │   │        │                                                   │ │  │ │
+│  │   │   │        ▼                                                   │ │  │ │
+│  │   │   │ Feed-Forward Network                                       │ │  │ │
+│  │   │   │                                                            │ │  │ │
+│  │   │   │   Standard FFN:                                            │ │  │ │
+│  │   │   │   Linear(256 → 1024) → GELU → Linear(1024 → 256)          │ │  │ │
+│  │   │   │                                                            │ │  │ │
+│  │   │   │   OR Mixture of Experts (optional):                        │ │  │ │
+│  │   │   │   ┌─────────────────────────────────────────────────────┐ │ │  │ │
+│  │   │   │   │ Router: softmax(W_router × input) → expert weights  │ │ │  │ │
+│  │   │   │   │                                                      │ │ │  │ │
+│  │   │   │   │   Expert 1 ──┐                                       │ │ │  │ │
+│  │   │   │   │   Expert 2 ──┼──► Weighted sum (top-k routing)      │ │ │  │ │
+│  │   │   │   │   Expert 3 ──┤   k=2 experts active per token       │ │ │  │ │
+│  │   │   │   │   Expert 4 ──┘                                       │ │ │  │ │
+│  │   │   │   │                                                      │ │ │  │ │
+│  │   │   │   │   + Load balancing loss for expert utilization       │ │ │  │ │
+│  │   │   │   └─────────────────────────────────────────────────────┘ │ │  │ │
+│  │   │   │                                                            │ │  │ │
+│  │   │   │        + Residual Connection                               │ │  │ │
+│  │   │   └────────────────────────────────────────────────────────────┘ │  │ │
+│  │   │        │                                                          │  │ │
+│  │   │        ▼                                                          │  │ │
+│  │   │   Output tokens (same shape as input)                             │  │ │
+│  │   └──────────────────────────────────────────────────────────────────┘  │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                               │
+│  OUTPUT HEADS                                                                │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                                                                          │ │
+│  │   Encoded Tokens                                                         │ │
+│  │        │                                                                 │ │
+│  │        ├───────────────────────────────────────────┐                     │ │
+│  │        │                                           │                     │ │
+│  │        ▼                                           ▼                     │ │
+│  │   ┌────────────────────────┐              ┌────────────────────────┐    │ │
+│  │   │     POLICY HEAD        │              │      VALUE HEAD         │    │ │
+│  │   │                        │              │                         │    │ │
+│  │   │ Option 1: Flat         │              │ Global Average Pool     │    │ │
+│  │   │ - Pool → Linear(→N)    │              │        │                │    │ │
+│  │   │                        │              │        ▼                │    │ │
+│  │   │ Option 2: Hierarchical │              │ MLP(256→128→1)         │    │ │
+│  │   │ - Same as Civ6NetV2    │              │        │                │    │ │
+│  │   │ - Category→Selector→   │              │        ▼                │    │ │
+│  │   │   Action→Target        │              │ Tanh → v(s)            │    │ │
+│  │   └────────────────────────┘              └────────────────────────┘    │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                               │
+│  CONFIGURATION OPTIONS                                                       │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                                                                          │ │
+│  │   TransformerConfig:                                                     │ │
+│  │   ├── embed_dim: 256 (token dimension)                                   │ │
+│  │   ├── num_heads: 8 (attention heads)                                     │ │
+│  │   ├── num_layers: 6 (transformer blocks)                                 │ │
+│  │   ├── mlp_ratio: 4.0 (FFN expansion)                                     │ │
+│  │   ├── dropout: 0.1                                                       │ │
+│  │   ├── attention_type: STANDARD | FLASH | LINEAR                          │ │
+│  │   ├── norm_type: LAYER_NORM | RMS_NORM                                   │ │
+│  │   ├── use_moe: false (enable Mixture of Experts)                         │ │
+│  │   ├── num_experts: 4 (if MoE enabled)                                    │ │
+│  │   └── experts_per_token: 2 (top-k routing)                               │ │
+│  │                                                                          │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                               │
+│  PARAMETERS: ~6-15M depending on configuration                               │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Network Comparison Summary
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                      NETWORK COMPARISON MATRIX                                │
+│                                                                               │
+│  ┌─────────────────┬───────────┬─────────────┬───────────┬─────────────────┐ │
+│  │ Attribute       │ MicroCiv  │ Civ6NetV2   │ MuZero    │ Transformer     │ │
+│  ├─────────────────┼───────────┼─────────────┼───────────┼─────────────────┤ │
+│  │ Parameters      │ ~500K     │ ~8M         │ ~12M      │ ~6-15M          │ │
+│  │ Spatial Input   │ 13 ch     │ 84 ch       │ 84 ch     │ 84 ch           │ │
+│  │ Vector Input    │ 64 dim    │ 512 dim     │ 512 dim   │ 512 dim         │ │
+│  │ Action Space    │ 381       │ 50K+ (hier) │ 50K+      │ Configurable    │ │
+│  │ Architecture    │ ResNet    │ ResNet+Attn │ 3-func    │ ViT             │ │
+│  │ Attention       │ None      │ Spatial SA  │ Optional  │ Full Self-Attn  │ │
+│  │ World Model     │ No        │ No          │ Yes       │ No              │ │
+│  │ Use Case        │ Training  │ Production  │ Planning  │ Research        │ │
+│  │ Board Size      │ 16×16     │ Variable    │ Variable  │ Variable        │ │
+│  │ Training Speed  │ Fastest   │ Medium      │ Slowest   │ Fast (GPU)      │ │
+│  └─────────────────┴───────────┴─────────────┴───────────┴─────────────────┘ │
+│                                                                               │
+│  TRAINING PROGRESSION:                                                       │
+│                                                                               │
+│   MicroCivNetwork ──► Civ6NetworkV2 ──► MuZero/Transformer                  │
+│   (fast iteration)    (production)      (advanced planning)                  │
+│                                                                               │
+│   Curriculum Learning: Transfer encoder weights between stages               │
+│                                                                               │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Roadmap
 
 ### Completed Phases
