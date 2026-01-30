@@ -239,13 +239,16 @@ class StructuredLogger:
             yield ctx
 
     def with_fields(self, **fields: Any) -> StructuredLogger:
-        """Create a new logger with default fields.
+        """Add default fields to the current logger's context.
+
+        This mutates the thread-local context and returns self for chaining.
+        Fields will be included in all subsequent log messages from this logger.
 
         Args:
-            **fields: Default fields for the new logger.
+            **fields: Default fields to add to the context.
 
         Returns:
-            New StructuredLogger with fields set in context.
+            Self for method chaining.
         """
         # Set fields in context
         get_context().update(fields)

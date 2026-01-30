@@ -267,8 +267,9 @@ class TestingAgent(BaseAgent):
             result["success"] = False
 
         # Extract individual test results
+        # Pattern matches: test_foo OR path/to/test_module.py::test_foo
         test_pattern = re.compile(
-            r"(test_\w+|[\w/]+::test_\w+)\s+(PASSED|FAILED|ERROR)",
+            r"([\w./]+::test_\w+|test_\w+)\s+(PASSED|FAILED|ERROR)",
             re.MULTILINE
         )
         for match in test_pattern.finditer(output):

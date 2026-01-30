@@ -176,7 +176,9 @@ class CommandRunner:
 
         Raises:
             CommandError: If check=True and command fails.
-            CommandTimeoutError: If command times out and retry exhausted.
+
+        Note:
+            Timeouts are handled gracefully via CommandResult.timed_out flag.
         """
         timeout = timeout_seconds if timeout_seconds is not None else self.default_timeout_seconds
         working_dir = cwd or self.default_cwd
@@ -196,39 +198,24 @@ class CommandRunner:
                 time.sleep(delay)
                 delay = min(delay * retry.backoff_multiplier, retry.max_delay_seconds)
 
-            try:
-                result = self._execute_once(
-                    command=command,
-                    timeout=timeout,
-                    cwd=working_dir,
-                    env=full_env,
-                    mode=mode,
-                )
-                last_result = result
+            result = self._execute_once(
+                command=command,
+                timeout=timeout,
+                cwd=working_dir,
+                env=full_env,
+                mode=mode,
+            )
+            last_result = result
 
-                # Check if we should retry
-                should_retry = False
-                if result.timed_out and retry.retry_on_timeout:
-                    should_retry = True
-                elif result.return_code in retry.retry_on_codes:
-                    should_retry = True
+            # Check if we should retry
+            should_retry = False
+            if result.timed_out and retry.retry_on_timeout:
+                should_retry = True
+            elif result.return_code in retry.retry_on_codes:
+                should_retry = True
 
-                if not should_retry or attempt >= retry.max_retries:
-                    break
-
-            except CommandTimeoutError as e:
-                last_result = CommandResult(
-                    command=command,
-                    return_code=-1,
-                    stdout=e.stdout,
-                    stderr=e.stderr,
-                    duration_seconds=timeout,
-                    timed_out=True,
-                )
-                if not retry.retry_on_timeout or attempt >= retry.max_retries:
-                    if check:
-                        raise
-                    break
+            if not should_retry or attempt >= retry.max_retries:
+                break
 
             attempt += 1
 

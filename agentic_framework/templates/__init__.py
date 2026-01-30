@@ -40,6 +40,7 @@ from .template_generator import (
     TemplateGenerator,
     TemplateVariable,
     VariableType,
+    create_template_generator,
 )
 from .template_logger import (
     DebugContext,
@@ -63,6 +64,7 @@ __all__ = [
     "TemplateContext",
     "TemplateVariable",
     "VariableType",
+    "create_template_generator",
     # Sub-Agents
     "SubAgentConfig",
     "SubAgentType",

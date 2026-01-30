@@ -92,8 +92,8 @@ logs/
 *.pt
 *.pth
 
-# RAG Data
-data/
+# RAG Data (generated vector database only, keep knowledge sources)
+data/knowledge_db/
 
 # Weights & Biases
 wandb/
@@ -118,5 +118,4 @@ end_of_log.txt
 end_of_log_utf8.txt
 latest_run_log.txt
 temp_log_tail.txt
-mod/
 nul
