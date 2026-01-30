@@ -449,6 +449,9 @@ class HierarchicalMCTS:
         goal_encoder: Any,  # HierarchicalGoalEncoder
         config: MCTSConfig | None = None,
         level: HierarchyLevel = HierarchyLevel.OPERATIONAL,
+        spatial_shape: tuple[int, int, int] = (13, 16, 16),
+        vector_dim: int = 64,
+        goal_dim: int = 64,
     ) -> None:
         """Initialize hierarchical MCTS.
 
@@ -458,12 +461,20 @@ class HierarchicalMCTS:
             goal_encoder: Goal encoder.
             config: MCTS configuration.
             level: Hierarchy level for this MCTS instance.
+            spatial_shape: Shape of spatial input (channels, height, width).
+            vector_dim: Dimension of vector input.
+            goal_dim: Dimension of goal embedding.
         """
         self.network = network
         self.state_encoder = state_encoder
         self.goal_encoder = goal_encoder
         self.config = config or MCTSConfig.for_level(level)
         self.level = level
+
+        # Store shape parameters for tensor creation
+        self.spatial_shape = spatial_shape
+        self.vector_dim = vector_dim
+        self.goal_dim = goal_dim
 
         # Available options (for higher levels)
         self.options: list[Option] = []
@@ -658,15 +669,21 @@ class HierarchicalMCTS:
         level_goals = [g for g in goals if g.level == self.level]
         goal_encoding = self.goal_encoder.encode_goals_for_level(level_goals, self.level, state)
 
-        # Convert to tensors
+        # Convert to tensors using configured shapes
         with torch.no_grad():
-            # Get spatial and vector from state
+            # Get spatial and vector from state, use instance shape params for defaults
             spatial = (
-                torch.from_numpy(state.get("spatial", np.zeros((13, 16, 16)))).float().unsqueeze(0)
+                torch.from_numpy(
+                    state.get("spatial", np.zeros(self.spatial_shape))
+                ).float().unsqueeze(0)
             )
-            vector = torch.from_numpy(state.get("vector", np.zeros(64))).float().unsqueeze(0)
+            vector = torch.from_numpy(
+                state.get("vector", np.zeros(self.vector_dim))
+            ).float().unsqueeze(0)
             goal_emb = (
-                torch.from_numpy(goal_encoding[0] if len(goal_encoding) > 0 else np.zeros(64))
+                torch.from_numpy(
+                    goal_encoding[0] if len(goal_encoding) > 0 else np.zeros(self.goal_dim)
+                )
                 .float()
                 .unsqueeze(0)
             )
@@ -738,10 +755,15 @@ class HierarchicalMCTS:
         Returns:
             Selected action index.
         """
+        # Handle edge case: root has no children (never expanded)
+        if not root.children:
+            return 0  # Return fallback action
+
+        max_action = max(root.children.keys())
         visits = np.array(
             [
                 root.children[a].visit_count if a in root.children else 0
-                for a in range(max(root.children.keys()) + 1)
+                for a in range(max_action + 1)
             ]
         )
 

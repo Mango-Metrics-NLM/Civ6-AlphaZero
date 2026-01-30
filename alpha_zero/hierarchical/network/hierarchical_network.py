@@ -341,10 +341,14 @@ if TORCH_AVAILABLE:
 
             # Apply action mask
             if action_mask is not None:
-                # Mask invalid actions with large negative value
+                # Handle edge case: all actions masked (prevent NaN from softmax)
+                if action_mask.sum() == 0:
+                    action_mask = action_mask.clone()
+                    action_mask[..., 0] = 1.0  # Enable fallback action
+                # Use large finite value instead of -inf to prevent NaN in softmax
                 policy_logits = policy_logits.masked_fill(
                     action_mask == 0,
-                    float("-inf"),
+                    -1e9,
                 )
 
             # Goal-conditioned value
@@ -402,19 +406,29 @@ if TORCH_AVAILABLE:
             super().__init__()
 
             # Use level-specific configs or derive from base/defaults
-            config or HierarchicalNetworkConfig()
+            self._base_config = config or HierarchicalNetworkConfig()
+
+            # Store level-specific configs for dimension reference
+            self._strategic_config = strategic_config or HierarchicalNetworkConfig.for_level(
+                HierarchyLevel.STRATEGIC
+            )
+            self._tactical_config = tactical_config or HierarchicalNetworkConfig.for_level(
+                HierarchyLevel.TACTICAL
+            )
+            self._operational_config = operational_config or HierarchicalNetworkConfig.for_level(
+                HierarchyLevel.OPERATIONAL
+            )
 
             self.strategic_network = LevelNetwork(
-                strategic_config or HierarchicalNetworkConfig.for_level(HierarchyLevel.STRATEGIC),
+                self._strategic_config,
                 HierarchyLevel.STRATEGIC,
             )
             self.tactical_network = LevelNetwork(
-                tactical_config or HierarchicalNetworkConfig.for_level(HierarchyLevel.TACTICAL),
+                self._tactical_config,
                 HierarchyLevel.TACTICAL,
             )
             self.operational_network = LevelNetwork(
-                operational_config
-                or HierarchicalNetworkConfig.for_level(HierarchyLevel.OPERATIONAL),
+                self._operational_config,
                 HierarchyLevel.OPERATIONAL,
             )
 
@@ -425,18 +439,25 @@ if TORCH_AVAILABLE:
             }
 
             # Cross-level information flow (top-down)
-            # Strategic -> Tactical
+            # Use actual config dimensions instead of hardcoded values
+            strategic_embed = self._strategic_config.embed_dim
+            tactical_embed = self._tactical_config.embed_dim
+            tactical_goal = self._tactical_config.goal_embed_dim
+            operational_embed = self._operational_config.embed_dim
+            operational_goal = self._operational_config.goal_embed_dim
+
+            # Strategic -> Tactical projection
             self.strategic_to_tactical = nn.Sequential(
-                nn.Linear(256, 128),  # Strategic embed -> Tactical embed
+                nn.Linear(strategic_embed, tactical_embed),
                 nn.ReLU(),
-                nn.Linear(128, 64),  # To goal embedding dim
+                nn.Linear(tactical_embed, tactical_goal),
             )
 
-            # Tactical -> Operational
+            # Tactical -> Operational projection
             self.tactical_to_operational = nn.Sequential(
-                nn.Linear(128, 64),
+                nn.Linear(tactical_embed, operational_embed),
                 nn.ReLU(),
-                nn.Linear(64, 32),
+                nn.Linear(operational_embed, operational_goal),
             )
 
             logger.info(
