@@ -5,6 +5,15 @@ from alpha_zero.core.buffer_config import (
     ReplayBufferConfig,
     SharedStorageConfig,
 )
+from alpha_zero.core.checkpoint_utils import (
+    VALID_REDUCTIONS,
+    get_checkpoint_info,
+    load_checkpoint,
+    load_state_dict_into_network,
+    save_checkpoint,
+    serialize_config,
+    validate_reduction,
+)
 from alpha_zero.core.civ6_actions import ActionSpace, HierarchicalAction
 from alpha_zero.core.civ6_mcts import Civ6MCTS
 from alpha_zero.core.civ6_network import (
@@ -94,6 +103,14 @@ __all__ = [
     "set_timeout_config",
     "ReplayBufferConfig",
     "SharedStorageConfig",
+    # Checkpoint utilities
+    "save_checkpoint",
+    "load_checkpoint",
+    "load_state_dict_into_network",
+    "serialize_config",
+    "validate_reduction",
+    "get_checkpoint_info",
+    "VALID_REDUCTIONS",
     # Protocols
     "Serializable",
     "StateEncoderProtocol",

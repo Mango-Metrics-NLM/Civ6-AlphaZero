@@ -18,12 +18,16 @@ MuZero MCTS variant that uses learned dynamics (no environment cloning):
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+
+# Module logger for debug output
+logger = logging.getLogger(__name__)
 
 
 class MCTSNetwork(Protocol):
@@ -271,6 +275,11 @@ class Civ6MCTS:
         Returns:
             Tuple of (action_probs, root_value).
         """
+        logger.debug(
+            "MCTS search starting: num_simulations=%d, c_puct=%.2f, add_noise=%s",
+            self.config.num_simulations, self.config.c_puct, add_noise
+        )
+
         # Create root node
         root = MCTSNode()
 
@@ -337,6 +346,17 @@ class Civ6MCTS:
         # Get action probabilities from visit counts
         action_probs = self._get_action_probs(root, env.action_space.n)
 
+        # Find top action for logging
+        top_action = int(np.argmax(action_probs))
+        top_prob = action_probs[top_action]
+        valid_actions = len(root.children)
+
+        logger.debug(
+            "MCTS search complete: root_visits=%d, root_value=%.3f, "
+            "valid_actions=%d, top_action=%d (prob=%.3f)",
+            root.visit_count, root.value, valid_actions, top_action, top_prob
+        )
+
         return action_probs, root.value
 
     def _evaluate(
@@ -365,6 +385,11 @@ class Civ6MCTS:
             )
             policy = policy_probs.squeeze(0).cpu().numpy()
             value = value.item()
+
+        logger.debug(
+            "Network evaluation: value=%.3f, policy_entropy=%.3f",
+            value, -np.sum(policy * np.log(policy + 1e-8))
+        )
 
         return policy, value
 

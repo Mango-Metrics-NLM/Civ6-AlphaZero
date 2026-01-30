@@ -40,6 +40,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from alpha_zero.core.checkpoint_utils import validate_reduction
+
 # Module logger
 logger = logging.getLogger(__name__)
 
@@ -299,6 +301,8 @@ def compute_policy_loss(
         The loss is computed as -sum(target * log(softmax(logits))).
         This is equivalent to cross-entropy when targets are probabilities.
     """
+    validate_reduction(reduction)
+
     logger.debug(
         "Computing policy loss: logits=%s, target=%s, mask=%s, reduction=%s",
         policy_logits.shape, target_policy.shape,
@@ -322,10 +326,8 @@ def compute_policy_loss(
         loss = per_sample_loss.mean()
     elif reduction == "sum":
         loss = per_sample_loss.sum()
-    elif reduction == "none":
+    else:  # reduction == "none"
         loss = per_sample_loss
-    else:
-        raise ValueError(f"Unknown reduction: {reduction}")
 
     logger.debug("Policy loss computed: %f", loss.item() if loss.dim() == 0 else loss.mean().item())
     return loss
@@ -354,6 +356,8 @@ def compute_value_loss(
     Returns:
         Value loss as a scalar tensor (or per-sample if reduction='none').
     """
+    validate_reduction(reduction)
+
     if config is None:
         config = LossConfig()
 
@@ -379,14 +383,8 @@ def compute_value_loss(
             pred = pred.squeeze(-1)
         if target.dim() == 2 and target.shape[1] == 1:
             target = target.squeeze(-1)
-        if reduction == "mean":
-            value_loss = F.mse_loss(pred, target, reduction="mean")
-        elif reduction == "sum":
-            value_loss = F.mse_loss(pred, target, reduction="sum")
-        elif reduction == "none":
-            value_loss = F.mse_loss(pred, target, reduction="none")
-        else:
-            raise ValueError(f"Unknown reduction: {reduction}")
+        # Valid reduction already validated at function start
+        value_loss = F.mse_loss(pred, target, reduction=reduction)
 
     logger.debug("Value loss computed: %f", value_loss.item() if value_loss.dim() == 0 else value_loss.mean().item())
     return value_loss
@@ -414,6 +412,8 @@ def compute_reward_loss(
     Returns:
         Reward loss as a scalar tensor (or per-sample if reduction='none').
     """
+    validate_reduction(reduction)
+
     if config is None:
         config = LossConfig()
 
@@ -434,14 +434,8 @@ def compute_reward_loss(
         reward_loss = F.cross_entropy(pred, target_categorical, reduction=reduction)
     else:
         # Mean squared error for scalar predictions
-        if reduction == "mean":
-            reward_loss = F.mse_loss(pred, target, reduction="mean")
-        elif reduction == "sum":
-            reward_loss = F.mse_loss(pred, target, reduction="sum")
-        elif reduction == "none":
-            reward_loss = F.mse_loss(pred, target, reduction="none")
-        else:
-            raise ValueError(f"Unknown reduction: {reduction}")
+        # Valid reduction already validated at function start
+        reward_loss = F.mse_loss(pred, target, reduction=reduction)
 
     logger.debug("Reward loss computed: %f", reward_loss.item() if reward_loss.dim() == 0 else reward_loss.mean().item())
     return reward_loss
@@ -488,6 +482,8 @@ def compute_consistency_loss(
         >>> proj_obs = torch.randn(4, 256)
         >>> loss = compute_consistency_loss(proj_dyn, proj_obs.detach())
     """
+    validate_reduction(reduction)
+
     logger.debug(
         "Computing consistency loss: proj1=%s, proj2=%s, reduction=%s",
         proj1.shape, proj2.shape, reduction
@@ -506,10 +502,8 @@ def compute_consistency_loss(
         loss = per_sample_loss.mean()
     elif reduction == "sum":
         loss = per_sample_loss.sum()
-    elif reduction == "none":
+    else:  # reduction == "none"
         loss = per_sample_loss
-    else:
-        raise ValueError(f"Unknown reduction: {reduction}")
 
     logger.debug("Consistency loss computed: %f", loss.item() if loss.dim() == 0 else loss.mean().item())
     return loss
@@ -538,6 +532,8 @@ def compute_value_prefix_loss(
     Returns:
         Value prefix loss as a scalar tensor (or per-sample if reduction='none').
     """
+    validate_reduction(reduction)
+
     if config is None:
         config = LossConfig()
 
@@ -555,14 +551,8 @@ def compute_value_prefix_loss(
         )
         prefix_loss = F.cross_entropy(pred, target_categorical, reduction=reduction)
     else:
-        if reduction == "mean":
-            prefix_loss = F.mse_loss(pred, target, reduction="mean")
-        elif reduction == "sum":
-            prefix_loss = F.mse_loss(pred, target, reduction="sum")
-        elif reduction == "none":
-            prefix_loss = F.mse_loss(pred, target, reduction="none")
-        else:
-            raise ValueError(f"Unknown reduction: {reduction}")
+        # Valid reduction already validated at function start
+        prefix_loss = F.mse_loss(pred, target, reduction=reduction)
 
     logger.debug("Value prefix loss computed: %f", prefix_loss.item() if prefix_loss.dim() == 0 else prefix_loss.mean().item())
     return prefix_loss

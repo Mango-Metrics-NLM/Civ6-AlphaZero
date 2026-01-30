@@ -19,8 +19,14 @@
 | Mixin classes | ✅ Done | `alpha_zero/core/mixins.py` - 4 mixins |
 | Test fixtures (conftest.py) | ✅ Done | `tests/conftest.py` - shared fixtures |
 | Pytest markers | ✅ Done | `pyproject.toml` - 7 markers |
+| Checkpoint utilities | ✅ Done | `alpha_zero/core/checkpoint_utils.py` - unified checkpoint save/load |
+| validate_reduction helper | ✅ Done | Eliminates 5x duplication in losses.py |
+| test_core_config.py | ✅ Done | 53 tests for ConfigMixin |
+| test_core_protocols.py | ✅ Done | 30 tests for protocols |
+| test_core_mixins.py | ✅ Done | 50 tests for mixins |
+| Debug logging (MCTS) | ✅ Done | `alpha_zero/core/civ6_mcts.py` |
+| Debug logging (Learner) | ✅ Done | `alpha_zero/distributed/learner.py` |
 | HierarchicalController decomposition | ⏳ Pending | Phase 3 |
-| Debug logging | ⏳ Pending | Phase 4 |
 
 ---
 
