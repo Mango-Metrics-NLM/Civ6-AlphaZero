@@ -20,14 +20,14 @@ import pytest
 # Check if torch is available
 try:
     import torch
+
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
 
 # Skip entire module if torch not available
 pytestmark = pytest.mark.skipif(
-    not TORCH_AVAILABLE,
-    reason="PyTorch required for hierarchical network tests"
+    not TORCH_AVAILABLE, reason="PyTorch required for hierarchical network tests"
 )
 
 if TORCH_AVAILABLE:
@@ -379,9 +379,7 @@ class TestLevelNetwork:
         action_mask = torch.ones(BATCH_SIZE, ACTION_SPACE)
         action_mask[:, :50] = 0
 
-        policy, _ = network(
-            sample_spatial, sample_vector, sample_goal_embedding, action_mask
-        )
+        policy, _ = network(sample_spatial, sample_vector, sample_goal_embedding, action_mask)
 
         # First 50 should be -inf
         assert torch.all(policy[:, :50] == float("-inf"))
@@ -423,9 +421,7 @@ class TestLevelNetwork:
             network = LevelNetwork(config, level)
             network.eval()
 
-            policy, value = network(
-                sample_spatial, sample_vector, sample_goal_embedding
-            )
+            policy, value = network(sample_spatial, sample_vector, sample_goal_embedding)
 
             assert policy.shape == (BATCH_SIZE, ACTION_SPACE)
             assert value.shape == (BATCH_SIZE,)
@@ -542,8 +538,7 @@ class TestHierarchicalNetwork:
 
         # Tactical forward with strategic context
         policy, value = network(
-            spatial, vector, goal, HierarchyLevel.TACTICAL,
-            higher_level_embedding=higher_embed
+            spatial, vector, goal, HierarchyLevel.TACTICAL, higher_level_embedding=higher_embed
         )
 
         assert policy.shape == (2, 100)
@@ -635,9 +630,9 @@ class TestHierarchicalNetwork:
         """Test that invalid level raises ValueError."""
         network = HierarchicalNetwork()
 
-        spatial = torch.randn(2, SPATIAL_CHANNELS, *BOARD_SIZE)
-        vector = torch.randn(2, VECTOR_DIM)
-        goal = torch.randn(2, 64)
+        _spatial = torch.randn(2, SPATIAL_CHANNELS, *BOARD_SIZE)
+        _vector = torch.randn(2, VECTOR_DIM)
+        _goal = torch.randn(2, 64)
 
         # Can't easily test with invalid enum value, but we can verify
         # the network has the expected structure
@@ -741,8 +736,8 @@ class TestNetworkIntegration:
 
         goal_embeddings = {
             HierarchyLevel.STRATEGIC: torch.randn(batch_size, 128),  # Match strategic config
-            HierarchyLevel.TACTICAL: torch.randn(batch_size, 64),    # Match tactical config
-            HierarchyLevel.OPERATIONAL: torch.randn(batch_size, 32), # Match operational config
+            HierarchyLevel.TACTICAL: torch.randn(batch_size, 64),  # Match tactical config
+            HierarchyLevel.OPERATIONAL: torch.randn(batch_size, 32),  # Match operational config
         }
 
         action_masks = {
@@ -752,12 +747,10 @@ class TestNetworkIntegration:
         }
 
         # Forward through all levels
-        results = network.forward_all_levels(
-            spatial, vector, goal_embeddings, action_masks
-        )
+        results = network.forward_all_levels(spatial, vector, goal_embeddings, action_masks)
 
         # Verify all outputs
-        for level, (policy, value) in results.items():
+        for _level, (policy, value) in results.items():
             # Policy should be valid logits
             assert torch.isfinite(policy).all()
 

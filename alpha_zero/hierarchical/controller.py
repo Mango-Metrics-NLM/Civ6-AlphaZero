@@ -11,6 +11,7 @@ Example:
     >>> controller = HierarchicalController(config)
     >>> action = controller.decide(game_state)
 """
+
 from __future__ import annotations
 
 import logging
@@ -22,6 +23,7 @@ import numpy as np
 
 try:
     import torch  # noqa: F401
+
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
@@ -98,9 +100,7 @@ class HierarchicalDecision:
             "strategic_goals": [g.id for g in self.strategic_context],
             "tactical_goals": [g.id for g in self.tactical_context],
             "operational_goals": [g.id for g in self.operational_goals],
-            "value_estimates": {
-                k.value: v for k, v in self.value_estimates.items()
-            },
+            "value_estimates": {k.value: v for k, v in self.value_estimates.items()},
             "reasoning": self.reasoning,
         }
 
@@ -195,7 +195,9 @@ class HierarchicalController:
             if self.strategic.should_update(current_turn):
                 strategic_decision = self.strategic.decide(game_state)
                 self.state.strategic_decisions.append(strategic_decision)
-                decision.value_estimates[HierarchyLevel.STRATEGIC] = strategic_decision.value_estimate
+                decision.value_estimates[HierarchyLevel.STRATEGIC] = (
+                    strategic_decision.value_estimate
+                )
                 reasoning_parts.append(f"Strategic: {strategic_decision.reasoning}")
 
         # Get strategic context for tactical level
@@ -271,18 +273,22 @@ class HierarchicalController:
         self.state.total_reward += reward
 
         # Compute goal-based reward shaping
-        shaped_rewards = self._compute_shaped_rewards(
-            game_state, action, reward, next_state
-        )
+        shaped_rewards = self._compute_shaped_rewards(game_state, action, reward, next_state)
 
         # Update each controller
-        self.operational.update(next_state, shaped_rewards.get(HierarchyLevel.OPERATIONAL, reward), done)
+        self.operational.update(
+            next_state, shaped_rewards.get(HierarchyLevel.OPERATIONAL, reward), done
+        )
 
         if self.config.is_level_enabled(HierarchyLevel.TACTICAL):
-            self.tactical.update(next_state, shaped_rewards.get(HierarchyLevel.TACTICAL, reward), done)
+            self.tactical.update(
+                next_state, shaped_rewards.get(HierarchyLevel.TACTICAL, reward), done
+            )
 
         if self.config.is_level_enabled(HierarchyLevel.STRATEGIC):
-            self.strategic.update(next_state, shaped_rewards.get(HierarchyLevel.STRATEGIC, reward), done)
+            self.strategic.update(
+                next_state, shaped_rewards.get(HierarchyLevel.STRATEGIC, reward), done
+            )
 
         # Synchronize goal hierarchy
         context = {"current_turn": next_state.get("turn", 0)}
@@ -322,28 +328,34 @@ class HierarchicalController:
         # Collect from operational decisions (most frequent)
         for decision in self.state.operational_decisions[-1000:]:
             if decision.search_stats:
-                data["operational"].append({
-                    "action": decision.action,
-                    "value": decision.value_estimate,
-                    "visit_counts": decision.search_stats.visit_counts,
-                    "prior_probs": decision.search_stats.prior_probs,
-                })
+                data["operational"].append(
+                    {
+                        "action": decision.action,
+                        "value": decision.value_estimate,
+                        "visit_counts": decision.search_stats.visit_counts,
+                        "prior_probs": decision.search_stats.prior_probs,
+                    }
+                )
 
         # Collect from tactical decisions
         for decision in self.state.tactical_decisions[-100:]:
             if decision.search_stats:
-                data["tactical"].append({
-                    "goals": [g.id for g in decision.goals_created],
-                    "value": decision.value_estimate,
-                })
+                data["tactical"].append(
+                    {
+                        "goals": [g.id for g in decision.goals_created],
+                        "value": decision.value_estimate,
+                    }
+                )
 
         # Collect from strategic decisions
         for decision in self.state.strategic_decisions[-20:]:
-            data["strategic"].append({
-                "goals": [g.id for g in decision.goals_created],
-                "value": decision.value_estimate,
-                "reasoning": decision.reasoning,
-            })
+            data["strategic"].append(
+                {
+                    "goals": [g.id for g in decision.goals_created],
+                    "value": decision.value_estimate,
+                    "reasoning": decision.reasoning,
+                }
+            )
 
         return data
 
@@ -505,12 +517,10 @@ class HierarchicalController:
     def _log_episode_summary(self) -> None:
         """Log episode summary."""
         completed = sum(
-            1 for g in self.goal_hierarchy.get_all_goals()
-            if g.status == GoalStatus.COMPLETED
+            1 for g in self.goal_hierarchy.get_all_goals() if g.status == GoalStatus.COMPLETED
         )
         failed = sum(
-            1 for g in self.goal_hierarchy.get_all_goals()
-            if g.status == GoalStatus.FAILED
+            1 for g in self.goal_hierarchy.get_all_goals() if g.status == GoalStatus.FAILED
         )
         total_goals = len(self.goal_hierarchy.get_all_goals())
 

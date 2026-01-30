@@ -2,17 +2,14 @@
 Tests for permission management.
 """
 
-from pathlib import Path
-
 import pytest
 
 from agentic_framework.config import AgenticConfig
 from agentic_framework.core.permission_manager import (
-    PermissionManager,
     AutonomyLevel,
-    PermissionCheckResult,
-    ScopeChecker,
+    PermissionManager,
     ResourceUsage,
+    ScopeChecker,
 )
 
 

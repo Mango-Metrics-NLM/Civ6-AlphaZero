@@ -49,9 +49,10 @@ try:
         LLMResponse,
         create_llm_client,
     )
-    from alpha_zero.utils.llm_client import (
+    from alpha_zero.utils.llm_client import (  # noqa: F401
         generate_sync as llm_generate,
     )
+
     _LLM_AVAILABLE = True
 except ImportError:
     _LLM_AVAILABLE = False
@@ -133,53 +134,61 @@ __all__ = [
 
 # Add LLM exports if available
 if _LLM_AVAILABLE:
-    __all__.extend([
-        "LLMClient",
-        "LLMConfig",
-        "LLMMessage",
-        "LLMResponse",
-        "LLMProvider",
-        "LLMError",
-        "create_llm_client",
-        "llm_generate",
-    ])
+    __all__.extend(
+        [
+            "LLMClient",
+            "LLMConfig",
+            "LLMMessage",
+            "LLMResponse",
+            "LLMProvider",
+            "LLMError",
+            "create_llm_client",
+            "llm_generate",
+        ]
+    )
 
 # W&B Logger (optional - depends on wandb package)
 try:
-    from alpha_zero.utils.wandb_logger import (
+    from alpha_zero.utils.wandb_logger import (  # noqa: F401
         WandbLogger,
         get_wandb_logger,
         init_wandb,
         log_metrics,
     )
+
     _WANDB_AVAILABLE = True
-    __all__.extend([
-        "WandbLogger",
-        "WandbConfig",
-        "get_wandb_logger",
-        "init_wandb",
-        "log_metrics",
-    ])
+    __all__.extend(
+        [
+            "WandbLogger",
+            "WandbConfig",
+            "get_wandb_logger",
+            "init_wandb",
+            "log_metrics",
+        ]
+    )
 except ImportError:
     _WANDB_AVAILABLE = False
 
 # RAG Integration (optional - depends on chromadb/sentence-transformers)
 try:
-    from alpha_zero.utils.rag_client import (
+    from alpha_zero.utils.rag_client import (  # noqa: F401
         RAGClient,
         RAGConfig,
     )
+
     _RAG_AVAILABLE = True
-    __all__.extend([
-        "RAGClient",
-        "RAGConfig",
-        "KnowledgeBase",
-    ])
+    __all__.extend(
+        [
+            "RAGClient",
+            "RAGConfig",
+            "KnowledgeBase",
+        ]
+    )
 except ImportError:
     _RAG_AVAILABLE = False
 
-# Training Improvement Modules
-from alpha_zero.utils.curriculum_learning import (
+# Training Improvement Modules (re-exported for public API)
+from alpha_zero.utils.curriculum_learning import (  # noqa: F401
     AdaptiveDifficultyController,
     CurriculumConfig,
     CurriculumManager,
@@ -188,7 +197,7 @@ from alpha_zero.utils.curriculum_learning import (
     DifficultyDimension,
     create_curriculum_manager,
 )
-from alpha_zero.utils.enhanced_rewards import (
+from alpha_zero.utils.enhanced_rewards import (  # noqa: F401
     EnhancedRewardsConfig,
     EnhancedRewardShaper,
     EnhancedStateFeatures,
@@ -201,7 +210,7 @@ from alpha_zero.utils.enhanced_rewards import (
     get_balanced_rewards_config,
     get_defensive_rewards_config,
 )
-from alpha_zero.utils.environment_tuning import (
+from alpha_zero.utils.environment_tuning import (  # noqa: F401
     CombatConfig,
     EarlyTerminationChecker,
     EarlyTerminationConfig,
@@ -213,7 +222,7 @@ from alpha_zero.utils.environment_tuning import (
     get_default_fast_config,
     get_default_realistic_config,
 )
-from alpha_zero.utils.training_config_enhanced import (
+from alpha_zero.utils.training_config_enhanced import (  # noqa: F401
     EnhancedTrainingConfig,
     ParameterSchedule,
     ResourceConfig,
@@ -225,46 +234,48 @@ from alpha_zero.utils.training_config_enhanced import (
     get_production_training_config,
 )
 
-__all__.extend([
-    # Environment Tuning
-    "EnvironmentTuningConfig",
-    "EarlyTerminationConfig",
-    "ProductionConfig",
-    "CombatConfig",
-    "TunedEnvironmentWrapper",
-    "EarlyTerminationChecker",
-    "create_tuned_environment",
-    "get_default_fast_config",
-    "get_default_balanced_config",
-    "get_default_realistic_config",
-    # Enhanced Rewards
-    "EnhancedRewardsConfig",
-    "IntermediateRewardsConfig",
-    "VictoryBonusConfig",
-    "EnhancedStateFeatures",
-    "EnhancedRewardShaper",
-    "WinCondition",
-    "WinConditionEvaluator",
-    "create_enhanced_reward_shaper",
-    "get_aggressive_rewards_config",
-    "get_defensive_rewards_config",
-    "get_balanced_rewards_config",
-    # Curriculum Learning
-    "CurriculumConfig",
-    "CurriculumStage",
-    "CurriculumState",
-    "CurriculumManager",
-    "DifficultyDimension",
-    "AdaptiveDifficultyController",
-    "create_curriculum_manager",
-    # Enhanced Training Config
-    "EnhancedTrainingConfig",
-    "ParameterSchedule",
-    "SchedulePoint",
-    "ScheduleType",
-    "ResourceConfig",
-    "ResourceManager",
-    "create_training_config",
-    "get_fast_training_config",
-    "get_production_training_config",
-])
+__all__.extend(
+    [
+        # Environment Tuning
+        "EnvironmentTuningConfig",
+        "EarlyTerminationConfig",
+        "ProductionConfig",
+        "CombatConfig",
+        "TunedEnvironmentWrapper",
+        "EarlyTerminationChecker",
+        "create_tuned_environment",
+        "get_default_fast_config",
+        "get_default_balanced_config",
+        "get_default_realistic_config",
+        # Enhanced Rewards
+        "EnhancedRewardsConfig",
+        "IntermediateRewardsConfig",
+        "VictoryBonusConfig",
+        "EnhancedStateFeatures",
+        "EnhancedRewardShaper",
+        "WinCondition",
+        "WinConditionEvaluator",
+        "create_enhanced_reward_shaper",
+        "get_aggressive_rewards_config",
+        "get_defensive_rewards_config",
+        "get_balanced_rewards_config",
+        # Curriculum Learning
+        "CurriculumConfig",
+        "CurriculumStage",
+        "CurriculumState",
+        "CurriculumManager",
+        "DifficultyDimension",
+        "AdaptiveDifficultyController",
+        "create_curriculum_manager",
+        # Enhanced Training Config
+        "EnhancedTrainingConfig",
+        "ParameterSchedule",
+        "SchedulePoint",
+        "ScheduleType",
+        "ResourceConfig",
+        "ResourceManager",
+        "create_training_config",
+        "get_fast_training_config",
+        "get_production_training_config",
+    ]
+)

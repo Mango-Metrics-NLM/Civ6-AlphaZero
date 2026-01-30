@@ -10,6 +10,7 @@ Example:
     >>> propagator = GoalPropagator(hierarchy)
     >>> propagator.propagate_down(strategic_goal, game_state)
 """
+
 from __future__ import annotations
 
 import logging
@@ -506,9 +507,7 @@ class GoalPropagator:
         # Update parent goal
         goal.child_goal_ids.extend([g.id for g in sub_goals])
         result.goals_updated.append(goal)
-        result.messages.append(
-            f"Decomposed {goal.id} into {len(sub_goals)} sub-goals"
-        )
+        result.messages.append(f"Decomposed {goal.id} into {len(sub_goals)} sub-goals")
 
         # Call hooks
         for hook in self.propagation_hooks:
@@ -548,17 +547,14 @@ class GoalPropagator:
 
         # Aggregate progress from all children
         children: list[Goal] = [
-            g for cid in parent.child_goal_ids
-            if (g := self.hierarchy.get_goal(cid)) is not None
+            g for cid in parent.child_goal_ids if (g := self.hierarchy.get_goal(cid)) is not None
         ]
 
         if children:
             # Weight by priority
             total_priority = sum(c.priority for c in children)
             if total_priority > 0:
-                weighted_progress = sum(
-                    c.progress * c.priority for c in children
-                ) / total_priority
+                weighted_progress = sum(c.progress * c.priority for c in children) / total_priority
 
                 old_progress = parent.progress
                 parent.progress = weighted_progress
@@ -611,16 +607,12 @@ class GoalPropagator:
                 boost = min(0.1, goal.progress * 0.1)
                 sibling.progress = min(1.0, sibling.progress + boost)
                 result.goals_updated.append(sibling)
-                result.messages.append(
-                    f"Synergy boost to {sibling.id}: +{boost:.2f}"
-                )
+                result.messages.append(f"Synergy boost to {sibling.id}: +{boost:.2f}")
             elif relationship == "conflict":
                 # Reduce sibling priority
                 sibling.priority *= 0.9
                 result.goals_updated.append(sibling)
-                result.messages.append(
-                    f"Conflict penalty to {sibling.id} priority"
-                )
+                result.messages.append(f"Conflict penalty to {sibling.id} priority")
 
         return result
 
@@ -651,9 +643,7 @@ class GoalPropagator:
 
             # Recursively propagate down to created sub-goals
             for sub_goal in down_result.goals_created:
-                sub_result = self.full_propagation(
-                    sub_goal, game_state, context, "down"
-                )
+                sub_result = self.full_propagation(sub_goal, game_state, context, "down")
                 result.merge(sub_result)
 
         if direction in ("up", "both"):
@@ -691,7 +681,11 @@ class GoalPropagator:
         current_turn = context.get("current_turn", 0)
 
         # Process from bottom up (operational -> tactical -> strategic)
-        for level in [HierarchyLevel.OPERATIONAL, HierarchyLevel.TACTICAL, HierarchyLevel.STRATEGIC]:
+        for level in [
+            HierarchyLevel.OPERATIONAL,
+            HierarchyLevel.TACTICAL,
+            HierarchyLevel.STRATEGIC,
+        ]:
             goals = self.hierarchy.get_active_goals(level)
 
             for goal in goals:

@@ -114,13 +114,15 @@ class EnhancedRewardsConfig:
     active_win_conditions: set[WinCondition] = field(
         default_factory=lambda: {WinCondition.DOMINATION, WinCondition.ELIMINATION},
     )
-    potential_weights: dict[str, float] = field(default_factory=lambda: {
-        "unit_advantage": 0.1,
-        "city_advantage": 0.3,  # Increased from 0.2
-        "health_advantage": 0.05,
-        "territory_advantage": 0.2, # Increased from 0.05
-        "production_advantage": 0.03,
-    })
+    potential_weights: dict[str, float] = field(
+        default_factory=lambda: {
+            "unit_advantage": 0.1,
+            "city_advantage": 0.3,  # Increased from 0.2
+            "health_advantage": 0.05,
+            "territory_advantage": 0.2,  # Increased from 0.05
+            "production_advantage": 0.03,
+        }
+    )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EnhancedRewardsConfig:
@@ -288,8 +290,7 @@ class WinConditionEvaluator:
         bonus = self._get_victory_bonus(victory_type)
 
         self._logger.debug(
-            f"Victory evaluation: type={victory_type}, "
-            f"bonus={bonus * multiplier:.3f}",
+            f"Victory evaluation: type={victory_type}, bonus={bonus * multiplier:.3f}",
         )
 
         return bonus * multiplier, victory_type
@@ -407,8 +408,16 @@ class EnhancedRewardShaper:
         enemy_avg_health = vector[7] * 100 if len(vector) > 7 else 100.0
 
         # Extract territory from spatial
-        own_unit_mask = np.sum(spatial[3:6], axis=0) > 0 if len(spatial) > 5 else np.zeros((self.board_size, self.board_size), dtype=bool)
-        enemy_unit_mask = np.sum(spatial[6:9], axis=0) > 0 if len(spatial) > 8 else np.zeros((self.board_size, self.board_size), dtype=bool)
+        own_unit_mask = (
+            np.sum(spatial[3:6], axis=0) > 0
+            if len(spatial) > 5
+            else np.zeros((self.board_size, self.board_size), dtype=bool)
+        )
+        enemy_unit_mask = (
+            np.sum(spatial[6:9], axis=0) > 0
+            if len(spatial) > 8
+            else np.zeros((self.board_size, self.board_size), dtype=bool)
+        )
 
         own_territory = int(np.sum(own_unit_mask))
         enemy_territory = int(np.sum(enemy_unit_mask))
@@ -469,12 +478,7 @@ class EnhancedRewardShaper:
             territory_diff = 0.0
         territory_potential = territory_diff * weights.get("territory_advantage", 0.05)
 
-        return (
-            unit_potential +
-            city_potential +
-            health_potential +
-            territory_potential
-        )
+        return unit_potential + city_potential + health_potential + territory_potential
 
     def compute_intermediate_rewards(
         self,

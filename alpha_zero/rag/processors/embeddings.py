@@ -141,6 +141,7 @@ class OpenAIEmbeddings(EmbeddingGenerator):
         if self._client is None:
             try:
                 from openai import AsyncOpenAI
+
                 self._client = AsyncOpenAI(api_key=self.api_key, timeout=self.timeout)
             except ImportError as e:
                 raise ImportError(
@@ -177,14 +178,16 @@ class OpenAIEmbeddings(EmbeddingGenerator):
 
         # Process in batches
         for i in range(0, len(texts), self.batch_size):
-            batch = texts[i:i + self.batch_size]
+            batch = texts[i : i + self.batch_size]
             batch_embeddings = await self._embed_batch_with_retry(client, batch)
             all_embeddings.extend(batch_embeddings)
 
         return all_embeddings
 
     async def _embed_batch_with_retry(
-        self, client, texts: list[str],
+        self,
+        client,
+        texts: list[str],
     ) -> list[np.ndarray]:
         """Embed a batch of texts with retry logic.
 
@@ -215,10 +218,12 @@ class OpenAIEmbeddings(EmbeddingGenerator):
                 last_error = e
                 if attempt < self.max_retries - 1:
                     # Exponential backoff
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(2**attempt)
                 continue
 
-        raise RuntimeError(f"Failed to generate embeddings after {self.max_retries} attempts: {last_error}")
+        raise RuntimeError(
+            f"Failed to generate embeddings after {self.max_retries} attempts: {last_error}"
+        )
 
     @classmethod
     def from_config(cls, config: EmbeddingConfig) -> OpenAIEmbeddings:

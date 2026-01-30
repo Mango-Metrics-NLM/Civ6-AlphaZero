@@ -245,10 +245,7 @@ class TestWandbWithRealComponents:
         assert "train/value_loss" in data
 
 
-@pytest.mark.skipif(
-    not os.getenv("WANDB_API_KEY"),
-    reason="WANDB_API_KEY not set for live test"
-)
+@pytest.mark.skipif(not os.getenv("WANDB_API_KEY"), reason="WANDB_API_KEY not set for live test")
 class TestWandbLiveIntegration:
     """Live W&B integration tests (require API key)."""
 
@@ -295,7 +292,7 @@ class TestWandbLiveIntegration:
         logger = WandbLogger(config)
 
         try:
-            run = logger.init(
+            _run = logger.init(
                 config_dict={
                     "board_size": 8,
                     "learning_rate": 0.001,
@@ -306,7 +303,7 @@ class TestWandbLiveIntegration:
 
             # Simulate training
             for step in range(10):
-                loss = 0.5 * (0.9 ** step)
+                loss = 0.5 * (0.9**step)
                 logger.log_training_step(
                     step=step,
                     loss=loss,
@@ -324,10 +321,12 @@ class TestWandbLiveIntegration:
             )
 
             # Update summary
-            logger.summary({
-                "final_win_rate": 0.55,
-                "total_games": 10,
-            })
+            logger.summary(
+                {
+                    "final_win_rate": 0.55,
+                    "total_games": 10,
+                }
+            )
 
         finally:
             logger.finish()
@@ -344,7 +343,7 @@ class TestWandbConfigurationIntegration:
         config_file = project_root / "configs" / "civ6_config.yaml"
 
         if config_file.exists():
-            civ6_config = load_config(config_file)
+            _civ6_config = load_config(config_file)
             # W&B config should be loadable alongside main config
             wandb_config = WandbConfig.from_env()
             assert isinstance(wandb_config, WandbConfig)

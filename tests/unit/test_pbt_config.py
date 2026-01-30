@@ -117,9 +117,7 @@ class TestHyperparameterRange:
         """Test categorical sampling produces valid values."""
         rng = np.random.default_rng(42)
         categories = ["a", "b", "c"]
-        param = HyperparameterRange(
-            "cat", 0, 2, "categorical", categories=categories
-        )
+        param = HyperparameterRange("cat", 0, 2, "categorical", categories=categories)
 
         for _ in range(100):
             value = param.sample(rng)
@@ -161,9 +159,7 @@ class TestHyperparameterRange:
         """Test categorical mutation produces valid categories."""
         rng = np.random.default_rng(42)
         categories = ["a", "b", "c"]
-        param = HyperparameterRange(
-            "cat", 0, 2, "categorical", categories=categories
-        )
+        param = HyperparameterRange("cat", 0, 2, "categorical", categories=categories)
 
         original = "a"
         for _ in range(100):
@@ -229,9 +225,7 @@ class TestHyperparameterSpace:
         space = HyperparameterSpace()
 
         original = space.sample_all(rng)
-        mutated = space.mutate_all(
-            original, rng, mutation_strength=0.2, mutation_probability=1.0
-        )
+        mutated = space.mutate_all(original, rng, mutation_strength=0.2, mutation_probability=1.0)
 
         # All parameters should be present
         assert set(original.keys()) == set(mutated.keys())

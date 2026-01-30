@@ -653,7 +653,9 @@ class UnitData:
             default=100,
             min_val=1,
         )
-        damage = _validate_int(data.get("damage"), "damage", context="UnitData", default=0, min_val=0)
+        damage = _validate_int(
+            data.get("damage"), "damage", context="UnitData", default=0, min_val=0
+        )
         moves_remaining = _validate_float(
             data.get("movement", data.get("moves_remaining")),
             "moves_remaining",
@@ -900,8 +902,12 @@ class LegalAction:
             _validate_type(raw_targets, list, "targets", context="LegalAction")
             for i, t in enumerate(raw_targets):
                 if isinstance(t, dict):
-                    x = _validate_int(t.get("x"), f"targets[{i}].x", context="LegalAction", default=0)
-                    y = _validate_int(t.get("y"), f"targets[{i}].y", context="LegalAction", default=0)
+                    x = _validate_int(
+                        t.get("x"), f"targets[{i}].x", context="LegalAction", default=0
+                    )
+                    y = _validate_int(
+                        t.get("y"), f"targets[{i}].y", context="LegalAction", default=0
+                    )
                     targets.append((x, y))
                 elif isinstance(t, (list, tuple)) and len(t) >= 2:
                     x = _validate_int(t[0], f"targets[{i}][0]", context="LegalAction", default=0)
@@ -981,7 +987,9 @@ class MapData:
         _validate_type(data, dict, "data", context="MapData.from_dict")
 
         width = _validate_int(data.get("width"), "width", context="MapData", default=0, min_val=0)
-        height = _validate_int(data.get("height"), "height", context="MapData", default=0, min_val=0)
+        height = _validate_int(
+            data.get("height"), "height", context="MapData", default=0, min_val=0
+        )
 
         raw_tiles = _validate_list(data.get("tiles"), "tiles", context="MapData")
         tiles = []
@@ -1139,12 +1147,14 @@ class StateMessage:
 
     def to_json(self) -> str:
         """Serialize to JSON string."""
-        return json.dumps({
-            "msg_id": self.msg_id,
-            "type": MessageType.STATE.value,
-            "timestamp": self.timestamp,
-            "state": self._state_to_dict(),
-        })
+        return json.dumps(
+            {
+                "msg_id": self.msg_id,
+                "type": MessageType.STATE.value,
+                "timestamp": self.timestamp,
+                "state": self._state_to_dict(),
+            }
+        )
 
     def _state_to_dict(self) -> dict[str, Any]:
         """Convert state to dictionary (simplified for serialization)."""
@@ -1202,9 +1212,7 @@ class StateMessage:
 
         # Handle both wrapped and unwrapped formats
         if "state" in data:
-            state_data = _validate_type(
-                data["state"], dict, "state", context="StateMessage"
-            )
+            state_data = _validate_type(data["state"], dict, "state", context="StateMessage")
         else:
             # The entire dict is the state (direct Lua output)
             state_data = data
@@ -1245,12 +1253,14 @@ class CommandMessage:
 
     def to_json(self) -> str:
         """Serialize to JSON string."""
-        return json.dumps({
-            "msg_id": self.msg_id,
-            "type": MessageType.COMMAND.value,
-            "timestamp": self.timestamp,
-            "commands": [cmd.to_dict() for cmd in self.commands],
-        })
+        return json.dumps(
+            {
+                "msg_id": self.msg_id,
+                "type": MessageType.COMMAND.value,
+                "timestamp": self.timestamp,
+                "commands": [cmd.to_dict() for cmd in self.commands],
+            }
+        )
 
     @classmethod
     def from_json(cls, json_str: str) -> CommandMessage:
@@ -1426,14 +1436,16 @@ class ErrorMessage:
 
     def to_json(self) -> str:
         """Serialize to JSON string."""
-        return json.dumps({
-            "type": MessageType.ERROR.value,
-            "msg_id": self.msg_id,
-            "timestamp": self.timestamp,
-            "error_code": self.error_code,
-            "message": self.message,
-            "details": self.details,
-        })
+        return json.dumps(
+            {
+                "type": MessageType.ERROR.value,
+                "msg_id": self.msg_id,
+                "timestamp": self.timestamp,
+                "error_code": self.error_code,
+                "message": self.message,
+                "details": self.details,
+            }
+        )
 
     @classmethod
     def from_json(cls, json_str: str) -> ErrorMessage:
@@ -1609,11 +1621,13 @@ def create_unit_move_command(
     """
     return CommandMessage(
         msg_id=msg_id,
-        commands=[LuaCommand(
-            action_type=ActionType.UNIT_MOVE,
-            unit_id=unit_id,
-            target=Position(x=target_x, y=target_y),
-        )],
+        commands=[
+            LuaCommand(
+                action_type=ActionType.UNIT_MOVE,
+                unit_id=unit_id,
+                target=Position(x=target_x, y=target_y),
+            )
+        ],
     )
 
 
@@ -1636,10 +1650,12 @@ def create_city_produce_command(
     """
     return CommandMessage(
         msg_id=msg_id,
-        commands=[LuaCommand(
-            action_type=ActionType.CITY_PRODUCE,
-            city_id=city_id,
-            item_id=item_id,
-            item_type=item_type,
-        )],
+        commands=[
+            LuaCommand(
+                action_type=ActionType.CITY_PRODUCE,
+                city_id=city_id,
+                item_id=item_id,
+                item_type=item_type,
+            )
+        ],
     )

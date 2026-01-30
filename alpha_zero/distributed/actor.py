@@ -293,8 +293,7 @@ class SelfPlayActor:
             # Check for max games limit
             if self.config.max_games > 0 and self.games_played >= self.config.max_games:
                 logger.info(
-                    f"Actor {self.config.actor_id}: Reached max games "
-                    f"({self.config.max_games})",
+                    f"Actor {self.config.actor_id}: Reached max games ({self.config.max_games})",
                 )
                 break
 
@@ -335,6 +334,7 @@ class SelfPlayActor:
             except Exception as e:
                 logger.error(f"Actor {self.config.actor_id}: Error in game: {e}")
                 import traceback
+
                 traceback.print_exc()
                 time.sleep(1.0)  # Brief pause before retry
 
@@ -359,16 +359,13 @@ class SelfPlayActor:
         """
         elapsed = time.time() - self.start_time if self.start_time > 0 else 0
         return {
-            'actor_id': self.config.actor_id,
-            'games_played': self.games_played,
-            'total_examples': self.total_examples,
-            'elapsed_time': elapsed,
-            'games_per_second': self.games_played / elapsed if elapsed > 0 else 0,
-            'model_version': (
-                self.weight_sync.get_current_version()
-                if self.weight_sync else 0
-            ),
-            'is_running': self._running,
+            "actor_id": self.config.actor_id,
+            "games_played": self.games_played,
+            "total_examples": self.total_examples,
+            "elapsed_time": elapsed,
+            "games_per_second": self.games_played / elapsed if elapsed > 0 else 0,
+            "model_version": (self.weight_sync.get_current_version() if self.weight_sync else 0),
+            "is_running": self._running,
         }
 
 
@@ -411,6 +408,7 @@ def actor_process(
     except Exception as e:
         logger.error(f"Actor {actor_id} crashed: {e}")
         import traceback
+
         traceback.print_exc()
     finally:
         logger.info(f"Actor {actor_id}: Process exiting")
@@ -455,21 +453,21 @@ class ActorPool:
 
         # Create config dict (excluding actor_id which we set per-actor)
         config_dict = {
-            'board_size': self.base_config.board_size,
-            'max_turns': self.base_config.max_turns,
-            'num_res_blocks': self.base_config.num_res_blocks,
-            'num_filters': self.base_config.num_filters,
-            'num_simulations': self.base_config.num_simulations,
-            'c_puct': self.base_config.c_puct,
-            'dirichlet_alpha': self.base_config.dirichlet_alpha,
-            'dirichlet_epsilon': self.base_config.dirichlet_epsilon,
-            'temperature': self.base_config.temperature,
-            'temperature_threshold': self.base_config.temperature_threshold,
-            'games_per_update': self.base_config.games_per_update,
-            'max_games': self.base_config.max_games,
-            'device': self.base_config.device,
-            'weight_update_interval': self.base_config.weight_update_interval,
-            'log_interval': self.base_config.log_interval,
+            "board_size": self.base_config.board_size,
+            "max_turns": self.base_config.max_turns,
+            "num_res_blocks": self.base_config.num_res_blocks,
+            "num_filters": self.base_config.num_filters,
+            "num_simulations": self.base_config.num_simulations,
+            "c_puct": self.base_config.c_puct,
+            "dirichlet_alpha": self.base_config.dirichlet_alpha,
+            "dirichlet_epsilon": self.base_config.dirichlet_epsilon,
+            "temperature": self.base_config.temperature,
+            "temperature_threshold": self.base_config.temperature_threshold,
+            "games_per_update": self.base_config.games_per_update,
+            "max_games": self.base_config.max_games,
+            "device": self.base_config.device,
+            "weight_update_interval": self.base_config.weight_update_interval,
+            "log_interval": self.base_config.log_interval,
         }
 
         # Spawn actor processes
@@ -539,21 +537,21 @@ class ActorPool:
 
         restarted = 0
         config_dict = {
-            'board_size': self.base_config.board_size,
-            'max_turns': self.base_config.max_turns,
-            'num_res_blocks': self.base_config.num_res_blocks,
-            'num_filters': self.base_config.num_filters,
-            'num_simulations': self.base_config.num_simulations,
-            'c_puct': self.base_config.c_puct,
-            'dirichlet_alpha': self.base_config.dirichlet_alpha,
-            'dirichlet_epsilon': self.base_config.dirichlet_epsilon,
-            'temperature': self.base_config.temperature,
-            'temperature_threshold': self.base_config.temperature_threshold,
-            'games_per_update': self.base_config.games_per_update,
-            'max_games': self.base_config.max_games,
-            'device': self.base_config.device,
-            'weight_update_interval': self.base_config.weight_update_interval,
-            'log_interval': self.base_config.log_interval,
+            "board_size": self.base_config.board_size,
+            "max_turns": self.base_config.max_turns,
+            "num_res_blocks": self.base_config.num_res_blocks,
+            "num_filters": self.base_config.num_filters,
+            "num_simulations": self.base_config.num_simulations,
+            "c_puct": self.base_config.c_puct,
+            "dirichlet_alpha": self.base_config.dirichlet_alpha,
+            "dirichlet_epsilon": self.base_config.dirichlet_epsilon,
+            "temperature": self.base_config.temperature,
+            "temperature_threshold": self.base_config.temperature_threshold,
+            "games_per_update": self.base_config.games_per_update,
+            "max_games": self.base_config.max_games,
+            "device": self.base_config.device,
+            "weight_update_interval": self.base_config.weight_update_interval,
+            "log_interval": self.base_config.log_interval,
         }
 
         for i, process in enumerate(self.processes):

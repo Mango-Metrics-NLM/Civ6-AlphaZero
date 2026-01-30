@@ -10,6 +10,7 @@ Example:
     >>> network = HierarchicalNetwork(config)
     >>> policy, value = network(state_dict, goal_embeddings)
 """
+
 from __future__ import annotations
 
 import logging
@@ -20,13 +21,16 @@ try:
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
+
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
+
     # Create dummy classes for type hints
     class nn:
         class Module:
             pass
+
 
 from alpha_zero.hierarchical.config import HierarchyLevel
 
@@ -98,6 +102,7 @@ class HierarchicalNetworkConfig:
 
 
 if TORCH_AVAILABLE:
+
     class ResidualBlock(nn.Module):
         """Residual block with batch normalization."""
 
@@ -193,9 +198,7 @@ if TORCH_AVAILABLE:
                 goal_seq = goal_proj.unsqueeze(1)  # (B, 1, D)
 
                 # Cross-attention: state attends to goal
-                attended, _ = self.goal_attention(
-                    state_seq, goal_seq, goal_seq
-                )
+                attended, _ = self.goal_attention(state_seq, goal_seq, goal_seq)
                 attended = attended.squeeze(1)  # (B, D)
 
                 # Concatenate original and attended features
@@ -238,10 +241,12 @@ if TORCH_AVAILABLE:
             )
 
             # Residual tower
-            self.res_blocks = nn.ModuleList([
-                ResidualBlock(config.embed_dim, config.dropout)
-                for _ in range(config.num_res_blocks)
-            ])
+            self.res_blocks = nn.ModuleList(
+                [
+                    ResidualBlock(config.embed_dim, config.dropout)
+                    for _ in range(config.num_res_blocks)
+                ]
+            )
 
             # Spatial to vector
             spatial_out = config.board_size[0] * config.board_size[1] * config.embed_dim
@@ -370,9 +375,7 @@ if TORCH_AVAILABLE:
             spatial_features = self.spatial_fc(x.flatten(1))
             vector_features = self.vector_encoder(vector)
 
-            return self.state_combiner(
-                torch.cat([spatial_features, vector_features], dim=-1)
-            )
+            return self.state_combiner(torch.cat([spatial_features, vector_features], dim=-1))
 
     class HierarchicalNetwork(nn.Module):
         """Multi-level hierarchical neural network.
@@ -410,7 +413,8 @@ if TORCH_AVAILABLE:
                 HierarchyLevel.TACTICAL,
             )
             self.operational_network = LevelNetwork(
-                operational_config or HierarchicalNetworkConfig.for_level(HierarchyLevel.OPERATIONAL),
+                operational_config
+                or HierarchicalNetworkConfig.for_level(HierarchyLevel.OPERATIONAL),
                 HierarchyLevel.OPERATIONAL,
             )
 
@@ -500,15 +504,17 @@ if TORCH_AVAILABLE:
             higher_embed = None
 
             # Process top-down: strategic -> tactical -> operational
-            for level in [HierarchyLevel.STRATEGIC, HierarchyLevel.TACTICAL, HierarchyLevel.OPERATIONAL]:
+            for level in [
+                HierarchyLevel.STRATEGIC,
+                HierarchyLevel.TACTICAL,
+                HierarchyLevel.OPERATIONAL,
+            ]:
                 goal_emb = goal_embeddings.get(level)
                 if goal_emb is None:
                     continue
 
                 mask = action_masks.get(level)
-                policy, value = self.forward(
-                    spatial, vector, goal_emb, level, mask, higher_embed
-                )
+                policy, value = self.forward(spatial, vector, goal_emb, level, mask, higher_embed)
                 results[level] = (policy, value)
 
                 # Get state embedding for next level
@@ -552,14 +558,17 @@ else:
     # Stub classes when torch not available
     class ResidualBlock:
         """Placeholder when torch not available."""
+
         pass
 
     class GoalConditionedHead:
         """Placeholder when torch not available."""
+
         pass
 
     class LevelNetwork:
         """Placeholder when torch not available."""
+
         pass
 
     class HierarchicalNetwork:

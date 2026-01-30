@@ -20,7 +20,6 @@ import pytest
 from alpha_zero.pbt.config import HyperparameterRange, HyperparameterSpace
 from alpha_zero.pbt.mutations import (
     AdaptiveMutation,
-    BaseMutation,
     DifferentialMutation,
     GaussianMutation,
     MutationConfig,
@@ -30,7 +29,6 @@ from alpha_zero.pbt.mutations import (
     UniformMutation,
     create_mutation_operator,
 )
-
 
 # =============================================================================
 # Fixtures
@@ -202,9 +200,7 @@ class TestGaussianMutation:
         # Should have some variation
         assert len(set(results)) > 1
 
-    def test_mutate_log(
-        self, rng: np.random.Generator, log_range: HyperparameterRange
-    ) -> None:
+    def test_mutate_log(self, rng: np.random.Generator, log_range: HyperparameterRange) -> None:
         """Test Gaussian mutation on log scale parameter."""
         mutation = GaussianMutation()
         value = 0.001
@@ -249,8 +245,7 @@ class TestGaussianMutation:
         value = 0.5
 
         low_strength_results = [
-            mutation.mutate(value, linear_range, np.random.default_rng(i), 0.05)
-            for i in range(100)
+            mutation.mutate(value, linear_range, np.random.default_rng(i), 0.05) for i in range(100)
         ]
         high_strength_results = [
             mutation.mutate(value, linear_range, np.random.default_rng(i + 1000), 0.5)
@@ -285,9 +280,7 @@ class TestUniformMutation:
         assert all(linear_range.min_value <= r <= linear_range.max_value for r in results)
         assert len(set(results)) > 1
 
-    def test_mutate_log(
-        self, rng: np.random.Generator, log_range: HyperparameterRange
-    ) -> None:
+    def test_mutate_log(self, rng: np.random.Generator, log_range: HyperparameterRange) -> None:
         """Test uniform mutation on log scale parameter."""
         mutation = UniformMutation()
         value = 0.001
@@ -352,9 +345,7 @@ class TestPolynomialMutation:
 
         assert all(linear_range.min_value <= r <= linear_range.max_value for r in results)
 
-    def test_mutate_log(
-        self, rng: np.random.Generator, log_range: HyperparameterRange
-    ) -> None:
+    def test_mutate_log(self, rng: np.random.Generator, log_range: HyperparameterRange) -> None:
         """Test polynomial mutation on log scale parameter."""
         mutation = PolynomialMutation(eta=20.0)
         value = 0.001
@@ -372,8 +363,7 @@ class TestPolynomialMutation:
         value = 0.5
 
         low_eta_results = [
-            low_eta.mutate(value, linear_range, np.random.default_rng(i), 0.3)
-            for i in range(100)
+            low_eta.mutate(value, linear_range, np.random.default_rng(i), 0.3) for i in range(100)
         ]
         high_eta_results = [
             high_eta.mutate(value, linear_range, np.random.default_rng(i + 1000), 0.3)

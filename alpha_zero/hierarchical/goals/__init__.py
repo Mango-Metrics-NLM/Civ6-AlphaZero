@@ -11,6 +11,7 @@ Example:
     >>> goal = Goal.strategic(StrategicGoalType.DOMINATION_VICTORY)
     >>> hierarchy.add_goal(goal)
 """
+
 from __future__ import annotations
 
 from alpha_zero.hierarchical.goals.goal_evaluator import GoalEvaluator

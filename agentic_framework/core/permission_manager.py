@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import fnmatch
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional, Callable
+from typing import Any
 
 from ..config import AgenticConfig
 from ..utils.logging_config import get_logger
@@ -50,7 +51,7 @@ class ActionPermission:
     level: AutonomyLevel
     category: ActionCategory = ActionCategory.GENERAL
     conditions: list[str] = field(default_factory=list)
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 @dataclass
@@ -61,9 +62,9 @@ class PermissionCheckResult:
     allowed: bool
     level: AutonomyLevel
     requires_confirmation: bool = False
-    reason: Optional[str] = None
-    matching_rule: Optional[str] = None
-    scope_check: Optional[bool] = None
+    reason: str | None = None
+    matching_rule: str | None = None
+    scope_check: bool | None = None
 
     def __bool__(self) -> bool:
         """Return True if action is allowed."""
@@ -122,7 +123,9 @@ class ResourceUsage:
     def record_exploration_time(self, seconds: float) -> None:
         """Record exploration time."""
         self.exploration_seconds += seconds
-        logger.debug(f"Exploration time: {self.exploration_seconds:.1f}/{self.exploration_timeout_seconds}")
+        logger.debug(
+            f"Exploration time: {self.exploration_seconds:.1f}/{self.exploration_timeout_seconds}"
+        )
 
     def reset(self) -> None:
         """Reset usage counters."""
@@ -138,7 +141,7 @@ class ScopeChecker:
         self,
         in_scope_patterns: list[str],
         out_of_scope_patterns: list[str],
-        base_path: Optional[Path] = None,
+        base_path: Path | None = None,
     ) -> None:
         """Initialize the scope checker.
 
@@ -226,8 +229,8 @@ class PermissionManager:
 
     def __init__(
         self,
-        config: Optional[AgenticConfig] = None,
-        base_path: Optional[Path] = None,
+        config: AgenticConfig | None = None,
+        base_path: Path | None = None,
     ) -> None:
         """Initialize the permission manager.
 
@@ -237,10 +240,10 @@ class PermissionManager:
         """
         self.config = config
         self.base_path = base_path or Path.cwd()
-        self._scope_checker: Optional[ScopeChecker] = None
+        self._scope_checker: ScopeChecker | None = None
         self._resource_usage = ResourceUsage()
         self._action_rules: list[ActionPermission] = []
-        self._confirmation_callback: Optional[Callable[[str], bool]] = None
+        self._confirmation_callback: Callable[[str], bool] | None = None
 
         if config:
             self.load_from_config(config)
@@ -342,9 +345,7 @@ class PermissionManager:
         """Get current resource usage."""
         return self._resource_usage
 
-    def set_confirmation_callback(
-        self, callback: Callable[[str], bool]
-    ) -> None:
+    def set_confirmation_callback(self, callback: Callable[[str], bool]) -> None:
         """Set a callback for confirmation requests.
 
         Args:
@@ -363,7 +364,7 @@ class PermissionManager:
         """
         return self.scope_checker.is_in_scope(path)
 
-    def check_permission(self, action: str, path: Optional[Path] = None) -> PermissionCheckResult:
+    def check_permission(self, action: str, path: Path | None = None) -> PermissionCheckResult:
         """Check permission for an action.
 
         Args:
@@ -457,7 +458,7 @@ class PermissionManager:
 
         return False
 
-    def request_confirmation(self, action: str, details: Optional[str] = None) -> bool:
+    def request_confirmation(self, action: str, details: str | None = None) -> bool:
         """Request confirmation for an action.
 
         Args:
@@ -480,7 +481,7 @@ class PermissionManager:
     def can_proceed(
         self,
         action: str,
-        path: Optional[Path] = None,
+        path: Path | None = None,
         auto_confirm: bool = False,
     ) -> bool:
         """Check if an action can proceed.
@@ -532,9 +533,15 @@ class PermissionManager:
             Dictionary with permission summary.
         """
         return {
-            "autonomous_actions": len([r for r in self._action_rules if r.level == AutonomyLevel.AUTONOMOUS]),
-            "confirm_first_actions": len([r for r in self._action_rules if r.level == AutonomyLevel.CONFIRM_FIRST]),
-            "prohibited_actions": len([r for r in self._action_rules if r.level == AutonomyLevel.PROHIBITED]),
+            "autonomous_actions": len(
+                [r for r in self._action_rules if r.level == AutonomyLevel.AUTONOMOUS]
+            ),
+            "confirm_first_actions": len(
+                [r for r in self._action_rules if r.level == AutonomyLevel.CONFIRM_FIRST]
+            ),
+            "prohibited_actions": len(
+                [r for r in self._action_rules if r.level == AutonomyLevel.PROHIBITED]
+            ),
             "in_scope_patterns": self.scope_checker.in_scope_patterns,
             "out_of_scope_patterns": self.scope_checker.out_of_scope_patterns,
             "resource_budget": {

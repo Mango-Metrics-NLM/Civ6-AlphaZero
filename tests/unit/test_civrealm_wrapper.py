@@ -34,6 +34,7 @@ try:
         create_civrealm_env,
         make,
     )
+
     IMPORT_ERROR = None
 except Exception as e:
     # If import fails due to CivRealm server issues, skip tests
@@ -55,14 +56,14 @@ except Exception as e:
 
 # Skip all tests if import failed
 pytestmark = pytest.mark.skipif(
-    IMPORT_ERROR is not None,
-    reason=f"CivRealm wrapper import failed: {IMPORT_ERROR}"
+    IMPORT_ERROR is not None, reason=f"CivRealm wrapper import failed: {IMPORT_ERROR}"
 )
 
 
 # ============================================================================
 # CivRealmConfig Tests
 # ============================================================================
+
 
 class TestCivRealmConfig:
     """Tests for CivRealmConfig dataclass."""
@@ -159,6 +160,7 @@ class TestCivRealmConfig:
 # CivRealmEncoder Tests
 # ============================================================================
 
+
 class TestCivRealmEncoder:
     """Tests for CivRealmEncoder class."""
 
@@ -178,8 +180,20 @@ class TestCivRealmEncoder:
             "map": {
                 "terrain": {
                     (0, 0): {"terrain": 5, "food": 2, "production": 1, "trade": 0},
-                    (1, 0): {"terrain": 6, "food": 3, "production": 1, "trade": 1, "has_road": True},
-                    (0, 1): {"terrain": 13, "food": 1, "production": 2, "trade": 0, "has_mine": True},
+                    (1, 0): {
+                        "terrain": 6,
+                        "food": 3,
+                        "production": 1,
+                        "trade": 1,
+                        "has_road": True,
+                    },
+                    (0, 1): {
+                        "terrain": 13,
+                        "food": 1,
+                        "production": 2,
+                        "trade": 0,
+                        "has_mine": True,
+                    },
                 },
                 "visibility": {
                     (0, 0): "visible",
@@ -437,6 +451,7 @@ class TestCivRealmEncoder:
 # CivRealmActionHandler Tests
 # ============================================================================
 
+
 class TestCivRealmActionHandler:
     """Tests for CivRealmActionHandler class."""
 
@@ -557,6 +572,7 @@ class TestCivRealmActionHandler:
 # ============================================================================
 # CivRealmCurriculum Tests
 # ============================================================================
+
 
 class TestCivRealmCurriculum:
     """Tests for CivRealmCurriculum class."""
@@ -686,8 +702,13 @@ class TestCivRealmCurriculum:
         """Test prerequisite checking for task selection."""
         custom_tasks = [
             MiniGameTask(name="task_a", display_name="A", description="A", difficulty=0.1),
-            MiniGameTask(name="task_b", display_name="B", description="B", difficulty=0.5,
-                        prerequisites=["task_a"]),
+            MiniGameTask(
+                name="task_b",
+                display_name="B",
+                description="B",
+                difficulty=0.5,
+                prerequisites=["task_a"],
+            ),
         ]
 
         curriculum = CivRealmCurriculum(custom_tasks=custom_tasks)
@@ -700,6 +721,7 @@ class TestCivRealmCurriculum:
 # ============================================================================
 # MockCivRealmEnv Tests
 # ============================================================================
+
 
 class TestMockCivRealmEnv:
     """Tests for MockCivRealmEnv class."""
@@ -765,6 +787,7 @@ class TestMockCivRealmEnv:
 # ============================================================================
 # CivRealmWrapper Tests
 # ============================================================================
+
 
 class TestCivRealmWrapper:
     """Tests for CivRealmWrapper class."""
@@ -921,6 +944,7 @@ class TestCivRealmWrapper:
 # Factory Function Tests
 # ============================================================================
 
+
 class TestFactoryFunctions:
     """Tests for factory functions."""
 
@@ -966,6 +990,7 @@ class TestFactoryFunctions:
 # Enum Tests
 # ============================================================================
 
+
 class TestEnums:
     """Tests for enum definitions."""
 
@@ -992,6 +1017,7 @@ class TestEnums:
 # ============================================================================
 # Integration Tests
 # ============================================================================
+
 
 class TestIntegration:
     """Integration tests for full environment interaction."""
@@ -1067,6 +1093,7 @@ class TestIntegration:
 # Edge Case Tests
 # ============================================================================
 
+
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
@@ -1138,7 +1165,7 @@ class TestEdgeCases:
             "map": {
                 "terrain": {
                     "(0, 0)": {"terrain": 5},  # String key
-                    (1, 1): {"terrain": 6},     # Tuple key
+                    (1, 1): {"terrain": 6},  # Tuple key
                 },
                 "visibility": {},
             },

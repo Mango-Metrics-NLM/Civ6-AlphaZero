@@ -24,6 +24,7 @@ class TestWandbAvailability:
 
         if WANDB_AVAILABLE:
             from run_enhanced_training import WandbConfig, WandbLogger
+
             assert WandbLogger is not None
             assert WandbConfig is not None
 
@@ -97,7 +98,12 @@ class TestWandbLoggerIntegration:
         """Test W&B logger is imported as optional."""
         # This should not raise an error even if wandb is not installed
         try:
-            from run_enhanced_training import WANDB_AVAILABLE, WandbConfig, WandbLogger
+            from run_enhanced_training import (  # noqa: F401
+                WANDB_AVAILABLE,
+                WandbConfig,
+                WandbLogger,
+            )
+
             # Should either have classes or None
             if WANDB_AVAILABLE:
                 assert WandbLogger is not None
@@ -149,7 +155,6 @@ class TestMainFunctionWandbArgs:
     def test_main_parses_wandb_flag(self):
         """Test main function parses --wandb flag."""
         import argparse
-
 
         # Create parser similar to main()
         parser = argparse.ArgumentParser()

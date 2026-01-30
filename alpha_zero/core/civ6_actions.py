@@ -108,7 +108,9 @@ class HierarchicalAction:
 
     @classmethod
     def from_flat_index(
-        cls, flat_index: int, action_space: ActionSpace,
+        cls,
+        flat_index: int,
+        action_space: ActionSpace,
     ) -> HierarchicalAction:
         """Create hierarchical action from flat index."""
         return action_space.decode(flat_index)
@@ -197,8 +199,7 @@ class ActionSpace:
         units = game_state.get("units", [])
         current_player = game_state.get("current_player", 0)
         has_movable_units = any(
-            u.get("player") == current_player and u.get("moves_remaining", 0) > 0
-            for u in units
+            u.get("player") == current_player and u.get("moves_remaining", 0) > 0 for u in units
         )
         if has_movable_units:
             mask[ActionCategory.UNIT_ACTION] = 1.0
@@ -307,7 +308,9 @@ class ActionSpace:
         return mask
 
     def _get_unit_valid_actions(
-        self, unit: dict, game_state: dict,
+        self,
+        unit: dict,
+        game_state: dict,
     ) -> dict[int, list[tuple[int, int]]]:
         """Get valid actions and targets for a unit.
 
@@ -342,9 +345,7 @@ class ActionSpace:
         # Attack targets (adjacent enemy units)
         attack_targets = []
         enemy_units = [
-            u
-            for u in game_state.get("units", [])
-            if u.get("player") != unit.get("player")
+            u for u in game_state.get("units", []) if u.get("player") != unit.get("player")
         ]
         for enemy in enemy_units:
             enemy_pos = enemy.get("position", (-100, -100))
@@ -404,9 +405,7 @@ class ActionSpace:
             return base_offset + action.selector
 
         if action.category == ActionCategory.DIPLOMACY:
-            return (
-                base_offset + action.selector * cfg.num_diplomacy_actions + action.action_type
-            )
+            return base_offset + action.selector * cfg.num_diplomacy_actions + action.action_type
 
         # Default for other categories
         return base_offset + action.selector
@@ -566,9 +565,7 @@ class MicroCivActionSpace:
 
         # Get enemy positions for attack checking
         enemy_positions = {
-            tuple(u.get("position", (-1, -1)))
-            for u in units
-            if u.get("player") != current_player
+            tuple(u.get("position", (-1, -1))) for u in units if u.get("player") != current_player
         }
 
         # Unit movement and attacks - use own_unit_idx for current player's units
@@ -714,9 +711,7 @@ class MicroCivActionSpace:
             city_idx = int(action.get("city_idx", 0))
             unit_names = ["warrior", "settler", "archer"]
             unit_type_name = action.get("unit_type", "warrior")
-            unit_type = (
-                unit_names.index(unit_type_name) if unit_type_name in unit_names else 0
-            )
+            unit_type = unit_names.index(unit_type_name) if unit_type_name in unit_names else 0
             return self.produce_offset + city_idx * self.num_unit_types + unit_type
 
         return self.end_turn_offset

@@ -102,11 +102,11 @@ class TestExtractFeaturesFromObs:
         # Set some values in vector
         vector[0] = 0.25  # Turn 50 (normalized by 200)
         vector[2] = 0.15  # 3 own units (normalized by 20)
-        vector[3] = 0.1   # 2 enemy units (normalized by 20)
-        vector[4] = 0.4   # 2 own cities (normalized by 5)
-        vector[5] = 0.2   # 1 enemy city (normalized by 5)
-        vector[6] = 0.8   # 80% own health
-        vector[7] = 0.6   # 60% enemy health
+        vector[3] = 0.1  # 2 enemy units (normalized by 20)
+        vector[4] = 0.4  # 2 own cities (normalized by 5)
+        vector[5] = 0.2  # 1 enemy city (normalized by 5)
+        vector[6] = 0.8  # 80% own health
+        vector[7] = 0.6  # 60% enemy health
 
         # Set some unit positions in spatial
         spatial[3, 2, 2] = 1.0  # Own unit

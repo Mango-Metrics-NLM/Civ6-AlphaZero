@@ -1,11 +1,10 @@
 """Unit tests for RAG pipeline."""
 
-import numpy as np
 import pytest
 import pytest_asyncio
 
-from alpha_zero.rag.pipeline import RAGPipeline, IngestionResult, QueryResult
-from alpha_zero.rag.config.settings import RAGConfig, VectorStoreType, EmbeddingModelType
+from alpha_zero.rag.config.settings import EmbeddingModelType, RAGConfig, VectorStoreType
+from alpha_zero.rag.pipeline import IngestionResult, QueryResult, RAGPipeline
 
 
 class TestRAGPipeline:
@@ -63,12 +62,10 @@ class TestRAGPipeline:
         """Test querying the pipeline."""
         # First ingest some documents
         await pipeline.ingest_text(
-            "Cats are wonderful pets. They are independent and playful.",
-            source="cats.txt"
+            "Cats are wonderful pets. They are independent and playful.", source="cats.txt"
         )
         await pipeline.ingest_text(
-            "Dogs are loyal companions. They love to play fetch.",
-            source="dogs.txt"
+            "Dogs are loyal companions. They love to play fetch.", source="dogs.txt"
         )
 
         # Query
@@ -92,20 +89,14 @@ class TestRAGPipeline:
     async def test_query_with_filter(self, pipeline):
         """Test querying with metadata filter."""
         await pipeline.ingest_text(
-            "Document A content",
-            source="doc_a.txt",
-            metadata={"category": "A"}
+            "Document A content", source="doc_a.txt", metadata={"category": "A"}
         )
         await pipeline.ingest_text(
-            "Document B content",
-            source="doc_b.txt",
-            metadata={"category": "B"}
+            "Document B content", source="doc_b.txt", metadata={"category": "B"}
         )
 
         result = await pipeline.query(
-            "document content",
-            top_k=5,
-            filter_metadata={"category": "A"}
+            "document content", top_k=5, filter_metadata={"category": "A"}
         )
 
         # Should only return documents with category A
@@ -233,16 +224,13 @@ class TestRAGPipeline:
     @pytest.mark.asyncio
     async def test_search_simple(self, pipeline):
         """Test simple search interface."""
-        await pipeline.ingest_text(
-            "Information about machine learning and AI",
-            source="ml.txt"
-        )
+        await pipeline.ingest_text("Information about machine learning and AI", source="ml.txt")
 
         results = await pipeline.search("machine learning", top_k=5)
 
         assert len(results) >= 1
-        assert all(hasattr(r, 'score') for r in results)
-        assert all(hasattr(r, 'document') for r in results)
+        assert all(hasattr(r, "score") for r in results)
+        assert all(hasattr(r, "document") for r in results)
 
 
 class TestIngestionResult:

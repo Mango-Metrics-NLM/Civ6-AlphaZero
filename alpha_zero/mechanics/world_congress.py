@@ -400,8 +400,7 @@ class WorldCongressManager:
 
         # Check proposal limit
         proposals_by_player = sum(
-            1 for ar in self._active_resolutions.values()
-            if ar.resolution.proposer_id == player_id
+            1 for ar in self._active_resolutions.values() if ar.resolution.proposer_id == player_id
         )
         if proposals_by_player >= self.config.max_proposals_per_player:
             logger.warning(f"Player {player_id} at proposal limit")
@@ -530,11 +529,13 @@ class WorldCongressManager:
                 emergency.turns_remaining -= 1
                 if emergency.turns_remaining <= 0:
                     completed_emergencies.append(emergency_id)
-                    events.append({
-                        "type": "emergency_ended",
-                        "emergency_id": emergency_id,
-                        "emergency_type": emergency.emergency_type.name,
-                    })
+                    events.append(
+                        {
+                            "type": "emergency_ended",
+                            "emergency_id": emergency_id,
+                            "emergency_type": emergency.emergency_type.name,
+                        }
+                    )
 
         for emergency_id in completed_emergencies:
             self._emergencies[emergency_id].is_active = False
@@ -685,8 +686,11 @@ class WorldCongressManager:
             "active_effects": len(self._active_effects),
             "active_emergencies": len([e for e in self._emergencies.values() if e.is_active]),
             "turns_until_next_session": max(
-                0, self.config.session_interval_turns - (self._turn - self._session_turn),
-            ) if self._phase == CongressPhase.INACTIVE else 0,
+                0,
+                self.config.session_interval_turns - (self._turn - self._session_turn),
+            )
+            if self._phase == CongressPhase.INACTIVE
+            else 0,
         }
 
     def encode_for_state(self, player_id: int) -> dict[str, Any]:

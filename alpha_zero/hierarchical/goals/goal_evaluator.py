@@ -10,6 +10,7 @@ Example:
     >>> progress = evaluator.evaluate_progress(goal, game_state)
     >>> reward = evaluator.compute_goal_reward(goal, progress)
 """
+
 from __future__ import annotations
 
 import logging
@@ -127,9 +128,7 @@ class GoalEvaluator:
 
         # Compute reward delta
         prev = previous_progress if previous_progress is not None else goal.progress
-        reward_delta = self._compute_reward_delta(
-            goal, progress, prev, is_complete, is_failed
-        )
+        reward_delta = self._compute_reward_delta(goal, progress, prev, is_complete, is_failed)
 
         return EvaluationResult(
             goal_id=goal.id,
@@ -379,9 +378,7 @@ class GoalEvaluator:
             return 1.0  # No specific city to defend
 
         # City still exists and hasn't been captured
-        player_cities = state.get("player_cities", {}).get(
-            state.get("current_player", 0), []
-        )
+        player_cities = state.get("player_cities", {}).get(state.get("current_player", 0), [])
         if target.target_id in player_cities:
             return 1.0
 
@@ -610,10 +607,7 @@ class GoalEvaluator:
         Returns:
             List of evaluation results.
         """
-        return [
-            self.evaluate_progress(goal, game_state)
-            for goal in goals
-        ]
+        return [self.evaluate_progress(goal, game_state) for goal in goals]
 
     def compute_total_goal_reward(
         self,

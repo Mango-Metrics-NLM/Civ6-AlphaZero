@@ -25,10 +25,7 @@ class TestStateConverter:
     @pytest.fixture
     def sample_game_state(self):
         """Create a sample GameStateData for testing."""
-        tiles = [
-            TileData(x=x, y=y, terrain="TERRAIN_PLAINS")
-            for x in range(44) for y in range(26)
-        ]
+        tiles = [TileData(x=x, y=y, terrain="TERRAIN_PLAINS") for x in range(44) for y in range(26)]
         # Add some variety
         tiles[0] = TileData(x=0, y=0, terrain="TERRAIN_GRASS", features=["FEATURE_FOREST"])
         tiles[1] = TileData(x=1, y=0, terrain="TERRAIN_COAST")
@@ -194,7 +191,8 @@ class TestStateConverter:
                 "height": 26,
                 "tiles": [
                     {"x": x, "y": y, "terrain": "TERRAIN_PLAINS"}
-                    for x in range(44) for y in range(26)
+                    for x in range(44)
+                    for y in range(26)
                 ],
             },
             "units": [],
@@ -257,8 +255,7 @@ class TestStateConverterEdgeCases:
         converter = StateConverter(board_size=16)
 
         tiles = [
-            TileData(x=x, y=y, terrain="TERRAIN_PLAINS")
-            for x in range(100) for y in range(100)
+            TileData(x=x, y=y, terrain="TERRAIN_PLAINS") for x in range(100) for y in range(100)
         ]
 
         state = GameStateData(

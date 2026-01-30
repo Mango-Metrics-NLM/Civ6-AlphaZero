@@ -1,6 +1,5 @@
 """Core AlphaZero components: network, MCTS, action space, and losses."""
 
-
 from alpha_zero.core.civ6_actions import ActionSpace, HierarchicalAction
 from alpha_zero.core.civ6_mcts import Civ6MCTS
 from alpha_zero.core.civ6_network import (
@@ -42,14 +41,6 @@ from alpha_zero.core.losses import (
     # Utility functions
     scalar_to_categorical,
 )
-from alpha_zero.core.transformer_network import (
-    AttentionType,
-    Civ6TransformerNetwork,
-    NormType,
-    TransformerConfig,
-    compute_transformer_loss,
-    create_transformer_network,
-)
 from alpha_zero.core.network_heads import (
     ActivationType,
     FeatureCombiner,
@@ -58,6 +49,14 @@ from alpha_zero.core.network_heads import (
     MLPHeadConfig,
     SpatialPreprocessor,
     SpatialPreprocessorConfig,
+)
+from alpha_zero.core.transformer_network import (
+    AttentionType,
+    Civ6TransformerNetwork,
+    NormType,
+    TransformerConfig,
+    compute_transformer_loss,
+    create_transformer_network,
 )
 
 __all__ = [

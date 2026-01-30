@@ -273,7 +273,9 @@ class RAGAgentWorkflow:
             return WorkflowResult(
                 context=context,
                 response=context.context_text,
-                sources=[r.document for r in context.retrieved_documents] if include_sources else [],
+                sources=[r.document for r in context.retrieved_documents]
+                if include_sources
+                else [],
                 total_time_ms=total_time,
                 success=True,
             )

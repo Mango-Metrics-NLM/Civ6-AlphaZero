@@ -89,9 +89,7 @@ class TestEnvironmentTuningConfig:
 
     def test_validate_invalid_production_multiplier(self):
         """Test validation catches invalid production multiplier."""
-        config = EnvironmentTuningConfig(
-            production=ProductionConfig(multiplier=-1.0)
-        )
+        config = EnvironmentTuningConfig(production=ProductionConfig(multiplier=-1.0))
         errors = config.validate()
         assert any("production" in e.lower() or "multiplier" in e.lower() for e in errors)
 
@@ -224,6 +222,7 @@ class TestTunedEnvironmentWrapper:
     def base_env(self):
         """Create base MicroCiv environment."""
         from alpha_zero.envs.microciv import MicroCivEnv
+
         return MicroCivEnv(board_size=8, max_turns=100)
 
     def test_wrapper_creation(self, base_env):
@@ -344,9 +343,7 @@ class TestProductionConfig:
 
     def test_custom_unit_costs(self):
         """Test custom unit costs."""
-        config = ProductionConfig(
-            unit_costs={"warrior": 1, "settler": 2}
-        )
+        config = ProductionConfig(unit_costs={"warrior": 1, "settler": 2})
 
         assert config.unit_costs["warrior"] == 1
         assert config.unit_costs["settler"] == 2

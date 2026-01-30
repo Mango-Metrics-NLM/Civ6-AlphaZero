@@ -238,12 +238,9 @@ class GameController:
     @property
     def is_human_turn(self) -> bool:
         """Check if it's the human's turn."""
-        return (
-            self._state.phase == GamePhase.HUMAN_TURN
-            or (
-                self._state.phase == GamePhase.IN_PROGRESS
-                and self._state.current_player == self._state.human_player
-            )
+        return self._state.phase == GamePhase.HUMAN_TURN or (
+            self._state.phase == GamePhase.IN_PROGRESS
+            and self._state.current_player == self._state.human_player
         )
 
     @property
@@ -278,9 +275,7 @@ class GameController:
                 self._state.valid_actions = list(self._game_interface.valid_actions)
             else:
                 # Default: all actions valid
-                self._state.valid_actions = list(
-                    range(self._game_interface.action_space_size)
-                )
+                self._state.valid_actions = list(range(self._game_interface.action_space_size))
 
     def is_action_valid(self, action: int) -> bool:
         """Check if an action is valid.
@@ -522,9 +517,7 @@ class GameController:
 
         return result
 
-    def set_on_turn_complete(
-        self, callback: Callable[[TurnResult], None]
-    ) -> None:
+    def set_on_turn_complete(self, callback: Callable[[TurnResult], None]) -> None:
         """Set callback for turn completion.
 
         Args:
@@ -532,9 +525,7 @@ class GameController:
         """
         self._on_turn_complete = callback
 
-    def set_on_game_over(
-        self, callback: Callable[[int], None]
-    ) -> None:
+    def set_on_game_over(self, callback: Callable[[int], None]) -> None:
         """Set callback for game over.
 
         Args:
@@ -542,9 +533,7 @@ class GameController:
         """
         self._on_game_over = callback
 
-    def set_on_ai_thinking(
-        self, callback: Callable[[float], None]
-    ) -> None:
+    def set_on_ai_thinking(self, callback: Callable[[float], None]) -> None:
         """Set callback for when AI starts thinking.
 
         Args:
@@ -570,11 +559,9 @@ class GameController:
             "start_time": self._state.start_time,
             "phase": self._state.phase.value,
             "avg_human_time": (
-                sum(t.thinking_time for t in human_moves) / len(human_moves)
-                if human_moves else 0
+                sum(t.thinking_time for t in human_moves) / len(human_moves) if human_moves else 0
             ),
             "avg_ai_time": (
-                sum(t.thinking_time for t in ai_moves) / len(ai_moves)
-                if ai_moves else 0
+                sum(t.thinking_time for t in ai_moves) / len(ai_moves) if ai_moves else 0
             ),
         }

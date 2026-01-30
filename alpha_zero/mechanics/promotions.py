@@ -212,7 +212,9 @@ DEFAULT_PROMOTIONS: dict[str, Promotion] = {
         unit_classes=[UnitClass.MELEE, UnitClass.ANTI_CAVALRY],
         description="No Combat Strength penalty when attacking across river or from sea",
         abilities=[
-            Ability(AbilityType.IGNORE_TERRAIN_COST, 1.0, "No amphibious penalty", ["river", "embark"]),
+            Ability(
+                AbilityType.IGNORE_TERRAIN_COST, 1.0, "No amphibious penalty", ["river", "embark"]
+            ),
         ],
         prerequisites=["tortoise"],
     ),
@@ -290,7 +292,12 @@ DEFAULT_PROMOTIONS: dict[str, Promotion] = {
         unit_classes=[UnitClass.RECON],
         description="Faster Movement in Woods and Jungle terrain",
         abilities=[
-            Ability(AbilityType.TERRAIN_BONUS, 1.0, "Ignore forest/jungle movement cost", ["forest", "jungle"]),
+            Ability(
+                AbilityType.TERRAIN_BONUS,
+                1.0,
+                "Ignore forest/jungle movement cost",
+                ["forest", "jungle"],
+            ),
         ],
     ),
     "alpine": Promotion(
@@ -438,7 +445,9 @@ class PromotionManager:
         actual_xp = int(amount * xp_multiplier)
         unit.experience += actual_xp
 
-        logger.debug(f"Unit {unit_id} gained {actual_xp} XP from {source} (total: {unit.experience})")
+        logger.debug(
+            f"Unit {unit_id} gained {actual_xp} XP from {source} (total: {unit.experience})"
+        )
 
         self._check_level_up(unit)
         return unit.experience
@@ -458,7 +467,9 @@ class PromotionManager:
         threshold = self.config.xp_per_level[unit.level]
         if unit.experience >= threshold and len(unit.promotions) < self.config.max_promotions:
             unit.pending_promotion = True
-            logger.info(f"Unit {unit.unit_id} ready for promotion (level {unit.level} -> {unit.level + 1})")
+            logger.info(
+                f"Unit {unit.unit_id} ready for promotion (level {unit.level} -> {unit.level + 1})"
+            )
             return True
 
         return False

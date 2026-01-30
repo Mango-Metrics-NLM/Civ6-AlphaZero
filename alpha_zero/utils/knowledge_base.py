@@ -21,6 +21,7 @@ from alpha_zero.utils.rag_client import RAGClient
 
 logger = logging.getLogger(__name__)
 
+
 class KnowledgeBase:
     """Manages document ingestion for the RAG system."""
 
@@ -56,10 +57,12 @@ class KnowledgeBase:
 
                 for i, chunk in enumerate(chunks):
                     documents.append(chunk)
-                    metadatas.append({
-                        "source": str(file_path),
-                        "chunk_index": i,
-                    })
+                    metadatas.append(
+                        {
+                            "source": str(file_path),
+                            "chunk_index": i,
+                        }
+                    )
                     ids.append(f"{file_path.name}_{i}")
 
                 total_chunks += len(chunks)

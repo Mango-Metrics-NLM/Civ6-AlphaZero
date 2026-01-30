@@ -198,6 +198,7 @@ class TestLLMClientInitialization:
         # Import here to avoid import errors if packages not installed
         try:
             from alpha_zero.utils.llm_client import LLMClient
+
             with pytest.raises(LLMConfigError):
                 LLMClient(config)
         except ImportError:

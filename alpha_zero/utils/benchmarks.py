@@ -80,9 +80,9 @@ class BenchmarkResult:
         return (
             f"{self.name}: {self.ops_per_second:.2f} ops/sec "
             f"(threshold: {self.threshold_ops_per_second:.2f}) [{status}]\n"
-            f"  Mean: {self.mean_time_seconds*1000:.3f}ms, "
-            f"Min: {self.min_time_seconds*1000:.3f}ms, "
-            f"Max: {self.max_time_seconds*1000:.3f}ms"
+            f"  Mean: {self.mean_time_seconds * 1000:.3f}ms, "
+            f"Min: {self.min_time_seconds * 1000:.3f}ms, "
+            f"Max: {self.max_time_seconds * 1000:.3f}ms"
         )
 
 
@@ -138,7 +138,7 @@ class Benchmarker:
 
         # Standard deviation
         variance = sum((t - mean_time) ** 2 for t in times) / len(times)
-        std_time = variance ** 0.5
+        std_time = variance**0.5
 
         ops_per_second = 1.0 / mean_time if mean_time > 0 else float("inf")
         passed = ops_per_second >= threshold_ops_per_second
@@ -180,9 +180,11 @@ class Benchmarker:
         results = []
         for batch_size in batch_sizes:
             benchmark_name = f"{name} (batch={batch_size})"
+
             # Capture batch_size in closure with explicit type
             def make_func(bs: int = batch_size) -> T:
                 return func(bs)
+
             result = self.run_benchmark(
                 name=benchmark_name,
                 func=make_func,
@@ -226,7 +228,7 @@ class Benchmarker:
             f"Total: {summary['total_benchmarks']}, "
             f"Passed: {summary['passed']}, "
             f"Failed: {summary['failed']}, "
-            f"Pass Rate: {summary['pass_rate']*100:.1f}%",
+            f"Pass Rate: {summary['pass_rate'] * 100:.1f}%",
         )
         print("=" * 60)
 
@@ -303,6 +305,7 @@ class BenchmarkSuite:
         Returns:
             Decorator function.
         """
+
         def decorator(func: Callable[[], None]) -> Callable[[], None]:
             def run_benchmark() -> BenchmarkResult:
                 return self.benchmarker.run_benchmark(
@@ -310,8 +313,10 @@ class BenchmarkSuite:
                     func=func,
                     threshold_ops_per_second=threshold,
                 )
+
             self._benchmark_funcs[name] = run_benchmark
             return func
+
         return decorator
 
     def run_all(self) -> dict[str, BenchmarkResult]:
@@ -363,12 +368,14 @@ def create_mechanics_benchmarks(
     @suite.register("diplomacy_get_relation", config.mechanics_update_threshold)
     def bench_diplomacy_get_relation() -> None:
         from alpha_zero.mechanics.diplomacy import DiplomacyManager
+
         manager = DiplomacyManager()
         _ = manager.get_relation(0, 1)
 
     @suite.register("diplomacy_process_turn", config.mechanics_update_threshold / 10)
     def bench_diplomacy_process_turn() -> None:
         from alpha_zero.mechanics.diplomacy import DiplomacyManager
+
         manager = DiplomacyManager()
         for i in range(4):
             for j in range(i + 1, 4):
@@ -378,6 +385,7 @@ def create_mechanics_benchmarks(
     @suite.register("diplomacy_vector", config.mechanics_update_threshold / 10)
     def bench_diplomacy_vector() -> None:
         from alpha_zero.mechanics.diplomacy import DiplomacyManager
+
         manager = DiplomacyManager()
         _ = manager.get_diplomatic_vector(0, num_players=8)
 
@@ -385,12 +393,14 @@ def create_mechanics_benchmarks(
     @suite.register("religion_add_faith", config.mechanics_update_threshold)
     def bench_religion_add_faith() -> None:
         from alpha_zero.mechanics.religion import ReligionManager
+
         manager = ReligionManager()
         manager.add_faith(0, 100)
 
     @suite.register("religion_vector", config.mechanics_update_threshold / 10)
     def bench_religion_vector() -> None:
         from alpha_zero.mechanics.religion import ReligionManager
+
         manager = ReligionManager()
         _ = manager.get_religious_vector(0, max_religions=7)
 
@@ -398,6 +408,7 @@ def create_mechanics_benchmarks(
     @suite.register("culture_tourism", config.mechanics_update_threshold / 10)
     def bench_culture_tourism() -> None:
         from alpha_zero.mechanics.culture import CultureManager, GreatWorkType
+
         manager = CultureManager()
         for i in range(5):
             manager.create_great_work(GreatWorkType.WRITING, f"Work {i}", 0)
@@ -406,12 +417,14 @@ def create_mechanics_benchmarks(
     @suite.register("culture_process_turn", config.mechanics_update_threshold / 100)
     def bench_culture_process_turn() -> None:
         from alpha_zero.mechanics.culture import CultureManager
+
         manager = CultureManager()
         manager.process_turn([0, 1, 2, 3])
 
     @suite.register("culture_vector", config.mechanics_update_threshold / 10)
     def bench_culture_vector() -> None:
         from alpha_zero.mechanics.culture import CultureManager
+
         manager = CultureManager()
         _ = manager.get_cultural_vector(0, num_players=4)
 

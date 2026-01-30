@@ -186,18 +186,14 @@ class TestMuZeroMCTS:
 
     def test_search_returns_one_hot_with_gumbel(self, mcts, sample_observation, sample_action_mask):
         """Gumbel MCTS returns one-hot policy."""
-        action_probs, _ = mcts.search(
-            sample_observation, sample_action_mask, add_noise=False
-        )
+        action_probs, _ = mcts.search(sample_observation, sample_action_mask, add_noise=False)
 
         # Should have exactly one action with probability ~1
         assert action_probs.max() > 0.99
 
     def test_search_respects_action_mask(self, mcts, sample_observation, sample_action_mask):
         """Search only selects valid actions."""
-        action_probs, _ = mcts.search(
-            sample_observation, sample_action_mask, add_noise=False
-        )
+        action_probs, _ = mcts.search(sample_observation, sample_action_mask, add_noise=False)
 
         # Selected action should be valid
         selected_action = np.argmax(action_probs)
@@ -205,9 +201,7 @@ class TestMuZeroMCTS:
 
     def test_root_value_bounded(self, mcts, sample_observation, sample_action_mask):
         """Root value is in reasonable range."""
-        _, root_value = mcts.search(
-            sample_observation, sample_action_mask, add_noise=False
-        )
+        _, root_value = mcts.search(sample_observation, sample_action_mask, add_noise=False)
 
         # Value should be finite
         assert np.isfinite(root_value)
@@ -216,18 +210,14 @@ class TestMuZeroMCTS:
         """Returns zero probs when no valid actions."""
         empty_mask = np.zeros(100, dtype=np.float32)
 
-        action_probs, root_value = mcts.search(
-            sample_observation, empty_mask, add_noise=False
-        )
+        action_probs, root_value = mcts.search(sample_observation, empty_mask, add_noise=False)
 
         assert action_probs.sum() == 0.0
         assert root_value == 0.0
 
     def test_select_action_greedy(self, mcts, sample_observation, sample_action_mask):
         """Temperature 0 selects best action deterministically."""
-        action_probs, _ = mcts.search(
-            sample_observation, sample_action_mask, add_noise=False
-        )
+        action_probs, _ = mcts.search(sample_observation, sample_action_mask, add_noise=False)
 
         action1 = mcts.select_action(action_probs, temperature=0)
         action2 = mcts.select_action(action_probs, temperature=0)

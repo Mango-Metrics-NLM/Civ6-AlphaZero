@@ -169,7 +169,7 @@ class RMSNorm(nn.Module):
         Returns:
             Normalized tensor.
         """
-        rms = torch.sqrt(torch.mean(x ** 2, dim=-1, keepdim=True) + self.eps)
+        rms = torch.sqrt(torch.mean(x**2, dim=-1, keepdim=True) + self.eps)
         return x / rms * self.weight
 
 
@@ -322,7 +322,7 @@ class MultiHeadAttention(nn.Module):
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
-        self.scale = self.head_dim ** -0.5
+        self.scale = self.head_dim**-0.5
         self.attention_type = attention_type
 
         # QKV projections
@@ -513,10 +513,9 @@ class MixtureOfExperts(nn.Module):
         self.router = nn.Linear(dim, num_experts, bias=False)
 
         # Expert networks
-        self.experts = nn.ModuleList([
-            FeedForward(dim, hidden_dim, dropout, use_glu=True)
-            for _ in range(num_experts)
-        ])
+        self.experts = nn.ModuleList(
+            [FeedForward(dim, hidden_dim, dropout, use_glu=True) for _ in range(num_experts)]
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass with expert routing.
@@ -535,7 +534,9 @@ class MixtureOfExperts(nn.Module):
 
         # Select top-k experts
         top_k_probs, top_k_indices = torch.topk(
-            router_probs, self.experts_per_token, dim=-1,
+            router_probs,
+            self.experts_per_token,
+            dim=-1,
         )  # (B, N, k)
 
         # Normalize selected probabilities
@@ -698,7 +699,10 @@ class PatchEmbed(nn.Module):
         self.patch_size = patch_size
         self.num_patches = (spatial_size // patch_size) ** 2
         self.proj = nn.Conv2d(
-            in_channels, embed_dim, kernel_size=patch_size, stride=patch_size,
+            in_channels,
+            embed_dim,
+            kernel_size=patch_size,
+            stride=patch_size,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -1272,6 +1276,7 @@ def compute_transformer_loss(
         Tuple of (total_loss, loss_dict).
     """
     import warnings
+
     warnings.warn(
         "compute_transformer_loss() is deprecated. Use alpha_zero.core.losses.compute_policy_loss() "
         "and alpha_zero.core.losses.compute_value_loss() with LossConfig for more comprehensive loss computation.",

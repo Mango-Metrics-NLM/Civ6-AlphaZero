@@ -15,7 +15,6 @@ import numpy as np
 import pytest
 
 from alpha_zero.tournament.config import (
-    ELOConfig,
     MatchOutcome,
     MatchResult,
     PlayerStats,
@@ -38,10 +37,7 @@ class TestTournamentIntegration:
     @pytest.fixture
     def players(self):
         """Create test players with varying ratings."""
-        return [
-            PlayerStats(player_id=f"player_{i}", rating=1400 + i * 50)
-            for i in range(10)
-        ]
+        return [PlayerStats(player_id=f"player_{i}", rating=1400 + i * 50) for i in range(10)]
 
     def test_full_match_flow(self, config, players):
         """Test complete match flow from queue to result."""
@@ -60,9 +56,7 @@ class TestTournamentIntegration:
         assert match.is_ready
 
         # Process match result
-        update1, update2 = elo_system.process_game_result(
-            p1, p2, MatchOutcome.WIN, config
-        )
+        update1, update2 = elo_system.process_game_result(p1, p2, MatchOutcome.WIN, config)
 
         # Verify rating changes
         assert update1.rating_after > update1.rating_before
@@ -122,7 +116,7 @@ class TestTournamentIntegration:
             league.update_player_tier(player, won_last_game=True)
 
         # Should have progressed
-        final_tier = league.get_player_tier(player)
+        _final_tier = league.get_player_tier(player)
         # Rating should have increased significantly
         assert player.rating > 1350
 
@@ -143,8 +137,10 @@ class TestTournamentIntegration:
                 update1, update2 = elo.process_game_result(p1, p2, outcome, config)
 
                 # Determine winner_id based on outcome
-                winner_id = p1.player_id if outcome == MatchOutcome.WIN else (
-                    p2.player_id if outcome == MatchOutcome.LOSS else None
+                winner_id = (
+                    p1.player_id
+                    if outcome == MatchOutcome.WIN
+                    else (p2.player_id if outcome == MatchOutcome.LOSS else None)
                 )
 
                 result = MatchResult(
@@ -182,9 +178,7 @@ class TestTournamentIntegration:
         target_player = players[5]  # Middle rating
 
         # Test rating proximity selection
-        by_rating = selector.select_by_rating_proximity(
-            target_player.rating, num_opponents=3
-        )
+        by_rating = selector.select_by_rating_proximity(target_player.rating, num_opponents=3)
         assert len(by_rating) == 3
         # Closest ratings should be selected
         for opp in by_rating:
@@ -211,10 +205,7 @@ class TestTournamentIntegration:
         league = LeagueManager(config)
 
         # Register some players
-        players = [
-            PlayerStats(player_id=f"player_{i}", rating=1400 + i * 100)
-            for i in range(5)
-        ]
+        players = [PlayerStats(player_id=f"player_{i}", rating=1400 + i * 100) for i in range(5)]
         for player in players:
             league.register_player(player)
 

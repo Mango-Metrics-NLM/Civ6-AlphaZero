@@ -161,7 +161,9 @@ class TestMicroCivActionSpace:
         obs, reward, terminated, _, info = env.step(action_idx)
 
         # Verify city was founded
-        assert any(c.position == settler.position for c in env.cities), "City should be founded at settler position"
+        assert any(c.position == settler.position for c in env.cities), (
+            "City should be founded at settler position"
+        )
 
 
 class TestHierarchicalActionSpace:

@@ -39,9 +39,11 @@ logger = logging.getLogger(__name__)
 # Code Exploration Tools
 # =============================================================================
 
+
 @dataclass
 class CodeLocation:
     """Represents a location in code."""
+
     file_path: Path
     line_number: int
     column: int = 0
@@ -56,6 +58,7 @@ class CodeLocation:
 @dataclass
 class CodeSymbol:
     """Represents a code symbol (class, function, etc.)."""
+
     name: str
     kind: str  # "class", "function", "method", "variable"
     location: CodeLocation
@@ -102,8 +105,15 @@ class CodeExplorer:
             List of matching file paths.
         """
         exclude_dirs = exclude_dirs or [
-            "__pycache__", ".git", ".venv", "venv", "node_modules",
-            ".mypy_cache", ".pytest_cache", "build", "dist",
+            "__pycache__",
+            ".git",
+            ".venv",
+            "venv",
+            "node_modules",
+            ".mypy_cache",
+            ".pytest_cache",
+            "build",
+            "dist",
         ]
 
         results = []
@@ -146,11 +156,13 @@ class CodeExplorer:
                 content = file_path.read_text(encoding="utf-8")
                 for i, line in enumerate(content.split("\n"), 1):
                     if regex.search(line):
-                        results.append(CodeLocation(
-                            file_path=file_path,
-                            line_number=i,
-                            context=line.strip(),
-                        ))
+                        results.append(
+                            CodeLocation(
+                                file_path=file_path,
+                                line_number=i,
+                                context=line.strip(),
+                            )
+                        )
             except Exception as e:
                 logger.warning(f"Error reading {file_path}: {e}")
 
@@ -286,6 +298,7 @@ class CodeExplorer:
         Returns:
             Nested dictionary representing file structure.
         """
+
         def build_tree(path: Path, depth: int) -> dict[str, Any]:
             if depth > max_depth:
                 return {"...": None}
@@ -311,6 +324,7 @@ class CodeExplorer:
 # =============================================================================
 # File Management Tools
 # =============================================================================
+
 
 class FileManager:
     """Utility for file operations."""
@@ -444,8 +458,10 @@ class FileManager:
 # Task Tracking Tools
 # =============================================================================
 
+
 class TaskStatus(Enum):
     """Task status values."""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -456,6 +472,7 @@ class TaskStatus(Enum):
 @dataclass
 class Task:
     """Represents a task to be completed."""
+
     id: str
     description: str
     status: TaskStatus = TaskStatus.PENDING
@@ -598,6 +615,7 @@ class TaskTracker:
 # Debug Helper Tools
 # =============================================================================
 
+
 class DebugHelper:
     """Utility for debugging and diagnostics."""
 
@@ -612,6 +630,7 @@ class DebugHelper:
         Returns:
             The object's structure (primitives returned as-is, complex objects as dicts).
         """
+
         def _inspect(o: Any, depth: int) -> Any:
             if depth > max_depth:
                 return f"<{type(o).__name__}>"
@@ -692,7 +711,8 @@ class DebugHelper:
             "platform": platform.platform(),
             "cwd": os.getcwd(),
             "env_vars": {
-                k: v for k, v in os.environ.items()
+                k: v
+                for k, v in os.environ.items()
                 if k.startswith(("PYTHON", "PATH", "CIV6", "LLM", "OPENAI", "ANTHROPIC"))
             },
         }
@@ -720,6 +740,7 @@ class DebugHelper:
 # =============================================================================
 # Convenience Functions
 # =============================================================================
+
 
 def explore(pattern: str = "**/*.py") -> list[Path]:
     """Quick function to find files.

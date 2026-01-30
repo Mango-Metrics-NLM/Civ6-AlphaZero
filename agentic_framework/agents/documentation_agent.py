@@ -6,14 +6,13 @@ Updates documentation and session memory (CLAUDE.md).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-from .base_agent import BaseAgent, AgentContext, AgentResult, AgentStatus
-from ..core.session_memory import SessionMemory, ArchitectureDecision, KnownIssue
+from ..core.session_memory import ArchitectureDecision, KnownIssue, SessionMemory
 from ..utils.logging_config import get_logger
+from .base_agent import AgentContext, AgentResult, AgentStatus, BaseAgent
 
 logger = get_logger("documentation_agent")
 
@@ -119,9 +118,7 @@ class DocumentationAgent(BaseAgent):
             files_modified=[memory.memory_file] if memory.is_modified else [],
         )
 
-    def _update_commands(
-        self, context: AgentContext, memory: SessionMemory
-    ) -> None:
+    def _update_commands(self, context: AgentContext, memory: SessionMemory) -> None:
         """Update build and test commands.
 
         Args:
@@ -135,15 +132,15 @@ class DocumentationAgent(BaseAgent):
                 existing = memory.get_test_commands()
                 if not any(vc.command in str(cmd) for cmd in existing):
                     memory.add_test_command(vc.command, vc.name)
-                    self._updates.append(DocumentationUpdate(
-                        section="Test Commands",
-                        content=f"{vc.command}: {vc.name}",
-                        action="add",
-                    ))
+                    self._updates.append(
+                        DocumentationUpdate(
+                            section="Test Commands",
+                            content=f"{vc.command}: {vc.name}",
+                            action="add",
+                        )
+                    )
 
-    def _update_architecture_decisions(
-        self, context: AgentContext, memory: SessionMemory
-    ) -> None:
+    def _update_architecture_decisions(self, context: AgentContext, memory: SessionMemory) -> None:
         """Update architecture decisions.
 
         Args:
@@ -166,15 +163,15 @@ class DocumentationAgent(BaseAgent):
                 continue
 
             memory.add_architecture_decision(decision)
-            self._updates.append(DocumentationUpdate(
-                section="Architecture Decisions",
-                content=decision.decision,
-                action="add",
-            ))
+            self._updates.append(
+                DocumentationUpdate(
+                    section="Architecture Decisions",
+                    content=decision.decision,
+                    action="add",
+                )
+            )
 
-    def _update_known_issues(
-        self, context: AgentContext, memory: SessionMemory
-    ) -> None:
+    def _update_known_issues(self, context: AgentContext, memory: SessionMemory) -> None:
         """Update known issues.
 
         Args:
@@ -197,11 +194,13 @@ class DocumentationAgent(BaseAgent):
                 continue
 
             memory.add_known_issue(issue)
-            self._updates.append(DocumentationUpdate(
-                section="Known Issues",
-                content=issue.issue,
-                action="add",
-            ))
+            self._updates.append(
+                DocumentationUpdate(
+                    section="Known Issues",
+                    content=issue.issue,
+                    action="add",
+                )
+            )
 
     def _generate_change_summary(self, context: AgentContext) -> str:
         """Generate a summary of all changes.
@@ -212,7 +211,12 @@ class DocumentationAgent(BaseAgent):
         Returns:
             Markdown summary.
         """
-        lines = ["# Change Summary", "", f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M')}", ""]
+        lines = [
+            "# Change Summary",
+            "",
+            f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+            "",
+        ]
 
         # Objective
         objective = context.config.objective.system_intent
@@ -232,12 +236,14 @@ class DocumentationAgent(BaseAgent):
         # Test results
         test_results = context.get_shared("test_results", {})
         if test_results:
-            lines.extend([
-                "## Test Results",
-                f"- Passed: {test_results.get('passed', 0)}",
-                f"- Failed: {test_results.get('failed', 0)}",
-                "",
-            ])
+            lines.extend(
+                [
+                    "## Test Results",
+                    f"- Passed: {test_results.get('passed', 0)}",
+                    f"- Failed: {test_results.get('failed', 0)}",
+                    "",
+                ]
+            )
 
         # Verification status
         verification_results = context.get_shared("verification_results", [])

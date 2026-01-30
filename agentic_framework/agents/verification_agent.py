@@ -119,7 +119,8 @@ class VerificationAgent(BaseAgent):
 
         # Determine success
         error_count = sum(
-            1 for issue in self._issues
+            1
+            for issue in self._issues
             if issue.severity == "error" or (self.strict_mode and issue.severity == "warning")
         )
         remaining_errors = max(error_count - fixed_count, 0)
@@ -135,24 +136,17 @@ class VerificationAgent(BaseAgent):
             message=f"Found {len(self._issues)} issues, {fixed_count} fixed, {remaining_errors} remaining",
             data={
                 "issues": [i.to_dict() for i in self._issues],
-                "verification_results": [
-                    {"name": r.name, "success": r.success}
-                    for r in results
-                ],
+                "verification_results": [{"name": r.name, "success": r.success} for r in results],
                 "fixed_count": fixed_count,
                 "error_count": error_count,
             },
             errors=[
-                f"{i.file}:{i.line}: {i.message}"
-                for i in self._issues
-                if i.severity == "error"
+                f"{i.file}:{i.line}: {i.message}" for i in self._issues if i.severity == "error"
             ][:10],  # Limit to first 10
             next_agent="documentation" if success else None,
         )
 
-    def _parse_verification_output(
-        self, result: VerificationResult
-    ) -> list[VerificationIssue]:
+    def _parse_verification_output(self, result: VerificationResult) -> list[VerificationIssue]:
         """Parse verification output for issues.
 
         Args:
@@ -186,10 +180,7 @@ class VerificationAgent(BaseAgent):
         issues: list[VerificationIssue] = []
 
         # Ruff/flake8 format: path/to/file.py:line:col: code message
-        pattern = re.compile(
-            r"^(.+?):(\d+):(\d+):\s*(\w+)\s+(.+?)$",
-            re.MULTILINE
-        )
+        pattern = re.compile(r"^(.+?):(\d+):(\d+):\s*(\w+)\s+(.+?)$", re.MULTILINE)
 
         for match in pattern.finditer(output):
             file_path = match.group(1)
@@ -203,15 +194,17 @@ class VerificationAgent(BaseAgent):
             if rule.startswith("E") or rule.startswith("F"):
                 severity = "error"
 
-            issues.append(VerificationIssue(
-                type="lint",
-                severity=severity,
-                message=message,
-                file=file_path,
-                line=line,
-                column=col,
-                rule=rule,
-            ))
+            issues.append(
+                VerificationIssue(
+                    type="lint",
+                    severity=severity,
+                    message=message,
+                    file=file_path,
+                    line=line,
+                    column=col,
+                    rule=rule,
+                )
+            )
 
         return issues
 
@@ -228,8 +221,7 @@ class VerificationAgent(BaseAgent):
 
         # Mypy format: path/to/file.py:line(:column)?: error: message
         pattern = re.compile(
-            r"^(.+?):(\d+)(?::\d+)?:\s*(error|warning|note):\s*(.+?)$",
-            re.MULTILINE
+            r"^(.+?):(\d+)(?::\d+)?:\s*(error|warning|note):\s*(.+?)$", re.MULTILINE
         )
 
         for match in pattern.finditer(output):
@@ -241,13 +233,15 @@ class VerificationAgent(BaseAgent):
             if severity == "note":
                 severity = "info"
 
-            issues.append(VerificationIssue(
-                type="type",
-                severity=severity,
-                message=message,
-                file=file_path,
-                line=line,
-            ))
+            issues.append(
+                VerificationIssue(
+                    type="type",
+                    severity=severity,
+                    message=message,
+                    file=file_path,
+                    line=line,
+                )
+            )
 
         return issues
 
@@ -264,17 +258,16 @@ class VerificationAgent(BaseAgent):
         issues: list[VerificationIssue] = []
 
         # Generic error pattern
-        error_pattern = re.compile(
-            r"(?:error|ERROR|Error):\s*(.+?)(?:\n|$)",
-            re.MULTILINE
-        )
+        error_pattern = re.compile(r"(?:error|ERROR|Error):\s*(.+?)(?:\n|$)", re.MULTILINE)
 
         for match in error_pattern.finditer(output):
-            issues.append(VerificationIssue(
-                type=source,
-                severity="error",
-                message=match.group(1).strip(),
-            ))
+            issues.append(
+                VerificationIssue(
+                    type=source,
+                    severity="error",
+                    message=match.group(1).strip(),
+                )
+            )
 
         return issues
 
@@ -334,9 +327,7 @@ class VerificationAgent(BaseAgent):
             duration_seconds=0,
         )
 
-    def run_type_check(
-        self, context: AgentContext, tool: str = "mypy"
-    ) -> VerificationResult:
+    def run_type_check(self, context: AgentContext, tool: str = "mypy") -> VerificationResult:
         """Run type checking.
 
         Args:

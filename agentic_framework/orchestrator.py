@@ -8,24 +8,25 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
-from .config import AgenticConfig, load_config
-from .core.constraint_manager import ConstraintManager
-from .core.permission_manager import PermissionManager
-from .core.session_memory import SessionMemory
-from .core.feedback_loop import FeedbackLoop
-from .core.template_parser import TemplateParser, ParsedTemplate
 from .agents.base_agent import AgentContext, AgentResult, AgentStatus, BaseAgent
-from .agents.planning_agent import PlanningAgent
+from .agents.documentation_agent import DocumentationAgent
 from .agents.implementation_agent import ImplementationAgent
+from .agents.planning_agent import PlanningAgent
 from .agents.testing_agent import TestingAgent
 from .agents.verification_agent import VerificationAgent
-from .agents.documentation_agent import DocumentationAgent
-from .utils.logging_config import setup_logging, get_logger, LogContext
+from .config import AgenticConfig, load_config
+from .core.constraint_manager import ConstraintManager
+from .core.feedback_loop import FeedbackLoop
+from .core.permission_manager import PermissionManager
+from .core.session_memory import SessionMemory
+from .core.template_parser import TemplateParser
 from .utils.command_runner import CommandRunner
+from .utils.logging_config import LogContext, get_logger, setup_logging
 
 logger = get_logger("orchestrator")
 
@@ -82,9 +83,9 @@ class Orchestrator:
 
     def __init__(
         self,
-        config: Optional[AgenticConfig] = None,
-        working_dir: Optional[Path] = None,
-        config_path: Optional[Path] = None,
+        config: AgenticConfig | None = None,
+        working_dir: Path | None = None,
+        config_path: Path | None = None,
     ) -> None:
         """Initialize the orchestrator.
 
@@ -140,10 +141,10 @@ class Orchestrator:
         self._register_default_agents()
 
         # Callbacks
-        self._on_agent_start: Optional[Callable[[str], None]] = None
-        self._on_agent_complete: Optional[Callable[[str, AgentResult], None]] = None
-        self._on_progress: Optional[Callable[[str, float, str], None]] = None
-        self._on_confirmation_needed: Optional[Callable[[str, str], bool]] = None
+        self._on_agent_start: Callable[[str], None] | None = None
+        self._on_agent_complete: Callable[[str, AgentResult], None] | None = None
+        self._on_progress: Callable[[str, float, str], None] | None = None
+        self._on_confirmation_needed: Callable[[str, str], bool] | None = None
 
         # State
         self._request_id: str = ""
@@ -160,7 +161,9 @@ class Orchestrator:
             ),
             "implementation": ImplementationAgent(
                 timeout_seconds=agents_config.implementation.timeout_seconds,
-                max_lines_per_file=agents_config.implementation.extra.get("max_lines_per_file", 500),
+                max_lines_per_file=agents_config.implementation.extra.get(
+                    "max_lines_per_file", 500
+                ),
             ),
             "testing": TestingAgent(
                 timeout_seconds=agents_config.testing.timeout_seconds,
@@ -172,7 +175,9 @@ class Orchestrator:
             ),
             "documentation": DocumentationAgent(
                 timeout_seconds=agents_config.documentation.timeout_seconds,
-                auto_update_memory=agents_config.documentation.extra.get("auto_update_memory", True),
+                auto_update_memory=agents_config.documentation.extra.get(
+                    "auto_update_memory", True
+                ),
             ),
         }
 
@@ -185,7 +190,7 @@ class Orchestrator:
         self._agents[agent.name] = agent
         logger.info(f"Registered agent: {agent.name}")
 
-    def get_agent(self, name: str) -> Optional[BaseAgent]:
+    def get_agent(self, name: str) -> BaseAgent | None:
         """Get an agent by name.
 
         Args:
@@ -198,10 +203,10 @@ class Orchestrator:
 
     def set_callbacks(
         self,
-        on_agent_start: Optional[Callable[[str], None]] = None,
-        on_agent_complete: Optional[Callable[[str, AgentResult], None]] = None,
-        on_progress: Optional[Callable[[str, float, str], None]] = None,
-        on_confirmation_needed: Optional[Callable[[str, str], bool]] = None,
+        on_agent_start: Callable[[str], None] | None = None,
+        on_agent_complete: Callable[[str, AgentResult], None] | None = None,
+        on_progress: Callable[[str, float, str], None] | None = None,
+        on_confirmation_needed: Callable[[str, str], bool] | None = None,
     ) -> None:
         """Set callback functions.
 
@@ -247,7 +252,7 @@ class Orchestrator:
 
     def execute(
         self,
-        objective: Optional[str] = None,
+        objective: str | None = None,
         dry_run: bool = False,
     ) -> OrchestratorResult:
         """Execute the full orchestrated workflow.
@@ -367,9 +372,7 @@ class Orchestrator:
                 if required and not result.success:
                     logger.warning(f"Required initial action failed: {action_name}")
 
-    def _attempt_recovery(
-        self, context: AgentContext, failed_result: AgentResult
-    ) -> bool:
+    def _attempt_recovery(self, context: AgentContext, failed_result: AgentResult) -> bool:
         """Attempt to recover from agent failure.
 
         Args:
@@ -396,9 +399,7 @@ class Orchestrator:
 
         return False
 
-    def _handle_fix_request(
-        self, context: AgentContext, errors: list[dict[str, Any]]
-    ) -> bool:
+    def _handle_fix_request(self, context: AgentContext, errors: list[dict[str, Any]]) -> bool:
         """Handle a request to fix errors.
 
         Args:
@@ -503,7 +504,7 @@ class Orchestrator:
     def run_single_agent(
         self,
         agent_name: str,
-        context: Optional[AgentContext] = None,
+        context: AgentContext | None = None,
     ) -> AgentResult:
         """Run a single agent.
 
@@ -533,7 +534,7 @@ class Orchestrator:
     def from_template(
         cls,
         template_path: Path,
-        working_dir: Optional[Path] = None,
+        working_dir: Path | None = None,
     ) -> Orchestrator:
         """Create an orchestrator from a template file.
 

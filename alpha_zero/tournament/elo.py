@@ -155,9 +155,7 @@ class ELORatingSystem:
             f"k_factor_base={self.config.k_factor_base}"
         )
 
-    def calculate_expected_scores(
-        self, rating1: float, rating2: float
-    ) -> tuple[float, float]:
+    def calculate_expected_scores(self, rating1: float, rating2: float) -> tuple[float, float]:
         """Calculate expected scores for both players.
 
         Args:
@@ -266,9 +264,7 @@ class ELORatingSystem:
         actual_change2 = new_rating2 - player2_rating
 
         # Get expected scores for logging
-        expected1, expected2 = self.calculate_expected_scores(
-            player1_rating, player2_rating
-        )
+        expected1, expected2 = self.calculate_expected_scores(player1_rating, player2_rating)
 
         # Create update objects
         update1 = RatingUpdate(
@@ -493,9 +489,7 @@ class RatingLeaderboard:
         if player_id not in self._ratings:
             return None
 
-        sorted_players = sorted(
-            self._ratings.items(), key=lambda x: x[1], reverse=True
-        )
+        sorted_players = sorted(self._ratings.items(), key=lambda x: x[1], reverse=True)
         for i, (pid, _) in enumerate(sorted_players):
             if pid == player_id:
                 return i + 1
@@ -510,12 +504,8 @@ class RatingLeaderboard:
         Returns:
             List of (player_id, rating, rank) tuples.
         """
-        sorted_players = sorted(
-            self._ratings.items(), key=lambda x: x[1], reverse=True
-        )
-        return [
-            (pid, rating, i + 1) for i, (pid, rating) in enumerate(sorted_players[:n])
-        ]
+        sorted_players = sorted(self._ratings.items(), key=lambda x: x[1], reverse=True)
+        return [(pid, rating, i + 1) for i, (pid, rating) in enumerate(sorted_players[:n])]
 
     def get_rating(self, player_id: str) -> float | None:
         """Get a player's rating.
@@ -528,9 +518,7 @@ class RatingLeaderboard:
         """
         return self._ratings.get(player_id)
 
-    def get_players_in_range(
-        self, min_rating: float, max_rating: float
-    ) -> list[tuple[str, float]]:
+    def get_players_in_range(self, min_rating: float, max_rating: float) -> list[tuple[str, float]]:
         """Get players within a rating range.
 
         Args:

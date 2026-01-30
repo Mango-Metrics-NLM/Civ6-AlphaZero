@@ -97,23 +97,25 @@ class DiplomacyConfig:
     alliance_proposal_cooldown: int = 20
 
     # Modifier values
-    modifier_values: dict[ModifierType, int] = field(default_factory=lambda: {
-        ModifierType.ATTACKED_US: -50,
-        ModifierType.ATTACKED_FRIEND: -30,
-        ModifierType.DENOUNCED_US: -25,
-        ModifierType.BROKE_PROMISE: -40,
-        ModifierType.AGGRESSIVE_EXPANSION: -20,
-        ModifierType.DIFFERENT_IDEOLOGY: -15,
-        ModifierType.DIFFERENT_RELIGION: -10,
-        ModifierType.TERRITORIAL_DISPUTE: -20,
-        ModifierType.TRADE_PARTNER: 15,
-        ModifierType.SAME_RELIGION: 10,
-        ModifierType.SAME_IDEOLOGY: 15,
-        ModifierType.LIBERATED_CITY: 30,
-        ModifierType.DEFENSIVE_PACT_HONORED: 25,
-        ModifierType.LONG_PEACE: 20,
-        ModifierType.COMMON_ENEMY: 15,
-    })
+    modifier_values: dict[ModifierType, int] = field(
+        default_factory=lambda: {
+            ModifierType.ATTACKED_US: -50,
+            ModifierType.ATTACKED_FRIEND: -30,
+            ModifierType.DENOUNCED_US: -25,
+            ModifierType.BROKE_PROMISE: -40,
+            ModifierType.AGGRESSIVE_EXPANSION: -20,
+            ModifierType.DIFFERENT_IDEOLOGY: -15,
+            ModifierType.DIFFERENT_RELIGION: -10,
+            ModifierType.TERRITORIAL_DISPUTE: -20,
+            ModifierType.TRADE_PARTNER: 15,
+            ModifierType.SAME_RELIGION: 10,
+            ModifierType.SAME_IDEOLOGY: 15,
+            ModifierType.LIBERATED_CITY: 30,
+            ModifierType.DEFENSIVE_PACT_HONORED: 25,
+            ModifierType.LONG_PEACE: 20,
+            ModifierType.COMMON_ENEMY: 15,
+        }
+    )
 
 
 @dataclass
@@ -226,9 +228,7 @@ class DiplomaticRelation:
 
     def decay_modifiers(self, decay_amount: int = 1) -> None:
         """Decay all modifiers by the given amount."""
-        self.modifiers = [
-            m for m in self.modifiers if not m.decay(decay_amount)
-        ]
+        self.modifiers = [m for m in self.modifiers if not m.decay(decay_amount)]
 
     def has_treaty(self, treaty_type: str) -> bool:
         """Check if a treaty is active."""
@@ -244,9 +244,7 @@ class DiplomaticRelation:
         Returns:
             List of expired treaty types.
         """
-        expired = [
-            t for t, expiry in self.treaties.items() if expiry <= current_turn
-        ]
+        expired = [t for t, expiry in self.treaties.items() if expiry <= current_turn]
         for t in expired:
             del self.treaties[t]
         return expired
@@ -435,47 +433,60 @@ class DiplomacyManager:
             # War declaration
             can_war, _ = self.can_declare_war(player, target, current_turn)
             if can_war:
-                valid_actions.append(DiplomaticAction(
-                    action_type=DiplomaticActionType.DECLARE_WAR,
-                    source_player=player,
-                    target_player=target,
-                ))
+                valid_actions.append(
+                    DiplomaticAction(
+                        action_type=DiplomaticActionType.DECLARE_WAR,
+                        source_player=player,
+                        target_player=target,
+                    )
+                )
 
             # Peace proposal
             can_peace, _ = self.can_make_peace(player, target)
             if can_peace:
-                valid_actions.append(DiplomaticAction(
-                    action_type=DiplomaticActionType.MAKE_PEACE,
-                    source_player=player,
-                    target_player=target,
-                ))
+                valid_actions.append(
+                    DiplomaticAction(
+                        action_type=DiplomaticActionType.MAKE_PEACE,
+                        source_player=player,
+                        target_player=target,
+                    )
+                )
 
             # Denouncement (if not already denounced)
             if relation.relation_type not in (DiplomacyType.WAR, DiplomacyType.DENOUNCED):
                 cooldown_key = (player, target, DiplomaticActionType.DENOUNCE)
-                if cooldown_key not in self._cooldowns or self._cooldowns[cooldown_key] <= current_turn:
-                    valid_actions.append(DiplomaticAction(
-                        action_type=DiplomaticActionType.DENOUNCE,
-                        source_player=player,
-                        target_player=target,
-                    ))
+                if (
+                    cooldown_key not in self._cooldowns
+                    or self._cooldowns[cooldown_key] <= current_turn
+                ):
+                    valid_actions.append(
+                        DiplomaticAction(
+                            action_type=DiplomaticActionType.DENOUNCE,
+                            source_player=player,
+                            target_player=target,
+                        )
+                    )
 
             # Friendship declaration (if neutral or better, not at war)
             if relation.relation_type in (DiplomacyType.NEUTRAL, DiplomacyType.FRIENDLY):
-                valid_actions.append(DiplomaticAction(
-                    action_type=DiplomaticActionType.DECLARE_FRIENDSHIP,
-                    source_player=player,
-                    target_player=target,
-                ))
+                valid_actions.append(
+                    DiplomaticAction(
+                        action_type=DiplomaticActionType.DECLARE_FRIENDSHIP,
+                        source_player=player,
+                        target_player=target,
+                    )
+                )
 
             # Alliance proposal (if friendly enough)
             if relation.relationship_score >= self.config.friendly_threshold:
                 if relation.relation_type != DiplomacyType.ALLIANCE:
-                    valid_actions.append(DiplomaticAction(
-                        action_type=DiplomaticActionType.PROPOSE_ALLIANCE,
-                        source_player=player,
-                        target_player=target,
-                    ))
+                    valid_actions.append(
+                        DiplomaticAction(
+                            action_type=DiplomaticActionType.PROPOSE_ALLIANCE,
+                            source_player=player,
+                            target_player=target,
+                        )
+                    )
 
         return valid_actions
 
@@ -497,7 +508,9 @@ class DiplomacyManager:
 
         if action.action_type == DiplomaticActionType.DECLARE_WAR:
             can_declare, reason = self.can_declare_war(
-                action.source_player, action.target_player, current_turn,
+                action.source_player,
+                action.target_player,
+                current_turn,
             )
             if not can_declare:
                 return False
@@ -510,7 +523,8 @@ class DiplomacyManager:
 
         elif action.action_type == DiplomaticActionType.MAKE_PEACE:
             can_peace, _ = self.can_make_peace(
-                action.source_player, action.target_player,
+                action.source_player,
+                action.target_player,
             )
             if not can_peace:
                 return False
@@ -520,18 +534,24 @@ class DiplomacyManager:
             relation.turn_started = current_turn
 
             # Set cooldown for future war declaration
-            cooldown_key = (action.source_player, action.target_player, DiplomaticActionType.DECLARE_WAR)
+            cooldown_key = (
+                action.source_player,
+                action.target_player,
+                DiplomaticActionType.DECLARE_WAR,
+            )
             self._cooldowns[cooldown_key] = current_turn + self.config.war_declaration_cooldown
             return True
 
         elif action.action_type == DiplomaticActionType.DENOUNCE:
             relation.relation_type = DiplomacyType.DENOUNCED
-            relation.add_modifier(DiplomaticModifier(
-                modifier_type=ModifierType.DENOUNCED_US,
-                value=self.config.modifier_values[ModifierType.DENOUNCED_US],
-                turns_remaining=self.config.denouncement_cooldown,
-                source_player=action.source_player,
-            ))
+            relation.add_modifier(
+                DiplomaticModifier(
+                    modifier_type=ModifierType.DENOUNCED_US,
+                    value=self.config.modifier_values[ModifierType.DENOUNCED_US],
+                    turns_remaining=self.config.denouncement_cooldown,
+                    source_player=action.source_player,
+                )
+            )
             return True
 
         elif action.action_type == DiplomaticActionType.DECLARE_FRIENDSHIP:
@@ -612,14 +632,8 @@ class DiplomacyManager:
     def to_dict(self) -> dict[str, Any]:
         """Serialize diplomacy state."""
         return {
-            "relations": {
-                f"{k[0]}_{k[1]}": v.to_dict()
-                for k, v in self._relations.items()
-            },
-            "cooldowns": {
-                f"{k[0]}_{k[1]}_{k[2].name}": v
-                for k, v in self._cooldowns.items()
-            },
+            "relations": {f"{k[0]}_{k[1]}": v.to_dict() for k, v in self._relations.items()},
+            "cooldowns": {f"{k[0]}_{k[1]}_{k[2].name}": v for k, v in self._cooldowns.items()},
             "pending_proposals": [p.to_dict() for p in self._pending_proposals],
         }
 

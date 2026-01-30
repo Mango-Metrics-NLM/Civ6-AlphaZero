@@ -286,7 +286,13 @@ class TemplateLogger:
         Returns:
             True if level should be logged.
         """
-        level_order = [LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARNING, LogLevel.ERROR, LogLevel.CRITICAL]
+        level_order = [
+            LogLevel.DEBUG,
+            LogLevel.INFO,
+            LogLevel.WARNING,
+            LogLevel.ERROR,
+            LogLevel.CRITICAL,
+        ]
         return level_order.index(level) >= level_order.index(self.level)
 
     def _create_entry(
@@ -318,9 +324,12 @@ class TemplateLogger:
             message=message,
             source=source or self.name,
             context=context or {},
-            template_id=kwargs.get("template_id") or (current_context.metadata.get("template_id") if current_context else None),
-            agent_name=kwargs.get("agent_name") or (current_context.metadata.get("agent_name") if current_context else None),
-            step_name=kwargs.get("step_name") or (current_context.metadata.get("step_name") if current_context else None),
+            template_id=kwargs.get("template_id")
+            or (current_context.metadata.get("template_id") if current_context else None),
+            agent_name=kwargs.get("agent_name")
+            or (current_context.metadata.get("agent_name") if current_context else None),
+            step_name=kwargs.get("step_name")
+            or (current_context.metadata.get("step_name") if current_context else None),
             duration_ms=kwargs.get("duration_ms"),
         )
 
@@ -551,10 +560,7 @@ class TemplateLogger:
         Returns:
             List of error entries.
         """
-        return [
-            e for e in self._entries
-            if e.level in (LogLevel.ERROR, LogLevel.CRITICAL)
-        ]
+        return [e for e in self._entries if e.level in (LogLevel.ERROR, LogLevel.CRITICAL)]
 
     def summary(self) -> dict[str, Any]:
         """Generate a summary of logged entries.

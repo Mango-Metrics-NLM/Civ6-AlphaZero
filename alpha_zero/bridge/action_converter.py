@@ -55,6 +55,7 @@ class LegalActionTypes:
 
     Unit actions include all 17 UnitActionType values for completeness.
     """
+
     # Turn management
     END_TURN = "end_turn"
 
@@ -101,27 +102,22 @@ LEGAL_ACTION_TO_UNIT_TYPE: dict[str, UnitActionType] = {
     LegalActionTypes.MOVE: UnitActionType.MOVE,
     LegalActionTypes.ATTACK: UnitActionType.ATTACK,
     LegalActionTypes.RANGED_ATTACK: UnitActionType.RANGED_ATTACK,
-
     # Defensive/wait actions
     LegalActionTypes.FORTIFY: UnitActionType.FORTIFY,
     LegalActionTypes.SKIP: UnitActionType.SKIP,
     LegalActionTypes.SLEEP: UnitActionType.SLEEP,
-
     # Special actions
     LegalActionTypes.FOUND_CITY: UnitActionType.FOUND_CITY,
     LegalActionTypes.BUILD: UnitActionType.BUILD_IMPROVEMENT,
     LegalActionTypes.PILLAGE: UnitActionType.PILLAGE,
     LegalActionTypes.REPAIR: UnitActionType.REPAIR,
-
     # Naval actions
     LegalActionTypes.EMBARK: UnitActionType.EMBARK,
     LegalActionTypes.DISEMBARK: UnitActionType.DISEMBARK,
-
     # Unit management
     LegalActionTypes.PROMOTE: UnitActionType.PROMOTE,
     LegalActionTypes.HEAL: UnitActionType.HEAL,
     LegalActionTypes.DELETE: UnitActionType.DELETE,
-
     # Air unit actions
     LegalActionTypes.AIRLIFT: UnitActionType.AIRLIFT,
     LegalActionTypes.PARADROP: UnitActionType.PARADROP,
@@ -131,6 +127,7 @@ LEGAL_ACTION_TO_UNIT_TYPE: dict[str, UnitActionType] = {
 # City item type strings (centralized for protocol consistency)
 class CityItemTypes:
     """Constants for city production item types."""
+
     UNIT = "unit"
     BUILDING = "building"
     WONDER = "wonder"
@@ -269,7 +266,9 @@ class ActionConverter:
         try:
             decoded = self.action_space.decode(action_idx)
         except Exception as e:
-            raise InvalidActionError(f"Failed to decode action {action_idx}: {e}", action_idx) from e
+            raise InvalidActionError(
+                f"Failed to decode action {action_idx}: {e}", action_idx
+            ) from e
 
         # Validate against legal actions if requested
         if validate and legal_actions:
@@ -767,9 +766,7 @@ class ActionConverter:
                 # Find unit index
                 unit_idx = self._find_unit_idx(action.unit_id, units, current_player)
                 if unit_idx is None:
-                    logger.debug(
-                        f"Unit {action.unit_id} not found for action {action.action_type}"
-                    )
+                    logger.debug(f"Unit {action.unit_id} not found for action {action.action_type}")
                     continue
 
                 # Actions with targets (move, attack, ranged_attack, build)
@@ -782,9 +779,7 @@ class ActionConverter:
                 else:
                     # Actions without targets (fortify, skip, found_city)
                     # Use (0, 0) as dummy target for targetless actions
-                    self._try_encode_unit_action(
-                        mask, unit_idx, unit_action_type, (0, 0)
-                    )
+                    self._try_encode_unit_action(mask, unit_idx, unit_action_type, (0, 0))
 
             elif action.action_type == LegalActionTypes.PRODUCE:
                 # Find city index
@@ -859,12 +854,14 @@ class ActionConverter:
             target: Target coordinates (scaled).
         """
         try:
-            flat_idx = self.action_space.encode(HierarchicalAction(
-                category=ActionCategory.UNIT_ACTION,
-                selector=unit_idx,
-                action_type=action_type.value,
-                target=target,
-            ))
+            flat_idx = self.action_space.encode(
+                HierarchicalAction(
+                    category=ActionCategory.UNIT_ACTION,
+                    selector=unit_idx,
+                    action_type=action_type.value,
+                    target=target,
+                )
+            )
             if flat_idx < self.action_space_size:
                 mask[flat_idx] = 1.0
         except (IndexError, ValueError) as e:
@@ -894,12 +891,14 @@ class ActionConverter:
             item_id: Production item ID.
         """
         try:
-            flat_idx = self.action_space.encode(HierarchicalAction(
-                category=ActionCategory.CITY_ACTION,
-                selector=city_idx,
-                action_type=action_type.value,
-                target=item_id,
-            ))
+            flat_idx = self.action_space.encode(
+                HierarchicalAction(
+                    category=ActionCategory.CITY_ACTION,
+                    selector=city_idx,
+                    action_type=action_type.value,
+                    target=item_id,
+                )
+            )
             if flat_idx < self.action_space_size:
                 mask[flat_idx] = 1.0
         except (IndexError, ValueError) as e:

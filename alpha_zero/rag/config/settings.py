@@ -242,7 +242,8 @@ class LoggingConfig:
             level=level,
             enable_tracing=_get_env(f"{prefix}_ENABLE_TRACING", False, bool),
             correlation_id_header=_get_env(
-                f"{prefix}_CORRELATION_HEADER", "X-Correlation-ID",
+                f"{prefix}_CORRELATION_HEADER",
+                "X-Correlation-ID",
             ),
             enable_metrics=_get_env(f"{prefix}_ENABLE_METRICS", True, bool),
         )

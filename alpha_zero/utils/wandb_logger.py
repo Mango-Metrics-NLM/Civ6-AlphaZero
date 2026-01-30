@@ -46,6 +46,7 @@ try:
     from wandb.sdk.wandb_run import Run
 
     import wandb
+
     WANDB_AVAILABLE = True
 except ImportError:
     WANDB_AVAILABLE = False
@@ -55,6 +56,7 @@ except ImportError:
 # Load environment variables
 try:
     from dotenv import load_dotenv
+
     _env_path = Path(__file__).parent.parent.parent / ".env"
     if _env_path.exists():
         load_dotenv(_env_path)

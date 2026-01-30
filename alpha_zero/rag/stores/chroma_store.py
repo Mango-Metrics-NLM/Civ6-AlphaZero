@@ -127,10 +127,7 @@ class ChromaVectorStore(VectorStore):
         # Embeddings are validated by _validate_documents above
         embeddings = [doc.embedding.tolist() for doc in documents]  # type: ignore[union-attr]
         contents = [doc.content for doc in documents]
-        metadatas = [
-            self._serialize_metadata(doc.metadata.to_dict())
-            for doc in documents
-        ]
+        metadatas = [self._serialize_metadata(doc.metadata.to_dict()) for doc in documents]
 
         def _add():
             self._collection.add(
@@ -188,7 +185,8 @@ class ChromaVectorStore(VectorStore):
             distances = result["distances"][0] if result["distances"] else [0.0] * len(ids)
 
             for rank, (doc_id, content, embedding, metadata, distance) in enumerate(
-                zip(ids, documents, embeddings, metadatas, distances, strict=True), start=1,
+                zip(ids, documents, embeddings, metadatas, distances, strict=True),
+                start=1,
             ):
                 # Convert distance to similarity score
                 if self.distance_metric == "cosine":
@@ -310,7 +308,8 @@ class ChromaVectorStore(VectorStore):
         return serialized
 
     def _build_where_filter(
-        self, filter_metadata: dict[str, Any],
+        self,
+        filter_metadata: dict[str, Any],
     ) -> dict[str, Any]:
         """Build ChromaDB where filter from metadata.
 

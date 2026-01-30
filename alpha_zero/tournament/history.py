@@ -329,9 +329,7 @@ class MatchHistory:
         Returns:
             Created MatchRecord.
         """
-        record = MatchRecord.from_match_result(
-            result, player1_rating_after, player2_rating_after
-        )
+        record = MatchRecord.from_match_result(result, player1_rating_after, player2_rating_after)
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -407,9 +405,7 @@ class MatchHistory:
         now = datetime.utcnow().isoformat()
 
         # Check if player exists
-        cursor.execute(
-            "SELECT * FROM players WHERE player_id = ?", (player_id,)
-        )
+        cursor.execute("SELECT * FROM players WHERE player_id = ?", (player_id,))
         row = cursor.fetchone()
 
         if row is None:
@@ -499,9 +495,7 @@ class MatchHistory:
         """
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM matches WHERE match_id = ?", (match_id,)
-            )
+            cursor.execute("SELECT * FROM matches WHERE match_id = ?", (match_id,))
             row = cursor.fetchone()
 
             if row:
@@ -565,9 +559,7 @@ class MatchHistory:
         with self._get_connection() as conn:
             cursor = conn.cursor()
 
-            cursor.execute(
-                "SELECT * FROM players WHERE player_id = ?", (player_id,)
-            )
+            cursor.execute("SELECT * FROM players WHERE player_id = ?", (player_id,))
             row = cursor.fetchone()
 
             if row is None:
@@ -733,10 +725,7 @@ class MatchHistory:
                 (min_games, limit),
             )
 
-            return [
-                (row[0], row[1], row[2], row[3])
-                for row in cursor.fetchall()
-            ]
+            return [(row[0], row[1], row[2], row[3]) for row in cursor.fetchall()]
 
     def get_rating_history(
         self,
@@ -819,9 +808,7 @@ class MatchHistory:
                 (player_id, player_id),
             )
 
-            cursor.execute(
-                "DELETE FROM players WHERE player_id = ?", (player_id,)
-            )
+            cursor.execute("DELETE FROM players WHERE player_id = ?", (player_id,))
 
             return cursor.rowcount > 0
 
@@ -849,16 +836,18 @@ class MatchHistory:
             cursor.execute("SELECT * FROM players")
             players = []
             for row in cursor.fetchall():
-                players.append({
-                    "player_id": row[0],
-                    "current_rating": row[1],
-                    "peak_rating": row[2],
-                    "lowest_rating": row[3],
-                    "total_games": row[4],
-                    "wins": row[5],
-                    "losses": row[6],
-                    "draws": row[7],
-                })
+                players.append(
+                    {
+                        "player_id": row[0],
+                        "current_rating": row[1],
+                        "peak_rating": row[2],
+                        "lowest_rating": row[3],
+                        "total_games": row[4],
+                        "wins": row[5],
+                        "losses": row[6],
+                        "draws": row[7],
+                    }
+                )
 
         data = {
             "matches": matches,

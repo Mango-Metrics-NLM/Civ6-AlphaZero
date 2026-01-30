@@ -91,6 +91,7 @@ __all__ = [
     "create_city_produce_command",
 ]
 
+
 # Lazy imports for heavier modules
 # NOTE: We use module-level __getattr__ for lazy loading to improve import times.
 # FileBridge, StateConverter, and ActionConverter depend on heavier dependencies
@@ -115,11 +116,14 @@ def __getattr__(name: str):
     """
     if name == "FileBridge":
         from alpha_zero.bridge.file_bridge import FileBridge
+
         return FileBridge
     if name == "StateConverter":
         from alpha_zero.bridge.state_converter import StateConverter
+
         return StateConverter
     if name == "ActionConverter":
         from alpha_zero.bridge.action_converter import ActionConverter
+
         return ActionConverter
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

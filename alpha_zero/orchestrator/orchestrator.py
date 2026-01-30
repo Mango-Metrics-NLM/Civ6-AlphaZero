@@ -150,6 +150,7 @@ class PaddedEnvironmentWrapper:
             Use :meth:`get_observation` instead.
         """
         import warnings
+
         warnings.warn(
             "_get_observation() is deprecated, use get_observation() instead",
             DeprecationWarning,
@@ -483,7 +484,9 @@ class TrainingOrchestrator:
             self._add_to_buffer(result)
 
         self.state.total_games += len(game_results)
-        logger.info(f"Buffer size: {len(self._replay_buffer)}, min required: {self._replay_buffer.min_size}")
+        logger.info(
+            f"Buffer size: {len(self._replay_buffer)}, min required: {self._replay_buffer.min_size}"
+        )
 
         # Train if buffer is ready
         train_metrics = {}
@@ -599,23 +602,27 @@ class TrainingOrchestrator:
             # Log every 50 steps to track progress
             if turn % 50 == 0:
                 # Get turn info from wrapped env if available, otherwise from env directly
-                base_env = getattr(env, '_env', env)
-                env_turn = getattr(base_env, 'turn', '?')
-                env_max = getattr(base_env, 'max_turns', '?')
-                logger.info(f"Step {turn}: env_turn={env_turn}/{env_max}, mcts_time={mcts_time:.2f}s")
+                base_env = getattr(env, "_env", env)
+                env_turn = getattr(base_env, "turn", "?")
+                env_max = getattr(base_env, "max_turns", "?")
+                logger.info(
+                    f"Step {turn}: env_turn={env_turn}/{env_max}, mcts_time={mcts_time:.2f}s"
+                )
 
             # Store transition (pad to expected sizes for network compatibility)
             spatial, vector = self._encode_state(state)
             action_mask = self._pad_action_array(env.get_valid_actions())
             padded_policy = self._pad_action_array(mcts_policy)
 
-            trajectory.append({
-                "spatial": spatial,
-                "vector": vector,
-                "action_mask": action_mask,
-                "policy": padded_policy,
-                "action": action,
-            })
+            trajectory.append(
+                {
+                    "spatial": spatial,
+                    "vector": vector,
+                    "action_mask": action_mask,
+                    "policy": padded_policy,
+                    "action": action,
+                }
+            )
 
             # Take action (gymnasium API returns 5 values)
             next_state, reward, terminated, truncated, info = env.step(action)
@@ -624,7 +631,10 @@ class TrainingOrchestrator:
             # Apply reward shaping
             if self._reward_shaper:
                 reward = self._reward_shaper.shape_reward(
-                    next_state, reward, info, done,
+                    next_state,
+                    reward,
+                    info,
+                    done,
                 )
 
             total_reward += reward
@@ -735,13 +745,15 @@ class TrainingOrchestrator:
             result: Game result to add.
         """
         for step in result.trajectory:
-            self._replay_buffer.buffer.append({
-                "spatial": step["spatial"],
-                "vector": step["vector"],
-                "action_mask": step["action_mask"],
-                "policy": step["policy"],
-                "value": step["value"],
-            })
+            self._replay_buffer.buffer.append(
+                {
+                    "spatial": step["spatial"],
+                    "vector": step["vector"],
+                    "action_mask": step["action_mask"],
+                    "policy": step["policy"],
+                    "value": step["value"],
+                }
+            )
 
     def _train_epochs(self, num_epochs: int) -> dict[str, float]:
         """Train network for specified epochs.
@@ -782,9 +794,13 @@ class TrainingOrchestrator:
             target_policy = torch.FloatTensor(
                 np.array([b["policy"] for b in batch]),
             ).to(self._device)
-            target_value = torch.FloatTensor(
-                np.array([b["value"] for b in batch]),
-            ).to(self._device).unsqueeze(1)
+            target_value = (
+                torch.FloatTensor(
+                    np.array([b["value"] for b in batch]),
+                )
+                .to(self._device)
+                .unsqueeze(1)
+            )
 
             # Forward pass
             self._optimizer.zero_grad()
@@ -971,17 +987,19 @@ class TrainingOrchestrator:
 
         # Log to W&B
         if self._wandb_logger and self._scheduler is not None:
-            self._wandb_logger.log({
-                "iteration": iteration,
-                "games": len(game_results),
-                "win_rate": win_rate,
-                "avg_turns": avg_turns,
-                "curriculum_stage": self.state.curriculum_stage,
-                "learning_rate": self._scheduler.get_learning_rate(),
-                "batch_size": self._scheduler.get_batch_size(),
-                "buffer_size": len(self._replay_buffer),
-                **train_metrics,
-            })
+            self._wandb_logger.log(
+                {
+                    "iteration": iteration,
+                    "games": len(game_results),
+                    "win_rate": win_rate,
+                    "avg_turns": avg_turns,
+                    "curriculum_stage": self.state.curriculum_stage,
+                    "learning_rate": self._scheduler.get_learning_rate(),
+                    "batch_size": self._scheduler.get_batch_size(),
+                    "buffer_size": len(self._replay_buffer),
+                    **train_metrics,
+                }
+            )
 
     def _cleanup(self) -> None:
         """Cleanup resources on shutdown."""
@@ -1057,7 +1075,9 @@ class TrainingOrchestrator:
             "buffer_size": len(self._replay_buffer) if self._replay_buffer else 0,
             "recent_avg_loss": np.mean(self.state.recent_losses) if self.state.recent_losses else 0,
             "is_running": self.state.is_running,
-            "elapsed_hours": (time.time() - self.state.start_time) / 3600 if self.state.is_running else 0,
+            "elapsed_hours": (time.time() - self.state.start_time) / 3600
+            if self.state.is_running
+            else 0,
         }
 
     def __repr__(self) -> str:

@@ -9,14 +9,15 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 from ..config import AgenticConfig, VerificationCommand
+from ..utils.command_runner import CommandRunner, RetryConfig
 from ..utils.logging_config import get_logger
-from ..utils.command_runner import CommandRunner, CommandResult, RetryConfig
 
 logger = get_logger("feedback_loop")
 
@@ -68,8 +69,8 @@ class ErrorPattern:
     error_type: str
     action: ErrorAction
     max_retries: int = 3
-    pattern: Optional[re.Pattern] = None
-    fixer: Optional[Callable[[str, str], Optional[str]]] = None
+    pattern: re.Pattern | None = None
+    fixer: Callable[[str, str], str | None] | None = None
 
 
 @dataclass
@@ -113,7 +114,7 @@ class ErrorHandler:
     def __init__(self) -> None:
         """Initialize the error handler."""
         self._patterns: list[ErrorPattern] = []
-        self._fixers: dict[str, Callable[[str, str], Optional[str]]] = {}
+        self._fixers: dict[str, Callable[[str, str], str | None]] = {}
 
         # Register default patterns
         self._register_default_patterns()
@@ -156,7 +157,9 @@ class ErrorHandler:
                 error_type="import_error",
                 action=ErrorAction.ANALYZE_FIX,
                 max_retries=2,
-                pattern=re.compile(r"(?:ImportError|ModuleNotFoundError):\s*(.+?)(?:\n|$)", re.IGNORECASE),
+                pattern=re.compile(
+                    r"(?:ImportError|ModuleNotFoundError):\s*(.+?)(?:\n|$)", re.IGNORECASE
+                ),
             )
         )
 
@@ -169,9 +172,7 @@ class ErrorHandler:
         self._patterns.append(pattern)
         logger.debug(f"Registered error pattern: {pattern.error_type}")
 
-    def register_fixer(
-        self, error_type: str, fixer: Callable[[str, str], Optional[str]]
-    ) -> None:
+    def register_fixer(self, error_type: str, fixer: Callable[[str, str], str | None]) -> None:
         """Register a fixer function for an error type.
 
         Args:
@@ -196,12 +197,14 @@ class ErrorHandler:
             if pattern.pattern:
                 matches = pattern.pattern.findall(output)
                 for match in matches:
-                    errors.append({
-                        "type": pattern.error_type,
-                        "message": match if isinstance(match, str) else match[0],
-                        "action": pattern.action.value,
-                        "max_retries": pattern.max_retries,
-                    })
+                    errors.append(
+                        {
+                            "type": pattern.error_type,
+                            "message": match if isinstance(match, str) else match[0],
+                            "action": pattern.action.value,
+                            "max_retries": pattern.max_retries,
+                        }
+                    )
 
         logger.debug(f"Detected {len(errors)} errors in output")
         return errors
@@ -231,7 +234,7 @@ class ErrorHandler:
         """
         return error_type in self._fixers
 
-    def attempt_fix(self, error_type: str, error_message: str, context: str) -> Optional[str]:
+    def attempt_fix(self, error_type: str, error_message: str, context: str) -> str | None:
         """Attempt to fix an error.
 
         Args:
@@ -260,9 +263,9 @@ class FeedbackLoop:
 
     def __init__(
         self,
-        config: Optional[AgenticConfig] = None,
-        command_runner: Optional[CommandRunner] = None,
-        error_handler: Optional[ErrorHandler] = None,
+        config: AgenticConfig | None = None,
+        command_runner: CommandRunner | None = None,
+        error_handler: ErrorHandler | None = None,
         max_iterations: int = 5,
     ) -> None:
         """Initialize the feedback loop.
@@ -279,8 +282,8 @@ class FeedbackLoop:
         self.max_iterations = max_iterations
         self._verification_commands: list[VerificationCommand] = []
         self._success_checks: list[dict[str, Any]] = []
-        self._on_error_callback: Optional[Callable[[str, dict[str, Any]], None]] = None
-        self._on_fix_callback: Optional[Callable[[str, str], bool]] = None
+        self._on_error_callback: Callable[[str, dict[str, Any]], None] | None = None
+        self._on_fix_callback: Callable[[str, str], bool] | None = None
 
         if config:
             self.load_from_config(config)
@@ -307,9 +310,7 @@ class FeedbackLoop:
 
         logger.info(f"Loaded {len(self._verification_commands)} verification commands")
 
-    def set_error_callback(
-        self, callback: Callable[[str, dict[str, Any]], None]
-    ) -> None:
+    def set_error_callback(self, callback: Callable[[str, dict[str, Any]], None]) -> None:
         """Set callback for error notifications.
 
         Args:
@@ -317,9 +318,7 @@ class FeedbackLoop:
         """
         self._on_error_callback = callback
 
-    def set_fix_callback(
-        self, callback: Callable[[str, str], bool]
-    ) -> None:
+    def set_fix_callback(self, callback: Callable[[str, str], bool]) -> None:
         """Set callback for fix confirmations.
 
         Args:
@@ -328,7 +327,7 @@ class FeedbackLoop:
         self._on_fix_callback = callback
 
     def run_verification(
-        self, command: VerificationCommand, cwd: Optional[Path] = None
+        self, command: VerificationCommand, cwd: Path | None = None
     ) -> VerificationResult:
         """Run a single verification command.
 
@@ -414,7 +413,7 @@ class FeedbackLoop:
 
     def run_all_verifications(
         self,
-        cwd: Optional[Path] = None,
+        cwd: Path | None = None,
         stop_on_failure: bool = False,
     ) -> list[VerificationResult]:
         """Run all verification commands.
@@ -440,8 +439,8 @@ class FeedbackLoop:
 
     def run_feedback_loop(
         self,
-        cwd: Optional[Path] = None,
-        fix_callback: Optional[Callable[[list[dict[str, Any]]], bool]] = None,
+        cwd: Path | None = None,
+        fix_callback: Callable[[list[dict[str, Any]]], bool] | None = None,
     ) -> FeedbackLoopResult:
         """Run the full feedback loop with error correction.
 
@@ -524,7 +523,7 @@ class FeedbackLoop:
     def check_success_criteria(
         self,
         verification_results: list[VerificationResult],
-        cwd: Optional[Path] = None,
+        cwd: Path | None = None,
     ) -> bool:
         """Check if all success criteria are met.
 
@@ -552,9 +551,7 @@ class FeedbackLoop:
 
         return True
 
-    def generate_error_report(
-        self, verification_results: list[VerificationResult]
-    ) -> str:
+    def generate_error_report(self, verification_results: list[VerificationResult]) -> str:
         """Generate a detailed error report.
 
         Args:

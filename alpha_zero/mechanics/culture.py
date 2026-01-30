@@ -148,7 +148,7 @@ class TourismSource:
         """Get tourism with all modifiers applied."""
         total = float(self.tourism_per_turn)
         for modifier in self.modifiers.values():
-            total *= (1.0 + modifier)
+            total *= 1.0 + modifier
         return total
 
 
@@ -525,14 +525,10 @@ class CultureManager:
     def to_dict(self) -> dict[str, Any]:
         """Serialize culture state."""
         return {
-            "great_works": {
-                str(k): v.to_dict() for k, v in self._great_works.items()
-            },
+            "great_works": {str(k): v.to_dict() for k, v in self._great_works.items()},
             "player_culture": self._player_culture,
             "player_tourism": self._player_tourism,
-            "influences": {
-                f"{k[0]}_{k[1]}": v.to_dict() for k, v in self._influences.items()
-            },
+            "influences": {f"{k[0]}_{k[1]}": v.to_dict() for k, v in self._influences.items()},
             "next_work_id": self._next_work_id,
         }
 
@@ -549,12 +545,8 @@ class CultureManager:
             work = GreatWork.from_dict(work_data)
             manager._great_works[work.id] = work
 
-        manager._player_culture = {
-            int(k): v for k, v in data.get("player_culture", {}).items()
-        }
-        manager._player_tourism = {
-            int(k): v for k, v in data.get("player_tourism", {}).items()
-        }
+        manager._player_culture = {int(k): v for k, v in data.get("player_culture", {}).items()}
+        manager._player_tourism = {int(k): v for k, v in data.get("player_tourism", {}).items()}
         manager._next_work_id = data.get("next_work_id", 1)
 
         return manager

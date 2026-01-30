@@ -90,9 +90,7 @@ class ScheduleConfig:
 
         if self.schedule_type == ScheduleType.COSINE.value:
             progress = min(step / max(self.decay_steps, 1), 1.0)
-            return final + 0.5 * (self.initial_value - final) * (
-                1 + math.cos(math.pi * progress)
-            )
+            return final + 0.5 * (self.initial_value - final) * (1 + math.cos(math.pi * progress))
 
         if self.schedule_type == ScheduleType.STEP.value:
             current_value = self.initial_value
@@ -108,9 +106,7 @@ class ScheduleConfig:
             # Cosine decay after warmup
             decay_length = max(self.decay_steps - self.warmup_steps, 1)
             progress = min((step - self.warmup_steps) / decay_length, 1.0)
-            return final + 0.5 * (self.initial_value - final) * (
-                1 + math.cos(math.pi * progress)
-            )
+            return final + 0.5 * (self.initial_value - final) * (1 + math.cos(math.pi * progress))
 
         if self.schedule_type == ScheduleType.EXPONENTIAL.value:
             if final <= 0 or self.initial_value <= 0:
@@ -520,9 +516,7 @@ class CurriculumConfig:
     def from_dict(cls, data: dict[str, Any]) -> CurriculumConfig:
         """Create from dictionary."""
         stages_data = data.get("stages", [])
-        stages = [
-            CurriculumStageConfig.from_dict(s, i) for i, s in enumerate(stages_data)
-        ]
+        stages = [CurriculumStageConfig.from_dict(s, i) for i, s in enumerate(stages_data)]
         return cls(
             enabled=data.get("enabled", True),
             allow_demotion=data.get("allow_demotion", True),
@@ -805,7 +799,7 @@ class OrchestratorConfig:
             if not key.startswith(prefix):
                 continue
 
-            parts = key[len(prefix):].lower().split("_", 1)
+            parts = key[len(prefix) :].lower().split("_", 1)
             if len(parts) != 2:
                 continue
 

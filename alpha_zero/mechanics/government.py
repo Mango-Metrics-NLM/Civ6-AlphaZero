@@ -396,7 +396,9 @@ class GovernmentManager:
         self._policies = policies or DEFAULT_POLICIES
 
         self._player_governments: dict[int, str] = {}  # player_id -> government_id
-        self._player_policies: dict[int, dict[int, ActivePolicy]] = {}  # player_id -> slot -> policy
+        self._player_policies: dict[
+            int, dict[int, ActivePolicy]
+        ] = {}  # player_id -> slot -> policy
         self._player_legacy: dict[int, dict[str, float]] = {}  # player_id -> gov_id -> bonus
         self._change_cooldowns: dict[int, int] = {}  # player_id -> turns remaining
         self._turns_in_government: dict[int, int] = {}  # player_id -> turns
@@ -427,7 +429,9 @@ class GovernmentManager:
         if not force:
             cooldown = self._change_cooldowns.get(player_id, 0)
             if cooldown > 0:
-                logger.warning(f"Player {player_id} on government change cooldown ({cooldown} turns)")
+                logger.warning(
+                    f"Player {player_id} on government change cooldown ({cooldown} turns)"
+                )
                 return False
 
         old_government = self._player_governments.get(player_id)
@@ -628,9 +632,7 @@ class GovernmentManager:
 
         # Update turns in government
         for player_id in self._player_governments:
-            self._turns_in_government[player_id] = (
-                self._turns_in_government.get(player_id, 0) + 1
-            )
+            self._turns_in_government[player_id] = self._turns_in_government.get(player_id, 0) + 1
 
         # Update policy active turns
         for player_policies in self._player_policies.values():
@@ -728,9 +730,15 @@ class GovernmentManager:
             "government_tier_encoding": tier_encoding,
             "num_policy_slots": government.slots.total() if government else 0,
             "policies_slotted": len(policies),
-            "military_policies": len([p for p in policies if p.slot_type == PolicySlotType.MILITARY]),
-            "economic_policies": len([p for p in policies if p.slot_type == PolicySlotType.ECONOMIC]),
-            "diplomatic_policies": len([p for p in policies if p.slot_type == PolicySlotType.DIPLOMATIC]),
+            "military_policies": len(
+                [p for p in policies if p.slot_type == PolicySlotType.MILITARY]
+            ),
+            "economic_policies": len(
+                [p for p in policies if p.slot_type == PolicySlotType.ECONOMIC]
+            ),
+            "diplomatic_policies": len(
+                [p for p in policies if p.slot_type == PolicySlotType.DIPLOMATIC]
+            ),
             "legacy_bonuses": len(self._player_legacy.get(player_id, {})),
             "turns_in_government": self._turns_in_government.get(player_id, 0),
             "total_effects": effects,

@@ -29,6 +29,7 @@ def load_fixture(name: str) -> dict:
         Parsed JSON data.
     """
     import json
+
     path = get_fixture_path(name)
     with open(path) as f:
         return json.load(f)

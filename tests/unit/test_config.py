@@ -445,9 +445,7 @@ training:
   learning_rate: 0.001
   lr_decay_steps: [100000, 200000]
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             temp_path = f.name
 

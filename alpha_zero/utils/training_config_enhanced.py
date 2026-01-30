@@ -185,7 +185,7 @@ class ParameterSchedule:
         """
         # Decay by decay_rate every decay_steps iterations
         num_decays = iteration // self.decay_steps
-        return self.initial_value * (self.decay_rate ** num_decays)
+        return self.initial_value * (self.decay_rate**num_decays)
 
     def _cosine_schedule(self, iteration: int) -> float:
         """Cosine annealing schedule.
@@ -450,13 +450,11 @@ class EnhancedTrainingConfig:
         return {
             "batch_size": self.batch_size,
             "batch_size_schedule": (
-                self.batch_size_schedule.to_dict()
-                if self.batch_size_schedule else None
+                self.batch_size_schedule.to_dict() if self.batch_size_schedule else None
             ),
             "learning_rate": self.learning_rate,
             "learning_rate_schedule": (
-                self.learning_rate_schedule.to_dict()
-                if self.learning_rate_schedule else None
+                self.learning_rate_schedule.to_dict() if self.learning_rate_schedule else None
             ),
             "weight_decay": self.weight_decay,
             "gradient_clip": self.gradient_clip,
@@ -489,13 +487,11 @@ class EnhancedTrainingConfig:
         return cls(
             batch_size=data.get("batch_size", 256),
             batch_size_schedule=(
-                ParameterSchedule.from_dict(batch_schedule_data)
-                if batch_schedule_data else None
+                ParameterSchedule.from_dict(batch_schedule_data) if batch_schedule_data else None
             ),
             learning_rate=data.get("learning_rate", 0.001),
             learning_rate_schedule=(
-                ParameterSchedule.from_dict(lr_schedule_data)
-                if lr_schedule_data else None
+                ParameterSchedule.from_dict(lr_schedule_data) if lr_schedule_data else None
             ),
             weight_decay=data.get("weight_decay", 0.0001),
             gradient_clip=data.get("gradient_clip", 1.0),
@@ -557,7 +553,7 @@ class ResourceManager:
         activation_bytes = (spatial_bytes + vector_bytes) * 10  # Assume 10 layers
 
         total_bytes = spatial_bytes + vector_bytes + model_bytes + activation_bytes
-        total_gb = total_bytes / (1024 ** 3)
+        total_gb = total_bytes / (1024**3)
 
         return float(total_gb)
 
@@ -586,7 +582,10 @@ class ResourceManager:
         while low <= high:
             mid = (low + high) // 2
             mem_usage = self.estimate_memory_usage(
-                mid, spatial_size, vector_size, model_params,
+                mid,
+                spatial_size,
+                vector_size,
+                model_params,
             )
 
             if mem_usage <= self.config.max_memory_gb * 0.8:  # 80% safety margin
@@ -617,8 +616,7 @@ class ResourceManager:
 
         if usage_gb > self.config.max_memory_gb * 0.9:
             self._logger.warning(
-                f"High memory usage: {usage_gb:.2f}GB "
-                f"(limit: {self.config.max_memory_gb}GB)",
+                f"High memory usage: {usage_gb:.2f}GB (limit: {self.config.max_memory_gb}GB)",
             )
 
     def get_memory_stats(self) -> dict[str, float]:

@@ -349,15 +349,9 @@ class TrainingDiagnostics:
         """
         # Calculate averages
         avg_entropy = (
-            np.mean(self._current_episode_entropies)
-            if self._current_episode_entropies
-            else 0.0
+            np.mean(self._current_episode_entropies) if self._current_episode_entropies else 0.0
         )
-        avg_value = (
-            np.mean(self._current_episode_values)
-            if self._current_episode_values
-            else 0.0
-        )
+        avg_value = np.mean(self._current_episode_values) if self._current_episode_values else 0.0
 
         # Count actions
         action_counts: dict[int, int] = {}

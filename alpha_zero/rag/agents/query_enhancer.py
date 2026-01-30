@@ -52,21 +52,128 @@ class QueryEnhancer:
 
     # Common stop words to filter
     STOP_WORDS = {
-        "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
-        "have", "has", "had", "do", "does", "did", "will", "would", "could",
-        "should", "may", "might", "must", "shall", "can", "need", "dare",
-        "ought", "used", "to", "of", "in", "for", "on", "with", "at", "by",
-        "from", "as", "into", "through", "during", "before", "after",
-        "above", "below", "between", "under", "again", "further", "then",
-        "once", "here", "there", "when", "where", "why", "how", "all", "each",
-        "few", "more", "most", "other", "some", "such", "no", "nor", "not",
-        "only", "own", "same", "so", "than", "too", "very", "just", "and",
-        "but", "if", "or", "because", "until", "while", "what", "which",
-        "who", "whom", "this", "that", "these", "those", "am", "i", "me",
-        "my", "myself", "we", "our", "ours", "ourselves", "you", "your",
-        "yours", "yourself", "yourselves", "he", "him", "his", "himself",
-        "she", "her", "hers", "herself", "it", "its", "itself", "they",
-        "them", "their", "theirs", "themselves",
+        "a",
+        "an",
+        "the",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "must",
+        "shall",
+        "can",
+        "need",
+        "dare",
+        "ought",
+        "used",
+        "to",
+        "of",
+        "in",
+        "for",
+        "on",
+        "with",
+        "at",
+        "by",
+        "from",
+        "as",
+        "into",
+        "through",
+        "during",
+        "before",
+        "after",
+        "above",
+        "below",
+        "between",
+        "under",
+        "again",
+        "further",
+        "then",
+        "once",
+        "here",
+        "there",
+        "when",
+        "where",
+        "why",
+        "how",
+        "all",
+        "each",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "no",
+        "nor",
+        "not",
+        "only",
+        "own",
+        "same",
+        "so",
+        "than",
+        "too",
+        "very",
+        "just",
+        "and",
+        "but",
+        "if",
+        "or",
+        "because",
+        "until",
+        "while",
+        "what",
+        "which",
+        "who",
+        "whom",
+        "this",
+        "that",
+        "these",
+        "those",
+        "am",
+        "i",
+        "me",
+        "my",
+        "myself",
+        "we",
+        "our",
+        "ours",
+        "ourselves",
+        "you",
+        "your",
+        "yours",
+        "yourself",
+        "yourselves",
+        "he",
+        "him",
+        "his",
+        "himself",
+        "she",
+        "her",
+        "hers",
+        "herself",
+        "it",
+        "its",
+        "itself",
+        "they",
+        "them",
+        "their",
+        "theirs",
+        "themselves",
     }
 
     # Domain-specific synonyms (can be expanded)
@@ -119,7 +226,7 @@ class QueryEnhancer:
 
         if self.use_synonyms:
             synonym_queries = self._expand_with_synonyms(query, keywords)
-            expansions.extend(synonym_queries[:self.max_expansions])
+            expansions.extend(synonym_queries[: self.max_expansions])
 
         # Add keyword-focused query
         if keywords:
@@ -129,7 +236,7 @@ class QueryEnhancer:
 
         return QueryExpansion(
             original=query,
-            expanded=expansions[:self.max_expansions],
+            expanded=expansions[: self.max_expansions],
             keywords=keywords,
         )
 
@@ -143,13 +250,13 @@ class QueryEnhancer:
             List of keywords
         """
         # Tokenize and clean
-        words = re.findall(r'\b[a-zA-Z]+\b', text.lower())
+        words = re.findall(r"\b[a-zA-Z]+\b", text.lower())
 
         # Filter stop words and short words
         keywords = [
-            word for word in words
-            if word not in self.STOP_WORDS
-            and len(word) >= self.min_keyword_length
+            word
+            for word in words
+            if word not in self.STOP_WORDS and len(word) >= self.min_keyword_length
         ]
 
         return keywords
@@ -174,7 +281,7 @@ class QueryEnhancer:
             if keyword in self.SYNONYMS:
                 for synonym in self.SYNONYMS[keyword]:
                     # Use word boundaries to avoid replacing substrings within words
-                    pattern = r'\b' + re.escape(keyword) + r'\b'
+                    pattern = r"\b" + re.escape(keyword) + r"\b"
                     expanded = re.sub(pattern, synonym, query.lower())
                     if expanded != query.lower():
                         expansions.append(expanded)
@@ -194,12 +301,12 @@ class QueryEnhancer:
 
         # Split on common conjunctions
         if " and " in query.lower():
-            parts = re.split(r'\s+and\s+', query, flags=re.IGNORECASE)
+            parts = re.split(r"\s+and\s+", query, flags=re.IGNORECASE)
             sub_queries.extend(parts)
 
         # Split on question words
         if "?" in query:
-            questions = re.split(r'\?\s*', query)
+            questions = re.split(r"\?\s*", query)
             sub_queries.extend([q.strip() + "?" for q in questions if q.strip()])
 
         return list(set(sub_queries))
@@ -239,9 +346,9 @@ class QueryEnhancer:
         query = query.lower()
 
         # Remove extra whitespace
-        query = re.sub(r'\s+', ' ', query).strip()
+        query = re.sub(r"\s+", " ", query).strip()
 
         # Remove special characters except punctuation
-        query = re.sub(r'[^\w\s\?\.\,\!]', '', query)
+        query = re.sub(r"[^\w\s\?\.\,\!]", "", query)
 
         return query

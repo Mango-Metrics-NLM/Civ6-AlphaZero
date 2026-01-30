@@ -585,10 +585,7 @@ class SubAgentRegistry:
         Returns:
             Dictionary with all agent configurations.
         """
-        return {
-            name: config.to_dict()
-            for name, config in self._agents.items()
-        }
+        return {name: config.to_dict() for name, config in self._agents.items()}
 
 
 # Global registry instance

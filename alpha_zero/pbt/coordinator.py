@@ -151,9 +151,7 @@ class PBTCoordinator:
         self._progress_history: list[PBTProgress] = []
         self._stats_history: list[PopulationStats] = []
 
-        logger.info(
-            f"PBTCoordinator initialized with population_size={config.population_size}"
-        )
+        logger.info(f"PBTCoordinator initialized with population_size={config.population_size}")
 
     def set_training_callbacks(
         self,
@@ -224,8 +222,7 @@ class PBTCoordinator:
         self._setup_signal_handlers()
 
         logger.info(
-            f"Starting PBT training: max_steps={max_steps}, "
-            f"max_generations={max_generations}"
+            f"Starting PBT training: max_steps={max_steps}, max_generations={max_generations}"
         )
 
         try:
@@ -255,9 +252,7 @@ class PBTCoordinator:
                     self._run_exploit_explore()
 
                 # Check if checkpoint is needed
-                if self.scheduler.should_checkpoint(
-                    self._current_step, self._last_checkpoint_step
-                ):
+                if self.scheduler.should_checkpoint(self._current_step, self._last_checkpoint_step):
                     self._save_checkpoint()
 
                 self._current_step += 1
@@ -351,9 +346,7 @@ class PBTCoordinator:
 
         # Log changes
         for weak_id, strong_id, _new_params in changes:
-            logger.debug(
-                f"Replaced {weak_id} with mutated copy of {strong_id}"
-            )
+            logger.debug(f"Replaced {weak_id} with mutated copy of {strong_id}")
 
         if self.wandb_logger:
             self._log_exploit_explore(changes)
@@ -433,12 +426,15 @@ class PBTCoordinator:
 
         try:
             import wandb
-            wandb.log({
-                f"pbt/agent/{agent_id}/loss": metrics.get("loss", 0),
-                f"pbt/agent/{agent_id}/policy_loss": metrics.get("policy_loss", 0),
-                f"pbt/agent/{agent_id}/value_loss": metrics.get("value_loss", 0),
-                "pbt/step": self._current_step,
-            })
+
+            wandb.log(
+                {
+                    f"pbt/agent/{agent_id}/loss": metrics.get("loss", 0),
+                    f"pbt/agent/{agent_id}/policy_loss": metrics.get("policy_loss", 0),
+                    f"pbt/agent/{agent_id}/value_loss": metrics.get("value_loss", 0),
+                    "pbt/step": self._current_step,
+                }
+            )
         except Exception as e:
             logger.debug(f"Failed to log training metrics: {e}")
 
@@ -455,23 +451,27 @@ class PBTCoordinator:
             import wandb
 
             # Population stats
-            wandb.log({
-                "pbt/population/mean_fitness": stats.mean_fitness,
-                "pbt/population/max_fitness": stats.max_fitness,
-                "pbt/population/min_fitness": stats.min_fitness,
-                "pbt/population/std_fitness": stats.std_fitness,
-                "pbt/population/generation": stats.generation,
-                "pbt/step": self._current_step,
-            })
+            wandb.log(
+                {
+                    "pbt/population/mean_fitness": stats.mean_fitness,
+                    "pbt/population/max_fitness": stats.max_fitness,
+                    "pbt/population/min_fitness": stats.min_fitness,
+                    "pbt/population/std_fitness": stats.std_fitness,
+                    "pbt/population/generation": stats.generation,
+                    "pbt/step": self._current_step,
+                }
+            )
 
             # Hyperparameter distributions
             for param_name, param_stats in stats.hyperparameter_stats.items():
-                wandb.log({
-                    f"pbt/hyperparams/{param_name}/mean": param_stats["mean"],
-                    f"pbt/hyperparams/{param_name}/std": param_stats["std"],
-                    f"pbt/hyperparams/{param_name}/min": param_stats["min"],
-                    f"pbt/hyperparams/{param_name}/max": param_stats["max"],
-                })
+                wandb.log(
+                    {
+                        f"pbt/hyperparams/{param_name}/mean": param_stats["mean"],
+                        f"pbt/hyperparams/{param_name}/std": param_stats["std"],
+                        f"pbt/hyperparams/{param_name}/min": param_stats["min"],
+                        f"pbt/hyperparams/{param_name}/max": param_stats["max"],
+                    }
+                )
 
         except Exception as e:
             logger.debug(f"Failed to log evaluation results: {e}")
@@ -486,16 +486,20 @@ class PBTCoordinator:
 
         try:
             import wandb
-            wandb.log({
-                "pbt/exploit_explore/agents_replaced": len(changes),
-                "pbt/exploit_explore/generation": self.population.generation,
-                "pbt/step": self._current_step,
-            })
+
+            wandb.log(
+                {
+                    "pbt/exploit_explore/agents_replaced": len(changes),
+                    "pbt/exploit_explore/generation": self.population.generation,
+                    "pbt/step": self._current_step,
+                }
+            )
         except Exception as e:
             logger.debug(f"Failed to log exploit/explore: {e}")
 
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful shutdown."""
+
         def handle_signal(signum, frame):
             logger.info(f"Received signal {signum}, requesting shutdown")
             self._shutdown_requested = True

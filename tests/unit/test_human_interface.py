@@ -23,14 +23,12 @@ from alpha_zero.human_interface.config import (
 from alpha_zero.human_interface.game_controller import (
     GameController,
     GamePhase,
-    GameState,
     TurnResult,
 )
 from alpha_zero.human_interface.input_handler import (
     ActionParser,
     ActionType,
     HumanInputHandler,
-    ParsedAction,
 )
 from alpha_zero.human_interface.replay import (
     GameRecorder,

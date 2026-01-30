@@ -229,7 +229,9 @@ class TemplateGenerator:
     VAR_PATTERN = re.compile(r"\$\{(\w+(?:\.\w+)*)\}")
     VAR_DEFAULT_PATTERN = re.compile(r"\$\{(\w+(?:\.\w+)*)\s*:\s*([^}]+)\}")
     CONDITIONAL_PATTERN = re.compile(r"\{%\s*if\s+(\w+)\s*%\}(.*?)\{%\s*endif\s*%\}", re.DOTALL)
-    LOOP_PATTERN = re.compile(r"\{%\s*for\s+(\w+)\s+in\s+(\w+)\s*%\}(.*?)\{%\s*endfor\s*%\}", re.DOTALL)
+    LOOP_PATTERN = re.compile(
+        r"\{%\s*for\s+(\w+)\s+in\s+(\w+)\s*%\}(.*?)\{%\s*endfor\s*%\}", re.DOTALL
+    )
 
     def __init__(
         self,
@@ -392,7 +394,9 @@ class TemplateGenerator:
         self._helpers["count"] = lambda items: len(items) if items else 0
         self._helpers["first"] = lambda items: items[0] if items else None
         self._helpers["last"] = lambda items: items[-1] if items else None
-        self._helpers["indent"] = lambda s, n=2: "\n".join(" " * n + line for line in str(s).split("\n"))
+        self._helpers["indent"] = lambda s, n=2: "\n".join(
+            " " * n + line for line in str(s).split("\n")
+        )
 
     def register_variable(self, var_def: TemplateVariable) -> None:
         """Register a variable definition.
@@ -521,6 +525,7 @@ class TemplateGenerator:
         Returns:
             Template with processed conditionals.
         """
+
         def replace_conditional(match: re.Match[str]) -> str:
             condition_var = match.group(1)
             content = match.group(2)
@@ -542,6 +547,7 @@ class TemplateGenerator:
         Returns:
             Template with processed loops.
         """
+
         def replace_loop(match: re.Match[str]) -> str:
             item_name = match.group(1)
             list_name = match.group(2)

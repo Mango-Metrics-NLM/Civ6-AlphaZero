@@ -33,7 +33,6 @@ from alpha_zero.core.transformer_network import (
     get_norm_layer,
 )
 
-
 # =============================================================================
 # Configuration Tests
 # =============================================================================
@@ -101,7 +100,7 @@ class TestRMSNorm:
         x = torch.randn(2, 10, 64) * 100  # Large values
         out = norm(x)
         # RMS should be around 1
-        rms = torch.sqrt(torch.mean(out ** 2, dim=-1))
+        rms = torch.sqrt(torch.mean(out**2, dim=-1))
         assert torch.allclose(rms, torch.ones_like(rms), atol=0.1)
 
 
@@ -753,13 +752,11 @@ class TestComputeTransformerLoss:
 
         # With different weights
         _, loss1 = compute_transformer_loss(
-            policy_logits, value, target_policy, target_value,
-            policy_weight=1.0, value_weight=1.0
+            policy_logits, value, target_policy, target_value, policy_weight=1.0, value_weight=1.0
         )
 
         _, loss2 = compute_transformer_loss(
-            policy_logits, value, target_policy, target_value,
-            policy_weight=2.0, value_weight=0.5
+            policy_logits, value, target_policy, target_value, policy_weight=2.0, value_weight=0.5
         )
 
         # Different weights should give different totals
@@ -812,9 +809,7 @@ class TestTransformerIntegration:
         policy_logits, value = network(spatial, vector)
 
         # Compute loss
-        loss, _ = compute_transformer_loss(
-            policy_logits, value, target_policy, target_value
-        )
+        loss, _ = compute_transformer_loss(policy_logits, value, target_policy, target_value)
 
         # Backward pass
         optimizer.zero_grad()
@@ -858,7 +853,7 @@ class TestTransformerIntegration:
         # All batch elements should be identical
         for i in range(4):
             assert torch.allclose(policy1[0], policy2[i], atol=1e-5)
-            assert torch.allclose(value1, value2[i:i+1], atol=1e-5)
+            assert torch.allclose(value1, value2[i : i + 1], atol=1e-5)
 
     def test_different_spatial_sizes(self) -> None:
         """Test with different spatial sizes."""

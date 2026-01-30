@@ -318,8 +318,7 @@ class FileBridge:
                 self.stats.last_command_time = time.time()
 
                 logger.debug(
-                    f"Sent command: msg_id={command.msg_id}, "
-                    f"actions={len(command.commands)}"
+                    f"Sent command: msg_id={command.msg_id}, actions={len(command.commands)}"
                 )
 
                 return True

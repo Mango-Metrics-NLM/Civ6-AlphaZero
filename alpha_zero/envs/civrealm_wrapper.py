@@ -54,6 +54,7 @@ CIVREALM_IMPORT_ERROR: str | None = None
 
 try:
     import civrealm
+
     CIVREALM_AVAILABLE = True
     logger.info("CivRealm successfully imported")
 except ImportError as e:
@@ -69,6 +70,7 @@ except Exception as e:
 # ============================================================================
 # Configuration
 # ============================================================================
+
 
 @dataclass
 class CivRealmConfig:
@@ -162,6 +164,7 @@ class CivRealmConfig:
 # ============================================================================
 # Encoder
 # ============================================================================
+
 
 class TerrainType(IntEnum):
     """CivRealm terrain types for encoding."""
@@ -442,11 +445,13 @@ class CivRealmEncoder:
         # Count by category
         for category in UnitCategory:
             own_count = sum(
-                1 for u in own_units
+                1
+                for u in own_units
                 if self._get_unit_category(u.get("type_name", "")) == category.value
             )
             enemy_count = sum(
-                1 for u in enemy_units
+                1
+                for u in enemy_units
                 if self._get_unit_category(u.get("type_name", "")) == category.value
             )
             vector[52 + category.value] = own_count / 50.0
@@ -579,7 +584,11 @@ class CivRealmEncoder:
             return UnitCategory.WORKER.value
 
         # Caravans/Traders
-        if "caravan" in unit_type_lower or "freight" in unit_type_lower or "trader" in unit_type_lower:
+        if (
+            "caravan" in unit_type_lower
+            or "freight" in unit_type_lower
+            or "trader" in unit_type_lower
+        ):
             return UnitCategory.CARAVAN.value
 
         # Diplomats/Spies
@@ -589,9 +598,20 @@ class CivRealmEncoder:
             return UnitCategory.SPY.value
 
         # Naval units
-        naval_keywords = ["trireme", "caravel", "galleon", "frigate", "ironclad",
-                        "destroyer", "cruiser", "battleship", "carrier", "submarine",
-                        "transport", "ship"]
+        naval_keywords = [
+            "trireme",
+            "caravel",
+            "galleon",
+            "frigate",
+            "ironclad",
+            "destroyer",
+            "cruiser",
+            "battleship",
+            "carrier",
+            "submarine",
+            "transport",
+            "ship",
+        ]
         if any(kw in unit_type_lower for kw in naval_keywords):
             return UnitCategory.NAVAL_MILITARY.value
 
@@ -611,31 +631,34 @@ class CivRealmEncoder:
     @property
     def observation_space(self) -> spaces.Dict:
         """Get Gymnasium observation space."""
-        return spaces.Dict({
-            "spatial": spaces.Box(
-                low=0.0,
-                high=1.0,
-                shape=self.spatial_shape,
-                dtype=np.float32,
-            ),
-            "vector": spaces.Box(
-                low=-1.0,
-                high=1.0,
-                shape=(self.VECTOR_DIM,),
-                dtype=np.float32,
-            ),
-            "action_mask": spaces.Box(
-                low=0.0,
-                high=1.0,
-                shape=(self.config.max_actions_per_turn,),
-                dtype=np.float32,
-            ),
-        })
+        return spaces.Dict(
+            {
+                "spatial": spaces.Box(
+                    low=0.0,
+                    high=1.0,
+                    shape=self.spatial_shape,
+                    dtype=np.float32,
+                ),
+                "vector": spaces.Box(
+                    low=-1.0,
+                    high=1.0,
+                    shape=(self.VECTOR_DIM,),
+                    dtype=np.float32,
+                ),
+                "action_mask": spaces.Box(
+                    low=0.0,
+                    high=1.0,
+                    shape=(self.config.max_actions_per_turn,),
+                    dtype=np.float32,
+                ),
+            }
+        )
 
 
 # ============================================================================
 # Action Handler
 # ============================================================================
+
 
 class ActionType(IntEnum):
     """High-level action types in CivRealm."""
@@ -784,11 +807,7 @@ class CivRealmActionHandler:
 
         return mask
 
-    def sample_valid_action(
-        self,
-        mask: np.ndarray,
-        rng: np.random.Generator | None = None
-    ) -> int:
+    def sample_valid_action(self, mask: np.ndarray, rng: np.random.Generator | None = None) -> int:
         """Sample a random valid action.
 
         Args:
@@ -817,6 +836,7 @@ class CivRealmActionHandler:
 # ============================================================================
 # Curriculum for Mini-Games
 # ============================================================================
+
 
 @dataclass
 class MiniGameTask:
@@ -958,10 +978,7 @@ class CivRealmCurriculum:
             self.games_played[task.name] = 0
 
         # Sort tasks by difficulty
-        self.task_order = sorted(
-            self.tasks.keys(),
-            key=lambda t: self.tasks[t].difficulty
-        )
+        self.task_order = sorted(self.tasks.keys(), key=lambda t: self.tasks[t].difficulty)
 
         logger.info(f"CivRealmCurriculum initialized with {len(self.tasks)} tasks")
         logger.debug(f"Task order: {self.task_order}")
@@ -994,10 +1011,7 @@ class CivRealmCurriculum:
             task = self.tasks[task_name]
 
             # Check prerequisites
-            prereqs_met = all(
-                self._is_task_mastered(prereq)
-                for prereq in task.prerequisites
-            )
+            prereqs_met = all(self._is_task_mastered(prereq) for prereq in task.prerequisites)
 
             if prereqs_met:
                 # Check if appropriate difficulty for skill level
@@ -1017,10 +1031,7 @@ class CivRealmCurriculum:
         for task_name in self.task_order:
             if task_name not in available_tasks:
                 task = self.tasks[task_name]
-                prereqs_met = all(
-                    self._is_task_mastered(prereq)
-                    for prereq in task.prerequisites
-                )
+                prereqs_met = all(self._is_task_mastered(prereq) for prereq in task.prerequisites)
                 if prereqs_met:
                     return task_name
 
@@ -1140,6 +1151,7 @@ class CivRealmCurriculum:
 # ============================================================================
 # Mock Environment (when CivRealm not installed)
 # ============================================================================
+
 
 class MockCivRealmEnv:
     """Mock CivRealm environment for testing when CivRealm is not installed.
@@ -1283,6 +1295,7 @@ class MockCivRealmEnv:
 # ============================================================================
 # Main Wrapper
 # ============================================================================
+
 
 class CivRealmWrapper(gym.Env):
     """Gymnasium-compatible wrapper for CivRealm environment.
@@ -1598,6 +1611,7 @@ class CivRealmWrapper(gym.Env):
 # ============================================================================
 # Factory Functions
 # ============================================================================
+
 
 def create_civrealm_env(
     task: str = "development_build_city",

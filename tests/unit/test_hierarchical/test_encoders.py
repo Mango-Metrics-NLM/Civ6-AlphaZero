@@ -1,4 +1,5 @@
 """Tests for hierarchical state and goal encoders."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -379,9 +380,7 @@ class TestHierarchicalGoalEncoder:
             Goal.strategic(StrategicGoalType.DOMINATION_VICTORY),  # Different level
         ]
 
-        tactical_batch = encoder.encode_goals_for_level(
-            goals, HierarchyLevel.TACTICAL
-        )
+        tactical_batch = encoder.encode_goals_for_level(goals, HierarchyLevel.TACTICAL)
 
         assert isinstance(tactical_batch, np.ndarray)
 

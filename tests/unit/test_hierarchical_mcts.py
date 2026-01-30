@@ -12,7 +12,6 @@ Tests cover:
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -27,7 +26,6 @@ from alpha_zero.hierarchical.mcts.hierarchical_mcts import (
     OptionTermination,
     SearchStats,
 )
-
 
 # =============================================================================
 # Constants
@@ -129,9 +127,7 @@ class TestOption:
         assert option.cumulative_reward == 0.0
         assert option.status == OptionTermination.STILL_ACTIVE
 
-    def test_can_initiate_default(
-        self, sample_goal: Goal, sample_state: dict[str, Any]
-    ) -> None:
+    def test_can_initiate_default(self, sample_goal: Goal, sample_state: dict[str, Any]) -> None:
         """Test can_initiate with no initiation function."""
         option = Option(id="test", goal=sample_goal, level=HierarchyLevel.OPERATIONAL)
 
@@ -210,6 +206,7 @@ class TestOption:
 
     def test_get_action_with_policy(self, sample_goal: Goal) -> None:
         """Test get_action with custom policy."""
+
         # Policy that always picks first valid action deterministically
         def policy(state: dict) -> np.ndarray:
             probs = np.zeros(10)
@@ -555,9 +552,7 @@ class TestHierarchicalMCTS:
         assert mcts.config.use_options is True
         assert mcts.config.num_simulations == 50
 
-    def test_register_option(
-        self, mcts_config: MCTSConfig, sample_goal: Goal
-    ) -> None:
+    def test_register_option(self, mcts_config: MCTSConfig, sample_goal: Goal) -> None:
         """Test option registration."""
         mcts = HierarchicalMCTS(
             network=None,

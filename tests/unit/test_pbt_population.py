@@ -23,13 +23,11 @@ from alpha_zero.pbt.config import (
     AgentState,
     HyperparameterSpace,
     PBTConfig,
-    SelectionMethod,
 )
 from alpha_zero.pbt.population import (
     PopulationManager,
     PopulationStats,
 )
-
 
 # =============================================================================
 # Fixtures
@@ -183,9 +181,7 @@ class TestPopulationManagerInit:
             assert loaded is not None
             assert loaded.hyperparameters == original.hyperparameters
 
-    def test_reinitialize_clears_population(
-        self, population_manager: PopulationManager
-    ) -> None:
+    def test_reinitialize_clears_population(self, population_manager: PopulationManager) -> None:
         """Test that reinitializing clears existing population."""
         original_ids = population_manager.get_agent_ids()
 
@@ -242,9 +238,7 @@ class TestAgentManagement:
         assert "learning_rate" in params
         assert "c_puct" in params
 
-    def test_get_hyperparameters_not_found(
-        self, population_manager: PopulationManager
-    ) -> None:
+    def test_get_hyperparameters_not_found(self, population_manager: PopulationManager) -> None:
         """Test that KeyError is raised for non-existent agent."""
         with pytest.raises(KeyError):
             population_manager.get_hyperparameters("nonexistent_id")
@@ -282,18 +276,14 @@ class TestFitnessManagement:
         """Test updating fitness with games and steps."""
         agent_id = population_manager.get_agent_ids()[0]
 
-        population_manager.update_fitness(
-            agent_id, 0.6, games_played=10, training_steps=1000
-        )
+        population_manager.update_fitness(agent_id, 0.6, games_played=10, training_steps=1000)
 
         agent = population_manager.get_agent(agent_id)
         assert agent is not None
         assert agent.games_played == 10
         assert agent.training_steps == 1000
 
-    def test_update_fitness_nonexistent_agent(
-        self, population_manager: PopulationManager
-    ) -> None:
+    def test_update_fitness_nonexistent_agent(self, population_manager: PopulationManager) -> None:
         """Test updating fitness for non-existent agent logs warning."""
         # Should not raise, just log warning
         population_manager.update_fitness("nonexistent_id", 0.5)
@@ -327,9 +317,7 @@ class TestFitnessManagement:
         assert best is not None
         assert best.agent_id == expected_best_id
 
-    def test_get_best_agent_empty_population(
-        self, pbt_config: PBTConfig
-    ) -> None:
+    def test_get_best_agent_empty_population(self, pbt_config: PBTConfig) -> None:
         """Test get_best_agent returns None for empty population."""
         manager = PopulationManager(pbt_config)
         # Don't initialize
@@ -361,9 +349,7 @@ class TestSelection:
         expected = [aid for aid, _ in ranking[-num_expected:]]
         assert set(to_replace) == set(expected)
 
-    def test_get_agents_to_copy_from(
-        self, population_manager: PopulationManager
-    ) -> None:
+    def test_get_agents_to_copy_from(self, population_manager: PopulationManager) -> None:
         """Test identifying top agents to copy from."""
         agent_ids = population_manager.get_agent_ids()
 
@@ -485,9 +471,7 @@ class TestExploitAndExplore:
             assert isinstance(strong_id, str)
             assert isinstance(new_params, dict)
 
-    def test_exploit_and_explore_updates_agent(
-        self, population_manager: PopulationManager
-    ) -> None:
+    def test_exploit_and_explore_updates_agent(self, population_manager: PopulationManager) -> None:
         """Test that exploit_and_explore updates weak agents."""
         agent_ids = population_manager.get_agent_ids()
 
@@ -499,12 +483,12 @@ class TestExploitAndExplore:
         to_replace = population_manager.get_agents_to_replace()
         weak_id = to_replace[0]
         weak_before = population_manager.get_agent(weak_id)
-        old_params = weak_before.hyperparameters.copy()
+        _old_params = weak_before.hyperparameters.copy()
 
         population_manager.exploit_and_explore()
 
         # Weak agent should have different params now
-        weak_after = population_manager.get_agent(weak_id)
+        _weak_after = population_manager.get_agent(weak_id)
         # At least some parameter should change (with high probability)
         # Note: There's a small chance all params stay the same due to mutation
 
@@ -528,9 +512,7 @@ class TestExploitAndExplore:
         # Copy function should have been called
         assert copy_fn.called
 
-    def test_exploit_and_explore_no_agents(
-        self, pbt_config: PBTConfig
-    ) -> None:
+    def test_exploit_and_explore_no_agents(self, pbt_config: PBTConfig) -> None:
         """Test exploit_and_explore with no agents returns empty."""
         manager = PopulationManager(pbt_config)
         # Don't initialize
@@ -594,9 +576,7 @@ class TestStatistics:
 class TestConvergence:
     """Tests for convergence detection."""
 
-    def test_is_converged_not_enough_history(
-        self, population_manager: PopulationManager
-    ) -> None:
+    def test_is_converged_not_enough_history(self, population_manager: PopulationManager) -> None:
         """Test convergence returns False without enough history."""
         assert not population_manager.is_converged()
 
@@ -628,7 +608,7 @@ class TestConvergence:
         manager.initialize()
 
         # Create low variance stats (all agents same fitness)
-        for i in range(5):
+        for _ in range(5):
             for aid in manager.get_agent_ids():
                 manager.update_fitness(aid, 0.5)  # Same fitness
             manager.compute_stats()
@@ -738,9 +718,7 @@ class TestWeightCallbacks:
         assert population_manager._load_weights_fn == load_fn
         assert population_manager._copy_weights_fn == copy_fn
 
-    def test_weight_callbacks_optional(
-        self, population_manager: PopulationManager
-    ) -> None:
+    def test_weight_callbacks_optional(self, population_manager: PopulationManager) -> None:
         """Test that callbacks are optional."""
         # This should not raise
         population_manager.set_weight_callbacks()
@@ -766,9 +744,7 @@ class TestProperties:
 
         assert population_manager.generation == 1
 
-    def test_population_size_property(
-        self, population_manager: PopulationManager
-    ) -> None:
+    def test_population_size_property(self, population_manager: PopulationManager) -> None:
         """Test population_size property."""
         expected = population_manager.config.population_size
         assert population_manager.population_size == expected

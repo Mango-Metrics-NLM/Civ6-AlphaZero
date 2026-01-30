@@ -119,3 +119,13 @@ end_of_log_utf8.txt
 latest_run_log.txt
 temp_log_tail.txt
 nul
+*.log
+
+# Serialized data
+*.pkl
+*.npy
+
+# Experiment tracking
+experiments/
+mlruns/
+ray_results/

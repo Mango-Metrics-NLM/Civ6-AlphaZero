@@ -27,7 +27,6 @@ from alpha_zero.pbt.scheduler import (
     RouletteSelection,
     SchedulerState,
     ScheduleType,
-    SelectionStrategy,
     SteadyStateSelection,
     TournamentSelection,
     TruncationSelection,
@@ -243,9 +242,7 @@ class TestTournamentSelection:
         selected = strategy.select(sample_agents, num_to_select=4, rng=rng)
         assert len(selected) == 4
 
-    def test_tournament_selection_favors_fit(
-        self, sample_agents: list[AgentState]
-    ) -> None:
+    def test_tournament_selection_favors_fit(self, sample_agents: list[AgentState]) -> None:
         """Test tournament selection tends to favor fitter agents."""
         rng = np.random.default_rng(SEED)
         strategy = TournamentSelection(tournament_size=3)
@@ -263,9 +260,7 @@ class TestTournamentSelection:
         # Top agents should be selected more often than bottom
         assert top_count > total_selections * 0.3
 
-    def test_tournament_handles_small_population(
-        self, rng: np.random.Generator
-    ) -> None:
+    def test_tournament_handles_small_population(self, rng: np.random.Generator) -> None:
         """Test tournament handles population smaller than tournament size."""
         agents = [
             AgentState(agent_id="a", fitness_score=0.8),
@@ -290,9 +285,7 @@ class TestRouletteSelection:
         selected = strategy.select(sample_agents, num_to_select=3, rng=rng)
         assert len(selected) == 3
 
-    def test_selection_proportional_to_fitness(
-        self, sample_agents: list[AgentState]
-    ) -> None:
+    def test_selection_proportional_to_fitness(self, sample_agents: list[AgentState]) -> None:
         """Test selection probability proportional to fitness."""
         rng = np.random.default_rng(SEED)
         strategy = RouletteSelection()
@@ -409,9 +402,7 @@ class TestCreateSelectionStrategy:
 
     def test_create_tournament_custom_size(self) -> None:
         """Test creating tournament strategy with custom size."""
-        strategy = create_selection_strategy(
-            SelectionMethod.TOURNAMENT, tournament_size=5
-        )
+        strategy = create_selection_strategy(SelectionMethod.TOURNAMENT, tournament_size=5)
         assert isinstance(strategy, TournamentSelection)
         assert strategy.tournament_size == 5
 
@@ -428,9 +419,7 @@ class TestCreateSelectionStrategy:
 
     def test_create_rank_custom_pressure(self) -> None:
         """Test creating rank strategy with custom pressure."""
-        strategy = create_selection_strategy(
-            SelectionMethod.RANK, selection_pressure=1.8
-        )
+        strategy = create_selection_strategy(SelectionMethod.RANK, selection_pressure=1.8)
         assert isinstance(strategy, RankSelection)
         assert strategy.selection_pressure == 1.8
 
@@ -665,9 +654,7 @@ class TestPBTScheduler:
         assert scheduler._selection_strategy is not None
         assert scheduler._evaluator is not None
 
-    def test_initialization_creates_selection_strategy(
-        self, rng: np.random.Generator
-    ) -> None:
+    def test_initialization_creates_selection_strategy(self, rng: np.random.Generator) -> None:
         """Test scheduler creates correct selection strategy."""
         config = PBTConfig(selection_method="tournament", tournament_size=5)
         scheduler = PBTScheduler(config=config, rng=rng)
@@ -695,9 +682,7 @@ class TestPBTScheduler:
         assert scheduler.should_evaluate(150) is False
         assert scheduler.should_evaluate(200) is True
 
-    def test_should_exploit_explore_requires_evaluation(
-        self, pbt_config: PBTConfig
-    ) -> None:
+    def test_should_exploit_explore_requires_evaluation(self, pbt_config: PBTConfig) -> None:
         """Test should_exploit_explore requires prior evaluation."""
         scheduler = PBTScheduler(config=pbt_config)
 
@@ -736,9 +721,7 @@ class TestPBTScheduler:
         assert state.last_evaluation_step == 100
         assert state.best_fitness_seen == 0.8  # Max fitness in results
 
-    def test_record_evaluation_tracks_plateau(
-        self, pbt_config: PBTConfig
-    ) -> None:
+    def test_record_evaluation_tracks_plateau(self, pbt_config: PBTConfig) -> None:
         """Test record_evaluation tracks fitness plateau."""
         scheduler = PBTScheduler(config=pbt_config)
 
@@ -872,8 +855,7 @@ class TestSchedulerIntegration:
 
         # Perform evaluation
         results = [
-            EvaluationResult(agent_id=a.agent_id, fitness=a.fitness_score)
-            for a in sample_agents
+            EvaluationResult(agent_id=a.agent_id, fitness=a.fitness_score) for a in sample_agents
         ]
         scheduler.record_evaluation(100, results)
 

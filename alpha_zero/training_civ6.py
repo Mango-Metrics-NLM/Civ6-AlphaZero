@@ -208,9 +208,7 @@ def self_play_game(
         )
 
         # Select action
-        temperature = (
-            config.temperature if env.turn < config.temperature_threshold else 0.0
-        )
+        temperature = config.temperature if env.turn < config.temperature_threshold else 0.0
         action = mcts.select_action(action_probs, temperature)
 
         # Take action
@@ -278,9 +276,7 @@ def run_self_play(
             temperature_threshold=config.temperature_threshold,
         )
         mcts = GumbelMCTS(network, gumbel_config, device=config.device)
-        logger.info(
-            f"Using Gumbel MuZero MCTS with {config.gumbel_num_simulations} simulations"
-        )
+        logger.info(f"Using Gumbel MuZero MCTS with {config.gumbel_num_simulations} simulations")
     else:
         mcts_config = MCTSConfig(
             num_simulations=config.num_simulations,
@@ -336,7 +332,11 @@ def train_epoch(
 
         # Compute loss
         loss, p_loss, v_loss = compute_loss(
-            policy_logits, value, target_policy, target_value, action_mask,
+            policy_logits,
+            value,
+            target_policy,
+            target_value,
+            action_mask,
         )
 
         # Backward pass
@@ -449,9 +449,9 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
     num_games = 2 if dry_run else config.num_games_per_iteration
 
     for iteration in range(num_iterations):
-        logger.info(f"\n{'='*50}")
+        logger.info(f"\n{'=' * 50}")
         logger.info(f"Iteration {iteration + 1}/{num_iterations}")
-        logger.info(f"{'='*50}")
+        logger.info(f"{'=' * 50}")
 
         # Self-play
         logger.info("Running self-play...")
@@ -464,8 +464,7 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
 
         self_play_time = time.time() - start_time
         logger.info(
-            f"Self-play: {len(examples)} examples from {num_games} games "
-            f"({self_play_time:.1f}s)",
+            f"Self-play: {len(examples)} examples from {num_games} games ({self_play_time:.1f}s)",
         )
 
         # Training
@@ -502,13 +501,16 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
         if (iteration + 1) % config.save_interval == 0 or dry_run:
             logger.info("Evaluating against random...")
             win_rate = evaluate_against_random(
-                network, config, num_games=10 if dry_run else 20,
+                network,
+                config,
+                num_games=10 if dry_run else 20,
             )
             logger.info(f"Win rate vs random: {win_rate:.1%}")
 
             # Save checkpoint
             checkpoint_path = os.path.join(
-                config.checkpoint_dir, f"checkpoint_{iteration + 1}.pt",
+                config.checkpoint_dir,
+                f"checkpoint_{iteration + 1}.pt",
             )
             network.save(checkpoint_path)
             logger.info(f"Saved checkpoint: {checkpoint_path}")

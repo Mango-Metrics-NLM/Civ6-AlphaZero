@@ -65,11 +65,13 @@ class ProductionConfig:
     multiplier: float = 1.0
     base_production: int = 3
     population_bonus: int = 1
-    unit_costs: dict[str, int] = field(default_factory=lambda: {
-        "warrior": 3,
-        "settler": 5,
-        "archer": 4,
-    })
+    unit_costs: dict[str, int] = field(
+        default_factory=lambda: {
+            "warrior": 3,
+            "settler": 5,
+            "archer": 4,
+        }
+    )
 
 
 @dataclass
@@ -490,6 +492,7 @@ class TunedEnvironmentWrapper(gym.Wrapper):
             cloned_env = self.env.clone()
         else:
             import copy
+
             cloned_env = copy.deepcopy(self.env)
 
         # Create new wrapper with same config

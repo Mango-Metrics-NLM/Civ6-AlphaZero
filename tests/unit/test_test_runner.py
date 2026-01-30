@@ -351,11 +351,9 @@ class TestConvenienceFunctions:
         mock_runner.run_specific.return_value = TestResult(status=TestStatus.PASSED)
         mock_runner_class.return_value = mock_runner
 
-        result = run_tests(test_path="tests/unit")
+        _result = run_tests(test_path="tests/unit")
 
-        mock_runner.run_specific.assert_called_once_with(
-            "tests/unit", with_coverage=True
-        )
+        mock_runner.run_specific.assert_called_once_with("tests/unit", with_coverage=True)
 
     @patch("alpha_zero.utils.test_runner.PytestRunner")
     def test_quick_test_passes(self, mock_runner_class):

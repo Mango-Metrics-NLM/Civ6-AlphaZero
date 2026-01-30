@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import numpy as np
+
     # Register common public types for safe loading
     safe_types: list[Any] = [np.ndarray, np.dtype, np.generic]
 
@@ -31,10 +32,12 @@ try:
     # This varies between NumPy 1.x and 2.x
     try:
         import numpy.core.multiarray as _ma_legacy
+
         safe_types.append(_ma_legacy.scalar)
     except (ImportError, AttributeError):
         try:
             import numpy._core.multiarray as _ma_modern
+
             safe_types.append(_ma_modern.scalar)
         except (ImportError, AttributeError):
             pass
@@ -592,11 +595,14 @@ class PositionalEncoding2D(nn.Module):
         else:
             # Pre-compute sinusoidal encodings
             self.register_buffer(
-                "pos_encoding", self._create_sinusoidal_encoding(max_size, num_channels),
+                "pos_encoding",
+                self._create_sinusoidal_encoding(max_size, num_channels),
             )
 
     def _create_sinusoidal_encoding(
-        self, max_size: int, num_channels: int,
+        self,
+        max_size: int,
+        num_channels: int,
     ) -> torch.Tensor:
         """Create sinusoidal positional encoding.
 
@@ -689,7 +695,7 @@ class SpatialSelfAttention(nn.Module):
         self.num_channels = num_channels
         self.num_heads = num_heads
         self.head_dim = num_channels // num_heads
-        self.scale = self.head_dim ** -0.5
+        self.scale = self.head_dim**-0.5
         self.use_relative_pos = use_relative_pos
 
         assert num_channels % num_heads == 0, "num_channels must be divisible by num_heads"
@@ -786,10 +792,13 @@ class SpatialSelfAttention(nn.Module):
         # Add relative position bias if enabled
         if self.use_relative_pos:
             self._init_relative_pos_bias(h, w)
-            if self.relative_pos_bias_table is not None and self.relative_position_index is not None:
-                relative_pos_bias = self.relative_pos_bias_table[
-                    self.relative_position_index
-                ].view(n, n, -1)
+            if (
+                self.relative_pos_bias_table is not None
+                and self.relative_position_index is not None
+            ):
+                relative_pos_bias = self.relative_pos_bias_table[self.relative_position_index].view(
+                    n, n, -1
+                )
                 relative_pos_bias = relative_pos_bias.permute(2, 0, 1).unsqueeze(0)
                 attn = attn + relative_pos_bias.to(attn.device)
 
@@ -838,7 +847,7 @@ class CrossModalAttention(nn.Module):
         self.vector_dim = vector_dim
         self.num_heads = num_heads
         self.head_dim = spatial_channels // num_heads
-        self.scale = self.head_dim ** -0.5
+        self.scale = self.head_dim**-0.5
 
         assert spatial_channels % num_heads == 0, "spatial_channels must be divisible by num_heads"
 
@@ -902,7 +911,9 @@ class CrossModalAttention(nn.Module):
 
         # Vector as query
         q = self.vector_to_query(vector_normed)  # (B, C)
-        q = q.view(b, 1, self.num_heads, self.head_dim).transpose(1, 2)  # (B, num_heads, 1, head_dim)
+        q = q.view(b, 1, self.num_heads, self.head_dim).transpose(
+            1, 2
+        )  # (B, num_heads, 1, head_dim)
 
         # Spatial as key/value
         kv = self.spatial_to_kv(spatial_normed).reshape(b, n, 2, self.num_heads, self.head_dim)
@@ -1274,7 +1285,8 @@ class Civ6NetworkV2(nn.Module):
         # Cross-modal attention (if enabled)
         if self.cross_attention is not None:
             spatial_features, vector_features = self.cross_attention(
-                spatial_features, vector_features,
+                spatial_features,
+                vector_features,
             )
 
         # Get policy logits and value
@@ -1311,12 +1323,15 @@ class Civ6NetworkV2(nn.Module):
         # Cross-modal attention (if enabled)
         if self.cross_attention is not None:
             spatial_features, vector_features = self.cross_attention(
-                spatial_features, vector_features,
+                spatial_features,
+                vector_features,
             )
 
         # Get policy logits with category probabilities
         policy_logits, category_probs = self.policy_head(
-            spatial_features, vector_features, return_category_probs=True,
+            spatial_features,
+            vector_features,
+            return_category_probs=True,
         )
         value = self.value_head(spatial_features, vector_features)
 
@@ -1401,7 +1416,9 @@ class Civ6NetworkV2(nn.Module):
             action_mask = action_mask.unsqueeze(0)
 
         policy_logits, category_probs, value = self.forward_with_categories(
-            spatial, vector, action_mask,
+            spatial,
+            vector,
+            action_mask,
         )
         policy_probs = F.softmax(policy_logits, dim=-1)
 
@@ -1544,20 +1561,14 @@ class Civ6NetworkV2(nn.Module):
             Dictionary with parameter counts.
         """
         counts = {
-            "spatial_encoder": sum(
-                p.numel() for p in self.spatial_encoder.parameters()
-            ),
-            "vector_encoder": sum(
-                p.numel() for p in self.vector_encoder.parameters()
-            ),
+            "spatial_encoder": sum(p.numel() for p in self.spatial_encoder.parameters()),
+            "vector_encoder": sum(p.numel() for p in self.vector_encoder.parameters()),
             "policy_head": sum(p.numel() for p in self.policy_head.parameters()),
             "value_head": sum(p.numel() for p in self.value_head.parameters()),
         }
 
         if self.cross_attention is not None:
-            counts["cross_attention"] = sum(
-                p.numel() for p in self.cross_attention.parameters()
-            )
+            counts["cross_attention"] = sum(p.numel() for p in self.cross_attention.parameters())
 
         counts["total"] = sum(p.numel() for p in self.parameters())
 
@@ -1589,6 +1600,7 @@ def compute_loss(
         Tuple of (total_loss, policy_loss, value_loss).
     """
     import warnings
+
     warnings.warn(
         "compute_loss() is deprecated. Use alpha_zero.core.losses.compute_policy_loss() "
         "and alpha_zero.core.losses.compute_value_loss() for more configurable loss computation.",

@@ -119,6 +119,7 @@ class BridgeConfig:
         Returns:
             BridgeConfig instance with values from environment.
         """
+
         def get_bool(key: str, default: bool) -> bool:
             val = os.environ.get(key, "").lower()
             if val in ("1", "true", "yes"):

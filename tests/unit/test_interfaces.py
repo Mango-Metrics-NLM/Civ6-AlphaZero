@@ -1,11 +1,8 @@
 """Unit tests for game interface components."""
 
 import json
-import gzip
 import tempfile
 from pathlib import Path
-
-import pytest
 
 from interfaces.base import (
     ActionType,
@@ -14,7 +11,6 @@ from interfaces.base import (
     GameState,
     InterfaceConfig,
     Position,
-    Tile,
     Unit,
 )
 from interfaces.civ6_bridge import (
@@ -22,25 +18,23 @@ from interfaces.civ6_bridge import (
     Civ6LuaExporter,
     LuaStateParser,
 )
-from interfaces.unciv_interface import (
-    UncivActionSerializer,
-    UncivInterface,
-    UncivStateParser,
-)
 from interfaces.log_parser import (
     Civ6LogParser,
-    CombatLog,
-    LogEntry,
     LogEventType,
     MovementLog,
 )
 from interfaces.mini_games import (
-    CombatMiniGame,
     CityDevelopmentMiniGame,
+    CombatMiniGame,
     ExpansionMiniGame,
     MiniGameConfig,
     MiniGameGenerator,
     MiniGameType,
+)
+from interfaces.unciv_interface import (
+    UncivActionSerializer,
+    UncivInterface,
+    UncivStateParser,
 )
 
 
@@ -201,12 +195,8 @@ class TestGameState:
     def test_game_state_to_encoder_dict(self):
         """Test converting state to encoder format."""
         state = GameState(turn=5, current_player=0)
-        state.units.append(Unit(
-            id="u1", type="warrior", player=0, position=Position(0, 0)
-        ))
-        state.cities.append(City(
-            id="c1", name="City", player=0, position=Position(5, 5)
-        ))
+        state.units.append(Unit(id="u1", type="warrior", player=0, position=Position(0, 0)))
+        state.cities.append(City(id="c1", name="City", player=0, position=Position(5, 5)))
 
         d = state.to_encoder_dict()
         assert d["turn"] == 5
@@ -445,9 +435,7 @@ class TestUncivActionSerializer:
             "civilizations": [
                 {
                     "civName": "Babylon",
-                    "units": [
-                        {"id": "u1", "currentTile": "5,5", "currentMovement": 2}
-                    ],
+                    "units": [{"id": "u1", "currentTile": "5,5", "currentMovement": 2}],
                 },
             ],
         }

@@ -20,6 +20,7 @@ Example:
     >>> decision = controller.decide(game_state)
     >>> action = decision.action
 """
+
 from __future__ import annotations
 
 # Configuration

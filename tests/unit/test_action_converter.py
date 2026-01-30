@@ -31,10 +31,7 @@ class TestActionConverter:
         return {
             "turn": 10,
             "current_player": 0,
-            "terrain": {
-                (x, y): {"type": "plains"}
-                for x in range(16) for y in range(16)
-            },
+            "terrain": {(x, y): {"type": "plains"} for x in range(16) for y in range(16)},
             "units": [
                 {
                     "id": 1,
@@ -175,7 +172,9 @@ class TestActionConverterMoves:
             ],
             "cities": [],
             "_legal_actions": [
-                LegalAction(action_type="move", unit_id=1, targets=[(4, 5), (5, 4), (6, 5), (5, 6)]),
+                LegalAction(
+                    action_type="move", unit_id=1, targets=[(4, 5), (5, 4), (6, 5), (5, 6)]
+                ),
             ],
         }
 
@@ -320,13 +319,19 @@ class TestActionConverterEdgeCases:
     def test_concurrent_legal_actions(self, converter):
         """Test with many concurrent legal actions."""
         legal_actions = [LegalAction(action_type="end_turn")] + [
-            LegalAction(action_type="move", unit_id=i, targets=[(0, 0), (1, 1)])
-            for i in range(50)
+            LegalAction(action_type="move", unit_id=i, targets=[(0, 0), (1, 1)]) for i in range(50)
         ]
 
         state = {
             "units": [
-                {"id": i, "_id": i, "position": (0, 0), "_original_pos": (0, 0), "player": 0, "type": "melee"}
+                {
+                    "id": i,
+                    "_id": i,
+                    "position": (0, 0),
+                    "_original_pos": (0, 0),
+                    "player": 0,
+                    "type": "melee",
+                }
                 for i in range(50)
             ],
             "cities": [],

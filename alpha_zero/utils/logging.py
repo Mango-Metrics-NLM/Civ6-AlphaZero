@@ -46,6 +46,7 @@ import numpy as np
 # Optional TensorBoard support
 try:
     from torch.utils.tensorboard import SummaryWriter
+
     TENSORBOARD_AVAILABLE = True
 except ImportError:
     TENSORBOARD_AVAILABLE = False
@@ -135,11 +136,29 @@ class JSONFormatter(logging.Formatter):
         # Include extra fields
         for key, value in record.__dict__.items():
             if key not in {
-                "name", "msg", "args", "created", "filename", "funcName",
-                "levelname", "levelno", "lineno", "module", "msecs",
-                "pathname", "process", "processName", "relativeCreated",
-                "stack_info", "exc_info", "exc_text", "thread", "threadName",
-                "message", "asctime", "taskName",
+                "name",
+                "msg",
+                "args",
+                "created",
+                "filename",
+                "funcName",
+                "levelname",
+                "levelno",
+                "lineno",
+                "module",
+                "msecs",
+                "pathname",
+                "process",
+                "processName",
+                "relativeCreated",
+                "stack_info",
+                "exc_info",
+                "exc_text",
+                "thread",
+                "threadName",
+                "message",
+                "asctime",
+                "taskName",
             }:
                 # Convert numpy types to Python types for JSON serialization
                 if isinstance(value, np.ndarray):
@@ -156,10 +175,10 @@ class ColoredFormatter(logging.Formatter):
 
     # ANSI color codes
     COLORS = {
-        "DEBUG": "\033[36m",     # Cyan
-        "INFO": "\033[32m",      # Green
-        "WARNING": "\033[33m",   # Yellow
-        "ERROR": "\033[31m",     # Red
+        "DEBUG": "\033[36m",  # Cyan
+        "INFO": "\033[32m",  # Green
+        "WARNING": "\033[33m",  # Yellow
+        "ERROR": "\033[31m",  # Red
         "CRITICAL": "\033[35m",  # Magenta
     }
     RESET = "\033[0m"
@@ -434,7 +453,9 @@ class TrainingLogger:
             tb_dir.mkdir(parents=True, exist_ok=True)
             self._tb_writer = SummaryWriter(log_dir=str(tb_dir))
         elif tensorboard and not TENSORBOARD_AVAILABLE:
-            self._logger.warning("TensorBoard requested but not available. Install with: pip install tensorboard")
+            self._logger.warning(
+                "TensorBoard requested but not available. Install with: pip install tensorboard"
+            )
 
         # JSON log file
         self._json_log_path: Path | None = None
@@ -505,8 +526,7 @@ class TrainingLogger:
 
         # Log to standard logger
         self._logger.info(
-            f"Step {iteration}: loss={loss:.4f} "
-            f"(policy={policy_loss:.4f}, value={value_loss:.4f})",
+            f"Step {iteration}: loss={loss:.4f} (policy={policy_loss:.4f}, value={value_loss:.4f})",
         )
 
         # Log to TensorBoard
@@ -570,7 +590,9 @@ class TrainingLogger:
             self._tb_writer.add_scalar("SelfPlay/num_games", num_games, iteration)
             self._tb_writer.add_scalar("SelfPlay/examples", total_examples, iteration)
             self._tb_writer.add_scalar("SelfPlay/avg_game_length", avg_game_length, iteration)
-            self._tb_writer.add_scalar("SelfPlay/games_per_second", entry["games_per_second"], iteration)
+            self._tb_writer.add_scalar(
+                "SelfPlay/games_per_second", entry["games_per_second"], iteration
+            )
 
         self._write_json_entry(entry)
 
@@ -766,8 +788,7 @@ class GameLogger:
                 top_k = min(10, len(action_probs))
                 top_indices = np.argsort(action_probs)[-top_k:][::-1]
                 turn_data["top_actions"] = [
-                    {"action": int(idx), "prob": float(action_probs[idx])}
-                    for idx in top_indices
+                    {"action": int(idx), "prob": float(action_probs[idx])} for idx in top_indices
                 ]
                 turn_data["action_prob"] = float(action_probs[action])
 
@@ -939,9 +960,7 @@ class GameLogger:
 
         # Analyze MCTS if available
         mcts_times = [
-            t.get("mcts_search", {}).get("search_time", 0)
-            for t in turns
-            if "mcts_search" in t
+            t.get("mcts_search", {}).get("search_time", 0) for t in turns if "mcts_search" in t
         ]
         if mcts_times:
             analysis["mcts_time"] = {
@@ -1051,8 +1070,7 @@ class PerformanceProfiler:
                 return self._compute_stats(name, timings)
 
             return {
-                name: self._compute_stats(name, timings)
-                for name, timings in self._timings.items()
+                name: self._compute_stats(name, timings) for name, timings in self._timings.items()
             }
 
     def _compute_stats(self, name: str, timings: list[float]) -> dict[str, float]:
@@ -1141,12 +1159,15 @@ def timer(name: str) -> Callable[[F], F]:
         ... def my_function():
         ...     time.sleep(0.1)
     """
+
     def decorator(func: F) -> F:
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             with _profiler.section(name):
                 return func(*args, **kwargs)
+
         return wrapper  # type: ignore[return-value]
+
     return decorator
 
 

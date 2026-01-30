@@ -8,19 +8,19 @@ from unittest import mock
 import pytest
 
 from alpha_zero.orchestrator.config import (
-    ScheduleConfig,
-    ResourceBudget,
     AutonomyLevel,
-    RAGConfig,
-    LLMConfig,
-    StrategyAdvisorConfig,
-    EnvironmentConfig,
-    NetworkConfig,
-    MCTSConfig,
-    TrainingConfig,
-    CurriculumStageConfig,
     CurriculumConfig,
+    CurriculumStageConfig,
+    EnvironmentConfig,
+    LLMConfig,
+    MCTSConfig,
+    NetworkConfig,
     OrchestratorConfig,
+    RAGConfig,
+    ResourceBudget,
+    ScheduleConfig,
+    StrategyAdvisorConfig,
+    TrainingConfig,
 )
 
 
@@ -411,11 +411,14 @@ mcts:
 
     def test_env_overrides(self):
         """Test environment variable overrides."""
-        with mock.patch.dict(os.environ, {
-            "CIV6AZ_TRAINING_BATCH_SIZE": "512",
-            "CIV6AZ_MCTS_NUM_SIMULATIONS": "200",
-            "CIV6AZ_WANDB_ENABLED": "true",
-        }):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "CIV6AZ_TRAINING_BATCH_SIZE": "512",
+                "CIV6AZ_MCTS_NUM_SIMULATIONS": "200",
+                "CIV6AZ_WANDB_ENABLED": "true",
+            },
+        ):
             config = OrchestratorConfig()
             config.apply_env_overrides()
             assert config.training.batch_size == 512

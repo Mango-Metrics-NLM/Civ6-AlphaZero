@@ -91,8 +91,12 @@ class RewardConfig:
             RewardConfig instance with values from dict.
         """
         valid_keys = {
-            "score_scale", "city_scale", "unit_scale",
-            "gold_scale", "win_bonus", "loss_penalty",
+            "score_scale",
+            "city_scale",
+            "unit_scale",
+            "gold_scale",
+            "win_bonus",
+            "loss_penalty",
         }
         filtered = {k: v for k, v in data.items() if k in valid_keys}
         return cls(**filtered)
@@ -242,26 +246,28 @@ class RealCiv6Env(gym.Env):
         self.action_space = spaces.Discrete(self._action_space_size)
 
         # Observation space: spatial + vector + action_mask
-        self.observation_space = spaces.Dict({
-            "spatial": spaces.Box(
-                low=0.0,
-                high=1.0,
-                shape=(84, board_size, board_size),
-                dtype=np.float32,
-            ),
-            "vector": spaces.Box(
-                low=-1.0,
-                high=1.0,
-                shape=(512,),
-                dtype=np.float32,
-            ),
-            "action_mask": spaces.Box(
-                low=0.0,
-                high=1.0,
-                shape=(self._action_space_size,),
-                dtype=np.float32,
-            ),
-        })
+        self.observation_space = spaces.Dict(
+            {
+                "spatial": spaces.Box(
+                    low=0.0,
+                    high=1.0,
+                    shape=(84, board_size, board_size),
+                    dtype=np.float32,
+                ),
+                "vector": spaces.Box(
+                    low=-1.0,
+                    high=1.0,
+                    shape=(512,),
+                    dtype=np.float32,
+                ),
+                "action_mask": spaces.Box(
+                    low=0.0,
+                    high=1.0,
+                    shape=(self._action_space_size,),
+                    dtype=np.float32,
+                ),
+            }
+        )
 
     def reset(
         self,
@@ -378,9 +384,7 @@ class RealCiv6Env(gym.Env):
         )
 
         try:
-            ack = self._run_async(
-                self._bridge.send_and_wait(cmd_msg, timeout=self.action_timeout)
-            )
+            ack = self._run_async(self._bridge.send_and_wait(cmd_msg, timeout=self.action_timeout))
 
             if not ack.success:
                 logger.warning(f"Action failed: {ack.error_message}")
@@ -406,9 +410,7 @@ class RealCiv6Env(gym.Env):
         prev_state = self._current_state
         try:
             self._raw_state = self._run_async(
-                self._bridge.wait_for_state(
-                    timeout=self.bridge_config.command_timeout_ms / 1000.0
-                )
+                self._bridge.wait_for_state(timeout=self.bridge_config.command_timeout_ms / 1000.0)
             )
             self._current_state = self._state_converter.convert(self._raw_state)
 
@@ -470,9 +472,7 @@ class RealCiv6Env(gym.Env):
         if self._current_state is None or self._raw_state is None:
             # Return zeros if no state
             return {
-                "spatial": np.zeros(
-                    (84, self.board_size, self.board_size), dtype=np.float32
-                ),
+                "spatial": np.zeros((84, self.board_size, self.board_size), dtype=np.float32),
                 "vector": np.zeros(512, dtype=np.float32),
                 "action_mask": np.zeros(self._action_space_size, dtype=np.float32),
             }
@@ -503,6 +503,7 @@ class RealCiv6Env(gym.Env):
             Observation dictionary with spatial, vector, and action_mask.
         """
         import warnings
+
         warnings.warn(
             "_get_observation() is deprecated, use get_observation() instead",
             DeprecationWarning,
@@ -549,6 +550,7 @@ class RealCiv6Env(gym.Env):
             Info dictionary with game state details.
         """
         import warnings
+
         warnings.warn(
             "_get_info() is deprecated, use get_info() instead",
             DeprecationWarning,
@@ -581,17 +583,13 @@ class RealCiv6Env(gym.Env):
         reward += (curr_score - prev_score) * config.score_scale
 
         # City count (for current player only)
-        prev_cities = len([c for c in prev_state.get("cities", [])
-                          if c.get("player") == 0])
-        curr_cities = len([c for c in curr_state.get("cities", [])
-                          if c.get("player") == 0])
+        prev_cities = len([c for c in prev_state.get("cities", []) if c.get("player") == 0])
+        curr_cities = len([c for c in curr_state.get("cities", []) if c.get("player") == 0])
         reward += (curr_cities - prev_cities) * config.city_scale
 
         # Unit count (for current player only)
-        prev_units = len([u for u in prev_state.get("units", [])
-                         if u.get("player") == 0])
-        curr_units = len([u for u in curr_state.get("units", [])
-                         if u.get("player") == 0])
+        prev_units = len([u for u in prev_state.get("units", []) if u.get("player") == 0])
+        curr_units = len([u for u in curr_state.get("units", []) if u.get("player") == 0])
         reward += (curr_units - prev_units) * config.unit_scale
 
         # Gold change (top-level, already player-specific from StateConverter)
@@ -740,7 +738,8 @@ class MockCiv6Env(RealCiv6Env):
                 "height": 26,
                 "tiles": [
                     {"x": x, "y": y, "terrain": "TERRAIN_PLAINS"}
-                    for x in range(44) for y in range(26)
+                    for x in range(44)
+                    for y in range(26)
                 ],
             },
             "units": [

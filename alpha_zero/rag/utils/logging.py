@@ -19,7 +19,8 @@ from alpha_zero.rag.config.settings import LoggingConfig, LogLevel
 
 # Context variable for correlation ID
 _correlation_id: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "correlation_id", default="",
+    "correlation_id",
+    default="",
 )
 
 

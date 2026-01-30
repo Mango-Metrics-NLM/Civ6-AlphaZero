@@ -133,9 +133,7 @@ class TestTrainingExample:
 
         np.testing.assert_array_almost_equal(restored.spatial, training_example.spatial)
         np.testing.assert_array_almost_equal(restored.vector, training_example.vector)
-        np.testing.assert_array_almost_equal(
-            restored.action_mask, training_example.action_mask
-        )
+        np.testing.assert_array_almost_equal(restored.action_mask, training_example.action_mask)
         np.testing.assert_array_almost_equal(restored.policy, training_example.policy)
         assert restored.value == training_example.value
 
@@ -148,9 +146,7 @@ class TestTrainingExample:
         np.testing.assert_array_almost_equal(restored.vector, training_example.vector)
         assert restored.value == training_example.value
 
-    def test_roundtrip_preserves_dtypes(
-        self, training_example: TrainingExample
-    ) -> None:
+    def test_roundtrip_preserves_dtypes(self, training_example: TrainingExample) -> None:
         """Test that serialization preserves numpy dtypes."""
         data = training_example.to_bytes(compress=False)
         restored = TrainingExample.from_bytes(data, compressed=False)
@@ -205,9 +201,7 @@ class TestGameTrajectory:
         assert restored.game_length == game_trajectory.game_length
         assert restored.winner == game_trajectory.winner
 
-    def test_from_bytes_compressed_roundtrip(
-        self, game_trajectory: GameTrajectory
-    ) -> None:
+    def test_from_bytes_compressed_roundtrip(self, game_trajectory: GameTrajectory) -> None:
         """Test compressed roundtrip serialization."""
         data = game_trajectory.to_bytes(compress=True)
         restored = GameTrajectory.from_bytes(data, compressed=True)
@@ -519,9 +513,7 @@ class TestDistributedReplayBuffer:
         finally:
             buffer.shutdown()
 
-    def test_submit_and_process_trajectory(
-        self, game_trajectory: GameTrajectory
-    ) -> None:
+    def test_submit_and_process_trajectory(self, game_trajectory: GameTrajectory) -> None:
         """Test submitting and processing a trajectory."""
         buffer = DistributedReplayBuffer()
         try:
@@ -560,9 +552,7 @@ class TestDistributedReplayBuffer:
         finally:
             buffer.shutdown()
 
-    def test_sample_batch_returns_tensors(
-        self, training_example: TrainingExample
-    ) -> None:
+    def test_sample_batch_returns_tensors(self, training_example: TrainingExample) -> None:
         """Test sample_batch returns properly formatted tensors."""
         config = ReplayBufferConfig(sample_batch_size=4, min_size=5)
         buffer = DistributedReplayBuffer(config=config)
@@ -688,9 +678,7 @@ class TestWeightSynchronizer:
         finally:
             storage.shutdown()
 
-    def test_should_update_after_new_weights(
-        self, simple_network: torch.nn.Module
-    ) -> None:
+    def test_should_update_after_new_weights(self, simple_network: torch.nn.Module) -> None:
         """Test should_update returns True after weights are stored."""
         storage = SharedStorage()
         try:
@@ -704,9 +692,7 @@ class TestWeightSynchronizer:
         finally:
             storage.shutdown()
 
-    def test_should_update_respects_interval(
-        self, simple_network: torch.nn.Module
-    ) -> None:
+    def test_should_update_respects_interval(self, simple_network: torch.nn.Module) -> None:
         """Test should_update respects update_interval."""
         storage = SharedStorage()
         try:
@@ -754,9 +740,7 @@ class TestWeightSynchronizer:
         finally:
             storage.shutdown()
 
-    def test_update_model_returns_false_no_weights(
-        self, simple_network: torch.nn.Module
-    ) -> None:
+    def test_update_model_returns_false_no_weights(self, simple_network: torch.nn.Module) -> None:
         """Test update_model returns False when no weights available."""
         storage = SharedStorage()
         try:

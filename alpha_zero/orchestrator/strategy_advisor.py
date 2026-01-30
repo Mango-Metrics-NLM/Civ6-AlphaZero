@@ -163,9 +163,7 @@ class StrategyAdvisor:
                 state_desc = self._describe_state(state)
                 results = self.rag.query_strategy(state_desc, game_context=context)
                 if results:
-                    rag_context = "\n".join(
-                        f"- {r.content[:200]}" for r in results[:3]
-                    )
+                    rag_context = "\n".join(f"- {r.content[:200]}" for r in results[:3])
 
             # Build prompt
             prompt = self._build_analysis_prompt(state, context, rag_context)

@@ -44,13 +44,15 @@ class TrainingExample:
         Returns:
             Serialized bytes.
         """
-        data = pickle.dumps({
-            'spatial': self.spatial,
-            'vector': self.vector,
-            'action_mask': self.action_mask,
-            'policy': self.policy,
-            'value': self.value,
-        })
+        data = pickle.dumps(
+            {
+                "spatial": self.spatial,
+                "vector": self.vector,
+                "action_mask": self.action_mask,
+                "policy": self.policy,
+                "value": self.value,
+            }
+        )
         if compress:
             data = lzma.compress(data)
         return data
@@ -70,11 +72,11 @@ class TrainingExample:
             data = lzma.decompress(data)
         d = pickle.loads(data)
         return cls(
-            spatial=d['spatial'],
-            vector=d['vector'],
-            action_mask=d['action_mask'],
-            policy=d['policy'],
-            value=d['value'],
+            spatial=d["spatial"],
+            vector=d["vector"],
+            action_mask=d["action_mask"],
+            policy=d["policy"],
+            value=d["value"],
         )
 
 
@@ -90,13 +92,15 @@ class GameTrajectory:
 
     def to_bytes(self, compress: bool = False) -> bytes:
         """Serialize to bytes."""
-        data = pickle.dumps({
-            'examples': [ex.to_bytes(compress=False) for ex in self.examples],
-            'game_id': self.game_id,
-            'actor_id': self.actor_id,
-            'game_length': self.game_length,
-            'winner': self.winner,
-        })
+        data = pickle.dumps(
+            {
+                "examples": [ex.to_bytes(compress=False) for ex in self.examples],
+                "game_id": self.game_id,
+                "actor_id": self.actor_id,
+                "game_length": self.game_length,
+                "winner": self.winner,
+            }
+        )
         if compress:
             data = lzma.compress(data)
         return data
@@ -108,11 +112,11 @@ class GameTrajectory:
             data = lzma.decompress(data)
         d = pickle.loads(data)
         return cls(
-            examples=[TrainingExample.from_bytes(ex) for ex in d['examples']],
-            game_id=d['game_id'],
-            actor_id=d['actor_id'],
-            game_length=d['game_length'],
-            winner=d['winner'],
+            examples=[TrainingExample.from_bytes(ex) for ex in d["examples"]],
+            game_id=d["game_id"],
+            actor_id=d["actor_id"],
+            game_length=d["game_length"],
+            winner=d["winner"],
         )
 
 
@@ -171,17 +175,17 @@ class SharedStorage:
         self._lock = self._manager.Lock()
 
         # Initialize state
-        self._state['model_version'] = 0
-        self._state['model_weights'] = None
-        self._state['training_step'] = 0
-        self._state['games_played'] = 0
-        self._state['total_examples'] = 0
-        self._state['is_training'] = False
-        self._state['should_stop'] = False
+        self._state["model_version"] = 0
+        self._state["model_weights"] = None
+        self._state["training_step"] = 0
+        self._state["games_played"] = 0
+        self._state["total_examples"] = 0
+        self._state["is_training"] = False
+        self._state["should_stop"] = False
 
         # Statistics history
-        self._state['loss_history'] = []
-        self._state['eval_history'] = []
+        self._state["loss_history"] = []
+        self._state["eval_history"] = []
 
         logger.info("SharedStorage initialized")
 
@@ -216,12 +220,12 @@ class SharedStorage:
             if self.config.compress_weights:
                 weights_bytes = lzma.compress(weights_bytes)
 
-            self._state['model_weights'] = weights_bytes
+            self._state["model_weights"] = weights_bytes
 
             if increment_version:
-                self._state['model_version'] = self._state['model_version'] + 1
+                self._state["model_version"] = self._state["model_version"] + 1
 
-            version = int(self._state['model_version'])
+            version = int(self._state["model_version"])
             logger.debug(f"Stored model weights v{version} ({len(weights_bytes)} bytes)")
             return version
 
@@ -232,7 +236,7 @@ class SharedStorage:
             Model state dictionary, or None if not set.
         """
         with self._lock:
-            weights_bytes = self._state.get('model_weights')
+            weights_bytes = self._state.get("model_weights")
 
         if weights_bytes is None:
             return None
@@ -244,13 +248,15 @@ class SharedStorage:
         # Deserialize
         buffer = io.BytesIO(weights_bytes)
         state_dict: dict[str, torch.Tensor] = torch.load(
-            buffer, map_location='cpu', weights_only=True,
+            buffer,
+            map_location="cpu",
+            weights_only=True,
         )
         return state_dict
 
     def get_model_version(self) -> int:
         """Get current model version."""
-        return int(self._state['model_version'])
+        return int(self._state["model_version"])
 
     def increment_games_played(self, count: int = 1) -> int:
         """Increment games played counter.
@@ -262,8 +268,8 @@ class SharedStorage:
             New total games played.
         """
         with self._lock:
-            self._state['games_played'] = self._state['games_played'] + count
-            return int(self._state['games_played'])
+            self._state["games_played"] = self._state["games_played"] + count
+            return int(self._state["games_played"])
 
     def increment_examples(self, count: int) -> int:
         """Increment total examples counter.
@@ -275,41 +281,41 @@ class SharedStorage:
             New total examples.
         """
         with self._lock:
-            self._state['total_examples'] = self._state['total_examples'] + count
-            return int(self._state['total_examples'])
+            self._state["total_examples"] = self._state["total_examples"] + count
+            return int(self._state["total_examples"])
 
     def set_training_step(self, step: int) -> None:
         """Set current training step."""
-        self._state['training_step'] = step
+        self._state["training_step"] = step
 
     def get_training_step(self) -> int:
         """Get current training step."""
-        return int(self._state['training_step'])
+        return int(self._state["training_step"])
 
     def get_games_played(self) -> int:
         """Get total games played."""
-        return int(self._state['games_played'])
+        return int(self._state["games_played"])
 
     def get_total_examples(self) -> int:
         """Get total training examples generated."""
-        return int(self._state['total_examples'])
+        return int(self._state["total_examples"])
 
     def set_training(self, is_training: bool) -> None:
         """Set training flag."""
-        self._state['is_training'] = is_training
+        self._state["is_training"] = is_training
 
     def is_training(self) -> bool:
         """Check if training is in progress."""
-        return bool(self._state['is_training'])
+        return bool(self._state["is_training"])
 
     def request_stop(self) -> None:
         """Request all processes to stop."""
-        self._state['should_stop'] = True
+        self._state["should_stop"] = True
         logger.info("Stop requested")
 
     def should_stop(self) -> bool:
         """Check if stop has been requested."""
-        return bool(self._state['should_stop'])
+        return bool(self._state["should_stop"])
 
     def add_loss_entry(self, entry: dict) -> None:
         """Add a loss history entry.
@@ -320,12 +326,12 @@ class SharedStorage:
         if not self.config.track_statistics:
             return
         with self._lock:
-            history = list(self._state['loss_history'])
+            history = list(self._state["loss_history"])
             history.append(entry)
             # Keep last 1000 entries
             if len(history) > 1000:
                 history = history[-1000:]
-            self._state['loss_history'] = history
+            self._state["loss_history"] = history
 
     def add_eval_entry(self, entry: dict) -> None:
         """Add an evaluation history entry.
@@ -336,11 +342,11 @@ class SharedStorage:
         if not self.config.track_statistics:
             return
         with self._lock:
-            history = list(self._state['eval_history'])
+            history = list(self._state["eval_history"])
             history.append(entry)
             if len(history) > 100:
                 history = history[-100:]
-            self._state['eval_history'] = history
+            self._state["eval_history"] = history
 
     def get_statistics(self) -> dict:
         """Get current training statistics.
@@ -349,13 +355,13 @@ class SharedStorage:
             Dictionary with statistics.
         """
         return {
-            'model_version': self._state['model_version'],
-            'training_step': self._state['training_step'],
-            'games_played': self._state['games_played'],
-            'total_examples': self._state['total_examples'],
-            'is_training': self._state['is_training'],
-            'loss_history': list(self._state['loss_history']),
-            'eval_history': list(self._state['eval_history']),
+            "model_version": self._state["model_version"],
+            "training_step": self._state["training_step"],
+            "games_played": self._state["games_played"],
+            "total_examples": self._state["total_examples"],
+            "is_training": self._state["is_training"],
+            "loss_history": list(self._state["loss_history"]),
+            "eval_history": list(self._state["eval_history"]),
         }
 
 
@@ -426,9 +432,9 @@ class DistributedReplayBuffer:
 
         # Statistics
         self._stats = self._manager.dict()
-        self._stats['total_trajectories'] = 0
-        self._stats['total_examples'] = 0
-        self._stats['buffer_size'] = 0
+        self._stats["total_trajectories"] = 0
+        self._stats["total_examples"] = 0
+        self._stats["buffer_size"] = 0
 
         logger.info(
             f"DistributedReplayBuffer initialized (max_size={self.config.max_size})",
@@ -506,13 +512,11 @@ class DistributedReplayBuffer:
                         self._buffer.append(example)
 
                 # Update stats
-                self._stats['total_trajectories'] = (
-                    self._stats['total_trajectories'] + 1
+                self._stats["total_trajectories"] = self._stats["total_trajectories"] + 1
+                self._stats["total_examples"] = self._stats["total_examples"] + len(
+                    trajectory.examples
                 )
-                self._stats['total_examples'] = (
-                    self._stats['total_examples'] + len(trajectory.examples)
-                )
-                self._stats['buffer_size'] = len(self._buffer)
+                self._stats["buffer_size"] = len(self._buffer)
 
                 processed += 1
 
@@ -566,19 +570,13 @@ class DistributedReplayBuffer:
             return {}
 
         return {
-            'spatial': torch.stack([
-                torch.from_numpy(ex.spatial).float() for ex in examples
-            ]),
-            'vector': torch.stack([
-                torch.from_numpy(ex.vector).float() for ex in examples
-            ]),
-            'action_mask': torch.stack([
-                torch.from_numpy(ex.action_mask).float() for ex in examples
-            ]),
-            'policy': torch.stack([
-                torch.from_numpy(ex.policy).float() for ex in examples
-            ]),
-            'value': torch.tensor([ex.value for ex in examples]).float(),
+            "spatial": torch.stack([torch.from_numpy(ex.spatial).float() for ex in examples]),
+            "vector": torch.stack([torch.from_numpy(ex.vector).float() for ex in examples]),
+            "action_mask": torch.stack(
+                [torch.from_numpy(ex.action_mask).float() for ex in examples]
+            ),
+            "policy": torch.stack([torch.from_numpy(ex.policy).float() for ex in examples]),
+            "value": torch.tensor([ex.value for ex in examples]).float(),
         }
 
     def size(self) -> int:
@@ -593,17 +591,17 @@ class DistributedReplayBuffer:
     def get_statistics(self) -> dict:
         """Get buffer statistics."""
         return {
-            'total_trajectories': self._stats['total_trajectories'],
-            'total_examples': self._stats['total_examples'],
-            'buffer_size': self._stats['buffer_size'],
-            'is_ready': self.is_ready(),
+            "total_trajectories": self._stats["total_trajectories"],
+            "total_examples": self._stats["total_examples"],
+            "buffer_size": self._stats["buffer_size"],
+            "is_ready": self.is_ready(),
         }
 
     def clear(self) -> None:
         """Clear the buffer."""
         with self._buffer_lock:
             self._buffer.clear()
-        self._stats['buffer_size'] = 0
+        self._stats["buffer_size"] = 0
         logger.info("Replay buffer cleared")
 
 

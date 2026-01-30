@@ -232,7 +232,7 @@ class TestTrainEpoch:
 
     def test_train_epoch_reduces_loss(self, network, optimizer, dataloader):
         """Test that training reduces loss over epochs."""
-        initial_losses = train_epoch(network, optimizer, dataloader, "cpu")
+        _initial_losses = train_epoch(network, optimizer, dataloader, "cpu")
 
         for _ in range(5):
             losses = train_epoch(network, optimizer, dataloader, "cpu")

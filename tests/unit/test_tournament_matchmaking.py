@@ -83,6 +83,7 @@ class TestQueueEntry:
 
         # Manually set joined_at to simulate waiting
         import time
+
         entry.joined_at = time.time() - 10  # 10 seconds ago
 
         entry.expand_range(config)
@@ -214,9 +215,7 @@ class TestMatchMaker:
         assert match is not None
         # Should match with p2 (closer rating)
         other_player = (
-            match.player2.player_id
-            if match.player1.player_id == "p1"
-            else match.player1.player_id
+            match.player2.player_id if match.player1.player_id == "p1" else match.player1.player_id
         )
         assert other_player == "p2"
 
@@ -318,8 +317,7 @@ class TestOpponentSelector:
     def player_pool(self):
         """Create test player pool."""
         return [
-            PlayerStats(player_id=f"p{i}", rating=1400 + i * 50, tier="Silver")
-            for i in range(10)
+            PlayerStats(player_id=f"p{i}", rating=1400 + i * 50, tier="Silver") for i in range(10)
         ]
 
     @pytest.fixture
@@ -331,9 +329,7 @@ class TestOpponentSelector:
 
     def test_select_by_rating_proximity(self, selector):
         """Test selecting by rating proximity."""
-        opponents = selector.select_by_rating_proximity(
-            target_rating=1500, num_opponents=3
-        )
+        opponents = selector.select_by_rating_proximity(target_rating=1500, num_opponents=3)
 
         assert len(opponents) == 3
         # Should be sorted by closeness to 1500

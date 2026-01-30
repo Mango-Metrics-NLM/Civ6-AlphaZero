@@ -20,13 +20,11 @@ from alpha_zero.mechanics.climate import (
     ClimateManager,
     ClimatePhase,
     DisasterConfig,
-    DisasterEvent,
     DisasterSeverity,
     DisasterType,
     FloodedTile,
     TerrainFeature,
 )
-
 
 # =============================================================================
 # Constants
@@ -313,9 +311,7 @@ class TestCO2AndPhaseTransitions:
 class TestDisasterGeneration:
     """Tests for disaster generation."""
 
-    def test_disaster_frequency_increases_with_phase(
-        self, climate_manager: ClimateManager
-    ) -> None:
+    def test_disaster_frequency_increases_with_phase(self, climate_manager: ClimateManager) -> None:
         """Test that disaster frequency increases with climate phase."""
         config = DisasterConfig(
             disaster_type=DisasterType.FLOOD,
@@ -393,9 +389,7 @@ class TestDisasterGeneration:
 class TestSeaLevelRise:
     """Tests for sea level rise mechanics."""
 
-    def test_no_flooding_at_normal_phase(
-        self, climate_manager: ClimateManager
-    ) -> None:
+    def test_no_flooding_at_normal_phase(self, climate_manager: ClimateManager) -> None:
         """Test no flooding during normal climate phase."""
         coastal_tiles = {(0, 0), (1, 0), (2, 0)}
 
@@ -463,9 +457,7 @@ class TestSeaLevelRise:
 class TestYieldBonuses:
     """Tests for disaster yield bonuses."""
 
-    def test_get_tile_yield_bonus_empty(
-        self, climate_manager: ClimateManager
-    ) -> None:
+    def test_get_tile_yield_bonus_empty(self, climate_manager: ClimateManager) -> None:
         """Test getting yield bonus for tile with no bonus."""
         bonus = climate_manager.get_tile_yield_bonus((0, 0))
         assert bonus == {}
@@ -511,9 +503,7 @@ class TestClimateStatus:
 
     def test_climate_status_updates(self) -> None:
         """Test climate status reflects changes."""
-        manager = ClimateManager(
-            config=ClimateConfig(co2_threshold_per_phase=100.0)
-        )
+        manager = ClimateManager(config=ClimateConfig(co2_threshold_per_phase=100.0))
 
         manager.add_co2(150.0)
         status = manager.get_climate_status()
@@ -585,8 +575,7 @@ class TestReset:
         # Modify state
         manager.add_co2(500.0)
         manager._flooded_tiles[(0, 0)] = FloodedTile(
-            position=(0, 0), turn_flooded=1,
-            was_coastal=True, phase_flooded=ClimatePhase.WARMING_2
+            position=(0, 0), turn_flooded=1, was_coastal=True, phase_flooded=ClimatePhase.WARMING_2
         )
         manager._tile_yield_bonuses[(0, 0)] = {"food": 1.0}
 
@@ -630,10 +619,7 @@ class TestClimateIntegration:
         )
         manager = ClimateManager(config=config, random_seed=42)
 
-        map_features = {
-            (i, j): {TerrainFeature.COAST}
-            for i in range(5) for j in range(5)
-        }
+        map_features = {(i, j): {TerrainFeature.COAST} for i in range(5) for j in range(5)}
         coastal_tiles = set(map_features.keys())
 
         # Simulate 100 turns with CO2 emissions

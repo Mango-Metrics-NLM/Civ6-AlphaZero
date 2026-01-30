@@ -207,7 +207,9 @@ class TestEnhancedRewardShaper:
         """Create sample observation."""
         return {
             "spatial": np.zeros((13, 16, 16), dtype=np.float32),
-            "vector": np.array([0.1, 0.0, 0.15, 0.1, 0.4, 0.2, 0.8, 0.7] + [0.0] * 56, dtype=np.float32),
+            "vector": np.array(
+                [0.1, 0.0, 0.15, 0.1, 0.4, 0.2, 0.8, 0.7] + [0.0] * 56, dtype=np.float32
+            ),
         }
 
     def test_shaper_creation(self, shaper):
@@ -277,7 +279,9 @@ class TestEnhancedRewardShaper:
         # Second observation with better state
         better_obs = {
             "spatial": np.zeros((13, 16, 16), dtype=np.float32),
-            "vector": np.array([0.15, 0.0, 0.2, 0.1, 0.6, 0.2, 0.9, 0.6] + [0.0] * 56, dtype=np.float32),
+            "vector": np.array(
+                [0.15, 0.0, 0.2, 0.1, 0.6, 0.2, 0.9, 0.6] + [0.0] * 56, dtype=np.float32
+            ),
         }
 
         shaped = shaper.shape_reward(better_obs, base_reward=0.0)
@@ -347,14 +351,22 @@ class TestFactoryFunctions:
         config = get_aggressive_rewards_config()
 
         assert config.scale_factor > 1.0
-        assert config.intermediate.combat_engagement > EnhancedRewardsConfig().intermediate.combat_engagement
+        assert (
+            config.intermediate.combat_engagement
+            > EnhancedRewardsConfig().intermediate.combat_engagement
+        )
 
     def test_get_defensive_rewards_config(self):
         """Test defensive rewards config."""
         config = get_defensive_rewards_config()
 
-        assert config.intermediate.unit_preservation > EnhancedRewardsConfig().intermediate.unit_preservation
-        assert config.intermediate.city_founding > EnhancedRewardsConfig().intermediate.city_founding
+        assert (
+            config.intermediate.unit_preservation
+            > EnhancedRewardsConfig().intermediate.unit_preservation
+        )
+        assert (
+            config.intermediate.city_founding > EnhancedRewardsConfig().intermediate.city_founding
+        )
 
     def test_get_balanced_rewards_config(self):
         """Test balanced rewards config."""
@@ -376,14 +388,19 @@ class TestPotentialBasedInvariant:
 
         # Simulate episode with varying states
         states = [
-            {"spatial": np.zeros((13, 8, 8), dtype=np.float32),
-             "vector": np.array([i/10, 0, i/20, (10-i)/20, 0.4, 0.2, 0.8, 0.7] + [0.0] * 56, dtype=np.float32)}
+            {
+                "spatial": np.zeros((13, 8, 8), dtype=np.float32),
+                "vector": np.array(
+                    [i / 10, 0, i / 20, (10 - i) / 20, 0.4, 0.2, 0.8, 0.7] + [0.0] * 56,
+                    dtype=np.float32,
+                ),
+            }
             for i in range(10)
         ]
 
         total_shaping = 0.0
         for i, obs in enumerate(states):
-            terminated = (i == len(states) - 1)
+            terminated = i == len(states) - 1
             shaped = shaper.shape_reward(obs, base_reward=0.0, terminated=terminated)
             total_shaping += shaped
 

@@ -9,10 +9,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from ..config import AgenticConfig
 from ..utils.logging_config import get_logger
@@ -85,7 +84,9 @@ class MemorySection:
         return "\n".join(lines)
 
     @classmethod
-    def parse(cls, name: str, content: str, format_hint: Optional[SectionFormat] = None) -> MemorySection:
+    def parse(
+        cls, name: str, content: str, format_hint: SectionFormat | None = None
+    ) -> MemorySection:
         """Parse a section from markdown content.
 
         Args:
@@ -180,8 +181,8 @@ class SessionMemory:
 
     def __init__(
         self,
-        memory_file: Optional[Path] = None,
-        config: Optional[AgenticConfig] = None,
+        memory_file: Path | None = None,
+        config: AgenticConfig | None = None,
     ) -> None:
         """Initialize session memory.
 
@@ -317,7 +318,7 @@ class SessionMemory:
 
         return "\n".join(lines)
 
-    def get_section(self, name: str) -> Optional[MemorySection]:
+    def get_section(self, name: str) -> MemorySection | None:
         """Get a section by name.
 
         Args:
@@ -498,8 +499,7 @@ class SessionMemory:
             return "No changes to session memory"
 
         sections_with_content = [
-            name for name, section in self._sections.items()
-            if section.content and section.persist
+            name for name, section in self._sections.items() if section.content and section.persist
         ]
 
         return f"Updated session memory sections: {', '.join(sections_with_content)}"
