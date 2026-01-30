@@ -353,6 +353,59 @@ class TestRankSelection:
         # Top-ranked agents should be selected more often
         assert selection_counts["agent_7"] > selection_counts["agent_0"]
 
+    def test_single_agent_no_division_by_zero(self, rng: np.random.Generator) -> None:
+        """Test RankSelection handles single agent (n=1) without division by zero (Phase 3 fix)."""
+        agent = AgentState(agent_id="solo", fitness_score=0.5)
+        agent.fitness_history = [0.5]
+
+        strategy = RankSelection()
+
+        # Should not raise ZeroDivisionError
+        selected = strategy.select([agent], num_to_select=1, rng=rng)
+
+        assert len(selected) == 1
+        assert selected[0].agent_id == "solo"
+
+    def test_empty_population_returns_empty(self, rng: np.random.Generator) -> None:
+        """Test RankSelection handles empty population (Phase 3 fix)."""
+        strategy = RankSelection()
+
+        selected = strategy.select([], num_to_select=5, rng=rng)
+
+        assert len(selected) == 0
+
+    def test_num_to_select_larger_than_population(self, rng: np.random.Generator) -> None:
+        """Test RankSelection handles num_to_select > population size (Phase 3 fix)."""
+        agents = [
+            AgentState(agent_id="a", fitness_score=0.8),
+            AgentState(agent_id="b", fitness_score=0.3),
+        ]
+        for agent in agents:
+            agent.fitness_history = [agent.fitness_score]
+
+        strategy = RankSelection()
+
+        # Request more than available - should return all available
+        selected = strategy.select(agents, num_to_select=5, rng=rng)
+
+        assert len(selected) == 2  # Only 2 agents available
+
+    def test_two_agents_no_division_by_zero(self, rng: np.random.Generator) -> None:
+        """Test RankSelection handles two agents correctly."""
+        agents = [
+            AgentState(agent_id="a", fitness_score=0.8),
+            AgentState(agent_id="b", fitness_score=0.3),
+        ]
+        for agent in agents:
+            agent.fitness_history = [agent.fitness_score]
+
+        strategy = RankSelection()
+
+        # Should work with n=2 (division by n-1 = 1)
+        selected = strategy.select(agents, num_to_select=1, rng=rng)
+
+        assert len(selected) == 1
+
 
 class TestSteadyStateSelection:
     """Tests for SteadyStateSelection strategy."""

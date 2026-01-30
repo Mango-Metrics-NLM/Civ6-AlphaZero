@@ -177,13 +177,29 @@ class RankSelection(SelectionStrategy):
         sorted_agents = sorted(agents, key=lambda a: a.get_smoothed_fitness(), reverse=True)
 
         n = len(sorted_agents)
+
+        # Handle edge case: n=0 (empty population)
+        if n == 0:
+            return []
+
+        # Handle edge case: n=1 (single agent)
+        if n == 1:
+            return sorted_agents[:num_to_select]
+
+        # Cap num_to_select to population size
+        actual_select = min(num_to_select, n)
+
         # Linear ranking: P(i) = (2 - sp + 2*(sp-1)*(n-i)/(n-1)) / n
         ranks = np.arange(n)
         sp = self.selection_pressure
         probabilities = (2 - sp + 2 * (sp - 1) * (n - 1 - ranks) / (n - 1)) / n
+
+        # Ensure minimum probability to avoid zeros (needed for np.choice with replace=False)
+        min_prob = 0.01 / n
+        probabilities = np.maximum(probabilities, min_prob)
         probabilities = probabilities / probabilities.sum()
 
-        indices = rng.choice(n, size=num_to_select, replace=False, p=probabilities)
+        indices = rng.choice(n, size=actual_select, replace=False, p=probabilities)
         return [sorted_agents[i] for i in indices]
 
 
