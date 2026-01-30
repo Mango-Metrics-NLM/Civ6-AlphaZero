@@ -9,14 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shlex
-import signal
 import subprocess
 import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 from .logging_config import get_logger
 
@@ -30,7 +28,7 @@ class CommandError(Exception):
         self,
         message: str,
         command: str,
-        return_code: Optional[int] = None,
+        return_code: int | None = None,
         stdout: str = "",
         stderr: str = "",
     ) -> None:
@@ -115,8 +113,8 @@ class CommandRunner:
     def __init__(
         self,
         default_timeout_seconds: float = 300.0,
-        default_cwd: Optional[Path] = None,
-        default_env: Optional[dict[str, str]] = None,
+        default_cwd: Path | None = None,
+        default_env: dict[str, str] | None = None,
         shell: bool = True,
         output_mode: OutputMode = OutputMode.CAPTURE,
     ) -> None:
@@ -135,7 +133,7 @@ class CommandRunner:
         self.shell = shell
         self.output_mode = output_mode
 
-    def _build_env(self, extra_env: Optional[dict[str, str]] = None) -> dict[str, str]:
+    def _build_env(self, extra_env: dict[str, str] | None = None) -> dict[str, str]:
         """Build environment variables for command execution.
 
         Args:
@@ -153,11 +151,11 @@ class CommandRunner:
     def run(
         self,
         command: str,
-        timeout_seconds: Optional[float] = None,
-        cwd: Optional[Path] = None,
-        env: Optional[dict[str, str]] = None,
-        output_mode: Optional[OutputMode] = None,
-        retry_config: Optional[RetryConfig] = None,
+        timeout_seconds: float | None = None,
+        cwd: Path | None = None,
+        env: dict[str, str] | None = None,
+        output_mode: OutputMode | None = None,
+        retry_config: RetryConfig | None = None,
         check: bool = False,
     ) -> CommandResult:
         """Execute a command synchronously.
@@ -188,7 +186,7 @@ class CommandRunner:
 
         attempt = 0
         delay = retry.retry_delay_seconds
-        last_result: Optional[CommandResult] = None
+        last_result: CommandResult | None = None
 
         while attempt <= retry.max_retries:
             if attempt > 0:
@@ -365,9 +363,9 @@ class CommandRunner:
     async def run_async(
         self,
         command: str,
-        timeout_seconds: Optional[float] = None,
-        cwd: Optional[Path] = None,
-        env: Optional[dict[str, str]] = None,
+        timeout_seconds: float | None = None,
+        cwd: Path | None = None,
+        env: dict[str, str] | None = None,
     ) -> CommandResult:
         """Execute a command asynchronously.
 
@@ -487,7 +485,7 @@ class CommandRunner:
 def run_command(
     command: str,
     timeout_seconds: float = 300.0,
-    cwd: Optional[Path] = None,
+    cwd: Path | None = None,
     check: bool = False,
 ) -> CommandResult:
     """Execute a command with sensible defaults.

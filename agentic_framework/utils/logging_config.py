@@ -13,11 +13,12 @@ import logging.handlers
 import sys
 import threading
 import uuid
+from collections.abc import Generator
 from contextlib import contextmanager
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Generator
+from typing import Any
 
 # Thread-local storage for log context
 _context = threading.local()
@@ -87,7 +88,7 @@ class JsonFormatter(logging.Formatter):
 
     def __init__(
         self,
-        fields: Optional[list[str]] = None,
+        fields: list[str] | None = None,
         timestamp_format: str = "%Y-%m-%dT%H:%M:%S.%f",
     ) -> None:
         """Initialize the JSON formatter.
@@ -162,7 +163,7 @@ class StructuredLogger:
         level: int,
         msg: str,
         *args: Any,
-        extra: Optional[dict[str, Any]] = None,
+        extra: dict[str, Any] | None = None,
         exc_info: Any = None,
         **kwargs: Any,
     ) -> None:
@@ -180,19 +181,19 @@ class StructuredLogger:
         self._logger.log(level, msg, *args, exc_info=exc_info, extra=combined_extra)
 
     def debug(
-        self, msg: str, *args: Any, extra: Optional[dict[str, Any]] = None, **kwargs: Any
+        self, msg: str, *args: Any, extra: dict[str, Any] | None = None, **kwargs: Any
     ) -> None:
         """Log a debug message."""
         self._log(logging.DEBUG, msg, *args, extra=extra, **kwargs)
 
     def info(
-        self, msg: str, *args: Any, extra: Optional[dict[str, Any]] = None, **kwargs: Any
+        self, msg: str, *args: Any, extra: dict[str, Any] | None = None, **kwargs: Any
     ) -> None:
         """Log an info message."""
         self._log(logging.INFO, msg, *args, extra=extra, **kwargs)
 
     def warning(
-        self, msg: str, *args: Any, extra: Optional[dict[str, Any]] = None, **kwargs: Any
+        self, msg: str, *args: Any, extra: dict[str, Any] | None = None, **kwargs: Any
     ) -> None:
         """Log a warning message."""
         self._log(logging.WARNING, msg, *args, extra=extra, **kwargs)
@@ -201,7 +202,7 @@ class StructuredLogger:
         self,
         msg: str,
         *args: Any,
-        extra: Optional[dict[str, Any]] = None,
+        extra: dict[str, Any] | None = None,
         exc_info: Any = None,
         **kwargs: Any,
     ) -> None:
@@ -212,7 +213,7 @@ class StructuredLogger:
         self,
         msg: str,
         *args: Any,
-        extra: Optional[dict[str, Any]] = None,
+        extra: dict[str, Any] | None = None,
         exc_info: Any = None,
         **kwargs: Any,
     ) -> None:
@@ -220,7 +221,7 @@ class StructuredLogger:
         self._log(logging.CRITICAL, msg, *args, extra=extra, exc_info=exc_info, **kwargs)
 
     def exception(
-        self, msg: str, *args: Any, extra: Optional[dict[str, Any]] = None, **kwargs: Any
+        self, msg: str, *args: Any, extra: dict[str, Any] | None = None, **kwargs: Any
     ) -> None:
         """Log an exception message."""
         self._log(logging.ERROR, msg, *args, extra=extra, exc_info=True, **kwargs)
@@ -258,8 +259,8 @@ class StructuredLogger:
 def setup_logging(
     level: str = "INFO",
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
-    handlers_config: Optional[list[dict[str, Any]]] = None,
-    log_dir: Optional[Path] = None,
+    handlers_config: list[dict[str, Any]] | None = None,
+    log_dir: Path | None = None,
 ) -> None:
     """Set up logging for the framework.
 

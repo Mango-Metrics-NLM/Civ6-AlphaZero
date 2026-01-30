@@ -8,17 +8,18 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 from ..config import AgenticConfig
 from ..core.constraint_manager import ConstraintManager
 from ..core.permission_manager import PermissionManager
 from ..core.session_memory import SessionMemory
-from ..utils.logging_config import get_logger, LogContext
 from ..utils.command_runner import CommandRunner
+from ..utils.logging_config import LogContext, get_logger
 
 logger = get_logger("base_agent")
 
@@ -47,7 +48,7 @@ class AgentContext:
 
     # Runtime state
     request_id: str = ""
-    parent_agent: Optional[str] = None
+    parent_agent: str | None = None
     iteration: int = 0
     max_iterations: int = 5
 
@@ -55,9 +56,9 @@ class AgentContext:
     shared_data: dict[str, Any] = field(default_factory=dict)
 
     # Callbacks
-    on_status_change: Optional[Callable[[str, AgentStatus], None]] = None
-    on_confirmation_needed: Optional[Callable[[str, str], bool]] = None
-    on_progress: Optional[Callable[[str, float, str], None]] = None
+    on_status_change: Callable[[str, AgentStatus], None] | None = None
+    on_confirmation_needed: Callable[[str, str], bool] | None = None
+    on_progress: Callable[[str, float, str], None] | None = None
 
     def get_shared(self, key: str, default: Any = None) -> Any:
         """Get a value from shared data.
@@ -103,7 +104,7 @@ class AgentResult:
     warnings: list[str] = field(default_factory=list)
     duration_seconds: float = 0.0
     files_modified: list[Path] = field(default_factory=list)
-    next_agent: Optional[str] = None
+    next_agent: str | None = None
 
     def __bool__(self) -> bool:
         """Return True if execution was successful."""
@@ -153,7 +154,7 @@ class BaseAgent(ABC):
         self.description = description
         self.timeout_seconds = timeout_seconds
         self._status = AgentStatus.IDLE
-        self._context: Optional[AgentContext] = None
+        self._context: AgentContext | None = None
         self._start_time: float = 0.0
         self._logger = get_logger(f"agent.{name}")
 
@@ -262,11 +263,6 @@ class BaseAgent(ABC):
             self._logger.warning(f"Max iterations ({context.max_iterations}) exceeded")
             return False
 
-        # Check timeout
-        if self.elapsed_seconds > self.timeout_seconds:
-            self._logger.warning(f"Timeout ({self.timeout_seconds}s) exceeded")
-            return False
-
         return True
 
     def _post_execute(self, context: AgentContext, result: AgentResult) -> None:
@@ -312,7 +308,7 @@ class BaseAgent(ABC):
         self._logger.warning(f"Confirmation requested but no callback: {action}")
         return False
 
-    def check_permission(self, action: str, path: Optional[Path] = None) -> bool:
+    def check_permission(self, action: str, path: Path | None = None) -> bool:
         """Check if an action is permitted.
 
         Args:
@@ -339,8 +335,8 @@ class BaseAgent(ABC):
     def run_command(
         self,
         command: str,
-        timeout: Optional[float] = None,
-        cwd: Optional[Path] = None,
+        timeout: float | None = None,
+        cwd: Path | None = None,
     ) -> tuple[bool, str, str]:
         """Run a shell command.
 

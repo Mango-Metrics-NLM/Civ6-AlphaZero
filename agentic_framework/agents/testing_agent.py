@@ -9,10 +9,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-from .base_agent import BaseAgent, AgentContext, AgentResult, AgentStatus
 from ..utils.logging_config import get_logger
+from .base_agent import AgentContext, AgentResult, AgentStatus, BaseAgent
 
 logger = get_logger("testing_agent")
 
@@ -24,8 +24,8 @@ class TestCase:
     name: str
     description: str
     test_type: str = "unit"  # unit, integration, e2e
-    target_function: Optional[str] = None
-    target_file: Optional[str] = None
+    target_function: str | None = None
+    target_file: str | None = None
     code: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -46,7 +46,7 @@ class TestResult:
     name: str
     passed: bool
     duration_seconds: float = 0.0
-    error_message: Optional[str] = None
+    error_message: str | None = None
     output: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -91,6 +91,7 @@ class TestingAgent(BaseAgent):
         timeout_seconds: float = 600.0,
         coverage_threshold: float = 80.0,
         test_framework: str = "pytest",
+        collect_coverage: bool = True,
     ) -> None:
         """Initialize the testing agent.
 
@@ -98,6 +99,7 @@ class TestingAgent(BaseAgent):
             timeout_seconds: Timeout for test execution.
             coverage_threshold: Minimum coverage percentage.
             test_framework: Test framework to use.
+            collect_coverage: Whether to collect coverage (runs tests again).
         """
         super().__init__(
             name="testing",
@@ -106,8 +108,9 @@ class TestingAgent(BaseAgent):
         )
         self.coverage_threshold = coverage_threshold
         self.test_framework = test_framework
+        self.collect_coverage = collect_coverage
         self._test_results: list[TestResult] = []
-        self._coverage_report: Optional[CoverageReport] = None
+        self._coverage_report: CoverageReport | None = None
 
     def _execute(self, context: AgentContext) -> AgentResult:
         """Execute testing tasks.
@@ -121,13 +124,13 @@ class TestingAgent(BaseAgent):
         self.report_progress(0.0, "Starting tests")
         self._test_results.clear()
 
-        # Get files that were modified
-        modified_files = context.get_shared("files_modified", [])
-        implementation_changes = context.get_shared("changes", [])
+        # Get files that were modified (reserved for future targeted testing)
+        _modified_files = context.get_shared("files_modified", [])
+        _implementation_changes = context.get_shared("changes", [])
 
-        # Discover existing tests
+        # Discover existing tests (reserved for future test filtering)
         self.report_progress(0.1, "Discovering tests")
-        test_files = self._discover_tests(context.working_dir)
+        _test_files = self._discover_tests(context.working_dir)
 
         # Run existing tests
         self.report_progress(0.3, "Running tests")
@@ -148,9 +151,10 @@ class TestingAgent(BaseAgent):
                 next_agent=None,
             )
 
-        # Get coverage if available
-        self.report_progress(0.7, "Analyzing coverage")
-        self._coverage_report = self._get_coverage(context)
+        # Get coverage if enabled (requires separate test run)
+        if self.collect_coverage:
+            self.report_progress(0.7, "Analyzing coverage")
+            self._coverage_report = self._get_coverage(context)
 
         # Check coverage threshold
         coverage_met = True
@@ -292,7 +296,7 @@ class TestingAgent(BaseAgent):
 
         return result
 
-    def _get_coverage(self, context: AgentContext) -> Optional[CoverageReport]:
+    def _get_coverage(self, context: AgentContext) -> CoverageReport | None:
         """Get test coverage report.
 
         Args:
@@ -370,11 +374,12 @@ class TestingAgent(BaseAgent):
         )
         match = func_pattern.search(content)
 
-        args = ""
-        return_type = "None"
+        # Extract function signature (reserved for future improved test generation)
+        _args = ""
+        _return_type = "None"
         if match:
-            args = match.group(1)
-            return_type = match.group(2) or "None"
+            _args = match.group(1)
+            _return_type = match.group(2) or "None"
 
         # Generate basic test structure
         test_name = f"test_{function_name}"
@@ -445,6 +450,6 @@ class TestingAgent(BaseAgent):
         return self._test_results
 
     @property
-    def coverage_report(self) -> Optional[CoverageReport]:
+    def coverage_report(self) -> CoverageReport | None:
         """Get coverage report."""
         return self._coverage_report

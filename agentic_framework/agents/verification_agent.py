@@ -7,13 +7,12 @@ Runs linting, type checking, and other verification commands.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
-from .base_agent import BaseAgent, AgentContext, AgentResult, AgentStatus
-from ..core.feedback_loop import FeedbackLoop, VerificationResult, VerificationPhase
+from ..core.feedback_loop import FeedbackLoop, VerificationPhase, VerificationResult
 from ..utils.logging_config import get_logger
+from .base_agent import AgentContext, AgentResult, AgentStatus, BaseAgent
 
 logger = get_logger("verification_agent")
 
@@ -25,11 +24,11 @@ class VerificationIssue:
     type: str  # lint, type, security
     severity: str  # error, warning, info
     message: str
-    file: Optional[str] = None
-    line: Optional[int] = None
-    column: Optional[int] = None
-    rule: Optional[str] = None
-    suggestion: Optional[str] = None
+    file: str | None = None
+    line: int | None = None
+    column: int | None = None
+    rule: str | None = None
+    suggestion: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -123,7 +122,7 @@ class VerificationAgent(BaseAgent):
             1 for issue in self._issues
             if issue.severity == "error" or (self.strict_mode and issue.severity == "warning")
         )
-        remaining_errors = error_count - fixed_count
+        remaining_errors = max(error_count - fixed_count, 0)
 
         success = remaining_errors == 0
 
@@ -227,9 +226,9 @@ class VerificationAgent(BaseAgent):
         """
         issues: list[VerificationIssue] = []
 
-        # Mypy format: path/to/file.py:line: error: message
+        # Mypy format: path/to/file.py:line(:column)?: error: message
         pattern = re.compile(
-            r"^(.+?):(\d+):\s*(error|warning|note):\s*(.+?)$",
+            r"^(.+?):(\d+)(?::\d+)?:\s*(error|warning|note):\s*(.+?)$",
             re.MULTILINE
         )
 
