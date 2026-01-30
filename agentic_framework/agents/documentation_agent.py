@@ -6,14 +6,13 @@ Updates documentation and session memory (CLAUDE.md).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-from .base_agent import BaseAgent, AgentContext, AgentResult, AgentStatus
-from ..core.session_memory import SessionMemory, ArchitectureDecision, KnownIssue
+from ..core.session_memory import ArchitectureDecision, KnownIssue, SessionMemory
 from ..utils.logging_config import get_logger
+from .base_agent import AgentContext, AgentResult, AgentStatus, BaseAgent
 
 logger = get_logger("documentation_agent")
 

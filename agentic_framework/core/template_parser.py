@@ -11,12 +11,12 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 
+from ..config import AgenticConfig
 from ..utils.logging_config import get_logger
-from ..config import AgenticConfig, ConfigLoader
 
 logger = get_logger("template_parser")
 
@@ -24,7 +24,7 @@ logger = get_logger("template_parser")
 class TemplateParseError(Exception):
     """Raised when template parsing fails."""
 
-    def __init__(self, message: str, section: Optional[str] = None, line: Optional[int] = None) -> None:
+    def __init__(self, message: str, section: str | None = None, line: int | None = None) -> None:
         self.section = section
         self.line = line
         super().__init__(f"{message} (section: {section}, line: {line})")
@@ -114,7 +114,7 @@ class ParsedTemplate:
     session: ParsedSession = field(default_factory=ParsedSession)
     execution: ParsedExecution = field(default_factory=ParsedExecution)
     raw_content: str = ""
-    source_file: Optional[Path] = None
+    source_file: Path | None = None
 
     def to_config(self) -> AgenticConfig:
         """Convert parsed template to AgenticConfig."""
@@ -185,7 +185,7 @@ class TemplateParser:
 
     def __init__(self) -> None:
         """Initialize the template parser."""
-        self._current_section: Optional[TemplateSection] = None
+        self._current_section: TemplateSection | None = None
         self._line_number: int = 0
 
     def parse_file(self, file_path: Path) -> ParsedTemplate:
@@ -203,7 +203,7 @@ class TemplateParser:
         """
         logger.info(f"Parsing template from {file_path}")
 
-        with open(file_path, "r") as f:
+        with open(file_path) as f:
             content = f.read()
 
         # Detect format based on extension
@@ -213,7 +213,7 @@ class TemplateParser:
             return self.parse_markdown(content, source_file=file_path)
 
     def parse_markdown(
-        self, content: str, source_file: Optional[Path] = None
+        self, content: str, source_file: Path | None = None
     ) -> ParsedTemplate:
         """Parse a Markdown format template.
 
@@ -241,7 +241,7 @@ class TemplateParser:
         return template
 
     def parse_yaml(
-        self, content: str, source_file: Optional[Path] = None
+        self, content: str, source_file: Path | None = None
     ) -> ParsedTemplate:
         """Parse a YAML format template.
 
@@ -338,7 +338,7 @@ class TemplateParser:
             Dictionary mapping section names to content.
         """
         sections: dict[str, str] = {}
-        current_section: Optional[str] = None
+        current_section: str | None = None
         current_content: list[str] = []
 
         for line in content.split("\n"):
@@ -438,7 +438,7 @@ class TemplateParser:
 
         for name, subcontent in subsections.items():
             name_lower = name.lower()
-            items = self._extract_list_items(subcontent)
+            _items = self._extract_list_items(subcontent)  # Reserved for future use
 
             if "scope" in name_lower:
                 # Look for IN SCOPE and OUT OF SCOPE
@@ -570,7 +570,7 @@ class TemplateParser:
     def _split_subsections(self, content: str) -> dict[str, str]:
         """Split content into subsections based on ### headers."""
         subsections: dict[str, str] = {}
-        current_name: Optional[str] = None
+        current_name: str | None = None
         current_content: list[str] = []
 
         for line in content.split("\n"):
@@ -600,7 +600,7 @@ class TemplateParser:
         return [item.strip() for item in items if item.strip()]
 
     def _extract_paragraphs(
-        self, content: str, after: Optional[str] = None
+        self, content: str, after: str | None = None
     ) -> list[str]:
         """Extract paragraphs from content."""
         if after:

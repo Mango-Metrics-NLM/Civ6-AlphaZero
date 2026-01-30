@@ -12,51 +12,44 @@ Tests all components of the template system including:
 
 from __future__ import annotations
 
-import json
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
 
 import pytest
 
 from agentic_framework.templates import (
-    # Template Generator
-    TemplateGenerator,
-    TemplateContext,
-    TemplateVariable,
-    VariableType,
-    # Sub-Agents
-    SubAgentConfig,
-    SubAgentType,
-    SubAgentRegistry,
-    create_sub_agent_config,
-    # Verification
-    VerificationStep,
-    VerificationPipeline,
-    VerificationResult,
-    VerificationType,
-    VerificationStatus,
-    create_verification_pipeline,
+    # Constraints
+    Constraint,
+    # Constraints (including ConstraintCategory)
+    ConstraintCategory,
+    ConstraintType,
+    ConstraintValidator,
+    ErrorPattern,
     # Feedback
     FeedbackHandler,
     FeedbackStrategy,
-    ErrorPattern,
+    LogLevel,
     RecoveryAction,
+    # Sub-Agents
+    SubAgentConfig,
+    SubAgentRegistry,
+    SubAgentType,
+    TemplateContext,
+    # Template Generator
+    TemplateGenerator,
     # Logging
     TemplateLogger,
-    LogLevel,
-    DebugContext,
-    setup_template_logging,
-    # Constraints (including ConstraintCategory)
-    ConstraintCategory,
-    # Constraints
-    Constraint,
-    ConstraintType,
-    ConstraintValidator,
+    TemplateVariable,
+    VariableType,
+    VerificationPipeline,
+    VerificationStatus,
+    # Verification
+    VerificationStep,
+    VerificationType,
     create_constraint,
+    create_sub_agent_config,
 )
-
 
 # =============================================================================
 # Template Generator Tests

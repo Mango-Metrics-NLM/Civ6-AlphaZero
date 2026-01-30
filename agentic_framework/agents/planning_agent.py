@@ -10,10 +10,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-from .base_agent import BaseAgent, AgentContext, AgentResult, AgentStatus
 from ..utils.logging_config import get_logger
+from .base_agent import AgentContext, AgentResult, AgentStatus, BaseAgent
 
 logger = get_logger("planning_agent")
 

@@ -9,42 +9,38 @@ Provides the core components for the agentic coding system:
 - Session memory management
 """
 
-from .template_parser import (
-    TemplateParser,
-    ParsedTemplate,
-    TemplateSection,
-    TemplateParseError,
-)
-
 from .constraint_manager import (
-    ConstraintManager,
     Constraint,
+    ConstraintCheckResult,
+    ConstraintManager,
     ConstraintType,
     ConstraintViolation,
-    ConstraintCheckResult,
 )
-
+from .feedback_loop import (
+    ErrorAction,
+    ErrorHandler,
+    FeedbackLoop,
+    VerificationPhase,
+    VerificationResult,
+)
 from .permission_manager import (
-    PermissionManager,
-    AutonomyLevel,
     ActionPermission,
+    AutonomyLevel,
     PermissionCheckResult,
+    PermissionManager,
     ScopeChecker,
 )
-
-from .feedback_loop import (
-    FeedbackLoop,
-    VerificationResult,
-    ErrorHandler,
-    ErrorAction,
-    VerificationPhase,
-)
-
 from .session_memory import (
-    SessionMemory,
-    MemorySection,
     ArchitectureDecision,
     KnownIssue,
+    MemorySection,
+    SessionMemory,
+)
+from .template_parser import (
+    ParsedTemplate,
+    TemplateParseError,
+    TemplateParser,
+    TemplateSection,
 )
 
 __all__ = [

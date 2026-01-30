@@ -30,56 +30,55 @@ Usage:
 __version__ = "0.1.0"
 
 # Configuration
+# Agents
+from .agents import (
+    AgentContext,
+    AgentResult,
+    AgentStatus,
+    BaseAgent,
+    DocumentationAgent,
+    ImplementationAgent,
+    PlanningAgent,
+    TestingAgent,
+    VerificationAgent,
+)
 from .config import (
     AgenticConfig,
     ConfigLoader,
     ConfigValidationError,
-    load_config,
     get_config,
+    load_config,
 )
 
 # Core components
 from .core import (
-    # Template Parser
-    TemplateParser,
-    ParsedTemplate,
-    TemplateParseError,
+    ActionPermission,
+    ArchitectureDecision,
+    AutonomyLevel,
+    Constraint,
+    ConstraintCheckResult,
     # Constraint Manager
     ConstraintManager,
-    Constraint,
     ConstraintType,
     ConstraintViolation,
-    ConstraintCheckResult,
-    # Permission Manager
-    PermissionManager,
-    AutonomyLevel,
-    ActionPermission,
-    PermissionCheckResult,
-    ScopeChecker,
+    ErrorAction,
+    ErrorHandler,
     # Feedback Loop
     FeedbackLoop,
-    VerificationResult,
-    ErrorHandler,
-    ErrorAction,
-    VerificationPhase,
+    KnownIssue,
+    MemorySection,
+    ParsedTemplate,
+    PermissionCheckResult,
+    # Permission Manager
+    PermissionManager,
+    ScopeChecker,
     # Session Memory
     SessionMemory,
-    MemorySection,
-    ArchitectureDecision,
-    KnownIssue,
-)
-
-# Agents
-from .agents import (
-    BaseAgent,
-    AgentContext,
-    AgentResult,
-    AgentStatus,
-    PlanningAgent,
-    ImplementationAgent,
-    TestingAgent,
-    VerificationAgent,
-    DocumentationAgent,
+    TemplateParseError,
+    # Template Parser
+    TemplateParser,
+    VerificationPhase,
+    VerificationResult,
 )
 
 # Orchestrator
@@ -90,12 +89,12 @@ from .orchestrator import (
 
 # Utilities
 from .utils import (
-    setup_logging,
-    get_logger,
-    LogContext,
-    CommandRunner,
-    CommandResult,
     CommandError,
+    CommandResult,
+    CommandRunner,
+    LogContext,
+    get_logger,
+    setup_logging,
 )
 
 __all__ = [
