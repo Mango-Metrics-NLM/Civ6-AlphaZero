@@ -9,7 +9,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-import yaml
 
 from alpha_zero.utils.config import (
     ActionSpaceConfig,

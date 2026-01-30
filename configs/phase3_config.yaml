@@ -1,0 +1,264 @@
+# Phase 3+ Configuration for Civ6 AlphaZero
+# This configuration extends the base config with:
+# - Population-Based Training (PBT)
+# - Tournament System
+# - Human vs AI Interface
+
+# =============================================================================
+# Base Configuration (inherits from civ6_config.yaml defaults)
+# =============================================================================
+
+environment:
+  type: "microciv"
+  board_size: 10
+  num_players: 2
+  max_turns: 100
+
+network:
+  spatial_channels: 13
+  vector_dim: 64
+  num_res_blocks: 6
+  num_filters: 64
+  value_head_hidden: 128
+  dropout: 0.0
+
+mcts:
+  num_simulations: 50
+  c_puct: 1.5
+  dirichlet_alpha: 0.3
+  dirichlet_epsilon: 0.25
+  temperature: 1.0
+  temperature_threshold: 15
+
+training:
+  batch_size: 64
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  replay_buffer_size: 50000
+  min_replay_size: 1000
+  gradient_clip: 1.0
+
+# =============================================================================
+# Population-Based Training (PBT) Configuration
+# =============================================================================
+
+pbt:
+  # Population settings
+  population_size: 16
+  min_population_size: 4
+
+  # Evaluation settings
+  evaluation_interval: 1000      # Training steps between evaluations
+  evaluation_games: 20           # Games per fitness evaluation
+  fitness_smoothing_window: 10   # Window for smoothed fitness
+
+  # Selection settings
+  selection_method: "truncation" # truncation, tournament, roulette, rank
+  truncation_fraction: 0.2       # Bottom 20% replaced
+  tournament_size: 3             # For tournament selection
+
+  # Mutation settings
+  mutation_probability: 0.8      # Probability of mutating each param
+  mutation_strength: 0.2         # Relative strength of mutations
+  resample_probability: 0.05     # Probability of full resample
+
+  # Exploitation settings
+  exploit_threshold: 0.2         # Replace if in bottom 20%
+  copy_weights: true             # Copy weights during exploitation
+
+  # Hyperparameter search space
+  hyperparameter_space:
+    learning_rate:
+      name: "learning_rate"
+      min_value: 0.00001
+      max_value: 0.01
+      scale: "log"
+      discrete: false
+    weight_decay:
+      name: "weight_decay"
+      min_value: 0.000001
+      max_value: 0.001
+      scale: "log"
+      discrete: false
+    c_puct:
+      name: "c_puct"
+      min_value: 0.5
+      max_value: 3.0
+      scale: "linear"
+      discrete: false
+    dirichlet_alpha:
+      name: "dirichlet_alpha"
+      min_value: 0.1
+      max_value: 1.0
+      scale: "linear"
+      discrete: false
+    temperature:
+      name: "temperature"
+      min_value: 0.5
+      max_value: 2.0
+      scale: "linear"
+      discrete: false
+    batch_size:
+      name: "batch_size"
+      min_value: 32
+      max_value: 256
+      scale: "linear"
+      discrete: true
+    num_simulations:
+      name: "num_simulations"
+      min_value: 25
+      max_value: 200
+      scale: "linear"
+      discrete: true
+
+  # Checkpointing
+  checkpoint_dir: "checkpoints/pbt"
+  checkpoint_interval: 5000
+  max_checkpoints: 10
+
+  # Logging
+  log_dir: "logs/pbt"
+  wandb_enabled: true
+  wandb_project: "civ6-alphazero-pbt"
+  wandb_tags:
+    - "pbt"
+    - "phase3"
+
+  # Convergence detection
+  convergence_threshold: 0.01
+  convergence_window: 50
+
+# =============================================================================
+# Tournament System Configuration
+# =============================================================================
+
+tournament:
+  # ELO rating settings
+  elo:
+    initial_rating: 1500.0
+    k_factor_base: 32.0
+    k_factor_min: 10.0
+    k_factor_provisional_games: 30
+    provisional_threshold: 30
+    rating_floor: 100.0
+    rating_ceiling: 3000.0
+    draw_value: 0.5
+
+  # Matchmaking settings
+  matchmaking:
+    rating_range_initial: 200.0   # Initial rating range for matching
+    rating_range_max: 500.0       # Maximum range after expansion
+    rating_range_expand_rate: 10.0 # Points/second expansion
+    max_wait_time: 60.0           # Max seconds before max range
+    avoid_recent_opponents: 3     # Number of recent opponents to avoid
+    prefer_similar_games_played: true
+
+  # Tier/League configuration
+  tiers:
+    - name: "Bronze"
+      rating_min: 0
+      rating_max: 1200
+      promotion_threshold: 0.55
+      demotion_threshold: 0.45
+      color: "#CD7F32"
+    - name: "Silver"
+      rating_min: 1200
+      rating_max: 1500
+      promotion_threshold: 0.55
+      demotion_threshold: 0.45
+      color: "#C0C0C0"
+    - name: "Gold"
+      rating_min: 1500
+      rating_max: 1800
+      promotion_threshold: 0.55
+      demotion_threshold: 0.45
+      color: "#FFD700"
+    - name: "Platinum"
+      rating_min: 1800
+      rating_max: 2100
+      promotion_threshold: 0.55
+      demotion_threshold: 0.45
+      color: "#E5E4E2"
+    - name: "Diamond"
+      rating_min: 2100
+      rating_max: 2400
+      promotion_threshold: 0.55
+      demotion_threshold: 0.45
+      color: "#B9F2FF"
+    - name: "Master"
+      rating_min: 2400
+      rating_max: 999999
+      promotion_threshold: 0.0
+      demotion_threshold: 0.45
+      color: "#9966CC"
+
+  # Match settings
+  games_per_match: 2              # Games per match (home and away)
+  time_control_seconds: 300.0    # Time control per player
+
+  # Persistence
+  database_path: "data/tournament.db"
+
+  # Logging
+  log_matches: true
+  log_dir: "logs/tournament"
+
+  # Seasons (optional)
+  enable_seasons: false
+  season_duration_days: 30
+
+# =============================================================================
+# Human vs AI Interface Configuration
+# =============================================================================
+
+human_interface:
+  # Game settings
+  thinking_time_seconds: 10.0    # Default AI thinking time
+  max_thinking_time: 60.0        # Maximum AI thinking time
+  show_ai_evaluation: true       # Show AI's position evaluation
+  show_move_probabilities: true  # Show move probability distribution
+  show_mcts_stats: true          # Show MCTS search statistics
+
+  # Visualization settings
+  board_theme: "classic"         # classic, dark, colorblind
+  animation_speed: 1.0           # Animation speed multiplier
+  highlight_valid_moves: true    # Highlight available moves
+
+  # Input settings
+  input_timeout_seconds: 300.0   # Timeout for human input
+  confirm_moves: true            # Require move confirmation
+
+  # Save/Load settings
+  auto_save: true                # Auto-save game progress
+  auto_save_interval: 10         # Turns between auto-saves
+  save_dir: "saves/human_games"
+
+  # Replay settings
+  enable_replay: true            # Enable replay functionality
+  replay_dir: "replays"
+
+# =============================================================================
+# W&B Integration
+# =============================================================================
+
+wandb:
+  enabled: true
+  project: "civ6-alphazero"
+  entity: null  # Set to your W&B team/username
+  tags:
+    - "phase3"
+  config_sync: true
+  log_model: true
+
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+
+logging:
+  level: "INFO"
+  log_dir: "logs"
+  game_logging: true
+  training_metrics: true
+  metrics_window: 100
+  tensorboard: false
+  profile_enabled: false

@@ -54,8 +54,8 @@ class TestMicroCivActionSpace:
 
     def test_action_space_size(self, action_space):
         """Action space has expected size."""
-        # 1 end_turn + 20*8 move + 20*8 attack + 20 skip + 5*3 produce
-        expected = 1 + 160 + 160 + 20 + 15
+        # 1 end_turn + 20*8 move + 20*8 attack + 20 skip + 20 found_city + 5*3 produce
+        expected = 1 + 160 + 160 + 20 + 20 + 15
         assert action_space.total_size == expected
 
     def test_end_turn_always_valid(self, action_space, sample_game_state):
@@ -129,6 +129,39 @@ class TestMicroCivActionSpace:
         # No movement or skip actions should be valid for unit 0
         move_start = action_space.move_offset
         assert mask[move_start : move_start + 8].sum() == 0
+
+    def test_found_city_end_to_end(self):
+        """Test complete flow of finding a settler and founding a city."""
+        from alpha_zero.envs.microciv import MicroCivEnv
+
+        env = MicroCivEnv(board_size=8, max_turns=50)
+        env.reset()
+
+        # Find a settler
+        settler = next((u for u in env.units if u.unit_type == "settler"), None)
+        if settler is None:
+            pytest.skip("No settler found at start of episode")
+
+        # Check action mask
+        mask = env.get_valid_actions()
+        handler = env.action_space_handler
+
+        # Calculate action index
+        # Find unit_idx in player units
+        own_units = env._get_player_units(env.current_player)
+        unit_idx = next((i for i, u in enumerate(own_units) if u.id == settler.id), -1)
+        assert unit_idx != -1, "Settler not found in player units"
+
+        action_idx = handler.found_city_offset + unit_idx
+
+        # Verify action is masked as valid
+        assert mask[action_idx] == 1.0, "FOUND_CITY action should be valid"
+
+        # Execute action
+        obs, reward, terminated, _, info = env.step(action_idx)
+
+        # Verify city was founded
+        assert any(c.position == settler.position for c in env.cities), "City should be founded at settler position"
 
 
 class TestHierarchicalActionSpace:

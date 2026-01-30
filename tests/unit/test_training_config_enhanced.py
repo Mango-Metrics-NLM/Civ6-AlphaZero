@@ -7,10 +7,10 @@ import pytest
 from alpha_zero.utils.training_config_enhanced import (
     EnhancedTrainingConfig,
     ParameterSchedule,
-    SchedulePoint,
-    ScheduleType,
     ResourceConfig,
     ResourceManager,
+    SchedulePoint,
+    ScheduleType,
     create_training_config,
     get_fast_training_config,
     get_production_training_config,

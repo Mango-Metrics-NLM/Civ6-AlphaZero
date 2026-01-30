@@ -1,0 +1,122 @@
+{
+  "turn_id": 10,
+  "player_id": 0,
+  "player": {
+    "id": 0,
+    "civilization": "CIVILIZATION_ROME",
+    "gold": 45,
+    "science_per_turn": 8,
+    "culture_per_turn": 5,
+    "faith": 0,
+    "score": 15,
+    "era": "ERA_ANCIENT",
+    "techs_researched": ["TECH_MINING", "TECH_POTTERY"],
+    "civics_researched": ["CIVIC_CODE_OF_LAWS"],
+    "current_tech": "TECH_BRONZE_WORKING",
+    "current_civic": "CIVIC_FOREIGN_TRADE"
+  },
+  "map": {
+    "width": 44,
+    "height": 26,
+    "tiles": [
+      {"x": 5, "y": 5, "terrain": "TERRAIN_PLAINS", "is_water": false, "is_visible": true, "features": [], "resource": null, "improvement": "IMPROVEMENT_FARM"},
+      {"x": 6, "y": 5, "terrain": "TERRAIN_GRASSLAND", "is_water": false, "is_visible": true, "features": [], "resource": null, "improvement": null},
+      {"x": 7, "y": 5, "terrain": "TERRAIN_PLAINS", "is_water": false, "is_visible": true, "features": [], "resource": "RESOURCE_WHEAT", "improvement": "IMPROVEMENT_FARM"},
+      {"x": 5, "y": 6, "terrain": "TERRAIN_GRASSLAND", "is_water": false, "is_visible": true, "features": [], "resource": null, "improvement": null},
+      {"x": 6, "y": 6, "terrain": "TERRAIN_PLAINS_HILLS", "is_water": false, "is_visible": true, "features": [], "resource": "RESOURCE_STONE", "improvement": "IMPROVEMENT_QUARRY"},
+      {"x": 7, "y": 6, "terrain": "TERRAIN_GRASSLAND", "is_water": false, "is_visible": true, "features": [], "resource": null, "improvement": null},
+      {"x": 10, "y": 10, "terrain": "TERRAIN_PLAINS", "is_water": false, "is_visible": true, "features": [], "resource": null, "improvement": null},
+      {"x": 11, "y": 10, "terrain": "TERRAIN_GRASSLAND", "is_water": false, "is_visible": true, "features": ["FEATURE_FOREST"], "resource": null, "improvement": null},
+      {"x": 12, "y": 10, "terrain": "TERRAIN_DESERT", "is_water": false, "is_visible": true, "features": [], "resource": null, "improvement": null}
+    ]
+  },
+  "units": [
+    {
+      "id": 1,
+      "type_name": "UNIT_WARRIOR",
+      "owner": 0,
+      "x": 10,
+      "y": 10,
+      "hp": 100,
+      "damage": 0,
+      "movement": 2.0,
+      "max_movement": 2.0,
+      "combat_strength": 20,
+      "ranged_strength": 0,
+      "range": 0,
+      "is_civilian": false,
+      "can_move": true,
+      "can_attack": true,
+      "promotions": []
+    },
+    {
+      "id": 2,
+      "type_name": "UNIT_SLINGER",
+      "owner": 0,
+      "x": 7,
+      "y": 6,
+      "hp": 100,
+      "damage": 0,
+      "movement": 2.0,
+      "max_movement": 2.0,
+      "combat_strength": 5,
+      "ranged_strength": 15,
+      "range": 1,
+      "is_civilian": false,
+      "can_move": true,
+      "can_attack": true,
+      "promotions": []
+    },
+    {
+      "id": 3,
+      "type_name": "UNIT_BUILDER",
+      "owner": 0,
+      "x": 5,
+      "y": 5,
+      "hp": 100,
+      "damage": 0,
+      "movement": 2.0,
+      "max_movement": 2.0,
+      "combat_strength": 0,
+      "ranged_strength": 0,
+      "range": 0,
+      "is_civilian": true,
+      "can_move": true,
+      "build_charges": 2,
+      "promotions": []
+    }
+  ],
+  "cities": [
+    {
+      "id": 1,
+      "name": "Rome",
+      "owner": 0,
+      "x": 6,
+      "y": 5,
+      "population": 3,
+      "food": 25,
+      "food_needed": 27,
+      "production": 12,
+      "gold_per_turn": 4,
+      "science_per_turn": 5,
+      "culture_per_turn": 3,
+      "buildings": ["BUILDING_MONUMENT"],
+      "districts": [],
+      "current_production": "UNIT_ARCHER",
+      "production_progress": 15,
+      "is_capital": true,
+      "housing": 4,
+      "amenities": 1
+    }
+  ],
+  "legal_actions": [
+    {"action": "end_turn"},
+    {"action": "move", "unit_id": 1, "targets": [[9, 10], [10, 9], [11, 10], [9, 11], [10, 11], [11, 11]]},
+    {"action": "move", "unit_id": 2, "targets": [[6, 6], [7, 5], [8, 6], [6, 7], [7, 7], [8, 7]]},
+    {"action": "move", "unit_id": 3, "targets": [[4, 5], [5, 4], [6, 5], [4, 6], [5, 6], [6, 6]]},
+    {"action": "build", "unit_id": 3, "improvements": ["IMPROVEMENT_FARM", "IMPROVEMENT_MINE"]},
+    {"action": "produce", "city_id": 1, "items": ["UNIT_WARRIOR", "UNIT_ARCHER", "UNIT_BUILDER", "BUILDING_GRANARY", "BUILDING_WALLS"]},
+    {"action": "research_tech", "techs": ["TECH_BRONZE_WORKING", "TECH_ANIMAL_HUSBANDRY", "TECH_WRITING"]},
+    {"action": "research_civic", "civics": ["CIVIC_FOREIGN_TRADE", "CIVIC_EARLY_EMPIRE"]}
+  ]
+}

@@ -8,14 +8,12 @@ replay buffer.
 from __future__ import annotations
 
 import logging
-import os
 import signal
 import time
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
-import torch
 import torch.multiprocessing as mp
 
 from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig, SimpleMCTS
@@ -62,6 +60,9 @@ class ActorConfig:
     # Performance settings
     device: str = "cpu"
     weight_update_interval: float = 1.0  # Seconds between weight checks
+
+    # Timeout settings
+    trajectory_submission_timeout: float = 5.0  # Timeout for trajectory submission
 
     # Logging
     log_interval: int = 10  # Log every N games
@@ -110,11 +111,11 @@ class SelfPlayActor:
         self.action_space_size = self.env.action_space.n
 
         # Create network (will load weights from storage)
-        self.network: Optional[MicroCivNetwork] = None
-        self.mcts: Optional[Civ6MCTS | SimpleMCTS] = None
+        self.network: MicroCivNetwork | None = None
+        self.mcts: Civ6MCTS | SimpleMCTS | None = None
 
         # Weight synchronizer
-        self.weight_sync: Optional[WeightSynchronizer] = None
+        self.weight_sync: WeightSynchronizer | None = None
 
         # Statistics
         self.games_played = 0
@@ -162,7 +163,7 @@ class SelfPlayActor:
             if self.weight_sync.update_model(self.network):
                 logger.debug(
                     f"Actor {self.config.actor_id}: Updated to model "
-                    f"v{self.weight_sync.get_current_version()}"
+                    f"v{self.weight_sync.get_current_version()}",
                 )
                 return True
         return False
@@ -222,7 +223,7 @@ class SelfPlayActor:
                     action_mask=obs["action_mask"].copy(),
                     policy=action_probs.copy(),
                     player=self.env.current_player,
-                )
+                ),
             )
 
             # Select action with temperature
@@ -258,7 +259,7 @@ class SelfPlayActor:
                     action_mask=hist.action_mask,
                     policy=hist.policy,
                     value=value,
-                )
+                ),
             )
 
         # Create trajectory
@@ -293,7 +294,7 @@ class SelfPlayActor:
             if self.config.max_games > 0 and self.games_played >= self.config.max_games:
                 logger.info(
                     f"Actor {self.config.actor_id}: Reached max games "
-                    f"({self.config.max_games})"
+                    f"({self.config.max_games})",
                 )
                 break
 
@@ -302,7 +303,9 @@ class SelfPlayActor:
                 trajectory = self.play_game()
 
                 # Submit to replay buffer
-                if self.replay_buffer.submit_trajectory(trajectory, timeout=5.0):
+                if self.replay_buffer.submit_trajectory(
+                    trajectory, timeout=self.config.trajectory_submission_timeout
+                ):
                     self.games_played += 1
                     self.total_examples += len(trajectory.examples)
                     games_since_update += 1
@@ -326,7 +329,7 @@ class SelfPlayActor:
                         f"{self.games_played} games, "
                         f"{self.total_examples} examples, "
                         f"{games_per_sec:.2f} games/sec, "
-                        f"model v{self.weight_sync.get_current_version() if self.weight_sync else 0}"
+                        f"model v{self.weight_sync.get_current_version() if self.weight_sync else 0}",
                     )
 
             except Exception as e:
@@ -337,7 +340,7 @@ class SelfPlayActor:
 
         self._running = False
         logger.info(
-            f"Actor {self.config.actor_id}: Stopped after {self.games_played} games"
+            f"Actor {self.config.actor_id}: Stopped after {self.games_played} games",
         )
 
     def stop(self) -> None:

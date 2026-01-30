@@ -3,6 +3,7 @@ import argparse
 import subprocess
 import sys
 
+
 def main():
     """
     Run the Civ6 AlphaZero AI training.
@@ -12,7 +13,7 @@ def main():
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument("--log-dir", type=str, default="logs/civ6", help="Directory for logs")
     parser.add_argument("--dry-run", action="store_true", help="Quick test run")
-    
+
     # Allow passing through other arguments if needed (for experts), but simple interface for now
     args, unknown = parser.parse_known_args()
 
@@ -32,23 +33,23 @@ def main():
     # Add optional flags
     if args.debug:
         cmd.append("--debug")
-    
+
     if args.dry_run:
         cmd.append("--dry_run")
         # Override defaults for dry run to match training_civ6.py's expectation or let it handle it?
-        # training_civ6.py handles --dry_run by ignoring num_games/iterations if set, 
+        # training_civ6.py handles --dry_run by ignoring num_games/iterations if set,
         # so passing them is fine, but let's be clean.
-    
+
     # Pass log dir
     cmd.append(f"--log_dir={args.log_dir}")
-    
+
     # Pass any unknown args directly (flexibility)
     if unknown:
         print(f"Passing through unknown arguments: {unknown}")
         cmd.extend(unknown)
-    
+
     print(f"Executing: {' '.join(cmd)}")
-    
+
     try:
         # Run using subprocess to properly handle standard I/O
         subprocess.run(cmd, check=True)

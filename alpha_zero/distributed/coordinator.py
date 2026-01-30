@@ -13,16 +13,13 @@ import argparse
 import logging
 import os
 import signal
-import sys
 import time
-import yaml
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Optional
 
 import numpy as np
 import torch
 import torch.multiprocessing as mp
+import yaml
 
 from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig
 from alpha_zero.core.civ6_network import MicroCivNetwork
@@ -92,6 +89,9 @@ class CoordinatorConfig:
     monitor_interval: float = 10.0  # Seconds between status updates
     restart_dead_actors: bool = True
 
+    # Timeout settings
+    actor_pool_stop_timeout: float = 10.0  # Timeout for graceful actor shutdown
+
     # Device
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -105,7 +105,7 @@ class CoordinatorConfig:
         Returns:
             CoordinatorConfig instance.
         """
-        with open(path, 'r') as f:
+        with open(path) as f:
             data = yaml.safe_load(f)
 
         # Flatten nested config
@@ -239,11 +239,11 @@ class TrainingCoordinator:
         )
 
         # Actor pool and learner
-        self.actor_pool: Optional[ActorPool] = None
-        self.learner: Optional[Learner] = None
+        self.actor_pool: ActorPool | None = None
+        self.learner: Learner | None = None
 
         # Evaluation network
-        self.eval_network: Optional[MicroCivNetwork] = None
+        self.eval_network: MicroCivNetwork | None = None
 
         # Statistics
         self.start_time = 0.0
@@ -254,7 +254,7 @@ class TrainingCoordinator:
         logger.info(
             f"TrainingCoordinator initialized: "
             f"{config.num_actors} actors, "
-            f"buffer size {config.replay_buffer_size}"
+            f"buffer size {config.replay_buffer_size}",
         )
 
     def _setup_signal_handlers(self) -> None:
@@ -371,7 +371,7 @@ class TrainingCoordinator:
         games_per_hour = (games / elapsed) * 3600 if elapsed > 0 else 0
 
         status_lines = [
-            f"=== Training Status ===",
+            "=== Training Status ===",
             f"Elapsed: {elapsed / 60:.1f} min",
             f"Games: {games} ({games_per_hour:.0f}/hour)",
             f"Training step: {storage_stats['training_step']}",
@@ -387,7 +387,7 @@ class TrainingCoordinator:
             status_lines.append(
                 f"Loss: {latest.get('total_loss', 0):.4f} "
                 f"(p={latest.get('policy_loss', 0):.4f}, "
-                f"v={latest.get('value_loss', 0):.4f})"
+                f"v={latest.get('value_loss', 0):.4f})",
             )
 
         # Add latest eval if available
@@ -448,7 +448,7 @@ class TrainingCoordinator:
                 if not self.replay_buffer.is_ready():
                     logger.info(
                         f"Waiting for buffer: "
-                        f"{self.replay_buffer.size()}/{self.config.min_replay_size}"
+                        f"{self.replay_buffer.size()}/{self.config.min_replay_size}",
                     )
                     time.sleep(1.0)
                     continue
@@ -492,7 +492,7 @@ class TrainingCoordinator:
                     if self.learner.training_step >= self.config.max_training_steps:
                         logger.info(
                             f"Reached max training steps "
-                            f"({self.config.max_training_steps})"
+                            f"({self.config.max_training_steps})",
                         )
                         break
 
@@ -515,7 +515,7 @@ class TrainingCoordinator:
         # Stop actors
         if self.actor_pool:
             logger.info("Stopping actors...")
-            self.actor_pool.stop(timeout=10.0)
+            self.actor_pool.stop(timeout=self.config.actor_pool_stop_timeout)
 
         # Final checkpoint
         if self.learner and self.learner.training_step > 0:
@@ -534,7 +534,7 @@ class TrainingCoordinator:
             f"Training complete: "
             f"{games} games, "
             f"{self.learner.training_step if self.learner else 0} steps, "
-            f"{elapsed / 60:.1f} minutes"
+            f"{elapsed / 60:.1f} minutes",
         )
 
 
@@ -615,7 +615,7 @@ def main() -> None:
         logger.info("Dry run mode: using minimal settings")
 
     # Log configuration
-    logger.info(f"Configuration:")
+    logger.info("Configuration:")
     logger.info(f"  Actors: {config.num_actors}")
     logger.info(f"  Batch size: {config.batch_size}")
     logger.info(f"  Learning rate: {config.learning_rate}")

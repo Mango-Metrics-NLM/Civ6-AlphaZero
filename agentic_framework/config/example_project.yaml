@@ -1,0 +1,397 @@
+# Example Project Configuration for Agentic Framework
+# Copy this file to your project root and customize for your needs
+
+version: "1.0"
+
+# ============================================================================
+# OBJECTIVE FUNCTION
+# Define what you're building and how to measure success
+# ============================================================================
+
+objective:
+  # One-sentence description of what is being built
+  system_intent: "A distributed task queue with exactly-once delivery guarantees"
+
+  # Mechanically verifiable success criteria
+  success_criteria:
+    - criterion: "All unit tests pass"
+      verifiable: true
+      verification_command: "pytest tests/unit -v"
+
+    - criterion: "All integration tests pass"
+      verifiable: true
+      verification_command: "pytest tests/integration -v"
+
+    - criterion: "Type checking passes"
+      verifiable: true
+      verification_command: "mypy src/ --strict"
+
+    - criterion: "No lint errors"
+      verifiable: true
+      verification_command: "ruff check ."
+
+  # Problem description (the "three paragraphs")
+  problem_description:
+    problem_statement: >
+      The system coordinates task distribution across N worker nodes.
+      A coordinator receives tasks via HTTP, persists them to a WAL,
+      and distributes to workers based on consistent hashing.
+
+    data_flows: >
+      Data flows from ingestion → WAL → coordinator → worker claim →
+      execution → acknowledgment → WAL truncation. State includes:
+      pending tasks, in-flight claims, completed task IDs.
+
+    failure_modes: >
+      Failure modes: coordinator crash (WAL replay), worker crash
+      (lock timeout + reassignment), network partition (split brain
+      prevention via quorum). Invariant: sum(pending + in-flight +
+      completed) = sum(ingested).
+
+# ============================================================================
+# CONSTRAINTS (Feasible Region)
+# Define the boundaries of acceptable solutions
+# ============================================================================
+
+constraints:
+  # Hard constraints: Violations = Failure
+  hard:
+    - name: "python_version"
+      type: "language"
+      value: ">=3.11"
+      validation_command: "python --version | grep -E '3\\.1[1-9]'"
+
+    - name: "no_hardcoded_secrets"
+      type: "security"
+      value: "No API keys, passwords, or tokens in source code"
+
+    - name: "input_validation"
+      type: "security"
+      value: "All external inputs must be validated"
+
+    - name: "async_required"
+      type: "architecture"
+      value: "All I/O operations must be async"
+
+  # Soft constraints: Preferences that can be relaxed
+  soft:
+    - name: "type_hints"
+      type: "style"
+      value: "Use type hints on all function signatures"
+      priority: 9
+
+    - name: "docstrings"
+      type: "style"
+      value: "Public functions should have docstrings"
+      priority: 7
+
+    - name: "test_coverage"
+      type: "testing"
+      value: "Maintain >80% coverage on core logic"
+      priority: 9
+
+    - name: "prefer_composition"
+      type: "architecture"
+      value: "Prefer composition over inheritance"
+      priority: 6
+
+    - name: "minimize_allocations"
+      type: "performance"
+      value: "Minimize memory allocations in hot paths"
+      priority: 5
+
+  # Anti-constraints: Explicit permissions
+  anti:
+    - permission: "Restructure existing file organization"
+      scope: "within project boundaries"
+
+    - permission: "Add dependencies not explicitly listed"
+      scope: "standard libraries and well-maintained packages"
+
+    - permission: "Refactor adjacent code for consistency"
+      scope: "within touched modules"
+
+    - permission: "Choose implementation patterns not specified"
+      scope: "when multiple valid approaches exist"
+
+# ============================================================================
+# PERMISSIONS (Permission Architecture)
+# Define scope boundaries and autonomy levels
+# ============================================================================
+
+permissions:
+  # Scope: What files can be touched
+  scope:
+    in_scope:
+      - "src/**/*.py"
+      - "tests/**/*.py"
+      - "config/**/*.yaml"
+      - "*.py"
+      - "*.yaml"
+      - "*.md"
+
+    out_of_scope:
+      - "vendor/**"
+      - "third_party/**"
+      - ".git/**"
+      - "*.lock"
+      - "**/__pycache__/**"
+      - "node_modules/**"
+
+  # Autonomy: What actions can be taken automatically
+  autonomy:
+    # Actions that can proceed without asking
+    autonomous:
+      - "file_creation_in_scope"
+      - "file_deletion_in_scope"
+      - "dependency_installation"
+      - "running_tests"
+      - "linting_and_formatting"
+      - "refactoring_for_consistency"
+      - "adding_type_hints"
+      - "adding_docstrings"
+
+    # Actions requiring confirmation before proceeding
+    confirm_first:
+      - "architectural_changes_multi_module"
+      - "breaking_api_changes"
+      - "large_deletions_over_100_lines"
+      - "schema_migrations"
+      - "external_service_integration"
+      - "changing_build_configuration"
+
+    # Actions that must never be attempted
+    prohibited:
+      - "commits_to_main_branch"
+      - "external_api_calls_with_side_effects"
+      - "modifications_outside_scope"
+      - "disabling_security_features"
+      - "removing_tests_without_replacement"
+      - "force_push_to_remote"
+
+  # Resource budget: Limits on operations
+  resource_budget:
+    max_iterations: 5
+    max_files_per_pass: 20
+    exploration_timeout_seconds: 600
+
+# ============================================================================
+# FEEDBACK LOOP
+# Define verification commands and error handling
+# ============================================================================
+
+feedback:
+  # Verification commands run in order
+  verification_commands:
+    - name: "lint"
+      command: "ruff check ."
+      timeout_seconds: 60
+      fail_fast: false
+      retry_count: 0
+
+    - name: "type_check"
+      command: "mypy src/ --ignore-missing-imports"
+      timeout_seconds: 120
+      fail_fast: false
+      retry_count: 0
+
+    - name: "unit_tests"
+      command: "pytest tests/unit -v --tb=short"
+      timeout_seconds: 300
+      fail_fast: false
+      retry_count: 1
+
+    - name: "integration_tests"
+      command: "pytest tests/integration -v --tb=short"
+      timeout_seconds: 600
+      fail_fast: false
+      retry_count: 1
+
+  # Error handling behavior
+  error_handling:
+    auto_fix_patterns:
+      - error_type: "lint_error"
+        action: "auto_fix"
+        max_retries: 3
+
+      - error_type: "type_error"
+        action: "analyze_fix"
+        max_retries: 3
+
+      - error_type: "test_failure"
+        action: "analyze_fix"
+        max_retries: 3
+
+      - error_type: "import_error"
+        action: "analyze_fix"
+        max_retries: 2
+
+      - error_type: "repeated_failure"
+        action: "escalate"
+        max_retries: 0
+
+  # Final verification before completion
+  success_verification:
+    - check: "all_verification_commands_pass"
+      command: null
+
+    - check: "smoke_test"
+      command: "python -m src.main --health-check"
+
+    - check: "generate_change_summary"
+      command: null
+
+# ============================================================================
+# SESSION MEMORY
+# Configure persistent memory (CLAUDE.md)
+# ============================================================================
+
+session:
+  memory_file: "CLAUDE.md"
+
+  sections:
+    - name: "Build Commands"
+      persist: true
+      format: "markdown_list"
+
+    - name: "Test Commands"
+      persist: true
+      format: "markdown_list"
+
+    - name: "Architecture Decisions"
+      persist: true
+      format: "markdown_table"
+
+    - name: "Known Issues"
+      persist: true
+      format: "markdown_table"
+
+    - name: "Environment Setup"
+      persist: true
+      format: "markdown_list"
+
+    - name: "Gotchas"
+      persist: true
+      format: "markdown_list"
+
+# ============================================================================
+# EXECUTION PROTOCOL
+# Define the execution workflow
+# ============================================================================
+
+execution:
+  # Actions to take at the start
+  initial_actions:
+    - action: "read_session_memory"
+      command: null
+      required: false
+
+    - action: "scan_project_structure"
+      command: "find . -type f -name '*.py' | head -50"
+      required: true
+
+    - action: "identify_entry_points"
+      command: null
+      required: true
+
+    - action: "run_baseline_tests"
+      command: "pytest tests/ -v --tb=short -q"
+      required: false
+
+  # Order of implementation phases
+  implementation_order:
+    - phase: "understand"
+      description: "Read existing patterns before writing"
+      agent: "planning"
+
+    - phase: "implement_core"
+      description: "Smallest working version first"
+      agent: "implementation"
+
+    - phase: "add_error_handling"
+      description: "Handle edge cases and failures"
+      agent: "implementation"
+
+    - phase: "write_tests"
+      description: "Unit and integration tests"
+      agent: "testing"
+
+    - phase: "verify"
+      description: "Run verification loop"
+      agent: "verification"
+
+    - phase: "refactor"
+      description: "Clean up if needed"
+      agent: "implementation"
+
+    - phase: "document"
+      description: "Update session memory"
+      agent: "documentation"
+
+  # Checklist before marking complete
+  completion_checklist:
+    - item: "All success criteria met"
+      verification: "check_success_criteria"
+
+    - item: "All verification commands pass"
+      verification: "run_all_verifications"
+
+    - item: "Session memory updated"
+      verification: "check_memory_updated"
+
+    - item: "Change summary provided"
+      verification: "generate_summary"
+
+    - item: "Known limitations documented"
+      verification: "check_limitations_documented"
+
+# ============================================================================
+# LOGGING
+# Configure logging behavior
+# ============================================================================
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
+
+  handlers:
+    - type: "console"
+      level: "INFO"
+
+    - type: "rotating_file"
+      level: "DEBUG"
+      destination: "logs/agentic.log"
+
+    - type: "json"
+      level: "INFO"
+      destination: "logs/agentic.json"
+
+# ============================================================================
+# AGENT-SPECIFIC CONFIGURATION
+# Fine-tune individual agent behavior
+# ============================================================================
+
+agents:
+  planning:
+    timeout_seconds: 300
+    max_context_files: 50
+
+  implementation:
+    timeout_seconds: 600
+    max_lines_per_file: 500
+    prefer_small_changes: true
+
+  testing:
+    timeout_seconds: 600
+    coverage_threshold: 80
+    test_frameworks:
+      - "pytest"
+
+  verification:
+    timeout_seconds: 300
+    strict_mode: false
+    auto_fix: true
+
+  documentation:
+    timeout_seconds: 120
+    auto_update_memory: true

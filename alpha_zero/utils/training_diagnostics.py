@@ -6,10 +6,9 @@ identify issues, and provide actionable insights during AlphaZero training.
 
 from __future__ import annotations
 
-import math
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -41,7 +40,7 @@ class EpisodeMetrics:
     avg_policy_entropy: float
     avg_value_prediction: float
     action_counts: dict[int, int] = field(default_factory=dict)
-    shaped_reward: Optional[float] = None
+    shaped_reward: float | None = None
 
 
 @dataclass
@@ -76,7 +75,7 @@ class PolicyEntropyTracker:
         self._entropies: deque[float] = deque(maxlen=window_size)
         self._all_entropies: list[float] = []
 
-    def add(self, policy: np.ndarray, action_mask: Optional[np.ndarray] = None) -> float:
+    def add(self, policy: np.ndarray, action_mask: np.ndarray | None = None) -> float:
         """Add a policy observation and compute entropy.
 
         Args:
@@ -272,7 +271,7 @@ class TrainingDiagnostics:
     def __init__(
         self,
         num_actions: int,
-        config: Optional[DiagnosticsConfig] = None,
+        config: DiagnosticsConfig | None = None,
     ):
         """Initialize training diagnostics.
 
@@ -305,7 +304,7 @@ class TrainingDiagnostics:
         policy: np.ndarray,
         value: float,
         action: int,
-        action_mask: Optional[np.ndarray] = None,
+        action_mask: np.ndarray | None = None,
     ) -> None:
         """Record a training step.
 
@@ -334,7 +333,7 @@ class TrainingDiagnostics:
         turns: int,
         total_reward: float,
         outcome: str,
-        shaped_reward: Optional[float] = None,
+        shaped_reward: float | None = None,
     ) -> EpisodeMetrics:
         """Record episode completion.
 
@@ -361,7 +360,7 @@ class TrainingDiagnostics:
         )
 
         # Count actions
-        action_counts = {}
+        action_counts: dict[int, int] = {}
         for action in self._current_episode_actions:
             action_counts[action] = action_counts.get(action, 0) + 1
 
@@ -475,14 +474,14 @@ class TrainingDiagnostics:
         if metrics.avg_entropy < self.config.entropy_min_threshold:
             self._warnings.append(
                 f"Iteration {metrics.iteration}: Policy entropy collapse "
-                f"({metrics.avg_entropy:.4f} < {self.config.entropy_min_threshold})"
+                f"({metrics.avg_entropy:.4f} < {self.config.entropy_min_threshold})",
             )
 
         # Check value loss stagnation
         if metrics.value_loss < self.config.value_loss_threshold:
             self._warnings.append(
                 f"Iteration {metrics.iteration}: Value loss very low "
-                f"({metrics.value_loss:.6f}), value head may not be learning"
+                f"({metrics.value_loss:.6f}), value head may not be learning",
             )
 
         # Check for no wins
@@ -490,7 +489,7 @@ class TrainingDiagnostics:
             recent_wins = [m.win_rate for m in self._iteration_metrics[-3:]]
             if all(w == 0 for w in recent_wins):
                 self._warnings.append(
-                    f"Iteration {metrics.iteration}: No wins in last 3 iterations"
+                    f"Iteration {metrics.iteration}: No wins in last 3 iterations",
                 )
 
     @property

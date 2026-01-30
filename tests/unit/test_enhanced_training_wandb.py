@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -24,7 +23,7 @@ class TestWandbAvailability:
         from run_enhanced_training import WANDB_AVAILABLE
 
         if WANDB_AVAILABLE:
-            from run_enhanced_training import WandbLogger, WandbConfig
+            from run_enhanced_training import WandbConfig, WandbLogger
             assert WandbLogger is not None
             assert WandbConfig is not None
 
@@ -34,8 +33,9 @@ class TestRunEnhancedTrainingSignatureWithWandb:
 
     def test_function_has_wandb_parameters(self):
         """Test that run_enhanced_training has W&B parameters."""
-        from run_enhanced_training import run_enhanced_training
         import inspect
+
+        from run_enhanced_training import run_enhanced_training
 
         sig = inspect.signature(run_enhanced_training)
         params = list(sig.parameters.keys())
@@ -47,8 +47,9 @@ class TestRunEnhancedTrainingSignatureWithWandb:
 
     def test_wandb_parameters_have_defaults(self):
         """Test W&B parameters have sensible defaults."""
-        from run_enhanced_training import run_enhanced_training
         import inspect
+
+        from run_enhanced_training import run_enhanced_training
 
         sig = inspect.signature(run_enhanced_training)
 
@@ -96,7 +97,7 @@ class TestWandbLoggerIntegration:
         """Test W&B logger is imported as optional."""
         # This should not raise an error even if wandb is not installed
         try:
-            from run_enhanced_training import WandbLogger, WandbConfig, WANDB_AVAILABLE
+            from run_enhanced_training import WANDB_AVAILABLE, WandbConfig, WandbLogger
             # Should either have classes or None
             if WANDB_AVAILABLE:
                 assert WandbLogger is not None
@@ -148,7 +149,7 @@ class TestMainFunctionWandbArgs:
     def test_main_parses_wandb_flag(self):
         """Test main function parses --wandb flag."""
         import argparse
-        from run_enhanced_training import main
+
 
         # Create parser similar to main()
         parser = argparse.ArgumentParser()

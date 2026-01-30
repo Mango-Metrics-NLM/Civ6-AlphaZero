@@ -6,13 +6,13 @@ import numpy as np
 import pytest
 
 from alpha_zero.utils.training_diagnostics import (
+    ActionDiversityTracker,
     DiagnosticsConfig,
     EpisodeMetrics,
     IterationMetrics,
     PolicyEntropyTracker,
-    ValuePredictionTracker,
-    ActionDiversityTracker,
     TrainingDiagnostics,
+    ValuePredictionTracker,
     create_diagnostics,
 )
 

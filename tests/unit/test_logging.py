@@ -11,14 +11,12 @@ Tests for:
 from __future__ import annotations
 
 import json
-import os
 import tempfile
 import threading
 import time
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from alpha_zero.utils.logging import (
     CircularBuffer,

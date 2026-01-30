@@ -1,0 +1,72 @@
+# =============================================================================
+# Fast Testing Preset Configuration
+# =============================================================================
+# Use this preset for quick testing and debugging.
+# Command: python -m alpha_zero.orchestrator --config configs/orchestrator_fast.yaml
+
+mode: local
+experiment_name: fast_test
+random_seed: 42
+
+environment:
+  type: microciv
+  board_size: 6  # Smaller board for faster games
+  num_players: 2
+  max_turns: 20
+  fog_of_war_enabled: false
+
+network:
+  num_res_blocks: 4  # Fewer blocks
+  num_filters: 32    # Fewer filters
+
+mcts:
+  num_simulations: 10  # Minimal simulations
+  c_puct: 1.5
+
+training:
+  num_iterations: 10
+  games_per_iteration: 5
+  batch_size: 32
+  num_epochs: 2
+  replay_buffer_size: 10000
+  min_replay_size: 100
+  checkpoint_interval: 5
+  evaluation_interval: 5
+  evaluation_games: 2
+
+lr_schedule:
+  schedule_type: constant
+  initial_value: 0.001
+
+rewards:
+  enabled: true
+  scale_factor: 1.0
+
+curriculum:
+  enabled: true
+  stages:
+    - name: fast_test
+      level: 0
+      board_size: 6
+      max_turns: 20
+      promotion_threshold: 0.5
+      min_games: 5
+
+rag:
+  enabled: false
+
+llm:
+  enabled: false
+
+strategy_advisor:
+  enabled: false
+
+wandb:
+  enabled: false
+
+logging:
+  level: DEBUG
+  tensorboard: false
+
+checkpoint_dir: checkpoints/fast_test
+log_dir: logs/fast_test
