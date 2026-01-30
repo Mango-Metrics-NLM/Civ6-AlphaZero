@@ -1252,6 +1252,12 @@ def compute_transformer_loss(
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     """Compute loss for transformer network with entropy regularization.
 
+    .. deprecated::
+        Use :func:`alpha_zero.core.losses.compute_policy_loss` and
+        :func:`alpha_zero.core.losses.compute_value_loss` with
+        :class:`alpha_zero.core.losses.LossConfig` for more comprehensive
+        loss computation with categorical support.
+
     Args:
         policy_logits: Predicted policy logits (B, A).
         value: Predicted value (B,).
@@ -1265,6 +1271,13 @@ def compute_transformer_loss(
     Returns:
         Tuple of (total_loss, loss_dict).
     """
+    import warnings
+    warnings.warn(
+        "compute_transformer_loss() is deprecated. Use alpha_zero.core.losses.compute_policy_loss() "
+        "and alpha_zero.core.losses.compute_value_loss() with LossConfig for more comprehensive loss computation.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     # Value loss (MSE)
     value_loss = F.mse_loss(value, target_value)
 

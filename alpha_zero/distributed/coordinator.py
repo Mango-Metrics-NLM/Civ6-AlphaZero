@@ -89,6 +89,9 @@ class CoordinatorConfig:
     monitor_interval: float = 10.0  # Seconds between status updates
     restart_dead_actors: bool = True
 
+    # Timeout settings
+    actor_pool_stop_timeout: float = 10.0  # Timeout for graceful actor shutdown
+
     # Device
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -512,7 +515,7 @@ class TrainingCoordinator:
         # Stop actors
         if self.actor_pool:
             logger.info("Stopping actors...")
-            self.actor_pool.stop(timeout=10.0)
+            self.actor_pool.stop(timeout=self.config.actor_pool_stop_timeout)
 
         # Final checkpoint
         if self.learner and self.learner.training_step > 0:

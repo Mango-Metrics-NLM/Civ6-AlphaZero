@@ -1573,6 +1573,11 @@ def compute_loss(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Compute AlphaZero loss.
 
+    .. deprecated::
+        Use :func:`alpha_zero.core.losses.compute_policy_loss` and
+        :func:`alpha_zero.core.losses.compute_value_loss` for more
+        configurable loss computation with categorical support.
+
     Args:
         policy_logits: Predicted policy logits (B, A).
         value: Predicted value (B,).
@@ -1583,6 +1588,13 @@ def compute_loss(
     Returns:
         Tuple of (total_loss, policy_loss, value_loss).
     """
+    import warnings
+    warnings.warn(
+        "compute_loss() is deprecated. Use alpha_zero.core.losses.compute_policy_loss() "
+        "and alpha_zero.core.losses.compute_value_loss() for more configurable loss computation.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     # Value loss (MSE)
     value_loss = F.mse_loss(value, target_value)
 
