@@ -295,9 +295,7 @@ class MatchMaker:
 
                 # Bonus for similar games played
                 if self.matchmaking_config.prefer_similar_games_played:
-                    games_diff = abs(
-                        entry.player.games_played - other_entry.player.games_played
-                    )
+                    games_diff = abs(entry.player.games_played - other_entry.player.games_played)
                     score += max(0, 100 - games_diff)
 
                 candidates.append((other_entry, score))
@@ -515,9 +513,7 @@ class OpponentSelector:
         """
         exclude_ids = exclude_ids or set()
 
-        candidates = [
-            p for p in self.player_pool if p.player_id not in exclude_ids
-        ]
+        candidates = [p for p in self.player_pool if p.player_id not in exclude_ids]
 
         if not candidates:
             return []
@@ -546,8 +542,7 @@ class OpponentSelector:
         exclude_ids = exclude_ids or set()
 
         candidates = [
-            p for p in self.player_pool
-            if p.tier == tier_name and p.player_id not in exclude_ids
+            p for p in self.player_pool if p.tier == tier_name and p.player_id not in exclude_ids
         ]
 
         if len(candidates) <= num_opponents:
@@ -555,6 +550,7 @@ class OpponentSelector:
 
         # Random selection
         import random
+
         return random.sample(candidates, num_opponents)
 
     def select_diverse(
@@ -575,9 +571,7 @@ class OpponentSelector:
         """
         exclude_ids = exclude_ids or set()
 
-        candidates = [
-            p for p in self.player_pool if p.player_id not in exclude_ids
-        ]
+        candidates = [p for p in self.player_pool if p.player_id not in exclude_ids]
 
         if len(candidates) <= num_opponents:
             return candidates
@@ -616,7 +610,8 @@ class OpponentSelector:
 
         exclude_ids = exclude_ids or set()
         candidates = [
-            p for p in self.player_pool
+            p
+            for p in self.player_pool
             if p.player_id not in exclude_ids
             and p.rating >= player_rating  # Must be at least equal
         ]

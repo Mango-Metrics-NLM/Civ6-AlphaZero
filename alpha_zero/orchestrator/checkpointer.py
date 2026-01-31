@@ -31,7 +31,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -181,8 +181,7 @@ class CheckpointManager:
 
         torch.save(checkpoint_data, best_path)
         logger.info(
-            f"Saved best model with {self.best_metric}="
-            f"{metrics.get(self.best_metric, 'N/A')}",
+            f"Saved best model with {self.best_metric}={metrics.get(self.best_metric, 'N/A')}",
         )
 
         self._metadata["best"] = {
@@ -366,9 +365,7 @@ class CheckpointManager:
 
         # Update metadata
         checkpoints = self._metadata.get("checkpoints", [])
-        self._metadata["checkpoints"] = [
-            c for c in checkpoints if c.get("path") != str(path)
-        ]
+        self._metadata["checkpoints"] = [c for c in checkpoints if c.get("path") != str(path)]
         self._save_metadata()
 
         logger.info(f"Deleted checkpoint: {path}")
@@ -450,7 +447,7 @@ class CheckpointManager:
 
     def _get_timestamp(self) -> str:
         """Get current timestamp string in ISO format."""
-        return datetime.now(timezone.utc).isoformat()
+        return datetime.now(UTC).isoformat()
 
     def __repr__(self) -> str:
         """String representation of checkpoint manager."""

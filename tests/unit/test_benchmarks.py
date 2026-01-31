@@ -17,13 +17,14 @@ import pytest
 try:
     from alpha_zero.utils.benchmarks import (
         BenchmarkConfig,
-        BenchmarkResult,
         Benchmarker,
+        BenchmarkResult,
         BenchmarkSuite,
         benchmark_function,
         create_mechanics_benchmarks,
         time_function,
     )
+
     HAS_DEPENDENCIES = True
     IMPORT_ERROR = ""
 except ImportError as e:
@@ -39,8 +40,7 @@ except ImportError as e:
     time_function = None
 
 pytestmark = pytest.mark.skipif(
-    not HAS_DEPENDENCIES,
-    reason=f"Benchmark dependencies not available: {IMPORT_ERROR}"
+    not HAS_DEPENDENCIES, reason=f"Benchmark dependencies not available: {IMPORT_ERROR}"
 )
 
 
@@ -227,6 +227,7 @@ class TestBenchmarkFunctions:
 
     def test_benchmark_function(self) -> None:
         """Test the benchmark_function helper."""
+
         def simple() -> int:
             return 42
 
@@ -236,6 +237,7 @@ class TestBenchmarkFunctions:
 
     def test_time_function(self) -> None:
         """Test the time_function helper."""
+
         def compute() -> int:
             return sum(range(1000))
 
@@ -256,10 +258,12 @@ class TestBenchmarkSuite:
 
     def test_register_decorator(self) -> None:
         """Test registering benchmarks with decorator."""
-        suite = BenchmarkSuite(BenchmarkConfig(
-            warmup_iterations=1,
-            benchmark_iterations=5,
-        ))
+        suite = BenchmarkSuite(
+            BenchmarkConfig(
+                warmup_iterations=1,
+                benchmark_iterations=5,
+            )
+        )
 
         @suite.register("test_bench", threshold=1.0)
         def bench_test() -> None:
@@ -269,10 +273,12 @@ class TestBenchmarkSuite:
 
     def test_run_all(self) -> None:
         """Test running all benchmarks."""
-        suite = BenchmarkSuite(BenchmarkConfig(
-            warmup_iterations=1,
-            benchmark_iterations=5,
-        ))
+        suite = BenchmarkSuite(
+            BenchmarkConfig(
+                warmup_iterations=1,
+                benchmark_iterations=5,
+            )
+        )
 
         @suite.register("bench1")
         def bench1() -> None:
@@ -288,10 +294,12 @@ class TestBenchmarkSuite:
 
     def test_run_subset(self) -> None:
         """Test running subset of benchmarks."""
-        suite = BenchmarkSuite(BenchmarkConfig(
-            warmup_iterations=1,
-            benchmark_iterations=5,
-        ))
+        suite = BenchmarkSuite(
+            BenchmarkConfig(
+                warmup_iterations=1,
+                benchmark_iterations=5,
+            )
+        )
 
         @suite.register("bench1")
         def bench1() -> None:
@@ -333,7 +341,7 @@ class TestMechanicsBenchmarks:
         assert len(results) > 0
 
         # All benchmarks should complete
-        for name, result in results.items():
+        for _name, result in results.items():
             assert result.iterations == 5
             assert result.ops_per_second > 0
 

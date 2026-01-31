@@ -18,6 +18,7 @@ import pytest
 
 try:
     import gymnasium as gym
+
     HAS_GYMNASIUM = True
 except ImportError:
     HAS_GYMNASIUM = False
@@ -216,7 +217,7 @@ class TestMockCiv6Env:
         env = MockCiv6Env(bridge_config=bridge_config, board_size=16)
 
         bridges = []
-        for i in range(5):
+        for _ in range(5):
             env.reset()
             bridges.append(env._bridge)
 

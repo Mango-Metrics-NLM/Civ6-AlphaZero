@@ -1,10 +1,6 @@
 """Unit tests for RAG configuration module."""
 
-import os
-import tempfile
 from pathlib import Path
-
-import pytest
 
 from alpha_zero.rag.config.settings import (
     EmbeddingConfig,

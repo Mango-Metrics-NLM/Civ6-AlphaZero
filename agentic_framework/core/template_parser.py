@@ -17,6 +17,14 @@ import yaml
 
 from ..config import AgenticConfig
 from ..utils.logging_config import get_logger
+from .constants import (
+    DEFAULT_EXPLORATION_TIMEOUT_SECONDS,
+    DEFAULT_FAIL_FAST,
+    DEFAULT_MAX_FILES_PER_PASS,
+    DEFAULT_MAX_ITERATIONS,
+    DEFAULT_OPERATION_TIMEOUT_SECONDS,
+    DEFAULT_RETRY_COUNT,
+)
 
 logger = get_logger("template_parser")
 
@@ -70,9 +78,9 @@ class ParsedPermissions:
     autonomous: list[str] = field(default_factory=list)
     confirm_first: list[str] = field(default_factory=list)
     prohibited: list[str] = field(default_factory=list)
-    max_iterations: int = 5
-    max_files_per_pass: int = 20
-    exploration_timeout_seconds: int = 600
+    max_iterations: int = DEFAULT_MAX_ITERATIONS
+    max_files_per_pass: int = DEFAULT_MAX_FILES_PER_PASS
+    exploration_timeout_seconds: int = DEFAULT_EXPLORATION_TIMEOUT_SECONDS
 
 
 @dataclass
@@ -185,8 +193,7 @@ class TemplateParser:
 
     def __init__(self) -> None:
         """Initialize the template parser."""
-        self._current_section: TemplateSection | None = None
-        self._line_number: int = 0
+        pass  # Stateless parser - no instance state needed
 
     def parse_file(self, file_path: Path) -> ParsedTemplate:
         """Parse a template from a file.
@@ -212,9 +219,7 @@ class TemplateParser:
         else:
             return self.parse_markdown(content, source_file=file_path)
 
-    def parse_markdown(
-        self, content: str, source_file: Path | None = None
-    ) -> ParsedTemplate:
+    def parse_markdown(self, content: str, source_file: Path | None = None) -> ParsedTemplate:
         """Parse a Markdown format template.
 
         Args:
@@ -240,9 +245,7 @@ class TemplateParser:
 
         return template
 
-    def parse_yaml(
-        self, content: str, source_file: Path | None = None
-    ) -> ParsedTemplate:
+    def parse_yaml(self, content: str, source_file: Path | None = None) -> ParsedTemplate:
         """Parse a YAML format template.
 
         Args:
@@ -293,9 +296,11 @@ class TemplateParser:
                 autonomous=autonomy.get("autonomous", []),
                 confirm_first=autonomy.get("confirm_first", []),
                 prohibited=autonomy.get("prohibited", []),
-                max_iterations=budget.get("max_iterations", 5),
-                max_files_per_pass=budget.get("max_files_per_pass", 20),
-                exploration_timeout_seconds=budget.get("exploration_timeout_seconds", 600),
+                max_iterations=budget.get("max_iterations", DEFAULT_MAX_ITERATIONS),
+                max_files_per_pass=budget.get("max_files_per_pass", DEFAULT_MAX_FILES_PER_PASS),
+                exploration_timeout_seconds=budget.get(
+                    "exploration_timeout_seconds", DEFAULT_EXPLORATION_TIMEOUT_SECONDS
+                ),
             )
 
         # Parse feedback
@@ -359,9 +364,7 @@ class TemplateParser:
 
         return sections
 
-    def _parse_section(
-        self, template: ParsedTemplate, section_name: str, content: str
-    ) -> None:
+    def _parse_section(self, template: ParsedTemplate, section_name: str, content: str) -> None:
         """Parse a single section and update the template.
 
         Args:
@@ -420,17 +423,13 @@ class TemplateParser:
             items = self._extract_list_items(subcontent)
 
             if "hard" in name_lower:
-                template.constraints.hard = [
-                    self._parse_constraint_item(item) for item in items
-                ]
+                template.constraints.hard = [self._parse_constraint_item(item) for item in items]
             elif "soft" in name_lower:
                 template.constraints.soft = [
                     self._parse_constraint_item(item, is_soft=True) for item in items
                 ]
             elif "anti" in name_lower:
-                template.constraints.anti = [
-                    {"permission": item, "scope": ""} for item in items
-                ]
+                template.constraints.anti = [{"permission": item, "scope": ""} for item in items]
 
     def _parse_permissions_section(self, template: ParsedTemplate, content: str) -> None:
         """Parse the permissions architecture section."""
@@ -438,7 +437,6 @@ class TemplateParser:
 
         for name, subcontent in subsections.items():
             name_lower = name.lower()
-            _items = self._extract_list_items(subcontent)  # Reserved for future use
 
             if "scope" in name_lower:
                 # Look for IN SCOPE and OUT OF SCOPE
@@ -471,9 +469,7 @@ class TemplateParser:
                 )
 
                 if auto_match:
-                    template.permissions.autonomous = self._extract_list_items(
-                        auto_match.group(1)
-                    )
+                    template.permissions.autonomous = self._extract_list_items(auto_match.group(1))
                 if confirm_match:
                     template.permissions.confirm_first = self._extract_list_items(
                         confirm_match.group(1)
@@ -522,7 +518,9 @@ class TemplateParser:
     def _parse_session_section(self, template: ParsedTemplate, content: str) -> None:
         """Parse the session/context persistence section."""
         # Look for memory file specification
-        file_match = re.search(r"(?:CLAUDE\.md|memory_file)[^:]*:\s*[\"']?(\S+)[\"']?", content, re.IGNORECASE)
+        file_match = re.search(
+            r"(?:memory_file|session_file|file)[^:]*:\s*[\"']?(\S+)[\"']?", content, re.IGNORECASE
+        )
         if file_match:
             template.session.memory_file = file_match.group(1)
 
@@ -599,22 +597,18 @@ class TemplateParser:
         items = pattern.findall(content)
         return [item.strip() for item in items if item.strip()]
 
-    def _extract_paragraphs(
-        self, content: str, after: str | None = None
-    ) -> list[str]:
+    def _extract_paragraphs(self, content: str, after: str | None = None) -> list[str]:
         """Extract paragraphs from content."""
         if after:
             match = re.search(rf"{after}.*?\n\n", content, re.IGNORECASE | re.DOTALL)
             if match:
-                content = content[match.end():]
+                content = content[match.end() :]
 
         # Split by double newlines and filter empty
         paragraphs = re.split(r"\n\s*\n", content)
         return [p.strip() for p in paragraphs if p.strip() and not p.startswith("#")]
 
-    def _parse_constraint_item(
-        self, text: str, is_soft: bool = False
-    ) -> dict[str, Any]:
+    def _parse_constraint_item(self, text: str, is_soft: bool = False) -> dict[str, Any]:
         """Parse a constraint item into structured form."""
         # Try to extract key: value format
         match = re.match(r"^([^:]+):\s*(.+)$", text)
@@ -661,24 +655,28 @@ class TemplateParser:
             if match:
                 name = match.group(1).strip()
                 command = match.group(2).strip()
-                commands.append({
-                    "name": name.lower().replace(" ", "_"),
-                    "command": command,
-                    "timeout_seconds": 300,
-                    "fail_fast": False,
-                    "retry_count": 0,
-                })
+                commands.append(
+                    {
+                        "name": name.lower().replace(" ", "_"),
+                        "command": command,
+                        "timeout_seconds": DEFAULT_OPERATION_TIMEOUT_SECONDS,
+                        "fail_fast": DEFAULT_FAIL_FAST,
+                        "retry_count": DEFAULT_RETRY_COUNT,
+                    }
+                )
             elif "`" in line:
                 # Extract command from backticks
                 cmd_match = re.search(r"`([^`]+)`", line)
                 if cmd_match:
-                    commands.append({
-                        "name": f"command_{len(commands)}",
-                        "command": cmd_match.group(1),
-                        "timeout_seconds": 300,
-                        "fail_fast": False,
-                        "retry_count": 0,
-                    })
+                    commands.append(
+                        {
+                            "name": f"command_{len(commands)}",
+                            "command": cmd_match.group(1),
+                            "timeout_seconds": DEFAULT_OPERATION_TIMEOUT_SECONDS,
+                            "fail_fast": DEFAULT_FAIL_FAST,
+                            "retry_count": DEFAULT_RETRY_COUNT,
+                        }
+                    )
 
         return commands
 
@@ -689,7 +687,7 @@ class TemplateParser:
         # Look for ON <ERROR> -> <ACTION> patterns
         on_pattern = re.compile(
             r"ON\s+([A-Z_]+(?:\s+[A-Z_]+)*):\s*\n\s*[→->]+\s*(.+?)(?=\n\s*ON|\Z)",
-            re.IGNORECASE | re.DOTALL
+            re.IGNORECASE | re.DOTALL,
         )
 
         for match in on_pattern.finditer(content):
@@ -705,11 +703,13 @@ class TemplateParser:
             elif "escalate" in action_text.lower() or "guidance" in action_text.lower():
                 action = "escalate"
 
-            patterns.append({
-                "error_type": error_type,
-                "action": action,
-                "max_retries": 3,
-            })
+            patterns.append(
+                {
+                    "error_type": error_type,
+                    "action": action,
+                    "max_retries": 3,
+                }
+            )
 
         return {"auto_fix_patterns": patterns}
 
@@ -721,20 +721,24 @@ class TemplateParser:
         header_pattern = re.compile(r"##\s+(.+)")
         for match in header_pattern.finditer(content):
             section_name = match.group(1).strip()
-            sections.append({
-                "name": section_name,
-                "persist": True,
-                "format": "markdown_list",
-            })
+            sections.append(
+                {
+                    "name": section_name,
+                    "persist": True,
+                    "format": "markdown_list",
+                }
+            )
 
         # Also check list items
         if not sections:
             items = self._extract_list_items(content)
             for item in items:
-                sections.append({
-                    "name": item,
-                    "persist": True,
-                    "format": "markdown_list",
-                })
+                sections.append(
+                    {
+                        "name": item,
+                        "persist": True,
+                        "format": "markdown_list",
+                    }
+                )
 
         return sections

@@ -10,6 +10,7 @@ Example:
     >>> integration = HierarchicalTrainingIntegration(config, orchestrator)
     >>> integration.enable()
 """
+
 from __future__ import annotations
 
 import logging
@@ -22,6 +23,7 @@ import numpy as np
 
 try:
     import torch
+
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
@@ -215,8 +217,9 @@ class HierarchicalTrainingIntegration:
             self.state.level_value_estimates[level_name].append(value)
             # Keep bounded
             if len(self.state.level_value_estimates[level_name]) > 1000:
-                self.state.level_value_estimates[level_name] = \
-                    self.state.level_value_estimates[level_name][-500:]
+                self.state.level_value_estimates[level_name] = self.state.level_value_estimates[
+                    level_name
+                ][-500:]
 
         info = {
             "hierarchical": True,
@@ -250,9 +253,7 @@ class HierarchicalTrainingIntegration:
             return reward
 
         # Get shaped rewards from controller
-        shaped_rewards = self.controller.update(
-            game_state, action, reward, next_state, done
-        )
+        shaped_rewards = self.controller.update(game_state, action, reward, next_state, done)
 
         # Use operational level reward (most granular)
         operational_reward = shaped_rewards.get("operational", reward)
@@ -276,14 +277,18 @@ class HierarchicalTrainingIntegration:
 
         # Count goal completions
         for goal in self.controller.goal_hierarchy.get_all_goals():
-            goal_type = goal.goal_type.name if hasattr(goal.goal_type, "name") else str(goal.goal_type)
+            goal_type = (
+                goal.goal_type.name if hasattr(goal.goal_type, "name") else str(goal.goal_type)
+            )
             if goal.status == GoalStatus.COMPLETED:
-                self.state.goal_completions[goal_type] = \
+                self.state.goal_completions[goal_type] = (
                     self.state.goal_completions.get(goal_type, 0) + 1
+                )
 
         # Update strategic win rate (if we had strategic goals and won)
         strategic_goals = [
-            g for g in self.controller.goal_hierarchy.get_all_goals()
+            g
+            for g in self.controller.goal_hierarchy.get_all_goals()
             if g.level == HierarchyLevel.STRATEGIC
         ]
         if strategic_goals and winner == 1:
@@ -324,9 +329,9 @@ class HierarchicalTrainingIntegration:
 
         # Save checkpoint if needed
         if (
-            self.config.save_hierarchical_data and
-            self.config.hierarchical_checkpoint_frequency > 0 and
-            iteration % self.config.hierarchical_checkpoint_frequency == 0
+            self.config.save_hierarchical_data
+            and self.config.hierarchical_checkpoint_frequency > 0
+            and iteration % self.config.hierarchical_checkpoint_frequency == 0
         ):
             self._save_hierarchical_checkpoint(iteration)
 
@@ -465,6 +470,7 @@ class HierarchicalTrainingIntegration:
 
         # Save state
         import json
+
         state_dict = {
             "total_decisions": self.state.total_decisions,
             "goal_completions": self.state.goal_completions,
@@ -491,6 +497,7 @@ class HierarchicalTrainingIntegration:
         state_path = path / "training_state.json"
         if state_path.exists():
             import json
+
             with open(state_path) as f:
                 state_dict = json.load(f)
 

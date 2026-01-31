@@ -95,6 +95,9 @@ logs/
 # RAG Data (generated vector database only, keep knowledge sources)
 data/knowledge_db/
 
+# Reflection memory data (LATS-style learning)
+data/reflections/
+
 # Weights & Biases
 wandb/
 *.wandb
@@ -119,3 +122,13 @@ end_of_log_utf8.txt
 latest_run_log.txt
 temp_log_tail.txt
 nul
+*.log
+
+# Serialized data
+*.pkl
+*.npy
+
+# Experiment tracking
+experiments/
+mlruns/
+ray_results/

@@ -768,7 +768,7 @@ class TestConstraint:
             constraint_type=ConstraintType.SOFT,
             check_function=lambda ctx: (
                 ctx.get("coverage", 0) >= 80,
-                f"Coverage {ctx.get('coverage', 0)}% is below 80%"
+                f"Coverage {ctx.get('coverage', 0)}% is below 80%",
             ),
         )
 
@@ -850,11 +850,13 @@ class TestConstraintValidator:
 
     def test_check_permissions(self, validator: ConstraintValidator) -> None:
         """Test checking permissions (anti-constraints)."""
-        permissions = validator.check_permissions([
-            "can_restructure_files",
-            "can_add_dependencies",
-            "nonexistent_permission",
-        ])
+        permissions = validator.check_permissions(
+            [
+                "can_restructure_files",
+                "can_add_dependencies",
+                "nonexistent_permission",
+            ]
+        )
 
         assert permissions.get("can_restructure_files") is True
         assert permissions.get("can_add_dependencies") is True

@@ -223,9 +223,7 @@ class DynamicsNetwork(nn.Module):
         self.input_bn = nn.BatchNorm2d(hidden_channels)
 
         # Residual blocks
-        self.res_blocks = nn.ModuleList(
-            [ResidualBlock(hidden_channels) for _ in range(num_blocks)]
-        )
+        self.res_blocks = nn.ModuleList([ResidualBlock(hidden_channels) for _ in range(num_blocks)])
 
         # Reward prediction head
         self.reward_conv = nn.Conv2d(hidden_channels, 1, kernel_size=1)
@@ -536,9 +534,7 @@ class MuZeroNetwork(nn.Module):
         )
 
         # Combine vector features into spatial (via channel-wise addition)
-        self.vector_to_spatial = nn.Linear(
-            config.fc_hidden_dim, config.hidden_state_channels
-        )
+        self.vector_to_spatial = nn.Linear(config.fc_hidden_dim, config.hidden_state_channels)
 
         # =====================================================================
         # Dynamics function: g(s, a) -> (s', r)
@@ -673,9 +669,7 @@ class MuZeroNetwork(nn.Module):
             # Use zeros if no vector available (e.g., during dynamics unroll)
             batch_size = hidden_state.size(0)
             device = hidden_state.device
-            vector_features = torch.zeros(
-                batch_size, self.config.fc_hidden_dim, device=device
-            )
+            vector_features = torch.zeros(batch_size, self.config.fc_hidden_dim, device=device)
         else:
             vector_features = self._encoded_vector
 
@@ -914,25 +908,17 @@ class MuZeroNetwork(nn.Module):
             Dictionary with parameter counts.
         """
         counts = {
-            "spatial_encoder": sum(
-                p.numel() for p in self.spatial_encoder.parameters()
-            ),
-            "vector_encoder": sum(
-                p.numel() for p in self.vector_encoder.parameters()
-            ),
+            "spatial_encoder": sum(p.numel() for p in self.spatial_encoder.parameters()),
+            "vector_encoder": sum(p.numel() for p in self.vector_encoder.parameters()),
             "dynamics": sum(p.numel() for p in self.dynamics.parameters()),
             "policy_head": sum(p.numel() for p in self.policy_head.parameters()),
             "value_head": sum(p.numel() for p in self.value_head.parameters()),
         }
 
         if self.projection_head is not None:
-            counts["projection_head"] = sum(
-                p.numel() for p in self.projection_head.parameters()
-            )
+            counts["projection_head"] = sum(p.numel() for p in self.projection_head.parameters())
         if self.prediction_head is not None:
-            counts["prediction_head"] = sum(
-                p.numel() for p in self.prediction_head.parameters()
-            )
+            counts["prediction_head"] = sum(p.numel() for p in self.prediction_head.parameters())
         if self.value_prefix_head is not None:
             counts["value_prefix_head"] = sum(
                 p.numel() for p in self.value_prefix_head.parameters()

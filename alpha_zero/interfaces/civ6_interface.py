@@ -221,15 +221,15 @@ class Civ6Interface(BaseGameInterface):
             # Return empty observation
             return GameObservation(
                 spatial=np.zeros(
-                    (self.config.observation_channels,
-                     self.config.board_size,
-                     self.config.board_size),
+                    (
+                        self.config.observation_channels,
+                        self.config.board_size,
+                        self.config.board_size,
+                    ),
                     dtype=np.float32,
                 ),
                 vector=np.zeros(self.config.vector_dim, dtype=np.float32),
-                action_mask=np.zeros(
-                    self.config.action_space_size or 1000, dtype=np.float32
-                ),
+                action_mask=np.zeros(self.config.action_space_size or 1000, dtype=np.float32),
             )
         return self._last_obs
 
@@ -347,7 +347,8 @@ class Civ6Interface(BaseGameInterface):
             action_mask=obs_dict["action_mask"],
             current_player=0,  # Always player 0 for AI
             turn=info.get("turn", 0),
-            done=self._game_status in (
+            done=self._game_status
+            in (
                 GameStatus.PLAYER1_WIN,
                 GameStatus.PLAYER2_WIN,
                 GameStatus.DRAW,
@@ -375,5 +376,6 @@ def register_civ6_backend():
     Call this to make "civ6" available as a backend option.
     """
     from alpha_zero.interfaces.base_interface import GameAdapter
+
     GameAdapter.register_backend("civ6", Civ6Interface)
     GameAdapter.register_backend("civ6_mock", _create_mock_civ6_interface)

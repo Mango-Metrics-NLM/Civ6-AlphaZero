@@ -16,6 +16,7 @@ def test_visitation_init():
     info = env.get_info()
     assert info["visited_count"] == len(env.visited)
 
+
 def test_visitation_on_move():
     """Test that moving units updates visited set."""
     env = MicroCivEnv(board_size=16)
@@ -34,11 +35,7 @@ def test_visitation_on_move():
         new_pos = (start_pos[0] + dx, start_pos[1] + dy)
         if env._is_valid_move(new_pos) and new_pos not in env.visited:
             # Construct move action manually for test simplicity
-            action = {
-                "type": "move",
-                "unit_idx": 0,
-                "direction": (dx, dy)
-            }
+            action = {"type": "move", "unit_idx": 0, "direction": (dx, dy)}
             env._execute_action(action)
             assert new_pos in env.visited
             assert len(env.visited) > initial_visited
@@ -46,6 +43,7 @@ def test_visitation_on_move():
 
     # If we couldn't find a move to an unvisited tile, warn but pass
     # (Random map generation might box us in, though unlikely with fresh start)
+
 
 def test_visitation_persistence():
     """Test that visited tiles persist across turns."""

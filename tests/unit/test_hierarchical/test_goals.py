@@ -1,4 +1,5 @@
 """Tests for hierarchical goal management system."""
+
 from __future__ import annotations
 
 from alpha_zero.hierarchical.goals.goal_evaluator import GoalEvaluator
@@ -127,7 +128,9 @@ class TestGoalNode:
         """Test pre-order traversal."""
         root = GoalNode(Goal.strategic(StrategicGoalType.SCIENCE_VICTORY))
         child1 = root.add_child(Goal.tactical(TacticalGoalType.RESEARCH_TECH))
-        root.add_child(Goal.tactical(TacticalGoalType.BUILD_CAMPUS))  # child2 - added for traversal test
+        root.add_child(
+            Goal.tactical(TacticalGoalType.BUILD_CAMPUS)
+        )  # child2 - added for traversal test
         child1.add_child(Goal.operational(OperationalGoalType.SELECT_RESEARCH))  # grandchild
 
         visited = []
@@ -298,9 +301,7 @@ class TestGoalEvaluator:
         prev_state = {"victory_progress": {"science": 0.3}}
         next_state = {"victory_progress": {"science": 0.4}}
 
-        reward = evaluator.compute_goal_reward(
-            goal, prev_state, next_state, base_reward=1.0
-        )
+        reward = evaluator.compute_goal_reward(goal, prev_state, next_state, base_reward=1.0)
 
         # Should have positive bonus due to progress increase
         assert reward >= 1.0
@@ -426,5 +427,7 @@ class TestDecompositionStrategies:
 
         # Should produce research-related tactical goals
         tactical_types = [g.goal_type for g in sub_goals]
-        assert TacticalGoalType.RESEARCH_TECH in tactical_types or \
-               TacticalGoalType.BUILD_CAMPUS in tactical_types
+        assert (
+            TacticalGoalType.RESEARCH_TECH in tactical_types
+            or TacticalGoalType.BUILD_CAMPUS in tactical_types
+        )

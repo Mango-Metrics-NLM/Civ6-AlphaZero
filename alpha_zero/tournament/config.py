@@ -292,7 +292,7 @@ class TournamentConfig:
             if not key.startswith(prefix):
                 continue
 
-            param_name = key[len(prefix):].lower()
+            param_name = key[len(prefix) :].lower()
 
             # Handle nested configs
             if param_name.startswith("elo_"):
@@ -331,7 +331,9 @@ class TournamentConfig:
 
         config = cls(
             elo=ELOConfig.from_dict(elo_data) if elo_data else ELOConfig(),
-            matchmaking=MatchmakingConfig.from_dict(matchmaking_data) if matchmaking_data else MatchmakingConfig(),
+            matchmaking=MatchmakingConfig.from_dict(matchmaking_data)
+            if matchmaking_data
+            else MatchmakingConfig(),
         )
 
         if tiers_data:

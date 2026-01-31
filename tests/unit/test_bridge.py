@@ -123,12 +123,15 @@ class TestBridgeConfig:
 
     def test_from_env(self):
         """Test configuration from environment variables."""
-        with patch.dict("os.environ", {
-            "CIV6_BRIDGE_POLL_MS": "25",
-            "CIV6_BOARD_SIZE": "24",
-            "CIV6_LOG_LEVEL": "DEBUG",
-            "CIV6_DEBUG_MODE": "true",
-        }):
+        with patch.dict(
+            "os.environ",
+            {
+                "CIV6_BRIDGE_POLL_MS": "25",
+                "CIV6_BOARD_SIZE": "24",
+                "CIV6_LOG_LEVEL": "DEBUG",
+                "CIV6_DEBUG_MODE": "true",
+            },
+        ):
             config = BridgeConfig.from_env()
             assert config.poll_interval_ms == 25
             assert config.board_size == 24
@@ -244,11 +247,13 @@ class TestLuaCommand:
 
     def test_from_dict(self):
         """Test command deserialization."""
-        cmd = LuaCommand.from_dict({
-            "action_type": "unit_attack",
-            "unit_id": 10,
-            "target": {"x": 5, "y": 6},
-        })
+        cmd = LuaCommand.from_dict(
+            {
+                "action_type": "unit_attack",
+                "unit_id": 10,
+                "target": {"x": 5, "y": 6},
+            }
+        )
         assert cmd.action_type == ActionType.UNIT_ATTACK
         assert cmd.unit_id == 10
         assert cmd.target.x == 5
@@ -335,11 +340,13 @@ class TestLegalAction:
 
     def test_unit_move_with_targets(self):
         """Test unit move with target positions."""
-        action = LegalAction.from_dict({
-            "action": "move",
-            "unit_id": 5,
-            "targets": [[10, 15], [11, 15], [10, 16]],
-        })
+        action = LegalAction.from_dict(
+            {
+                "action": "move",
+                "unit_id": 5,
+                "targets": [[10, 15], [11, 15], [10, 16]],
+            }
+        )
         assert action.action_type == "move"
         assert action.unit_id == 5
         assert len(action.targets) == 3
@@ -347,12 +354,14 @@ class TestLegalAction:
 
     def test_city_produce_with_items(self):
         """Test city production with item list."""
-        action = LegalAction.from_dict({
-            "action": "produce",
-            "city_id": 1,
-            "item_type": "unit",
-            "items": [1, 2, 5, 10],
-        })
+        action = LegalAction.from_dict(
+            {
+                "action": "produce",
+                "city_id": 1,
+                "item_type": "unit",
+                "items": [1, 2, 5, 10],
+            }
+        )
         assert action.city_id == 1
         assert action.items == [1, 2, 5, 10]
 
@@ -499,21 +508,25 @@ class TestProtocolUtilities:
 
     def test_validate_state_json_valid(self):
         """Test validation of valid state JSON."""
-        json_str = json.dumps({
-            "turn_id": 1,
-            "map": {"width": 44, "height": 26},
-            "units": [],
-            "cities": [],
-        })
+        json_str = json.dumps(
+            {
+                "turn_id": 1,
+                "map": {"width": 44, "height": 26},
+                "units": [],
+                "cities": [],
+            }
+        )
         is_valid, error = validate_state_json(json_str)
         assert is_valid
         assert error is None
 
     def test_validate_state_json_missing_turn(self):
         """Test validation with missing turn."""
-        json_str = json.dumps({
-            "map": {"width": 44, "height": 26},
-        })
+        json_str = json.dumps(
+            {
+                "map": {"width": 44, "height": 26},
+            }
+        )
         is_valid, error = validate_state_json(json_str)
         assert not is_valid
         assert "turn" in error.lower()

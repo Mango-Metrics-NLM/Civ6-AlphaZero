@@ -8,6 +8,15 @@ from __future__ import annotations
 
 import pytest
 
+from alpha_zero.mechanics.culture import (
+    CulturalInfluence,
+    CulturalVictoryProgress,
+    CultureConfig,
+    CultureManager,
+    GreatWork,
+    GreatWorkType,
+    TourismSource,
+)
 from alpha_zero.mechanics.diplomacy import (
     DiplomacyConfig,
     DiplomacyManager,
@@ -27,16 +36,6 @@ from alpha_zero.mechanics.religion import (
     ReligiousPressure,
     ReligiousUnit,
 )
-from alpha_zero.mechanics.culture import (
-    CultureConfig,
-    CultureManager,
-    CulturalInfluence,
-    CulturalVictoryProgress,
-    GreatWork,
-    GreatWorkType,
-    TourismSource,
-)
-
 
 # =============================================================================
 # Diplomacy Tests
@@ -135,14 +134,18 @@ class TestDiplomaticRelation:
     def test_relationship_score(self) -> None:
         """Test relationship score calculation."""
         relation = DiplomaticRelation(player_a=0, player_b=1)
-        relation.add_modifier(DiplomaticModifier(
-            modifier_type=ModifierType.TRADE_PARTNER,
-            value=15,
-        ))
-        relation.add_modifier(DiplomaticModifier(
-            modifier_type=ModifierType.SAME_RELIGION,
-            value=10,
-        ))
+        relation.add_modifier(
+            DiplomaticModifier(
+                modifier_type=ModifierType.TRADE_PARTNER,
+                value=15,
+            )
+        )
+        relation.add_modifier(
+            DiplomaticModifier(
+                modifier_type=ModifierType.SAME_RELIGION,
+                value=10,
+            )
+        )
         assert relation.relationship_score == 25
 
     def test_add_modifier(self) -> None:
@@ -291,11 +294,13 @@ class TestDiplomacyManager:
     def test_process_turn(self, manager: DiplomacyManager) -> None:
         """Test turn processing."""
         relation = manager.get_relation(0, 1)
-        relation.add_modifier(DiplomaticModifier(
-            modifier_type=ModifierType.TRADE_PARTNER,
-            value=15,
-            turns_remaining=2,
-        ))
+        relation.add_modifier(
+            DiplomaticModifier(
+                modifier_type=ModifierType.TRADE_PARTNER,
+                value=15,
+                turns_remaining=2,
+            )
+        )
         manager.process_turn(current_turn=0)
         assert relation.modifiers[0].turns_remaining == 1
 
@@ -881,7 +886,7 @@ class TestCulturalInfluence:
             source_player=0,
             target_player=1,
         )
-        leveled_up = influence.add_tourism(150)
+        _leveled_up = influence.add_tourism(150)
         assert influence.cumulative_tourism == 150
         assert influence.influence_level >= 1
 

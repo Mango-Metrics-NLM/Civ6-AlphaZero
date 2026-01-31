@@ -3,10 +3,10 @@
 import numpy as np
 import pytest
 
-from alpha_zero.rag.stores.base import Document, DocumentMetadata, SearchResult
-from alpha_zero.rag.stores.memory_store import MemoryVectorStore
 from alpha_zero.rag.config.settings import VectorStoreConfig, VectorStoreType
+from alpha_zero.rag.stores.base import Document, DocumentMetadata, SearchResult
 from alpha_zero.rag.stores.factory import VectorStoreFactory, create_vector_store
+from alpha_zero.rag.stores.memory_store import MemoryVectorStore
 
 
 class TestDocument:
@@ -221,9 +221,7 @@ class TestMemoryVectorStore:
             await store.add_documents(docs)
 
             query = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
-            results = await store.search(
-                query, top_k=5, filter_metadata={"source": "source_b"}
-            )
+            results = await store.search(query, top_k=5, filter_metadata={"source": "source_b"})
 
             assert len(results) == 1
             assert results[0].document.id == "doc-2"

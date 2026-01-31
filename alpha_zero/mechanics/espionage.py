@@ -748,10 +748,13 @@ class EspionageManager:
             "spies_captured": len([s for s in spies if s.status == SpyStatus.CAPTURED]),
             "avg_spy_rank": sum(s.rank.value for s in spies) / max(1, len(spies)),
             "total_missions_completed": sum(s.missions_completed for s in spies),
-            "counterspy_deployed": len([
-                city for city, sid in self._counterspy_locations.items()
-                if self._spies.get(sid, Spy("", "", -1)).player_id == player_id
-            ]),
+            "counterspy_deployed": len(
+                [
+                    city
+                    for city, sid in self._counterspy_locations.items()
+                    if self._spies.get(sid, Spy("", "", -1)).player_id == player_id
+                ]
+            ),
         }
 
     def reset(self) -> None:

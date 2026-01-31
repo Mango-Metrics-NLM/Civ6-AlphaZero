@@ -10,6 +10,7 @@ Example:
     >>> mcts = HierarchicalMCTS(network, config)
     >>> action, stats = mcts.search(state, goal)
 """
+
 from __future__ import annotations
 
 from alpha_zero.hierarchical.mcts.hierarchical_mcts import (

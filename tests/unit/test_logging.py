@@ -85,10 +85,7 @@ class TestCircularBuffer:
             for i in range(start, start + count):
                 buffer.append({"value": i})
 
-        threads = [
-            threading.Thread(target=append_items, args=(i * 100, 100))
-            for i in range(5)
-        ]
+        threads = [threading.Thread(target=append_items, args=(i * 100, 100)) for i in range(5)]
 
         for t in threads:
             t.start()
@@ -130,11 +127,13 @@ class TestMetricsTracker:
     def test_update_batch(self) -> None:
         """Test batch metric update."""
         tracker = MetricsTracker()
-        tracker.update_batch({
-            "loss": 0.5,
-            "accuracy": 0.9,
-            "lr": 0.001,
-        })
+        tracker.update_batch(
+            {
+                "loss": 0.5,
+                "accuracy": 0.9,
+                "lr": 0.001,
+            }
+        )
 
         assert tracker.get_summary("loss")["last"] == 0.5
         assert tracker.get_summary("accuracy")["last"] == 0.9
@@ -201,8 +200,7 @@ class TestMetricsTracker:
                 tracker.update(name, float(i))
 
         threads = [
-            threading.Thread(target=update_metrics, args=(f"metric_{i}", 100))
-            for i in range(5)
+            threading.Thread(target=update_metrics, args=(f"metric_{i}", 100)) for i in range(5)
         ]
 
         for t in threads:
@@ -316,6 +314,7 @@ class TestTimingHelpers:
 
     def test_timer_decorator(self) -> None:
         """Test timer decorator."""
+
         @timer("decorated_test")
         def test_func() -> str:
             time.sleep(0.01)

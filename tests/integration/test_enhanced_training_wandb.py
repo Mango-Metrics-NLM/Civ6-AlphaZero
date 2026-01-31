@@ -38,7 +38,7 @@ class TestEnhancedTrainingWithMockedWandb:
         mock_config_cls.return_value = MagicMock()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            history = run_enhanced_training(
+            _history = run_enhanced_training(
                 num_iterations=2,
                 games_per_iteration=2,
                 batch_size=4,
@@ -235,7 +235,7 @@ class TestWandbErrorHandling:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with caplog.at_level(logging.WARNING):
-                history = run_enhanced_training(
+                _history = run_enhanced_training(
                     num_iterations=1,
                     games_per_iteration=1,
                     batch_size=4,

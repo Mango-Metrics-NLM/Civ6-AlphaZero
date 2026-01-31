@@ -17,6 +17,7 @@ from typing import Any
 from ..config import AgenticConfig
 from ..utils.command_runner import CommandRunner
 from ..utils.logging_config import get_logger
+from .constants import DEFAULT_CONSTRAINT_PRIORITY, DEFAULT_EXAMPLE_LIMIT
 
 logger = get_logger("constraint_manager")
 
@@ -52,7 +53,7 @@ class Constraint:
     severity: ConstraintSeverity
     value: str
     validation_command: str | None = None
-    priority: int = 5  # 1-10, only for soft constraints
+    priority: int = DEFAULT_CONSTRAINT_PRIORITY  # 1-10, only for soft constraints
     scope: str | None = None
     description: str | None = None
     enabled: bool = True
@@ -72,7 +73,7 @@ class Constraint:
             severity=severity,
             value=data.get("value", ""),
             validation_command=data.get("validation_command"),
-            priority=data.get("priority", 5),
+            priority=data.get("priority", DEFAULT_CONSTRAINT_PRIORITY),
             scope=data.get("scope"),
             description=data.get("description"),
         )
@@ -309,7 +310,9 @@ class ConstraintManager:
         hard_constraints = self.get_constraints(severity=ConstraintSeverity.HARD)
         soft_constraints = self.get_constraints(severity=ConstraintSeverity.SOFT)
 
-        logger.info(f"Checking {len(hard_constraints)} hard and {len(soft_constraints)} soft constraints")
+        logger.info(
+            f"Checking {len(hard_constraints)} hard and {len(soft_constraints)} soft constraints"
+        )
 
         # Check hard constraints first
         for constraint in hard_constraints:
@@ -341,7 +344,9 @@ class ConstraintManager:
         result.permissions = self.get_permissions()
 
         result.duration_seconds = time.time() - start_time
-        logger.info(f"Constraint check completed in {result.duration_seconds:.2f}s: {result.summary()}")
+        logger.info(
+            f"Constraint check completed in {result.duration_seconds:.2f}s: {result.summary()}"
+        )
 
         return result
 
@@ -391,7 +396,9 @@ class ConstraintManager:
         # Substitute {path} placeholder
         command = constraint.validation_command.replace("{path}", str(target_path))
 
-        result = self.command_runner.run(command, cwd=target_path.parent if target_path.is_file() else target_path)
+        result = self.command_runner.run(
+            command, cwd=target_path.parent if target_path.is_file() else target_path
+        )
 
         if not result.success:
             return ConstraintViolation(
@@ -436,7 +443,9 @@ class ConstraintManager:
         value_lower = constraint.value.lower()
 
         # Check for hardcoded secrets
-        if "hardcoded" in value_lower and ("secret" in value_lower or "password" in value_lower or "key" in value_lower):
+        if "hardcoded" in value_lower and (
+            "secret" in value_lower or "password" in value_lower or "key" in value_lower
+        ):
             patterns = [
                 r"password\s*=\s*['\"][^'\"]+['\"]",
                 r"api_key\s*=\s*['\"][^'\"]+['\"]",
@@ -503,7 +512,7 @@ class ConstraintManager:
                 return ConstraintViolation(
                     constraint=constraint,
                     message=f"Many functions missing type hints ({len(missing_hints)} found)",
-                    details=f"Examples: {missing_hints[:3]}",
+                    details=f"Examples: {missing_hints[:DEFAULT_EXAMPLE_LIMIT]}",
                 )
 
         return None

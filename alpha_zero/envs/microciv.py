@@ -142,7 +142,9 @@ class MicroCivEnv(gym.Env):
 
         # Action and observation spaces
         self.action_space_handler = MicroCivActionSpace(
-            board_size=board_size, max_units=20, max_cities=5,
+            board_size=board_size,
+            max_units=20,
+            max_cities=5,
         )
         self.encoder = MicroCivEncoder(board_size=board_size)
 
@@ -157,7 +159,10 @@ class MicroCivEnv(gym.Env):
                     dtype=np.float32,
                 ),
                 "vector": spaces.Box(
-                    low=-1.0, high=1.0, shape=(64,), dtype=np.float32,
+                    low=-1.0,
+                    high=1.0,
+                    shape=(64,),
+                    dtype=np.float32,
                 ),
                 "action_mask": spaces.Box(
                     low=0.0,
@@ -212,7 +217,8 @@ class MicroCivEnv(gym.Env):
         return obs, info
 
     def step(
-        self, action: int,
+        self,
+        action: int,
     ) -> tuple[dict[str, np.ndarray], SupportsFloat, bool, bool, dict[str, Any]]:
         """Execute action and return new state.
 
@@ -288,7 +294,9 @@ class MicroCivEnv(gym.Env):
         p0_start = self._find_valid_position(2, 2, 5)
         # Player 1 starts in top-right area
         p1_start = self._find_valid_position(
-            self.board_size - 5, self.board_size - 5, 5,
+            self.board_size - 5,
+            self.board_size - 5,
+            5,
         )
 
         # Create starting units
@@ -323,7 +331,10 @@ class MicroCivEnv(gym.Env):
             self._next_unit_id += 1
 
     def _find_valid_position(
-        self, start_x: int, start_y: int, range_: int,
+        self,
+        start_x: int,
+        start_y: int,
+        range_: int,
     ) -> tuple[int, int]:
         """Find a valid (non-mountain) position in a range."""
         for _ in range(100):
@@ -634,6 +645,7 @@ class MicroCivEnv(gym.Env):
             Observation dictionary with spatial, vector, and action_mask.
         """
         import warnings
+
         warnings.warn(
             "_get_observation() is deprecated, use get_observation() instead",
             DeprecationWarning,
@@ -669,6 +681,7 @@ class MicroCivEnv(gym.Env):
             Info dictionary with game state details.
         """
         import warnings
+
         warnings.warn(
             "_get_info() is deprecated, use get_info() instead",
             DeprecationWarning,
@@ -726,10 +739,12 @@ class MicroCivEnv(gym.Env):
             lines.append(" ".join(row))
 
         lines.append("=" * (self.board_size * 2 + 1))
-        lines.append(f"P0: {len(self._get_player_units(0))} units, "
-                    f"{len(self._get_player_cities(0))} cities")
-        lines.append(f"P1: {len(self._get_player_units(1))} units, "
-                    f"{len(self._get_player_cities(1))} cities")
+        lines.append(
+            f"P0: {len(self._get_player_units(0))} units, {len(self._get_player_cities(0))} cities"
+        )
+        lines.append(
+            f"P1: {len(self._get_player_units(1))} units, {len(self._get_player_cities(1))} cities"
+        )
 
         return "\n".join(lines)  # type: ignore[return-value]
 

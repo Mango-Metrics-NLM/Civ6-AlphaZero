@@ -26,6 +26,7 @@ def __getattr__(name: str):
 
     if name in civrealm_exports:
         from alpha_zero.envs import civrealm_wrapper
+
         return getattr(civrealm_wrapper, name)
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

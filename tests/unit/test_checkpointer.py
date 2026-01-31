@@ -147,9 +147,7 @@ class TestCheckpointManagerInit:
         # Create metadata file
         metadata_path = temp_checkpoint_dir / "checkpoint_metadata.json"
         metadata = {
-            "checkpoints": [
-                {"path": str(temp_checkpoint_dir / "ckpt1.pt"), "iteration": 100}
-            ]
+            "checkpoints": [{"path": str(temp_checkpoint_dir / "ckpt1.pt"), "iteration": 100}]
         }
         with open(metadata_path, "w") as f:
             json.dump(metadata, f)
@@ -196,9 +194,7 @@ class TestSaveCheckpoint:
         assert checkpoint_manager.has_checkpoint()
         assert checkpoint_manager.get_latest_iteration() == 100
 
-    def test_saves_multiple_checkpoints(
-        self, checkpoint_manager, sample_checkpoint_data
-    ):
+    def test_saves_multiple_checkpoints(self, checkpoint_manager, sample_checkpoint_data):
         """Test saving multiple checkpoints."""
         for i in range(3):
             checkpoint_manager.save(
@@ -210,9 +206,7 @@ class TestSaveCheckpoint:
         checkpoints = checkpoint_manager.list_checkpoints()
         assert len(checkpoints) == 3
 
-    def test_adds_checkpoint_info_to_data(
-        self, checkpoint_manager, sample_checkpoint_data
-    ):
+    def test_adds_checkpoint_info_to_data(self, checkpoint_manager, sample_checkpoint_data):
         """Test save() adds _checkpoint_info to data."""
         path = checkpoint_manager.save(
             sample_checkpoint_data,
@@ -500,7 +494,9 @@ class TestClearAll:
 
         assert checkpoint_manager.has_best()
 
-    def test_clears_best_when_requested(self, checkpoint_manager, simple_model, sample_checkpoint_data):
+    def test_clears_best_when_requested(
+        self, checkpoint_manager, simple_model, sample_checkpoint_data
+    ):
         """Test clear_all() clears best when requested."""
         checkpoint_manager.save(sample_checkpoint_data, iteration=100)
         checkpoint_manager.save_best(simple_model, metrics={"win_rate": 0.8})

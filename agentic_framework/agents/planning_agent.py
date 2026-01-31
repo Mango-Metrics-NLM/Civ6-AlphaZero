@@ -248,9 +248,7 @@ class PlanningAgent(BaseAgent):
 
         return structure
 
-    def _identify_critical_files(
-        self, working_dir: Path, objective: str
-    ) -> list[str]:
+    def _identify_critical_files(self, working_dir: Path, objective: str) -> list[str]:
         """Identify critical files for the objective.
 
         Args:
@@ -405,15 +403,11 @@ class PlanningAgent(BaseAgent):
 
         if ".py" in structure.get("file_types", {}):
             py_count = len(structure["file_types"][".py"])
-            plan.architectural_considerations.append(
-                f"Python files to consider: {py_count}"
-            )
+            plan.architectural_considerations.append(f"Python files to consider: {py_count}")
 
         return plan
 
-    def _identify_risks(
-        self, context: AgentContext, plan: ImplementationPlan
-    ) -> list[str]:
+    def _identify_risks(self, context: AgentContext, plan: ImplementationPlan) -> list[str]:
         """Identify risks in the plan.
 
         Args:
@@ -439,16 +433,12 @@ class PlanningAgent(BaseAgent):
         # Check constraint violations risk
         hard_constraints = context.config.constraints.hard
         if hard_constraints:
-            risks.append(
-                f"Must adhere to {len(hard_constraints)} hard constraints"
-            )
+            risks.append(f"Must adhere to {len(hard_constraints)} hard constraints")
 
         # Check for scope risks
         out_of_scope = context.config.permissions.scope.out_of_scope
         if out_of_scope:
-            risks.append(
-                f"Files matching {len(out_of_scope)} patterns are out of scope"
-            )
+            risks.append(f"Files matching {len(out_of_scope)} patterns are out of scope")
 
         return risks
 

@@ -29,7 +29,7 @@ from alpha_zero.utils.test_runner import RunConfig as TestConfig, PytestRunner a
 
 # LLM imports (optional)
 try:
-    from alpha_zero.utils.llm_client import (
+    from alpha_zero.utils.llm_client import (  # noqa: F401
         LLMClient,
         LLMConfig,
         LLMMessage,
@@ -37,6 +37,7 @@ try:
         LLMResponse,
         create_llm_client,
     )
+
     LLM_AVAILABLE = True
 except ImportError:
     LLM_AVAILABLE = False
@@ -182,11 +183,13 @@ class TestAgentToolsIntegration:
 
     def test_debug_helper_dependency_validation(self):
         """Test debug helper validates dependencies."""
-        deps = DebugHelper.validate_dependencies([
-            "torch",
-            "numpy",
-            "pytest",
-        ])
+        deps = DebugHelper.validate_dependencies(
+            [
+                "torch",
+                "numpy",
+                "pytest",
+            ]
+        )
 
         assert deps["torch"] is True
         assert deps["numpy"] is True
@@ -289,7 +292,7 @@ class TestLLMIntegration:
 
 @pytest.mark.skipif(
     not os.getenv("OPENAI_API_KEY") and not os.getenv("ANTHROPIC_API_KEY"),
-    reason="No API keys configured for live test"
+    reason="No API keys configured for live test",
 )
 class TestLLMLiveIntegration:
     """Live LLM integration tests (require API keys)."""

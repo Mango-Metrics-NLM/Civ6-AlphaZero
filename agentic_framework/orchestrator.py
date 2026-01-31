@@ -161,7 +161,9 @@ class Orchestrator:
             ),
             "implementation": ImplementationAgent(
                 timeout_seconds=agents_config.implementation.timeout_seconds,
-                max_lines_per_file=agents_config.implementation.extra.get("max_lines_per_file", 500),
+                max_lines_per_file=agents_config.implementation.extra.get(
+                    "max_lines_per_file", 500
+                ),
             ),
             "testing": TestingAgent(
                 timeout_seconds=agents_config.testing.timeout_seconds,
@@ -173,7 +175,9 @@ class Orchestrator:
             ),
             "documentation": DocumentationAgent(
                 timeout_seconds=agents_config.documentation.timeout_seconds,
-                auto_update_memory=agents_config.documentation.extra.get("auto_update_memory", True),
+                auto_update_memory=agents_config.documentation.extra.get(
+                    "auto_update_memory", True
+                ),
             ),
         }
 
@@ -368,9 +372,7 @@ class Orchestrator:
                 if required and not result.success:
                     logger.warning(f"Required initial action failed: {action_name}")
 
-    def _attempt_recovery(
-        self, context: AgentContext, failed_result: AgentResult
-    ) -> bool:
+    def _attempt_recovery(self, context: AgentContext, failed_result: AgentResult) -> bool:
         """Attempt to recover from agent failure.
 
         Args:
@@ -397,9 +399,7 @@ class Orchestrator:
 
         return False
 
-    def _handle_fix_request(
-        self, context: AgentContext, errors: list[dict[str, Any]]
-    ) -> bool:
+    def _handle_fix_request(self, context: AgentContext, errors: list[dict[str, Any]]) -> bool:
         """Handle a request to fix errors.
 
         Args:

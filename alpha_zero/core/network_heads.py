@@ -25,6 +25,7 @@ Example:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
@@ -32,6 +33,9 @@ from enum import Enum
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+# Module-level logger
+logger = logging.getLogger(__name__)
 
 
 class ActivationType(str, Enum):
@@ -192,6 +196,11 @@ class MLPHead(nn.Module):
 
         self.mlp = nn.Sequential(*layers)
 
+        logger.debug(
+            f"MLPHead created: {config.input_dim} -> "
+            f"{config.hidden_dims} -> {config.output_dim}"
+        )
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass.
 
@@ -249,6 +258,11 @@ class SpatialPreprocessor(nn.Module):
         self.bn = nn.BatchNorm2d(config.out_channels) if config.use_batch_norm else nn.Identity()
 
         self.output_dim = config.out_channels * config.spatial_size * config.spatial_size
+
+        logger.debug(
+            f"SpatialPreprocessor created: {config.in_channels} -> "
+            f"{config.out_channels}, output_dim={self.output_dim}"
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass.

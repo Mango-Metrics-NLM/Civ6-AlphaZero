@@ -238,9 +238,7 @@ class AgenticConfig:
                 resource_budget=ResourceBudgetConfig(
                     max_iterations=budget_data.get("max_iterations", 5),
                     max_files_per_pass=budget_data.get("max_files_per_pass", 20),
-                    exploration_timeout_seconds=budget_data.get(
-                        "exploration_timeout_seconds", 600
-                    ),
+                    exploration_timeout_seconds=budget_data.get("exploration_timeout_seconds", 600),
                 ),
             )
 
@@ -337,11 +335,7 @@ class AgenticConfig:
                     agent_data = agents_data[agent_name]
                     agent_config = AgentSpecificConfig(
                         timeout_seconds=agent_data.get("timeout_seconds", 300),
-                        extra={
-                            k: v
-                            for k, v in agent_data.items()
-                            if k != "timeout_seconds"
-                        },
+                        extra={k: v for k, v in agent_data.items() if k != "timeout_seconds"},
                     )
                     setattr(config.agents, agent_name, agent_config)
 

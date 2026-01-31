@@ -93,7 +93,7 @@ class TestReplayBuffer:
 
     def test_add_multiple_examples(self, buffer, sample_example):
         """Test adding multiple examples."""
-        for i in range(10):
+        for _ in range(10):
             buffer.add(sample_example)
         assert len(buffer) == 10
 
@@ -106,13 +106,13 @@ class TestReplayBuffer:
     def test_buffer_max_size(self, sample_example):
         """Test buffer respects max size."""
         buffer = ReplayBuffer(max_size=10)
-        for i in range(20):
+        for _ in range(20):
             buffer.add(sample_example)
         assert len(buffer) == 10
 
     def test_sample(self, buffer, sample_example):
         """Test sampling from buffer."""
-        for i in range(10):
+        for _ in range(10):
             buffer.add(sample_example)
 
         samples = buffer.sample(5)
@@ -121,7 +121,7 @@ class TestReplayBuffer:
 
     def test_sample_all(self, buffer, sample_example):
         """Test sampling when batch_size >= buffer size."""
-        for i in range(5):
+        for _ in range(5):
             buffer.add(sample_example)
 
         samples = buffer.sample(10)

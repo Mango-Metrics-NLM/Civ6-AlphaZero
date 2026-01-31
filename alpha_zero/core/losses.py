@@ -171,7 +171,10 @@ def scalar_to_categorical(
 
     logger.debug(
         "Converting scalars to categorical: shape=%s, support_size=%d, range=[%f, %f]",
-        scalar.shape, support_size, min_value, max_value
+        scalar.shape,
+        support_size,
+        min_value,
+        max_value,
     )
 
     # Handle (B, 1) input shape
@@ -255,7 +258,8 @@ def categorical_to_scalar(
 
     logger.debug(
         "Converting categorical to scalar: shape=%s, apply_softmax=%s",
-        categorical.shape, apply_softmax
+        categorical.shape,
+        apply_softmax,
     )
 
     support = torch.linspace(min_value, max_value, support_size, device=categorical.device)
@@ -305,8 +309,10 @@ def compute_policy_loss(
 
     logger.debug(
         "Computing policy loss: logits=%s, target=%s, mask=%s, reduction=%s",
-        policy_logits.shape, target_policy.shape,
-        mask.shape if mask is not None else None, reduction
+        policy_logits.shape,
+        target_policy.shape,
+        mask.shape if mask is not None else None,
+        reduction,
     )
 
     # Apply action mask to target policy if provided
@@ -363,7 +369,9 @@ def compute_value_loss(
 
     logger.debug(
         "Computing value loss: pred=%s, target=%s, categorical=%s",
-        pred.shape, target.shape, config.use_categorical
+        pred.shape,
+        target.shape,
+        config.use_categorical,
     )
 
     if config.use_categorical:
@@ -386,7 +394,10 @@ def compute_value_loss(
         # Valid reduction already validated at function start
         value_loss = F.mse_loss(pred, target, reduction=reduction)
 
-    logger.debug("Value loss computed: %f", value_loss.item() if value_loss.dim() == 0 else value_loss.mean().item())
+    logger.debug(
+        "Value loss computed: %f",
+        value_loss.item() if value_loss.dim() == 0 else value_loss.mean().item(),
+    )
     return value_loss
 
 
@@ -419,7 +430,9 @@ def compute_reward_loss(
 
     logger.debug(
         "Computing reward loss: pred=%s, target=%s, categorical=%s",
-        pred.shape, target.shape, config.use_categorical
+        pred.shape,
+        target.shape,
+        config.use_categorical,
     )
 
     if config.use_categorical:
@@ -437,7 +450,10 @@ def compute_reward_loss(
         # Valid reduction already validated at function start
         reward_loss = F.mse_loss(pred, target, reduction=reduction)
 
-    logger.debug("Reward loss computed: %f", reward_loss.item() if reward_loss.dim() == 0 else reward_loss.mean().item())
+    logger.debug(
+        "Reward loss computed: %f",
+        reward_loss.item() if reward_loss.dim() == 0 else reward_loss.mean().item(),
+    )
     return reward_loss
 
 
@@ -486,7 +502,9 @@ def compute_consistency_loss(
 
     logger.debug(
         "Computing consistency loss: proj1=%s, proj2=%s, reduction=%s",
-        proj1.shape, proj2.shape, reduction
+        proj1.shape,
+        proj2.shape,
+        reduction,
     )
 
     # L2 normalize the projections
@@ -505,7 +523,9 @@ def compute_consistency_loss(
     else:  # reduction == "none"
         loss = per_sample_loss
 
-    logger.debug("Consistency loss computed: %f", loss.item() if loss.dim() == 0 else loss.mean().item())
+    logger.debug(
+        "Consistency loss computed: %f", loss.item() if loss.dim() == 0 else loss.mean().item()
+    )
     return loss
 
 
@@ -539,7 +559,9 @@ def compute_value_prefix_loss(
 
     logger.debug(
         "Computing value prefix loss: pred=%s, target=%s, categorical=%s",
-        pred.shape, target.shape, config.use_categorical
+        pred.shape,
+        target.shape,
+        config.use_categorical,
     )
 
     if config.use_categorical:
@@ -554,7 +576,10 @@ def compute_value_prefix_loss(
         # Valid reduction already validated at function start
         prefix_loss = F.mse_loss(pred, target, reduction=reduction)
 
-    logger.debug("Value prefix loss computed: %f", prefix_loss.item() if prefix_loss.dim() == 0 else prefix_loss.mean().item())
+    logger.debug(
+        "Value prefix loss computed: %f",
+        prefix_loss.item() if prefix_loss.dim() == 0 else prefix_loss.mean().item(),
+    )
     return prefix_loss
 
 
@@ -789,10 +814,7 @@ def compute_muzero_step_loss(
         )
 
     # Compute total weighted loss
-    total_loss = (
-        config.policy_loss_weight * policy_loss
-        + config.value_loss_weight * value_loss
-    )
+    total_loss = config.policy_loss_weight * policy_loss + config.value_loss_weight * value_loss
 
     if reward_loss is not None:
         total_loss = total_loss + config.reward_loss_weight * reward_loss
@@ -805,7 +827,9 @@ def compute_muzero_step_loss(
 
     logger.debug(
         "Step loss computed: total=%f, policy=%f, value=%f",
-        total_loss.item(), policy_loss.item(), value_loss.item()
+        total_loss.item(),
+        policy_loss.item(),
+        value_loss.item(),
     )
 
     return StepLossOutput(
@@ -872,7 +896,8 @@ def compute_muzero_trajectory_loss(
     num_unroll_steps = len(target_rewards)
     logger.info(
         "Computing trajectory loss: num_unroll_steps=%d, batch_size=%d",
-        num_unroll_steps, initial_policy_logits.size(0)
+        num_unroll_steps,
+        initial_policy_logits.size(0),
     )
 
     step_losses: list[StepLossOutput] = []
@@ -887,12 +912,8 @@ def compute_muzero_trajectory_loss(
         target_reward=None,
         projected_dynamics=None,
         projected_observation=None,
-        predicted_value_prefix=(
-            predicted_value_prefixes[0] if predicted_value_prefixes else None
-        ),
-        target_value_prefix=(
-            target_value_prefixes[0] if target_value_prefixes else None
-        ),
+        predicted_value_prefix=(predicted_value_prefixes[0] if predicted_value_prefixes else None),
+        target_value_prefix=(target_value_prefixes[0] if target_value_prefixes else None),
         action_mask=action_masks[0] if action_masks else None,
         config=config,
     )
@@ -908,18 +929,14 @@ def compute_muzero_trajectory_loss(
             target_value=target_values[k + 1],
             reward=unrolled_rewards[k],
             target_reward=target_rewards[k],
-            projected_dynamics=(
-                projected_dynamics_list[k] if projected_dynamics_list else None
-            ),
+            projected_dynamics=(projected_dynamics_list[k] if projected_dynamics_list else None),
             projected_observation=(
                 projected_observation_list[k] if projected_observation_list else None
             ),
             predicted_value_prefix=(
                 predicted_value_prefixes[k + 1] if predicted_value_prefixes else None
             ),
-            target_value_prefix=(
-                target_value_prefixes[k + 1] if target_value_prefixes else None
-            ),
+            target_value_prefix=(target_value_prefixes[k + 1] if target_value_prefixes else None),
             action_mask=action_masks[k + 1] if action_masks else None,
             config=config,
         )
@@ -935,9 +952,7 @@ def compute_muzero_trajectory_loss(
     reward_loss = sum(reward_losses) if reward_losses else torch.tensor(0.0)
 
     # Consistency loss (only if any step has it)
-    consistency_losses = [
-        s.consistency_loss for s in step_losses if s.consistency_loss is not None
-    ]
+    consistency_losses = [s.consistency_loss for s in step_losses if s.consistency_loss is not None]
     consistency_loss = sum(consistency_losses) if consistency_losses else None
 
     # Value prefix loss (only if any step has it)
@@ -948,8 +963,10 @@ def compute_muzero_trajectory_loss(
 
     logger.info(
         "Trajectory loss computed: total=%f, policy=%f, value=%f, reward=%f",
-        total_loss.item(), policy_loss.item(), value_loss.item(),
-        reward_loss.item() if isinstance(reward_loss, torch.Tensor) else reward_loss
+        total_loss.item(),
+        policy_loss.item(),
+        value_loss.item(),
+        reward_loss.item() if isinstance(reward_loss, torch.Tensor) else reward_loss,
     )
 
     return TrajectoryLossOutput(
@@ -1064,7 +1081,9 @@ class MuZeroLossCalculator:
 
         logger.info(
             "MuZeroLossCalculator initialized: unroll_steps=%d, consistency=%s, value_prefix=%s",
-            num_unroll_steps, use_consistency_loss, use_value_prefix
+            num_unroll_steps,
+            use_consistency_loss,
+            use_value_prefix,
         )
 
     def compute_loss(
@@ -1105,10 +1124,7 @@ class MuZeroLossCalculator:
 
     def _is_muzero_network(self, network: nn.Module) -> bool:
         """Check if network has MuZero interface."""
-        return (
-            hasattr(network, "initial_inference")
-            and hasattr(network, "recurrent_inference")
-        )
+        return hasattr(network, "initial_inference") and hasattr(network, "recurrent_inference")
 
     def _is_alphazero_network(self, network: nn.Module) -> bool:
         """Check if network has AlphaZero interface."""
@@ -1195,9 +1211,7 @@ class MuZeroLossCalculator:
 
             # Value prefix predictions
             if self.use_value_prefix and predicted_value_prefixes is not None:
-                predicted_value_prefixes.append(
-                    self._get_value_prefix(network, next_hidden)
-                )
+                predicted_value_prefixes.append(self._get_value_prefix(network, next_hidden))
 
             current_hidden = next_hidden
 
@@ -1211,13 +1225,19 @@ class MuZeroLossCalculator:
 
         return compute_muzero_trajectory_loss(
             initial_policy_logits=initial_policy_logits,
-            initial_value=initial_value if initial_value.dim() > 1 else self._to_categorical_logits(initial_value),
+            initial_value=initial_value
+            if initial_value.dim() > 1
+            else self._to_categorical_logits(initial_value),
             target_policies=batch.target_policies,
             target_values=batch.target_values,
             target_rewards=batch.target_rewards,
             unrolled_policy_logits=unrolled_policy_logits,
-            unrolled_values=[v if v.dim() > 1 else self._to_categorical_logits(v) for v in unrolled_values],
-            unrolled_rewards=[r if r.dim() > 1 else self._to_categorical_logits(r) for r in unrolled_rewards],
+            unrolled_values=[
+                v if v.dim() > 1 else self._to_categorical_logits(v) for v in unrolled_values
+            ],
+            unrolled_rewards=[
+                r if r.dim() > 1 else self._to_categorical_logits(r) for r in unrolled_rewards
+            ],
             action_masks=batch.action_masks,
             projected_dynamics_list=projected_dynamics_list,
             projected_observation_list=projected_observation_list,
@@ -1243,7 +1263,8 @@ class MuZeroLossCalculator:
                 batch.observations_spatial,
                 batch.observations_vector,
                 batch.target_policies,
-                batch.target_values, strict=False,
+                batch.target_values,
+                strict=False,
             )
         ):
             action_mask = batch.action_masks[i] if batch.action_masks else None
@@ -1372,9 +1393,7 @@ def compute_muzero_loss(
     losses["policy_loss"] = compute_policy_loss(policy_logits, target_policy, action_mask)
 
     # Value loss
-    losses["value_loss"] = compute_value_loss(
-        pred=value, target=target_value, config=config
-    )
+    losses["value_loss"] = compute_value_loss(pred=value, target=target_value, config=config)
 
     # Reward loss (if applicable)
     if reward is not None and target_reward is not None:

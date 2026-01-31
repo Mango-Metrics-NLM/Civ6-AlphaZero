@@ -73,6 +73,7 @@ class EnvironmentTier(Enum):
     - UNCIV: Open-source Civ5 clone with full mechanics
     - CIV6: Full Civilization 6 game
     """
+
     MICROCIV = auto()
     UNCIV = auto()
     CIV6 = auto()
@@ -131,6 +132,7 @@ class DifficultyStage:
         min_games: Minimum games before stage change.
         extra_params: Additional environment-specific parameters.
     """
+
     name: str
     level: int = 0
     board_size: int = 8
@@ -190,6 +192,7 @@ class EnvironmentTierConfig:
         demotion_criteria: Criteria to demote to previous tier.
         weight_transfer_strategy: How to transfer weights from previous tier.
     """
+
     tier: EnvironmentTier
     enabled: bool = True
     difficulty_stages: list[DifficultyStage] = field(default_factory=list)
@@ -351,10 +354,7 @@ class EnvironmentTierConfig:
     def from_dict(cls, data: dict[str, Any]) -> EnvironmentTierConfig:
         """Create from dictionary."""
         tier = EnvironmentTier[data.get("tier", "MICROCIV")]
-        stages = [
-            DifficultyStage.from_dict(s)
-            for s in data.get("difficulty_stages", [])
-        ]
+        stages = [DifficultyStage.from_dict(s) for s in data.get("difficulty_stages", [])]
         return cls(
             tier=tier,
             enabled=data.get("enabled", True),
@@ -381,6 +381,7 @@ class TransferLearningConfig:
         reinitialize_heads: Whether to reinitialize policy/value heads.
         warmup_games: Games to play before unfreezing layers.
     """
+
     strategy: str = "partial"
     freeze_layers: list[str] = field(default_factory=list)
     learning_rate_multiplier: float = 0.1
@@ -425,6 +426,7 @@ class CurriculumPipelineConfig:
         checkpoint_dir: Directory for curriculum checkpoints.
         auto_save: Whether to auto-save state after changes.
     """
+
     enabled: bool = True
     environment_tiers: list[EnvironmentTierConfig] = field(default_factory=list)
     transfer_learning: TransferLearningConfig = field(
@@ -504,10 +506,7 @@ class CurriculumPipelineConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CurriculumPipelineConfig:
         """Create from dictionary."""
-        tiers = [
-            EnvironmentTierConfig.from_dict(t)
-            for t in data.get("environment_tiers", [])
-        ]
+        tiers = [EnvironmentTierConfig.from_dict(t) for t in data.get("environment_tiers", [])]
         transfer = TransferLearningConfig.from_dict(
             data.get("transfer_learning", {}),
         )
@@ -525,6 +524,7 @@ class CurriculumPipelineConfig:
     def from_yaml(cls, path: str) -> CurriculumPipelineConfig:
         """Load configuration from YAML file."""
         import yaml
+
         with open(path) as f:
             data = yaml.safe_load(f)
         return cls.from_dict(data.get("curriculum_pipeline", data))
@@ -532,6 +532,7 @@ class CurriculumPipelineConfig:
     def to_yaml(self, path: str) -> None:
         """Save configuration to YAML file."""
         import yaml
+
         with open(path, "w") as f:
             yaml.dump({"curriculum_pipeline": self.to_dict()}, f, default_flow_style=False)
 
@@ -556,6 +557,7 @@ class CurriculumState:
         stage_history: History of stage transitions.
         elo_rating: Current estimated ELO rating.
     """
+
     current_tier: EnvironmentTier = EnvironmentTier.MICROCIV
     current_stage_index: int = 0
     games_at_stage: int = 0
@@ -643,7 +645,10 @@ class WeightTransferManager:
             return self._partial_transfer(source_network, target_network)
         elif self.config.strategy == "progressive":
             return self._progressive_transfer(
-                source_network, target_network, source_tier, target_tier,
+                source_network,
+                target_network,
+                source_tier,
+                target_tier,
             )
         else:
             self._logger.warning(f"Unknown transfer strategy: {self.config.strategy}")
@@ -673,8 +678,7 @@ class WeightTransferManager:
                     transferred += 1
                 else:
                     self._logger.debug(
-                        f"Shape mismatch for {name}: "
-                        f"{param.shape} vs {target_state[name].shape}",
+                        f"Shape mismatch for {name}: {param.shape} vs {target_state[name].shape}",
                     )
 
         target_network.load_state_dict(target_state)
@@ -788,11 +792,11 @@ class WeightTransferManager:
                 if source.shape[1] < target_shape[1]:
                     # Target has more input channels - pad with zeros
                     new_weight = torch.zeros(target_shape)
-                    new_weight[:, :source.shape[1], :, :] = source
+                    new_weight[:, : source.shape[1], :, :] = source
                     return new_weight
                 elif source.shape[1] > target_shape[1]:
                     # Target has fewer input channels - truncate
-                    return source[:, :target_shape[1], :, :]
+                    return source[:, : target_shape[1], :, :]
 
             return None
         except Exception as e:
@@ -880,6 +884,7 @@ class DefaultEnvironmentFactory(EnvironmentFactory):
         if self._microciv_class is None:
             try:
                 from alpha_zero.envs.microciv import MicroCivEnv
+
                 self._microciv_class = MicroCivEnv
             except ImportError as e:
                 raise RuntimeError("MicroCiv environment not available") from e
@@ -895,8 +900,7 @@ class DefaultEnvironmentFactory(EnvironmentFactory):
         # Unciv requires special handling - wrap MicroCiv for now
         # In production, this would interface with actual Unciv
         logger.warning(
-            "Unciv environment not fully implemented, "
-            "using MicroCiv with Unciv-like settings",
+            "Unciv environment not fully implemented, using MicroCiv with Unciv-like settings",
         )
         return self._create_microciv(stage)
 
@@ -904,8 +908,7 @@ class DefaultEnvironmentFactory(EnvironmentFactory):
         """Create Civ6-wrapped environment."""
         # Civ6 requires special handling
         logger.warning(
-            "Civ6 environment not fully implemented, "
-            "using MicroCiv with Civ6-like settings",
+            "Civ6 environment not fully implemented, using MicroCiv with Civ6-like settings",
         )
         return self._create_microciv(stage)
 
@@ -987,7 +990,7 @@ class CurriculumPipeline:
         """Get win rate over metrics window."""
         if not self._state.metrics_history:
             return 0.0
-        window = self._state.metrics_history[-self.config.metrics_window:]
+        window = self._state.metrics_history[-self.config.metrics_window :]
         return sum(window) / len(window)
 
     @property
@@ -1054,7 +1057,7 @@ class CurriculumPipeline:
         # Update metrics history
         self._state.metrics_history.append(won)
         if len(self._state.metrics_history) > self.config.metrics_window * 2:
-            self._state.metrics_history = self._state.metrics_history[-self.config.metrics_window:]
+            self._state.metrics_history = self._state.metrics_history[-self.config.metrics_window :]
 
         # Update ELO
         self._update_elo(won, opponent_elo)
@@ -1143,10 +1146,9 @@ class CurriculumPipeline:
         # Check demotion criteria
         if self.config.allow_tier_demotion:
             demotion = tier_config.demotion_criteria
-            if (
-                self._state.games_at_tier >= demotion.get("min_games", 100)
-                and self.win_rate <= demotion.get("win_rate", 0.2)
-            ):
+            if self._state.games_at_tier >= demotion.get(
+                "min_games", 100
+            ) and self.win_rate <= demotion.get("win_rate", 0.2):
                 prev_tier = self._state.current_tier.previous_tier()
                 if prev_tier and self.config.get_tier_config(prev_tier):
                     return self._demote_tier()
@@ -1170,13 +1172,15 @@ class CurriculumPipeline:
             new_stage = self.current_stage
 
             # Record history
-            self._state.stage_history.append({
-                "type": "promotion",
-                "from": old_stage.name,
-                "to": new_stage.name,
-                "games": self._state.total_games,
-                "win_rate": self.win_rate,
-            })
+            self._state.stage_history.append(
+                {
+                    "type": "promotion",
+                    "from": old_stage.name,
+                    "to": new_stage.name,
+                    "games": self._state.total_games,
+                    "win_rate": self.win_rate,
+                }
+            )
 
             # Reset stage counters
             self._state.games_at_stage = 0
@@ -1208,13 +1212,15 @@ class CurriculumPipeline:
             new_stage = self.current_stage
 
             # Record history
-            self._state.stage_history.append({
-                "type": "demotion",
-                "from": old_stage.name,
-                "to": new_stage.name,
-                "games": self._state.total_games,
-                "win_rate": self.win_rate,
-            })
+            self._state.stage_history.append(
+                {
+                    "type": "demotion",
+                    "from": old_stage.name,
+                    "to": new_stage.name,
+                    "games": self._state.total_games,
+                    "win_rate": self.win_rate,
+                }
+            )
 
             # Reset stage counters
             self._state.games_at_stage = 0
@@ -1254,14 +1260,16 @@ class CurriculumPipeline:
             return {"changed": False, "reason": "tier_not_configured"}
 
         # Record history
-        self._state.tier_history.append({
-            "type": "promotion",
-            "from": old_tier.name,
-            "to": new_tier.name,
-            "games": self._state.total_games,
-            "win_rate": self.win_rate,
-            "elo": self._state.elo_rating,
-        })
+        self._state.tier_history.append(
+            {
+                "type": "promotion",
+                "from": old_tier.name,
+                "to": new_tier.name,
+                "games": self._state.total_games,
+                "win_rate": self.win_rate,
+                "elo": self._state.elo_rating,
+            }
+        )
 
         # Update state
         self._state.current_tier = new_tier
@@ -1299,14 +1307,16 @@ class CurriculumPipeline:
             return {"changed": False, "reason": "tier_not_configured"}
 
         # Record history
-        self._state.tier_history.append({
-            "type": "demotion",
-            "from": old_tier.name,
-            "to": new_tier.name,
-            "games": self._state.total_games,
-            "win_rate": self.win_rate,
-            "elo": self._state.elo_rating,
-        })
+        self._state.tier_history.append(
+            {
+                "type": "demotion",
+                "from": old_tier.name,
+                "to": new_tier.name,
+                "games": self._state.total_games,
+                "win_rate": self.win_rate,
+                "elo": self._state.elo_rating,
+            }
+        )
 
         # Update state - go to last stage of previous tier
         self._state.current_tier = new_tier
@@ -1354,7 +1364,10 @@ class CurriculumPipeline:
             Dictionary with transfer statistics.
         """
         return self._weight_manager.transfer_weights(
-            source_network, target_network, source_tier, target_tier,
+            source_network,
+            target_network,
+            source_tier,
+            target_tier,
         )
 
     # -------------------------------------------------------------------------
@@ -1455,7 +1468,8 @@ class CurriculumPipeline:
         self._on_stage_change.append(callback)
 
     def on_tier_change(
-        self, callback: Callable[[EnvironmentTier, EnvironmentTier], None],
+        self,
+        callback: Callable[[EnvironmentTier, EnvironmentTier], None],
     ) -> None:
         """Register callback for tier changes.
 

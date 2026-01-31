@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import tempfile
-import time
-from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-
 
 # =============================================================================
 # Fixtures
@@ -27,9 +22,7 @@ def temp_checkpoint_dir():
 @pytest.fixture
 def basic_config(temp_checkpoint_dir):
     """Create basic connection configuration."""
-    from alpha_zero.integration.game_connector import (
-        ConnectionConfig, RecoveryConfig
-    )
+    from alpha_zero.integration.game_connector import ConnectionConfig, RecoveryConfig
 
     return ConnectionConfig(
         recovery=RecoveryConfig(
@@ -175,9 +168,7 @@ class TestLatencyTracker:
 
     def test_record_sample(self):
         """Test recording latency samples."""
-        from alpha_zero.integration.game_connector import (
-            LatencyTracker, LatencyConfig
-        )
+        from alpha_zero.integration.game_connector import LatencyConfig, LatencyTracker
 
         config = LatencyConfig(measurement_window=10)
         tracker = LatencyTracker(config)
@@ -189,9 +180,7 @@ class TestLatencyTracker:
 
     def test_p95_latency(self):
         """Test 95th percentile latency calculation."""
-        from alpha_zero.integration.game_connector import (
-            LatencyTracker, LatencyConfig
-        )
+        from alpha_zero.integration.game_connector import LatencyConfig, LatencyTracker
 
         config = LatencyConfig(measurement_window=100)
         tracker = LatencyTracker(config)
@@ -205,9 +194,7 @@ class TestLatencyTracker:
 
     def test_action_latency_tracking(self):
         """Test separate action latency tracking."""
-        from alpha_zero.integration.game_connector import (
-            LatencyTracker, LatencyConfig
-        )
+        from alpha_zero.integration.game_connector import LatencyConfig, LatencyTracker
 
         config = LatencyConfig()
         tracker = LatencyTracker(config)
@@ -222,9 +209,7 @@ class TestLatencyTracker:
 
     def test_compensation_delay(self):
         """Test latency compensation calculation."""
-        from alpha_zero.integration.game_connector import (
-            LatencyTracker, LatencyConfig
-        )
+        from alpha_zero.integration.game_connector import LatencyConfig, LatencyTracker
 
         config = LatencyConfig(
             compensation_enabled=True,
@@ -241,9 +226,7 @@ class TestLatencyTracker:
 
     def test_reset(self):
         """Test tracker reset."""
-        from alpha_zero.integration.game_connector import (
-            LatencyTracker, LatencyConfig
-        )
+        from alpha_zero.integration.game_connector import LatencyConfig, LatencyTracker
 
         tracker = LatencyTracker(LatencyConfig())
         tracker.record_sample(100.0)
@@ -305,9 +288,7 @@ class TestCheckpointManager:
 
     def test_save_checkpoint(self, temp_checkpoint_dir):
         """Test saving checkpoints."""
-        from alpha_zero.integration.game_connector import (
-            CheckpointManager, RecoveryConfig
-        )
+        from alpha_zero.integration.game_connector import CheckpointManager, RecoveryConfig
 
         config = RecoveryConfig(
             checkpoint_dir=temp_checkpoint_dir,
@@ -323,9 +304,7 @@ class TestCheckpointManager:
 
     def test_load_latest_checkpoint(self, temp_checkpoint_dir):
         """Test loading latest checkpoint."""
-        from alpha_zero.integration.game_connector import (
-            CheckpointManager, RecoveryConfig
-        )
+        from alpha_zero.integration.game_connector import CheckpointManager, RecoveryConfig
 
         config = RecoveryConfig(
             checkpoint_dir=temp_checkpoint_dir,
@@ -346,9 +325,7 @@ class TestCheckpointManager:
 
     def test_load_by_game_id(self, temp_checkpoint_dir):
         """Test loading checkpoint by game ID."""
-        from alpha_zero.integration.game_connector import (
-            CheckpointManager, RecoveryConfig
-        )
+        from alpha_zero.integration.game_connector import CheckpointManager, RecoveryConfig
 
         config = RecoveryConfig(
             checkpoint_dir=temp_checkpoint_dir,
@@ -368,9 +345,7 @@ class TestCheckpointManager:
 
     def test_max_checkpoints_cleanup(self, temp_checkpoint_dir):
         """Test old checkpoints are cleaned up."""
-        from alpha_zero.integration.game_connector import (
-            CheckpointManager, RecoveryConfig
-        )
+        from alpha_zero.integration.game_connector import CheckpointManager, RecoveryConfig
 
         config = RecoveryConfig(
             checkpoint_dir=temp_checkpoint_dir,
@@ -388,9 +363,7 @@ class TestCheckpointManager:
 
     def test_clear_checkpoints(self, temp_checkpoint_dir):
         """Test clearing checkpoints."""
-        from alpha_zero.integration.game_connector import (
-            CheckpointManager, RecoveryConfig
-        )
+        from alpha_zero.integration.game_connector import CheckpointManager, RecoveryConfig
 
         config = RecoveryConfig(
             checkpoint_dir=temp_checkpoint_dir,
@@ -417,9 +390,7 @@ class TestGameConnector:
 
     def test_connect_success(self, basic_config, mock_backend):
         """Test successful connection."""
-        from alpha_zero.integration.game_connector import (
-            GameConnector, GameType, ConnectionStatus
-        )
+        from alpha_zero.integration.game_connector import ConnectionStatus, GameConnector, GameType
 
         connector = GameConnector(
             basic_config,
@@ -435,9 +406,7 @@ class TestGameConnector:
 
     def test_connect_callback(self, basic_config, mock_backend):
         """Test connection callback is triggered."""
-        from alpha_zero.integration.game_connector import (
-            GameConnector, GameType
-        )
+        from alpha_zero.integration.game_connector import GameConnector, GameType
 
         connector = GameConnector(
             basic_config,
@@ -457,9 +426,7 @@ class TestGameConnector:
 
     def test_disconnect(self, basic_config, mock_backend):
         """Test disconnection."""
-        from alpha_zero.integration.game_connector import (
-            GameConnector, GameType, ConnectionStatus
-        )
+        from alpha_zero.integration.game_connector import ConnectionStatus, GameConnector, GameType
 
         connector = GameConnector(
             basic_config,
@@ -474,9 +441,7 @@ class TestGameConnector:
 
     def test_get_state(self, basic_config, mock_backend):
         """Test state retrieval."""
-        from alpha_zero.integration.game_connector import (
-            GameConnector, GameType
-        )
+        from alpha_zero.integration.game_connector import GameConnector, GameType
 
         connector = GameConnector(
             basic_config,
@@ -492,9 +457,7 @@ class TestGameConnector:
 
     def test_apply_action(self, basic_config, mock_backend):
         """Test action application."""
-        from alpha_zero.integration.game_connector import (
-            GameConnector, GameType
-        )
+        from alpha_zero.integration.game_connector import GameConnector, GameType
 
         connector = GameConnector(
             basic_config,
@@ -510,9 +473,7 @@ class TestGameConnector:
 
     def test_action_metrics(self, basic_config, mock_backend):
         """Test action metrics tracking."""
-        from alpha_zero.integration.game_connector import (
-            GameConnector, GameType
-        )
+        from alpha_zero.integration.game_connector import GameConnector, GameType
 
         connector = GameConnector(
             basic_config,
@@ -533,9 +494,7 @@ class TestGameConnector:
 
     def test_reset(self, basic_config, mock_backend):
         """Test game reset."""
-        from alpha_zero.integration.game_connector import (
-            GameConnector, GameType
-        )
+        from alpha_zero.integration.game_connector import GameConnector, GameType
 
         connector = GameConnector(
             basic_config,
@@ -551,9 +510,7 @@ class TestGameConnector:
 
     def test_get_valid_actions(self, basic_config, mock_backend):
         """Test getting valid actions."""
-        from alpha_zero.integration.game_connector import (
-            GameConnector, GameType
-        )
+        from alpha_zero.integration.game_connector import GameConnector, GameType
 
         connector = GameConnector(
             basic_config,
@@ -568,9 +525,7 @@ class TestGameConnector:
 
     def test_reconnect(self, basic_config, mock_backend):
         """Test reconnection."""
-        from alpha_zero.integration.game_connector import (
-            GameConnector, GameType
-        )
+        from alpha_zero.integration.game_connector import GameConnector, GameType
 
         connector = GameConnector(
             basic_config,
@@ -587,7 +542,10 @@ class TestGameConnector:
     def test_error_callback(self, basic_config):
         """Test error callback is triggered on failure."""
         from alpha_zero.integration.game_connector import (
-            GameConnector, GameType, ConnectionConfig, RetryConfig
+            ConnectionConfig,
+            GameConnector,
+            GameType,
+            RetryConfig,
         )
 
         # Create backend that fails
@@ -615,16 +573,14 @@ class TestGameConnector:
         connector.on_error(on_error)
         connector.connect()
 
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017 - testing generic exception
             connector.apply_action(0)
 
         assert callback_data["error"] is not None
 
     def test_latency_stats(self, basic_config, mock_backend):
         """Test latency statistics retrieval."""
-        from alpha_zero.integration.game_connector import (
-            GameConnector, GameType
-        )
+        from alpha_zero.integration.game_connector import GameConnector, GameType
 
         connector = GameConnector(
             basic_config,
@@ -687,9 +643,7 @@ class TestFactoryFunctions:
 
     def test_create_game_connector(self, temp_checkpoint_dir):
         """Test creating game connector with factory."""
-        from alpha_zero.integration.game_connector import (
-            create_game_connector, GameType
-        )
+        from alpha_zero.integration.game_connector import GameType, create_game_connector
 
         connector = create_game_connector(
             game_type=GameType.MICROCIV,
@@ -701,9 +655,7 @@ class TestFactoryFunctions:
 
     def test_create_microciv_connector(self):
         """Test creating MicroCiv connector with factory."""
-        from alpha_zero.integration.game_connector import (
-            create_microciv_connector
-        )
+        from alpha_zero.integration.game_connector import create_microciv_connector
 
         connector = create_microciv_connector(
             board_size=8,
@@ -723,18 +675,14 @@ class TestErrorHandling:
 
     def test_connection_timeout_error(self):
         """Test connection timeout error."""
-        from alpha_zero.integration.game_connector import (
-            ConnectionTimeoutError, ErrorSeverity
-        )
+        from alpha_zero.integration.game_connector import ConnectionTimeoutError, ErrorSeverity
 
         error = ConnectionTimeoutError()
         assert error.severity == ErrorSeverity.RECOVERABLE
 
     def test_game_connection_error(self):
         """Test game connection error."""
-        from alpha_zero.integration.game_connector import (
-            GameConnectionError, ErrorSeverity
-        )
+        from alpha_zero.integration.game_connector import ErrorSeverity, GameConnectionError
 
         error = GameConnectionError(
             "Test error",

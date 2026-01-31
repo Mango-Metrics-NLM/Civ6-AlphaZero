@@ -100,9 +100,7 @@ class TruncationSelection(SelectionStrategy):
         rng: np.random.Generator,
     ) -> list[AgentState]:
         """Select top agents by fitness."""
-        sorted_agents = sorted(
-            agents, key=lambda a: a.get_smoothed_fitness(), reverse=True
-        )
+        sorted_agents = sorted(agents, key=lambda a: a.get_smoothed_fitness(), reverse=True)
         return sorted_agents[:num_to_select]
 
 
@@ -148,14 +146,10 @@ class RouletteSelection(SelectionStrategy):
         rng: np.random.Generator,
     ) -> list[AgentState]:
         """Select agents with probability proportional to fitness."""
-        fitnesses = np.array([
-            max(0.01, a.get_smoothed_fitness()) for a in agents
-        ])
+        fitnesses = np.array([max(0.01, a.get_smoothed_fitness()) for a in agents])
         probabilities = fitnesses / fitnesses.sum()
 
-        indices = rng.choice(
-            len(agents), size=num_to_select, replace=False, p=probabilities
-        )
+        indices = rng.choice(len(agents), size=num_to_select, replace=False, p=probabilities)
         return [agents[i] for i in indices]
 
 
@@ -180,18 +174,32 @@ class RankSelection(SelectionStrategy):
         rng: np.random.Generator,
     ) -> list[AgentState]:
         """Select agents based on rank."""
-        sorted_agents = sorted(
-            agents, key=lambda a: a.get_smoothed_fitness(), reverse=True
-        )
+        sorted_agents = sorted(agents, key=lambda a: a.get_smoothed_fitness(), reverse=True)
 
         n = len(sorted_agents)
+
+        # Handle edge case: n=0 (empty population)
+        if n == 0:
+            return []
+
+        # Handle edge case: n=1 (single agent)
+        if n == 1:
+            return sorted_agents[:num_to_select]
+
+        # Cap num_to_select to population size
+        actual_select = min(num_to_select, n)
+
         # Linear ranking: P(i) = (2 - sp + 2*(sp-1)*(n-i)/(n-1)) / n
         ranks = np.arange(n)
         sp = self.selection_pressure
         probabilities = (2 - sp + 2 * (sp - 1) * (n - 1 - ranks) / (n - 1)) / n
+
+        # Ensure minimum probability to avoid zeros (needed for np.choice with replace=False)
+        min_prob = 0.01 / n
+        probabilities = np.maximum(probabilities, min_prob)
         probabilities = probabilities / probabilities.sum()
 
-        indices = rng.choice(n, size=num_to_select, replace=False, p=probabilities)
+        indices = rng.choice(n, size=actual_select, replace=False, p=probabilities)
         return [sorted_agents[i] for i in indices]
 
 
@@ -208,9 +216,7 @@ class SteadyStateSelection(SelectionStrategy):
         rng: np.random.Generator,
     ) -> list[AgentState]:
         """Select worst agents for replacement."""
-        sorted_agents = sorted(
-            agents, key=lambda a: a.get_smoothed_fitness()
-        )
+        sorted_agents = sorted(agents, key=lambda a: a.get_smoothed_fitness())
         return sorted_agents[:num_to_select]
 
 
@@ -226,13 +232,9 @@ def create_selection_strategy(method: SelectionMethod, **kwargs) -> SelectionStr
     """
     strategies = {
         SelectionMethod.TRUNCATION: TruncationSelection,
-        SelectionMethod.TOURNAMENT: lambda: TournamentSelection(
-            kwargs.get("tournament_size", 3)
-        ),
+        SelectionMethod.TOURNAMENT: lambda: TournamentSelection(kwargs.get("tournament_size", 3)),
         SelectionMethod.ROULETTE: RouletteSelection,
-        SelectionMethod.RANK: lambda: RankSelection(
-            kwargs.get("selection_pressure", 2.0)
-        ),
+        SelectionMethod.RANK: lambda: RankSelection(kwargs.get("selection_pressure", 2.0)),
     }
 
     creator = strategies.get(method, TruncationSelection)
@@ -521,10 +523,7 @@ class PBTScheduler:
             else:
                 self._state.fitness_plateau_count += 1
 
-        logger.debug(
-            f"Recorded evaluation at step {step} "
-            f"(count={self._state.evaluation_count})"
-        )
+        logger.debug(f"Recorded evaluation at step {step} (count={self._state.evaluation_count})")
 
     def record_exploit_explore(self, step: int) -> None:
         """Record that exploit/explore was performed.
@@ -536,8 +535,7 @@ class PBTScheduler:
         self._state.exploit_explore_count += 1
 
         logger.debug(
-            f"Recorded exploit/explore at step {step} "
-            f"(count={self._state.exploit_explore_count})"
+            f"Recorded exploit/explore at step {step} (count={self._state.exploit_explore_count})"
         )
 
     def select_for_exploitation(

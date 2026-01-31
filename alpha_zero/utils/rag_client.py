@@ -23,21 +23,25 @@ try:
     import chromadb
     from chromadb.config import Settings  # noqa: F401
     from chromadb.utils import embedding_functions
+
     CHROMA_AVAILABLE = True
 except ImportError:
     CHROMA_AVAILABLE = False
 
 try:
     from sentence_transformers import SentenceTransformer  # noqa: F401
+
     SENTENCE_TRANSFORMERS_AVAILABLE = True
 except ImportError:
     SENTENCE_TRANSFORMERS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class RAGConfig:
     """Configuration for RAG Client."""
+
     persist_directory: str = "data/knowledge_db"
     collection_name: str = "civ6_knowledge"
     embedding_model: str = "all-MiniLM-L6-v2"
@@ -52,6 +56,7 @@ class RAGConfig:
             embedding_model=os.getenv("RAG_EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
             top_k=int(os.getenv("RAG_TOP_K", "3")),
         )
+
 
 class RAGClient:
     """Client for RAG operations using ChromaDB."""
@@ -87,7 +92,9 @@ class RAGClient:
                 name=self.config.collection_name,
                 embedding_function=embedding_func,
             )
-            logger.info(f"RAG initialized at {self.config.persist_directory}, collection: {self.config.collection_name}")
+            logger.info(
+                f"RAG initialized at {self.config.persist_directory}, collection: {self.config.collection_name}"
+            )
 
         except Exception as e:
             logger.error(f"Failed to initialize RAG client: {e}")
@@ -98,7 +105,7 @@ class RAGClient:
         self,
         documents: list[str],
         metadatas: list[dict[str, Any]] | None = None,
-        ids: list[str] | None = None
+        ids: list[str] | None = None,
     ) -> bool:
         """Add documents to the knowledge base.
 
@@ -121,6 +128,7 @@ class RAGClient:
                 # but for now rely on caller or simple hashing if strictly needed.
                 # Chroma requires IDs. Let's generate simple string IDs based on current time/idx
                 import time
+
                 base_id = int(time.time() * 1000)
                 ids = [f"doc_{base_id}_{i}" for i in range(count)]
 
@@ -156,8 +164,8 @@ class RAGClient:
             )
 
             # results['documents'] is list of list of str
-            if results and results['documents']:
-                return list(results['documents'][0])
+            if results and results["documents"]:
+                return list(results["documents"][0])
             return []
 
         except Exception as e:

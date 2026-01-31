@@ -38,9 +38,9 @@ from alpha_zero.core.muzero_network import (
     MuZeroConfig,
     MuZeroNetwork,
 )
+
 # Import directly to avoid civrealm dependency issues
 from alpha_zero.envs.microciv import MicroCivEnv
-
 
 # =============================================================================
 # Pytest markers
@@ -138,9 +138,7 @@ def sample_action_mask(small_network_config, set_seed):
     """Sample action mask with some valid actions."""
     mask = np.zeros(small_network_config.action_space_size, dtype=np.float32)
     # Enable 10 random actions
-    valid_actions = np.random.choice(
-        small_network_config.action_space_size, size=10, replace=False
-    )
+    valid_actions = np.random.choice(small_network_config.action_space_size, size=10, replace=False)
     mask[valid_actions] = 1.0
     return mask
 
@@ -253,7 +251,7 @@ def generate_random_trajectory(
     values = []
     action_masks = []
 
-    for t in range(length):
+    for _ in range(length):
         # Random observation
         obs = {
             "spatial": rng.standard_normal(
@@ -361,12 +359,14 @@ class TestMuZeroSelfPlay:
         )
 
         # Play for 10 steps
-        for step in range(10):
+        for _ in range(10):
             # Store observation
-            trajectory.observations.append({
-                "spatial": obs["spatial"].copy(),
-                "vector": obs["vector"].copy(),
-            })
+            trajectory.observations.append(
+                {
+                    "spatial": obs["spatial"].copy(),
+                    "vector": obs["vector"].copy(),
+                }
+            )
             trajectory.action_masks.append(obs["action_mask"].copy())
 
             # Get MCTS policy
@@ -450,10 +450,12 @@ class TestMuZeroSelfPlay:
         policies = []
 
         for _ in range(max_steps):
-            observations.append({
-                "spatial": obs["spatial"].copy(),
-                "vector": obs["vector"].copy(),
-            })
+            observations.append(
+                {
+                    "spatial": obs["spatial"].copy(),
+                    "vector": obs["vector"].copy(),
+                }
+            )
 
             action_probs, _ = mcts.search(
                 {"spatial": obs["spatial"], "vector": obs["vector"]},
@@ -492,16 +494,13 @@ class TestMuZeroTrainingLoop:
     def sample_trajectories(self, small_network_config, set_seed):
         """Generate sample trajectories for training."""
         return [
-            generate_random_trajectory(small_network_config, length=15, seed=i)
-            for i in range(5)
+            generate_random_trajectory(small_network_config, length=15, seed=i) for i in range(5)
         ]
 
     @pytest.fixture
     def training_dataset(self, sample_trajectories):
         """Create dataset from trajectories."""
-        return MuZeroTrajectoryDataset(
-            sample_trajectories, unroll_steps=3, discount=0.997
-        )
+        return MuZeroTrajectoryDataset(sample_trajectories, unroll_steps=3, discount=0.997)
 
     def test_training_step_reduces_loss(
         self, small_network, training_dataset, small_network_config, set_seed
@@ -516,9 +515,7 @@ class TestMuZeroTrainingLoop:
 
         # Get initial loss
         small_network.train()
-        initial_loss = self._compute_batch_loss(
-            small_network, batch, small_network_config
-        )
+        initial_loss = self._compute_batch_loss(small_network, batch, small_network_config)
 
         # Train for several steps on same batch
         for _ in range(10):
@@ -528,9 +525,7 @@ class TestMuZeroTrainingLoop:
             optimizer.step()
 
         # Get final loss
-        final_loss = self._compute_batch_loss(
-            small_network, batch, small_network_config
-        )
+        final_loss = self._compute_batch_loss(small_network, batch, small_network_config)
 
         # Loss should decrease
         assert final_loss.item() < initial_loss.item()
@@ -565,9 +560,7 @@ class TestMuZeroTrainingLoop:
         policy_loss = compute_policy_loss(
             output.policy_logits, target_policies[:, 0], action_masks[:, 0]
         )
-        value_loss = compute_value_loss(
-            output.value, target_values[:, 0], config=loss_cfg
-        )
+        value_loss = compute_value_loss(output.value, target_values[:, 0], config=loss_cfg)
 
         total_loss = policy_loss + value_loss
 
@@ -589,9 +582,7 @@ class TestMuZeroTrainingLoop:
             policy_loss_k = compute_policy_loss(
                 policy_logits, target_policies[:, k + 1], action_masks[:, k + 1]
             )
-            value_loss_k = compute_value_loss(
-                value, target_values[:, k + 1], config=loss_cfg
-            )
+            value_loss_k = compute_value_loss(value, target_values[:, k + 1], config=loss_cfg)
             reward_loss_k = compute_reward_loss(
                 reward_scalar, target_rewards[:, k], config=loss_cfg
             )
@@ -649,15 +640,13 @@ class TestMuZeroTrainingLoop:
 
         epoch_losses = []
 
-        for epoch in range(5):
+        for _epoch in range(5):
             epoch_loss = 0.0
             num_batches = 0
 
             for batch in dataloader:
                 optimizer.zero_grad()
-                loss = self._compute_batch_loss(
-                    small_network, batch, small_network_config
-                )
+                loss = self._compute_batch_loss(small_network, batch, small_network_config)
                 loss.backward()
                 optimizer.step()
 
@@ -956,9 +945,7 @@ class TestBackwardsCompatibility:
 class TestCheckpointing:
     """Tests for saving and loading MuZero networks."""
 
-    def test_save_and_load_preserves_weights(
-        self, small_network, tmp_checkpoint_dir, set_seed
-    ):
+    def test_save_and_load_preserves_weights(self, small_network, tmp_checkpoint_dir, set_seed):
         """Saved and loaded network produces identical outputs."""
         checkpoint_path = os.path.join(tmp_checkpoint_dir, "muzero_test.pt")
 
@@ -995,9 +982,14 @@ class TestCheckpointing:
 
         # Check key config values
         assert loaded_network.config.spatial_channels == small_network_config.spatial_channels
-        assert loaded_network.config.hidden_state_channels == small_network_config.hidden_state_channels
+        assert (
+            loaded_network.config.hidden_state_channels
+            == small_network_config.hidden_state_channels
+        )
         assert loaded_network.config.action_space_size == small_network_config.action_space_size
-        assert loaded_network.config.use_consistency_loss == small_network_config.use_consistency_loss
+        assert (
+            loaded_network.config.use_consistency_loss == small_network_config.use_consistency_loss
+        )
         assert loaded_network.config.use_value_prefix == small_network_config.use_value_prefix
 
     def test_training_can_resume_from_checkpoint(
@@ -1018,9 +1010,7 @@ class TestCheckpointing:
         for _ in range(5):
             optimizer.zero_grad()
             policy_logits, value = small_network(spatial, vector, mask)
-            loss = F.cross_entropy(policy_logits, target_policy) + F.mse_loss(
-                value, target_value
-            )
+            loss = F.cross_entropy(policy_logits, target_policy) + F.mse_loss(value, target_value)
             loss.backward()
             optimizer.step()
 
@@ -1041,9 +1031,7 @@ class TestCheckpointing:
         for _ in range(10):
             new_optimizer.zero_grad()
             policy_logits, value = loaded_network(spatial, vector, mask)
-            loss = F.cross_entropy(policy_logits, target_policy) + F.mse_loss(
-                value, target_value
-            )
+            loss = F.cross_entropy(policy_logits, target_policy) + F.mse_loss(value, target_value)
             loss.backward()
             new_optimizer.step()
 
@@ -1057,9 +1045,7 @@ class TestCheckpointing:
         # Training should have improved
         assert final_loss.item() < checkpoint_loss.item()
 
-    def test_dynamics_preserved_after_load(
-        self, small_network, tmp_checkpoint_dir, set_seed
-    ):
+    def test_dynamics_preserved_after_load(self, small_network, tmp_checkpoint_dir, set_seed):
         """Dynamics function produces same outputs after load."""
         checkpoint_path = os.path.join(tmp_checkpoint_dir, "muzero_dynamics_test.pt")
 
@@ -1086,9 +1072,7 @@ class TestCheckpointing:
         )
         assert torch.allclose(orig_output.reward, loaded_output.reward, atol=1e-6)
 
-    def test_checkpoint_works_with_mcts(
-        self, small_network, tmp_checkpoint_dir, set_seed
-    ):
+    def test_checkpoint_works_with_mcts(self, small_network, tmp_checkpoint_dir, set_seed):
         """Loaded checkpoint works with MuZero MCTS."""
         checkpoint_path = os.path.join(tmp_checkpoint_dir, "muzero_mcts_test.pt")
 
@@ -1155,7 +1139,7 @@ class TestEndToEndMuZeroTraining:
 
         # Self-play phase: collect trajectories
         trajectories = []
-        for game_idx in range(2):
+        for _game_idx in range(2):
             mcts = MuZeroMCTS(network, mcts_config, device="cpu")
 
             obs, _ = small_env.reset()
@@ -1169,10 +1153,12 @@ class TestEndToEndMuZeroTraining:
             )
 
             for _ in range(15):  # Short games
-                trajectory.observations.append({
-                    "spatial": obs["spatial"].copy(),
-                    "vector": obs["vector"].copy(),
-                })
+                trajectory.observations.append(
+                    {
+                        "spatial": obs["spatial"].copy(),
+                        "vector": obs["vector"].copy(),
+                    }
+                )
                 trajectory.action_masks.append(obs["action_mask"].copy())
 
                 action_probs, root_value = mcts.search(
@@ -1203,7 +1189,7 @@ class TestEndToEndMuZeroTraining:
             initial_loss = None
             final_loss = None
 
-            for epoch in range(5):
+            for _epoch in range(5):
                 for batch in dataloader:
                     optimizer.zero_grad()
 
@@ -1263,9 +1249,7 @@ class TestEndToEndMuZeroTraining:
         for _ in range(50):
             optimizer.zero_grad()
             policy_logits, value = network(spatial, vector, mask)
-            loss = F.cross_entropy(policy_logits, target_policy) + F.mse_loss(
-                value, target_value
-            )
+            loss = F.cross_entropy(policy_logits, target_policy) + F.mse_loss(value, target_value)
             loss.backward()
             optimizer.step()
 
@@ -1300,8 +1284,7 @@ class TestTrajectoryLossComputation:
 
         # Targets
         target_policies = [
-            F.softmax(torch.randn(batch_size, 100), dim=-1)
-            for _ in range(unroll_steps + 1)
+            F.softmax(torch.randn(batch_size, 100), dim=-1) for _ in range(unroll_steps + 1)
         ]
         target_values = [torch.randn(batch_size) for _ in range(unroll_steps + 1)]
         target_rewards = [torch.randn(batch_size) for _ in range(unroll_steps)]

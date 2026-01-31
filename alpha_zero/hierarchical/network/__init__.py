@@ -10,6 +10,7 @@ Example:
     >>> network = HierarchicalNetwork(config)
     >>> policy, value = network(state, goal_embedding)
 """
+
 from __future__ import annotations
 
 from alpha_zero.hierarchical.network.hierarchical_network import (

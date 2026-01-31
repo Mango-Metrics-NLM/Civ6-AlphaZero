@@ -123,7 +123,9 @@ class ResourceUsage:
     def record_exploration_time(self, seconds: float) -> None:
         """Record exploration time."""
         self.exploration_seconds += seconds
-        logger.debug(f"Exploration time: {self.exploration_seconds:.1f}/{self.exploration_timeout_seconds}")
+        logger.debug(
+            f"Exploration time: {self.exploration_seconds:.1f}/{self.exploration_timeout_seconds}"
+        )
 
     def reset(self) -> None:
         """Reset usage counters."""
@@ -195,13 +197,23 @@ class ScopeChecker:
         Returns:
             True if path matches pattern.
         """
-        # Handle ** patterns
+        # Normalize path separators to forward slashes for cross-platform compatibility
+        normalized_path = path.replace("\\", "/")
+
+        # Handle ** patterns (** matches zero or more directories)
         if "**" in pattern:
             # Convert to regex for proper matching
-            regex_pattern = pattern.replace(".", r"\.").replace("**", ".*").replace("*", "[^/]*")
-            return bool(re.match(regex_pattern, path))
+            # Escape dots first
+            regex_pattern = pattern.replace(".", r"\.")
+            # Handle **/ (zero or more directories) - must come before single * replacement
+            regex_pattern = regex_pattern.replace("**/", "(.*/)?")
+            # Handle ** at end (matches any remaining path)
+            regex_pattern = regex_pattern.replace("**", ".*")
+            # Handle single * (matches filename without path separator)
+            regex_pattern = regex_pattern.replace("*", "[^/]*")
+            return bool(re.match(regex_pattern + "$", normalized_path))
         else:
-            return fnmatch.fnmatch(path, pattern)
+            return fnmatch.fnmatch(normalized_path, pattern)
 
     def filter_in_scope(self, paths: list[Path]) -> list[Path]:
         """Filter a list of paths to only those in scope.
@@ -343,9 +355,7 @@ class PermissionManager:
         """Get current resource usage."""
         return self._resource_usage
 
-    def set_confirmation_callback(
-        self, callback: Callable[[str], bool]
-    ) -> None:
+    def set_confirmation_callback(self, callback: Callable[[str], bool]) -> None:
         """Set a callback for confirmation requests.
 
         Args:
@@ -533,9 +543,15 @@ class PermissionManager:
             Dictionary with permission summary.
         """
         return {
-            "autonomous_actions": len([r for r in self._action_rules if r.level == AutonomyLevel.AUTONOMOUS]),
-            "confirm_first_actions": len([r for r in self._action_rules if r.level == AutonomyLevel.CONFIRM_FIRST]),
-            "prohibited_actions": len([r for r in self._action_rules if r.level == AutonomyLevel.PROHIBITED]),
+            "autonomous_actions": len(
+                [r for r in self._action_rules if r.level == AutonomyLevel.AUTONOMOUS]
+            ),
+            "confirm_first_actions": len(
+                [r for r in self._action_rules if r.level == AutonomyLevel.CONFIRM_FIRST]
+            ),
+            "prohibited_actions": len(
+                [r for r in self._action_rules if r.level == AutonomyLevel.PROHIBITED]
+            ),
             "in_scope_patterns": self.scope_checker.in_scope_patterns,
             "out_of_scope_patterns": self.scope_checker.out_of_scope_patterns,
             "resource_budget": {

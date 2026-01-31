@@ -460,7 +460,8 @@ class UncivCity:
                 "currentConstructionFromQueue",
             ),
             production_stored=city_data.get("cityConstructions", {}).get(
-                "productionOverflow", 0,
+                "productionOverflow",
+                0,
             ),
             worked_tiles=worked_tiles,
             buildings=city_data.get("cityConstructions", {}).get("builtBuildings", []),
@@ -553,7 +554,9 @@ class UncivPlayer:
         tech_manager = civ_data.get("tech", {})
         researched = tech_manager.get("techsResearched", [])
         in_progress = tech_manager.get("currentTechnologyName")
-        tech_progress = tech_manager.get("techsInProgress", {}).get(in_progress, 0) if in_progress else 0
+        tech_progress = (
+            tech_manager.get("techsInProgress", {}).get(in_progress, 0) if in_progress else 0
+        )
 
         # Extract policies
         policies = civ_data.get("policies", {})
@@ -730,7 +733,9 @@ class UncivGameState:
             units=units,
             cities=cities,
             barbarians_enabled=game_info.get("barbarians", True),
-            victory_types=game_info.get("victoryTypes", ["Domination", "Science", "Cultural", "Diplomatic"]),
+            victory_types=game_info.get(
+                "victoryTypes", ["Domination", "Science", "Cultural", "Diplomatic"]
+            ),
         )
 
     def to_unciv_json(self) -> dict:
@@ -753,16 +758,12 @@ class UncivGameState:
 
             # Add units for this civilization
             civ_dict["units"] = [
-                unit.to_unciv_dict()
-                for unit in self.units.values()
-                if unit.owner == civ_name
+                unit.to_unciv_dict() for unit in self.units.values() if unit.owner == civ_name
             ]
 
             # Add cities for this civilization
             civ_dict["cities"] = [
-                city.to_unciv_dict()
-                for city in self.cities.values()
-                if city.owner == civ_name
+                city.to_unciv_dict() for city in self.cities.values() if city.owner == civ_name
             ]
 
             civilizations.append(civ_dict)
@@ -883,14 +884,14 @@ class UncivMappings:
 
     # Era mapping (based on tech count)
     ERA_THRESHOLDS = [
-        (0, 0),    # Ancient
-        (10, 1),   # Classical
-        (20, 2),   # Medieval
-        (35, 3),   # Renaissance
-        (50, 4),   # Industrial
-        (65, 5),   # Modern
-        (75, 6),   # Atomic
-        (80, 7),   # Information
+        (0, 0),  # Ancient
+        (10, 1),  # Classical
+        (20, 2),  # Medieval
+        (35, 3),  # Renaissance
+        (50, 4),  # Industrial
+        (65, 5),  # Modern
+        (75, 6),  # Atomic
+        (80, 7),  # Information
     ]
 
     @classmethod
@@ -912,25 +913,20 @@ class UncivInterfaceError(Exception):
     """Base exception for Unciv interface errors."""
 
 
-
 class UncivLoadError(UncivInterfaceError):
     """Error loading Unciv game file."""
-
 
 
 class UncivSaveError(UncivInterfaceError):
     """Error saving Unciv game file."""
 
 
-
 class UncivConversionError(UncivInterfaceError):
     """Error converting between formats."""
 
 
-
 class UncivActionError(UncivInterfaceError):
     """Error applying action to game state."""
-
 
 
 class UncivInterface:
@@ -1117,7 +1113,8 @@ class UncivInterface:
 
                 terrain[internal_pos] = {
                     "type": UncivMappings.TERRAIN_TO_INTERNAL.get(
-                        tile.base_terrain, "plains",
+                        tile.base_terrain,
+                        "plains",
                     ),
                     "features": [
                         UncivMappings.FEATURE_TO_INTERNAL.get(f, f.lower())
@@ -1135,31 +1132,30 @@ class UncivInterface:
                     break
 
                 internal_pos = self._map_position_to_internal(
-                    unit.position, unciv_state.map_size,
+                    unit.position,
+                    unciv_state.map_size,
                 )
                 if internal_pos is None:
                     continue
 
-                owner_idx = (
-                    player_names.index(unit.owner)
-                    if unit.owner in player_names
-                    else 0
-                )
+                owner_idx = player_names.index(unit.owner) if unit.owner in player_names else 0
 
-                units.append({
-                    "id": unit_id,
-                    "position": internal_pos,
-                    "type": UncivMappings.UNIT_TO_CATEGORY.get(unit.name, "melee"),
-                    "player": owner_idx,
-                    "health": unit.health,
-                    "strength": unit.strength or unit.ranged_strength,
-                    "moves_remaining": int(unit.current_movement),
-                    "max_moves": int(unit.max_movement),
-                    "is_ranged": unit.ranged_strength > 0,
-                    "range": unit.range,
-                    "promotions": unit.promotions,
-                    "original_name": unit.name,
-                })
+                units.append(
+                    {
+                        "id": unit_id,
+                        "position": internal_pos,
+                        "type": UncivMappings.UNIT_TO_CATEGORY.get(unit.name, "melee"),
+                        "player": owner_idx,
+                        "health": unit.health,
+                        "strength": unit.strength or unit.ranged_strength,
+                        "moves_remaining": int(unit.current_movement),
+                        "max_moves": int(unit.max_movement),
+                        "is_ranged": unit.ranged_strength > 0,
+                        "range": unit.range,
+                        "promotions": unit.promotions,
+                        "original_name": unit.name,
+                    }
+                )
                 unit_index += 1
 
             # Convert cities
@@ -1170,29 +1166,28 @@ class UncivInterface:
                     break
 
                 internal_pos = self._map_position_to_internal(
-                    city.position, unciv_state.map_size,
+                    city.position,
+                    unciv_state.map_size,
                 )
                 if internal_pos is None:
                     continue
 
-                owner_idx = (
-                    player_names.index(city.owner)
-                    if city.owner in player_names
-                    else 0
-                )
+                owner_idx = player_names.index(city.owner) if city.owner in player_names else 0
 
-                cities.append({
-                    "name": city_name,
-                    "position": internal_pos,
-                    "player": owner_idx,
-                    "population": city.population,
-                    "production": city.production_stored,
-                    "defense": city.health,
-                    "is_capital": city.is_capital,
-                    "current_production": city.current_construction,
-                    "buildings": city.buildings,
-                    "available_production": self._get_available_production(city),
-                })
+                cities.append(
+                    {
+                        "name": city_name,
+                        "position": internal_pos,
+                        "player": owner_idx,
+                        "population": city.population,
+                        "production": city.production_stored,
+                        "defense": city.health,
+                        "is_capital": city.is_capital,
+                        "current_production": city.current_construction,
+                        "buildings": city.buildings,
+                        "available_production": self._get_available_production(city),
+                    }
+                )
                 city_index += 1
 
             # Convert visibility (full visibility for now)
@@ -1228,7 +1223,8 @@ class UncivInterface:
             # Build victory progress (simplified)
             victory_progress = {
                 "domination": self._calculate_domination_progress(
-                    unciv_state, current_player_idx,
+                    unciv_state,
+                    current_player_idx,
                 ),
                 "science": self._calculate_science_progress(current_player),
                 "culture": self._calculate_culture_progress(current_player),
@@ -1253,7 +1249,8 @@ class UncivInterface:
                 "culture_per_turn": current_player.culture if current_player else 0,
                 "faith_per_turn": current_player.faith if current_player else 0,
                 "military_strength": self._calculate_military_strength(
-                    unciv_state, current_player_idx,
+                    unciv_state,
+                    current_player_idx,
                 ),
                 "victory_progress": victory_progress,
                 "current_tech": current_player.tech_in_progress if current_player else None,
@@ -1295,7 +1292,9 @@ class UncivInterface:
             current_player_name = (
                 player_names[current_player_idx]
                 if current_player_idx < len(player_names)
-                else player_names[0] if player_names else "Unknown"
+                else player_names[0]
+                if player_names
+                else "Unknown"
             )
 
             # Convert tiles
@@ -1308,7 +1307,8 @@ class UncivInterface:
                 tile_dict = {
                     "position": {"x": unciv_pos[0], "y": unciv_pos[1]},
                     "baseTerrain": UncivMappings.INTERNAL_TO_TERRAIN.get(
-                        tile_data.get("type", "plains"), "Plains",
+                        tile_data.get("type", "plains"),
+                        "Plains",
                     ),
                     "terrainFeatures": [
                         UncivMappings.INTERNAL_TO_FEATURE.get(f, f.title())
@@ -1322,13 +1322,12 @@ class UncivInterface:
             for unit in internal_state.get("units", []):
                 owner_idx = unit.get("player", 0)
                 owner_name = (
-                    player_names[owner_idx]
-                    if owner_idx < len(player_names)
-                    else player_names[0]
+                    player_names[owner_idx] if owner_idx < len(player_names) else player_names[0]
                 )
 
                 unciv_pos = self._map_position_from_internal(
-                    unit.get("position", (0, 0)), map_size,
+                    unit.get("position", (0, 0)),
+                    map_size,
                 )
                 if unciv_pos is None:
                     continue
@@ -1349,13 +1348,12 @@ class UncivInterface:
             for city in internal_state.get("cities", []):
                 owner_idx = city.get("player", 0)
                 owner_name = (
-                    player_names[owner_idx]
-                    if owner_idx < len(player_names)
-                    else player_names[0]
+                    player_names[owner_idx] if owner_idx < len(player_names) else player_names[0]
                 )
 
                 unciv_pos = self._map_position_from_internal(
-                    city.get("position", (0, 0)), map_size,
+                    city.get("position", (0, 0)),
+                    map_size,
                 )
                 if unciv_pos is None:
                     continue
@@ -1488,7 +1486,8 @@ class UncivInterface:
                     if isinstance(target, tuple):
                         unit["position"] = target
                         unit["moves_remaining"] = max(
-                            0, unit.get("moves_remaining", 0) - 1,
+                            0,
+                            unit.get("moves_remaining", 0) - 1,
                         )
                         logger.debug(f"Unit {decoded.selector} moved to {target}")
 
@@ -1507,17 +1506,21 @@ class UncivInterface:
 
                                 # Damage calculation (simplified)
                                 damage_to_defender = max(
-                                    10, attacker_strength - defender_strength // 2,
+                                    10,
+                                    attacker_strength - defender_strength // 2,
                                 )
                                 damage_to_attacker = max(
-                                    5, defender_strength // 2 - attacker_strength // 4,
+                                    5,
+                                    defender_strength // 2 - attacker_strength // 4,
                                 )
 
                                 enemy["health"] = max(
-                                    0, enemy.get("health", 100) - damage_to_defender,
+                                    0,
+                                    enemy.get("health", 100) - damage_to_defender,
                                 )
                                 unit["health"] = max(
-                                    0, unit.get("health", 100) - damage_to_attacker,
+                                    0,
+                                    unit.get("health", 100) - damage_to_attacker,
                                 )
 
                                 # Remove dead units
@@ -1768,7 +1771,9 @@ class UncivInterface:
         return list(range(10))
 
     def _calculate_military_strength(
-        self, state: UncivGameState, player_idx: int,
+        self,
+        state: UncivGameState,
+        player_idx: int,
     ) -> int:
         """Calculate total military strength for a player.
 
@@ -1793,7 +1798,9 @@ class UncivInterface:
         return strength
 
     def _calculate_domination_progress(
-        self, state: UncivGameState, player_idx: int,
+        self,
+        state: UncivGameState,
+        player_idx: int,
     ) -> float:
         """Calculate domination victory progress.
 

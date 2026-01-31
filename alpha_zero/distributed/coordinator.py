@@ -112,49 +112,53 @@ class CoordinatorConfig:
         flat_config = {}
 
         # Environment
-        env_cfg = data.get('environment', {})
-        flat_config['board_size'] = env_cfg.get('board_size', 16)
-        flat_config['max_turns'] = env_cfg.get('max_turns', 200)
+        env_cfg = data.get("environment", {})
+        flat_config["board_size"] = env_cfg.get("board_size", 16)
+        flat_config["max_turns"] = env_cfg.get("max_turns", 200)
 
         # Network
-        net_cfg = data.get('network', {})
-        flat_config['num_res_blocks'] = net_cfg.get('num_res_blocks', 6)
-        flat_config['num_filters'] = net_cfg.get('num_filters', 64)
+        net_cfg = data.get("network", {})
+        flat_config["num_res_blocks"] = net_cfg.get("num_res_blocks", 6)
+        flat_config["num_filters"] = net_cfg.get("num_filters", 64)
 
         # MCTS
-        mcts_cfg = data.get('mcts', {})
-        flat_config['num_simulations'] = mcts_cfg.get('num_simulations', 50)
-        flat_config['c_puct'] = mcts_cfg.get('c_puct', 1.5)
-        flat_config['dirichlet_alpha'] = mcts_cfg.get('dirichlet_alpha', 0.3)
-        flat_config['dirichlet_epsilon'] = mcts_cfg.get('dirichlet_epsilon', 0.25)
-        flat_config['temperature'] = mcts_cfg.get('temperature', 1.0)
-        flat_config['temperature_threshold'] = mcts_cfg.get('temperature_threshold', 30)
+        mcts_cfg = data.get("mcts", {})
+        flat_config["num_simulations"] = mcts_cfg.get("num_simulations", 50)
+        flat_config["c_puct"] = mcts_cfg.get("c_puct", 1.5)
+        flat_config["dirichlet_alpha"] = mcts_cfg.get("dirichlet_alpha", 0.3)
+        flat_config["dirichlet_epsilon"] = mcts_cfg.get("dirichlet_epsilon", 0.25)
+        flat_config["temperature"] = mcts_cfg.get("temperature", 1.0)
+        flat_config["temperature_threshold"] = mcts_cfg.get("temperature_threshold", 30)
 
         # Training
-        train_cfg = data.get('training', {})
-        flat_config['batch_size'] = train_cfg.get('batch_size', 256)
-        flat_config['learning_rate'] = train_cfg.get('learning_rate', 0.001)
-        flat_config['weight_decay'] = train_cfg.get('weight_decay', 0.0001)
-        flat_config['gradient_clip'] = train_cfg.get('gradient_clip', 1.0)
-        flat_config['lr_decay_steps'] = train_cfg.get('lr_decay_steps', [100000, 300000, 500000])
-        flat_config['lr_decay_rate'] = train_cfg.get('lr_decay_rate', 0.1)
-        flat_config['replay_buffer_size'] = train_cfg.get('replay_buffer_size', 500000)
-        flat_config['min_replay_size'] = train_cfg.get('min_replay_size', 10000)
+        train_cfg = data.get("training", {})
+        flat_config["batch_size"] = train_cfg.get("batch_size", 256)
+        flat_config["learning_rate"] = train_cfg.get("learning_rate", 0.001)
+        flat_config["weight_decay"] = train_cfg.get("weight_decay", 0.0001)
+        flat_config["gradient_clip"] = train_cfg.get("gradient_clip", 1.0)
+        flat_config["lr_decay_steps"] = train_cfg.get("lr_decay_steps", [100000, 300000, 500000])
+        flat_config["lr_decay_rate"] = train_cfg.get("lr_decay_rate", 0.1)
+        flat_config["replay_buffer_size"] = train_cfg.get("replay_buffer_size", 500000)
+        flat_config["min_replay_size"] = train_cfg.get("min_replay_size", 10000)
 
         # Self-play
-        selfplay_cfg = data.get('selfplay', {})
-        flat_config['num_actors'] = selfplay_cfg.get('num_actors', 64)
-        flat_config['games_per_checkpoint'] = selfplay_cfg.get('games_per_checkpoint', 500)
-        flat_config['save_interval'] = selfplay_cfg.get('save_interval', 100)
+        selfplay_cfg = data.get("selfplay", {})
+        flat_config["num_actors"] = selfplay_cfg.get("num_actors", 64)
+        flat_config["games_per_checkpoint"] = selfplay_cfg.get("games_per_checkpoint", 500)
+        flat_config["save_interval"] = selfplay_cfg.get("save_interval", 100)
 
         # MicroCiv overrides (Phase 1)
-        microciv_cfg = data.get('microciv', {})
+        microciv_cfg = data.get("microciv", {})
         if microciv_cfg:
-            flat_config['board_size'] = microciv_cfg.get('board_size', flat_config['board_size'])
-            flat_config['num_res_blocks'] = microciv_cfg.get('num_res_blocks', flat_config['num_res_blocks'])
-            flat_config['num_filters'] = microciv_cfg.get('num_filters', flat_config['num_filters'])
-            flat_config['num_simulations'] = microciv_cfg.get('num_simulations', flat_config['num_simulations'])
-            flat_config['batch_size'] = microciv_cfg.get('batch_size', flat_config['batch_size'])
+            flat_config["board_size"] = microciv_cfg.get("board_size", flat_config["board_size"])
+            flat_config["num_res_blocks"] = microciv_cfg.get(
+                "num_res_blocks", flat_config["num_res_blocks"]
+            )
+            flat_config["num_filters"] = microciv_cfg.get("num_filters", flat_config["num_filters"])
+            flat_config["num_simulations"] = microciv_cfg.get(
+                "num_simulations", flat_config["num_simulations"]
+            )
+            flat_config["batch_size"] = microciv_cfg.get("batch_size", flat_config["batch_size"])
 
         return cls(**flat_config)
 
@@ -184,7 +188,7 @@ class TrainingCoordinator:
 
         # Set multiprocessing start method
         try:
-            mp.set_start_method('spawn', force=True)
+            mp.set_start_method("spawn", force=True)
         except RuntimeError:
             pass  # Already set
 
@@ -217,7 +221,7 @@ class TrainingCoordinator:
             temperature_threshold=config.temperature_threshold,
             games_per_update=1,
             max_games=0,  # Unlimited
-            device='cpu',  # Actors on CPU
+            device="cpu",  # Actors on CPU
         )
 
         # Create learner config
@@ -259,6 +263,7 @@ class TrainingCoordinator:
 
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful shutdown."""
+
         def signal_handler(signum, frame):
             logger.info(f"Received signal {signum}, initiating shutdown...")
             self._shutdown_requested = True
@@ -342,7 +347,7 @@ class TrainingCoordinator:
                 obs, _, terminated, truncated, info = env.step(action)
 
                 if terminated or truncated:
-                    winner = info.get('winner')
+                    winner = info.get("winner")
                     if winner == network_player:
                         wins += 1
                     break
@@ -350,15 +355,17 @@ class TrainingCoordinator:
         win_rate = wins / num_games
 
         # Store evaluation result
-        self.shared_storage.add_eval_entry({
-            'games_played': self.shared_storage.get_games_played(),
-            'training_step': self.shared_storage.get_training_step(),
-            'win_rate': win_rate,
-        })
+        self.shared_storage.add_eval_entry(
+            {
+                "games_played": self.shared_storage.get_games_played(),
+                "training_step": self.shared_storage.get_training_step(),
+                "win_rate": win_rate,
+            }
+        )
 
         return {
-            'win_rate': win_rate,
-            'games': num_games,
+            "win_rate": win_rate,
+            "games": num_games,
         }
 
     def _log_status(self) -> None:
@@ -367,7 +374,7 @@ class TrainingCoordinator:
         buffer_stats = self.replay_buffer.get_statistics()
 
         elapsed = time.time() - self.start_time
-        games = storage_stats['games_played']
+        games = storage_stats["games_played"]
         games_per_hour = (games / elapsed) * 3600 if elapsed > 0 else 0
 
         status_lines = [
@@ -381,7 +388,7 @@ class TrainingCoordinator:
         ]
 
         # Add latest loss if available
-        loss_history = storage_stats.get('loss_history', [])
+        loss_history = storage_stats.get("loss_history", [])
         if loss_history:
             latest = loss_history[-1]
             status_lines.append(
@@ -391,7 +398,7 @@ class TrainingCoordinator:
             )
 
         # Add latest eval if available
-        eval_history = storage_stats.get('eval_history', [])
+        eval_history = storage_stats.get("eval_history", [])
         if eval_history:
             latest = eval_history[-1]
             status_lines.append(f"Win rate vs random: {latest.get('win_rate', 0):.1%}")
@@ -491,8 +498,7 @@ class TrainingCoordinator:
                 if self.config.max_training_steps > 0:
                     if self.learner.training_step >= self.config.max_training_steps:
                         logger.info(
-                            f"Reached max training steps "
-                            f"({self.config.max_training_steps})",
+                            f"Reached max training steps ({self.config.max_training_steps})",
                         )
                         break
 
@@ -501,6 +507,7 @@ class TrainingCoordinator:
         except Exception as e:
             logger.error(f"Training error: {e}")
             import traceback
+
             traceback.print_exc()
         finally:
             self.shutdown()

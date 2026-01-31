@@ -184,12 +184,8 @@ class TestUncivUnit:
 
     def test_is_civilian(self):
         """Test civilian unit detection."""
-        warrior = UncivUnit(
-            id="w1", name="Warrior", owner="Rome", position=(0, 0), strength=8
-        )
-        settler = UncivUnit(
-            id="s1", name="Settler", owner="Rome", position=(0, 0), strength=0
-        )
+        warrior = UncivUnit(id="w1", name="Warrior", owner="Rome", position=(0, 0), strength=8)
+        settler = UncivUnit(id="s1", name="Settler", owner="Rome", position=(0, 0), strength=0)
         assert not warrior.is_civilian
         assert settler.is_civilian
 
@@ -351,9 +347,7 @@ class TestUncivInterfaceIO:
 
     def test_save_and_load(self, interface, sample_game_state):
         """Test saving and loading a game."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_path = f.name
 
         try:
@@ -372,9 +366,7 @@ class TestUncivInterfaceIO:
 
     def test_load_invalid_json(self, interface):
         """Test loading an invalid JSON file."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write("this is not valid json {{{")
             temp_path = f.name
 

@@ -126,9 +126,7 @@ class TestConstraintManager:
         """Test getting constraints with filters."""
         manager = ConstraintManager(config=config_with_constraints)
 
-        language_constraints = manager.get_constraints(
-            constraint_type=ConstraintType.LANGUAGE
-        )
+        language_constraints = manager.get_constraints(constraint_type=ConstraintType.LANGUAGE)
 
         assert len(language_constraints) == 1
         assert language_constraints[0].name == "python_version"
@@ -146,7 +144,8 @@ class TestConstraintManager:
         """Test checking if action is permitted."""
         manager = ConstraintManager(config=config_with_constraints)
 
-        assert manager.is_permitted("restructure the files")
+        # "restructure files" matches permission "Restructure files" (case-insensitive substring)
+        assert manager.is_permitted("restructure files")
         assert not manager.is_permitted("delete production database")
 
     def test_check_all_passes(self, tmp_path, config_with_constraints):

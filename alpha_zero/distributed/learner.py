@@ -119,13 +119,13 @@ class LearningRateScheduler:
 
         # Update optimizer
         for param_group in self.optimizer.param_groups:
-            param_group['lr'] = lr
+            param_group["lr"] = lr
 
         return lr
 
     def get_lr(self) -> float:
         """Get current learning rate."""
-        return float(self.optimizer.param_groups[0]['lr'])
+        return float(self.optimizer.param_groups[0]["lr"])
 
 
 class GradientAccumulator:
@@ -286,12 +286,15 @@ class Learner:
             f"checkpoint_{step}.pt",
         )
 
-        torch.save({
-            'step': step,
-            'network_state_dict': self.network.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'lr_scheduler_step': self.lr_scheduler.current_step,
-        }, checkpoint_path)
+        torch.save(
+            {
+                "step": step,
+                "network_state_dict": self.network.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+                "lr_scheduler_step": self.lr_scheduler.current_step,
+            },
+            checkpoint_path,
+        )
 
         logger.info(f"Saved checkpoint: {checkpoint_path}")
         return checkpoint_path
@@ -317,10 +320,10 @@ class Learner:
         )
         checkpoint = result.data
 
-        self.network.load_state_dict(checkpoint['network_state_dict'])
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        self.lr_scheduler.current_step = checkpoint['lr_scheduler_step']
-        step = int(checkpoint['step'])
+        self.network.load_state_dict(checkpoint["network_state_dict"])
+        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        self.lr_scheduler.current_step = checkpoint["lr_scheduler_step"]
+        step = int(checkpoint["step"])
 
         if not result.loaded_safely:
             logger.warning(
@@ -354,11 +357,11 @@ class Learner:
         )
 
         # Move to device
-        spatial = batch['spatial'].to(self.config.device)
-        vector = batch['vector'].to(self.config.device)
-        action_mask = batch['action_mask'].to(self.config.device)
-        target_policy = batch['policy'].to(self.config.device)
-        target_value = batch['value'].to(self.config.device)
+        spatial = batch["spatial"].to(self.config.device)
+        vector = batch["vector"].to(self.config.device)
+        action_mask = batch["action_mask"].to(self.config.device)
+        target_policy = batch["policy"].to(self.config.device)
+        target_value = batch["value"].to(self.config.device)
 
         # Forward pass
         self.network.train()
@@ -366,7 +369,11 @@ class Learner:
 
         # Compute loss
         total_loss, p_loss, v_loss = compute_loss(
-            policy_logits, value, target_policy, target_value, action_mask,
+            policy_logits,
+            value,
+            target_policy,
+            target_value,
+            action_mask,
         )
 
         # Accumulate gradients and step
@@ -396,10 +403,10 @@ class Learner:
         self.value_loss += v_loss.item()
 
         return {
-            'total_loss': total_loss.item(),
-            'policy_loss': p_loss.item(),
-            'value_loss': v_loss.item(),
-            'learning_rate': self.lr_scheduler.get_lr(),
+            "total_loss": total_loss.item(),
+            "policy_loss": p_loss.item(),
+            "value_loss": v_loss.item(),
+            "learning_rate": self.lr_scheduler.get_lr(),
         }
 
     def run(self) -> None:
@@ -434,7 +441,7 @@ class Learner:
 
         logger.info("Replay buffer ready, starting training")
 
-        step_losses = {'total': 0.0, 'policy': 0.0, 'value': 0.0}
+        step_losses = {"total": 0.0, "policy": 0.0, "value": 0.0}
         log_steps = 0
 
         while self._running and not self.storage.should_stop():
@@ -457,16 +464,16 @@ class Learner:
                 continue
 
             # Accumulate for logging
-            step_losses['total'] += losses['total_loss']
-            step_losses['policy'] += losses['policy_loss']
-            step_losses['value'] += losses['value_loss']
+            step_losses["total"] += losses["total_loss"]
+            step_losses["policy"] += losses["policy_loss"]
+            step_losses["value"] += losses["value_loss"]
             log_steps += 1
 
             # Logging
             if self.training_step % self.config.log_interval == 0 and log_steps > 0:
-                avg_total = step_losses['total'] / log_steps
-                avg_policy = step_losses['policy'] / log_steps
-                avg_value = step_losses['value'] / log_steps
+                avg_total = step_losses["total"] / log_steps
+                avg_policy = step_losses["policy"] / log_steps
+                avg_value = step_losses["value"] / log_steps
 
                 elapsed = time.time() - self.start_time
                 steps_per_sec = self.training_step / elapsed if elapsed > 0 else 0
@@ -480,15 +487,17 @@ class Learner:
                 )
 
                 # Store in shared storage
-                self.storage.add_loss_entry({
-                    'step': self.training_step,
-                    'total_loss': avg_total,
-                    'policy_loss': avg_policy,
-                    'value_loss': avg_value,
-                    'learning_rate': losses['learning_rate'],
-                })
+                self.storage.add_loss_entry(
+                    {
+                        "step": self.training_step,
+                        "total_loss": avg_total,
+                        "policy_loss": avg_policy,
+                        "value_loss": avg_value,
+                        "learning_rate": losses["learning_rate"],
+                    }
+                )
 
-                step_losses = {'total': 0.0, 'policy': 0.0, 'value': 0.0}
+                step_losses = {"total": 0.0, "policy": 0.0, "value": 0.0}
                 log_steps = 0
 
             # Publish weights
@@ -528,13 +537,13 @@ class Learner:
         """
         elapsed = time.time() - self.start_time if self.start_time > 0 else 0
         return {
-            'training_step': self.training_step,
-            'elapsed_time': elapsed,
-            'steps_per_second': self.training_step / elapsed if elapsed > 0 else 0,
-            'model_version': self.storage.get_model_version(),
-            'buffer_size': self.replay_buffer.size(),
-            'learning_rate': self.lr_scheduler.get_lr(),
-            'is_running': self._running,
+            "training_step": self.training_step,
+            "elapsed_time": elapsed,
+            "steps_per_second": self.training_step / elapsed if elapsed > 0 else 0,
+            "model_version": self.storage.get_model_version(),
+            "buffer_size": self.replay_buffer.size(),
+            "learning_rate": self.lr_scheduler.get_lr(),
+            "is_running": self._running,
         }
 
 
@@ -575,6 +584,7 @@ def learner_process(
     except Exception as e:
         logger.error(f"Learner crashed: {e}")
         import traceback
+
         traceback.print_exc()
     finally:
         logger.info("Learner: Process exiting")

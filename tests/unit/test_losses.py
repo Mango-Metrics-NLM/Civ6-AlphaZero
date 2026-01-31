@@ -11,6 +11,7 @@ Tests for alpha_zero.core.losses module covering:
 """
 
 import logging
+
 import pytest
 import torch
 import torch.nn as nn
@@ -32,7 +33,6 @@ from alpha_zero.core.losses import (
     compute_value_prefix_loss,
     scalar_to_categorical,
 )
-
 
 # =============================================================================
 # Test Utilities: Scalar-Categorical Conversion
@@ -105,9 +105,7 @@ class TestScalarToCategorical:
     def test_custom_support_range(self):
         """Works with custom support range."""
         scalars = torch.tensor([0.0, 0.5, 1.0])
-        categorical = scalar_to_categorical(
-            scalars, support_size=11, min_value=0.0, max_value=1.0
-        )
+        categorical = scalar_to_categorical(scalars, support_size=11, min_value=0.0, max_value=1.0)
 
         assert categorical.shape == (3, 11)
         assert torch.allclose(categorical.sum(dim=-1), torch.ones(3), atol=1e-5)
@@ -141,9 +139,7 @@ class TestCategoricalToScalar:
         categorical = torch.zeros(1, 601)
         categorical[0, 300] = 1.0  # Center is value 0
 
-        scalar = categorical_to_scalar(
-            categorical, support_size=601, min_value=-300, max_value=300
-        )
+        scalar = categorical_to_scalar(categorical, support_size=601, min_value=-300, max_value=300)
 
         assert abs(scalar.item()) < 0.1  # Should be close to 0
 
@@ -152,9 +148,7 @@ class TestCategoricalToScalar:
         categorical = torch.zeros(1, 601)
         categorical[0, 600] = 1.0  # Last index is max value
 
-        scalar = categorical_to_scalar(
-            categorical, support_size=601, min_value=-300, max_value=300
-        )
+        scalar = categorical_to_scalar(categorical, support_size=601, min_value=-300, max_value=300)
 
         assert abs(scalar.item() - 300) < 0.1
 
@@ -163,9 +157,7 @@ class TestCategoricalToScalar:
         categorical = torch.zeros(1, 601)
         categorical[0, 0] = 1.0  # First index is min value
 
-        scalar = categorical_to_scalar(
-            categorical, support_size=601, min_value=-300, max_value=300
-        )
+        scalar = categorical_to_scalar(categorical, support_size=601, min_value=-300, max_value=300)
 
         assert abs(scalar.item() + 300) < 0.1
 
@@ -173,9 +165,7 @@ class TestCategoricalToScalar:
         """Uniform distribution returns mean of support."""
         categorical = torch.ones(1, 601) / 601
 
-        scalar = categorical_to_scalar(
-            categorical, support_size=601, min_value=-300, max_value=300
-        )
+        scalar = categorical_to_scalar(categorical, support_size=601, min_value=-300, max_value=300)
 
         # Mean of symmetric support is 0
         assert abs(scalar.item()) < 0.1
@@ -577,7 +567,9 @@ class TestComputeValuePrefixLoss:
         predicted = torch.randn(4)
         target = torch.randn(4)
 
-        loss = compute_value_prefix_loss(predicted, target, config=LossConfig(use_categorical=False))
+        loss = compute_value_prefix_loss(
+            predicted, target, config=LossConfig(use_categorical=False)
+        )
 
         assert loss.dim() == 0
 
@@ -586,7 +578,9 @@ class TestComputeValuePrefixLoss:
         target = torch.tensor([10.0])
         predicted = torch.tensor([10.0])
 
-        loss = compute_value_prefix_loss(predicted, target, config=LossConfig(use_categorical=False))
+        loss = compute_value_prefix_loss(
+            predicted, target, config=LossConfig(use_categorical=False)
+        )
 
         assert loss.item() < 1e-6
 
@@ -783,9 +777,7 @@ class TestComputeMuzeroStepLoss:
         )
 
         expected_total = (
-            1.0 * result.policy_loss
-            + 0.5 * result.value_loss
-            + 0.25 * result.reward_loss
+            1.0 * result.policy_loss + 0.5 * result.value_loss + 0.25 * result.reward_loss
         )
 
         assert torch.allclose(result.total_loss, expected_total, atol=1e-5)
@@ -857,12 +849,8 @@ class TestComputeMuzeroTrajectoryLoss:
             "unrolled_policy_logits": [
                 torch.randn(batch_size, action_size) for _ in range(num_unroll)
             ],
-            "unrolled_values": [
-                torch.randn(batch_size, support_size) for _ in range(num_unroll)
-            ],
-            "unrolled_rewards": [
-                torch.randn(batch_size, support_size) for _ in range(num_unroll)
-            ],
+            "unrolled_values": [torch.randn(batch_size, support_size) for _ in range(num_unroll)],
+            "unrolled_rewards": [torch.randn(batch_size, support_size) for _ in range(num_unroll)],
         }
 
     def test_output_type(self, trajectory_data):
@@ -970,9 +958,7 @@ class TestComputeMuzeroTrajectoryLoss:
         trajectory_data["initial_policy_logits"] = trajectory_data[
             "initial_policy_logits"
         ].requires_grad_(True)
-        trajectory_data["initial_value"] = trajectory_data["initial_value"].requires_grad_(
-            True
-        )
+        trajectory_data["initial_value"] = trajectory_data["initial_value"].requires_grad_(True)
 
         for i in range(len(trajectory_data["unrolled_policy_logits"])):
             trajectory_data["unrolled_policy_logits"][i] = trajectory_data[
@@ -1131,23 +1117,15 @@ class TestMuZeroLossCalculator:
                 for _ in range(num_unroll + 1)
             ],
             observations_vector=[
-                torch.randn(batch_size, vector_dim)
-                for _ in range(num_unroll + 1)
+                torch.randn(batch_size, vector_dim) for _ in range(num_unroll + 1)
             ],
-            actions=[
-                torch.randint(0, action_size, (batch_size,))
-                for _ in range(num_unroll)
-            ],
+            actions=[torch.randint(0, action_size, (batch_size,)) for _ in range(num_unroll)],
             target_policies=[
                 torch.softmax(torch.randn(batch_size, action_size), dim=-1)
                 for _ in range(num_unroll + 1)
             ],
-            target_values=[
-                torch.randn(batch_size) for _ in range(num_unroll + 1)
-            ],
-            target_rewards=[
-                torch.randn(batch_size) for _ in range(num_unroll)
-            ],
+            target_values=[torch.randn(batch_size) for _ in range(num_unroll + 1)],
+            target_rewards=[torch.randn(batch_size) for _ in range(num_unroll)],
         )
 
     def test_initialization(self, loss_calculator):
@@ -1255,27 +1233,16 @@ class TestMuZeroLossCalculator:
                 for _ in range(num_unroll + 1)
             ],
             observations_vector=[
-                torch.randn(batch_size, vector_dim)
-                for _ in range(num_unroll + 1)
+                torch.randn(batch_size, vector_dim) for _ in range(num_unroll + 1)
             ],
-            actions=[
-                torch.randint(0, action_size, (batch_size,))
-                for _ in range(num_unroll)
-            ],
+            actions=[torch.randint(0, action_size, (batch_size,)) for _ in range(num_unroll)],
             target_policies=[
                 torch.softmax(torch.randn(batch_size, action_size), dim=-1)
                 for _ in range(num_unroll + 1)
             ],
-            target_values=[
-                torch.randn(batch_size) for _ in range(num_unroll + 1)
-            ],
-            target_rewards=[
-                torch.randn(batch_size) for _ in range(num_unroll)
-            ],
-            action_masks=[
-                torch.ones(batch_size, action_size)
-                for _ in range(num_unroll + 1)
-            ],
+            target_values=[torch.randn(batch_size) for _ in range(num_unroll + 1)],
+            target_rewards=[torch.randn(batch_size) for _ in range(num_unroll)],
+            action_masks=[torch.ones(batch_size, action_size) for _ in range(num_unroll + 1)],
         )
 
         result = loss_calculator.compute_loss(muzero_network, batch)
@@ -1536,8 +1503,7 @@ class TestLogging:
                 "initial_policy_logits": torch.randn(batch_size, action_size),
                 "initial_value": torch.randn(batch_size, support_size),
                 "target_policies": [
-                    torch.softmax(torch.randn(batch_size, action_size), dim=-1)
-                    for _ in range(2)
+                    torch.softmax(torch.randn(batch_size, action_size), dim=-1) for _ in range(2)
                 ],
                 "target_values": [torch.randn(batch_size) for _ in range(2)],
                 "target_rewards": [torch.randn(batch_size)],
@@ -1616,8 +1582,7 @@ class TestCUDACompatibility:
                 for _ in range(num_unroll + 1)
             ],
             observations_vector=[
-                torch.randn(batch_size, vector_dim, device=device)
-                for _ in range(num_unroll + 1)
+                torch.randn(batch_size, vector_dim, device=device) for _ in range(num_unroll + 1)
             ],
             actions=[
                 torch.randint(0, action_size, (batch_size,), device=device)
@@ -1627,12 +1592,8 @@ class TestCUDACompatibility:
                 torch.softmax(torch.randn(batch_size, action_size, device=device), dim=-1)
                 for _ in range(num_unroll + 1)
             ],
-            target_values=[
-                torch.randn(batch_size, device=device) for _ in range(num_unroll + 1)
-            ],
-            target_rewards=[
-                torch.randn(batch_size, device=device) for _ in range(num_unroll)
-            ],
+            target_values=[torch.randn(batch_size, device=device) for _ in range(num_unroll + 1)],
+            target_rewards=[torch.randn(batch_size, device=device) for _ in range(num_unroll)],
         )
 
         result = calculator.compute_loss(network, batch)

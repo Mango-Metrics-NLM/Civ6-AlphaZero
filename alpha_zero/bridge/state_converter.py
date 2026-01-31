@@ -44,44 +44,48 @@ class TerrainMapping:
     """Mapping from Civ6 terrain types to internal types."""
 
     # Civ6 terrain type -> internal type (matches Civ6StateEncoder.TERRAIN_TYPES)
-    TERRAIN: dict[str, str] = field(default_factory=lambda: {
-        # Base terrains - handle both naming conventions (GRASS vs GRASSLAND)
-        "TERRAIN_GRASS": "grassland",
-        "TERRAIN_GRASSLAND": "grassland",
-        "TERRAIN_GRASS_HILLS": "grassland",  # Hills treated as feature
-        "TERRAIN_GRASSLAND_HILLS": "grassland",
-        "TERRAIN_GRASS_MOUNTAIN": "grassland",  # Mountains treated as feature
-        "TERRAIN_GRASSLAND_MOUNTAIN": "grassland",
-        "TERRAIN_PLAINS": "plains",
-        "TERRAIN_PLAINS_HILLS": "plains",
-        "TERRAIN_PLAINS_MOUNTAIN": "plains",
-        "TERRAIN_DESERT": "desert",
-        "TERRAIN_DESERT_HILLS": "desert",
-        "TERRAIN_DESERT_MOUNTAIN": "desert",
-        "TERRAIN_TUNDRA": "tundra",
-        "TERRAIN_TUNDRA_HILLS": "tundra",
-        "TERRAIN_TUNDRA_MOUNTAIN": "tundra",
-        "TERRAIN_SNOW": "snow",
-        "TERRAIN_SNOW_HILLS": "snow",
-        "TERRAIN_SNOW_MOUNTAIN": "snow",
-        "TERRAIN_COAST": "coast",
-        "TERRAIN_OCEAN": "ocean",
-    })
+    TERRAIN: dict[str, str] = field(
+        default_factory=lambda: {
+            # Base terrains - handle both naming conventions (GRASS vs GRASSLAND)
+            "TERRAIN_GRASS": "grassland",
+            "TERRAIN_GRASSLAND": "grassland",
+            "TERRAIN_GRASS_HILLS": "grassland",  # Hills treated as feature
+            "TERRAIN_GRASSLAND_HILLS": "grassland",
+            "TERRAIN_GRASS_MOUNTAIN": "grassland",  # Mountains treated as feature
+            "TERRAIN_GRASSLAND_MOUNTAIN": "grassland",
+            "TERRAIN_PLAINS": "plains",
+            "TERRAIN_PLAINS_HILLS": "plains",
+            "TERRAIN_PLAINS_MOUNTAIN": "plains",
+            "TERRAIN_DESERT": "desert",
+            "TERRAIN_DESERT_HILLS": "desert",
+            "TERRAIN_DESERT_MOUNTAIN": "desert",
+            "TERRAIN_TUNDRA": "tundra",
+            "TERRAIN_TUNDRA_HILLS": "tundra",
+            "TERRAIN_TUNDRA_MOUNTAIN": "tundra",
+            "TERRAIN_SNOW": "snow",
+            "TERRAIN_SNOW_HILLS": "snow",
+            "TERRAIN_SNOW_MOUNTAIN": "snow",
+            "TERRAIN_COAST": "coast",
+            "TERRAIN_OCEAN": "ocean",
+        }
+    )
 
     # Civ6 feature type -> internal type (matches Civ6StateEncoder.FEATURE_TYPES)
-    FEATURES: dict[str, str] = field(default_factory=lambda: {
-        "FEATURE_FOREST": "forest",
-        "FEATURE_JUNGLE": "jungle",
-        "FEATURE_MARSH": "marsh",
-        "FEATURE_FLOODPLAINS": "floodplains",
-        "FEATURE_FLOODPLAINS_GRASSLAND": "floodplains",
-        "FEATURE_FLOODPLAINS_PLAINS": "floodplains",
-        "FEATURE_OASIS": "floodplains",  # Map to similar
-        "FEATURE_ICE": "ice",
-        "FEATURE_REEF": "river",  # Approximate
-        "FEATURE_VOLCANIC_SOIL": "floodplains",  # Approximate
-        "FEATURE_GEOTHERMAL_FISSURE": "hills",  # Approximate
-    })
+    FEATURES: dict[str, str] = field(
+        default_factory=lambda: {
+            "FEATURE_FOREST": "forest",
+            "FEATURE_JUNGLE": "jungle",
+            "FEATURE_MARSH": "marsh",
+            "FEATURE_FLOODPLAINS": "floodplains",
+            "FEATURE_FLOODPLAINS_GRASSLAND": "floodplains",
+            "FEATURE_FLOODPLAINS_PLAINS": "floodplains",
+            "FEATURE_OASIS": "floodplains",  # Map to similar
+            "FEATURE_ICE": "ice",
+            "FEATURE_REEF": "river",  # Approximate
+            "FEATURE_VOLCANIC_SOIL": "floodplains",  # Approximate
+            "FEATURE_GEOTHERMAL_FISSURE": "hills",  # Approximate
+        }
+    )
 
 
 @dataclass
@@ -89,97 +93,88 @@ class UnitMapping:
     """Mapping from Civ6 unit types to internal unit categories."""
 
     # Civ6 unit type -> internal category (matches Civ6StateEncoder.UNIT_TYPES)
-    UNITS: dict[str, str] = field(default_factory=lambda: {
-        # Melee units
-        "UNIT_WARRIOR": "melee",
-        "UNIT_SWORDSMAN": "melee",
-        "UNIT_MAN_AT_ARMS": "melee",
-        "UNIT_MUSKETMAN": "melee",
-        "UNIT_LINE_INFANTRY": "melee",
-        "UNIT_INFANTRY": "melee",
-        "UNIT_MECHANIZED_INFANTRY": "melee",
-
-        # Anti-cavalry / spearmen
-        "UNIT_SPEARMAN": "melee",
-        "UNIT_PIKEMAN": "melee",
-        "UNIT_PIKE_AND_SHOT": "melee",
-        "UNIT_AT_CREW": "melee",
-
-        # Ranged units
-        "UNIT_SLINGER": "ranged",
-        "UNIT_ARCHER": "ranged",
-        "UNIT_CROSSBOWMAN": "ranged",
-        "UNIT_FIELD_CANNON": "ranged",
-        "UNIT_MACHINE_GUN": "ranged",
-
-        # Cavalry
-        "UNIT_HORSEMAN": "cavalry",
-        "UNIT_KNIGHT": "cavalry",
-        "UNIT_CAVALRY": "cavalry",
-        "UNIT_TANK": "cavalry",
-        "UNIT_MODERN_ARMOR": "cavalry",
-        "UNIT_HORSE_ARCHER": "cavalry",
-
-        # Siege
-        "UNIT_CATAPULT": "siege",
-        "UNIT_BOMBARD": "siege",
-        "UNIT_ARTILLERY": "siege",
-        "UNIT_ROCKET_ARTILLERY": "siege",
-        "UNIT_BATTERING_RAM": "siege",
-        "UNIT_SIEGE_TOWER": "siege",
-
-        # Naval melee
-        "UNIT_GALLEY": "naval_melee",
-        "UNIT_CARAVEL": "naval_melee",
-        "UNIT_IRONCLAD": "naval_melee",
-        "UNIT_DESTROYER": "naval_melee",
-
-        # Naval ranged
-        "UNIT_QUADRIREME": "naval_ranged",
-        "UNIT_FRIGATE": "naval_ranged",
-        "UNIT_BATTLESHIP": "naval_ranged",
-        "UNIT_MISSILE_CRUISER": "naval_ranged",
-        "UNIT_AIRCRAFT_CARRIER": "naval_ranged",
-        "UNIT_SUBMARINE": "naval_ranged",
-        "UNIT_NUCLEAR_SUBMARINE": "naval_ranged",
-
-        # Air
-        "UNIT_BIPLANE": "air",
-        "UNIT_FIGHTER": "air",
-        "UNIT_JET_FIGHTER": "air",
-        "UNIT_BOMBER": "air",
-        "UNIT_JET_BOMBER": "air",
-
-        # Support
-        "UNIT_MEDIC": "support",
-        "UNIT_OBSERVATION_BALLOON": "support",
-        "UNIT_DRONE": "support",
-
-        # Civilian
-        "UNIT_SETTLER": "civilian",
-        "UNIT_BUILDER": "civilian",
-        "UNIT_TRADER": "civilian",
-        "UNIT_SCOUT": "civilian",
-        "UNIT_RANGER": "civilian",
-        "UNIT_SPY": "civilian",
-
-        # Religious
-        "UNIT_MISSIONARY": "religious",
-        "UNIT_APOSTLE": "religious",
-        "UNIT_INQUISITOR": "religious",
-        "UNIT_GURU": "religious",
-
-        # Great people
-        "UNIT_GREAT_GENERAL": "great_person",
-        "UNIT_GREAT_ADMIRAL": "great_person",
-        "UNIT_GREAT_ENGINEER": "great_person",
-        "UNIT_GREAT_MERCHANT": "great_person",
-        "UNIT_GREAT_PROPHET": "great_person",
-        "UNIT_GREAT_SCIENTIST": "great_person",
-        "UNIT_GREAT_WRITER": "great_person",
-        "UNIT_GREAT_ARTIST": "great_person",
-        "UNIT_GREAT_MUSICIAN": "great_person",
-    })
+    UNITS: dict[str, str] = field(
+        default_factory=lambda: {
+            # Melee units
+            "UNIT_WARRIOR": "melee",
+            "UNIT_SWORDSMAN": "melee",
+            "UNIT_MAN_AT_ARMS": "melee",
+            "UNIT_MUSKETMAN": "melee",
+            "UNIT_LINE_INFANTRY": "melee",
+            "UNIT_INFANTRY": "melee",
+            "UNIT_MECHANIZED_INFANTRY": "melee",
+            # Anti-cavalry / spearmen
+            "UNIT_SPEARMAN": "melee",
+            "UNIT_PIKEMAN": "melee",
+            "UNIT_PIKE_AND_SHOT": "melee",
+            "UNIT_AT_CREW": "melee",
+            # Ranged units
+            "UNIT_SLINGER": "ranged",
+            "UNIT_ARCHER": "ranged",
+            "UNIT_CROSSBOWMAN": "ranged",
+            "UNIT_FIELD_CANNON": "ranged",
+            "UNIT_MACHINE_GUN": "ranged",
+            # Cavalry
+            "UNIT_HORSEMAN": "cavalry",
+            "UNIT_KNIGHT": "cavalry",
+            "UNIT_CAVALRY": "cavalry",
+            "UNIT_TANK": "cavalry",
+            "UNIT_MODERN_ARMOR": "cavalry",
+            "UNIT_HORSE_ARCHER": "cavalry",
+            # Siege
+            "UNIT_CATAPULT": "siege",
+            "UNIT_BOMBARD": "siege",
+            "UNIT_ARTILLERY": "siege",
+            "UNIT_ROCKET_ARTILLERY": "siege",
+            "UNIT_BATTERING_RAM": "siege",
+            "UNIT_SIEGE_TOWER": "siege",
+            # Naval melee
+            "UNIT_GALLEY": "naval_melee",
+            "UNIT_CARAVEL": "naval_melee",
+            "UNIT_IRONCLAD": "naval_melee",
+            "UNIT_DESTROYER": "naval_melee",
+            # Naval ranged
+            "UNIT_QUADRIREME": "naval_ranged",
+            "UNIT_FRIGATE": "naval_ranged",
+            "UNIT_BATTLESHIP": "naval_ranged",
+            "UNIT_MISSILE_CRUISER": "naval_ranged",
+            "UNIT_AIRCRAFT_CARRIER": "naval_ranged",
+            "UNIT_SUBMARINE": "naval_ranged",
+            "UNIT_NUCLEAR_SUBMARINE": "naval_ranged",
+            # Air
+            "UNIT_BIPLANE": "air",
+            "UNIT_FIGHTER": "air",
+            "UNIT_JET_FIGHTER": "air",
+            "UNIT_BOMBER": "air",
+            "UNIT_JET_BOMBER": "air",
+            # Support
+            "UNIT_MEDIC": "support",
+            "UNIT_OBSERVATION_BALLOON": "support",
+            "UNIT_DRONE": "support",
+            # Civilian
+            "UNIT_SETTLER": "civilian",
+            "UNIT_BUILDER": "civilian",
+            "UNIT_TRADER": "civilian",
+            "UNIT_SCOUT": "civilian",
+            "UNIT_RANGER": "civilian",
+            "UNIT_SPY": "civilian",
+            # Religious
+            "UNIT_MISSIONARY": "religious",
+            "UNIT_APOSTLE": "religious",
+            "UNIT_INQUISITOR": "religious",
+            "UNIT_GURU": "religious",
+            # Great people
+            "UNIT_GREAT_GENERAL": "great_person",
+            "UNIT_GREAT_ADMIRAL": "great_person",
+            "UNIT_GREAT_ENGINEER": "great_person",
+            "UNIT_GREAT_MERCHANT": "great_person",
+            "UNIT_GREAT_PROPHET": "great_person",
+            "UNIT_GREAT_SCIENTIST": "great_person",
+            "UNIT_GREAT_WRITER": "great_person",
+            "UNIT_GREAT_ARTIST": "great_person",
+            "UNIT_GREAT_MUSICIAN": "great_person",
+        }
+    )
 
     def get_unit_type(self, civ6_type: str) -> str:
         """Get internal unit type for Civ6 type.
@@ -245,11 +240,13 @@ class StateConverter:
 
         self._encoder: Civ6StateEncoder | None = None
         if create_encoder:
-            self._encoder = Civ6StateEncoder(EncoderConfig(
-                board_size=board_size,
-                spatial_channels=84,
-                vector_dim=512,
-            ))
+            self._encoder = Civ6StateEncoder(
+                EncoderConfig(
+                    board_size=board_size,
+                    spatial_channels=84,
+                    vector_dim=512,
+                )
+            )
 
         self._map_config: MapSizeConfig | None = None
         self._scale_x: float = 1.0
@@ -267,6 +264,7 @@ class StateConverter:
         # Handle both GameStateData and raw dict
         if isinstance(civ6_state, dict):
             from alpha_zero.bridge.protocol import GameStateData
+
             state = GameStateData.from_dict(civ6_state)
         else:
             state = civ6_state
@@ -310,10 +308,10 @@ class StateConverter:
             "score": player_data.get("score", 0),
             # Era and progress
             "era": state.era,
-            "resources": {},  # TODO: Extract resources
-            "technologies": [],  # TODO: Extract techs
-            "civics": [],  # TODO: Extract civics
-            "victory_progress": {},  # TODO: Extract victory progress
+            "resources": self._extract_resources(state),
+            "technologies": self._extract_technologies(state),
+            "civics": self._extract_civics(state),
+            "victory_progress": self._extract_victory_progress(state),
             # Store original legal actions for action mask generation
             "_legal_actions": state.legal_actions,
             "_map_size": (state.map_data.width, state.map_data.height),
@@ -345,13 +343,13 @@ class StateConverter:
             map_width: Original map width.
             map_height: Original map height.
         """
-        if (self._map_config is None or
-                self._map_config.width != map_width or
-                self._map_config.height != map_height):
+        if (
+            self._map_config is None
+            or self._map_config.width != map_width
+            or self._map_config.height != map_height
+        ):
             self._map_config = get_map_config(map_width, map_height)
-            self._scale_x, self._scale_y = self._map_config.get_scale_factor(
-                self.board_size
-            )
+            self._scale_x, self._scale_y = self._map_config.get_scale_factor(self.board_size)
 
     def _scale_coords(self, x: int, y: int) -> tuple[int, int]:
         """Scale coordinates from Civ6 map to board_size.
@@ -410,9 +408,7 @@ class StateConverter:
             scaled_pos = self._scale_coords(tile.x, tile.y)
 
             # Get terrain type
-            terrain_type = self.terrain_mapping.TERRAIN.get(
-                tile.terrain, "plains"
-            )
+            terrain_type = self.terrain_mapping.TERRAIN.get(tile.terrain, "plains")
 
             # Check for hills/mountains in terrain name
             features = list(tile.features) if tile.features else []
@@ -497,10 +493,7 @@ class StateConverter:
         if len(most_common) > 1 and most_common[0][1] == most_common[1][1]:
             # Tie - use priority
             tied_terrains = [t for t, c in most_common if c == most_common[0][1]]
-            resolved_terrain = max(
-                tied_terrains,
-                key=lambda t: terrain_priority.get(t, 0)
-            )
+            resolved_terrain = max(tied_terrains, key=lambda t: terrain_priority.get(t, 0))
         else:
             resolved_terrain = most_common[0][0]
 
@@ -517,10 +510,7 @@ class StateConverter:
                 yield_sums[key] = yield_sums.get(key, 0) + value
                 yield_counts[key] = yield_counts.get(key, 0) + 1
 
-        averaged_yields = {
-            key: int(yield_sums[key] / yield_counts[key])
-            for key in yield_sums
-        }
+        averaged_yields = {key: int(yield_sums[key] / yield_counts[key]) for key in yield_sums}
 
         return {
             "type": resolved_terrain,
@@ -554,19 +544,21 @@ class StateConverter:
             if unit.max_health > 0:
                 health = int(100 * unit.health / unit.max_health)
 
-            units.append({
-                "position": scaled_pos,
-                "type": unit_type,
-                "player": player,
-                "health": health,
-                "strength": unit.combat_strength,
-                "moves_remaining": unit.moves_remaining,
-                "max_moves": unit.max_moves,
-                # Preserve original data for action conversion
-                "_id": unit.id,
-                "_original_pos": (unit.x, unit.y),
-                "_owner_id": unit.owner_id,
-            })
+            units.append(
+                {
+                    "position": scaled_pos,
+                    "type": unit_type,
+                    "player": player,
+                    "health": health,
+                    "strength": unit.combat_strength,
+                    "moves_remaining": unit.moves_remaining,
+                    "max_moves": unit.max_moves,
+                    # Preserve original data for action conversion
+                    "_id": unit.id,
+                    "_original_pos": (unit.x, unit.y),
+                    "_owner_id": unit.owner_id,
+                }
+            )
 
         return units
 
@@ -591,27 +583,27 @@ class StateConverter:
             else:
                 player = 1 if current_player == 0 else 0
 
-            cities.append({
-                "position": scaled_pos,
-                "player": player,
-                "name": city.name,
-                "population": city.population,
-                "defense": city.defense_strength,
-                "production": city.production_progress,
-                "is_capital": city.is_capital,
-                # Preserve original data
-                "_id": city.id,
-                "_original_pos": (city.x, city.y),
-                "_owner_id": city.owner_id,
-                "_buildings": city.buildings,
-                "_available_production": city.available_production,
-            })
+            cities.append(
+                {
+                    "position": scaled_pos,
+                    "player": player,
+                    "name": city.name,
+                    "population": city.population,
+                    "defense": city.defense_strength,
+                    "production": city.production_progress,
+                    "is_capital": city.is_capital,
+                    # Preserve original data
+                    "_id": city.id,
+                    "_original_pos": (city.x, city.y),
+                    "_owner_id": city.owner_id,
+                    "_buildings": city.buildings,
+                    "_available_production": city.available_production,
+                }
+            )
 
         return cities
 
-    def _convert_visibility(
-        self, state: GameStateData
-    ) -> dict[tuple[int, int], str]:
+    def _convert_visibility(self, state: GameStateData) -> dict[tuple[int, int], str]:
         """Convert visibility data with collision handling.
 
         When multiple tiles map to the same position, uses the highest
@@ -701,6 +693,163 @@ class StateConverter:
             "score": 0,
             "military_strength": 0,
         }
+
+    def _extract_resources(self, state: GameStateData) -> dict[str, Any]:
+        """Extract resource information for current player.
+
+        Args:
+            state: Game state data.
+
+        Returns:
+            Dictionary mapping resource names to counts/yields.
+        """
+        resources: dict[str, Any] = {
+            # Core yields
+            "gold": 0,
+            "gold_per_turn": 0,
+            "faith": 0,
+            "faith_per_turn": 0,
+            "culture": 0,
+            "culture_per_turn": 0,
+            "science": 0,
+            "science_per_turn": 0,
+            "production_per_turn": 0,
+            # Strategic resources
+            "strategic": {},
+            # Luxury resources
+            "luxury": {},
+        }
+
+        # Find current player
+        for player in state.players:
+            if player.id == state.player_id:
+                resources["gold"] = player.gold
+                resources["faith"] = player.faith
+                resources["science_per_turn"] = player.science_per_turn
+                resources["culture_per_turn"] = player.culture_per_turn
+
+                # Calculate production from cities
+                total_production = 0
+                for city in state.cities:
+                    if city.owner_id == player.id:
+                        # Estimate production from population
+                        total_production += city.population * 2
+                resources["production_per_turn"] = total_production
+                break
+
+        return resources
+
+    def _extract_technologies(self, state: GameStateData) -> dict[str, Any]:
+        """Extract technology progress for current player.
+
+        Args:
+            state: Game state data.
+
+        Returns:
+            Dictionary with technology status.
+        """
+        technologies: dict[str, Any] = {
+            "researched": [],
+            "in_progress": None,
+            "progress_percent": 0.0,
+            "available": [],
+            "count": 0,
+        }
+
+        # Find current player
+        for player in state.players:
+            if player.id == state.player_id:
+                technologies["researched"] = list(player.techs_researched)
+                technologies["in_progress"] = player.current_research
+                technologies["count"] = len(player.techs_researched)
+                break
+
+        return technologies
+
+    def _extract_civics(self, state: GameStateData) -> dict[str, Any]:
+        """Extract civic progress for current player.
+
+        Args:
+            state: Game state data.
+
+        Returns:
+            Dictionary with civic status.
+        """
+        # Note: Civics data not currently exposed in protocol
+        # This is a placeholder for future expansion
+        civics: dict[str, Any] = {
+            "completed": [],
+            "in_progress": None,
+            "progress_percent": 0.0,
+            "available": [],
+            "active_government": None,
+            "active_policies": [],
+        }
+
+        return civics
+
+    def _extract_victory_progress(self, state: GameStateData) -> dict[str, float]:
+        """Extract victory condition progress for current player.
+
+        Calculates approximate progress toward different victory types
+        based on available game state data.
+
+        Args:
+            state: Game state data.
+
+        Returns:
+            Dictionary mapping victory type to progress (0.0-1.0).
+        """
+        victory_progress: dict[str, float] = {
+            "domination": 0.0,
+            "science": 0.0,
+            "culture": 0.0,
+            "religious": 0.0,
+            "diplomatic": 0.0,
+            "score": 0.0,
+        }
+
+        # Find current player data
+        current_player_score = 0
+        max_score = 1  # Avoid division by zero
+
+        for player in state.players:
+            if player.id == state.player_id:
+                current_player_score = player.score
+            max_score = max(max_score, player.score)
+
+        # Score progress (relative to max observed)
+        if max_score > 0:
+            victory_progress["score"] = current_player_score / max_score
+
+        # Domination progress: count capitals controlled vs total players
+        total_players = len(state.players)
+        if total_players > 0:
+            # Count capitals owned by current player
+            capitals_owned = sum(
+                1 for city in state.cities
+                if city.is_capital and city.owner_id == state.player_id
+            )
+            victory_progress["domination"] = capitals_owned / total_players
+
+        # Science progress: based on technologies researched
+        # Full Civ6 has ~80 techs, approximate
+        for player in state.players:
+            if player.id == state.player_id:
+                tech_count = len(player.techs_researched)
+                victory_progress["science"] = min(1.0, tech_count / 50.0)
+                break
+
+        # Culture progress: estimate from culture per turn * cities
+        our_cities = sum(1 for city in state.cities if city.owner_id == state.player_id)
+        for player in state.players:
+            if player.id == state.player_id:
+                # Rough estimate: need lots of culture to win
+                culture_rate = player.culture_per_turn
+                victory_progress["culture"] = min(1.0, (culture_rate * our_cities) / 500.0)
+                break
+
+        return victory_progress
 
     def inverse_scale_coords(self, x: int, y: int) -> tuple[int, int]:
         """Convert scaled coordinates back to original Civ6 coordinates.

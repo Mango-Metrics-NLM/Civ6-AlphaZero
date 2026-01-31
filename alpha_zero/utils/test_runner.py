@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 class RunStatus(Enum):
     """Test execution status."""
+
     PASSED = "passed"
     FAILED = "failed"
     ERROR = "error"
@@ -50,6 +51,7 @@ class RunStatus(Enum):
 @dataclass
 class RunResult:
     """Result of a test execution."""
+
     status: RunStatus
     total_tests: int = 0
     passed: int = 0
@@ -323,6 +325,7 @@ class PytestRunner:
             # Parse summary
             if "passed" in line_lower or "failed" in line_lower:
                 import re
+
                 numbers = re.findall(r"(\d+)\s+(passed|failed|error|skipped)", line_lower)
                 for count, status in numbers:
                     count = int(count)
@@ -348,6 +351,7 @@ class PytestRunner:
             for line in output.split("\n"):
                 if "TOTAL" in line and "%" in line:
                     import re
+
                     match = re.search(r"(\d+)%", line)
                     if match:
                         coverage_percent = float(match.group(1))

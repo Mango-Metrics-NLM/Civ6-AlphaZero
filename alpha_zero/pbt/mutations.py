@@ -128,9 +128,7 @@ class GaussianMutation(BaseMutation):
         else:
             value_range = param_range.max_value - param_range.min_value
             perturbation = rng.normal(0, strength * value_range)
-            new_value = np.clip(
-                value + perturbation, param_range.min_value, param_range.max_value
-            )
+            new_value = np.clip(value + perturbation, param_range.min_value, param_range.max_value)
 
         if param_range.discrete:
             new_value = int(round(new_value))
@@ -212,9 +210,7 @@ class PolynomialMutation(BaseMutation):
             log_max = math.log(param_range.max_value)
             y = (log_val - log_min) / (log_max - log_min)
         else:
-            y = (value - param_range.min_value) / (
-                param_range.max_value - param_range.min_value
-            )
+            y = (value - param_range.min_value) / (param_range.max_value - param_range.min_value)
 
         # Apply polynomial mutation
         u = rng.random()

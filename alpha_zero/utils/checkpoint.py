@@ -173,8 +173,7 @@ def load_model_state(
         return data
 
     raise KeyError(
-        f"Could not find model state dict in checkpoint. "
-        f"Available keys: {list(data.keys())}"
+        f"Could not find model state dict in checkpoint. Available keys: {list(data.keys())}"
     )
 
 

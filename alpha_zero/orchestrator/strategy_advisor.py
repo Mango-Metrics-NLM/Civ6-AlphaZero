@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -50,7 +50,7 @@ class AnalysisResult:
 
     def __post_init__(self):
         if not self.timestamp:
-            self.timestamp = datetime.now(timezone.utc).isoformat()
+            self.timestamp = datetime.now(UTC).isoformat()
 
 
 @dataclass
@@ -163,9 +163,7 @@ class StrategyAdvisor:
                 state_desc = self._describe_state(state)
                 results = self.rag.query_strategy(state_desc, game_context=context)
                 if results:
-                    rag_context = "\n".join(
-                        f"- {r.content[:200]}" for r in results[:3]
-                    )
+                    rag_context = "\n".join(f"- {r.content[:200]}" for r in results[:3])
 
             # Build prompt
             prompt = self._build_analysis_prompt(state, context, rag_context)
@@ -327,7 +325,7 @@ Provide 3-5 specific, actionable suggestions for improving training.
         Returns:
             Complete game report.
         """
-        game_id = game_id or datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        game_id = game_id or datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
 
         if not self.config.enabled or not self.llm_client:
             return GameReport(

@@ -457,8 +457,7 @@ class FeedbackHandler:
         action = self.determine_recovery_action(event)
 
         logger.info(
-            f"Handling event from {event.source}: "
-            f"strategy={strategy.value}, action={action.value}"
+            f"Handling event from {event.source}: strategy={strategy.value}, action={action.value}"
         )
 
         if strategy == FeedbackStrategy.ESCALATE:

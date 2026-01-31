@@ -130,9 +130,7 @@ class PopulationManager:
         self._load_weights_fn: Callable[[str, str], None] | None = None
         self._copy_weights_fn: Callable[[str, str], None] | None = None
 
-        logger.info(
-            f"PopulationManager initialized with population_size={config.population_size}"
-        )
+        logger.info(f"PopulationManager initialized with population_size={config.population_size}")
 
     def initialize(self, existing_agents: list[AgentState] | None = None) -> None:
         """Initialize the population with random hyperparameters.
@@ -152,9 +150,7 @@ class PopulationManager:
                 agent = AgentState(hyperparameters=hyperparameters)
                 self._agents[agent.agent_id] = agent
 
-            logger.info(
-                f"Initialized population with {self.config.population_size} random agents"
-            )
+            logger.info(f"Initialized population with {self.config.population_size} random agents")
 
         self._generation = 0
 
@@ -222,9 +218,7 @@ class PopulationManager:
             logger.warning(f"Agent not found for fitness update: {agent_id}")
             return
 
-        agent.update_fitness(
-            fitness, max_history=self.config.fitness_smoothing_window * 2
-        )
+        agent.update_fitness(fitness, max_history=self.config.fitness_smoothing_window * 2)
         agent.games_played += games_played
         agent.training_steps += training_steps
 
@@ -327,9 +321,7 @@ class PopulationManager:
             changes.append((weak_id, strong_id, new_params))
 
         self._generation += 1
-        logger.info(
-            f"Generation {self._generation}: replaced {len(changes)} agents"
-        )
+        logger.info(f"Generation {self._generation}: replaced {len(changes)} agents")
 
         return changes
 
@@ -366,10 +358,9 @@ class PopulationManager:
 
         elif method == SelectionMethod.ROULETTE:
             # Roulette wheel selection based on fitness
-            fitnesses = np.array([
-                max(0.01, self._agents[aid].get_smoothed_fitness())
-                for aid in strong_agents
-            ])
+            fitnesses = np.array(
+                [max(0.01, self._agents[aid].get_smoothed_fitness()) for aid in strong_agents]
+            )
             probabilities = fitnesses / fitnesses.sum()
             return self.rng.choice(strong_agents, p=probabilities)
 
@@ -436,7 +427,7 @@ class PopulationManager:
         if len(self._stats_history) < self.config.convergence_window:
             return False
 
-        recent_stats = self._stats_history[-self.config.convergence_window:]
+        recent_stats = self._stats_history[-self.config.convergence_window :]
         fitness_std = np.mean([s.std_fitness for s in recent_stats])
 
         return fitness_std < self.config.convergence_threshold
@@ -580,7 +571,7 @@ class PopulationManager:
         )
 
         # Remove old checkpoints
-        for old_checkpoint in checkpoints[self.config.max_checkpoints:]:
+        for old_checkpoint in checkpoints[self.config.max_checkpoints :]:
             try:
                 shutil.rmtree(old_checkpoint)
                 logger.debug(f"Removed old checkpoint: {old_checkpoint}")

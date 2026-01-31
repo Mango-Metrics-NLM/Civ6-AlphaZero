@@ -166,7 +166,9 @@ class MCTS:
         self.network_fn = network_fn
         self.root: MCTSNode | None = None
 
-    def set_network(self, network_fn: Callable[[dict[str, np.ndarray]], tuple[np.ndarray, float]]) -> None:
+    def set_network(
+        self, network_fn: Callable[[dict[str, np.ndarray]], tuple[np.ndarray, float]]
+    ) -> None:
         """Set the network function for evaluation.
 
         Args:
@@ -339,6 +341,7 @@ def create_network_fn(
     Returns:
         Function that takes observation and returns (policy, value).
     """
+
     def network_fn(obs: dict[str, np.ndarray]) -> tuple[np.ndarray, float]:
         spatial = torch.tensor(obs["spatial"]).unsqueeze(0).float().to(device)
         vector = torch.tensor(obs["vector"]).unsqueeze(0).float().to(device)

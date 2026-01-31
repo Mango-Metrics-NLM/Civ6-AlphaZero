@@ -2,7 +2,6 @@
 Integration tests for the orchestrator.
 """
 
-
 import pytest
 
 from agentic_framework import (
@@ -246,7 +245,7 @@ class TestOrchestratorExecution:
             on_agent_complete=lambda name, result: completed_agents.append(name),
         )
 
-        _result = orchestrator.execute(dry_run=True)
+        orchestrator.execute(dry_run=True)
 
         assert len(started_agents) > 0
         assert len(completed_agents) > 0

@@ -2,8 +2,6 @@
 Tests for configuration management.
 """
 
-
-
 from agentic_framework.config import (
     AgenticConfig,
     ConfigLoader,

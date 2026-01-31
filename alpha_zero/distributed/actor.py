@@ -26,6 +26,10 @@ from alpha_zero.distributed.shared_storage import (
     WeightSynchronizer,
 )
 from alpha_zero.envs.microciv import MicroCivEnv
+from alpha_zero.utils.reward_shaping import (
+    RewardShaper,
+    RewardShapingConfig,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +71,11 @@ class ActorConfig:
     # Logging
     log_interval: int = 10  # Log every N games
 
+    # Reward shaping settings
+    use_reward_shaping: bool = True
+    reward_shaping_weight: float = 0.5  # How much to weight shaped rewards vs outcome
+    n_step_returns: int = 5  # N-step return for value targets (0 = full game)
+
 
 @dataclass
 class GameHistoryItem:
@@ -77,6 +86,7 @@ class GameHistoryItem:
     action_mask: np.ndarray
     policy: np.ndarray
     player: int
+    shaped_reward: float = 0.0  # Intermediate reward from reward shaping
 
 
 class SelfPlayActor:
@@ -203,6 +213,11 @@ class SelfPlayActor:
 
         Returns:
             Game trajectory with training examples.
+
+        Enhanced with reward shaping:
+        - Tracks intermediate rewards for better credit assignment
+        - Computes n-step returns for value targets
+        - Blends shaped rewards with final outcome
         """
         if self.mcts is None:
             raise RuntimeError("MCTS not initialized")
@@ -210,10 +225,28 @@ class SelfPlayActor:
         game_history: list[GameHistoryItem] = []
         obs, _ = self.env.reset()
 
+        # Initialize reward shaper if enabled
+        reward_shaper = None
+        if self.config.use_reward_shaping:
+            shaping_config = RewardShapingConfig(
+                enabled=True,
+                gamma=0.99,
+            )
+            reward_shaper = RewardShaper(shaping_config, self.config.board_size)
+
         # Play until game ends
         while True:
             # Get MCTS policy
             action_probs, _ = self.mcts.search(self.env)
+
+            # Compute shaped reward for this state
+            shaped_reward = 0.0
+            if reward_shaper is not None:
+                shaped_reward = reward_shaper.shape_reward(
+                    obs=obs,
+                    reward=0.0,  # No terminal reward yet
+                    terminated=False,
+                )
 
             # Store state and policy
             game_history.append(
@@ -223,6 +256,7 @@ class SelfPlayActor:
                     action_mask=obs["action_mask"].copy(),
                     policy=action_probs.copy(),
                     player=self.env.current_player,
+                    shaped_reward=shaped_reward,
                 ),
             )
 
@@ -240,27 +274,9 @@ class SelfPlayActor:
             if terminated or truncated:
                 break
 
-        # Create training examples with final values
+        # Create training examples with value targets
         winner = info.get("winner")
-        examples = []
-
-        for hist in game_history:
-            if winner is None:
-                value = 0.0  # Draw
-            elif winner == hist.player:
-                value = 1.0  # Win
-            else:
-                value = -1.0  # Loss
-
-            examples.append(
-                TrainingExample(
-                    spatial=hist.spatial,
-                    vector=hist.vector,
-                    action_mask=hist.action_mask,
-                    policy=hist.policy,
-                    value=value,
-                ),
-            )
+        examples = self._create_training_examples(game_history, winner)
 
         # Create trajectory
         self._game_id_counter += 1
@@ -273,6 +289,98 @@ class SelfPlayActor:
         )
 
         return trajectory
+
+    def _create_training_examples(
+        self,
+        game_history: list[GameHistoryItem],
+        winner: int | None,
+    ) -> list[TrainingExample]:
+        """Create training examples with enhanced value targets.
+
+        Args:
+            game_history: List of game history items.
+            winner: Winner of the game (0, 1, or None for draw).
+
+        Returns:
+            List of training examples with computed value targets.
+        """
+        examples = []
+        _n_steps = len(game_history)  # Reserved for future n-step return
+        gamma = 0.99
+
+        for i, hist in enumerate(game_history):
+            # Base value from game outcome
+            if winner is None:
+                outcome_value = 0.0  # Draw
+            elif winner == hist.player:
+                outcome_value = 1.0  # Win
+            else:
+                outcome_value = -1.0  # Loss
+
+            # Compute value target
+            if self.config.use_reward_shaping and self.config.n_step_returns > 0:
+                # N-step return: sum of discounted shaped rewards + bootstrapped value
+                value = self._compute_n_step_value(
+                    game_history,
+                    i,
+                    outcome_value,
+                    gamma,
+                    self.config.n_step_returns,
+                )
+                # Blend with outcome
+                value = (
+                    self.config.reward_shaping_weight * value
+                    + (1 - self.config.reward_shaping_weight) * outcome_value
+                )
+            else:
+                # Traditional: just use game outcome
+                value = outcome_value
+
+            examples.append(
+                TrainingExample(
+                    spatial=hist.spatial,
+                    vector=hist.vector,
+                    action_mask=hist.action_mask,
+                    policy=hist.policy,
+                    value=value,
+                ),
+            )
+
+        return examples
+
+    def _compute_n_step_value(
+        self,
+        game_history: list[GameHistoryItem],
+        start_idx: int,
+        final_value: float,
+        gamma: float,
+        n_steps: int,
+    ) -> float:
+        """Compute n-step return value for a state.
+
+        Args:
+            game_history: Full game history.
+            start_idx: Index of the state.
+            final_value: Final game outcome value.
+            gamma: Discount factor.
+            n_steps: Number of steps to look ahead.
+
+        Returns:
+            N-step return value.
+        """
+        total_return = 0.0
+        discount = 1.0
+        end_idx = min(start_idx + n_steps, len(game_history))
+
+        # Sum discounted shaped rewards
+        for i in range(start_idx, end_idx):
+            total_return += discount * game_history[i].shaped_reward
+            discount *= gamma
+
+        # Bootstrap with final value
+        total_return += discount * final_value
+
+        return total_return
 
     def run(self) -> None:
         """Main actor loop.
@@ -293,8 +401,7 @@ class SelfPlayActor:
             # Check for max games limit
             if self.config.max_games > 0 and self.games_played >= self.config.max_games:
                 logger.info(
-                    f"Actor {self.config.actor_id}: Reached max games "
-                    f"({self.config.max_games})",
+                    f"Actor {self.config.actor_id}: Reached max games ({self.config.max_games})",
                 )
                 break
 
@@ -335,6 +442,7 @@ class SelfPlayActor:
             except Exception as e:
                 logger.error(f"Actor {self.config.actor_id}: Error in game: {e}")
                 import traceback
+
                 traceback.print_exc()
                 time.sleep(1.0)  # Brief pause before retry
 
@@ -359,16 +467,13 @@ class SelfPlayActor:
         """
         elapsed = time.time() - self.start_time if self.start_time > 0 else 0
         return {
-            'actor_id': self.config.actor_id,
-            'games_played': self.games_played,
-            'total_examples': self.total_examples,
-            'elapsed_time': elapsed,
-            'games_per_second': self.games_played / elapsed if elapsed > 0 else 0,
-            'model_version': (
-                self.weight_sync.get_current_version()
-                if self.weight_sync else 0
-            ),
-            'is_running': self._running,
+            "actor_id": self.config.actor_id,
+            "games_played": self.games_played,
+            "total_examples": self.total_examples,
+            "elapsed_time": elapsed,
+            "games_per_second": self.games_played / elapsed if elapsed > 0 else 0,
+            "model_version": (self.weight_sync.get_current_version() if self.weight_sync else 0),
+            "is_running": self._running,
         }
 
 
@@ -411,6 +516,7 @@ def actor_process(
     except Exception as e:
         logger.error(f"Actor {actor_id} crashed: {e}")
         import traceback
+
         traceback.print_exc()
     finally:
         logger.info(f"Actor {actor_id}: Process exiting")
@@ -455,21 +561,21 @@ class ActorPool:
 
         # Create config dict (excluding actor_id which we set per-actor)
         config_dict = {
-            'board_size': self.base_config.board_size,
-            'max_turns': self.base_config.max_turns,
-            'num_res_blocks': self.base_config.num_res_blocks,
-            'num_filters': self.base_config.num_filters,
-            'num_simulations': self.base_config.num_simulations,
-            'c_puct': self.base_config.c_puct,
-            'dirichlet_alpha': self.base_config.dirichlet_alpha,
-            'dirichlet_epsilon': self.base_config.dirichlet_epsilon,
-            'temperature': self.base_config.temperature,
-            'temperature_threshold': self.base_config.temperature_threshold,
-            'games_per_update': self.base_config.games_per_update,
-            'max_games': self.base_config.max_games,
-            'device': self.base_config.device,
-            'weight_update_interval': self.base_config.weight_update_interval,
-            'log_interval': self.base_config.log_interval,
+            "board_size": self.base_config.board_size,
+            "max_turns": self.base_config.max_turns,
+            "num_res_blocks": self.base_config.num_res_blocks,
+            "num_filters": self.base_config.num_filters,
+            "num_simulations": self.base_config.num_simulations,
+            "c_puct": self.base_config.c_puct,
+            "dirichlet_alpha": self.base_config.dirichlet_alpha,
+            "dirichlet_epsilon": self.base_config.dirichlet_epsilon,
+            "temperature": self.base_config.temperature,
+            "temperature_threshold": self.base_config.temperature_threshold,
+            "games_per_update": self.base_config.games_per_update,
+            "max_games": self.base_config.max_games,
+            "device": self.base_config.device,
+            "weight_update_interval": self.base_config.weight_update_interval,
+            "log_interval": self.base_config.log_interval,
         }
 
         # Spawn actor processes
@@ -539,21 +645,21 @@ class ActorPool:
 
         restarted = 0
         config_dict = {
-            'board_size': self.base_config.board_size,
-            'max_turns': self.base_config.max_turns,
-            'num_res_blocks': self.base_config.num_res_blocks,
-            'num_filters': self.base_config.num_filters,
-            'num_simulations': self.base_config.num_simulations,
-            'c_puct': self.base_config.c_puct,
-            'dirichlet_alpha': self.base_config.dirichlet_alpha,
-            'dirichlet_epsilon': self.base_config.dirichlet_epsilon,
-            'temperature': self.base_config.temperature,
-            'temperature_threshold': self.base_config.temperature_threshold,
-            'games_per_update': self.base_config.games_per_update,
-            'max_games': self.base_config.max_games,
-            'device': self.base_config.device,
-            'weight_update_interval': self.base_config.weight_update_interval,
-            'log_interval': self.base_config.log_interval,
+            "board_size": self.base_config.board_size,
+            "max_turns": self.base_config.max_turns,
+            "num_res_blocks": self.base_config.num_res_blocks,
+            "num_filters": self.base_config.num_filters,
+            "num_simulations": self.base_config.num_simulations,
+            "c_puct": self.base_config.c_puct,
+            "dirichlet_alpha": self.base_config.dirichlet_alpha,
+            "dirichlet_epsilon": self.base_config.dirichlet_epsilon,
+            "temperature": self.base_config.temperature,
+            "temperature_threshold": self.base_config.temperature_threshold,
+            "games_per_update": self.base_config.games_per_update,
+            "max_games": self.base_config.max_games,
+            "device": self.base_config.device,
+            "weight_update_interval": self.base_config.weight_update_interval,
+            "log_interval": self.base_config.log_interval,
         }
 
         for i, process in enumerate(self.processes):

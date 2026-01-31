@@ -15,11 +15,10 @@ import pytest
 
 from alpha_zero.pbt.config import (
     AgentState,
-    HyperparameterRange,
     HyperparameterSpace,
     PBTConfig,
 )
-from alpha_zero.pbt.mutations import MutationOperator, create_mutation_operator
+from alpha_zero.pbt.mutations import create_mutation_operator
 from alpha_zero.pbt.population import PopulationManager
 
 
@@ -53,9 +52,7 @@ class TestPBTIntegration:
         # Update fitness scores for all agents
         for i, agent_id in enumerate(population_manager.get_agent_ids()):
             fitness = 0.5 + i * 0.1  # 0.5, 0.6, 0.7, 0.8
-            population_manager.update_fitness(
-                agent_id, fitness, games_played=10
-            )
+            population_manager.update_fitness(agent_id, fitness, games_played=10)
 
         # Check rankings - get_fitness_ranking returns [(agent_id, fitness), ...]
         ranking = population_manager.get_fitness_ranking()
@@ -163,9 +160,9 @@ class TestPBTIntegration:
         initial_generation = manager.generation
 
         # Run several generations
-        for gen in range(5):
+        for _gen in range(5):
             # Update fitness
-            for i, agent_id in enumerate(manager.get_agent_ids()):
+            for _i, agent_id in enumerate(manager.get_agent_ids()):
                 fitness = np.random.uniform(0.3, 0.9)
                 manager.update_fitness(agent_id, fitness, games_played=5)
 
@@ -216,9 +213,7 @@ class TestPBTIntegration:
 
         # Add varied fitness
         for i, agent_id in enumerate(population_manager.get_agent_ids()):
-            population_manager.update_fitness(
-                agent_id, fitness=0.5 + i * 0.1, games_played=10 + i
-            )
+            population_manager.update_fitness(agent_id, fitness=0.5 + i * 0.1, games_played=10 + i)
 
         # compute_stats() returns a PopulationStats object
         stats = population_manager.compute_stats()

@@ -363,6 +363,7 @@ class TestWandbLoggerGlobal:
         """Test getting global logger."""
         # Reset global state
         import alpha_zero.utils.wandb_logger as wandb_module
+
         wandb_module._global_logger = None
 
         logger = get_wandb_logger()
@@ -386,6 +387,7 @@ class TestWandbLoggerIntegration:
     def test_import_wandb(self):
         """Test that wandb can be imported."""
         import wandb
+
         assert wandb is not None
 
     def test_config_creation(self):

@@ -2,7 +2,6 @@
 Tests for permission management.
 """
 
-
 import pytest
 
 from agentic_framework.config import AgenticConfig

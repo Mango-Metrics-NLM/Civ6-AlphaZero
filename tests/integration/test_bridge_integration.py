@@ -111,7 +111,8 @@ def sample_lua_state() -> dict[str, Any]:
                     "is_visible": x < 10 and y < 10,
                     "features": ["FEATURE_FOREST"] if (x * y) % 5 == 0 else [],
                 }
-                for x in range(44) for y in range(26)
+                for x in range(44)
+                for y in range(26)
             ],
         },
         "units": [
@@ -186,7 +187,8 @@ def sample_encoder_state() -> dict[str, Any]:
                 "type": "plains" if (x + y) % 2 == 0 else "grassland",
                 "features": ["forest"] if (x * y) % 5 == 0 else [],
             }
-            for x in range(16) for y in range(16)
+            for x in range(16)
+            for y in range(16)
         },
         "units": [
             {
@@ -223,9 +225,7 @@ def sample_encoder_state() -> dict[str, Any]:
                 "population": 5,
             },
         ],
-        "visibility": {
-            (x, y): True for x in range(10) for y in range(10)
-        },
+        "visibility": {(x, y): True for x in range(10) for y in range(10)},
         "_legal_actions": [
             LegalAction(action_type="end_turn"),
             LegalAction(action_type="move", unit_id=1, targets=[(0, 1), (1, 0), (2, 1)]),
@@ -263,7 +263,7 @@ class TestStateConversionIntegration:
         # Verify terrain was converted and scaled
         assert len(encoder_state["terrain"]) > 0
         # All coordinates should be within board_size
-        for (x, y) in encoder_state["terrain"].keys():
+        for x, y in encoder_state["terrain"].keys():
             assert 0 <= x < 16, f"x={x} out of bounds"
             assert 0 <= y < 16, f"y={y} out of bounds"
 
@@ -298,6 +298,7 @@ class TestStateConversionIntegration:
 
         # Verify tensor types (encoder may return torch or numpy)
         import torch
+
         if isinstance(spatial, torch.Tensor):
             assert spatial.dtype == torch.float32
             assert vector.dtype == torch.float32
@@ -433,7 +434,11 @@ class TestFileBridgeIntegration:
             assert cmd_content["msg_id"] == 1
 
             # Simulate Lua writing ack
-            ack_data = {"msg_id": 1, "success": True, "executed": [{"action_type": "end_turn", "success": True}]}
+            ack_data = {
+                "msg_id": 1,
+                "success": True,
+                "executed": [{"action_type": "end_turn", "success": True}],
+            }
             bridge_config.ack_file.write_text(json.dumps(ack_data))
 
             # Wait for ack
@@ -812,15 +817,14 @@ class TestPerformanceIntegration:
 
         avg_time = elapsed / 100
         # Should average under 10ms per conversion
-        assert avg_time < 0.01, f"Avg conversion: {avg_time*1000:.2f}ms, expected < 10ms"
+        assert avg_time < 0.01, f"Avg conversion: {avg_time * 1000:.2f}ms, expected < 10ms"
 
     def test_action_mask_generation_performance(self, action_converter, sample_encoder_state):
         """Test action mask generation performance."""
         legal_actions = [
             LegalAction(action_type="end_turn"),
         ] + [
-            LegalAction(action_type="move", unit_id=i, targets=[(0, 0), (1, 1)])
-            for i in range(50)
+            LegalAction(action_type="move", unit_id=i, targets=[(0, 0), (1, 1)]) for i in range(50)
         ]
 
         # Measure generation time
@@ -831,7 +835,7 @@ class TestPerformanceIntegration:
 
         avg_time = elapsed / 100
         # Should average under 50ms per generation
-        assert avg_time < 0.05, f"Avg mask generation: {avg_time*1000:.2f}ms, expected < 50ms"
+        assert avg_time < 0.05, f"Avg mask generation: {avg_time * 1000:.2f}ms, expected < 50ms"
 
 
 # ==============================================================================

@@ -11,6 +11,7 @@ Example:
     >>> strategic = StrategicController(config, network)
     >>> goals = strategic.decide(game_state)
 """
+
 from __future__ import annotations
 
 from alpha_zero.hierarchical.controllers.level_controller import (

@@ -18,6 +18,16 @@ from typing import Any
 from ..config import AgenticConfig, VerificationCommand
 from ..utils.command_runner import CommandRunner, RetryConfig
 from ..utils.logging_config import get_logger
+from .constants import (
+    DEFAULT_BACKOFF_MULTIPLIER,
+    DEFAULT_ERROR_THRESHOLD,
+    DEFAULT_IMPORT_ERROR_MAX_RETRIES,
+    DEFAULT_MAX_ERRORS_DISPLAY,
+    DEFAULT_MAX_ITERATIONS,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_MESSAGE_TRUNCATE_LENGTH,
+    DEFAULT_RETRY_DELAY_SECONDS,
+)
 
 logger = get_logger("feedback_loop")
 
@@ -126,7 +136,7 @@ class ErrorHandler:
             ErrorPattern(
                 error_type="lint_error",
                 action=ErrorAction.AUTO_FIX,
-                max_retries=3,
+                max_retries=DEFAULT_MAX_RETRIES,
                 pattern=re.compile(r"(?:error|warning):\s*(.+?)(?:\n|$)", re.IGNORECASE),
             )
         )
@@ -136,7 +146,7 @@ class ErrorHandler:
             ErrorPattern(
                 error_type="type_error",
                 action=ErrorAction.ANALYZE_FIX,
-                max_retries=3,
+                max_retries=DEFAULT_MAX_RETRIES,
                 pattern=re.compile(r"error:\s*(.+?)(?:\n|$)", re.IGNORECASE),
             )
         )
@@ -146,7 +156,7 @@ class ErrorHandler:
             ErrorPattern(
                 error_type="test_failure",
                 action=ErrorAction.ANALYZE_FIX,
-                max_retries=3,
+                max_retries=DEFAULT_MAX_RETRIES,
                 pattern=re.compile(r"FAILED\s+(.+?)(?:\s+-|$)", re.IGNORECASE),
             )
         )
@@ -156,8 +166,10 @@ class ErrorHandler:
             ErrorPattern(
                 error_type="import_error",
                 action=ErrorAction.ANALYZE_FIX,
-                max_retries=2,
-                pattern=re.compile(r"(?:ImportError|ModuleNotFoundError):\s*(.+?)(?:\n|$)", re.IGNORECASE),
+                max_retries=DEFAULT_IMPORT_ERROR_MAX_RETRIES,
+                pattern=re.compile(
+                    r"(?:ImportError|ModuleNotFoundError):\s*(.+?)(?:\n|$)", re.IGNORECASE
+                ),
             )
         )
 
@@ -170,9 +182,7 @@ class ErrorHandler:
         self._patterns.append(pattern)
         logger.debug(f"Registered error pattern: {pattern.error_type}")
 
-    def register_fixer(
-        self, error_type: str, fixer: Callable[[str, str], str | None]
-    ) -> None:
+    def register_fixer(self, error_type: str, fixer: Callable[[str, str], str | None]) -> None:
         """Register a fixer function for an error type.
 
         Args:
@@ -197,12 +207,14 @@ class ErrorHandler:
             if pattern.pattern:
                 matches = pattern.pattern.findall(output)
                 for match in matches:
-                    errors.append({
-                        "type": pattern.error_type,
-                        "message": match if isinstance(match, str) else match[0],
-                        "action": pattern.action.value,
-                        "max_retries": pattern.max_retries,
-                    })
+                    errors.append(
+                        {
+                            "type": pattern.error_type,
+                            "message": match if isinstance(match, str) else match[0],
+                            "action": pattern.action.value,
+                            "max_retries": pattern.max_retries,
+                        }
+                    )
 
         logger.debug(f"Detected {len(errors)} errors in output")
         return errors
@@ -264,7 +276,7 @@ class FeedbackLoop:
         config: AgenticConfig | None = None,
         command_runner: CommandRunner | None = None,
         error_handler: ErrorHandler | None = None,
-        max_iterations: int = 5,
+        max_iterations: int = DEFAULT_MAX_ITERATIONS,
     ) -> None:
         """Initialize the feedback loop.
 
@@ -294,23 +306,27 @@ class FeedbackLoop:
         """
         self.config = config
         self._verification_commands = config.feedback.verification_commands
-        self._success_checks = config.feedback.success_verification
+        self._success_checks = getattr(config.feedback, "success_verification", [])
 
         # Load error handling patterns
         for pattern_data in config.feedback.error_handling.auto_fix_patterns:
-            action = ErrorAction(pattern_data.get("action", "analyze_fix"))
+            action_str = pattern_data.get("action", "analyze_fix")
+            try:
+                action = ErrorAction(action_str)
+            except ValueError:
+                logger.warning(f"Invalid error action '{action_str}', defaulting to ANALYZE_FIX")
+                action = ErrorAction.ANALYZE_FIX
+
             pattern = ErrorPattern(
                 error_type=pattern_data.get("error_type", "unknown"),
                 action=action,
-                max_retries=pattern_data.get("max_retries", 3),
+                max_retries=pattern_data.get("max_retries", DEFAULT_MAX_RETRIES),
             )
             self.error_handler.register_pattern(pattern)
 
         logger.info(f"Loaded {len(self._verification_commands)} verification commands")
 
-    def set_error_callback(
-        self, callback: Callable[[str, dict[str, Any]], None]
-    ) -> None:
+    def set_error_callback(self, callback: Callable[[str, dict[str, Any]], None]) -> None:
         """Set callback for error notifications.
 
         Args:
@@ -318,9 +334,7 @@ class FeedbackLoop:
         """
         self._on_error_callback = callback
 
-    def set_fix_callback(
-        self, callback: Callable[[str, str], bool]
-    ) -> None:
+    def set_fix_callback(self, callback: Callable[[str, str], bool]) -> None:
         """Set callback for fix confirmations.
 
         Args:
@@ -348,8 +362,8 @@ class FeedbackLoop:
         # Run command with retry if configured
         retry_config = RetryConfig(
             max_retries=command.retry_count,
-            retry_delay_seconds=1.0,
-            backoff_multiplier=2.0,
+            retry_delay_seconds=DEFAULT_RETRY_DELAY_SECONDS,
+            backoff_multiplier=DEFAULT_BACKOFF_MULTIPLIER,
         )
 
         start_time = time.time()
@@ -404,7 +418,7 @@ class FeedbackLoop:
             return VerificationPhase.LINT
         elif "type" in name_lower or "mypy" in name_lower:
             return VerificationPhase.TYPE_CHECK
-        elif "unit" in name_lower:
+        elif "unit" in name_lower or "pytest" in name_lower:
             return VerificationPhase.UNIT_TEST
         elif "integration" in name_lower:
             return VerificationPhase.INTEGRATION_TEST
@@ -493,7 +507,7 @@ class FeedbackLoop:
                 error_counts[error_key] = error_counts.get(error_key, 0) + 1
 
                 # Check for repeated failures
-                if error_counts[error_key] >= 3:
+                if error_counts[error_key] >= DEFAULT_ERROR_THRESHOLD:
                     logger.warning(f"Repeated failure detected: {error_key}")
                     error["action"] = ErrorAction.ESCALATE.value
 
@@ -553,9 +567,7 @@ class FeedbackLoop:
 
         return True
 
-    def generate_error_report(
-        self, verification_results: list[VerificationResult]
-    ) -> str:
+    def generate_error_report(self, verification_results: list[VerificationResult]) -> str:
         """Generate a detailed error report.
 
         Args:
@@ -574,8 +586,8 @@ class FeedbackLoop:
 
             if not result.success:
                 lines.append(f"- Errors: {len(result.errors)}")
-                for error in result.errors[:5]:  # Limit to first 5
-                    lines.append(f"  - [{error['type']}] {error['message'][:100]}")
+                for error in result.errors[:DEFAULT_MAX_ERRORS_DISPLAY]:
+                    lines.append(f"  - [{error['type']}] {error['message'][:DEFAULT_MESSAGE_TRUNCATE_LENGTH]}")
 
                 if result.error_output:
                     lines.append("- Error output:")

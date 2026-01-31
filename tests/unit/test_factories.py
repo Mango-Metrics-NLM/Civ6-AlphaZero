@@ -536,7 +536,6 @@ class TestCreateReplayBuffer:
 
     def test_buffer_add_and_sample(self):
         """Test buffer can add and sample examples."""
-        import numpy as np
 
         buffer = create_replay_buffer(max_size=100, min_size=5)
 
@@ -550,7 +549,6 @@ class TestCreateReplayBuffer:
 
     def test_buffer_max_size_enforced(self):
         """Test buffer respects max_size limit."""
-        import numpy as np
 
         buffer = create_replay_buffer(max_size=5, min_size=1)
 

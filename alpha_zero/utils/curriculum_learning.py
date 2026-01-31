@@ -165,10 +165,10 @@ class CurriculumConfig:
 
         # Validate monotonic difficulty
         for i in range(1, len(self.stages)):
-            if self.stages[i].level <= self.stages[i-1].level:
+            if self.stages[i].level <= self.stages[i - 1].level:
                 logger.warning(
                     f"Stage levels should be strictly increasing: "
-                    f"{self.stages[i-1].name} (level {self.stages[i-1].level}) "
+                    f"{self.stages[i - 1].name} (level {self.stages[i - 1].level}) "
                     f"and {self.stages[i].name} (level {self.stages[i].level})",
                 )
 
@@ -477,13 +477,15 @@ class CurriculumManager:
         new_stage = self.get_current_stage()
 
         # Record history
-        self._state.stage_history.append({
-            "type": "promotion",
-            "from_stage": old_stage.name,
-            "to_stage": new_stage.name,
-            "games": self._state.total_games,
-            "win_rate": self._get_window_win_rate(),
-        })
+        self._state.stage_history.append(
+            {
+                "type": "promotion",
+                "from_stage": old_stage.name,
+                "to_stage": new_stage.name,
+                "games": self._state.total_games,
+                "win_rate": self._get_window_win_rate(),
+            }
+        )
 
         # Reset stage counters
         self._state.games_at_stage = 0
@@ -514,13 +516,15 @@ class CurriculumManager:
         new_stage = self.get_current_stage()
 
         # Record history
-        self._state.stage_history.append({
-            "type": "demotion",
-            "from_stage": old_stage.name,
-            "to_stage": new_stage.name,
-            "games": self._state.total_games,
-            "win_rate": self._get_window_win_rate(),
-        })
+        self._state.stage_history.append(
+            {
+                "type": "demotion",
+                "from_stage": old_stage.name,
+                "to_stage": new_stage.name,
+                "games": self._state.total_games,
+                "win_rate": self._get_window_win_rate(),
+            }
+        )
 
         # Reset stage counters
         self._state.games_at_stage = 0

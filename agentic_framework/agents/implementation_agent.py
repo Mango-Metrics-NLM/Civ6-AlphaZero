@@ -83,9 +83,7 @@ class ImplementationAgent(BaseAgent):
         self._changes: list[FileChange] = []
         self._code_generators: dict[str, Callable[..., str]] = {}
 
-    def register_generator(
-        self, name: str, generator: Callable[..., str]
-    ) -> None:
+    def register_generator(self, name: str, generator: Callable[..., str]) -> None:
         """Register a code generator function.
 
         Args:
@@ -185,9 +183,7 @@ class ImplementationAgent(BaseAgent):
 
         return tasks
 
-    def _execute_task(
-        self, context: AgentContext, task: ImplementationTask
-    ) -> bool:
+    def _execute_task(self, context: AgentContext, task: ImplementationTask) -> bool:
         """Execute a single implementation task.
 
         Args:
@@ -227,7 +223,8 @@ class ImplementationAgent(BaseAgent):
                     old_content=old_content,
                     new_content=new_content,
                     description=task.description,
-                    line_changes=len(new_content.split("\n")) - len((old_content or "").split("\n")),
+                    line_changes=len(new_content.split("\n"))
+                    - len((old_content or "").split("\n")),
                 )
                 task.changes.append(change)
                 self._changes.append(change)
@@ -277,11 +274,12 @@ class ImplementationAgent(BaseAgent):
         # Ensure parent directory exists
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Write atomically
+        # Write atomically using replace() for cross-platform compatibility
         temp_path = path.with_suffix(path.suffix + ".tmp")
         try:
             temp_path.write_text(content)
-            temp_path.rename(path)
+            # Use replace() instead of rename() - works on Windows when target exists
+            temp_path.replace(path)
             logger.info(f"Wrote file: {path}")
         except Exception as e:
             if temp_path.exists():
@@ -306,6 +304,10 @@ class ImplementationAgent(BaseAgent):
         Returns:
             True if file was created.
         """
+        # Ensure context is available for permission checking
+        if self._context is None:
+            self._context = context
+
         if path.exists():
             logger.warning(f"File already exists: {path}")
             return False
@@ -343,6 +345,10 @@ class ImplementationAgent(BaseAgent):
         Returns:
             True if file was modified.
         """
+        # Ensure context is available for permission checking
+        if self._context is None:
+            self._context = context
+
         if not path.exists():
             logger.warning(f"File does not exist: {path}")
             return False
@@ -370,9 +376,7 @@ class ImplementationAgent(BaseAgent):
         self._write_file(path, new_content)
         return True
 
-    def delete_file(
-        self, context: AgentContext, path: Path, description: str = ""
-    ) -> bool:
+    def delete_file(self, context: AgentContext, path: Path, description: str = "") -> bool:
         """Delete a file.
 
         Args:
@@ -383,6 +387,10 @@ class ImplementationAgent(BaseAgent):
         Returns:
             True if file was deleted.
         """
+        # Ensure context is available for permission checking
+        if self._context is None:
+            self._context = context
+
         if not path.exists():
             logger.warning(f"File does not exist: {path}")
             return True  # Already deleted

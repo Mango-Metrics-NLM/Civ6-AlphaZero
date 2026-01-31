@@ -180,9 +180,9 @@ class TestingAgent(BaseAgent):
                 "coverage": self._coverage_report.to_dict() if self._coverage_report else None,
                 "coverage_met": coverage_met,
             },
-            warnings=[] if coverage_met else [
-                f"Coverage {self._coverage_report.total_coverage:.1f}% below threshold"
-            ],
+            warnings=[]
+            if coverage_met
+            else [f"Coverage {self._coverage_report.total_coverage:.1f}% below threshold"],
             next_agent="verification",
         )
 
@@ -273,8 +273,7 @@ class TestingAgent(BaseAgent):
         # Extract individual test results
         # Pattern matches: test_foo OR path/to/test_module.py::test_foo
         test_pattern = re.compile(
-            r"([\w./]+::test_\w+|test_\w+)\s+(PASSED|FAILED|ERROR)",
-            re.MULTILINE
+            r"([\w./]+::test_\w+|test_\w+)\s+(PASSED|FAILED|ERROR)", re.MULTILINE
         )
         for match in test_pattern.finditer(output):
             test_name = match.group(1)
@@ -287,10 +286,7 @@ class TestingAgent(BaseAgent):
             )
 
         # Extract failure messages
-        failure_pattern = re.compile(
-            r"FAILED\s+(.+?)\s+-\s+(.+?)(?:\n|$)",
-            re.MULTILINE
-        )
+        failure_pattern = re.compile(r"FAILED\s+(.+?)\s+-\s+(.+?)(?:\n|$)", re.MULTILINE)
         for match in failure_pattern.finditer(output):
             result["errors"].append(f"{match.group(1)}: {match.group(2)}")
 
@@ -323,10 +319,7 @@ class TestingAgent(BaseAgent):
             report.total_coverage = float(total_match.group(1))
 
         # Parse per-file coverage
-        file_pattern = re.compile(
-            r"^(\S+\.py)\s+\d+\s+\d+\s+(\d+)%(?:\s+(.*))?$",
-            re.MULTILINE
-        )
+        file_pattern = re.compile(r"^(\S+\.py)\s+\d+\s+\d+\s+(\d+)%(?:\s+(.*))?$", re.MULTILINE)
         for match in file_pattern.finditer(output):
             filename = match.group(1)
             coverage = float(match.group(2))
@@ -369,8 +362,7 @@ class TestingAgent(BaseAgent):
 
         # Extract function signature
         func_pattern = re.compile(
-            rf"def\s+{function_name}\s*\(([^)]*)\)(?:\s*->\s*(\S+))?:",
-            re.MULTILINE
+            rf"def\s+{function_name}\s*\(([^)]*)\)(?:\s*->\s*(\S+))?:", re.MULTILINE
         )
         match = func_pattern.search(content)
 
@@ -430,11 +422,13 @@ class TestingAgent(BaseAgent):
         ]
 
         if self._coverage_report:
-            lines.extend([
-                "### Coverage",
-                f"**Total:** {self._coverage_report.total_coverage:.1f}%",
-                "",
-            ])
+            lines.extend(
+                [
+                    "### Coverage",
+                    f"**Total:** {self._coverage_report.total_coverage:.1f}%",
+                    "",
+                ]
+            )
 
         if failed > 0:
             lines.append("### Failed Tests")

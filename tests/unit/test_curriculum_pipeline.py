@@ -5,8 +5,7 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -15,14 +14,12 @@ from alpha_zero.training.curriculum_pipeline import (
     CurriculumPipelineConfig,
     CurriculumState,
     DifficultyStage,
-    EnvironmentFactory,
     EnvironmentTier,
     EnvironmentTierConfig,
     TransferLearningConfig,
     WeightTransferManager,
     create_curriculum_pipeline,
 )
-
 
 # =============================================================================
 # Fixtures
@@ -317,8 +314,10 @@ class TestWeightTransferManager:
         target = MagicMock()
 
         result = manager.transfer_weights(
-            source, target,
-            EnvironmentTier.MICROCIV, EnvironmentTier.UNCIV,
+            source,
+            target,
+            EnvironmentTier.MICROCIV,
+            EnvironmentTier.UNCIV,
         )
         assert result["strategy"] == "none"
         assert result["transferred_layers"] == 0
@@ -359,14 +358,14 @@ class TestCurriculumPipeline:
 
     def test_record_game_win(self, pipeline):
         """Test recording a winning game."""
-        result = pipeline.record_game(won=True)
+        _result = pipeline.record_game(won=True)
         assert pipeline.total_games == 1
         assert pipeline.win_rate == 1.0
         assert pipeline.elo_rating > 1000.0  # ELO should increase
 
     def test_record_game_loss(self, pipeline):
         """Test recording a losing game."""
-        result = pipeline.record_game(won=False)
+        _result = pipeline.record_game(won=False)
         assert pipeline.total_games == 1
         assert pipeline.win_rate == 0.0
         assert pipeline.elo_rating < 1000.0  # ELO should decrease
@@ -401,7 +400,7 @@ class TestCurriculumPipeline:
         for _ in range(30):
             pipeline.record_game(won=True)
 
-        intermediate_stage = pipeline.current_stage.name
+        _intermediate_stage = pipeline.current_stage.name
 
         # Now lose consistently
         for _ in range(50):

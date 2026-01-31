@@ -32,6 +32,7 @@ from typing import Any, TypeVar
 # Optional imports - gracefully handle missing dependencies
 try:
     from openai import AsyncOpenAI, OpenAI
+
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
@@ -40,6 +41,7 @@ except ImportError:
 
 try:
     from anthropic import Anthropic, AsyncAnthropic
+
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
@@ -49,6 +51,7 @@ except ImportError:
 # Load environment variables from .env file if available
 try:
     from dotenv import load_dotenv
+
     _env_path = Path(__file__).parent.parent.parent / ".env"
     if _env_path.exists():
         load_dotenv(_env_path)
@@ -62,6 +65,7 @@ T = TypeVar("T")
 
 class LLMProvider(Enum):
     """Supported LLM providers."""
+
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     AUTO = "auto"
@@ -136,6 +140,7 @@ class LLMConfig:
 @dataclass
 class LLMMessage:
     """Represents a message in a conversation."""
+
     role: str  # "system", "user", "assistant"
     content: str
     name: str | None = None
@@ -155,6 +160,7 @@ class LLMMessage:
 @dataclass
 class LLMResponse:
     """Represents a response from an LLM."""
+
     content: str
     model: str
     provider: LLMProvider
@@ -196,6 +202,7 @@ class LLMRateLimitError(LLMError):
 
 class LLMProviderError(LLMError):
     """Provider-specific error."""
+
     def __init__(self, message: str, provider: LLMProvider):
         super().__init__(message)
         self.provider = provider
@@ -392,10 +399,7 @@ class AnthropicClient(BaseLLMClient):
 
         content = ""
         if response.content:
-            content = "".join(
-                block.text for block in response.content
-                if hasattr(block, "text")
-            )
+            content = "".join(block.text for block in response.content if hasattr(block, "text"))
 
         usage = {
             "input_tokens": response.usage.input_tokens if response.usage else 0,
@@ -547,13 +551,14 @@ class LLMClient:
             for attempt in range(self.config.max_retries):
                 try:
                     return await client.generate(
-                        prompt, system_prompt, messages, **kwargs,
+                        prompt,
+                        system_prompt,
+                        messages,
+                        **kwargs,
                     )
                 except Exception as e:
                     last_error = e
-                    delay = self.config.retry_delay * (
-                        self.config.retry_exponential_base ** attempt
-                    )
+                    delay = self.config.retry_delay * (self.config.retry_exponential_base**attempt)
                     logger.warning(
                         f"Provider {provider.value} attempt {attempt + 1} failed: {e}. "
                         f"Retrying in {delay:.1f}s",
@@ -592,7 +597,10 @@ class LLMClient:
             client = self._clients[provider]
             try:
                 stream = client.generate_stream(
-                    prompt, system_prompt, messages, **kwargs,
+                    prompt,
+                    system_prompt,
+                    messages,
+                    **kwargs,
                 )
                 async for chunk in stream:  # type: ignore[attr-defined]
                     yield chunk

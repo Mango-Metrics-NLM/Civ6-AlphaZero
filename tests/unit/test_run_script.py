@@ -1,4 +1,3 @@
-
 import subprocess
 import sys
 from unittest.mock import patch
@@ -13,10 +12,12 @@ def mock_subprocess():
     with patch("subprocess.run") as mock:
         yield mock
 
+
 @pytest.fixture
 def mock_sys_exit():
     with patch("sys.exit") as mock:
         yield mock
+
 
 def test_run_script_defaults(mock_subprocess, mock_sys_exit):
     """Test that default arguments construct the correct command."""
@@ -35,6 +36,7 @@ def test_run_script_defaults(mock_subprocess, mock_sys_exit):
     assert "--log_dir=logs/civ6" in cmd
     assert "--debug" not in cmd
 
+
 def test_run_script_debug(mock_subprocess, mock_sys_exit):
     """Test that --debug flag is passed through."""
     with patch.object(sys, "argv", ["run_civ6_ai.py", "--debug"]):
@@ -43,6 +45,7 @@ def test_run_script_debug(mock_subprocess, mock_sys_exit):
     args, _ = mock_subprocess.call_args
     cmd = args[0]
     assert "--debug" in cmd
+
 
 def test_run_script_custom_log_dir(mock_subprocess, mock_sys_exit):
     """Test custom log directory."""
@@ -53,6 +56,7 @@ def test_run_script_custom_log_dir(mock_subprocess, mock_sys_exit):
     cmd = args[0]
     assert "--log_dir=custom_logs" in cmd
 
+
 def test_run_script_passthrough(mock_subprocess, mock_sys_exit):
     """Test that unknown args are passed through."""
     with patch.object(sys, "argv", ["run_civ6_ai.py", "--some-arg=value"]):
@@ -61,6 +65,7 @@ def test_run_script_passthrough(mock_subprocess, mock_sys_exit):
     args, _ = mock_subprocess.call_args
     cmd = args[0]
     assert "--some-arg=value" in cmd
+
 
 def test_run_script_failure(mock_subprocess, mock_sys_exit):
     """Test error handling."""

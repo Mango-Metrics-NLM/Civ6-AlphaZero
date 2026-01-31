@@ -50,6 +50,7 @@ StateT = TypeVar("StateT")
 
 class GameStateProtocol(Protocol):
     """Protocol for game state objects."""
+
     def to_dict(self) -> dict[str, Any]: ...
 
 
@@ -60,6 +61,7 @@ class GameStateProtocol(Protocol):
 
 class GameType(Enum):
     """Supported game types."""
+
     MICROCIV = auto()
     UNCIV = auto()
     CIV6 = auto()
@@ -67,6 +69,7 @@ class GameType(Enum):
 
 class ConnectionStatus(Enum):
     """Connection status states."""
+
     DISCONNECTED = auto()
     CONNECTING = auto()
     CONNECTED = auto()
@@ -77,6 +80,7 @@ class ConnectionStatus(Enum):
 
 class ErrorSeverity(Enum):
     """Error severity levels."""
+
     WARNING = auto()  # Non-critical, can continue
     RECOVERABLE = auto()  # Can recover with retry
     CRITICAL = auto()  # Fatal, need restart
@@ -98,6 +102,7 @@ class RetryConfig:
         exponential_base: Base for exponential backoff.
         jitter: Random jitter factor (0-1).
     """
+
     max_retries: int = 5
     base_delay: float = 1.0
     max_delay: float = 30.0
@@ -114,8 +119,9 @@ class RetryConfig:
             Delay in seconds.
         """
         import random
+
         delay = min(
-            self.base_delay * (self.exponential_base ** attempt),
+            self.base_delay * (self.exponential_base**attempt),
             self.max_delay,
         )
         jitter = delay * self.jitter * random.uniform(-1, 1)
@@ -133,6 +139,7 @@ class TimeoutConfig:
         heartbeat_interval: Interval for health checks (seconds).
         idle_timeout: Timeout for idle connections (seconds).
     """
+
     connect_timeout: float = 30.0
     action_timeout: float = 10.0
     state_timeout: float = 5.0
@@ -150,6 +157,7 @@ class LatencyConfig:
         compensation_enabled: Whether to enable latency compensation.
         target_latency_ms: Target latency for compensation (ms).
     """
+
     measurement_window: int = 50
     latency_threshold_ms: float = 100.0
     compensation_enabled: bool = True
@@ -167,6 +175,7 @@ class RecoveryConfig:
         max_checkpoints: Maximum checkpoints to keep.
         auto_recover: Whether to auto-recover from errors.
     """
+
     checkpoint_enabled: bool = True
     checkpoint_interval: int = 10
     checkpoint_dir: str = "checkpoints/game_state"
@@ -186,6 +195,7 @@ class ConnectionConfig:
         log_level: Logging level for connection events.
         metrics_enabled: Whether to collect connection metrics.
     """
+
     retry: RetryConfig = field(default_factory=RetryConfig)
     timeout: TimeoutConfig = field(default_factory=TimeoutConfig)
     latency: LatencyConfig = field(default_factory=LatencyConfig)
@@ -512,12 +522,16 @@ class CheckpointManager:
 
         try:
             with open(checkpoint_path, "w") as f:
-                json.dump({
-                    "game_id": game_id,
-                    "turn": turn,
-                    "timestamp": time.time(),
-                    "state": state,
-                }, f, indent=2)
+                json.dump(
+                    {
+                        "game_id": game_id,
+                        "turn": turn,
+                        "timestamp": time.time(),
+                        "state": state,
+                    },
+                    f,
+                    indent=2,
+                )
 
             self._checkpoints.append(checkpoint_path)
             self._cleanup_old_checkpoints()
@@ -547,10 +561,7 @@ class CheckpointManager:
         # Filter by game ID if provided
         candidates = self._checkpoints
         if game_id:
-            candidates = [
-                p for p in candidates
-                if game_id in p.name
-            ]
+            candidates = [p for p in candidates if game_id in p.name]
 
         if not candidates:
             return None
@@ -687,6 +698,7 @@ class MicroCivBackend(GameBackend):
         """Connect to MicroCiv environment."""
         try:
             from alpha_zero.envs.microciv import MicroCivEnv
+
             self._env = MicroCivEnv(**self._env_kwargs)
             self._connected = True
             return True
@@ -762,6 +774,7 @@ class UncivBackend(GameBackend):
         try:
             if self._interface is None:
                 from alpha_zero.interfaces.unciv_interface import UncivInterface
+
                 self._interface = UncivInterface(**self._kwargs)
             self._connected = True
             return True
@@ -1052,7 +1065,9 @@ class GameConnector:
             ):
                 state = self.get_state()
                 self._checkpoint_manager.save_checkpoint(
-                    state, self._game_id, self._turn,
+                    state,
+                    self._game_id,
+                    self._turn,
                 )
                 self._metrics.checkpoints_created += 1
 

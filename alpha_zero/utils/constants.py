@@ -34,8 +34,8 @@ class EncoderConstants:
     FULL_ENCODER_CHANNELS: int = 84
 
     # MicroCiv channel ranges
-    TERRAIN_CHANNELS: tuple[int, int] = (0, 3)      # plains, hills, mountain
-    OWN_UNIT_CHANNELS: tuple[int, int] = (3, 6)     # warrior, settler, archer
+    TERRAIN_CHANNELS: tuple[int, int] = (0, 3)  # plains, hills, mountain
+    OWN_UNIT_CHANNELS: tuple[int, int] = (3, 6)  # warrior, settler, archer
     ENEMY_UNIT_CHANNELS: tuple[int, int] = (6, 9)
     OWN_CITY_CHANNEL: int = 9
     ENEMY_CITY_CHANNEL: int = 10
@@ -236,9 +236,14 @@ class GameConstants:
 
     # Movement directions (8-directional)
     DIRECTIONS: tuple[tuple[int, int], ...] = (
-        (-1, -1), (-1, 0), (-1, 1),
-        (0, -1),           (0, 1),
-        (1, -1),  (1, 0),  (1, 1),
+        (-1, -1),
+        (-1, 0),
+        (-1, 1),
+        (0, -1),
+        (0, 1),
+        (1, -1),
+        (1, 0),
+        (1, 1),
     )
 
     # Terrain generation ratios
@@ -495,7 +500,7 @@ def validate_constants() -> list[str]:
         ENCODER.ENEMY_UNITS_RANGE,
     ]
     for i, r1 in enumerate(ranges):
-        for r2 in ranges[i + 1:]:
+        for r2 in ranges[i + 1 :]:
             if r1[1] > r2[0] and r2[1] > r1[0]:
                 errors.append(f"Encoder channel ranges overlap: {r1} and {r2}")
 
@@ -506,5 +511,6 @@ def validate_constants() -> list[str]:
 _validation_errors = validate_constants()
 if _validation_errors:
     import warnings
+
     for error in _validation_errors:
         warnings.warn(f"Constant validation error: {error}", stacklevel=2)
