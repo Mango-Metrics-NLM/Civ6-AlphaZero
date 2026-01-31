@@ -4,17 +4,16 @@ Tests for FeedbackLoop class.
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+from agentic_framework.config import AgenticConfig
 from agentic_framework.core.feedback_loop import (
     ErrorAction,
-    ErrorHandler,
     ErrorPattern,
     FeedbackLoop,
     VerificationCommand,
     VerificationPhase,
-    VerificationResult,
 )
 from agentic_framework.utils.command_runner import CommandRunner
-from agentic_framework.config import AgenticConfig
 
 
 class TestFeedbackLoop:
@@ -49,9 +48,9 @@ class TestFeedbackLoop:
     def test_run_verification_success(self, mock_config, mock_command_runner):
         """Test successful verification run."""
         loop = FeedbackLoop(config=mock_config, command_runner=mock_command_runner)
-        
+
         command = VerificationCommand(name="test", command="echo test")
-        
+
         # Mock successful execution
         mock_result = MagicMock()
         mock_result.success = True
@@ -68,7 +67,7 @@ class TestFeedbackLoop:
     def test_run_verification_failure_with_errors(self, mock_config, mock_command_runner):
         """Test verification failure with error detection."""
         loop = FeedbackLoop(config=mock_config, command_runner=mock_command_runner)
-        
+
         # Add a custom error pattern
         pattern = ErrorPattern(
             error_type="custom_error",
@@ -78,7 +77,7 @@ class TestFeedbackLoop:
         loop.error_handler.register_pattern(pattern)
 
         command = VerificationCommand(name="lint", command="lint cmd")
-        
+
         # Mock failed execution
         mock_result = MagicMock()
         mock_result.success = False
@@ -94,7 +93,7 @@ class TestFeedbackLoop:
                 "action": "report",
                 "max_retries": 1
             }]
-            
+
             result = loop.run_verification(command)
 
         assert not result.success
@@ -104,7 +103,7 @@ class TestFeedbackLoop:
     def test_determine_phase(self, mock_config):
         """Test phase determination logic."""
         loop = FeedbackLoop(config=mock_config)
-        
+
         assert loop._determine_phase("pytest") == VerificationPhase.UNIT_TEST
         assert loop._determine_phase("ruff check") == VerificationPhase.LINT
         assert loop._determine_phase("mypy") == VerificationPhase.TYPE_CHECK

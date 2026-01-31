@@ -19,7 +19,6 @@ from agentic_framework.core.permission_manager import PermissionManager
 from agentic_framework.core.session_memory import SessionMemory
 from agentic_framework.utils.command_runner import CommandRunner
 
-
 # =============================================================================
 # Configuration Fixtures
 # =============================================================================
@@ -116,12 +115,27 @@ def mock_permission_manager() -> MagicMock:
     Returns:
         MagicMock configured as a permission manager.
     """
+    from agentic_framework.core.permission_manager import (
+        AutonomyLevel,
+        PermissionCheckResult,
+    )
+
     manager = MagicMock(spec=PermissionManager)
-    manager.check_permission = MagicMock(return_value=True)
+    # Return a proper PermissionCheckResult object with allowed=True
+    mock_result = PermissionCheckResult(
+        action="test",
+        allowed=True,
+        level=AutonomyLevel.AUTONOMOUS,
+        requires_confirmation=False,
+    )
+    manager.check_permission = MagicMock(return_value=mock_result)
     manager.request_permission = AsyncMock(return_value=True)
     manager.is_in_scope = MagicMock(return_value=True)
     manager.is_prohibited = MagicMock(return_value=False)
     manager.requires_confirmation = MagicMock(return_value=False)
+    # Add resource_usage attribute for post_execute
+    manager.resource_usage = MagicMock()
+    manager.resource_usage.record_file_modification = MagicMock()
     return manager
 
 

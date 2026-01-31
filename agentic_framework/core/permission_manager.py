@@ -197,13 +197,23 @@ class ScopeChecker:
         Returns:
             True if path matches pattern.
         """
-        # Handle ** patterns
+        # Normalize path separators to forward slashes for cross-platform compatibility
+        normalized_path = path.replace("\\", "/")
+
+        # Handle ** patterns (** matches zero or more directories)
         if "**" in pattern:
             # Convert to regex for proper matching
-            regex_pattern = pattern.replace(".", r"\.").replace("**", ".*").replace("*", "[^/]*")
-            return bool(re.match(regex_pattern, path))
+            # Escape dots first
+            regex_pattern = pattern.replace(".", r"\.")
+            # Handle **/ (zero or more directories) - must come before single * replacement
+            regex_pattern = regex_pattern.replace("**/", "(.*/)?")
+            # Handle ** at end (matches any remaining path)
+            regex_pattern = regex_pattern.replace("**", ".*")
+            # Handle single * (matches filename without path separator)
+            regex_pattern = regex_pattern.replace("*", "[^/]*")
+            return bool(re.match(regex_pattern + "$", normalized_path))
         else:
-            return fnmatch.fnmatch(path, pattern)
+            return fnmatch.fnmatch(normalized_path, pattern)
 
     def filter_in_scope(self, paths: list[Path]) -> list[Path]:
         """Filter a list of paths to only those in scope.

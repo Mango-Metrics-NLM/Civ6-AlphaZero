@@ -86,3 +86,23 @@ DEFAULT_FAIL_FAST: bool = os.getenv("AGENTIC_FAIL_FAST", "false").lower() == "tr
 
 DEFAULT_RETRY_COUNT: int = int(os.getenv("AGENTIC_RETRY_COUNT", "0"))
 """Default retry count for template operations."""
+
+# =============================================================================
+# Display and UI Limits
+# =============================================================================
+
+DEFAULT_MAX_ERRORS_DISPLAY: int = int(os.getenv("AGENTIC_MAX_ERRORS_DISPLAY", "5"))
+"""Maximum number of errors to display in reports."""
+
+DEFAULT_MESSAGE_TRUNCATE_LENGTH: int = int(os.getenv("AGENTIC_MESSAGE_TRUNCATE", "100"))
+"""Maximum length for truncated error messages in reports."""
+
+DEFAULT_EXAMPLE_LIMIT: int = int(os.getenv("AGENTIC_EXAMPLE_LIMIT", "3"))
+"""Maximum number of examples to show in hints/suggestions."""
+
+# =============================================================================
+# Constraint Defaults
+# =============================================================================
+
+DEFAULT_CONSTRAINT_PRIORITY: int = int(os.getenv("AGENTIC_CONSTRAINT_PRIORITY", "5"))
+"""Default priority level for constraints (1-10 scale)."""

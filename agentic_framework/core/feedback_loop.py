@@ -22,8 +22,10 @@ from .constants import (
     DEFAULT_BACKOFF_MULTIPLIER,
     DEFAULT_ERROR_THRESHOLD,
     DEFAULT_IMPORT_ERROR_MAX_RETRIES,
+    DEFAULT_MAX_ERRORS_DISPLAY,
     DEFAULT_MAX_ITERATIONS,
     DEFAULT_MAX_RETRIES,
+    DEFAULT_MESSAGE_TRUNCATE_LENGTH,
     DEFAULT_RETRY_DELAY_SECONDS,
 )
 
@@ -584,8 +586,8 @@ class FeedbackLoop:
 
             if not result.success:
                 lines.append(f"- Errors: {len(result.errors)}")
-                for error in result.errors[:5]:  # Limit to first 5
-                    lines.append(f"  - [{error['type']}] {error['message'][:100]}")
+                for error in result.errors[:DEFAULT_MAX_ERRORS_DISPLAY]:
+                    lines.append(f"  - [{error['type']}] {error['message'][:DEFAULT_MESSAGE_TRUNCATE_LENGTH]}")
 
                 if result.error_output:
                     lines.append("- Error output:")

@@ -118,7 +118,7 @@ class MemorySection:
                     if "|" in line:
                         values = [v.strip() for v in line.split("|") if v.strip()]
                         if len(values) == len(headers):
-                            section.content.append(dict(zip(headers, values)))
+                            section.content.append(dict(zip(headers, values, strict=True)))
 
         else:
             # Parse as list
@@ -347,27 +347,6 @@ class SessionMemory:
         self._sections[section_name].content.append(item)
         self._modified = True
         logger.debug(f"Added item to section: {section_name}")
-
-    def remove_from_section(self, section_name: str, item: Any) -> bool:
-        """Remove an item from a section.
-
-        Args:
-            section_name: Name of the section.
-            item: Item to remove.
-
-        Returns:
-            True if item was found and removed.
-        """
-        if section_name not in self._sections:
-            return False
-
-        section = self._sections[section_name]
-        if item in section.content:
-            section.content.remove(item)
-            self._modified = True
-            logger.debug(f"Removed item from section: {section_name}")
-            return True
-        return False
 
     # Convenience methods for common sections
 
