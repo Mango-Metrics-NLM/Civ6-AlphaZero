@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import numpy as np
 
@@ -672,6 +672,70 @@ class MicroCivActionSpace:
         unit_type = local_idx % self.num_unit_types
         unit_names = ["warrior", "settler", "archer"]
         return {"type": "produce", "city_idx": city_idx, "unit_type": unit_names[unit_type]}
+
+    def validate_action(
+        self, action_idx: int, game_state: dict[str, Any]
+    ) -> tuple[bool, str]:
+        """Validate that an action index is valid for the current game state.
+
+        This method checks that the decoded action refers to valid entities
+        (units/cities) that actually exist in the current game state.
+
+        Args:
+            action_idx: The flat action index to validate.
+            game_state: Current game state dictionary containing:
+                - current_player: int
+                - units: list of unit dicts with 'player' key
+                - cities: list of city dicts with 'player' key
+
+        Returns:
+            Tuple of (is_valid, error_message).
+            If is_valid is True, error_message will be empty string.
+        """
+        action = self.decode_action(action_idx)
+        action_type = action.get("type")
+        current_player = game_state.get("current_player", 0)
+
+        if action_type == "end_turn":
+            return True, ""
+
+        if action_type in ("move", "attack", "skip", "found_city"):
+            unit_idx = action.get("unit_idx", 0)
+
+            # Count player's own units
+            own_units = [
+                u for u in game_state.get("units", [])
+                if u.get("player") == current_player
+            ]
+
+            if unit_idx < 0:
+                return False, f"Negative unit_idx: {unit_idx}"
+            if unit_idx >= len(own_units):
+                return False, f"unit_idx {unit_idx} >= num_units {len(own_units)}"
+            if unit_idx >= self.max_units:
+                return False, f"unit_idx {unit_idx} >= max_units {self.max_units}"
+
+            return True, ""
+
+        if action_type == "produce":
+            city_idx = action.get("city_idx", 0)
+
+            # Count player's own cities
+            own_cities = [
+                c for c in game_state.get("cities", [])
+                if c.get("player") == current_player
+            ]
+
+            if city_idx < 0:
+                return False, f"Negative city_idx: {city_idx}"
+            if city_idx >= len(own_cities):
+                return False, f"city_idx {city_idx} >= num_cities {len(own_cities)}"
+            if city_idx >= self.max_cities:
+                return False, f"city_idx {city_idx} >= max_cities {self.max_cities}"
+
+            return True, ""
+
+        return False, f"Unknown action type: {action_type}"
 
     def encode_action(self, action: dict) -> int:
         """Encode action dict to flat index.

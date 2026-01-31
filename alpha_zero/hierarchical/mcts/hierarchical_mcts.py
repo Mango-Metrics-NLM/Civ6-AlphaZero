@@ -662,12 +662,16 @@ class HierarchicalMCTS:
             action_space = 356  # Default action space
             return np.ones(action_space) / action_space, 0.0
 
-        # Encode state
-        self.state_encoder.encode(state, self.level)
+        # Encode state (pass None for active_unit as we're not focusing on a specific unit)
+        self.state_encoder.encode(state, None)
 
         # Encode goals
         level_goals = [g for g in goals if g.level == self.level]
-        goal_encoding = self.goal_encoder.encode_goals_for_level(level_goals, self.level, state)
+        # Support both HierarchicalGoalEncoder (has encode_goals_for_level) and plain GoalEncoder (has encode_batch)
+        if hasattr(self.goal_encoder, 'encode_goals_for_level'):
+            goal_encoding = self.goal_encoder.encode_goals_for_level(level_goals, self.level, state)
+        else:
+            goal_encoding = self.goal_encoder.encode_batch(level_goals, state)
 
         # Convert to tensors using configured shapes
         with torch.no_grad():
@@ -688,8 +692,8 @@ class HierarchicalMCTS:
                 .unsqueeze(0)
             )
 
-            # Forward pass
-            policy_logits, value = self.network(spatial, vector, goal_emb, self.level)
+            # Forward pass (action_mask=None, masking is done in MCTS selection)
+            policy_logits, value = self.network(spatial, vector, goal_emb, None)
 
             # Convert to numpy
             policy = torch.softmax(policy_logits, dim=-1).squeeze(0).numpy()

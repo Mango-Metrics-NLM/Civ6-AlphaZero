@@ -20,9 +20,9 @@ import gzip
 import json
 import logging
 import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from .base import (
     ActionSendError,
@@ -500,8 +500,8 @@ class UncivInterface(GameInterface):
 
     def __init__(
         self,
-        config: Optional[InterfaceConfig] = None,
-        save_path: Optional[Path] = None,
+        config: InterfaceConfig | None = None,
+        save_path: Path | None = None,
         player_civ: str = "Babylon",
         auto_save: bool = True,
         backup_saves: bool = True,
@@ -525,7 +525,7 @@ class UncivInterface(GameInterface):
         self.parser = UncivStateParser(player_civ=player_civ)
         self.serializer = UncivActionSerializer()
 
-        self._save_data: Optional[dict[str, Any]] = None
+        self._save_data: dict[str, Any] | None = None
         self._player_id: int = 0
         self._modified = False
 
@@ -773,7 +773,7 @@ class UncivInterface(GameInterface):
         }
 
         # Add starting units and cities
-        for i, civ in enumerate(player_civs):
+        for i, _civ in enumerate(player_civs):
             start_x = 5 + (i * 10) % map_size[0]
             start_y = map_size[1] // 2
 

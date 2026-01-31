@@ -27,7 +27,8 @@ import torch
 from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig, SimpleMCTS
 from alpha_zero.core.civ6_network import MicroCivNetwork, compute_loss
 from alpha_zero.envs.microciv import MicroCivEnv
-from alpha_zero.utils.constants import ENCODER, GAME, MCTS as MCTS_CONSTANTS
+from alpha_zero.utils.constants import ENCODER
+from alpha_zero.utils.constants import MCTS as MCTS_CONSTANTS
 from alpha_zero.utils.logging import (
     GameLogger,
     MetricsTracker,
@@ -35,7 +36,6 @@ from alpha_zero.utils.logging import (
     get_logger,
     setup_logging,
 )
-
 
 # =============================================================================
 # CONFIGURATION
@@ -471,6 +471,303 @@ class DebugDiagnostics:
         }
 
 
+# =============================================================================
+# TERMINATION AND ACTION DIAGNOSTICS
+# =============================================================================
+
+
+@dataclass
+class ActionRecord:
+    """Record of a single action taken during a game."""
+
+    game_id: int
+    step: int
+    turn: int
+    player: int
+    action_index: int
+    action_type: str
+    was_valid: bool
+    action_mask_sum: int
+    execution_result: str
+    mcts_root_value: float = 0.0
+
+
+class ActionTracer:
+    """Traces actions for debugging invalid action selection."""
+
+    def __init__(self, action_space_handler: Any | None = None):
+        self.action_space = action_space_handler
+        self.logger = get_logger("tracer.action")
+
+        self.records: list[ActionRecord] = []
+        self.invalid_action_count = 0
+        self.action_type_counts: dict[str, int] = {}
+
+    def trace_action(
+        self,
+        game_id: int,
+        step: int,
+        turn: int,
+        player: int,
+        action: int,
+        action_mask: np.ndarray,
+        action_dict: dict[str, Any],
+        mcts_value: float = 0.0,
+    ) -> ActionRecord:
+        """Record an action selection."""
+        action_type = action_dict.get("type", "unknown")
+        was_valid = action_mask[action] > 0
+
+        if not was_valid:
+            self.invalid_action_count += 1
+            self.logger.error(
+                f"Game {game_id} Step {step}: INVALID ACTION {action} "
+                f"({action_type}) selected!"
+            )
+
+        self.action_type_counts[action_type] = (
+            self.action_type_counts.get(action_type, 0) + 1
+        )
+
+        record = ActionRecord(
+            game_id=game_id,
+            step=step,
+            turn=turn,
+            player=player,
+            action_index=action,
+            action_type=action_type,
+            was_valid=was_valid,
+            action_mask_sum=int(action_mask.sum()),
+            execution_result="pending",
+            mcts_root_value=mcts_value,
+        )
+
+        self.records.append(record)
+        return record
+
+    def update_execution_result(self, success: bool, error: str = "") -> None:
+        """Update the last record with execution result."""
+        if self.records:
+            result = "success" if success else f"failed: {error}"
+            # Use object.__setattr__ since dataclass might be frozen
+            self.records[-1] = ActionRecord(
+                game_id=self.records[-1].game_id,
+                step=self.records[-1].step,
+                turn=self.records[-1].turn,
+                player=self.records[-1].player,
+                action_index=self.records[-1].action_index,
+                action_type=self.records[-1].action_type,
+                was_valid=self.records[-1].was_valid,
+                action_mask_sum=self.records[-1].action_mask_sum,
+                execution_result=result,
+                mcts_root_value=self.records[-1].mcts_root_value,
+            )
+
+    def get_summary(self) -> dict[str, Any]:
+        """Get summary of traced actions."""
+        if not self.records:
+            return {"total_actions": 0}
+
+        total_actions = len(self.records)
+        invalid_rate = self.invalid_action_count / max(total_actions, 1)
+        end_turn_count = self.action_type_counts.get("end_turn", 0)
+
+        return {
+            "total_actions": total_actions,
+            "invalid_action_count": self.invalid_action_count,
+            "invalid_action_rate": invalid_rate,
+            "action_type_distribution": dict(self.action_type_counts),
+            "end_turn_rate": end_turn_count / max(total_actions, 1),
+            "avg_valid_actions_available": np.mean(
+                [r.action_mask_sum for r in self.records]
+            ),
+        }
+
+
+class GameTerminationValidator:
+    """Validates game termination conditions and tracks early endings."""
+
+    def __init__(self, min_expected_turns: int = 2):
+        self.min_expected_turns = min_expected_turns
+        self.logger = get_logger("validator.termination")
+        self.termination_records: list[dict[str, Any]] = []
+
+    def validate_termination(
+        self,
+        game_id: int,
+        turn: int,
+        winner: int | None,
+        player_units: tuple[int, int],
+        player_cities: tuple[int, int],
+        terminated: bool,
+        truncated: bool,
+    ) -> ValidationResult:
+        """Validate game termination event."""
+        errors = []
+        warnings = []
+
+        # Determine termination reason
+        if truncated:
+            reason = "timeout"
+        elif winner is not None:
+            loser = 1 - winner
+            if player_units[loser] == 0 and player_cities[loser] == 0:
+                reason = f"player_{loser}_eliminated"
+            else:
+                reason = "unknown_victory"
+        else:
+            reason = "draw"
+
+        # Record termination
+        self.termination_records.append({
+            "game_id": game_id,
+            "turn": turn,
+            "winner": winner,
+            "reason": reason,
+            "player_units": player_units,
+            "player_cities": player_cities,
+        })
+
+        # Check for premature termination
+        if turn < self.min_expected_turns and terminated and not truncated:
+            errors.append(
+                f"Game {game_id}: CRITICAL - Ended turn {turn}, "
+                f"winner={winner}, units={player_units}, cities={player_cities}"
+            )
+
+        # Check for turn 0 termination (should never happen)
+        if turn == 0 and terminated:
+            errors.append(
+                f"Game {game_id}: Game terminated at turn 0 - this is a bug"
+            )
+
+        return ValidationResult(valid=len(errors) == 0, errors=errors, warnings=warnings)
+
+    def get_summary(self) -> dict[str, Any]:
+        """Get summary of all termination events."""
+        if not self.termination_records:
+            return {"total_games": 0}
+
+        turns = [r["turn"] for r in self.termination_records]
+        reasons = [r["reason"] for r in self.termination_records]
+
+        reason_counts: dict[str, int] = {}
+        for reason in reasons:
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+
+        # Group by turn buckets
+        turn_buckets = {
+            "turn_0": sum(1 for t in turns if t == 0),
+            "turn_1": sum(1 for t in turns if t == 1),
+            "turns_2-5": sum(1 for t in turns if 2 <= t <= 5),
+            "turns_6-10": sum(1 for t in turns if 6 <= t <= 10),
+            "turns_10+": sum(1 for t in turns if t > 10),
+        }
+
+        return {
+            "total_games": len(self.termination_records),
+            "avg_turns": sum(turns) / len(turns) if turns else 0,
+            "min_turns": min(turns) if turns else 0,
+            "max_turns": max(turns) if turns else 0,
+            "early_terminations": sum(1 for t in turns if t < self.min_expected_turns),
+            "reason_distribution": reason_counts,
+            "games_by_turn": turn_buckets,
+        }
+
+
+@dataclass
+class StateSnapshot:
+    """Snapshot of environment state at a point in time."""
+
+    game_id: int
+    step: int
+    turn: int
+    current_player: int
+    player_units: tuple[int, int]
+    player_cities: tuple[int, int]
+    winner: int | None
+    done: bool
+    action_mask_sum: int
+    last_action: dict[str, Any] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to serializable dictionary."""
+        return {
+            "game_id": self.game_id,
+            "step": self.step,
+            "turn": self.turn,
+            "current_player": self.current_player,
+            "player_units": self.player_units,
+            "player_cities": self.player_cities,
+            "winner": self.winner,
+            "done": self.done,
+            "action_mask_sum": self.action_mask_sum,
+            "last_action": self.last_action,
+        }
+
+
+class StateSnapshotManager:
+    """Manages state snapshots for post-mortem analysis."""
+
+    def __init__(self, snapshot_dir: str = "logs/snapshots"):
+        self.snapshot_dir = Path(snapshot_dir)
+        self.snapshot_dir.mkdir(parents=True, exist_ok=True)
+        self.logger = get_logger("snapshot.manager")
+
+        self.termination_snapshots: list[StateSnapshot] = []
+
+    def capture_termination(
+        self,
+        env: Any,
+        game_id: int,
+        step: int,
+        last_action: dict[str, Any] | None = None,
+    ) -> StateSnapshot:
+        """Capture snapshot at game termination."""
+        # Count units/cities per player
+        p0_units = len([u for u in env.units if u.player == 0])
+        p0_cities = len([c for c in env.cities if c.player == 0])
+        p1_units = len([u for u in env.units if u.player == 1])
+        p1_cities = len([c for c in env.cities if c.player == 1])
+
+        action_mask = env.get_valid_actions()
+
+        snapshot = StateSnapshot(
+            game_id=game_id,
+            step=step,
+            turn=env.turn,
+            current_player=env.current_player,
+            player_units=(p0_units, p1_units),
+            player_cities=(p0_cities, p1_cities),
+            winner=env.winner,
+            done=env.done,
+            action_mask_sum=int(action_mask.sum()),
+            last_action=last_action,
+        )
+
+        self.termination_snapshots.append(snapshot)
+
+        # Save early terminations
+        if env.turn < 2:
+            self.logger.warning(
+                f"Early termination: game={game_id}, turn={env.turn}, winner={env.winner}"
+            )
+            self.save_snapshot(snapshot, f"early_term_game{game_id}_turn{env.turn}.json")
+
+        return snapshot
+
+    def save_snapshot(self, snapshot: StateSnapshot, filename: str) -> Path:
+        """Save snapshot to file."""
+        filepath = self.snapshot_dir / filename
+        with open(filepath, "w") as f:
+            json.dump(snapshot.to_dict(), f, indent=2)
+        return filepath
+
+    def get_early_terminations(self, max_turns: int = 2) -> list[StateSnapshot]:
+        """Get snapshots of games that ended early."""
+        return [s for s in self.termination_snapshots if s.turn < max_turns]
+
+
 @dataclass
 class DebugReport:
     """Final report from debug run."""
@@ -570,6 +867,13 @@ class DebugSelfPlayRunner:
         self.profiler = PerformanceProfiler()
         self.metrics = MetricsTracker()
         self.diagnostics = DebugDiagnostics()
+
+        # New diagnostic components for termination analysis
+        self.action_tracer = ActionTracer()
+        self.termination_validator = GameTerminationValidator(min_expected_turns=2)
+        self.snapshot_manager = StateSnapshotManager(
+            snapshot_dir=f"{config.log_dir}/snapshots"
+        )
 
         # Components (initialized in _setup_components)
         self.env: MicroCivEnv | None = None
@@ -797,9 +1101,26 @@ class DebugSelfPlayRunner:
                 }
             )
 
-            # Select action
+            # Select action with action mask enforcement
             temp = 1.0 if step < 10 else 0.0
-            action = self.mcts.select_action(action_probs, temp)
+            action = self.mcts.select_action(
+                action_probs, temp, action_mask=obs["action_mask"]
+            )
+
+            # Decode action for tracing
+            action_dict = self.env.action_space_handler.decode_action(action)
+
+            # Trace action for debugging
+            self.action_tracer.trace_action(
+                game_id=game_id,
+                step=step,
+                turn=self.env.turn,
+                player=self.env.current_player,
+                action=action,
+                action_mask=obs["action_mask"],
+                action_dict=action_dict,
+                mcts_value=root_value,
+            )
 
             # Validate action
             if self.config.validate_actions:
@@ -823,7 +1144,41 @@ class DebugSelfPlayRunner:
             step += 1
             self.diagnostics.total_steps += 1
 
+            # Update action tracer with execution result
+            action_success = info.get("action_success", True)
+            action_error = info.get("action_error", "")
+            self.action_tracer.update_execution_result(action_success, action_error)
+
             if terminated or truncated:
+                # Capture termination snapshot
+                self.snapshot_manager.capture_termination(
+                    env=self.env,
+                    game_id=game_id,
+                    step=step,
+                    last_action=action_dict,
+                )
+
+                # Validate termination
+                p0_units = len([u for u in self.env.units if u.player == 0])
+                p1_units = len([u for u in self.env.units if u.player == 1])
+                p0_cities = len([c for c in self.env.cities if c.player == 0])
+                p1_cities = len([c for c in self.env.cities if c.player == 1])
+
+                term_result = self.termination_validator.validate_termination(
+                    game_id=game_id,
+                    turn=self.env.turn,
+                    winner=info.get("winner"),
+                    player_units=(p0_units, p1_units),
+                    player_cities=(p0_cities, p1_cities),
+                    terminated=terminated,
+                    truncated=truncated,
+                )
+
+                if not term_result.valid:
+                    for error in term_result.errors:
+                        self.diagnostics.action_errors.append((game_id, step, error))
+                        self.logger.error(f"Termination error: {error}")
+
                 break
 
         # Assign values based on outcome
@@ -1004,6 +1359,33 @@ class DebugSelfPlayRunner:
             recommendations.append(
                 "Check loss computation and gradient flow for numerical stability"
             )
+
+        # Add termination analysis recommendations
+        term_summary = self.termination_validator.get_summary()
+        action_summary = self.action_tracer.get_summary()
+
+        if term_summary.get("early_terminations", 0) > 0:
+            recommendations.append(
+                f"Early terminations detected: {term_summary['early_terminations']} games ended before turn 2. "
+                "Check victory conditions and action execution."
+            )
+
+        if action_summary.get("invalid_action_count", 0) > 0:
+            recommendations.append(
+                f"Invalid actions detected: {action_summary['invalid_action_count']}. "
+                "Check action masking in MCTS selection."
+            )
+
+        end_turn_rate = action_summary.get("end_turn_rate", 0)
+        if end_turn_rate > 0.5:
+            recommendations.append(
+                f"High END_TURN rate: {end_turn_rate:.1%}. "
+                "MCTS may be selecting end_turn too often."
+            )
+
+        # Log termination summary
+        self.logger.info(f"\nTermination Summary: {term_summary}")
+        self.logger.info(f"Action Summary: {action_summary}")
 
         if not recommendations:
             recommendations.append("No critical issues detected - system looks healthy")

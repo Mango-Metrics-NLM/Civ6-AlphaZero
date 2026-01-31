@@ -9,14 +9,11 @@ Tests cover:
 
 from __future__ import annotations
 
-import queue
 import threading
 import time
-from unittest.mock import MagicMock, patch, PropertyMock
 
 import numpy as np
 import pytest
-import torch
 
 from alpha_zero.distributed.actor import ActorConfig, SelfPlayActor
 from alpha_zero.distributed.shared_storage import (
@@ -24,7 +21,6 @@ from alpha_zero.distributed.shared_storage import (
     GameTrajectory,
     ReplayBufferConfig,
     SharedStorage,
-    SharedStorageConfig,
     TrainingExample,
     WeightSynchronizer,
 )

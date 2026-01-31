@@ -6,9 +6,8 @@ All fixtures use appropriate cleanup to prevent resource leaks.
 
 from __future__ import annotations
 
-import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import Any, Generator
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -29,7 +28,6 @@ from alpha_zero.distributed.shared_storage import (
 )
 from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.utils.constants import ENCODER, GAME
-
 
 # =============================================================================
 # Environment Fixtures

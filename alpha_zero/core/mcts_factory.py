@@ -26,7 +26,7 @@ Usage:
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Protocol, Union
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -83,7 +83,7 @@ class MCTSProtocol(Protocol):
 
 
 def create_mcts(
-    variant: Union[str, MCTSVariant] = "puct",
+    variant: str | MCTSVariant = "puct",
     network: Any | None = None,
     config: Any | None = None,
     device: str = "cpu",
@@ -206,7 +206,7 @@ def create_mcts(
         )
 
 
-def get_default_config(variant: Union[str, MCTSVariant]) -> Any:
+def get_default_config(variant: str | MCTSVariant) -> Any:
     """Get default configuration for a variant.
 
     Args:

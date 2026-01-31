@@ -413,23 +413,41 @@ class Civ6MCTS:
         self,
         action_probs: np.ndarray,
         temperature: float = 1.0,
+        action_mask: np.ndarray | None = None,
     ) -> int:
         """Select action based on probabilities and temperature.
 
         Args:
             action_probs: Action probability distribution.
             temperature: Temperature for action selection.
+            action_mask: Optional valid action mask (1=valid, 0=invalid).
+                        If provided, ensures only valid actions are selected.
 
         Returns:
             Selected action index.
+
+        Raises:
+            ValueError: If no valid actions available when mask is provided.
         """
+        # Apply mask if provided to ensure only valid actions are selected
+        if action_mask is not None:
+            action_probs = action_probs * action_mask
+            if action_probs.sum() < 1e-8:
+                # Fallback: select first valid action
+                valid_actions = np.where(action_mask > 0)[0]
+                if len(valid_actions) == 0:
+                    raise ValueError("No valid actions available")
+                return int(valid_actions[0])
+            # Renormalize after masking
+            action_probs = action_probs / action_probs.sum()
+
         if temperature == 0:
             # Greedy selection
             return int(np.argmax(action_probs))
 
         # Apply temperature
         if temperature != 1.0:
-            probs = np.power(action_probs, 1.0 / temperature)
+            probs = np.power(action_probs + 1e-8, 1.0 / temperature)
             probs = probs / probs.sum()
         else:
             probs = action_probs
@@ -566,16 +584,34 @@ class SimpleMCTS:
         self,
         action_probs: np.ndarray,
         temperature: float = 1.0,
+        action_mask: np.ndarray | None = None,
     ) -> int:
         """Select action based on probabilities.
 
         Args:
             action_probs: Action probabilities.
             temperature: Selection temperature.
+            action_mask: Optional valid action mask (1=valid, 0=invalid).
+                        If provided, ensures only valid actions are selected.
 
         Returns:
             Selected action.
+
+        Raises:
+            ValueError: If no valid actions available when mask is provided.
         """
+        # Apply mask if provided to ensure only valid actions are selected
+        if action_mask is not None:
+            action_probs = action_probs * action_mask
+            if action_probs.sum() < 1e-8:
+                # Fallback: select first valid action
+                valid_actions = np.where(action_mask > 0)[0]
+                if len(valid_actions) == 0:
+                    raise ValueError("No valid actions available")
+                return int(valid_actions[0])
+            # Renormalize after masking
+            action_probs = action_probs / action_probs.sum()
+
         if temperature == 0:
             return int(np.argmax(action_probs))
 
@@ -1116,6 +1152,7 @@ class GumbelMCTS:
         self,
         action_probs: np.ndarray,
         temperature: float = 0.0,
+        action_mask: np.ndarray | None = None,
     ) -> int:
         """Select action from probabilities.
 
@@ -1125,10 +1162,27 @@ class GumbelMCTS:
         Args:
             action_probs: Action probability distribution.
             temperature: Temperature for selection (0 = greedy).
+            action_mask: Optional valid action mask (1=valid, 0=invalid).
+                        If provided, ensures only valid actions are selected.
 
         Returns:
             Selected action index.
+
+        Raises:
+            ValueError: If no valid actions available when mask is provided.
         """
+        # Apply mask if provided to ensure only valid actions are selected
+        if action_mask is not None:
+            action_probs = action_probs * action_mask
+            if action_probs.sum() < 1e-8:
+                # Fallback: select first valid action
+                valid_actions = np.where(action_mask > 0)[0]
+                if len(valid_actions) == 0:
+                    raise ValueError("No valid actions available")
+                return int(valid_actions[0])
+            # Renormalize after masking
+            action_probs = action_probs / action_probs.sum()
+
         if temperature == 0 or action_probs.max() > 0.99:
             # Greedy selection (usual case for Gumbel MCTS)
             return int(np.argmax(action_probs))
