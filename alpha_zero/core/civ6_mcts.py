@@ -238,6 +238,7 @@ class Civ6MCTS:
 
     Uses neural network for policy prior and value estimation.
     Supports action masking for valid moves.
+    Optionally integrates with ReflectionMemory for LATS-style learning.
     """
 
     def __init__(
@@ -245,6 +246,7 @@ class Civ6MCTS:
         network: torch.nn.Module,
         config: MCTSConfig | None = None,
         device: str = "cpu",
+        reflection_memory: Any | None = None,
     ):
         """Initialize MCTS.
 
@@ -252,10 +254,14 @@ class Civ6MCTS:
             network: Neural network for evaluation.
             config: MCTS configuration.
             device: Device for neural network inference.
+            reflection_memory: Optional ReflectionMemory for value adjustments
+                based on past failures. When provided, actions that led to
+                failures in similar states will be penalized.
         """
         self.network = network
         self.config = config or MCTSConfig()
         self.device = device
+        self._reflection_memory = reflection_memory
 
     def search(
         self,
@@ -344,13 +350,18 @@ class Civ6MCTS:
         spatial: torch.Tensor,
         vector: torch.Tensor,
         action_mask: np.ndarray,
+        action: int | None = None,
     ) -> tuple[np.ndarray, float]:
         """Evaluate state using neural network.
+
+        Optionally applies value adjustments from reflection memory
+        to penalize actions that led to failures in similar states.
 
         Args:
             spatial: Spatial features.
             vector: Vector features.
             action_mask: Valid action mask.
+            action: Optional action to get reflection-based adjustment for.
 
         Returns:
             Tuple of (policy, value).
@@ -365,6 +376,20 @@ class Civ6MCTS:
             )
             policy = policy_probs.squeeze(0).cpu().numpy()
             value = value.item()
+
+        # Apply reflection-based value adjustment if available
+        if self._reflection_memory is not None and action is not None:
+            try:
+                # Check if reflection memory is initialized
+                if hasattr(self._reflection_memory, 'initialized') and self._reflection_memory.initialized:
+                    state = {
+                        "spatial": spatial.cpu().numpy(),
+                        "vector": vector.cpu().numpy(),
+                    }
+                    adjustment = self._reflection_memory.get_value_adjustment_sync(state, action)
+                    value = value + adjustment
+            except Exception:
+                pass  # Silently ignore reflection errors to not disrupt MCTS
 
         return policy, value
 

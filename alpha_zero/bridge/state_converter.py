@@ -308,10 +308,10 @@ class StateConverter:
             "score": player_data.get("score", 0),
             # Era and progress
             "era": state.era,
-            "resources": {},  # TODO: Extract resources
-            "technologies": [],  # TODO: Extract techs
-            "civics": [],  # TODO: Extract civics
-            "victory_progress": {},  # TODO: Extract victory progress
+            "resources": self._extract_resources(state),
+            "technologies": self._extract_technologies(state),
+            "civics": self._extract_civics(state),
+            "victory_progress": self._extract_victory_progress(state),
             # Store original legal actions for action mask generation
             "_legal_actions": state.legal_actions,
             "_map_size": (state.map_data.width, state.map_data.height),
@@ -693,6 +693,163 @@ class StateConverter:
             "score": 0,
             "military_strength": 0,
         }
+
+    def _extract_resources(self, state: GameStateData) -> dict[str, Any]:
+        """Extract resource information for current player.
+
+        Args:
+            state: Game state data.
+
+        Returns:
+            Dictionary mapping resource names to counts/yields.
+        """
+        resources: dict[str, Any] = {
+            # Core yields
+            "gold": 0,
+            "gold_per_turn": 0,
+            "faith": 0,
+            "faith_per_turn": 0,
+            "culture": 0,
+            "culture_per_turn": 0,
+            "science": 0,
+            "science_per_turn": 0,
+            "production_per_turn": 0,
+            # Strategic resources
+            "strategic": {},
+            # Luxury resources
+            "luxury": {},
+        }
+
+        # Find current player
+        for player in state.players:
+            if player.id == state.player_id:
+                resources["gold"] = player.gold
+                resources["faith"] = player.faith
+                resources["science_per_turn"] = player.science_per_turn
+                resources["culture_per_turn"] = player.culture_per_turn
+
+                # Calculate production from cities
+                total_production = 0
+                for city in state.cities:
+                    if city.owner_id == player.id:
+                        # Estimate production from population
+                        total_production += city.population * 2
+                resources["production_per_turn"] = total_production
+                break
+
+        return resources
+
+    def _extract_technologies(self, state: GameStateData) -> dict[str, Any]:
+        """Extract technology progress for current player.
+
+        Args:
+            state: Game state data.
+
+        Returns:
+            Dictionary with technology status.
+        """
+        technologies: dict[str, Any] = {
+            "researched": [],
+            "in_progress": None,
+            "progress_percent": 0.0,
+            "available": [],
+            "count": 0,
+        }
+
+        # Find current player
+        for player in state.players:
+            if player.id == state.player_id:
+                technologies["researched"] = list(player.techs_researched)
+                technologies["in_progress"] = player.current_research
+                technologies["count"] = len(player.techs_researched)
+                break
+
+        return technologies
+
+    def _extract_civics(self, state: GameStateData) -> dict[str, Any]:
+        """Extract civic progress for current player.
+
+        Args:
+            state: Game state data.
+
+        Returns:
+            Dictionary with civic status.
+        """
+        # Note: Civics data not currently exposed in protocol
+        # This is a placeholder for future expansion
+        civics: dict[str, Any] = {
+            "completed": [],
+            "in_progress": None,
+            "progress_percent": 0.0,
+            "available": [],
+            "active_government": None,
+            "active_policies": [],
+        }
+
+        return civics
+
+    def _extract_victory_progress(self, state: GameStateData) -> dict[str, float]:
+        """Extract victory condition progress for current player.
+
+        Calculates approximate progress toward different victory types
+        based on available game state data.
+
+        Args:
+            state: Game state data.
+
+        Returns:
+            Dictionary mapping victory type to progress (0.0-1.0).
+        """
+        victory_progress: dict[str, float] = {
+            "domination": 0.0,
+            "science": 0.0,
+            "culture": 0.0,
+            "religious": 0.0,
+            "diplomatic": 0.0,
+            "score": 0.0,
+        }
+
+        # Find current player data
+        current_player_score = 0
+        max_score = 1  # Avoid division by zero
+
+        for player in state.players:
+            if player.id == state.player_id:
+                current_player_score = player.score
+            max_score = max(max_score, player.score)
+
+        # Score progress (relative to max observed)
+        if max_score > 0:
+            victory_progress["score"] = current_player_score / max_score
+
+        # Domination progress: count capitals controlled vs total players
+        total_players = len(state.players)
+        if total_players > 0:
+            # Count capitals owned by current player
+            capitals_owned = sum(
+                1 for city in state.cities
+                if city.is_capital and city.owner_id == state.player_id
+            )
+            victory_progress["domination"] = capitals_owned / total_players
+
+        # Science progress: based on technologies researched
+        # Full Civ6 has ~80 techs, approximate
+        for player in state.players:
+            if player.id == state.player_id:
+                tech_count = len(player.techs_researched)
+                victory_progress["science"] = min(1.0, tech_count / 50.0)
+                break
+
+        # Culture progress: estimate from culture per turn * cities
+        our_cities = sum(1 for city in state.cities if city.owner_id == state.player_id)
+        for player in state.players:
+            if player.id == state.player_id:
+                # Rough estimate: need lots of culture to win
+                culture_rate = player.culture_per_turn
+                victory_progress["culture"] = min(1.0, (culture_rate * our_cities) / 500.0)
+                break
+
+        return victory_progress
 
     def inverse_scale_coords(self, x: int, y: int) -> tuple[int, int]:
         """Convert scaled coordinates back to original Civ6 coordinates.
