@@ -31,7 +31,6 @@ from alpha_zero.core.mcts_constants import (
     DEFAULT_C_VISIT_DIVISOR,
     DEFAULT_ROLLOUT_DEPTH,
     EPSILON,
-    LOG_SEARCH_STATS_INTERVAL,
 )
 
 # Module-level logger
