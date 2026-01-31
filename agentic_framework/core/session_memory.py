@@ -15,6 +15,7 @@ from typing import Any
 
 from ..config import AgenticConfig
 from ..utils.logging_config import get_logger
+from .constants import DEFAULT_CLAUDE_MD_FILENAME, DEFAULT_SECTION_ORDER
 
 logger = get_logger("session_memory")
 
@@ -179,6 +180,9 @@ class SessionMemory:
     - Track changes for commit messages
     """
 
+    # Compiled regex pattern for section headers (class-level for efficiency)
+    _SECTION_PATTERN = re.compile(r"^(#{1,3})\s+(.+)$", re.MULTILINE)
+
     def __init__(
         self,
         memory_file: Path | None = None,
@@ -190,7 +194,7 @@ class SessionMemory:
             memory_file: Path to memory file (default: CLAUDE.md in cwd).
             config: Configuration for section setup.
         """
-        self.memory_file = memory_file or Path.cwd() / "CLAUDE.md"
+        self.memory_file = memory_file or Path.cwd() / DEFAULT_CLAUDE_MD_FILENAME
         self.config = config
         self._sections: dict[str, MemorySection] = {}
         self._raw_content: str = ""
@@ -241,9 +245,8 @@ class SessionMemory:
 
     def _parse_content(self) -> None:
         """Parse the raw content into sections."""
-        # Split by headers
-        section_pattern = re.compile(r"^(#{1,3})\s+(.+)$", re.MULTILINE)
-        matches = list(section_pattern.finditer(self._raw_content))
+        # Split by headers using class-level compiled pattern
+        matches = list(self._SECTION_PATTERN.finditer(self._raw_content))
 
         for i, match in enumerate(matches):
             level = len(match.group(1))
@@ -289,20 +292,10 @@ class SessionMemory:
         """
         lines = ["# CLAUDE.md", ""]
 
-        # Render in a consistent order
-        section_order = [
-            "Build Commands",
-            "Test Commands",
-            "Architecture Decisions",
-            "Known Issues",
-            "Environment Setup",
-            "Gotchas",
-        ]
-
         rendered_sections = set()
 
-        # Render ordered sections first
-        for name in section_order:
+        # Render ordered sections first (using centralized order)
+        for name in DEFAULT_SECTION_ORDER:
             if name in self._sections:
                 section = self._sections[name]
                 if section.persist:

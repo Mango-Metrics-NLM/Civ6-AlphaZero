@@ -18,6 +18,14 @@ from typing import Any
 from ..config import AgenticConfig, VerificationCommand
 from ..utils.command_runner import CommandRunner, RetryConfig
 from ..utils.logging_config import get_logger
+from .constants import (
+    DEFAULT_BACKOFF_MULTIPLIER,
+    DEFAULT_ERROR_THRESHOLD,
+    DEFAULT_IMPORT_ERROR_MAX_RETRIES,
+    DEFAULT_MAX_ITERATIONS,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_RETRY_DELAY_SECONDS,
+)
 
 logger = get_logger("feedback_loop")
 
@@ -126,7 +134,7 @@ class ErrorHandler:
             ErrorPattern(
                 error_type="lint_error",
                 action=ErrorAction.AUTO_FIX,
-                max_retries=3,
+                max_retries=DEFAULT_MAX_RETRIES,
                 pattern=re.compile(r"(?:error|warning):\s*(.+?)(?:\n|$)", re.IGNORECASE),
             )
         )
@@ -136,7 +144,7 @@ class ErrorHandler:
             ErrorPattern(
                 error_type="type_error",
                 action=ErrorAction.ANALYZE_FIX,
-                max_retries=3,
+                max_retries=DEFAULT_MAX_RETRIES,
                 pattern=re.compile(r"error:\s*(.+?)(?:\n|$)", re.IGNORECASE),
             )
         )
@@ -146,7 +154,7 @@ class ErrorHandler:
             ErrorPattern(
                 error_type="test_failure",
                 action=ErrorAction.ANALYZE_FIX,
-                max_retries=3,
+                max_retries=DEFAULT_MAX_RETRIES,
                 pattern=re.compile(r"FAILED\s+(.+?)(?:\s+-|$)", re.IGNORECASE),
             )
         )
@@ -156,7 +164,7 @@ class ErrorHandler:
             ErrorPattern(
                 error_type="import_error",
                 action=ErrorAction.ANALYZE_FIX,
-                max_retries=2,
+                max_retries=DEFAULT_IMPORT_ERROR_MAX_RETRIES,
                 pattern=re.compile(
                     r"(?:ImportError|ModuleNotFoundError):\s*(.+?)(?:\n|$)", re.IGNORECASE
                 ),
@@ -266,7 +274,7 @@ class FeedbackLoop:
         config: AgenticConfig | None = None,
         command_runner: CommandRunner | None = None,
         error_handler: ErrorHandler | None = None,
-        max_iterations: int = 5,
+        max_iterations: int = DEFAULT_MAX_ITERATIONS,
     ) -> None:
         """Initialize the feedback loop.
 
@@ -304,7 +312,7 @@ class FeedbackLoop:
             pattern = ErrorPattern(
                 error_type=pattern_data.get("error_type", "unknown"),
                 action=action,
-                max_retries=pattern_data.get("max_retries", 3),
+                max_retries=pattern_data.get("max_retries", DEFAULT_MAX_RETRIES),
             )
             self.error_handler.register_pattern(pattern)
 
@@ -346,8 +354,8 @@ class FeedbackLoop:
         # Run command with retry if configured
         retry_config = RetryConfig(
             max_retries=command.retry_count,
-            retry_delay_seconds=1.0,
-            backoff_multiplier=2.0,
+            retry_delay_seconds=DEFAULT_RETRY_DELAY_SECONDS,
+            backoff_multiplier=DEFAULT_BACKOFF_MULTIPLIER,
         )
 
         start_time = time.time()
@@ -491,7 +499,7 @@ class FeedbackLoop:
                 error_counts[error_key] = error_counts.get(error_key, 0) + 1
 
                 # Check for repeated failures
-                if error_counts[error_key] >= 3:
+                if error_counts[error_key] >= DEFAULT_ERROR_THRESHOLD:
                     logger.warning(f"Repeated failure detected: {error_key}")
                     error["action"] = ErrorAction.ESCALATE.value
 
