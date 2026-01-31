@@ -12,11 +12,15 @@ Action hierarchy:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import Any, NamedTuple
 
 import numpy as np
+
+# Module-level logger
+logger = logging.getLogger(__name__)
 
 
 class ActionCategory(IntEnum):

@@ -17,6 +17,7 @@ from typing import Any
 from ..config import AgenticConfig
 from ..utils.command_runner import CommandRunner
 from ..utils.logging_config import get_logger
+from .constants import DEFAULT_CONSTRAINT_PRIORITY, DEFAULT_EXAMPLE_LIMIT
 
 logger = get_logger("constraint_manager")
 
@@ -52,7 +53,7 @@ class Constraint:
     severity: ConstraintSeverity
     value: str
     validation_command: str | None = None
-    priority: int = 5  # 1-10, only for soft constraints
+    priority: int = DEFAULT_CONSTRAINT_PRIORITY  # 1-10, only for soft constraints
     scope: str | None = None
     description: str | None = None
     enabled: bool = True
@@ -72,7 +73,7 @@ class Constraint:
             severity=severity,
             value=data.get("value", ""),
             validation_command=data.get("validation_command"),
-            priority=data.get("priority", 5),
+            priority=data.get("priority", DEFAULT_CONSTRAINT_PRIORITY),
             scope=data.get("scope"),
             description=data.get("description"),
         )
@@ -511,7 +512,7 @@ class ConstraintManager:
                 return ConstraintViolation(
                     constraint=constraint,
                     message=f"Many functions missing type hints ({len(missing_hints)} found)",
-                    details=f"Examples: {missing_hints[:3]}",
+                    details=f"Examples: {missing_hints[:DEFAULT_EXAMPLE_LIMIT]}",
                 )
 
         return None

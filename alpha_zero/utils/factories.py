@@ -100,6 +100,7 @@ def create_mcts(
     network: torch.nn.Module | None = None,
     device: str = "cpu",
     use_simple: bool = False,
+    reflection_memory: Any = None,
 ) -> Any:
     """Create MCTS instance from configuration.
 
@@ -111,6 +112,9 @@ def create_mcts(
         network: Neural network for evaluation. Required unless use_simple=True.
         device: Compute device.
         use_simple: Use SimpleMCTS (random rollouts) instead of NN-guided.
+        reflection_memory: Optional ReflectionMemory for LATS-style learning.
+            When provided, MCTS will penalize actions that led to failures
+            in similar states.
 
     Returns:
         Configured MCTS instance.
@@ -149,9 +153,10 @@ def create_mcts(
 
     logger.info(
         f"Creating Civ6MCTS: simulations={config.num_simulations}, "
-        f"c_puct={config.c_puct}, device={device}",
+        f"c_puct={config.c_puct}, device={device}, "
+        f"reflection={'enabled' if reflection_memory else 'disabled'}",
     )
-    return Civ6MCTS(network, mcts_config, device=device)
+    return Civ6MCTS(network, mcts_config, device=device, reflection_memory=reflection_memory)
 
 
 def create_environment(

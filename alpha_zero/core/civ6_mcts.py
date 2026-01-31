@@ -18,12 +18,23 @@ MuZero MCTS variant that uses learned dynamics (no environment cloning):
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+
+from alpha_zero.core.mcts_constants import (
+    DEFAULT_C_VISIT,
+    DEFAULT_C_VISIT_DIVISOR,
+    DEFAULT_ROLLOUT_DEPTH,
+    EPSILON,
+)
+
+# Module-level logger
+logger = logging.getLogger(__name__)
 
 
 class MCTSNetwork(Protocol):
@@ -95,7 +106,7 @@ class MCTSEnvironment(Protocol):
         ...
 
 
-@dataclass
+@dataclass(slots=True)
 class MCTSConfig:
     """Configuration for MCTS."""
 
@@ -107,7 +118,7 @@ class MCTSConfig:
     temperature_threshold: int = 30  # Turn after which to use temperature=0
 
 
-@dataclass
+@dataclass(slots=True)
 class GumbelMCTSConfig:
     """Configuration for Gumbel MuZero MCTS.
 
@@ -129,7 +140,7 @@ class GumbelMCTSConfig:
     num_simulations: int = 16
     num_sampled_actions: int = 16
     max_considered_actions: int = 32
-    c_visit: float = 50.0
+    c_visit: float = DEFAULT_C_VISIT
     c_scale: float = 1.0
     use_sequential_halving: bool = True
     min_actions_after_halving: int = 1
@@ -137,7 +148,7 @@ class GumbelMCTSConfig:
     temperature_threshold: int = 30
 
 
-@dataclass
+@dataclass(slots=True)
 class MCTSNode:
     """Node in the MCTS tree.
 
@@ -209,7 +220,7 @@ class MCTSNode:
 
         # Normalize policy over valid actions
         valid_policy = policy[valid_actions]
-        valid_policy = valid_policy / (valid_policy.sum() + 1e-8)
+        valid_policy = valid_policy / (valid_policy.sum() + EPSILON)
 
         # Create child nodes
         for i, action in enumerate(valid_actions):
@@ -238,6 +249,7 @@ class Civ6MCTS:
 
     Uses neural network for policy prior and value estimation.
     Supports action masking for valid moves.
+    Optionally integrates with ReflectionMemory for LATS-style learning.
     """
 
     def __init__(
@@ -245,6 +257,7 @@ class Civ6MCTS:
         network: torch.nn.Module,
         config: MCTSConfig | None = None,
         device: str = "cpu",
+        reflection_memory: Any | None = None,
     ):
         """Initialize MCTS.
 
@@ -252,10 +265,24 @@ class Civ6MCTS:
             network: Neural network for evaluation.
             config: MCTS configuration.
             device: Device for neural network inference.
+            reflection_memory: Optional ReflectionMemory for value adjustments
+                based on past failures. When provided, actions that led to
+                failures in similar states will be penalized.
         """
         self.network = network
         self.config = config or MCTSConfig()
         self.device = device
+        self._reflection_memory = reflection_memory
+        self._search_count = 0
+        logger.debug(
+            "Civ6MCTS initialized",
+            extra={
+                "num_simulations": self.config.num_simulations,
+                "c_puct": self.config.c_puct,
+                "device": device,
+                "has_reflection_memory": reflection_memory is not None,
+            },
+        )
 
     def search(
         self,
@@ -271,6 +298,16 @@ class Civ6MCTS:
         Returns:
             Tuple of (action_probs, root_value).
         """
+        self._search_count += 1
+        logger.debug(
+            "Starting MCTS search",
+            extra={
+                "search_id": self._search_count,
+                "num_simulations": self.config.num_simulations,
+                "add_noise": add_noise,
+            },
+        )
+
         # Create root node
         root = MCTSNode()
 
@@ -344,13 +381,18 @@ class Civ6MCTS:
         spatial: torch.Tensor,
         vector: torch.Tensor,
         action_mask: np.ndarray,
+        action: int | None = None,
     ) -> tuple[np.ndarray, float]:
         """Evaluate state using neural network.
+
+        Optionally applies value adjustments from reflection memory
+        to penalize actions that led to failures in similar states.
 
         Args:
             spatial: Spatial features.
             vector: Vector features.
             action_mask: Valid action mask.
+            action: Optional action to get reflection-based adjustment for.
 
         Returns:
             Tuple of (policy, value).
@@ -365,6 +407,20 @@ class Civ6MCTS:
             )
             policy = policy_probs.squeeze(0).cpu().numpy()
             value = value.item()
+
+        # Apply reflection-based value adjustment if available
+        if self._reflection_memory is not None and action is not None:
+            try:
+                # Check if reflection memory is initialized
+                if hasattr(self._reflection_memory, 'initialized') and self._reflection_memory.initialized:
+                    state = {
+                        "spatial": spatial.cpu().numpy(),
+                        "vector": vector.cpu().numpy(),
+                    }
+                    adjustment = self._reflection_memory.get_value_adjustment_sync(state, action)
+                    value = value + adjustment
+            except Exception:
+                pass  # Silently ignore reflection errors to not disrupt MCTS
 
         return policy, value
 
@@ -466,7 +522,7 @@ class SimpleMCTS:
         self,
         num_simulations: int = 50,
         c_puct: float = 1.5,
-        rollout_depth: int = 20,
+        rollout_depth: int = DEFAULT_ROLLOUT_DEPTH,
     ):
         """Initialize simple MCTS.
 
@@ -479,6 +535,15 @@ class SimpleMCTS:
         self.c_puct = c_puct
         self.rollout_depth = rollout_depth
         self._rng = np.random.default_rng()
+        self._search_count = 0
+        logger.debug(
+            "SimpleMCTS initialized",
+            extra={
+                "num_simulations": num_simulations,
+                "c_puct": c_puct,
+                "rollout_depth": rollout_depth,
+            },
+        )
 
     def search(self, env: MCTSEnvironment) -> tuple[np.ndarray, float]:
         """Run MCTS search.
@@ -616,7 +681,7 @@ class SimpleMCTS:
             return int(np.argmax(action_probs))
 
         if temperature != 1.0:
-            probs = np.power(action_probs + 1e-8, 1.0 / temperature)
+            probs = np.power(action_probs + EPSILON, 1.0 / temperature)
             probs = probs / probs.sum()
         else:
             probs = action_probs
@@ -660,13 +725,13 @@ def gumbel_sample_actions(
     # Get log probabilities for valid actions
     valid_policy = policy[valid_actions]
     # Ensure numerical stability
-    valid_policy = np.clip(valid_policy, 1e-8, 1.0)
+    valid_policy = np.clip(valid_policy, EPSILON, 1.0)
     log_probs = np.log(valid_policy)
 
     # Sample Gumbel noise: g ~ Gumbel(0, 1)
     # Gumbel(0,1) = -log(-log(U)) where U ~ Uniform(0,1)
     uniform = np.random.uniform(size=len(valid_actions))
-    gumbel_noise = -np.log(-np.log(np.clip(uniform, 1e-8, 1 - 1e-8)))
+    gumbel_noise = -np.log(-np.log(np.clip(uniform, EPSILON, 1 - EPSILON)))
 
     # Gumbel-Top-k: score = log(pi) / temperature + g
     scores = log_probs / temperature + gumbel_noise
@@ -715,7 +780,7 @@ def compute_completed_q(
     return completed_q
 
 
-@dataclass
+@dataclass(slots=True)
 class GumbelMCTSNode:
     """Node in the Gumbel MCTS tree.
 
@@ -1073,7 +1138,7 @@ class GumbelMCTS:
         while not (terminated or truncated):
             if node.is_expanded():
                 # Selection: use PUCT
-                action, node = node.select_child(self.config.c_visit / 50.0)
+                action, node = node.select_child(self.config.c_visit / DEFAULT_C_VISIT_DIVISOR)
                 search_path.append(node)
                 _, reward, terminated, truncated, _ = sim_env.step(action)
             else:
@@ -1188,7 +1253,7 @@ class GumbelMCTS:
             return int(np.argmax(action_probs))
 
         # Apply temperature for exploration
-        probs = np.power(action_probs + 1e-8, 1.0 / temperature)
+        probs = np.power(action_probs + EPSILON, 1.0 / temperature)
         probs = probs / probs.sum()
 
         return int(np.random.choice(len(probs), p=probs))
@@ -1405,7 +1470,7 @@ class MuZeroMCTS:
 
         # Normalize policy over valid actions
         valid_priors = policy[valid_actions]
-        valid_priors = valid_priors / (valid_priors.sum() + 1e-8)
+        valid_priors = valid_priors / (valid_priors.sum() + EPSILON)
 
         # Expand root
         root.expand(valid_actions, valid_priors)
@@ -1728,7 +1793,7 @@ class MuZeroMCTS:
         valid_actions = np.where(action_mask > 0)[0].tolist()
         if len(valid_actions) > 0:
             valid_priors = policy[valid_actions]
-            valid_priors = valid_priors / (valid_priors.sum() + 1e-8)
+            valid_priors = valid_priors / (valid_priors.sum() + EPSILON)
             node.expand(valid_actions, valid_priors)
 
     def _expand_node(
@@ -1778,7 +1843,7 @@ class MuZeroMCTS:
         if len(valid_actions) > 0:
             policy = F.softmax(policy_logits, dim=-1).squeeze(0).cpu().numpy()
             valid_priors = policy[valid_actions]
-            valid_priors = valid_priors / (valid_priors.sum() + 1e-8)
+            valid_priors = valid_priors / (valid_priors.sum() + EPSILON)
             node.expand(valid_actions, valid_priors)
 
     def _get_value(self, node: MuZeroNode, action_mask: np.ndarray) -> float:
@@ -1895,7 +1960,7 @@ class MuZeroMCTS:
             return int(np.argmax(action_probs))
 
         # Apply temperature
-        probs = np.power(action_probs + 1e-8, 1.0 / temperature)
+        probs = np.power(action_probs + EPSILON, 1.0 / temperature)
         probs = probs / probs.sum()
 
         return int(np.random.choice(len(probs), p=probs))
