@@ -26,6 +26,7 @@ from alpha_zero.distributed.shared_storage import (
     WeightSynchronizer,
 )
 from alpha_zero.envs.microciv import MicroCivEnv
+from alpha_zero.utils.constants import DISTRIBUTED, GAME
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +39,8 @@ class ActorConfig:
     actor_id: int = 0
 
     # Environment settings
-    board_size: int = 16
-    max_turns: int = 200
+    board_size: int = GAME.DEFAULT_BOARD_SIZE
+    max_turns: int = GAME.DEFAULT_MAX_TURNS
 
     # Network settings
     num_res_blocks: int = 6
@@ -62,7 +63,7 @@ class ActorConfig:
     weight_update_interval: float = 1.0  # Seconds between weight checks
 
     # Timeout settings
-    trajectory_submission_timeout: float = 5.0  # Timeout for trajectory submission
+    trajectory_submission_timeout: float = DISTRIBUTED.TRAJECTORY_SUBMISSION_TIMEOUT
 
     # Logging
     log_interval: int = 10  # Log every N games

@@ -384,6 +384,12 @@ class DistributedConstants:
     COMPRESSION_ENABLED: bool = True
     COMPRESSION_LEVEL: int = 6  # LZMA compression level
 
+    # Timeout values (seconds)
+    TRAJECTORY_SUBMISSION_TIMEOUT: float = 5.0
+    ACTOR_POOL_STOP_TIMEOUT: float = 10.0
+    DEFAULT_STATE_TIMEOUT: float = 60.0
+    DEFAULT_ACTION_TIMEOUT: float = 30.0
+
 
 # =============================================================================
 # REWARD CONSTANTS
