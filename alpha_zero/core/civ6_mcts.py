@@ -107,7 +107,7 @@ class MCTSEnvironment(Protocol):
         ...
 
 
-@dataclass
+@dataclass(slots=True)
 class MCTSConfig:
     """Configuration for MCTS."""
 
@@ -119,7 +119,7 @@ class MCTSConfig:
     temperature_threshold: int = 30  # Turn after which to use temperature=0
 
 
-@dataclass
+@dataclass(slots=True)
 class GumbelMCTSConfig:
     """Configuration for Gumbel MuZero MCTS.
 
@@ -149,7 +149,7 @@ class GumbelMCTSConfig:
     temperature_threshold: int = 30
 
 
-@dataclass
+@dataclass(slots=True)
 class MCTSNode:
     """Node in the MCTS tree.
 
@@ -745,7 +745,7 @@ def compute_completed_q(
     return completed_q
 
 
-@dataclass
+@dataclass(slots=True)
 class GumbelMCTSNode:
     """Node in the Gumbel MCTS tree.
 

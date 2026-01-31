@@ -520,7 +520,7 @@ class TemplateParser:
         """Parse the session/context persistence section."""
         # Look for memory file specification
         file_match = re.search(
-            r"(?:CLAUDE\.md|memory_file)[^:]*:\s*[\"']?(\S+)[\"']?", content, re.IGNORECASE
+            r"(?:memory_file|session_file|file)[^:]*:\s*[\"']?(\S+)[\"']?", content, re.IGNORECASE
         )
         if file_match:
             template.session.memory_file = file_match.group(1)

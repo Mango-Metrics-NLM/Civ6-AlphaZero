@@ -29,7 +29,7 @@ class SectionFormat(Enum):
     TEXT = "text"
 
 
-@dataclass
+@dataclass(slots=True)
 class MemorySection:
     """Represents a section in the session memory."""
 
@@ -135,7 +135,7 @@ class MemorySection:
         return section
 
 
-@dataclass
+@dataclass(slots=True)
 class ArchitectureDecision:
     """Represents an architecture decision record."""
 
@@ -152,7 +152,7 @@ class ArchitectureDecision:
         }
 
 
-@dataclass
+@dataclass(slots=True)
 class KnownIssue:
     """Represents a known issue with workaround."""
 
@@ -235,7 +235,7 @@ class SessionMemory:
             return False
 
         try:
-            self._raw_content = self.memory_file.read_text()
+            self._raw_content = self.memory_file.read_text(encoding="utf-8")
             self._parse_content()
             logger.info(f"Loaded session memory from {self.memory_file}")
             return True
@@ -275,8 +275,10 @@ class SessionMemory:
             True if file was saved successfully.
         """
         try:
+            if not self.memory_file.parent.exists():
+                self.memory_file.parent.mkdir(parents=True, exist_ok=True)
             content = self.render()
-            self.memory_file.write_text(content)
+            self.memory_file.write_text(content, encoding="utf-8")
             self._modified = False
             logger.info(f"Saved session memory to {self.memory_file}")
             return True

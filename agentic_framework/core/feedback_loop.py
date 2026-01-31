@@ -304,11 +304,17 @@ class FeedbackLoop:
         """
         self.config = config
         self._verification_commands = config.feedback.verification_commands
-        self._success_checks = config.feedback.success_verification
+        self._success_checks = getattr(config.feedback, "success_verification", [])
 
         # Load error handling patterns
         for pattern_data in config.feedback.error_handling.auto_fix_patterns:
-            action = ErrorAction(pattern_data.get("action", "analyze_fix"))
+            action_str = pattern_data.get("action", "analyze_fix")
+            try:
+                action = ErrorAction(action_str)
+            except ValueError:
+                logger.warning(f"Invalid error action '{action_str}', defaulting to ANALYZE_FIX")
+                action = ErrorAction.ANALYZE_FIX
+
             pattern = ErrorPattern(
                 error_type=pattern_data.get("error_type", "unknown"),
                 action=action,
@@ -410,7 +416,7 @@ class FeedbackLoop:
             return VerificationPhase.LINT
         elif "type" in name_lower or "mypy" in name_lower:
             return VerificationPhase.TYPE_CHECK
-        elif "unit" in name_lower:
+        elif "unit" in name_lower or "pytest" in name_lower:
             return VerificationPhase.UNIT_TEST
         elif "integration" in name_lower:
             return VerificationPhase.INTEGRATION_TEST
