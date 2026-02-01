@@ -6,16 +6,16 @@ suitable for development and single-machine training.
 
 from __future__ import annotations
 
-import fnmatch
 import io
 import json
 import logging
 import lzma
 import pickle
 import threading
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import torch
@@ -123,7 +123,7 @@ class LocalStorageBackend(StorageBackend):
         if self.config.compress_weights:
             data = lzma.decompress(data)
         buffer = io.BytesIO(data)
-        return torch.load(buffer, map_location=map_location, weights_only=True)
+        return cast(dict[str, torch.Tensor], torch.load(buffer, map_location=map_location, weights_only=True))
 
     # =========================================================================
     # Model Operations
@@ -347,7 +347,7 @@ class LocalStorageBackend(StorageBackend):
     ) -> list[TrajectoryMetadata]:
         """List available trajectories."""
         games_dir = self.base_path / self.config.games_subdir
-        metadata_list = []
+        metadata_list: list[TrajectoryMetadata] = []
 
         if not games_dir.exists():
             return metadata_list
@@ -526,7 +526,7 @@ class LocalStorageBackend(StorageBackend):
     def list_checkpoints(self) -> list[CheckpointMetadata]:
         """List all available checkpoints."""
         checkpoints_dir = self.base_path / self.config.checkpoints_subdir
-        metadata_list = []
+        metadata_list: list[CheckpointMetadata] = []
 
         if not checkpoints_dir.exists():
             return metadata_list
@@ -591,7 +591,7 @@ class LocalStorageBackend(StorageBackend):
     def list_evaluations(self) -> list[EvaluationResult]:
         """List all evaluation results."""
         eval_dir = self.base_path / self.config.eval_subdir
-        results = []
+        results: list[EvaluationResult] = []
 
         if not eval_dir.exists():
             return results
@@ -649,7 +649,7 @@ class LocalStorageBackend(StorageBackend):
         if not config_path.exists():
             raise FileNotFoundError(f"Config not found at iteration {iteration}")
 
-        return json.loads(config_path.read_text())
+        return cast(dict[str, Any], json.loads(config_path.read_text()))
 
     # =========================================================================
     # Utility Operations
@@ -675,12 +675,19 @@ class LocalStorageBackend(StorageBackend):
         prefix: str,
         pattern: str | None = None,
     ) -> list[str]:
-        """List files matching a prefix and optional pattern."""
+        """List files matching a prefix and optional pattern.
+
+        Uses recursive glob to search subdirectories.
+        """
         prefix_path = Path(prefix)
         if not prefix_path.exists():
             return []
 
         if pattern:
+            # Use rglob to search recursively
+            # Prepend **/ to match in subdirectories
+            if not pattern.startswith("**/"):
+                pattern = f"**/{pattern}"
             files = list(prefix_path.glob(pattern))
         else:
             files = list(prefix_path.rglob("*"))

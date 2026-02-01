@@ -225,6 +225,8 @@ class CloudTrainer:
         Returns:
             Tuple of (total_loss, loss_components).
         """
+        assert self._model is not None, "Model not initialized"
+
         spatial = batch["spatial"].to(self.device)
         vector = batch["vector"].to(self.device)
         target_policy = batch["policy"].to(self.device)
@@ -269,6 +271,9 @@ class CloudTrainer:
             Path where checkpoint was saved.
         """
         from alpha_zero.storage.models import CheckpointMetadata
+
+        assert self._model is not None, "Model not initialized"
+        assert self._optimizer is not None, "Optimizer not initialized"
 
         checkpoint_data = {
             "model_state_dict": self._model.state_dict(),
@@ -318,6 +323,8 @@ class CloudTrainer:
             metrics=metrics,
         )
 
+        assert self._model is not None, "Model not initialized"
+
         # Save iteration model
         path = self.storage.save_model(
             state_dict=self._model.state_dict(),
@@ -342,6 +349,8 @@ class CloudTrainer:
 
         # Initialize model
         self._initialize_model()
+        assert self._model is not None, "Model not initialized"
+        assert self._optimizer is not None, "Optimizer not initialized"
         self._model.train()
 
         # Check if we have enough data
@@ -383,6 +392,8 @@ class CloudTrainer:
 
                 # Update weights after accumulation
                 if (num_batches + 1) % self.config.gradient_accumulation_steps == 0:
+                    assert self._optimizer is not None
+                    assert self._model is not None
                     self._scaler.unscale_(self._optimizer)
                     torch.nn.utils.clip_grad_norm_(
                         self._model.parameters(),

@@ -18,9 +18,9 @@ import json
 import logging
 import lzma
 import pickle
-import time
+from collections.abc import Iterator
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import torch
@@ -42,9 +42,9 @@ logger = logging.getLogger(__name__)
 
 # Optional imports with graceful degradation
 try:
-    from google.cloud import storage as gcs
     from google.api_core import exceptions as gcs_exceptions
     from google.api_core import retry as gcs_retry
+    from google.cloud import storage as gcs
 
     HAS_GCS = True
 except ImportError:
@@ -154,17 +154,17 @@ class GCSStorageBackend(StorageBackend):
     def _download_bytes(self, blob_path: str) -> bytes:
         """Download bytes from GCS with retry."""
         blob = self._bucket.blob(blob_path)
-        return blob.download_as_bytes(retry=self._retry)
+        return cast(bytes, blob.download_as_bytes(retry=self._retry))
 
     def _download_json(self, blob_path: str) -> dict[str, Any]:
         """Download and parse JSON from GCS."""
         data = self._download_bytes(blob_path)
-        return json.loads(data.decode("utf-8"))
+        return cast(dict[str, Any], json.loads(data.decode("utf-8")))
 
     def _blob_exists(self, blob_path: str) -> bool:
         """Check if a blob exists."""
         blob = self._bucket.blob(blob_path)
-        return blob.exists()
+        return cast(bool, blob.exists())
 
     def _list_blobs(
         self,
@@ -201,7 +201,7 @@ class GCSStorageBackend(StorageBackend):
         if self.config.compress_weights:
             data = lzma.decompress(data)
         buffer = io.BytesIO(data)
-        return torch.load(buffer, map_location=map_location, weights_only=True)
+        return cast(dict[str, torch.Tensor], torch.load(buffer, map_location=map_location, weights_only=True))
 
     # =========================================================================
     # Model Operations
@@ -267,8 +267,7 @@ class GCSStorageBackend(StorageBackend):
         map_location: str | torch.device = "cpu",
     ) -> tuple[dict[str, torch.Tensor], ModelMetadata]:
         """Load model weights by version number."""
-        # List all model directories
-        models_prefix = self._gcs_path(self.config.models_subdir)
+        # List all model blobs
         blobs = self._list_blobs(self.config.models_subdir)
 
         # Find metadata files
@@ -354,7 +353,7 @@ class GCSStorageBackend(StorageBackend):
 
         try:
             metadata_dict = self._download_json(metadata_path)
-            return metadata_dict.get("version", 0)
+            return cast(int, metadata_dict.get("version", 0))
         except Exception:
             return 0
 

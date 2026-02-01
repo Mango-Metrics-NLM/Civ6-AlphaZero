@@ -29,8 +29,9 @@ from __future__ import annotations
 import logging
 import random
 from collections import deque
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Iterator
+from collections.abc import Iterator
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import torch
@@ -150,7 +151,7 @@ class StorageReplayBuffer(IterableDataset):
         if self.config.window_size <= 0:
             # Include all iterations
             all_metadata = self.storage.list_trajectories()
-            return sorted(set(m.iteration for m in all_metadata))
+            return sorted({m.iteration for m in all_metadata})
 
         # Window from current iteration
         start_iter = max(0, self.current_iteration - self.config.window_size + 1)

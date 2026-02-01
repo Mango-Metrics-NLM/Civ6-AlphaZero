@@ -32,7 +32,6 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -415,7 +414,7 @@ class VertexAILauncher:
         """
         start_time = time.time()
         timeout_seconds = timeout_hours * 3600
-        results = [None] * len(jobs)
+        results: list[bool | None] = [None] * len(jobs)
 
         while None in results:
             if time.time() - start_time > timeout_seconds:

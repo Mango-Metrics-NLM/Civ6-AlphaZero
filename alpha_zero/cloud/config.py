@@ -9,8 +9,8 @@ Provides configuration classes for:
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
-from typing import Any, Literal
+from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -45,18 +45,18 @@ class MachineProfile:
 
     def to_vertex_spec(self) -> dict[str, Any]:
         """Convert to Vertex AI worker pool spec format."""
-        spec = {
-            "machine_spec": {
-                "machine_type": self.machine_type,
-            },
-            "replica_count": 1,
+        machine_spec: dict[str, Any] = {
+            "machine_type": self.machine_type,
         }
 
         if self.accelerator_type and self.accelerator_count > 0:
-            spec["machine_spec"]["accelerator_type"] = self.accelerator_type
-            spec["machine_spec"]["accelerator_count"] = self.accelerator_count
+            machine_spec["accelerator_type"] = self.accelerator_type
+            machine_spec["accelerator_count"] = self.accelerator_count
 
-        return spec
+        return {
+            "machine_spec": machine_spec,
+            "replica_count": 1,
+        }
 
 
 # Pre-defined machine profiles for budget deployment

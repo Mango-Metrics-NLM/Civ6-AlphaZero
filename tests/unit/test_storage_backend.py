@@ -9,27 +9,22 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 import torch
 
+# Import shared_storage types for trajectory testing
+from alpha_zero.distributed.shared_storage import GameTrajectory, TrainingExample
 from alpha_zero.storage import (
-    CheckpointMetadata,
     EvaluationResult,
     LocalStorageBackend,
     ModelMetadata,
     StorageConfig,
-    TrajectoryMetadata,
     create_storage_backend,
 )
-
-# Import shared_storage types for trajectory testing
-from alpha_zero.distributed.shared_storage import GameTrajectory, TrainingExample
 
 
 @pytest.fixture
@@ -299,19 +294,24 @@ class TestLocalStorageBackend:
         sample_trajectory: GameTrajectory,
     ) -> None:
         """Test trajectory listing with filters."""
-        # Save multiple trajectories
+        # Save multiple trajectories across iterations and workers
+        game_counter = 0
         for iteration in [1, 2, 2]:
             for worker_id in [0, 1]:
                 local_backend.save_trajectory(
                     trajectory=sample_trajectory,
                     iteration=iteration,
                     worker_id=worker_id,
-                    game_id=f"game_{iteration}_{worker_id}",
+                    game_id=f"game_{game_counter}",
                 )
+                game_counter += 1
 
         # Filter by iteration
+        iter1_trajectories = local_backend.list_trajectories(iteration=1)
+        assert len(iter1_trajectories) == 2  # 2 workers in iteration 1
+
         iter2_trajectories = local_backend.list_trajectories(iteration=2)
-        assert len(iter2_trajectories) == 4  # 2 workers x 2 saves
+        assert len(iter2_trajectories) == 4  # 2 workers x 2 saves at iteration 2
 
         # Filter by worker
         worker0_trajectories = local_backend.list_trajectories(
@@ -427,9 +427,9 @@ class TestLocalStorageBackend:
         assert local_backend.exists(path)
         assert not local_backend.exists("/nonexistent/path")
 
-        # List files
+        # List files (use *.pt* to match both compressed and uncompressed)
         files = local_backend.list_files(
-            str(local_backend.base_path / "models"), "*.pt"
+            str(local_backend.base_path / "models"), "*.pt*"
         )
         assert len(files) > 0
 

@@ -25,9 +25,10 @@ import signal
 import sys
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +53,8 @@ class PreemptionHandler:
     preemption_time: datetime | None = None
 
     _shutdown_event: threading.Event = field(default_factory=threading.Event)
-    _original_sigterm: signal.Handlers | None = None
-    _original_sigint: signal.Handlers | None = None
+    _original_sigterm: Any = None
+    _original_sigint: Any = None
 
     def register(self) -> None:
         """Register signal handlers for preemption.
@@ -110,7 +111,7 @@ class PreemptionHandler:
 
         for i, callback in enumerate(self.cleanup_callbacks):
             if time.time() >= deadline:
-                logger.warning(f"Cleanup timeout - skipping remaining callbacks")
+                logger.warning("Cleanup timeout - skipping remaining callbacks")
                 break
 
             try:

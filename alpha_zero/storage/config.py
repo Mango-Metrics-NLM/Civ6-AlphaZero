@@ -110,8 +110,9 @@ class StorageConfig:
         if env_path := os.environ.get("CIV6_STORAGE_BASE_PATH"):
             self.base_path = env_path
 
-        # Update GCS config from environment
-        if self.backend_type == "gcs":
+        # Update GCS config from environment only if bucket env var is set
+        # This avoids overwriting programmatically set GCS config
+        if self.backend_type == "gcs" and os.environ.get("CIV6_GCS_BUCKET"):
             self.gcs = GCSConfig.from_env()
 
     def _apply_vertex_ai_overrides(self) -> None:
