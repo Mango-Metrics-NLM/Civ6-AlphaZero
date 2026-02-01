@@ -1,0 +1,37 @@
+# Training image for neural network optimization
+# Consumes trajectories from storage and produces model checkpoints
+#
+# Build: docker build -f dockerfiles/Dockerfile.trainer -t civ6-trainer .
+# Run: docker run -e CIV6_GCS_BUCKET=my-bucket civ6-trainer --training-steps=1000
+
+ARG BASE_IMAGE=civ6-alphazero-base:latest
+FROM ${BASE_IMAGE}
+
+# Metadata
+LABEL maintainer="Civ6-AlphaZero"
+LABEL description="Training worker for Civ6 AlphaZero"
+LABEL component="trainer"
+
+# Training specific environment
+ENV CIV6_COMPONENT=trainer \
+    # Training configuration
+    CIV6_TRAINING_STEPS=1000 \
+    CIV6_BATCH_SIZE=256 \
+    CIV6_LEARNING_RATE=0.001 \
+    CIV6_ITERATION=0 \
+    CIV6_REPLAY_WINDOW=10 \
+    # Device configuration
+    CIV6_DEVICE=cuda \
+    # Gradient accumulation for memory efficiency
+    CIV6_GRADIENT_ACCUMULATION_STEPS=1 \
+    # Mixed precision training
+    CIV6_USE_AMP=true
+
+# Copy entry point script
+COPY --chown=appuser:appuser infra/entrypoints/trainer_entrypoint.py /app/entrypoints/
+
+# Set entry point
+ENTRYPOINT ["python", "-m", "alpha_zero.cloud.trainer"]
+
+# Default arguments (can be overridden)
+CMD ["--help"]
