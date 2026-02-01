@@ -276,6 +276,22 @@ When making changes, update the relevant sections below:
 | `python -m alpha_zero.orchestrator --preset fast --dry_run` | Fast preset smoke test |
 | `python -m alpha_zero.orchestrator --config configs/orchestrator.yaml --dry_run` | Config file smoke test |
 
+#### Cloud Deployment Commands
+
+| Command | Purpose |
+|---------|---------|
+| `make build-all` | Build all Docker images |
+| `make push` | Push images to Artifact Registry |
+| `make local-test` | Run local docker-compose test |
+| `make local-smoke` | Run smoke test (1 game + 1 step) |
+| `docker-compose up -d` | Start local testing environment |
+| `python -m infra.vertex_launcher --mode=selfplay --iteration=0 --dry-run` | Self-play job dry run |
+| `python -m infra.vertex_launcher --mode=train --iteration=0 --dry-run` | Training job dry run |
+| `python -m infra.vertex_launcher --mode=eval --iteration=0 --dry-run` | Evaluation job dry run |
+| `python -m alpha_zero.cloud.selfplay_worker --help` | Self-play worker options |
+| `python -m alpha_zero.cloud.trainer --help` | Trainer options |
+| `python -m alpha_zero.cloud.evaluator --help` | Evaluator options |
+
 #### Test Commands
 
 | Command | Purpose |
@@ -291,6 +307,8 @@ When making changes, update the relevant sections below:
 | `pytest tests/unit/test_factories.py -v` | Test component factories |
 | `pytest tests/unit/test_rag_integration.py -v` | Test RAG integration |
 | `pytest tests/unit/test_strategy_advisor.py -v` | Test strategy advisor |
+| `pytest tests/unit/test_storage_backend.py -v` | Test storage backends |
+| `pytest tests/unit/test_replay_buffer.py -v` | Test replay buffers |
 | `pytest -k "test_name" -v` | Run specific test by name |
 
 ### 5.2 Architecture Decisions
@@ -312,6 +330,11 @@ When making changes, update the relevant sections below:
 | 2026-01-20 | RAG-LLM integration layer | ChromaDB knowledge base with strategy advisor for training insights |
 | 2026-01-20 | Hyperparameter scheduling | Multiple schedule types (warmup_cosine, step, exponential) |
 | 2026-01-20 | Factory pattern for components | Testable, flexible component creation |
+| 2026-02-01 | Abstract StorageBackend interface | Unified storage API for local and GCS backends |
+| 2026-02-01 | GCS-backed replay buffer | Streaming IterableDataset for memory-efficient cloud training |
+| 2026-02-01 | Cloud-native worker components | Self-play, trainer, evaluator containerized for Vertex AI |
+| 2026-02-01 | Preemption handling | Graceful shutdown on Spot VM preemption with trajectory flush |
+| 2026-02-01 | Budget machine profiles | Pre-configured profiles for T4/L4/A100 GPUs with cost estimates |
 
 ### 5.3 Known Issues
 
@@ -435,7 +458,23 @@ Civ6-AlphaZero/
 │   │   ├── learner.py           # Central learner
 │   │   ├── coordinator.py       # Training orchestration
 │   │   └── shared_storage.py    # Weight & buffer sharing
-│   ├── orchestrator/            # Unified Training Orchestrator (NEW)
+│   ├── storage/                 # Storage backends (NEW)
+│   │   ├── __init__.py
+│   │   ├── backend.py           # Abstract StorageBackend interface
+│   │   ├── config.py            # StorageConfig with GCS settings
+│   │   ├── local_backend.py     # Local filesystem implementation
+│   │   ├── gcs_backend.py       # GCS implementation
+│   │   ├── models.py            # Metadata dataclasses
+│   │   ├── replay_buffer.py     # Streaming replay buffer
+│   │   └── factory.py           # create_storage_backend
+│   ├── cloud/                   # Cloud-native components (NEW)
+│   │   ├── __init__.py
+│   │   ├── config.py            # CloudConfig, MachineProfile
+│   │   ├── preemption.py        # PreemptionHandler for Spot VMs
+│   │   ├── selfplay_worker.py   # Self-play worker entry point
+│   │   ├── trainer.py           # Trainer entry point
+│   │   └── evaluator.py         # Evaluator entry point
+│   ├── orchestrator/            # Unified Training Orchestrator
 │   │   ├── __init__.py
 │   │   ├── config.py            # OrchestratorConfig with schedules
 │   │   ├── orchestrator.py      # TrainingOrchestrator main class
@@ -456,6 +495,14 @@ Civ6-AlphaZero/
 │   │   ├── test_runner.py       # Test execution utilities
 │   │   └── agent_tools.py       # Claude Code agent tools
 │   └── training_civ6.py         # Training entry point
+├── dockerfiles/                 # Container images (NEW)
+│   ├── Dockerfile.base          # Base image with PyTorch
+│   ├── Dockerfile.selfplay      # Self-play worker image
+│   ├── Dockerfile.trainer       # Trainer image
+│   └── Dockerfile.evaluator     # Evaluator image
+├── infra/                       # Infrastructure (NEW)
+│   ├── __init__.py
+│   └── vertex_launcher.py       # Vertex AI job launcher
 ├── tests/
 │   ├── __init__.py
 │   ├── unit/                    # Unit tests
@@ -474,6 +521,8 @@ Civ6-AlphaZero/
 ├── .env.template                # Environment template
 ├── requirements.txt             # Dependencies
 ├── pyproject.toml               # Package configuration
+├── Makefile                     # Build and deployment targets (NEW)
+├── docker-compose.yml           # Local testing environment (NEW)
 └── CLAUDE.md                    # This file
 ```
 
@@ -799,7 +848,127 @@ await pipeline.close()
 
 ---
 
-## SECTION 12: NEXT STEPS
+## SECTION 12: VERTEX AI CLOUD DEPLOYMENT
+
+### 12.1 Overview
+The system supports deployment to Google Vertex AI for distributed training at scale.
+
+### 12.2 Storage Backend
+```python
+from alpha_zero.storage import create_storage_backend, StorageConfig
+
+# Local storage (default)
+storage = create_storage_backend(StorageConfig.for_local("./data"))
+
+# GCS storage (for cloud)
+storage = create_storage_backend(StorageConfig.for_gcs("my-bucket", "civ6-alphazero"))
+
+# Save/load models
+storage.save_model(state_dict, iteration=100)
+state_dict, metadata = storage.load_champion()
+
+# Save trajectories
+storage.save_trajectory(trajectory, iteration=1, worker_id=0, game_id="game_001")
+```
+
+### 12.3 Machine Profiles
+| Profile | GPU | VRAM | Spot $/hr | On-Demand $/hr | Use For |
+|---------|-----|------|-----------|----------------|---------|
+| `selfplay_t4_spot` | 1× T4 | 16 GB | $0.11 | $0.35 | Self-play (budget) |
+| `selfplay_l4_spot` | 1× L4 | 24 GB | $0.24 | $0.80 | Self-play |
+| `train_l4_single` | 1× L4 | 24 GB | — | $0.80 | Training (budget) |
+| `train_l4_ondemand` | 2× L4 | 48 GB | — | $2.68 | Training |
+| `train_a100_burst` | 1× A100 | 40 GB | — | $3.67 | Burst training |
+| `eval_l4_spot` | 1× L4 | 24 GB | $0.24 | $0.80 | Evaluation |
+
+### 12.4 Cloud Workers
+```bash
+# Self-play worker
+python -m alpha_zero.cloud.selfplay_worker \
+    --num-games=100 \
+    --iteration=5 \
+    --worker-id=0 \
+    --num-simulations=800
+
+# Trainer
+python -m alpha_zero.cloud.trainer \
+    --training-steps=1000 \
+    --iteration=5 \
+    --batch-size=256
+
+# Evaluator
+python -m alpha_zero.cloud.evaluator \
+    --num-games=400 \
+    --iteration=5 \
+    --promotion-threshold=0.55
+```
+
+### 12.5 Environment Variables
+| Variable | Purpose |
+|----------|---------|
+| `CIV6_STORAGE_BACKEND` | Backend type: "local" or "gcs" |
+| `CIV6_GCS_BUCKET` | GCS bucket name |
+| `CIV6_GCS_PREFIX` | Path prefix in bucket |
+| `CIV6_ITERATION` | Current training iteration |
+| `CIV6_WORKER_ID` | Self-play worker identifier |
+| `CIV6_DEVICE` | PyTorch device (cuda/cpu) |
+| `AIP_CHECKPOINT_DIR` | Vertex AI checkpoint directory (auto) |
+| `AIP_MODEL_DIR` | Vertex AI model directory (auto) |
+
+### 12.6 Docker Build
+```bash
+# Build all images
+make build-all
+
+# Push to Artifact Registry
+make setup-artifact-registry
+make push
+
+# Local testing
+docker-compose up -d
+docker-compose logs -f trainer
+```
+
+### 12.7 Vertex AI Jobs
+```bash
+# Submit self-play fleet
+python -m infra.vertex_launcher \
+    --mode=selfplay \
+    --iteration=5 \
+    --num-workers=3 \
+    --games-per-worker=100
+
+# Submit training job
+python -m infra.vertex_launcher \
+    --mode=train \
+    --iteration=5 \
+    --training-steps=1000
+
+# Submit evaluation job
+python -m infra.vertex_launcher \
+    --mode=eval \
+    --iteration=5 \
+    --num-games=400
+
+# Run full iteration
+python -m infra.vertex_launcher \
+    --mode=iteration \
+    --iteration=5 \
+    --wait
+```
+
+### 12.8 Estimated Costs (Budget Tier)
+| Component | Hours/mo | Rate | Monthly |
+|-----------|----------|------|---------|
+| Self-play (3× T4 Spot) | 270 | $0.11/hr | ~$30 |
+| Training (L4 on-demand) | 90 | $0.80/hr | ~$72 |
+| Evaluation (L4 Spot) | 45 | $0.24/hr | ~$11 |
+| GCS Storage (500 GB) | — | $0.02/GB | ~$10 |
+| **Total** | | | **~$145/mo** |
+
+---
+
+## SECTION 13: NEXT STEPS
 
 ### Phase 3+ (Planned)
 1. **Multi-GPU Training**: Extend distributed training to multiple GPUs
@@ -811,6 +980,6 @@ await pipeline.close()
 
 ---
 
-*Last updated: 2026-01-20*
-*Phase: 4 - Unified Training Orchestrator (Complete)*
-*Current Focus: Training Pipeline Validation & Performance Optimization*
+*Last updated: 2026-02-01*
+*Phase: 5 - Google Vertex AI Cloud Deployment*
+*Current Focus: Budget-tier cloud deployment with GCS storage and Spot VMs*
