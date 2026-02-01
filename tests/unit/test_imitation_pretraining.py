@@ -9,7 +9,6 @@ import pytest
 import torch
 
 from alpha_zero.distributed.shared_storage import GameTrajectory, TrainingExample
-from alpha_zero.evaluation.baseline_agents import GreedyHeuristicAgent, RandomAgent
 from alpha_zero.training.imitation_pretraining import (
     HeuristicExpertGenerator,
     ImitationConfig,
@@ -382,7 +381,6 @@ class TestExpertDataGeneratorProtocol:
 
     def test_heuristic_generator_implements_protocol(self):
         """HeuristicExpertGenerator should implement ExpertDataGenerator protocol."""
-        from alpha_zero.training.imitation_pretraining import ExpertDataGenerator
 
         config = ImitationConfig(board_size=8, max_turns=20)
         generator = HeuristicExpertGenerator(config)

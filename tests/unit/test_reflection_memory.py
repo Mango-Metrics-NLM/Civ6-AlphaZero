@@ -1,7 +1,5 @@
 """Tests for the reflection memory module."""
 
-import asyncio
-import json
 import os
 import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch

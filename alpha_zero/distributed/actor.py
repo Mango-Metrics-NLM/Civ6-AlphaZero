@@ -27,6 +27,7 @@ from alpha_zero.distributed.shared_storage import (
 )
 from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.utils.constants import DISTRIBUTED, GAME
+from alpha_zero.utils.reward_shaping import RewardShaper, RewardShapingConfig
 
 logger = logging.getLogger(__name__)
 

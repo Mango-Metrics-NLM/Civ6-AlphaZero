@@ -14,7 +14,6 @@ import pytest
 
 from alpha_zero.core.config import ConfigMixin
 
-
 # =============================================================================
 # Test Configuration Classes
 # =============================================================================

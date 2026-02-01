@@ -25,7 +25,6 @@ from alpha_zero.core.protocols import (
     TrainerProtocol,
 )
 
-
 # =============================================================================
 # TestSerializableProtocol
 # =============================================================================
@@ -70,7 +69,7 @@ class TestSerializableProtocol:
                 return {"value": 1}
 
             @classmethod
-            def from_dict(cls, data: dict[str, Any]) -> "ValidSerializable":
+            def from_dict(cls, data: dict[str, Any]) -> ValidSerializable:
                 return cls()
 
         class InvalidNotSerializable:
@@ -225,7 +224,7 @@ class TestEnvironmentProtocol:
             def get_observation(self) -> dict[str, np.ndarray]:
                 return self.reset()
 
-            def clone(self) -> "MockEnv":
+            def clone(self) -> MockEnv:
                 return MockEnv()
 
         return MockEnv()

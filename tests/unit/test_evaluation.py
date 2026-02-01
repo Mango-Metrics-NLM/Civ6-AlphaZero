@@ -1,10 +1,8 @@
 """Tests for the evaluation module."""
 
-import numpy as np
-import pytest
 
+from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.evaluation.baseline_agents import (
-    BaseAgent,
     GreedyHeuristicAgent,
     RandomAgent,
 )
@@ -13,7 +11,6 @@ from alpha_zero.evaluation.evaluation_pipeline import (
     GameResult,
     WinRateResult,
 )
-from alpha_zero.envs.microciv import MicroCivEnv
 
 
 class TestRandomAgent:

@@ -1,6 +1,5 @@
 """Tests for the reflection generator module."""
 
-import asyncio
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
