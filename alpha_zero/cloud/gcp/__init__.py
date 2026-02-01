@@ -26,7 +26,7 @@ Example:
     storage.upload_file("model.pt", "checkpoints/model.pt")
 """
 
-from alpha_zero.cloud.gcp.config import GCPConfig, VertexConfig, StorageConfig
+from alpha_zero.cloud.gcp.config import GCPConfig, StorageConfig, VertexConfig
 from alpha_zero.cloud.gcp.storage import CloudStorageClient
 from alpha_zero.cloud.gcp.vertex_trainer import VertexTrainer
 

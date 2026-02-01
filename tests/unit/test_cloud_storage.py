@@ -10,10 +10,11 @@ This module tests the CloudStorageClient implementation, including:
 
 from __future__ import annotations
 
+import shutil
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import patch
-import shutil
 
 import pytest
 
@@ -89,7 +90,7 @@ class TestCloudStorageClientMockOperations:
         return CloudStorageClient(config, force_mock=True)
 
     @pytest.fixture(autouse=True)
-    def cleanup_storage(self) -> None:
+    def cleanup_storage(self) -> Generator[None, None, None]:
         """Clean up storage directory after each test."""
         yield
         storage_dir = Path("storage")
@@ -169,7 +170,7 @@ class TestCloudStorageClientFallback:
         )
 
     @pytest.fixture(autouse=True)
-    def cleanup_storage(self) -> None:
+    def cleanup_storage(self) -> Generator[None, None, None]:
         """Clean up storage directory after each test."""
         yield
         storage_dir = Path("storage")
@@ -222,7 +223,7 @@ class TestCheckpointMethods:
         return CloudStorageClient(config, force_mock=True)
 
     @pytest.fixture(autouse=True)
-    def cleanup_storage(self) -> None:
+    def cleanup_storage(self) -> Generator[None, None, None]:
         """Clean up storage directory after each test."""
         yield
         storage_dir = Path("storage")

@@ -26,7 +26,6 @@ Example:
 from __future__ import annotations
 
 import logging
-import os
 import time
 from pathlib import Path
 from typing import Any
@@ -274,7 +273,7 @@ class CloudStorageClient:
 
         bucket = self._get_bucket(bucket_name)
         blob = bucket.blob(remote_path)
-        return blob.exists()
+        return bool(blob.exists())
 
     def delete(
         self,

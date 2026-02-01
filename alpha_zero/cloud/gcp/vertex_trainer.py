@@ -214,8 +214,10 @@ class VertexTrainer:
 
         # Add accelerator if specified
         if accelerator_type and accelerator_count > 0:
-            worker_pool_specs[0]["machine_spec"]["accelerator_type"] = accelerator_type
-            worker_pool_specs[0]["machine_spec"]["accelerator_count"] = accelerator_count
+            machine_spec = worker_pool_specs[0]["machine_spec"]
+            if isinstance(machine_spec, dict):
+                machine_spec["accelerator_type"] = accelerator_type
+                machine_spec["accelerator_count"] = accelerator_count
 
         # Use container run command if script_path is specified
         if script_path and not python_module:
@@ -304,9 +306,10 @@ class VertexTrainer:
             ended_at=job.end_time,
             error_message=job.error.message if job.error else None,
             logs_uri=None,  # Would need to construct from job metadata
-            output_uri=job.job_spec.base_output_directory.output_uri_prefix
-            if job.job_spec and job.job_spec.base_output_directory
-            else None,
+            output_uri=getattr(
+                getattr(getattr(job, 'job_spec', None), 'base_output_directory', None),
+                'output_uri_prefix', None
+            ),
         )
 
     def cancel_job(self, job_id: str) -> bool:
@@ -377,9 +380,11 @@ class VertexTrainer:
             filter=filter_str,
         )
 
-        results = []
-        for job in jobs[:max_results]:
-            results.append(self.get_job_status(job.resource_name))
+        results: list[TrainingJobInfo] = []
+        for job in list(jobs)[:max_results]:
+            job_resource_name = getattr(job, 'resource_name', None)
+            if job_resource_name:
+                results.append(self.get_job_status(job_resource_name))
 
         return results
 
