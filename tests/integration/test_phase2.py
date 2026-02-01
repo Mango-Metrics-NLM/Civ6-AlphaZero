@@ -112,11 +112,11 @@ class TestDistributedComponentIntegration:
         config = get_default_config()
 
         storage_config = SharedStorageConfig(
-            max_weight_versions=10,
-            compression_enabled=config.distributed.compression_enabled,
+            max_model_history=10,
+            compress_weights=config.distributed.compression_enabled,
         )
 
-        assert storage_config.compression_enabled == config.distributed.compression_enabled
+        assert storage_config.compress_weights == config.distributed.compression_enabled
 
     def test_replay_buffer_config_creation(self) -> None:
         """Test ReplayBuffer can be configured from Civ6Config."""
