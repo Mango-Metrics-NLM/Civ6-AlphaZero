@@ -140,7 +140,8 @@ class TestCloudStorageClientMockOperations:
     def test_mock_delete(self, storage_client: CloudStorageClient) -> None:
         """Test delete in mock mode."""
         # Can't delete non-existent file
-        assert storage_client.delete("models/nonexistent.pt") is False
+        deleted = storage_client.delete("models/nonexistent.pt")
+        assert deleted is False
 
         # Create file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pt") as f:
@@ -152,7 +153,8 @@ class TestCloudStorageClientMockOperations:
             assert storage_client.exists("models/delete_test.pt") is True
 
             # Delete it
-            assert storage_client.delete("models/delete_test.pt") is True
+            deleted = storage_client.delete("models/delete_test.pt")
+            assert deleted is True
             assert storage_client.exists("models/delete_test.pt") is False
         finally:
             temp_path.unlink()
@@ -286,3 +288,104 @@ class TestCheckpointMethods:
         # Check that checkpoint names are in the list (order may vary)
         checkpoint_names = set(checkpoints)
         assert "epoch_5.pt" in checkpoint_names or len([c for c in checkpoints if "epoch_5" in c]) > 0
+
+
+class TestPathTraversalPrevention:
+    """Tests for path traversal attack prevention."""
+
+    @pytest.fixture
+    def config(self) -> GCPConfig:
+        """Create test configuration."""
+        return GCPConfig(
+            project_id="test-project",
+            storage=StorageConfig(bucket="security-test-bucket"),
+        )
+
+    @pytest.fixture
+    def storage_client(self, config: GCPConfig) -> CloudStorageClient:
+        """Create storage client in mock mode."""
+        return CloudStorageClient(config, force_mock=True)
+
+    @pytest.fixture(autouse=True)
+    def cleanup_storage(self) -> Generator[None, None, None]:
+        """Clean up storage directory after each test."""
+        yield
+        storage_dir = Path("storage")
+        if storage_dir.exists():
+            shutil.rmtree(storage_dir)
+
+    def test_sanitize_normal_path(self, storage_client: CloudStorageClient) -> None:
+        """Test that normal paths pass sanitization."""
+        result = storage_client._sanitize_remote_path("models/checkpoint.pt")
+        assert result == "models/checkpoint.pt"
+
+    def test_sanitize_removes_leading_slash(self, storage_client: CloudStorageClient) -> None:
+        """Test that leading slashes are normalized."""
+        result = storage_client._sanitize_remote_path("/models/checkpoint.pt")
+        assert result == "models/checkpoint.pt"
+
+    def test_sanitize_resolves_dot_segments(self, storage_client: CloudStorageClient) -> None:
+        """Test that . segments are resolved."""
+        result = storage_client._sanitize_remote_path("models/./checkpoint.pt")
+        assert result == "models/checkpoint.pt"
+
+    def test_sanitize_blocks_parent_traversal(self, storage_client: CloudStorageClient) -> None:
+        """Test that .. traversal is blocked."""
+        with pytest.raises(ValueError, match="path traversal not allowed"):
+            storage_client._sanitize_remote_path("../../../etc/passwd")
+
+    def test_sanitize_blocks_mid_path_traversal(self, storage_client: CloudStorageClient) -> None:
+        """Test that mid-path .. is blocked."""
+        with pytest.raises(ValueError, match="path traversal not allowed"):
+            storage_client._sanitize_remote_path("models/../../../etc/passwd")
+
+    def test_sanitize_blocks_encoded_traversal(self, storage_client: CloudStorageClient) -> None:
+        """Test that traversal after normalization is blocked."""
+        # This path normalizes to something starting with ..
+        with pytest.raises(ValueError, match="path traversal not allowed"):
+            storage_client._sanitize_remote_path("a/b/../../../../etc/passwd")
+
+    def test_upload_blocks_traversal(self, storage_client: CloudStorageClient) -> None:
+        """Test that upload blocks path traversal."""
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pt") as f:
+            f.write(b"malicious data")
+            temp_path = Path(f.name)
+
+        try:
+            with pytest.raises(ValueError, match="path traversal not allowed"):
+                storage_client.upload_file(temp_path, "../../../etc/passwd")
+        finally:
+            temp_path.unlink()
+
+    def test_exists_blocks_traversal(self, storage_client: CloudStorageClient) -> None:
+        """Test that exists check blocks path traversal."""
+        with pytest.raises(ValueError, match="path traversal not allowed"):
+            storage_client.exists("../../../etc/passwd")
+
+    def test_delete_blocks_traversal(self, storage_client: CloudStorageClient) -> None:
+        """Test that delete blocks path traversal."""
+        with pytest.raises(ValueError, match="path traversal not allowed"):
+            storage_client.delete("../../../etc/passwd")
+
+
+class TestBucketValidation:
+    """Tests for bucket name validation."""
+
+    def test_missing_bucket_raises_error(self) -> None:
+        """Test that missing bucket raises clear error."""
+        config = GCPConfig(
+            project_id="test-project",
+            storage=StorageConfig(),  # No bucket configured
+        )
+        client = CloudStorageClient(config, force_mock=True)
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pt") as f:
+            f.write(b"test data")
+            temp_path = Path(f.name)
+
+        try:
+            with pytest.raises(ValueError, match="No bucket specified"):
+                client.upload_file(temp_path, "models/test.pt")
+        finally:
+            temp_path.unlink()
+

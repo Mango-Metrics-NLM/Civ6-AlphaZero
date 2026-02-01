@@ -119,6 +119,62 @@ class CloudStorageClient:
         path = parts[1] if len(parts) > 1 else ""
         return bucket, path
 
+    def _sanitize_remote_path(self, remote_path: str) -> str:
+        """Sanitize remote path to prevent path traversal attacks.
+
+        This method normalizes the path and ensures it cannot escape
+        the intended base directory through '..' sequences.
+
+        Args:
+            remote_path: The remote path to sanitize.
+
+        Returns:
+            Sanitized path safe for filesystem operations.
+
+        Raises:
+            ValueError: If path contains traversal attempts.
+        """
+        import posixpath
+
+        # First, check for .. in the original path BEFORE normalization
+        # This catches any attempt to use parent directory references
+        if '..' in remote_path:
+            logger.warning(f"Path traversal attempt detected: {remote_path}")
+            raise ValueError(f"Invalid path: path traversal not allowed: {remote_path}")
+
+        # Normalize the path (resolves . and extra slashes)
+        # Prepend / to make it absolute for normpath, then strip it
+        normalized = posixpath.normpath('/' + remote_path).lstrip('/')
+
+        # Double-check the normalized path doesn't start with ..
+        # (shouldn't happen if we caught .. above, but defense in depth)
+        if normalized.startswith('..'):
+            logger.warning(f"Path traversal attempt detected after normalization: {remote_path}")
+            raise ValueError(f"Invalid path: path traversal not allowed: {remote_path}")
+
+        logger.debug(f"Sanitized path: {remote_path} -> {normalized}")
+        return normalized
+
+    def _resolve_bucket_name(self, bucket_name: str | None) -> str:
+        """Resolve and validate bucket name.
+
+        Args:
+            bucket_name: Optional bucket name override.
+
+        Returns:
+            Resolved bucket name.
+
+        Raises:
+            ValueError: If no bucket name is available.
+        """
+        resolved = bucket_name or self.config.storage.bucket
+        if not resolved:
+            raise ValueError(
+                "No bucket specified and no default bucket configured. "
+                "Set bucket in StorageConfig or pass bucket_name parameter."
+            )
+        return resolved
+
     def _retry_operation(
         self,
         operation: Any,
@@ -150,7 +206,9 @@ class CloudStorageClient:
                     )
                     time.sleep(retry_delay * (2**attempt))  # Exponential backoff
 
-        raise last_error  # type: ignore
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("Operation failed but no error was captured.")
 
     def upload_file(
         self,
@@ -183,7 +241,9 @@ class CloudStorageClient:
 
         if self._use_mock:
             # Fallback to local storage (for testing)
-            fallback_path = Path("storage") / (bucket_name or self.config.storage.bucket or "default") / remote_path
+            sanitized_path = self._sanitize_remote_path(remote_path)
+            resolved_bucket = self._resolve_bucket_name(bucket_name)
+            fallback_path = Path("storage") / resolved_bucket / sanitized_path
             fallback_path.parent.mkdir(parents=True, exist_ok=True)
             fallback_path.write_bytes(local_path.read_bytes())
             logger.info(f"Fallback: Saved to {fallback_path}")
@@ -232,7 +292,9 @@ class CloudStorageClient:
             bucket_name, remote_path = self._parse_gcs_uri(remote_path)
 
         if self._use_mock:
-            fallback_path = Path("storage") / (bucket_name or self.config.storage.bucket or "default") / remote_path
+            sanitized_path = self._sanitize_remote_path(remote_path)
+            resolved_bucket = self._resolve_bucket_name(bucket_name)
+            fallback_path = Path("storage") / resolved_bucket / sanitized_path
             if fallback_path.exists():
                 local_path.write_bytes(fallback_path.read_bytes())
                 return local_path
@@ -268,7 +330,9 @@ class CloudStorageClient:
             bucket_name, remote_path = self._parse_gcs_uri(remote_path)
 
         if self._use_mock:
-            fallback_path = Path("storage") / (bucket_name or self.config.storage.bucket or "default") / remote_path
+            sanitized_path = self._sanitize_remote_path(remote_path)
+            resolved_bucket = self._resolve_bucket_name(bucket_name)
+            fallback_path = Path("storage") / resolved_bucket / sanitized_path
             return fallback_path.exists()
 
         bucket = self._get_bucket(bucket_name)
@@ -294,7 +358,9 @@ class CloudStorageClient:
             bucket_name, remote_path = self._parse_gcs_uri(remote_path)
 
         if self._use_mock:
-            fallback_path = Path("storage") / (bucket_name or self.config.storage.bucket or "default") / remote_path
+            sanitized_path = self._sanitize_remote_path(remote_path)
+            resolved_bucket = self._resolve_bucket_name(bucket_name)
+            fallback_path = Path("storage") / resolved_bucket / sanitized_path
             if fallback_path.exists():
                 fallback_path.unlink()
                 return True
@@ -331,7 +397,9 @@ class CloudStorageClient:
             bucket_name, prefix = self._parse_gcs_uri(prefix)
 
         if self._use_mock:
-            fallback_dir = Path("storage") / (bucket_name or self.config.storage.bucket or "default") / prefix
+            sanitized_prefix = self._sanitize_remote_path(prefix) if prefix else ""
+            resolved_bucket = self._resolve_bucket_name(bucket_name)
+            fallback_dir = Path("storage") / resolved_bucket / sanitized_prefix
             if fallback_dir.exists():
                 return [
                     str(p.relative_to(fallback_dir.parent))
