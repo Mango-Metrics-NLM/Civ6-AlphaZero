@@ -69,12 +69,15 @@ class MCTSProtocol(Protocol):
         self,
         action_probs: np.ndarray,
         temperature: float = 1.0,
+        action_mask: np.ndarray | None = None,
     ) -> int:
         """Select action from probability distribution.
 
         Args:
             action_probs: Action probability distribution.
             temperature: Temperature for action selection.
+            action_mask: Optional mask indicating which actions are legal/valid.
+                If provided, implementations should respect this mask.
 
         Returns:
             Selected action index.

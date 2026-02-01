@@ -662,8 +662,8 @@ class HierarchicalMCTS:
             action_space = 356  # Default action space
             return np.ones(action_space) / action_space, 0.0
 
-        # Encode state (pass None for active_unit as we're not focusing on a specific unit)
-        self.state_encoder.encode(state, None)
+        # Encode state (pass level and active_unit=None since we're not focusing on a specific unit)
+        self.state_encoder.encode(state, self.level, active_unit=None)
 
         # Encode goals
         level_goals = [g for g in goals if g.level == self.level]
