@@ -296,7 +296,7 @@ class TestMCTSProtocol:
         """Test mock MCTS conforms to MCTSProtocol."""
         assert isinstance(mock_mcts, MCTSProtocol)
 
-    def test_mcts_search_returns_tuple(self, mock_mcts, mock_env):
+    def test_mcts_search_returns_tuple(self, mock_mcts):
         """Test search returns action probabilities and value."""
         # Create a minimal mock environment
         mock_env_instance = MagicMock()
