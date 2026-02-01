@@ -72,7 +72,7 @@ def create_network(
             f"Creating MicroCivNetwork: board={board_size}, "
             f"actions={action_space_size}, filters={config.num_filters}",
         )
-        network = MicroCivNetwork(
+        network: torch.nn.Module = MicroCivNetwork(
             board_size=board_size,
             action_space_size=action_space_size,
             num_res_blocks=config.num_res_blocks,

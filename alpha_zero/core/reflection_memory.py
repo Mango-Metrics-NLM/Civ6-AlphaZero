@@ -32,6 +32,7 @@ import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
@@ -273,7 +274,7 @@ class DefaultStateEncoder:
         if norm > 0:
             projected /= norm
 
-        return projected
+        return projected.astype(np.float32)
 
     def encode_trajectory(self, trajectory: GameTrajectory) -> np.ndarray:
         """Encode trajectory using mean of state embeddings.
@@ -399,7 +400,7 @@ class ReflectionMemory:
             store_type=store_type,
             collection_name=self.config.collection_name,
             dimension=self.config.embedding_dimension,
-            persist_directory=self.config.persist_directory,
+            persist_directory=Path(self.config.persist_directory) if self.config.persist_directory else None,
         )
 
         return create_vector_store(store_config)

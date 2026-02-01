@@ -1180,7 +1180,7 @@ class TrainingOrchestrator:
             iteration=self.state.iteration,
             metrics={
                 "win_rate": self.state.current_win_rate,
-                "loss": np.mean(self.state.recent_losses) if self.state.recent_losses else 0.0,
+                "loss": float(np.mean(self.state.recent_losses)) if self.state.recent_losses else 0.0,
             },
         )
 
