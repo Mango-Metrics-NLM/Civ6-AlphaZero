@@ -118,7 +118,7 @@ class MemorySection:
                     if "|" in line:
                         values = [v.strip() for v in line.split("|") if v.strip()]
                         if len(values) == len(headers):
-                            section.content.append(dict(zip(headers, values, strict=True)))
+                            section.content.append(dict(zip(headers, values, strict=False)))
 
         else:
             # Parse as list

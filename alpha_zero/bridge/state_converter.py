@@ -35,6 +35,7 @@ from alpha_zero.bridge.protocol import (
     GameStateData,
 )
 from alpha_zero.envs.civ6_encoder import Civ6StateEncoder, EncoderConfig
+from alpha_zero.utils.constants import ENCODER
 
 logger = logging.getLogger(__name__)
 
@@ -694,105 +695,62 @@ class StateConverter:
             "military_strength": 0,
         }
 
-    def _extract_resources(self, state: GameStateData) -> dict[str, Any]:
-        """Extract resource information for current player.
+    def _extract_resources(self, state: GameStateData) -> dict[str, int]:
+        """Extract strategic and luxury resources for the current player.
 
         Args:
             state: Game state data.
 
         Returns:
-            Dictionary mapping resource names to counts/yields.
+            Dictionary mapping resource name to count.
         """
-        resources: dict[str, Any] = {
-            # Core yields
-            "gold": 0,
-            "gold_per_turn": 0,
-            "faith": 0,
-            "faith_per_turn": 0,
-            "culture": 0,
-            "culture_per_turn": 0,
-            "science": 0,
-            "science_per_turn": 0,
-            "production_per_turn": 0,
-            # Strategic resources
-            "strategic": {},
-            # Luxury resources
-            "luxury": {},
-        }
+        resources: dict[str, int] = {}
 
-        # Find current player
         for player in state.players:
             if player.id == state.player_id:
-                resources["gold"] = player.gold
-                resources["faith"] = player.faith
-                resources["science_per_turn"] = player.science_per_turn
-                resources["culture_per_turn"] = player.culture_per_turn
-
-                # Calculate production from cities
-                total_production = 0
-                for city in state.cities:
-                    if city.owner_id == player.id:
-                        # Estimate production from population
-                        total_production += city.population * 2
-                resources["production_per_turn"] = total_production
+                # Check if player has resources attribute
+                if hasattr(player, "resources") and player.resources:
+                    if isinstance(player.resources, dict):
+                        resources = dict(player.resources)
                 break
 
         return resources
 
-    def _extract_technologies(self, state: GameStateData) -> dict[str, Any]:
-        """Extract technology progress for current player.
+    def _extract_technologies(self, state: GameStateData) -> list[str]:
+        """Extract researched technologies for the current player.
 
         Args:
             state: Game state data.
 
         Returns:
-            Dictionary with technology status.
+            List of researched technology names.
         """
-        technologies: dict[str, Any] = {
-            "researched": [],
-            "in_progress": None,
-            "progress_percent": 0.0,
-            "available": [],
-            "count": 0,
-        }
-
-        # Find current player
         for player in state.players:
             if player.id == state.player_id:
-                technologies["researched"] = list(player.techs_researched)
-                technologies["in_progress"] = player.current_research
-                technologies["count"] = len(player.techs_researched)
-                break
+                if hasattr(player, "techs_researched") and player.techs_researched:
+                    return list(player.techs_researched)
+        return []
 
-        return technologies
-
-    def _extract_civics(self, state: GameStateData) -> dict[str, Any]:
-        """Extract civic progress for current player.
+    def _extract_civics(self, state: GameStateData) -> list[str]:
+        """Extract completed civics for the current player.
 
         Args:
             state: Game state data.
 
         Returns:
-            Dictionary with civic status.
+            List of completed civic names.
         """
-        # Note: Civics data not currently exposed in protocol
-        # This is a placeholder for future expansion
-        civics: dict[str, Any] = {
-            "completed": [],
-            "in_progress": None,
-            "progress_percent": 0.0,
-            "available": [],
-            "active_government": None,
-            "active_policies": [],
-        }
-
-        return civics
+        for player in state.players:
+            if player.id == state.player_id:
+                # Check if player has civics attribute
+                if hasattr(player, "civics_completed") and player.civics_completed:
+                    return list(player.civics_completed)
+                if hasattr(player, "civics") and player.civics:
+                    return list(player.civics)
+        return []
 
     def _extract_victory_progress(self, state: GameStateData) -> dict[str, float]:
-        """Extract victory condition progress for current player.
-
-        Calculates approximate progress toward different victory types
-        based on available game state data.
+        """Extract victory condition progress for the current player.
 
         Args:
             state: Game state data.
@@ -800,7 +758,7 @@ class StateConverter:
         Returns:
             Dictionary mapping victory type to progress (0.0-1.0).
         """
-        victory_progress: dict[str, float] = {
+        progress: dict[str, float] = {
             "domination": 0.0,
             "science": 0.0,
             "culture": 0.0,
@@ -809,47 +767,19 @@ class StateConverter:
             "score": 0.0,
         }
 
-        # Find current player data
-        current_player_score = 0
-        max_score = 1  # Avoid division by zero
-
         for player in state.players:
             if player.id == state.player_id:
-                current_player_score = player.score
-            max_score = max(max_score, player.score)
+                # Check if player has victory_progress attribute
+                if hasattr(player, "victory_progress") and player.victory_progress:
+                    progress.update(player.victory_progress)
 
-        # Score progress (relative to max observed)
-        if max_score > 0:
-            victory_progress["score"] = current_player_score / max_score
-
-        # Domination progress: count capitals controlled vs total players
-        total_players = len(state.players)
-        if total_players > 0:
-            # Count capitals owned by current player
-            capitals_owned = sum(
-                1 for city in state.cities
-                if city.is_capital and city.owner_id == state.player_id
-            )
-            victory_progress["domination"] = capitals_owned / total_players
-
-        # Science progress: based on technologies researched
-        # Full Civ6 has ~80 techs, approximate
-        for player in state.players:
-            if player.id == state.player_id:
-                tech_count = len(player.techs_researched)
-                victory_progress["science"] = min(1.0, tech_count / 50.0)
+                # Calculate basic score progress from available data
+                if hasattr(player, "score") and player.score:
+                    # Normalize score to 0-1 range using configured max
+                    progress["score"] = min(1.0, player.score / ENCODER.MAX_TYPICAL_SCORE)
                 break
 
-        # Culture progress: estimate from culture per turn * cities
-        our_cities = sum(1 for city in state.cities if city.owner_id == state.player_id)
-        for player in state.players:
-            if player.id == state.player_id:
-                # Rough estimate: need lots of culture to win
-                culture_rate = player.culture_per_turn
-                victory_progress["culture"] = min(1.0, (culture_rate * our_cities) / 500.0)
-                break
-
-        return victory_progress
+        return progress
 
     def inverse_scale_coords(self, x: int, y: int) -> tuple[int, int]:
         """Convert scaled coordinates back to original Civ6 coordinates.

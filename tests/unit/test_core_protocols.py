@@ -25,7 +25,6 @@ from alpha_zero.core.protocols import (
     TrainerProtocol,
 )
 
-
 # =============================================================================
 # TestSerializableProtocol
 # =============================================================================
@@ -70,7 +69,7 @@ class TestSerializableProtocol:
                 return {"value": 1}
 
             @classmethod
-            def from_dict(cls, data: dict[str, Any]) -> "ValidSerializable":
+            def from_dict(cls, data: dict[str, Any]) -> ValidSerializable:
                 return cls()
 
         class InvalidNotSerializable:
@@ -225,7 +224,7 @@ class TestEnvironmentProtocol:
             def get_observation(self) -> dict[str, np.ndarray]:
                 return self.reset()
 
-            def clone(self) -> "MockEnv":
+            def clone(self) -> MockEnv:
                 return MockEnv()
 
         return MockEnv()
@@ -297,7 +296,7 @@ class TestMCTSProtocol:
         """Test mock MCTS conforms to MCTSProtocol."""
         assert isinstance(mock_mcts, MCTSProtocol)
 
-    def test_mcts_search_returns_tuple(self, mock_mcts, mock_env):
+    def test_mcts_search_returns_tuple(self, mock_mcts):
         """Test search returns action probabilities and value."""
         # Create a minimal mock environment
         mock_env_instance = MagicMock()
