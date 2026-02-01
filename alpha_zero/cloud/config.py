@@ -61,6 +61,125 @@ class CloudEnvironment(Enum):
 
 
 @dataclass
+class MachineProfile:
+    """Profile for cloud machine configuration.
+
+    Defines machine type, GPU configuration, and pricing for different
+    training workloads.
+
+    Attributes:
+        name: Profile identifier.
+        machine_type: Cloud machine type (e.g., n1-standard-8).
+        accelerator_type: GPU type or None for CPU-only.
+        accelerator_count: Number of GPUs.
+        spot: Whether to use spot/preemptible instances.
+        hourly_rate: On-demand hourly rate in USD.
+        hourly_rate_spot: Spot instance hourly rate in USD.
+    """
+
+    name: str
+    machine_type: str
+    accelerator_type: str | None = None
+    accelerator_count: int = 0
+    spot: bool = False
+    hourly_rate: float = 0.0
+    hourly_rate_spot: float = 0.0
+
+    def to_vertex_spec(self) -> dict[str, Any]:
+        """Convert to Vertex AI worker pool spec format."""
+        machine_spec: dict[str, Any] = {
+            "machine_type": self.machine_type,
+        }
+        if self.accelerator_type and self.accelerator_count > 0:
+            machine_spec["accelerator_type"] = self.accelerator_type
+            machine_spec["accelerator_count"] = self.accelerator_count
+
+        return {
+            "machine_spec": machine_spec,
+            "replica_count": 1,
+        }
+
+
+# Predefined machine profiles for common workloads
+MACHINE_PROFILES: dict[str, MachineProfile] = {
+    "selfplay_t4_spot": MachineProfile(
+        name="selfplay_t4_spot",
+        machine_type="n1-standard-8",
+        accelerator_type="NVIDIA_TESLA_T4",
+        accelerator_count=1,
+        spot=True,
+        hourly_rate=0.95,
+        hourly_rate_spot=0.35,
+    ),
+    "selfplay_l4_spot": MachineProfile(
+        name="selfplay_l4_spot",
+        machine_type="g2-standard-8",
+        accelerator_type="NVIDIA_L4",
+        accelerator_count=1,
+        spot=True,
+        hourly_rate=0.98,
+        hourly_rate_spot=0.29,
+    ),
+    "train_l4_single": MachineProfile(
+        name="train_l4_single",
+        machine_type="g2-standard-16",
+        accelerator_type="NVIDIA_L4",
+        accelerator_count=1,
+        spot=True,
+        hourly_rate=1.39,
+        hourly_rate_spot=0.42,
+    ),
+    "train_l4_ondemand": MachineProfile(
+        name="train_l4_ondemand",
+        machine_type="g2-standard-16",
+        accelerator_type="NVIDIA_L4",
+        accelerator_count=1,
+        spot=False,
+        hourly_rate=1.39,
+        hourly_rate_spot=0.42,
+    ),
+    "train_a100_burst": MachineProfile(
+        name="train_a100_burst",
+        machine_type="a2-highgpu-1g",
+        accelerator_type="NVIDIA_TESLA_A100",
+        accelerator_count=1,
+        spot=True,
+        hourly_rate=3.67,
+        hourly_rate_spot=1.10,
+    ),
+    "eval_l4_spot": MachineProfile(
+        name="eval_l4_spot",
+        machine_type="g2-standard-8",
+        accelerator_type="NVIDIA_L4",
+        accelerator_count=1,
+        spot=True,
+        hourly_rate=0.98,
+        hourly_rate_spot=0.29,
+    ),
+}
+
+
+def get_machine_profile(name: str) -> MachineProfile:
+    """Get a predefined machine profile by name.
+
+    Args:
+        name: Profile name (e.g., "selfplay_t4_spot").
+
+    Returns:
+        MachineProfile for the requested configuration.
+
+    Raises:
+        KeyError: If profile name is not found.
+    """
+    if name not in MACHINE_PROFILES:
+        raise KeyError(
+            f"Unknown machine profile: {name}. "
+            f"Available profiles: {list(MACHINE_PROFILES.keys())}"
+        )
+    return MACHINE_PROFILES[name]
+
+
+@dataclass
 class CloudConfig:
     """Base configuration for cloud providers.
 

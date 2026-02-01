@@ -51,6 +51,12 @@ ignore_missing_imports = true
 module = "tqdm.*"
 ignore_missing_imports = true
 
+[tool.pyright]
+pythonVersion = "3.11"
+reportMissingTypeStubs = false
+# Alternatively, ignore specific modules:
+# ignore = ["google.cloud"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
