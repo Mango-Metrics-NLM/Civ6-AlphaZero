@@ -35,6 +35,7 @@ from alpha_zero.bridge.protocol import (
     GameStateData,
 )
 from alpha_zero.envs.civ6_encoder import Civ6StateEncoder, EncoderConfig
+from alpha_zero.utils.constants import ENCODER
 
 logger = logging.getLogger(__name__)
 
@@ -774,8 +775,8 @@ class StateConverter:
 
                 # Calculate basic score progress from available data
                 if hasattr(player, "score") and player.score:
-                    # Normalize score to 0-1 range (assuming 1000 as max typical score)
-                    progress["score"] = min(1.0, player.score / 1000.0)
+                    # Normalize score to 0-1 range using configured max
+                    progress["score"] = min(1.0, player.score / ENCODER.MAX_TYPICAL_SCORE)
                 break
 
         return progress

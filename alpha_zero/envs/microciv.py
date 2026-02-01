@@ -431,7 +431,17 @@ class MicroCivEnv(gym.Env):
                 unit.position[0] + direction[0],
                 unit.position[1] + direction[1],
             )
-            reward += self._execute_attack(unit, target_pos)
+            
+            # Check if there's a valid target before attempting attack
+            has_defender = any(
+                u.position == target_pos and u.player != unit.player
+                for u in self.units
+            )
+            if not has_defender:
+                return 0.0, False, f"No enemy unit to attack at {target_pos}"
+            
+            attack_reward = self._execute_attack(unit, target_pos)
+            reward += attack_reward
             unit.moves_remaining -= 1
             return reward, True, ""
 

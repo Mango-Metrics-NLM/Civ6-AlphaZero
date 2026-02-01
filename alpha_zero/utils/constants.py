@@ -58,6 +58,8 @@ class EncoderConstants:
 
     # Normalization factors
     YIELD_NORMALIZATION: float = 10.0
+    # Score normalization (typical max score for progress calculation)
+    MAX_TYPICAL_SCORE: float = 1000.0
     POPULATION_NORMALIZATION: float = 30.0
     HEALTH_NORMALIZATION: float = 100.0
     STRENGTH_NORMALIZATION: float = 100.0

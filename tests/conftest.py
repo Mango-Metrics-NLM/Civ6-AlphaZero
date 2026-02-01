@@ -368,8 +368,10 @@ def mock_network() -> MagicMock:
         value = torch.zeros(batch_size, 1)
         return policy, value
 
-    mock.return_value = predict_side_effect
-    mock.forward = predict_side_effect
+    # Use side_effect for proper mock behavior
+    mock.forward.side_effect = predict_side_effect
+    mock.predict.side_effect = predict_side_effect
+    mock.__call__ = MagicMock(side_effect=predict_side_effect)
 
     return mock
 
