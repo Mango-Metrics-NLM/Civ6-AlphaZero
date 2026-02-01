@@ -14,6 +14,7 @@ All values are configurable - no hardcoded parameters.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -21,6 +22,9 @@ from typing import Any
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+# Module-level logger
+logger = logging.getLogger(__name__)
 
 
 class AttentionType(Enum):
@@ -1011,6 +1015,12 @@ class Civ6TransformerNetwork(nn.Module):
 
         self.config = config
 
+        logger.debug(
+            f"Creating Civ6TransformerNetwork: embed_dim={config.embed_dim}, "
+            f"layers={config.num_layers}, heads={config.num_heads}, "
+            f"attention={config.attention_type.value}"
+        )
+
         # Transformer encoder
         self.encoder = TransformerEncoder(config)
 
@@ -1027,6 +1037,12 @@ class Civ6TransformerNetwork(nn.Module):
             embed_dim=config.embed_dim,
             hidden_dim=config.value_head_dim,
             dropout=config.dropout,
+        )
+
+        logger.info(
+            f"Civ6TransformerNetwork initialized: "
+            f"spatial_size={config.spatial_size}x{config.spatial_size}, "
+            f"action_space={config.action_space_size}"
         )
 
     def forward(

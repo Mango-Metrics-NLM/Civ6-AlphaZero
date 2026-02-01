@@ -262,14 +262,18 @@ class Civ6StateEncoder:
         # Technologies (70-169)
         techs = game_state.get("technologies", [])
         for tech_id in techs:
-            if 0 <= tech_id < 100:
+            # Handle both integer IDs and string identifiers
+            if isinstance(tech_id, int) and 0 <= tech_id < 100:
                 vector[70 + tech_id] = 1.0
+            # String tech IDs are not yet supported; skip gracefully
 
         # Civics (180-279)
         civics = game_state.get("civics", [])
         for civic_id in civics:
-            if 0 <= civic_id < 100:
+            # Handle both integer IDs and string identifiers
+            if isinstance(civic_id, int) and 0 <= civic_id < 100:
                 vector[180 + civic_id] = 1.0
+            # String civic IDs are not yet supported; skip gracefully
 
         # Economy (300-319)
         vector[300] = game_state.get("gold", 0) / 1000.0

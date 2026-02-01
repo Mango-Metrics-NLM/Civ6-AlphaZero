@@ -27,7 +27,7 @@ Usage:
 
     # Check if game is alive
     if bridge.check_heartbeat():
-        print("Game is connected")
+        logger.info("Game is connected")
 """
 
 from alpha_zero.bridge.config import (

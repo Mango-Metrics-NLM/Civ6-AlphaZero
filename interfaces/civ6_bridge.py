@@ -27,11 +27,10 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from .base import (
     ActionSendError,
-    ActionType,
     City,
     GameAction,
     GameInterface,
@@ -961,7 +960,7 @@ Bridge:Initialize()
 return Bridge
 '''
 
-    def write_mod(self, output_dir: Optional[Path] = None) -> Path:
+    def write_mod(self, output_dir: Path | None = None) -> Path:
         """Write mod files to disk.
 
         Args:
@@ -1002,9 +1001,9 @@ class Civ6Bridge(GameInterface):
 
     def __init__(
         self,
-        config: Optional[InterfaceConfig] = None,
-        state_dir: Optional[Path] = None,
-        action_dir: Optional[Path] = None,
+        config: InterfaceConfig | None = None,
+        state_dir: Path | None = None,
+        action_dir: Path | None = None,
         player_id: int = 0,
     ):
         """Initialize the Civ6 bridge.
@@ -1023,8 +1022,8 @@ class Civ6Bridge(GameInterface):
         )
         self.player_id = player_id
         self.parser = LuaStateParser(player_id=player_id)
-        self._last_state: Optional[GameState] = None
-        self._state_checksum: Optional[str] = None
+        self._last_state: GameState | None = None
+        self._state_checksum: str | None = None
 
     def connect(self) -> bool:
         """Connect to the Civ6 game.
@@ -1260,7 +1259,7 @@ class Civ6Bridge(GameInterface):
         """
         return hashlib.md5(content.encode()).hexdigest()[:8]
 
-    def wait_for_turn(self, timeout_seconds: Optional[float] = None) -> bool:
+    def wait_for_turn(self, timeout_seconds: float | None = None) -> bool:
         """Wait for our turn to begin.
 
         Args:
@@ -1283,7 +1282,7 @@ class Civ6Bridge(GameInterface):
 
         return False
 
-    def generate_lua_mod(self, output_dir: Optional[Path] = None) -> Path:
+    def generate_lua_mod(self, output_dir: Path | None = None) -> Path:
         """Generate the Lua mod files for Civ6.
 
         Args:

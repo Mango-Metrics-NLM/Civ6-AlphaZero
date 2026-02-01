@@ -484,7 +484,7 @@ class Orchestrator:
 
         if all_files:
             lines.append("## Files Modified")
-            for f in sorted(set(str(f) for f in all_files)):
+            for f in sorted({str(f) for f in all_files}):
                 lines.append(f"- {f}")
             lines.append("")
 

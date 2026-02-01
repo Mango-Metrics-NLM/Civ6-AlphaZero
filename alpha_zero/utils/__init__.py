@@ -58,6 +58,21 @@ except ImportError:
     _LLM_AVAILABLE = False
 
 # Test Runner
+from alpha_zero.utils.test_runner import (
+    PytestRunner,
+    RunConfig,
+    RunResult,
+    RunStatus,
+)
+
+# Backwards compatibility aliases for test runner
+TestRunner = PytestRunner
+TestConfig = RunConfig
+TestResult = RunResult
+TestStatus = RunStatus
+run_tests = PytestRunner.run_tests if hasattr(PytestRunner, 'run_tests') else None
+quick_test = None  # Placeholder if not implemented
+
 # Agent Tools
 from alpha_zero.utils.agent_tools import (
     CodeExplorer,

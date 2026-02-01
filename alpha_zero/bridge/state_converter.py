@@ -35,6 +35,7 @@ from alpha_zero.bridge.protocol import (
     GameStateData,
 )
 from alpha_zero.envs.civ6_encoder import Civ6StateEncoder, EncoderConfig
+from alpha_zero.utils.constants import ENCODER
 
 logger = logging.getLogger(__name__)
 
@@ -308,10 +309,10 @@ class StateConverter:
             "score": player_data.get("score", 0),
             # Era and progress
             "era": state.era,
-            "resources": {},  # TODO: Extract resources
-            "technologies": [],  # TODO: Extract techs
-            "civics": [],  # TODO: Extract civics
-            "victory_progress": {},  # TODO: Extract victory progress
+            "resources": self._extract_resources(state),
+            "technologies": self._extract_technologies(state),
+            "civics": self._extract_civics(state),
+            "victory_progress": self._extract_victory_progress(state),
             # Store original legal actions for action mask generation
             "_legal_actions": state.legal_actions,
             "_map_size": (state.map_data.width, state.map_data.height),
@@ -693,6 +694,92 @@ class StateConverter:
             "score": 0,
             "military_strength": 0,
         }
+
+    def _extract_resources(self, state: GameStateData) -> dict[str, int]:
+        """Extract strategic and luxury resources for the current player.
+
+        Args:
+            state: Game state data.
+
+        Returns:
+            Dictionary mapping resource name to count.
+        """
+        resources: dict[str, int] = {}
+
+        for player in state.players:
+            if player.id == state.player_id:
+                # Check if player has resources attribute
+                if hasattr(player, "resources") and player.resources:
+                    if isinstance(player.resources, dict):
+                        resources = dict(player.resources)
+                break
+
+        return resources
+
+    def _extract_technologies(self, state: GameStateData) -> list[str]:
+        """Extract researched technologies for the current player.
+
+        Args:
+            state: Game state data.
+
+        Returns:
+            List of researched technology names.
+        """
+        for player in state.players:
+            if player.id == state.player_id:
+                if hasattr(player, "techs_researched") and player.techs_researched:
+                    return list(player.techs_researched)
+        return []
+
+    def _extract_civics(self, state: GameStateData) -> list[str]:
+        """Extract completed civics for the current player.
+
+        Args:
+            state: Game state data.
+
+        Returns:
+            List of completed civic names.
+        """
+        for player in state.players:
+            if player.id == state.player_id:
+                # Check if player has civics attribute
+                if hasattr(player, "civics_completed") and player.civics_completed:
+                    return list(player.civics_completed)
+                if hasattr(player, "civics") and player.civics:
+                    return list(player.civics)
+        return []
+
+    def _extract_victory_progress(self, state: GameStateData) -> dict[str, float]:
+        """Extract victory condition progress for the current player.
+
+        Args:
+            state: Game state data.
+
+        Returns:
+            Dictionary mapping victory type to progress (0.0-1.0).
+        """
+        progress: dict[str, float] = {
+            "domination": 0.0,
+            "science": 0.0,
+            "culture": 0.0,
+            "religious": 0.0,
+            "diplomatic": 0.0,
+            "score": 0.0,
+        }
+
+        for player in state.players:
+            if player.id == state.player_id:
+                # Check if player has victory_progress attribute
+                if hasattr(player, "victory_progress") and player.victory_progress:
+                    progress.update(player.victory_progress)
+
+                # Calculate basic score progress from available data
+                if hasattr(player, "score") and player.score:
+                    # Normalize score to 0-1 range using configured max
+                    progress["score"] = min(1.0, player.score / ENCODER.MAX_TYPICAL_SCORE)
+                break
+
+        return progress
 
     def inverse_scale_coords(self, x: int, y: int) -> tuple[int, int]:
         """Convert scaled coordinates back to original Civ6 coordinates.
