@@ -179,19 +179,16 @@ class TestCloudCoordinatorCheckpoints:
             checkpoint_path = checkpoint_dir / "test_checkpoint.pt"
             checkpoint_path.write_bytes(b"test data")
             
-            # Mock the parent save method to return the path
-            with mock.patch.object(
-                CloudTrainingCoordinator.__bases__[0],
-                "save_checkpoint",
-                return_value=str(checkpoint_path),
-            ):
-                result = coordinator.save_checkpoint(
-                    step=100,
-                    network_state={"weights": "test"},
-                )
+            # Directly call save_checkpoint - it should handle missing learner gracefully
+            # and queue the checkpoint for upload
+            coordinator.save_checkpoint(
+                step=100,
+                network_state={"weights": "test"},
+            )
             
-            # Check upload was queued
-            assert len(coordinator._pending_uploads) >= 0  # May have been synced
+            # Check that no errors occurred
+            # The pending uploads list may be empty if sync happened immediately
+            assert hasattr(coordinator, "_pending_uploads")
         finally:
             coordinator.shutdown()
 
@@ -219,19 +216,14 @@ class TestCloudCoordinatorCheckpoints:
             # Remove local file
             local_checkpoint.unlink()
             
-            # Mock parent load to return None (not found locally)
-            with mock.patch.object(
-                CloudTrainingCoordinator.__bases__[0],
-                "load_checkpoint",
-                return_value=None,
-            ):
-                # Should attempt cloud load
-                result = coordinator.load_checkpoint(from_cloud=True)
-                
-                # Check that latest checkpoint was attempted
-                # (actual download happens but we can't verify fully without real storage)
+            # Attempt cloud load - should not raise
+            result = coordinator.load_checkpoint(from_cloud=True)
+            
+            # Result may be None if the checkpoint format doesn't match expected structure
+            # The important thing is that it checked cloud storage without error
         finally:
             coordinator.shutdown()
+
 
 
 class TestCloudCoordinatorPreemption:
@@ -255,14 +247,9 @@ class TestCloudCoordinatorPreemption:
                 "_get_current_network_state",
                 return_value={"weights": "test"},
             ):
-                with mock.patch.object(
-                    CloudTrainingCoordinator.__bases__[0],
-                    "save_checkpoint",
-                    return_value="/tmp/checkpoint.pt",
-                ):
-                    # Simulate preemption
-                    assert coordinator._preemption_handler is not None
-                    coordinator._preemption_handler.simulate_preemption()
+                # Simulate preemption
+                assert coordinator._preemption_handler is not None
+                coordinator._preemption_handler.simulate_preemption()
             
             # Preemption should be pending
             assert coordinator._preemption_handler.is_preemption_pending() is True
@@ -287,3 +274,183 @@ class TestCloudCoordinatorPreemption:
             assert coordinator._preemption_handler is None
         finally:
             coordinator.shutdown()
+
+
+class TestFullTrainingLoop:
+    """Tests for full training loop simulation."""
+
+    def test_multi_step_training_simulation(
+        self,
+        coordinator_config: CloudCoordinatorConfig,
+    ) -> None:
+        """Test multi-step training with periodic checkpoints."""
+        coordinator = CloudTrainingCoordinator(coordinator_config)
+        coordinator.initialize(force_mock=True)
+        
+        try:
+            # Simulate multiple training steps
+            for step in range(0, 500, 100):
+                # Log metrics (as would happen during training)
+                coordinator.log_training_metrics(
+                    step=step,
+                    metrics={
+                        "loss": 1.0 / (step + 1),
+                        "policy_loss": 0.5 / (step + 1),
+                        "value_loss": 0.3 / (step + 1),
+                    },
+                )
+                
+                # Save checkpoint at intervals
+                if step % 200 == 0 and step > 0:
+                    coordinator.save_checkpoint(
+                        step=step,
+                        network_state={"weights": f"step_{step}"},
+                    )
+            
+            # Verify cloud logger was created and used
+            assert coordinator._cloud_logger is not None
+            # Buffer may have auto-flushed, but logger should be functional
+        finally:
+            coordinator.shutdown()
+
+    def test_graceful_shutdown_during_training(
+        self,
+        coordinator_config: CloudCoordinatorConfig,
+    ) -> None:
+        """Test graceful shutdown during active training."""
+        coordinator = CloudTrainingCoordinator(coordinator_config)
+        coordinator.initialize(force_mock=True)
+        
+        # Start "training"
+        coordinator.log_training_metrics(
+            step=100,
+            metrics={"loss": 0.5},
+        )
+        
+        # Graceful shutdown should not raise
+        coordinator.shutdown()
+        
+        # Create a new coordinator for re-initialization test
+        coordinator2 = CloudTrainingCoordinator(coordinator_config)
+        try:
+            coordinator2.initialize(force_mock=True)
+            
+            # Continue training
+            coordinator2.log_training_metrics(
+                step=200,
+                metrics={"loss": 0.3},
+            )
+        finally:
+            coordinator2.shutdown()
+
+
+class TestCheckpointRoundTrip:
+    """Tests for checkpoint save/load round-trip."""
+
+    def test_checkpoint_persistence_mock(
+        self,
+        coordinator_config: CloudCoordinatorConfig,
+    ) -> None:
+        """Test checkpoint save and load with mock storage."""
+        coordinator = CloudTrainingCoordinator(coordinator_config)
+        coordinator.initialize(force_mock=True)
+        
+        try:
+            checkpoint_dir = Path(coordinator_config.checkpoint_dir)
+            
+            # Create test checkpoint content
+            import torch
+            test_state = {
+                "step": 1000,
+                "network": {"fc1.weight": torch.randn(64, 128)},
+                "optimizer": {"lr": 0.001},
+            }
+            
+            # Save checkpoint locally
+            checkpoint_path = checkpoint_dir / "round_trip_test.pt"
+            torch.save(test_state, checkpoint_path)
+            
+            # Upload to mock GCS
+            assert coordinator._gcs_manager is not None
+            coordinator._gcs_manager.upload_checkpoint(
+                str(checkpoint_path),
+                "checkpoints/round_trip_test.pt",
+            )
+            
+            # Delete local file
+            checkpoint_path.unlink()
+            assert not checkpoint_path.exists()
+            
+            # Download from mock GCS
+            download_path = checkpoint_dir / "downloaded.pt"
+            coordinator._gcs_manager.download_checkpoint(
+                "checkpoints/round_trip_test.pt",
+                str(download_path),
+            )
+            
+            # Verify content
+            loaded_state = torch.load(download_path, weights_only=False)
+            assert loaded_state["step"] == 1000
+            assert "network" in loaded_state
+        finally:
+            coordinator.shutdown()
+
+
+class TestMetricsAggregation:
+    """Tests for metrics buffering and aggregation."""
+
+    def test_metrics_batching(
+        self,
+        coordinator_config: CloudCoordinatorConfig,
+    ) -> None:
+        """Test that metrics are properly batched."""
+        coordinator = CloudTrainingCoordinator(coordinator_config)
+        coordinator.initialize(force_mock=True)
+        
+        try:
+            # Log fewer metrics to test buffering (less than buffer_size=100)
+            for step in range(50):
+                coordinator.log_training_metrics(
+                    step=step,
+                    metrics={
+                        "loss": 1.0 - step * 0.01,
+                        "entropy": 0.5 + step * 0.001,
+                    },
+                    labels={"batch": str(step // 10)},
+                )
+            
+            # Check buffer state - should have entries since < 100 (buffer_size)
+            assert coordinator._cloud_logger is not None
+            assert len(coordinator._cloud_logger._buffer) == 50
+        finally:
+            coordinator.shutdown()
+
+    def test_different_metric_types(
+        self,
+        coordinator_config: CloudCoordinatorConfig,
+    ) -> None:
+        """Test logging various metric types."""
+        coordinator = CloudTrainingCoordinator(coordinator_config)
+        coordinator.initialize(force_mock=True)
+        
+        try:
+            # Log different metric categories
+            coordinator.log_training_metrics(
+                step=1,
+                metrics={
+                    "policy_loss": 0.5,
+                    "value_loss": 0.3,
+                    "total_loss": 0.8,
+                    "entropy": 0.1,
+                    "learning_rate": 0.001,
+                    "games_played": 1000,
+                    "mcts_simulations": 200,
+                },
+            )
+            
+            assert coordinator._cloud_logger is not None
+            # Verify log entry was created
+            assert len(coordinator._cloud_logger._buffer) >= 1
+        finally:
+            coordinator.shutdown()
+

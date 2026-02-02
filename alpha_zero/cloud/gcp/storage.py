@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import io
 import logging
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -200,7 +199,7 @@ class GCSCheckpointManager(CloudStorageProtocol):
             raise CloudConfigError("bucket_name is required for GCS storage")
 
         if self._use_mock:
-            logger.info("Using mock GCS client (force_mock=%s, SDK available=%s)", 
+            logger.info("Using mock GCS client (force_mock=%s, SDK available=%s)",
                        force_mock, GCS_AVAILABLE)
             self._client: Any = MockGCSClient()
             self._bucket = self._client.bucket(config.bucket_name or "mock-bucket")

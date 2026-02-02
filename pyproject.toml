@@ -42,6 +42,14 @@ ignore_missing_imports = true
 module = "tqdm.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "google.cloud.*"
+ignore_missing_imports = true
+
+[tool.pyright]
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
@@ -52,4 +60,28 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
     "requires_env: marks tests requiring specific environment setup",
+    "requires_gcp: marks tests requiring active GCP credentials",
+    "requires_distributed: marks tests requiring distributed training setup",
 ]
+
+[tool.coverage.run]
+source = ["alpha_zero"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/__init__.py",
+    "*/conftest.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "@abstractmethod",
+]
+fail_under = 80
+show_missing = true
+skip_covered = false

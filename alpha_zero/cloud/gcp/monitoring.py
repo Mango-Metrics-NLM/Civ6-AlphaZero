@@ -15,7 +15,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from alpha_zero.cloud.config import CloudConfig
-from alpha_zero.cloud.exceptions import CloudConnectionError
 from alpha_zero.cloud.protocols import CloudMonitoringProtocol
 
 logger = logging.getLogger(__name__)
@@ -229,7 +228,8 @@ class CloudMetricsExporter:
         """
         self.config = config
         self._metric_prefix = metric_prefix
-        self._use_mock = force_mock or not MONITORING_AVAILABLE or not config.enable_cloud_monitoring
+        use_mock = force_mock or not MONITORING_AVAILABLE
+        self._use_mock = use_mock or not config.enable_cloud_monitoring
 
         self._client: Any = None
         self._project_name: str = ""

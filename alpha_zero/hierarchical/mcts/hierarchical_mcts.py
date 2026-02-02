@@ -663,11 +663,19 @@ class HierarchicalMCTS:
             return np.ones(action_space) / action_space, 0.0
 
         # Encode state
-        self.state_encoder.encode(state, self.level)
+        self.state_encoder.encode(state)
 
-        # Encode goals
+        # Encode goals - support both GoalEncoder and HierarchicalGoalEncoder
         level_goals = [g for g in goals if g.level == self.level]
-        goal_encoding = self.goal_encoder.encode_goals_for_level(level_goals, self.level, state)
+        if hasattr(self.goal_encoder, 'encode_goals_for_level'):
+            # HierarchicalGoalEncoder
+            goal_encoding = self.goal_encoder.encode_goals_for_level(level_goals, self.level, state)
+        elif hasattr(self.goal_encoder, 'encode_batch'):
+            # Basic GoalEncoder
+            goal_encoding = self.goal_encoder.encode_batch(level_goals, state)
+        else:
+            # Fallback: return zeros
+            goal_encoding = np.zeros((1, self.goal_dim), dtype=np.float32)
 
         # Convert to tensors using configured shapes
         with torch.no_grad():
@@ -688,8 +696,15 @@ class HierarchicalMCTS:
                 .unsqueeze(0)
             )
 
-            # Forward pass
-            policy_logits, value = self.network(spatial, vector, goal_emb, self.level)
+            # Forward pass - handle both HierarchicalNetwork and LevelNetwork
+            # HierarchicalNetwork.forward expects: (spatial, vector, goal, level, action_mask)
+            # LevelNetwork.forward expects: (spatial, vector, goal, action_mask)
+            if hasattr(self.network, '_networks'):
+                # HierarchicalNetwork - pass level parameter
+                policy_logits, value = self.network(spatial, vector, goal_emb, self.level)
+            else:
+                # LevelNetwork - pass action_mask (None for default)
+                policy_logits, value = self.network(spatial, vector, goal_emb, None)
 
             # Convert to numpy
             policy = torch.softmax(policy_logits, dim=-1).squeeze(0).numpy()

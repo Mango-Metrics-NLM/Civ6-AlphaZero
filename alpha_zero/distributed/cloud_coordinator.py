@@ -12,18 +12,17 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from alpha_zero.cloud.config import CloudConfig
 from alpha_zero.cloud.exceptions import CloudStorageError, PreemptionError
 from alpha_zero.cloud.gcp import (
-    GCS_AVAILABLE,
-    GCSCheckpointManager,
-    PreemptionHandler,
     CloudLogger,
     CloudMetricsExporter,
+    GCSCheckpointManager,
+    PreemptionHandler,
 )
 from alpha_zero.distributed.coordinator import CoordinatorConfig, TrainingCoordinator
 

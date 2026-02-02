@@ -9,6 +9,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### GCP Cloud Infrastructure for Distributed Training (Phase 2)
+
+##### Cloud Configuration (`alpha_zero/cloud/`)
+- **CloudConfig** (`config.py`): Unified cloud configuration
+  - Environment variable loading (GCP_, CIV6AZ_ prefixes)
+  - YAML configuration support with validation
+  - Dataclass-based configuration with sensible defaults
+
+##### GCP Implementations (`alpha_zero/cloud/gcp/`)
+- **GCSCheckpointManager** (`storage.py`): Google Cloud Storage integration
+  - Upload/download checkpoints with metadata
+  - Latest checkpoint detection and version tracking
+  - Mock support for testing without SDK (`force_mock=True`)
+- **VertexAITrainer** (`vertex.py`): Vertex AI Custom Training jobs
+  - Job submission and monitoring
+  - GPU/TPU configuration support
+  - Spot instance (preemptible) support for cost optimization
+- **PreemptionHandler** (`preemption.py`): GCE preemption handling
+  - 30-second warning detection via metadata endpoint
+  - Checkpoint callback on preemption signal
+  - Signal handler integration (SIGTERM)
+- **CloudLogger** (`monitoring.py`): Cloud Logging integration
+  - Structured logging with severity levels
+  - Correlation ID support for distributed tracing
+- **CloudMetricsExporter** (`monitoring.py`): Cloud Monitoring integration
+  - Custom metrics export
+  - Gauge and counter metric types
+
+##### Distributed Training Enhancements
+- **DDPLearner** (`distributed/ddp_learner.py`): PyTorch DDP multi-GPU training
+  - Gradient synchronization across devices
+  - Checkpoint coordination
+- **CloudCoordinator** (`distributed/cloud_coordinator.py`): GCP orchestration
+  - Resource management and scaling
+  - Job lifecycle management
+
+##### Validation Scripts (`scripts/`)
+- `validate_gcp_credentials.py`: GCP credential verification utility
+- `validate_phase1.py`: Phase 1 implementation validation
+
+##### Test Coverage
+- 15+ new test files for cloud components
+- E2E tests in `tests/e2e/`
+- Unit tests: `test_ddp_learner.py`, `test_training_smoke.py`
+- Integration tests: `test_ddp_multinode.py`, `test_cloud_coordinator.py`
+
 #### Real Civ6 Bridge System
 A complete bridge system enabling the AlphaZero agent to play actual Civilization VI through file-based IPC.
 

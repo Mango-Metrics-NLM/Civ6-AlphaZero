@@ -122,7 +122,8 @@ class MockVertexJob:
     def __init__(self, config: VertexJobConfig) -> None:
         """Initialize mock job."""
         MockVertexJob._job_counter += 1
-        self.resource_name = f"projects/mock/locations/us-central1/customJobs/{MockVertexJob._job_counter}"
+        base_path = "projects/mock/locations/us-central1/customJobs"
+        self.resource_name = f"{base_path}/{MockVertexJob._job_counter}"
         self.display_name = config.display_name
         self._status = JobStatus.PENDING
         self._start_time = time.time()
@@ -205,6 +206,66 @@ class VertexAITrainer:
         """Check if using mock implementation."""
         return self._use_mock
 
+    def _create_job_spec(
+        self,
+        display_name: str,
+        container_uri: str,
+        args: list[str] | None = None,
+        job_config: VertexJobConfig | None = None,
+    ) -> dict[str, Any]:
+        """Create a Vertex AI job specification without submitting.
+
+        This method builds the worker pool specification that would be used
+        to submit a training job. Useful for validation and testing.
+
+        Args:
+            display_name: Job display name.
+            container_uri: Container image URI.
+            args: Command-line arguments for the container.
+            job_config: Optional full job configuration. If provided,
+                uses its settings; otherwise uses defaults.
+
+        Returns:
+            Dictionary containing the job specification with workerPoolSpecs.
+        """
+        if job_config is None:
+            job_config = VertexJobConfig(display_name=display_name)
+
+        # Build machine spec
+        machine_spec: dict[str, Any] = {
+            "machine_type": job_config.machine_type,
+        }
+
+        # Add accelerator if specified
+        if job_config.accelerator_count > 0 and job_config.accelerator_type:
+            machine_spec["accelerator_type"] = job_config.accelerator_type
+            machine_spec["accelerator_count"] = job_config.accelerator_count
+
+        # Build worker pool spec
+        worker_pool_specs: list[dict[str, Any]] = [
+            {
+                "machine_spec": machine_spec,
+                "replica_count": job_config.replica_count,
+                "container_spec": {
+                    "image_uri": container_uri
+                    or "gcr.io/cloud-aiplatform/training/pytorch-gpu.1-13:latest",
+                    "command": ["python", job_config.script_path] if job_config.script_path else [],
+                    "args": args or job_config.args,
+                    "env": [
+                        {"name": k, "value": v}
+                        for k, v in job_config.environment_variables.items()
+                    ],
+                },
+            }
+        ]
+
+        return {
+            "display_name": display_name,
+            "workerPoolSpecs": worker_pool_specs,
+            "base_output_dir": job_config.base_output_dir or None,
+            "labels": job_config.labels,
+        }
+
     def submit_training_job(
         self,
         job_config: VertexJobConfig,
@@ -227,39 +288,19 @@ class VertexAITrainer:
             return job.resource_name
 
         try:
-            # Build machine spec
-            machine_spec: dict[str, Any] = {
-                "machine_type": job_config.machine_type,
-            }
-            
-            # Add accelerator if specified
-            if job_config.accelerator_count > 0 and job_config.accelerator_type:
-                machine_spec["accelerator_type"] = job_config.accelerator_type
-                machine_spec["accelerator_count"] = job_config.accelerator_count
-
-            # Build worker pool spec
-            worker_pool_specs: list[dict[str, Any]] = [
-                {
-                    "machine_spec": machine_spec,
-                    "replica_count": job_config.replica_count,
-                    "container_spec": {
-                        "image_uri": job_config.container_uri
-                        or "gcr.io/cloud-aiplatform/training/pytorch-gpu.1-13:latest",
-                        "command": ["python", job_config.script_path],
-                        "args": job_config.args,
-                        "env": [
-                            {"name": k, "value": v}
-                            for k, v in job_config.environment_variables.items()
-                        ],
-                    },
-                }
-            ]
+            # Create job spec using the shared method
+            job_spec = self._create_job_spec(
+                display_name=job_config.display_name,
+                container_uri=job_config.container_uri,
+                args=job_config.args,
+                job_config=job_config,
+            )
 
             job = CustomJob(
-                display_name=job_config.display_name,
-                worker_pool_specs=worker_pool_specs,
-                base_output_dir=job_config.base_output_dir or None,
-                labels=job_config.labels,
+                display_name=job_spec["display_name"],
+                worker_pool_specs=job_spec["workerPoolSpecs"],
+                base_output_dir=job_spec["base_output_dir"],
+                labels=job_spec["labels"],
             )
 
             job.run(

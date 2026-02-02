@@ -14,10 +14,10 @@ import logging
 import signal
 import threading
 import time
+from collections.abc import Callable
 from types import FrameType
-from typing import Any, Callable
+from typing import Any
 
-from alpha_zero.cloud.config import CloudConfig
 from alpha_zero.cloud.exceptions import PreemptionError
 from alpha_zero.cloud.protocols import PreemptionHandlerProtocol
 
@@ -204,7 +204,7 @@ class PreemptionHandler(PreemptionHandlerProtocol):
             req = urllib.request.Request(METADATA_URL, headers=METADATA_HEADERS)
             with urllib.request.urlopen(req, timeout=2) as response:
                 result = response.read().decode().strip().lower()
-                return result == "true"
+                return bool(result == "true")
         except Exception:
             # Connection errors are expected when not on GCE
             return False
