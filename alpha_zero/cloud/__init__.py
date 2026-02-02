@@ -1,33 +1,43 @@
-"""Cloud-native components for Vertex AI deployment.
+"""Cloud infrastructure for distributed training.
 
-This module provides containerized components for running AlphaZero
-training on Google Cloud Platform:
+This module provides cloud provider integrations for training
+AlphaZero models on cloud infrastructure.
 
-- SelfPlayWorker: Generates game trajectories using self-play
-- Trainer: Trains neural network on collected trajectories
-- Evaluator: Compares candidate models against champions
+Supported Providers:
+- Google Cloud Platform (GCP) with Vertex AI
 
-Each component is designed to run in a container on Vertex AI
-with GCS-backed storage for persistence.
+Example:
+    from alpha_zero.cloud import CloudConfig, get_cloud_provider
+    from alpha_zero.cloud.gcp import GCPConfig, VertexTrainer
 
-Usage:
-    # Run self-play worker
-    python -m alpha_zero.cloud.selfplay_worker --num-games=100
+    # Configure cloud provider
+    config = GCPConfig.from_env()
+    trainer = VertexTrainer(config)
 
-    # Run trainer
-    python -m alpha_zero.cloud.trainer --training-steps=1000
-
-    # Run evaluator
-    python -m alpha_zero.cloud.evaluator --num-games=400
+    # Submit training job
+    job = trainer.submit_training_job(
+        script_path="train.py",
+        machine_type="n1-standard-8",
+        accelerator_type="NVIDIA_TESLA_T4",
+    )
 """
 
-from alpha_zero.cloud.config import CloudConfig, MachineProfile, get_machine_profiles
-from alpha_zero.cloud.preemption import PreemptionHandler, register_preemption_handler
+from alpha_zero.cloud.config import (
+    CloudConfig,
+    CloudEnvironment,
+    CloudProvider,
+)
+from alpha_zero.cloud.protocols import (
+    CloudStorageProtocol,
+    CloudTrainerProtocol,
+)
 
 __all__ = [
+    # Config
     "CloudConfig",
-    "MachineProfile",
-    "get_machine_profiles",
-    "PreemptionHandler",
-    "register_preemption_handler",
+    "CloudEnvironment",
+    "CloudProvider",
+    # Protocols
+    "CloudStorageProtocol",
+    "CloudTrainerProtocol",
 ]

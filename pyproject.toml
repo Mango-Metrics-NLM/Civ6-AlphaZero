@@ -24,6 +24,14 @@ dev = [
     "ruff>=0.1.0",
     "types-tqdm>=4.65.0",
 ]
+gcp = [
+    "google-cloud-aiplatform>=1.40.0",
+    "google-cloud-storage>=2.14.0",
+    "google-auth>=2.25.0",
+]
+all = [
+    "alpha_zero[dev,gcp]",
+]
 
 [tool.ruff]
 line-length = 100
@@ -42,6 +50,12 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "tqdm.*"
 ignore_missing_imports = true
+
+[tool.pyright]
+pythonVersion = "3.11"
+reportMissingTypeStubs = false
+# Alternatively, ignore specific modules:
+# ignore = ["google.cloud"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -132,3 +132,6 @@ nul
 experiments/
 mlruns/
 ray_results/
+
+# Cloud storage fallback (local testing)
+storage/

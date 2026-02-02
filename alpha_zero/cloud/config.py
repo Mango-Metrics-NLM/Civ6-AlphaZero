@@ -1,54 +1,95 @@
-"""Cloud configuration for Vertex AI deployment.
+"""Cloud configuration with environment-based loading.
 
-Provides configuration classes for:
-- Machine profiles (GPU types, memory, pricing)
-- Cloud-specific settings
-- Environment variable integration
+This module provides base configuration classes for cloud providers,
+with support for environment-based configuration and multiple deployment
+environments (dev, staging, prod).
+
+All configuration values are loaded from environment variables to avoid
+hardcoding sensitive information like project IDs and credentials.
+
+Example:
+    from alpha_zero.cloud.config import CloudConfig, CloudEnvironment
+
+    # Load from environment
+    config = CloudConfig.from_env()
+
+    # Or create explicitly
+    config = CloudConfig(
+        provider=CloudProvider.GCP,
+        environment=CloudEnvironment.PRODUCTION,
+        project_id=os.environ["GCP_PROJECT_ID"],
+    )
 """
 
 from __future__ import annotations
 
+import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+
+class CloudProvider(Enum):
+    """Supported cloud providers."""
+
+    GCP = "gcp"
+    AWS = "aws"  # Future
+    AZURE = "azure"  # Future
+    LOCAL = "local"  # For testing
+
+
+class CloudEnvironment(Enum):
+    """Deployment environments."""
+
+    DEVELOPMENT = "dev"
+    STAGING = "staging"
+    PRODUCTION = "prod"
+    TEST = "test"
+
+    @classmethod
+    def from_string(cls, value: str) -> CloudEnvironment:
+        """Create from string, case-insensitive."""
+        value_lower = value.lower()
+        for env in cls:
+            if env.value == value_lower or env.name.lower() == value_lower:
+                return env
+        raise ValueError(f"Unknown environment: {value}")
 
 
 @dataclass
 class MachineProfile:
-    """Configuration for a Vertex AI machine type.
+    """Profile for cloud machine configuration.
+
+    Defines machine type, GPU configuration, and pricing for different
+    training workloads.
 
     Attributes:
-        name: Profile name (e.g., "selfplay_t4_spot").
-        machine_type: GCP machine type (e.g., "n1-standard-8").
-        accelerator_type: GPU accelerator type.
+        name: Profile identifier.
+        machine_type: Cloud machine type (e.g., n1-standard-8).
+        accelerator_type: GPU type or None for CPU-only.
         accelerator_count: Number of GPUs.
-        spot: Whether to use Spot/Preemptible instances.
-        vcpus: Number of vCPUs.
-        memory_gb: RAM in GB.
-        gpu_memory_gb: VRAM per GPU in GB.
-        hourly_rate_spot: Estimated spot pricing ($/hr).
-        hourly_rate_ondemand: On-demand pricing ($/hr).
-        description: Human-readable description.
+        spot: Whether to use spot/preemptible instances.
+        hourly_rate: On-demand hourly rate in USD.
+        hourly_rate_spot: Spot instance hourly rate in USD.
     """
 
     name: str
     machine_type: str
-    accelerator_type: str
-    accelerator_count: int
-    spot: bool
-    vcpus: int = 8
-    memory_gb: float = 30.0
-    gpu_memory_gb: float = 16.0
+    accelerator_type: str | None = None
+    accelerator_count: int = 0
+    spot: bool = False
+    hourly_rate: float = 0.0
     hourly_rate_spot: float = 0.0
-    hourly_rate_ondemand: float = 0.0
-    description: str = ""
 
     def to_vertex_spec(self) -> dict[str, Any]:
         """Convert to Vertex AI worker pool spec format."""
         machine_spec: dict[str, Any] = {
             "machine_type": self.machine_type,
         }
-
         if self.accelerator_type and self.accelerator_count > 0:
             machine_spec["accelerator_type"] = self.accelerator_type
             machine_spec["accelerator_count"] = self.accelerator_count
@@ -59,21 +100,16 @@ class MachineProfile:
         }
 
 
-# Pre-defined machine profiles for budget deployment
+# Predefined machine profiles for common workloads
 MACHINE_PROFILES: dict[str, MachineProfile] = {
-    # Self-play workers (use Spot for cost savings)
     "selfplay_t4_spot": MachineProfile(
         name="selfplay_t4_spot",
         machine_type="n1-standard-8",
         accelerator_type="NVIDIA_TESLA_T4",
         accelerator_count=1,
         spot=True,
-        vcpus=8,
-        memory_gb=30.0,
-        gpu_memory_gb=16.0,
-        hourly_rate_spot=0.11,
-        hourly_rate_ondemand=0.35,
-        description="Budget self-play with T4 GPU (Spot)",
+        hourly_rate=0.95,
+        hourly_rate_spot=0.35,
     ),
     "selfplay_l4_spot": MachineProfile(
         name="selfplay_l4_spot",
@@ -81,261 +117,243 @@ MACHINE_PROFILES: dict[str, MachineProfile] = {
         accelerator_type="NVIDIA_L4",
         accelerator_count=1,
         spot=True,
-        vcpus=8,
-        memory_gb=32.0,
-        gpu_memory_gb=24.0,
-        hourly_rate_spot=0.24,
-        hourly_rate_ondemand=0.80,
-        description="Self-play with L4 GPU (Spot)",
-    ),
-    # Training (prefer on-demand for reliability)
-    "train_l4_ondemand": MachineProfile(
-        name="train_l4_ondemand",
-        machine_type="g2-standard-24",
-        accelerator_type="NVIDIA_L4",
-        accelerator_count=2,
-        spot=False,
-        vcpus=24,
-        memory_gb=96.0,
-        gpu_memory_gb=48.0,  # 2x24GB
-        hourly_rate_spot=0.0,
-        hourly_rate_ondemand=2.68,
-        description="Training with 2x L4 GPUs (on-demand)",
+        hourly_rate=0.98,
+        hourly_rate_spot=0.29,
     ),
     "train_l4_single": MachineProfile(
         name="train_l4_single",
-        machine_type="g2-standard-8",
+        machine_type="g2-standard-16",
+        accelerator_type="NVIDIA_L4",
+        accelerator_count=1,
+        spot=True,
+        hourly_rate=1.39,
+        hourly_rate_spot=0.42,
+    ),
+    "train_l4_ondemand": MachineProfile(
+        name="train_l4_ondemand",
+        machine_type="g2-standard-16",
         accelerator_type="NVIDIA_L4",
         accelerator_count=1,
         spot=False,
-        vcpus=8,
-        memory_gb=32.0,
-        gpu_memory_gb=24.0,
-        hourly_rate_spot=0.24,
-        hourly_rate_ondemand=0.80,
-        description="Training with single L4 GPU (budget)",
+        hourly_rate=1.39,
+        hourly_rate_spot=0.42,
     ),
     "train_a100_burst": MachineProfile(
         name="train_a100_burst",
         machine_type="a2-highgpu-1g",
         accelerator_type="NVIDIA_TESLA_A100",
         accelerator_count=1,
-        spot=False,
-        vcpus=12,
-        memory_gb=85.0,
-        gpu_memory_gb=40.0,
-        hourly_rate_spot=0.0,
-        hourly_rate_ondemand=3.67,
-        description="Burst training with A100 GPU",
+        spot=True,
+        hourly_rate=3.67,
+        hourly_rate_spot=1.10,
     ),
-    # Evaluation (use Spot, can tolerate preemption)
     "eval_l4_spot": MachineProfile(
         name="eval_l4_spot",
         machine_type="g2-standard-8",
         accelerator_type="NVIDIA_L4",
         accelerator_count=1,
         spot=True,
-        vcpus=8,
-        memory_gb=32.0,
-        gpu_memory_gb=24.0,
-        hourly_rate_spot=0.24,
-        hourly_rate_ondemand=0.80,
-        description="Evaluation with L4 GPU (Spot)",
-    ),
-    # CPU-only for testing
-    "cpu_only": MachineProfile(
-        name="cpu_only",
-        machine_type="n1-standard-8",
-        accelerator_type="",
-        accelerator_count=0,
-        spot=True,
-        vcpus=8,
-        memory_gb=30.0,
-        gpu_memory_gb=0.0,
-        hourly_rate_spot=0.05,
-        hourly_rate_ondemand=0.20,
-        description="CPU-only for testing",
+        hourly_rate=0.98,
+        hourly_rate_spot=0.29,
     ),
 }
 
 
-def get_machine_profiles() -> dict[str, MachineProfile]:
-    """Get all available machine profiles.
-
-    Returns:
-        Dictionary mapping profile names to MachineProfile objects.
-    """
-    return MACHINE_PROFILES.copy()
-
-
 def get_machine_profile(name: str) -> MachineProfile:
-    """Get a specific machine profile by name.
+    """Get a predefined machine profile by name.
 
     Args:
-        name: Profile name.
+        name: Profile name (e.g., "selfplay_t4_spot").
 
     Returns:
-        MachineProfile for the given name.
+        MachineProfile for the requested configuration.
 
     Raises:
-        KeyError: If profile doesn't exist.
+        KeyError: If profile name is not found.
     """
     if name not in MACHINE_PROFILES:
-        available = ", ".join(MACHINE_PROFILES.keys())
-        raise KeyError(f"Unknown machine profile: {name}. Available: {available}")
+        raise KeyError(
+            f"Unknown machine profile: {name}. "
+            f"Available profiles: {list(MACHINE_PROFILES.keys())}"
+        )
     return MACHINE_PROFILES[name]
 
 
 @dataclass
 class CloudConfig:
-    """Configuration for cloud deployment.
+    """Base configuration for cloud providers.
 
-    Attributes:
-        project_id: GCP project ID.
-        region: GCP region (e.g., "us-central1").
-        bucket: GCS bucket for storage.
-        prefix: Path prefix within bucket.
-        artifact_registry: Artifact Registry repository URI.
-        service_account: Service account email (optional).
-        network: VPC network name (optional).
-        wandb_project: Weights & Biases project name.
-        wandb_api_key_secret: Secret Manager secret name for W&B API key.
+    All configuration values can be loaded from environment variables
+    to avoid hardcoding sensitive information.
+
+    Environment Variables:
+        CLOUD_PROVIDER: Cloud provider (gcp, aws, azure, local)
+        CLOUD_ENVIRONMENT: Deployment environment (dev, staging, prod)
+        CLOUD_PROJECT_ID: Project/account identifier
+        CLOUD_REGION: Default region for resources
+        CLOUD_LOG_LEVEL: Logging level (DEBUG, INFO, WARNING, ERROR)
     """
 
+    provider: CloudProvider = CloudProvider.LOCAL
+    environment: CloudEnvironment = CloudEnvironment.DEVELOPMENT
     project_id: str = ""
-    region: str = "us-central1"
-    bucket: str = ""
-    prefix: str = "civ6-alphazero"
-    artifact_registry: str = ""
-    service_account: str | None = None
-    network: str | None = None
-    wandb_project: str = "civ6-alphazero"
-    wandb_api_key_secret: str = "wandb-api-key"
+    region: str = ""
+    log_level: str = "INFO"
 
-    # Component-specific settings
-    selfplay_profile: str = "selfplay_t4_spot"
-    train_profile: str = "train_l4_single"
-    eval_profile: str = "eval_l4_spot"
+    # Resource limits (can be overridden per-job)
+    default_machine_type: str = ""
+    default_accelerator_type: str = ""
+    default_accelerator_count: int = 0
 
-    # Training cycle settings
-    selfplay_games_per_worker: int = 100
-    num_selfplay_workers: int = 3
-    training_steps_per_iteration: int = 1000
-    eval_games: int = 400
-    promotion_threshold: float = 0.55
+    # Storage defaults
+    default_bucket: str = ""
+    checkpoint_prefix: str = "checkpoints"
+    artifact_prefix: str = "artifacts"
 
-    def __post_init__(self) -> None:
-        """Apply environment variable overrides."""
-        self._apply_env_overrides()
-
-    def _apply_env_overrides(self) -> None:
-        """Apply environment variable overrides."""
-        self.project_id = os.environ.get("GOOGLE_CLOUD_PROJECT", self.project_id)
-        self.region = os.environ.get("CIV6_REGION", self.region)
-        self.bucket = os.environ.get("CIV6_GCS_BUCKET", self.bucket)
-        self.prefix = os.environ.get("CIV6_GCS_PREFIX", self.prefix)
-
-        # Construct artifact registry from project if not set
-        if not self.artifact_registry and self.project_id:
-            self.artifact_registry = (
-                f"{self.region}-docker.pkg.dev/{self.project_id}/civ6-alphazero"
-            )
-
-        # Training settings
-        if val := os.environ.get("CIV6_SELFPLAY_PROFILE"):
-            self.selfplay_profile = val
-        if val := os.environ.get("CIV6_TRAIN_PROFILE"):
-            self.train_profile = val
-        if val := os.environ.get("CIV6_EVAL_PROFILE"):
-            self.eval_profile = val
-
-        if val := os.environ.get("CIV6_NUM_SELFPLAY_WORKERS"):
-            self.num_selfplay_workers = int(val)
-        if val := os.environ.get("CIV6_GAMES_PER_WORKER"):
-            self.selfplay_games_per_worker = int(val)
-        if val := os.environ.get("CIV6_TRAINING_STEPS"):
-            self.training_steps_per_iteration = int(val)
-        if val := os.environ.get("CIV6_EVAL_GAMES"):
-            self.eval_games = int(val)
+    # Additional metadata
+    labels: dict[str, str] = field(default_factory=dict)
+    tags: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_env(cls) -> CloudConfig:
-        """Create configuration from environment variables."""
-        return cls()
-
-    def get_container_uri(self, component: str) -> str:
-        """Get container image URI for a component.
+    def from_env(cls, prefix: str = "CLOUD") -> CloudConfig:
+        """Load configuration from environment variables.
 
         Args:
-            component: Component name ("selfplay", "trainer", "evaluator").
+            prefix: Environment variable prefix (default: CLOUD)
 
         Returns:
-            Full container image URI.
+            CloudConfig populated from environment.
+
+        Example:
+            # With CLOUD_PROJECT_ID=my-project, CLOUD_REGION=us-central1
+            config = CloudConfig.from_env()
+            assert config.project_id == "my-project"
         """
-        if not self.artifact_registry:
-            raise ValueError("artifact_registry not configured")
-        return f"{self.artifact_registry}/civ6-{component}:latest"
 
-    def get_selfplay_profile(self) -> MachineProfile:
-        """Get machine profile for self-play workers."""
-        return get_machine_profile(self.selfplay_profile)
+        def get_env(key: str, default: str = "") -> str:
+            return os.environ.get(f"{prefix}_{key}", default)
 
-    def get_train_profile(self) -> MachineProfile:
-        """Get machine profile for training."""
-        return get_machine_profile(self.train_profile)
+        provider_str = get_env("PROVIDER", "local")
+        try:
+            provider = CloudProvider(provider_str.lower())
+        except ValueError:
+            logger.warning(f"Unknown provider '{provider_str}', using LOCAL")
+            provider = CloudProvider.LOCAL
 
-    def get_eval_profile(self) -> MachineProfile:
-        """Get machine profile for evaluation."""
-        return get_machine_profile(self.eval_profile)
+        env_str = get_env("ENVIRONMENT", "dev")
+        try:
+            environment = CloudEnvironment.from_string(env_str)
+        except ValueError:
+            logger.warning(f"Unknown environment '{env_str}', using DEVELOPMENT")
+            environment = CloudEnvironment.DEVELOPMENT
 
-    def estimate_iteration_cost(self) -> dict[str, float]:
-        """Estimate cost for one training iteration.
+        # Parse labels from comma-separated key=value pairs
+        labels_str = get_env("LABELS", "")
+        labels = {}
+        if labels_str:
+            for pair in labels_str.split(","):
+                if "=" in pair:
+                    k, v = pair.split("=", 1)
+                    labels[k.strip()] = v.strip()
 
-        Returns:
-            Dictionary with cost breakdown by component.
-        """
-        selfplay_profile = self.get_selfplay_profile()
-        train_profile = self.get_train_profile()
-        eval_profile = self.get_eval_profile()
+        # Parse tags from comma-separated values
+        tags_str = get_env("TAGS", "")
+        tags = [t.strip() for t in tags_str.split(",") if t.strip()]
 
-        # Estimate durations (hours)
-        selfplay_hours = 1.5  # ~90 min for 100 games per worker
-        train_hours = 1.0  # ~60 min for 1000 steps
-        eval_hours = 0.5  # ~30 min for 400 games
-
-        # Calculate costs
-        selfplay_rate = (
-            selfplay_profile.hourly_rate_spot
-            if selfplay_profile.spot
-            else selfplay_profile.hourly_rate_ondemand
+        return cls(
+            provider=provider,
+            environment=environment,
+            project_id=get_env("PROJECT_ID"),
+            region=get_env("REGION"),
+            log_level=get_env("LOG_LEVEL", "INFO"),
+            default_machine_type=get_env("DEFAULT_MACHINE_TYPE"),
+            default_accelerator_type=get_env("DEFAULT_ACCELERATOR_TYPE"),
+            default_accelerator_count=int(get_env("DEFAULT_ACCELERATOR_COUNT", "0")),
+            default_bucket=get_env("DEFAULT_BUCKET"),
+            checkpoint_prefix=get_env("CHECKPOINT_PREFIX", "checkpoints"),
+            artifact_prefix=get_env("ARTIFACT_PREFIX", "artifacts"),
+            labels=labels,
+            tags=tags,
         )
-        train_rate = (
-            train_profile.hourly_rate_spot
-            if train_profile.spot
-            else train_profile.hourly_rate_ondemand
-        )
-        eval_rate = (
-            eval_profile.hourly_rate_spot
-            if eval_profile.spot
-            else eval_profile.hourly_rate_ondemand
-        )
 
-        selfplay_cost = selfplay_rate * selfplay_hours * self.num_selfplay_workers
-        train_cost = train_rate * train_hours
-        eval_cost = eval_rate * eval_hours
-
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
         return {
-            "selfplay": round(selfplay_cost, 2),
-            "training": round(train_cost, 2),
-            "evaluation": round(eval_cost, 2),
-            "total": round(selfplay_cost + train_cost + eval_cost, 2),
+            "provider": self.provider.value,
+            "environment": self.environment.value,
+            "project_id": self.project_id,
+            "region": self.region,
+            "log_level": self.log_level,
+            "default_machine_type": self.default_machine_type,
+            "default_accelerator_type": self.default_accelerator_type,
+            "default_accelerator_count": self.default_accelerator_count,
+            "default_bucket": self.default_bucket,
+            "checkpoint_prefix": self.checkpoint_prefix,
+            "artifact_prefix": self.artifact_prefix,
+            "labels": self.labels,
+            "tags": self.tags,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CloudConfig:
+        """Create from dictionary."""
+        provider = CloudProvider(data.get("provider", "local"))
+        environment = CloudEnvironment.from_string(data.get("environment", "dev"))
 
-__all__ = [
-    "MachineProfile",
-    "CloudConfig",
-    "get_machine_profiles",
-    "get_machine_profile",
-    "MACHINE_PROFILES",
-]
+        return cls(
+            provider=provider,
+            environment=environment,
+            project_id=data.get("project_id", ""),
+            region=data.get("region", ""),
+            log_level=data.get("log_level", "INFO"),
+            default_machine_type=data.get("default_machine_type", ""),
+            default_accelerator_type=data.get("default_accelerator_type", ""),
+            default_accelerator_count=data.get("default_accelerator_count", 0),
+            default_bucket=data.get("default_bucket", ""),
+            checkpoint_prefix=data.get("checkpoint_prefix", "checkpoints"),
+            artifact_prefix=data.get("artifact_prefix", "artifacts"),
+            labels=data.get("labels", {}),
+            tags=data.get("tags", []),
+        )
+
+    def validate(self) -> list[str]:
+        """Validate configuration, returning list of errors."""
+        errors = []
+
+        if self.provider != CloudProvider.LOCAL:
+            if not self.project_id:
+                errors.append("project_id is required for cloud providers")
+            if not self.region:
+                errors.append("region is required for cloud providers")
+
+        return errors
+
+    def is_valid(self) -> bool:
+        """Check if configuration is valid."""
+        return len(self.validate()) == 0
+
+    def get_storage_path(self, *parts: str) -> str:
+        """Build a storage path from parts.
+
+        Args:
+            *parts: Path components to join.
+
+        Returns:
+            Full storage path (e.g., gs://bucket/prefix/parts).
+        """
+        if self.provider == CloudProvider.GCP:
+            base = f"gs://{self.default_bucket}"
+        elif self.provider == CloudProvider.LOCAL:
+            base = str(Path.cwd() / "storage")
+        else:
+            base = self.default_bucket
+
+        return "/".join([base] + list(parts))
+
+    def get_checkpoint_path(self, checkpoint_name: str) -> str:
+        """Get full path for a checkpoint."""
+        return self.get_storage_path(self.checkpoint_prefix, checkpoint_name)
+
+    def get_artifact_path(self, artifact_name: str) -> str:
+        """Get full path for an artifact."""
+        return self.get_storage_path(self.artifact_prefix, artifact_name)

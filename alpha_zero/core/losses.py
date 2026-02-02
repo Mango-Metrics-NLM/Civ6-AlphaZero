@@ -685,16 +685,19 @@ class LossConfig:
     @property
     def support_size(self) -> int:
         """Size of categorical support (backwards-compatible property)."""
+        assert self.categorical_support is not None, "categorical_support is always initialized"
         return self.categorical_support.support_size
 
     @property
     def min_value(self) -> float:
         """Minimum value in support range (backwards-compatible property)."""
+        assert self.categorical_support is not None, "categorical_support is always initialized"
         return self.categorical_support.min_value
 
     @property
     def max_value(self) -> float:
         """Maximum value in support range (backwards-compatible property)."""
+        assert self.categorical_support is not None, "categorical_support is always initialized"
         return self.categorical_support.max_value
 
 
@@ -942,24 +945,24 @@ def compute_muzero_trajectory_loss(
         )
         step_losses.append(step_k_loss)
 
-    # Aggregate losses across all steps
-    total_loss = sum(s.total_loss for s in step_losses)
-    policy_loss = sum(s.policy_loss for s in step_losses)
-    value_loss = sum(s.value_loss for s in step_losses)
+    # Aggregate losses across all steps - use stack().sum() to guarantee Tensor return type
+    total_loss = torch.stack([s.total_loss for s in step_losses]).sum()
+    policy_loss = torch.stack([s.policy_loss for s in step_losses]).sum()
+    value_loss = torch.stack([s.value_loss for s in step_losses]).sum()
 
     # Reward loss (only for k >= 1)
-    reward_losses = [s.reward_loss for s in step_losses if s.reward_loss is not None]
-    reward_loss = sum(reward_losses) if reward_losses else torch.tensor(0.0)
+    reward_loss_list = [s.reward_loss for s in step_losses if s.reward_loss is not None]
+    reward_loss = torch.stack(reward_loss_list).sum() if reward_loss_list else torch.tensor(0.0)
 
     # Consistency loss (only if any step has it)
-    consistency_losses = [s.consistency_loss for s in step_losses if s.consistency_loss is not None]
-    consistency_loss = sum(consistency_losses) if consistency_losses else None
+    consistency_loss_list = [s.consistency_loss for s in step_losses if s.consistency_loss is not None]
+    consistency_loss = torch.stack(consistency_loss_list).sum() if consistency_loss_list else None
 
     # Value prefix loss (only if any step has it)
-    value_prefix_losses = [
+    value_prefix_loss_list = [
         s.value_prefix_loss for s in step_losses if s.value_prefix_loss is not None
     ]
-    value_prefix_loss = sum(value_prefix_losses) if value_prefix_losses else None
+    value_prefix_loss = torch.stack(value_prefix_loss_list).sum() if value_prefix_loss_list else None
 
     logger.info(
         "Trajectory loss computed: total=%f, policy=%f, value=%f, reward=%f",
@@ -1138,8 +1141,8 @@ class MuZeroLossCalculator:
         """Compute loss using MuZero network interface with dynamics unrolling."""
         logger.debug("Using MuZero network interface")
 
-        # Initial inference
-        initial_output = network.initial_inference(
+        # Initial inference - duck-typed method call
+        initial_output = network.initial_inference(  # type: ignore[operator]
             batch.observations_spatial[0],
             batch.observations_vector[0],
             batch.action_masks[0] if batch.action_masks else None,
@@ -1172,8 +1175,8 @@ class MuZeroLossCalculator:
         for k in range(len(batch.actions)):
             logger.debug("Unrolling dynamics step %d", k)
 
-            # Recurrent inference
-            recurrent_output = network.recurrent_inference(
+            # Recurrent inference - duck-typed method call
+            recurrent_output = network.recurrent_inference(  # type: ignore[operator]
                 current_hidden,
                 batch.actions[k],
                 batch.action_masks[k + 1] if batch.action_masks else None,
@@ -1207,7 +1210,8 @@ class MuZeroLossCalculator:
                     ),
                 ).detach()  # Stop gradient for SimSiam
                 projected_dynamics_list.append(proj_dyn)
-                projected_observation_list.append(proj_obs)
+                if projected_observation_list is not None:
+                    projected_observation_list.append(proj_obs)
 
             # Value prefix predictions
             if self.use_value_prefix and predicted_value_prefixes is not None:
@@ -1283,10 +1287,10 @@ class MuZeroLossCalculator:
             )
             step_losses.append(step_loss)
 
-        # Aggregate losses
-        total_loss = sum(s.total_loss for s in step_losses)
-        policy_loss = sum(s.policy_loss for s in step_losses)
-        value_loss = sum(s.value_loss for s in step_losses)
+        # Aggregate losses - use stack().sum() to guarantee Tensor return type
+        total_loss = torch.stack([s.total_loss for s in step_losses]).sum()
+        policy_loss = torch.stack([s.policy_loss for s in step_losses]).sum()
+        value_loss = torch.stack([s.value_loss for s in step_losses]).sum()
 
         return TrajectoryLossOutput(
             total_loss=total_loss,
@@ -1301,7 +1305,7 @@ class MuZeroLossCalculator:
     def _get_projection(self, network: nn.Module, hidden_state: torch.Tensor) -> torch.Tensor:
         """Get projection from hidden state for consistency loss."""
         if hasattr(network, "project"):
-            return network.project(hidden_state)
+            return network.project(hidden_state)  # type: ignore[operator, no-any-return]
         else:
             logger.warning("Network doesn't have project method, using identity")
             return hidden_state.mean(dim=(2, 3)) if hidden_state.dim() == 4 else hidden_state
@@ -1314,7 +1318,7 @@ class MuZeroLossCalculator:
     ) -> torch.Tensor:
         """Get representation from observation."""
         if hasattr(network, "representation"):
-            return network.representation(spatial, vector)
+            return network.representation(spatial, vector)  # type: ignore[operator, no-any-return]
         else:
             logger.warning("Network doesn't have representation method")
             return spatial
@@ -1326,7 +1330,7 @@ class MuZeroLossCalculator:
     ) -> torch.Tensor:
         """Get value prefix prediction from hidden state."""
         if hasattr(network, "predict_value_prefix"):
-            return network.predict_value_prefix(hidden_state)
+            return network.predict_value_prefix(hidden_state)  # type: ignore[operator, no-any-return]
         else:
             logger.warning("Network doesn't have predict_value_prefix method")
             batch_size = hidden_state.size(0)

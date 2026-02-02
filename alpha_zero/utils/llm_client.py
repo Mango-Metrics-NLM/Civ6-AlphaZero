@@ -36,8 +36,9 @@ try:
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
-    AsyncOpenAI = None
-    OpenAI = None
+    # Type stubs for when openai is not installed
+    AsyncOpenAI = None  # type: ignore[misc, assignment]
+    OpenAI = None  # type: ignore[misc, assignment]
 
 try:
     from anthropic import Anthropic, AsyncAnthropic
@@ -45,8 +46,9 @@ try:
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
-    AsyncAnthropic = None
-    Anthropic = None
+    # Type stubs for when anthropic is not installed
+    AsyncAnthropic = None  # type: ignore[misc, assignment]
+    Anthropic = None  # type: ignore[misc, assignment]
 
 # Load environment variables from .env file if available
 try:
@@ -283,7 +285,8 @@ class OpenAIClient(BaseLLMClient):
 
         response = await self._async_client.chat.completions.create(
             model=model,
-            messages=[m.to_openai_format() for m in request_messages],
+            # OpenAI SDK types require specific message param types; our dict format is compatible
+            messages=[m.to_openai_format() for m in request_messages],  # type: ignore[misc, arg-type]
             max_tokens=max_tokens,
             temperature=temperature,
         )
@@ -322,13 +325,15 @@ class OpenAIClient(BaseLLMClient):
 
         stream = await self._async_client.chat.completions.create(
             model=model,
-            messages=[m.to_openai_format() for m in request_messages],
+            # OpenAI SDK types require specific message param types; our dict format is compatible
+            messages=[m.to_openai_format() for m in request_messages],  # type: ignore[misc, arg-type]
             max_tokens=max_tokens,
             temperature=temperature,
             stream=True,
         )
 
-        async for chunk in stream:
+        # Type assertion for stream - openai SDK returns AsyncStream when stream=True
+        async for chunk in stream:  # type: ignore[union-attr]
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
 

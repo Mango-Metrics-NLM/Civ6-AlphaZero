@@ -9,10 +9,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### GCP Cloud Infrastructure for Distributed Training
+
+A complete cloud infrastructure package for distributed training on Google Cloud Platform.
+
+##### Core Cloud Package (`alpha_zero/cloud/`)
+
+- **config.py**: Base cloud configuration
+  - `CloudConfig` dataclass with environment variable support (`CLOUD_*` prefix)
+  - `CloudProvider` enum: GCP, AWS, AZURE, LOCAL
+  - `CloudEnvironment` enum: DEVELOPMENT, STAGING, PRODUCTION, TEST
+  - Full serialization/deserialization with validation
+
+- **protocols.py**: Abstract interfaces for cloud backends
+  - `CloudTrainerProtocol`: Training job management interface
+  - `CloudStorageProtocol`: Storage operations interface
+  - `JobStatus` enum for job lifecycle tracking
+  - `TrainingJobInfo` dataclass for job metadata
+
+##### GCP Subpackage (`alpha_zero/cloud/gcp/`)
+
+- **config.py**: GCP-specific configuration
+  - `GCPConfig`: Project, region, and environment settings
+  - `VertexConfig`: Vertex AI training configuration
+    - Machine types, accelerators, container URIs
+    - Boot disk, timeout, and replica settings
+  - `StorageConfig`: Cloud Storage bucket configuration
+    - Bucket name, prefixes, retry settings
+
+- **vertex_trainer.py**: Vertex AI training job management
+  - `VertexTrainer`: Implements `CloudTrainerProtocol`
+  - Job submission with configurable machine types and accelerators
+  - Job status monitoring with state mapping
+  - Job cancellation support
+  - Job listing with optional status filtering
+  - Blocking wait with timeout support
+  - Mock mode (`force_mock=True`) for testing without credentials
+
+- **storage.py**: Cloud Storage client
+  - `CloudStorageClient`: Implements `CloudStorageProtocol`
+  - File upload/download with retry logic and exponential backoff
+  - Directory upload/download operations
+  - Checkpoint save/load convenience methods
+  - File existence and deletion operations
+  - GCS URI parsing (gs://bucket/path)
+  - Mock mode (`force_mock=True`) for local filesystem fallback
+
+##### Cloud Test Suite (52 new tests)
+
+- `tests/unit/test_cloud_config.py`: Configuration tests (22 tests)
+  - Environment parsing, validation, serialization
+  - Provider and environment enum handling
+- `tests/unit/test_cloud_storage.py`: Storage client tests (14 tests)
+  - Upload/download operations in mock mode
+  - Checkpoint management, existence checks, deletion
+  - Fallback mode behavior
+- `tests/unit/test_vertex_trainer.py`: Vertex AI trainer tests (16 tests)
+  - Job submission and monitoring in mock mode
+  - Protocol compliance verification
+  - Job lifecycle operations
+
+##### Cloud Dependencies (optional)
+
+- `google-cloud-aiplatform>=1.36.0`: Vertex AI SDK
+- `google-cloud-storage>=2.10.0`: Cloud Storage SDK
+- `google-auth>=2.23.0`: GCP authentication
+
 #### Real Civ6 Bridge System
+
 A complete bridge system enabling the AlphaZero agent to play actual Civilization VI through file-based IPC.
 
 ##### Python Bridge (`alpha_zero/bridge/`)
+
 - **config.py**: `BridgeConfig` dataclass with validation
   - Communication directory configuration
   - Polling intervals, timeouts, retry settings
@@ -39,6 +107,7 @@ A complete bridge system enabling the AlphaZero agent to play actual Civilizatio
   - Validation with detailed error reporting
 
 ##### Gymnasium Environment (`alpha_zero/envs/real_civ6_env.py`)
+
 - **RealCiv6Env**: Full Gymnasium-compliant environment
   - Dict observation space: spatial (84, 16, 16), vector (512,), action_mask
   - Discrete action space from hierarchical action encoding
@@ -49,6 +118,7 @@ A complete bridge system enabling the AlphaZero agent to play actual Civilizatio
   - Compatible with all training code
 
 ##### Game Interface (`alpha_zero/interfaces/civ6_interface.py`)
+
 - **Civ6Interface**: Implements `BaseGameInterface`
   - `connect()`, `disconnect()` for session management
   - `reset()`, `step()` for game control
@@ -57,6 +127,7 @@ A complete bridge system enabling the AlphaZero agent to play actual Civilizatio
   - Registered as "civ6" backend with `GameAdapter`
 
 ##### Civilization VI Lua Mod (`mod/AlphaZeroAI/`)
+
 - **AlphaZeroAI.modinfo**: Mod metadata and configuration
   - File references and dependencies
   - Action criteria for enabling AI control
@@ -91,6 +162,7 @@ A complete bridge system enabling the AlphaZero agent to play actual Civilizatio
   - Acknowledgment writing
 
 ##### Test Suite
+
 - **tests/unit/test_bridge.py**: 93 unit tests for bridge components
 - **tests/unit/test_state_converter.py**: State conversion tests
 - **tests/unit/test_action_converter.py**: Action conversion tests
@@ -286,9 +358,11 @@ A comprehensive RAG system for enhancing agent decision-making with external kno
 ### Changed
 
 #### Phase 3: Enhanced Training Pipeline
+
 A comprehensive suite of training improvements designed to accelerate learning convergence and improve agent performance.
 
 ##### Curriculum Learning System (`alpha_zero/utils/curriculum_learning.py`)
+
 - **CurriculumStage**: Dataclass defining difficulty stages with configurable parameters
   - Board size, max turns, opponent strength, starting resources
   - Win rate thresholds for automatic promotion/demotion
@@ -303,6 +377,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
   - Configurable adjustment rates and bounds
 
 ##### Potential-Based Reward Shaping (`alpha_zero/utils/enhanced_rewards.py`)
+
 - **WinConditionEvaluator**: Multi-factor game state evaluation
   - Score advantage assessment with configurable weights
   - City count and production evaluation
@@ -315,6 +390,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
   - Smooth reward signals for faster credit assignment
 
 ##### Environment Tuning (`alpha_zero/utils/environment_tuning.py`)
+
 - **EarlyTerminationConfig**: Configurable early game termination
   - Decisive advantage detection
   - Stalemate prevention
@@ -329,6 +405,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
   - Observation and action space preservation
 
 ##### Training Configuration (`alpha_zero/utils/training_config_enhanced.py`)
+
 - **ParameterSchedule**: Six schedule types for hyperparameter annealing
   - Constant: Fixed value throughout training
   - Step: Discrete value changes at specified iterations
@@ -342,6 +419,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
   - Worker count optimization
 
 ##### Weights & Biases Integration (`alpha_zero/utils/wandb_logger.py`)
+
 - **WandbConfig**: Typed configuration for W&B initialization
   - Project, entity, run name, and tags configuration
   - Mode selection (online/offline/disabled)
@@ -357,6 +435,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
   - `finish()`: Graceful run completion
 
 ##### Enhanced Training Orchestration (`run_enhanced_training.py`)
+
 - **Training Presets**: Pre-configured training profiles
   - Fast: Quick iteration for development (2 iterations, 2 games)
   - Balanced: Standard training (10 iterations, 20 games)
@@ -372,18 +451,22 @@ A comprehensive suite of training improvements designed to accelerate learning c
   - Final summary statistics
 
 ##### Simplified MCTS (`alpha_zero/utils/simple_mcts.py`)
+
 - Lightweight MCTS implementation for evaluation
 - Configurable simulation count
 - Temperature-based action selection
 - Compatible with enhanced training pipeline
 
 #### New Run Scripts
+
 - `run_enhanced_training.py`: Main training orchestration with all Phase 3 features
 - `run_training_wandb.py`: W&B-focused training runner
 - `run_civ6_ai.py`: Simple AI evaluation runner
 
 #### Test Suite Expansion
+
 ##### Unit Tests (14 new files)
+
 - `tests/unit/test_curriculum_learning.py`: Curriculum stage and manager tests
 - `tests/unit/test_enhanced_rewards.py`: Reward shaping validation
 - `tests/unit/test_environment_tuning.py`: Environment wrapper tests
@@ -400,6 +483,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
 - `tests/unit/test_performance.py`: Performance benchmark tests
 
 ##### Integration Tests (6 new files)
+
 - `tests/integration/test_enhanced_training.py`: End-to-end training tests
 - `tests/integration/test_enhanced_training_wandb.py`: W&B integration tests
 - `tests/integration/test_training_pipeline.py`: Full pipeline tests
@@ -408,12 +492,14 @@ A comprehensive suite of training improvements designed to accelerate learning c
 - `tests/integration/test_full_training_cycle.py`: Complete training cycle tests
 
 #### Documentation
+
 - `PLAN_IMPROVE_LEARNING.md`: Implementation plan for Phase 3 improvements
 - `TRAINING_IMPROVEMENTS_TEMPLATE.md`: Template for training experiments
 - `.env.template`: Environment variable template for W&B configuration
 - Updated `CLAUDE.md`: Comprehensive project documentation refresh
 
 #### Modified Files
+
 - **`.gitignore`**: Added W&B directories, training artifacts, profiling files
 - **`alpha_zero/utils/__init__.py`**: Exported all new Phase 3 modules
   - CurriculumStage, CurriculumManager, AdaptiveDifficultyController
@@ -430,6 +516,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
 ### Technical Highlights
 
 #### Design Patterns
+
 - **Dataclass Configuration**: All configuration uses typed dataclasses for IDE support
 - **Factory Pattern**: ParameterSchedule.create() for schedule instantiation
 - **Wrapper Pattern**: TunedEnvironmentWrapper for non-invasive environment modification
@@ -437,12 +524,14 @@ A comprehensive suite of training improvements designed to accelerate learning c
 - **Optional Dependencies**: W&B integration with graceful fallback when unavailable
 
 #### Performance Considerations
+
 - Potential-based reward shaping preserves optimal policy (mathematically proven)
 - Curriculum learning reduces sample complexity through staged difficulty
 - Early termination prevents wasted computation on decided games
 - Batch-aware resource management for memory efficiency
 
 #### Testing Philosophy
+
 - 400+ test methods across 33 test files
 - Unit tests validate individual components in isolation
 - Integration tests verify component interactions

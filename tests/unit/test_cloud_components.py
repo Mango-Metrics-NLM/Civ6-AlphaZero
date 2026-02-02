@@ -12,6 +12,7 @@ Tests for:
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -121,20 +122,20 @@ class TestCloudConfig:
         with patch.dict(os.environ, {}, clear=True):
             config = CloudConfig()
             assert config.project_id == ""
-            assert config.region == "us-central1"
-            assert config.bucket == ""
+            assert config.region == ""  # Empty by default
+            assert config.default_bucket == ""
 
     def test_env_override(self) -> None:
         """Test creating config with environment overrides."""
         with patch.dict(os.environ, {
-            "GOOGLE_CLOUD_PROJECT": "test-project",
-            "CIV6_REGION": "us-west1",
-            "CIV6_GCS_BUCKET": "test-bucket",
+            "CLOUD_PROJECT_ID": "test-project",
+            "CLOUD_REGION": "us-west1",
+            "CLOUD_DEFAULT_BUCKET": "test-bucket",
         }, clear=True):
-            config = CloudConfig()
+            config = CloudConfig.from_env()
             assert config.project_id == "test-project"
             assert config.region == "us-west1"
-            assert config.bucket == "test-bucket"
+            assert config.default_bucket == "test-bucket"
 
 
 class TestPreemptionHandler:
@@ -172,7 +173,7 @@ class TestPreemptionHandler:
 
     def test_register_preemption_handler_function(self) -> None:
         """Test the module-level register function."""
-        callbacks = [MagicMock(), MagicMock()]
+        callbacks: list[Callable[[], None]] = [MagicMock(), MagicMock()]
         handler = register_preemption_handler(
             cleanup_callbacks=callbacks,
             grace_period=15.0,
