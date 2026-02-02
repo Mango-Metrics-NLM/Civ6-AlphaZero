@@ -20,20 +20,19 @@ import logging
 import os
 import re
 import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Iterator, Optional
+from typing import Any
 
 from .base import (
-    City,
     GameAction,
     GameState,
     InterfaceConfig,
     InterfaceError,
     Position,
-    Unit,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,7 +68,7 @@ class LogEntry:
     """A parsed log entry."""
     timestamp: datetime
     event_type: LogEventType
-    player_id: Optional[int] = None
+    player_id: int | None = None
     data: dict[str, Any] = field(default_factory=dict)
     raw_line: str = ""
 
@@ -88,7 +87,7 @@ class MovementLog:
     timestamp: datetime
 
     @classmethod
-    def from_log_entry(cls, entry: LogEntry) -> Optional[MovementLog]:
+    def from_log_entry(cls, entry: LogEntry) -> MovementLog | None:
         """Create from log entry if applicable."""
         if entry.event_type != LogEventType.UNIT_MOVE:
             return None
@@ -129,7 +128,7 @@ class CombatLog:
     timestamp: datetime
 
     @classmethod
-    def from_log_entry(cls, entry: LogEntry) -> Optional[CombatLog]:
+    def from_log_entry(cls, entry: LogEntry) -> CombatLog | None:
         """Create from log entry if applicable."""
         if entry.event_type != LogEventType.UNIT_ATTACK:
             return None
@@ -207,8 +206,8 @@ class Civ6LogParser:
 
     def __init__(
         self,
-        config: Optional[InterfaceConfig] = None,
-        log_dir: Optional[Path] = None,
+        config: InterfaceConfig | None = None,
+        log_dir: Path | None = None,
         log_file: str = "Gameplay.log",
         poll_interval_ms: int = 100,
     ):
@@ -289,8 +288,7 @@ class Civ6LogParser:
         while self._watching:
             # Check for new content
             new_events = self._read_new_entries()
-            for event in new_events:
-                yield event
+            yield from new_events
 
             if not new_events:
                 time.sleep(self.poll_interval_ms / 1000.0)
@@ -312,7 +310,7 @@ class Civ6LogParser:
         if callback in self._callbacks:
             self._callbacks.remove(callback)
 
-    def parse_line(self, line: str) -> Optional[LogEntry]:
+    def parse_line(self, line: str) -> LogEntry | None:
         """Parse a single log line.
 
         Args:
@@ -332,7 +330,7 @@ class Civ6LogParser:
 
         return None
 
-    def parse_file(self, filepath: Optional[Path] = None) -> list[LogEntry]:
+    def parse_file(self, filepath: Path | None = None) -> list[LogEntry]:
         """Parse an entire log file.
 
         Args:
@@ -346,7 +344,7 @@ class Civ6LogParser:
             return []
 
         entries = []
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        with open(path, encoding="utf-8", errors="ignore") as f:
             for line in f:
                 entry = self.parse_line(line)
                 if entry:
@@ -356,7 +354,7 @@ class Civ6LogParser:
 
     def get_game_replay(
         self,
-        filepath: Optional[Path] = None
+        filepath: Path | None = None
     ) -> list[tuple[GameState, GameAction]]:
         """Extract state-action pairs from log file.
 
@@ -417,7 +415,7 @@ class Civ6LogParser:
 
     def get_movement_data(
         self,
-        filepath: Optional[Path] = None
+        filepath: Path | None = None
     ) -> list[MovementLog]:
         """Extract all movement events from log.
 
@@ -439,7 +437,7 @@ class Civ6LogParser:
 
     def get_combat_data(
         self,
-        filepath: Optional[Path] = None
+        filepath: Path | None = None
     ) -> list[CombatLog]:
         """Extract all combat events from log.
 
@@ -473,7 +471,7 @@ class Civ6LogParser:
                 self._file_position = 0
 
             if current_size > self._file_position:
-                with open(self.log_path, "r", encoding="utf-8", errors="ignore") as f:
+                with open(self.log_path, encoding="utf-8", errors="ignore") as f:
                     f.seek(self._file_position)
                     for line in f:
                         entry = self.parse_line(line)

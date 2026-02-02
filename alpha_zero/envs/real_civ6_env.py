@@ -638,10 +638,12 @@ class RealCiv6Env(gym.Env):
         """
         if self.render_mode == "human":
             info = self.get_info()
-            print(f"Turn: {info.get('turn', 0)}")
-            print(f"Units: {info.get('units', 0)}")
-            print(f"Cities: {info.get('cities', 0)}")
-            print(f"Gold: {info.get('gold', 0)}")
+            logger.info(
+                f"Turn: {info.get('turn', 0)}, "
+                f"Units: {info.get('units', 0)}, "
+                f"Cities: {info.get('cities', 0)}, "
+                f"Gold: {info.get('gold', 0)}"
+            )
         return None
 
     def close(self) -> None:

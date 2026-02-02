@@ -25,13 +25,18 @@ Example:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import cast
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+# Module-level logger
+logger = logging.getLogger(__name__)
 
 
 class ActivationType(str, Enum):
@@ -59,7 +64,7 @@ def get_activation(activation: ActivationType | str) -> Callable[[torch.Tensor],
     if isinstance(activation, str):
         activation = ActivationType(activation.lower())
 
-    activations = {
+    activations: dict[ActivationType, Callable[[torch.Tensor], torch.Tensor]] = {
         ActivationType.RELU: F.relu,
         ActivationType.GELU: F.gelu,
         ActivationType.TANH: torch.tanh,
@@ -99,7 +104,7 @@ def get_activation_module(activation: ActivationType | str) -> nn.Module:
     if activation not in modules:
         raise ValueError(f"Unknown activation: {activation}")
 
-    return modules[activation]()
+    return cast(nn.Module, modules[activation]())
 
 
 @dataclass
@@ -192,6 +197,11 @@ class MLPHead(nn.Module):
 
         self.mlp = nn.Sequential(*layers)
 
+        logger.debug(
+            f"MLPHead created: {config.input_dim} -> "
+            f"{config.hidden_dims} -> {config.output_dim}"
+        )
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass.
 
@@ -201,7 +211,7 @@ class MLPHead(nn.Module):
         Returns:
             Output of shape (B, output_dim).
         """
-        return self.mlp(x)
+        return self.mlp(x)  # type: ignore[no-any-return]
 
 
 @dataclass
@@ -249,6 +259,11 @@ class SpatialPreprocessor(nn.Module):
         self.bn = nn.BatchNorm2d(config.out_channels) if config.use_batch_norm else nn.Identity()
 
         self.output_dim = config.out_channels * config.spatial_size * config.spatial_size
+
+        logger.debug(
+            f"SpatialPreprocessor created: {config.in_channels} -> "
+            f"{config.out_channels}, output_dim={self.output_dim}"
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass.
@@ -298,6 +313,7 @@ class FeatureCombiner(nn.Module):
         self.vector_dim = vector_dim
         self.combined_dim = spatial_dim + vector_dim
 
+        self.projection: nn.Linear | None
         if projection_dim is not None:
             self.projection = nn.Linear(self.combined_dim, projection_dim)
             self.output_dim = projection_dim
@@ -321,7 +337,7 @@ class FeatureCombiner(nn.Module):
         """
         combined = torch.cat([spatial, vector], dim=1)
         if self.projection is not None:
-            combined = self.projection(combined)
+            combined = self.projection(combined)  # type: ignore[misc]
         return combined
 
 
@@ -524,4 +540,5 @@ class _CNNHead(nn.Module):
         """
         spatial = self.spatial_preprocessor(spatial_features)
         combined = self.combiner(spatial, vector_features)
-        return self.mlp(combined)
+        return self.mlp(combined)  # type: ignore[no-any-return]
+

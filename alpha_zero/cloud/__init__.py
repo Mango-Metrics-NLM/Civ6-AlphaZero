@@ -1,40 +1,74 @@
-"""Cloud infrastructure module for distributed AlphaZero training.
+"""Cloud infrastructure for distributed training.
 
-Provides:
-- CloudConfig: Configuration for cloud backends (GCP, AWS, etc.)
-- Storage protocols for checkpoint management
-- Monitoring and logging integration
-- Preemption handling for spot/preemptible instances
+This module provides cloud provider integrations for training
+AlphaZero models on cloud infrastructure. Supports multiple providers
+with pluggable backends for storage, training jobs, monitoring, and preemption handling.
 
-All cloud SDK dependencies are optional. Use availability flags to check
-if a specific cloud provider is available.
+Supported Providers:
+- Google Cloud Platform (GCP) with Vertex AI
+
+Example:
+    from alpha_zero.cloud import CloudConfig, CloudProvider
+    from alpha_zero.cloud.gcp import GCPConfig, VertexTrainer
+
+    # Configure cloud provider
+    config = CloudConfig.from_env()
+    trainer = VertexTrainer(config)
+
+    # Submit training job
+    job = trainer.submit_training_job(
+        script_path="train.py",
+        machine_type="n1-standard-8",
+        accelerator_type="NVIDIA_TESLA_T4",
+    )
 """
 
-from __future__ import annotations
-
-from alpha_zero.cloud.config import CloudConfig
-from alpha_zero.cloud.exceptions import (
-    CloudConfigError,
-    CloudConnectionError,
-    CloudStorageError,
-    PreemptionError,
+from alpha_zero.cloud.config import (
+    CloudConfig,
+    CloudEnvironment,
+    CloudProvider,
 )
 from alpha_zero.cloud.protocols import (
     CloudMonitoringProtocol,
     CloudStorageProtocol,
+    CloudTrainerProtocol,
+    JobStatus,
     PreemptionHandlerProtocol,
+    TrainingJobInfo,
 )
 
+# Try to import exceptions, they may not exist yet
+try:
+    from alpha_zero.cloud.exceptions import (
+        CloudConfigError,
+        CloudConnectionError,
+        CloudStorageError,
+        PreemptionError,
+    )
+
+    _EXCEPTIONS_AVAILABLE = True
+except ImportError:
+    _EXCEPTIONS_AVAILABLE = False
+
 __all__ = [
-    # Configuration
+    # Config
     "CloudConfig",
+    "CloudEnvironment",
+    "CloudProvider",
     # Protocols
     "CloudStorageProtocol",
+    "CloudTrainerProtocol",
     "CloudMonitoringProtocol",
     "PreemptionHandlerProtocol",
-    # Exceptions
-    "CloudConfigError",
-    "CloudStorageError",
-    "CloudConnectionError",
-    "PreemptionError",
+    # Protocol support types<br>    "JobStatus",
+    "TrainingJobInfo",
 ]
+
+# Add exceptions to__all__ if available
+if _EXCEPTIONS_AVAILABLE:
+    __all__.extend([
+        "CloudConfigError",
+        "CloudStorageError",
+        "CloudConnectionError",
+        "PreemptionError",
+    ])

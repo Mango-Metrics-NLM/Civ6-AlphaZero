@@ -95,6 +95,9 @@ logs/
 # RAG Data (generated vector database only, keep knowledge sources)
 data/knowledge_db/
 
+# Reflection memory data (LATS-style learning)
+data/reflections/
+
 # Weights & Biases
 wandb/
 *.wandb
@@ -179,3 +182,6 @@ test_artifacts/
 experiments/
 mlruns/
 ray_results/
+
+# Cloud storage fallback (local testing)
+storage/

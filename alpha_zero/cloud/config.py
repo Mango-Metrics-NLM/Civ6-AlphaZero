@@ -2,6 +2,8 @@
 
 Provides:
 - CloudConfig: Main configuration dataclass for cloud settings
+- CloudProvider: Enum for cloud provider selection
+- CloudEnvironment: Enum for deployment environment
 - Environment-based configuration loading
 - YAML configuration loading
 - Validation for required settings
@@ -12,14 +14,45 @@ with the CIV6AZ_ prefix.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
 from alpha_zero.cloud.exceptions import CloudConfigError
+
+logger = logging.getLogger(__name__)
+
+
+class CloudProvider(Enum):
+    """Supported cloud providers."""
+
+    GCP = "gcp"
+    AWS = "aws"  # Future
+    AZURE = "azure"  # Future
+    LOCAL = "local"  # For testing
+
+
+class CloudEnvironment(Enum):
+    """Deployment environments."""
+
+    DEVELOPMENT = "dev"
+    STAGING = "staging"
+    PRODUCTION = "prod"
+    TEST = "test"
+
+    @classmethod
+    def from_string(cls, value: str) -> CloudEnvironment:
+        """Create from string, case-insensitive."""
+        value_lower = value.lower()
+        for env in cls:
+            if env.value == value_lower or env.name.lower() == value_lower:
+                return env
+        raise ValueError(f"Unknown environment: {value}")
 
 
 @dataclass

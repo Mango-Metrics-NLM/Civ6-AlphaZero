@@ -22,7 +22,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from functools import wraps
-from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -207,7 +206,7 @@ class SensitiveDataFilter(logging.Filter):
             sensitive_fields: Field names to redact.
         """
         super().__init__()
-        self.sensitive_fields = set(f.lower() for f in sensitive_fields)
+        self.sensitive_fields = {f.lower() for f in sensitive_fields}
         self.redacted_value = "[REDACTED]"
 
     def filter(self, record: logging.LogRecord) -> bool:

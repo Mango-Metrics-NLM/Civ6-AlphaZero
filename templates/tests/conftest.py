@@ -8,8 +8,9 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generator
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -18,10 +19,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 if TYPE_CHECKING:
     from template_system.agents import AgentConfig, AgentOrchestrator
-    from template_system.config import ConfigManager, TemplateConfig
+    from template_system.config import TemplateConfig
     from template_system.factories import FactoryRegistry
     from template_system.logging_config import LogConfig
-    from template_system.testing import TestConfig, TestRunner
+    from template_system.testing import TestConfig
 
 
 @pytest.fixture
@@ -137,7 +138,7 @@ def env_vars() -> Generator[dict[str, str], None, None]:
 
 
 @pytest.fixture
-def agent_config() -> "AgentConfig":
+def agent_config() -> AgentConfig:
     """Create a sample agent configuration.
 
     Returns:
@@ -154,7 +155,7 @@ def agent_config() -> "AgentConfig":
 
 
 @pytest.fixture
-def orchestrator() -> "AgentOrchestrator":
+def orchestrator() -> AgentOrchestrator:
     """Create an agent orchestrator.
 
     Returns:
@@ -166,7 +167,7 @@ def orchestrator() -> "AgentOrchestrator":
 
 
 @pytest.fixture
-def factory_registry() -> "FactoryRegistry":
+def factory_registry() -> FactoryRegistry:
     """Create a factory registry.
 
     Returns:
@@ -178,7 +179,7 @@ def factory_registry() -> "FactoryRegistry":
 
 
 @pytest.fixture
-def template_config() -> "TemplateConfig":
+def template_config() -> TemplateConfig:
     """Create a template configuration.
 
     Returns:
@@ -197,7 +198,7 @@ def template_config() -> "TemplateConfig":
 
 
 @pytest.fixture
-def log_config() -> "LogConfig":
+def log_config() -> LogConfig:
     """Create a log configuration.
 
     Returns:
@@ -212,7 +213,7 @@ def log_config() -> "LogConfig":
 
 
 @pytest.fixture
-def test_config(temp_dir: Path) -> "TestConfig":
+def test_config(temp_dir: Path) -> TestConfig:
     """Create a test configuration.
 
     Args:

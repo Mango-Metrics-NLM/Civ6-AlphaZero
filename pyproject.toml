@@ -6,12 +6,13 @@ build-backend = "setuptools.build_meta"
 name = "alpha_zero"
 version = "0.1.0"
 description = "AlphaZero-based AI for Civilization VI"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
-    "torch>=1.13.0",
+    "torch>=2.0.0",
     "numpy>=1.23.0",
     "gymnasium>=0.29.0",
     "pyyaml>=6.0",
+    "tqdm>=4.65.0",
 ]
 
 [project.optional-dependencies]
@@ -23,10 +24,18 @@ dev = [
     "ruff>=0.1.0",
     "types-tqdm>=4.65.0",
 ]
+gcp = [
+    "google-cloud-aiplatform>=1.40.0",
+    "google-cloud-storage>=2.14.0",
+    "google-auth>=2.25.0",
+]
+all = [
+    "alpha_zero[dev,gcp]",
+]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "C4", "UP"]
@@ -47,6 +56,7 @@ module = "google.cloud.*"
 ignore_missing_imports = true
 
 [tool.pyright]
+pythonVersion = "3.11"
 reportMissingTypeStubs = false
 reportUnknownMemberType = false
 
