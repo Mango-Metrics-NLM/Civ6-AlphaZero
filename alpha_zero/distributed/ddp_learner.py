@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import torch
@@ -117,9 +117,15 @@ class DDPLearner(Learner):
             config: DDP learner configuration.
             shared_storage: Shared storage for weights.
             replay_buffer: Replay buffer for experience.
-            network: Optional pre-initialized network.
+            network: Optional pre-initialized network (overrides base class network).
         """
-        super().__init__(config, shared_storage, replay_buffer, network)
+        super().__init__(config, shared_storage, replay_buffer)
+
+        # Override network if provided
+        if network is not None:
+            self._network = network
+        else:
+            self._network = self.network  # Use network created by base class
 
         self._ddp_config = config
         self._device: torch.device = torch.device("cpu")
@@ -319,13 +325,22 @@ class DDPLearner(Learner):
     ) -> None:
         """Save checkpoint (only on main process by default).
 
+        Includes barrier synchronization to ensure all processes reach
+        the checkpoint point before main saves. This prevents race conditions
+        where workers might try to load an incomplete checkpoint.
+
         Args:
             path: Path to save checkpoint.
             step: Training step number.
             additional_state: Additional state to save.
         """
+        # Synchronize all processes before checkpoint
+        self.barrier()
+
         if not self.is_main:
-            logger.debug("Skipping checkpoint save on non-main rank")
+            logger.debug("Skipping checkpoint save on non-main rank %d", self.rank)
+            # Wait for main to finish saving
+            self.barrier()
             return
 
         state = {
@@ -333,45 +348,98 @@ class DDPLearner(Learner):
             "model_state_dict": self.get_base_model().state_dict(),
             "rank": self.rank,
             "world_size": self.world_size,
+            "config": {
+                "backend": self.config.backend,
+                "gradient_sync_interval": self.config.gradient_sync_interval,
+            },
         }
 
-        if self._optimizer is not None:
-            state["optimizer_state_dict"] = self._optimizer.state_dict()
+        optimizer = getattr(self, "_optimizer", None)
+        if optimizer is not None:
+            state["optimizer_state_dict"] = optimizer.state_dict()
 
         if additional_state:
             state.update(additional_state)
 
         torch.save(state, path)
-        logger.info("Saved checkpoint to %s at step %d", path, step)
+        logger.info("Saved checkpoint to %s at step %d (world_size=%d)", path, step, self.world_size)
+
+        # Signal completion to other processes
+        self.barrier()
 
     def load_checkpoint(
         self,
         path: str,
         strict: bool = True,
+        validate_world_size: bool = True,
     ) -> dict[str, Any]:
         """Load checkpoint and restore model state.
 
-        All processes load the same checkpoint.
+        All processes load the same checkpoint. Includes validation
+        of distributed training metadata.
 
         Args:
             path: Path to checkpoint file.
             strict: Whether to strictly enforce state dict matching.
+            validate_world_size: Whether to warn if world_size differs.
 
         Returns:
             Loaded checkpoint state.
+
+        Raises:
+            FileNotFoundError: If checkpoint file doesn't exist.
+            RuntimeError: If checkpoint is corrupted or incompatible.
         """
+        import os
+
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Checkpoint not found: {path}")
+
         map_location = self._device if torch.cuda.is_available() else "cpu"
-        checkpoint = torch.load(path, map_location=map_location)
+
+        try:
+            checkpoint = torch.load(path, map_location=map_location, weights_only=False)
+        except Exception as e:
+            raise RuntimeError(f"Failed to load checkpoint from {path}: {e}") from e
+
+        # Validate checkpoint structure
+        if "model_state_dict" not in checkpoint:
+            raise RuntimeError("Invalid checkpoint: missing 'model_state_dict' key")
+
+        # Validate distributed training metadata
+        checkpoint_world_size = checkpoint.get("world_size", 1)
+        if validate_world_size and checkpoint_world_size != self.world_size:
+            logger.warning(
+                "Checkpoint world_size (%d) differs from current world_size (%d). "
+                "This may cause issues with optimizer state restoration.",
+                checkpoint_world_size,
+                self.world_size,
+            )
+
+        checkpoint_step = checkpoint.get("step", 0)
+        logger.info(
+            "Loading checkpoint from step %d (saved with world_size=%d)",
+            checkpoint_step,
+            checkpoint_world_size,
+        )
 
         self.get_base_model().load_state_dict(
             checkpoint["model_state_dict"],
             strict=strict,
         )
 
-        if "optimizer_state_dict" in checkpoint and self._optimizer is not None:
-            self._optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        optimizer = getattr(self, "_optimizer", None)
+        if "optimizer_state_dict" in checkpoint and optimizer is not None:
+            try:
+                optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            except Exception as e:
+                logger.warning(
+                    "Failed to load optimizer state: %s. "
+                    "Optimizer will start fresh.",
+                    e,
+                )
 
-        logger.info("Loaded checkpoint from %s", path)
+        logger.info("Loaded checkpoint from %s (rank=%d)", path, self.rank)
         return checkpoint
 
     def barrier(self) -> None:

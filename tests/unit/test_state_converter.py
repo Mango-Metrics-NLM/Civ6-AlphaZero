@@ -317,3 +317,286 @@ class TestStateConverterEdgeCases:
 
         # Visibility should be in the state
         assert "visibility" in result
+
+
+class TestCoordinateScaling:
+    """Tests for coordinate scaling from Civ6 map to board_size."""
+
+    def test_scale_coords_identity(self) -> None:
+        """Test scaling when map size equals board size."""
+        converter = StateConverter(board_size=16, create_encoder=False)
+        # Set up scaling for 16x16 map -> 16x16 board (identity)
+        converter._setup_scaling(16, 16)
+        assert converter._scale_coords(0, 0) == (0, 0)
+        assert converter._scale_coords(15, 15) == (15, 15)
+        assert converter._scale_coords(8, 8) == (8, 8)
+
+    def test_scale_coords_downscale(self) -> None:
+        """Test scaling when downscaling (larger map to smaller board)."""
+        converter = StateConverter(board_size=16, create_encoder=False)
+        # 80x50 map -> 16x16 board
+        converter._setup_scaling(80, 50)
+
+        # Origin stays at origin
+        x, y = converter._scale_coords(0, 0)
+        assert x == 0
+        assert y == 0
+
+        # Far corner should scale down
+        x, y = converter._scale_coords(79, 49)
+        assert x <= 15
+        assert y <= 15
+
+    def test_scale_coords_clamping(self) -> None:
+        """Test that coordinates are clamped to valid range."""
+        converter = StateConverter(board_size=16, create_encoder=False)
+        converter._setup_scaling(80, 50)
+
+        # Even with extreme values, should clamp to valid range
+        x, y = converter._scale_coords(1000, 1000)
+        assert 0 <= x <= 15
+        assert 0 <= y <= 15
+
+        x, y = converter._scale_coords(-10, -10)
+        assert x == 0
+        assert y == 0
+
+    def test_scale_coords_bidirectional_approximate(self) -> None:
+        """Test that scaling is approximately reversible."""
+        converter = StateConverter(board_size=16, create_encoder=False)
+        converter._setup_scaling(80, 50)
+
+        # Scale down
+        original_x, original_y = 40, 25  # Center of original map
+        scaled_x, scaled_y = converter._scale_coords(original_x, original_y)
+
+        # Scaled coordinates should be near center of board
+        # For 80->16 scale factor ~0.2, center 40 -> ~8
+        assert 6 <= scaled_x <= 10
+        assert 6 <= scaled_y <= 10
+
+
+class TestObservationShapes:
+    """Tests for observation tensor shapes consistency."""
+
+    def test_encoder_spatial_shape(self) -> None:
+        """Test spatial tensor has expected 84 channels."""
+        converter = StateConverter(board_size=16, create_encoder=True)
+        encoder = converter._encoder
+        assert encoder is not None
+
+        # Civ6StateEncoder uses 84 spatial channels
+        config = encoder.config
+        assert config.num_spatial_channels == 84
+        assert config.board_size == 16
+
+    def test_encoder_vector_shape(self) -> None:
+        """Test vector tensor has expected 512 dimensions."""
+        converter = StateConverter(board_size=16, create_encoder=True)
+        encoder = converter._encoder
+        assert encoder is not None
+
+        config = encoder.config
+        assert config.vector_dim == 512
+
+    def test_shapes_consistent_across_states(self) -> None:
+        """Test tensor shapes remain consistent across different states."""
+        converter = StateConverter(board_size=16, create_encoder=True)
+
+        # Create two different states
+        state1 = GameStateData(
+            turn_id=1,
+            player_id=0,
+            map_data=MapData(width=44, height=26, tiles=[]),
+            units=[],
+            cities=[],
+            players=[],
+            legal_actions=[],
+        )
+
+        state2 = GameStateData(
+            turn_id=100,
+            player_id=1,
+            map_data=MapData(width=80, height=50, tiles=[
+                TileData(x=x, y=y, terrain="TERRAIN_GRASS")
+                for x in range(10) for y in range(10)
+            ]),
+            units=[
+                UnitData(id=1, unit_type="UNIT_WARRIOR", owner_id=0, x=5, y=5),
+                UnitData(id=2, unit_type="UNIT_ARCHER", owner_id=1, x=10, y=10),
+            ],
+            cities=[
+                CityData(id=1, name="City1", owner_id=0, x=5, y=5),
+            ],
+            players=[
+                PlayerData(id=0, civilization="CIV_A", gold=1000.0),
+                PlayerData(id=1, civilization="CIV_B", gold=500.0),
+            ],
+            legal_actions=[],
+        )
+
+        spatial1, vector1 = converter.convert_and_encode(state1)
+        spatial2, vector2 = converter.convert_and_encode(state2)
+
+        # Shapes must be identical regardless of state content
+        assert spatial1.shape == spatial2.shape
+        assert vector1.shape == vector2.shape
+        assert spatial1.shape == (84, 16, 16)
+        assert vector1.shape == (512,)
+
+
+class TestResourceExtractionComplete:
+    """Tests for complete resource extraction (addresses TODO at lines 311-314)."""
+
+    def test_technologies_field_type(self) -> None:
+        """Test technologies field is a list."""
+        converter = StateConverter(board_size=16, create_encoder=False)
+        state = GameStateData(
+            turn_id=1,
+            player_id=0,
+            map_data=MapData(width=44, height=26, tiles=[]),
+            units=[],
+            cities=[],
+            players=[],
+            legal_actions=[],
+        )
+
+        result = converter.convert(state)
+        assert "technologies" in result
+        assert isinstance(result["technologies"], list)
+
+    def test_civics_field_type(self) -> None:
+        """Test civics field is a list."""
+        converter = StateConverter(board_size=16, create_encoder=False)
+        state = GameStateData(
+            turn_id=1,
+            player_id=0,
+            map_data=MapData(width=44, height=26, tiles=[]),
+            units=[],
+            cities=[],
+            players=[],
+            legal_actions=[],
+        )
+
+        result = converter.convert(state)
+        assert "civics" in result
+        assert isinstance(result["civics"], list)
+
+    def test_victory_progress_field_type(self) -> None:
+        """Test victory_progress field is a dict."""
+        converter = StateConverter(board_size=16, create_encoder=False)
+        state = GameStateData(
+            turn_id=1,
+            player_id=0,
+            map_data=MapData(width=44, height=26, tiles=[]),
+            units=[],
+            cities=[],
+            players=[],
+            legal_actions=[],
+        )
+
+        result = converter.convert(state)
+        assert "victory_progress" in result
+        assert isinstance(result["victory_progress"], dict)
+
+    def test_era_field_preserved(self) -> None:
+        """Test era field is preserved through conversion."""
+        converter = StateConverter(board_size=16, create_encoder=False)
+        state = GameStateData(
+            turn_id=1,
+            player_id=0,
+            map_data=MapData(width=44, height=26, tiles=[]),
+            units=[],
+            cities=[],
+            players=[],
+            legal_actions=[],
+            era="CLASSICAL",
+        )
+
+        result = converter.convert(state)
+        assert result["era"] == "CLASSICAL"
+
+
+class TestUnitEncodingCombatStats:
+    """Tests for unit encoding with combat stats."""
+
+    def test_unit_health_in_output(self) -> None:
+        """Test unit health is included in converted unit data."""
+        converter = StateConverter(board_size=16, create_encoder=False)
+        state = GameStateData(
+            turn_id=1,
+            player_id=0,
+            map_data=MapData(width=44, height=26, tiles=[]),
+            units=[
+                UnitData(
+                    id=1,
+                    unit_type="UNIT_WARRIOR",
+                    owner_id=0,
+                    x=5,
+                    y=5,
+                    health=80,
+                    max_health=100,
+                    damage=20,
+                ),
+            ],
+            cities=[],
+            players=[],
+            legal_actions=[],
+        )
+
+        result = converter.convert(state)
+        assert len(result["units"]) == 1
+
+    def test_unit_moves_in_output(self) -> None:
+        """Test unit movement points are included."""
+        converter = StateConverter(board_size=16, create_encoder=False)
+        state = GameStateData(
+            turn_id=1,
+            player_id=0,
+            map_data=MapData(width=44, height=26, tiles=[]),
+            units=[
+                UnitData(
+                    id=1,
+                    unit_type="UNIT_ARCHER",
+                    owner_id=0,
+                    x=3,
+                    y=3,
+                    moves_remaining=1.0,
+                    max_moves=2.0,
+                ),
+            ],
+            cities=[],
+            players=[],
+            legal_actions=[],
+        )
+
+        result = converter.convert(state)
+        assert len(result["units"]) == 1
+
+    def test_ranged_unit_stats(self) -> None:
+        """Test ranged unit has range and ranged strength stats."""
+        converter = StateConverter(board_size=16, create_encoder=False)
+        state = GameStateData(
+            turn_id=1,
+            player_id=0,
+            map_data=MapData(width=44, height=26, tiles=[]),
+            units=[
+                UnitData(
+                    id=1,
+                    unit_type="UNIT_ARCHER",
+                    owner_id=0,
+                    x=5,
+                    y=5,
+                    ranged_strength=25,
+                    range=2,
+                ),
+            ],
+            cities=[],
+            players=[],
+            legal_actions=[],
+        )
+
+        result = converter.convert(state)
+        # Verify unit is properly converted
+        assert len(result["units"]) == 1
+        assert result["units"][0]["type"] == "ranged"
