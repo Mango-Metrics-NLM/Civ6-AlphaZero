@@ -332,8 +332,11 @@ class GCSCheckpointManager(CloudStorageProtocol):
             prefix = self.config.checkpoint_prefix
 
         try:
+            logger.debug("Listing checkpoints with prefix='%s', max_results=%d", prefix, max_results)
             blobs = self._bucket.list_blobs(prefix=prefix, max_results=max_results)
-            return [blob.name for blob in blobs]
+            result = [blob.name for blob in blobs]
+            logger.debug("Listed %d checkpoints with prefix '%s'", len(result), prefix)
+            return result
         except Exception as e:
             logger.warning("Failed to list checkpoints: %s", e)
             return []
@@ -352,6 +355,7 @@ class GCSCheckpointManager(CloudStorageProtocol):
         """
         checkpoints = self.list_checkpoints(prefix=prefix)
         if not checkpoints:
+            logger.debug("No checkpoints found with prefix '%s'", prefix)
             return None
 
         # Sort by step number if present in name
@@ -363,7 +367,10 @@ class GCSCheckpointManager(CloudStorageProtocol):
             return 0
 
         sorted_checkpoints = sorted(checkpoints, key=extract_step, reverse=True)
-        return sorted_checkpoints[0] if sorted_checkpoints else None
+        latest = sorted_checkpoints[0] if sorted_checkpoints else None
+        if latest:
+            logger.debug("Found latest checkpoint: %s (from %d total)", latest, len(checkpoints))
+        return latest
 
     def delete_checkpoint(self, remote_key: str) -> bool:
         """Delete a checkpoint from GCS.

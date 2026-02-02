@@ -11,6 +11,7 @@ https://cloud.google.com/compute/docs/instances/spot#handle-preemption
 from __future__ import annotations
 
 import logging
+import os
 import signal
 import threading
 import time
@@ -26,7 +27,11 @@ logger = logging.getLogger(__name__)
 # GCE metadata service URL for preemption check
 METADATA_URL = "http://metadata.google.internal/computeMetadata/v1/instance/preempted"
 METADATA_HEADERS = {"Metadata-Flavor": "Google"}
-PREEMPTION_WARNING_SECONDS = 30.0
+# Default preemption warning time (GCE provides 30 seconds)
+# Can be overridden via environment variable or constructor parameter
+DEFAULT_PREEMPTION_WARNING_SECONDS = float(
+    os.environ.get("CIV6AZ_PREEMPTION_WARNING_SECONDS", "30.0")
+)
 
 
 class PreemptionHandler(PreemptionHandlerProtocol):
@@ -54,6 +59,7 @@ class PreemptionHandler(PreemptionHandlerProtocol):
         cleanup_callbacks: list[Callable[[], None]] | None = None,
         check_interval: float = 5.0,
         force_mock: bool = False,
+        warning_seconds: float | None = None,
     ) -> None:
         """Initialize preemption handler.
 
@@ -62,11 +68,13 @@ class PreemptionHandler(PreemptionHandlerProtocol):
             cleanup_callbacks: List of cleanup functions to call.
             check_interval: Seconds between preemption checks.
             force_mock: Force use of mock (no actual HTTP requests).
+            warning_seconds: Seconds of warning before termination (default: 30.0).
         """
         self._checkpoint_callback = checkpoint_callback
         self._cleanup_callbacks = list(cleanup_callbacks or [])
         self._check_interval = check_interval
         self._use_mock = force_mock
+        self._warning_seconds = warning_seconds or DEFAULT_PREEMPTION_WARNING_SECONDS
 
         self._monitoring = False
         self._preemption_pending = False
@@ -160,7 +168,7 @@ class PreemptionHandler(PreemptionHandlerProtocol):
         """
         if not self._preemption_pending or self._preemption_time is None:
             return None
-        remaining = PREEMPTION_WARNING_SECONDS - (time.time() - self._preemption_time)
+        remaining = self._warning_seconds - (time.time() - self._preemption_time)
         return max(0.0, remaining)
 
     def register_cleanup(self, callback: Callable[[], None]) -> None:
