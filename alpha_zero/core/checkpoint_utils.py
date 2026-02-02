@@ -62,9 +62,12 @@ def serialize_config(config: Any) -> dict[str, Any]:
     """
     if not is_dataclass(config):
         raise TypeError(f"config must be a dataclass, got {type(config).__name__}")
+    # Ensure config is a dataclass instance, not a class
+    if isinstance(config, type):
+        raise TypeError("config must be a dataclass instance, not a class")
 
-    config_dict = asdict(config)
-    return _convert_to_primitives(config_dict)
+    config_dict: dict[str, Any] = asdict(config)
+    return dict(_convert_to_primitives(config_dict))
 
 
 def _convert_to_primitives(data: Any) -> Any:
@@ -114,7 +117,7 @@ def save_checkpoint(
         ...     network_type="microciv_v1",
         ... )
     """
-    checkpoint = {
+    checkpoint: dict[str, Any] = {
         "config": serialize_config(config),
         "state_dict": network.state_dict(),
     }
@@ -172,7 +175,7 @@ def load_checkpoint(
         checkpoint = torch.load(path, map_location=device, weights_only=False)
 
     logger.debug("Loaded checkpoint from %s", path)
-    return checkpoint
+    return dict(checkpoint)
 
 
 def load_state_dict_into_network(

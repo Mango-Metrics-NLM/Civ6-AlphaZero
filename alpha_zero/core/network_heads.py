@@ -29,6 +29,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import cast
 
 import torch
 import torch.nn as nn
@@ -63,7 +64,7 @@ def get_activation(activation: ActivationType | str) -> Callable[[torch.Tensor],
     if isinstance(activation, str):
         activation = ActivationType(activation.lower())
 
-    activations = {
+    activations: dict[ActivationType, Callable[[torch.Tensor], torch.Tensor]] = {
         ActivationType.RELU: F.relu,
         ActivationType.GELU: F.gelu,
         ActivationType.TANH: torch.tanh,
@@ -103,7 +104,7 @@ def get_activation_module(activation: ActivationType | str) -> nn.Module:
     if activation not in modules:
         raise ValueError(f"Unknown activation: {activation}")
 
-    return modules[activation]()
+    return cast(nn.Module, modules[activation]())
 
 
 @dataclass
@@ -210,7 +211,7 @@ class MLPHead(nn.Module):
         Returns:
             Output of shape (B, output_dim).
         """
-        return self.mlp(x)
+        return torch.as_tensor(self.mlp(x))
 
 
 @dataclass
@@ -312,6 +313,7 @@ class FeatureCombiner(nn.Module):
         self.vector_dim = vector_dim
         self.combined_dim = spatial_dim + vector_dim
 
+        self.projection: nn.Linear | None
         if projection_dim is not None:
             self.projection = nn.Linear(self.combined_dim, projection_dim)
             self.output_dim = projection_dim
@@ -335,7 +337,7 @@ class FeatureCombiner(nn.Module):
         """
         combined = torch.cat([spatial, vector], dim=1)
         if self.projection is not None:
-            combined = self.projection(combined)
+            combined = torch.as_tensor(self.projection(combined))
         return combined
 
 
@@ -538,4 +540,5 @@ class _CNNHead(nn.Module):
         """
         spatial = self.spatial_preprocessor(spatial_features)
         combined = self.combiner(spatial, vector_features)
-        return self.mlp(combined)
+        return torch.as_tensor(self.mlp(combined))
+
