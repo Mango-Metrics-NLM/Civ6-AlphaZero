@@ -383,7 +383,7 @@ class MultiHeadAttention(nn.Module):
         out = self.proj(out)
         out = self.dropout(out)
 
-        return torch.as_tensor(out)
+        return out  # type: ignore[no-any-return]
 
     def _standard_attention(
         self,
@@ -411,7 +411,7 @@ class MultiHeadAttention(nn.Module):
         attn = F.softmax(attn, dim=-1)
         attn = self.dropout(attn)
 
-        return torch.as_tensor(attn @ v)
+        return attn @ v  # type: ignore[no-any-return]
 
     def _linear_attention(
         self,
@@ -490,9 +490,9 @@ class FeedForward(nn.Module):
         """
         if self.use_glu:
             # SwiGLU: gate * up
-            return torch.as_tensor(self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x))))
+            return self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x)))  # type: ignore[no-any-return]
         else:
-            return torch.as_tensor(self.dropout(self.fc2(F.gelu(self.fc1(x)))))
+            return self.dropout(self.fc2(F.gelu(self.fc1(x))))  # type: ignore[no-any-return]
 
 
 class MixtureOfExperts(nn.Module):
@@ -934,7 +934,7 @@ class TransformerPolicyHead(nn.Module):
         Returns:
             Policy logits (B, A).
         """
-        return torch.as_tensor(self.mlp(x))
+        return self.mlp(x)  # type: ignore[no-any-return]
 
 
 class TransformerValueHead(nn.Module):
@@ -981,7 +981,7 @@ class TransformerValueHead(nn.Module):
         Returns:
             Value estimate (B, 1).
         """
-        return torch.as_tensor(self.mlp(x))
+        return self.mlp(x)  # type: ignore[no-any-return]
 
 
 class Civ6TransformerNetwork(nn.Module):

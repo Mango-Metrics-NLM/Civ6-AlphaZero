@@ -1305,7 +1305,7 @@ class MuZeroLossCalculator:
     def _get_projection(self, network: nn.Module, hidden_state: torch.Tensor) -> torch.Tensor:
         """Get projection from hidden state for consistency loss."""
         if hasattr(network, "project"):
-            return torch.as_tensor(network.project(hidden_state))  # type: ignore[operator]
+            return network.project(hidden_state)  # type: ignore[operator, no-any-return]
         else:
             logger.warning("Network doesn't have project method, using identity")
             return hidden_state.mean(dim=(2, 3)) if hidden_state.dim() == 4 else hidden_state
@@ -1318,7 +1318,7 @@ class MuZeroLossCalculator:
     ) -> torch.Tensor:
         """Get representation from observation."""
         if hasattr(network, "representation"):
-            return torch.as_tensor(network.representation(spatial, vector))  # type: ignore[operator]
+            return network.representation(spatial, vector)  # type: ignore[operator, no-any-return]
         else:
             logger.warning("Network doesn't have representation method")
             return spatial
@@ -1330,7 +1330,7 @@ class MuZeroLossCalculator:
     ) -> torch.Tensor:
         """Get value prefix prediction from hidden state."""
         if hasattr(network, "predict_value_prefix"):
-            return torch.as_tensor(network.predict_value_prefix(hidden_state))  # type: ignore[operator]
+            return network.predict_value_prefix(hidden_state)  # type: ignore[operator, no-any-return]
         else:
             logger.warning("Network doesn't have predict_value_prefix method")
             batch_size = hidden_state.size(0)

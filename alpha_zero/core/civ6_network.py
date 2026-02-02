@@ -183,7 +183,7 @@ class VectorEncoder(nn.Module):
         out = F.relu(self.fc1(x))
         out = self.dropout(out)
         out = self.fc2(out)
-        return torch.as_tensor(out)
+        return out  # type: ignore[no-any-return]
 
 
 class PolicyHead(nn.Module):
@@ -250,7 +250,7 @@ class PolicyHead(nn.Module):
         # Output
         out = F.relu(self.fc1(combined))
         out = self.fc2(out)
-        return torch.as_tensor(out)
+        return out  # type: ignore[no-any-return]
 
 
 class ValueHead(nn.Module):
@@ -819,7 +819,7 @@ class SpatialSelfAttention(nn.Module):
         # Reshape back to spatial: (B, H*W, C) -> (B, C, H, W)
         out = out.transpose(1, 2).reshape(b, c, h, w)
 
-        return torch.as_tensor(out)
+        return out  # type: ignore[no-any-return]
 
 
 class CrossModalAttention(nn.Module):
@@ -1035,7 +1035,7 @@ class AttentionSpatialEncoder(nn.Module):
         # Final attention
         out = self.final_attention(out)
 
-        return torch.as_tensor(out)
+        return out  # type: ignore[no-any-return]
 
 
 class HierarchicalPolicyHead(nn.Module):
@@ -1146,8 +1146,8 @@ class HierarchicalPolicyHead(nn.Module):
         action_logits = self.action_fc2(act_hidden)
 
         if return_category_probs:
-            return torch.as_tensor(action_logits), category_probs
-        return torch.as_tensor(action_logits)
+            return action_logits, category_probs  # type: ignore[no-any-return]
+        return action_logits  # type: ignore[no-any-return]
 
 
 class Civ6NetworkV2(nn.Module):
