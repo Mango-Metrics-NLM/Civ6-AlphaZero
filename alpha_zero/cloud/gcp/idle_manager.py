@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from alpha_zero.cloud.gcp.exceptions import ConfigurationError, IdleTimeoutError
+from alpha_zero.cloud.gcp.exceptions import ConfigurationError
 
 if TYPE_CHECKING:
     from alpha_zero.cloud.gcp.preemption_handler import PreemptionHandler
@@ -688,9 +688,6 @@ class IdleInstanceManager:
                 if self.config.auto_stop_enabled:
                     try:
                         self.stop_idle_jobs()
-                    except IdleTimeoutError:
-                        # Expected when jobs are stopped
-                        pass
                     except Exception as e:
                         logger.error(f"Error stopping idle jobs: {e}")
 

@@ -14,18 +14,18 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import torch
 import yaml
 
+from alpha_zero.cloud.gcp.exceptions import ConfigurationError, PreemptionError
 from alpha_zero.cloud.gcp.preemption_handler import (
     PreemptionHandler,
     PreemptionHandlerConfig,
     PreemptionState,
 )
-from alpha_zero.cloud.gcp.exceptions import ConfigurationError, PreemptionError
 
 
 class SimpleModel(torch.nn.Module):

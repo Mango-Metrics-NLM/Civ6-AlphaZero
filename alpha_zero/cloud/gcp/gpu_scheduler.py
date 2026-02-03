@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from alpha_zero.cloud.gcp.cost_monitor import AlertLevel
 from alpha_zero.cloud.gcp.exceptions import ConfigurationError
 
 if TYPE_CHECKING:
@@ -251,7 +252,11 @@ class GPUSchedulerConfig:
         gpu_machine_types = data.pop("gpu_machine_types", None)
         gpu_costs = data.pop("gpu_costs", None)
 
-        config = cls(**dict(data))
+        # Filter out unknown fields to prevent TypeError
+        known_fields = {f.name for f in fields(cls)}
+        filtered_data = {k: v for k, v in data.items() if k in known_fields}
+
+        config = cls(**filtered_data)
 
         if phase_gpu_mapping:
             config.phase_gpu_mapping = phase_gpu_mapping
@@ -448,7 +453,6 @@ class DynamicGPUScheduler:
         # Cost monitor integration
         if self.cost_monitor:
             status = self.cost_monitor.get_cost_status()
-            from alpha_zero.cloud.gcp.cost_monitor import AlertLevel
 
             if status.alert_level == AlertLevel.CRITICAL:
                 # Force cheapest option in critical budget situation

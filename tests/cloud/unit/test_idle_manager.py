@@ -19,14 +19,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
+from alpha_zero.cloud.gcp.exceptions import ConfigurationError
 from alpha_zero.cloud.gcp.idle_manager import (
-    IdleAction,
     IdleInstanceConfig,
     IdleInstanceManager,
     IdlePolicy,
     IdleStatus,
 )
-from alpha_zero.cloud.gcp.exceptions import ConfigurationError, IdleTimeoutError
 
 
 class TestIdleInstanceConfig:
