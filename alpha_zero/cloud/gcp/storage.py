@@ -33,6 +33,43 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+def _torch_load_compat(
+    buffer: io.BytesIO,
+    *,
+    map_location: str = "cpu",
+    weights_only: bool = True,
+) -> Any:
+    """Load PyTorch checkpoint with backwards compatibility.
+
+    Handles compatibility for PyTorch versions that don't support the
+    `weights_only` parameter (added in PyTorch 1.13+, enforced in 2.0+).
+
+    Args:
+        buffer: BytesIO buffer containing the checkpoint.
+        map_location: Device to load tensors to.
+        weights_only: If True, only load tensor data (safer). If False,
+            allows loading arbitrary Python objects (needed for checkpoints
+            with optimizer state and custom objects).
+
+    Returns:
+        Loaded checkpoint data.
+
+    Note:
+        When weights_only=False, this can execute arbitrary code if the
+        checkpoint contains malicious pickled objects. Only use with
+        trusted data sources (e.g., checkpoints you generated yourself).
+    """
+    import torch
+
+    try:
+        # Try with weights_only parameter (PyTorch 1.13+)
+        return torch.load(buffer, map_location=map_location, weights_only=weights_only)
+    except TypeError:
+        # Fallback for older PyTorch versions without weights_only
+        buffer.seek(0)  # Reset buffer position after failed attempt
+        return torch.load(buffer, map_location=map_location)
+
+
 # =============================================================================
 # Protocols for Type Safety
 # =============================================================================
@@ -393,8 +430,6 @@ class GCSModelStorage:
         Raises:
             GCSStorageError: If load fails.
         """
-        import torch
-
         if version is None:
             version = self.get_latest_version()
 
@@ -402,7 +437,7 @@ class GCSModelStorage:
         model_path = self._paths.model_path(version)
         model_bytes = self.backend.download_blob(self._bucket, model_path)
         buffer = io.BytesIO(model_bytes)
-        state_dict = torch.load(buffer, map_location="cpu", weights_only=True)
+        state_dict = _torch_load_compat(buffer, map_location="cpu", weights_only=True)
 
         # Download metadata
         meta_path = self._paths.metadata_path(version)
@@ -599,7 +634,11 @@ class GCSTrajectoryStorage:
                 data = self.backend.download_blob(self._bucket, blob_path)
                 if blob_path.endswith(".xz"):
                     data = lzma.decompress(data)
-                trajectories = pickle.loads(data)
+                # SECURITY NOTE: pickle.loads can execute arbitrary code.
+                # This is safe here because trajectories are only loaded from
+                # our own GCS bucket (controlled storage), written by our own
+                # workers. Never use this to load untrusted/external data.
+                trajectories = pickle.loads(data)  # noqa: S301
                 all_trajectories.extend(trajectories)
 
         # Sample if needed
@@ -707,8 +746,6 @@ class GCSCheckpointStorage:
         Returns:
             Checkpoint dict or None if not found.
         """
-        import torch
-
         if step is None:
             ckpt_path = self._paths.latest_checkpoint_path()
         else:
@@ -717,7 +754,8 @@ class GCSCheckpointStorage:
         try:
             data = self.backend.download_blob(self._bucket, ckpt_path)
             buffer = io.BytesIO(data)
-            checkpoint = torch.load(buffer, map_location="cpu", weights_only=False)
+            # weights_only=False needed for optimizer state and training metadata
+            checkpoint = _torch_load_compat(buffer, map_location="cpu", weights_only=False)
             logger.info("Loaded checkpoint from %s (step %d)", ckpt_path, checkpoint.get("step", -1))
             return checkpoint
         except GCSStorageError:
