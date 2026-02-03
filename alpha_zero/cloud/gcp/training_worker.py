@@ -61,6 +61,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning_rate", type=float, default=0.001, help="Learning rate")
     parser.add_argument("--checkpoint_interval", type=int, default=1000, help="Steps between checkpoints")
     parser.add_argument("--resume_from", type=str, default=None, help="Checkpoint to resume from")
+    parser.add_argument("--mode", type=str, default="training", help="Worker mode (training)")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
     return parser.parse_args()
 
@@ -129,7 +130,7 @@ def train_epoch(
     """Train for one epoch.
 
     Returns:
-        Tuple of (total_loss, policy_loss, value_loss).
+        Tuple of (total_loss, policy_loss, value_loss, num_batches).
     """
     model.train()
     total_loss = 0.0
@@ -173,6 +174,7 @@ def train_epoch(
         total_loss / max(num_batches, 1),
         total_policy_loss / max(num_batches, 1),
         total_value_loss / max(num_batches, 1),
+        num_batches,
     )
 
 
@@ -311,24 +313,29 @@ def main() -> int:
         for epoch in range(start_epoch, args.epochs):
             epoch_start = time.time()
 
-            loss, policy_loss, value_loss = train_epoch(model, dataloader, optimizer, device)
+            loss, policy_loss, value_loss, num_batches = train_epoch(model, dataloader, optimizer, device)
 
             epoch_time = time.time() - epoch_start
+
+            # Increment step count by actual batches processed (per-batch granularity)
+            prev_step = global_step
+            global_step += num_batches
+
             logger.info(
-                "Epoch %d/%d - Loss: %.4f (P: %.4f, V: %.4f) - %.1fs",
+                "Epoch %d/%d - Loss: %.4f (P: %.4f, V: %.4f) - %.1fs - Steps: %d->%d",
                 epoch + 1,
                 args.epochs,
                 loss,
                 policy_loss,
                 value_loss,
                 epoch_time,
+                prev_step,
+                global_step,
             )
 
-            global_step += len(dataloader)
-
-            # Checkpoint
-            if global_step % args.checkpoint_interval == 0:
-                save_checkpoint(config, model, optimizer, global_step, epoch, args.dry_run)
+            # Checkpoint if we crossed an interval boundary during this epoch
+            if (global_step // args.checkpoint_interval) > (prev_step // args.checkpoint_interval):
+                save_checkpoint(config, model, optimizer, global_step, epoch + 1, args.dry_run)
 
         # Save final model
         total_time = time.time() - start_time
