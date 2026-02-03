@@ -177,6 +177,7 @@ class TestCyclicLRScheduler:
 
         # Peak of first cycle
         peak1 = scheduler.get_lr(100)
+        assert abs(peak1 - config.max_lr) < 0.01  # First peak should be max_lr
 
         # Peak of second cycle (max_lr should be decayed by gamma)
         peak2 = scheduler.get_lr(300)

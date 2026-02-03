@@ -7,9 +7,6 @@ Tests cover:
 - PBT with optimization configs
 """
 
-import tempfile
-from pathlib import Path
-
 import numpy as np
 import pytest
 
@@ -18,7 +15,6 @@ from alpha_zero.optimizations import (
     AuxiliaryTargetGenerator,
     AuxiliaryTargets,
     AuxiliaryTargetsConfig,
-    CycleInfo,
     CyclicLRConfig,
     CyclicLRScheduler,
     PerformanceOptimizationsConfig,
@@ -54,7 +50,7 @@ class TestPlayoutCapIntegration:
         num_positions = 100
         base_playouts = 100
 
-        for i in range(num_positions):
+        for _ in range(num_positions):
             # Get capped playout count
             cap = randomizer.sample_playout_cap()
             capped_playouts = min(base_playouts, cap)
@@ -550,6 +546,7 @@ class TestAuxiliaryTargetsIntegration:
         # Mid game
         mid_state = {"board": np.random.randn(16, 16), "turn": 50, "max_turns": max_turns}
         mid_targets = generator.generate_targets(mid_state)
+        assert mid_targets is not None  # Verify mid game targets generated
 
         # Late game
         late_state = {"board": np.random.randn(16, 16), "turn": 90, "max_turns": max_turns}

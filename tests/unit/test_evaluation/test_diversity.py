@@ -1,6 +1,5 @@
 """Unit tests for diversity tracking."""
 
-import numpy as np
 import pytest
 
 from alpha_zero.evaluation.config import DiversityConfig

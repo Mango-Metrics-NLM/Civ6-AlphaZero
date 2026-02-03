@@ -22,11 +22,11 @@ playout_cap:
   max_playouts: 800
   cap_distribution: "geometric"  # geometric, uniform, or exponential
   geometric_p: 0.3
-  exponential_lambda: 0.01
-  complexity_scaling: true
-  complexity_min_factor: 0.5
-  complexity_max_factor: 1.5
-  track_effective_speedup: true
+  exponential_lambda: 0.005
+  use_position_complexity: true
+  early_game_multiplier: 1.2
+  late_game_multiplier: 0.8
+  early_game_turns: 10
 
 # Policy Target Pruning
 # ---------------------
@@ -36,11 +36,10 @@ policy_pruning:
   min_probability: 0.001
   max_actions: 100
   preserve_top_k: 5
-  temperature: 1.0
-  dynamic_threshold: true
-  dynamic_target_actions: 50
-  renormalize: true
-  track_kl_divergence: true
+  temperature_scaling: 1.0
+  use_entropy_threshold: true
+  entropy_min_threshold: 0.0005
+  entropy_max_threshold: 0.01
 
 # Cyclic Learning Rate
 # --------------------

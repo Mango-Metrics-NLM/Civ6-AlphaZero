@@ -499,7 +499,7 @@ class CrossoverMutation(BaseMutation):
         p2: float,
         param_range: HyperparameterRange,
         rng: np.random.Generator,
-        eta: float = 2.0,
+        eta: float = 20.0,
     ) -> float:
         """Simulated Binary Crossover (SBX)."""
         u = rng.random()

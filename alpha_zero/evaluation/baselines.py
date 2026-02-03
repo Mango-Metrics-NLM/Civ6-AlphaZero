@@ -36,6 +36,7 @@ from alpha_zero.evaluation.config import (
 
 if TYPE_CHECKING:
 
+    from alpha_zero.core.civ6_mcts import Civ6MCTS
     from alpha_zero.core.civ6_network import MicroCivNetwork
     from alpha_zero.envs.microciv import MicroCivEnv
 
@@ -297,7 +298,7 @@ class HeuristicPlayer:
 
         # Prefer exploration if there's fog of war
         if "to_position" in action_info:
-            _to_pos = action_info["to_position"]  # noqa: F841 - reserved for future use
+            # to_position available for future exploration heuristics
 
             # Check if moving toward unexplored area
             spatial = observation.get("spatial")
@@ -405,7 +406,7 @@ class NeuralNetworkPlayer:
         self.network.eval()
 
         # Initialize MCTS if needed
-        self.mcts = None
+        self.mcts: Civ6MCTS | None = None
         if use_mcts:
             self._init_mcts()
 

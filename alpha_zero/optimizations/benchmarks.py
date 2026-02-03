@@ -278,19 +278,21 @@ class OptimizationBenchmark:
             BenchmarkResult with timing and distribution statistics
         """
         config = config or PlayoutCapConfig()
-        randomizer = PlayoutCapRandomizer(config, seed=self._rng.integers(0, 2**31))
+        randomizer = PlayoutCapRandomizer(config, rng=self._rng)
 
-        # Create sample action masks
-        masks = [
-            self._rng.random(config.max_playouts) > 0.5 for _ in range(num_iterations)
+        # Create sample observations
+        observations = [
+            {"action_mask": self._rng.random(config.max_playouts) > 0.5}
+            for _ in range(num_iterations)
         ]
 
         idx = [0]
 
         def sample_cap() -> int:
-            mask = masks[idx[0] % len(masks)]
+            obs = observations[idx[0] % len(observations)]
+            turn = idx[0] % 100
             idx[0] += 1
-            return randomizer.sample_playout_cap(mask)
+            return randomizer.sample_playout_cap(observation=obs, turn=turn)
 
         times, caps = self._time_function(sample_cap, num_iterations)
 
@@ -298,13 +300,19 @@ class OptimizationBenchmark:
         caps_array = np.array(caps)
         stats = randomizer.get_stats()
 
+        # Compute effective speedup: max_playouts / average_cap
+        effective_speedup = (
+            config.max_playouts / stats.average_cap
+            if stats.average_cap > 0 else 1.0
+        )
+
         additional = {
             "mean_cap": float(caps_array.mean()),
             "std_cap": float(caps_array.std()),
             "min_cap": int(caps_array.min()),
             "max_cap": int(caps_array.max()),
             "distribution": config.cap_distribution,
-            "effective_speedup": stats.get("effective_speedup", 1.0),
+            "effective_speedup": effective_speedup,
         }
 
         result = self._create_benchmark_result(
@@ -332,7 +340,7 @@ class OptimizationBenchmark:
             BenchmarkResult with timing and pruning statistics
         """
         config = config or PolicyPruningConfig()
-        pruner = PolicyTargetPruner(config, action_space_size)
+        pruner = PolicyTargetPruner(config)
 
         # Create sample policies (Dirichlet-distributed for realism)
         policies = []
@@ -357,15 +365,16 @@ class OptimizationBenchmark:
         original_actions = [m.sum() for m in masks]
         pruned_actions = [(p > 0).sum() for p in pruned]
 
+        # Get KL divergence from recorded stats
+        stats = pruner.get_stats()
+
         additional = {
             "mean_original_actions": float(np.mean(original_actions)),
             "mean_pruned_actions": float(np.mean(pruned_actions)),
             "action_reduction_percent": float(
                 100 * (1 - np.mean(pruned_actions) / np.mean(original_actions))
             ),
-            "mean_kl_divergence": float(
-                np.mean([pruner.kl_divergence(policies[i], pruned[i]) for i in range(len(pruned))])
-            ),
+            "mean_kl_divergence": stats.avg_kl_divergence,
         }
 
         result = self._create_benchmark_result(
