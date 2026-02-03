@@ -30,18 +30,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture
-def e2e_cloud_config() -> CloudConfig:
-    """Create cloud configuration from environment for E2E testing.
-
-    This fixture relies on environment variables being set:
-    - GCP_PROJECT_ID
-    - GCS_BUCKET_NAME
-    - GCP_REGION (optional, defaults to us-central1)
-    """
-    config = CloudConfig.from_env()
-    config.validate()
-    return config
+# Note: e2e_cloud_config fixture is provided by tests/e2e/conftest.py
 
 
 @pytest.fixture
