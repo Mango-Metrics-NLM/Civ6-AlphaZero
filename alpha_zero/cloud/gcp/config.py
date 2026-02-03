@@ -348,6 +348,12 @@ class GCPConfig:
                 "checkpoint_interval": self.training.checkpoint_interval,
                 "epochs_per_iteration": self.training.epochs_per_iteration,
             },
+            "paths": {
+                "models_prefix": self.paths.models_prefix,
+                "trajectories_prefix": self.paths.trajectories_prefix,
+                "checkpoints_prefix": self.paths.checkpoints_prefix,
+                "logs_prefix": self.paths.logs_prefix,
+            },
         }
 
     def __repr__(self) -> str:

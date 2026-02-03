@@ -281,7 +281,23 @@ def main() -> int:
         global_step = 0
         if args.resume_from:
             checkpoint_storage = GCSCheckpointStorage(config)
-            checkpoint = checkpoint_storage.load_checkpoint()
+            # Parse resume_from: if numeric, treat as step number; otherwise load latest
+            step_to_load: int | None = None
+            if args.resume_from.isdigit():
+                step_to_load = int(args.resume_from)
+                logger.info("Resuming from checkpoint step %d", step_to_load)
+            elif args.resume_from.lower() != "latest":
+                # If it's a path like "gs://..." extract step from path if possible
+                # e.g., "gs://bucket/checkpoints/.../training_step_1000.pt"
+                if "training_step_" in args.resume_from:
+                    try:
+                        step_str = args.resume_from.split("training_step_")[1].replace(".pt", "")
+                        step_to_load = int(step_str)
+                        logger.info("Extracted step %d from path: %s", step_to_load, args.resume_from)
+                    except (IndexError, ValueError):
+                        logger.warning("Could not parse step from path: %s, loading latest", args.resume_from)
+
+            checkpoint = checkpoint_storage.load_checkpoint(step=step_to_load)
             if checkpoint:
                 model.load_state_dict(checkpoint["model_state_dict"])
                 optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

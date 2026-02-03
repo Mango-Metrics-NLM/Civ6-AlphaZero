@@ -93,9 +93,9 @@ def run_selfplay(
 
     Returns a list of trajectory dictionaries, each containing:
     - states: list of game states
-    - policies: MCTS search policies
-    - values: MCTS value estimates
-    - rewards: final game outcome
+    - policies: MCTS search policies (action probability distributions)
+    - actions: actions taken at each step
+    - rewards: final game outcome (propagated to all states)
     """
     trajectories = []
 
@@ -113,10 +113,9 @@ def run_selfplay(
             c_puct=1.4,
         )
 
-        trajectory = {
+        trajectory: dict[str, list] = {
             "states": [],
             "policies": [],
-            "values": [],
             "actions": [],
         }
 

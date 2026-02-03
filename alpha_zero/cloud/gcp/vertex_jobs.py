@@ -174,6 +174,7 @@ class VertexAIClient:
 
         try:
             from google.cloud import aiplatform
+            from google.protobuf import duration_pb2
 
             worker_pool_specs = [spec.to_worker_pool_spec()]
 
@@ -183,10 +184,22 @@ class VertexAIClient:
                 staging_bucket=staging_bucket,
             )
 
-            job.submit(
-                service_account=self._service_account or spec.service_account,
-                enable_web_access=False,
-            )
+            # Build submit kwargs with spot/scheduling and timeout
+            submit_kwargs: dict[str, Any] = {
+                "service_account": self._service_account or spec.service_account,
+                "enable_web_access": False,
+            }
+
+            # Configure spot VM scheduling if requested
+            if spec.spot:
+                # Vertex AI uses restart_job_on_worker_restart for spot/preemptible
+                submit_kwargs["restart_job_on_worker_restart"] = True
+
+            # Configure timeout if specified
+            if spec.timeout_seconds > 0:
+                submit_kwargs["timeout"] = duration_pb2.Duration(seconds=spec.timeout_seconds)
+
+            job.submit(**submit_kwargs)
 
             logger.info("Submitted job: %s (resource: %s)", spec.display_name, job.resource_name)
             return job.resource_name
