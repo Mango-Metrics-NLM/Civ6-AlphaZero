@@ -9,6 +9,131 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Phase 5.3: Cost Optimization for GCP Cloud Training
+
+A comprehensive cost optimization system targeting 60-80% cost savings through spot VMs, dynamic GPU scheduling, auto-stop idle instances, and risk mitigation systems.
+
+##### Cost Monitoring & Budget Enforcement (`alpha_zero/cloud/gcp/cost_monitor.py`)
+- **CostMonitorConfig**: Configurable budget limits with environment variables (`CIV6AZ_COST_*`)
+  - Daily and total budget limits in USD
+  - Alert thresholds (warning at 80%, critical at 95%)
+  - Check interval configuration
+- **CostMonitor**: Real-time cost tracking and budget enforcement
+  - GPU pricing estimates for T4, V100, P100, A100, L4
+  - Alert callbacks for budget thresholds
+  - Background monitoring thread
+  - `can_afford()` for budget checks before launching jobs
+- **Exceptions**: `BudgetExceededError` for budget limit handling
+
+##### Dynamic GPU Scheduler (`alpha_zero/cloud/gcp/gpu_scheduler.py`)
+- **GPUSchedulerConfig**: Training phase-aware GPU selection
+  - Phase thresholds: Early (0-50%), Middle (50-80%), Late (80-90%), Final (90-100%)
+  - Configurable GPU mappings per phase
+  - Spot VM preference settings
+- **DynamicGPUScheduler**: T4 → V100 upgrade strategy
+  - Uses cheaper T4 GPUs for early/middle training phases
+  - Automatically upgrades to V100 for final phase precision
+  - Budget-aware selection with cost monitor integration
+  - 42 unit tests
+
+##### Preemption Handler (`alpha_zero/cloud/gcp/preemption_handler.py`)
+- **PreemptionHandlerConfig**: Checkpoint and retry settings
+  - 5-minute checkpoint intervals (configurable)
+  - Exponential backoff with max 5 retries
+  - GCS storage integration
+- **PreemptionHandler**: Spot VM preemption recovery
+  - SIGTERM signal handling for graceful shutdown
+  - Automatic periodic checkpointing
+  - Resume state persistence to GCS
+  - Checkpoint callbacks for integration
+- **Exceptions**: Enhanced `QuotaExceededError` with fallback configs
+
+##### Idle Instance Manager (`alpha_zero/cloud/gcp/idle_manager.py`)
+- **IdleInstanceConfig**: Idle detection settings
+  - Configurable idle threshold (default 15 minutes)
+  - GPU utilization threshold (default 10%)
+  - Per-job-type policies (selfplay, training, evaluation)
+  - Grace period before shutdown
+- **IdleInstanceManager**: Auto-stop idle instances
+  - Job registration and activity tracking
+  - Idle detection by time and GPU utilization
+  - Checkpoint-before-stop logic
+  - Warning and stop callbacks
+- **Exceptions**: `IdleTimeoutError` for recoverable shutdowns
+
+##### Quota Manager (`alpha_zero/cloud/gcp/quota_manager.py`)
+- **QuotaManagerConfig**: Quota tracking settings
+  - Warning/critical thresholds (70%/90%)
+  - Cache TTL for API responses
+  - Fallback strategies configuration
+- **QuotaManager**: GCP quota management and fallback
+  - Quota usage tracking with caching
+  - Fallback strategies: alternative GPUs, regions, spot VMs
+  - Quota exhaustion prediction
+  - Warning and exhaustion callbacks
+
+##### Memory Guard (`alpha_zero/utils/memory_guard.py`)
+- **MemoryGuardConfig**: Memory protection settings
+  - Warning/critical/OOM thresholds (70%/85%/95%)
+  - Batch reduction factor and minimum batch size
+  - Gradient checkpointing settings
+- **MemoryGuard**: GPU/CPU memory protection
+  - Real-time memory monitoring (PyTorch CUDA + psutil)
+  - Automatic batch size reduction on memory pressure
+  - Gradient checkpointing activation
+  - OOM prevention with garbage collection
+
+##### Convergence Monitor (`alpha_zero/training/convergence_monitor.py`)
+- **ConvergenceMonitorConfig**: Training monitoring settings
+  - Window size for trend analysis
+  - Stall detection threshold
+  - Improvement thresholds
+- **ConvergenceMonitor**: Training stall detection
+  - Status tracking: IMPROVING, STABLE, SLOWING, STALLED, DIVERGING
+  - PBT mutation recommendations
+  - Curriculum advancement/retreat recommendations
+  - Learning rate reduction suggestions
+
+##### Bridge Health Checker (`alpha_zero/bridge/health_checker.py`)
+- **BridgeHealthConfig**: Health monitoring settings
+  - Check interval and timeout configuration
+  - Circuit breaker thresholds
+  - Exponential backoff settings
+- **GameBridgeHealthChecker**: Resilient bridge communication
+  - Circuit breaker pattern (CLOSED → OPEN → HALF_OPEN)
+  - Exponential backoff retry logic
+  - Health status: HEALTHY, DEGRADED, UNHEALTHY
+  - Operation timeout handling
+- **Exceptions**: `CircuitBreakerOpenError`, `OperationTimeoutError`
+
+##### Unified Cost Optimization Manager (`alpha_zero/cloud/gcp/cost_optimization.py`)
+- **CostOptimizationConfig**: Unified configuration
+  - Combines all component configs
+  - Environment variable support (`CIV6AZ_COST_OPT_*`)
+  - YAML serialization
+- **CostOptimizationManager**: Single interface for cost optimization
+  - Coordinates all cost optimization components
+  - `get_optimized_job_config()`: Returns optimal GPU/spot/region config
+  - `get_savings_report()`: Comprehensive savings tracking
+  - Job lifecycle management (start, activity, end)
+  - Graceful initialization and shutdown
+
+##### Test Suite (264 new tests)
+- `tests/cloud/unit/test_cost_monitor.py`: Cost monitoring tests (42 tests)
+- `tests/cloud/unit/test_gpu_scheduler.py`: GPU scheduler tests (39 tests)
+- `tests/cloud/unit/test_preemption_handler.py`: Preemption tests (43 tests)
+- `tests/cloud/unit/test_idle_manager.py`: Idle management tests (46 tests)
+- `tests/unit/test_bridge_health.py`: Health checker tests (53 tests)
+- All tests pass with comprehensive coverage
+
+##### Configuration Pattern
+All components follow consistent configuration patterns:
+- Dataclass-based configs with validation
+- Environment variable support with `CIV6AZ_` prefix
+- YAML file loading support
+- `from_dict()` and `to_dict()` serialization
+- Thread-safe implementations with proper locking
+
 #### Phase 4.1: Model Evaluation Framework
 
 A comprehensive model evaluation system for measuring trained model performance against configurable baselines.
