@@ -662,8 +662,8 @@ class HierarchicalMCTS:
             action_space = 356  # Default action space
             return np.ones(action_space) / action_space, 0.0
 
-        # Encode state
-        self.state_encoder.encode(state, self.level)
+        # Note: State spatial/vector tensors are obtained directly from state dict below
+        # The state encoder is used externally to prepare the state before MCTS
 
         # Encode goals
         level_goals = [g for g in goals if g.level == self.level]
@@ -688,8 +688,13 @@ class HierarchicalMCTS:
                 .unsqueeze(0)
             )
 
+            # Get action mask if available
+            action_mask = None
+            if "action_mask" in state:
+                action_mask = torch.from_numpy(state["action_mask"]).float().unsqueeze(0)
+
             # Forward pass
-            policy_logits, value = self.network(spatial, vector, goal_emb, self.level)
+            policy_logits, value = self.network(spatial, vector, goal_emb, action_mask)
 
             # Convert to numpy
             policy = torch.softmax(policy_logits, dim=-1).squeeze(0).numpy()
