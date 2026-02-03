@@ -21,6 +21,7 @@ setup(
             "pytest-asyncio>=0.21.0",
             "mypy>=1.0.0",
             "ruff>=0.1.0",
+            "types-setuptools",
         ],
         "rag": [
             "chromadb>=0.4.0",

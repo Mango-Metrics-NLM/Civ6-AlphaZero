@@ -428,7 +428,6 @@ class TemplateParser:
 
         for name, subcontent in subsections.items():
             name_lower = name.lower()
-            items = self._extract_list_items(subcontent)
 
             if "scope" in name_lower:
                 # Look for IN SCOPE and OUT OF SCOPE

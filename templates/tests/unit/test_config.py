@@ -10,7 +10,6 @@ Tests cover:
 """
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -18,16 +17,16 @@ from typing import TYPE_CHECKING
 import pytest
 
 from template_system.config import (
+    STANDARD_TEMPLATE_VARIABLES,
     ConfigLoader,
     ConfigManager,
     EnvironmentConfig,
-    STANDARD_TEMPLATE_VARIABLES,
     TemplateConfig,
     TemplateVariable,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    pass
 
 
 class TestEnvironmentConfig:

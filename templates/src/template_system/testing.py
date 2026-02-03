@@ -13,7 +13,6 @@ Example:
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 import subprocess
@@ -27,7 +26,6 @@ from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
-    ClassVar,
     Generic,
     TypeVar,
 )
@@ -516,7 +514,7 @@ class TestRunner:
                 timeout=self.config.timeout_seconds,
             )
             output = result.stdout + result.stderr
-            return_code = result.returncode
+            _ = result.returncode  # Available for debugging if needed
         except subprocess.TimeoutExpired:
             self._logger.error("Test execution timed out")
             return TestSuiteResult(
@@ -818,7 +816,7 @@ def assert_raises_with_message(
                 raise AssertionError(
                     f"Expected message to contain '{message_contains}', "
                     f"got '{str(e)}'"
-                )
+                ) from None
     return decorator
 
 

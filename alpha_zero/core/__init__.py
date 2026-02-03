@@ -1,7 +1,16 @@
 """Core AlphaZero components: network, MCTS, action space, and losses."""
 
 from alpha_zero.core.civ6_actions import ActionSpace, HierarchicalAction
-from alpha_zero.core.civ6_mcts import Civ6MCTS
+from alpha_zero.core.civ6_mcts import (
+    Civ6MCTS,
+    GumbelMCTS,
+    GumbelMCTSConfig,
+    MCTSConfig,
+    MCTSNode,
+    MuZeroMCTS,
+    MuZeroMCTSConfig,
+    SimpleMCTS,
+)
 from alpha_zero.core.civ6_network import (
     AttentionSpatialEncoder,
     Civ6Network,
@@ -80,6 +89,13 @@ __all__ = [
     "create_transformer_network",
     # MCTS and actions
     "Civ6MCTS",
+    "SimpleMCTS",
+    "GumbelMCTS",
+    "MuZeroMCTS",
+    "MCTSConfig",
+    "GumbelMCTSConfig",
+    "MuZeroMCTSConfig",
+    "MCTSNode",
     "ActionSpace",
     "HierarchicalAction",
     # Loss config and data structures

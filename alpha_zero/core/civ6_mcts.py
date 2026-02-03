@@ -18,12 +18,23 @@ MuZero MCTS variant that uses learned dynamics (no environment cloning):
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+
+from alpha_zero.core.mcts_constants import (
+    DEFAULT_C_VISIT,
+    DEFAULT_C_VISIT_DIVISOR,
+    DEFAULT_ROLLOUT_DEPTH,
+    EPSILON,
+)
+
+# Module-level logger
+logger = logging.getLogger(__name__)
 
 
 class MCTSNetwork(Protocol):
@@ -45,6 +56,70 @@ class MCTSNetwork(Protocol):
         Returns:
             Tuple of (policy_probs, value).
         """
+        ...
+
+    def eval(self) -> None:
+        """Set network to evaluation mode."""
+        ...
+
+
+class MuZeroNetworkProtocol(Protocol):
+    """Protocol for MuZero-compatible networks with learned dynamics."""
+
+    def initial_inference(
+        self,
+        spatial: torch.Tensor,
+        vector: torch.Tensor,
+        action_mask: torch.Tensor | None = None,
+    ) -> Any:
+        """Initial inference from observation.
+
+        Args:
+            spatial: Spatial features (B, C, H, W).
+            vector: Vector features (B, D).
+            action_mask: Valid action mask (B, A).
+
+        Returns:
+            Output with hidden_state, policy_logits, value attributes.
+        """
+        ...
+
+    def recurrent_inference(
+        self,
+        hidden_state: torch.Tensor,
+        action: torch.Tensor,
+        action_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Recurrent inference during MCTS search.
+
+        Args:
+            hidden_state: Current hidden state (B, C, H, W).
+            action: Action indices (B,).
+            action_mask: Valid action mask (B, A).
+
+        Returns:
+            Tuple of (next_hidden_state, reward, policy_logits, value).
+        """
+        ...
+
+    def prediction_function(
+        self,
+        hidden_state: torch.Tensor,
+        action_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Get policy and value from hidden state.
+
+        Args:
+            hidden_state: Hidden state (B, C, H, W).
+            action_mask: Valid action mask (B, A).
+
+        Returns:
+            Tuple of (policy_logits, value).
+        """
+        ...
+
+    def eval(self) -> None:
+        """Set network to evaluation mode."""
         ...
 
 
@@ -95,7 +170,7 @@ class MCTSEnvironment(Protocol):
         ...
 
 
-@dataclass
+@dataclass(slots=True)
 class MCTSConfig:
     """Configuration for MCTS."""
 
@@ -107,7 +182,7 @@ class MCTSConfig:
     temperature_threshold: int = 30  # Turn after which to use temperature=0
 
 
-@dataclass
+@dataclass(slots=True)
 class GumbelMCTSConfig:
     """Configuration for Gumbel MuZero MCTS.
 
@@ -129,7 +204,7 @@ class GumbelMCTSConfig:
     num_simulations: int = 16
     num_sampled_actions: int = 16
     max_considered_actions: int = 32
-    c_visit: float = 50.0
+    c_visit: float = DEFAULT_C_VISIT
     c_scale: float = 1.0
     use_sequential_halving: bool = True
     min_actions_after_halving: int = 1
@@ -137,7 +212,7 @@ class GumbelMCTSConfig:
     temperature_threshold: int = 30
 
 
-@dataclass
+@dataclass(slots=True)
 class MCTSNode:
     """Node in the MCTS tree.
 
@@ -148,6 +223,7 @@ class MCTSNode:
         children: Child nodes keyed by action.
         parent: Parent node.
         action: Action that led to this node.
+        virtual_loss: Virtual loss for parallel MCTS (threads in flight).
     """
 
     prior: float = 0.0
@@ -156,6 +232,7 @@ class MCTSNode:
     children: dict[int, MCTSNode] = field(default_factory=dict)
     parent: MCTSNode | None = None
     action: int | None = None
+    virtual_loss: int = 0
 
     @property
     def value(self) -> float:
@@ -164,15 +241,44 @@ class MCTSNode:
             return 0.0
         return self.value_sum / self.visit_count
 
+    @property
+    def effective_value(self) -> float:
+        """Value adjusted for virtual loss (for parallel MCTS)."""
+        total_visits = self.visit_count + self.virtual_loss
+        if total_visits == 0:
+            return 0.0
+        # Virtual loss assumes worst case (-1)
+        adjusted_sum = self.value_sum - self.virtual_loss
+        return adjusted_sum / total_visits
+
     def is_expanded(self) -> bool:
         """Check if node has been expanded."""
         return len(self.children) > 0
 
-    def select_child(self, c_puct: float) -> tuple[int, MCTSNode]:
+    def add_virtual_loss(self, loss: int = 1) -> None:
+        """Add virtual loss for parallel MCTS.
+
+        Virtual loss discourages other threads from exploring the same path.
+
+        Args:
+            loss: Amount of virtual loss to add.
+        """
+        self.virtual_loss += loss
+
+    def remove_virtual_loss(self, loss: int = 1) -> None:
+        """Remove virtual loss after backpropagation.
+
+        Args:
+            loss: Amount of virtual loss to remove.
+        """
+        self.virtual_loss = max(0, self.virtual_loss - loss)
+
+    def select_child(self, c_puct: float, use_virtual_loss: bool = False) -> tuple[int, MCTSNode]:
         """Select child with highest UCB score.
 
         Args:
             c_puct: Exploration constant.
+            use_virtual_loss: Whether to use virtual loss in selection.
 
         Returns:
             Tuple of (action, child_node).
@@ -181,12 +287,17 @@ class MCTSNode:
         best_action = -1
         best_child = None
 
-        sqrt_parent_visits = np.sqrt(self.visit_count)
+        sqrt_parent_visits = np.sqrt(self.visit_count + self.virtual_loss if use_virtual_loss else self.visit_count)
 
         for action, child in self.children.items():
-            # PUCT formula
-            q_value = -child.value  # Negamax: child's value is opponent's
-            u_value = c_puct * child.prior * sqrt_parent_visits / (1 + child.visit_count)
+            # PUCT formula with optional virtual loss
+            if use_virtual_loss:
+                q_value = -child.effective_value  # Use virtual-loss-adjusted value
+                effective_visits = child.visit_count + child.virtual_loss
+            else:
+                q_value = -child.value  # Negamax: child's value is opponent's
+                effective_visits = child.visit_count
+            u_value = c_puct * child.prior * sqrt_parent_visits / (1 + effective_visits)
             score = q_value + u_value
 
             if score > best_score:
@@ -209,7 +320,7 @@ class MCTSNode:
 
         # Normalize policy over valid actions
         valid_policy = policy[valid_actions]
-        valid_policy = valid_policy / (valid_policy.sum() + 1e-8)
+        valid_policy = valid_policy / (valid_policy.sum() + EPSILON)
 
         # Create child nodes
         for i, action in enumerate(valid_actions):
@@ -238,24 +349,40 @@ class Civ6MCTS:
 
     Uses neural network for policy prior and value estimation.
     Supports action masking for valid moves.
+    Optionally integrates with ReflectionMemory for LATS-style learning.
     """
 
     def __init__(
         self,
-        network: torch.nn.Module,
+        network: MCTSNetwork,
         config: MCTSConfig | None = None,
         device: str = "cpu",
+        reflection_memory: Any | None = None,
     ):
         """Initialize MCTS.
 
         Args:
-            network: Neural network for evaluation.
+            network: Neural network implementing MCTSNetwork protocol.
             config: MCTS configuration.
             device: Device for neural network inference.
+            reflection_memory: Optional ReflectionMemory for value adjustments
+                based on past failures. When provided, actions that led to
+                failures in similar states will be penalized.
         """
         self.network = network
         self.config = config or MCTSConfig()
         self.device = device
+        self._reflection_memory = reflection_memory
+        self._search_count = 0
+        logger.debug(
+            "Civ6MCTS initialized",
+            extra={
+                "num_simulations": self.config.num_simulations,
+                "c_puct": self.config.c_puct,
+                "device": device,
+                "has_reflection_memory": reflection_memory is not None,
+            },
+        )
 
     def search(
         self,
@@ -271,6 +398,16 @@ class Civ6MCTS:
         Returns:
             Tuple of (action_probs, root_value).
         """
+        self._search_count += 1
+        logger.debug(
+            "Starting MCTS search",
+            extra={
+                "search_id": self._search_count,
+                "num_simulations": self.config.num_simulations,
+                "add_noise": add_noise,
+            },
+        )
+
         # Create root node
         root = MCTSNode()
 
@@ -344,13 +481,18 @@ class Civ6MCTS:
         spatial: torch.Tensor,
         vector: torch.Tensor,
         action_mask: np.ndarray,
+        action: int | None = None,
     ) -> tuple[np.ndarray, float]:
         """Evaluate state using neural network.
+
+        Optionally applies value adjustments from reflection memory
+        to penalize actions that led to failures in similar states.
 
         Args:
             spatial: Spatial features.
             vector: Vector features.
             action_mask: Valid action mask.
+            action: Optional action to get reflection-based adjustment for.
 
         Returns:
             Tuple of (policy, value).
@@ -358,15 +500,33 @@ class Civ6MCTS:
         self.network.eval()
         with torch.no_grad():
             mask_tensor = torch.from_numpy(action_mask).float().to(self.device)
-            policy_probs, value = self.network.predict(
+            policy_probs, value = self.network.predict(  # type: ignore[operator]
                 spatial.unsqueeze(0),
                 vector.unsqueeze(0),
                 mask_tensor.unsqueeze(0),
             )
             policy = policy_probs.squeeze(0).cpu().numpy()
-            value = value.item()
+            # Ensure value is a scalar - squeeze all dimensions then convert
+            value_scalar = float(value.squeeze().cpu().item())
 
-        return policy, value
+        # Apply reflection-based value adjustment if available
+        if self._reflection_memory is not None and action is not None:
+            try:
+                # Check if reflection memory is initialized
+                if (
+                    hasattr(self._reflection_memory, "initialized")
+                    and self._reflection_memory.initialized
+                ):
+                    state = {
+                        "spatial": spatial.cpu().numpy(),
+                        "vector": vector.cpu().numpy(),
+                    }
+                    adjustment = self._reflection_memory.get_value_adjustment_sync(state, action)
+                    value_scalar = value_scalar + adjustment
+            except Exception:
+                pass  # Silently ignore reflection errors to not disrupt MCTS
+
+        return policy, value_scalar
 
     def _add_dirichlet_noise(self, node: MCTSNode) -> None:
         """Add Dirichlet noise to root node priors.
@@ -413,23 +573,41 @@ class Civ6MCTS:
         self,
         action_probs: np.ndarray,
         temperature: float = 1.0,
+        action_mask: np.ndarray | None = None,
     ) -> int:
         """Select action based on probabilities and temperature.
 
         Args:
             action_probs: Action probability distribution.
             temperature: Temperature for action selection.
+            action_mask: Optional valid action mask (1=valid, 0=invalid).
+                        If provided, ensures only valid actions are selected.
 
         Returns:
             Selected action index.
+
+        Raises:
+            ValueError: If no valid actions available when mask is provided.
         """
+        # Apply mask if provided to ensure only valid actions are selected
+        if action_mask is not None:
+            action_probs = action_probs * action_mask
+            if action_probs.sum() < 1e-8:
+                # Fallback: select first valid action
+                valid_actions = np.where(action_mask > 0)[0]
+                if len(valid_actions) == 0:
+                    raise ValueError("No valid actions available")
+                return int(valid_actions[0])
+            # Renormalize after masking
+            action_probs = action_probs / action_probs.sum()
+
         if temperature == 0:
             # Greedy selection
             return int(np.argmax(action_probs))
 
         # Apply temperature
         if temperature != 1.0:
-            probs = np.power(action_probs, 1.0 / temperature)
+            probs = np.power(action_probs + 1e-8, 1.0 / temperature)
             probs = probs / probs.sum()
         else:
             probs = action_probs
@@ -448,7 +626,7 @@ class SimpleMCTS:
         self,
         num_simulations: int = 50,
         c_puct: float = 1.5,
-        rollout_depth: int = 20,
+        rollout_depth: int = DEFAULT_ROLLOUT_DEPTH,
     ):
         """Initialize simple MCTS.
 
@@ -461,6 +639,15 @@ class SimpleMCTS:
         self.c_puct = c_puct
         self.rollout_depth = rollout_depth
         self._rng = np.random.default_rng()
+        self._search_count = 0
+        logger.debug(
+            "SimpleMCTS initialized",
+            extra={
+                "num_simulations": num_simulations,
+                "c_puct": c_puct,
+                "rollout_depth": rollout_depth,
+            },
+        )
 
     def search(self, env: MCTSEnvironment) -> tuple[np.ndarray, float]:
         """Run MCTS search.
@@ -566,21 +753,39 @@ class SimpleMCTS:
         self,
         action_probs: np.ndarray,
         temperature: float = 1.0,
+        action_mask: np.ndarray | None = None,
     ) -> int:
         """Select action based on probabilities.
 
         Args:
             action_probs: Action probabilities.
             temperature: Selection temperature.
+            action_mask: Optional valid action mask (1=valid, 0=invalid).
+                        If provided, ensures only valid actions are selected.
 
         Returns:
             Selected action.
+
+        Raises:
+            ValueError: If no valid actions available when mask is provided.
         """
+        # Apply mask if provided to ensure only valid actions are selected
+        if action_mask is not None:
+            action_probs = action_probs * action_mask
+            if action_probs.sum() < 1e-8:
+                # Fallback: select first valid action
+                valid_actions = np.where(action_mask > 0)[0]
+                if len(valid_actions) == 0:
+                    raise ValueError("No valid actions available")
+                return int(valid_actions[0])
+            # Renormalize after masking
+            action_probs = action_probs / action_probs.sum()
+
         if temperature == 0:
             return int(np.argmax(action_probs))
 
         if temperature != 1.0:
-            probs = np.power(action_probs + 1e-8, 1.0 / temperature)
+            probs = np.power(action_probs + EPSILON, 1.0 / temperature)
             probs = probs / probs.sum()
         else:
             probs = action_probs
@@ -624,13 +829,13 @@ def gumbel_sample_actions(
     # Get log probabilities for valid actions
     valid_policy = policy[valid_actions]
     # Ensure numerical stability
-    valid_policy = np.clip(valid_policy, 1e-8, 1.0)
+    valid_policy = np.clip(valid_policy, EPSILON, 1.0)
     log_probs = np.log(valid_policy)
 
     # Sample Gumbel noise: g ~ Gumbel(0, 1)
     # Gumbel(0,1) = -log(-log(U)) where U ~ Uniform(0,1)
     uniform = np.random.uniform(size=len(valid_actions))
-    gumbel_noise = -np.log(-np.log(np.clip(uniform, 1e-8, 1 - 1e-8)))
+    gumbel_noise = -np.log(-np.log(np.clip(uniform, EPSILON, 1 - EPSILON)))
 
     # Gumbel-Top-k: score = log(pi) / temperature + g
     scores = log_probs / temperature + gumbel_noise
@@ -679,7 +884,7 @@ def compute_completed_q(
     return completed_q
 
 
-@dataclass
+@dataclass(slots=True)
 class GumbelMCTSNode:
     """Node in the Gumbel MCTS tree.
 
@@ -716,7 +921,7 @@ class GumbelMCTSNode:
         """Check if node has been expanded."""
         return len(self.children) > 0
 
-    def select_child(self, c_puct: float) -> tuple[int, GumbelMCTSNode]:
+    def select_child(self, c_puct: float) -> tuple[int, GumbelMCTSNode | None]:
         """Select child with highest UCB score (for internal tree traversal).
 
         Args:
@@ -742,6 +947,7 @@ class GumbelMCTSNode:
                 best_action = action
                 best_child = child
 
+        assert best_child is not None, "select_child called on node with no children"
         return best_action, best_child
 
     def expand(self, policy: np.ndarray, action_mask: np.ndarray) -> None:
@@ -775,7 +981,7 @@ class GumbelMCTSNode:
         Args:
             value: Value to propagate (from current player's perspective).
         """
-        node = self
+        node: GumbelMCTSNode | None = self
         while node is not None:
             node.visit_count += 1
             node.value_sum += value
@@ -798,14 +1004,14 @@ class GumbelMCTS:
 
     def __init__(
         self,
-        network: torch.nn.Module,
+        network: MCTSNetwork,
         config: GumbelMCTSConfig | None = None,
         device: str = "cpu",
     ):
         """Initialize Gumbel MCTS.
 
         Args:
-            network: Neural network for evaluation.
+            network: Neural network implementing MCTSNetwork protocol.
             config: Gumbel MCTS configuration.
             device: Device for neural network inference.
         """
@@ -1037,9 +1243,12 @@ class GumbelMCTS:
         while not (terminated or truncated):
             if node.is_expanded():
                 # Selection: use PUCT
-                action, node = node.select_child(self.config.c_visit / 50.0)
+                action, next_node = node.select_child(self.config.c_visit / DEFAULT_C_VISIT_DIVISOR)
+                if next_node is None:
+                    break  # No valid children to select
+                node = next_node
                 search_path.append(node)
-                _, reward, terminated, truncated, _ = sim_env.step(action)
+                _, _reward, terminated, truncated, _ = sim_env.step(action)
             else:
                 # Expansion and evaluation
                 obs = sim_env.get_observation()
@@ -1102,13 +1311,13 @@ class GumbelMCTS:
         self.network.eval()
         with torch.no_grad():
             mask_tensor = torch.from_numpy(action_mask).float().to(self.device)
-            policy_probs, value = self.network.predict(
+            policy_probs, value_tensor = self.network.predict(  # type: ignore[operator]
                 spatial.unsqueeze(0),
                 vector.unsqueeze(0),
                 mask_tensor.unsqueeze(0),
             )
             policy = policy_probs.squeeze(0).cpu().numpy()
-            value = value.item()
+            value = float(value_tensor.item())
 
         return policy, value
 
@@ -1116,6 +1325,7 @@ class GumbelMCTS:
         self,
         action_probs: np.ndarray,
         temperature: float = 0.0,
+        action_mask: np.ndarray | None = None,
     ) -> int:
         """Select action from probabilities.
 
@@ -1125,16 +1335,33 @@ class GumbelMCTS:
         Args:
             action_probs: Action probability distribution.
             temperature: Temperature for selection (0 = greedy).
+            action_mask: Optional valid action mask (1=valid, 0=invalid).
+                        If provided, ensures only valid actions are selected.
 
         Returns:
             Selected action index.
+
+        Raises:
+            ValueError: If no valid actions available when mask is provided.
         """
+        # Apply mask if provided to ensure only valid actions are selected
+        if action_mask is not None:
+            action_probs = action_probs * action_mask
+            if action_probs.sum() < 1e-8:
+                # Fallback: select first valid action
+                valid_actions = np.where(action_mask > 0)[0]
+                if len(valid_actions) == 0:
+                    raise ValueError("No valid actions available")
+                return int(valid_actions[0])
+            # Renormalize after masking
+            action_probs = action_probs / action_probs.sum()
+
         if temperature == 0 or action_probs.max() > 0.99:
             # Greedy selection (usual case for Gumbel MCTS)
             return int(np.argmax(action_probs))
 
         # Apply temperature for exploration
-        probs = np.power(action_probs + 1e-8, 1.0 / temperature)
+        probs = np.power(action_probs + EPSILON, 1.0 / temperature)
         probs = probs / probs.sum()
 
         return int(np.random.choice(len(probs), p=probs))
@@ -1214,7 +1441,7 @@ class MuZeroNode:
         """Check if node has been expanded."""
         return len(self.children) > 0
 
-    def select_child(self, c_puct: float, min_q: float, max_q: float) -> tuple[int, MuZeroNode]:
+    def select_child(self, c_puct: float, min_q: float, max_q: float) -> tuple[int, MuZeroNode | None]:
         """Select child with highest UCB score using normalized Q-values.
 
         Args:
@@ -1223,11 +1450,11 @@ class MuZeroNode:
             max_q: Maximum Q-value in tree for normalization.
 
         Returns:
-            Tuple of (action, child_node).
+            Tuple of (action, child_node). child_node may be None if no children.
         """
         best_score = -float("inf")
         best_action = -1
-        best_child = None
+        best_child: MuZeroNode | None = None
 
         sqrt_parent_visits = np.sqrt(self.visit_count)
 
@@ -1252,6 +1479,7 @@ class MuZeroNode:
                 best_action = action
                 best_child = child
 
+        assert best_child is not None, "select_child called on node with no children"
         return best_action, best_child
 
     def expand(
@@ -1289,7 +1517,7 @@ class MuZeroMCTS:
 
     def __init__(
         self,
-        network: torch.nn.Module,
+        network: MuZeroNetworkProtocol,
         config: MuZeroMCTSConfig | None = None,
         device: str = "cpu",
     ):
@@ -1331,7 +1559,7 @@ class MuZeroMCTS:
         # Initial inference: observation -> hidden_state, policy, value
         self.network.eval()
         with torch.no_grad():
-            output = self.network.initial_inference(
+            output = self.network.initial_inference(  # type: ignore[operator]
                 spatial.unsqueeze(0),
                 vector.unsqueeze(0),
                 mask_tensor.unsqueeze(0),
@@ -1351,7 +1579,7 @@ class MuZeroMCTS:
 
         # Normalize policy over valid actions
         valid_priors = policy[valid_actions]
-        valid_priors = valid_priors / (valid_priors.sum() + 1e-8)
+        valid_priors = valid_priors / (valid_priors.sum() + EPSILON)
 
         # Expand root
         root.expand(valid_actions, valid_priors)
@@ -1629,7 +1857,7 @@ class MuZeroMCTS:
             action_tensor = torch.tensor([action], device=self.device)
             mask_tensor = torch.from_numpy(action_mask).float().to(self.device)
 
-            next_hidden, reward, policy_logits, value = self.network.recurrent_inference(
+            next_hidden, reward, _policy_logits, _value = self.network.recurrent_inference(  # type: ignore[operator]
                 parent_hidden,
                 action_tensor,
                 mask_tensor.unsqueeze(0),
@@ -1665,7 +1893,7 @@ class MuZeroMCTS:
         self.network.eval()
         with torch.no_grad():
             mask_tensor = torch.from_numpy(action_mask).float().to(self.device)
-            policy_logits, _ = self.network.prediction_function(
+            policy_logits, _ = self.network.prediction_function(  # type: ignore[operator]
                 node.hidden_state,
                 mask_tensor.unsqueeze(0),
             )
@@ -1674,7 +1902,7 @@ class MuZeroMCTS:
         valid_actions = np.where(action_mask > 0)[0].tolist()
         if len(valid_actions) > 0:
             valid_priors = policy[valid_actions]
-            valid_priors = valid_priors / (valid_priors.sum() + 1e-8)
+            valid_priors = valid_priors / (valid_priors.sum() + EPSILON)
             node.expand(valid_actions, valid_priors)
 
     def _expand_node(
@@ -1697,7 +1925,7 @@ class MuZeroMCTS:
             action_tensor = torch.tensor([action], device=self.device)
             mask_tensor = torch.from_numpy(action_mask).float().to(self.device)
 
-            next_hidden, reward, policy_logits, value = self.network.recurrent_inference(
+            next_hidden, reward, policy_logits, _value = self.network.recurrent_inference(  # type: ignore[operator]
                 parent_hidden,
                 action_tensor,
                 mask_tensor.unsqueeze(0),
@@ -1724,7 +1952,7 @@ class MuZeroMCTS:
         if len(valid_actions) > 0:
             policy = F.softmax(policy_logits, dim=-1).squeeze(0).cpu().numpy()
             valid_priors = policy[valid_actions]
-            valid_priors = valid_priors / (valid_priors.sum() + 1e-8)
+            valid_priors = valid_priors / (valid_priors.sum() + EPSILON)
             node.expand(valid_actions, valid_priors)
 
     def _get_value(self, node: MuZeroNode, action_mask: np.ndarray) -> float:
@@ -1743,7 +1971,7 @@ class MuZeroMCTS:
         self.network.eval()
         with torch.no_grad():
             mask_tensor = torch.from_numpy(action_mask).float().to(self.device)
-            _, value = self.network.prediction_function(
+            _, value = self.network.prediction_function(  # type: ignore[operator]
                 node.hidden_state,
                 mask_tensor.unsqueeze(0),
             )
@@ -1841,7 +2069,7 @@ class MuZeroMCTS:
             return int(np.argmax(action_probs))
 
         # Apply temperature
-        probs = np.power(action_probs + 1e-8, 1.0 / temperature)
+        probs = np.power(action_probs + EPSILON, 1.0 / temperature)
         probs = probs / probs.sum()
 
         return int(np.random.choice(len(probs), p=probs))

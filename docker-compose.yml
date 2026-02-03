@@ -1,0 +1,167 @@
+# Docker Compose for local testing of Civ6 AlphaZero
+#
+# Usage:
+#   docker-compose up -d           # Start all services
+#   docker-compose logs -f trainer # Watch trainer logs
+#   docker-compose down -v         # Stop and cleanup
+#
+# This compose file provides a local testing environment with:
+#   - Fake GCS server for storage emulation
+#   - Redis for weight update notifications
+#   - Self-play workers (CPU mode)
+#   - Trainer
+#   - Evaluator
+
+version: "3.8"
+
+services:
+  # =========================================================================
+  # Infrastructure Services
+  # =========================================================================
+
+  fake-gcs:
+    image: fsouza/fake-gcs-server:latest
+    container_name: civ6-fake-gcs
+    ports:
+      - "4443:4443"
+    command: ["-scheme", "http", "-port", "4443"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4443/storage/v1/b"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - gcs-data:/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: civ6-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis-data:/data
+
+  # =========================================================================
+  # Self-Play Workers
+  # =========================================================================
+
+  selfplay-worker-0:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.selfplay
+    container_name: civ6-selfplay-0
+    depends_on:
+      fake-gcs:
+        condition: service_healthy
+    environment:
+      - CIV6_STORAGE_BACKEND=gcs
+      - STORAGE_EMULATOR_HOST=http://fake-gcs:4443
+      - CIV6_GCS_BUCKET=civ6-alphazero-local
+      - CIV6_GCS_PREFIX=dev
+      - CIV6_WORKER_ID=0
+      - CIV6_ITERATION=0
+      - CIV6_NUM_GAMES=10
+      - CIV6_NUM_SIMULATIONS=50
+      - CIV6_DEVICE=cpu
+      - CIV6_BOARD_SIZE=6
+      - PYTHONUNBUFFERED=1
+    command: ["--num-games=10", "--num-simulations=50", "--device=cpu"]
+
+  selfplay-worker-1:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.selfplay
+    container_name: civ6-selfplay-1
+    depends_on:
+      fake-gcs:
+        condition: service_healthy
+    environment:
+      - CIV6_STORAGE_BACKEND=gcs
+      - STORAGE_EMULATOR_HOST=http://fake-gcs:4443
+      - CIV6_GCS_BUCKET=civ6-alphazero-local
+      - CIV6_GCS_PREFIX=dev
+      - CIV6_WORKER_ID=1
+      - CIV6_ITERATION=0
+      - CIV6_NUM_GAMES=10
+      - CIV6_NUM_SIMULATIONS=50
+      - CIV6_DEVICE=cpu
+      - CIV6_BOARD_SIZE=6
+      - PYTHONUNBUFFERED=1
+    command: ["--num-games=10", "--num-simulations=50", "--device=cpu"]
+
+  # =========================================================================
+  # Trainer
+  # =========================================================================
+
+  trainer:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.trainer
+    container_name: civ6-trainer
+    depends_on:
+      - selfplay-worker-0
+      - selfplay-worker-1
+    environment:
+      - CIV6_STORAGE_BACKEND=gcs
+      - STORAGE_EMULATOR_HOST=http://fake-gcs:4443
+      - CIV6_GCS_BUCKET=civ6-alphazero-local
+      - CIV6_GCS_PREFIX=dev
+      - CIV6_ITERATION=0
+      - CIV6_TRAINING_STEPS=100
+      - CIV6_BATCH_SIZE=32
+      - CIV6_MIN_EXAMPLES=50
+      - CIV6_REPLAY_WINDOW=10
+      - CIV6_DEVICE=cpu
+      - CIV6_BOARD_SIZE=6
+      - CIV6_USE_AMP=false
+      - PYTHONUNBUFFERED=1
+    command: ["--training-steps=100", "--batch-size=32", "--device=cpu"]
+
+  # =========================================================================
+  # Evaluator
+  # =========================================================================
+
+  evaluator:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.evaluator
+    container_name: civ6-evaluator
+    depends_on:
+      - trainer
+    environment:
+      - CIV6_STORAGE_BACKEND=gcs
+      - STORAGE_EMULATOR_HOST=http://fake-gcs:4443
+      - CIV6_GCS_BUCKET=civ6-alphazero-local
+      - CIV6_GCS_PREFIX=dev
+      - CIV6_ITERATION=0
+      - CIV6_EVAL_GAMES=20
+      - CIV6_NUM_SIMULATIONS=20
+      - CIV6_PROMOTION_THRESHOLD=0.55
+      - CIV6_DEVICE=cpu
+      - CIV6_BOARD_SIZE=6
+      - PYTHONUNBUFFERED=1
+    command: ["--num-games=20", "--num-simulations=20", "--device=cpu"]
+
+# =========================================================================
+# Volumes
+# =========================================================================
+
+volumes:
+  gcs-data:
+    driver: local
+  redis-data:
+    driver: local
+
+# =========================================================================
+# Networks
+# =========================================================================
+
+networks:
+  default:
+    name: civ6-network
+    driver: bridge

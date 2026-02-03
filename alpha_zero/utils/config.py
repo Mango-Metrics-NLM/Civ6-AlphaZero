@@ -16,12 +16,15 @@ Usage:
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -354,9 +357,8 @@ class ConfigManager:
                     typed_value = value
 
                 setattr(section_config, param, typed_value)
-            except (ValueError, yaml.YAMLError):
-                # Skip invalid values
-                pass
+            except (ValueError, yaml.YAMLError) as e:
+                logger.warning(f"Failed to parse environment override {key}={value!r}: {e}")
 
     def get_environment_config(self) -> EnvironmentConfig:
         """Get environment configuration."""
