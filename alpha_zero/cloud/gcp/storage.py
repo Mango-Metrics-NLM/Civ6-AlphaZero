@@ -416,13 +416,11 @@ class GCSModelStorage:
     def load_model(
         self,
         version: int | None = None,
-        model_class: type[T] | None = None,
     ) -> tuple[dict[str, Any], ModelMetadata]:
         """Load model weights from GCS.
 
         Args:
             version: Version to load (None = latest).
-            model_class: Optional model class to instantiate.
 
         Returns:
             Tuple of (state_dict, metadata).

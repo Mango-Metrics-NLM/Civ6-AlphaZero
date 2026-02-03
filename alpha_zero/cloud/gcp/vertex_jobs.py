@@ -304,12 +304,25 @@ class VertexAIClient:
                 error_message = None
 
                 if not success:
-                    if "preempt" in state.lower():
+                    # Check for preemption in job metadata/error message
+                    # The state string (e.g. JOB_STATE_FAILED) doesn't contain preemption info
+                    error_info = metadata.get("error", {})
+                    error_msg = ""
+                    if isinstance(error_info, dict):
+                        error_msg = error_info.get("message", "")
+                    elif isinstance(error_info, str):
+                        error_msg = error_info
+
+                    # Also check status_message for preemption indicators
+                    status_msg = metadata.get("status_message", "")
+                    combined_msg = f"{error_msg} {status_msg}".lower()
+
+                    if "preempt" in combined_msg or "spot" in combined_msg:
                         raise PreemptionError(
-                            "Job was preempted",
+                            f"Job was preempted: {error_msg or status_msg}",
                             job_id=job_name,
                         )
-                    error_message = f"Job ended with state: {state}"
+                    error_message = f"Job ended with state: {state}. {error_msg}"
 
                 return JobResult(
                     job_id=job_name,

@@ -33,7 +33,6 @@ from alpha_zero.hierarchical.config import (
     LevelConfig,
 )
 from alpha_zero.hierarchical.encoders.goal_encoder import (
-    GoalEncoder,
     HierarchicalGoalEncoder,
 )
 from alpha_zero.hierarchical.encoders.state_encoder import (
@@ -119,7 +118,7 @@ class LevelController(ABC):
         config: LevelConfig,
         network: Any | None = None,
         state_encoder: StateEncoder | None = None,
-        goal_encoder: GoalEncoder | HierarchicalGoalEncoder | None = None,
+        goal_encoder: HierarchicalGoalEncoder | None = None,
         goal_hierarchy: GoalHierarchy | None = None,
     ) -> None:
         """Initialize level controller.
@@ -235,7 +234,7 @@ class StrategicController(LevelController):
         config: LevelConfig,
         network: Any | None = None,
         state_encoder: StateEncoder | None = None,
-        goal_encoder: GoalEncoder | None = None,
+        goal_encoder: HierarchicalGoalEncoder | None = None,
         goal_hierarchy: GoalHierarchy | None = None,
         llm_advisor: Any | None = None,
     ) -> None:
@@ -535,7 +534,7 @@ class TacticalController(LevelController):
         config: LevelConfig,
         network: Any | None = None,
         state_encoder: StateEncoder | None = None,
-        goal_encoder: GoalEncoder | None = None,
+        goal_encoder: HierarchicalGoalEncoder | None = None,
         goal_hierarchy: GoalHierarchy | None = None,
     ) -> None:
         """Initialize tactical controller."""
@@ -756,7 +755,7 @@ class OperationalController(LevelController):
         config: LevelConfig,
         network: Any | None = None,
         state_encoder: StateEncoder | None = None,
-        goal_encoder: GoalEncoder | None = None,
+        goal_encoder: HierarchicalGoalEncoder | None = None,
         goal_hierarchy: GoalHierarchy | None = None,
     ) -> None:
         """Initialize operational controller."""

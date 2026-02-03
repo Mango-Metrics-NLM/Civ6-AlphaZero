@@ -48,6 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--iteration", type=int, required=True, help="Training iteration")
     parser.add_argument("--games", type=int, default=100, help="Number of games to play")
     parser.add_argument("--mcts_simulations", type=int, default=400, help="MCTS simulations per move")
+    parser.add_argument("--mode", type=str, default="selfplay", help="Worker mode (selfplay)")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
     return parser.parse_args()
 

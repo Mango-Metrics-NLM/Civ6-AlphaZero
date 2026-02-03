@@ -411,8 +411,20 @@ class LeagueManager:
         changes = {}
 
         # Determine winners based on winner_id or score comparison
-        p1_won = result.winner_id == player1.player_id
-        p2_won = result.winner_id == player2.player_id
+        if result.winner_id is not None:
+            p1_won = result.winner_id == player1.player_id
+            p2_won = result.winner_id == player2.player_id
+        else:
+            # Fallback to score comparison when winner_id is None (e.g., draws or timed games)
+            p1_score = getattr(result, "player1_score", None)
+            p2_score = getattr(result, "player2_score", None)
+            if p1_score is not None and p2_score is not None:
+                p1_won = p1_score > p2_score
+                p2_won = p2_score > p1_score
+            else:
+                # True draw - neither wins
+                p1_won = False
+                p2_won = False
 
         changes[player1.player_id] = self.update_player_tier(player1, p1_won)
         changes[player2.player_id] = self.update_player_tier(player2, p2_won)
