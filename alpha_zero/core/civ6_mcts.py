@@ -1248,7 +1248,7 @@ class GumbelMCTS:
                     break  # No valid children to select
                 node = next_node
                 search_path.append(node)
-                _, reward, terminated, truncated, _ = sim_env.step(action)
+                _, _reward, terminated, truncated, _ = sim_env.step(action)
             else:
                 # Expansion and evaluation
                 obs = sim_env.get_observation()
@@ -1857,7 +1857,7 @@ class MuZeroMCTS:
             action_tensor = torch.tensor([action], device=self.device)
             mask_tensor = torch.from_numpy(action_mask).float().to(self.device)
 
-            next_hidden, reward, policy_logits, value = self.network.recurrent_inference(  # type: ignore[operator]
+            next_hidden, reward, _policy_logits, _value = self.network.recurrent_inference(  # type: ignore[operator]
                 parent_hidden,
                 action_tensor,
                 mask_tensor.unsqueeze(0),
@@ -1925,7 +1925,7 @@ class MuZeroMCTS:
             action_tensor = torch.tensor([action], device=self.device)
             mask_tensor = torch.from_numpy(action_mask).float().to(self.device)
 
-            next_hidden, reward, policy_logits, value = self.network.recurrent_inference(  # type: ignore[operator]
+            next_hidden, reward, policy_logits, _value = self.network.recurrent_inference(  # type: ignore[operator]
                 parent_hidden,
                 action_tensor,
                 mask_tensor.unsqueeze(0),

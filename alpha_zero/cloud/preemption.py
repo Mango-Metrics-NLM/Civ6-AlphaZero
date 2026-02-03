@@ -485,7 +485,7 @@ class PreemptionHandler:
             )
             with urllib.request.urlopen(req, timeout=2) as response:
                 result = response.read().decode().strip().lower()
-                return result == "true"
+                return bool(result == "true")
 
         except Exception:
             # Not on GCE or metadata service unavailable
@@ -633,16 +633,17 @@ def is_preempted() -> bool:
 
 
 __all__ = [
-    # Main class
-    "PreemptionHandler",
-    "PreemptionHandlerProtocol",
-    "PreemptionState",
-    # Mock for testing
-    "MockPreemptionHandler",
     # Factory function
     "create_preemption_handler",
     # Global handler functions
-    "register_preemption_handler",
     "get_preemption_handler",
     "is_preempted",
+    # Mock for testing
+    "MockPreemptionHandler",
+    # Main classes (sorted)
+    "PreemptionHandler",
+    "PreemptionHandlerProtocol",
+    "PreemptionState",
+    # Global handler registration
+    "register_preemption_handler",
 ]

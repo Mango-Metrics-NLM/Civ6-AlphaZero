@@ -29,7 +29,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 from alpha_zero.cloud.exceptions import CloudConfigError
 
@@ -597,8 +597,12 @@ class CloudConfig:
             raise CloudConfigError(f"Failed to parse YAML: {path}", cause=e) from e
 
         # Extract cloud/gcp section if present
+        # Handle various nesting patterns: cloud.gcp, cloud, gcp, or flat
         if "cloud" in data:
             cloud_data = data["cloud"]
+            # Also check for nested gcp within cloud
+            if "gcp" in cloud_data:
+                cloud_data = cloud_data["gcp"]
         elif "gcp" in data:
             cloud_data = data["gcp"]
         else:
@@ -635,14 +639,19 @@ class CloudConfig:
 
         return cls(**kwargs)
 
-    def validate(self, require_project: bool = True) -> list[str]:
+    def validate(self, require_project: bool = True, raise_on_error: bool = True) -> list[str]:
         """Validate configuration settings.
 
         Args:
             require_project: Whether project_id is required.
+            raise_on_error: Whether to raise CloudConfigError on validation failure.
+                Defaults to True for backward compatibility.
 
         Returns:
             List of validation error messages (empty if valid).
+
+        Raises:
+            CloudConfigError: If raise_on_error is True and validation fails.
         """
         issues: list[str] = []
 
@@ -661,6 +670,9 @@ class CloudConfig:
 
         if self.replica_count < 1:
             issues.append("replica_count must be at least 1")
+
+        if issues and raise_on_error:
+            raise CloudConfigError("; ".join(issues))
 
         return issues
 
