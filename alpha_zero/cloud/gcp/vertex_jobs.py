@@ -186,9 +186,13 @@ class VertexAIClient:
 
             # Build submit kwargs with spot/scheduling and timeout
             submit_kwargs: dict[str, Any] = {
-                "service_account": self._service_account or spec.service_account,
                 "enable_web_access": False,
             }
+
+            # Only set service_account if one is provided
+            service_account = self._service_account or spec.service_account
+            if service_account:
+                submit_kwargs["service_account"] = service_account
 
             # Configure spot VM scheduling if requested
             if spec.spot:
@@ -231,11 +235,27 @@ class VertexAIClient:
             job = aiplatform.CustomJob.get(job_name)
             state = job.state.name if job.state else "UNKNOWN"
 
+            # Extract error/status information from the underlying GCA resource
+            error_info: Any | None = None
+            status_message: str | None = None
+            gca_resource = getattr(job, "_gca_resource", None)
+            if gca_resource is not None:
+                gca_error = getattr(gca_resource, "error", None)
+                if gca_error is not None:
+                    error_info = {
+                        "code": getattr(gca_error, "code", None),
+                        "message": getattr(gca_error, "message", None),
+                        "details": getattr(gca_error, "details", None),
+                    }
+                    status_message = getattr(gca_error, "message", None)
+
             metadata = {
                 "display_name": job.display_name,
                 "create_time": str(job.create_time) if job.create_time else None,
                 "start_time": str(job.start_time) if job.start_time else None,
                 "end_time": str(job.end_time) if job.end_time else None,
+                "error": error_info,
+                "status_message": status_message,
             }
 
             return state, metadata
@@ -466,9 +486,12 @@ class VertexSelfPlayJob:
             except PreemptionError as e:
                 # Log preemption but continue - other workers may have succeeded
                 logger.warning("Worker %s was preempted: %s", job_name, e)
+                # Remove preempted job from active jobs
+                if job_name in self._active_jobs:
+                    self._active_jobs.remove(job_name)
                 results.append(JobResult(
                     job_id=job_name,
-                    job_name="",
+                    job_name=job_name,
                     state=JobState.FAILED.value,
                     success=False,
                     error_message="Preempted",
