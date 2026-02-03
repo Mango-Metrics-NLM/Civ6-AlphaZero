@@ -664,6 +664,7 @@ class PositionalEncoding2D(nn.Module):
             )  # (H, W, C)
             pos_enc = pos_enc.permute(2, 0, 1).unsqueeze(0)  # (1, C, H, W)
         else:
+            assert isinstance(self.pos_encoding, torch.Tensor)
             pos_enc = self.pos_encoding[:, :h, :w].unsqueeze(0)  # (1, C, H, W)
 
         return x + pos_enc.to(x.device)
@@ -1194,6 +1195,7 @@ class Civ6NetworkV2(nn.Module):
         self.config = config
 
         # Attention-enhanced spatial encoder
+        self.spatial_encoder: AttentionSpatialEncoder | SpatialEncoder
         if config.use_attention:
             self.spatial_encoder = AttentionSpatialEncoder(
                 in_channels=config.spatial_channels,

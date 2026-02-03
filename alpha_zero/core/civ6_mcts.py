@@ -47,6 +47,70 @@ class MCTSNetwork(Protocol):
         """
         ...
 
+    def eval(self) -> None:
+        """Set network to evaluation mode."""
+        ...
+
+
+class MuZeroNetworkProtocol(Protocol):
+    """Protocol for MuZero-compatible networks with learned dynamics."""
+
+    def initial_inference(
+        self,
+        spatial: torch.Tensor,
+        vector: torch.Tensor,
+        action_mask: torch.Tensor | None = None,
+    ) -> Any:
+        """Initial inference from observation.
+
+        Args:
+            spatial: Spatial features (B, C, H, W).
+            vector: Vector features (B, D).
+            action_mask: Valid action mask (B, A).
+
+        Returns:
+            Output with hidden_state, policy_logits, value attributes.
+        """
+        ...
+
+    def recurrent_inference(
+        self,
+        hidden_state: torch.Tensor,
+        action: torch.Tensor,
+        action_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Recurrent inference during MCTS search.
+
+        Args:
+            hidden_state: Current hidden state (B, C, H, W).
+            action: Action indices (B,).
+            action_mask: Valid action mask (B, A).
+
+        Returns:
+            Tuple of (next_hidden_state, reward, policy_logits, value).
+        """
+        ...
+
+    def prediction_function(
+        self,
+        hidden_state: torch.Tensor,
+        action_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Get policy and value from hidden state.
+
+        Args:
+            hidden_state: Hidden state (B, C, H, W).
+            action_mask: Valid action mask (B, A).
+
+        Returns:
+            Tuple of (policy_logits, value).
+        """
+        ...
+
+    def eval(self) -> None:
+        """Set network to evaluation mode."""
+        ...
+
 
 class ActionSpace(Protocol):
     """Protocol for action space with size attribute."""
@@ -242,14 +306,14 @@ class Civ6MCTS:
 
     def __init__(
         self,
-        network: torch.nn.Module,
+        network: MCTSNetwork,
         config: MCTSConfig | None = None,
         device: str = "cpu",
     ):
         """Initialize MCTS.
 
         Args:
-            network: Neural network for evaluation.
+            network: Neural network implementing MCTSNetwork protocol.
             config: MCTS configuration.
             device: Device for neural network inference.
         """
@@ -364,9 +428,10 @@ class Civ6MCTS:
                 mask_tensor.unsqueeze(0),
             )
             policy = policy_probs.squeeze(0).cpu().numpy()
-            value = value.item()
+            # Ensure value is a scalar - squeeze all dimensions then convert
+            value_scalar = float(value.squeeze().cpu().item())
 
-        return policy, value
+        return policy, value_scalar
 
     def _add_dirichlet_noise(self, node: MCTSNode) -> None:
         """Add Dirichlet noise to root node priors.
@@ -716,7 +781,7 @@ class GumbelMCTSNode:
         """Check if node has been expanded."""
         return len(self.children) > 0
 
-    def select_child(self, c_puct: float) -> tuple[int, GumbelMCTSNode]:
+    def select_child(self, c_puct: float) -> tuple[int, GumbelMCTSNode | None]:
         """Select child with highest UCB score (for internal tree traversal).
 
         Args:
@@ -775,7 +840,7 @@ class GumbelMCTSNode:
         Args:
             value: Value to propagate (from current player's perspective).
         """
-        node = self
+        node: GumbelMCTSNode | None = self
         while node is not None:
             node.visit_count += 1
             node.value_sum += value
@@ -798,14 +863,14 @@ class GumbelMCTS:
 
     def __init__(
         self,
-        network: torch.nn.Module,
+        network: MCTSNetwork,
         config: GumbelMCTSConfig | None = None,
         device: str = "cpu",
     ):
         """Initialize Gumbel MCTS.
 
         Args:
-            network: Neural network for evaluation.
+            network: Neural network implementing MCTSNetwork protocol.
             config: Gumbel MCTS configuration.
             device: Device for neural network inference.
         """
@@ -1037,7 +1102,10 @@ class GumbelMCTS:
         while not (terminated or truncated):
             if node.is_expanded():
                 # Selection: use PUCT
-                action, node = node.select_child(self.config.c_visit / 50.0)
+                action, next_node = node.select_child(self.config.c_visit / 50.0)
+                if next_node is None:
+                    break  # No valid children to select
+                node = next_node
                 search_path.append(node)
                 _, reward, terminated, truncated, _ = sim_env.step(action)
             else:
@@ -1102,13 +1170,13 @@ class GumbelMCTS:
         self.network.eval()
         with torch.no_grad():
             mask_tensor = torch.from_numpy(action_mask).float().to(self.device)
-            policy_probs, value = self.network.predict(
+            policy_probs, value_tensor = self.network.predict(
                 spatial.unsqueeze(0),
                 vector.unsqueeze(0),
                 mask_tensor.unsqueeze(0),
             )
             policy = policy_probs.squeeze(0).cpu().numpy()
-            value = value.item()
+            value = float(value_tensor.item())
 
         return policy, value
 
@@ -1214,7 +1282,7 @@ class MuZeroNode:
         """Check if node has been expanded."""
         return len(self.children) > 0
 
-    def select_child(self, c_puct: float, min_q: float, max_q: float) -> tuple[int, MuZeroNode]:
+    def select_child(self, c_puct: float, min_q: float, max_q: float) -> tuple[int, MuZeroNode | None]:
         """Select child with highest UCB score using normalized Q-values.
 
         Args:
@@ -1223,11 +1291,11 @@ class MuZeroNode:
             max_q: Maximum Q-value in tree for normalization.
 
         Returns:
-            Tuple of (action, child_node).
+            Tuple of (action, child_node). child_node may be None if no children.
         """
         best_score = -float("inf")
         best_action = -1
-        best_child = None
+        best_child: MuZeroNode | None = None
 
         sqrt_parent_visits = np.sqrt(self.visit_count)
 
@@ -1289,7 +1357,7 @@ class MuZeroMCTS:
 
     def __init__(
         self,
-        network: torch.nn.Module,
+        network: MuZeroNetworkProtocol,
         config: MuZeroMCTSConfig | None = None,
         device: str = "cpu",
     ):
