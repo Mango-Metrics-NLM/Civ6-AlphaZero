@@ -743,7 +743,8 @@ class StateConverter:
         """
         for player in state.players:
             if player.id == state.player_id:
-                return [self._normalize_tech_name(tech) for tech in player.techs_researched]
+                techs = getattr(player, "techs_researched", [])
+                return [self._normalize_tech_name(tech) for tech in techs]
         return []
 
     def _normalize_tech_name(self, tech: str) -> str:
