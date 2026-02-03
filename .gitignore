@@ -183,5 +183,19 @@ experiments/
 mlruns/
 ray_results/
 
+# GCP Cloud Training
+*.credentials.json
+gcp-*.json
+service-account*.json
+
+# Cloud checkpoints (local cache)
+.cloud_cache/
+cloud_checkpoints/
+
 # Cloud storage fallback (local testing)
 storage/
+
+# Distributed training
+dist_logs/
+*.nccl
+*.gloo

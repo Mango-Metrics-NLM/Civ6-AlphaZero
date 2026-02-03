@@ -9,6 +9,119 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Phase 3: Cloud Training Infrastructure (Enhancements)
+
+Complete GCP cloud training infrastructure for single-node and multi-node distributed training, building on Phase 2 cloud work.
+
+##### Phase 3.1: Single-Node Cloud Training (`alpha_zero/cloud/`)
+
+- **CloudConfig** (`config.py`): Enhanced unified cloud configuration system
+  - YAML-based configuration with environment variable overrides (`CIV6AZ_` prefix)
+  - Nested configs: GCSConfig, VertexConfig, PreemptionConfig, CloudLoggingConfig
+  - Full validation with detailed error reporting
+  - Support for development, staging, and production environments
+
+- **GCS Storage Layer** (`gcs_storage.py`): Enhanced Google Cloud Storage integration
+  - `GCSCheckpointManager`: Upload/download checkpoints with metadata
+  - `GCSModelStorage`: Versioned model storage with metrics tracking
+  - LZMA compression support for efficient storage
+  - Automatic cleanup of old checkpoints (configurable retention)
+  - Mock implementations for testing without GCP
+
+- **Vertex AI Launcher** (`vertex_launcher.py`): Training job management
+  - `VertexJobLauncher`: Submit and monitor Vertex AI custom jobs
+  - `JobInfo` and `JobStatus` for job state tracking
+  - Support for GPU accelerators (T4, V100, A100)
+  - Environment variable injection and container configuration
+  - Wait for completion with timeout and polling
+
+- **Preemption Handling** (`preemption.py`): Enhanced spot instance resilience
+  - `PreemptionHandler`: SIGTERM/SIGINT signal handlers
+  - GCE metadata service monitoring for preemption notices
+  - Emergency checkpoint saving on preemption
+  - Configurable cleanup callbacks for graceful shutdown
+  - `MockPreemptionHandler` for testing
+
+- **Cloud Logging** (`cloud_logging.py`): Structured logging integration
+  - `CloudLogger`: Google Cloud Logging with buffering
+  - `CloudMetricsExporter`: Custom metrics to Cloud Monitoring
+  - Structured logging with training context (job_id, iteration, etc.)
+  - Checkpoint and preemption event logging
+
+- **Configuration**: `configs/cloud_training.yaml`
+  - Complete cloud training configuration template
+  - n1-standard-8 + T4 GPU setup
+  - 256 batch size, 100 games per iteration
+
+##### Phase 3.2: Multi-Node Distributed Training (`alpha_zero/distributed/`)
+
+- **DDPConfig** (`ddp_config.py`): PyTorch DDP configuration
+  - Environment variable detection for cloud/cluster deployments
+  - Support for NCCL, Gloo, and MPI backends
+  - Auto-detection of WORLD_SIZE, RANK, MASTER_ADDR
+  - Validation and device assignment helpers
+
+- **DDPLearner** (`ddp_learner.py`): Enhanced multi-GPU learner
+  - Extends base Learner with DistributedDataParallel wrapper
+  - Mixed precision training (AMP) with configurable dtype
+  - Distributed checkpoint coordination (only rank 0 saves)
+  - Gradient synchronization and all-reduce for losses
+  - SyncBatchNorm conversion support
+
+- **ParameterServer** (`parameter_server.py`): Centralized weight management
+  - Weight compression and version tracking
+  - Gradient aggregation for async SGD (optional)
+  - Weight delta application for efficient updates
+  - `DistributedParameterServer` with client registration and heartbeats
+  - `MockParameterServer` for testing
+
+- **Virtual Loss for MCTS** (`civ6_mcts.py`): Parallel search support
+  - Added `virtual_loss` field to MCTSNode
+  - `add_virtual_loss()` / `remove_virtual_loss()` methods
+  - `effective_value` property for virtual-loss-adjusted Q-values
+  - `use_virtual_loss` parameter in `select_child()`
+
+- **Configuration**: `configs/distributed_4node.yaml`
+  - 4-node distributed training configuration
+  - 2 GPU learners with DDP, 96 CPU actors
+  - NCCL backend with mixed precision
+
+##### Phase 3 Test Infrastructure
+
+- **Cloud Mocks** (`tests/mocks/cloud_mocks.py`)
+  - `MockGCSClient`, `MockBucket`, `MockGCSBlob`
+  - `MockAIPlatform`, `MockCustomJob`
+  - Thread-safe in-memory storage simulation
+
+- **Distributed Mocks** (`tests/mocks/distributed_mocks.py`)
+  - `MockProcessGroup`: Simulates torch.distributed
+  - `MockDDP`: DDP wrapper without network
+  - `MockDistributedEnvironment`: Context manager for env vars
+  - `MockGradScaler`: AMP scaler mock
+
+- **Unit Tests** (146 tests for cloud/distributed)
+  - `test_cloud_config.py`: Configuration validation (26 tests)
+  - `test_gcs_storage.py`: GCS operations (22 tests)
+  - `test_vertex_launcher.py`: Job submission (14 tests)
+  - `test_preemption.py`: Signal handling (15 tests)
+  - `test_ddp_config.py`: DDP configuration (27 tests)
+  - `test_parameter_server.py`: Weight management (36 tests)
+
+##### Phase 3 Dependencies Added (`pyproject.toml`)
+
+```toml
+[project.optional-dependencies]
+gcp = [
+    "google-cloud-aiplatform>=1.38.0",
+    "google-cloud-storage>=2.10.0",
+    "google-cloud-logging>=3.5.0",
+    "grpcio>=1.50.0",
+]
+distributed = [
+    "grpcio>=1.50.0",
+]
+```
+
 #### GCP Cloud Infrastructure for Distributed Training (Phase 2)
 
 A complete cloud infrastructure package for distributed training on Google Cloud Platform.

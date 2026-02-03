@@ -52,13 +52,18 @@ except ImportError:
     pass
 
 # Import implementations (these handle missing SDKs internally)
-from alpha_zero.cloud.gcp.monitoring import CloudLogger, CloudMetricsExporter  # noqa: E402
-from alpha_zero.cloud.gcp.preemption import (  # noqa: E402
-    PreemptionHandler,
-    register_preemption_handler,
-)
-from alpha_zero.cloud.gcp.storage import GCSCheckpointManager  # noqa: E402
-from alpha_zero.cloud.gcp.vertex import VertexAITrainer, VertexJobConfig  # noqa: E402
+try:
+    from alpha_zero.cloud.gcp.monitoring import CloudLogger, CloudMetricsExporter
+    from alpha_zero.cloud.gcp.preemption import (
+        PreemptionHandler,
+        register_preemption_handler,
+    )
+    from alpha_zero.cloud.gcp.storage import GCSCheckpointManager
+    from alpha_zero.cloud.gcp.vertex import VertexAITrainer, VertexJobConfig
+
+    _IMPLEMENTATIONS_AVAILABLE = True
+except ImportError:
+    _IMPLEMENTATIONS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -68,15 +73,19 @@ __all__ = [
     "VERTEX_AVAILABLE",
     "LOGGING_AVAILABLE",
     "MONITORING_AVAILABLE",
-    # Storage
-    "GCSCheckpointManager",
-    # Vertex AI
-    "VertexAITrainer",
-    "VertexJobConfig",
-    # Preemption
-    "PreemptionHandler",
-    "register_preemption_handler",
-    # Monitoring
-    "CloudLogger",
-    "CloudMetricsExporter",
 ]
+
+if _IMPLEMENTATIONS_AVAILABLE:
+    __all__.extend([
+        # Storage
+        "GCSCheckpointManager",
+        # Vertex AI
+        "VertexAITrainer",
+        "VertexJobConfig",
+        # Preemption
+        "PreemptionHandler",
+        "register_preemption_handler",
+        # Monitoring
+        "CloudLogger",
+        "CloudMetricsExporter",
+    ])
