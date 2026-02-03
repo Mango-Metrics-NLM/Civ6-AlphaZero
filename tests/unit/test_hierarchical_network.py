@@ -381,7 +381,7 @@ class TestLevelNetwork:
 
         policy, _ = network(sample_spatial, sample_vector, sample_goal_embedding, action_mask)
 
-        # First 50 should be masked with large negative value (-1e9 instead of -inf to prevent NaN)
+        # First 50 should be very negative (implementation uses -1e9 instead of -inf to avoid NaN)
         assert torch.all(policy[:, :50] == -1e9)
         # Rest should be finite
         assert torch.all(torch.isfinite(policy[:, 50:]))

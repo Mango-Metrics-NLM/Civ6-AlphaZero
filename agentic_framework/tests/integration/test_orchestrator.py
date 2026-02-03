@@ -245,7 +245,7 @@ class TestOrchestratorExecution:
             on_agent_complete=lambda name, result: completed_agents.append(name),
         )
 
-        orchestrator.execute(dry_run=True)
+        _result = orchestrator.execute(dry_run=True)
 
         assert len(started_agents) > 0
         assert len(completed_agents) > 0
