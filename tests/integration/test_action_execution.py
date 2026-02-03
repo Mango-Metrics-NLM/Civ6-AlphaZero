@@ -372,12 +372,14 @@ class TestInvalidActionRejection:
         )
 
         # Set up failure ack
-        mock_bridge.set_mock_ack({
-            "msg_id": msg_id,
-            "success": False,
-            "error": "Unit not found",
-            "timestamp": 1234567890.0,
-        })
+        mock_bridge.set_mock_ack(
+            {
+                "msg_id": msg_id,
+                "success": False,
+                "error": "Unit not found",
+                "timestamp": 1234567890.0,
+            }
+        )
 
         await mock_bridge.send_command(command)
         ack = await mock_bridge.wait_for_ack(msg_id, timeout=1.0)

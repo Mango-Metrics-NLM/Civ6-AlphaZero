@@ -5,7 +5,7 @@ backwards-compatible, pluggable cloud operations across different providers.
 
 Protocols defined:
 - CloudStorageProtocol: Checkpoint and artifact storage
-- CloudTrainerProtocol: Training job management  
+- CloudTrainerProtocol: Training job management
 - CloudMonitoringProtocol: Metrics and logging
 - PreemptionHandlerProtocol: Spot/preemptible instance handling
 

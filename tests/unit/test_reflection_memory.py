@@ -46,11 +46,14 @@ class TestReflectionConfig:
 
     def test_from_env(self):
         """Should load from environment variables."""
-        with patch.dict(os.environ, {
-            "CIV6AZ_REFLECTION_BACKEND": "faiss",
-            "CIV6AZ_REFLECTION_EMBED_DIM": "256",
-            "CIV6AZ_REFLECTION_WARNING_PENALTY": "0.2",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "CIV6AZ_REFLECTION_BACKEND": "faiss",
+                "CIV6AZ_REFLECTION_EMBED_DIM": "256",
+                "CIV6AZ_REFLECTION_WARNING_PENALTY": "0.2",
+            },
+        ):
             config = ReflectionConfig.from_env()
 
             assert config.storage_backend == "faiss"
@@ -308,9 +311,7 @@ class TestReflectionMemory:
         assert isinstance(warnings, dict)
 
     @pytest.mark.asyncio
-    async def test_get_value_adjustment_penalizes_bad_actions(
-        self, memory, sample_trajectory
-    ):
+    async def test_get_value_adjustment_penalizes_bad_actions(self, memory, sample_trajectory):
         """Should return negative penalty for bad actions."""
         await memory.initialize()
 
@@ -432,7 +433,7 @@ class TestReflectionMemory:
         memory = ReflectionMemory(config, vector_store=mock_store)
 
         # Should still initialize (gracefully degrade)
-        result = await memory.initialize()
+        _result = await memory.initialize()
 
         # Should be marked as initialized for basic operation
         assert memory.initialized is True

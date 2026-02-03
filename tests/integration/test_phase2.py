@@ -393,7 +393,7 @@ class TestActionSpaceCompatibility:
 
         assert civ6_actions is not None
         # Verify the module has action-related classes/functions
-        assert hasattr(civ6_actions, 'Civ6ActionSpace') or len(dir(civ6_actions)) > 0
+        assert hasattr(civ6_actions, "Civ6ActionSpace") or len(dir(civ6_actions)) > 0
 
 
 class TestEndToEndWorkflow:

@@ -68,7 +68,7 @@ class TestEncoderConstants:
         assert ranges[0][0] == 0
         # Verify contiguous (each start == previous end)
         for i in range(1, len(ranges)):
-            assert ranges[i][0] == ranges[i - 1][1], f"Gap between {ranges[i-1]} and {ranges[i]}"
+            assert ranges[i][0] == ranges[i - 1][1], f"Gap between {ranges[i - 1]} and {ranges[i]}"
         # Verify ending at 84
         assert ranges[-1][1] == ec.FULL_ENCODER_CHANNELS
 
@@ -217,6 +217,7 @@ class TestTrainingConstants:
         assert tc.WEIGHT_DECAY >= 0
         # TrainingConstants doesn't have gradient clip, check via NetworkConstants
         from alpha_zero.utils.constants import NETWORK
+
         assert NETWORK.MAX_GRADIENT_NORM > 0
 
 
@@ -294,8 +295,9 @@ class TestConstantsConsistency:
             for j, (start_j, end_j) in enumerate(ranges):
                 if i != j:
                     # Ranges should not overlap
-                    assert end_i <= start_j or end_j <= start_i, \
+                    assert end_i <= start_j or end_j <= start_i, (
                         f"Ranges {ranges[i]} and {ranges[j]} overlap"
+                    )
 
     def test_normalization_factors_reasonable(self) -> None:
         """Test normalization factors have reasonable values."""

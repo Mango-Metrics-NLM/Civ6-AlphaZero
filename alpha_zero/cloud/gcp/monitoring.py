@@ -135,13 +135,15 @@ class CloudLogger(CloudMonitoringProtocol):
 
         payload = {"step": step, "metrics": metrics}
 
-        self._add_to_buffer(LogEntry(
-            severity="INFO",
-            message=f"Training metrics at step {step}",
-            timestamp=time.time(),
-            labels=combined_labels,
-            payload=payload,
-        ))
+        self._add_to_buffer(
+            LogEntry(
+                severity="INFO",
+                message=f"Training metrics at step {step}",
+                timestamp=time.time(),
+                labels=combined_labels,
+                payload=payload,
+            )
+        )
 
     def log_event(
         self,
@@ -158,13 +160,15 @@ class CloudLogger(CloudMonitoringProtocol):
             labels: Optional labels for filtering.
             payload: Optional structured data.
         """
-        self._add_to_buffer(LogEntry(
-            severity=SEVERITY_MAP.get(severity.upper(), "INFO"),
-            message=message,
-            timestamp=time.time(),
-            labels=labels or {},
-            payload=payload or {},
-        ))
+        self._add_to_buffer(
+            LogEntry(
+                severity=SEVERITY_MAP.get(severity.upper(), "INFO"),
+                message=message,
+                timestamp=time.time(),
+                labels=labels or {},
+                payload=payload or {},
+            )
+        )
 
     def flush(self) -> None:
         """Flush any pending logs to the backend."""
@@ -285,9 +289,7 @@ class CloudMetricsExporter:
             seconds = int(now)
             nanos = int((now - seconds) * 1e9)
 
-            interval = monitoring_v3.TimeInterval(
-                end_time={"seconds": seconds, "nanos": nanos}
-            )
+            interval = monitoring_v3.TimeInterval(end_time={"seconds": seconds, "nanos": nanos})
             point = monitoring_v3.Point(
                 interval=interval,
                 value={"double_value": value},

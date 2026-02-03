@@ -198,8 +198,7 @@ class MLPHead(nn.Module):
         self.mlp = nn.Sequential(*layers)
 
         logger.debug(
-            f"MLPHead created: {config.input_dim} -> "
-            f"{config.hidden_dims} -> {config.output_dim}"
+            f"MLPHead created: {config.input_dim} -> {config.hidden_dims} -> {config.output_dim}"
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -541,4 +540,3 @@ class _CNNHead(nn.Module):
         spatial = self.spatial_preprocessor(spatial_features)
         combined = self.combiner(spatial, vector_features)
         return self.mlp(combined)  # type: ignore[no-any-return]
-

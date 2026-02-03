@@ -362,7 +362,9 @@ class DDPLearner(Learner):
             state.update(additional_state)
 
         torch.save(state, path)
-        logger.info("Saved checkpoint to %s at step %d (world_size=%d)", path, step, self.world_size)
+        logger.info(
+            "Saved checkpoint to %s at step %d (world_size=%d)", path, step, self.world_size
+        )
 
         # Signal completion to other processes
         self.barrier()
@@ -434,8 +436,7 @@ class DDPLearner(Learner):
                 optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
             except Exception as e:
                 logger.warning(
-                    "Failed to load optimizer state: %s. "
-                    "Optimizer will start fresh.",
+                    "Failed to load optimizer state: %s. Optimizer will start fresh.",
                     e,
                 )
 

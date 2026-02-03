@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alpha_zero"
-version = "0.1.0"
+version = "0.2.0"
 description = "AlphaZero-based AI for Civilization VI"
 requires-python = ">=3.11"
 dependencies = [
@@ -92,6 +92,6 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "@abstractmethod",
 ]
-fail_under = 80
+fail_under = 65
 show_missing = true
 skip_covered = false

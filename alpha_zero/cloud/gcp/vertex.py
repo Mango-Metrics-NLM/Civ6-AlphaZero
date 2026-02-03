@@ -252,8 +252,7 @@ class VertexAITrainer:
                     "command": ["python", job_config.script_path] if job_config.script_path else [],
                     "args": args or job_config.args,
                     "env": [
-                        {"name": k, "value": v}
-                        for k, v in job_config.environment_variables.items()
+                        {"name": k, "value": v} for k, v in job_config.environment_variables.items()
                     ],
                 },
             }
@@ -419,10 +418,7 @@ class VertexAITrainer:
         if self._use_mock:
             jobs = list(self._jobs.keys())[:max_results]
             if filter_display_name:
-                jobs = [
-                    j for j in jobs
-                    if filter_display_name in self._jobs[j].display_name
-                ]
+                jobs = [j for j in jobs if filter_display_name in self._jobs[j].display_name]
             return jobs
 
         try:

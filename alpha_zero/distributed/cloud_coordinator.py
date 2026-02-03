@@ -222,9 +222,7 @@ class CloudTrainingCoordinator(TrainingCoordinator):
             Local path to checkpoint.
         """
         # Save locally first
-        local_path = super().save_checkpoint(
-            step, network_state, optimizer_state, additional_state
-        )
+        local_path = super().save_checkpoint(step, network_state, optimizer_state, additional_state)
 
         # Queue for cloud upload
         if self._gcs_manager and self._cloud_coordinator_config.enable_cloud_checkpoints:
@@ -272,9 +270,7 @@ class CloudTrainingCoordinator(TrainingCoordinator):
 
                 if remote_key:
                     local_path = Path(self.config.checkpoint_dir) / Path(remote_key).name
-                    downloaded = self._gcs_manager.download_checkpoint(
-                        remote_key, local_path
-                    )
+                    downloaded = self._gcs_manager.download_checkpoint(remote_key, local_path)
                     if downloaded.exists():
                         return super().load_checkpoint(str(downloaded))
 

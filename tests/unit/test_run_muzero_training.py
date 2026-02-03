@@ -263,8 +263,8 @@ class TestTrainingIntegration:
         for t in trajectories:
             if len(t.observations) > 0:
                 obs = t.observations[0]
-                if 'spatial' in obs:
-                    assert obs['spatial'].shape[-2:] == (8, 8)
+                if "spatial" in obs:
+                    assert obs["spatial"].shape[-2:] == (8, 8)
 
     def test_network_can_be_saved_and_loaded(self, minimal_config):
         """Network state can be saved and loaded."""

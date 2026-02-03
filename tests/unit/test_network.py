@@ -128,7 +128,9 @@ class TestMicroCivNetwork:
         loaded = MicroCivNetwork.load(str(path))
 
         # Check weights match
-        for (n1, p1), (n2, p2) in zip(network.named_parameters(), loaded.named_parameters(), strict=True):
+        for (n1, p1), (n2, p2) in zip(
+            network.named_parameters(), loaded.named_parameters(), strict=True
+        ):
             assert n1 == n2
             assert torch.allclose(p1, p2)
 

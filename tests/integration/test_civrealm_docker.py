@@ -87,10 +87,13 @@ class TestDockerConnectionConfig:
 
     def test_environment_override(self) -> None:
         """Test configuration from environment variables."""
-        with patch.dict(os.environ, {
-            "CIVREALM_HOST": "192.168.1.100",
-            "CIVREALM_PORT": "6400",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "CIVREALM_HOST": "192.168.1.100",
+                "CIVREALM_PORT": "6400",
+            },
+        ):
             config = DockerConnectionConfig()
             assert config.host == "192.168.1.100"
             assert config.port == 6400
@@ -341,9 +344,7 @@ class TestConnectionRecovery:
 class TestTimeoutHandling:
     """Tests for connection timeout handling."""
 
-    def test_socket_timeout_configuration(
-        self, docker_config: DockerConnectionConfig
-    ) -> None:
+    def test_socket_timeout_configuration(self, docker_config: DockerConnectionConfig) -> None:
         """Test socket timeout is properly configured."""
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(docker_config.connection_timeout_s)

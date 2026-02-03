@@ -19,7 +19,6 @@ import torch.nn as nn
 
 from alpha_zero.distributed.ddp_learner import DDPLearner, DDPLearnerConfig
 from tests.fixtures.mock_distributed import (
-    MockDistributedBackend,
     mock_ddp_context,
 )
 
@@ -87,7 +86,9 @@ class TestSimulatedGradientAggregation:
         """Test that gradients are aggregated via all_reduce."""
         config = DDPLearnerConfig(world_size=4, rank=0)
 
-        with mock_ddp_context(world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP") as mock_dist:
+        with mock_ddp_context(
+            world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
+        ) as mock_dist:
             learner = DDPLearner(
                 config=config,
                 shared_storage=mock_storage,
@@ -115,7 +116,9 @@ class TestSimulatedGradientAggregation:
         """Test manual gradient averaging after all_reduce."""
         config = DDPLearnerConfig(world_size=4, rank=0)
 
-        with mock_ddp_context(world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP") as mock_dist:
+        with mock_ddp_context(
+            world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
+        ):
             learner = DDPLearner(
                 config=config,
                 shared_storage=mock_storage,
@@ -152,7 +155,9 @@ class TestWeightSynchronization:
         """Test weight broadcast from rank 0."""
         config = DDPLearnerConfig(world_size=4, rank=0)
 
-        with mock_ddp_context(world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP") as mock_dist:
+        with mock_ddp_context(
+            world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
+        ) as mock_dist:
             learner = DDPLearner(
                 config=config,
                 shared_storage=mock_storage,
@@ -176,7 +181,9 @@ class TestWeightSynchronization:
         """Test weight synchronization to main rank."""
         config = DDPLearnerConfig(world_size=4, rank=0)
 
-        with mock_ddp_context(world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP") as mock_dist:
+        with mock_ddp_context(
+            world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
+        ) as mock_dist:
             learner = DDPLearner(
                 config=config,
                 shared_storage=mock_storage,
@@ -274,7 +281,9 @@ class TestBarrierSynchronization:
         """Test that barrier is called for synchronization."""
         config = DDPLearnerConfig(world_size=4, rank=0)
 
-        with mock_ddp_context(world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP") as mock_dist:
+        with mock_ddp_context(
+            world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
+        ) as mock_dist:
             learner = DDPLearner(
                 config=config,
                 shared_storage=mock_storage,
@@ -305,7 +314,9 @@ def test_multi_rank_operations(
     """Test distributed operations with various world sizes."""
     config = DDPLearnerConfig(world_size=world_size, rank=0)
 
-    with mock_ddp_context(world_size=world_size, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP") as mock_dist:
+    with mock_ddp_context(
+        world_size=world_size, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
+    ) as mock_dist:
         learner = DDPLearner(
             config=config,
             shared_storage=mock_storage,
@@ -344,7 +355,9 @@ class TestMixedDeviceScenarios:
 
         # Ensure we're testing CPU path
         with patch("torch.cuda.is_available", return_value=False):
-            with mock_ddp_context(world_size=2, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"):
+            with mock_ddp_context(
+                world_size=2, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
+            ):
                 learner = DDPLearner(
                     config=config,
                     shared_storage=mock_storage,
@@ -369,7 +382,9 @@ class TestMixedDeviceScenarios:
 
         config = DDPLearnerConfig(world_size=4, rank=2, local_rank=1)
 
-        with mock_ddp_context(world_size=4, rank=2, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"):
+        with mock_ddp_context(
+            world_size=4, rank=2, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
+        ):
             learner = DDPLearner(
                 config=config,
                 shared_storage=mock_storage,
@@ -396,7 +411,9 @@ class TestProcessGroupLifecycle:
         """Test complete initialize/cleanup cycle."""
         config = DDPLearnerConfig(world_size=4, rank=0)
 
-        with mock_ddp_context(world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP") as mock_dist:
+        with mock_ddp_context(
+            world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
+        ) as mock_dist:
             learner = DDPLearner(
                 config=config,
                 shared_storage=mock_storage,
@@ -426,7 +443,9 @@ class TestProcessGroupLifecycle:
 
         for cycle in range(3):
             model = ToyModel()
-            with mock_ddp_context(world_size=2, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"):
+            with mock_ddp_context(
+                world_size=2, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
+            ):
                 learner = DDPLearner(
                     config=config,
                     shared_storage=mock_storage,

@@ -667,10 +667,10 @@ class HierarchicalMCTS:
 
         # Encode goals - support both GoalEncoder and HierarchicalGoalEncoder
         level_goals = [g for g in goals if g.level == self.level]
-        if hasattr(self.goal_encoder, 'encode_goals_for_level'):
+        if hasattr(self.goal_encoder, "encode_goals_for_level"):
             # HierarchicalGoalEncoder
             goal_encoding = self.goal_encoder.encode_goals_for_level(level_goals, self.level, state)
-        elif hasattr(self.goal_encoder, 'encode_batch'):
+        elif hasattr(self.goal_encoder, "encode_batch"):
             # Basic GoalEncoder
             goal_encoding = self.goal_encoder.encode_batch(level_goals, state)
         else:
@@ -681,13 +681,15 @@ class HierarchicalMCTS:
         with torch.no_grad():
             # Get spatial and vector from state, use instance shape params for defaults
             spatial = (
-                torch.from_numpy(
-                    state.get("spatial", np.zeros(self.spatial_shape))
-                ).float().unsqueeze(0)
+                torch.from_numpy(state.get("spatial", np.zeros(self.spatial_shape)))
+                .float()
+                .unsqueeze(0)
             )
-            vector = torch.from_numpy(
-                state.get("vector", np.zeros(self.vector_dim))
-            ).float().unsqueeze(0)
+            vector = (
+                torch.from_numpy(state.get("vector", np.zeros(self.vector_dim)))
+                .float()
+                .unsqueeze(0)
+            )
             goal_emb = (
                 torch.from_numpy(
                     goal_encoding[0] if len(goal_encoding) > 0 else np.zeros(self.goal_dim)
@@ -699,7 +701,7 @@ class HierarchicalMCTS:
             # Forward pass - handle both HierarchicalNetwork and LevelNetwork
             # HierarchicalNetwork.forward expects: (spatial, vector, goal, level, action_mask)
             # LevelNetwork.forward expects: (spatial, vector, goal, action_mask)
-            if hasattr(self.network, '_networks'):
+            if hasattr(self.network, "_networks"):
                 # HierarchicalNetwork - pass level parameter
                 policy_logits, value = self.network(spatial, vector, goal_emb, self.level)
             else:

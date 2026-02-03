@@ -108,9 +108,7 @@ class TestConfigMixinFromDict:
 
     def test_from_dict_ignores_unknown_keys(self):
         """Test from_dict ignores keys not in the dataclass."""
-        config = BasicConfig.from_dict(
-            {"value": 99, "unknown_key": "ignored", "another": 123}
-        )
+        config = BasicConfig.from_dict({"value": 99, "unknown_key": "ignored", "another": 123})
         assert config.value == 99
         assert not hasattr(config, "unknown_key")
 
@@ -121,9 +119,7 @@ class TestConfigMixinFromDict:
         Automatic deserialization of nested dataclasses requires
         explicit handling in subclasses.
         """
-        config = NestedOuterConfig.from_dict(
-            {"name": "test", "inner": {"inner_value": 42}}
-        )
+        config = NestedOuterConfig.from_dict({"name": "test", "inner": {"inner_value": 42}})
         assert config.name == "test"
         # Nested dicts are preserved as dicts, not converted to dataclasses
         assert config.inner == {"inner_value": 42}
@@ -161,9 +157,7 @@ class TestConfigMixinToDict:
 
     def test_to_dict_with_nested(self):
         """Test to_dict serializes nested configs."""
-        config = NestedOuterConfig(
-            name="outer", inner=NestedInnerConfig(inner_value=99)
-        )
+        config = NestedOuterConfig(name="outer", inner=NestedInnerConfig(inner_value=99))
         result = config.to_dict()
 
         assert result == {"name": "outer", "inner": {"inner_value": 99}}
@@ -174,9 +168,7 @@ class TestConfigMixinToDict:
         Note: Nested dataclasses are serialized to dicts but not
         automatically restored to dataclass instances on from_dict.
         """
-        original = NestedOuterConfig(
-            name="roundtrip", inner=NestedInnerConfig(inner_value=123)
-        )
+        original = NestedOuterConfig(name="roundtrip", inner=NestedInnerConfig(inner_value=123))
         data = original.to_dict()
         restored = NestedOuterConfig.from_dict(data)
 
@@ -284,9 +276,7 @@ class TestConfigMixinParseValue:
             ("", str, ""),
         ],
     )
-    def test_parse_value_numeric_and_string(
-        self, value: str, target_type: type, expected
-    ):
+    def test_parse_value_numeric_and_string(self, value: str, target_type: type, expected):
         """Test _parse_value handles numeric and string types."""
         result = ConfigMixin._parse_value(value, target_type, None)
         assert result == expected

@@ -80,22 +80,12 @@ class ReflectionConfig:
         """Load configuration from environment variables."""
         return cls(
             storage_backend=os.getenv("CIV6AZ_REFLECTION_BACKEND", "memory"),
-            persist_directory=os.getenv(
-                "CIV6AZ_REFLECTION_PERSIST_DIR", "data/reflections"
-            ),
-            collection_name=os.getenv(
-                "CIV6AZ_REFLECTION_COLLECTION", "game_reflections"
-            ),
-            embedding_dimension=int(
-                os.getenv("CIV6AZ_REFLECTION_EMBED_DIM", "384")
-            ),
-            similarity_threshold=float(
-                os.getenv("CIV6AZ_REFLECTION_SIMILARITY_THRESHOLD", "0.7")
-            ),
+            persist_directory=os.getenv("CIV6AZ_REFLECTION_PERSIST_DIR", "data/reflections"),
+            collection_name=os.getenv("CIV6AZ_REFLECTION_COLLECTION", "game_reflections"),
+            embedding_dimension=int(os.getenv("CIV6AZ_REFLECTION_EMBED_DIM", "384")),
+            similarity_threshold=float(os.getenv("CIV6AZ_REFLECTION_SIMILARITY_THRESHOLD", "0.7")),
             max_retrievals=int(os.getenv("CIV6AZ_REFLECTION_MAX_RETRIEVALS", "5")),
-            warning_penalty=float(
-                os.getenv("CIV6AZ_REFLECTION_WARNING_PENALTY", "0.1")
-            ),
+            warning_penalty=float(os.getenv("CIV6AZ_REFLECTION_WARNING_PENALTY", "0.1")),
             max_entries=int(os.getenv("CIV6AZ_REFLECTION_MAX_ENTRIES", "10000")),
         )
 
@@ -255,14 +245,12 @@ class DefaultStateEncoder:
             return result
 
         # Random projection for dimensionality reduction
-        if self._projection_matrix is None or self._projection_matrix.shape[0] != len(
-            features
-        ):
+        if self._projection_matrix is None or self._projection_matrix.shape[0] != len(features):
             # Create deterministic random projection
             rng = np.random.default_rng(42)
-            self._projection_matrix = rng.standard_normal(
-                (len(features), target_dim)
-            ).astype(np.float32)
+            self._projection_matrix = rng.standard_normal((len(features), target_dim)).astype(
+                np.float32
+            )
             # Normalize columns
             norms = np.linalg.norm(self._projection_matrix, axis=0, keepdims=True)
             self._projection_matrix /= np.maximum(norms, 1e-8)
@@ -392,15 +380,15 @@ class ReflectionMemory:
             "faiss": VectorStoreType.FAISS,
         }
 
-        store_type = store_type_map.get(
-            self.config.storage_backend, VectorStoreType.MEMORY
-        )
+        store_type = store_type_map.get(self.config.storage_backend, VectorStoreType.MEMORY)
 
         store_config = VectorStoreConfig(
             store_type=store_type,
             collection_name=self.config.collection_name,
             dimension=self.config.embedding_dimension,
-            persist_directory=Path(self.config.persist_directory) if self.config.persist_directory else None,
+            persist_directory=Path(self.config.persist_directory)
+            if self.config.persist_directory
+            else None,
         )
 
         return create_vector_store(store_config)
@@ -507,12 +495,14 @@ class ReflectionMemory:
         if "spatial" in state:
             # Use spatial statistics for hash to handle slight variations
             spatial = state["spatial"]
-            stats = np.array([
-                spatial.mean(),
-                spatial.std(),
-                spatial.max(),
-                spatial.min(),
-            ])
+            stats = np.array(
+                [
+                    spatial.mean(),
+                    spatial.std(),
+                    spatial.max(),
+                    spatial.min(),
+                ]
+            )
             hasher.update(np.round(stats, 2).tobytes())
 
         return hasher.hexdigest()
@@ -520,9 +510,7 @@ class ReflectionMemory:
     def _summarize_trajectory(self, trajectory: GameTrajectory) -> str:
         """Create a brief summary of the game trajectory."""
         return (
-            f"Game {trajectory.game_id}: "
-            f"{trajectory.game_length} turns, "
-            f"winner={trajectory.winner}"
+            f"Game {trajectory.game_id}: {trajectory.game_length} turns, winner={trajectory.winner}"
         )
 
     async def query_similar_failures(
@@ -630,9 +618,7 @@ class ReflectionMemory:
         for entry in self._entry_cache.values():
             if entry.action_taken == action and entry.state_embedding is not None:
                 # Compute similarity
-                similarity = self._cosine_similarity(
-                    query_embedding, entry.state_embedding
-                )
+                similarity = self._cosine_similarity(query_embedding, entry.state_embedding)
                 if similarity >= self.config.similarity_threshold:
                     matching_entries.append(entry)
 

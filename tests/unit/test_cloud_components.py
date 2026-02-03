@@ -2,16 +2,11 @@
 
 from __future__ import annotations
 
-import threading
-import time
-from typing import Callable
-from unittest import mock
-
 import pytest
 
 from alpha_zero.cloud.config import CloudConfig
-from alpha_zero.cloud.gcp.preemption import PreemptionHandler, register_preemption_handler
 from alpha_zero.cloud.gcp.monitoring import CloudLogger, CloudMetricsExporter
+from alpha_zero.cloud.gcp.preemption import PreemptionHandler, register_preemption_handler
 
 
 class TestPreemptionHandler:
@@ -30,51 +25,51 @@ class TestPreemptionHandler:
     def test_start_stop_monitoring(self, handler: PreemptionHandler) -> None:
         """Test starting and stopping monitoring."""
         handler.start_monitoring()
-        
+
         # Should be running
         assert handler._monitoring is True
-        
+
         handler.stop_monitoring()
-        
+
         # Should be stopped
         assert handler._monitoring is False
 
     def test_register_cleanup(self, handler: PreemptionHandler) -> None:
         """Test registering cleanup callbacks."""
         cleanup_called = []
-        
+
         def cleanup1() -> None:
             cleanup_called.append(1)
-        
+
         def cleanup2() -> None:
             cleanup_called.append(2)
-        
+
         handler.register_cleanup(cleanup1)
         handler.register_cleanup(cleanup2)
-        
+
         assert len(handler._cleanup_callbacks) == 2
 
     def test_simulate_preemption(self) -> None:
         """Test simulating preemption."""
         checkpoint_called = False
         cleanup_called = False
-        
+
         def checkpoint() -> None:
             nonlocal checkpoint_called
             checkpoint_called = True
-        
+
         def cleanup() -> None:
             nonlocal cleanup_called
             cleanup_called = True
-        
+
         handler = PreemptionHandler(
             checkpoint_callback=checkpoint,
             cleanup_callbacks=[cleanup],
             force_mock=True,
         )
-        
+
         handler.simulate_preemption()
-        
+
         assert checkpoint_called is True
         assert cleanup_called is True
         assert handler.is_preemption_pending() is True
@@ -82,11 +77,11 @@ class TestPreemptionHandler:
     def test_time_remaining_after_preemption(self) -> None:
         """Test time remaining calculation after preemption."""
         handler = PreemptionHandler(force_mock=True)
-        
+
         handler.simulate_preemption()
-        
+
         remaining = handler.get_time_remaining()
-        
+
         assert remaining is not None
         assert remaining >= 0
         assert remaining <= 30.0  # Max is 30 seconds
@@ -94,29 +89,31 @@ class TestPreemptionHandler:
     def test_preemption_only_triggers_once(self) -> None:
         """Test that preemption callbacks only trigger once."""
         call_count = [0]
-        
+
         def checkpoint() -> None:
             call_count[0] += 1
-        
+
         handler = PreemptionHandler(
             checkpoint_callback=checkpoint,
             force_mock=True,
         )
-        
+
         # Trigger twice
         handler.simulate_preemption()
         handler.simulate_preemption()
-        
+
         # Should only have been called once
         assert call_count[0] == 1
 
-    def test_double_start_warning(self, handler: PreemptionHandler, caplog: pytest.LogCaptureFixture) -> None:
+    def test_double_start_warning(
+        self, handler: PreemptionHandler, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Test warning when starting monitoring twice."""
         handler.start_monitoring()
         handler.start_monitoring()  # Should warn
-        
+
         assert "already started" in caplog.text
-        
+
         handler.stop_monitoring()
 
 
@@ -130,7 +127,7 @@ class TestRegisterPreemptionHandler:
             checkpoint_callback=lambda: None,
             auto_start=True,
         )
-        
+
         try:
             assert handler._monitoring is True
         finally:
@@ -142,7 +139,7 @@ class TestRegisterPreemptionHandler:
             checkpoint_callback=lambda: None,
             auto_start=False,
         )
-        
+
         assert handler._monitoring is False
 
 
@@ -174,7 +171,7 @@ class TestCloudLogger:
             metrics={"loss": 0.5, "accuracy": 0.9},
             labels={"experiment": "test"},
         )
-        
+
         # Check buffer
         assert len(logger._buffer) == 1
 
@@ -186,7 +183,7 @@ class TestCloudLogger:
             labels={"phase": "init"},
             payload={"config": {"batch_size": 32}},
         )
-        
+
         assert len(logger._buffer) == 1
         assert logger._buffer[0].message == "Training started"
         assert logger._buffer[0].severity == "INFO"
@@ -194,37 +191,37 @@ class TestCloudLogger:
     def test_log_severity_levels(self, logger: CloudLogger) -> None:
         """Test different severity levels."""
         severities = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-        
+
         for severity in severities:
             logger.log_event(severity, f"Test {severity}")
-        
+
         assert len(logger._buffer) == 5
 
     def test_flush(self, logger: CloudLogger) -> None:
         """Test flushing logs."""
         logger.log_event("INFO", "Message 1")
         logger.log_event("INFO", "Message 2")
-        
+
         assert len(logger._buffer) == 2
-        
+
         logger.flush()
-        
+
         assert len(logger._buffer) == 0
 
     def test_auto_flush_on_buffer_full(self) -> None:
         """Test automatic flush when buffer is full."""
         config = CloudConfig(project_id="test")
         logger = CloudLogger(config, force_mock=True, buffer_size=3)
-        
+
         # Add entries up to buffer size
         logger.log_event("INFO", "1")
         logger.log_event("INFO", "2")
-        
+
         assert len(logger._buffer) == 2
-        
+
         # This should trigger auto-flush
         logger.log_event("INFO", "3")
-        
+
         # Buffer should be empty after flush
         assert len(logger._buffer) == 0
 
@@ -266,7 +263,7 @@ class TestCloudMetricsExporter:
             "value_loss": 0.2,
             "entropy": 0.8,
         }
-        
+
         # Should not raise
         exporter.export_training_metrics(step=1000, metrics=metrics)
 
@@ -277,5 +274,5 @@ class TestCloudMetricsExporter:
             metric_prefix="custom/prefix",
             force_mock=True,
         )
-        
+
         assert exporter._metric_prefix == "custom/prefix"

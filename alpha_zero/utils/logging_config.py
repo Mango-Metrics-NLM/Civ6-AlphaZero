@@ -21,7 +21,7 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
@@ -41,7 +41,7 @@ class StructuredFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         """Format log record as JSON."""
         log_data: dict[str, Any] = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -61,11 +61,28 @@ class StructuredFormatter(logging.Formatter):
 
         # Add extra fields (metrics, context, etc.)
         extra_keys = set(record.__dict__.keys()) - {
-            "name", "msg", "args", "created", "filename", "funcName",
-            "levelname", "levelno", "lineno", "module", "msecs",
-            "pathname", "process", "processName", "relativeCreated",
-            "stack_info", "exc_info", "exc_text", "thread", "threadName",
-            "message", "asctime",
+            "name",
+            "msg",
+            "args",
+            "created",
+            "filename",
+            "funcName",
+            "levelname",
+            "levelno",
+            "lineno",
+            "module",
+            "msecs",
+            "pathname",
+            "process",
+            "processName",
+            "relativeCreated",
+            "stack_info",
+            "exc_info",
+            "exc_text",
+            "thread",
+            "threadName",
+            "message",
+            "asctime",
         }
         for key in extra_keys:
             value = getattr(record, key, None)
@@ -79,11 +96,11 @@ class ColoredFormatter(logging.Formatter):
     """Colored console formatter for better readability."""
 
     COLORS = {
-        "DEBUG": "\033[36m",    # Cyan
-        "INFO": "\033[32m",     # Green
+        "DEBUG": "\033[36m",  # Cyan
+        "INFO": "\033[32m",  # Green
         "WARNING": "\033[33m",  # Yellow
-        "ERROR": "\033[31m",    # Red
-        "CRITICAL": "\033[35m", # Magenta
+        "ERROR": "\033[31m",  # Red
+        "CRITICAL": "\033[35m",  # Magenta
     }
     RESET = "\033[0m"
 
@@ -162,11 +179,13 @@ class TrainingMetricsAdapter(logging.LoggerAdapter):
     ) -> tuple[str, dict[str, Any]]:
         """Process log message to include training context."""
         extra = kwargs.get("extra", {})
-        extra.update({
-            "training_step": self._step,
-            "training_epoch": self._epoch,
-            **self.extra,
-        })
+        extra.update(
+            {
+                "training_step": self._step,
+                "training_epoch": self._epoch,
+                **self.extra,
+            }
+        )
         kwargs["extra"] = extra
         return msg, kwargs
 

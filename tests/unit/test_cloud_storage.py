@@ -9,7 +9,7 @@ import pytest
 
 from alpha_zero.cloud.config import CloudConfig
 from alpha_zero.cloud.exceptions import CloudStorageError
-from alpha_zero.cloud.gcp.storage import GCSCheckpointManager, CheckpointMetadata
+from alpha_zero.cloud.gcp.storage import GCSCheckpointManager
 
 
 @pytest.fixture
@@ -34,14 +34,14 @@ class TestGCSCheckpointManagerInit:
     def test_mock_initialization(self, cloud_config: CloudConfig) -> None:
         """Test mock client initialization."""
         manager = GCSCheckpointManager(cloud_config, force_mock=True)
-        
+
         assert manager.is_mock is True
         assert manager.config == cloud_config
 
     def test_missing_bucket_raises_error(self) -> None:
         """Test that missing bucket raises when not mocked."""
         config = CloudConfig(project_id="test")
-        
+
         # With mock, should be fine
         manager = GCSCheckpointManager(config, force_mock=True)
         assert manager.is_mock
@@ -60,13 +60,13 @@ class TestGCSUploadDownload:
         with tempfile.TemporaryDirectory() as tmpdir:
             local_file = Path(tmpdir) / "model.pt"
             local_file.write_bytes(b"model weights data")
-            
+
             uri = mock_gcs_manager.upload_checkpoint(
                 str(local_file),
                 "checkpoints/model_v1.pt",
                 metadata={"step": "1000"},
             )
-            
+
             assert uri == "gs://test-bucket/checkpoints/model_v1.pt"
 
     def test_upload_nonexistent_file_raises(self, mock_gcs_manager: GCSCheckpointManager) -> None:
@@ -84,11 +84,11 @@ class TestGCSUploadDownload:
             local_file = Path(tmpdir) / "upload.pt"
             local_file.write_bytes(b"test model data")
             mock_gcs_manager.upload_checkpoint(str(local_file), "model.pt")
-            
+
             # Then download
             download_path = Path(tmpdir) / "downloaded.pt"
             result = mock_gcs_manager.download_checkpoint("model.pt", download_path)
-            
+
             assert result.exists()
             assert result.read_bytes() == b"test model data"
 
@@ -106,7 +106,7 @@ class TestGCSUploadDownload:
         with tempfile.TemporaryDirectory() as tmpdir:
             local_file = Path(tmpdir) / "data.pt"
             local_file.write_bytes(b"data")
-            
+
             # Key with leading slash should be normalized
             uri = mock_gcs_manager.upload_checkpoint(str(local_file), "/leading/slash.pt")
             assert "//leading" not in uri  # No double slash
@@ -126,15 +126,15 @@ class TestGCSListOperations:
         with tempfile.TemporaryDirectory() as tmpdir:
             local_file = Path(tmpdir) / "data.pt"
             local_file.write_bytes(b"data")
-            
+
             mock_gcs_manager.upload_checkpoint(str(local_file), "checkpoints/step_100.pt")
             mock_gcs_manager.upload_checkpoint(str(local_file), "checkpoints/step_200.pt")
             mock_gcs_manager.upload_checkpoint(str(local_file), "other/model.pt")
-            
+
             # List all checkpoints
             all_items = mock_gcs_manager.list_checkpoints(prefix="")
             assert len(all_items) == 3
-            
+
             # List with prefix
             checkpoint_items = mock_gcs_manager.list_checkpoints(prefix="checkpoints/")
             assert len(checkpoint_items) == 2
@@ -144,13 +144,13 @@ class TestGCSListOperations:
         with tempfile.TemporaryDirectory() as tmpdir:
             local_file = Path(tmpdir) / "data.pt"
             local_file.write_bytes(b"data")
-            
+
             mock_gcs_manager.upload_checkpoint(str(local_file), "checkpoints/step_100.pt")
             mock_gcs_manager.upload_checkpoint(str(local_file), "checkpoints/step_500.pt")
             mock_gcs_manager.upload_checkpoint(str(local_file), "checkpoints/step_200.pt")
-            
+
             latest = mock_gcs_manager.get_latest_checkpoint(prefix="checkpoints/")
-            
+
             assert latest is not None
             assert "500" in latest  # Should be the highest step number
 
@@ -168,17 +168,17 @@ class TestGCSDeleteOperations:
         with tempfile.TemporaryDirectory() as tmpdir:
             local_file = Path(tmpdir) / "data.pt"
             local_file.write_bytes(b"data")
-            
+
             mock_gcs_manager.upload_checkpoint(str(local_file), "to_delete.pt")
-            
+
             # Verify it exists
             items = mock_gcs_manager.list_checkpoints(prefix="")
             assert "to_delete.pt" in items
-            
+
             # Delete it
             result = mock_gcs_manager.delete_checkpoint("to_delete.pt")
             assert result is True
-            
+
             # Verify it's gone
             items = mock_gcs_manager.list_checkpoints(prefix="")
             assert "to_delete.pt" not in items
@@ -201,15 +201,15 @@ class TestCheckpointMetadata:
         with tempfile.TemporaryDirectory() as tmpdir:
             local_file = Path(tmpdir) / "model.pt"
             local_file.write_bytes(b"model weights data here")
-            
+
             mock_gcs_manager.upload_checkpoint(
                 str(local_file),
                 "test_model.pt",
                 metadata={"training_step": "5000", "model_version": "2"},
             )
-            
+
             meta = mock_gcs_manager.get_checkpoint_metadata("test_model.pt")
-            
+
             assert meta is not None
             assert meta.key == "test_model.pt"
             assert meta.size > 0

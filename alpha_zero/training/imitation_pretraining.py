@@ -99,17 +99,15 @@ class ImitationConfig:
             learning_rate=float(os.getenv("CIV6AZ_IMITATION_LR", "0.001")),
             num_epochs=int(os.getenv("CIV6AZ_IMITATION_EPOCHS", "5")),
             gradient_clip=float(os.getenv("CIV6AZ_IMITATION_GRAD_CLIP", "1.0")),
-            use_n_step_returns=os.getenv(
-                "CIV6AZ_IMITATION_N_STEP", "true"
-            ).lower() == "true",
+            use_n_step_returns=os.getenv("CIV6AZ_IMITATION_N_STEP", "true").lower() == "true",
             n_steps=int(os.getenv("CIV6AZ_IMITATION_N_STEPS", "5")),
             gamma=float(os.getenv("CIV6AZ_IMITATION_GAMMA", "0.99")),
             num_res_blocks=int(os.getenv("CIV6AZ_IMITATION_RES_BLOCKS", "6")),
             num_filters=int(os.getenv("CIV6AZ_IMITATION_FILTERS", "64")),
-            device=os.getenv("CIV6AZ_IMITATION_DEVICE", "cuda" if torch.cuda.is_available() else "cpu"),
-            checkpoint_dir=os.getenv(
-                "CIV6AZ_IMITATION_CHECKPOINT_DIR", "checkpoints/imitation"
+            device=os.getenv(
+                "CIV6AZ_IMITATION_DEVICE", "cuda" if torch.cuda.is_available() else "cpu"
             ),
+            checkpoint_dir=os.getenv("CIV6AZ_IMITATION_CHECKPOINT_DIR", "checkpoints/imitation"),
         )
 
 
@@ -198,13 +196,15 @@ class HeuristicExpertGenerator:
             action_probs = np.zeros(env.action_space.n, dtype=np.float32)
             action_probs[action] = 1.0  # Hard target from expert
 
-            history.append({
-                "spatial": obs["spatial"].copy(),
-                "vector": obs["vector"].copy(),
-                "action_mask": obs["action_mask"].copy(),
-                "policy": action_probs,
-                "player": current_player,
-            })
+            history.append(
+                {
+                    "spatial": obs["spatial"].copy(),
+                    "vector": obs["vector"].copy(),
+                    "action_mask": obs["action_mask"].copy(),
+                    "policy": action_probs,
+                    "player": current_player,
+                }
+            )
 
             # Execute action
             obs, _, terminated, truncated, info = env.step(action)
@@ -260,13 +260,15 @@ class HeuristicExpertGenerator:
                 else:
                     value = -1.0
 
-            examples.append(TrainingExample(
-                spatial=state["spatial"],
-                vector=state["vector"],
-                action_mask=state["action_mask"],
-                policy=state["policy"],
-                value=value,
-            ))
+            examples.append(
+                TrainingExample(
+                    spatial=state["spatial"],
+                    vector=state["vector"],
+                    action_mask=state["action_mask"],
+                    policy=state["policy"],
+                    value=value,
+                )
+            )
 
         return examples
 
@@ -335,8 +337,7 @@ class HeuristicExpertGenerator:
                 elapsed = time.time() - start_time
                 games_per_sec = (i + 1) / elapsed if elapsed > 0 else 0
                 self._logger.info(
-                    f"Generated {i + 1}/{n_games} games "
-                    f"({games_per_sec:.1f} games/sec)"
+                    f"Generated {i + 1}/{n_games} games ({games_per_sec:.1f} games/sec)"
                 )
 
         return trajectories
@@ -352,7 +353,9 @@ class SupervisedDataset(Dataset):
             trajectories: List of GameTrajectory objects.
         """
         self.examples = self._flatten_trajectories(trajectories)
-        logger.info(f"SupervisedDataset: {len(self.examples)} examples from {len(trajectories)} games")
+        logger.info(
+            f"SupervisedDataset: {len(self.examples)} examples from {len(trajectories)} games"
+        )
 
     def _flatten_trajectories(
         self,

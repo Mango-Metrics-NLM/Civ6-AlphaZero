@@ -206,9 +206,7 @@ class TestAllActionsValid:
 class TestSparseValidActions:
     """Test behavior with sparse valid actions."""
 
-    def test_sparse_valid_actions(
-        self, level_network: LevelNetwork, sample_inputs: dict
-    ) -> None:
+    def test_sparse_valid_actions(self, level_network: LevelNetwork, sample_inputs: dict) -> None:
         """Test with only a few scattered valid actions."""
         level_network.eval()
 
@@ -234,17 +232,15 @@ class TestSparseValidActions:
             assert (policy_probs[:, idx] > 1e-10).all(), f"Valid action {idx} has zero probability"
 
         # Check probabilities sum to 1
-        assert torch.allclose(
-            policy_probs.sum(dim=-1), torch.ones(BATCH_SIZE), atol=1e-5
-        ), "Probabilities don't sum to 1"
+        assert torch.allclose(policy_probs.sum(dim=-1), torch.ones(BATCH_SIZE), atol=1e-5), (
+            "Probabilities don't sum to 1"
+        )
 
 
 class TestBatchSizeOne:
     """Test edge cases with batch size = 1."""
 
-    def test_batch_size_one_with_mask(
-        self, level_network: LevelNetwork
-    ) -> None:
+    def test_batch_size_one_with_mask(self, level_network: LevelNetwork) -> None:
         """Test network with batch size 1 and action mask."""
         level_network.eval()
 
@@ -266,9 +262,7 @@ class TestBatchSizeOne:
         assert not torch.isnan(policy).any()
         assert not torch.isnan(value).any()
 
-    def test_batch_size_one_all_invalid(
-        self, level_network: LevelNetwork
-    ) -> None:
+    def test_batch_size_one_all_invalid(self, level_network: LevelNetwork) -> None:
         """Test batch size 1 with all actions invalid."""
         level_network.eval()
 
@@ -288,7 +282,9 @@ class TestBatchSizeOne:
 class TestMaskDtypes:
     """Test action mask with different data types."""
 
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.int32, torch.int64, torch.bool])
+    @pytest.mark.parametrize(
+        "dtype", [torch.float32, torch.float16, torch.int32, torch.int64, torch.bool]
+    )
     def test_different_mask_dtypes(
         self, level_network: LevelNetwork, sample_inputs: dict, dtype: torch.dtype
     ) -> None:

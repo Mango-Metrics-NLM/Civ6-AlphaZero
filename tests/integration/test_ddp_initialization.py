@@ -118,13 +118,16 @@ class TestDDPLearnerConfig:
 
     def test_from_env_reads_environment(self) -> None:
         """Test config loads from environment variables."""
-        with patch.dict(os.environ, {
-            "WORLD_SIZE": "4",
-            "RANK": "2",
-            "LOCAL_RANK": "1",
-            "MASTER_ADDR": "node0",
-            "MASTER_PORT": "29501",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "WORLD_SIZE": "4",
+                "RANK": "2",
+                "LOCAL_RANK": "1",
+                "MASTER_ADDR": "node0",
+                "MASTER_PORT": "29501",
+            },
+        ):
             config = DDPLearnerConfig.from_env()
             assert config.world_size == 4
             assert config.rank == 2

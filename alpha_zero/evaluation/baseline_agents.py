@@ -298,8 +298,7 @@ class GreedyHeuristicAgent(BaseAgent):
                     )
                     # New distance
                     new_dist = min(
-                        abs(new_pos[0] - ex) + abs(new_pos[1] - ey)
-                        for ex, ey in enemy_targets
+                        abs(new_pos[0] - ex) + abs(new_pos[1] - ey) for ex, ey in enemy_targets
                     )
 
                     if new_dist < current_dist:

@@ -32,14 +32,13 @@ from alpha_zero.cloud.protocols import (
     CloudMonitoringProtocol,
     CloudStorageProtocol,
     CloudTrainerProtocol,
-    JobStatus,
     PreemptionHandlerProtocol,
     TrainingJobInfo,
 )
 
 # Try to import exceptions, they may not exist yet
 try:
-    from alpha_zero.cloud.exceptions import (
+    from alpha_zero.cloud.exceptions import (  # noqa: F401
         CloudConfigError,
         CloudConnectionError,
         CloudStorageError,
@@ -60,15 +59,17 @@ __all__ = [
     "CloudTrainerProtocol",
     "CloudMonitoringProtocol",
     "PreemptionHandlerProtocol",
-    # Protocol support types<br>    "JobStatus",
+    # Protocol support types
     "TrainingJobInfo",
 ]
 
-# Add exceptions to__all__ if available
+# Add exceptions to __all__ if available
 if _EXCEPTIONS_AVAILABLE:
-    __all__.extend([
-        "CloudConfigError",
-        "CloudStorageError",
-        "CloudConnectionError",
-        "PreemptionError",
-    ])
+    __all__.extend(
+        [
+            "CloudConfigError",
+            "CloudStorageError",
+            "CloudConnectionError",
+            "PreemptionError",
+        ]
+    )

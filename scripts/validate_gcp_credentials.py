@@ -134,47 +134,53 @@ class GCPCredentialValidator:
 
         optional_vars = {
             "GCP_REGION": os.environ.get("GCP_REGION", "us-central1"),
-            "GOOGLE_APPLICATION_CREDENTIALS": os.environ.get(
-                "GOOGLE_APPLICATION_CREDENTIALS", ""
-            ),
+            "GOOGLE_APPLICATION_CREDENTIALS": os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", ""),
         }
 
         # Check required variables
         missing = [k for k, v in required_vars.items() if not v]
         if missing:
-            self.report.add(ValidationResult(
-                name="Environment Variables",
-                status=ValidationStatus.FAIL,
-                message=f"Missing required: {', '.join(missing)}",
-                details={"required": required_vars, "optional": optional_vars},
-            ))
+            self.report.add(
+                ValidationResult(
+                    name="Environment Variables",
+                    status=ValidationStatus.FAIL,
+                    message=f"Missing required: {', '.join(missing)}",
+                    details={"required": required_vars, "optional": optional_vars},
+                )
+            )
         else:
-            self.report.add(ValidationResult(
-                name="Environment Variables",
-                status=ValidationStatus.PASS,
-                message="All required variables set",
-                details={"project_id": required_vars["GCP_PROJECT_ID"][:20] + "..."},
-            ))
+            self.report.add(
+                ValidationResult(
+                    name="Environment Variables",
+                    status=ValidationStatus.PASS,
+                    message="All required variables set",
+                    details={"project_id": required_vars["GCP_PROJECT_ID"][:20] + "..."},
+                )
+            )
 
     def _check_credentials_file(self) -> None:
         """Check for explicit credentials file."""
         creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
 
         if not creds_path:
-            self.report.add(ValidationResult(
-                name="Service Account Key",
-                status=ValidationStatus.SKIP,
-                message="GOOGLE_APPLICATION_CREDENTIALS not set (using ADC)",
-            ))
+            self.report.add(
+                ValidationResult(
+                    name="Service Account Key",
+                    status=ValidationStatus.SKIP,
+                    message="GOOGLE_APPLICATION_CREDENTIALS not set (using ADC)",
+                )
+            )
             return
 
         path = Path(creds_path)
         if not path.exists():
-            self.report.add(ValidationResult(
-                name="Service Account Key",
-                status=ValidationStatus.FAIL,
-                message=f"Credentials file not found: {path}",
-            ))
+            self.report.add(
+                ValidationResult(
+                    name="Service Account Key",
+                    status=ValidationStatus.FAIL,
+                    message=f"Credentials file not found: {path}",
+                )
+            )
             return
 
         # Validate JSON structure
@@ -184,30 +190,40 @@ class GCPCredentialValidator:
 
             cred_type = creds.get("type", "unknown")
             if cred_type == "service_account":
-                self.report.add(ValidationResult(
-                    name="Service Account Key",
-                    status=ValidationStatus.PASS,
-                    message="Valid service account credentials",
-                    details={"email": creds.get("client_email", "N/A")},
-                ))
+                self.report.add(
+                    ValidationResult(
+                        name="Service Account Key",
+                        status=ValidationStatus.PASS,
+                        message="Valid service account credentials",
+                        details={"email": creds.get("client_email", "N/A")},
+                    )
+                )
             else:
-                self.report.add(ValidationResult(
-                    name="Service Account Key",
-                    status=ValidationStatus.WARN,
-                    message=f"Unexpected credential type: {cred_type}",
-                ))
+                self.report.add(
+                    ValidationResult(
+                        name="Service Account Key",
+                        status=ValidationStatus.WARN,
+                        message=f"Unexpected credential type: {cred_type}",
+                    )
+                )
         except json.JSONDecodeError as e:
-            self.report.add(ValidationResult(
-                name="Service Account Key",
-                status=ValidationStatus.FAIL,
-                message=f"Invalid JSON in credentials file: {e}",
-            ))
+            self.report.add(
+                ValidationResult(
+                    name="Service Account Key",
+                    status=ValidationStatus.FAIL,
+                    message=f"Invalid JSON in credentials file: {e}",
+                )
+            )
 
     def _check_application_default_credentials(self) -> None:
         """Check for application default credentials."""
         # Determine ADC path based on OS
         if os.name == "nt":  # Windows
-            adc_path = Path(os.environ.get("APPDATA", "")) / "gcloud" / "application_default_credentials.json"
+            adc_path = (
+                Path(os.environ.get("APPDATA", ""))
+                / "gcloud"
+                / "application_default_credentials.json"
+            )
         else:  # Linux/Mac
             adc_path = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
 
@@ -217,36 +233,44 @@ class GCPCredentialValidator:
                     adc = json.load(f)
 
                 adc_type = adc.get("type", "unknown")
-                self.report.add(ValidationResult(
-                    name="Application Default Credentials",
-                    status=ValidationStatus.PASS,
-                    message=f"ADC found ({adc_type})",
-                    details={"path": str(adc_path)},
-                ))
+                self.report.add(
+                    ValidationResult(
+                        name="Application Default Credentials",
+                        status=ValidationStatus.PASS,
+                        message=f"ADC found ({adc_type})",
+                        details={"path": str(adc_path)},
+                    )
+                )
             except (json.JSONDecodeError, OSError) as e:
-                self.report.add(ValidationResult(
-                    name="Application Default Credentials",
-                    status=ValidationStatus.FAIL,
-                    message=f"Error reading ADC: {e}",
-                ))
+                self.report.add(
+                    ValidationResult(
+                        name="Application Default Credentials",
+                        status=ValidationStatus.FAIL,
+                        message=f"Error reading ADC: {e}",
+                    )
+                )
         else:
-            self.report.add(ValidationResult(
-                name="Application Default Credentials",
-                status=ValidationStatus.WARN,
-                message="ADC not found. Run: gcloud auth application-default login",
-                details={"expected_path": str(adc_path)},
-            ))
+            self.report.add(
+                ValidationResult(
+                    name="Application Default Credentials",
+                    status=ValidationStatus.WARN,
+                    message="ADC not found. Run: gcloud auth application-default login",
+                    details={"expected_path": str(adc_path)},
+                )
+            )
 
     def _check_gcs_access(self) -> None:
         """Check GCS bucket access."""
         bucket_name = os.environ.get("GCS_BUCKET_NAME", "")
 
         if not bucket_name:
-            self.report.add(ValidationResult(
-                name="GCS Access",
-                status=ValidationStatus.SKIP,
-                message="GCS_BUCKET_NAME not set",
-            ))
+            self.report.add(
+                ValidationResult(
+                    name="GCS Access",
+                    status=ValidationStatus.SKIP,
+                    message="GCS_BUCKET_NAME not set",
+                )
+            )
             return
 
         try:
@@ -257,29 +281,37 @@ class GCPCredentialValidator:
 
             # Check if bucket exists and is accessible
             if bucket.exists():
-                self.report.add(ValidationResult(
-                    name="GCS Access",
-                    status=ValidationStatus.PASS,
-                    message=f"Bucket '{bucket_name}' accessible",
-                ))
+                self.report.add(
+                    ValidationResult(
+                        name="GCS Access",
+                        status=ValidationStatus.PASS,
+                        message=f"Bucket '{bucket_name}' accessible",
+                    )
+                )
             else:
-                self.report.add(ValidationResult(
+                self.report.add(
+                    ValidationResult(
+                        name="GCS Access",
+                        status=ValidationStatus.FAIL,
+                        message=f"Bucket '{bucket_name}' not found or not accessible",
+                    )
+                )
+        except ImportError:
+            self.report.add(
+                ValidationResult(
+                    name="GCS Access",
+                    status=ValidationStatus.SKIP,
+                    message="google-cloud-storage not installed",
+                )
+            )
+        except Exception as e:
+            self.report.add(
+                ValidationResult(
                     name="GCS Access",
                     status=ValidationStatus.FAIL,
-                    message=f"Bucket '{bucket_name}' not found or not accessible",
-                ))
-        except ImportError:
-            self.report.add(ValidationResult(
-                name="GCS Access",
-                status=ValidationStatus.SKIP,
-                message="google-cloud-storage not installed",
-            ))
-        except Exception as e:
-            self.report.add(ValidationResult(
-                name="GCS Access",
-                status=ValidationStatus.FAIL,
-                message=f"GCS access error: {e}",
-            ))
+                    message=f"GCS access error: {e}",
+                )
+            )
 
     def _check_vertex_ai_access(self) -> None:
         """Check Vertex AI API access."""
@@ -287,11 +319,13 @@ class GCPCredentialValidator:
         region = os.environ.get("GCP_REGION", "us-central1")
 
         if not project_id:
-            self.report.add(ValidationResult(
-                name="Vertex AI Access",
-                status=ValidationStatus.SKIP,
-                message="GCP_PROJECT_ID not set",
-            ))
+            self.report.add(
+                ValidationResult(
+                    name="Vertex AI Access",
+                    status=ValidationStatus.SKIP,
+                    message="GCP_PROJECT_ID not set",
+                )
+            )
             return
 
         try:
@@ -303,35 +337,43 @@ class GCPCredentialValidator:
             jobs = aiplatform.CustomJob.list(filter="state=JOB_STATE_RUNNING")
             job_count = sum(1 for _ in jobs)
 
-            self.report.add(ValidationResult(
-                name="Vertex AI Access",
-                status=ValidationStatus.PASS,
-                message=f"API accessible ({job_count} running jobs)",
-                details={"project": project_id, "region": region},
-            ))
+            self.report.add(
+                ValidationResult(
+                    name="Vertex AI Access",
+                    status=ValidationStatus.PASS,
+                    message=f"API accessible ({job_count} running jobs)",
+                    details={"project": project_id, "region": region},
+                )
+            )
         except ImportError:
-            self.report.add(ValidationResult(
-                name="Vertex AI Access",
-                status=ValidationStatus.SKIP,
-                message="google-cloud-aiplatform not installed",
-            ))
+            self.report.add(
+                ValidationResult(
+                    name="Vertex AI Access",
+                    status=ValidationStatus.SKIP,
+                    message="google-cloud-aiplatform not installed",
+                )
+            )
         except Exception as e:
-            self.report.add(ValidationResult(
-                name="Vertex AI Access",
-                status=ValidationStatus.FAIL,
-                message=f"Vertex AI access error: {e}",
-            ))
+            self.report.add(
+                ValidationResult(
+                    name="Vertex AI Access",
+                    status=ValidationStatus.FAIL,
+                    message=f"Vertex AI access error: {e}",
+                )
+            )
 
     def _check_cloud_logging_access(self) -> None:
         """Check Cloud Logging API access."""
         project_id = os.environ.get("GCP_PROJECT_ID", "")
 
         if not project_id:
-            self.report.add(ValidationResult(
-                name="Cloud Logging Access",
-                status=ValidationStatus.SKIP,
-                message="GCP_PROJECT_ID not set",
-            ))
+            self.report.add(
+                ValidationResult(
+                    name="Cloud Logging Access",
+                    status=ValidationStatus.SKIP,
+                    message="GCP_PROJECT_ID not set",
+                )
+            )
             return
 
         try:
@@ -342,34 +384,42 @@ class GCPCredentialValidator:
             # Try to list log entries (lightweight)
             list(client.list_entries(max_results=1))
 
-            self.report.add(ValidationResult(
-                name="Cloud Logging Access",
-                status=ValidationStatus.PASS,
-                message="API accessible",
-                details={"project": project_id},
-            ))
+            self.report.add(
+                ValidationResult(
+                    name="Cloud Logging Access",
+                    status=ValidationStatus.PASS,
+                    message="API accessible",
+                    details={"project": project_id},
+                )
+            )
         except ImportError:
-            self.report.add(ValidationResult(
-                name="Cloud Logging Access",
-                status=ValidationStatus.SKIP,
-                message="google-cloud-logging not installed",
-            ))
+            self.report.add(
+                ValidationResult(
+                    name="Cloud Logging Access",
+                    status=ValidationStatus.SKIP,
+                    message="google-cloud-logging not installed",
+                )
+            )
         except Exception as e:
             # Permission errors are common - differentiate
             error_str = str(e).lower()
             if "permission" in error_str or "403" in error_str:
-                self.report.add(ValidationResult(
-                    name="Cloud Logging Access",
-                    status=ValidationStatus.WARN,
-                    message="Permission possibly restricted (may still work for writes)",
-                    details={"error": str(e)[:100]},
-                ))
+                self.report.add(
+                    ValidationResult(
+                        name="Cloud Logging Access",
+                        status=ValidationStatus.WARN,
+                        message="Permission possibly restricted (may still work for writes)",
+                        details={"error": str(e)[:100]},
+                    )
+                )
             else:
-                self.report.add(ValidationResult(
-                    name="Cloud Logging Access",
-                    status=ValidationStatus.FAIL,
-                    message=f"Cloud Logging access error: {e}",
-                ))
+                self.report.add(
+                    ValidationResult(
+                        name="Cloud Logging Access",
+                        status=ValidationStatus.FAIL,
+                        message=f"Cloud Logging access error: {e}",
+                    )
+                )
 
 
 def main() -> int:

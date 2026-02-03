@@ -729,7 +729,7 @@ class StateConverter:
         name = resource.lower()
         for prefix in ("resource_", "res_"):
             if name.startswith(prefix):
-                name = name[len(prefix):]
+                name = name[len(prefix) :]
         return name
 
     def _extract_technologies(self, state: GameStateData) -> list[str]:
@@ -743,10 +743,7 @@ class StateConverter:
         """
         for player in state.players:
             if player.id == state.player_id:
-                return [
-                    self._normalize_tech_name(tech)
-                    for tech in player.techs_researched
-                ]
+                return [self._normalize_tech_name(tech) for tech in player.techs_researched]
         return []
 
     def _normalize_tech_name(self, tech: str) -> str:
@@ -761,7 +758,7 @@ class StateConverter:
         name = tech.lower()
         for prefix in ("tech_",):
             if name.startswith(prefix):
-                name = name[len(prefix):]
+                name = name[len(prefix) :]
         return name
 
     def _extract_civics(self, state: GameStateData) -> list[str]:

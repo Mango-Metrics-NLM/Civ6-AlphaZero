@@ -491,6 +491,7 @@ class TestCheckpointErrorHandling:
 
         # Corrupted checkpoint will raise various pickle/load errors
         import pickle
+
         with pytest.raises((RuntimeError, EOFError, OSError, pickle.UnpicklingError)):
             torch.load(corrupted_path, weights_only=False)
 

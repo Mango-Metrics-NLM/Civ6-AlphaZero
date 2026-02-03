@@ -417,10 +417,15 @@ class TestObservationShapes:
         state2 = GameStateData(
             turn_id=100,
             player_id=1,
-            map_data=MapData(width=80, height=50, tiles=[
-                TileData(x=x, y=y, terrain="TERRAIN_GRASS")
-                for x in range(10) for y in range(10)
-            ]),
+            map_data=MapData(
+                width=80,
+                height=50,
+                tiles=[
+                    TileData(x=x, y=y, terrain="TERRAIN_GRASS")
+                    for x in range(10)
+                    for y in range(10)
+                ],
+            ),
             units=[
                 UnitData(id=1, unit_type="UNIT_WARRIOR", owner_id=0, x=5, y=5),
                 UnitData(id=2, unit_type="UNIT_ARCHER", owner_id=1, x=10, y=10),

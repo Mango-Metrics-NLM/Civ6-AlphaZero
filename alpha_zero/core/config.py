@@ -205,7 +205,9 @@ class ConfigMixin:
             return int(value)
         elif actual_type is float:
             return float(value)
-        elif actual_type is list or (hasattr(actual_type, "__origin__") and actual_type.__origin__ is list):
+        elif actual_type is list or (
+            hasattr(actual_type, "__origin__") and actual_type.__origin__ is list
+        ):
             # Simple list parsing: comma-separated values
             if not value.strip():
                 return []

@@ -106,10 +106,7 @@ class TestQueueDeadlocks:
                 errors.append((actor_id, e))
 
         try:
-            threads = [
-                threading.Thread(target=submit_trajectory, args=(i,))
-                for i in range(5)
-            ]
+            threads = [threading.Thread(target=submit_trajectory, args=(i,)) for i in range(5)]
 
             for t in threads:
                 t.start()

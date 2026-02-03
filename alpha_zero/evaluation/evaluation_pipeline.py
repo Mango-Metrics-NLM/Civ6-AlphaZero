@@ -90,9 +90,9 @@ class EvaluationResult:
     def summary(self) -> str:
         """Generate human-readable summary."""
         return (
-            f"\n{'='*50}\n"
+            f"\n{'=' * 50}\n"
             f"EVALUATION SUMMARY\n"
-            f"{'='*50}\n"
+            f"{'=' * 50}\n"
             f"Win Rate: {self.win_rate.win_rate:.1f}%\n"
             f"  Wins:   {self.win_rate.wins}\n"
             f"  Losses: {self.win_rate.losses}\n"
@@ -105,7 +105,7 @@ class EvaluationResult:
             f"\nValue Head Diagnostics:\n"
             f"  Prediction Correlation: {self.value_correlation:.3f}\n"
             f"\nEvaluation Time: {self.total_evaluation_time:.1f}s\n"
-            f"{'='*50}"
+            f"{'=' * 50}"
         )
 
 
@@ -270,9 +270,7 @@ class EvaluationPipeline:
 
             # Log progress
             if (game_idx + 1) % log_interval == 0:
-                logger.info(
-                    f"  Game {game_idx + 1}/{n_games}: {win_rate}"
-                )
+                logger.info(f"  Game {game_idx + 1}/{n_games}: {win_rate}")
 
         total_time = time.time() - start_time
 
@@ -428,18 +426,10 @@ class EvaluationPipeline:
         won_games = [r for r in game_results if r.winner == 0]
         lost_games = [r for r in game_results if r.winner == 1]
 
-        avg_cities_won = (
-            np.mean([r.player0_cities for r in won_games]) if won_games else 0.0
-        )
-        avg_cities_lost = (
-            np.mean([r.player0_cities for r in lost_games]) if lost_games else 0.0
-        )
-        avg_units_won = (
-            np.mean([r.player0_units for r in won_games]) if won_games else 0.0
-        )
-        avg_units_lost = (
-            np.mean([r.player0_units for r in lost_games]) if lost_games else 0.0
-        )
+        avg_cities_won = np.mean([r.player0_cities for r in won_games]) if won_games else 0.0
+        avg_cities_lost = np.mean([r.player0_cities for r in lost_games]) if lost_games else 0.0
+        avg_units_won = np.mean([r.player0_units for r in won_games]) if won_games else 0.0
+        avg_units_lost = np.mean([r.player0_units for r in lost_games]) if lost_games else 0.0
 
         # Value prediction correlation
         value_correlation = 0.0
@@ -499,9 +489,7 @@ def run_baseline_evaluation(
     logger.info("=" * 60)
 
     results["random"] = pipeline.evaluate_vs_random(mcts, n_games=n_games_random)
-    results["heuristic"] = pipeline.evaluate_vs_heuristic(
-        mcts, n_games=n_games_heuristic
-    )
+    results["heuristic"] = pipeline.evaluate_vs_heuristic(mcts, n_games=n_games_heuristic)
 
     # Summary
     logger.info("\n" + "=" * 60)

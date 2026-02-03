@@ -222,23 +222,27 @@ class Phase1Validator:
             if missing:
                 raise RuntimeError(f"Missing packages: {missing}")
 
-            self.report.add_step(StepResult(
-                name="Environment Validation",
-                success=True,
-                duration_seconds=time.time() - step_start,
-                message="Python environment validated",
-                details={
-                    "python_version": f"{python_version.major}.{python_version.minor}.{python_version.micro}",
-                    "packages": ", ".join(required_packages),
-                },
-            ))
+            self.report.add_step(
+                StepResult(
+                    name="Environment Validation",
+                    success=True,
+                    duration_seconds=time.time() - step_start,
+                    message="Python environment validated",
+                    details={
+                        "python_version": f"{python_version.major}.{python_version.minor}.{python_version.micro}",
+                        "packages": ", ".join(required_packages),
+                    },
+                )
+            )
         except Exception as e:
-            self.report.add_step(StepResult(
-                name="Environment Validation",
-                success=False,
-                duration_seconds=time.time() - step_start,
-                message=f"Environment validation failed: {e}",
-            ))
+            self.report.add_step(
+                StepResult(
+                    name="Environment Validation",
+                    success=False,
+                    duration_seconds=time.time() - step_start,
+                    message=f"Environment validation failed: {e}",
+                )
+            )
 
     def _validate_gcp_credentials(self) -> None:
         """Run GCP credential validation with timeout protection."""
@@ -252,28 +256,32 @@ class Phase1Validator:
 
             if not project_id or not bucket_name:
                 # Treat missing GCP config as optional, not failure
-                self.report.add_step(StepResult(
-                    name="GCP Credentials",
-                    success=True,
-                    duration_seconds=time.time() - step_start,
-                    message="GCP not configured (optional)",
-                    details={
-                        "GCP_PROJECT_ID": "set" if project_id else "not set",
-                        "GCS_BUCKET_NAME": "set" if bucket_name else "not set",
-                        "note": "GCP is optional for local-only training",
-                    },
-                ))
+                self.report.add_step(
+                    StepResult(
+                        name="GCP Credentials",
+                        success=True,
+                        duration_seconds=time.time() - step_start,
+                        message="GCP not configured (optional)",
+                        details={
+                            "GCP_PROJECT_ID": "set" if project_id else "not set",
+                            "GCS_BUCKET_NAME": "set" if bucket_name else "not set",
+                            "note": "GCP is optional for local-only training",
+                        },
+                    )
+                )
                 return
 
             # Dynamic import to avoid script import issues
             GCPCredentialValidator = self._load_gcp_validator()
             if GCPCredentialValidator is None:
-                self.report.add_step(StepResult(
-                    name="GCP Credentials",
-                    success=False,
-                    duration_seconds=time.time() - step_start,
-                    message="GCP validator module not available",
-                ))
+                self.report.add_step(
+                    StepResult(
+                        name="GCP Credentials",
+                        success=False,
+                        duration_seconds=time.time() - step_start,
+                        message="GCP validator module not available",
+                    )
+                )
                 return
 
             # Run validation with timeout protection
@@ -287,46 +295,56 @@ class Phase1Validator:
                     cred_report = future.result(timeout=GCP_VALIDATION_TIMEOUT)
 
                     if cred_report.passed:
-                        self.report.add_step(StepResult(
-                            name="GCP Credentials",
-                            success=True,
-                            duration_seconds=time.time() - step_start,
-                            message="GCP credentials validated",
-                            details=cred_report.summary,
-                        ))
+                        self.report.add_step(
+                            StepResult(
+                                name="GCP Credentials",
+                                success=True,
+                                duration_seconds=time.time() - step_start,
+                                message="GCP credentials validated",
+                                details=cred_report.summary,
+                            )
+                        )
                     else:
-                        self.report.add_step(StepResult(
+                        self.report.add_step(
+                            StepResult(
+                                name="GCP Credentials",
+                                success=False,
+                                duration_seconds=time.time() - step_start,
+                                message="GCP credential validation failed",
+                                details=cred_report.summary,
+                            )
+                        )
+                except concurrent.futures.TimeoutError:
+                    self.report.add_step(
+                        StepResult(
                             name="GCP Credentials",
                             success=False,
                             duration_seconds=time.time() - step_start,
-                            message="GCP credential validation failed",
-                            details=cred_report.summary,
-                        ))
-                except concurrent.futures.TimeoutError:
-                    self.report.add_step(StepResult(
-                        name="GCP Credentials",
-                        success=False,
-                        duration_seconds=time.time() - step_start,
-                        message=f"GCP validation timed out after {GCP_VALIDATION_TIMEOUT}s",
-                        details={"hint": "Check network connectivity or skip with --skip-gcp"},
-                    ))
+                            message=f"GCP validation timed out after {GCP_VALIDATION_TIMEOUT}s",
+                            details={"hint": "Check network connectivity or skip with --skip-gcp"},
+                        )
+                    )
 
         except ImportError as e:
             # Google Cloud SDK not installed - this is acceptable
-            self.report.add_step(StepResult(
-                name="GCP Credentials",
-                success=True,
-                duration_seconds=time.time() - step_start,
-                message="GCP SDK not installed (optional)",
-                details={"error": str(e)},
-            ))
+            self.report.add_step(
+                StepResult(
+                    name="GCP Credentials",
+                    success=True,
+                    duration_seconds=time.time() - step_start,
+                    message="GCP SDK not installed (optional)",
+                    details={"error": str(e)},
+                )
+            )
         except Exception as e:
-            self.report.add_step(StepResult(
-                name="GCP Credentials",
-                success=False,
-                duration_seconds=time.time() - step_start,
-                message=f"GCP credential validation error: {e}",
-            ))
+            self.report.add_step(
+                StepResult(
+                    name="GCP Credentials",
+                    success=False,
+                    duration_seconds=time.time() - step_start,
+                    message=f"GCP credential validation error: {e}",
+                )
+            )
 
     def _run_e2e_tests(self) -> None:
         """Run E2E test suite."""
@@ -340,7 +358,9 @@ class Phase1Validator:
 
             # Run pytest
             cmd = [
-                sys.executable, "-m", "pytest",
+                sys.executable,
+                "-m",
+                "pytest",
                 str(e2e_test_path),
                 "-v",
                 "--tb=short",
@@ -365,38 +385,46 @@ class Phase1Validator:
             skipped = output.count(" skipped")
 
             if result.returncode == 0:
-                self.report.add_step(StepResult(
-                    name="E2E Tests",
-                    success=True,
-                    duration_seconds=time.time() - step_start,
-                    message="All E2E tests passed",
-                    details={"passed": passed, "skipped": skipped},
-                ))
+                self.report.add_step(
+                    StepResult(
+                        name="E2E Tests",
+                        success=True,
+                        duration_seconds=time.time() - step_start,
+                        message="All E2E tests passed",
+                        details={"passed": passed, "skipped": skipped},
+                    )
+                )
             else:
-                self.report.add_step(StepResult(
-                    name="E2E Tests",
-                    success=False,
-                    duration_seconds=time.time() - step_start,
-                    message=f"E2E tests failed ({failed} failures)",
-                    details={"passed": passed, "failed": failed, "skipped": skipped},
-                ))
+                self.report.add_step(
+                    StepResult(
+                        name="E2E Tests",
+                        success=False,
+                        duration_seconds=time.time() - step_start,
+                        message=f"E2E tests failed ({failed} failures)",
+                        details={"passed": passed, "failed": failed, "skipped": skipped},
+                    )
+                )
                 if self.verbose:
                     logger.error(f"Test output:\n{output}")
 
         except subprocess.TimeoutExpired:
-            self.report.add_step(StepResult(
-                name="E2E Tests",
-                success=False,
-                duration_seconds=time.time() - step_start,
-                message="E2E tests timed out (>5 minutes)",
-            ))
+            self.report.add_step(
+                StepResult(
+                    name="E2E Tests",
+                    success=False,
+                    duration_seconds=time.time() - step_start,
+                    message="E2E tests timed out (>5 minutes)",
+                )
+            )
         except Exception as e:
-            self.report.add_step(StepResult(
-                name="E2E Tests",
-                success=False,
-                duration_seconds=time.time() - step_start,
-                message=f"E2E test error: {e}",
-            ))
+            self.report.add_step(
+                StepResult(
+                    name="E2E Tests",
+                    success=False,
+                    duration_seconds=time.time() - step_start,
+                    message=f"E2E test error: {e}",
+                )
+            )
 
     def _run_training_smoke_test(self) -> None:
         """Run local training smoke test."""
@@ -406,12 +434,14 @@ class Phase1Validator:
             # Run the training smoke test suite instead of actual training
             # This is faster and more reliable
             test_path = self.project_root / "tests" / "unit" / "test_training_smoke.py"
-            
+
             if not test_path.exists():
                 raise FileNotFoundError(f"Training smoke tests not found: {test_path}")
 
             cmd = [
-                sys.executable, "-m", "pytest",
+                sys.executable,
+                "-m",
+                "pytest",
                 str(test_path),
                 "-v",
                 "--tb=short",
@@ -433,44 +463,52 @@ class Phase1Validator:
             skipped_match = output.count(" skipped")
 
             if result.returncode == 0:
-                self.report.add_step(StepResult(
-                    name="Training Smoke Test",
-                    success=True,
-                    duration_seconds=time.time() - step_start,
-                    message="Training smoke tests passed",
-                    details={
-                        "passed": passed_match,
-                        "skipped": skipped_match,
-                    },
-                ))
+                self.report.add_step(
+                    StepResult(
+                        name="Training Smoke Test",
+                        success=True,
+                        duration_seconds=time.time() - step_start,
+                        message="Training smoke tests passed",
+                        details={
+                            "passed": passed_match,
+                            "skipped": skipped_match,
+                        },
+                    )
+                )
             else:
-                self.report.add_step(StepResult(
-                    name="Training Smoke Test",
-                    success=False,
-                    duration_seconds=time.time() - step_start,
-                    message=f"Training smoke tests failed ({failed_match} failures)",
-                    details={
-                        "passed": passed_match,
-                        "failed": failed_match,
-                    },
-                ))
+                self.report.add_step(
+                    StepResult(
+                        name="Training Smoke Test",
+                        success=False,
+                        duration_seconds=time.time() - step_start,
+                        message=f"Training smoke tests failed ({failed_match} failures)",
+                        details={
+                            "passed": passed_match,
+                            "failed": failed_match,
+                        },
+                    )
+                )
                 if self.verbose:
                     logger.error(f"Test output:\n{output}")
 
         except subprocess.TimeoutExpired:
-            self.report.add_step(StepResult(
-                name="Training Smoke Test",
-                success=False,
-                duration_seconds=time.time() - step_start,
-                message="Training smoke test timed out (>2 minutes)",
-            ))
+            self.report.add_step(
+                StepResult(
+                    name="Training Smoke Test",
+                    success=False,
+                    duration_seconds=time.time() - step_start,
+                    message="Training smoke test timed out (>2 minutes)",
+                )
+            )
         except Exception as e:
-            self.report.add_step(StepResult(
-                name="Training Smoke Test",
-                success=False,
-                duration_seconds=time.time() - step_start,
-                message=f"Training smoke test error: {e}",
-            ))
+            self.report.add_step(
+                StepResult(
+                    name="Training Smoke Test",
+                    success=False,
+                    duration_seconds=time.time() - step_start,
+                    message=f"Training smoke test error: {e}",
+                )
+            )
 
     def _validate_training_outputs(self) -> None:
         """Validate training outputs exist.
@@ -522,43 +560,49 @@ class Phase1Validator:
 
             # Build details
             if found_checkpoints:
-                details["checkpoint_dirs"] = {name: count for name, count in found_checkpoints}
+                details["checkpoint_dirs"] = dict(found_checkpoints)
                 details["total_checkpoints"] = sum(count for _, count in found_checkpoints)
             else:
                 details["checkpoint_dirs"] = "none found"
                 details["total_checkpoints"] = 0
 
             if found_logs:
-                details["log_dirs"] = {name: count for name, count in found_logs}
+                details["log_dirs"] = dict(found_logs)
             else:
                 details["log_dirs"] = "none found"
 
             # Success if any checkpoint location has files
             if found_checkpoints:
-                self.report.add_step(StepResult(
-                    name="Output Validation",
-                    success=True,
-                    duration_seconds=time.time() - step_start,
-                    message=f"Found {details['total_checkpoints']} checkpoints in {len(found_checkpoints)} directories",
-                    details=details,
-                ))
+                self.report.add_step(
+                    StepResult(
+                        name="Output Validation",
+                        success=True,
+                        duration_seconds=time.time() - step_start,
+                        message=f"Found {details['total_checkpoints']} checkpoints in {len(found_checkpoints)} directories",
+                        details=details,
+                    )
+                )
             else:
                 # No checkpoints found - warn but provide helpful info
-                self.report.add_step(StepResult(
+                self.report.add_step(
+                    StepResult(
+                        name="Output Validation",
+                        success=False,
+                        duration_seconds=time.time() - step_start,
+                        message="No checkpoint files found in any expected location",
+                        details=details,
+                    )
+                )
+
+        except Exception as e:
+            self.report.add_step(
+                StepResult(
                     name="Output Validation",
                     success=False,
                     duration_seconds=time.time() - step_start,
-                    message="No checkpoint files found in any expected location",
-                    details=details,
-                ))
-
-        except Exception as e:
-            self.report.add_step(StepResult(
-                name="Output Validation",
-                success=False,
-                duration_seconds=time.time() - step_start,
-                message=f"Output validation error: {e}",
-            ))
+                    message=f"Output validation error: {e}",
+                )
+            )
 
 
 def main() -> int:

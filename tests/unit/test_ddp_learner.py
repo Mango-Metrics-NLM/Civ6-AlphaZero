@@ -18,13 +18,11 @@ import torch.nn as nn
 
 from alpha_zero.distributed.ddp_learner import DDPLearner, DDPLearnerConfig
 from tests.fixtures.mock_distributed import (
-    MockDistributedBackend,
-    MockDDPWrapper,
     mock_ddp_context,
 )
 
 if TYPE_CHECKING:
-    from typing import Generator
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +190,9 @@ class TestDDPLearnerInitialization:
             backend="gloo",
         )
 
-        with mock_ddp_context(world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP") as mock_dist:
+        with mock_ddp_context(
+            world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
+        ) as mock_dist:
             learner = DDPLearner(
                 config=config,
                 shared_storage=mock_shared_storage,
@@ -281,7 +281,9 @@ class TestDDPLearnerCommunication:
         """Test barrier with mocked distributed backend."""
         config = DDPLearnerConfig(world_size=4, rank=0)
 
-        with mock_ddp_context(world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP") as mock_dist:
+        with mock_ddp_context(
+            world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
+        ) as mock_dist:
             learner = DDPLearner(
                 config=config,
                 shared_storage=mock_shared_storage,
@@ -307,7 +309,9 @@ class TestDDPLearnerCommunication:
         """Test all_reduce with mocked distributed backend."""
         config = DDPLearnerConfig(world_size=4, rank=0)
 
-        with mock_ddp_context(world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP") as mock_dist:
+        with mock_ddp_context(
+            world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
+        ) as mock_dist:
             learner = DDPLearner(
                 config=config,
                 shared_storage=mock_shared_storage,
@@ -334,7 +338,9 @@ class TestDDPLearnerCommunication:
         """Test gather to main rank."""
         config = DDPLearnerConfig(world_size=4, rank=0)
 
-        with mock_ddp_context(world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP") as mock_dist:
+        with mock_ddp_context(
+            world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
+        ) as mock_dist:
             learner = DDPLearner(
                 config=config,
                 shared_storage=mock_shared_storage,
@@ -483,7 +489,9 @@ class TestDDPLearnerModelAccess:
         """Test get_base_model returns unwrapped model."""
         config = DDPLearnerConfig(world_size=4, rank=0)
 
-        with mock_ddp_context(world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"):
+        with mock_ddp_context(
+            world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
+        ):
             learner = DDPLearner(
                 config=config,
                 shared_storage=mock_shared_storage,
@@ -510,7 +518,9 @@ def test_world_size_parametrized(
     config = DDPLearnerConfig(world_size=world_size, rank=0)
 
     if world_size > 1:
-        with mock_ddp_context(world_size=world_size, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP") as mock_dist:
+        with mock_ddp_context(
+            world_size=world_size, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
+        ) as mock_dist:
             learner = DDPLearner(
                 config=config,
                 shared_storage=mock_shared_storage,

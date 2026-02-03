@@ -43,7 +43,9 @@ def _has_gcp_credentials() -> bool:
     # Linux/Mac: ~/.config/gcloud/application_default_credentials.json
     home = Path.home()
     if os.name == "nt":  # Windows
-        adc_path = Path(os.environ.get("APPDATA", "")) / "gcloud" / "application_default_credentials.json"
+        adc_path = (
+            Path(os.environ.get("APPDATA", "")) / "gcloud" / "application_default_credentials.json"
+        )
     else:  # Linux/Mac
         adc_path = home / ".config" / "gcloud" / "application_default_credentials.json"
 
@@ -52,10 +54,7 @@ def _has_gcp_credentials() -> bool:
 
 def _has_gcp_config() -> bool:
     """Check if required GCP configuration is set."""
-    return bool(
-        os.environ.get("GCP_PROJECT_ID") and
-        os.environ.get("GCS_BUCKET_NAME")
-    )
+    return bool(os.environ.get("GCP_PROJECT_ID") and os.environ.get("GCS_BUCKET_NAME"))
 
 
 # Pytest markers for conditional execution
@@ -67,15 +66,11 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers", "requires_distributed: marks tests requiring distributed training setup"
     )
-    config.addinivalue_line(
-        "markers", "integration: marks tests as integration tests"
-    )
+    config.addinivalue_line("markers", "integration: marks tests as integration tests")
     config.addinivalue_line(
         "markers", "requires_env: marks tests requiring external environment (Docker, etc.)"
     )
-    config.addinivalue_line(
-        "markers", "slow: marks tests as slow-running"
-    )
+    config.addinivalue_line("markers", "slow: marks tests as slow-running")
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -380,7 +375,9 @@ def sample_trajectory_data() -> list[dict]:
 
     return [
         {
-            "state": np.random.randn(51, 16, 16).astype(np.float32),
+            "state": np.random.randn(13, 16, 16).astype(
+                np.float32
+            ),  # MicroCivEncoder.TOTAL_CHANNELS
             "action": np.array([5, 8]),
             "policy": np.random.dirichlet(np.ones(100)).astype(np.float32),
             "reward": 0.0,
@@ -388,7 +385,9 @@ def sample_trajectory_data() -> list[dict]:
             "turn": 1,
         },
         {
-            "state": np.random.randn(51, 16, 16).astype(np.float32),
+            "state": np.random.randn(13, 16, 16).astype(
+                np.float32
+            ),  # MicroCivEncoder.TOTAL_CHANNELS
             "action": np.array([6, 8]),
             "policy": np.random.dirichlet(np.ones(100)).astype(np.float32),
             "reward": 0.1,
@@ -396,7 +395,9 @@ def sample_trajectory_data() -> list[dict]:
             "turn": 2,
         },
         {
-            "state": np.random.randn(51, 16, 16).astype(np.float32),
+            "state": np.random.randn(13, 16, 16).astype(
+                np.float32
+            ),  # MicroCivEncoder.TOTAL_CHANNELS
             "action": np.array([6, 9]),
             "policy": np.random.dirichlet(np.ones(100)).astype(np.float32),
             "reward": 1.0,
@@ -404,4 +405,3 @@ def sample_trajectory_data() -> list[dict]:
             "turn": 3,
         },
     ]
-

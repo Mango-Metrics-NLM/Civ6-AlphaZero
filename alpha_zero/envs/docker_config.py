@@ -47,9 +47,7 @@ def _get_env_int(name: str, default: int) -> int:
     try:
         return int(value)
     except ValueError:
-        logger.warning(
-            "Invalid integer for %s: %r, using default %d", name, value, default
-        )
+        logger.warning("Invalid integer for %s: %r, using default %d", name, value, default)
         return default
 
 
@@ -61,9 +59,7 @@ def _get_env_float(name: str, default: float) -> float:
     try:
         return float(value)
     except ValueError:
-        logger.warning(
-            "Invalid float for %s: %r, using default %f", name, value, default
-        )
+        logger.warning("Invalid float for %s: %r, using default %f", name, value, default)
         return default
 
 
@@ -92,23 +88,15 @@ class DockerConnectionConfig:
     """
 
     # Connection endpoints - use factory defaults to read env vars at instantiation
-    host: str = field(
-        default_factory=lambda: _get_env_str("CIVREALM_HOST", "localhost")
-    )
-    port: int = field(
-        default_factory=lambda: _get_env_int("CIVREALM_PORT", 6300)
-    )
-    client_port: int = field(
-        default_factory=lambda: _get_env_int("CIVREALM_CLIENT_PORT", 6001)
-    )
+    host: str = field(default_factory=lambda: _get_env_str("CIVREALM_HOST", "localhost"))
+    port: int = field(default_factory=lambda: _get_env_int("CIVREALM_PORT", 6300))
+    client_port: int = field(default_factory=lambda: _get_env_int("CIVREALM_CLIENT_PORT", 6001))
 
     # Timeout and retry settings
     connection_timeout_s: float = field(
         default_factory=lambda: _get_env_float("CIVREALM_TIMEOUT_S", 30.0)
     )
-    retry_count: int = field(
-        default_factory=lambda: _get_env_int("CIVREALM_RETRY_COUNT", 3)
-    )
+    retry_count: int = field(default_factory=lambda: _get_env_int("CIVREALM_RETRY_COUNT", 3))
     retry_delay_s: float = field(
         default_factory=lambda: _get_env_float("CIVREALM_RETRY_DELAY_S", 2.0)
     )
@@ -149,7 +137,7 @@ class DockerConnectionConfig:
         Returns:
             Delay in seconds for this attempt.
         """
-        delay = self.retry_delay_s * (2 ** attempt)
+        delay = self.retry_delay_s * (2**attempt)
         return min(delay, self.max_backoff_s)
 
     def to_dict(self) -> dict[str, Any]:

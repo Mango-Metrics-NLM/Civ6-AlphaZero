@@ -455,7 +455,7 @@ class FileBridge:
         """
         base_delay = self.config.retry_delay_s
         # Exponential backoff with cap at 60 seconds
-        delay = base_delay * (2 ** attempt)
+        delay = base_delay * (2**attempt)
         return min(delay, 60.0)
 
     async def send_and_wait(

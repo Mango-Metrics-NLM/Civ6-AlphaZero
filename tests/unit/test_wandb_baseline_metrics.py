@@ -132,9 +132,7 @@ class TestWandbBaselineLogging:
         # Should not raise and should not call wandb
         disabled_logger.log_baseline_evaluation(results, iteration=100)
 
-    def test_log_baseline_evaluation_empty_results(
-        self, enabled_logger, mock_wandb
-    ):
+    def test_log_baseline_evaluation_empty_results(self, enabled_logger, mock_wandb):
         """Should handle empty results dictionary."""
         enabled_logger.log_baseline_evaluation({}, iteration=100)
 
@@ -215,9 +213,7 @@ class TestLogImitationTraining:
         logger._initialized = True
         return logger
 
-    def test_log_imitation_training_required_params(
-        self, enabled_logger, mock_wandb
-    ):
+    def test_log_imitation_training_required_params(self, enabled_logger, mock_wandb):
         """Should log with required parameters."""
         enabled_logger.log_imitation_training(
             epoch=1,
@@ -258,9 +254,7 @@ class TestLogImitationTraining:
         logger = WandbLogger(config)
 
         # Should not raise
-        logger.log_imitation_training(
-            epoch=1, loss=0.5, policy_loss=0.3, value_loss=0.2
-        )
+        logger.log_imitation_training(epoch=1, loss=0.5, policy_loss=0.3, value_loss=0.2)
 
 
 class TestDefineBaselineCharts:
@@ -282,18 +276,14 @@ class TestDefineBaselineCharts:
         logger._initialized = True
         return logger
 
-    def test_define_baseline_charts_calls_define_metric(
-        self, enabled_logger, mock_wandb
-    ):
+    def test_define_baseline_charts_calls_define_metric(self, enabled_logger, mock_wandb):
         """Should call define_metric for all expected metrics."""
         enabled_logger.define_baseline_charts()
 
         # Verify define_metric was called multiple times
         assert mock_wandb.define_metric.call_count >= 10
 
-    def test_define_baseline_charts_defines_iteration(
-        self, enabled_logger, mock_wandb
-    ):
+    def test_define_baseline_charts_defines_iteration(self, enabled_logger, mock_wandb):
         """Should define iteration as a metric."""
         enabled_logger.define_baseline_charts()
 
@@ -302,9 +292,7 @@ class TestDefineBaselineCharts:
         iteration_calls = [c for c in calls if c[0][0] == "iteration"]
         assert len(iteration_calls) >= 1
 
-    def test_define_baseline_charts_opponent_metrics(
-        self, enabled_logger, mock_wandb
-    ):
+    def test_define_baseline_charts_opponent_metrics(self, enabled_logger, mock_wandb):
         """Should define metrics for each opponent type."""
         enabled_logger.define_baseline_charts()
 
@@ -334,9 +322,7 @@ class TestDefineBaselineCharts:
 
         mock_wandb.define_metric.assert_not_called()
 
-    def test_define_baseline_charts_handles_exception(
-        self, enabled_logger, mock_wandb
-    ):
+    def test_define_baseline_charts_handles_exception(self, enabled_logger, mock_wandb):
         """Should handle exceptions gracefully."""
         mock_wandb.define_metric.side_effect = Exception("WandB error")
 
@@ -386,9 +372,7 @@ class TestIntegrationWithEvaluationPipeline:
         # Simulate win rate improving over training
         for iteration in [10, 20, 30]:
             wins = iteration // 10 * 3  # 3, 6, 9 wins
-            win_rate = WinRateResult(
-                wins=wins, losses=10 - wins, draws=0, total_games=10
-            )
+            win_rate = WinRateResult(wins=wins, losses=10 - wins, draws=0, total_games=10)
             result = EvaluationResult(
                 win_rate=win_rate,
                 game_results=[],
@@ -425,9 +409,7 @@ class TestDisabledLoggerNoOps:
 
     def test_log_imitation_training_noop(self, disabled_logger):
         """log_imitation_training should be a no-op when disabled."""
-        disabled_logger.log_imitation_training(
-            epoch=1, loss=0.5, policy_loss=0.3, value_loss=0.2
-        )
+        disabled_logger.log_imitation_training(epoch=1, loss=0.5, policy_loss=0.3, value_loss=0.2)
 
     def test_define_baseline_charts_noop(self, disabled_logger):
         """define_baseline_charts should be a no-op when disabled."""

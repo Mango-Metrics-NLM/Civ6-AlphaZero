@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import time
-from unittest import mock
 
 import pytest
 
 from alpha_zero.cloud.config import CloudConfig
-from alpha_zero.cloud.gcp.vertex import VertexAITrainer, VertexJobConfig, JobStatus
+from alpha_zero.cloud.gcp.vertex import JobStatus, VertexAITrainer, VertexJobConfig
 
 
 @pytest.fixture
@@ -36,7 +35,7 @@ class TestVertexJobConfig:
     def test_default_values(self) -> None:
         """Test default configuration values."""
         config = VertexJobConfig(display_name="test-job")
-        
+
         assert config.display_name == "test-job"
         assert config.machine_type == "n1-standard-8"
         assert config.accelerator_type == "NVIDIA_TESLA_T4"
@@ -51,7 +50,7 @@ class TestVertexJobConfig:
             script_path="train.py",
             args=["--epochs", "100"],
         )
-        
+
         assert job_config.display_name == "training-v1"
         assert job_config.script_path == "train.py"
         assert job_config.args == ["--epochs", "100"]
@@ -72,7 +71,7 @@ class TestVertexJobConfig:
             environment_variables={"DEBUG": "1"},
             labels={"env": "test"},
         )
-        
+
         assert config.machine_type == "n1-highmem-16"
         assert config.accelerator_type == "NVIDIA_TESLA_A100"
         assert config.accelerator_count == 8
@@ -88,7 +87,7 @@ class TestVertexAITrainerInit:
     def test_mock_initialization(self, cloud_config: CloudConfig) -> None:
         """Test mock trainer initialization."""
         trainer = VertexAITrainer(cloud_config, force_mock=True)
-        
+
         assert trainer.is_mock is True
         assert trainer.config == cloud_config
 
@@ -107,21 +106,21 @@ class TestVertexAIJobSubmission:
             display_name="test-training",
             script_path="train.py",
         )
-        
+
         job_id = mock_trainer.submit_training_job(job_config)
-        
+
         assert job_id is not None
         assert "customJobs" in job_id
 
     def test_submit_multiple_jobs(self, mock_trainer: VertexAITrainer) -> None:
         """Test submitting multiple jobs."""
         job_ids = []
-        
+
         for i in range(3):
             job_config = VertexJobConfig(display_name=f"job-{i}")
             job_id = mock_trainer.submit_training_job(job_config)
             job_ids.append(job_id)
-        
+
         # All job IDs should be unique
         assert len(set(job_ids)) == 3
 
@@ -133,10 +132,10 @@ class TestVertexAIJobStatus:
         """Test getting status of pending job."""
         job_config = VertexJobConfig(display_name="status-test")
         job_id = mock_trainer.submit_training_job(job_config)
-        
+
         # Status should eventually progress (mock simulates this)
         status = mock_trainer.get_job_status(job_id)
-        
+
         assert status in [JobStatus.PENDING, JobStatus.RUNNING, JobStatus.SUCCEEDED]
 
     def test_get_job_status_unknown(self, mock_trainer: VertexAITrainer) -> None:
@@ -148,10 +147,10 @@ class TestVertexAIJobStatus:
         """Test that mock job eventually succeeds."""
         job_config = VertexJobConfig(display_name="progress-test")
         job_id = mock_trainer.submit_training_job(job_config)
-        
+
         # Wait a bit for mock to progress
         time.sleep(0.6)
-        
+
         status = mock_trainer.get_job_status(job_id)
         assert status == JobStatus.SUCCEEDED
 
@@ -163,10 +162,10 @@ class TestVertexAIJobControl:
         """Test cancelling a job."""
         job_config = VertexJobConfig(display_name="cancel-test")
         job_id = mock_trainer.submit_training_job(job_config)
-        
+
         result = mock_trainer.cancel_job(job_id)
         assert result is True
-        
+
         status = mock_trainer.get_job_status(job_id)
         assert status == JobStatus.CANCELLED
 
@@ -181,7 +180,7 @@ class TestVertexAIJobControl:
         for i in range(3):
             job_config = VertexJobConfig(display_name=f"list-test-{i}")
             mock_trainer.submit_training_job(job_config)
-        
+
         jobs = mock_trainer.list_jobs()
         assert len(jobs) >= 3
 
@@ -190,9 +189,9 @@ class TestVertexAIJobControl:
         # Submit jobs with different names
         mock_trainer.submit_training_job(VertexJobConfig(display_name="alpha-job"))
         mock_trainer.submit_training_job(VertexJobConfig(display_name="beta-job"))
-        
+
         alpha_jobs = mock_trainer.list_jobs(filter_display_name="alpha")
-        
+
         # Should only find alpha jobs
         assert len(alpha_jobs) >= 1
         for job_id in alpha_jobs:
@@ -206,27 +205,27 @@ class TestVertexAIWaitForCompletion:
         """Test waiting for job completion."""
         job_config = VertexJobConfig(display_name="wait-test")
         job_id = mock_trainer.submit_training_job(job_config)
-        
+
         # Mock job should complete quickly
         status = mock_trainer.wait_for_completion(
             job_id,
             timeout=5.0,
             poll_interval=0.1,
         )
-        
+
         assert status == JobStatus.SUCCEEDED
 
     def test_wait_for_cancelled_job(self, mock_trainer: VertexAITrainer) -> None:
         """Test waiting for cancelled job."""
         job_config = VertexJobConfig(display_name="cancel-wait-test")
         job_id = mock_trainer.submit_training_job(job_config)
-        
+
         mock_trainer.cancel_job(job_id)
-        
+
         status = mock_trainer.wait_for_completion(
             job_id,
             timeout=1.0,
             poll_interval=0.1,
         )
-        
+
         assert status == JobStatus.CANCELLED

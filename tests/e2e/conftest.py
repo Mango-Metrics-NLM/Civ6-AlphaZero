@@ -50,7 +50,11 @@ def _get_gcp_environment_info() -> dict[str, Any]:
     else:
         # Check for ADC
         if os.name == "nt":
-            adc_path = Path(os.environ.get("APPDATA", "")) / "gcloud" / "application_default_credentials.json"
+            adc_path = (
+                Path(os.environ.get("APPDATA", ""))
+                / "gcloud"
+                / "application_default_credentials.json"
+            )
         else:
             adc_path = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
         info["credentials"] = "ADC" if adc_path.exists() else "NONE"
@@ -91,9 +95,7 @@ def e2e_cloud_config() -> CloudConfig:
     bucket_name = os.environ.get("GCS_BUCKET_NAME", "")
 
     if not project_id or not bucket_name:
-        pytest.skip(
-            "E2E tests require GCP_PROJECT_ID and GCS_BUCKET_NAME environment variables"
-        )
+        pytest.skip("E2E tests require GCP_PROJECT_ID and GCS_BUCKET_NAME environment variables")
 
     config = CloudConfig.from_env()
     config.validate()
@@ -258,22 +260,12 @@ def retry_helper() -> RetryHelper:
 
 def pytest_configure(config: pytest.Config) -> None:
     """Register custom markers for E2E tests."""
+    config.addinivalue_line("markers", "requires_gcs: marks tests requiring GCS access")
+    config.addinivalue_line("markers", "requires_vertex: marks tests requiring Vertex AI access")
     config.addinivalue_line(
-        "markers",
-        "requires_gcs: marks tests requiring GCS access"
+        "markers", "requires_logging: marks tests requiring Cloud Logging access"
     )
-    config.addinivalue_line(
-        "markers",
-        "requires_vertex: marks tests requiring Vertex AI access"
-    )
-    config.addinivalue_line(
-        "markers",
-        "requires_logging: marks tests requiring Cloud Logging access"
-    )
-    config.addinivalue_line(
-        "markers",
-        "slow: marks tests as slow (>30s)"
-    )
+    config.addinivalue_line("markers", "slow: marks tests as slow (>30s)")
 
 
 # =============================================================================

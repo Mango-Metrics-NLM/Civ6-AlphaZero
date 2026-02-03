@@ -955,14 +955,18 @@ def compute_muzero_trajectory_loss(
     reward_loss = torch.stack(reward_loss_list).sum() if reward_loss_list else torch.tensor(0.0)
 
     # Consistency loss (only if any step has it)
-    consistency_loss_list = [s.consistency_loss for s in step_losses if s.consistency_loss is not None]
+    consistency_loss_list = [
+        s.consistency_loss for s in step_losses if s.consistency_loss is not None
+    ]
     consistency_loss = torch.stack(consistency_loss_list).sum() if consistency_loss_list else None
 
     # Value prefix loss (only if any step has it)
     value_prefix_loss_list = [
         s.value_prefix_loss for s in step_losses if s.value_prefix_loss is not None
     ]
-    value_prefix_loss = torch.stack(value_prefix_loss_list).sum() if value_prefix_loss_list else None
+    value_prefix_loss = (
+        torch.stack(value_prefix_loss_list).sum() if value_prefix_loss_list else None
+    )
 
     logger.info(
         "Trajectory loss computed: total=%f, policy=%f, value=%f, reward=%f",

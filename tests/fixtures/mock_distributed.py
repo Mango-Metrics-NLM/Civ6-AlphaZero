@@ -7,11 +7,11 @@ enabling unit and integration testing without actual distributed setup.
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Generator
-from unittest.mock import MagicMock, patch
+from typing import TYPE_CHECKING, Any
+from unittest.mock import patch
 
 if TYPE_CHECKING:
     import torch
@@ -127,7 +127,7 @@ class MockDistributedBackend:
 
     def all_reduce(
         self,
-        tensor: "torch.Tensor",
+        tensor: torch.Tensor,
         op: Any = None,
         **kwargs: Any,
     ) -> None:
@@ -146,7 +146,7 @@ class MockDistributedBackend:
 
     def broadcast(
         self,
-        tensor: "torch.Tensor",
+        tensor: torch.Tensor,
         src: int = 0,
         **kwargs: Any,
     ) -> None:
@@ -160,7 +160,7 @@ class MockDistributedBackend:
 
     def reduce(
         self,
-        tensor: "torch.Tensor",
+        tensor: torch.Tensor,
         dst: int = 0,
         op: Any = None,
         **kwargs: Any,
@@ -178,8 +178,8 @@ class MockDistributedBackend:
 
     def gather(
         self,
-        tensor: "torch.Tensor",
-        gather_list: list["torch.Tensor"] | None = None,
+        tensor: torch.Tensor,
+        gather_list: list[torch.Tensor] | None = None,
         dst: int = 0,
         **kwargs: Any,
     ) -> None:
@@ -187,7 +187,7 @@ class MockDistributedBackend:
         self.state.gather_count += 1
         if self.state.rank == dst and gather_list is not None:
             # Fill gather_list with copies of the input tensor
-            for i, t in enumerate(gather_list):
+            for _i, t in enumerate(gather_list):
                 t.copy_(tensor)
         logger.debug(
             "Mock gather called to dst=%d (count=%d)",
@@ -205,7 +205,7 @@ class MockDistributedBackend:
         logger.debug("Mock operation counts reset")
 
     @contextmanager
-    def patch(self) -> Generator["MockDistributedBackend", None, None]:
+    def patch(self) -> Generator[MockDistributedBackend, None, None]:
         """Context manager to patch torch.distributed with this mock.
 
         Yields:
@@ -269,12 +269,12 @@ class MockDDPWrapper:
         """Forward pass through the wrapped module."""
         return self.module(*args, **kwargs)
 
-    def train(self, mode: bool = True) -> "MockDDPWrapper":
+    def train(self, mode: bool = True) -> MockDDPWrapper:
         """Set training mode."""
         self.module.train(mode)
         return self
 
-    def eval(self) -> "MockDDPWrapper":
+    def eval(self) -> MockDDPWrapper:
         """Set evaluation mode."""
         self.module.eval()
         return self
@@ -305,7 +305,7 @@ def mock_ddp_context(
     Args:
         world_size: Simulated world size.
         rank: Simulated rank.
-        ddp_module_path: Optional path to patch DDP at (e.g., 
+        ddp_module_path: Optional path to patch DDP at (e.g.,
             'alpha_zero.distributed.ddp_learner.DDP'). If not provided,
             patches 'torch.nn.parallel.DistributedDataParallel'.
 
@@ -326,4 +326,3 @@ def mock_ddp_context(
     with backend.patch():
         with patch(ddp_patch_target, MockDDPWrapper):
             yield backend
-

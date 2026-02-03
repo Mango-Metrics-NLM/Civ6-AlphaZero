@@ -685,9 +685,7 @@ class MicroCivActionSpace:
         unit_names = ["warrior", "settler", "archer"]
         return {"type": "produce", "city_idx": city_idx, "unit_type": unit_names[unit_type]}
 
-    def validate_action(
-        self, action_idx: int, game_state: dict[str, Any]
-    ) -> tuple[bool, str]:
+    def validate_action(self, action_idx: int, game_state: dict[str, Any]) -> tuple[bool, str]:
         """Validate that an action index is valid for the current game state.
 
         This method checks that the decoded action refers to valid entities
@@ -716,8 +714,7 @@ class MicroCivActionSpace:
 
             # Count player's own units
             own_units = [
-                u for u in game_state.get("units", [])
-                if u.get("player") == current_player
+                u for u in game_state.get("units", []) if u.get("player") == current_player
             ]
 
             if unit_idx < 0:
@@ -734,8 +731,7 @@ class MicroCivActionSpace:
 
             # Count player's own cities
             own_cities = [
-                c for c in game_state.get("cities", [])
-                if c.get("player") == current_player
+                c for c in game_state.get("cities", []) if c.get("player") == current_player
             ]
 
             if city_idx < 0:

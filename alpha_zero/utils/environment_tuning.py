@@ -289,7 +289,12 @@ class EarlyTerminationChecker:
             return True, 1, "player_eliminated"
 
         # Both have no cities AND no units - mutual elimination (draw)
-        if player_cities == 0 and opponent_cities == 0 and player_units == 0 and opponent_units == 0:
+        if (
+            player_cities == 0
+            and opponent_cities == 0
+            and player_units == 0
+            and opponent_units == 0
+        ):
             self._logger.debug(
                 f"Early termination: mutual elimination at turn {turn}",
             )

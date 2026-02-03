@@ -102,12 +102,8 @@ class PreemptionHandler(PreemptionHandlerProtocol):
 
         # Install signal handlers
         try:
-            self._original_sigterm = signal.signal(
-                signal.SIGTERM, self._signal_handler
-            )
-            self._original_sigint = signal.signal(
-                signal.SIGINT, self._signal_handler
-            )
+            self._original_sigterm = signal.signal(signal.SIGTERM, self._signal_handler)
+            self._original_sigint = signal.signal(signal.SIGINT, self._signal_handler)
         except ValueError:
             # Signal handlers can only be set from main thread
             logger.warning("Cannot set signal handlers from non-main thread")

@@ -199,8 +199,9 @@ class GCSCheckpointManager(CloudStorageProtocol):
             raise CloudConfigError("bucket_name is required for GCS storage")
 
         if self._use_mock:
-            logger.info("Using mock GCS client (force_mock=%s, SDK available=%s)",
-                       force_mock, GCS_AVAILABLE)
+            logger.info(
+                "Using mock GCS client (force_mock=%s, SDK available=%s)", force_mock, GCS_AVAILABLE
+            )
             self._client: Any = MockGCSClient()
             self._bucket = self._client.bucket(config.bucket_name or "mock-bucket")
         else:
@@ -294,8 +295,12 @@ class GCSCheckpointManager(CloudStorageProtocol):
             blob = self._bucket.blob(remote_key)
             blob.download_to_filename(str(local_path))
 
-            logger.info("Downloaded checkpoint: gs://%s/%s -> %s",
-                       self.config.bucket_name, remote_key, local_path)
+            logger.info(
+                "Downloaded checkpoint: gs://%s/%s -> %s",
+                self.config.bucket_name,
+                remote_key,
+                local_path,
+            )
             return local_path
 
         except (KeyError, NotFound) as e:
@@ -332,7 +337,9 @@ class GCSCheckpointManager(CloudStorageProtocol):
             prefix = self.config.checkpoint_prefix
 
         try:
-            logger.debug("Listing checkpoints with prefix='%s', max_results=%d", prefix, max_results)
+            logger.debug(
+                "Listing checkpoints with prefix='%s', max_results=%d", prefix, max_results
+            )
             blobs = self._bucket.list_blobs(prefix=prefix, max_results=max_results)
             result = [blob.name for blob in blobs]
             logger.debug("Listed %d checkpoints with prefix '%s'", len(result), prefix)

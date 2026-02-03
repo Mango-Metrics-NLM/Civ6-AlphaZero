@@ -8,7 +8,6 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
-import yaml
 
 from alpha_zero.cloud.config import CloudConfig
 from alpha_zero.cloud.exceptions import CloudConfigError
@@ -20,7 +19,7 @@ class TestCloudConfigDefaults:
     def test_default_initialization(self) -> None:
         """Test default values are set correctly."""
         config = CloudConfig()
-        
+
         assert config.project_id == ""
         assert config.region == "us-central1"
         assert config.bucket_name == ""
@@ -39,7 +38,7 @@ class TestCloudConfigDefaults:
             use_spot=False,
             accelerator_count=4,
         )
-        
+
         assert config.project_id == "my-project"
         assert config.region == "europe-west1"
         assert config.bucket_name == "my-bucket"
@@ -52,7 +51,7 @@ class TestCloudConfigDefaults:
             checkpoint_prefix="checkpoints",  # Missing trailing slash
             artifact_prefix="artifacts",  # Missing trailing slash
         )
-        
+
         assert config.checkpoint_prefix == "checkpoints/"
         assert config.artifact_prefix == "artifacts/"
 
@@ -67,10 +66,10 @@ class TestCloudConfigFromEnv:
             "GCP_REGION": "us-west1",
             "GCS_BUCKET_NAME": "test-bucket",
         }
-        
+
         with mock.patch.dict(os.environ, env_vars, clear=False):
             config = CloudConfig.from_env()
-            
+
         assert config.project_id == "test-project"
         assert config.region == "us-west1"
         assert config.bucket_name == "test-bucket"
@@ -84,10 +83,10 @@ class TestCloudConfigFromEnv:
             "CIV6AZ_ACCELERATOR_COUNT": "8",
             "CIV6AZ_PREEMPTION_CHECK_INTERVAL": "10.5",
         }
-        
+
         with mock.patch.dict(os.environ, env_vars, clear=False):
             config = CloudConfig.from_env()
-            
+
         assert config.project_id == "test-project"
         assert config.enable_cloud_logging is False
         assert config.use_spot is False
@@ -98,7 +97,7 @@ class TestCloudConfigFromEnv:
         """Test that missing env vars result in defaults."""
         with mock.patch.dict(os.environ, {}, clear=True):
             config = CloudConfig.from_env()
-            
+
         assert config.project_id == ""
         assert config.region == "us-central1"
 
@@ -115,13 +114,13 @@ class TestCloudConfigFromYaml:
         use_spot: false
         accelerator_count: 2
         """
-        
+
         with tempfile.TemporaryDirectory() as tmpdir:
             yaml_path = Path(tmpdir) / "config.yaml"
             yaml_path.write_text(yaml_content)
-            
+
             config = CloudConfig.from_yaml(str(yaml_path))
-            
+
             assert config.project_id == "yaml-project"
             assert config.region == "asia-east1"
             assert config.bucket_name == "yaml-bucket"
@@ -136,11 +135,11 @@ class TestCloudConfigFromYaml:
             project_id: nested-project
             region: us-central1
         """
-        
+
         with tempfile.TemporaryDirectory() as tmpdir:
             yaml_path = Path(tmpdir) / "nested.yaml"
             yaml_path.write_text(yaml_content)
-            
+
             config = CloudConfig.from_yaml(str(yaml_path))
             assert config.project_id == "nested-project"
 
@@ -154,7 +153,7 @@ class TestCloudConfigFromYaml:
         with tempfile.TemporaryDirectory() as tmpdir:
             yaml_path = Path(tmpdir) / "invalid.yaml"
             yaml_path.write_text("invalid: yaml: [broken")
-            
+
             with pytest.raises(CloudConfigError, match="Failed to parse"):
                 CloudConfig.from_yaml(str(yaml_path))
 
@@ -171,21 +170,21 @@ class TestCloudConfigValidation:
             use_spot=True,
             max_run_duration_seconds=3600,
         )
-        
+
         # Should not raise
         config.validate()
 
     def test_validate_missing_project(self) -> None:
         """Test validation fails when project_id is missing."""
         config = CloudConfig()
-        
+
         with pytest.raises(CloudConfigError, match="project_id is required"):
             config.validate(require_project=True)
 
     def test_validate_optional_project(self) -> None:
         """Test validation passes when project_id is optional."""
         config = CloudConfig()
-        
+
         # Should not raise
         config.validate(require_project=False)
 
@@ -196,7 +195,7 @@ class TestCloudConfigValidation:
             use_spot=True,
             max_run_duration_seconds=30,  # Too short
         )
-        
+
         with pytest.raises(CloudConfigError, match="at least 60"):
             config.validate()
 
@@ -206,7 +205,7 @@ class TestCloudConfigValidation:
             project_id="test",
             accelerator_count=-1,
         )
-        
+
         with pytest.raises(CloudConfigError, match="non-negative"):
             config.validate()
 
@@ -216,7 +215,7 @@ class TestCloudConfigValidation:
             project_id="test",
             replica_count=0,
         )
-        
+
         with pytest.raises(CloudConfigError, match="at least 1"):
             config.validate()
 
@@ -230,14 +229,14 @@ class TestCloudConfigHelpers:
             bucket_name="my-bucket",
             checkpoint_prefix="checkpoints/",
         )
-        
+
         uri = config.get_checkpoint_uri("model_v1.pt")
         assert uri == "gs://my-bucket/checkpoints/model_v1.pt"
 
     def test_get_checkpoint_uri_no_bucket(self) -> None:
         """Test checkpoint URI fails without bucket."""
         config = CloudConfig()
-        
+
         with pytest.raises(CloudConfigError, match="bucket_name is required"):
             config.get_checkpoint_uri("model.pt")
 
@@ -247,7 +246,7 @@ class TestCloudConfigHelpers:
             bucket_name="my-bucket",
             artifact_prefix="artifacts/",
         )
-        
+
         uri = config.get_artifact_uri("logs.json")
         assert uri == "gs://my-bucket/artifacts/logs.json"
 
@@ -258,9 +257,9 @@ class TestCloudConfigHelpers:
             region="us-west1",
             bucket_name="test-bucket",
         )
-        
+
         data = config.to_dict()
-        
+
         assert data["project_id"] == "test-project"
         assert data["region"] == "us-west1"
         assert data["bucket_name"] == "test-bucket"
