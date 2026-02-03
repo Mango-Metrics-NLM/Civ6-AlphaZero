@@ -328,6 +328,47 @@ class FileBridge:
             self.stats.errors += 1
             return False
 
+    async def send_command_with_retry(
+        self,
+        command: CommandMessage,
+        max_retries: int | None = None,
+    ) -> bool:
+        """Send a command to the game with retry logic.
+
+        Implements exponential backoff retry for transient I/O failures.
+
+        Args:
+            command: CommandMessage to send.
+            max_retries: Maximum retry attempts. Uses config.max_retries if None.
+
+        Returns:
+            True if command was written successfully after retries.
+        """
+        retries = max_retries if max_retries is not None else self.config.max_retries
+
+        for attempt in range(retries):
+            success = await self.send_command(command)
+            if success:
+                return True
+
+            if attempt < retries - 1:
+                delay = self._get_retry_delay(attempt)
+                logger.warning(
+                    "Send command failed (attempt %d/%d), retrying in %.1fs",
+                    attempt + 1,
+                    retries,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+                self.stats.reconnects += 1
+
+        logger.error(
+            "All %d send attempts failed for msg_id=%d",
+            retries,
+            command.msg_id,
+        )
+        return False
+
     async def wait_for_ack(
         self,
         msg_id: int,
@@ -403,6 +444,20 @@ class FileBridge:
             logger.error(f"Error polling ack: {e}")
             return None
 
+    def _get_retry_delay(self, attempt: int) -> float:
+        """Calculate retry delay with exponential backoff.
+
+        Args:
+            attempt: Current retry attempt (0-indexed).
+
+        Returns:
+            Delay in seconds for this attempt.
+        """
+        base_delay = self.config.retry_delay_s
+        # Exponential backoff with cap at 60 seconds
+        delay = base_delay * (2**attempt)
+        return min(delay, 60.0)
+
     async def send_and_wait(
         self,
         command: CommandMessage,
@@ -426,6 +481,82 @@ class FileBridge:
             raise FileBridgeError("Failed to send command", ErrorCode.FILE_IO_ERROR)
 
         return await self.wait_for_ack(command.msg_id, timeout)
+
+    async def send_and_wait_with_retry(
+        self,
+        command: CommandMessage,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+    ) -> AckMessage:
+        """Send a command and wait for acknowledgment with retry logic.
+
+        Implements exponential backoff retry strategy for transient failures.
+        Uses configuration values for max_retries and retry_delay_s if not
+        explicitly provided.
+
+        Args:
+            command: CommandMessage to send.
+            timeout: Maximum time to wait for ack per attempt.
+            max_retries: Maximum retry attempts. Uses config.max_retries if None.
+
+        Returns:
+            The acknowledgment message.
+
+        Raises:
+            FileBridgeError: If all retries exhausted.
+            AckTimeoutError: If final attempt times out.
+        """
+        retries = max_retries if max_retries is not None else self.config.max_retries
+        last_error: Exception | None = None
+
+        for attempt in range(retries):
+            try:
+                return await self.send_and_wait(command, timeout)
+
+            except AckTimeoutError as e:
+                last_error = e
+                self.stats.errors += 1
+
+                if attempt < retries - 1:
+                    delay = self._get_retry_delay(attempt)
+                    logger.warning(
+                        "Command timed out (attempt %d/%d), retrying in %.1fs: msg_id=%d",
+                        attempt + 1,
+                        retries,
+                        delay,
+                        command.msg_id,
+                    )
+                    await asyncio.sleep(delay)
+                    self.stats.reconnects += 1
+
+            except FileBridgeError as e:
+                last_error = e
+                self.stats.errors += 1
+
+                if attempt < retries - 1:
+                    delay = self._get_retry_delay(attempt)
+                    logger.warning(
+                        "Command failed (attempt %d/%d), retrying in %.1fs: %s",
+                        attempt + 1,
+                        retries,
+                        delay,
+                        str(e),
+                    )
+                    await asyncio.sleep(delay)
+                    self.stats.reconnects += 1
+
+        # All retries exhausted
+        logger.error(
+            "All %d retry attempts exhausted for msg_id=%d",
+            retries,
+            command.msg_id,
+        )
+        if last_error is not None:
+            raise last_error
+        raise FileBridgeError(
+            f"All {retries} retry attempts failed",
+            ErrorCode.TIMEOUT,
+        )
 
     def read_errors(self) -> list[ErrorMessage]:
         """Read error messages from the errors file.

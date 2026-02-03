@@ -4,14 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alpha_zero"
-version = "0.1.0"
+version = "0.2.0"
 description = "AlphaZero-based AI for Civilization VI"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
-    "torch>=1.13.0",
+    "torch>=2.0.0",
     "numpy>=1.23.0",
     "gymnasium>=0.29.0",
     "pyyaml>=6.0",
+    "tqdm>=4.65.0",
 ]
 
 [project.optional-dependencies]
@@ -25,9 +26,10 @@ dev = [
     "types-PyYAML>=6.0.0",
 ]
 gcp = [
-    "google-cloud-aiplatform>=1.38.0",
-    "google-cloud-storage>=2.10.0",
+    "google-cloud-aiplatform>=1.40.0",
+    "google-cloud-storage>=2.14.0",
     "google-cloud-logging>=3.5.0",
+    "google-auth>=2.25.0",
     "grpcio>=1.50.0",
 ]
 distributed = [
@@ -42,7 +44,7 @@ all = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "C4", "UP", "N", "ANN", "S", "RUF"]
@@ -83,6 +85,11 @@ disallow_incomplete_defs = true
 module = "tests.*"
 disallow_untyped_defs = false
 
+[tool.pyright]
+pythonVersion = "3.11"
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
@@ -96,6 +103,7 @@ markers = [
     "requires_gcp: marks tests requiring GCP credentials",
     "requires_vertex_ai: marks tests requiring Vertex AI access",
     "requires_multi_gpu: marks tests requiring multiple GPUs",
+    "requires_distributed: marks tests requiring distributed training setup",
     "requires_cloud_env: marks tests requiring full cloud environment",
     "e2e: marks tests as end-to-end tests",
 ]
@@ -106,6 +114,8 @@ branch = true
 omit = [
     "*/tests/*",
     "*/__pycache__/*",
+    "*/__init__.py",
+    "*/conftest.py",
 ]
 
 [tool.coverage.report]
@@ -115,9 +125,11 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
+    "@abstractmethod",
 ]
 fail_under = 80
 show_missing = true
+skip_covered = false
 
 [tool.coverage.html]
 directory = "htmlcov"

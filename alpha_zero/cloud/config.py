@@ -1,56 +1,71 @@
-"""Cloud training configuration system.
+"""Cloud configuration for distributed training.
 
-This module provides configuration dataclasses for cloud training:
-- CloudConfig: Main cloud configuration
-- VertexConfig: Vertex AI job settings
+Provides:
+- CloudConfig: Main configuration dataclass for cloud settings
+- CloudProvider: Enum for cloud provider selection
+- CloudEnvironment: Enum for deployment environment
+- Environment-based configuration loading
+- YAML configuration loading
+- Validation for required settings
+
+All configuration values can be overridden via environment variables
+with the CIV6AZ_ prefix.
+
+Also provides nested config classes for Phase 3 cloud infrastructure:
 - GCSConfig: Google Cloud Storage settings
+- VertexConfig: Vertex AI job settings
 - PreemptionConfig: Preemption handling settings
-
-All values can be:
-- Loaded from YAML files
-- Overridden via environment variables (CIV6AZ_ prefix)
-- Set programmatically
-
-Usage:
-    from alpha_zero.cloud.config import CloudConfig
-
-    # Load from file
-    config = CloudConfig.from_yaml("configs/cloud_training.yaml")
-
-    # Load from environment
-    config = CloudConfig.from_env()
-
-    # Environment variable overrides
-    # CIV6AZ_CLOUD_PROJECT_ID=my-project will set cloud.project_id
+- CloudLoggingConfig: Cloud logging settings
+- CloudMonitoringConfig: Cloud monitoring settings
+- TrainingConfig: Training hyperparameters
 """
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
-import yaml
+import yaml  # type: ignore[import-untyped]
+
+from alpha_zero.cloud.exceptions import CloudConfigError
+
+logger = logging.getLogger(__name__)
 
 
-class CloudProvider(str, Enum):
+class CloudProvider(Enum):
     """Supported cloud providers."""
 
     GCP = "gcp"
-    AWS = "aws"
-    AZURE = "azure"
-    LOCAL = "local"
+    AWS = "aws"  # Future
+    AZURE = "azure"  # Future
+    LOCAL = "local"  # For testing
 
 
-class CloudEnvironment(str, Enum):
-    """Cloud environment types."""
+class CloudEnvironment(Enum):
+    """Deployment environments."""
 
-    DEVELOPMENT = "development"
+    DEVELOPMENT = "dev"
     STAGING = "staging"
-    PRODUCTION = "production"
+    PRODUCTION = "prod"
     TEST = "test"
+
+    @classmethod
+    def from_string(cls, value: str) -> CloudEnvironment:
+        """Create from string, case-insensitive."""
+        value_lower = value.lower()
+        for env in cls:
+            if env.value == value_lower or env.name.lower() == value_lower:
+                return env
+        raise ValueError(f"Unknown environment: {value}")
+
+
+# =============================================================================
+# Phase 3 Nested Configuration Classes
+# =============================================================================
 
 
 @dataclass
@@ -398,68 +413,165 @@ class TrainingConfig:
         )
 
 
+# =============================================================================
+# Main CloudConfig (Flat structure for backward compatibility)
+# =============================================================================
+
+
 @dataclass
 class CloudConfig:
-    """Main cloud training configuration.
-
-    Combines all cloud-related configuration:
-    - GCP project and region settings
-    - Vertex AI job configuration
-    - GCS storage configuration
-    - Preemption handling
-    - Cloud logging and monitoring
-    - Training parameters
+    """Configuration for cloud training infrastructure.
 
     Attributes:
-        provider: Cloud provider (gcp, aws, azure, local).
-        environment: Environment type (development, staging, production, test).
-        project_id: GCP project ID.
-        region: GCP region.
-        zone: GCP zone.
-        gcs: GCS storage configuration.
-        vertex: Vertex AI configuration.
-        preemption: Preemption handling configuration.
-        logging: Cloud logging configuration.
-        monitoring: Cloud monitoring configuration.
-        training: Training configuration.
-        labels: Custom labels for resources.
+        project_id: GCP project ID (from GCP_PROJECT_ID env var).
+        region: GCP region (from GCP_REGION env var, default us-central1).
+        zone: GCP zone (from GCP_ZONE env var, optional).
+        bucket_name: GCS bucket name (from GCS_BUCKET_NAME env var).
+        checkpoint_prefix: Prefix for checkpoint paths in bucket.
+        artifact_prefix: Prefix for training artifacts in bucket.
+        enable_cloud_logging: Whether to use Cloud Logging.
+        enable_cloud_monitoring: Whether to use Cloud Monitoring.
+        service_account: Service account email (optional, uses default if not set).
+        network: VPC network name for Vertex AI jobs.
+        machine_type: Default machine type for training.
+        accelerator_type: Default accelerator type (e.g., NVIDIA_TESLA_T4).
+        accelerator_count: Number of accelerators per machine.
+        use_spot: Whether to use spot/preemptible instances.
+        max_run_duration_seconds: Maximum job run duration.
     """
 
-    provider: str = CloudProvider.GCP.value
-    environment: str = CloudEnvironment.DEVELOPMENT.value
+    # Core GCP settings
     project_id: str = ""
     region: str = "us-central1"
-    zone: str = "us-central1-a"
+    zone: str = ""
+    bucket_name: str = ""
+
+    # Storage paths
+    checkpoint_prefix: str = "checkpoints/"
+    artifact_prefix: str = "artifacts/"
+
+    # Observability
+    enable_cloud_logging: bool = True
+    enable_cloud_monitoring: bool = True
+    log_level: str = "INFO"
+
+    # Authentication
+    service_account: str = ""
+
+    # Networking
+    network: str = ""
+    subnetwork: str = ""
+
+    # Compute configuration
+    machine_type: str = "n1-standard-8"
+    accelerator_type: str = "NVIDIA_TESLA_T4"
+    accelerator_count: int = 1
+    replica_count: int = 1
+
+    # Spot/preemptible settings
+    use_spot: bool = True
+    max_run_duration_seconds: int = 86400  # 24 hours
+
+    # Preemption handling
+    preemption_check_interval: float = 5.0
+    checkpoint_on_preemption: bool = True
+
+    # Additional custom settings
+    custom_labels: dict[str, str] = field(default_factory=dict)
+
+    # Phase 3 nested configs (optional)
     gcs: GCSConfig = field(default_factory=GCSConfig)
     vertex: VertexConfig = field(default_factory=VertexConfig)
     preemption: PreemptionConfig = field(default_factory=PreemptionConfig)
     logging: CloudLoggingConfig = field(default_factory=CloudLoggingConfig)
     monitoring: CloudMonitoringConfig = field(default_factory=CloudMonitoringConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
-    labels: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate configuration after initialization."""
+        # Normalize paths to use forward slashes
+        if self.checkpoint_prefix and not self.checkpoint_prefix.endswith("/"):
+            object.__setattr__(self, "checkpoint_prefix", self.checkpoint_prefix + "/")
+        if self.artifact_prefix and not self.artifact_prefix.endswith("/"):
+            object.__setattr__(self, "artifact_prefix", self.artifact_prefix + "/")
+
+        # Sync flat config to nested configs if bucket_name set but gcs not
+        if self.bucket_name and not self.gcs.bucket_name:
+            self.gcs = GCSConfig(
+                bucket_name=self.bucket_name,
+                checkpoint_prefix=self.checkpoint_prefix.rstrip("/"),
+                artifact_prefix=self.artifact_prefix.rstrip("/"),
+            )
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> CloudConfig:
-        """Create from dictionary."""
-        cloud_data = data.get("cloud", data)
-        return cls(
-            provider=str(cloud_data.get("provider", CloudProvider.GCP.value)),
-            environment=str(
-                cloud_data.get("environment", CloudEnvironment.DEVELOPMENT.value)
-            ),
-            project_id=str(cloud_data.get("project_id", "")),
-            region=str(cloud_data.get("region", "us-central1")),
-            zone=str(cloud_data.get("zone", "us-central1-a")),
-            gcs=GCSConfig.from_dict(cloud_data.get("gcs", {})),
-            vertex=VertexConfig.from_dict(cloud_data.get("vertex", {})),
-            preemption=PreemptionConfig.from_dict(cloud_data.get("preemption", {})),
-            logging=CloudLoggingConfig.from_dict(cloud_data.get("logging", {})),
-            monitoring=CloudMonitoringConfig.from_dict(
-                cloud_data.get("monitoring", {})
-            ),
-            training=TrainingConfig.from_dict(data.get("training", {})),
-            labels=dict(cloud_data.get("labels", {})),
-        )
+    def from_env(cls, prefix: str = "GCP_") -> CloudConfig:
+        """Load configuration from environment variables.
+
+        Loads settings from environment variables with the given prefix:
+        - GCP_PROJECT_ID -> project_id
+        - GCP_REGION -> region
+        - GCP_ZONE -> zone
+        - GCS_BUCKET_NAME -> bucket_name
+        - And CIV6AZ_ overrides for all other settings
+
+        Args:
+            prefix: Environment variable prefix (default: GCP_).
+
+        Returns:
+            CloudConfig instance with values from environment.
+        """
+        # Map environment variables to config fields
+        env_mapping = {
+            f"{prefix}PROJECT_ID": "project_id",
+            f"{prefix}REGION": "region",
+            f"{prefix}ZONE": "zone",
+            "GCS_BUCKET_NAME": "bucket_name",
+            "CIV6AZ_CHECKPOINT_PREFIX": "checkpoint_prefix",
+            "CIV6AZ_ARTIFACT_PREFIX": "artifact_prefix",
+            "CIV6AZ_ENABLE_CLOUD_LOGGING": "enable_cloud_logging",
+            "CIV6AZ_ENABLE_CLOUD_MONITORING": "enable_cloud_monitoring",
+            "CIV6AZ_LOG_LEVEL": "log_level",
+            f"{prefix}SERVICE_ACCOUNT": "service_account",
+            f"{prefix}NETWORK": "network",
+            f"{prefix}SUBNETWORK": "subnetwork",
+            "CIV6AZ_MACHINE_TYPE": "machine_type",
+            "CIV6AZ_ACCELERATOR_TYPE": "accelerator_type",
+            "CIV6AZ_ACCELERATOR_COUNT": "accelerator_count",
+            "CIV6AZ_REPLICA_COUNT": "replica_count",
+            "CIV6AZ_USE_SPOT": "use_spot",
+            "CIV6AZ_MAX_RUN_DURATION": "max_run_duration_seconds",
+            "CIV6AZ_PREEMPTION_CHECK_INTERVAL": "preemption_check_interval",
+        }
+
+        # Boolean fields that need conversion
+        bool_fields = {"enable_cloud_logging", "enable_cloud_monitoring", "use_spot"}
+        # Integer fields that need conversion
+        int_fields = {"accelerator_count", "replica_count", "max_run_duration_seconds"}
+        # Float fields that need conversion
+        float_fields = {"preemption_check_interval"}
+
+        kwargs: dict[str, Any] = {}
+        for env_var, field_name in env_mapping.items():
+            value = os.environ.get(env_var)
+            if value is not None:
+                if field_name in bool_fields:
+                    kwargs[field_name] = value.lower() in ("true", "1", "yes")
+                elif field_name in int_fields:
+                    kwargs[field_name] = int(value)
+                elif field_name in float_fields:
+                    kwargs[field_name] = float(value)
+                else:
+                    kwargs[field_name] = value
+
+        # Also load nested configs from environment
+        kwargs["gcs"] = GCSConfig.from_env()
+        kwargs["vertex"] = VertexConfig.from_env()
+        kwargs["preemption"] = PreemptionConfig.from_env()
+        kwargs["logging"] = CloudLoggingConfig.from_env()
+        kwargs["monitoring"] = CloudMonitoringConfig.from_env()
+        kwargs["training"] = TrainingConfig.from_env()
+
+        return cls(**kwargs)
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> CloudConfig:
@@ -472,174 +584,153 @@ class CloudConfig:
             CloudConfig instance.
 
         Raises:
-            FileNotFoundError: If config file doesn't exist.
-            yaml.YAMLError: If YAML parsing fails.
+            CloudConfigError: If file cannot be read or parsed.
         """
         path = Path(path)
         if not path.exists():
-            raise FileNotFoundError(f"Config file not found: {path}")
+            raise CloudConfigError(f"Configuration file not found: {path}")
 
-        with open(path) as f:
-            data = yaml.safe_load(f)
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        except yaml.YAMLError as e:
+            raise CloudConfigError(f"Failed to parse YAML: {path}", cause=e) from e
 
-        config = cls.from_dict(data)
+        # Extract cloud/gcp section if present
+        if "cloud" in data:
+            cloud_data = data["cloud"]
+        elif "gcp" in data:
+            cloud_data = data["gcp"]
+        else:
+            cloud_data = data
 
-        # Apply environment variable overrides
-        return config.apply_env_overrides()
+        # Filter to valid fields only (flat structure)
+        flat_fields = {
+            "project_id", "region", "zone", "bucket_name",
+            "checkpoint_prefix", "artifact_prefix",
+            "enable_cloud_logging", "enable_cloud_monitoring", "log_level",
+            "service_account", "network", "subnetwork",
+            "machine_type", "accelerator_type", "accelerator_count", "replica_count",
+            "use_spot", "max_run_duration_seconds",
+            "preemption_check_interval", "checkpoint_on_preemption",
+            "custom_labels",
+        }
+        kwargs = {k: v for k, v in cloud_data.items() if k in flat_fields}
 
-    @classmethod
-    def from_env(cls) -> CloudConfig:
-        """Create configuration from environment variables."""
-        return cls(
-            provider=os.environ.get("CIV6AZ_CLOUD_PROVIDER", CloudProvider.GCP.value),
-            environment=os.environ.get(
-                "CIV6AZ_CLOUD_ENVIRONMENT", CloudEnvironment.DEVELOPMENT.value
-            ),
-            project_id=os.environ.get("CIV6AZ_GCP_PROJECT_ID", ""),
-            region=os.environ.get("CIV6AZ_GCP_REGION", "us-central1"),
-            zone=os.environ.get("CIV6AZ_GCP_ZONE", "us-central1-a"),
-            gcs=GCSConfig.from_env(),
-            vertex=VertexConfig.from_env(),
-            preemption=PreemptionConfig.from_env(),
-            logging=CloudLoggingConfig.from_env(),
-            monitoring=CloudMonitoringConfig.from_env(),
-            training=TrainingConfig.from_env(),
-        )
+        # Load nested configs if present
+        if "gcs" in cloud_data:
+            kwargs["gcs"] = GCSConfig.from_dict(cloud_data["gcs"])
+        if "vertex" in cloud_data:
+            kwargs["vertex"] = VertexConfig.from_dict(cloud_data["vertex"])
+        if "preemption" in cloud_data:
+            kwargs["preemption"] = PreemptionConfig.from_dict(cloud_data["preemption"])
+        if "logging" in cloud_data:
+            kwargs["logging"] = CloudLoggingConfig.from_dict(cloud_data["logging"])
+        if "monitoring" in cloud_data:
+            kwargs["monitoring"] = CloudMonitoringConfig.from_dict(
+                cloud_data["monitoring"]
+            )
+        if "training" in data:
+            kwargs["training"] = TrainingConfig.from_dict(data["training"])
 
-    def apply_env_overrides(self) -> CloudConfig:
-        """Apply environment variable overrides to configuration.
+        return cls(**kwargs)
 
-        Environment variables follow the pattern:
-        CIV6AZ_<SECTION>_<FIELD>=value
+    def validate(self, require_project: bool = True) -> list[str]:
+        """Validate configuration settings.
 
-        Returns:
-            Updated CloudConfig with environment overrides applied.
-        """
-        # Override top-level fields
-        if "CIV6AZ_GCP_PROJECT_ID" in os.environ:
-            self.project_id = os.environ["CIV6AZ_GCP_PROJECT_ID"]
-        if "CIV6AZ_GCP_REGION" in os.environ:
-            self.region = os.environ["CIV6AZ_GCP_REGION"]
-        if "CIV6AZ_GCP_ZONE" in os.environ:
-            self.zone = os.environ["CIV6AZ_GCP_ZONE"]
-        if "CIV6AZ_CLOUD_PROVIDER" in os.environ:
-            self.provider = os.environ["CIV6AZ_CLOUD_PROVIDER"]
-        if "CIV6AZ_CLOUD_ENVIRONMENT" in os.environ:
-            self.environment = os.environ["CIV6AZ_CLOUD_ENVIRONMENT"]
-
-        # Override nested configs from environment
-        self.gcs = GCSConfig.from_env() if os.environ.get("CIV6AZ_GCS_BUCKET") else self.gcs
-        if os.environ.get("CIV6AZ_VERTEX_MACHINE_TYPE"):
-            self.vertex = VertexConfig.from_env()
-
-        return self
-
-    def validate(self) -> list[str]:
-        """Validate configuration and return list of issues.
+        Args:
+            require_project: Whether project_id is required.
 
         Returns:
             List of validation error messages (empty if valid).
         """
         issues: list[str] = []
 
-        if not self.project_id:
-            issues.append("project_id is required for GCP operations")
+        if require_project and not self.project_id:
+            issues.append(
+                "project_id is required. Set GCP_PROJECT_ID environment variable."
+            )
 
-        if not self.gcs.bucket_name:
-            issues.append("gcs.bucket_name is required for checkpoint storage")
+        if self.use_spot and self.max_run_duration_seconds < 60:
+            issues.append(
+                "max_run_duration_seconds must be at least 60 for spot instances"
+            )
 
-        if self.vertex.accelerator_count < 0:
-            issues.append("vertex.accelerator_count must be non-negative")
+        if self.accelerator_count < 0:
+            issues.append("accelerator_count must be non-negative")
 
-        if self.training.batch_size <= 0:
-            issues.append("training.batch_size must be positive")
-
-        if self.training.learning_rate <= 0:
-            issues.append("training.learning_rate must be positive")
+        if self.replica_count < 1:
+            issues.append("replica_count must be at least 1")
 
         return issues
 
-    def is_valid(self) -> bool:
+    def is_valid(self, require_project: bool = True) -> bool:
         """Check if configuration is valid.
+
+        Args:
+            require_project: Whether project_id is required.
 
         Returns:
             True if configuration is valid, False otherwise.
         """
-        return len(self.validate()) == 0
+        return len(self.validate(require_project=require_project)) == 0
+
+    def get_checkpoint_uri(self, checkpoint_name: str) -> str:
+        """Get full GCS URI for a checkpoint.
+
+        Args:
+            checkpoint_name: Name of the checkpoint file.
+
+        Returns:
+            Full gs:// URI for the checkpoint.
+        """
+        bucket = self.bucket_name or self.gcs.bucket_name
+        if not bucket:
+            raise CloudConfigError("bucket_name is required for checkpoint URIs")
+        prefix = self.checkpoint_prefix or self.gcs.checkpoint_prefix
+        return f"gs://{bucket}/{prefix}{checkpoint_name}"
+
+    def get_artifact_uri(self, artifact_name: str) -> str:
+        """Get full GCS URI for an artifact.
+
+        Args:
+            artifact_name: Name of the artifact.
+
+        Returns:
+            Full gs:// URI for the artifact.
+        """
+        bucket = self.bucket_name or self.gcs.bucket_name
+        if not bucket:
+            raise CloudConfigError("bucket_name is required for artifact URIs")
+        prefix = self.artifact_prefix or self.gcs.artifact_prefix
+        return f"gs://{bucket}/{prefix}{artifact_name}"
 
     def to_dict(self) -> dict[str, Any]:
         """Convert configuration to dictionary.
 
         Returns:
-            Dictionary representation of the configuration.
+            Dictionary representation of configuration.
         """
         return {
-            "cloud": {
-                "provider": self.provider,
-                "environment": self.environment,
-                "project_id": self.project_id,
-                "region": self.region,
-                "zone": self.zone,
-                "gcs": {
-                    "bucket_name": self.gcs.bucket_name,
-                    "checkpoint_prefix": self.gcs.checkpoint_prefix,
-                    "artifact_prefix": self.gcs.artifact_prefix,
-                    "logs_prefix": self.gcs.logs_prefix,
-                    "enable_compression": self.gcs.enable_compression,
-                    "max_checkpoints": self.gcs.max_checkpoints,
-                },
-                "vertex": {
-                    "machine_type": self.vertex.machine_type,
-                    "accelerator_type": self.vertex.accelerator_type,
-                    "accelerator_count": self.vertex.accelerator_count,
-                    "boot_disk_size_gb": self.vertex.boot_disk_size_gb,
-                    "container_uri": self.vertex.container_uri,
-                    "service_account": self.vertex.service_account,
-                    "network": self.vertex.network,
-                    "max_run_duration_seconds": self.vertex.max_run_duration_seconds,
-                    "enable_web_access": self.vertex.enable_web_access,
-                },
-                "preemption": {
-                    "enabled": self.preemption.enabled,
-                    "check_interval_seconds": self.preemption.check_interval_seconds,
-                    "warning_seconds": self.preemption.warning_seconds,
-                    "checkpoint_on_preemption": self.preemption.checkpoint_on_preemption,
-                    "max_retry_count": self.preemption.max_retry_count,
-                    "backoff_multiplier": self.preemption.backoff_multiplier,
-                },
-                "logging": {
-                    "enabled": self.logging.enabled,
-                    "log_name": self.logging.log_name,
-                    "structured": self.logging.structured,
-                    "buffer_size": self.logging.buffer_size,
-                    "flush_interval_seconds": self.logging.flush_interval_seconds,
-                },
-                "monitoring": {
-                    "enabled": self.monitoring.enabled,
-                    "metric_prefix": self.monitoring.metric_prefix,
-                    "export_interval_seconds": self.monitoring.export_interval_seconds,
-                    "export_metrics": self.monitoring.export_metrics,
-                },
-                "labels": self.labels,
-            },
-            "training": {
-                "batch_size": self.training.batch_size,
-                "learning_rate": self.training.learning_rate,
-                "games_per_iteration": self.training.games_per_iteration,
-                "num_iterations": self.training.num_iterations,
-                "checkpoint_interval": self.training.checkpoint_interval,
-                "eval_interval": self.training.eval_interval,
-            },
+            "project_id": self.project_id,
+            "region": self.region,
+            "zone": self.zone,
+            "bucket_name": self.bucket_name,
+            "checkpoint_prefix": self.checkpoint_prefix,
+            "artifact_prefix": self.artifact_prefix,
+            "enable_cloud_logging": self.enable_cloud_logging,
+            "enable_cloud_monitoring": self.enable_cloud_monitoring,
+            "log_level": self.log_level,
+            "service_account": self.service_account,
+            "network": self.network,
+            "subnetwork": self.subnetwork,
+            "machine_type": self.machine_type,
+            "accelerator_type": self.accelerator_type,
+            "accelerator_count": self.accelerator_count,
+            "replica_count": self.replica_count,
+            "use_spot": self.use_spot,
+            "max_run_duration_seconds": self.max_run_duration_seconds,
+            "preemption_check_interval": self.preemption_check_interval,
+            "checkpoint_on_preemption": self.checkpoint_on_preemption,
+            "custom_labels": self.custom_labels,
         }
-
-    def to_yaml(self, path: str | Path) -> None:
-        """Save configuration to YAML file.
-
-        Args:
-            path: Path to save the configuration.
-        """
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(path, "w") as f:
-            yaml.safe_dump(self.to_dict(), f, default_flow_style=False, sort_keys=False)

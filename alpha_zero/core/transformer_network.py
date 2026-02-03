@@ -14,6 +14,7 @@ All values are configurable - no hardcoded parameters.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -21,6 +22,9 @@ from typing import Any
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+# Module-level logger
+logger = logging.getLogger(__name__)
 
 
 class AttentionType(Enum):
@@ -230,6 +234,8 @@ class RotaryEmbedding(nn.Module):
         Args:
             seq_len: Sequence length to build cache for.
         """
+        # Cast device to satisfy Mypy - inv_freq is a registered buffer (Tensor)
+        assert isinstance(self.inv_freq, torch.Tensor), "inv_freq buffer not initialized"
         t = torch.arange(seq_len, device=self.inv_freq.device).float()
         freqs = torch.einsum("i,j->ij", t, self.inv_freq)
         emb = torch.cat((freqs, freqs), dim=-1)
@@ -258,6 +264,10 @@ class RotaryEmbedding(nn.Module):
 
         if seq_len > self.max_seq_len:
             self._build_cache(seq_len)
+
+        # Type assertion for registered buffers
+        assert isinstance(self.cos_cached, torch.Tensor), "cos_cached buffer not initialized"
+        assert isinstance(self.sin_cached, torch.Tensor), "sin_cached buffer not initialized"
 
         cos = self.cos_cached[:, :, :seq_len, :]
         sin = self.sin_cached[:, :, :seq_len, :]
@@ -373,7 +383,7 @@ class MultiHeadAttention(nn.Module):
         out = self.proj(out)
         out = self.dropout(out)
 
-        return out
+        return out  # type: ignore[no-any-return]
 
     def _standard_attention(
         self,
@@ -401,7 +411,7 @@ class MultiHeadAttention(nn.Module):
         attn = F.softmax(attn, dim=-1)
         attn = self.dropout(attn)
 
-        return attn @ v
+        return attn @ v  # type: ignore[no-any-return]
 
     def _linear_attention(
         self,
@@ -480,9 +490,9 @@ class FeedForward(nn.Module):
         """
         if self.use_glu:
             # SwiGLU: gate * up
-            return self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x)))
+            return self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x)))  # type: ignore[no-any-return]
         else:
-            return self.dropout(self.fc2(F.gelu(self.fc1(x))))
+            return self.dropout(self.fc2(F.gelu(self.fc1(x))))  # type: ignore[no-any-return]
 
 
 class MixtureOfExperts(nn.Module):
@@ -600,7 +610,8 @@ class TransformerBlock(nn.Module):
             max_seq_len=config.num_patches + 1 + 10,  # patches + CLS + vector tokens
         )
 
-        # Feed-forward (or MoE)
+        # Feed-forward (or MoE) - Union type for both possibilities
+        self.ffn: FeedForward | MixtureOfExperts
         if use_moe and config.use_moe:
             self.ffn = MixtureOfExperts(
                 dim=config.embed_dim,
@@ -617,8 +628,8 @@ class TransformerBlock(nn.Module):
                 use_glu=True,
             )
 
-        # Stochastic depth
-        self.drop_path = nn.Identity()
+        # Stochastic depth - Union type for both possibilities
+        self.drop_path: nn.Identity | DropPath = nn.Identity()
         if config.path_dropout > 0:
             self.drop_path = DropPath(config.path_dropout)
 
@@ -923,7 +934,7 @@ class TransformerPolicyHead(nn.Module):
         Returns:
             Policy logits (B, A).
         """
-        return self.mlp(x)
+        return self.mlp(x)  # type: ignore[no-any-return]
 
 
 class TransformerValueHead(nn.Module):
@@ -970,7 +981,7 @@ class TransformerValueHead(nn.Module):
         Returns:
             Value estimate (B, 1).
         """
-        return self.mlp(x)
+        return self.mlp(x)  # type: ignore[no-any-return]
 
 
 class Civ6TransformerNetwork(nn.Module):
@@ -1011,6 +1022,12 @@ class Civ6TransformerNetwork(nn.Module):
 
         self.config = config
 
+        logger.debug(
+            f"Creating Civ6TransformerNetwork: embed_dim={config.embed_dim}, "
+            f"layers={config.num_layers}, heads={config.num_heads}, "
+            f"attention={config.attention_type.value}"
+        )
+
         # Transformer encoder
         self.encoder = TransformerEncoder(config)
 
@@ -1027,6 +1044,12 @@ class Civ6TransformerNetwork(nn.Module):
             embed_dim=config.embed_dim,
             hidden_dim=config.value_head_dim,
             dropout=config.dropout,
+        )
+
+        logger.info(
+            f"Civ6TransformerNetwork initialized: "
+            f"spatial_size={config.spatial_size}x{config.spatial_size}, "
+            f"action_space={config.action_space_size}"
         )
 
     def forward(

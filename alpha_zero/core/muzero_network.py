@@ -164,7 +164,7 @@ class ActionEmbedding(nn.Module):
         embed = embed.unsqueeze(-1).unsqueeze(-1)
         embed = embed.expand(-1, -1, self.spatial_size, self.spatial_size)
 
-        return embed
+        return embed  # type: ignore[no-any-return]
 
 
 class DynamicsNetwork(nn.Module):
@@ -333,7 +333,7 @@ class RewardHead(nn.Module):
         if not self.use_categorical:
             reward = reward.squeeze(-1)
 
-        return reward
+        return reward  # type: ignore[no-any-return]
 
 
 class ProjectionHead(nn.Module):
@@ -382,7 +382,7 @@ class ProjectionHead(nn.Module):
         x = F.relu(self.bn(self.conv(hidden_state)))
         x = self.pool(x)
         x = x.view(x.size(0), -1)
-        return self.fc(x)
+        return self.fc(x)  # type: ignore[no-any-return]
 
 
 class PredictionHead(nn.Module):
@@ -419,7 +419,7 @@ class PredictionHead(nn.Module):
         Returns:
             Predicted embedding (B, projection_dim).
         """
-        return self.net(projection)
+        return self.net(projection)  # type: ignore[no-any-return]
 
 
 class ValuePrefixHead(nn.Module):
@@ -477,7 +477,7 @@ class ValuePrefixHead(nn.Module):
         if not self.use_categorical:
             prefix = prefix.squeeze(-1)
 
-        return prefix
+        return prefix  # type: ignore[no-any-return]
 
 
 class MuZeroNetwork(nn.Module):
@@ -628,7 +628,7 @@ class MuZeroNetwork(nn.Module):
         # Combine (residual addition)
         hidden_state = spatial_features + 0.1 * vector_spatial
 
-        return hidden_state
+        return hidden_state  # type: ignore[no-any-return]
 
     def dynamics_function(
         self,
@@ -646,7 +646,12 @@ class MuZeroNetwork(nn.Module):
         Returns:
             DynamicsOutput with next_hidden_state and reward.
         """
-        return self.dynamics(hidden_state, action)
+        result = self.dynamics(hidden_state, action)
+        # Return with proper typing
+        return DynamicsOutput(
+            next_hidden_state=result.next_hidden_state,
+            reward=result.reward,
+        )
 
     def prediction_function(
         self,
@@ -802,7 +807,7 @@ class MuZeroNetwork(nn.Module):
         """
         if self.projection_head is None:
             raise ValueError("Consistency loss not enabled in config")
-        return self.projection_head(hidden_state)
+        return self.projection_head(hidden_state)  # type: ignore[no-any-return]
 
     def predict_projection(self, projection: torch.Tensor) -> torch.Tensor:
         """Predict target embedding from projection.
@@ -818,7 +823,7 @@ class MuZeroNetwork(nn.Module):
         """
         if self.prediction_head is None:
             raise ValueError("Consistency loss not enabled in config")
-        return self.prediction_head(projection)
+        return self.prediction_head(projection)  # type: ignore[no-any-return]
 
     def predict_value_prefix(self, hidden_state: torch.Tensor) -> torch.Tensor:
         """Predict cumulative future rewards (value prefix).
@@ -834,7 +839,7 @@ class MuZeroNetwork(nn.Module):
         """
         if self.value_prefix_head is None:
             raise ValueError("Value prefix not enabled in config")
-        return self.value_prefix_head(hidden_state)
+        return self.value_prefix_head(hidden_state)  # type: ignore[no-any-return]
 
     # =========================================================================
     # Utility methods

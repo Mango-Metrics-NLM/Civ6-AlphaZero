@@ -24,9 +24,7 @@ from template_system.factories import (
     LifecycleManager,
     SimpleFactory,
     component,
-    create_component,
     get_global_registry,
-    register_component,
 )
 
 

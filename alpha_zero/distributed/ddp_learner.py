@@ -5,6 +5,11 @@ Extends the base Learner with:
 - Gradient synchronization across processes
 - Distributed sampling coordination
 - Checkpoint coordination (only rank 0 saves)
+- Mixed precision training support (AMP)
+
+Provides DDPLearner for scaling training across multiple GPUs and nodes
+using PyTorch's DistributedDataParallel. Integrates with cloud infrastructure
+for checkpointing and monitoring.
 """
 
 from __future__ import annotations
@@ -46,6 +51,24 @@ class DDPLearnerConfig(LearnerConfig):
     """Configuration for DDP-enabled learner.
 
     Extends LearnerConfig with DDP-specific settings.
+
+    Attributes:
+        ddp_enabled: Whether DDP is enabled.
+        ddp_world_size: Total number of processes across all nodes.
+        ddp_rank: Global rank of this process.
+        ddp_local_rank: Local rank within this node.
+        ddp_backend: PyTorch distributed backend (nccl, gloo, auto).
+        use_amp: Enable mixed precision training.
+        amp_dtype: AMP dtype (float16 or bfloat16).
+        find_unused_parameters: DDP flag for unused parameters.
+        broadcast_buffers: Whether to broadcast buffers in DDP.
+        bucket_cap_mb: DDP bucket size for gradient reduction.
+        checkpoint_only_on_main: Only save checkpoints on rank 0.
+        sync_batch_norm: Convert batch norm to sync batch norm.
+        master_addr: Address of master node (for env setup).
+        master_port: Port for master node (for env setup).
+        init_method: URL for process group initialization.
+        gradient_as_bucket_view: Memory optimization for gradients.
     """
 
     # DDP settings (can also be configured via DDPConfig)
@@ -63,12 +86,18 @@ class DDPLearnerConfig(LearnerConfig):
     find_unused_parameters: bool = False
     broadcast_buffers: bool = True
     bucket_cap_mb: int = 25
+    gradient_as_bucket_view: bool = True
 
     # Distributed checkpointing
     checkpoint_only_on_main: bool = True
 
     # Sync settings
     sync_batch_norm: bool = True
+
+    # Network initialization (for env-based setup)
+    master_addr: str = ""
+    master_port: str = "29500"
+    init_method: str = "env://"
 
     @classmethod
     def from_learner_config(
@@ -123,6 +152,37 @@ class DDPLearnerConfig(LearnerConfig):
 
         return config
 
+    @classmethod
+    def from_env(cls, **kwargs: Any) -> DDPLearnerConfig:
+        """Create config from environment variables.
+
+        Standard environment variables from torch.distributed:
+        - WORLD_SIZE
+        - RANK
+        - LOCAL_RANK
+        - MASTER_ADDR
+        - MASTER_PORT
+
+        Args:
+            **kwargs: Override values for config.
+
+        Returns:
+            DDPLearnerConfig instance.
+        """
+        env_values = {
+            "ddp_world_size": int(os.environ.get("WORLD_SIZE", "1")),
+            "ddp_rank": int(os.environ.get("RANK", "0")),
+            "ddp_local_rank": int(os.environ.get("LOCAL_RANK", "0")),
+            "master_addr": os.environ.get("MASTER_ADDR", "localhost"),
+            "master_port": os.environ.get("MASTER_PORT", "29500"),
+        }
+        # Enable DDP if world_size > 1
+        if env_values["ddp_world_size"] > 1:
+            env_values["ddp_enabled"] = True
+
+        env_values.update(kwargs)
+        return cls(**env_values)
+
 
 class DDPLearner(Learner):
     """Distributed Data Parallel learner for multi-GPU training.
@@ -134,6 +194,12 @@ class DDPLearner(Learner):
     - Checkpoint coordination (only rank 0 saves)
 
     When DDP is disabled (world_size=1), behaves identically to base Learner.
+
+    Example:
+        >>> config = DDPLearnerConfig.from_env()
+        >>> learner = DDPLearner(config, shared_storage, replay_buffer)
+        >>> learner.run()
+        >>> learner.cleanup()
     """
 
     def __init__(
@@ -142,6 +208,7 @@ class DDPLearner(Learner):
         shared_storage: SharedStorage,
         replay_buffer: DistributedReplayBuffer,
         ddp_config: DDPConfig | None = None,
+        network: nn.Module | None = None,
     ) -> None:
         """Initialize DDP learner.
 
@@ -150,6 +217,7 @@ class DDPLearner(Learner):
             shared_storage: Shared storage for weights.
             replay_buffer: Replay buffer for training data.
             ddp_config: Optional separate DDP configuration.
+            network: Optional pre-initialized network (overrides default creation).
         """
         # Store DDP config before parent init
         self.ddp_config = ddp_config or DDPConfig(
@@ -179,13 +247,16 @@ class DDPLearner(Learner):
         env = MicroCivEnv(board_size=config.board_size)
         self.action_space_size = env.action_space.n
 
-        # Create network on the correct device
-        self.network = MicroCivNetwork(
-            board_size=config.board_size,
-            action_space_size=self.action_space_size,
-            num_res_blocks=config.num_res_blocks,
-            num_filters=config.num_filters,
-        ).to(config.device)
+        # Create or use provided network
+        if network is not None:
+            self.network = network.to(config.device)
+        else:
+            self.network = MicroCivNetwork(
+                board_size=config.board_size,
+                action_space_size=self.action_space_size,
+                num_res_blocks=config.num_res_blocks,
+                num_filters=config.num_filters,
+            ).to(config.device)
 
         # Apply SyncBatchNorm if enabled and using DDP
         if self.ddp_config.enabled and config.sync_batch_norm:
@@ -250,6 +321,26 @@ class DDPLearner(Learner):
                 f"(rank {self.ddp_config.rank}/{self.ddp_config.world_size})"
             )
 
+    @property
+    def rank(self) -> int:
+        """Get global rank of this process."""
+        return self.ddp_config.rank
+
+    @property
+    def world_size(self) -> int:
+        """Get total number of processes."""
+        return self.ddp_config.world_size
+
+    @property
+    def is_main(self) -> bool:
+        """Check if this is the main (rank 0) process."""
+        return self.is_main_process()
+
+    @property
+    def local_rank(self) -> int:
+        """Get local rank within this node."""
+        return self.ddp_config.local_rank
+
     def _init_process_group(self) -> None:
         """Initialize the distributed process group."""
         if self._process_group_initialized:
@@ -262,6 +353,12 @@ class DDPLearner(Learner):
 
         backend = self.ddp_config.get_backend()
         timeout = timedelta(seconds=self.ddp_config.timeout_seconds)
+
+        # Set environment variables if needed
+        if self.config.master_addr:
+            os.environ.setdefault("MASTER_ADDR", self.config.master_addr)
+        if self.config.master_port:
+            os.environ.setdefault("MASTER_PORT", self.config.master_port)
 
         logger.info(
             f"Initializing process group: "
@@ -300,7 +397,7 @@ class DDPLearner(Learner):
             find_unused_parameters=self.config.find_unused_parameters,
             broadcast_buffers=self.config.broadcast_buffers,
             bucket_cap_mb=self.config.bucket_cap_mb,
-            gradient_as_bucket_view=True,
+            gradient_as_bucket_view=self.config.gradient_as_bucket_view,
         )
 
         logger.info(f"Network wrapped with DDP (device_ids={device_ids})")
@@ -315,6 +412,22 @@ class DDPLearner(Learner):
         if isinstance(self.network, DDP):
             return self.network.module
         return self.network
+
+    def get_model(self) -> nn.Module:
+        """Get the model for training (DDP-wrapped if applicable).
+
+        Returns:
+            DDP model or base model.
+        """
+        return self.network
+
+    def get_base_model(self) -> nn.Module:
+        """Get the underlying model (unwrapped from DDP).
+
+        Returns:
+            Base network module.
+        """
+        return self._get_base_network()
 
     def is_main_process(self) -> bool:
         """Check if this is the main (rank 0) process.
@@ -431,6 +544,8 @@ class DDPLearner(Learner):
         """Save a training checkpoint.
 
         Only rank 0 saves checkpoints when checkpoint_only_on_main is True.
+        Includes barrier synchronization to ensure all processes reach
+        the checkpoint point before main saves.
 
         Args:
             step: Current training step.
@@ -438,10 +553,12 @@ class DDPLearner(Learner):
         Returns:
             Checkpoint path (empty string if not saved).
         """
+        # Synchronize all processes before checkpoint
+        self.barrier()
+
         if self.config.checkpoint_only_on_main and not self.is_main_process():
-            # Synchronize at checkpoint (barrier)
-            if self.ddp_config.enabled:
-                dist.barrier()
+            # Wait for main to finish saving
+            self.barrier()
             return ""
 
         checkpoint_path = os.path.join(
@@ -468,23 +585,31 @@ class DDPLearner(Learner):
         torch.save(save_dict, checkpoint_path)
         logger.info(f"Saved checkpoint: {checkpoint_path}")
 
-        # Barrier after save so all processes wait
-        if self.ddp_config.enabled:
-            dist.barrier()
+        # Signal completion to other processes
+        self.barrier()
 
         return checkpoint_path
 
-    def load_checkpoint(self, path: str) -> int:
+    def load_checkpoint(self, path: str, strict: bool = True, validate_world_size: bool = True) -> int:
         """Load a training checkpoint.
 
         All processes load the checkpoint for consistency.
 
         Args:
             path: Checkpoint path.
+            strict: Whether to strictly enforce state dict matching.
+            validate_world_size: Whether to warn if world_size differs.
 
         Returns:
             Training step from checkpoint.
+
+        Raises:
+            FileNotFoundError: If checkpoint file doesn't exist.
+            RuntimeError: If checkpoint is corrupted or incompatible.
         """
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Checkpoint not found: {path}")
+
         from alpha_zero.utils.checkpoint import safe_load_checkpoint
 
         result = safe_load_checkpoint(
@@ -495,8 +620,21 @@ class DDPLearner(Learner):
         )
         checkpoint = result.data
 
+        # Validate checkpoint structure
+        if "network_state_dict" not in checkpoint:
+            raise RuntimeError("Invalid checkpoint: missing 'network_state_dict' key")
+
+        # Validate distributed training metadata
+        checkpoint_world_size = checkpoint.get("ddp_world_size", 1)
+        if validate_world_size and checkpoint_world_size != self.ddp_config.world_size:
+            logger.warning(
+                f"Checkpoint world_size ({checkpoint_world_size}) differs from current "
+                f"world_size ({self.ddp_config.world_size}). This may cause issues with "
+                "optimizer state restoration."
+            )
+
         # Load into base network
-        self._get_base_network().load_state_dict(checkpoint["network_state_dict"])
+        self._get_base_network().load_state_dict(checkpoint["network_state_dict"], strict=strict)
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.lr_scheduler.current_step = checkpoint["lr_scheduler_step"]
         step = int(checkpoint["step"])
@@ -512,8 +650,7 @@ class DDPLearner(Learner):
             )
 
         # Synchronize after load
-        if self.ddp_config.enabled:
-            dist.barrier()
+        self.barrier()
 
         if self.is_main_process():
             logger.info(f"Loaded checkpoint from {path} (step {step})")
@@ -534,6 +671,10 @@ class DDPLearner(Learner):
             dist.broadcast(param.data, src=0)
 
         logger.debug("Synchronized weights across processes")
+
+    def broadcast_weights_from_main(self) -> None:
+        """Broadcast weights from main process to all workers."""
+        self.synchronize_weights()
 
     def all_reduce_losses(
         self,
@@ -565,6 +706,54 @@ class DDPLearner(Learner):
             "value_loss": loss_tensor[2].item(),
             "learning_rate": losses.get("learning_rate", 0.0),
         }
+
+    def barrier(self) -> None:
+        """Synchronization barrier across all processes."""
+        if self.ddp_config.enabled and dist.is_initialized():
+            dist.barrier()
+
+    def all_reduce(
+        self,
+        tensor: torch.Tensor,
+        op: dist.ReduceOp = dist.ReduceOp.SUM,
+    ) -> torch.Tensor:
+        """All-reduce a tensor across all processes.
+
+        Args:
+            tensor: Tensor to reduce.
+            op: Reduction operation.
+
+        Returns:
+            Reduced tensor (modified in-place).
+        """
+        if self.ddp_config.enabled and dist.is_initialized():
+            dist.all_reduce(tensor, op=op)
+        return tensor
+
+    def gather(
+        self,
+        tensor: torch.Tensor,
+        dst: int = 0,
+    ) -> list[torch.Tensor] | None:
+        """Gather tensors from all processes to destination.
+
+        Args:
+            tensor: Local tensor to gather.
+            dst: Destination rank.
+
+        Returns:
+            List of gathered tensors on dst, None on other ranks.
+        """
+        if not self.ddp_config.enabled or not dist.is_initialized():
+            return [tensor]
+
+        if self.ddp_config.rank == dst:
+            gathered = [torch.zeros_like(tensor) for _ in range(self.ddp_config.world_size)]
+            dist.gather(tensor, gather_list=gathered, dst=dst)
+            return gathered
+        else:
+            dist.gather(tensor, gather_list=None, dst=dst)
+            return None
 
     def run(self) -> None:
         """Main learner loop with DDP support.

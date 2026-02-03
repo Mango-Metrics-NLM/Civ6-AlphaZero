@@ -308,10 +308,10 @@ class StateConverter:
             "score": player_data.get("score", 0),
             # Era and progress
             "era": state.era,
-            "resources": {},  # TODO: Extract resources
-            "technologies": [],  # TODO: Extract techs
-            "civics": [],  # TODO: Extract civics
-            "victory_progress": {},  # TODO: Extract victory progress
+            "resources": self._extract_resources(state),
+            "technologies": self._extract_technologies(state),
+            "civics": self._extract_civics(state),
+            "victory_progress": self._extract_victory_progress(state),
             # Store original legal actions for action mask generation
             "_legal_actions": state.legal_actions,
             "_map_size": (state.map_data.width, state.map_data.height),
@@ -693,6 +693,140 @@ class StateConverter:
             "score": 0,
             "military_strength": 0,
         }
+
+    def _extract_resources(self, state: GameStateData) -> dict[str, int]:
+        """Extract resource counts from map tiles.
+
+        Collects all resources visible on the map tiles and counts
+        how many of each resource type are controlled by the player.
+
+        Args:
+            state: Game state data.
+
+        Returns:
+            Dictionary mapping resource type to count.
+        """
+        resources: dict[str, int] = {}
+
+        for tile in state.map_data.tiles:
+            # Only count resources on tiles we own
+            if tile.resource and tile.owner_id == state.player_id:
+                resource_name = self._normalize_resource_name(tile.resource)
+                resources[resource_name] = resources.get(resource_name, 0) + 1
+
+        return resources
+
+    def _normalize_resource_name(self, resource: str) -> str:
+        """Normalize Civ6 resource name to internal format.
+
+        Args:
+            resource: Civ6 resource name (e.g., "RESOURCE_IRON").
+
+        Returns:
+            Normalized name (e.g., "iron").
+        """
+        # Remove common prefixes and convert to lowercase
+        name = resource.lower()
+        for prefix in ("resource_", "res_"):
+            if name.startswith(prefix):
+                name = name[len(prefix) :]
+        return name
+
+    def _extract_technologies(self, state: GameStateData) -> list[str]:
+        """Extract researched technologies for the current player.
+
+        Args:
+            state: Game state data.
+
+        Returns:
+            List of technology names that have been researched.
+        """
+        for player in state.players:
+            if player.id == state.player_id:
+                techs = getattr(player, "techs_researched", [])
+                return [self._normalize_tech_name(tech) for tech in techs]
+        return []
+
+    def _normalize_tech_name(self, tech: str) -> str:
+        """Normalize Civ6 technology name to internal format.
+
+        Args:
+            tech: Civ6 technology name (e.g., "TECH_POTTERY").
+
+        Returns:
+            Normalized name (e.g., "pottery").
+        """
+        name = tech.lower()
+        for prefix in ("tech_",):
+            if name.startswith(prefix):
+                name = name[len(prefix) :]
+        return name
+
+    def _extract_civics(self, state: GameStateData) -> list[str]:
+        """Extract researched civics for the current player.
+
+        Civics may be included in a civics_researched field or similar.
+        Since the current protocol doesn't define this explicitly,
+        we return an empty list until the Lua mod is extended.
+
+        Args:
+            state: Game state data.
+
+        Returns:
+            List of civic names that have been researched.
+        """
+        # Future: Extract from state when Lua mod provides civics data
+        # For now, return empty list as civics aren't in the protocol yet
+        return []
+
+    def _extract_victory_progress(self, state: GameStateData) -> dict[str, float]:
+        """Extract victory progress indicators.
+
+        Victory progress is calculated from available game state data:
+        - Science victory: tech count / total techs
+        - Domination: controlled capitals / total capitals
+        - Score: normalized current score
+
+        Args:
+            state: Game state data.
+
+        Returns:
+            Dictionary mapping victory type to progress (0.0 to 1.0).
+        """
+        progress: dict[str, float] = {}
+
+        # Science progress (rough estimate based on techs)
+        techs = self._extract_technologies(state)
+        # Rough estimate: ~70 techs in the full game
+        progress["science"] = min(1.0, len(techs) / 70.0)
+
+        # Domination progress (count our cities vs total cities)
+        total_cities = len(state.cities)
+        our_cities = sum(1 for c in state.cities if c.owner_id == state.player_id)
+        if total_cities > 0:
+            progress["domination"] = our_cities / total_cities
+        else:
+            progress["domination"] = 0.0
+
+        # Score progress (normalized by max reasonable score)
+        for player in state.players:
+            if player.id == state.player_id:
+                # Rough estimate: ~2000 is a high score
+                progress["score"] = min(1.0, player.score / 2000.0)
+                break
+        else:
+            progress["score"] = 0.0
+
+        # Game completion indicator
+        if state.is_game_over:
+            if state.winner_id == state.player_id:
+                progress["complete"] = 1.0  # Victory
+            else:
+                progress["complete"] = -1.0  # Defeat
+        else:
+            progress["complete"] = 0.0
+
+        return progress
 
     def inverse_scale_coords(self, x: int, y: int) -> tuple[int, int]:
         """Convert scaled coordinates back to original Civ6 coordinates.

@@ -33,12 +33,12 @@ try:
     try:
         import numpy.core.multiarray as _ma_legacy
 
-        safe_types.append(_ma_legacy.scalar)
+        safe_types.append(_ma_legacy.scalar)  # type: ignore[attr-defined]
     except (ImportError, AttributeError):
         try:
             import numpy._core.multiarray as _ma_modern
 
-            safe_types.append(_ma_modern.scalar)
+            safe_types.append(_ma_modern.scalar)  # type: ignore[attr-defined]
         except (ImportError, AttributeError):
             pass
 
@@ -183,7 +183,7 @@ class VectorEncoder(nn.Module):
         out = F.relu(self.fc1(x))
         out = self.dropout(out)
         out = self.fc2(out)
-        return out
+        return out  # type: ignore[no-any-return]
 
 
 class PolicyHead(nn.Module):
@@ -250,7 +250,7 @@ class PolicyHead(nn.Module):
         # Output
         out = F.relu(self.fc1(combined))
         out = self.fc2(out)
-        return out
+        return out  # type: ignore[no-any-return]
 
 
 class ValueHead(nn.Module):
@@ -664,8 +664,8 @@ class PositionalEncoding2D(nn.Module):
             )  # (H, W, C)
             pos_enc = pos_enc.permute(2, 0, 1).unsqueeze(0)  # (1, C, H, W)
         else:
-            assert isinstance(self.pos_encoding, torch.Tensor)
-            pos_enc = self.pos_encoding[:, :h, :w].unsqueeze(0)  # (1, C, H, W)
+            # pos_encoding is a registered buffer
+            pos_enc = self.pos_encoding[:, :h, :w].unsqueeze(0)  # type: ignore[index]  # (1, C, H, W)
 
         return x + pos_enc.to(x.device)
 
@@ -819,7 +819,7 @@ class SpatialSelfAttention(nn.Module):
         # Reshape back to spatial: (B, H*W, C) -> (B, C, H, W)
         out = out.transpose(1, 2).reshape(b, c, h, w)
 
-        return out
+        return out  # type: ignore[no-any-return]
 
 
 class CrossModalAttention(nn.Module):
@@ -1035,7 +1035,7 @@ class AttentionSpatialEncoder(nn.Module):
         # Final attention
         out = self.final_attention(out)
 
-        return out
+        return out  # type: ignore[no-any-return]
 
 
 class HierarchicalPolicyHead(nn.Module):
@@ -1146,8 +1146,8 @@ class HierarchicalPolicyHead(nn.Module):
         action_logits = self.action_fc2(act_hidden)
 
         if return_category_probs:
-            return action_logits, category_probs
-        return action_logits
+            return action_logits, category_probs  # type: ignore[no-any-return]
+        return action_logits  # type: ignore[no-any-return]
 
 
 class Civ6NetworkV2(nn.Module):
@@ -1194,7 +1194,7 @@ class Civ6NetworkV2(nn.Module):
 
         self.config = config
 
-        # Attention-enhanced spatial encoder
+        # Attention-enhanced spatial encoder - Union type for both possibilities
         self.spatial_encoder: AttentionSpatialEncoder | SpatialEncoder
         if config.use_attention:
             self.spatial_encoder = AttentionSpatialEncoder(

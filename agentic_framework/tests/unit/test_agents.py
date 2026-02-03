@@ -1,11 +1,10 @@
 """
 Tests for agents.
+
+Note: basic_config and agent_context fixtures are provided by conftest.py.
 """
 
-import pytest
-
 from agentic_framework.agents.base_agent import (
-    AgentContext,
     AgentResult,
     AgentStatus,
     BaseAgent,
@@ -16,38 +15,6 @@ from agentic_framework.agents.implementation_agent import ImplementationAgent
 from agentic_framework.agents.planning_agent import PlanningAgent
 from agentic_framework.agents.testing_agent import TestingAgent
 from agentic_framework.agents.verification_agent import VerificationAgent
-from agentic_framework.config import AgenticConfig
-from agentic_framework.core.constraint_manager import ConstraintManager
-from agentic_framework.core.permission_manager import PermissionManager
-from agentic_framework.core.session_memory import SessionMemory
-from agentic_framework.utils.command_runner import CommandRunner
-
-
-@pytest.fixture
-def basic_config():
-    """Create a basic configuration."""
-    config = AgenticConfig()
-    config.objective.system_intent = "Test objective"
-    config.objective.success_criteria = [{"criterion": "Tests pass"}]
-    config.permissions.scope.in_scope = ["**/*.py"]
-    config.permissions.autonomy.autonomous = ["file_creation", "running_tests"]
-    config.permissions.resource_budget.max_iterations = 5
-    config.feedback.verification_commands = []
-    return config
-
-
-@pytest.fixture
-def agent_context(basic_config, tmp_path):
-    """Create an agent context for testing."""
-    return AgentContext(
-        config=basic_config,
-        working_dir=tmp_path,
-        constraint_manager=ConstraintManager(config=basic_config),
-        permission_manager=PermissionManager(config=basic_config, base_path=tmp_path),
-        session_memory=SessionMemory(memory_file=tmp_path / "CLAUDE.md"),
-        command_runner=CommandRunner(default_cwd=tmp_path),
-        request_id="test123",
-    )
 
 
 class TestBaseAgent:
@@ -206,13 +173,13 @@ class TestPlanningAgent:
 class TestImplementationAgent:
     """Tests for ImplementationAgent."""
 
-    def test_create_file(self, agent_context, tmp_path):
+    def test_create_file(self, agent_context_with_mocks, tmp_path):
         """Test creating a new file."""
         agent = ImplementationAgent()
 
         new_file = tmp_path / "new_module.py"
         success = agent.create_file(
-            agent_context,
+            agent_context_with_mocks,
             new_file,
             "def hello(): return 'world'",
             "Create hello function",
@@ -222,7 +189,7 @@ class TestImplementationAgent:
         assert new_file.exists()
         assert "hello" in new_file.read_text()
 
-    def test_modify_file(self, agent_context, tmp_path):
+    def test_modify_file(self, agent_context_with_mocks, tmp_path):
         """Test modifying an existing file."""
         # Create initial file
         test_file = tmp_path / "test.py"
@@ -231,7 +198,7 @@ class TestImplementationAgent:
         agent = ImplementationAgent()
 
         success = agent.modify_file(
-            agent_context,
+            agent_context_with_mocks,
             test_file,
             lambda content: content.replace("1", "2"),
             "Change value",
@@ -240,19 +207,19 @@ class TestImplementationAgent:
         assert success
         assert "x = 2" in test_file.read_text()
 
-    def test_delete_file(self, agent_context, tmp_path):
+    def test_delete_file(self, agent_context_with_mocks, tmp_path):
         """Test deleting a file."""
         test_file = tmp_path / "to_delete.py"
         test_file.write_text("delete me")
 
         agent = ImplementationAgent()
 
-        success = agent.delete_file(agent_context, test_file, "Remove unused file")
+        success = agent.delete_file(agent_context_with_mocks, test_file, "Remove unused file")
 
         assert success
         assert not test_file.exists()
 
-    def test_rollback_changes(self, agent_context, tmp_path):
+    def test_rollback_changes(self, agent_context_with_mocks, tmp_path):
         """Test rolling back changes."""
         test_file = tmp_path / "test.py"
         test_file.write_text("original")
@@ -261,7 +228,7 @@ class TestImplementationAgent:
 
         # Make a change
         agent.modify_file(
-            agent_context,
+            agent_context_with_mocks,
             test_file,
             lambda content: "modified",
             "Modify content",

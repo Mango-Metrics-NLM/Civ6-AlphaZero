@@ -407,7 +407,7 @@ class CommandRunner:
                 stderr_data = stderr_bytes.decode() if stderr_bytes else ""
                 return_code = process.returncode or 0
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 process.kill()
                 await process.wait()
                 timed_out = True
