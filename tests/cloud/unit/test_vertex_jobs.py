@@ -7,7 +7,7 @@ Uses mock Vertex AI client to test without real GCP connection.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -21,7 +21,6 @@ from alpha_zero.cloud.gcp.vertex_jobs import (
     VertexSelfPlayJob,
     VertexTrainingJob,
 )
-
 
 # =============================================================================
 # Mock Vertex AI Client
