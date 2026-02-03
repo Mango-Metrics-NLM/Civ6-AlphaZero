@@ -351,7 +351,7 @@ class MatchMaker:
                 continue
 
             match = self.find_match(entry.player.player_id)
-            if match:
+            if match and match.player1 and match.player2:
                 matches.append(match)
                 processed.add(match.player1.player_id)
                 processed.add(match.player2.player_id)

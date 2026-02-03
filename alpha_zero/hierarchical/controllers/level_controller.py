@@ -34,6 +34,7 @@ from alpha_zero.hierarchical.config import (
 )
 from alpha_zero.hierarchical.encoders.goal_encoder import (
     GoalEncoder,
+    HierarchicalGoalEncoder,
 )
 from alpha_zero.hierarchical.encoders.state_encoder import (
     StateEncoder,
@@ -118,7 +119,7 @@ class LevelController(ABC):
         config: LevelConfig,
         network: Any | None = None,
         state_encoder: StateEncoder | None = None,
-        goal_encoder: GoalEncoder | None = None,
+        goal_encoder: GoalEncoder | HierarchicalGoalEncoder | None = None,
         goal_hierarchy: GoalHierarchy | None = None,
     ) -> None:
         """Initialize level controller.
