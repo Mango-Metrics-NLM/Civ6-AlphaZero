@@ -1,91 +1,73 @@
-"""GCP cloud infrastructure implementation.
+"""
+GCP Cloud Integration Module for Civ6 AlphaZero
 
-Provides GCP-specific implementations of cloud protocols:
-- GCSCheckpointManager: Google Cloud Storage checkpoint management
-- VertexAITrainer: Vertex AI Custom Training job submission
-- PreemptionHandler: GCE metadata-based preemption detection
-- CloudLogger: Cloud Logging integration
-- CloudMetricsExporter: Cloud Monitoring integration
+Provides cloud infrastructure components for distributed training:
+- GCS storage for models, trajectories, and checkpoints
+- Vertex AI job management for self-play and training
+- Configuration with environment variable support
 
-All implementations follow the force_mock pattern for testing:
-- Pass force_mock=True to use mock implementations
-- Allows testing without GCP SDK installed
-- Maintains consistent API regardless of backend
+Usage:
+    from alpha_zero.cloud.gcp import GCPConfig, GCSModelStorage
+
+    config = GCPConfig.from_env()
+    storage = GCSModelStorage(config)
+    storage.save_model(model, version=1, metadata={"elo": 1000})
 """
 
-from __future__ import annotations
-
-import logging
-
-# SDK availability flags
-GCS_AVAILABLE = False
-VERTEX_AVAILABLE = False
-LOGGING_AVAILABLE = False
-MONITORING_AVAILABLE = False
-
-try:
-    from google.cloud import storage  # noqa: F401  # type: ignore[import-untyped]
-
-    GCS_AVAILABLE = True
-except ImportError:
-    pass
-
-try:
-    from google.cloud import aiplatform  # noqa: F401  # type: ignore[import-untyped]
-
-    VERTEX_AVAILABLE = True
-except ImportError:
-    pass
-
-try:
-    from google.cloud import logging as cloud_logging  # noqa: F401  # type: ignore[import-untyped]
-
-    LOGGING_AVAILABLE = True
-except ImportError:
-    pass
-
-try:
-    from google.cloud import monitoring_v3  # noqa: F401  # type: ignore[import-untyped]
-
-    MONITORING_AVAILABLE = True
-except ImportError:
-    pass
-
-# Import implementations (these handle missing SDKs internally)
-try:
-    from alpha_zero.cloud.gcp.monitoring import CloudLogger, CloudMetricsExporter
-    from alpha_zero.cloud.gcp.preemption import (
-        PreemptionHandler,
-        register_preemption_handler,
-    )
-    from alpha_zero.cloud.gcp.storage import GCSCheckpointManager
-    from alpha_zero.cloud.gcp.vertex import VertexAITrainer, VertexJobConfig
-
-    _IMPLEMENTATIONS_AVAILABLE = True
-except ImportError:
-    _IMPLEMENTATIONS_AVAILABLE = False
-
-logger = logging.getLogger(__name__)
+from alpha_zero.cloud.gcp.config import (
+    GCPConfig,
+    SelfPlayWorkerConfig,
+    TrainingWorkerConfig,
+    VertexTier,
+)
+from alpha_zero.cloud.gcp.exceptions import (
+    ConfigurationError,
+    GCPError,
+    GCSStorageError,
+    PreemptionError,
+    QuotaExceededError,
+    VertexJobError,
+)
+from alpha_zero.cloud.gcp.storage import (
+    GCSBackend,
+    GCSCheckpointStorage,
+    GCSModelStorage,
+    GCSTrajectoryStorage,
+    ModelMetadata,
+)
+from alpha_zero.cloud.gcp.vertex_jobs import (
+    JobResult,
+    JobSpec,
+    JobState,
+    VertexAIClient,
+    VertexSelfPlayJob,
+    VertexTrainingJob,
+)
 
 __all__ = [
-    # Availability flags
-    "GCS_AVAILABLE",
-    "VERTEX_AVAILABLE",
-    "LOGGING_AVAILABLE",
-    "MONITORING_AVAILABLE",
+    # Config
+    "GCPConfig",
+    "SelfPlayWorkerConfig",
+    "TrainingWorkerConfig",
+    "VertexTier",
+    # Exceptions
+    "GCPError",
+    "GCSStorageError",
+    "VertexJobError",
+    "ConfigurationError",
+    "PreemptionError",
+    "QuotaExceededError",
+    # Storage
+    "GCSBackend",
+    "GCSModelStorage",
+    "GCSTrajectoryStorage",
+    "GCSCheckpointStorage",
+    "ModelMetadata",
+    # Vertex AI Jobs
+    "JobSpec",
+    "JobResult",
+    "JobState",
+    "VertexAIClient",
+    "VertexSelfPlayJob",
+    "VertexTrainingJob",
 ]
-
-if _IMPLEMENTATIONS_AVAILABLE:
-    __all__.extend([
-        # Storage
-        "GCSCheckpointManager",
-        # Vertex AI
-        "VertexAITrainer",
-        "VertexJobConfig",
-        # Preemption
-        "PreemptionHandler",
-        "register_preemption_handler",
-        # Monitoring
-        "CloudLogger",
-        "CloudMetricsExporter",
-    ])

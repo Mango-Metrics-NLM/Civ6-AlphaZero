@@ -1,366 +1,517 @@
-"""Unit tests for GCS storage module."""
+"""
+Unit tests for GCS storage classes.
+
+Uses mock backend to test without real GCS connection.
+"""
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
+import json
+import lzma
+import pickle
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
+import torch.nn as nn
 
-from alpha_zero.cloud.gcs_storage import (
-    CheckpointMetadata,
-    GCSCheckpointManager,
+from alpha_zero.cloud.gcp.config import GCPConfig, GCSPathConfig
+from alpha_zero.cloud.gcp.exceptions import GCSStorageError
+from alpha_zero.cloud.gcp.storage import (
+    GCSBackend,
+    GCSCheckpointStorage,
     GCSModelStorage,
+    GCSTrajectoryStorage,
+    ModelMetadata,
+    StorageBackend,
 )
 
 
-class TestCheckpointMetadata:
-    """Tests for CheckpointMetadata."""
-
-    def test_to_dict(self) -> None:
-        """Test conversion to dictionary."""
-        meta = CheckpointMetadata(
-            key="checkpoints/checkpoint_00000100.pt",
-            size=1024,
-            created="2024-01-01T00:00:00",
-            training_step=1000,
-            model_version=5,
-            iteration=100,
-            metrics={"loss": 0.5},
-            custom={"note": "test"},
-        )
-        data = meta.to_dict()
-        assert data["key"] == "checkpoints/checkpoint_00000100.pt"
-        assert data["size"] == 1024
-        assert data["metrics"]["loss"] == 0.5
-
-    def test_from_dict(self) -> None:
-        """Test creation from dictionary."""
-        data = {
-            "key": "checkpoints/checkpoint_00000050.pt",
-            "size": 2048,
-            "iteration": 50,
-            "training_step": 500,
-        }
-        meta = CheckpointMetadata.from_dict(data)
-        assert meta.key == "checkpoints/checkpoint_00000050.pt"
-        assert meta.size == 2048
-        assert meta.iteration == 50
+# =============================================================================
+# Mock Backend
+# =============================================================================
 
 
-class TestGCSCheckpointManager:
-    """Tests for GCSCheckpointManager."""
+class MockStorageBackend:
+    """In-memory storage backend for testing."""
 
-    @pytest.fixture
-    def manager(self, tmp_path: Path) -> GCSCheckpointManager:
-        """Create checkpoint manager with mock client."""
-        return GCSCheckpointManager(
-            bucket_name="test-bucket",
-            prefix="checkpoints",
-            local_cache_dir=str(tmp_path / "cache"),
-            enable_compression=False,
-            force_mock=True,
-        )
+    def __init__(self) -> None:
+        self._storage: dict[str, bytes] = {}
 
-    @pytest.fixture
-    def checkpoint_file(self, tmp_path: Path) -> Path:
-        """Create a test checkpoint file."""
-        checkpoint = {
-            "model_state_dict": {"layer.weight": torch.randn(10, 10)},
-            "optimizer_state_dict": {},
-            "step": 100,
-        }
-        checkpoint_path = tmp_path / "checkpoint.pt"
-        torch.save(checkpoint, checkpoint_path)
-        return checkpoint_path
+    def upload_blob(self, bucket: str, blob_path: str, data: bytes) -> str:
+        key = f"{bucket}/{blob_path}"
+        self._storage[key] = data
+        return f"gs://{key}"
 
-    def test_upload_checkpoint(
-        self, manager: GCSCheckpointManager, checkpoint_file: Path
-    ) -> None:
-        """Test uploading a checkpoint."""
-        uri = manager.upload_checkpoint(
-            local_path=checkpoint_file,
-            iteration=100,
-            training_step=1000,
-            model_version=5,
-            metrics={"loss": 0.5},
-        )
-
-        assert uri == "gs://test-bucket/checkpoints/checkpoint_00000100.pt"
-        assert manager.exists(100)
-
-    def test_upload_checkpoint_file_not_found(
-        self, manager: GCSCheckpointManager
-    ) -> None:
-        """Test error when checkpoint file doesn't exist."""
-        with pytest.raises(FileNotFoundError):
-            manager.upload_checkpoint(
-                local_path="nonexistent.pt",
-                iteration=100,
+    def download_blob(self, bucket: str, blob_path: str) -> bytes:
+        key = f"{bucket}/{blob_path}"
+        if key not in self._storage:
+            raise GCSStorageError(
+                f"Blob not found: {blob_path}",
+                bucket=bucket,
+                blob_path=blob_path,
+                operation="download",
             )
+        return self._storage[key]
 
-    def test_download_checkpoint(
-        self,
-        manager: GCSCheckpointManager,
-        checkpoint_file: Path,
-        tmp_path: Path,
-    ) -> None:
-        """Test downloading a checkpoint."""
-        # Upload first
-        manager.upload_checkpoint(checkpoint_file, iteration=100)
+    def blob_exists(self, bucket: str, blob_path: str) -> bool:
+        key = f"{bucket}/{blob_path}"
+        return key in self._storage
 
-        # Download
-        download_path = tmp_path / "downloaded.pt"
-        result = manager.download_checkpoint(100, local_path=download_path)
+    def list_blobs(self, bucket: str, prefix: str) -> list[str]:
+        results = []
+        prefix_key = f"{bucket}/{prefix}"
+        for key in self._storage:
+            if key.startswith(prefix_key):
+                # Return just the blob path (without bucket)
+                results.append(key.split("/", 1)[1])
+        return results
 
-        assert result == download_path
-        assert download_path.exists()
+    def delete_blob(self, bucket: str, blob_path: str) -> None:
+        key = f"{bucket}/{blob_path}"
+        if key in self._storage:
+            del self._storage[key]
 
-        # Verify content
-        loaded = torch.load(download_path, weights_only=False)
-        assert "model_state_dict" in loaded
 
-    def test_download_checkpoint_not_found(
-        self, manager: GCSCheckpointManager
-    ) -> None:
-        """Test error when checkpoint doesn't exist."""
-        with pytest.raises(FileNotFoundError):
-            manager.download_checkpoint(999)
+# =============================================================================
+# Fixtures
+# =============================================================================
 
-    def test_download_latest(
-        self,
-        manager: GCSCheckpointManager,
-        checkpoint_file: Path,
-    ) -> None:
-        """Test downloading latest checkpoint."""
-        # Upload multiple checkpoints
-        manager.upload_checkpoint(checkpoint_file, iteration=50)
-        manager.upload_checkpoint(checkpoint_file, iteration=100)
-        manager.upload_checkpoint(checkpoint_file, iteration=75)
 
-        # Download latest
-        result = manager.download_latest()
+@pytest.fixture
+def mock_backend() -> MockStorageBackend:
+    """Create mock storage backend."""
+    return MockStorageBackend()
 
-        assert result is not None
-        assert "checkpoint_00000100" in str(result)
 
-    def test_download_latest_empty(self, manager: GCSCheckpointManager) -> None:
-        """Test downloading latest when no checkpoints exist."""
-        result = manager.download_latest()
-        assert result is None
+@pytest.fixture
+def gcp_config() -> GCPConfig:
+    """Create test GCP config."""
+    return GCPConfig(
+        project_id="test-project",
+        region="us-central1",
+        bucket="test-bucket",
+        paths=GCSPathConfig(),
+    )
 
-    def test_list_checkpoints(
-        self,
-        manager: GCSCheckpointManager,
-        checkpoint_file: Path,
-    ) -> None:
-        """Test listing checkpoints."""
-        # Upload multiple checkpoints
-        manager.upload_checkpoint(checkpoint_file, iteration=50, training_step=500)
-        manager.upload_checkpoint(checkpoint_file, iteration=100, training_step=1000)
 
-        checkpoints = manager.list_checkpoints()
+@pytest.fixture
+def simple_model() -> nn.Module:
+    """Create simple model for testing."""
+    return nn.Linear(10, 5)
 
-        assert len(checkpoints) == 2
-        assert checkpoints[0].iteration == 50
-        assert checkpoints[1].iteration == 100
 
-    def test_exists(
-        self,
-        manager: GCSCheckpointManager,
-        checkpoint_file: Path,
-    ) -> None:
-        """Test checking if checkpoint exists."""
-        assert not manager.exists(100)
+# =============================================================================
+# Model Metadata Tests
+# =============================================================================
 
-        manager.upload_checkpoint(checkpoint_file, iteration=100)
 
-        assert manager.exists(100)
-        assert not manager.exists(50)
+class TestModelMetadata:
+    """Tests for ModelMetadata class."""
 
-    def test_delete_checkpoint(
-        self,
-        manager: GCSCheckpointManager,
-        checkpoint_file: Path,
-    ) -> None:
-        """Test deleting a checkpoint."""
-        manager.upload_checkpoint(checkpoint_file, iteration=100)
-        assert manager.exists(100)
+    def test_to_dict_excludes_none(self) -> None:
+        """Test that to_dict excludes None values."""
+        meta = ModelMetadata(version=1, iteration=10)
+        d = meta.to_dict()
+        assert d["version"] == 1
+        assert d["iteration"] == 10
+        assert "timestamp" in d
 
-        result = manager.delete_checkpoint(100)
+    def test_from_dict_round_trip(self) -> None:
+        """Test round-trip serialization."""
+        meta = ModelMetadata(version=2, iteration=20, elo=1500.0)
+        d = meta.to_dict()
+        restored = ModelMetadata.from_dict(d)
+        assert restored.version == 2
+        assert restored.iteration == 20
+        assert restored.elo == 1500.0
 
-        assert result is True
-        assert not manager.exists(100)
 
-    def test_delete_checkpoint_not_found(
-        self, manager: GCSCheckpointManager
-    ) -> None:
-        """Test deleting non-existent checkpoint."""
-        result = manager.delete_checkpoint(999)
-        assert result is False
-
-    def test_get_latest_iteration(
-        self,
-        manager: GCSCheckpointManager,
-        checkpoint_file: Path,
-    ) -> None:
-        """Test getting latest iteration number."""
-        assert manager.get_latest_iteration() is None
-
-        manager.upload_checkpoint(checkpoint_file, iteration=50)
-        manager.upload_checkpoint(checkpoint_file, iteration=100)
-
-        assert manager.get_latest_iteration() == 100
-
-    def test_cleanup_old_checkpoints(
-        self,
-        tmp_path: Path,
-        checkpoint_file: Path,
-    ) -> None:
-        """Test automatic cleanup of old checkpoints."""
-        manager = GCSCheckpointManager(
-            bucket_name="test-bucket",
-            prefix="checkpoints",
-            local_cache_dir=str(tmp_path / "cache"),
-            max_checkpoints=3,
-            force_mock=True,
-        )
-
-        # Upload 5 checkpoints
-        for i in range(5):
-            manager.upload_checkpoint(checkpoint_file, iteration=i * 10)
-
-        # Only 3 should remain
-        checkpoints = manager.list_checkpoints()
-        assert len(checkpoints) == 3
-
-        # Should be the latest 3
-        iterations = [c.iteration for c in checkpoints]
-        assert 40 in iterations
-        assert 30 in iterations
-        assert 20 in iterations
-
-    def test_compression(
-        self, tmp_path: Path, checkpoint_file: Path
-    ) -> None:
-        """Test checkpoint compression."""
-        manager = GCSCheckpointManager(
-            bucket_name="test-bucket",
-            prefix="checkpoints",
-            local_cache_dir=str(tmp_path / "cache"),
-            enable_compression=True,
-            force_mock=True,
-        )
-
-        # Upload with compression
-        manager.upload_checkpoint(checkpoint_file, iteration=100)
-
-        # Download and verify
-        download_path = tmp_path / "downloaded.pt"
-        manager.download_checkpoint(100, local_path=download_path)
-
-        loaded = torch.load(download_path, weights_only=False)
-        assert "model_state_dict" in loaded
+# =============================================================================
+# GCSModelStorage Tests
+# =============================================================================
 
 
 class TestGCSModelStorage:
-    """Tests for GCSModelStorage."""
-
-    @pytest.fixture
-    def storage(self) -> GCSModelStorage:
-        """Create model storage with mock client."""
-        return GCSModelStorage(
-            bucket_name="test-bucket",
-            prefix="models",
-            force_mock=True,
-        )
-
-    @pytest.fixture
-    def simple_model(self) -> torch.nn.Module:
-        """Create a simple test model."""
-        return torch.nn.Linear(10, 5)
+    """Tests for model storage operations."""
 
     def test_save_model(
         self,
-        storage: GCSModelStorage,
-        simple_model: torch.nn.Module,
+        mock_backend: MockStorageBackend,
+        gcp_config: GCPConfig,
+        simple_model: nn.Module,
     ) -> None:
-        """Test saving a model."""
+        """Test saving model to storage."""
+        storage = GCSModelStorage(gcp_config, backend=mock_backend)
+
         uri = storage.save_model(
-            model=simple_model,
+            simple_model,
             version=1,
-            metrics={"accuracy": 0.95},
+            metadata={"iteration": 100, "elo": 1200.0},
         )
 
-        assert uri == "gs://test-bucket/models/model_v000001.pt"
+        assert "v001/model.pt" in uri
+        assert mock_backend.blob_exists("test-bucket", "models/civ6az/v001/model.pt")
+        assert mock_backend.blob_exists("test-bucket", "models/civ6az/v001/metadata.json")
+        assert mock_backend.blob_exists("test-bucket", "models/civ6az/latest.json")
 
     def test_load_model(
         self,
-        storage: GCSModelStorage,
-        simple_model: torch.nn.Module,
+        mock_backend: MockStorageBackend,
+        gcp_config: GCPConfig,
+        simple_model: nn.Module,
     ) -> None:
-        """Test loading a model."""
+        """Test loading model from storage."""
+        storage = GCSModelStorage(gcp_config, backend=mock_backend)
+
         # Save first
-        storage.save_model(simple_model, version=1, metrics={"accuracy": 0.95})
+        storage.save_model(simple_model, version=1, metadata={"iteration": 50})
 
-        # Create new model and load weights
-        new_model = torch.nn.Linear(10, 5)
-        model_data, metrics = storage.load_model(new_model, version=1)
+        # Load back
+        state_dict, metadata = storage.load_model(version=1)
 
-        assert "model_state_dict" in model_data
-        assert metrics["accuracy"] == 0.95
-
-    def test_load_model_not_found(
-        self,
-        storage: GCSModelStorage,
-        simple_model: torch.nn.Module,
-    ) -> None:
-        """Test error when model version doesn't exist."""
-        with pytest.raises(FileNotFoundError):
-            storage.load_model(simple_model, version=999)
+        assert "weight" in state_dict
+        assert metadata.version == 1
+        assert metadata.iteration == 50
 
     def test_load_latest_model(
         self,
-        storage: GCSModelStorage,
-        simple_model: torch.nn.Module,
+        mock_backend: MockStorageBackend,
+        gcp_config: GCPConfig,
+        simple_model: nn.Module,
     ) -> None:
         """Test loading latest model version."""
+        storage = GCSModelStorage(gcp_config, backend=mock_backend)
+
         # Save multiple versions
         storage.save_model(simple_model, version=1)
-        storage.save_model(simple_model, version=2, metrics={"accuracy": 0.98})
+        storage.save_model(simple_model, version=2)
+        storage.save_model(simple_model, version=3)
 
-        # Load latest
-        new_model = torch.nn.Linear(10, 5)
-        model_data, metrics = storage.load_model(new_model, version=None)
-
-        assert model_data["version"] == 2
-        assert metrics["accuracy"] == 0.98
+        # Load latest (should be v3)
+        state_dict, metadata = storage.load_model()
+        assert metadata.version == 3
 
     def test_get_latest_version(
         self,
-        storage: GCSModelStorage,
-        simple_model: torch.nn.Module,
+        mock_backend: MockStorageBackend,
+        gcp_config: GCPConfig,
+        simple_model: nn.Module,
     ) -> None:
         """Test getting latest version number."""
-        assert storage.get_latest_version() is None
+        storage = GCSModelStorage(gcp_config, backend=mock_backend)
 
-        storage.save_model(simple_model, version=1)
         storage.save_model(simple_model, version=5)
-        storage.save_model(simple_model, version=3)
-
         assert storage.get_latest_version() == 5
 
     def test_list_versions(
         self,
-        storage: GCSModelStorage,
-        simple_model: torch.nn.Module,
+        mock_backend: MockStorageBackend,
+        gcp_config: GCPConfig,
+        simple_model: nn.Module,
     ) -> None:
-        """Test listing all versions."""
+        """Test listing available versions."""
+        storage = GCSModelStorage(gcp_config, backend=mock_backend)
+
         storage.save_model(simple_model, version=1)
-        storage.save_model(simple_model, version=5)
         storage.save_model(simple_model, version=3)
+        storage.save_model(simple_model, version=5)
 
         versions = storage.list_versions()
-
         assert versions == [1, 3, 5]
+
+    def test_load_nonexistent_raises(
+        self,
+        mock_backend: MockStorageBackend,
+        gcp_config: GCPConfig,
+    ) -> None:
+        """Test that loading nonexistent model raises error."""
+        storage = GCSModelStorage(gcp_config, backend=mock_backend)
+
+        with pytest.raises(GCSStorageError):
+            storage.load_model(version=999)
+
+
+# =============================================================================
+# GCSTrajectoryStorage Tests
+# =============================================================================
+
+
+class TestGCSTrajectoryStorage:
+    """Tests for trajectory storage operations."""
+
+    def test_save_trajectories_compressed(
+        self,
+        mock_backend: MockStorageBackend,
+        gcp_config: GCPConfig,
+    ) -> None:
+        """Test saving compressed trajectories."""
+        storage = GCSTrajectoryStorage(gcp_config, backend=mock_backend, compress=True)
+
+        trajectories = [{"state": [1, 2, 3], "action": 1, "reward": 0.5} for _ in range(10)]
+
+        uri = storage.save_trajectories(
+            trajectories,
+            iteration=1,
+            worker_id=0,
+            model_version=1,
+        )
+
+        assert ".xz" in uri
+        assert mock_backend.blob_exists(
+            "test-bucket", "trajectories/civ6az/iter_001/shard_worker_0.pt.xz"
+        )
+
+    def test_save_trajectories_uncompressed(
+        self,
+        mock_backend: MockStorageBackend,
+        gcp_config: GCPConfig,
+    ) -> None:
+        """Test saving uncompressed trajectories."""
+        storage = GCSTrajectoryStorage(gcp_config, backend=mock_backend, compress=False)
+
+        trajectories = [{"state": [1, 2, 3], "action": 1} for _ in range(5)]
+
+        uri = storage.save_trajectories(
+            trajectories,
+            iteration=2,
+            worker_id=1,
+            model_version=1,
+        )
+
+        assert ".xz" not in uri
+        assert mock_backend.blob_exists(
+            "test-bucket", "trajectories/civ6az/iter_002/shard_worker_1.pt"
+        )
+
+    def test_load_trajectories(
+        self,
+        mock_backend: MockStorageBackend,
+        gcp_config: GCPConfig,
+    ) -> None:
+        """Test loading trajectories."""
+        storage = GCSTrajectoryStorage(gcp_config, backend=mock_backend, compress=True)
+
+        original = [{"game_id": i, "moves": [1, 2, 3]} for i in range(20)]
+
+        storage.save_trajectories(original, iteration=1, worker_id=0, model_version=1)
+
+        loaded = storage.load_trajectories(iteration=1)
+        assert len(loaded) == 20
+        assert loaded[0]["game_id"] == 0
+
+    def test_load_trajectories_max_examples(
+        self,
+        mock_backend: MockStorageBackend,
+        gcp_config: GCPConfig,
+    ) -> None:
+        """Test loading with max_examples limit."""
+        storage = GCSTrajectoryStorage(gcp_config, backend=mock_backend, compress=True)
+
+        original = [{"id": i} for i in range(100)]
+        storage.save_trajectories(original, iteration=1, worker_id=0, model_version=1)
+
+        loaded = storage.load_trajectories(iteration=1, max_examples=10)
+        assert len(loaded) == 10
+
+    def test_manifest_updated(
+        self,
+        mock_backend: MockStorageBackend,
+        gcp_config: GCPConfig,
+    ) -> None:
+        """Test that manifest is updated on save."""
+        storage = GCSTrajectoryStorage(gcp_config, backend=mock_backend)
+
+        storage.save_trajectories([{"a": 1}] * 10, iteration=1, worker_id=0, model_version=1)
+        storage.save_trajectories([{"b": 2}] * 20, iteration=1, worker_id=1, model_version=1)
+
+        manifest_data = mock_backend.download_blob(
+            "test-bucket", "trajectories/civ6az/iter_001/manifest.json"
+        )
+        manifest = json.loads(manifest_data.decode())
+
+        assert manifest["total_examples"] == 30
+        assert "0" in manifest["shards"]
+        assert "1" in manifest["shards"]
+
+    def test_get_available_iterations(
+        self,
+        mock_backend: MockStorageBackend,
+        gcp_config: GCPConfig,
+    ) -> None:
+        """Test listing available iterations."""
+        storage = GCSTrajectoryStorage(gcp_config, backend=mock_backend)
+
+        storage.save_trajectories([{}], iteration=1, worker_id=0, model_version=1)
+        storage.save_trajectories([{}], iteration=5, worker_id=0, model_version=2)
+        storage.save_trajectories([{}], iteration=10, worker_id=0, model_version=3)
+
+        iterations = storage.get_available_iterations()
+        assert iterations == [1, 5, 10]
+
+
+# =============================================================================
+# GCSCheckpointStorage Tests
+# =============================================================================
+
+
+class TestGCSCheckpointStorage:
+    """Tests for checkpoint storage operations."""
+
+    def test_save_checkpoint(
+        self,
+        mock_backend: MockStorageBackend,
+        gcp_config: GCPConfig,
+        simple_model: nn.Module,
+    ) -> None:
+        """Test saving checkpoint."""
+        storage = GCSCheckpointStorage(gcp_config, backend=mock_backend)
+        optimizer = torch.optim.Adam(simple_model.parameters())
+
+        uri = storage.save_checkpoint(
+            simple_model,
+            optimizer,
+            step=1000,
+            extra={"loss": 0.5},
+        )
+
+        assert "training_step_1000.pt" in uri
+        assert mock_backend.blob_exists("test-bucket", "checkpoints/civ6az/training_step_1000.pt")
+        assert mock_backend.blob_exists("test-bucket", "checkpoints/civ6az/latest.pt")
+
+    def test_load_checkpoint(
+        self,
+        mock_backend: MockStorageBackend,
+        gcp_config: GCPConfig,
+        simple_model: nn.Module,
+    ) -> None:
+        """Test loading checkpoint."""
+        storage = GCSCheckpointStorage(gcp_config, backend=mock_backend)
+        optimizer = torch.optim.Adam(simple_model.parameters())
+
+        storage.save_checkpoint(simple_model, optimizer, step=500)
+
+        checkpoint = storage.load_checkpoint(step=500)
+
+        assert checkpoint is not None
+        assert checkpoint["step"] == 500
+        assert "model_state_dict" in checkpoint
+        assert "optimizer_state_dict" in checkpoint
+
+    def test_load_latest_checkpoint(
+        self,
+        mock_backend: MockStorageBackend,
+        gcp_config: GCPConfig,
+        simple_model: nn.Module,
+    ) -> None:
+        """Test loading latest checkpoint."""
+        storage = GCSCheckpointStorage(gcp_config, backend=mock_backend)
+        optimizer = torch.optim.Adam(simple_model.parameters())
+
+        storage.save_checkpoint(simple_model, optimizer, step=100)
+        storage.save_checkpoint(simple_model, optimizer, step=200)
+
+        checkpoint = storage.load_checkpoint()
+
+        assert checkpoint is not None
+        assert checkpoint["step"] == 200
+
+    def test_get_latest_step(
+        self,
+        mock_backend: MockStorageBackend,
+        gcp_config: GCPConfig,
+        simple_model: nn.Module,
+    ) -> None:
+        """Test getting latest step number."""
+        storage = GCSCheckpointStorage(gcp_config, backend=mock_backend)
+        optimizer = torch.optim.Adam(simple_model.parameters())
+
+        storage.save_checkpoint(simple_model, optimizer, step=1500)
+
+        assert storage.get_latest_step() == 1500
+
+    def test_cleanup_old_checkpoints(
+        self,
+        mock_backend: MockStorageBackend,
+        gcp_config: GCPConfig,
+        simple_model: nn.Module,
+    ) -> None:
+        """Test checkpoint cleanup."""
+        storage = GCSCheckpointStorage(gcp_config, backend=mock_backend)
+        optimizer = torch.optim.Adam(simple_model.parameters())
+
+        # Save 10 checkpoints
+        for step in range(100, 1100, 100):
+            storage.save_checkpoint(simple_model, optimizer, step=step)
+
+        # Cleanup, keeping last 3
+        deleted = storage.cleanup_old_checkpoints(keep_last=3)
+
+        assert deleted == 7
+        # Only steps 800, 900, 1000 should remain
+        assert mock_backend.blob_exists("test-bucket", "checkpoints/civ6az/training_step_1000.pt")
+        assert mock_backend.blob_exists("test-bucket", "checkpoints/civ6az/training_step_900.pt")
+        assert mock_backend.blob_exists("test-bucket", "checkpoints/civ6az/training_step_800.pt")
+        assert not mock_backend.blob_exists("test-bucket", "checkpoints/civ6az/training_step_100.pt")
+
+    def test_load_nonexistent_returns_none(
+        self,
+        mock_backend: MockStorageBackend,
+        gcp_config: GCPConfig,
+    ) -> None:
+        """Test that loading nonexistent checkpoint returns None."""
+        storage = GCSCheckpointStorage(gcp_config, backend=mock_backend)
+
+        checkpoint = storage.load_checkpoint(step=9999)
+        assert checkpoint is None
+
+
+# =============================================================================
+# Config Tests
+# =============================================================================
+
+
+class TestGCPConfig:
+    """Tests for GCP configuration."""
+
+    def test_from_env_with_missing_vars(self) -> None:
+        """Test that missing env vars raise ConfigurationError."""
+        from alpha_zero.cloud.gcp.exceptions import ConfigurationError
+
+        with patch.dict("os.environ", {}, clear=True):
+            config = GCPConfig()
+            with pytest.raises(ConfigurationError) as exc_info:
+                config.validate()
+            assert "CIV6AZ_VERTEX_PROJECT" in str(exc_info.value)
+
+    def test_bucket_normalization(self) -> None:
+        """Test that gs:// prefix is stripped from bucket."""
+        config = GCPConfig(bucket="gs://my-bucket")
+        assert config.bucket == "my-bucket"
+
+    def test_with_tier_budget(self) -> None:
+        """Test budget tier preset."""
+        config = GCPConfig.with_tier("budget")
+        assert config.self_play.accelerator_type == "NVIDIA_TESLA_T4"
+        assert config.training.accelerator_type == "NVIDIA_L4"
+        assert config.self_play.spot is True
+
+    def test_with_tier_ondemand(self) -> None:
+        """Test on-demand tier preset."""
+        config = GCPConfig.with_tier("ondemand")
+        assert config.self_play.accelerator_type == "NVIDIA_TESLA_A100"
+        assert config.training.accelerator_type == "NVIDIA_TESLA_A100"
+        assert config.self_play.spot is False
+
+    def test_to_dict(self) -> None:
+        """Test serialization to dict."""
+        config = GCPConfig(
+            project_id="my-project",
+            bucket="my-bucket",
+        )
+        d = config.to_dict()
+        assert d["project_id"] == "my-project"
+        assert d["bucket"] == "my-bucket"
+        assert "self_play" in d
+        assert "training" in d

@@ -1,1 +1,1 @@
-"""Unit tests for cloud training components."""
+# Cloud unit tests package

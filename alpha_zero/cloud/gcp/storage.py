@@ -1,441 +1,767 @@
-"""Google Cloud Storage checkpoint management.
+"""
+GCS Storage Classes for Model, Trajectory, and Checkpoint Management.
 
-Provides GCSCheckpointManager for storing and retrieving training
-checkpoints in Google Cloud Storage. Follows the force_mock pattern
-for testing without requiring GCP SDK.
+Provides Protocol-based storage abstractions for:
+- Model weights with version tracking
+- Game trajectories in sharded format
+- Training checkpoints with recovery support
+
+All operations are designed for cloud-native patterns:
+- Atomic writes with temp file upload
+- Version metadata for consistency
+- LZMA compression for trajectory data
 """
 
 from __future__ import annotations
 
 import io
+import json
 import logging
-import re
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
-from alpha_zero.cloud.config import CloudConfig
-from alpha_zero.cloud.exceptions import CloudConfigError, CloudConnectionError, CloudStorageError
-from alpha_zero.cloud.protocols import CloudStorageProtocol
+from alpha_zero.cloud.gcp.exceptions import GCSStorageError
+
+if TYPE_CHECKING:
+    from google.cloud import storage as gcs
+
+    from alpha_zero.cloud.gcp.config import GCPConfig
 
 logger = logging.getLogger(__name__)
 
-# SDK availability check
-GCS_AVAILABLE = False
-try:
-    from google.cloud import storage  # type: ignore[import-untyped]
-    from google.cloud.exceptions import NotFound  # type: ignore[import-untyped]
+T = TypeVar("T")
 
-    GCS_AVAILABLE = True
-except ImportError:
-    storage = None  # type: ignore[assignment]
-    NotFound = Exception  # type: ignore[assignment, misc]
+
+# =============================================================================
+# Protocols for Type Safety
+# =============================================================================
+
+
+class StorageBackend(Protocol):
+    """Protocol for storage backends (enables testing with mocks)."""
+
+    def upload_blob(self, bucket: str, blob_path: str, data: bytes) -> str:
+        """Upload data to storage."""
+        ...
+
+    def download_blob(self, bucket: str, blob_path: str) -> bytes:
+        """Download data from storage."""
+        ...
+
+    def blob_exists(self, bucket: str, blob_path: str) -> bool:
+        """Check if blob exists."""
+        ...
+
+    def list_blobs(self, bucket: str, prefix: str) -> list[str]:
+        """List blobs with prefix."""
+        ...
+
+    def delete_blob(self, bucket: str, blob_path: str) -> None:
+        """Delete a blob."""
+        ...
+
+
+class ModelLike(Protocol):
+    """Protocol for objects that can be saved/loaded as models."""
+
+    def state_dict(self) -> dict[str, Any]:
+        """Get model state dictionary."""
+        ...
+
+    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+        """Load model state dictionary."""
+        ...
+
+
+# =============================================================================
+# Metadata Classes
+# =============================================================================
 
 
 @dataclass
-class CheckpointMetadata:
-    """Metadata for a stored checkpoint.
+class ModelMetadata:
+    """Metadata for a stored model version.
 
     Attributes:
-        key: Storage key/path.
-        size: Size in bytes.
-        created: Creation timestamp as ISO string.
-        training_step: Training step from metadata.
-        model_version: Model version from metadata.
-        custom: Additional custom metadata.
+        version: Model version number.
+        iteration: Training iteration when model was saved.
+        elo: ELO rating if available.
+        timestamp: ISO format timestamp.
+        games_played: Total games used for training.
+        extra: Additional custom metadata.
     """
 
-    key: str
-    size: int
-    created: str
-    training_step: int | None = None
-    model_version: int | None = None
-    custom: dict[str, str] | None = None
+    version: int
+    iteration: int
+    elo: float | None = None
+    timestamp: str | None = None
+    games_played: int = 0
+    extra: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        if self.timestamp is None:
+            self.timestamp = datetime.now(timezone.utc).isoformat()
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {k: v for k, v in asdict(self).items() if v is not None}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ModelMetadata:
+        """Create from dictionary."""
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 
-class MockGCSClient:
-    """Mock GCS client for testing without SDK.
+@dataclass
+class TrajectoryMetadata:
+    """Metadata for trajectory shard.
 
-    Stores blobs in memory for testing checkpoint operations.
+    Attributes:
+        iteration: Training iteration.
+        worker_id: Worker that generated this shard.
+        model_version: Model version used for generation.
+        num_examples: Number of training examples.
+        timestamp: ISO format timestamp.
     """
 
-    def __init__(self) -> None:
-        """Initialize mock client."""
-        self._blobs: dict[str, tuple[bytes, dict[str, str]]] = {}
-        self._bucket_name: str = "mock-bucket"
+    iteration: int
+    worker_id: int
+    model_version: int
+    num_examples: int
+    timestamp: str | None = None
 
-    def bucket(self, bucket_name: str) -> MockGCSClient:
-        """Get bucket (returns self for chaining)."""
-        self._bucket_name = bucket_name
-        return self
-
-    def blob(self, blob_name: str) -> MockBlob:
-        """Get blob reference."""
-        return MockBlob(self, blob_name)
-
-    def list_blobs(
-        self, prefix: str | None = None, max_results: int | None = None
-    ) -> list[MockBlob]:
-        """List blobs with optional prefix filter."""
-        blobs = []
-        for key in self._blobs:
-            if prefix is None or key.startswith(prefix):
-                blobs.append(MockBlob(self, key))
-                if max_results and len(blobs) >= max_results:
-                    break
-        return blobs
+    def __post_init__(self) -> None:
+        if self.timestamp is None:
+            self.timestamp = datetime.now(timezone.utc).isoformat()
 
 
-class MockBlob:
-    """Mock blob for testing."""
+# =============================================================================
+# GCS Backend Implementation
+# =============================================================================
 
-    def __init__(self, client: MockGCSClient, name: str) -> None:
-        """Initialize mock blob."""
-        self._client = client
-        self.name = name
-        self._metadata: dict[str, str] = {}
+
+class GCSBackend:
+    """Real GCS backend using google-cloud-storage.
+
+    This class wraps the GCS client and provides a simple interface
+    for common operations. It's designed to be easily mockable for testing.
+    """
+
+    def __init__(self, project_id: str | None = None) -> None:
+        """Initialize GCS backend.
+
+        Args:
+            project_id: GCP project ID. If None, uses default.
+        """
+        self._project_id = project_id
+        self._client: gcs.Client | None = None
 
     @property
-    def metadata(self) -> dict[str, str]:
-        """Get blob metadata."""
-        if self.name in self._client._blobs:
-            return self._client._blobs[self.name][1]
-        return self._metadata
+    def client(self) -> gcs.Client:
+        """Lazy-initialize GCS client."""
+        if self._client is None:
+            try:
+                from google.cloud import storage as gcs_lib
 
-    @metadata.setter
-    def metadata(self, value: dict[str, str]) -> None:
-        """Set blob metadata."""
-        self._metadata = value
+                self._client = gcs_lib.Client(project=self._project_id)
+            except ImportError as e:
+                raise GCSStorageError(
+                    "google-cloud-storage not installed. Install with: pip install google-cloud-storage",
+                    operation="client_init",
+                ) from e
+            except Exception as e:
+                raise GCSStorageError(
+                    f"Failed to initialize GCS client: {e}",
+                    operation="client_init",
+                ) from e
+        return self._client
 
-    @property
-    def size(self) -> int:
-        """Get blob size."""
-        if self.name in self._client._blobs:
-            return len(self._client._blobs[self.name][0])
-        return 0
+    def upload_blob(self, bucket: str, blob_path: str, data: bytes) -> str:
+        """Upload data to GCS.
 
-    @property
-    def time_created(self) -> Any:
-        """Get creation time (mock)."""
+        Args:
+            bucket: Bucket name (without gs:// prefix).
+            blob_path: Path within bucket.
+            data: Bytes to upload.
 
-        class MockTime:
-            def isoformat(self) -> str:
-                return "2026-02-02T00:00:00Z"
+        Returns:
+            Full GCS URI of uploaded blob.
 
-        return MockTime()
+        Raises:
+            GCSStorageError: If upload fails.
+        """
+        try:
+            bucket_obj = self.client.bucket(bucket)
+            blob = bucket_obj.blob(blob_path)
+            blob.upload_from_string(data)
+            uri = f"gs://{bucket}/{blob_path}"
+            logger.debug("Uploaded %d bytes to %s", len(data), uri)
+            return uri
+        except Exception as e:
+            raise GCSStorageError(
+                f"Failed to upload to {blob_path}: {e}",
+                bucket=bucket,
+                blob_path=blob_path,
+                operation="upload",
+            ) from e
 
-    def upload_from_filename(self, filename: str) -> None:
-        """Upload from file."""
-        with open(filename, "rb") as f:
-            data = f.read()
-        self._client._blobs[self.name] = (data, self._metadata.copy())
+    def download_blob(self, bucket: str, blob_path: str) -> bytes:
+        """Download data from GCS.
 
-    def upload_from_file(self, file_obj: io.IOBase) -> None:
-        """Upload from file object."""
-        data = file_obj.read()
-        if isinstance(data, str):
-            data = data.encode()
-        self._client._blobs[self.name] = (data, self._metadata.copy())
+        Args:
+            bucket: Bucket name.
+            blob_path: Path within bucket.
 
-    def download_to_filename(self, filename: str) -> None:
-        """Download to file."""
-        if self.name not in self._client._blobs:
-            raise KeyError(f"Blob not found: {self.name}")
-        data, _ = self._client._blobs[self.name]
-        with open(filename, "wb") as f:
-            f.write(data)
+        Returns:
+            Downloaded bytes.
 
-    def download_as_bytes(self) -> bytes:
-        """Download as bytes."""
-        if self.name not in self._client._blobs:
-            raise KeyError(f"Blob not found: {self.name}")
-        return self._client._blobs[self.name][0]
+        Raises:
+            GCSStorageError: If download fails or blob doesn't exist.
+        """
+        try:
+            bucket_obj = self.client.bucket(bucket)
+            blob = bucket_obj.blob(blob_path)
+            data = blob.download_as_bytes()
+            logger.debug("Downloaded %d bytes from gs://%s/%s", len(data), bucket, blob_path)
+            return data
+        except Exception as e:
+            raise GCSStorageError(
+                f"Failed to download {blob_path}: {e}",
+                bucket=bucket,
+                blob_path=blob_path,
+                operation="download",
+            ) from e
 
-    def exists(self) -> bool:
-        """Check if blob exists."""
-        return self.name in self._client._blobs
+    def blob_exists(self, bucket: str, blob_path: str) -> bool:
+        """Check if blob exists.
 
-    def delete(self) -> None:
-        """Delete blob."""
-        if self.name in self._client._blobs:
-            del self._client._blobs[self.name]
+        Args:
+            bucket: Bucket name.
+            blob_path: Path within bucket.
 
-    def reload(self) -> None:
-        """Reload blob metadata (no-op for mock)."""
-        pass
+        Returns:
+            True if blob exists.
+        """
+        try:
+            bucket_obj = self.client.bucket(bucket)
+            blob = bucket_obj.blob(blob_path)
+            return blob.exists()
+        except Exception:
+            return False
+
+    def list_blobs(self, bucket: str, prefix: str) -> list[str]:
+        """List blobs with prefix.
+
+        Args:
+            bucket: Bucket name.
+            prefix: Path prefix to filter.
+
+        Returns:
+            List of blob paths.
+        """
+        try:
+            bucket_obj = self.client.bucket(bucket)
+            blobs = bucket_obj.list_blobs(prefix=prefix)
+            return [blob.name for blob in blobs]
+        except Exception as e:
+            raise GCSStorageError(
+                f"Failed to list blobs with prefix {prefix}: {e}",
+                bucket=bucket,
+                blob_path=prefix,
+                operation="list",
+            ) from e
+
+    def delete_blob(self, bucket: str, blob_path: str) -> None:
+        """Delete a blob.
+
+        Args:
+            bucket: Bucket name.
+            blob_path: Path within bucket.
+        """
+        try:
+            bucket_obj = self.client.bucket(bucket)
+            blob = bucket_obj.blob(blob_path)
+            blob.delete()
+            logger.debug("Deleted gs://%s/%s", bucket, blob_path)
+        except Exception as e:
+            raise GCSStorageError(
+                f"Failed to delete {blob_path}: {e}",
+                bucket=bucket,
+                blob_path=blob_path,
+                operation="delete",
+            ) from e
 
 
-class GCSCheckpointManager(CloudStorageProtocol):
-    """Google Cloud Storage checkpoint manager.
+# =============================================================================
+# Storage Classes
+# =============================================================================
 
-    Implements CloudStorageProtocol for storing checkpoints in GCS.
-    Follows the force_mock pattern for testing without SDK.
 
-    Example:
-        >>> config = CloudConfig(project_id="my-project", bucket_name="my-bucket")
-        >>> manager = GCSCheckpointManager(config)
-        >>> uri = manager.upload_checkpoint("model.pt", "checkpoints/model_v1.pt")
-        >>> manager.download_checkpoint("checkpoints/model_v1.pt", "local_model.pt")
+class GCSModelStorage:
+    """GCS storage for model weights with version tracking.
+
+    Models are stored with the following structure:
+        gs://{bucket}/models/civ6az/v001/model.pt
+        gs://{bucket}/models/civ6az/v001/metadata.json
+        gs://{bucket}/models/civ6az/latest.json  # Points to latest version
+
+    Thread-safe for concurrent reads. Writes should be coordinated externally.
     """
 
     def __init__(
         self,
-        config: CloudConfig,
-        force_mock: bool = False,
+        config: GCPConfig,
+        backend: StorageBackend | None = None,
     ) -> None:
-        """Initialize GCS checkpoint manager.
+        """Initialize model storage.
 
         Args:
-            config: Cloud configuration with bucket settings.
-            force_mock: Force use of mock client for testing.
-
-        Raises:
-            CloudConfigError: If bucket_name is not configured.
+            config: GCP configuration.
+            backend: Storage backend (uses GCSBackend if None).
         """
         self.config = config
-        self._use_mock = force_mock or not GCS_AVAILABLE
+        self.backend = backend or GCSBackend(config.project_id)
+        self._bucket = config.bucket
+        self._paths = config.paths
 
-        if not config.bucket_name and not self._use_mock:
-            raise CloudConfigError("bucket_name is required for GCS storage")
-
-        if self._use_mock:
-            logger.info(
-                "Using mock GCS client (force_mock=%s, SDK available=%s)", force_mock, GCS_AVAILABLE
-            )
-            self._client: Any = MockGCSClient()
-            self._bucket = self._client.bucket(config.bucket_name or "mock-bucket")
-        else:
-            try:
-                self._client = storage.Client(project=config.project_id or None)
-                self._bucket = self._client.bucket(config.bucket_name)
-            except Exception as e:
-                raise CloudConnectionError(
-                    f"Failed to connect to GCS: {e}",
-                    service="storage",
-                    cause=e,
-                ) from e
-
-    @property
-    def is_mock(self) -> bool:
-        """Check if using mock client."""
-        return self._use_mock
-
-    def upload_checkpoint(
+    def save_model(
         self,
-        local_path: Path | str,
-        remote_key: str,
-        metadata: dict[str, str] | None = None,
+        model: ModelLike,
+        version: int,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
-        """Upload a checkpoint to GCS.
+        """Save model weights to GCS.
 
         Args:
-            local_path: Path to local checkpoint file.
-            remote_key: Key/path in GCS bucket.
-            metadata: Optional metadata to attach.
+            model: Model with state_dict() method.
+            version: Version number for this model.
+            metadata: Optional metadata dict (elo, iteration, etc.).
 
         Returns:
-            GCS URI of uploaded checkpoint (gs://bucket/key).
+            GCS URI of saved model.
 
         Raises:
-            CloudStorageError: If upload fails.
+            GCSStorageError: If save fails.
         """
-        local_path = Path(local_path)
-        if not local_path.exists():
-            raise CloudStorageError(
-                f"Local file not found: {local_path}",
-                operation="upload",
-                path=str(local_path),
-            )
+        import torch
 
-        # Normalize key (remove leading slashes, use forward slashes)
-        remote_key = remote_key.lstrip("/").replace("\\", "/")
+        # Serialize model to bytes
+        buffer = io.BytesIO()
+        torch.save(model.state_dict(), buffer)
+        model_bytes = buffer.getvalue()
 
-        try:
-            blob = self._bucket.blob(remote_key)
-            if metadata:
-                blob.metadata = metadata
-            blob.upload_from_filename(str(local_path))
+        # Upload model
+        model_path = self._paths.model_path(version)
+        model_uri = self.backend.upload_blob(self._bucket, model_path, model_bytes)
 
-            uri = f"gs://{self.config.bucket_name}/{remote_key}"
-            logger.info("Uploaded checkpoint: %s -> %s", local_path, uri)
-            return uri
+        # Create and upload metadata
+        meta = ModelMetadata(
+            version=version,
+            iteration=metadata.get("iteration", 0) if metadata else 0,
+            elo=metadata.get("elo") if metadata else None,
+            games_played=metadata.get("games_played", 0) if metadata else 0,
+            extra=metadata,
+        )
+        meta_bytes = json.dumps(meta.to_dict(), indent=2).encode()
+        meta_path = self._paths.metadata_path(version)
+        self.backend.upload_blob(self._bucket, meta_path, meta_bytes)
 
-        except Exception as e:
-            raise CloudStorageError(
-                f"Failed to upload checkpoint: {e}",
-                operation="upload",
-                path=remote_key,
-                cause=e,
-            ) from e
+        # Update latest pointer
+        latest_data = {"version": version, "path": model_path}
+        latest_bytes = json.dumps(latest_data).encode()
+        latest_path = f"{self._paths.models_prefix}/latest.json"
+        self.backend.upload_blob(self._bucket, latest_path, latest_bytes)
 
-    def download_checkpoint(
+        logger.info("Saved model v%d to %s", version, model_uri)
+        return model_uri
+
+    def load_model(
         self,
-        remote_key: str,
-        local_path: Path | str,
-    ) -> Path:
-        """Download a checkpoint from GCS.
+        version: int | None = None,
+        model_class: type[T] | None = None,
+    ) -> tuple[dict[str, Any], ModelMetadata]:
+        """Load model weights from GCS.
 
         Args:
-            remote_key: Key/path in GCS bucket.
-            local_path: Local path to save checkpoint.
+            version: Version to load (None = latest).
+            model_class: Optional model class to instantiate.
 
         Returns:
-            Path to downloaded file.
+            Tuple of (state_dict, metadata).
 
         Raises:
-            CloudStorageError: If download fails.
+            GCSStorageError: If load fails.
         """
-        local_path = Path(local_path)
-        remote_key = remote_key.lstrip("/").replace("\\", "/")
+        import torch
 
-        # Create parent directories
-        local_path.parent.mkdir(parents=True, exist_ok=True)
+        if version is None:
+            version = self.get_latest_version()
 
+        # Download model
+        model_path = self._paths.model_path(version)
+        model_bytes = self.backend.download_blob(self._bucket, model_path)
+        buffer = io.BytesIO(model_bytes)
+        state_dict = torch.load(buffer, map_location="cpu", weights_only=True)
+
+        # Download metadata
+        meta_path = self._paths.metadata_path(version)
         try:
-            blob = self._bucket.blob(remote_key)
-            blob.download_to_filename(str(local_path))
+            meta_bytes = self.backend.download_blob(self._bucket, meta_path)
+            meta_dict = json.loads(meta_bytes.decode())
+            metadata = ModelMetadata.from_dict(meta_dict)
+        except GCSStorageError:
+            # Metadata might not exist for older models
+            metadata = ModelMetadata(version=version, iteration=0)
 
-            logger.info(
-                "Downloaded checkpoint: gs://%s/%s -> %s",
-                self.config.bucket_name,
-                remote_key,
-                local_path,
-            )
-            return local_path
+        logger.info("Loaded model v%d", version)
+        return state_dict, metadata
 
-        except (KeyError, NotFound) as e:
-            raise CloudStorageError(
-                f"Checkpoint not found: {remote_key}",
-                operation="download",
-                path=remote_key,
-                cause=e if not isinstance(e, KeyError) else None,
-            ) from e
-        except Exception as e:
-            raise CloudStorageError(
-                f"Failed to download checkpoint: {e}",
-                operation="download",
-                path=remote_key,
-                cause=e,
-            ) from e
+    def get_latest_version(self) -> int:
+        """Get the latest model version number.
 
-    def list_checkpoints(
+        Returns:
+            Latest version number.
+
+        Raises:
+            GCSStorageError: If no models exist.
+        """
+        latest_path = f"{self._paths.models_prefix}/latest.json"
+        try:
+            data = self.backend.download_blob(self._bucket, latest_path)
+            info = json.loads(data.decode())
+            return info["version"]
+        except GCSStorageError:
+            # Scan for versions if latest.json doesn't exist
+            blobs = self.backend.list_blobs(self._bucket, self._paths.models_prefix)
+            versions = []
+            for blob in blobs:
+                if "/v" in blob and blob.endswith("model.pt"):
+                    try:
+                        # Extract version from path like "models/civ6az/v001/model.pt"
+                        v_part = blob.split("/v")[1].split("/")[0]
+                        versions.append(int(v_part))
+                    except (IndexError, ValueError):
+                        continue
+
+            if not versions:
+                raise GCSStorageError(
+                    "No models found in storage",
+                    bucket=self._bucket,
+                    blob_path=self._paths.models_prefix,
+                    operation="get_latest",
+                ) from None
+            return max(versions)
+
+    def list_versions(self) -> list[int]:
+        """List all available model versions.
+
+        Returns:
+            Sorted list of version numbers.
+        """
+        blobs = self.backend.list_blobs(self._bucket, self._paths.models_prefix)
+        versions = set()
+        for blob in blobs:
+            if "/v" in blob and blob.endswith("model.pt"):
+                try:
+                    v_part = blob.split("/v")[1].split("/")[0]
+                    versions.add(int(v_part))
+                except (IndexError, ValueError):
+                    continue
+        return sorted(versions)
+
+
+class GCSTrajectoryStorage:
+    """GCS storage for game trajectories in sharded format.
+
+    Trajectories are stored as:
+        gs://{bucket}/trajectories/civ6az/iter_001/shard_worker_0.pt
+        gs://{bucket}/trajectories/civ6az/iter_001/manifest.json
+
+    Supports LZMA compression for efficient storage.
+    """
+
+    def __init__(
         self,
-        prefix: str | None = None,
-        max_results: int = 100,
-    ) -> list[str]:
-        """List available checkpoints.
+        config: GCPConfig,
+        backend: StorageBackend | None = None,
+        compress: bool = True,
+    ) -> None:
+        """Initialize trajectory storage.
 
         Args:
-            prefix: Optional prefix to filter checkpoints.
-            max_results: Maximum number of results.
+            config: GCP configuration.
+            backend: Storage backend (uses GCSBackend if None).
+            compress: Whether to compress trajectories with LZMA.
+        """
+        self.config = config
+        self.backend = backend or GCSBackend(config.project_id)
+        self._bucket = config.bucket
+        self._paths = config.paths
+        self._compress = compress
+
+    def save_trajectories(
+        self,
+        trajectories: list[Any],
+        iteration: int,
+        worker_id: int,
+        model_version: int,
+    ) -> str:
+        """Save trajectory shard to GCS.
+
+        Args:
+            trajectories: List of trajectory objects (must be picklable).
+            iteration: Training iteration number.
+            worker_id: Worker ID that generated these trajectories.
+            model_version: Model version used for generation.
 
         Returns:
-            List of checkpoint keys.
+            GCS URI of saved trajectories.
         """
-        # Use config prefix if not specified
-        if prefix is None:
-            prefix = self.config.checkpoint_prefix
+        import lzma
+        import pickle
+
+        # Serialize trajectories
+        data = pickle.dumps(trajectories)
+        if self._compress:
+            data = lzma.compress(data)
+
+        # Upload shard
+        shard_path = self._paths.trajectory_path(iteration, worker_id)
+        if self._compress:
+            shard_path = shard_path.replace(".pt", ".pt.xz")
+        uri = self.backend.upload_blob(self._bucket, shard_path, data)
+
+        # Update manifest
+        self._update_manifest(iteration, worker_id, model_version, len(trajectories))
+
+        logger.info(
+            "Saved %d trajectories for iter %d worker %d to %s",
+            len(trajectories),
+            iteration,
+            worker_id,
+            uri,
+        )
+        return uri
+
+    def _update_manifest(
+        self,
+        iteration: int,
+        worker_id: int,
+        model_version: int,
+        num_examples: int,
+    ) -> None:
+        """Update iteration manifest with new shard info."""
+        manifest_path = f"{self._paths.trajectories_prefix}/iter_{iteration:03d}/manifest.json"
+
+        # Try to load existing manifest
+        try:
+            data = self.backend.download_blob(self._bucket, manifest_path)
+            manifest = json.loads(data.decode())
+        except GCSStorageError:
+            manifest = {"iteration": iteration, "model_version": model_version, "shards": {}}
+
+        # Update shard info
+        manifest["shards"][str(worker_id)] = {
+            "num_examples": num_examples,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        manifest["total_examples"] = sum(s["num_examples"] for s in manifest["shards"].values())
+
+        # Save manifest
+        manifest_bytes = json.dumps(manifest, indent=2).encode()
+        self.backend.upload_blob(self._bucket, manifest_path, manifest_bytes)
+
+    def load_trajectories(
+        self,
+        iteration: int,
+        max_examples: int | None = None,
+    ) -> list[Any]:
+        """Load trajectories from an iteration.
+
+        Args:
+            iteration: Training iteration to load.
+            max_examples: Maximum examples to return (samples if needed).
+
+        Returns:
+            List of trajectory objects.
+        """
+        import lzma
+        import pickle
+        import random
+
+        prefix = f"{self._paths.trajectories_prefix}/iter_{iteration:03d}/"
+        blobs = self.backend.list_blobs(self._bucket, prefix)
+
+        all_trajectories: list[Any] = []
+        for blob_path in blobs:
+            if blob_path.endswith(".pt") or blob_path.endswith(".pt.xz"):
+                data = self.backend.download_blob(self._bucket, blob_path)
+                if blob_path.endswith(".xz"):
+                    data = lzma.decompress(data)
+                trajectories = pickle.loads(data)
+                all_trajectories.extend(trajectories)
+
+        # Sample if needed
+        if max_examples and len(all_trajectories) > max_examples:
+            all_trajectories = random.sample(all_trajectories, max_examples)
+
+        logger.info("Loaded %d trajectories from iteration %d", len(all_trajectories), iteration)
+        return all_trajectories
+
+    def get_available_iterations(self) -> list[int]:
+        """Get list of available trajectory iterations.
+
+        Returns:
+            Sorted list of iteration numbers.
+        """
+        blobs = self.backend.list_blobs(self._bucket, self._paths.trajectories_prefix)
+        iterations = set()
+        for blob in blobs:
+            if "/iter_" in blob:
+                try:
+                    iter_part = blob.split("/iter_")[1].split("/")[0]
+                    iterations.add(int(iter_part))
+                except (IndexError, ValueError):
+                    continue
+        return sorted(iterations)
+
+
+class GCSCheckpointStorage:
+    """GCS storage for training checkpoints.
+
+    Checkpoints are stored as:
+        gs://{bucket}/checkpoints/civ6az/training_step_1000.pt
+        gs://{bucket}/checkpoints/civ6az/latest.pt
+
+    Includes optimizer state and training metadata for recovery.
+    """
+
+    def __init__(
+        self,
+        config: GCPConfig,
+        backend: StorageBackend | None = None,
+    ) -> None:
+        """Initialize checkpoint storage.
+
+        Args:
+            config: GCP configuration.
+            backend: Storage backend.
+        """
+        self.config = config
+        self.backend = backend or GCSBackend(config.project_id)
+        self._bucket = config.bucket
+        self._paths = config.paths
+
+    def save_checkpoint(
+        self,
+        model: ModelLike,
+        optimizer: Any,
+        step: int,
+        extra: dict[str, Any] | None = None,
+    ) -> str:
+        """Save training checkpoint.
+
+        Args:
+            model: Model to checkpoint.
+            optimizer: Optimizer state.
+            step: Training step number.
+            extra: Additional state to save.
+
+        Returns:
+            GCS URI of checkpoint.
+        """
+        import torch
+
+        checkpoint = {
+            "step": step,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict() if hasattr(optimizer, "state_dict") else None,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            **(extra or {}),
+        }
+
+        buffer = io.BytesIO()
+        torch.save(checkpoint, buffer)
+        data = buffer.getvalue()
+
+        # Save numbered checkpoint
+        ckpt_path = self._paths.checkpoint_path(step)
+        uri = self.backend.upload_blob(self._bucket, ckpt_path, data)
+
+        # Update latest pointer
+        self.backend.upload_blob(self._bucket, self._paths.latest_checkpoint_path(), data)
+
+        logger.info("Saved checkpoint at step %d to %s", step, uri)
+        return uri
+
+    def load_checkpoint(
+        self,
+        step: int | None = None,
+    ) -> dict[str, Any] | None:
+        """Load training checkpoint.
+
+        Args:
+            step: Specific step to load (None = latest).
+
+        Returns:
+            Checkpoint dict or None if not found.
+        """
+        import torch
+
+        if step is None:
+            ckpt_path = self._paths.latest_checkpoint_path()
+        else:
+            ckpt_path = self._paths.checkpoint_path(step)
 
         try:
-            logger.debug(
-                "Listing checkpoints with prefix='%s', max_results=%d", prefix, max_results
-            )
-            blobs = self._bucket.list_blobs(prefix=prefix, max_results=max_results)
-            result = [blob.name for blob in blobs]
-            logger.debug("Listed %d checkpoints with prefix '%s'", len(result), prefix)
-            return result
-        except Exception as e:
-            logger.warning("Failed to list checkpoints: %s", e)
-            return []
-
-    def get_latest_checkpoint(self, prefix: str | None = None) -> str | None:
-        """Get the most recent checkpoint.
-
-        Checkpoints are expected to have step numbers in their names,
-        e.g., "checkpoint_step_1000.pt".
-
-        Args:
-            prefix: Optional prefix to filter checkpoints.
-
-        Returns:
-            Key of latest checkpoint, or None if no checkpoints exist.
-        """
-        checkpoints = self.list_checkpoints(prefix=prefix)
-        if not checkpoints:
-            logger.debug("No checkpoints found with prefix '%s'", prefix)
+            data = self.backend.download_blob(self._bucket, ckpt_path)
+            buffer = io.BytesIO(data)
+            checkpoint = torch.load(buffer, map_location="cpu", weights_only=False)
+            logger.info("Loaded checkpoint from %s (step %d)", ckpt_path, checkpoint.get("step", -1))
+            return checkpoint
+        except GCSStorageError:
+            logger.warning("No checkpoint found at %s", ckpt_path)
             return None
 
-        # Sort by step number if present in name
-        def extract_step(name: str) -> int:
-            match = re.search(r"step[_-]?(\d+)", name, re.IGNORECASE)
-            if match:
-                return int(match.group(1))
-            # Fall back to natural sort
-            return 0
-
-        sorted_checkpoints = sorted(checkpoints, key=extract_step, reverse=True)
-        latest = sorted_checkpoints[0] if sorted_checkpoints else None
-        if latest:
-            logger.debug("Found latest checkpoint: %s (from %d total)", latest, len(checkpoints))
-        return latest
-
-    def delete_checkpoint(self, remote_key: str) -> bool:
-        """Delete a checkpoint from GCS.
-
-        Args:
-            remote_key: Key/path in GCS bucket.
+    def get_latest_step(self) -> int | None:
+        """Get the latest checkpoint step number.
 
         Returns:
-            True if deleted successfully.
-
-        Raises:
-            CloudStorageError: If deletion fails.
+            Latest step number or None if no checkpoints.
         """
-        remote_key = remote_key.lstrip("/").replace("\\", "/")
+        checkpoint = self.load_checkpoint()
+        return checkpoint.get("step") if checkpoint else None
 
-        try:
-            blob = self._bucket.blob(remote_key)
-            blob.delete()
-            logger.info("Deleted checkpoint: gs://%s/%s", self.config.bucket_name, remote_key)
-            return True
-        except (KeyError, NotFound):
-            logger.warning("Checkpoint not found for deletion: %s", remote_key)
-            return False
-        except Exception as e:
-            raise CloudStorageError(
-                f"Failed to delete checkpoint: {e}",
-                operation="delete",
-                path=remote_key,
-                cause=e,
-            ) from e
-
-    def get_checkpoint_metadata(self, remote_key: str) -> CheckpointMetadata | None:
-        """Get metadata for a checkpoint.
+    def cleanup_old_checkpoints(self, keep_last: int = 5) -> int:
+        """Delete old checkpoints, keeping only the most recent.
 
         Args:
-            remote_key: Key/path in GCS bucket.
+            keep_last: Number of recent checkpoints to keep.
 
         Returns:
-            Checkpoint metadata, or None if not found.
+            Number of checkpoints deleted.
         """
-        remote_key = remote_key.lstrip("/").replace("\\", "/")
+        blobs = self.backend.list_blobs(self._bucket, self._paths.checkpoints_prefix)
 
-        try:
-            blob = self._bucket.blob(remote_key)
-            if not blob.exists():
-                return None
+        # Find numbered checkpoints
+        checkpoints: list[tuple[int, str]] = []
+        for blob in blobs:
+            if "training_step_" in blob and blob.endswith(".pt"):
+                try:
+                    step = int(blob.split("training_step_")[1].replace(".pt", ""))
+                    checkpoints.append((step, blob))
+                except ValueError:
+                    continue
 
-            blob.reload()
-            meta = blob.metadata or {}
+        # Sort by step and delete old ones
+        checkpoints.sort(reverse=True)
+        deleted = 0
+        for _step, blob_path in checkpoints[keep_last:]:
+            self.backend.delete_blob(self._bucket, blob_path)
+            deleted += 1
+            logger.debug("Deleted old checkpoint: %s", blob_path)
 
-            return CheckpointMetadata(
-                key=remote_key,
-                size=blob.size,
-                created=blob.time_created.isoformat(),
-                training_step=int(meta.get("training_step", 0)) or None,
-                model_version=int(meta.get("model_version", 0)) or None,
-                custom=meta,
-            )
-        except Exception as e:
-            logger.warning("Failed to get checkpoint metadata: %s", e)
-            return None
+        if deleted:
+            logger.info("Cleaned up %d old checkpoints", deleted)
+        return deleted

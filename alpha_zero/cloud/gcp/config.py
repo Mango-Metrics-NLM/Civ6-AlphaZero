@@ -1,33 +1,10 @@
-"""GCP-specific configuration classes.
+"""
+GCP Configuration for Civ6 AlphaZero Cloud Training.
 
-This module provides configuration dataclasses for GCP services,
-with full environment variable support for all settings.
-
-Environment Variables (all optional, with sensible defaults):
-    GCP_PROJECT_ID: GCP project ID
-    GCP_REGION: Default region (e.g., us-central1)
-    GCP_SERVICE_ACCOUNT: Service account email
-    GCP_BUCKET: Default Cloud Storage bucket
-    VERTEX_MACHINE_TYPE: Default Vertex AI machine type
-    VERTEX_ACCELERATOR_TYPE: Default GPU type
-    VERTEX_ACCELERATOR_COUNT: Number of GPUs
-    VERTEX_CONTAINER_URI: Training container image
-
-Example:
-    from alpha_zero.cloud.gcp.config import GCPConfig
-
-    # Load all config from environment
-    config = GCPConfig.from_env()
-
-    # Or create programmatically
-    config = GCPConfig(
-        project_id="my-project",
-        region="us-central1",
-        vertex=VertexConfig(
-            machine_type="n1-standard-8",
-            accelerator_type="NVIDIA_TESLA_T4",
-        ),
-    )
+Provides dataclass-based configuration with:
+- Environment variable support (no hardcoded values)
+- Preset configurations for budget/on-demand tiers
+- Validation and serialization utilities
 """
 
 from __future__ import annotations
@@ -35,226 +12,346 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
 from typing import Any
+
+import yaml
+
+from alpha_zero.cloud.gcp.exceptions import ConfigurationError
 
 logger = logging.getLogger(__name__)
 
 
-# Default values as constants (not hardcoded in code paths)
-DEFAULT_REGION = "us-central1"
-DEFAULT_MACHINE_TYPE = "n1-standard-4"
-DEFAULT_CONTAINER_URI = "gcr.io/cloud-aiplatform/training/pytorch-gpu.1-13:latest"
+class VertexTier(str, Enum):
+    """Vertex AI pricing tier."""
+
+    BUDGET = "budget"  # T4 self-play + L4 training
+    ON_DEMAND = "ondemand"  # A100 for both
 
 
 @dataclass
-class VertexConfig:
-    """Configuration for Vertex AI training.
+class SelfPlayWorkerConfig:
+    """Configuration for self-play worker jobs.
 
-    All values can be overridden at job submission time.
+    Attributes:
+        machine_type: GCE machine type (e.g., n1-standard-8).
+        accelerator_type: GPU type (e.g., NVIDIA_TESLA_T4).
+        accelerator_count: Number of GPUs per worker.
+        replica_count: Number of parallel workers.
+        spot: Use Spot VMs for cost savings.
+        games_per_worker: Number of games each worker generates.
+        max_retries: Maximum job retries on failure.
     """
 
-    # Machine configuration
-    machine_type: str = DEFAULT_MACHINE_TYPE
-    accelerator_type: str = ""
-    accelerator_count: int = 0
-
-    # Container configuration
-    container_uri: str = DEFAULT_CONTAINER_URI
-    python_module: str = ""  # e.g., "alpha_zero.training_civ6"
-    script_path: str = ""  # Alternative: direct script path
-
-    # Resources
-    replica_count: int = 1
-    boot_disk_size_gb: int = 100
-    timeout_seconds: int = 86400  # 24 hours default
-
-    # Networking
-    network: str = ""
-    enable_web_access: bool = False
-
-    # Experiment tracking
-    tensorboard_resource_name: str = ""
-    experiment_name: str = ""
+    machine_type: str = "n1-standard-8"
+    accelerator_type: str = "NVIDIA_TESLA_T4"
+    accelerator_count: int = 1
+    replica_count: int = 10
+    spot: bool = True
+    games_per_worker: int = 100
+    max_retries: int = 3
 
     @classmethod
-    def from_env(cls, prefix: str = "VERTEX") -> VertexConfig:
-        """Load from environment variables."""
-
-        def get_env(key: str, default: str = "") -> str:
-            return os.environ.get(f"{prefix}_{key}", default)
-
+    def budget_preset(cls) -> SelfPlayWorkerConfig:
+        """Create budget tier configuration (T4 Spot VMs)."""
         return cls(
-            machine_type=get_env("MACHINE_TYPE", DEFAULT_MACHINE_TYPE),
-            accelerator_type=get_env("ACCELERATOR_TYPE"),
-            accelerator_count=int(get_env("ACCELERATOR_COUNT", "0")),
-            container_uri=get_env("CONTAINER_URI", DEFAULT_CONTAINER_URI),
-            python_module=get_env("PYTHON_MODULE"),
-            script_path=get_env("SCRIPT_PATH"),
-            replica_count=int(get_env("REPLICA_COUNT", "1")),
-            boot_disk_size_gb=int(get_env("BOOT_DISK_SIZE_GB", "100")),
-            timeout_seconds=int(get_env("TIMEOUT_SECONDS", "86400")),
-            network=get_env("NETWORK"),
-            enable_web_access=get_env("ENABLE_WEB_ACCESS", "false").lower() == "true",
-            tensorboard_resource_name=get_env("TENSORBOARD_RESOURCE"),
-            experiment_name=get_env("EXPERIMENT_NAME"),
+            machine_type="n1-standard-8",
+            accelerator_type="NVIDIA_TESLA_T4",
+            accelerator_count=1,
+            replica_count=10,
+            spot=True,
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary."""
-        return {
-            "machine_type": self.machine_type,
-            "accelerator_type": self.accelerator_type,
-            "accelerator_count": self.accelerator_count,
-            "container_uri": self.container_uri,
-            "python_module": self.python_module,
-            "script_path": self.script_path,
-            "replica_count": self.replica_count,
-            "boot_disk_size_gb": self.boot_disk_size_gb,
-            "timeout_seconds": self.timeout_seconds,
-            "network": self.network,
-            "enable_web_access": self.enable_web_access,
-            "tensorboard_resource_name": self.tensorboard_resource_name,
-            "experiment_name": self.experiment_name,
-        }
+    @classmethod
+    def ondemand_preset(cls) -> SelfPlayWorkerConfig:
+        """Create on-demand tier configuration (A100 GPUs)."""
+        return cls(
+            machine_type="a2-highgpu-1g",
+            accelerator_type="NVIDIA_TESLA_A100",
+            accelerator_count=1,
+            replica_count=20,
+            spot=False,
+        )
 
 
 @dataclass
-class StorageConfig:
-    """Configuration for Cloud Storage."""
+class TrainingWorkerConfig:
+    """Configuration for training jobs.
 
-    bucket: str = ""
-    checkpoint_prefix: str = "checkpoints"
-    artifact_prefix: str = "artifacts"
-    data_prefix: str = "data"
-    logs_prefix: str = "logs"
+    Attributes:
+        machine_type: GCE machine type.
+        accelerator_type: GPU type.
+        accelerator_count: Number of GPUs.
+        spot: Use Spot VMs (not recommended for training).
+        checkpoint_interval: Steps between checkpoints.
+        epochs_per_iteration: Training epochs per iteration.
+    """
 
-    # Upload settings
-    chunk_size_mb: int = 8
-    retry_count: int = 3
-    retry_delay_seconds: float = 1.0
+    machine_type: str = "g2-standard-8"
+    accelerator_type: str = "NVIDIA_L4"
+    accelerator_count: int = 1
+    spot: bool = False
+    checkpoint_interval: int = 1000
+    epochs_per_iteration: int = 10
 
     @classmethod
-    def from_env(cls, prefix: str = "GCS") -> StorageConfig:
-        """Load from environment variables."""
-
-        def get_env(key: str, default: str = "") -> str:
-            return os.environ.get(f"{prefix}_{key}", default)
-
+    def budget_preset(cls) -> TrainingWorkerConfig:
+        """Create budget tier configuration (L4 GPU)."""
         return cls(
-            bucket=get_env("BUCKET"),
-            checkpoint_prefix=get_env("CHECKPOINT_PREFIX", "checkpoints"),
-            artifact_prefix=get_env("ARTIFACT_PREFIX", "artifacts"),
-            data_prefix=get_env("DATA_PREFIX", "data"),
-            logs_prefix=get_env("LOGS_PREFIX", "logs"),
-            chunk_size_mb=int(get_env("CHUNK_SIZE_MB", "8")),
-            retry_count=int(get_env("RETRY_COUNT", "3")),
-            retry_delay_seconds=float(get_env("RETRY_DELAY_SECONDS", "1.0")),
+            machine_type="g2-standard-8",
+            accelerator_type="NVIDIA_L4",
+            accelerator_count=1,
+            spot=False,
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary."""
-        return {
-            "bucket": self.bucket,
-            "checkpoint_prefix": self.checkpoint_prefix,
-            "artifact_prefix": self.artifact_prefix,
-            "data_prefix": self.data_prefix,
-            "logs_prefix": self.logs_prefix,
-            "chunk_size_mb": self.chunk_size_mb,
-            "retry_count": self.retry_count,
-            "retry_delay_seconds": self.retry_delay_seconds,
-        }
+    @classmethod
+    def ondemand_preset(cls) -> TrainingWorkerConfig:
+        """Create on-demand tier configuration (8x A100)."""
+        return cls(
+            machine_type="a2-highgpu-8g",
+            accelerator_type="NVIDIA_TESLA_A100",
+            accelerator_count=8,
+            spot=False,
+        )
 
-    def get_checkpoint_path(self, name: str) -> str:
-        """Get full GCS path for a checkpoint."""
-        return f"gs://{self.bucket}/{self.checkpoint_prefix}/{name}"
 
-    def get_artifact_path(self, name: str) -> str:
-        """Get full GCS path for an artifact."""
-        return f"gs://{self.bucket}/{self.artifact_prefix}/{name}"
+@dataclass
+class GCSPathConfig:
+    """GCS path configuration.
+
+    Defines the bucket structure for all artifacts.
+    """
+
+    models_prefix: str = "models/civ6az"
+    trajectories_prefix: str = "trajectories/civ6az"
+    checkpoints_prefix: str = "checkpoints/civ6az"
+    logs_prefix: str = "logs/civ6az"
+
+    def model_path(self, version: int) -> str:
+        """Get path for a model version."""
+        return f"{self.models_prefix}/v{version:03d}/model.pt"
+
+    def metadata_path(self, version: int) -> str:
+        """Get path for model metadata."""
+        return f"{self.models_prefix}/v{version:03d}/metadata.json"
+
+    def trajectory_path(self, iteration: int, worker_id: int) -> str:
+        """Get path for trajectory shard."""
+        return f"{self.trajectories_prefix}/iter_{iteration:03d}/shard_worker_{worker_id}.pt"
+
+    def checkpoint_path(self, step: int) -> str:
+        """Get path for training checkpoint."""
+        return f"{self.checkpoints_prefix}/training_step_{step}.pt"
+
+    def latest_checkpoint_path(self) -> str:
+        """Get path for latest checkpoint marker."""
+        return f"{self.checkpoints_prefix}/latest.pt"
 
 
 @dataclass
 class GCPConfig:
-    """Complete GCP configuration.
+    """Main GCP configuration for Vertex AI training.
 
-    Combines project-level settings with service-specific configurations
-    for Vertex AI and Cloud Storage.
+    All values are loaded from environment variables by default,
+    ensuring no hardcoded project IDs or bucket names.
+
+    Environment Variables:
+        CIV6AZ_VERTEX_PROJECT: GCP project ID
+        CIV6AZ_VERTEX_REGION: GCP region (default: us-central1)
+        CIV6AZ_GCS_BUCKET: GCS bucket name (without gs:// prefix)
+        CIV6AZ_VERTEX_SERVICE_ACCOUNT: Service account email (optional)
+        CIV6AZ_CONTAINER_IMAGE_URI: Container image URI (optional)
     """
 
-    # Project settings
-    project_id: str = ""
-    region: str = DEFAULT_REGION
-    service_account: str = ""
+    project_id: str = field(
+        default_factory=lambda: os.environ.get("CIV6AZ_VERTEX_PROJECT", "")
+    )
+    region: str = field(
+        default_factory=lambda: os.environ.get("CIV6AZ_VERTEX_REGION", "us-central1")
+    )
+    bucket: str = field(
+        default_factory=lambda: os.environ.get("CIV6AZ_GCS_BUCKET", "")
+    )
+    service_account: str | None = field(
+        default_factory=lambda: os.environ.get("CIV6AZ_VERTEX_SERVICE_ACCOUNT")
+    )
+    container_image_uri: str | None = field(
+        default_factory=lambda: os.environ.get("CIV6AZ_CONTAINER_IMAGE_URI")
+    )
 
-    # Service configurations
-    vertex: VertexConfig = field(default_factory=VertexConfig)
-    storage: StorageConfig = field(default_factory=StorageConfig)
+    # Worker configurations
+    self_play: SelfPlayWorkerConfig = field(default_factory=SelfPlayWorkerConfig)
+    training: TrainingWorkerConfig = field(default_factory=TrainingWorkerConfig)
 
-    # Labels for all resources
-    labels: dict[str, str] = field(default_factory=dict)
+    # Path configuration
+    paths: GCSPathConfig = field(default_factory=GCSPathConfig)
+
+    # Tier selection
+    tier: VertexTier = VertexTier.BUDGET
+
+    def __post_init__(self) -> None:
+        """Validate configuration after initialization."""
+        # Normalize bucket name (remove gs:// prefix if present)
+        if self.bucket.startswith("gs://"):
+            self.bucket = self.bucket[5:]
 
     @classmethod
-    def from_env(cls) -> GCPConfig:
-        """Load complete GCP configuration from environment."""
+    def from_env(cls, validate: bool = True) -> GCPConfig:
+        """Create configuration from environment variables.
 
-        def get_env(key: str, default: str = "") -> str:
-            return os.environ.get(f"GCP_{key}", default)
+        Args:
+            validate: Whether to validate required fields.
 
-        # Parse labels
-        labels_str = get_env("LABELS", "")
-        labels = {}
-        if labels_str:
-            for pair in labels_str.split(","):
-                if "=" in pair:
-                    k, v = pair.split("=", 1)
-                    labels[k.strip()] = v.strip()
+        Returns:
+            GCPConfig instance.
 
-        return cls(
-            project_id=get_env("PROJECT_ID"),
-            region=get_env("REGION", DEFAULT_REGION),
-            service_account=get_env("SERVICE_ACCOUNT"),
-            vertex=VertexConfig.from_env(),
-            storage=StorageConfig.from_env(),
-            labels=labels,
-        )
+        Raises:
+            ConfigurationError: If required variables are missing.
+        """
+        config = cls()
+        if validate:
+            config.validate()
+        return config
 
-    def validate(self) -> list[str]:
-        """Validate configuration, returning list of errors."""
-        errors = []
+    @classmethod
+    def from_yaml(cls, path: str | Path) -> GCPConfig:
+        """Load configuration from YAML file.
 
-        if not self.project_id:
-            errors.append("GCP_PROJECT_ID is required")
-        if not self.region:
-            errors.append("GCP_REGION is required")
+        Args:
+            path: Path to YAML configuration file.
 
-        return errors
+        Returns:
+            GCPConfig instance.
 
-    def is_valid(self) -> bool:
-        """Check if configuration is valid."""
-        return len(self.validate()) == 0
+        Raises:
+            ConfigurationError: If file is invalid or missing.
+        """
+        path = Path(path)
+        if not path.exists():
+            raise ConfigurationError(f"Configuration file not found: {path}")
 
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for serialization."""
-        return {
-            "project_id": self.project_id,
-            "region": self.region,
-            "service_account": self.service_account,
-            "vertex": self.vertex.to_dict(),
-            "storage": self.storage.to_dict(),
-            "labels": self.labels,
-        }
+        try:
+            with open(path) as f:
+                data = yaml.safe_load(f)
+        except yaml.YAMLError as e:
+            raise ConfigurationError(f"Invalid YAML in {path}: {e}") from e
+
+        return cls.from_dict(data)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GCPConfig:
-        """Create from dictionary."""
-        vertex_data = data.get("vertex", {})
-        storage_data = data.get("storage", {})
+        """Create configuration from dictionary.
+
+        Args:
+            data: Configuration dictionary.
+
+        Returns:
+            GCPConfig instance.
+        """
+        self_play_data = data.pop("self_play", {})
+        training_data = data.pop("training", {})
+        paths_data = data.pop("paths", {})
+
+        self_play = SelfPlayWorkerConfig(**self_play_data) if self_play_data else SelfPlayWorkerConfig()
+        training = TrainingWorkerConfig(**training_data) if training_data else TrainingWorkerConfig()
+        paths = GCSPathConfig(**paths_data) if paths_data else GCSPathConfig()
+
+        tier_str = data.pop("tier", "budget")
+        tier = VertexTier(tier_str) if isinstance(tier_str, str) else tier_str
 
         return cls(
-            project_id=data.get("project_id", ""),
-            region=data.get("region", DEFAULT_REGION),
-            service_account=data.get("service_account", ""),
-            vertex=VertexConfig(**vertex_data) if vertex_data else VertexConfig(),
-            storage=StorageConfig(**storage_data) if storage_data else StorageConfig(),
-            labels=data.get("labels", {}),
+            self_play=self_play,
+            training=training,
+            paths=paths,
+            tier=tier,
+            **data,
+        )
+
+    @classmethod
+    def with_tier(cls, tier: VertexTier | str) -> GCPConfig:
+        """Create configuration with specified tier presets.
+
+        Args:
+            tier: Pricing tier (budget or ondemand).
+
+        Returns:
+            GCPConfig with appropriate worker configs.
+        """
+        if isinstance(tier, str):
+            tier = VertexTier(tier)
+
+        if tier == VertexTier.BUDGET:
+            return cls(
+                tier=tier,
+                self_play=SelfPlayWorkerConfig.budget_preset(),
+                training=TrainingWorkerConfig.budget_preset(),
+            )
+        else:
+            return cls(
+                tier=tier,
+                self_play=SelfPlayWorkerConfig.ondemand_preset(),
+                training=TrainingWorkerConfig.ondemand_preset(),
+            )
+
+    def validate(self) -> None:
+        """Validate that all required configuration is present.
+
+        Raises:
+            ConfigurationError: If required values are missing.
+        """
+        missing: list[str] = []
+
+        if not self.project_id:
+            missing.append("CIV6AZ_VERTEX_PROJECT")
+        if not self.bucket:
+            missing.append("CIV6AZ_GCS_BUCKET")
+
+        if missing:
+            raise ConfigurationError(
+                "Missing required GCP configuration",
+                missing_vars=missing,
+            )
+
+    @property
+    def bucket_uri(self) -> str:
+        """Get full GCS bucket URI."""
+        return f"gs://{self.bucket}"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert configuration to dictionary.
+
+        Returns:
+            Configuration as dictionary.
+        """
+        return {
+            "project_id": self.project_id,
+            "region": self.region,
+            "bucket": self.bucket,
+            "service_account": self.service_account,
+            "container_image_uri": self.container_image_uri,
+            "tier": self.tier.value,
+            "self_play": {
+                "machine_type": self.self_play.machine_type,
+                "accelerator_type": self.self_play.accelerator_type,
+                "accelerator_count": self.self_play.accelerator_count,
+                "replica_count": self.self_play.replica_count,
+                "spot": self.self_play.spot,
+                "games_per_worker": self.self_play.games_per_worker,
+                "max_retries": self.self_play.max_retries,
+            },
+            "training": {
+                "machine_type": self.training.machine_type,
+                "accelerator_type": self.training.accelerator_type,
+                "accelerator_count": self.training.accelerator_count,
+                "spot": self.training.spot,
+                "checkpoint_interval": self.training.checkpoint_interval,
+                "epochs_per_iteration": self.training.epochs_per_iteration,
+            },
+        }
+
+    def __repr__(self) -> str:
+        return (
+            f"GCPConfig(project={self.project_id!r}, region={self.region!r}, "
+            f"bucket={self.bucket!r}, tier={self.tier.value})"
         )

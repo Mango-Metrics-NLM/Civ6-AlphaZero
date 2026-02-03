@@ -1,1 +1,1 @@
-"""Tests for cloud training infrastructure."""
+# Cloud tests package
