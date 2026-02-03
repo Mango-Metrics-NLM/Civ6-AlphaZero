@@ -9,217 +9,143 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-#### Phase 3: Cloud Training Infrastructure (Enhancements)
+#### Phase 4.1: Model Evaluation Framework
 
-Complete GCP cloud training infrastructure for single-node and multi-node distributed training, building on Phase 2 cloud work.
+A comprehensive model evaluation system for measuring trained model performance against configurable baselines.
 
-##### Phase 3.1: Single-Node Cloud Training (`alpha_zero/cloud/`)
+##### Evaluation Module (`alpha_zero/evaluation/`)
 
-- **CloudConfig** (`config.py`): Enhanced unified cloud configuration system
-  - YAML-based configuration with environment variable overrides (`CIV6AZ_` prefix)
-  - Nested configs: GCSConfig, VertexConfig, PreemptionConfig, CloudLoggingConfig
-  - Full validation with detailed error reporting
-  - Support for development, staging, and production environments
+- **EvaluationConfig** (`config.py`): Unified configuration for evaluation
+  - Experiment naming and output directory configuration
+  - Board size and max turns settings
+  - ELO rating integration settings
+  - Environment variable support (`CIV6AZ_EVAL_*` prefix)
 
-- **GCS Storage Layer** (`gcs_storage.py`): Enhanced Google Cloud Storage integration
-  - `GCSCheckpointManager`: Upload/download checkpoints with metadata
-  - `GCSModelStorage`: Versioned model storage with metrics tracking
-  - LZMA compression support for efficient storage
-  - Automatic cleanup of old checkpoints (configurable retention)
-  - Mock implementations for testing without GCP
+- **BaselineConfig** (`config.py`): Configuration for baseline opponents
+  - Support for RANDOM, HEURISTIC, and NEURAL_NETWORK baseline types
+  - Per-baseline game count and weight configuration
+  - HeuristicWeights for customizable heuristic behavior
 
-- **Vertex AI Launcher** (`vertex_launcher.py`): Training job management
-  - `VertexJobLauncher`: Submit and monitor Vertex AI custom jobs
-  - `JobInfo` and `JobStatus` for job state tracking
-  - Support for GPU accelerators (T4, V100, A100)
-  - Environment variable injection and container configuration
-  - Wait for completion with timeout and polling
+- **DiversityConfig** (`config.py`): Diversity tracking configuration
+  - Opening move tracking with configurable depth
+  - Game length distribution analysis
 
-- **Preemption Handling** (`preemption.py`): Enhanced spot instance resilience
-  - `PreemptionHandler`: SIGTERM/SIGINT signal handlers
-  - GCE metadata service monitoring for preemption notices
-  - Emergency checkpoint saving on preemption
-  - Configurable cleanup callbacks for graceful shutdown
-  - `MockPreemptionHandler` for testing
+- **BaselinePlayer** (`baselines.py`): Protocol and implementations
+  - RandomPlayer: Uniform random action selection with seeding
+  - HeuristicPlayer: Configurable weighted heuristic evaluation
+  - NeuralNetworkPlayer: Model checkpoint loading with optional MCTS
+  - BaselineFactory: Factory pattern for baseline creation
 
-- **Cloud Logging** (`cloud_logging.py`): Structured logging integration
-  - `CloudLogger`: Google Cloud Logging with buffering
-  - `CloudMetricsExporter`: Custom metrics to Cloud Monitoring
-  - Structured logging with training context (job_id, iteration, etc.)
-  - Checkpoint and preemption event logging
+- **ModelEvaluator** (`evaluator.py`): Main evaluation orchestrator
+  - Integration with existing ELORatingSystem from tournament/elo.py
+  - GameResult and EvaluationResult dataclasses
+  - play_game(), evaluate_against_baseline(), evaluate_model() methods
 
-- **Configuration**: `configs/cloud_training.yaml`
-  - Complete cloud training configuration template
-  - n1-standard-8 + T4 GPU setup
-  - 256 batch size, 100 games per iteration
+- **DiversityTracker** (`diversity.py`): Game diversity analysis
+  - Opening sequence tracking with entropy calculation
+  - Game length statistics (mean, std, min, max)
+  - Baseline-specific diversity breakdowns
 
-##### Phase 3.2: Multi-Node Distributed Training (`alpha_zero/distributed/`)
+- **ReportGenerator** (`reports.py`): Multi-format report generation
+  - EvaluationReport dataclass with full evaluation results
+  - JSON export with to_json() method
+  - Markdown export with to_markdown() method
 
-- **DDPConfig** (`ddp_config.py`): PyTorch DDP configuration
-  - Environment variable detection for cloud/cluster deployments
-  - Support for NCCL, Gloo, and MPI backends
-  - Auto-detection of WORLD_SIZE, RANK, MASTER_ADDR
-  - Validation and device assignment helpers
+##### Evaluation Test Suite (62 new tests)
 
-- **DDPLearner** (`ddp_learner.py`): Enhanced multi-GPU learner
-  - Extends base Learner with DistributedDataParallel wrapper
-  - Mixed precision training (AMP) with configurable dtype
-  - Distributed checkpoint coordination (only rank 0 saves)
-  - Gradient synchronization and all-reduce for losses
-  - SyncBatchNorm conversion support
+- `tests/unit/test_evaluation/test_config.py`: Configuration validation (10 tests)
+- `tests/unit/test_evaluation/test_baselines.py`: Baseline player tests (15 tests)
+- `tests/unit/test_evaluation/test_diversity.py`: Diversity tracking tests (12 tests)
+- `tests/unit/test_evaluation/test_evaluator.py`: Evaluator tests (14 tests)
+- `tests/unit/test_evaluation/test_reports.py`: Report generation tests (11 tests)
+- `tests/integration/test_evaluation_pipeline.py`: Integration tests (11 tests)
 
-- **ParameterServer** (`parameter_server.py`): Centralized weight management
-  - Weight compression and version tracking
-  - Gradient aggregation for async SGD (optional)
-  - Weight delta application for efficient updates
-  - `DistributedParameterServer` with client registration and heartbeats
-  - `MockParameterServer` for testing
+##### Evaluation Configuration (`configs/evaluation.yaml`)
 
-- **Virtual Loss for MCTS** (`civ6_mcts.py`): Parallel search support
-  - Added `virtual_loss` field to MCTSNode
-  - `add_virtual_loss()` / `remove_virtual_loss()` methods
-  - `effective_value` property for virtual-loss-adjusted Q-values
-  - `use_virtual_loss` parameter in `select_child()`
+- Complete YAML configuration template
+- Random and heuristic baseline definitions
+- Diversity tracking settings
+- ELO integration settings
 
-- **Configuration**: `configs/distributed_4node.yaml`
-  - 4-node distributed training configuration
-  - 2 GPU learners with DDP, 96 CPU actors
-  - NCCL backend with mixed precision
+#### Phase 4.2: PBT Enhancements
 
-##### Phase 3 Test Infrastructure
+Enhanced Population-Based Training with temperature scheduling and crossover mutations.
 
-- **Cloud Mocks** (`tests/mocks/cloud_mocks.py`)
-  - `MockGCSClient`, `MockBucket`, `MockGCSBlob`
-  - `MockAIPlatform`, `MockCustomJob`
-  - Thread-safe in-memory storage simulation
+##### Temperature Schedule (`alpha_zero/pbt/config.py`)
 
-- **Distributed Mocks** (`tests/mocks/distributed_mocks.py`)
-  - `MockProcessGroup`: Simulates torch.distributed
-  - `MockDDP`: DDP wrapper without network
-  - `MockDistributedEnvironment`: Context manager for env vars
-  - `MockGradScaler`: AMP scaler mock
+- **HyperparameterSpace** enhancements:
+  - temperature_initial: Starting temperature for exploration
+  - temperature_final: Ending temperature for exploitation
+  - temperature_decay_steps: Steps over which temperature decays
+  - Updated get_all_params() and serialization methods
 
-- **Unit Tests** (146 tests for cloud/distributed)
-  - `test_cloud_config.py`: Configuration validation (26 tests)
-  - `test_gcs_storage.py`: GCS operations (22 tests)
-  - `test_vertex_launcher.py`: Job submission (14 tests)
-  - `test_preemption.py`: Signal handling (15 tests)
-  - `test_ddp_config.py`: DDP configuration (27 tests)
-  - `test_parameter_server.py`: Weight management (36 tests)
+##### Crossover Mutation (`alpha_zero/pbt/mutations.py`)
 
-##### Phase 3 Dependencies Added (`pyproject.toml`)
+- **CrossoverMutation** class:
+  - BLX-alpha blending crossover (default α=0.5)
+  - Simulated Binary Crossover (SBX) with η=20
+  - Uniform crossover with 50% probability
+  - Automatic fallback to perturbation without parent
 
-```toml
-[project.optional-dependencies]
-gcp = [
-    "google-cloud-aiplatform>=1.38.0",
-    "google-cloud-storage>=2.10.0",
-    "google-cloud-logging>=3.5.0",
-    "grpcio>=1.50.0",
-]
-distributed = [
-    "grpcio>=1.50.0",
-]
-```
+- **MutationOperator** enhancements:
+  - CROSSOVER strategy in MutationStrategy enum
+  - set_crossover_parent() method for parent injection
+  - Integration with existing mutation infrastructure
 
-#### GCP Cloud Infrastructure for Distributed Training (Phase 2)
+#### Phase 4.3: Performance Optimizations
 
-A complete cloud infrastructure package for distributed training on Google Cloud Platform.
+Research-based optimizations for faster training and improved sample efficiency.
 
-##### Cloud Configuration (`alpha_zero/cloud/`)
+##### Optimizations Module (`alpha_zero/optimizations/`)
 
-- **CloudConfig** (`config.py`): Unified cloud configuration
-  - Environment variable loading (GCP_, CIV6AZ_, CLOUD_ prefixes)
-  - YAML configuration support with validation
-  - Dataclass-based configuration with sensible defaults
-  - `CloudProvider` enum: GCP, AWS, AZURE, LOCAL
-  - `CloudEnvironment` enum: DEVELOPMENT, STAGING, PRODUCTION, TEST
-  - Full serialization/deserialization with validation
+- **PlayoutCapRandomizer** (`playout_cap.py`): Playout cap randomization
+  - Geometric, uniform, and exponential cap distributions
+  - Position complexity scaling for root vs non-root nodes
+  - Statistics tracking (total samples, average cap, speedup estimates)
+  - Configurable min/max playouts with geometric_p parameter
 
-- **protocols.py**: Abstract interfaces for cloud backends
-  - `CloudTrainerProtocol`: Training job management interface
-  - `CloudStorageProtocol`: Storage operations interface
-  - `JobStatus` enum for job lifecycle tracking
-  - `TrainingJobInfo` dataclass for job metadata
+- **PolicyTargetPruner** (`policy_pruning.py`): Policy target pruning
+  - Top-k preservation for important actions
+  - Minimum probability threshold filtering
+  - Maximum actions limiting
+  - Entropy-based dynamic thresholding
+  - Action reduction statistics tracking
 
-##### GCP Implementations (`alpha_zero/cloud/gcp/`)
+- **CyclicLRScheduler** (`cyclic_lr.py`): Cyclic learning rate schedules
+  - Five schedule types: triangular, triangular2, exp_range, cosine_annealing, warm_restarts
+  - Momentum cycling with base_momentum and max_momentum
+  - Warmup steps support
+  - Iteration tracking and state serialization
 
-- **GCP Configuration** (`config.py`):
-  - `GCPConfig`: Project, region, and environment settings
-  - `VertexConfig`: Vertex AI training configuration
-    - Machine types, accelerators, container URIs
-    - Boot disk, timeout, and replica settings
-  - `StorageConfig`: Cloud Storage bucket configuration
-    - Bucket name, prefixes, retry settings
+- **AuxiliaryTargetGenerator** (`auxiliary_targets.py`): Auxiliary policy targets
+  - Attention target generation from board positions
+  - Opponent modeling for predicting opponent moves
+  - Game phase prediction (early/mid/late classification)
+  - Future value prediction for N-step lookahead
+  - AuxiliaryLossCalculator for weighted loss computation
 
-- **GCSCheckpointManager** (`storage.py`): Google Cloud Storage integration
-  - Upload/download checkpoints with metadata
-  - Latest checkpoint detection and version tracking
-  - Directory upload/download operations
-  - File existence and deletion operations
-  - GCS URI parsing (gs://bucket/path)
-  - Mock support for testing without SDK (`force_mock=True`)
-  - Retry logic with exponential backoff
+- **PerformanceOptimizationsConfig** (`config.py`): Unified configuration
+  - Enable flags for each optimization type
+  - Nested configs for all optimization parameters
+  - fast_preset() and quality_preset() factory methods
+  - YAML serialization and environment variable support
 
-- **VertexAITrainer** (`vertex.py`/`vertex_trainer.py`): Vertex AI Custom Training jobs
-  - Job submission and monitoring with configurable machine types
-  - GPU/TPU configuration support
-  - Spot instance (preemptible) support for cost optimization
-  - Job status monitoring with state mapping
-  - Job cancellation and listing with optional filtering
-  - Blocking wait with timeout support
-  - Mock mode (`force_mock=True`) for testing without credentials
+##### Optimizations Test Suite (148 new tests)
 
-- **PreemptionHandler** (`preemption.py`): GCE preemption handling
-  - 30-second warning detection via metadata endpoint
-  - Checkpoint callback on preemption signal
-  - Signal handler integration (SIGTERM)
+- `tests/unit/test_optimizations/test_playout_cap.py`: Playout cap tests (26 tests)
+- `tests/unit/test_optimizations/test_policy_pruning.py`: Policy pruning tests (24 tests)
+- `tests/unit/test_optimizations/test_cyclic_lr.py`: Cyclic LR tests (30 tests)
+- `tests/unit/test_optimizations/test_auxiliary_targets.py`: Auxiliary targets tests (51 tests)
+- `tests/unit/test_optimizations/test_config.py`: Config tests (17 tests)
+- `tests/integration/test_optimizations_integration.py`: Integration tests (17 tests)
 
-- **CloudLogger** (`monitoring.py`): Cloud Logging integration
-  - Structured logging with severity levels
-  - Correlation ID support for distributed tracing
+##### Optimizations Configuration (`configs/optimizations.yaml`)
 
-- **CloudMetricsExporter** (`monitoring.py`): Cloud Monitoring integration
-  - Custom metrics export
-  - Gauge and counter metric types
-
-##### Distributed Training Enhancements
-
-- **DDPLearner** (`distributed/ddp_learner.py`): PyTorch DDP multi-GPU training
-  - Gradient synchronization across devices
-  - Checkpoint coordination
-- **CloudCoordinator** (`distributed/cloud_coordinator.py`): GCP orchestration
-  - Resource management and scaling
-  - Job lifecycle management
-
-##### Validation Scripts (`scripts/`)
-
-- `validate_gcp_credentials.py`: GCP credential verification utility
-- `validate_phase1.py`: Phase 1 implementation validation
-
-##### Cloud Test Suite (52+ new tests)
-
-- `tests/unit/test_cloud_config.py`: Configuration tests (22 tests)
-  - Environment parsing, validation, serialization
-  - Provider and environment enum handling
-- `tests/unit/test_cloud_storage.py`: Storage client tests (14 tests)
-  - Upload/download operations in mock mode
-  - Checkpoint management, existence checks, deletion
-  - Fallback mode behavior
-- `tests/unit/test_cloud_components.py`: Core cloud component tests
-- `tests/unit/test_vertex_trainer.py`: Vertex AI trainer tests (16 tests)
-  - Job submission and monitoring in mock mode
-  - Protocol compliance verification
-  - Job lifecycle operations
-- `tests/e2e/`: End-to-end integration tests
-- `tests/integration/test_ddp_multinode.py`, `test_cloud_coordinator.py`
-- Unit tests: `test_ddp_learner.py`, `test_training_smoke.py`
-
-##### Cloud Dependencies (optional)
-
-- `google-cloud-aiplatform>=1.36.0`: Vertex AI SDK
-- `google-cloud-storage>=2.10.0`: Cloud Storage SDK
-- `google-auth>=2.23.0`: GCP authentication
+- Complete YAML configuration template
+- Playout cap settings with distribution parameters
+- Policy pruning thresholds
+- Cyclic LR schedule configuration
+- Auxiliary target weights
 
 #### Real Civ6 Bridge System
 
