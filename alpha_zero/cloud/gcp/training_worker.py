@@ -75,7 +75,15 @@ def load_trajectories(
     """Load trajectories from specified iterations."""
     if dry_run:
         logger.info("Dry run: creating dummy trajectories")
-        return [{"states": [[0] * 64], "policies": [[0.01] * 100], "rewards": [0.5]} for _ in range(1000)]
+        # States must match expected shape: B, C=64, H=10, W=10 -> flattened = 6400
+        return [
+            {
+                "states": [[0] * (64 * 10 * 10)],
+                "policies": [[0.01] * 100],
+                "rewards": [0.5],
+            }
+            for _ in range(1000)
+        ]
 
     storage = GCSTrajectoryStorage(config)
     all_trajectories = []
@@ -126,7 +134,7 @@ def train_epoch(
     dataloader: DataLoader,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
-) -> tuple[float, float, float]:
+) -> tuple[float, float, float, int]:
     """Train for one epoch.
 
     Returns:
