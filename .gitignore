@@ -129,3 +129,12 @@ nul
 experiments/
 mlruns/
 ray_results/
+
+# Evaluation reports (generated)
+evaluation_reports/
+*_evaluation_report.json
+*_evaluation_report.md
+
+# Benchmark results (generated)
+benchmark_results/
+*_benchmark.json

@@ -9,6 +9,144 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Phase 4.1: Model Evaluation Framework
+
+A comprehensive model evaluation system for measuring trained model performance against configurable baselines.
+
+##### Evaluation Module (`alpha_zero/evaluation/`)
+
+- **EvaluationConfig** (`config.py`): Unified configuration for evaluation
+  - Experiment naming and output directory configuration
+  - Board size and max turns settings
+  - ELO rating integration settings
+  - Environment variable support (`CIV6AZ_EVAL_*` prefix)
+
+- **BaselineConfig** (`config.py`): Configuration for baseline opponents
+  - Support for RANDOM, HEURISTIC, and NEURAL_NETWORK baseline types
+  - Per-baseline game count and weight configuration
+  - HeuristicWeights for customizable heuristic behavior
+
+- **DiversityConfig** (`config.py`): Diversity tracking configuration
+  - Opening move tracking with configurable depth
+  - Game length distribution analysis
+
+- **BaselinePlayer** (`baselines.py`): Protocol and implementations
+  - RandomPlayer: Uniform random action selection with seeding
+  - HeuristicPlayer: Configurable weighted heuristic evaluation
+  - NeuralNetworkPlayer: Model checkpoint loading with optional MCTS
+  - BaselineFactory: Factory pattern for baseline creation
+
+- **ModelEvaluator** (`evaluator.py`): Main evaluation orchestrator
+  - Integration with existing ELORatingSystem from tournament/elo.py
+  - GameResult and EvaluationResult dataclasses
+  - play_game(), evaluate_against_baseline(), evaluate_model() methods
+
+- **DiversityTracker** (`diversity.py`): Game diversity analysis
+  - Opening sequence tracking with entropy calculation
+  - Game length statistics (mean, std, min, max)
+  - Baseline-specific diversity breakdowns
+
+- **ReportGenerator** (`reports.py`): Multi-format report generation
+  - EvaluationReport dataclass with full evaluation results
+  - JSON export with to_json() method
+  - Markdown export with to_markdown() method
+
+##### Evaluation Test Suite (62 new tests)
+
+- `tests/unit/test_evaluation/test_config.py`: Configuration validation (10 tests)
+- `tests/unit/test_evaluation/test_baselines.py`: Baseline player tests (15 tests)
+- `tests/unit/test_evaluation/test_diversity.py`: Diversity tracking tests (12 tests)
+- `tests/unit/test_evaluation/test_evaluator.py`: Evaluator tests (14 tests)
+- `tests/unit/test_evaluation/test_reports.py`: Report generation tests (11 tests)
+- `tests/integration/test_evaluation_pipeline.py`: Integration tests (11 tests)
+
+##### Evaluation Configuration (`configs/evaluation.yaml`)
+
+- Complete YAML configuration template
+- Random and heuristic baseline definitions
+- Diversity tracking settings
+- ELO integration settings
+
+#### Phase 4.2: PBT Enhancements
+
+Enhanced Population-Based Training with temperature scheduling and crossover mutations.
+
+##### Temperature Schedule (`alpha_zero/pbt/config.py`)
+
+- **HyperparameterSpace** enhancements:
+  - temperature_initial: Starting temperature for exploration
+  - temperature_final: Ending temperature for exploitation
+  - temperature_decay_steps: Steps over which temperature decays
+  - Updated get_all_params() and serialization methods
+
+##### Crossover Mutation (`alpha_zero/pbt/mutations.py`)
+
+- **CrossoverMutation** class:
+  - BLX-alpha blending crossover (default α=0.5)
+  - Simulated Binary Crossover (SBX) with η=20
+  - Uniform crossover with 50% probability
+  - Automatic fallback to perturbation without parent
+
+- **MutationOperator** enhancements:
+  - CROSSOVER strategy in MutationStrategy enum
+  - set_crossover_parent() method for parent injection
+  - Integration with existing mutation infrastructure
+
+#### Phase 4.3: Performance Optimizations
+
+Research-based optimizations for faster training and improved sample efficiency.
+
+##### Optimizations Module (`alpha_zero/optimizations/`)
+
+- **PlayoutCapRandomizer** (`playout_cap.py`): Playout cap randomization
+  - Geometric, uniform, and exponential cap distributions
+  - Position complexity scaling for root vs non-root nodes
+  - Statistics tracking (total samples, average cap, speedup estimates)
+  - Configurable min/max playouts with geometric_p parameter
+
+- **PolicyTargetPruner** (`policy_pruning.py`): Policy target pruning
+  - Top-k preservation for important actions
+  - Minimum probability threshold filtering
+  - Maximum actions limiting
+  - Entropy-based dynamic thresholding
+  - Action reduction statistics tracking
+
+- **CyclicLRScheduler** (`cyclic_lr.py`): Cyclic learning rate schedules
+  - Five schedule types: triangular, triangular2, exp_range, cosine_annealing, warm_restarts
+  - Momentum cycling with base_momentum and max_momentum
+  - Warmup steps support
+  - Iteration tracking and state serialization
+
+- **AuxiliaryTargetGenerator** (`auxiliary_targets.py`): Auxiliary policy targets
+  - Attention target generation from board positions
+  - Opponent modeling for predicting opponent moves
+  - Game phase prediction (early/mid/late classification)
+  - Future value prediction for N-step lookahead
+  - AuxiliaryLossCalculator for weighted loss computation
+
+- **PerformanceOptimizationsConfig** (`config.py`): Unified configuration
+  - Enable flags for each optimization type
+  - Nested configs for all optimization parameters
+  - fast_preset() and quality_preset() factory methods
+  - YAML serialization and environment variable support
+
+##### Optimizations Test Suite (148 new tests)
+
+- `tests/unit/test_optimizations/test_playout_cap.py`: Playout cap tests (26 tests)
+- `tests/unit/test_optimizations/test_policy_pruning.py`: Policy pruning tests (24 tests)
+- `tests/unit/test_optimizations/test_cyclic_lr.py`: Cyclic LR tests (30 tests)
+- `tests/unit/test_optimizations/test_auxiliary_targets.py`: Auxiliary targets tests (51 tests)
+- `tests/unit/test_optimizations/test_config.py`: Config tests (17 tests)
+- `tests/integration/test_optimizations_integration.py`: Integration tests (17 tests)
+
+##### Optimizations Configuration (`configs/optimizations.yaml`)
+
+- Complete YAML configuration template
+- Playout cap settings with distribution parameters
+- Policy pruning thresholds
+- Cyclic LR schedule configuration
+- Auxiliary target weights
+
 #### Real Civ6 Bridge System
 A complete bridge system enabling the AlphaZero agent to play actual Civilization VI through file-based IPC.
 

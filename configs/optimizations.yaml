@@ -1,0 +1,77 @@
+# Performance Optimizations Configuration
+# ========================================
+# This configuration controls all training performance optimizations.
+# All values can be overridden via environment variables with CIV6AZ_OPT_ prefix.
+
+# Global enables
+enable_playout_cap: true
+enable_policy_pruning: true
+enable_cyclic_lr: true
+enable_auxiliary_targets: true
+
+# Logging
+log_optimization_stats: true
+stats_log_interval: 1000
+
+# Playout Cap Randomization
+# -------------------------
+# Varies MCTS simulations per position for significant speedup.
+# Research shows most positions need fewer simulations.
+playout_cap:
+  min_playouts: 50
+  max_playouts: 800
+  cap_distribution: "geometric"  # geometric, uniform, or exponential
+  geometric_p: 0.3
+  exponential_lambda: 0.01
+  complexity_scaling: true
+  complexity_min_factor: 0.5
+  complexity_max_factor: 1.5
+  track_effective_speedup: true
+
+# Policy Target Pruning
+# ---------------------
+# Reduces action space by removing low-probability actions.
+# Improves training efficiency with minimal quality loss.
+policy_pruning:
+  min_probability: 0.001
+  max_actions: 100
+  preserve_top_k: 5
+  temperature: 1.0
+  dynamic_threshold: true
+  dynamic_target_actions: 50
+  renormalize: true
+  track_kl_divergence: true
+
+# Cyclic Learning Rate
+# --------------------
+# Implements various cyclic LR schedules.
+# Available types: triangular, triangular2, exp_range, cosine_annealing, warm_restarts
+cyclic_lr:
+  schedule_type: "cosine_annealing"
+  base_lr: 0.00001
+  max_lr: 0.001
+  step_size_up: 5000
+  step_size_down: null  # defaults to step_size_up
+  gamma: 0.99
+  warmup_steps: 1000
+  t_mult: 2.0  # for warm_restarts
+  cycle_momentum: false
+  base_momentum: 0.85
+  max_momentum: 0.95
+
+# Auxiliary Policy Targets
+# ------------------------
+# Additional training signals for richer learning.
+auxiliary_targets:
+  enable_attention_targets: true
+  enable_opponent_modeling: true
+  enable_phase_prediction: true
+  enable_future_value: true
+  attention_weight: 0.1
+  opponent_weight: 0.2
+  phase_weight: 0.05
+  future_value_weight: 0.1
+  future_value_steps: 5
+  phase_thresholds: [20, 60]
+  attention_blur_sigma: 1.0
+  opponent_history_length: 5
