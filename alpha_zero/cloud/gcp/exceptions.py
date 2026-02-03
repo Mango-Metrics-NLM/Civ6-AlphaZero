@@ -158,6 +158,8 @@ class QuotaExceededError(VertexJobError):
         resource_type: str | None = None,
         quota_limit: int | None = None,
         requested: int | None = None,
+        fallback_available: bool = False,
+        fallback_config: dict[str, Any] | None = None,
         details: dict[str, Any] | None = None,
     ) -> None:
         details = details or {}
@@ -167,7 +169,75 @@ class QuotaExceededError(VertexJobError):
             details["quota_limit"] = quota_limit
         if requested is not None:
             details["requested"] = requested
+        if fallback_available:
+            details["fallback_available"] = fallback_available
         super().__init__(message, details=details, recoverable=False)
         self.resource_type = resource_type
         self.quota_limit = quota_limit
         self.requested = requested
+        self.fallback_available = fallback_available
+        self.fallback_config = fallback_config
+
+
+class BudgetExceededError(GCPError):
+    """Budget limit has been exceeded.
+
+    Raised when:
+    - Daily budget exceeded
+    - Total project budget exceeded
+    - Cost threshold triggered automatic stop
+
+    This is not recoverable - training must be stopped until budget is increased.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        budget_type: str | None = None,
+        budget_limit: float | None = None,
+        current_cost: float | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        details = details or {}
+        if budget_type:
+            details["budget_type"] = budget_type
+        if budget_limit is not None:
+            details["budget_limit"] = budget_limit
+        if current_cost is not None:
+            details["current_cost"] = current_cost
+        super().__init__(message, details=details, recoverable=False)
+        self.budget_type = budget_type
+        self.budget_limit = budget_limit
+        self.current_cost = current_cost
+
+
+class IdleTimeoutError(GCPError):
+    """Instance was stopped due to idle timeout.
+
+    Raised when:
+    - Instance has been idle beyond threshold
+    - Auto-stop policy triggered termination
+    - Grace period expired without activity
+
+    This is recoverable - the job can be restarted.
+    """
+
+    def __init__(
+        self,
+        message: str = "Instance stopped due to idle timeout",
+        job_name: str | None = None,
+        idle_duration_seconds: float | None = None,
+        checkpoint_path: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        details = details or {}
+        if job_name:
+            details["job_name"] = job_name
+        if idle_duration_seconds is not None:
+            details["idle_duration_seconds"] = idle_duration_seconds
+        if checkpoint_path:
+            details["checkpoint_path"] = checkpoint_path
+        super().__init__(message, details=details, recoverable=True)
+        self.job_name = job_name
+        self.idle_duration_seconds = idle_duration_seconds
+        self.checkpoint_path = checkpoint_path
