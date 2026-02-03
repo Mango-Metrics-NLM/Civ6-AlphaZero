@@ -123,7 +123,7 @@ class RandomPlayer:
         action_mask = observation.get("action_mask")
         if action_mask is None:
             # Fallback: get mask from env
-            action_mask = env.get_action_mask()
+            action_mask = env.get_valid_actions()
 
         valid_actions = np.where(action_mask > 0)[0]
         if len(valid_actions) == 0:
@@ -208,7 +208,7 @@ class HeuristicPlayer:
         """
         action_mask = observation.get("action_mask")
         if action_mask is None:
-            action_mask = env.get_action_mask()
+            action_mask = env.get_valid_actions()
 
         valid_actions = np.where(action_mask > 0)[0]
         if len(valid_actions) == 0:
@@ -453,7 +453,7 @@ class NeuralNetworkPlayer:
 
         action_mask = observation.get("action_mask")
         if action_mask is None:
-            action_mask = env.get_action_mask()
+            action_mask = env.get_valid_actions()
 
         if self.use_mcts and self.mcts is not None:
             return self._select_with_mcts(env, observation, action_mask)
