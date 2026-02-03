@@ -412,7 +412,10 @@ class Civ6MCTS:
         if self._reflection_memory is not None and action is not None:
             try:
                 # Check if reflection memory is initialized
-                if hasattr(self._reflection_memory, 'initialized') and self._reflection_memory.initialized:
+                if (
+                    hasattr(self._reflection_memory, "initialized")
+                    and self._reflection_memory.initialized
+                ):
                     state = {
                         "spatial": spatial.cpu().numpy(),
                         "vector": vector.cpu().numpy(),

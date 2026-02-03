@@ -41,9 +41,7 @@ class TestSerializableProtocol:
             ("alpha_zero.core.buffer_config", "SharedStorageConfig"),
         ],
     )
-    def test_config_classes_are_serializable(
-        self, class_module: str, class_name: str
-    ):
+    def test_config_classes_are_serializable(self, class_module: str, class_name: str):
         """Test that config classes implement Serializable protocol."""
         module = importlib.import_module(class_module)
         cls = getattr(module, class_name)
@@ -59,7 +57,7 @@ class TestSerializableProtocol:
 
         # Verify from_dict returns correct type
         restored = cls.from_dict(data)
-        assert type(restored) == type(instance)
+        assert isinstance(restored, type(instance))
 
     def test_serializable_runtime_check(self):
         """Test Serializable can be used for runtime type checking."""
@@ -420,9 +418,7 @@ class TestActionMaskableProtocol:
             def get_valid_actions(self) -> np.ndarray:
                 return np.ones(100, dtype=np.float32)
 
-            def apply_action_mask(
-                self, logits: torch.Tensor, mask: torch.Tensor
-            ) -> torch.Tensor:
+            def apply_action_mask(self, logits: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
                 return logits.masked_fill(mask == 0, -1e9)
 
         obj = MockMaskable()
@@ -437,9 +433,7 @@ class TestActionMaskableProtocol:
                 mask[0:10] = 1.0
                 return mask
 
-            def apply_action_mask(
-                self, logits: torch.Tensor, mask: torch.Tensor
-            ) -> torch.Tensor:
+            def apply_action_mask(self, logits: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
                 return logits.masked_fill(mask == 0, -1e9)
 
         obj = MockMaskable()

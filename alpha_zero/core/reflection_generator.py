@@ -73,12 +73,8 @@ class ReflectionGeneratorConfig:
             llm_provider=os.getenv("CIV6AZ_REFLECTION_LLM_PROVIDER", "auto"),
             temperature=float(os.getenv("CIV6AZ_REFLECTION_LLM_TEMP", "0.3")),
             max_tokens=int(os.getenv("CIV6AZ_REFLECTION_LLM_MAX_TOKENS", "500")),
-            max_trajectory_states=int(
-                os.getenv("CIV6AZ_REFLECTION_MAX_STATES", "10")
-            ),
-            cache_critiques=os.getenv(
-                "CIV6AZ_REFLECTION_CACHE", "true"
-            ).lower() == "true",
+            max_trajectory_states=int(os.getenv("CIV6AZ_REFLECTION_MAX_STATES", "10")),
+            cache_critiques=os.getenv("CIV6AZ_REFLECTION_CACHE", "true").lower() == "true",
         )
 
 
@@ -241,7 +237,9 @@ class DefaultGameStateDescriber:
         else:
             # Sample evenly + include first and last
             step = n_examples // (max_states - 2)
-            indices = [0] + list(range(step, n_examples - 1, step))[: max_states - 2] + [n_examples - 1]
+            indices = (
+                [0] + list(range(step, n_examples - 1, step))[: max_states - 2] + [n_examples - 1]
+            )
 
         for _i, idx in enumerate(indices):
             example = trajectory.examples[idx]

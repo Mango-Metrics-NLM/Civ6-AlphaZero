@@ -52,11 +52,14 @@ class TestImitationConfig:
 
     def test_from_env(self):
         """Should load from environment variables."""
-        with patch.dict(os.environ, {
-            "CIV6AZ_IMITATION_NUM_GAMES": "500",
-            "CIV6AZ_IMITATION_BOARD_SIZE": "8",
-            "CIV6AZ_IMITATION_EPOCHS": "3",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "CIV6AZ_IMITATION_NUM_GAMES": "500",
+                "CIV6AZ_IMITATION_BOARD_SIZE": "8",
+                "CIV6AZ_IMITATION_EPOCHS": "3",
+            },
+        ):
             config = ImitationConfig.from_env()
 
             assert config.num_games == 500
@@ -338,6 +341,7 @@ class TestImitationPreTrainer:
             for p1, p2 in zip(
                 pretrainer.network.parameters(),
                 pretrainer2.network.parameters(),
+                strict=True,
             ):
                 assert torch.allclose(p1, p2)
 

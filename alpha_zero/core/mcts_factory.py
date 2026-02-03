@@ -137,16 +137,10 @@ def create_mcts(
     variant = variant.lower()
 
     # Extract common kwargs with defaults from constants
-    num_simulations = kwargs.pop(
-        "num_simulations", MCTS_CONSTANTS.DEFAULT_NUM_SIMULATIONS
-    )
+    num_simulations = kwargs.pop("num_simulations", MCTS_CONSTANTS.DEFAULT_NUM_SIMULATIONS)
     c_puct = kwargs.pop("c_puct", MCTS_CONSTANTS.DEFAULT_C_PUCT)
-    dirichlet_alpha = kwargs.pop(
-        "dirichlet_alpha", MCTS_CONSTANTS.DEFAULT_DIRICHLET_ALPHA
-    )
-    dirichlet_epsilon = kwargs.pop(
-        "dirichlet_epsilon", MCTS_CONSTANTS.DEFAULT_DIRICHLET_EPSILON
-    )
+    dirichlet_alpha = kwargs.pop("dirichlet_alpha", MCTS_CONSTANTS.DEFAULT_DIRICHLET_ALPHA)
+    dirichlet_epsilon = kwargs.pop("dirichlet_epsilon", MCTS_CONSTANTS.DEFAULT_DIRICHLET_EPSILON)
 
     if variant == "simple":
         from alpha_zero.core.civ6_mcts import SimpleMCTS
@@ -203,10 +197,7 @@ def create_mcts(
 
     else:
         valid_variants = [v.value for v in MCTSVariant]
-        raise ValueError(
-            f"Unknown MCTS variant: {variant!r}. "
-            f"Valid variants are: {valid_variants}"
-        )
+        raise ValueError(f"Unknown MCTS variant: {variant!r}. Valid variants are: {valid_variants}")
 
 
 def get_default_config(variant: str | MCTSVariant) -> Any:
@@ -243,10 +234,7 @@ def get_default_config(variant: str | MCTSVariant) -> Any:
 
     else:
         valid_variants = [v.value for v in MCTSVariant]
-        raise ValueError(
-            f"Unknown MCTS variant: {variant!r}. "
-            f"Valid variants are: {valid_variants}"
-        )
+        raise ValueError(f"Unknown MCTS variant: {variant!r}. Valid variants are: {valid_variants}")
 
 
 def list_variants() -> list[str]:

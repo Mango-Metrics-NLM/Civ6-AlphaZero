@@ -4,7 +4,6 @@ Tests that games don't terminate prematurely after 1 turn,
 verifying the bug fixes work end-to-end.
 """
 
-
 from alpha_zero.core.civ6_mcts import SimpleMCTS
 from alpha_zero.envs.microciv import MicroCivEnv
 
@@ -44,8 +43,7 @@ class TestGameLength:
         # Count how many games ended at turn 1 or less
         early_terminations = sum(1 for t in game_lengths if t <= 1)
         assert early_terminations == 0, (
-            f"{early_terminations} games ended at turn 1 or less. "
-            f"Game lengths: {game_lengths}"
+            f"{early_terminations} games ended at turn 1 or less. Game lengths: {game_lengths}"
         )
 
     def test_no_immediate_victory(self):

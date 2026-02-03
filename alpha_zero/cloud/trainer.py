@@ -135,9 +135,7 @@ class CloudTrainer:
         self.storage = storage
 
         # Determine device
-        self.device = torch.device(
-            config.device if torch.cuda.is_available() else "cpu"
-        )
+        self.device = torch.device(config.device if torch.cuda.is_available() else "cpu")
         logger.info(f"Using device: {self.device}")
 
         # Initialize model and optimizer (set in _initialize_model)

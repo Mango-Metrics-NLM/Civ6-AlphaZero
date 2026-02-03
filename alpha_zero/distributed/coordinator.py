@@ -15,6 +15,8 @@ import os
 import signal
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -24,6 +26,7 @@ import yaml
 from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig
 from alpha_zero.core.civ6_network import MicroCivNetwork
 from alpha_zero.distributed.actor import ActorConfig, ActorPool
+from alpha_zero.distributed.ddp_learner import DDPLearner, DDPLearnerConfig
 from alpha_zero.distributed.learner import Learner, LearnerConfig
 from alpha_zero.distributed.shared_storage import (
     DistributedReplayBuffer,
@@ -95,6 +98,12 @@ class CoordinatorConfig:
     # Device
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
 
+    # DDP settings (for distributed training)
+    use_ddp: bool = False
+    ddp_backend: str = "gloo"  # "gloo" for CPU, "nccl" for GPU
+    ddp_world_size: int = 1
+    ddp_gradient_sync_interval: int = 1
+
     @classmethod
     def from_yaml(cls, path: str) -> CoordinatorConfig:
         """Load configuration from YAML file.
@@ -159,6 +168,13 @@ class CoordinatorConfig:
                 "num_simulations", flat_config["num_simulations"]
             )
             flat_config["batch_size"] = microciv_cfg.get("batch_size", flat_config["batch_size"])
+
+        # DDP settings
+        ddp_cfg = data.get("distributed", {})
+        flat_config["use_ddp"] = ddp_cfg.get("use_ddp", False)
+        flat_config["ddp_backend"] = ddp_cfg.get("backend", "gloo")
+        flat_config["ddp_world_size"] = ddp_cfg.get("world_size", 1)
+        flat_config["ddp_gradient_sync_interval"] = ddp_cfg.get("gradient_sync_interval", 1)
 
         return cls(**flat_config)
 
@@ -244,7 +260,7 @@ class TrainingCoordinator:
 
         # Actor pool and learner
         self.actor_pool: ActorPool | None = None
-        self.learner: Learner | None = None
+        self.learner: Learner | DDPLearner | None = None
 
         # Evaluation network
         self.eval_network: MicroCivNetwork | None = None
@@ -258,8 +274,130 @@ class TrainingCoordinator:
         logger.info(
             f"TrainingCoordinator initialized: "
             f"{config.num_actors} actors, "
-            f"buffer size {config.replay_buffer_size}",
+            f"buffer size {config.replay_buffer_size}"
+            f"{', DDP enabled' if config.use_ddp else ''}",
         )
+
+    def _create_learner(self) -> Learner | DDPLearner:
+        """Create learner instance based on configuration.
+
+        Returns DDPLearner if use_ddp is True, otherwise standard Learner.
+        This factory method allows seamless switching between single-process
+        and distributed training modes.
+
+        Returns:
+            Learner or DDPLearner instance.
+        """
+        if self.config.use_ddp:
+            # Create DDP-enabled learner
+            ddp_config = DDPLearnerConfig(
+                board_size=self.config.board_size,
+                num_res_blocks=self.config.num_res_blocks,
+                num_filters=self.config.num_filters,
+                batch_size=self.config.batch_size,
+                learning_rate=self.config.learning_rate,
+                weight_decay=self.config.weight_decay,
+                gradient_clip=self.config.gradient_clip,
+                lr_decay_steps=self.config.lr_decay_steps,
+                lr_decay_rate=self.config.lr_decay_rate,
+                min_buffer_size=self.config.min_replay_size,
+                max_training_steps=self.config.max_training_steps,
+                checkpoint_dir=self.config.checkpoint_dir,
+                checkpoint_interval=self.config.save_interval,
+                device=self.config.device,
+                # DDP-specific settings
+                world_size=self.config.ddp_world_size,
+                backend=self.config.ddp_backend,
+                gradient_sync_interval=self.config.ddp_gradient_sync_interval,
+            )
+            logger.info(
+                f"Creating DDPLearner: backend={self.config.ddp_backend}, "
+                f"world_size={self.config.ddp_world_size}"
+            )
+            return DDPLearner(
+                config=ddp_config,
+                shared_storage=self.shared_storage,
+                replay_buffer=self.replay_buffer,
+            )
+        else:
+            # Create standard single-process learner
+            logger.info("Creating standard Learner")
+            return Learner(
+                config=self.learner_config,
+                shared_storage=self.shared_storage,
+                replay_buffer=self.replay_buffer,
+            )
+
+    def save_checkpoint(
+        self,
+        step: int,
+        network_state: dict[str, Any],
+        optimizer_state: dict[str, Any] | None = None,
+        additional_state: dict[str, Any] | None = None,
+    ) -> str:
+        """Save a training checkpoint.
+
+        Args:
+            step: Training step number.
+            network_state: Network state dict.
+            optimizer_state: Optional optimizer state.
+            additional_state: Optional additional state.
+
+        Returns:
+            Path to saved checkpoint.
+        """
+        import torch
+
+        checkpoint_path = Path(self.config.checkpoint_dir) / f"checkpoint_step_{step}.pt"
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+
+        checkpoint = {
+            "step": step,
+            "network_state": network_state,
+        }
+        if optimizer_state:
+            checkpoint["optimizer_state"] = optimizer_state
+        if additional_state:
+            checkpoint.update(additional_state)
+
+        torch.save(checkpoint, checkpoint_path)
+        logger.debug("Saved checkpoint at step %d to %s", step, checkpoint_path)
+
+        return str(checkpoint_path)
+
+    def load_checkpoint(
+        self,
+        path: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Load a training checkpoint.
+
+        Args:
+            path: Optional specific checkpoint path. If None, loads latest.
+
+        Returns:
+            Checkpoint state dict, or None if not found.
+        """
+        import torch
+
+        checkpoint_dir = Path(self.config.checkpoint_dir)
+
+        if path:
+            checkpoint_path = Path(path)
+        else:
+            # Find latest checkpoint
+            checkpoints = sorted(checkpoint_dir.glob("checkpoint_step_*.pt"))
+            if not checkpoints:
+                return None
+            checkpoint_path = checkpoints[-1]
+
+        if not checkpoint_path.exists():
+            return None
+
+        try:
+            return torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+        except Exception as e:
+            logger.warning("Failed to load checkpoint %s: %s", checkpoint_path, e)
+            return None
 
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful shutdown."""
@@ -429,12 +567,8 @@ class TrainingCoordinator:
                 replay_buffer=self.replay_buffer,
             )
 
-            # Initialize learner
-            self.learner = Learner(
-                config=self.learner_config,
-                shared_storage=self.shared_storage,
-                replay_buffer=self.replay_buffer,
-            )
+            # Initialize learner (standard or DDP based on config)
+            self.learner = self._create_learner()
 
             # Initialize evaluation network
             self._init_evaluation_network()
@@ -529,13 +663,18 @@ class TrainingCoordinator:
             logger.info("Saving final checkpoint...")
             self.learner._save_checkpoint(self.learner.training_step)
 
+        # Get final statistics BEFORE shutdown (avoids BrokenPipeError on Windows)
+        try:
+            games = self.shared_storage.get_games_played()
+        except (BrokenPipeError, OSError, EOFError):
+            games = 0  # Storage already closed
+
         # Cleanup shared resources
         self.replay_buffer.shutdown()
         self.shared_storage.shutdown()
 
         # Log final statistics
         elapsed = time.time() - self.start_time if self.start_time > 0 else 0
-        games = self.shared_storage.get_games_played()
 
         logger.info(
             f"Training complete: "

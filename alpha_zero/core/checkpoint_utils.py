@@ -169,9 +169,7 @@ def load_checkpoint(
         )
     except Exception:
         # Fall back to unsafe loading for legacy checkpoints
-        logger.warning(
-            "Safe loading failed for %s, falling back to unsafe load", path
-        )
+        logger.warning("Safe loading failed for %s, falling back to unsafe load", path)
         checkpoint = torch.load(path, map_location=device, weights_only=False)
 
     logger.debug("Loaded checkpoint from %s", path)
@@ -219,8 +217,7 @@ def validate_reduction(reduction: str) -> None:
     """
     if reduction not in VALID_REDUCTIONS:
         raise ValueError(
-            f"Unknown reduction: {reduction}. "
-            f"Valid options are: {sorted(VALID_REDUCTIONS)}"
+            f"Unknown reduction: {reduction}. Valid options are: {sorted(VALID_REDUCTIONS)}"
         )
 
 
@@ -258,8 +255,6 @@ def get_checkpoint_info(path: str | Path) -> dict[str, Any]:
         info["config_keys"] = list(checkpoint["config"].keys())
 
     if "state_dict" in checkpoint:
-        info["num_parameters"] = sum(
-            p.numel() for p in checkpoint["state_dict"].values()
-        )
+        info["num_parameters"] = sum(p.numel() for p in checkpoint["state_dict"].values())
 
     return info

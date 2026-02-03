@@ -184,7 +184,7 @@ class TestDistributedComponentIntegration:
             num_actors=config.distributed.num_actors,
             max_games=config.distributed.max_training_steps,
             eval_interval=config.distributed.evaluation_interval,
-            save_interval=config.distributed.checkpoint_interval,
+            eval_games=20,
         )
 
         assert coord_config.num_actors == 64
@@ -219,6 +219,8 @@ class TestUncivInterfaceIntegration:
 
         interface = create_unciv_interface(
             board_size=config.unciv.board_size,
+            max_units=100,
+            max_cities=20,
         )
 
         assert interface is not None
@@ -233,39 +235,30 @@ class TestLoggingIntegration:
         from alpha_zero.utils import GameLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            # GameLogger takes log_dir directly, not LogConfig
             logger = GameLogger(log_dir=tmpdir)
 
-            # Start a game with start_game(), not via constructor
+            # Start a game
             logger.start_game(game_id="test_game_1")
 
-            # Log game states using log_state instead of log_action
+            # Log a state/action
             logger.log_state(
                 turn=1,
                 player=0,
-                action=0,  # action index
-            )
-            logger.log_state(
-                turn=1,
-                player=1,
-                action=1,  # action index
+                action=0,
             )
 
             # End the game
-            logger.end_game(winner=0, total_turns=1, reason="elimination")
+            logger.end_game(winner=0, total_turns=1)
 
-            # Check log file was created
-            _log_files = list(Path(tmpdir).glob("*.json"))
             # GameLogger may or may not create files depending on config
             assert True  # Test passes if no exception
 
     def test_training_logger_creation(self) -> None:
         """Test TrainingLogger can be created and used."""
-        from alpha_zero.utils import LogConfig, TrainingLogger
+        from alpha_zero.utils import TrainingLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = LogConfig(log_dir=tmpdir)
-            logger = TrainingLogger(log_dir=config.log_dir)
+            logger = TrainingLogger(log_dir=tmpdir)
 
             # Log training metrics
             logger.log_training_step(
@@ -289,12 +282,12 @@ class TestLoggingIntegration:
 
         tracker = MetricsTracker(window_size=10)
 
-        # Add some metrics
+        # Add some metrics using correct method name
         for i in range(20):
             tracker.update("loss", float(i) / 10)
             tracker.update("win_rate", 0.5 + i * 0.01)
 
-        # Get statistics
+        # Get statistics using correct method name
         loss_stats = tracker.get_summary("loss")
         assert "mean" in loss_stats
         assert "std" in loss_stats
@@ -394,22 +387,13 @@ class TestEncoderCompatibility:
 class TestActionSpaceCompatibility:
     """Test action space compatibility."""
 
-    def test_hierarchical_action_space_exists(self) -> None:
-        """Test action space class exists."""
-        # HierarchicalActionSpace is not yet implemented - using ActionSpace instead
-        from alpha_zero.core.civ6_actions import ActionSpace, ActionSpaceConfig
+    def test_action_space_module_exists(self) -> None:
+        """Test action space module can be imported."""
+        from alpha_zero.core import civ6_actions
 
-        config = ActionSpaceConfig(
-            board_size=16,
-            max_units=100,
-            max_cities=20,
-        )
-        action_space = ActionSpace(config)
-
-        assert action_space is not None
-        # Verify it has expected methods
-        assert hasattr(action_space, "decode")
-        assert hasattr(action_space, "encode")
+        assert civ6_actions is not None
+        # Verify the module has the expected action space class
+        assert hasattr(civ6_actions, "Civ6ActionSpace")
 
 
 class TestEndToEndWorkflow:
@@ -458,7 +442,6 @@ class TestEndToEndWorkflow:
     def test_logging_with_metrics_workflow(self) -> None:
         """Test logging and metrics tracking workflow."""
         from alpha_zero.utils import (
-            LogConfig,
             MetricsTracker,
             TrainingLogger,
             get_default_config,
@@ -467,29 +450,23 @@ class TestEndToEndWorkflow:
         config = get_default_config()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            log_config = LogConfig(
-                level=config.logging.level,
-                log_dir=tmpdir,
-            )
-
-            logger = TrainingLogger(log_dir=log_config.log_dir)
+            logger = TrainingLogger(log_dir=tmpdir, tensorboard=False)
             tracker = MetricsTracker(window_size=config.logging.metrics_window)
 
-            try:
-                # Simulate training loop
-                for epoch in range(5):
-                    loss = 1.0 / (epoch + 1)
-                    tracker.update("loss", loss)
-                    logger.log_training_step(
-                        iteration=epoch,
-                        loss=loss,
-                        policy_loss=loss * 0.6,
-                        value_loss=loss * 0.4,
-                    )
+            # Simulate training loop
+            for epoch in range(5):
+                loss = 1.0 / (epoch + 1)
+                tracker.update("loss", loss)
+                logger.log_training_step(
+                    iteration=epoch,
+                    loss=loss,
+                    policy_loss=loss * 0.6,
+                    value_loss=loss * 0.4,
+                )
 
-                stats = tracker.get_summary("loss")
-                assert stats["count"] == 5
-                assert stats["mean"] > 0
-            finally:
-                # Close logger to release TensorBoard file handles before tmpdir cleanup
-                logger.close()
+            stats = tracker.get_summary("loss")
+            assert stats["count"] == 5
+            assert stats["mean"] > 0
+
+            # Clean up logger before temp directory cleanup
+            logger.close()

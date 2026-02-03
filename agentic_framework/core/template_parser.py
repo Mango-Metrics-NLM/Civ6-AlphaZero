@@ -17,14 +17,6 @@ import yaml
 
 from ..config import AgenticConfig
 from ..utils.logging_config import get_logger
-from .constants import (
-    DEFAULT_EXPLORATION_TIMEOUT_SECONDS,
-    DEFAULT_FAIL_FAST,
-    DEFAULT_MAX_FILES_PER_PASS,
-    DEFAULT_MAX_ITERATIONS,
-    DEFAULT_OPERATION_TIMEOUT_SECONDS,
-    DEFAULT_RETRY_COUNT,
-)
 
 logger = get_logger("template_parser")
 
@@ -78,9 +70,9 @@ class ParsedPermissions:
     autonomous: list[str] = field(default_factory=list)
     confirm_first: list[str] = field(default_factory=list)
     prohibited: list[str] = field(default_factory=list)
-    max_iterations: int = DEFAULT_MAX_ITERATIONS
-    max_files_per_pass: int = DEFAULT_MAX_FILES_PER_PASS
-    exploration_timeout_seconds: int = DEFAULT_EXPLORATION_TIMEOUT_SECONDS
+    max_iterations: int = 5
+    max_files_per_pass: int = 20
+    exploration_timeout_seconds: int = 600
 
 
 @dataclass
@@ -193,7 +185,8 @@ class TemplateParser:
 
     def __init__(self) -> None:
         """Initialize the template parser."""
-        pass  # Stateless parser - no instance state needed
+        self._current_section: TemplateSection | None = None
+        self._line_number: int = 0
 
     def parse_file(self, file_path: Path) -> ParsedTemplate:
         """Parse a template from a file.
@@ -296,11 +289,9 @@ class TemplateParser:
                 autonomous=autonomy.get("autonomous", []),
                 confirm_first=autonomy.get("confirm_first", []),
                 prohibited=autonomy.get("prohibited", []),
-                max_iterations=budget.get("max_iterations", DEFAULT_MAX_ITERATIONS),
-                max_files_per_pass=budget.get("max_files_per_pass", DEFAULT_MAX_FILES_PER_PASS),
-                exploration_timeout_seconds=budget.get(
-                    "exploration_timeout_seconds", DEFAULT_EXPLORATION_TIMEOUT_SECONDS
-                ),
+                max_iterations=budget.get("max_iterations", 5),
+                max_files_per_pass=budget.get("max_files_per_pass", 20),
+                exploration_timeout_seconds=budget.get("exploration_timeout_seconds", 600),
             )
 
         # Parse feedback
@@ -437,7 +428,6 @@ class TemplateParser:
 
         for name, subcontent in subsections.items():
             name_lower = name.lower()
-            # Note: items extraction moved inside specific sections as needed
 
             if "scope" in name_lower:
                 # Look for IN SCOPE and OUT OF SCOPE
@@ -520,7 +510,7 @@ class TemplateParser:
         """Parse the session/context persistence section."""
         # Look for memory file specification
         file_match = re.search(
-            r"(?:memory_file|session_file|file)[^:]*:\s*[\"']?(\S+)[\"']?", content, re.IGNORECASE
+            r"(?:CLAUDE\.md|memory_file)[^:]*:\s*[\"']?(\S+)[\"']?", content, re.IGNORECASE
         )
         if file_match:
             template.session.memory_file = file_match.group(1)
@@ -660,9 +650,9 @@ class TemplateParser:
                     {
                         "name": name.lower().replace(" ", "_"),
                         "command": command,
-                        "timeout_seconds": DEFAULT_OPERATION_TIMEOUT_SECONDS,
-                        "fail_fast": DEFAULT_FAIL_FAST,
-                        "retry_count": DEFAULT_RETRY_COUNT,
+                        "timeout_seconds": 300,
+                        "fail_fast": False,
+                        "retry_count": 0,
                     }
                 )
             elif "`" in line:
@@ -673,9 +663,9 @@ class TemplateParser:
                         {
                             "name": f"command_{len(commands)}",
                             "command": cmd_match.group(1),
-                            "timeout_seconds": DEFAULT_OPERATION_TIMEOUT_SECONDS,
-                            "fail_fast": DEFAULT_FAIL_FAST,
-                            "retry_count": DEFAULT_RETRY_COUNT,
+                            "timeout_seconds": 300,
+                            "fail_fast": False,
+                            "retry_count": 0,
                         }
                     )
 

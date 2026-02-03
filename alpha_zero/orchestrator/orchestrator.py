@@ -44,6 +44,7 @@ try:
         ReflectionGeneratorConfig,
     )
     from alpha_zero.core.reflection_memory import ReflectionConfig, ReflectionMemory
+
     REFLECTION_AVAILABLE = True
 except ImportError:
     REFLECTION_AVAILABLE = False
@@ -58,6 +59,7 @@ try:
         HierarchicalTrainingConfig,
         HierarchicalTrainingIntegration,
     )
+
     HIERARCHICAL_AVAILABLE = True
 except ImportError:
     HIERARCHICAL_AVAILABLE = False
@@ -438,6 +440,7 @@ class TrainingOrchestrator:
 
                     # Initialize reflection memory asynchronously
                     import asyncio
+
                     success = asyncio.run(self._reflection_memory.initialize())
                     if success:
                         logger.info("ReflectionMemory initialized successfully")
@@ -464,7 +467,7 @@ class TrainingOrchestrator:
                 logger.warning("Reflection enabled but reflection module not available")
 
             # Update MCTS with reflection memory if available
-            if self._reflection_memory is not None and hasattr(self._mcts, '_reflection_memory'):
+            if self._reflection_memory is not None and hasattr(self._mcts, "_reflection_memory"):
                 self._mcts._reflection_memory = self._reflection_memory
                 logger.info("MCTS updated with reflection memory")
 
@@ -702,8 +705,7 @@ class TrainingOrchestrator:
 
         # Check if hierarchical mode is enabled
         use_hierarchical = (
-            self._hierarchical_integration is not None
-            and self.config.hierarchical.enabled
+            self._hierarchical_integration is not None and self.config.hierarchical.enabled
         )
 
         # Notify hierarchical integration of game start
@@ -987,6 +989,7 @@ class TrainingOrchestrator:
             result: The completed game result.
         """
         import asyncio
+
         try:
             asyncio.run(self._process_game_result_async(result))
         except Exception as e:
@@ -1180,7 +1183,9 @@ class TrainingOrchestrator:
             iteration=self.state.iteration,
             metrics={
                 "win_rate": self.state.current_win_rate,
-                "loss": float(np.mean(self.state.recent_losses)) if self.state.recent_losses else 0.0,
+                "loss": float(np.mean(self.state.recent_losses))
+                if self.state.recent_losses
+                else 0.0,
             },
         )
 

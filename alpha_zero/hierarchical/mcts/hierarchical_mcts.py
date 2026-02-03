@@ -324,7 +324,7 @@ class MCTSNode:
 
         return q + u
 
-    def select_child(self, c_puct: float) -> tuple[int, MCTSNode | None]:
+    def select_child(self, c_puct: float) -> tuple[int, MCTSNode]:
         """Select child node with highest UCB score.
 
         Args:
@@ -346,7 +346,7 @@ class MCTSNode:
 
         return best_action, best_child
 
-    def select_option_child(self, c_puct: float) -> tuple[str, MCTSNode | None]:
+    def select_option_child(self, c_puct: float) -> tuple[str, MCTSNode]:
         """Select option child with highest UCB score.
 
         Args:
@@ -422,16 +422,16 @@ class MCTSNode:
             value: Value to backpropagate.
             discount: Discount factor per level.
         """
-        current_node: MCTSNode | None = self
+        node = self
         current_value = value
 
-        while current_node is not None:
-            current_node.visit_count += 1
-            current_node.value_sum += current_value
-            current_node.virtual_loss = max(0, current_node.virtual_loss - 1)
+        while node is not None:
+            node.visit_count += 1
+            node.value_sum += current_value
+            node.virtual_loss = max(0, node.virtual_loss - 1)
 
             current_value *= discount
-            current_node = current_node.parent
+            node = node.parent
 
 
 class HierarchicalMCTS:
@@ -541,10 +541,7 @@ class HierarchicalMCTS:
             while node.is_expanded:
                 if self.config.use_options and node.option_children:
                     # Option selection at higher levels
-                    opt_id, child = node.select_option_child(self.config.c_puct)
-                    if child is None:
-                        break
-                    node = child
+                    opt_id, node = node.select_option_child(self.config.c_puct)
                 else:
                     # Action selection
                     _, child = node.select_child(self.config.c_puct)
@@ -585,7 +582,7 @@ class HierarchicalMCTS:
         state: dict[str, Any],
         goals: list[Goal],
         state_predictor: Callable[[dict[str, Any], Option], dict[str, Any]],
-    ) -> tuple[Option | int | None, SearchStats]:
+    ) -> tuple[Option | int, SearchStats]:
         """Search at higher levels using options.
 
         Args:
@@ -622,10 +619,7 @@ class HierarchicalMCTS:
 
             # Selection
             while node.is_expanded and node.option_children:
-                opt_id, child = node.select_option_child(self.config.c_puct)
-                if child is None:
-                    break
-                node = child
+                opt_id, node = node.select_option_child(self.config.c_puct)
                 node.virtual_loss += self.config.virtual_loss
                 depth += 1
 
@@ -668,28 +662,34 @@ class HierarchicalMCTS:
             action_space = 356  # Default action space
             return np.ones(action_space) / action_space, 0.0
 
-        # Encode state (pass level; active_unit defaults to None in level encoders)
-        self.state_encoder.encode(state, self.level)
+        # Encode state
+        self.state_encoder.encode(state)
 
-        # Encode goals
+        # Encode goals - support both GoalEncoder and HierarchicalGoalEncoder
         level_goals = [g for g in goals if g.level == self.level]
-        # Support both HierarchicalGoalEncoder (has encode_goals_for_level) and plain GoalEncoder (has encode_batch)
-        if hasattr(self.goal_encoder, 'encode_goals_for_level'):
+        if hasattr(self.goal_encoder, "encode_goals_for_level"):
+            # HierarchicalGoalEncoder
             goal_encoding = self.goal_encoder.encode_goals_for_level(level_goals, self.level, state)
-        else:
+        elif hasattr(self.goal_encoder, "encode_batch"):
+            # Basic GoalEncoder
             goal_encoding = self.goal_encoder.encode_batch(level_goals, state)
+        else:
+            # Fallback: return zeros
+            goal_encoding = np.zeros((1, self.goal_dim), dtype=np.float32)
 
         # Convert to tensors using configured shapes
         with torch.no_grad():
             # Get spatial and vector from state, use instance shape params for defaults
             spatial = (
-                torch.from_numpy(
-                    state.get("spatial", np.zeros(self.spatial_shape))
-                ).float().unsqueeze(0)
+                torch.from_numpy(state.get("spatial", np.zeros(self.spatial_shape)))
+                .float()
+                .unsqueeze(0)
             )
-            vector = torch.from_numpy(
-                state.get("vector", np.zeros(self.vector_dim))
-            ).float().unsqueeze(0)
+            vector = (
+                torch.from_numpy(state.get("vector", np.zeros(self.vector_dim)))
+                .float()
+                .unsqueeze(0)
+            )
             goal_emb = (
                 torch.from_numpy(
                     goal_encoding[0] if len(goal_encoding) > 0 else np.zeros(self.goal_dim)
@@ -698,8 +698,15 @@ class HierarchicalMCTS:
                 .unsqueeze(0)
             )
 
-            # Forward pass (action_mask=None, masking is done in MCTS selection)
-            policy_logits, value = self.network(spatial, vector, goal_emb, None)
+            # Forward pass - handle both HierarchicalNetwork and LevelNetwork
+            # HierarchicalNetwork.forward expects: (spatial, vector, goal, level, action_mask)
+            # LevelNetwork.forward expects: (spatial, vector, goal, action_mask)
+            if hasattr(self.network, "_networks"):
+                # HierarchicalNetwork - pass level parameter
+                policy_logits, value = self.network(spatial, vector, goal_emb, self.level)
+            else:
+                # LevelNetwork - pass action_mask (None for default)
+                policy_logits, value = self.network(spatial, vector, goal_emb, None)
 
             # Convert to numpy
             policy = torch.softmax(policy_logits, dim=-1).squeeze(0).numpy()

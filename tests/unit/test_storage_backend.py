@@ -314,9 +314,7 @@ class TestLocalStorageBackend:
         assert len(iter2_trajectories) == 4  # 2 workers x 2 saves at iteration 2
 
         # Filter by worker
-        worker0_trajectories = local_backend.list_trajectories(
-            iteration=2, worker_id=0
-        )
+        worker0_trajectories = local_backend.list_trajectories(iteration=2, worker_id=0)
         assert len(worker0_trajectories) == 2
 
     def test_stream_trajectories(
@@ -428,9 +426,7 @@ class TestLocalStorageBackend:
         assert not local_backend.exists("/nonexistent/path")
 
         # List files (use *.pt* to match both compressed and uncompressed)
-        files = local_backend.list_files(
-            str(local_backend.base_path / "models"), "*.pt*"
-        )
+        files = local_backend.list_files(str(local_backend.base_path / "models"), "*.pt*")
         assert len(files) > 0
 
         # Delete
@@ -531,9 +527,7 @@ class TestVertexAIIntegration:
 
     def test_aip_checkpoint_dir_gcs(self) -> None:
         """Test AIP_CHECKPOINT_DIR with GCS path."""
-        with patch.dict(
-            os.environ, {"AIP_CHECKPOINT_DIR": "gs://my-bucket/checkpoints/job123"}
-        ):
+        with patch.dict(os.environ, {"AIP_CHECKPOINT_DIR": "gs://my-bucket/checkpoints/job123"}):
             config = StorageConfig()
             # Should detect GCS and parse the path
             assert config.backend_type == "gcs"

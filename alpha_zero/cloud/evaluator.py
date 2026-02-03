@@ -75,9 +75,7 @@ class EvaluatorConfig:
         return cls(
             num_games=int(os.environ.get("CIV6_EVAL_GAMES", "400")),
             iteration=int(os.environ.get("CIV6_ITERATION", "0")),
-            promotion_threshold=float(
-                os.environ.get("CIV6_PROMOTION_THRESHOLD", "0.55")
-            ),
+            promotion_threshold=float(os.environ.get("CIV6_PROMOTION_THRESHOLD", "0.55")),
             num_simulations=int(os.environ.get("CIV6_NUM_SIMULATIONS", "200")),
             c_puct=float(os.environ.get("CIV6_MCTS_C_PUCT", "1.5")),
             max_moves=int(os.environ.get("CIV6_MAX_MOVES", "200")),
@@ -112,9 +110,7 @@ class CloudEvaluator:
         self.config = config
         self.storage = storage
 
-        self.device = torch.device(
-            config.device if torch.cuda.is_available() else "cpu"
-        )
+        self.device = torch.device(config.device if torch.cuda.is_available() else "cpu")
 
         self._candidate_model: MicroCivNetwork | None = None
         self._champion_model: MicroCivNetwork | None = None
@@ -122,8 +118,7 @@ class CloudEvaluator:
         self._champion_version: int = 0
 
         logger.info(
-            f"CloudEvaluator initialized "
-            f"(iteration={config.iteration}, games={config.num_games})"
+            f"CloudEvaluator initialized (iteration={config.iteration}, games={config.num_games})"
         )
 
     def _load_models(self) -> bool:
@@ -310,8 +305,7 @@ class CloudEvaluator:
         """
         start_time = datetime.now(UTC)
         logger.info(
-            f"Starting evaluation: {self.config.num_games} games, "
-            f"iteration {self.config.iteration}"
+            f"Starting evaluation: {self.config.num_games} games, iteration {self.config.iteration}"
         )
 
         # Load models
@@ -361,9 +355,7 @@ class CloudEvaluator:
                 )
 
             # Check for early stopping
-            should_stop, reason = self._should_early_stop(
-                candidate_wins, champion_wins, draws
-            )
+            should_stop, reason = self._should_early_stop(candidate_wins, champion_wins, draws)
             if should_stop:
                 logger.info(f"Early stopping: {reason}")
                 break

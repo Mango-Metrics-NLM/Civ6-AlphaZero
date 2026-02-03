@@ -152,8 +152,7 @@ class CloudSelfPlayWorker:
         # Flush current trajectory if in progress
         if self._current_trajectory and len(self._current_trajectory.examples) > 0:
             logger.info(
-                f"Flushing partial trajectory "
-                f"({len(self._current_trajectory.examples)} examples)"
+                f"Flushing partial trajectory ({len(self._current_trajectory.examples)} examples)"
             )
             try:
                 self._save_trajectory(self._current_trajectory, partial=True)
@@ -207,8 +206,7 @@ class CloudSelfPlayWorker:
 
             if staleness > self.config.max_staleness:
                 logger.warning(
-                    f"Model is {staleness} versions behind "
-                    f"(threshold: {self.config.max_staleness})"
+                    f"Model is {staleness} versions behind (threshold: {self.config.max_staleness})"
                 )
                 return True
             return False
@@ -362,8 +360,7 @@ class CloudSelfPlayWorker:
         """
         start_time = datetime.now(UTC)
         logger.info(
-            f"Starting self-play: {self.config.num_games} games, "
-            f"iteration {self.config.iteration}"
+            f"Starting self-play: {self.config.num_games} games, iteration {self.config.iteration}"
         )
 
         # Load model
@@ -422,9 +419,7 @@ class CloudSelfPlayWorker:
             "games_per_hour": self._games_completed / max(elapsed / 3600, 0.001),
             "model_version": self._model_version,
             "preempted": (
-                self.preemption_handler.is_preempted
-                if self.preemption_handler
-                else False
+                self.preemption_handler.is_preempted if self.preemption_handler else False
             ),
         }
 

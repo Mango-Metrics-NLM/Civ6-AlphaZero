@@ -1,389 +1,407 @@
-"""Shared test fixtures for Civ6 AlphaZero test suite.
+"""Shared pytest fixtures and configuration for all tests.
 
-This module provides reusable fixtures for testing across the project.
-All fixtures use appropriate cleanup to prevent resource leaks.
+Provides:
+- GCP credential detection fixtures
+- Cloud configuration fixtures for testing
+- DDP mock fixtures for distributed training tests
+- Skip markers for conditional test execution
 """
 
 from __future__ import annotations
 
+import os
+import tempfile
 from collections.abc import Generator
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
-import numpy as np
 import pytest
 import torch
+import torch.nn as nn
 
-# Import project modules
-from alpha_zero.core.civ6_mcts import MCTSConfig, SimpleMCTS
-from alpha_zero.core.civ6_network import MicroCivNetwork
-from alpha_zero.distributed.actor import ActorConfig
-from alpha_zero.distributed.shared_storage import (
-    DistributedReplayBuffer,
-    GameTrajectory,
-    ReplayBufferConfig,
-    SharedStorage,
-    SharedStorageConfig,
-    TrainingExample,
-)
-from alpha_zero.envs.microciv import MicroCivEnv
-from alpha_zero.utils.constants import ENCODER, GAME
-
-# =============================================================================
-# Environment Fixtures
-# =============================================================================
+if TYPE_CHECKING:
+    from tests.fixtures.mock_distributed import MockDistributedBackend
 
 
-@pytest.fixture
-def small_env() -> Generator[MicroCivEnv, None, None]:
-    """Create a small environment for fast testing."""
-    env = MicroCivEnv(board_size=8, max_turns=20, seed=42)
-    yield env
-    env.close()
+def _has_gcp_credentials() -> bool:
+    """Check if GCP credentials are available.
 
-
-@pytest.fixture
-def minimal_env() -> Generator[MicroCivEnv, None, None]:
-    """Create minimal environment for unit tests."""
-    env = MicroCivEnv(board_size=6, max_turns=10, seed=42)
-    yield env
-    env.close()
-
-
-@pytest.fixture
-def default_env() -> Generator[MicroCivEnv, None, None]:
-    """Create default-sized environment."""
-    env = MicroCivEnv(board_size=GAME.DEFAULT_BOARD_SIZE, max_turns=50, seed=42)
-    yield env
-    env.close()
-
-
-# =============================================================================
-# Network Fixtures
-# =============================================================================
-
-
-@pytest.fixture
-def small_network() -> MicroCivNetwork:
-    """Create a small network for testing."""
-    env = MicroCivEnv(board_size=8)
-    action_space_size = env.action_space_handler.total_size
-    env.close()
-
-    return MicroCivNetwork(
-        board_size=8,
-        action_space_size=action_space_size,
-        num_res_blocks=2,
-        num_filters=16,
-    )
-
-
-@pytest.fixture
-def tiny_network() -> MicroCivNetwork:
-    """Create minimal network for unit tests."""
-    env = MicroCivEnv(board_size=6)
-    action_space_size = env.action_space_handler.total_size
-    env.close()
-
-    return MicroCivNetwork(
-        board_size=6,
-        action_space_size=action_space_size,
-        num_res_blocks=1,
-        num_filters=8,
-    )
-
-
-# =============================================================================
-# MCTS Fixtures
-# =============================================================================
-
-
-@pytest.fixture
-def simple_mcts() -> SimpleMCTS:
-    """Create SimpleMCTS for testing."""
-    return SimpleMCTS(num_simulations=10, c_puct=1.5)
-
-
-@pytest.fixture
-def mcts_config() -> MCTSConfig:
-    """Create MCTS configuration."""
-    return MCTSConfig(
-        num_simulations=10,
-        c_puct=1.5,
-        dirichlet_alpha=0.3,
-        dirichlet_epsilon=0.25,
-    )
-
-
-# =============================================================================
-# Distributed Component Fixtures
-# =============================================================================
-
-
-@pytest.fixture
-def shared_storage() -> Generator[SharedStorage, None, None]:
-    """Create shared storage with cleanup."""
-    config = SharedStorageConfig(compress_weights=False)
-    storage = SharedStorage(config=config)
-    yield storage
-    storage.shutdown()
-
-
-@pytest.fixture
-def replay_buffer() -> Generator[DistributedReplayBuffer, None, None]:
-    """Create replay buffer with cleanup."""
-    config = ReplayBufferConfig(max_size=1000, min_size=10)
-    buffer = DistributedReplayBuffer(config=config)
-    yield buffer
-    buffer.shutdown()
-
-
-@pytest.fixture
-def small_replay_buffer() -> Generator[DistributedReplayBuffer, None, None]:
-    """Create small replay buffer for overflow testing."""
-    config = ReplayBufferConfig(max_size=100, min_size=5, trajectory_queue_size=10)
-    buffer = DistributedReplayBuffer(config=config)
-    yield buffer
-    buffer.shutdown()
-
-
-# =============================================================================
-# Configuration Fixtures
-# =============================================================================
-
-
-@pytest.fixture
-def fast_actor_config() -> ActorConfig:
-    """Actor config optimized for fast tests."""
-    return ActorConfig(
-        actor_id=0,
-        board_size=8,
-        max_turns=20,
-        num_res_blocks=2,
-        num_filters=16,
-        num_simulations=5,
-        max_games=2,
-        log_interval=1,
-    )
-
-
-@pytest.fixture
-def tmp_checkpoint_dir(tmp_path: Path) -> Path:
-    """Create temporary checkpoint directory."""
-    checkpoint_dir = tmp_path / "checkpoints"
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    return checkpoint_dir
-
-
-@pytest.fixture
-def tmp_log_dir(tmp_path: Path) -> Path:
-    """Create temporary log directory."""
-    log_dir = tmp_path / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    return log_dir
-
-
-# =============================================================================
-# Sample Data Fixtures
-# =============================================================================
-
-
-@pytest.fixture
-def sample_spatial() -> np.ndarray:
-    """Create sample spatial observation."""
-    return np.random.rand(ENCODER.MICROCIV_CHANNELS, 8, 8).astype(np.float32)
-
-
-@pytest.fixture
-def sample_vector() -> np.ndarray:
-    """Create sample vector observation."""
-    return np.random.rand(ENCODER.MICROCIV_VECTOR_DIM).astype(np.float32)
-
-
-@pytest.fixture
-def sample_action_mask() -> np.ndarray:
-    """Create sample action mask."""
-    env = MicroCivEnv(board_size=8)
-    action_space_size = env.action_space_handler.total_size
-    env.close()
-
-    mask = np.zeros(action_space_size, dtype=np.float32)
-    # Make some actions valid
-    valid_indices = np.random.choice(action_space_size, size=50, replace=False)
-    mask[valid_indices] = 1.0
-    return mask
-
-
-@pytest.fixture
-def sample_training_example(
-    sample_spatial: np.ndarray,
-    sample_vector: np.ndarray,
-    sample_action_mask: np.ndarray,
-) -> TrainingExample:
-    """Create sample training example."""
-    action_space_size = len(sample_action_mask)
-    policy = np.random.rand(action_space_size).astype(np.float32)
-    policy = policy / policy.sum()  # Normalize
-
-    return TrainingExample(
-        spatial=sample_spatial,
-        vector=sample_vector,
-        action_mask=sample_action_mask,
-        policy=policy,
-        value=0.5,
-    )
-
-
-@pytest.fixture
-def sample_game_trajectory(
-    sample_training_example: TrainingExample,
-) -> GameTrajectory:
-    """Create sample game trajectory."""
-    examples = [sample_training_example for _ in range(10)]
-    return GameTrajectory(
-        examples=examples,
-        game_id=1,
-        actor_id=0,
-        game_length=10,
-        winner=1,
-    )
-
-
-def generate_training_examples(
-    count: int,
-    board_size: int = 8,
-    seed: int = 42,
-) -> list[TrainingExample]:
-    """Generate multiple training examples for testing.
-
-    Args:
-        count: Number of examples to generate.
-        board_size: Board size for spatial dimensions.
-        seed: Random seed.
-
-    Returns:
-        List of training examples.
+    Checks for:
+    1. GOOGLE_APPLICATION_CREDENTIALS environment variable
+    2. Application default credentials in standard location
+    3. GCP_PROJECT_ID set (indicates intent to use GCP)
     """
-    rng = np.random.default_rng(seed)
-    env = MicroCivEnv(board_size=board_size)
-    action_space_size = env.action_space_handler.total_size
-    env.close()
+    # Check explicit credentials file
+    if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        creds_path = Path(os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
+        if creds_path.exists():
+            return True
 
-    examples = []
-    for _ in range(count):
-        spatial = rng.random((ENCODER.MICROCIV_CHANNELS, board_size, board_size)).astype(
-            np.float32
+    # Check for application default credentials
+    # Windows: %APPDATA%\gcloud\application_default_credentials.json
+    # Linux/Mac: ~/.config/gcloud/application_default_credentials.json
+    home = Path.home()
+    if os.name == "nt":  # Windows
+        adc_path = (
+            Path(os.environ.get("APPDATA", "")) / "gcloud" / "application_default_credentials.json"
         )
-        vector = rng.random(ENCODER.MICROCIV_VECTOR_DIM).astype(np.float32)
-        action_mask = np.ones(action_space_size, dtype=np.float32)
+    else:  # Linux/Mac
+        adc_path = home / ".config" / "gcloud" / "application_default_credentials.json"
 
-        policy = rng.random(action_space_size).astype(np.float32)
-        policy = policy / policy.sum()
-
-        examples.append(
-            TrainingExample(
-                spatial=spatial,
-                vector=vector,
-                action_mask=action_mask,
-                policy=policy,
-                value=rng.choice([-1.0, 0.0, 1.0]),
-            )
-        )
-
-    return examples
+    return adc_path.exists()
 
 
-def generate_game_trajectories(
-    count: int,
-    examples_per_game: int = 5,
-    board_size: int = 8,
-    seed: int = 42,
-) -> list[GameTrajectory]:
-    """Generate multiple game trajectories for testing.
-
-    Args:
-        count: Number of trajectories to generate.
-        examples_per_game: Examples per trajectory.
-        board_size: Board size for spatial dimensions.
-        seed: Random seed.
-
-    Returns:
-        List of game trajectories.
-    """
-    rng = np.random.default_rng(seed)
-    trajectories = []
-
-    for i in range(count):
-        examples = generate_training_examples(
-            examples_per_game, board_size, seed=seed + i
-        )
-        trajectories.append(
-            GameTrajectory(
-                examples=examples,
-                game_id=i,
-                actor_id=i % 4,
-                game_length=examples_per_game,
-                winner=rng.choice([None, 0, 1]),
-            )
-        )
-
-    return trajectories
+def _has_gcp_config() -> bool:
+    """Check if required GCP configuration is set."""
+    return bool(os.environ.get("GCP_PROJECT_ID") and os.environ.get("GCS_BUCKET_NAME"))
 
 
-# =============================================================================
-# Timeout and Retry Helpers
-# =============================================================================
-
-
-@pytest.fixture
-def short_timeout() -> float:
-    """Short timeout for failure tests."""
-    return 0.5
-
-
-@pytest.fixture
-def very_short_timeout() -> float:
-    """Very short timeout for immediate failure tests."""
-    return 0.05
-
-
-# =============================================================================
-# Mock Fixtures
-# =============================================================================
-
-
-@pytest.fixture
-def mock_network() -> MagicMock:
-    """Create a mock network for isolated testing."""
-    mock = MagicMock(spec=MicroCivNetwork)
-
-    # Setup default return values
-    def predict_side_effect(spatial, vector, action_mask=None):
-        batch_size = spatial.shape[0] if len(spatial.shape) > 3 else 1
-        action_size = 376  # Default action space size
-
-        policy = torch.zeros(batch_size, action_size)
-        policy[:, 0] = 1.0  # Always predict first action
-
-        value = torch.zeros(batch_size, 1)
-        return policy, value
-
-    # Use side_effect for proper mock behavior
-    mock.forward.side_effect = predict_side_effect
-    mock.predict.side_effect = predict_side_effect
-    mock.__call__ = MagicMock(side_effect=predict_side_effect)
-
-    return mock
-
-
-# =============================================================================
-# Pytest Markers
-# =============================================================================
-
-
-def pytest_configure(config):
-    """Configure custom pytest markers."""
-    config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')")
+# Pytest markers for conditional execution
+def pytest_configure(config: pytest.Config) -> None:
+    """Register custom markers."""
+    config.addinivalue_line(
+        "markers", "requires_gcp: marks tests requiring GCP credentials (skip if unavailable)"
+    )
+    config.addinivalue_line(
+        "markers", "requires_distributed: marks tests requiring distributed training setup"
+    )
     config.addinivalue_line("markers", "integration: marks tests as integration tests")
-    config.addinivalue_line("markers", "stress: marks tests as stress/load tests")
-    config.addinivalue_line("markers", "requires_gpu: marks tests requiring GPU")
+    config.addinivalue_line(
+        "markers", "requires_env: marks tests requiring external environment (Docker, etc.)"
+    )
+    config.addinivalue_line("markers", "slow: marks tests as slow-running")
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Skip tests marked with requires_gcp if credentials unavailable."""
+    skip_gcp = pytest.mark.skip(
+        reason="GCP credentials not available. Set GOOGLE_APPLICATION_CREDENTIALS or run 'gcloud auth application-default login'"
+    )
+    skip_config = pytest.mark.skip(
+        reason="GCP configuration incomplete. Set GCP_PROJECT_ID and GCS_BUCKET_NAME"
+    )
+
+    for item in items:
+        if "requires_gcp" in item.keywords:
+            if not _has_gcp_credentials():
+                item.add_marker(skip_gcp)
+            elif not _has_gcp_config():
+                item.add_marker(skip_config)
+
+
+# Fixtures for cloud testing
+@pytest.fixture
+def gcp_credentials_available() -> bool:
+    """Check if GCP credentials are available.
+
+    Returns:
+        True if credentials are available, False otherwise.
+    """
+    return _has_gcp_credentials() and _has_gcp_config()
+
+
+@pytest.fixture
+def temp_checkpoint_dir() -> Generator[Path, None, None]:
+    """Create a temporary directory for checkpoint testing.
+
+    Properly handles Windows file locking by using TemporaryDirectory.
+
+    Yields:
+        Path to temporary directory.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield Path(tmpdir)
+
+
+@pytest.fixture
+def test_cloud_config():
+    """Create a test cloud configuration.
+
+    Uses mock values that work with force_mock=True for offline testing.
+
+    Returns:
+        CloudConfig instance for testing.
+    """
+    from alpha_zero.cloud.config import CloudConfig
+
+    return CloudConfig(
+        project_id="test-project-id",
+        region="us-central1",
+        zone="us-central1-a",
+        bucket_name="test-bucket",
+        checkpoint_prefix="test-checkpoints/",
+        artifact_prefix="test-artifacts/",
+        enable_cloud_logging=True,
+        enable_cloud_monitoring=True,
+        use_spot=True,
+        preemption_check_interval=1.0,  # Faster for tests
+    )
+
+
+@pytest.fixture
+def env_cloud_config():
+    """Load cloud configuration from environment.
+
+    Only use this fixture for E2E tests with real credentials.
+
+    Returns:
+        CloudConfig instance from environment, or skip if not configured.
+    """
+    from alpha_zero.cloud.config import CloudConfig
+
+    if not _has_gcp_config():
+        pytest.skip("GCP environment not configured")
+
+    config = CloudConfig.from_env()
+    config.validate()
+    return config
+
+
+# =============================================================================
+# DDP / Distributed Training Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def mock_distributed() -> Generator[MockDistributedBackend, None, None]:
+    """Create and activate mock distributed backend.
+
+    Patches torch.distributed with mock implementation.
+
+    Yields:
+        MockDistributedBackend instance with patches applied.
+    """
+    from tests.fixtures.mock_distributed import MockDistributedBackend
+
+    backend = MockDistributedBackend(world_size=4, rank=0)
+    with backend.patch():
+        yield backend
+
+
+@pytest.fixture
+def ddp_config():
+    """Create test DDPLearnerConfig.
+
+    Returns:
+        DDPLearnerConfig with default test values.
+    """
+    from alpha_zero.distributed.ddp_learner import DDPLearnerConfig
+
+    return DDPLearnerConfig(
+        world_size=4,
+        rank=0,
+        local_rank=0,
+        backend="gloo",
+        master_addr="localhost",
+        master_port="29500",
+    )
+
+
+class SimpleTestNetwork(nn.Module):
+    """Simple network for testing DDP learners."""
+
+    def __init__(self, input_size: int = 10, output_size: int = 5) -> None:
+        """Initialize simple network."""
+        super().__init__()
+        self.linear = nn.Linear(input_size, output_size)
+
+    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Forward pass."""
+        out = self.linear(x)
+        return {
+            "policy": torch.softmax(out, dim=-1),
+            "value": out.mean(dim=-1, keepdim=True),
+        }
+
+
+@pytest.fixture
+def simple_test_network() -> SimpleTestNetwork:
+    """Create simple network for DDP testing.
+
+    Returns:
+        SimpleTestNetwork instance.
+    """
+    return SimpleTestNetwork()
+
+
+@pytest.fixture
+def mock_shared_storage() -> MagicMock:
+    """Create mock shared storage for DDP testing.
+
+    Returns:
+        MagicMock configured as SharedStorage.
+    """
+    storage = MagicMock()
+    storage.get_weights.return_value = {}
+    storage.set_weights.return_value = None
+    return storage
+
+
+@pytest.fixture
+def mock_replay_buffer() -> MagicMock:
+    """Create mock replay buffer for DDP testing.
+
+    Returns:
+        MagicMock configured with sample method.
+    """
+    buffer = MagicMock()
+    buffer.sample.return_value = {
+        "states": torch.randn(8, 10),
+        "policies": torch.randn(8, 5),
+        "values": torch.randn(8, 1),
+    }
+    return buffer
+
+
+# =============================================================================
+# Bridge / Docker Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def bridge_config() -> Generator[Path, None, None]:
+    """Create bridge configuration for testing.
+
+    Yields:
+        BridgeConfig with test-appropriate values.
+    """
+    from alpha_zero.bridge.config import BridgeConfig
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield BridgeConfig(
+            comm_dir=Path(tmpdir),
+            poll_interval_ms=10,
+            command_timeout_ms=500,
+            heartbeat_timeout_s=1.0,
+            max_retries=3,
+            retry_delay_s=0.1,
+            board_size=16,
+        )
+
+
+@pytest.fixture
+def docker_connection_config():
+    """Create Docker connection configuration for testing.
+
+    Returns:
+        DockerConnectionConfig with test-appropriate values.
+    """
+    from alpha_zero.envs.docker_config import DockerConnectionConfig
+
+    return DockerConnectionConfig(
+        host="localhost",
+        port=6300,
+        connection_timeout_s=5.0,
+        retry_count=3,
+        retry_delay_s=0.5,
+    )
+
+
+# =============================================================================
+# Game State Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def sample_game_state_dict() -> dict:
+    """Create sample game state dictionary for testing.
+
+    Returns:
+        Dictionary representing a minimal game state.
+    """
+    return {
+        "msg_id": 1,
+        "turn_id": 10,
+        "player_id": 0,
+        "era": 0,
+        "map": {
+            "width": 84,
+            "height": 54,
+            "tiles": [],
+        },
+        "units": [
+            {
+                "id": 1001,
+                "type": "UNIT_WARRIOR",
+                "owner": 0,
+                "x": 42,
+                "y": 27,
+                "health": 100,
+                "max_health": 100,
+                "moves": 2,
+                "max_moves": 2,
+                "combat_strength": 20,
+            },
+        ],
+        "cities": [
+            {
+                "id": 2001,
+                "name": "Capital",
+                "owner": 0,
+                "x": 40,
+                "y": 25,
+                "population": 5,
+                "is_capital": True,
+            }
+        ],
+        "players": [
+            {
+                "id": 0,
+                "civilization": "CIVILIZATION_AMERICA",
+                "gold": 100,
+                "science_per_turn": 10,
+                "culture_per_turn": 5,
+                "faith": 0,
+                "score": 50,
+                "techs_researched": ["TECH_POTTERY", "TECH_MINING"],
+            }
+        ],
+        "legal_actions": [
+            {"action_type": "unit_move", "unit_id": 1001, "targets": [{"x": 43, "y": 27}]},
+            {"action_type": "end_turn"},
+        ],
+    }
+
+
+@pytest.fixture
+def sample_trajectory_data() -> list[dict]:
+    """Create sample trajectory data for testing.
+
+    Returns:
+        List of trajectory step dictionaries.
+    """
+    import numpy as np
+
+    return [
+        {
+            "state": np.random.randn(13, 16, 16).astype(
+                np.float32
+            ),  # MicroCivEncoder.TOTAL_CHANNELS
+            "action": np.array([5, 8]),
+            "policy": np.random.dirichlet(np.ones(100)).astype(np.float32),
+            "reward": 0.0,
+            "done": False,
+            "turn": 1,
+        },
+        {
+            "state": np.random.randn(13, 16, 16).astype(
+                np.float32
+            ),  # MicroCivEncoder.TOTAL_CHANNELS
+            "action": np.array([6, 8]),
+            "policy": np.random.dirichlet(np.ones(100)).astype(np.float32),
+            "reward": 0.1,
+            "done": False,
+            "turn": 2,
+        },
+        {
+            "state": np.random.randn(13, 16, 16).astype(
+                np.float32
+            ),  # MicroCivEncoder.TOTAL_CHANNELS
+            "action": np.array([6, 9]),
+            "policy": np.random.dirichlet(np.ones(100)).astype(np.float32),
+            "reward": 1.0,
+            "done": True,
+            "turn": 3,
+        },
+    ]

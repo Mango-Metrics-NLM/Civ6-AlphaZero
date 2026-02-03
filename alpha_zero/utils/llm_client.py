@@ -27,28 +27,32 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 # Optional imports - gracefully handle missing dependencies
+# Use explicit Any type for fallback values to satisfy type checker
+AsyncOpenAI: Any
+OpenAI: Any
+AsyncAnthropic: Any
+Anthropic: Any
+
 try:
     from openai import AsyncOpenAI, OpenAI
 
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
-    # Type stubs for when openai is not installed
-    AsyncOpenAI = None  # type: ignore[misc, assignment]
-    OpenAI = None  # type: ignore[misc, assignment]
+    AsyncOpenAI = None  # type: ignore[misc]
+    OpenAI = None  # type: ignore[misc]
 
 try:
-    from anthropic import Anthropic, AsyncAnthropic
+    from anthropic import Anthropic, AsyncAnthropic  # type: ignore[import, no-redef]
 
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
-    # Type stubs for when anthropic is not installed
-    AsyncAnthropic = None  # type: ignore[misc, assignment]
-    Anthropic = None  # type: ignore[misc, assignment]
+    AsyncAnthropic = None  # type: ignore[misc]
+    Anthropic = None  # type: ignore[misc]
 
 # Load environment variables from .env file if available
 try:
@@ -224,7 +228,7 @@ class BaseLLMClient(ABC):
         """Generate a response from the LLM."""
 
     @abstractmethod
-    async def generate_stream(
+    def generate_stream(
         self,
         prompt: str,
         system_prompt: str | None = None,
@@ -232,6 +236,7 @@ class BaseLLMClient(ABC):
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """Generate a streaming response from the LLM."""
+        ...
 
     def generate_sync(
         self,
@@ -285,8 +290,7 @@ class OpenAIClient(BaseLLMClient):
 
         response = await self._async_client.chat.completions.create(
             model=model,
-            # OpenAI SDK types require specific message param types; our dict format is compatible
-            messages=[m.to_openai_format() for m in request_messages],  # type: ignore[misc, arg-type]
+            messages=cast(list[Any], [m.to_openai_format() for m in request_messages]),
             max_tokens=max_tokens,
             temperature=temperature,
         )
@@ -309,7 +313,7 @@ class OpenAIClient(BaseLLMClient):
             raw_response=response,
         )
 
-    async def generate_stream(  # type: ignore[override]
+    async def generate_stream(
         self,
         prompt: str,
         system_prompt: str | None = None,
@@ -323,17 +327,16 @@ class OpenAIClient(BaseLLMClient):
         max_tokens = kwargs.get("max_tokens", self.config.openai_max_tokens)
         temperature = kwargs.get("temperature", self.config.openai_temperature)
 
+        openai_messages: list[Any] = [m.to_openai_format() for m in request_messages]
         stream = await self._async_client.chat.completions.create(
             model=model,
-            # OpenAI SDK types require specific message param types; our dict format is compatible
-            messages=[m.to_openai_format() for m in request_messages],  # type: ignore[misc, arg-type]
+            messages=openai_messages,
             max_tokens=max_tokens,
             temperature=temperature,
             stream=True,
         )
 
-        # Type assertion for stream - openai SDK returns AsyncStream when stream=True
-        async for chunk in stream:  # type: ignore[union-attr]
+        async for chunk in stream:
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
 
@@ -423,7 +426,7 @@ class AnthropicClient(BaseLLMClient):
             raw_response=response,
         )
 
-    async def generate_stream(  # type: ignore[override]
+    async def generate_stream(
         self,
         prompt: str,
         system_prompt: str | None = None,

@@ -235,9 +235,7 @@ class EnvironmentProtocol(Protocol):
         """
         ...
 
-    def step(
-        self, action: int
-    ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
+    def step(self, action: int) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
         """Take a step in the environment.
 
         Args:

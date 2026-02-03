@@ -29,3 +29,8 @@ wandb>=0.15.0
 chromadb>=0.4.0
 sentence-transformers>=2.2.0
 
+# GCP Cloud Integration (optional - install for cloud training)
+# google-cloud-storage>=2.10.0
+# google-cloud-aiplatform>=1.35.0
+# google-cloud-logging>=3.5.0
+# google-cloud-monitoring>=2.15.0

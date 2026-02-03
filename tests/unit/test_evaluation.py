@@ -1,6 +1,5 @@
 """Tests for the evaluation module."""
 
-
 from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.evaluation.baseline_agents import (
     GreedyHeuristicAgent,

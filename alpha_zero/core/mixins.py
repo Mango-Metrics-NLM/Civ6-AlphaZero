@@ -333,8 +333,7 @@ class TensorShapeMixin:
         for i, (a, e) in enumerate(zip(actual, expected, strict=False)):
             if e is not None and a != e:
                 raise AssertionError(
-                    f"{name} dim {i} is {a}, expected {e}. "
-                    f"Shape: {actual}, expected: {expected}"
+                    f"{name} dim {i} is {a}, expected {e}. Shape: {actual}, expected: {expected}"
                 )
 
     def get_shape_str(self, tensor: Tensor | np.ndarray) -> str:

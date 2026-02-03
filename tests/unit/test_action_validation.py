@@ -108,9 +108,7 @@ class TestActionValidation:
         """End turn action should always be valid."""
         game_state = {"current_player": 0, "units": [], "cities": []}
 
-        is_valid, error = action_space.validate_action(
-            action_space.end_turn_offset, game_state
-        )
+        is_valid, error = action_space.validate_action(action_space.end_turn_offset, game_state)
         assert is_valid
         assert error == ""
 
@@ -249,7 +247,7 @@ class TestExecuteActionReturns:
 
     def test_execute_attack_empty_tile_fails(self, env):
         """Attack on tile with no defender should fail with descriptive error.
-        
+
         This tests the fix for the attack validation bug where attacking an
         empty tile would return success=True with reward=0, making the
         action_success unreliable.
@@ -258,28 +256,26 @@ class TestExecuteActionReturns:
         own_units = [u for u in env.units if u.player == env.current_player]
         if not own_units:
             pytest.skip("No units available for test")
-        
+
         unit = own_units[0]
         if unit.moves_remaining <= 0:
             pytest.skip("Unit has no moves remaining")
-        
+
         # Find a direction with no enemy unit
-        enemy_positions = {
-            u.position for u in env.units if u.player != env.current_player
-        }
-        
+        enemy_positions = {u.position for u in env.units if u.player != env.current_player}
+
         for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (-1, -1), (1, -1), (-1, 1)]:
             target_pos = (unit.position[0] + dx, unit.position[1] + dy)
             if target_pos not in enemy_positions:
                 # This tile has no enemy - attack should fail
                 action_dict = {"type": "attack", "unit_idx": 0, "direction": (dx, dy)}
                 reward, success, error = env._execute_action(action_dict)
-                
+
                 assert not success, "Attack on empty tile should fail"
                 assert "No enemy unit" in error, f"Expected 'No enemy unit' in error, got: {error}"
                 assert reward == 0.0, "Attack on empty tile should have zero reward"
                 return
-        
+
         # If all adjacent tiles have enemies, skip (rare but possible)
         pytest.skip("All adjacent tiles have enemy units")
 

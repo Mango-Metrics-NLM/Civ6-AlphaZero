@@ -63,6 +63,8 @@ from alpha_zero.utils.test_runner import (
     RunConfig,
     RunResult,
     RunStatus,
+    quick_test,
+    run_tests,
 )
 
 # Backwards compatibility aliases for test runner
@@ -70,11 +72,9 @@ TestRunner = PytestRunner
 TestConfig = RunConfig
 TestResult = RunResult
 TestStatus = RunStatus
-run_tests = PytestRunner.run_tests if hasattr(PytestRunner, 'run_tests') else None
-quick_test = None  # Placeholder if not implemented
 
 # Agent Tools
-from alpha_zero.utils.agent_tools import (
+from alpha_zero.utils.agent_tools import (  # noqa: E402
     CodeExplorer,
     CodeLocation,
     CodeSymbol,
@@ -203,7 +203,7 @@ except ImportError:
     _RAG_AVAILABLE = False
 
 # Training Improvement Modules (re-exported for public API)
-from alpha_zero.utils.curriculum_learning import (  # noqa: F401
+from alpha_zero.utils.curriculum_learning import (  # noqa: E402, F401
     AdaptiveDifficultyController,
     CurriculumConfig,
     CurriculumManager,
@@ -212,7 +212,7 @@ from alpha_zero.utils.curriculum_learning import (  # noqa: F401
     DifficultyDimension,
     create_curriculum_manager,
 )
-from alpha_zero.utils.enhanced_rewards import (  # noqa: F401
+from alpha_zero.utils.enhanced_rewards import (  # noqa: E402, F401
     EnhancedRewardsConfig,
     EnhancedRewardShaper,
     EnhancedStateFeatures,
@@ -225,7 +225,7 @@ from alpha_zero.utils.enhanced_rewards import (  # noqa: F401
     get_balanced_rewards_config,
     get_defensive_rewards_config,
 )
-from alpha_zero.utils.environment_tuning import (  # noqa: F401
+from alpha_zero.utils.environment_tuning import (  # noqa: E402, F401
     CombatConfig,
     EarlyTerminationChecker,
     EarlyTerminationConfig,
@@ -237,7 +237,7 @@ from alpha_zero.utils.environment_tuning import (  # noqa: F401
     get_default_fast_config,
     get_default_realistic_config,
 )
-from alpha_zero.utils.training_config_enhanced import (  # noqa: F401
+from alpha_zero.utils.training_config_enhanced import (  # noqa: E402, F401
     EnhancedTrainingConfig,
     ParameterSchedule,
     ResourceConfig,

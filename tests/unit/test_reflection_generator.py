@@ -44,11 +44,14 @@ class TestReflectionGeneratorConfig:
 
     def test_from_env(self):
         """Should load from environment variables."""
-        with patch.dict(os.environ, {
-            "CIV6AZ_REFLECTION_LLM_TEMP": "0.5",
-            "CIV6AZ_REFLECTION_LLM_MAX_TOKENS": "1000",
-            "CIV6AZ_REFLECTION_CACHE": "false",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "CIV6AZ_REFLECTION_LLM_TEMP": "0.5",
+                "CIV6AZ_REFLECTION_LLM_MAX_TOKENS": "1000",
+                "CIV6AZ_REFLECTION_CACHE": "false",
+            },
+        ):
             config = ReflectionGeneratorConfig.from_env()
 
             assert config.temperature == 0.5
@@ -224,9 +227,7 @@ LESSON: Early military investment prevents mid-game collapse
         return client
 
     @pytest.mark.asyncio
-    async def test_generate_critique_with_llm(
-        self, config, sample_trajectory, mock_llm_client
-    ):
+    async def test_generate_critique_with_llm(self, config, sample_trajectory, mock_llm_client):
         """Should generate critique using LLM."""
         generator = ReflectionGenerator(config, llm_client=mock_llm_client)
 
@@ -251,9 +252,7 @@ LESSON: Early military investment prevents mid-game collapse
         assert critique.strategic_lesson != ""
         assert critique.confidence > 0
 
-    def test_generate_critique_sync(
-        self, config, sample_trajectory, mock_llm_client
-    ):
+    def test_generate_critique_sync(self, config, sample_trajectory, mock_llm_client):
         """Should work with sync wrapper."""
         generator = ReflectionGenerator(config, llm_client=mock_llm_client)
 
@@ -300,7 +299,7 @@ LESSON: Early military investment prevents mid-game collapse
 
         generator = ReflectionGenerator(config, llm_client=mock_client)
 
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             await generator.generate_critique(sample_trajectory)
 
     def test_clear_cache(self, config, mock_llm_client):

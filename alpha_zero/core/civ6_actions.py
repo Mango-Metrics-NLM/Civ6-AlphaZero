@@ -121,18 +121,26 @@ class HierarchicalAction:
 
 
 class ActionSpaceConfig(NamedTuple):
-    """Configuration for action space dimensions."""
+    """Configuration for action space dimensions.
+
+    All values are configurable to support different game versions,
+    testing scenarios, and simplified environments.
+    """
 
     board_size: int = 16
     max_units: int = 100
     max_cities: int = 20
-    num_techs: int = 73
-    num_civics: int = 56
+    num_techs: int = 73  # Standard Civ6 tech count
+    num_civics: int = 56  # Standard Civ6 civic count
     num_players: int = 8
     num_production_items: int = 200
     num_unit_action_types: int = 17
     num_city_action_types: int = 12
     num_diplomacy_actions: int = 9
+    # Simplified action space sizes (for espionage, government, great people)
+    num_espionage_actions: int = 50
+    num_government_actions: int = 50
+    num_great_person_actions: int = 20
 
 
 class ActionSpace:
@@ -166,9 +174,9 @@ class ActionSpace:
             ActionCategory.RESEARCH_TECH: cfg.num_techs,
             ActionCategory.RESEARCH_CIVIC: cfg.num_civics,
             ActionCategory.DIPLOMACY: cfg.num_players * cfg.num_diplomacy_actions,
-            ActionCategory.ESPIONAGE: 50,  # Simplified
-            ActionCategory.GOVERNMENT: 50,  # Simplified
-            ActionCategory.GREAT_PERSON: 20,  # Simplified
+            ActionCategory.ESPIONAGE: cfg.num_espionage_actions,
+            ActionCategory.GOVERNMENT: cfg.num_government_actions,
+            ActionCategory.GREAT_PERSON: cfg.num_great_person_actions,
         }
 
         # Compute offsets
@@ -677,9 +685,7 @@ class MicroCivActionSpace:
         unit_names = ["warrior", "settler", "archer"]
         return {"type": "produce", "city_idx": city_idx, "unit_type": unit_names[unit_type]}
 
-    def validate_action(
-        self, action_idx: int, game_state: dict[str, Any]
-    ) -> tuple[bool, str]:
+    def validate_action(self, action_idx: int, game_state: dict[str, Any]) -> tuple[bool, str]:
         """Validate that an action index is valid for the current game state.
 
         This method checks that the decoded action refers to valid entities
@@ -708,8 +714,7 @@ class MicroCivActionSpace:
 
             # Count player's own units
             own_units = [
-                u for u in game_state.get("units", [])
-                if u.get("player") == current_player
+                u for u in game_state.get("units", []) if u.get("player") == current_player
             ]
 
             if unit_idx < 0:
@@ -726,8 +731,7 @@ class MicroCivActionSpace:
 
             # Count player's own cities
             own_cities = [
-                c for c in game_state.get("cities", [])
-                if c.get("player") == current_player
+                c for c in game_state.get("cities", []) if c.get("player") == current_player
             ]
 
             if city_idx < 0:

@@ -1,217 +1,267 @@
-"""Unit tests for cloud configuration.
-
-This module tests the cloud configuration system, including:
-- Environment variable loading
-- Serialization/deserialization
-- Validation
-- Path building
-"""
+"""Unit tests for cloud configuration module."""
 
 from __future__ import annotations
 
 import os
-from unittest.mock import patch
+import tempfile
+from pathlib import Path
+from unittest import mock
 
 import pytest
 
-from alpha_zero.cloud.config import (
-    CloudConfig,
-    CloudEnvironment,
-    CloudProvider,
-)
+from alpha_zero.cloud.config import CloudConfig
+from alpha_zero.cloud.exceptions import CloudConfigError
 
 
-class TestCloudEnvironment:
-    """Tests for CloudEnvironment enum."""
+class TestCloudConfigDefaults:
+    """Tests for CloudConfig default values."""
 
-    @pytest.mark.parametrize(
-        "value,expected",
-        [
-            ("dev", CloudEnvironment.DEVELOPMENT),
-            ("development", CloudEnvironment.DEVELOPMENT),
-            ("DEVELOPMENT", CloudEnvironment.DEVELOPMENT),
-            ("staging", CloudEnvironment.STAGING),
-            ("STAGING", CloudEnvironment.STAGING),
-            ("prod", CloudEnvironment.PRODUCTION),
-            ("production", CloudEnvironment.PRODUCTION),
-            ("test", CloudEnvironment.TEST),
-        ],
-    )
-    def test_from_string(self, value: str, expected: CloudEnvironment) -> None:
-        """Test environment parsing from string."""
-        assert CloudEnvironment.from_string(value) == expected
-
-    def test_from_string_invalid(self) -> None:
-        """Test invalid environment string raises error."""
-        with pytest.raises(ValueError, match="Unknown environment"):
-            CloudEnvironment.from_string("invalid")
-
-
-class TestCloudConfig:
-    """Tests for CloudConfig."""
-
-    def test_default_values(self) -> None:
-        """Test default configuration values."""
+    def test_default_initialization(self) -> None:
+        """Test default values are set correctly."""
         config = CloudConfig()
-        assert config.provider == CloudProvider.LOCAL
-        assert config.environment == CloudEnvironment.DEVELOPMENT
+
         assert config.project_id == ""
-        assert config.region == ""
+        assert config.region == "us-central1"
+        assert config.bucket_name == ""
+        assert config.checkpoint_prefix == "checkpoints/"
+        assert config.enable_cloud_logging is True
+        assert config.enable_cloud_monitoring is True
+        assert config.use_spot is True
+        assert config.accelerator_count == 1
+
+    def test_custom_initialization(self) -> None:
+        """Test initialization with custom values."""
+        config = CloudConfig(
+            project_id="my-project",
+            region="europe-west1",
+            bucket_name="my-bucket",
+            use_spot=False,
+            accelerator_count=4,
+        )
+
+        assert config.project_id == "my-project"
+        assert config.region == "europe-west1"
+        assert config.bucket_name == "my-bucket"
+        assert config.use_spot is False
+        assert config.accelerator_count == 4
+
+    def test_prefix_normalization(self) -> None:
+        """Test that prefixes are normalized with trailing slashes."""
+        config = CloudConfig(
+            checkpoint_prefix="checkpoints",  # Missing trailing slash
+            artifact_prefix="artifacts",  # Missing trailing slash
+        )
+
+        assert config.checkpoint_prefix == "checkpoints/"
+        assert config.artifact_prefix == "artifacts/"
+
+
+class TestCloudConfigFromEnv:
+    """Tests for CloudConfig.from_env()."""
 
     def test_from_env_basic(self) -> None:
-        """Test loading from environment variables."""
-        env = {
-            "CLOUD_PROVIDER": "gcp",
-            "CLOUD_ENVIRONMENT": "prod",
-            "CLOUD_PROJECT_ID": "my-project",
-            "CLOUD_REGION": "us-central1",
-            "CLOUD_DEFAULT_BUCKET": "my-bucket",
+        """Test loading configuration from environment variables."""
+        env_vars = {
+            "GCP_PROJECT_ID": "test-project",
+            "GCP_REGION": "us-west1",
+            "GCS_BUCKET_NAME": "test-bucket",
         }
-        with patch.dict(os.environ, env, clear=False):
+
+        with mock.patch.dict(os.environ, env_vars, clear=False):
             config = CloudConfig.from_env()
 
-        assert config.provider == CloudProvider.GCP
-        assert config.environment == CloudEnvironment.PRODUCTION
-        assert config.project_id == "my-project"
+        assert config.project_id == "test-project"
+        assert config.region == "us-west1"
+        assert config.bucket_name == "test-bucket"
+
+    def test_from_env_with_overrides(self) -> None:
+        """Test loading with CIV6AZ_ prefixed overrides."""
+        env_vars = {
+            "GCP_PROJECT_ID": "test-project",
+            "CIV6AZ_ENABLE_CLOUD_LOGGING": "false",
+            "CIV6AZ_USE_SPOT": "no",
+            "CIV6AZ_ACCELERATOR_COUNT": "8",
+            "CIV6AZ_PREEMPTION_CHECK_INTERVAL": "10.5",
+        }
+
+        with mock.patch.dict(os.environ, env_vars, clear=False):
+            config = CloudConfig.from_env()
+
+        assert config.project_id == "test-project"
+        assert config.enable_cloud_logging is False
+        assert config.use_spot is False
+        assert config.accelerator_count == 8
+        assert config.preemption_check_interval == 10.5
+
+    def test_from_env_missing_vars(self) -> None:
+        """Test that missing env vars result in defaults."""
+        with mock.patch.dict(os.environ, {}, clear=True):
+            config = CloudConfig.from_env()
+
+        assert config.project_id == ""
         assert config.region == "us-central1"
-        assert config.default_bucket == "my-bucket"
 
-    def test_from_env_with_labels(self) -> None:
-        """Test loading labels from environment."""
-        env = {
-            "CLOUD_LABELS": "team=ml,env=dev,project=alphazero",
-        }
-        with patch.dict(os.environ, env, clear=False):
-            config = CloudConfig.from_env()
 
-        assert config.labels == {
-            "team": "ml",
-            "env": "dev",
-            "project": "alphazero",
-        }
+class TestCloudConfigFromYaml:
+    """Tests for CloudConfig.from_yaml()."""
 
-    def test_from_env_with_tags(self) -> None:
-        """Test loading tags from environment."""
-        env = {
-            "CLOUD_TAGS": "ml,training,gpu",
-        }
-        with patch.dict(os.environ, env, clear=False):
-            config = CloudConfig.from_env()
+    def test_from_yaml_basic(self) -> None:
+        """Test loading configuration from YAML file."""
+        yaml_content = """
+        project_id: yaml-project
+        region: asia-east1
+        bucket_name: yaml-bucket
+        use_spot: false
+        accelerator_count: 2
+        """
 
-        assert config.tags == ["ml", "training", "gpu"]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yaml_path = Path(tmpdir) / "config.yaml"
+            yaml_path.write_text(yaml_content)
 
-    def test_from_env_invalid_provider(self) -> None:
-        """Test fallback for invalid provider."""
-        env = {"CLOUD_PROVIDER": "invalid"}
-        with patch.dict(os.environ, env, clear=False):
-            config = CloudConfig.from_env()
+            config = CloudConfig.from_yaml(str(yaml_path))
 
-        assert config.provider == CloudProvider.LOCAL
+            assert config.project_id == "yaml-project"
+            assert config.region == "asia-east1"
+            assert config.bucket_name == "yaml-bucket"
+            assert config.use_spot is False
+            assert config.accelerator_count == 2
+
+    def test_from_yaml_nested_structure(self) -> None:
+        """Test loading from YAML with nested cloud/gcp structure."""
+        yaml_content = """
+        cloud:
+          gcp:
+            project_id: nested-project
+            region: us-central1
+        """
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yaml_path = Path(tmpdir) / "nested.yaml"
+            yaml_path.write_text(yaml_content)
+
+            config = CloudConfig.from_yaml(str(yaml_path))
+            assert config.project_id == "nested-project"
+
+    def test_from_yaml_file_not_found(self) -> None:
+        """Test error when YAML file doesn't exist."""
+        with pytest.raises(CloudConfigError, match="not found"):
+            CloudConfig.from_yaml("/nonexistent/path.yaml")
+
+    def test_from_yaml_invalid_yaml(self) -> None:
+        """Test error when YAML is malformed."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yaml_path = Path(tmpdir) / "invalid.yaml"
+            yaml_path.write_text("invalid: yaml: [broken")
+
+            with pytest.raises(CloudConfigError, match="Failed to parse"):
+                CloudConfig.from_yaml(str(yaml_path))
+
+
+class TestCloudConfigValidation:
+    """Tests for CloudConfig.validate()."""
+
+    def test_validate_success(self) -> None:
+        """Test successful validation."""
+        config = CloudConfig(
+            project_id="valid-project",
+            accelerator_count=4,
+            replica_count=2,
+            use_spot=True,
+            max_run_duration_seconds=3600,
+        )
+
+        # Should not raise
+        config.validate()
+
+    def test_validate_missing_project(self) -> None:
+        """Test validation fails when project_id is missing."""
+        config = CloudConfig()
+
+        with pytest.raises(CloudConfigError, match="project_id is required"):
+            config.validate(require_project=True)
+
+    def test_validate_optional_project(self) -> None:
+        """Test validation passes when project_id is optional."""
+        config = CloudConfig()
+
+        # Should not raise
+        config.validate(require_project=False)
+
+    def test_validate_invalid_run_duration(self) -> None:
+        """Test validation fails with too short run duration for spot."""
+        config = CloudConfig(
+            project_id="test",
+            use_spot=True,
+            max_run_duration_seconds=30,  # Too short
+        )
+
+        with pytest.raises(CloudConfigError, match="at least 60"):
+            config.validate()
+
+    def test_validate_negative_accelerator_count(self) -> None:
+        """Test validation fails with negative accelerator count."""
+        config = CloudConfig(
+            project_id="test",
+            accelerator_count=-1,
+        )
+
+        with pytest.raises(CloudConfigError, match="non-negative"):
+            config.validate()
+
+    def test_validate_zero_replica_count(self) -> None:
+        """Test validation fails with zero replica count."""
+        config = CloudConfig(
+            project_id="test",
+            replica_count=0,
+        )
+
+        with pytest.raises(CloudConfigError, match="at least 1"):
+            config.validate()
+
+
+class TestCloudConfigHelpers:
+    """Tests for CloudConfig helper methods."""
+
+    def test_get_checkpoint_uri(self) -> None:
+        """Test checkpoint URI generation."""
+        config = CloudConfig(
+            bucket_name="my-bucket",
+            checkpoint_prefix="checkpoints/",
+        )
+
+        uri = config.get_checkpoint_uri("model_v1.pt")
+        assert uri == "gs://my-bucket/checkpoints/model_v1.pt"
+
+    def test_get_checkpoint_uri_no_bucket(self) -> None:
+        """Test checkpoint URI fails without bucket."""
+        config = CloudConfig()
+
+        with pytest.raises(CloudConfigError, match="bucket_name is required"):
+            config.get_checkpoint_uri("model.pt")
+
+    def test_get_artifact_uri(self) -> None:
+        """Test artifact URI generation."""
+        config = CloudConfig(
+            bucket_name="my-bucket",
+            artifact_prefix="artifacts/",
+        )
+
+        uri = config.get_artifact_uri("logs.json")
+        assert uri == "gs://my-bucket/artifacts/logs.json"
 
     def test_to_dict(self) -> None:
-        """Test serialization to dictionary."""
+        """Test configuration serialization to dict."""
         config = CloudConfig(
-            provider=CloudProvider.GCP,
-            environment=CloudEnvironment.STAGING,
             project_id="test-project",
-            region="europe-west1",
+            region="us-west1",
+            bucket_name="test-bucket",
         )
+
         data = config.to_dict()
 
-        assert data["provider"] == "gcp"
-        assert data["environment"] == "staging"
         assert data["project_id"] == "test-project"
-        assert data["region"] == "europe-west1"
-
-    def test_from_dict(self) -> None:
-        """Test deserialization from dictionary."""
-        data = {
-            "provider": "gcp",
-            "environment": "prod",
-            "project_id": "test-project",
-            "region": "us-east1",
-        }
-        config = CloudConfig.from_dict(data)
-
-        assert config.provider == CloudProvider.GCP
-        assert config.environment == CloudEnvironment.PRODUCTION
-        assert config.project_id == "test-project"
-        assert config.region == "us-east1"
-
-    def test_round_trip_serialization(self) -> None:
-        """Test serialization round-trip."""
-        original = CloudConfig(
-            provider=CloudProvider.GCP,
-            environment=CloudEnvironment.PRODUCTION,
-            project_id="my-project",
-            region="us-central1",
-            labels={"team": "ml"},
-            tags=["gpu", "training"],
-        )
-
-        data = original.to_dict()
-        restored = CloudConfig.from_dict(data)
-
-        assert restored.provider == original.provider
-        assert restored.environment == original.environment
-        assert restored.project_id == original.project_id
-        assert restored.region == original.region
-        assert restored.labels == original.labels
-        assert restored.tags == original.tags
-
-    def test_validate_cloud_provider_requires_project_id(self) -> None:
-        """Test validation requires project_id for cloud providers."""
-        config = CloudConfig(
-            provider=CloudProvider.GCP,
-            project_id="",
-            region="",
-        )
-        errors = config.validate()
-
-        assert "project_id is required" in errors[0]
-        assert "region is required" in errors[1]
-        assert not config.is_valid()
-
-    def test_validate_local_provider_no_requirements(self) -> None:
-        """Test validation passes for local provider without project_id."""
-        config = CloudConfig(
-            provider=CloudProvider.LOCAL,
-            project_id="",
-            region="",
-        )
-        errors = config.validate()
-
-        assert len(errors) == 0
-        assert config.is_valid()
-
-    def test_get_storage_path_gcp(self) -> None:
-        """Test storage path building for GCP."""
-        config = CloudConfig(
-            provider=CloudProvider.GCP,
-            default_bucket="my-bucket",
-        )
-        path = config.get_storage_path("models", "v1", "weights.pt")
-
-        assert path == "gs://my-bucket/models/v1/weights.pt"
-
-    def test_get_checkpoint_path(self) -> None:
-        """Test checkpoint path building."""
-        config = CloudConfig(
-            provider=CloudProvider.GCP,
-            default_bucket="my-bucket",
-            checkpoint_prefix="checkpoints",
-        )
-        path = config.get_checkpoint_path("epoch_10.pt")
-
-        assert path == "gs://my-bucket/checkpoints/epoch_10.pt"
-
-    def test_get_artifact_path(self) -> None:
-        """Test artifact path building."""
-        config = CloudConfig(
-            provider=CloudProvider.GCP,
-            default_bucket="my-bucket",
-            artifact_prefix="artifacts",
-        )
-        path = config.get_artifact_path("model_final.pt")
-
-        assert path == "gs://my-bucket/artifacts/model_final.pt"
+        assert data["region"] == "us-west1"
+        assert data["bucket_name"] == "test-bucket"
+        assert "checkpoint_prefix" in data
+        assert "custom_labels" in data

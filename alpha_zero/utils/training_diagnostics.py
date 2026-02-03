@@ -385,7 +385,7 @@ class TrainingDiagnostics:
 
         # Track value prediction accuracy
         if self.config.track_value_predictions and self._current_episode_values:
-            avg_pred = np.mean(self._current_episode_values)
+            avg_pred = float(np.mean(self._current_episode_values))
             self.value_tracker.add(avg_pred, total_reward)
 
         # Reset episode tracking
@@ -432,9 +432,9 @@ class TrainingDiagnostics:
 
         # Calculate metrics from episodes
         num_episodes = len(self._episode_metrics)
-        avg_turns = np.mean([m.turns for m in self._episode_metrics])
-        avg_reward = np.mean([m.total_reward for m in self._episode_metrics])
-        avg_entropy = np.mean([m.avg_policy_entropy for m in self._episode_metrics])
+        avg_turns = float(np.mean([m.turns for m in self._episode_metrics]))
+        avg_reward = float(np.mean([m.total_reward for m in self._episode_metrics]))
+        avg_entropy = float(np.mean([m.avg_policy_entropy for m in self._episode_metrics]))
 
         # Calculate outcome rates
         outcomes = [m.outcome for m in self._episode_metrics]
@@ -705,7 +705,7 @@ class ValueHeadMonitor:
         Returns:
             List of alert messages.
         """
-        alerts = []
+        alerts: list[str] = []
         diag = self.diagnose()
 
         if diag.num_samples < 50:
@@ -909,7 +909,8 @@ class BaselineEvaluator:
             "iterations": [r.iteration for r in self._evaluation_history],
             "win_rate_vs_random": [r.win_rate_vs_random for r in self._evaluation_history],
             "win_rate_vs_heuristic": [
-                r.win_rate_vs_heuristic for r in self._evaluation_history
+                r.win_rate_vs_heuristic
+                for r in self._evaluation_history
                 if r.win_rate_vs_heuristic is not None
             ],
         }

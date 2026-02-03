@@ -225,10 +225,7 @@ class VertexTrainer:
                 "image_uri": container_uri,
                 "command": ["python", str(script_path)],
                 "args": script_args,
-                "env": [
-                    {"name": k, "value": v}
-                    for k, v in (environment_variables or {}).items()
-                ],
+                "env": [{"name": k, "value": v} for k, v in (environment_variables or {}).items()],
             }
             del worker_pool_specs[0]["python_package_spec"]
 
@@ -307,8 +304,9 @@ class VertexTrainer:
             error_message=job.error.message if job.error else None,
             logs_uri=None,  # Would need to construct from job metadata
             output_uri=getattr(
-                getattr(getattr(job, 'job_spec', None), 'base_output_directory', None),
-                'output_uri_prefix', None
+                getattr(getattr(job, "job_spec", None), "base_output_directory", None),
+                "output_uri_prefix",
+                None,
             ),
         )
 
@@ -382,7 +380,7 @@ class VertexTrainer:
 
         results: list[TrainingJobInfo] = []
         for job in list(jobs)[:max_results]:
-            job_resource_name = getattr(job, 'resource_name', None)
+            job_resource_name = getattr(job, "resource_name", None)
             if job_resource_name:
                 results.append(self.get_job_status(job_resource_name))
 
@@ -418,9 +416,7 @@ class VertexTrainer:
             if timeout_seconds:
                 elapsed = time.time() - start_time
                 if elapsed >= timeout_seconds:
-                    raise TimeoutError(
-                        f"Job {job_id} did not complete within {timeout_seconds}s"
-                    )
+                    raise TimeoutError(f"Job {job_id} did not complete within {timeout_seconds}s")
 
             logger.info(f"Job {job_id} status: {status.status.value}, waiting...")
             time.sleep(poll_interval_seconds)

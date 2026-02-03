@@ -342,9 +342,9 @@ class HierarchicalConfig:
 
     # Tactical layer (medium-term objectives)
     tactical_interval: int = 10  # Re-evaluate tactics every N turns
-    goal_types: list[str] = field(default_factory=lambda: [
-        "expand_cities", "build_military", "research_tech"
-    ])
+    goal_types: list[str] = field(
+        default_factory=lambda: ["expand_cities", "build_military", "research_tech"]
+    )
 
     # Operational layer (per-turn actions)
     use_goal_guided_mcts: bool = True

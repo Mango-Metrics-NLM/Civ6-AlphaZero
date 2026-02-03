@@ -65,9 +65,7 @@ class PreemptionHandler:
         self._original_sigterm = signal.signal(signal.SIGTERM, self._handle_signal)
         self._original_sigint = signal.signal(signal.SIGINT, self._handle_signal)
 
-        logger.info(
-            f"Preemption handler registered (grace_period={self.grace_period}s)"
-        )
+        logger.info(f"Preemption handler registered (grace_period={self.grace_period}s)")
 
     def unregister(self) -> None:
         """Restore original signal handlers."""

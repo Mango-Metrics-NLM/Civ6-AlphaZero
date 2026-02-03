@@ -183,9 +183,7 @@ class TestSerializableMixin:
             values: list[int] = field(default_factory=lambda: [1, 2, 3])
             nested: dict[str, int] = field(default_factory=lambda: {"a": 1})
 
-        original = ComplexConfig(
-            name="custom", values=[4, 5, 6], nested={"b": 2}
-        )
+        original = ComplexConfig(name="custom", values=[4, 5, 6], nested={"b": 2})
         data = original.to_dict()
         restored = ComplexConfig.from_dict(data)
 
@@ -278,9 +276,7 @@ class TestActionMaskMixin:
             ([1, 0, 0, 0, 0, 1], [0, 5]),
         ],
     )
-    def test_get_valid_action_indices(
-        self, maskable, mask_pattern, expected_indices
-    ):
+    def test_get_valid_action_indices(self, maskable, mask_pattern, expected_indices):
         """Test get_valid_action_indices returns correct indices."""
         mask = np.array(mask_pattern, dtype=np.float32)
         indices = maskable.get_valid_action_indices(mask)
@@ -460,9 +456,7 @@ class TestTensorShapeMixin:
             ((3, 4, 5), (3, 4, 5, 6), False),
         ],
     )
-    def test_assert_shape_parametrized(
-        self, shape_checker, shape, expected, should_pass
-    ):
+    def test_assert_shape_parametrized(self, shape_checker, shape, expected, should_pass):
         """Test assert_shape with various shape combinations."""
         tensor = torch.randn(*shape)
 

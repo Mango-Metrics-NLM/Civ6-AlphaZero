@@ -1,24 +1,15 @@
-"""Cloud configuration with environment-based loading.
+"""Cloud configuration for distributed training.
 
-This module provides base configuration classes for cloud providers,
-with support for environment-based configuration and multiple deployment
-environments (dev, staging, prod).
+Provides:
+- CloudConfig: Main configuration dataclass for cloud settings
+- CloudProvider: Enum for cloud provider selection
+- CloudEnvironment: Enum for deployment environment
+- Environment-based configuration loading
+- YAML configuration loading
+- Validation for required settings
 
-All configuration values are loaded from environment variables to avoid
-hardcoding sensitive information like project IDs and credentials.
-
-Example:
-    from alpha_zero.cloud.config import CloudConfig, CloudEnvironment
-
-    # Load from environment
-    config = CloudConfig.from_env()
-
-    # Or create explicitly
-    config = CloudConfig(
-        provider=CloudProvider.GCP,
-        environment=CloudEnvironment.PRODUCTION,
-        project_id=os.environ["GCP_PROJECT_ID"],
-    )
+All configuration values can be overridden via environment variables
+with the CIV6AZ_ prefix.
 """
 
 from __future__ import annotations
@@ -29,6 +20,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any
+
+import yaml  # type: ignore[import-untyped]
+
+from alpha_zero.cloud.exceptions import CloudConfigError
 
 logger = logging.getLogger(__name__)
 
@@ -61,299 +56,248 @@ class CloudEnvironment(Enum):
 
 
 @dataclass
-class MachineProfile:
-    """Profile for cloud machine configuration.
-
-    Defines machine type, GPU configuration, and pricing for different
-    training workloads.
+class CloudConfig:
+    """Configuration for cloud training infrastructure.
 
     Attributes:
-        name: Profile identifier.
-        machine_type: Cloud machine type (e.g., n1-standard-8).
-        accelerator_type: GPU type or None for CPU-only.
-        accelerator_count: Number of GPUs.
-        spot: Whether to use spot/preemptible instances.
-        hourly_rate: On-demand hourly rate in USD.
-        hourly_rate_spot: Spot instance hourly rate in USD.
+        project_id: GCP project ID (from GCP_PROJECT_ID env var).
+        region: GCP region (from GCP_REGION env var, default us-central1).
+        zone: GCP zone (from GCP_ZONE env var, optional).
+        bucket_name: GCS bucket name (from GCS_BUCKET_NAME env var).
+        checkpoint_prefix: Prefix for checkpoint paths in bucket.
+        artifact_prefix: Prefix for training artifacts in bucket.
+        enable_cloud_logging: Whether to use Cloud Logging.
+        enable_cloud_monitoring: Whether to use Cloud Monitoring.
+        service_account: Service account email (optional, uses default if not set).
+        network: VPC network name for Vertex AI jobs.
+        machine_type: Default machine type for training.
+        accelerator_type: Default accelerator type (e.g., NVIDIA_TESLA_T4).
+        accelerator_count: Number of accelerators per machine.
+        use_spot: Whether to use spot/preemptible instances.
+        max_run_duration_seconds: Maximum job run duration.
     """
 
-    name: str
-    machine_type: str
-    accelerator_type: str | None = None
-    accelerator_count: int = 0
-    spot: bool = False
-    hourly_rate: float = 0.0
-    hourly_rate_spot: float = 0.0
-
-    def to_vertex_spec(self) -> dict[str, Any]:
-        """Convert to Vertex AI worker pool spec format."""
-        machine_spec: dict[str, Any] = {
-            "machine_type": self.machine_type,
-        }
-        if self.accelerator_type and self.accelerator_count > 0:
-            machine_spec["accelerator_type"] = self.accelerator_type
-            machine_spec["accelerator_count"] = self.accelerator_count
-
-        return {
-            "machine_spec": machine_spec,
-            "replica_count": 1,
-        }
-
-
-# Predefined machine profiles for common workloads
-MACHINE_PROFILES: dict[str, MachineProfile] = {
-    "selfplay_t4_spot": MachineProfile(
-        name="selfplay_t4_spot",
-        machine_type="n1-standard-8",
-        accelerator_type="NVIDIA_TESLA_T4",
-        accelerator_count=1,
-        spot=True,
-        hourly_rate=0.95,
-        hourly_rate_spot=0.35,
-    ),
-    "selfplay_l4_spot": MachineProfile(
-        name="selfplay_l4_spot",
-        machine_type="g2-standard-8",
-        accelerator_type="NVIDIA_L4",
-        accelerator_count=1,
-        spot=True,
-        hourly_rate=0.98,
-        hourly_rate_spot=0.29,
-    ),
-    "train_l4_single": MachineProfile(
-        name="train_l4_single",
-        machine_type="g2-standard-16",
-        accelerator_type="NVIDIA_L4",
-        accelerator_count=1,
-        spot=True,
-        hourly_rate=1.39,
-        hourly_rate_spot=0.42,
-    ),
-    "train_l4_ondemand": MachineProfile(
-        name="train_l4_ondemand",
-        machine_type="g2-standard-16",
-        accelerator_type="NVIDIA_L4",
-        accelerator_count=1,
-        spot=False,
-        hourly_rate=1.39,
-        hourly_rate_spot=0.42,
-    ),
-    "train_a100_burst": MachineProfile(
-        name="train_a100_burst",
-        machine_type="a2-highgpu-1g",
-        accelerator_type="NVIDIA_TESLA_A100",
-        accelerator_count=1,
-        spot=True,
-        hourly_rate=3.67,
-        hourly_rate_spot=1.10,
-    ),
-    "eval_l4_spot": MachineProfile(
-        name="eval_l4_spot",
-        machine_type="g2-standard-8",
-        accelerator_type="NVIDIA_L4",
-        accelerator_count=1,
-        spot=True,
-        hourly_rate=0.98,
-        hourly_rate_spot=0.29,
-    ),
-}
-
-
-def get_machine_profile(name: str) -> MachineProfile:
-    """Get a predefined machine profile by name.
-
-    Args:
-        name: Profile name (e.g., "selfplay_t4_spot").
-
-    Returns:
-        MachineProfile for the requested configuration.
-
-    Raises:
-        KeyError: If profile name is not found.
-    """
-    if name not in MACHINE_PROFILES:
-        raise KeyError(
-            f"Unknown machine profile: {name}. "
-            f"Available profiles: {list(MACHINE_PROFILES.keys())}"
-        )
-    return MACHINE_PROFILES[name]
-
-
-@dataclass
-class CloudConfig:
-    """Base configuration for cloud providers.
-
-    All configuration values can be loaded from environment variables
-    to avoid hardcoding sensitive information.
-
-    Environment Variables:
-        CLOUD_PROVIDER: Cloud provider (gcp, aws, azure, local)
-        CLOUD_ENVIRONMENT: Deployment environment (dev, staging, prod)
-        CLOUD_PROJECT_ID: Project/account identifier
-        CLOUD_REGION: Default region for resources
-        CLOUD_LOG_LEVEL: Logging level (DEBUG, INFO, WARNING, ERROR)
-    """
-
-    provider: CloudProvider = CloudProvider.LOCAL
-    environment: CloudEnvironment = CloudEnvironment.DEVELOPMENT
+    # Core GCP settings
     project_id: str = ""
-    region: str = ""
+    region: str = "us-central1"
+    zone: str = ""
+    bucket_name: str = ""
+
+    # Storage paths
+    checkpoint_prefix: str = "checkpoints/"
+    artifact_prefix: str = "artifacts/"
+
+    # Observability
+    enable_cloud_logging: bool = True
+    enable_cloud_monitoring: bool = True
     log_level: str = "INFO"
 
-    # Resource limits (can be overridden per-job)
-    default_machine_type: str = ""
-    default_accelerator_type: str = ""
-    default_accelerator_count: int = 0
+    # Authentication
+    service_account: str = ""
 
-    # Storage defaults
-    default_bucket: str = ""
-    checkpoint_prefix: str = "checkpoints"
-    artifact_prefix: str = "artifacts"
+    # Networking
+    network: str = ""
+    subnetwork: str = ""
 
-    # Additional metadata
-    labels: dict[str, str] = field(default_factory=dict)
-    tags: list[str] = field(default_factory=list)
+    # Compute configuration
+    machine_type: str = "n1-standard-8"
+    accelerator_type: str = "NVIDIA_TESLA_T4"
+    accelerator_count: int = 1
+    replica_count: int = 1
+
+    # Spot/preemptible settings
+    use_spot: bool = True
+    max_run_duration_seconds: int = 86400  # 24 hours
+
+    # Preemption handling
+    preemption_check_interval: float = 5.0
+    checkpoint_on_preemption: bool = True
+
+    # Additional custom settings
+    custom_labels: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate configuration after initialization."""
+        # Normalize paths to use forward slashes
+        if self.checkpoint_prefix and not self.checkpoint_prefix.endswith("/"):
+            object.__setattr__(self, "checkpoint_prefix", self.checkpoint_prefix + "/")
+        if self.artifact_prefix and not self.artifact_prefix.endswith("/"):
+            object.__setattr__(self, "artifact_prefix", self.artifact_prefix + "/")
 
     @classmethod
-    def from_env(cls, prefix: str = "CLOUD") -> CloudConfig:
+    def from_env(cls, prefix: str = "GCP_") -> CloudConfig:
         """Load configuration from environment variables.
 
+        Loads settings from environment variables with the given prefix:
+        - GCP_PROJECT_ID -> project_id
+        - GCP_REGION -> region
+        - GCP_ZONE -> zone
+        - GCS_BUCKET_NAME -> bucket_name
+        - And CIV6AZ_ overrides for all other settings
+
         Args:
-            prefix: Environment variable prefix (default: CLOUD)
+            prefix: Environment variable prefix (default: GCP_).
 
         Returns:
-            CloudConfig populated from environment.
-
-        Example:
-            # With CLOUD_PROJECT_ID=my-project, CLOUD_REGION=us-central1
-            config = CloudConfig.from_env()
-            assert config.project_id == "my-project"
+            CloudConfig instance with values from environment.
         """
-
-        def get_env(key: str, default: str = "") -> str:
-            return os.environ.get(f"{prefix}_{key}", default)
-
-        provider_str = get_env("PROVIDER", "local")
-        try:
-            provider = CloudProvider(provider_str.lower())
-        except ValueError:
-            logger.warning(f"Unknown provider '{provider_str}', using LOCAL")
-            provider = CloudProvider.LOCAL
-
-        env_str = get_env("ENVIRONMENT", "dev")
-        try:
-            environment = CloudEnvironment.from_string(env_str)
-        except ValueError:
-            logger.warning(f"Unknown environment '{env_str}', using DEVELOPMENT")
-            environment = CloudEnvironment.DEVELOPMENT
-
-        # Parse labels from comma-separated key=value pairs
-        labels_str = get_env("LABELS", "")
-        labels = {}
-        if labels_str:
-            for pair in labels_str.split(","):
-                if "=" in pair:
-                    k, v = pair.split("=", 1)
-                    labels[k.strip()] = v.strip()
-
-        # Parse tags from comma-separated values
-        tags_str = get_env("TAGS", "")
-        tags = [t.strip() for t in tags_str.split(",") if t.strip()]
-
-        return cls(
-            provider=provider,
-            environment=environment,
-            project_id=get_env("PROJECT_ID"),
-            region=get_env("REGION"),
-            log_level=get_env("LOG_LEVEL", "INFO"),
-            default_machine_type=get_env("DEFAULT_MACHINE_TYPE"),
-            default_accelerator_type=get_env("DEFAULT_ACCELERATOR_TYPE"),
-            default_accelerator_count=int(get_env("DEFAULT_ACCELERATOR_COUNT", "0")),
-            default_bucket=get_env("DEFAULT_BUCKET"),
-            checkpoint_prefix=get_env("CHECKPOINT_PREFIX", "checkpoints"),
-            artifact_prefix=get_env("ARTIFACT_PREFIX", "artifacts"),
-            labels=labels,
-            tags=tags,
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for serialization."""
-        return {
-            "provider": self.provider.value,
-            "environment": self.environment.value,
-            "project_id": self.project_id,
-            "region": self.region,
-            "log_level": self.log_level,
-            "default_machine_type": self.default_machine_type,
-            "default_accelerator_type": self.default_accelerator_type,
-            "default_accelerator_count": self.default_accelerator_count,
-            "default_bucket": self.default_bucket,
-            "checkpoint_prefix": self.checkpoint_prefix,
-            "artifact_prefix": self.artifact_prefix,
-            "labels": self.labels,
-            "tags": self.tags,
+        # Map environment variables to config fields
+        env_mapping = {
+            f"{prefix}PROJECT_ID": "project_id",
+            f"{prefix}REGION": "region",
+            f"{prefix}ZONE": "zone",
+            "GCS_BUCKET_NAME": "bucket_name",
+            "CIV6AZ_CHECKPOINT_PREFIX": "checkpoint_prefix",
+            "CIV6AZ_ARTIFACT_PREFIX": "artifact_prefix",
+            "CIV6AZ_ENABLE_CLOUD_LOGGING": "enable_cloud_logging",
+            "CIV6AZ_ENABLE_CLOUD_MONITORING": "enable_cloud_monitoring",
+            "CIV6AZ_LOG_LEVEL": "log_level",
+            f"{prefix}SERVICE_ACCOUNT": "service_account",
+            f"{prefix}NETWORK": "network",
+            f"{prefix}SUBNETWORK": "subnetwork",
+            "CIV6AZ_MACHINE_TYPE": "machine_type",
+            "CIV6AZ_ACCELERATOR_TYPE": "accelerator_type",
+            "CIV6AZ_ACCELERATOR_COUNT": "accelerator_count",
+            "CIV6AZ_REPLICA_COUNT": "replica_count",
+            "CIV6AZ_USE_SPOT": "use_spot",
+            "CIV6AZ_MAX_RUN_DURATION": "max_run_duration_seconds",
+            "CIV6AZ_PREEMPTION_CHECK_INTERVAL": "preemption_check_interval",
         }
 
+        # Boolean fields that need conversion
+        bool_fields = {"enable_cloud_logging", "enable_cloud_monitoring", "use_spot"}
+        # Integer fields that need conversion
+        int_fields = {"accelerator_count", "replica_count", "max_run_duration_seconds"}
+        # Float fields that need conversion
+        float_fields = {"preemption_check_interval"}
+
+        kwargs: dict[str, Any] = {}
+        for env_var, field_name in env_mapping.items():
+            value = os.environ.get(env_var)
+            if value is not None:
+                if field_name in bool_fields:
+                    kwargs[field_name] = value.lower() in ("true", "1", "yes")
+                elif field_name in int_fields:
+                    kwargs[field_name] = int(value)
+                elif field_name in float_fields:
+                    kwargs[field_name] = float(value)
+                else:
+                    kwargs[field_name] = value
+
+        return cls(**kwargs)
+
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> CloudConfig:
-        """Create from dictionary."""
-        provider = CloudProvider(data.get("provider", "local"))
-        environment = CloudEnvironment.from_string(data.get("environment", "dev"))
-
-        return cls(
-            provider=provider,
-            environment=environment,
-            project_id=data.get("project_id", ""),
-            region=data.get("region", ""),
-            log_level=data.get("log_level", "INFO"),
-            default_machine_type=data.get("default_machine_type", ""),
-            default_accelerator_type=data.get("default_accelerator_type", ""),
-            default_accelerator_count=data.get("default_accelerator_count", 0),
-            default_bucket=data.get("default_bucket", ""),
-            checkpoint_prefix=data.get("checkpoint_prefix", "checkpoints"),
-            artifact_prefix=data.get("artifact_prefix", "artifacts"),
-            labels=data.get("labels", {}),
-            tags=data.get("tags", []),
-        )
-
-    def validate(self) -> list[str]:
-        """Validate configuration, returning list of errors."""
-        errors = []
-
-        if self.provider != CloudProvider.LOCAL:
-            if not self.project_id:
-                errors.append("project_id is required for cloud providers")
-            if not self.region:
-                errors.append("region is required for cloud providers")
-
-        return errors
-
-    def is_valid(self) -> bool:
-        """Check if configuration is valid."""
-        return len(self.validate()) == 0
-
-    def get_storage_path(self, *parts: str) -> str:
-        """Build a storage path from parts.
+    def from_yaml(cls, path: str | Path) -> CloudConfig:
+        """Load configuration from YAML file.
 
         Args:
-            *parts: Path components to join.
+            path: Path to YAML configuration file.
 
         Returns:
-            Full storage path (e.g., gs://bucket/prefix/parts).
+            CloudConfig instance.
+
+        Raises:
+            CloudConfigError: If file cannot be read or parsed.
         """
-        if self.provider == CloudProvider.GCP:
-            base = f"gs://{self.default_bucket}"
-        elif self.provider == CloudProvider.LOCAL:
-            base = str(Path.cwd() / "storage")
-        else:
-            base = self.default_bucket
+        path = Path(path)
+        if not path.exists():
+            raise CloudConfigError(f"Configuration file not found: {path}")
 
-        return "/".join([base] + list(parts))
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        except yaml.YAMLError as e:
+            raise CloudConfigError(f"Failed to parse YAML: {path}", cause=e) from e
 
-    def get_checkpoint_path(self, checkpoint_name: str) -> str:
-        """Get full path for a checkpoint."""
-        return self.get_storage_path(self.checkpoint_prefix, checkpoint_name)
+        # Extract cloud/gcp section if present
+        if "cloud" in data:
+            data = data["cloud"]
+        if "gcp" in data:
+            data = data["gcp"]
 
-    def get_artifact_path(self, artifact_name: str) -> str:
-        """Get full path for an artifact."""
-        return self.get_storage_path(self.artifact_prefix, artifact_name)
+        # Filter to valid fields only
+        valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        filtered_data = {k: v for k, v in data.items() if k in valid_fields}
+
+        return cls(**filtered_data)
+
+    def validate(self, require_project: bool = True) -> None:
+        """Validate configuration settings.
+
+        Args:
+            require_project: Whether project_id is required.
+
+        Raises:
+            CloudConfigError: If validation fails.
+        """
+        if require_project and not self.project_id:
+            raise CloudConfigError(
+                "project_id is required. Set GCP_PROJECT_ID environment variable."
+            )
+
+        if self.use_spot and self.max_run_duration_seconds < 60:
+            raise CloudConfigError(
+                "max_run_duration_seconds must be at least 60 for spot instances"
+            )
+
+        if self.accelerator_count < 0:
+            raise CloudConfigError("accelerator_count must be non-negative")
+
+        if self.replica_count < 1:
+            raise CloudConfigError("replica_count must be at least 1")
+
+    def get_checkpoint_uri(self, checkpoint_name: str) -> str:
+        """Get full GCS URI for a checkpoint.
+
+        Args:
+            checkpoint_name: Name of the checkpoint file.
+
+        Returns:
+            Full gs:// URI for the checkpoint.
+        """
+        if not self.bucket_name:
+            raise CloudConfigError("bucket_name is required for checkpoint URIs")
+        return f"gs://{self.bucket_name}/{self.checkpoint_prefix}{checkpoint_name}"
+
+    def get_artifact_uri(self, artifact_name: str) -> str:
+        """Get full GCS URI for an artifact.
+
+        Args:
+            artifact_name: Name of the artifact.
+
+        Returns:
+            Full gs:// URI for the artifact.
+        """
+        if not self.bucket_name:
+            raise CloudConfigError("bucket_name is required for artifact URIs")
+        return f"gs://{self.bucket_name}/{self.artifact_prefix}{artifact_name}"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert configuration to dictionary.
+
+        Returns:
+            Dictionary representation of configuration.
+        """
+        return {
+            "project_id": self.project_id,
+            "region": self.region,
+            "zone": self.zone,
+            "bucket_name": self.bucket_name,
+            "checkpoint_prefix": self.checkpoint_prefix,
+            "artifact_prefix": self.artifact_prefix,
+            "enable_cloud_logging": self.enable_cloud_logging,
+            "enable_cloud_monitoring": self.enable_cloud_monitoring,
+            "log_level": self.log_level,
+            "service_account": self.service_account,
+            "network": self.network,
+            "subnetwork": self.subnetwork,
+            "machine_type": self.machine_type,
+            "accelerator_type": self.accelerator_type,
+            "accelerator_count": self.accelerator_count,
+            "replica_count": self.replica_count,
+            "use_spot": self.use_spot,
+            "max_run_duration_seconds": self.max_run_duration_seconds,
+            "preemption_check_interval": self.preemption_check_interval,
+            "checkpoint_on_preemption": self.checkpoint_on_preemption,
+            "custom_labels": self.custom_labels,
+        }
