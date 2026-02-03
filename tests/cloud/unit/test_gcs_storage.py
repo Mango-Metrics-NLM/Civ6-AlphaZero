@@ -7,10 +7,7 @@ Uses mock backend to test without real GCS connection.
 from __future__ import annotations
 
 import json
-import lzma
-import pickle
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import torch
@@ -19,14 +16,11 @@ import torch.nn as nn
 from alpha_zero.cloud.gcp.config import GCPConfig, GCSPathConfig
 from alpha_zero.cloud.gcp.exceptions import GCSStorageError
 from alpha_zero.cloud.gcp.storage import (
-    GCSBackend,
     GCSCheckpointStorage,
     GCSModelStorage,
     GCSTrajectoryStorage,
     ModelMetadata,
-    StorageBackend,
 )
-
 
 # =============================================================================
 # Mock Backend
