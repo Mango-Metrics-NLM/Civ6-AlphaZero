@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import logging
 import tempfile
+import time
 import uuid
-from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -29,53 +29,25 @@ from alpha_zero.cloud.gcp import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Fixtures e2e_cloud_config, test_artifact_path, and cleanup_gcs_artifacts
+# are provided by tests/e2e/conftest.py
 
-# Note: e2e_cloud_config fixture is provided by tests/e2e/conftest.py
-
-
-@pytest.fixture
-def test_artifact_path() -> str:
-    """Generate unique path for test artifacts to avoid conflicts."""
-    return f"e2e-tests/{uuid.uuid4().hex[:8]}"
-
-
-@pytest.fixture
-def cleanup_gcs_artifacts(
-    e2e_cloud_config: CloudConfig,
-    test_artifact_path: str,
-) -> Generator[str, None, None]:
-    """Fixture that yields path and cleans up after test.
-
-    Yields:
-        The test artifact path for use in tests.
-    """
-    yield test_artifact_path
-
-    # Cleanup: Delete test artifacts from GCS
-    if GCS_AVAILABLE:
-        try:
-            manager = GCSCheckpointManager(e2e_cloud_config)
-            # List and delete all objects with the test prefix
-            checkpoints = manager.list_checkpoints(prefix=test_artifact_path)
-            for cp in checkpoints:
-                try:
-                    manager._client.bucket(e2e_cloud_config.bucket_name).blob(cp).delete()
-                    logger.info(f"Cleaned up: {cp}")
-                except Exception as e:
-                    logger.warning(f"Failed to cleanup {cp}: {e}")
-        except Exception as e:
-            logger.warning(f"Cleanup failed: {e}")
+# Skip markers for SDK availability
+requires_gcs = pytest.mark.skipif(
+    not GCS_AVAILABLE, reason="google-cloud-storage not installed"
+)
+requires_vertex = pytest.mark.skipif(
+    not VERTEX_AVAILABLE, reason="google-cloud-aiplatform not installed"
+)
 
 
 @pytest.mark.requires_gcp
+@requires_gcs
 class TestGCSIntegration:
     """E2E tests for Google Cloud Storage integration."""
 
     def test_gcs_client_initialization(self, e2e_cloud_config: CloudConfig) -> None:
         """Test that GCS client initializes with real credentials."""
-        if not GCS_AVAILABLE:
-            pytest.skip("google-cloud-storage not installed")
-
         manager = GCSCheckpointManager(e2e_cloud_config)
         assert manager.is_mock is False
         assert manager._client is not None
@@ -87,9 +59,6 @@ class TestGCSIntegration:
         cleanup_gcs_artifacts: str,
     ) -> None:
         """Test uploading and downloading a small file to GCS."""
-        if not GCS_AVAILABLE:
-            pytest.skip("google-cloud-storage not installed")
-
         manager = GCSCheckpointManager(e2e_cloud_config)
         test_path = cleanup_gcs_artifacts
 
@@ -123,9 +92,6 @@ class TestGCSIntegration:
         cleanup_gcs_artifacts: str,
     ) -> None:
         """Test listing checkpoints in GCS bucket."""
-        if not GCS_AVAILABLE:
-            pytest.skip("google-cloud-storage not installed")
-
         manager = GCSCheckpointManager(e2e_cloud_config)
         test_path = cleanup_gcs_artifacts
 
@@ -150,16 +116,11 @@ class TestGCSIntegration:
         cleanup_gcs_artifacts: str,
     ) -> None:
         """Test getting the latest checkpoint by timestamp."""
-        if not GCS_AVAILABLE:
-            pytest.skip("google-cloud-storage not installed")
-
         manager = GCSCheckpointManager(e2e_cloud_config)
         test_path = cleanup_gcs_artifacts
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Upload files with some delay to ensure different timestamps
-            import time
-
             for i in range(2):
                 local_file = Path(tmpdir) / f"step_{i * 100}.bin"
                 local_file.write_bytes(f"step {i * 100}".encode())
@@ -177,14 +138,12 @@ class TestGCSIntegration:
 
 
 @pytest.mark.requires_gcp
+@requires_vertex
 class TestVertexAIIntegration:
     """E2E tests for Vertex AI integration."""
 
     def test_vertex_trainer_initialization(self, e2e_cloud_config: CloudConfig) -> None:
         """Test that Vertex AI trainer initializes with real credentials."""
-        if not VERTEX_AVAILABLE:
-            pytest.skip("google-cloud-aiplatform not installed")
-
         from alpha_zero.cloud.gcp import VertexAITrainer
 
         trainer = VertexAITrainer(e2e_cloud_config)
@@ -193,9 +152,6 @@ class TestVertexAIIntegration:
 
     def test_vertex_job_spec_validation(self, e2e_cloud_config: CloudConfig) -> None:
         """Test creating a valid Vertex AI job spec (without submission)."""
-        if not VERTEX_AVAILABLE:
-            pytest.skip("google-cloud-aiplatform not installed")
-
         from alpha_zero.cloud.gcp import VertexAITrainer
 
         trainer = VertexAITrainer(e2e_cloud_config)
@@ -252,6 +208,7 @@ class TestCloudLoggingIntegration:
 
 
 @pytest.mark.requires_gcp
+@requires_gcs
 class TestFullCloudWorkflow:
     """E2E tests for complete cloud training workflow."""
 
@@ -261,9 +218,6 @@ class TestFullCloudWorkflow:
         cleanup_gcs_artifacts: str,
     ) -> None:
         """Test CloudTrainingCoordinator with real GCS storage."""
-        if not GCS_AVAILABLE:
-            pytest.skip("google-cloud-storage not installed")
-
         from alpha_zero.distributed.cloud_coordinator import (
             CloudCoordinatorConfig,
             CloudTrainingCoordinator,
