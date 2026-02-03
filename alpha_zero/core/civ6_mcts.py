@@ -212,6 +212,7 @@ class MCTSNode:
         children: Child nodes keyed by action.
         parent: Parent node.
         action: Action that led to this node.
+        virtual_loss: Virtual loss for parallel MCTS (threads in flight).
     """
 
     prior: float = 0.0
@@ -220,6 +221,7 @@ class MCTSNode:
     children: dict[int, MCTSNode] = field(default_factory=dict)
     parent: MCTSNode | None = None
     action: int | None = None
+    virtual_loss: int = 0
 
     @property
     def value(self) -> float:
@@ -228,15 +230,44 @@ class MCTSNode:
             return 0.0
         return self.value_sum / self.visit_count
 
+    @property
+    def effective_value(self) -> float:
+        """Value adjusted for virtual loss (for parallel MCTS)."""
+        total_visits = self.visit_count + self.virtual_loss
+        if total_visits == 0:
+            return 0.0
+        # Virtual loss assumes worst case (-1)
+        adjusted_sum = self.value_sum - self.virtual_loss
+        return adjusted_sum / total_visits
+
     def is_expanded(self) -> bool:
         """Check if node has been expanded."""
         return len(self.children) > 0
 
-    def select_child(self, c_puct: float) -> tuple[int, MCTSNode]:
+    def add_virtual_loss(self, loss: int = 1) -> None:
+        """Add virtual loss for parallel MCTS.
+
+        Virtual loss discourages other threads from exploring the same path.
+
+        Args:
+            loss: Amount of virtual loss to add.
+        """
+        self.virtual_loss += loss
+
+    def remove_virtual_loss(self, loss: int = 1) -> None:
+        """Remove virtual loss after backpropagation.
+
+        Args:
+            loss: Amount of virtual loss to remove.
+        """
+        self.virtual_loss = max(0, self.virtual_loss - loss)
+
+    def select_child(self, c_puct: float, use_virtual_loss: bool = False) -> tuple[int, MCTSNode]:
         """Select child with highest UCB score.
 
         Args:
             c_puct: Exploration constant.
+            use_virtual_loss: Whether to use virtual loss in selection.
 
         Returns:
             Tuple of (action, child_node).
@@ -245,12 +276,17 @@ class MCTSNode:
         best_action = -1
         best_child = None
 
-        sqrt_parent_visits = np.sqrt(self.visit_count)
+        sqrt_parent_visits = np.sqrt(self.visit_count + self.virtual_loss if use_virtual_loss else self.visit_count)
 
         for action, child in self.children.items():
-            # PUCT formula
-            q_value = -child.value  # Negamax: child's value is opponent's
-            u_value = c_puct * child.prior * sqrt_parent_visits / (1 + child.visit_count)
+            # PUCT formula with optional virtual loss
+            if use_virtual_loss:
+                q_value = -child.effective_value  # Use virtual-loss-adjusted value
+                effective_visits = child.visit_count + child.virtual_loss
+            else:
+                q_value = -child.value  # Negamax: child's value is opponent's
+                effective_visits = child.visit_count
+            u_value = c_puct * child.prior * sqrt_parent_visits / (1 + effective_visits)
             score = q_value + u_value
 
             if score > best_score:
