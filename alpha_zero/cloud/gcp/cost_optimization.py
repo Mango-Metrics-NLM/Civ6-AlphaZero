@@ -300,7 +300,6 @@ class CostOptimizationManager:
         if self._cost_monitor is None:
             self._cost_monitor = CostMonitor(
                 self.config.cost_monitor,
-                billing_client=self._billing_client,
             )
         return self._cost_monitor
 
@@ -327,7 +326,6 @@ class CostOptimizationManager:
         if self._preemption_handler is None:
             self._preemption_handler = PreemptionHandler(
                 self.config.preemption_handler,
-                storage_backend=self._storage_backend,
             )
         return self._preemption_handler
 
@@ -558,9 +556,11 @@ class CostOptimizationManager:
         Returns:
             SavingsReport with all savings details.
         """
-        # Calculate costs
-        t4_on_demand = 0.35  # Base rate
-        t4_spot = 0.11  # Spot rate
+        # Get prices from config if available
+        prices = self._cost_monitor.config.gpu_prices if self._cost_monitor else {}
+        t4_on_demand = prices.get("NVIDIA_TESLA_T4", 0.35)
+        t4_spot = prices.get("NVIDIA_TESLA_T4_SPOT", 0.11)
+        v100_on_demand = prices.get("NVIDIA_TESLA_V100", 2.48)
 
         spot_cost = self._spot_hours * t4_spot
         spot_full_price = self._spot_hours * t4_on_demand
@@ -573,7 +573,7 @@ class CostOptimizationManager:
 
         # GPU optimization savings (T4 vs V100 differential)
         # Simplified: estimate 50% savings from using T4 for early phases
-        gpu_optimization_savings = (self._spot_hours + self._on_demand_hours) * 0.5 * (2.48 - 0.35)
+        gpu_optimization_savings = (self._spot_hours + self._on_demand_hours) * 0.5 * (v100_on_demand - t4_on_demand)
 
         total_cost = spot_cost + on_demand_cost
         estimated_full_price = spot_full_price + on_demand_cost + gpu_optimization_savings
@@ -628,11 +628,7 @@ class CostOptimizationManager:
         # Final checkpoint
         if self._preemption_handler:
             try:
-                self.preemption_handler.checkpoint_now(
-                    model=None,
-                    optimizer=None,
-                    iteration=0,
-                )
+                self.preemption_handler.checkpoint_now(reason="shutdown")
             except Exception as e:
                 logger.warning(f"Failed to save final checkpoint: {e}")
 

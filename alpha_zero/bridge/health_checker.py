@@ -515,7 +515,7 @@ class GameBridgeHealthChecker:
 
         try:
             # Check basic connectivity
-            is_connected = self.bridge.check_heartbeat()
+            is_connected = await asyncio.to_thread(self.bridge.check_heartbeat)
             latency_ms = (time.time() - start_time) * 1000
             self._latencies.append(latency_ms)
 
@@ -704,7 +704,7 @@ class GameBridgeHealthChecker:
             try:
                 await self._monitor_task
             except asyncio.CancelledError:
-                pass
+                logger.debug("Health monitoring task cancellation acknowledged during stop.")
             self._monitor_task = None
         logger.info("Stopped health monitoring")
 

@@ -399,8 +399,8 @@ class PreemptionHandler:
             try:
                 signal.signal(signal.SIGTERM, self._original_sigterm_handler)
                 logger.debug("Restored original SIGTERM handler")
-            except (ValueError, OSError):
-                pass
+            except (ValueError, OSError) as e:
+                logger.warning(f"Could not restore original SIGTERM handler: {e}")
             self._original_sigterm_handler = None
 
     def should_checkpoint(self) -> bool:
@@ -425,24 +425,34 @@ class PreemptionHandler:
 
     def checkpoint_now(
         self,
-        model: torch.nn.Module,
+        model: torch.nn.Module | None = None,
         optimizer: torch.optim.Optimizer | None = None,
-        iteration: int = 0,
+        iteration: int | None = None,
         extra: dict[str, Any] | None = None,
         reason: str = "periodic",
     ) -> str:
         """Create checkpoint immediately.
 
         Args:
-            model: Model to checkpoint.
-            optimizer: Optional optimizer to save.
-            iteration: Current training iteration.
+            model: Model to checkpoint. If None, uses internal self._model.
+            optimizer: Optional optimizer to save. If None, uses internal self._optimizer.
+            iteration: Current training iteration. If None, uses internal self._current_iteration.
             extra: Additional data to include.
             reason: Reason for checkpoint.
 
         Returns:
-            Path to saved checkpoint.
+            Path to saved checkpoint, or empty string if no model available.
         """
+        # Use internal state if not provided
+        model = model or self._model
+        optimizer = optimizer or self._optimizer
+        iteration = iteration if iteration is not None else self._current_iteration
+
+        # Return empty string if no model available
+        if model is None:
+            logger.warning("No model available for checkpoint")
+            return ""
+
         self._current_iteration = iteration
 
         checkpoint_data: dict[str, Any] = {
@@ -635,8 +645,9 @@ class PreemptionHandler:
             metadata=metadata or {},
         )
 
-        # Save locally
-        state_path = self.checkpoint_dir / f"preemption_state_{self._job_name}.yaml"
+        # Save locally (sanitize job_name to prevent path traversal)
+        safe_job_name = os.path.basename(self._job_name)
+        state_path = self.checkpoint_dir / f"preemption_state_{safe_job_name}.yaml"
         with open(state_path, "w") as f:
             yaml.dump(state.to_dict(), f)
 
@@ -661,8 +672,9 @@ class PreemptionHandler:
         Returns:
             PreemptionState if found, None otherwise.
         """
-        # Try local first
-        state_path = self.checkpoint_dir / f"preemption_state_{job_name}.yaml"
+        # Try local first (sanitize job_name to prevent path traversal)
+        safe_job_name = os.path.basename(job_name)
+        state_path = self.checkpoint_dir / f"preemption_state_{safe_job_name}.yaml"
         if state_path.exists():
             try:
                 with open(state_path) as f:
@@ -689,8 +701,9 @@ class PreemptionHandler:
         Args:
             job_name: Name of the job.
         """
-        # Clear local
-        state_path = self.checkpoint_dir / f"preemption_state_{job_name}.yaml"
+        # Clear local (sanitize job_name to prevent path traversal)
+        safe_job_name = os.path.basename(job_name)
+        state_path = self.checkpoint_dir / f"preemption_state_{safe_job_name}.yaml"
         if state_path.exists():
             state_path.unlink()
             logger.debug(f"Cleared local preemption state: {state_path}")
