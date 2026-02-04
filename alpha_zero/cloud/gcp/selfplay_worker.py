@@ -123,7 +123,7 @@ def run_selfplay(
 
         # Create environment and MCTS
         from alpha_zero.envs.microciv import MicroCivEnv
-        from alpha_zero.mcts.civ6_mcts import Civ6MCTS
+        from alpha_zero.core.civ6_mcts import Civ6MCTS
 
         env = MicroCivEnv()
         mcts = Civ6MCTS(
