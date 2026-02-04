@@ -70,9 +70,9 @@ self_play:
 # Training Worker Configuration (Budget Tier)
 # ============================================================
 training:
-  # Machine configuration
-  machine_type: g2-standard-8
-  accelerator_type: NVIDIA_L4
+  # Machine configuration - Using T4 instead of L4 for better quota availability
+  machine_type: n1-standard-8
+  accelerator_type: NVIDIA_TESLA_T4
   accelerator_count: 1
 
   # Don't use Spot for training (checkpointing overhead not worth it)
