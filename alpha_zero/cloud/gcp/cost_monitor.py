@@ -376,8 +376,16 @@ class CostMonitor:
         """
         price_key = f"{gpu_type}_SPOT" if use_spot else gpu_type
         hourly_rate = self.config.gpu_prices.get(
-            price_key, self.config.gpu_prices.get(gpu_type, 1.0)
+            price_key, self.config.gpu_prices.get(gpu_type)
         )
+
+        if hourly_rate is None:
+            logger.warning(
+                f"GPU price for '{gpu_type}' (spot={use_spot}) not found in config. "
+                f"Defaulting to $1.00/hr. Cost estimation may be inaccurate."
+            )
+            hourly_rate = 1.0
+
         return hourly_rate * duration_hours * gpu_count
 
     def get_current_costs(self) -> CostBreakdown:

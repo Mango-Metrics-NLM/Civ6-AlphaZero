@@ -21,7 +21,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -129,7 +129,7 @@ class CacheEntry:
         if self.valid_until is None:
             return False
         expiry = datetime.fromisoformat(self.valid_until)
-        return datetime.now(timezone.utc) > expiry
+        return datetime.now(UTC) > expiry
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -365,21 +365,64 @@ class PipelineCache:
             logger.warning(f"Failed to load cache index: {e}")
             self._index_loaded = True
 
-    def _save_index(self) -> None:
-        """Save cache index to GCS."""
-        try:
-            bucket = self.client.bucket(self._bucket)
-            index_blob = bucket.blob(f"{self.config.gcs_prefix}/index.json")
+    def _save_index(self, max_retries: int = 3) -> None:
+        """Save cache index to GCS with optimistic locking.
 
-            data = {key: entry.to_dict() for key, entry in self._cache_index.items()}
-            index_blob.upload_from_string(
-                json.dumps(data, indent=2),
-                content_type="application/json",
-            )
-            logger.debug(f"Saved cache index with {len(self._cache_index)} entries")
+        Uses GCS generation preconditions to prevent race conditions when
+        multiple processes attempt to update the index concurrently.
 
-        except Exception as e:
-            logger.error(f"Failed to save cache index: {e}")
+        Args:
+            max_retries: Maximum retry attempts on conflict.
+        """
+        for attempt in range(max_retries):
+            try:
+                bucket = self.client.bucket(self._bucket)
+                index_blob = bucket.blob(f"{self.config.gcs_prefix}/index.json")
+
+                # Get current generation for optimistic locking
+                current_generation = None
+                try:
+                    index_blob.reload()
+                    current_generation = index_blob.generation
+                except Exception:
+                    # Blob doesn't exist yet, that's OK
+                    pass
+
+                data = {key: entry.to_dict() for key, entry in self._cache_index.items()}
+
+                # Use if_generation_match for optimistic locking
+                # If generation is None, use if_generation_match=0 to require blob doesn't exist
+                if current_generation is not None:
+                    index_blob.upload_from_string(
+                        json.dumps(data, indent=2),
+                        content_type="application/json",
+                        if_generation_match=current_generation,
+                    )
+                else:
+                    index_blob.upload_from_string(
+                        json.dumps(data, indent=2),
+                        content_type="application/json",
+                        if_generation_match=0,  # Require blob doesn't exist
+                    )
+
+                logger.debug(f"Saved cache index with {len(self._cache_index)} entries")
+                return
+
+            except Exception as e:
+                error_str = str(e).lower()
+                if "precondition" in error_str or "generation" in error_str:
+                    # Conflict - reload and retry
+                    logger.warning(
+                        f"Cache index conflict on attempt {attempt + 1}/{max_retries}, "
+                        "reloading and retrying..."
+                    )
+                    self._load_index()
+                    continue
+                else:
+                    logger.error(f"Failed to save cache index: {e}")
+                    return
+
+        logger.error(f"Failed to save cache index after {max_retries} attempts")
 
     @staticmethod
     def compute_config_hash(config: dict[str, Any]) -> str:
@@ -536,7 +579,7 @@ class PipelineCache:
             return CacheEntry(
                 signature=signature,
                 output_path=output_path,
-                created_at=datetime.now(timezone.utc).isoformat(),
+                created_at=datetime.now(UTC).isoformat(),
             )
 
         self._load_index()
@@ -558,7 +601,7 @@ class PipelineCache:
             logger.warning(f"Failed to verify output path: {e}")
 
         # Create cache entry
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expiry = now + timedelta(hours=self.config.ttl_hours) if self.config.ttl_hours > 0 else None
 
         entry = CacheEntry(

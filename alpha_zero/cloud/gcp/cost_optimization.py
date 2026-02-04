@@ -454,15 +454,13 @@ class CostOptimizationManager:
             # More frequent checkpoints for spot VMs
             checkpoint_interval = min(checkpoint_interval, 300)
 
-        # Estimate cost
-        gpu_prices = {
-            "NVIDIA_TESLA_T4": (0.35, 0.11),  # (on-demand, spot)
-            "NVIDIA_TESLA_V100": (2.48, 0.74),
-            "NVIDIA_TESLA_P100": (1.46, 0.43),
-            "NVIDIA_L4": (0.70, 0.22),
-        }
-        on_demand, spot = gpu_prices.get(gpu_type, (1.0, 0.3))
-        estimated_cost = (spot if use_spot else on_demand) * gpu_count
+        # Estimate cost using centralized cost_monitor (1 hour baseline)
+        estimated_cost = self.cost_monitor.estimate_job_cost(
+            gpu_type=gpu_type,
+            duration_hours=1.0,
+            gpu_count=gpu_count,
+            use_spot=use_spot,
+        )
 
         return JobSpec(
             gpu_type=gpu_type,
