@@ -5,6 +5,7 @@ This module provides comprehensive model evaluation capabilities including:
 - ELO rating tracking using the existing tournament system
 - Game diversity analysis (opening entropy, game length distribution)
 - Report generation in multiple formats (JSON, Markdown)
+- Sequential testing for early stopping when results are decisive
 
 Quick Start:
     from alpha_zero.evaluation import ModelEvaluator, EvaluationConfig
@@ -40,6 +41,7 @@ Available Classes:
     - EvaluationResult: Results from evaluating against one baseline
     - EvaluationReport: Complete evaluation report
     - ReportGenerator: Generates reports in various formats
+    - SequentialTester: Sequential testing for early stopping in evaluation
 """
 
 from alpha_zero.evaluation.baselines import (
@@ -63,6 +65,13 @@ from alpha_zero.evaluation.evaluator import (
     ModelEvaluator,
 )
 from alpha_zero.evaluation.reports import EvaluationReport, ReportGenerator
+from alpha_zero.evaluation.sequential_testing import (
+    EvaluationDecision,
+    SequentialTestingConfig,
+    SequentialTestResult,
+    SequentialTester,
+    get_sequential_tester,
+)
 
 __all__ = [
     # Configuration
@@ -87,4 +96,10 @@ __all__ = [
     # Reports
     "EvaluationReport",
     "ReportGenerator",
+    # Sequential Testing (Phase 6)
+    "EvaluationDecision",
+    "SequentialTestingConfig",
+    "SequentialTestResult",
+    "SequentialTester",
+    "get_sequential_tester",
 ]

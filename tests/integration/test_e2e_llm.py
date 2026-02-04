@@ -26,7 +26,7 @@ from alpha_zero.utils.config import Civ6Config, ConfigManager, load_config
 from alpha_zero.utils.test_runner import PytestRunner as TestRunner
 
 # Import new utilities
-from alpha_zero.utils.test_runner import RunConfig as TestConfig
+from alpha_zero.utils.test_runner import RunConfig, PytestRunner
 
 # LLM imports (optional)
 try:
@@ -197,27 +197,27 @@ class TestAgentToolsIntegration:
         assert deps["pytest"] is True
 
 
-class TestTestRunnerIntegration:
+class TestPytestRunnerIntegration:
     """Test test runner integration."""
 
     def test_test_runner_initialization(self):
         """Test test runner initializes correctly."""
         project_root = Path(__file__).parent.parent.parent
-        config = TestConfig(project_root=project_root)
-        runner = TestRunner(config)
+        config = RunConfig(project_root=project_root)
+        runner = PytestRunner(config)
 
         assert runner.config.project_root == project_root
 
     def test_build_pytest_args(self):
         """Test building pytest arguments."""
-        config = TestConfig(
+        config = RunConfig(
             parallel=False,
             verbose=True,
             coverage_enabled=True,
             coverage_source=["alpha_zero"],
             junit_xml=False,
         )
-        runner = TestRunner(config)
+        runner = PytestRunner(config)
         args = runner._build_pytest_args(with_coverage=True)
 
         assert "-v" in args
@@ -428,11 +428,11 @@ class TestUtilsImports:
     def test_import_test_runner(self):
         """Test importing test runner utilities."""
         from alpha_zero.utils import (
-            TestRunner,
+            PytestRunner,
             TestStatus,
         )
 
-        assert TestRunner is not None
+        assert PytestRunner is not None
         assert TestStatus.PASSED.value == "passed"
 
     def test_import_agent_tools(self):
