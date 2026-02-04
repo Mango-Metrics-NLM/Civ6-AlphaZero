@@ -284,8 +284,27 @@ def main() -> int:
         # Load trajectories
         trajectories = load_trajectories(config, trajectory_iterations, dry_run=args.dry_run)
 
+        # Validate we have data to train on
+        if not trajectories:
+            logger.error(
+                "No trajectories found for iterations %s. "
+                "You must run self-play first to generate training data:\n"
+                "  python -m alpha_zero.cloud.gcp.cli selfplay --iteration %d --wait",
+                trajectory_iterations,
+                args.iteration,
+            )
+            return 1
+
         # Prepare dataset
         dataset = prepare_dataset(trajectories)
+        
+        if len(dataset) == 0:
+            logger.error(
+                "Dataset is empty after processing trajectories. "
+                "This may indicate corrupted trajectory data."
+            )
+            return 1
+            
         dataloader = DataLoader(
             dataset,
             batch_size=args.batch_size,
