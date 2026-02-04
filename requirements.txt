@@ -29,3 +29,6 @@ wandb>=0.15.0
 chromadb>=0.4.0
 sentence-transformers>=2.2.0
 
+# Google Cloud / Vertex AI (optional - install for cloud training)
+# google-cloud-aiplatform>=1.38.0
+# google-cloud-storage>=2.13.0

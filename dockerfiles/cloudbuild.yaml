@@ -1,0 +1,101 @@
+# Cloud Build configuration for Civ6 AlphaZero training container
+#
+# This configuration builds and pushes the training container to
+# Google Container Registry (GCR) for use with Vertex AI.
+#
+# Usage:
+#   gcloud builds submit --config=dockerfiles/cloudbuild.yaml
+#
+# Environment variables (set via substitutions or gcloud config):
+#   _IMAGE_TAG: Container tag (default: latest)
+#
+# The built image will be available at:
+#   gcr.io/$PROJECT_ID/civ6az-training:$_IMAGE_TAG
+
+substitutions:
+  _IMAGE_TAG: 'latest'
+
+steps:
+  # Step 1: Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/civ6az-training:$_IMAGE_TAG'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/civ6az-training:$SHORT_SHA'
+      - '-f'
+      - 'dockerfiles/Dockerfile.vertex'
+      - '.'
+    id: 'build'
+
+  # Step 2: Run smoke test - verify container starts correctly
+  - name: 'gcr.io/$PROJECT_ID/civ6az-training:$_IMAGE_TAG'
+    entrypoint: 'python'
+    args:
+      - '-c'
+      - 'from alpha_zero.cloud.gcp import GCPConfig; print("Container smoke test passed")'
+    id: 'smoke-test'
+    waitFor: ['build']
+
+  # Step 3: Run dry-run test for selfplay worker
+  - name: 'gcr.io/$PROJECT_ID/civ6az-training:$_IMAGE_TAG'
+    entrypoint: 'python'
+    args:
+      - '-m'
+      - 'alpha_zero.cloud.gcp.selfplay_worker'
+      - '--dry_run'
+      - '--worker_id=0'
+      - '--model_version=1'
+      - '--iteration=1'
+      - '--games=1'
+    id: 'test-selfplay'
+    waitFor: ['smoke-test']
+
+  # Step 4: Run dry-run test for training worker
+  - name: 'gcr.io/$PROJECT_ID/civ6az-training:$_IMAGE_TAG'
+    entrypoint: 'python'
+    args:
+      - '-m'
+      - 'alpha_zero.cloud.gcp.training_worker'
+      - '--dry_run'
+      - '--iteration=1'
+      - '--trajectory_iterations=1'
+      - '--epochs=1'
+    id: 'test-training'
+    waitFor: ['smoke-test']
+
+  # Step 5: Push the image to GCR
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/civ6az-training:$_IMAGE_TAG'
+    id: 'push-latest'
+    waitFor: ['test-selfplay', 'test-training']
+
+  # Step 6: Push the commit-tagged image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/civ6az-training:$SHORT_SHA'
+    id: 'push-sha'
+    waitFor: ['test-selfplay', 'test-training']
+
+# Images to be pushed to GCR
+images:
+  - 'gcr.io/$PROJECT_ID/civ6az-training:$_IMAGE_TAG'
+  - 'gcr.io/$PROJECT_ID/civ6az-training:$SHORT_SHA'
+
+# Build options
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+# Build timeout (30 minutes should be sufficient)
+timeout: '1800s'
+
+# Tags for organization
+tags:
+  - 'civ6az'
+  - 'training'
+  - 'vertex-ai'

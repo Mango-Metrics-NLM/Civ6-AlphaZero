@@ -1,0 +1,63 @@
+# Dockerfile for Civ6 AlphaZero Vertex AI Training
+#
+# This container is optimized for GPU training on Vertex AI with:
+# - NVIDIA PyTorch base image with CUDA support (T4/L4/A100 compatible)
+# - All project dependencies pre-installed
+# - GCP client libraries for GCS and Vertex AI integration
+#
+# Entry points:
+#   Self-play: python -m alpha_zero.cloud.gcp.selfplay_worker
+#   Training:  python -m alpha_zero.cloud.gcp.training_worker
+#
+# Build:
+#   docker build -t civ6az:latest -f dockerfiles/Dockerfile.vertex .
+#
+# Test locally:
+#   docker run --rm civ6az:latest python -m alpha_zero.cloud.gcp.selfplay_worker --dry_run \
+#       --worker_id=0 --model_version=1 --iteration=1 --games=1
+
+# Base image: PyTorch with CUDA 11.8 (compatible with T4, L4, A100)
+FROM nvcr.io/nvidia/pytorch:23.10-py3
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better layer caching
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install GCP client libraries
+RUN pip install --no-cache-dir \
+    google-cloud-aiplatform>=1.38.0 \
+    google-cloud-storage>=2.13.0
+
+# Copy project source code
+COPY . .
+
+# Install the project in editable mode
+RUN pip install -e .
+
+# Create non-root user for security
+RUN useradd -m -u 1000 trainer && chown -R trainer:trainer /app
+USER trainer
+
+# Health check - verify imports work
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "from alpha_zero.cloud.gcp import GCPConfig; print('OK')" || exit 1
+
+# Default command - show help
+CMD ["python", "-c", "print('Civ6AZ Training Container\\n\\nUsage:\\n  Self-play: python -m alpha_zero.cloud.gcp.selfplay_worker --help\\n  Training:  python -m alpha_zero.cloud.gcp.training_worker --help')"]
