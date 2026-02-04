@@ -39,6 +39,7 @@ if TORCH_AVAILABLE:
         LevelNetwork,
         ResidualBlock,
     )
+    from alpha_zero.utils.constants import NETWORK
 
 
 # =============================================================================
@@ -381,8 +382,8 @@ class TestLevelNetwork:
 
         policy, _ = network(sample_spatial, sample_vector, sample_goal_embedding, action_mask)
 
-        # First 50 should be masked with large negative value (-1e9 instead of -inf to prevent NaN)
-        assert torch.all(policy[:, :50] == -1e9)
+        # First 50 should be very negative (implementation uses -1e9 instead of -inf to avoid NaN)
+        assert torch.all(policy[:, :50] == NETWORK.INVALID_ACTION_LOGIT)
         # Rest should be finite
         assert torch.all(torch.isfinite(policy[:, 50:]))
 

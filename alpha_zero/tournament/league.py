@@ -26,7 +26,6 @@ from datetime import datetime
 from typing import Any
 
 from alpha_zero.tournament.config import (
-    MatchOutcome,
     MatchResult,
     PlayerStats,
     TierConfig,
@@ -196,27 +195,37 @@ class LeagueManager:
 
         logger.info(f"LeagueManager initialized with {len(config.tiers)} tiers")
 
-    def get_tier_for_rating(self, rating: float) -> TierConfig:
+    def get_tier_for_rating(self, rating: float) -> TierConfig | None:
         """Get the tier for a given rating.
 
         Args:
             rating: Player rating
 
         Returns:
-            TierConfig for the appropriate tier.
+            TierConfig for the appropriate tier, or None if not found.
         """
         return self.config.get_tier_for_rating(rating)
 
-    def get_player_tier(self, player: PlayerStats) -> TierConfig:
+    def get_player_tier(self, player: PlayerStats) -> TierConfig | None:
         """Get a player's current tier.
 
         Args:
             player: Player stats
 
         Returns:
-            TierConfig for player's tier.
+            TierConfig for player's tier, or None if not found.
         """
         return self.get_tier_for_rating(player.rating)
+
+    def _get_default_tier(self) -> TierConfig:
+        """Get the default (lowest) tier.
+
+        Returns:
+            First tier in configuration, or a default Bronze tier.
+        """
+        if self.config.tiers:
+            return self.config.tiers[0]
+        return TierConfig(name="Bronze", rating_min=0, rating_max=1200)
 
     def get_player_progress(self, player_id: str) -> TierProgress:
         """Get a player's tier progress.
@@ -240,7 +249,7 @@ class LeagueManager:
         Returns:
             Initial tier progress.
         """
-        tier = self.get_player_tier(player)
+        tier = self.get_player_tier(player) or self._get_default_tier()
         progress = TierProgress(tier_name=tier.name)
 
         self._player_progress[player.player_id] = progress
@@ -264,8 +273,8 @@ class LeagueManager:
             Tuple of (was_promoted, was_demoted).
         """
         progress = self.get_player_progress(player.player_id)
-        current_tier = self.config.get_tier_by_name(progress.tier_name)
-        new_tier = self.get_tier_for_rating(player.rating)
+        current_tier = self.config.get_tier_by_name(progress.tier_name) or self._get_default_tier()
+        new_tier = self.get_tier_for_rating(player.rating) or self._get_default_tier()
 
         # Record game result
         if won_last_game:
@@ -401,8 +410,21 @@ class LeagueManager:
         """
         changes = {}
 
-        p1_won = result.outcome == MatchOutcome.WIN
-        p2_won = result.outcome == MatchOutcome.LOSS
+        # Determine winners based on winner_id or score comparison
+        if result.winner_id is not None:
+            p1_won = result.winner_id == player1.player_id
+            p2_won = result.winner_id == player2.player_id
+        else:
+            # Fallback to score comparison when winner_id is None (e.g., draws or timed games)
+            p1_score = getattr(result, "player1_score", None)
+            p2_score = getattr(result, "player2_score", None)
+            if p1_score is not None and p2_score is not None:
+                p1_won = p1_score > p2_score
+                p2_won = p2_score > p1_score
+            else:
+                # True draw - neither wins
+                p1_won = False
+                p2_won = False
 
         changes[player1.player_id] = self.update_player_tier(player1, p1_won)
         changes[player2.player_id] = self.update_player_tier(player2, p2_won)

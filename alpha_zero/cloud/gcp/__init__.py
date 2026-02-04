@@ -1,91 +1,186 @@
-"""GCP cloud infrastructure implementation.
+"""
+GCP Cloud Integration Module for Civ6 AlphaZero
 
-Provides GCP-specific implementations of cloud protocols:
-- GCSCheckpointManager: Google Cloud Storage checkpoint management
-- VertexAITrainer: Vertex AI Custom Training job submission
-- PreemptionHandler: GCE metadata-based preemption detection
-- CloudLogger: Cloud Logging integration
-- CloudMetricsExporter: Cloud Monitoring integration
+Provides cloud infrastructure components for distributed training:
+- GCS storage for models, trajectories, and checkpoints
+- Vertex AI job management for self-play and training
+- Configuration with environment variable support
+- Cost optimization (pipeline caching, spot availability, worker autoscaling)
+- Alerting (Slack, email, W&B)
+- Data lifecycle management
 
-All implementations follow the force_mock pattern for testing:
-- Pass force_mock=True to use mock implementations
-- Allows testing without GCP SDK installed
-- Maintains consistent API regardless of backend
+Usage:
+    from alpha_zero.cloud.gcp import GCPConfig, GCSModelStorage
+
+    config = GCPConfig.from_env()
+    storage = GCSModelStorage(config)
+    storage.save_model(model, version=1, metadata={"elo": 1000})
 """
 
-from __future__ import annotations
+from alpha_zero.cloud.gcp.config import (
+    GCPConfig,
+    SelfPlayWorkerConfig,
+    TrainingWorkerConfig,
+    VertexTier,
+)
+from alpha_zero.cloud.gcp.exceptions import (
+    ConfigurationError,
+    GCPError,
+    GCSStorageError,
+    PreemptionError,
+    QuotaExceededError,
+    VertexJobError,
+)
+from alpha_zero.cloud.gcp.storage import (
+    GCSBackend,
+    GCSCheckpointStorage,
+    GCSModelStorage,
+    GCSTrajectoryStorage,
+    ModelMetadata,
+)
+from alpha_zero.cloud.gcp.vertex_jobs import (
+    JobResult,
+    JobSpec,
+    JobState,
+    VertexAIClient,
+    VertexSelfPlayJob,
+    VertexTrainingJob,
+)
 
-import logging
+# Phase 6: Scaling Configuration
+from alpha_zero.cloud.gcp.scaling_config import (
+    BudgetTier,
+    CycleTierConfig,
+    EvaluationTierConfig,
+    GPUSpec,
+    ScalingTierConfig,
+    SelfPlayTierConfig,
+    TrainingTierConfig,
+)
 
-# SDK availability flags
-GCS_AVAILABLE = False
-VERTEX_AVAILABLE = False
-LOGGING_AVAILABLE = False
-MONITORING_AVAILABLE = False
+# Phase 6: Data Lifecycle
+from alpha_zero.cloud.gcp.lifecycle import (
+    CleanupResult,
+    GCSLifecycleManager,
+    LifecycleConfig,
+    LifecycleRule,
+    RetentionPolicyConfig,
+    StorageClass,
+    get_lifecycle_manager,
+)
 
-try:
-    from google.cloud import storage  # noqa: F401  # type: ignore[import-untyped]
+# Phase 6: Pipeline Caching
+from alpha_zero.cloud.gcp.pipeline_cache import (
+    CacheEntry,
+    ComponentSignature,
+    ComponentType,
+    PipelineCache,
+    PipelineCacheConfig,
+    get_pipeline_cache,
+)
 
-    GCS_AVAILABLE = True
-except ImportError:
-    pass
+# Phase 6: Spot Availability
+from alpha_zero.cloud.gcp.spot_availability import (
+    AvailabilityLevel,
+    PreemptionEvent,
+    SpotAvailabilityConfig,
+    SpotAvailabilityTracker,
+    SpotPattern,
+    get_spot_tracker,
+)
 
-try:
-    from google.cloud import aiplatform  # noqa: F401  # type: ignore[import-untyped]
+# Phase 6: Worker Autoscaling
+from alpha_zero.cloud.gcp.worker_autoscaler import (
+    ScalingAction,
+    ScalingDecision,
+    WorkerAutoscaler,
+    WorkerAutoscalerConfig,
+    WorkerMetrics,
+    get_worker_autoscaler,
+)
 
-    VERTEX_AVAILABLE = True
-except ImportError:
-    pass
-
-try:
-    from google.cloud import logging as cloud_logging  # noqa: F401  # type: ignore[import-untyped]
-
-    LOGGING_AVAILABLE = True
-except ImportError:
-    pass
-
-try:
-    from google.cloud import monitoring_v3  # noqa: F401  # type: ignore[import-untyped]
-
-    MONITORING_AVAILABLE = True
-except ImportError:
-    pass
-
-# Import implementations (these handle missing SDKs internally)
-try:
-    from alpha_zero.cloud.gcp.monitoring import CloudLogger, CloudMetricsExporter
-    from alpha_zero.cloud.gcp.preemption import (
-        PreemptionHandler,
-        register_preemption_handler,
-    )
-    from alpha_zero.cloud.gcp.storage import GCSCheckpointManager
-    from alpha_zero.cloud.gcp.vertex import VertexAITrainer, VertexJobConfig
-
-    _IMPLEMENTATIONS_AVAILABLE = True
-except ImportError:
-    _IMPLEMENTATIONS_AVAILABLE = False
-
-logger = logging.getLogger(__name__)
+# Phase 6: Alert Manager
+from alpha_zero.cloud.gcp.alert_manager import (
+    AlertChannel,
+    AlertEvent,
+    AlertManager,
+    AlertManagerConfig,
+    AlertSeverity,
+    EmailConfig,
+    SlackConfig,
+    get_alert_manager,
+)
 
 __all__ = [
-    # Availability flags
-    "GCS_AVAILABLE",
-    "VERTEX_AVAILABLE",
-    "LOGGING_AVAILABLE",
-    "MONITORING_AVAILABLE",
+    # Config
+    "GCPConfig",
+    "SelfPlayWorkerConfig",
+    "TrainingWorkerConfig",
+    "VertexTier",
+    # Exceptions
+    "GCPError",
+    "GCSStorageError",
+    "VertexJobError",
+    "ConfigurationError",
+    "PreemptionError",
+    "QuotaExceededError",
+    # Storage
+    "GCSBackend",
+    "GCSModelStorage",
+    "GCSTrajectoryStorage",
+    "GCSCheckpointStorage",
+    "ModelMetadata",
+    # Vertex AI Jobs
+    "JobSpec",
+    "JobResult",
+    "JobState",
+    "VertexAIClient",
+    "VertexSelfPlayJob",
+    "VertexTrainingJob",
+    # Phase 6: Scaling Configuration
+    "BudgetTier",
+    "GPUSpec",
+    "SelfPlayTierConfig",
+    "TrainingTierConfig",
+    "EvaluationTierConfig",
+    "CycleTierConfig",
+    "ScalingTierConfig",
+    # Phase 6: Data Lifecycle
+    "StorageClass",
+    "RetentionPolicyConfig",
+    "LifecycleRule",
+    "CleanupResult",
+    "LifecycleConfig",
+    "GCSLifecycleManager",
+    "get_lifecycle_manager",
+    # Phase 6: Pipeline Caching
+    "ComponentType",
+    "ComponentSignature",
+    "CacheEntry",
+    "PipelineCacheConfig",
+    "PipelineCache",
+    "get_pipeline_cache",
+    # Phase 6: Spot Availability
+    "AvailabilityLevel",
+    "SpotPattern",
+    "PreemptionEvent",
+    "SpotAvailabilityConfig",
+    "SpotAvailabilityTracker",
+    "get_spot_tracker",
+    # Phase 6: Worker Autoscaling
+    "ScalingAction",
+    "ScalingDecision",
+    "WorkerMetrics",
+    "WorkerAutoscalerConfig",
+    "WorkerAutoscaler",
+    "get_worker_autoscaler",
+    # Phase 6: Alert Manager
+    "AlertSeverity",
+    "AlertChannel",
+    "AlertEvent",
+    "SlackConfig",
+    "EmailConfig",
+    "AlertManagerConfig",
+    "AlertManager",
+    "get_alert_manager",
 ]
-
-if _IMPLEMENTATIONS_AVAILABLE:
-    __all__.extend([
-        # Storage
-        "GCSCheckpointManager",
-        # Vertex AI
-        "VertexAITrainer",
-        "VertexJobConfig",
-        # Preemption
-        "PreemptionHandler",
-        "register_preemption_handler",
-        # Monitoring
-        "CloudLogger",
-        "CloudMetricsExporter",
-    ])

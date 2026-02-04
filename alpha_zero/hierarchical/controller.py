@@ -416,7 +416,7 @@ class HierarchicalController:
             config=self.config.strategic,
             network=self.network.strategic_network if self.network else None,
             state_encoder=self.state_encoder.strategic,
-            goal_encoder=self.goal_encoder.strategic_encoder,
+            goal_encoder=self.goal_encoder,
             goal_hierarchy=self.goal_hierarchy,
             llm_advisor=self.llm_advisor,
         )
@@ -427,7 +427,7 @@ class HierarchicalController:
             config=self.config.tactical,
             network=self.network.tactical_network if self.network else None,
             state_encoder=self.state_encoder.tactical,
-            goal_encoder=self.goal_encoder.tactical_encoder,
+            goal_encoder=self.goal_encoder,
             goal_hierarchy=self.goal_hierarchy,
         )
 
@@ -437,7 +437,7 @@ class HierarchicalController:
             config=self.config.operational,
             network=self.network.operational_network if self.network else None,
             state_encoder=self.state_encoder.operational,
-            goal_encoder=self.goal_encoder.operational_encoder,
+            goal_encoder=self.goal_encoder,
             goal_hierarchy=self.goal_hierarchy,
         )
 

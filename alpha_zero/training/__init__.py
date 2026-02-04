@@ -4,6 +4,8 @@ This package contains training infrastructure including:
 - MuZero trainer with trajectory-based training
 - Curriculum learning and transfer learning
 - Replay buffers for experience storage
+- Training profiling for diminishing returns detection
+- Elo plateau detection for training stagnation
 """
 
 from alpha_zero.training.muzero_trainer import (
@@ -25,6 +27,25 @@ from .curriculum_pipeline import (
     WeightTransferManager,
     create_curriculum_pipeline,
     create_environment_factory,
+)
+
+# Phase 6: Training Profiler
+from .training_profiler import (
+    DiminishingReturnsAnalysis,
+    DiminishingReturnsLevel,
+    TrainingProfiler,
+    TrainingProfilerConfig,
+    TrainingStepMetrics,
+    get_training_profiler,
+)
+
+# Phase 6: Elo Plateau Detector
+from .elo_plateau_detector import (
+    EloPlateauDetector,
+    EloPlateauDetectorConfig,
+    EloSnapshot,
+    EloStatus,
+    get_elo_detector,
 )
 
 __all__ = [
@@ -49,4 +70,17 @@ __all__ = [
     # Factory functions
     "create_curriculum_pipeline",
     "create_environment_factory",
+    # Phase 6: Training Profiler
+    "DiminishingReturnsLevel",
+    "TrainingStepMetrics",
+    "DiminishingReturnsAnalysis",
+    "TrainingProfilerConfig",
+    "TrainingProfiler",
+    "get_training_profiler",
+    # Phase 6: Elo Plateau Detector
+    "EloStatus",
+    "EloSnapshot",
+    "EloPlateauDetectorConfig",
+    "EloPlateauDetector",
+    "get_elo_detector",
 ]

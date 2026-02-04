@@ -1,1 +1,1 @@
-"""Tests for cloud training infrastructure."""
+"""Tests for cloud infrastructure modules."""

@@ -1,1 +1,1 @@
-"""Unit tests for cloud training components."""
+"""Unit tests for cloud modules."""

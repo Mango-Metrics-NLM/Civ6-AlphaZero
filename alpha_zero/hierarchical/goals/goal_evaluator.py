@@ -279,30 +279,31 @@ class GoalEvaluator:
     def _evaluate_science_victory(self, state: dict[str, Any]) -> float:
         """Evaluate science victory progress."""
         player_id = state.get("current_player", 0)
-        tech_levels = state.get("tech_levels", {})
-        player_tech = tech_levels.get(player_id, 0)
-        max_tech = state.get("max_tech_level", 100)
+        tech_levels: dict[Any, Any] = state.get("tech_levels", {})
+        player_tech = float(tech_levels.get(player_id, 0))
+        max_tech = float(state.get("max_tech_level", 100))
 
         return min(player_tech / max_tech, 1.0)
 
     def _evaluate_culture_victory(self, state: dict[str, Any]) -> float:
         """Evaluate culture victory progress."""
         player_id = state.get("current_player", 0)
-        tourism = state.get("tourism", {}).get(player_id, 0)
-        required_tourism = state.get("required_tourism", 1000)
+        tourism_dict: dict[Any, Any] = state.get("tourism", {})
+        tourism = float(tourism_dict.get(player_id, 0))
+        required_tourism = float(state.get("required_tourism", 1000))
 
         return min(tourism / required_tourism, 1.0)
 
     def _evaluate_military_supremacy(self, state: dict[str, Any]) -> float:
         """Evaluate military supremacy progress."""
         player_id = state.get("current_player", 0)
-        military_strengths = state.get("military_strength", {})
+        military_strengths: dict[Any, Any] = state.get("military_strength", {})
 
-        player_strength = military_strengths.get(player_id, 0)
-        max_other = max(
+        player_strength = float(military_strengths.get(player_id, 0))
+        max_other = float(max(
             (s for pid, s in military_strengths.items() if pid != player_id),
             default=1,
-        )
+        ))
 
         # Progress is ratio of our strength to strongest opponent
         if max_other <= 0:
@@ -313,13 +314,13 @@ class GoalEvaluator:
     def _evaluate_economic_dominance(self, state: dict[str, Any]) -> float:
         """Evaluate economic dominance progress."""
         player_id = state.get("current_player", 0)
-        gold_incomes = state.get("gold_income", {})
+        gold_incomes: dict[Any, Any] = state.get("gold_income", {})
 
-        player_income = gold_incomes.get(player_id, 0)
-        max_other = max(
+        player_income = float(gold_incomes.get(player_id, 0))
+        max_other = float(max(
             (g for pid, g in gold_incomes.items() if pid != player_id),
             default=1,
-        )
+        ))
 
         if max_other <= 0:
             return 1.0
@@ -329,10 +330,10 @@ class GoalEvaluator:
     def _evaluate_territorial_expansion(self, state: dict[str, Any]) -> float:
         """Evaluate territorial expansion progress."""
         player_id = state.get("current_player", 0)
-        city_counts = state.get("city_count", {})
-        target_cities = state.get("target_city_count", 5)
+        city_counts: dict[Any, Any] = state.get("city_count", {})
+        target_cities = float(state.get("target_city_count", 5))
 
-        player_cities = city_counts.get(player_id, 0)
+        player_cities = float(city_counts.get(player_id, 0))
         return min(player_cities / target_cities, 1.0)
 
     # ==========================================================================
@@ -353,7 +354,8 @@ class GoalEvaluator:
             return 1.0
 
         # Check siege progress
-        city_hp = state.get("city_health", {}).get(target.target_id, 100)
+        city_health: dict[Any, Any] = state.get("city_health", {})
+        city_hp = float(city_health.get(target.target_id, 100))
         return 1.0 - (city_hp / 100.0)
 
     def _evaluate_army_building(
@@ -363,8 +365,9 @@ class GoalEvaluator:
     ) -> float:
         """Evaluate army building progress."""
         player_id = state.get("current_player", 0)
-        current_units = state.get("unit_count", {}).get(player_id, 0)
-        target_units = target.metadata.get("target_units", 10)
+        unit_count: dict[Any, Any] = state.get("unit_count", {})
+        current_units = float(unit_count.get(player_id, 0))
+        target_units = float(target.metadata.get("target_units", 10))
 
         return min(current_units / target_units, 1.0)
 
@@ -393,8 +396,9 @@ class GoalEvaluator:
         if target.target_id is None:
             return 0.0
 
-        city_pop = state.get("city_population", {}).get(target.target_id, 1)
-        target_pop = target.metadata.get("target_population", 10)
+        city_population: dict[Any, Any] = state.get("city_population", {})
+        city_pop = float(city_population.get(target.target_id, 1))
+        target_pop = float(target.metadata.get("target_population", 10))
 
         return min(city_pop / target_pop, 1.0)
 
@@ -408,21 +412,21 @@ class GoalEvaluator:
             return 0.0
 
         # Check if city exists at target position
-        cities_by_pos = state.get("cities_by_position", {})
+        cities_by_pos: dict[Any, Any] = state.get("cities_by_position", {})
         if target.position in cities_by_pos:
             return 1.0
 
         # Check if settler is moving towards position
-        settler_positions = state.get("settler_positions", [])
+        settler_positions: list[Any] = state.get("settler_positions", [])
         if not settler_positions:
             return 0.0
 
         # Calculate distance progress
-        min_dist = min(
+        min_dist = float(min(
             abs(s[0] - target.position[0]) + abs(s[1] - target.position[1])
             for s in settler_positions
-        )
-        max_dist = state.get("map_size", 32)
+        ))
+        max_dist = float(state.get("map_size", 32))
 
         return max(0.0, 1.0 - (min_dist / max_dist))
 
@@ -435,7 +439,8 @@ class GoalEvaluator:
         if target.target_id is None:
             return 0.0
 
-        tech_progress = state.get("tech_progress", {}).get(target.target_id, 0.0)
+        tech_progress_dict: dict[Any, Any] = state.get("tech_progress", {})
+        tech_progress = float(tech_progress_dict.get(target.target_id, 0.0))
         return tech_progress
 
     def _evaluate_civic_research(
@@ -447,7 +452,8 @@ class GoalEvaluator:
         if target.target_id is None:
             return 0.0
 
-        civic_progress = state.get("civic_progress", {}).get(target.target_id, 0.0)
+        civic_progress_dict: dict[Any, Any] = state.get("civic_progress", {})
+        civic_progress = float(civic_progress_dict.get(target.target_id, 0.0))
         return civic_progress
 
     # ==========================================================================
@@ -467,7 +473,8 @@ class GoalEvaluator:
         if unit_id is None:
             return 0.0
 
-        unit_pos = state.get("unit_positions", {}).get(unit_id)
+        unit_positions: dict[Any, Any] = state.get("unit_positions", {})
+        unit_pos = unit_positions.get(unit_id)
         if unit_pos is None:
             return 0.0
 
@@ -476,8 +483,8 @@ class GoalEvaluator:
             return 1.0
 
         # Calculate distance
-        dist = abs(unit_pos[0] - target.position[0]) + abs(unit_pos[1] - target.position[1])
-        initial_dist = target.metadata.get("initial_distance", dist + 1)
+        dist = float(abs(unit_pos[0] - target.position[0]) + abs(unit_pos[1] - target.position[1]))
+        initial_dist = float(target.metadata.get("initial_distance", dist + 1))
 
         return max(0.0, 1.0 - (dist / initial_dist))
 
@@ -496,7 +503,8 @@ class GoalEvaluator:
             return 1.0
 
         # Check target health
-        target_hp = state.get("unit_health", {}).get(target.target_id, 100)
+        unit_health: dict[Any, Any] = state.get("unit_health", {})
+        target_hp = float(unit_health.get(target.target_id, 100))
         return 1.0 - (target_hp / 100.0)
 
     def _evaluate_production(
@@ -512,14 +520,16 @@ class GoalEvaluator:
             return 0.0
 
         # Check if item completed
-        completed_items = state.get("completed_production", {}).get(city_id, [])
+        completed_production: dict[Any, Any] = state.get("completed_production", {})
+        completed_items = completed_production.get(city_id, [])
         if item_id in completed_items:
             return 1.0
 
         # Check production progress
-        production_queue = state.get("production_queue", {}).get(city_id, {})
+        production_queues: dict[Any, Any] = state.get("production_queue", {})
+        production_queue: dict[Any, Any] = production_queues.get(city_id, {})
         if item_id in production_queue:
-            return production_queue[item_id].get("progress", 0.0)
+            return float(production_queue[item_id].get("progress", 0.0))
 
         return 0.0
 

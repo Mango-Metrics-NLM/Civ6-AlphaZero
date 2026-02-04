@@ -27,14 +27,13 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 # Optional imports - gracefully handle missing dependencies
-# Use explicit Any type for fallback values to satisfy type checker
-AsyncOpenAI: Any
-OpenAI: Any
-AsyncAnthropic: Any
-Anthropic: Any
+# Use TYPE_CHECKING to avoid mypy issues with conditional imports
+if TYPE_CHECKING:
+    from anthropic import Anthropic, AsyncAnthropic
+    from openai import AsyncOpenAI, OpenAI
 
 try:
     from openai import AsyncOpenAI, OpenAI
@@ -42,8 +41,8 @@ try:
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
-    AsyncOpenAI = None  # type: ignore[misc]
-    OpenAI = None  # type: ignore[misc]
+    AsyncOpenAI = None  # type: ignore[misc,assignment]
+    OpenAI = None  # type: ignore[misc,assignment]
 
 try:
     from anthropic import Anthropic, AsyncAnthropic  # type: ignore[import, no-redef]
@@ -51,8 +50,8 @@ try:
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
-    AsyncAnthropic = None  # type: ignore[misc]
-    Anthropic = None  # type: ignore[misc]
+    AsyncAnthropic = None  # type: ignore[misc,assignment]
+    Anthropic = None  # type: ignore[misc,assignment]
 
 # Load environment variables from .env file if available
 try:
