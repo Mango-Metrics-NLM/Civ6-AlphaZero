@@ -57,27 +57,30 @@ def load_model(config: GCPConfig, version: int, dry_run: bool = False) -> torch.
     """Load model from GCS or create dummy for dry run."""
     if dry_run:
         logger.info("Dry run: creating dummy model")
-        from alpha_zero.network.transformer_network import TransformerPolicyValueNet
+        # Create a minimal dummy model for testing
+        from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
-        return TransformerPolicyValueNet(
-            state_channels=64,
-            state_height=10,
-            state_width=10,
-            num_actions=100,
+        dummy_config = TransformerConfig(
+            spatial_channels=64,
+            spatial_size=10,
+            vector_dim=64,
+            action_space_size=100,
         )
+        return Civ6TransformerNetwork(config=dummy_config)
 
     storage = GCSModelStorage(config)
     state_dict, metadata = storage.load_model(version)
 
     # Load the actual model architecture
-    from alpha_zero.network.transformer_network import TransformerPolicyValueNet
+    from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
-    model = TransformerPolicyValueNet(
-        state_channels=64,  # From config
-        state_height=10,
-        state_width=10,
-        num_actions=100,
+    model_config = TransformerConfig(
+        spatial_channels=64,
+        spatial_size=10,
+        vector_dim=64,
+        action_space_size=100,
     )
+    model = Civ6TransformerNetwork(config=model_config)
     model.load_state_dict(state_dict)
     model.eval()
 
@@ -89,6 +92,7 @@ def run_selfplay(
     model: torch.nn.Module,
     num_games: int,
     mcts_sims: int,
+    dry_run: bool = False,
 ) -> list[dict]:
     """Run self-play games and collect trajectories.
 
@@ -98,6 +102,20 @@ def run_selfplay(
     - actions: actions taken at each step
     - rewards: final game outcome (propagated to all states)
     """
+    # For dry run, return dummy trajectories without needing actual env/MCTS
+    if dry_run:
+        logger.info("Dry run: creating dummy trajectories")
+        trajectories = []
+        for _ in range(num_games):
+            trajectory = {
+                "states": [[0.0] * (64 * 10 * 10) for _ in range(5)],
+                "policies": [[1.0 / 100] * 100 for _ in range(5)],
+                "actions": [0] * 5,
+                "rewards": [0.5] * 5,
+            }
+            trajectories.append(trajectory)
+        return trajectories
+
     trajectories = []
 
     for game_idx in range(num_games):
@@ -199,7 +217,7 @@ def main() -> int:
 
         # Run self-play
         start_time = time.time()
-        trajectories = run_selfplay(model, args.games, args.mcts_simulations)
+        trajectories = run_selfplay(model, args.games, args.mcts_simulations, dry_run=args.dry_run)
         elapsed = time.time() - start_time
 
         logger.info(

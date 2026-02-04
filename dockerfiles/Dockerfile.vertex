@@ -16,14 +16,15 @@
 #   docker run --rm civ6az:latest python -m alpha_zero.cloud.gcp.selfplay_worker --dry_run \
 #       --worker_id=0 --model_version=1 --iteration=1 --games=1
 
-# Base image: PyTorch with CUDA 11.8 (compatible with T4, L4, A100)
-FROM nvcr.io/nvidia/pytorch:23.10-py3
+# Base image: PyTorch with CUDA 12 and Python 3.12 (compatible with T4, L4, A100)
+FROM nvcr.io/nvidia/pytorch:24.09-py3
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONPATH=/app
 
 # Set working directory
 WORKDIR /app
@@ -34,22 +35,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better layer caching
-COPY requirements.txt .
+# Copy runtime requirements for the training container
+# Using requirements-runtime.txt (minimal deps) instead of requirements.txt (includes dev tools)
+COPY requirements-runtime.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Install GCP client libraries
-RUN pip install --no-cache-dir \
-    google-cloud-aiplatform>=1.38.0 \
-    google-cloud-storage>=2.13.0
+# Install Python dependencies (runtime only - no dev tools like mypy/ruff)
+RUN pip install --no-cache-dir -r requirements-runtime.txt
 
 # Copy project source code
 COPY . .
 
-# Install the project in editable mode
-RUN pip install -e .
+# Note: Using PYTHONPATH=/app instead of pip install -e . to avoid metadata issues
+# The project is available as alpha_zero module via PYTHONPATH
 
 # Create non-root user for security
 RUN useradd -m -u 1000 trainer && chown -R trainer:trainer /app

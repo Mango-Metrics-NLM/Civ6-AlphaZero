@@ -22,19 +22,19 @@ steps:
       - 'build'
       - '-t'
       - 'gcr.io/$PROJECT_ID/civ6az-training:$_IMAGE_TAG'
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/civ6az-training:$SHORT_SHA'
       - '-f'
       - 'dockerfiles/Dockerfile.vertex'
       - '.'
     id: 'build'
 
   # Step 2: Run smoke test - verify container starts correctly
+  # Uses /app as working directory to match container setup
   - name: 'gcr.io/$PROJECT_ID/civ6az-training:$_IMAGE_TAG'
     entrypoint: 'python'
     args:
       - '-c'
-      - 'from alpha_zero.cloud.gcp import GCPConfig; print("Container smoke test passed")'
+      - 'import sys; sys.path.insert(0, "/app"); from alpha_zero.cloud.gcp.config import GCPConfig; print("Container smoke test passed")'
+    dir: '/app'
     id: 'smoke-test'
     waitFor: ['build']
 
@@ -49,6 +49,7 @@ steps:
       - '--model_version=1'
       - '--iteration=1'
       - '--games=1'
+    dir: '/app'
     id: 'test-selfplay'
     waitFor: ['smoke-test']
 
@@ -62,6 +63,7 @@ steps:
       - '--iteration=1'
       - '--trajectory_iterations=1'
       - '--epochs=1'
+    dir: '/app'
     id: 'test-training'
     waitFor: ['smoke-test']
 
@@ -73,18 +75,9 @@ steps:
     id: 'push-latest'
     waitFor: ['test-selfplay', 'test-training']
 
-  # Step 6: Push the commit-tagged image
-  - name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'push'
-      - 'gcr.io/$PROJECT_ID/civ6az-training:$SHORT_SHA'
-    id: 'push-sha'
-    waitFor: ['test-selfplay', 'test-training']
-
 # Images to be pushed to GCR
 images:
   - 'gcr.io/$PROJECT_ID/civ6az-training:$_IMAGE_TAG'
-  - 'gcr.io/$PROJECT_ID/civ6az-training:$SHORT_SHA'
 
 # Build options
 options:

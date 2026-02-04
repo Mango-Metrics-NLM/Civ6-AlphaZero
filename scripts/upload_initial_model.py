@@ -48,14 +48,15 @@ def create_initial_model(
     Returns:
         Tuple of (state_dict, metadata).
     """
-    from alpha_zero.network.transformer_network import TransformerPolicyValueNet
+    from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
-    model = TransformerPolicyValueNet(
-        state_channels=state_channels,
-        state_height=board_size,
-        state_width=board_size,
-        num_actions=num_actions,
+    model_config = TransformerConfig(
+        spatial_channels=state_channels,
+        spatial_size=board_size,
+        vector_dim=state_channels,
+        action_space_size=num_actions,
     )
+    model = Civ6TransformerNetwork(config=model_config)
 
     # Initialize weights (already done by PyTorch, but we can customize)
     # Using Xavier initialization for better training dynamics

@@ -75,10 +75,12 @@ def load_trajectories(
     """Load trajectories from specified iterations."""
     if dry_run:
         logger.info("Dry run: creating dummy trajectories")
-        # States must match expected shape: B, C=64, H=10, W=10 -> flattened = 6400
+        # Spatial: B, C=64, H=10, W=10 -> flattened = 6400
+        # Vector: B, V=64
         return [
             {
-                "states": [[0] * (64 * 10 * 10)],
+                "spatial": [[0.0] * (64 * 10 * 10)],  # Spatial features
+                "vector": [[0.0] * 64],               # Vector features
                 "policies": [[0.01] * 100],
                 "rewards": [0.5],
             }
@@ -99,34 +101,47 @@ def load_trajectories(
 
 def create_model(dry_run: bool = False) -> torch.nn.Module:
     """Create model architecture."""
-    from alpha_zero.network.transformer_network import TransformerPolicyValueNet
+    from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
-    return TransformerPolicyValueNet(
-        state_channels=64,
-        state_height=10,
-        state_width=10,
-        num_actions=100,
+    model_config = TransformerConfig(
+        spatial_channels=64,
+        spatial_size=10,
+        vector_dim=64,
+        action_space_size=100,
     )
+    return Civ6TransformerNetwork(config=model_config)
 
 
 def prepare_dataset(trajectories: list[dict]) -> TensorDataset:
     """Convert trajectories to PyTorch dataset."""
-    states = []
+    spatial_list = []
+    vector_list = []
     policies = []
     values = []
 
     for traj in trajectories:
-        for i, state in enumerate(traj["states"]):
-            states.append(state)
-            policies.append(traj["policies"][i])
-            values.append(traj["rewards"][i])
+        # Handle both old format (states) and new format (spatial + vector)
+        if "spatial" in traj:
+            for i, spatial in enumerate(traj["spatial"]):
+                spatial_list.append(spatial)
+                vector_list.append(traj["vector"][i])
+                policies.append(traj["policies"][i])
+                values.append(traj["rewards"][i])
+        else:
+            # Legacy format: split states into spatial and dummy vector
+            for i, state in enumerate(traj["states"]):
+                spatial_list.append(state)
+                vector_list.append([0.0] * 64)  # Dummy vector
+                policies.append(traj["policies"][i])
+                values.append(traj["rewards"][i])
 
     # Convert to tensors
-    states_tensor = torch.tensor(states, dtype=torch.float32)
+    spatial_tensor = torch.tensor(spatial_list, dtype=torch.float32)
+    vector_tensor = torch.tensor(vector_list, dtype=torch.float32)
     policies_tensor = torch.tensor(policies, dtype=torch.float32)
     values_tensor = torch.tensor(values, dtype=torch.float32).unsqueeze(-1)
 
-    return TensorDataset(states_tensor, policies_tensor, values_tensor)
+    return TensorDataset(spatial_tensor, vector_tensor, policies_tensor, values_tensor)
 
 
 def train_epoch(
@@ -146,17 +161,18 @@ def train_epoch(
     total_value_loss = 0.0
     num_batches = 0
 
-    for states, target_policies, target_values in dataloader:
-        states = states.to(device)
+    for spatial, vector, target_policies, target_values in dataloader:
+        spatial = spatial.to(device)
+        vector = vector.to(device)
         target_policies = target_policies.to(device)
         target_values = target_values.to(device)
 
         # Forward pass
-        # Reshape states for transformer input
-        batch_size = states.shape[0]
-        states = states.view(batch_size, 64, 10, 10)  # B, C, H, W
+        # Reshape spatial for transformer input
+        batch_size = spatial.shape[0]
+        spatial = spatial.view(batch_size, 64, 10, 10)  # B, C, H, W
 
-        policy_logits, value = model(states)
+        policy_logits, value = model(spatial, vector)
 
         # Policy loss (cross-entropy)
         policy_log_probs = torch.log_softmax(policy_logits, dim=-1)

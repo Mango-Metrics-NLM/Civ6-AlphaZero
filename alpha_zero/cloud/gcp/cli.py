@@ -141,18 +141,19 @@ def cmd_init(args: argparse.Namespace) -> int:
         print("\nUploading initial model...")
         try:
             # Create a minimal initial model
-            from alpha_zero.network.transformer_network import TransformerPolicyValueNet
+            from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
-            model = TransformerPolicyValueNet(
-                state_channels=64,
-                state_height=10,
-                state_width=10,
-                num_actions=100,
+            model_config = TransformerConfig(
+                spatial_channels=64,
+                spatial_size=10,
+                vector_dim=64,
+                action_space_size=100,
             )
+            model = Civ6TransformerNetwork(config=model_config)
 
             storage = GCSModelStorage(config)
             storage.save_model(
-                model.state_dict(),
+                model,  # Pass model, not state_dict - save_model calls state_dict() internally
                 version=0,
                 metadata={"initial": True, "description": "Initial random model"},
             )
