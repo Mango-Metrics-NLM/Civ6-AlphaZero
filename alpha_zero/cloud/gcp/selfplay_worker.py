@@ -224,7 +224,7 @@ def main() -> int:
             "Self-play complete: %d trajectories in %.1fs (%.1f games/min)",
             len(trajectories),
             elapsed,
-            len(trajectories) / (elapsed / 60),
+            len(trajectories) / max(elapsed / 60, 0.001),
         )
 
         # Save trajectories
