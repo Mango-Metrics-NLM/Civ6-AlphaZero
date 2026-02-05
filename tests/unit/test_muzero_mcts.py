@@ -415,3 +415,214 @@ class TestMuZeroMCTSNoEnvCloning:
         action_probs, _ = mcts.search(obs, mask)
 
         assert action_probs.max() > 0.99
+
+
+class TestMuZeroMCTSRewardHandling:
+    """Tests for reward conversion with categorical vs scalar rewards."""
+
+    @pytest.fixture
+    def categorical_network(self):
+        """Network with categorical rewards enabled."""
+        config = MuZeroConfig(
+            spatial_channels=5,
+            spatial_size=4,
+            vector_dim=16,
+            num_res_blocks=1,
+            hidden_state_channels=16,
+            fc_hidden_dim=32,
+            action_space_size=20,
+            dynamics_num_blocks=1,
+            use_categorical_reward=True,
+            reward_support_size=601,
+        )
+        return MuZeroNetwork(config)
+
+    @pytest.fixture
+    def scalar_network(self):
+        """Network with scalar rewards."""
+        config = MuZeroConfig(
+            spatial_channels=5,
+            spatial_size=4,
+            vector_dim=16,
+            num_res_blocks=1,
+            hidden_state_channels=16,
+            fc_hidden_dim=32,
+            action_space_size=20,
+            dynamics_num_blocks=1,
+            use_categorical_reward=False,
+        )
+        return MuZeroNetwork(config)
+
+    def test_categorical_reward_config(self, categorical_network):
+        """MCTS config correctly set for categorical rewards."""
+        mcts_config = MuZeroMCTSConfig(
+            num_simulations=4,
+            use_categorical_reward=True,
+            reward_support_size=601,
+        )
+        mcts = MuZeroMCTS(categorical_network, mcts_config, device="cpu")
+
+        assert mcts.config.use_categorical_reward is True
+        assert mcts.config.reward_support_size == 601
+
+    def test_scalar_reward_config(self, scalar_network):
+        """MCTS config correctly set for scalar rewards."""
+        mcts_config = MuZeroMCTSConfig(
+            num_simulations=4,
+            use_categorical_reward=False,
+        )
+        mcts = MuZeroMCTS(scalar_network, mcts_config, device="cpu")
+
+        assert mcts.config.use_categorical_reward is False
+
+    def test_convert_reward_scalar_dim_zero(self, scalar_network):
+        """Convert scalar reward with dim 0."""
+        mcts_config = MuZeroMCTSConfig(use_categorical_reward=False)
+        mcts = MuZeroMCTS(scalar_network, mcts_config, device="cpu")
+
+        reward = torch.tensor(0.5)
+        result = mcts._convert_reward_to_scalar(reward)
+
+        assert abs(result - 0.5) < 1e-5
+
+    def test_convert_reward_scalar_dim_one(self, scalar_network):
+        """Convert scalar reward with dim 1."""
+        mcts_config = MuZeroMCTSConfig(use_categorical_reward=False)
+        mcts = MuZeroMCTS(scalar_network, mcts_config, device="cpu")
+
+        reward = torch.tensor([0.7])
+        result = mcts._convert_reward_to_scalar(reward)
+
+        assert abs(result - 0.7) < 1e-5
+
+    def test_convert_reward_categorical(self, categorical_network):
+        """Convert categorical reward to scalar."""
+        mcts_config = MuZeroMCTSConfig(
+            use_categorical_reward=True,
+            reward_support_size=601,
+        )
+        mcts = MuZeroMCTS(categorical_network, mcts_config, device="cpu")
+
+        # Create categorical distribution centered around 0
+        reward = torch.zeros(1, 601)
+        reward[0, 300] = 10.0  # Peak at center (value ~= 0)
+        result = mcts._convert_reward_to_scalar(reward)
+
+        # Should be close to 0 (center of support)
+        assert isinstance(result, float)
+        assert np.isfinite(result)
+
+    def test_search_with_categorical_network(self, categorical_network):
+        """Search works correctly with categorical reward network."""
+        mcts_config = MuZeroMCTSConfig(
+            num_simulations=4,
+            use_categorical_reward=True,
+            reward_support_size=601,
+        )
+        mcts = MuZeroMCTS(categorical_network, mcts_config, device="cpu")
+
+        obs = {
+            "spatial": np.random.randn(5, 4, 4).astype(np.float32),
+            "vector": np.random.randn(16).astype(np.float32),
+        }
+        mask = np.ones(20, dtype=np.float32)
+
+        action_probs, root_value = mcts.search(obs, mask, add_noise=False)
+
+        assert action_probs.shape == (20,)
+        assert np.isfinite(root_value)
+
+    def test_search_with_scalar_network(self, scalar_network):
+        """Search works correctly with scalar reward network."""
+        mcts_config = MuZeroMCTSConfig(
+            num_simulations=4,
+            use_categorical_reward=False,
+        )
+        mcts = MuZeroMCTS(scalar_network, mcts_config, device="cpu")
+
+        obs = {
+            "spatial": np.random.randn(5, 4, 4).astype(np.float32),
+            "vector": np.random.randn(16).astype(np.float32),
+        }
+        mask = np.ones(20, dtype=np.float32)
+
+        action_probs, root_value = mcts.search(obs, mask, add_noise=False)
+
+        assert action_probs.shape == (20,)
+        assert np.isfinite(root_value)
+
+
+class TestMuZeroMCTSFromNetwork:
+    """Tests for the from_network factory method."""
+
+    @pytest.fixture
+    def categorical_network(self):
+        """Network with categorical rewards."""
+        config = MuZeroConfig(
+            spatial_channels=5,
+            spatial_size=4,
+            vector_dim=16,
+            action_space_size=20,
+            use_categorical_reward=True,
+            reward_support_size=601,
+        )
+        return MuZeroNetwork(config)
+
+    @pytest.fixture
+    def scalar_network(self):
+        """Network with scalar rewards."""
+        config = MuZeroConfig(
+            spatial_channels=5,
+            spatial_size=4,
+            vector_dim=16,
+            action_space_size=20,
+            use_categorical_reward=False,
+        )
+        return MuZeroNetwork(config)
+
+    def test_from_network_syncs_categorical(self, categorical_network):
+        """Factory method correctly syncs categorical reward config."""
+        mcts = MuZeroMCTS.from_network(categorical_network, device="cpu")
+
+        assert mcts.config.use_categorical_reward is True
+        assert mcts.config.reward_support_size == 601
+
+    def test_from_network_syncs_scalar(self, scalar_network):
+        """Factory method correctly syncs scalar reward config."""
+        mcts = MuZeroMCTS.from_network(scalar_network, device="cpu")
+
+        assert mcts.config.use_categorical_reward is False
+
+    def test_from_network_preserves_other_config(self, categorical_network):
+        """Factory method preserves non-reward config settings."""
+        base_config = MuZeroMCTSConfig(
+            num_simulations=100,
+            c_puct=2.5,
+            use_gumbel=False,
+        )
+        mcts = MuZeroMCTS.from_network(categorical_network, config=base_config, device="cpu")
+
+        assert mcts.config.num_simulations == 100
+        assert mcts.config.c_puct == 2.5
+        assert mcts.config.use_gumbel is False
+        # But reward config should be synced from network
+        assert mcts.config.use_categorical_reward is True
+
+    def test_from_network_search_works(self, categorical_network):
+        """MCTS created via from_network works correctly."""
+        mcts = MuZeroMCTS.from_network(
+            categorical_network,
+            config=MuZeroMCTSConfig(num_simulations=4),
+            device="cpu",
+        )
+
+        obs = {
+            "spatial": np.random.randn(5, 4, 4).astype(np.float32),
+            "vector": np.random.randn(16).astype(np.float32),
+        }
+        mask = np.ones(20, dtype=np.float32)
+
+        action_probs, root_value = mcts.search(obs, mask, add_noise=False)
+
+        assert action_probs.shape == (20,)
+        assert np.isfinite(root_value)

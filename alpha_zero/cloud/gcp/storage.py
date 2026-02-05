@@ -367,6 +367,7 @@ class GCSModelStorage:
         model: ModelLike,
         version: int,
         metadata: dict[str, Any] | None = None,
+        model_config: dict[str, Any] | None = None,
     ) -> str:
         """Save model weights to GCS.
 
@@ -374,6 +375,8 @@ class GCSModelStorage:
             model: Model with state_dict() method.
             version: Version number for this model.
             metadata: Optional metadata dict (elo, iteration, etc.).
+            model_config: Optional model architecture config dict. If provided,
+                saved alongside state_dict for architecture reconstruction.
 
         Returns:
             GCS URI of saved model.
@@ -383,9 +386,18 @@ class GCSModelStorage:
         """
         import torch
 
-        # Serialize model to bytes
+        # Serialize model to bytes with optional config
         buffer = io.BytesIO()
-        torch.save(model.state_dict(), buffer)
+        if model_config is not None:
+            # New format: dict with state_dict and model_config
+            checkpoint = {
+                "state_dict": model.state_dict(),
+                "model_config": model_config,
+            }
+            torch.save(checkpoint, buffer)
+        else:
+            # Legacy format: just state_dict
+            torch.save(model.state_dict(), buffer)
         model_bytes = buffer.getvalue()
 
         # Upload model
@@ -416,14 +428,15 @@ class GCSModelStorage:
     def load_model(
         self,
         version: int | None = None,
-    ) -> tuple[dict[str, Any], ModelMetadata]:
+    ) -> tuple[dict[str, Any], ModelMetadata, dict[str, Any] | None]:
         """Load model weights from GCS.
 
         Args:
             version: Version to load (None = latest).
 
         Returns:
-            Tuple of (state_dict, metadata).
+            Tuple of (state_dict, metadata, model_config).
+            model_config may be None for legacy models saved without config.
 
         Raises:
             GCSStorageError: If load fails.
@@ -435,7 +448,18 @@ class GCSModelStorage:
         model_path = self._paths.model_path(version)
         model_bytes = self.backend.download_blob(self._bucket, model_path)
         buffer = io.BytesIO(model_bytes)
-        state_dict = _torch_load_compat(buffer, map_location="cpu", weights_only=True)
+        # Use weights_only=False to support both new format (dict) and legacy format
+        checkpoint = _torch_load_compat(buffer, map_location="cpu", weights_only=False)
+
+        # Handle both new format (dict with state_dict + model_config) and legacy format
+        if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+            # New format
+            state_dict = checkpoint["state_dict"]
+            model_config = checkpoint.get("model_config")
+        else:
+            # Legacy format: checkpoint is the state_dict directly
+            state_dict = checkpoint
+            model_config = None
 
         # Download metadata
         meta_path = self._paths.metadata_path(version)
@@ -448,7 +472,7 @@ class GCSModelStorage:
             metadata = ModelMetadata(version=version, iteration=0)
 
         logger.info("Loaded model v%d", version)
-        return state_dict, metadata
+        return state_dict, metadata, model_config
 
     def get_latest_version(self) -> int:
         """Get the latest model version number.
