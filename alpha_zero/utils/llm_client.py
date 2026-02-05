@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 # Optional imports - gracefully handle missing dependencies
 # Use TYPE_CHECKING to avoid mypy issues with conditional imports
 if TYPE_CHECKING:
-    from anthropic import Anthropic, AsyncAnthropic
+    from anthropic import Anthropic, AsyncAnthropic  # type: ignore[import]
     from openai import AsyncOpenAI, OpenAI
 
 try:
