@@ -174,7 +174,6 @@ class VertexAIClient:
 
         try:
             from google.cloud import aiplatform
-            from google.protobuf import duration_pb2
 
             worker_pool_specs = [spec.to_worker_pool_spec()]
 

@@ -199,8 +199,8 @@ def run_selfplay(
         start_time = time.time()
 
         # Create environment and MCTS
-        from alpha_zero.envs.microciv import MicroCivEnv
         from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig
+        from alpha_zero.envs.microciv import MicroCivEnv
 
         env = MicroCivEnv()
 

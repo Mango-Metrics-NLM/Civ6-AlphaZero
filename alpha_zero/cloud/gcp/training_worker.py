@@ -297,14 +297,14 @@ def main() -> int:
 
         # Prepare dataset
         dataset = prepare_dataset(trajectories)
-        
+
         if len(dataset) == 0:
             logger.error(
                 "Dataset is empty after processing trajectories. "
                 "This may indicate corrupted trajectory data."
             )
             return 1
-            
+
         dataloader = DataLoader(
             dataset,
             batch_size=args.batch_size,

@@ -181,7 +181,8 @@ def create_environment(
         max_turns = override_params.get("max_turns", max_turns)
 
     logger.info(
-        f"Creating environment: type={config.type}, board={board_size}x{board_size}, max_turns={max_turns}"
+        f"Creating environment: type={config.type}, "
+        f"board={board_size}x{board_size}, max_turns={max_turns}"
     )
 
     if config.type == "microciv":

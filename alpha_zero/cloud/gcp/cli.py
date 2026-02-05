@@ -141,7 +141,10 @@ def cmd_init(args: argparse.Namespace) -> int:
         print("\nUploading initial model...")
         try:
             # Create a minimal initial model
-            from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
+            from alpha_zero.core.transformer_network import (
+                Civ6TransformerNetwork,
+                TransformerConfig,
+            )
 
             model_config = TransformerConfig(
                 spatial_channels=64,

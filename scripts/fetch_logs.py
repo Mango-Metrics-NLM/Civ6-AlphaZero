@@ -1,5 +1,6 @@
 """Quick script to fetch Cloud Logging entries for a Vertex AI job - ERROR FOCUS."""
 import sys
+
 from google.cloud import logging_v2
 
 client = logging_v2.Client(project="hrmtrain")

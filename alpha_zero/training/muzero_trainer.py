@@ -1057,7 +1057,8 @@ class MuZeroTrainer:
                 and batch.observations_vector_unroll is not None
             ):
                 try:
-                    # Get actual next observation from batch (k-1 index since unroll starts at step 1)
+                    # Get actual next observation from batch
+                    # (k-1 index since unroll starts at step 1)
                     next_obs_spatial = batch.observations_spatial_unroll[k - 1]
                     next_obs_vector = batch.observations_vector_unroll[k - 1]
 

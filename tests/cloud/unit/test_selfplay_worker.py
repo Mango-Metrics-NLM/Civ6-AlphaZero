@@ -7,17 +7,14 @@ Tests the selfplay_worker module used for Vertex AI cloud training.
 from __future__ import annotations
 
 import sys
-from typing import Any
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 import torch
 import torch.nn as nn
 
 from alpha_zero.cloud.gcp.config import GCPConfig, GCSPathConfig
 from alpha_zero.cloud.gcp.storage import ModelMetadata
-
 
 # =============================================================================
 # Mock Classes

@@ -1315,7 +1315,7 @@ class MuZeroMCTS:
         network: torch.nn.Module,
         config: MuZeroMCTSConfig | None = None,
         device: str = "cpu",
-    ) -> "MuZeroMCTS":
+    ) -> MuZeroMCTS:
         """Create MuZeroMCTS with config derived from network.
 
         This factory method ensures the MCTS config matches the network

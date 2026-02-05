@@ -93,7 +93,8 @@ class RAGClient:
                 embedding_function=embedding_func,
             )
             logger.info(
-                f"RAG initialized at {self.config.persist_directory}, collection: {self.config.collection_name}"
+                f"RAG initialized at {self.config.persist_directory}, "
+                f"collection: {self.config.collection_name}"
             )
 
         except Exception as e:

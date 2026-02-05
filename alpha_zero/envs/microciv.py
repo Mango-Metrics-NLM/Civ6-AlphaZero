@@ -115,7 +115,7 @@ class MicroCivEnv(gym.Env):
     UNIT_COSTS = {"warrior": 3, "settler": 5, "archer": 4}
     UNIT_STRENGTH = {"warrior": 20, "settler": 0, "archer": 15}
     UNIT_MOVES = {"warrior": 2, "settler": 2, "archer": 2}
-    
+
     # Explicit type hint for MCTS compatibility
     action_space: spaces.Discrete
 

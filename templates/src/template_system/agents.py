@@ -19,18 +19,17 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from enum import Enum, auto
+from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     ClassVar,
     Generic,
     TypeVar,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable
+    pass
 
 
 logger = logging.getLogger(__name__)

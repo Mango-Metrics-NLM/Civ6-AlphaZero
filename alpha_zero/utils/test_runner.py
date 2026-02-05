@@ -93,7 +93,8 @@ class RunResult:
             "=" * 50,
             f"Status: {self.status.value.upper()}",
             f"Duration: {self.duration_seconds:.2f}s",
-            f"Total: {self.total_tests} | Passed: {self.passed} | Failed: {self.failed} | Errors: {self.errors} | Skipped: {self.skipped}",
+            f"Total: {self.total_tests} | Passed: {self.passed} | "
+            f"Failed: {self.failed} | Errors: {self.errors} | Skipped: {self.skipped}",
         ]
 
         if self.coverage_percent is not None:

@@ -378,12 +378,14 @@ class ConvergenceMonitor:
         improved = False
 
         if total_loss is not None:
-            if self._best_loss is None or total_loss < self._best_loss - self.config.improvement_threshold:
+            threshold = self.config.improvement_threshold
+            if self._best_loss is None or total_loss < self._best_loss - threshold:
                 self._best_loss = total_loss
                 improved = True
 
         if win_rate is not None:
-            if self._best_win_rate is None or win_rate > self._best_win_rate + self.config.improvement_threshold:
+            threshold = self.config.improvement_threshold
+            if self._best_win_rate is None or win_rate > self._best_win_rate + threshold:
                 self._best_win_rate = win_rate
                 improved = True
 
@@ -515,9 +517,11 @@ class ConvergenceMonitor:
 
         # Exploration recommendation
         if status == ConvergenceStatus.STALLED:
-            current_exploration = recent[-1].exploration_rate if recent and recent[-1].exploration_rate else None
+            has_exploration = recent and recent[-1].exploration_rate
+            current_exploration = recent[-1].exploration_rate if has_exploration else None
             if current_exploration:
-                new_exploration = min(1.0, current_exploration * self.config.exploration_boost_factor)
+                boost = self.config.exploration_boost_factor
+                new_exploration = min(1.0, current_exploration * boost)
                 recommendations.append(Recommendation(
                     type=RecommendationType.INCREASE_EXPLORATION,
                     priority=6,
@@ -557,11 +561,12 @@ class ConvergenceMonitor:
                         reason=f"Win rate {avg_win_rate:.1%} exceeds target, advance curriculum",
                         confidence=0.8,
                     ))
-                elif avg_win_rate < self.config.min_win_rate and status == ConvergenceStatus.STALLED:
+                is_stalled = status == ConvergenceStatus.STALLED
+                if avg_win_rate < self.config.min_win_rate and is_stalled:
                     recommendations.append(Recommendation(
                         type=RecommendationType.CURRICULUM_RETREAT,
                         priority=8,
-                        reason=f"Win rate {avg_win_rate:.1%} too low, consider easier curriculum",
+                        reason=f"Win rate {avg_win_rate:.1%} too low, retreat curriculum",
                         confidence=0.7,
                     ))
 
