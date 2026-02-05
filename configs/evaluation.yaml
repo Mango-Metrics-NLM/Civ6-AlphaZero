@@ -1,0 +1,81 @@
+# Model Evaluation Configuration
+# ================================
+# This configuration defines how models are evaluated against baselines.
+# All values can be overridden via environment variables with CIV6AZ_EVAL_ prefix.
+
+experiment_name: "model_evaluation_v1"
+model_checkpoint_path: "checkpoints/latest.pt"
+
+# Baseline configurations
+# Each baseline defines an opponent for evaluation
+baselines:
+  - type: "random"
+    name: "random_baseline"
+    num_games: 100
+    enabled: true
+
+  - type: "heuristic"
+    name: "heuristic_basic"
+    num_games: 100
+    enabled: true
+    heuristic_weights:
+      attack_weight: 1.0
+      defense_weight: 0.8
+      expansion_weight: 1.2
+      production_weight: 0.5
+      exploration_weight: 0.3
+      city_proximity_weight: 0.7
+
+  - type: "heuristic"
+    name: "heuristic_aggressive"
+    num_games: 50
+    enabled: true
+    heuristic_weights:
+      attack_weight: 2.0
+      defense_weight: 0.5
+      expansion_weight: 0.8
+      production_weight: 0.5
+      exploration_weight: 0.2
+      city_proximity_weight: 0.5
+
+  - type: "heuristic"
+    name: "heuristic_defensive"
+    num_games: 50
+    enabled: true
+    heuristic_weights:
+      attack_weight: 0.5
+      defense_weight: 1.5
+      expansion_weight: 1.0
+      production_weight: 0.8
+      exploration_weight: 0.3
+      city_proximity_weight: 1.0
+
+# Diversity analysis configuration
+diversity:
+  enabled: true
+  track_opening_moves: true
+  opening_depth: 10
+  track_game_lengths: true
+  track_victory_types: true
+  track_action_entropy: true
+  track_position_variety: false  # Can be expensive for large boards
+
+# ELO rating settings (integrates with tournament/elo.py)
+elo_enabled: true
+elo_initial_rating: 1500.0
+
+# Execution settings
+parallel_games: 1  # Number of games to run in parallel
+device: "cpu"      # Device for neural network inference (cpu, cuda, cuda:0)
+random_seed: null  # null for non-deterministic, integer for reproducibility
+
+# Output settings
+output_dir: "logs/evaluation"
+save_game_logs: true
+max_game_logs: 50
+tensorboard_enabled: true
+wandb_enabled: false
+
+# Environment settings
+env_board_size: 16
+env_max_turns: 100

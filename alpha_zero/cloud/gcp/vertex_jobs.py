@@ -175,6 +175,7 @@ class VertexAIClient:
         try:
             from google.cloud import aiplatform
 
+
             worker_pool_specs = [spec.to_worker_pool_spec()]
 
             job = aiplatform.CustomJob(
@@ -573,6 +574,7 @@ class VertexTrainingJob:
         training_config = self.config.training
 
         args = [
+
             f"--iteration={iteration}",
             f"--trajectory_iterations={','.join(map(str, trajectory_iterations))}",
             f"--epochs={training_config.epochs_per_iteration}",

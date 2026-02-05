@@ -231,12 +231,13 @@ class TestEliminationConditions:
         checker = EarlyTerminationChecker(config)
 
         # Turn 7 is not on interval (7 % 10 != 0), but elimination should still trigger
+        # Elimination requires BOTH 0 cities AND 0 units
         should_terminate, winner, reason = checker.check(
             turn=7,
             player_units=5,
             player_cities=2,
-            opponent_units=3,
-            opponent_cities=0,  # Opponent eliminated
+            opponent_units=0,  # No units
+            opponent_cities=0,  # No cities = fully eliminated
         )
 
         assert should_terminate is True
@@ -274,12 +275,13 @@ class TestEliminationConditions:
         )
         checker = EarlyTerminationChecker(config)
 
+        # Mutual elimination requires BOTH players to have 0 cities AND 0 units
         should_terminate, winner, reason = checker.check(
             turn=8,
-            player_units=2,
-            player_cities=0,  # Both have 0 cities
-            opponent_units=1,
-            opponent_cities=0,
+            player_units=0,  # No units
+            player_cities=0,  # No cities
+            opponent_units=0,  # No units
+            opponent_cities=0,  # No cities
         )
 
         assert should_terminate is True

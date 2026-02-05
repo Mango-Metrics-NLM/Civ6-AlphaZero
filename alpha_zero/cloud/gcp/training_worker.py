@@ -304,7 +304,6 @@ def main() -> int:
                 "This may indicate corrupted trajectory data."
             )
             return 1
-
         dataloader = DataLoader(
             dataset,
             batch_size=args.batch_size,

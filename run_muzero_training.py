@@ -179,6 +179,13 @@ def self_play_game(
         done = terminated or truncated
         dones.append(done)
 
+    # Append terminal observation (MuZero requires T+1 observations for T actions)
+    observations.append({
+        "spatial": obs["spatial"].copy(),
+        "vector": obs["vector"].copy(),
+        "action_mask": obs["action_mask"].copy(),
+    })
+
     # Compute target values based on game outcome
     winner = info.get("winner")
     game_history_len = len(actions)

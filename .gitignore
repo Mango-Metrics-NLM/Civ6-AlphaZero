@@ -95,6 +95,9 @@ logs/
 # RAG Data (generated vector database only, keep knowledge sources)
 data/knowledge_db/
 
+# Reflection memory data (LATS-style learning)
+data/reflections/
+
 # Weights & Biases
 wandb/
 *.wandb
@@ -121,6 +124,56 @@ temp_log_tail.txt
 nul
 *.log
 
+# ===========================================
+# Vector Databases
+# ===========================================
+# ChromaDB
+chroma_data/
+chroma_db/
+*.chroma
+.chromadb/
+
+# FAISS
+*.faiss
+faiss_index/
+*.index
+
+# SQLite (used by ChromaDB)
+*.sqlite3
+*.sqlite3-journal
+
+# ===========================================
+# Google Cloud
+# ===========================================
+gcloud/
+.gcloud/
+application_default_credentials.json
+service_account*.json
+!service_account.json.template
+.terraform/
+terraform.tfstate*
+
+# ===========================================
+# Additional Artifacts
+# ===========================================
+# TensorBoard alternatives
+tensorboard/
+tb_logs/
+lightning_logs/
+
+# Torch cache
+.torch/
+torch_hub/
+
+# Benchmarks
+.benchmarks/
+*.pstats
+profile_output/
+
+# Test outputs
+test_output/
+test_artifacts/
+
 # Serialized data
 *.pkl
 *.npy
@@ -130,6 +183,14 @@ experiments/
 mlruns/
 ray_results/
 
+# Evaluation reports (generated)
+evaluation_reports/
+*_evaluation_report.json
+*_evaluation_report.md
+
+# Benchmark results (generated)
+benchmark_results/
+*_benchmark.json
 # Test results
 test_results.txt
 test_output.txt

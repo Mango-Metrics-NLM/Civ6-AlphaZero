@@ -173,6 +173,25 @@ class GameTrajectory:
         """Return number of steps in trajectory."""
         return len(self.observations)
 
+    @property
+    def game_length(self) -> int:
+        """Return the game length (number of actions taken)."""
+        return len(self.actions)
+
+    @property
+    def observations_spatial(self) -> np.ndarray:
+        """Stack spatial observations into array of shape (T, C, H, W)."""
+        if not self.observations:
+            return np.array([], dtype=np.float32)
+        return np.stack([obs["spatial"] for obs in self.observations])
+
+    @property
+    def observations_vector(self) -> np.ndarray:
+        """Stack vector observations into array of shape (T, V)."""
+        if not self.observations:
+            return np.array([], dtype=np.float32)
+        return np.stack([obs["vector"] for obs in self.observations])
+
     def __post_init__(self):
         """Validate trajectory after initialization."""
         if len(self.observations) > 0:

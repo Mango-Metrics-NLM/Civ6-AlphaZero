@@ -11,6 +11,7 @@ Victory: Eliminate all enemy cities, or reach turn limit (most cities wins).
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any, SupportsFloat
 
@@ -21,6 +22,8 @@ from gymnasium.core import RenderFrame
 
 from alpha_zero.core.civ6_actions import MicroCivActionSpace
 from alpha_zero.envs.civ6_encoder import MicroCivEncoder
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -236,7 +239,14 @@ class MicroCivEnv(gym.Env):
 
         # Decode and execute action
         action_dict = self.action_space_handler.decode_action(action)
-        reward = self._execute_action(action_dict)
+        reward, action_success, action_error = self._execute_action(action_dict)
+
+        # Log failed actions for debugging
+        if not action_success:
+            logger.warning(
+                f"Turn {self.turn}, Player {self.current_player}: "
+                f"Action {action} ({action_dict.get('type')}) failed: {action_error}"
+            )
 
         # Check victory conditions
         terminated = self._check_victory()
@@ -264,6 +274,10 @@ class MicroCivEnv(gym.Env):
 
         obs = self.get_observation()
         info = self.get_info()
+
+        # Add action execution info for debugging
+        info["action_success"] = action_success
+        info["action_error"] = action_error
 
         return obs, reward, terminated, truncated, info
 
@@ -358,105 +372,150 @@ class MicroCivEnv(gym.Env):
                     return (nx, ny)
         return pos
 
-    def _execute_action(self, action: dict) -> float:
-        """Execute an action and return immediate reward.
+    def _execute_action(self, action: dict) -> tuple[float, bool, str]:
+        """Execute an action and return immediate reward with success status.
 
         Args:
             action: Action dictionary.
 
         Returns:
-            Immediate reward (shaped).
+            Tuple of (reward, success, error_message).
+            - reward: Immediate shaped reward
+            - success: Whether the action was successfully executed
+            - error_message: Description of failure if success is False
         """
         action_type = action.get("type")
         reward = 0.0
 
         if action_type == "end_turn":
             self._end_turn()
+            return reward, True, ""
 
         elif action_type == "move":
             unit_idx = action.get("unit_idx", 0)
             direction = action.get("direction", (0, 0))
             own_units = self._get_player_units(self.current_player)
-            if unit_idx < len(own_units):
-                unit = own_units[unit_idx]
-                if unit.moves_remaining > 0:
-                    new_pos = (
-                        unit.position[0] + direction[0],
-                        unit.position[1] + direction[1],
-                    )
-                    if self._is_valid_move(new_pos):
-                        unit.position = new_pos
-                        if unit.player == self.current_player:
-                            self.visited.add(new_pos)  # Track visitation
-                        unit.moves_remaining -= 1
-                    else:
-                        # Move failed, treat as end of unit's actions to prevent lock
-                        unit.moves_remaining = 0
+
+            if unit_idx >= len(own_units):
+                return 0.0, False, f"Invalid unit_idx {unit_idx} for {len(own_units)} units"
+
+            unit = own_units[unit_idx]
+            if unit.moves_remaining <= 0:
+                return 0.0, False, f"Unit {unit_idx} has no moves remaining"
+
+            new_pos = (
+                unit.position[0] + direction[0],
+                unit.position[1] + direction[1],
+            )
+            if self._is_valid_move(new_pos):
+                unit.position = new_pos
+                if unit.player == self.current_player:
+                    self.visited.add(new_pos)  # Track visitation
+                unit.moves_remaining -= 1
+                return reward, True, ""
+            else:
+                # Move failed, treat as end of unit's actions to prevent lock
+                unit.moves_remaining = 0
+                return 0.0, False, f"Invalid move to {new_pos}"
 
         elif action_type == "attack":
             unit_idx = action.get("unit_idx", 0)
             direction = action.get("direction", (0, 0))
             own_units = self._get_player_units(self.current_player)
-            if unit_idx < len(own_units):
-                unit = own_units[unit_idx]
-                if unit.moves_remaining > 0:
-                    target_pos = (
-                        unit.position[0] + direction[0],
-                        unit.position[1] + direction[1],
-                    )
-                    reward += self._execute_attack(unit, target_pos)
-                    unit.moves_remaining -= 1
+
+            if unit_idx >= len(own_units):
+                return 0.0, False, f"Invalid unit_idx {unit_idx} for {len(own_units)} units"
+
+            unit = own_units[unit_idx]
+            if unit.moves_remaining <= 0:
+                return 0.0, False, f"Unit {unit_idx} has no moves remaining"
+
+            target_pos = (
+                unit.position[0] + direction[0],
+                unit.position[1] + direction[1],
+            )
+
+            # Check if there's a valid target before attempting attack
+            has_defender = any(
+                u.position == target_pos and u.player != unit.player for u in self.units
+            )
+            if not has_defender:
+                return 0.0, False, f"No enemy unit to attack at {target_pos}"
+
+            attack_reward = self._execute_attack(unit, target_pos)
+            reward += attack_reward
+            unit.moves_remaining -= 1
+            return reward, True, ""
 
         elif action_type == "skip":
             unit_idx = action.get("unit_idx", 0)
             own_units = self._get_player_units(self.current_player)
-            if unit_idx < len(own_units):
-                own_units[unit_idx].moves_remaining = 0
+
+            if unit_idx >= len(own_units):
+                return 0.0, False, f"Invalid unit_idx {unit_idx} for {len(own_units)} units"
+
+            own_units[unit_idx].moves_remaining = 0
+            return reward, True, ""
 
         elif action_type == "found_city":
             unit_idx = action.get("unit_idx", 0)
             own_units = self._get_player_units(self.current_player)
-            if unit_idx < len(own_units):
-                unit = own_units[unit_idx]
-                if unit.unit_type == "settler":
-                    # Check for nearby cities
-                    has_nearby_city = any(
-                        abs(c.position[0] - unit.position[0]) <= 3
-                        and abs(c.position[1] - unit.position[1]) <= 3
-                        for c in self.cities
-                    )
-                    if not has_nearby_city:
-                        # Found city
-                        city_name = f"City {self._next_city_id}"
-                        self.cities.append(
-                            City(
-                                id=self._next_city_id,
-                                player=unit.player,
-                                name=city_name,
-                                position=unit.position,
-                            )
-                        )
-                        self._next_city_id += 1
-                        unit.moves_remaining = 0  # Action used
 
-                        # Reward for founding city
-                        reward += 1.0
+            if unit_idx >= len(own_units):
+                return 0.0, False, f"Invalid unit_idx {unit_idx} for {len(own_units)} units"
 
-                        # Remove settler
-                        if unit in self.units:
-                            self.units.remove(unit)
+            unit = own_units[unit_idx]
+            if unit.unit_type != "settler":
+                return 0.0, False, f"Unit {unit_idx} is not a settler"
+
+            # Check for nearby cities
+            has_nearby_city = any(
+                abs(c.position[0] - unit.position[0]) <= 3
+                and abs(c.position[1] - unit.position[1]) <= 3
+                for c in self.cities
+            )
+            if has_nearby_city:
+                return 0.0, False, "Cannot found city near another city"
+
+            # Found city
+            city_name = f"City {self._next_city_id}"
+            self.cities.append(
+                City(
+                    id=self._next_city_id,
+                    player=unit.player,
+                    name=city_name,
+                    position=unit.position,
+                )
+            )
+            self._next_city_id += 1
+            unit.moves_remaining = 0  # Action used
+
+            # Reward for founding city
+            reward += 1.0
+
+            # Remove settler
+            if unit in self.units:
+                self.units.remove(unit)
+
+            return reward, True, ""
 
         elif action_type == "produce":
             city_idx = action.get("city_idx", 0)
             unit_type = action.get("unit_type", "warrior")
             own_cities = self._get_player_cities(self.current_player)
-            if city_idx < len(own_cities):
-                city = own_cities[city_idx]
-                if city.production_queue is None:
-                    city.production_queue = unit_type
-                    reward += 0.01  # Small reward for starting production
 
-        return reward
+            if city_idx >= len(own_cities):
+                return 0.0, False, f"Invalid city_idx {city_idx} for {len(own_cities)} cities"
+
+            city = own_cities[city_idx]
+            if city.production_queue is not None:
+                return 0.0, False, f"City {city_idx} already has production queued"
+
+            city.production_queue = unit_type
+            reward += 0.01  # Small reward for starting production
+            return reward, True, ""
+
+        return 0.0, False, f"Unknown action type: {action_type}"
 
     def _execute_attack(self, attacker: Unit, target_pos: tuple[int, int]) -> float:
         """Execute combat between units.

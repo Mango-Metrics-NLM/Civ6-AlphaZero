@@ -32,3 +32,5 @@ sentence-transformers>=2.2.0
 # Google Cloud / Vertex AI (optional - install for cloud training)
 # google-cloud-aiplatform>=1.38.0
 # google-cloud-storage>=2.13.0
+# google-cloud-logging>=3.5.0
+# google-cloud-monitoring>=2.15.0

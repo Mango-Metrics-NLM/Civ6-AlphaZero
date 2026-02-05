@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 A comprehensive cost optimization system targeting 60-80% cost savings through spot VMs, dynamic GPU scheduling, auto-stop idle instances, and risk mitigation systems.
 
 ##### Cost Monitoring & Budget Enforcement (`alpha_zero/cloud/gcp/cost_monitor.py`)
+
 - **CostMonitorConfig**: Configurable budget limits with environment variables (`CIV6AZ_COST_*`)
   - Daily and total budget limits in USD
   - Alert thresholds (warning at 80%, critical at 95%)
@@ -26,6 +27,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
 - **Exceptions**: `BudgetExceededError` for budget limit handling
 
 ##### Dynamic GPU Scheduler (`alpha_zero/cloud/gcp/gpu_scheduler.py`)
+
 - **GPUSchedulerConfig**: Training phase-aware GPU selection
   - Phase thresholds: Early (0-50%), Middle (50-80%), Late (80-90%), Final (90-100%)
   - Configurable GPU mappings per phase
@@ -37,6 +39,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
   - 42 unit tests
 
 ##### Preemption Handler (`alpha_zero/cloud/gcp/preemption_handler.py`)
+
 - **PreemptionHandlerConfig**: Checkpoint and retry settings
   - 5-minute checkpoint intervals (configurable)
   - Exponential backoff with max 5 retries
@@ -49,6 +52,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
 - **Exceptions**: Enhanced `QuotaExceededError` with fallback configs
 
 ##### Idle Instance Manager (`alpha_zero/cloud/gcp/idle_manager.py`)
+
 - **IdleInstanceConfig**: Idle detection settings
   - Configurable idle threshold (default 15 minutes)
   - GPU utilization threshold (default 10%)
@@ -62,6 +66,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
 - **Exceptions**: `IdleTimeoutError` for recoverable shutdowns
 
 ##### Quota Manager (`alpha_zero/cloud/gcp/quota_manager.py`)
+
 - **QuotaManagerConfig**: Quota tracking settings
   - Warning/critical thresholds (70%/90%)
   - Cache TTL for API responses
@@ -73,6 +78,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
   - Warning and exhaustion callbacks
 
 ##### Memory Guard (`alpha_zero/utils/memory_guard.py`)
+
 - **MemoryGuardConfig**: Memory protection settings
   - Warning/critical/OOM thresholds (70%/85%/95%)
   - Batch reduction factor and minimum batch size
@@ -84,6 +90,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
   - OOM prevention with garbage collection
 
 ##### Convergence Monitor (`alpha_zero/training/convergence_monitor.py`)
+
 - **ConvergenceMonitorConfig**: Training monitoring settings
   - Window size for trend analysis
   - Stall detection threshold
@@ -95,6 +102,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
   - Learning rate reduction suggestions
 
 ##### Bridge Health Checker (`alpha_zero/bridge/health_checker.py`)
+
 - **BridgeHealthConfig**: Health monitoring settings
   - Check interval and timeout configuration
   - Circuit breaker thresholds
@@ -107,6 +115,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
 - **Exceptions**: `CircuitBreakerOpenError`, `OperationTimeoutError`
 
 ##### Unified Cost Optimization Manager (`alpha_zero/cloud/gcp/cost_optimization.py`)
+
 - **CostOptimizationConfig**: Unified configuration
   - Combines all component configs
   - Environment variable support (`CIV6AZ_COST_OPT_*`)
@@ -119,6 +128,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
   - Graceful initialization and shutdown
 
 ##### Test Suite (264 new tests)
+
 - `tests/cloud/unit/test_cost_monitor.py`: Cost monitoring tests (42 tests)
 - `tests/cloud/unit/test_gpu_scheduler.py`: GPU scheduler tests (39 tests)
 - `tests/cloud/unit/test_preemption_handler.py`: Preemption tests (43 tests)
@@ -127,17 +137,159 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
 - All tests pass with comprehensive coverage
 
 ##### Configuration Pattern
+
 All components follow consistent configuration patterns:
+
 - Dataclass-based configs with validation
 - Environment variable support with `CIV6AZ_` prefix
 - YAML file loading support
 - `from_dict()` and `to_dict()` serialization
 - Thread-safe implementations with proper locking
 
+#### Phase 4.1: Model Evaluation Framework
+
+A comprehensive model evaluation system for measuring trained model performance against configurable baselines.
+
+##### Evaluation Module (`alpha_zero/evaluation/`)
+
+- **EvaluationConfig** (`config.py`): Unified configuration for evaluation
+  - Experiment naming and output directory configuration
+  - Board size and max turns settings
+  - ELO rating integration settings
+  - Environment variable support (`CIV6AZ_EVAL_*` prefix)
+
+- **BaselineConfig** (`config.py`): Configuration for baseline opponents
+  - Support for RANDOM, HEURISTIC, and NEURAL_NETWORK baseline types
+  - Per-baseline game count and weight configuration
+  - HeuristicWeights for customizable heuristic behavior
+
+- **DiversityConfig** (`config.py`): Diversity tracking configuration
+  - Opening move tracking with configurable depth
+  - Game length distribution analysis
+
+- **BaselinePlayer** (`baselines.py`): Protocol and implementations
+  - RandomPlayer: Uniform random action selection with seeding
+  - HeuristicPlayer: Configurable weighted heuristic evaluation
+  - NeuralNetworkPlayer: Model checkpoint loading with optional MCTS
+  - BaselineFactory: Factory pattern for baseline creation
+
+- **ModelEvaluator** (`evaluator.py`): Main evaluation orchestrator
+  - Integration with existing ELORatingSystem from tournament/elo.py
+  - GameResult and EvaluationResult dataclasses
+  - play_game(), evaluate_against_baseline(), evaluate_model() methods
+
+- **DiversityTracker** (`diversity.py`): Game diversity analysis
+  - Opening sequence tracking with entropy calculation
+  - Game length statistics (mean, std, min, max)
+  - Baseline-specific diversity breakdowns
+
+- **ReportGenerator** (`reports.py`): Multi-format report generation
+  - EvaluationReport dataclass with full evaluation results
+  - JSON export with to_json() method
+  - Markdown export with to_markdown() method
+
+##### Evaluation Test Suite (62 new tests)
+
+- `tests/unit/test_evaluation/test_config.py`: Configuration validation (10 tests)
+- `tests/unit/test_evaluation/test_baselines.py`: Baseline player tests (15 tests)
+- `tests/unit/test_evaluation/test_diversity.py`: Diversity tracking tests (12 tests)
+- `tests/unit/test_evaluation/test_evaluator.py`: Evaluator tests (14 tests)
+- `tests/unit/test_evaluation/test_reports.py`: Report generation tests (11 tests)
+- `tests/integration/test_evaluation_pipeline.py`: Integration tests (11 tests)
+
+##### Evaluation Configuration (`configs/evaluation.yaml`)
+
+- Complete YAML configuration template
+- Random and heuristic baseline definitions
+- Diversity tracking settings
+- ELO integration settings
+
+#### Phase 4.2: PBT Enhancements
+
+Enhanced Population-Based Training with temperature scheduling and crossover mutations.
+
+##### Temperature Schedule (`alpha_zero/pbt/config.py`)
+
+- **HyperparameterSpace** enhancements:
+  - temperature_initial: Starting temperature for exploration
+  - temperature_final: Ending temperature for exploitation
+  - temperature_decay_steps: Steps over which temperature decays
+  - Updated get_all_params() and serialization methods
+
+##### Crossover Mutation (`alpha_zero/pbt/mutations.py`)
+
+- **CrossoverMutation** class:
+  - BLX-alpha blending crossover (default α=0.5)
+  - Simulated Binary Crossover (SBX) with η=20
+  - Uniform crossover with 50% probability
+  - Automatic fallback to perturbation without parent
+
+- **MutationOperator** enhancements:
+  - CROSSOVER strategy in MutationStrategy enum
+  - set_crossover_parent() method for parent injection
+  - Integration with existing mutation infrastructure
+
+#### Phase 4.3: Performance Optimizations
+
+Research-based optimizations for faster training and improved sample efficiency.
+
+##### Optimizations Module (`alpha_zero/optimizations/`)
+
+- **PlayoutCapRandomizer** (`playout_cap.py`): Playout cap randomization
+  - Geometric, uniform, and exponential cap distributions
+  - Position complexity scaling for root vs non-root nodes
+  - Statistics tracking (total samples, average cap, speedup estimates)
+  - Configurable min/max playouts with geometric_p parameter
+
+- **PolicyTargetPruner** (`policy_pruning.py`): Policy target pruning
+  - Top-k preservation for important actions
+  - Minimum probability threshold filtering
+  - Maximum actions limiting
+  - Entropy-based dynamic thresholding
+  - Action reduction statistics tracking
+
+- **CyclicLRScheduler** (`cyclic_lr.py`): Cyclic learning rate schedules
+  - Five schedule types: triangular, triangular2, exp_range, cosine_annealing, warm_restarts
+  - Momentum cycling with base_momentum and max_momentum
+  - Warmup steps support
+  - Iteration tracking and state serialization
+
+- **AuxiliaryTargetGenerator** (`auxiliary_targets.py`): Auxiliary policy targets
+  - Attention target generation from board positions
+  - Opponent modeling for predicting opponent moves
+  - Game phase prediction (early/mid/late classification)
+  - Future value prediction for N-step lookahead
+  - AuxiliaryLossCalculator for weighted loss computation
+
+- **PerformanceOptimizationsConfig** (`config.py`): Unified configuration
+  - Enable flags for each optimization type
+  - Nested configs for all optimization parameters
+  - fast_preset() and quality_preset() factory methods
+  - YAML serialization and environment variable support
+
+##### Optimizations Test Suite (148 new tests)
+
+- `tests/unit/test_optimizations/test_playout_cap.py`: Playout cap tests (26 tests)
+- `tests/unit/test_optimizations/test_policy_pruning.py`: Policy pruning tests (24 tests)
+- `tests/unit/test_optimizations/test_cyclic_lr.py`: Cyclic LR tests (30 tests)
+- `tests/unit/test_optimizations/test_auxiliary_targets.py`: Auxiliary targets tests (51 tests)
+- `tests/unit/test_optimizations/test_config.py`: Config tests (17 tests)
+- `tests/integration/test_optimizations_integration.py`: Integration tests (17 tests)
+
+##### Optimizations Configuration (`configs/optimizations.yaml`)
+
+- Complete YAML configuration template
+- Playout cap settings with distribution parameters
+- Policy pruning thresholds
+- Cyclic LR schedule configuration
+- Auxiliary target weights
+
 #### Real Civ6 Bridge System
+
 A complete bridge system enabling the AlphaZero agent to play actual Civilization VI through file-based IPC.
 
 ##### Python Bridge (`alpha_zero/bridge/`)
+
 - **config.py**: `BridgeConfig` dataclass with validation
   - Communication directory configuration
   - Polling intervals, timeouts, retry settings
@@ -164,6 +316,7 @@ A complete bridge system enabling the AlphaZero agent to play actual Civilizatio
   - Validation with detailed error reporting
 
 ##### Gymnasium Environment (`alpha_zero/envs/real_civ6_env.py`)
+
 - **RealCiv6Env**: Full Gymnasium-compliant environment
   - Dict observation space: spatial (84, 16, 16), vector (512,), action_mask
   - Discrete action space from hierarchical action encoding
@@ -174,6 +327,7 @@ A complete bridge system enabling the AlphaZero agent to play actual Civilizatio
   - Compatible with all training code
 
 ##### Game Interface (`alpha_zero/interfaces/civ6_interface.py`)
+
 - **Civ6Interface**: Implements `BaseGameInterface`
   - `connect()`, `disconnect()` for session management
   - `reset()`, `step()` for game control
@@ -182,6 +336,7 @@ A complete bridge system enabling the AlphaZero agent to play actual Civilizatio
   - Registered as "civ6" backend with `GameAdapter`
 
 ##### Civilization VI Lua Mod (`mod/AlphaZeroAI/`)
+
 - **AlphaZeroAI.modinfo**: Mod metadata and configuration
   - File references and dependencies
   - Action criteria for enabling AI control
@@ -216,6 +371,7 @@ A complete bridge system enabling the AlphaZero agent to play actual Civilizatio
   - Acknowledgment writing
 
 ##### Test Suite
+
 - **tests/unit/test_bridge.py**: 93 unit tests for bridge components
 - **tests/unit/test_state_converter.py**: State conversion tests
 - **tests/unit/test_action_converter.py**: Action conversion tests
@@ -411,9 +567,11 @@ A comprehensive RAG system for enhancing agent decision-making with external kno
 ### Changed
 
 #### Phase 3: Enhanced Training Pipeline
+
 A comprehensive suite of training improvements designed to accelerate learning convergence and improve agent performance.
 
 ##### Curriculum Learning System (`alpha_zero/utils/curriculum_learning.py`)
+
 - **CurriculumStage**: Dataclass defining difficulty stages with configurable parameters
   - Board size, max turns, opponent strength, starting resources
   - Win rate thresholds for automatic promotion/demotion
@@ -428,6 +586,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
   - Configurable adjustment rates and bounds
 
 ##### Potential-Based Reward Shaping (`alpha_zero/utils/enhanced_rewards.py`)
+
 - **WinConditionEvaluator**: Multi-factor game state evaluation
   - Score advantage assessment with configurable weights
   - City count and production evaluation
@@ -440,6 +599,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
   - Smooth reward signals for faster credit assignment
 
 ##### Environment Tuning (`alpha_zero/utils/environment_tuning.py`)
+
 - **EarlyTerminationConfig**: Configurable early game termination
   - Decisive advantage detection
   - Stalemate prevention
@@ -454,6 +614,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
   - Observation and action space preservation
 
 ##### Training Configuration (`alpha_zero/utils/training_config_enhanced.py`)
+
 - **ParameterSchedule**: Six schedule types for hyperparameter annealing
   - Constant: Fixed value throughout training
   - Step: Discrete value changes at specified iterations
@@ -467,6 +628,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
   - Worker count optimization
 
 ##### Weights & Biases Integration (`alpha_zero/utils/wandb_logger.py`)
+
 - **WandbConfig**: Typed configuration for W&B initialization
   - Project, entity, run name, and tags configuration
   - Mode selection (online/offline/disabled)
@@ -482,6 +644,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
   - `finish()`: Graceful run completion
 
 ##### Enhanced Training Orchestration (`run_enhanced_training.py`)
+
 - **Training Presets**: Pre-configured training profiles
   - Fast: Quick iteration for development (2 iterations, 2 games)
   - Balanced: Standard training (10 iterations, 20 games)
@@ -497,18 +660,22 @@ A comprehensive suite of training improvements designed to accelerate learning c
   - Final summary statistics
 
 ##### Simplified MCTS (`alpha_zero/utils/simple_mcts.py`)
+
 - Lightweight MCTS implementation for evaluation
 - Configurable simulation count
 - Temperature-based action selection
 - Compatible with enhanced training pipeline
 
 #### New Run Scripts
+
 - `run_enhanced_training.py`: Main training orchestration with all Phase 3 features
 - `run_training_wandb.py`: W&B-focused training runner
 - `run_civ6_ai.py`: Simple AI evaluation runner
 
 #### Test Suite Expansion
+
 ##### Unit Tests (14 new files)
+
 - `tests/unit/test_curriculum_learning.py`: Curriculum stage and manager tests
 - `tests/unit/test_enhanced_rewards.py`: Reward shaping validation
 - `tests/unit/test_environment_tuning.py`: Environment wrapper tests
@@ -525,6 +692,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
 - `tests/unit/test_performance.py`: Performance benchmark tests
 
 ##### Integration Tests (6 new files)
+
 - `tests/integration/test_enhanced_training.py`: End-to-end training tests
 - `tests/integration/test_enhanced_training_wandb.py`: W&B integration tests
 - `tests/integration/test_training_pipeline.py`: Full pipeline tests
@@ -533,12 +701,14 @@ A comprehensive suite of training improvements designed to accelerate learning c
 - `tests/integration/test_full_training_cycle.py`: Complete training cycle tests
 
 #### Documentation
+
 - `PLAN_IMPROVE_LEARNING.md`: Implementation plan for Phase 3 improvements
 - `TRAINING_IMPROVEMENTS_TEMPLATE.md`: Template for training experiments
 - `.env.template`: Environment variable template for W&B configuration
 - Updated `CLAUDE.md`: Comprehensive project documentation refresh
 
 #### Modified Files
+
 - **`.gitignore`**: Added W&B directories, training artifacts, profiling files
 - **`alpha_zero/utils/__init__.py`**: Exported all new Phase 3 modules
   - CurriculumStage, CurriculumManager, AdaptiveDifficultyController
@@ -555,6 +725,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
 ### Technical Highlights
 
 #### Design Patterns
+
 - **Dataclass Configuration**: All configuration uses typed dataclasses for IDE support
 - **Factory Pattern**: ParameterSchedule.create() for schedule instantiation
 - **Wrapper Pattern**: TunedEnvironmentWrapper for non-invasive environment modification
@@ -562,12 +733,14 @@ A comprehensive suite of training improvements designed to accelerate learning c
 - **Optional Dependencies**: W&B integration with graceful fallback when unavailable
 
 #### Performance Considerations
+
 - Potential-based reward shaping preserves optimal policy (mathematically proven)
 - Curriculum learning reduces sample complexity through staged difficulty
 - Early termination prevents wasted computation on decided games
 - Batch-aware resource management for memory efficiency
 
 #### Testing Philosophy
+
 - 400+ test methods across 33 test files
 - Unit tests validate individual components in isolation
 - Integration tests verify component interactions

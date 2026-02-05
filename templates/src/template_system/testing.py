@@ -514,6 +514,10 @@ class TestRunner:
                 timeout=self.config.timeout_seconds,
             )
             output = result.stdout + result.stderr
+<<<<<<< HEAD
+=======
+            _ = result.returncode  # Available for debugging if needed
+>>>>>>> origin/HEAD
         except subprocess.TimeoutExpired:
             self._logger.error("Test execution timed out")
             return TestSuiteResult(

@@ -5,6 +5,12 @@ Provides cloud infrastructure components for distributed training:
 - GCS storage for models, trajectories, and checkpoints
 - Vertex AI job management for self-play and training
 - Configuration with environment variable support
+<<<<<<< HEAD
+=======
+- Cost optimization (pipeline caching, spot availability, worker autoscaling)
+- Alerting (Slack, email, W&B)
+- Data lifecycle management
+>>>>>>> origin/HEAD
 
 Usage:
     from alpha_zero.cloud.gcp import GCPConfig, GCSModelStorage
@@ -44,6 +50,69 @@ from alpha_zero.cloud.gcp.vertex_jobs import (
     VertexTrainingJob,
 )
 
+# Phase 6: Scaling Configuration
+from alpha_zero.cloud.gcp.scaling_config import (
+    BudgetTier,
+    CycleTierConfig,
+    EvaluationTierConfig,
+    GPUSpec,
+    ScalingTierConfig,
+    SelfPlayTierConfig,
+    TrainingTierConfig,
+)
+
+# Phase 6: Data Lifecycle
+from alpha_zero.cloud.gcp.lifecycle import (
+    CleanupResult,
+    GCSLifecycleManager,
+    LifecycleConfig,
+    LifecycleRule,
+    RetentionPolicyConfig,
+    StorageClass,
+    get_lifecycle_manager,
+)
+
+# Phase 6: Pipeline Caching
+from alpha_zero.cloud.gcp.pipeline_cache import (
+    CacheEntry,
+    ComponentSignature,
+    ComponentType,
+    PipelineCache,
+    PipelineCacheConfig,
+    get_pipeline_cache,
+)
+
+# Phase 6: Spot Availability
+from alpha_zero.cloud.gcp.spot_availability import (
+    AvailabilityLevel,
+    PreemptionEvent,
+    SpotAvailabilityConfig,
+    SpotAvailabilityTracker,
+    SpotPattern,
+    get_spot_tracker,
+)
+
+# Phase 6: Worker Autoscaling
+from alpha_zero.cloud.gcp.worker_autoscaler import (
+    ScalingAction,
+    ScalingDecision,
+    WorkerAutoscaler,
+    WorkerAutoscalerConfig,
+    WorkerMetrics,
+    get_worker_autoscaler,
+)
+
+# Phase 6: Alert Manager
+from alpha_zero.cloud.gcp.alert_manager import (
+    AlertChannel,
+    AlertEvent,
+    AlertManager,
+    AlertManagerConfig,
+    AlertSeverity,
+    EmailConfig,
+    SlackConfig,
+    get_alert_manager,
+)
 __all__ = [
     # Config
     "GCPConfig",
@@ -70,4 +139,50 @@ __all__ = [
     "VertexAIClient",
     "VertexSelfPlayJob",
     "VertexTrainingJob",
+    # Phase 6: Scaling Configuration
+    "BudgetTier",
+    "GPUSpec",
+    "SelfPlayTierConfig",
+    "TrainingTierConfig",
+    "EvaluationTierConfig",
+    "CycleTierConfig",
+    "ScalingTierConfig",
+    # Phase 6: Data Lifecycle
+    "StorageClass",
+    "RetentionPolicyConfig",
+    "LifecycleRule",
+    "CleanupResult",
+    "LifecycleConfig",
+    "GCSLifecycleManager",
+    "get_lifecycle_manager",
+    # Phase 6: Pipeline Caching
+    "ComponentType",
+    "ComponentSignature",
+    "CacheEntry",
+    "PipelineCacheConfig",
+    "PipelineCache",
+    "get_pipeline_cache",
+    # Phase 6: Spot Availability
+    "AvailabilityLevel",
+    "SpotPattern",
+    "PreemptionEvent",
+    "SpotAvailabilityConfig",
+    "SpotAvailabilityTracker",
+    "get_spot_tracker",
+    # Phase 6: Worker Autoscaling
+    "ScalingAction",
+    "ScalingDecision",
+    "WorkerMetrics",
+    "WorkerAutoscalerConfig",
+    "WorkerAutoscaler",
+    "get_worker_autoscaler",
+    # Phase 6: Alert Manager
+    "AlertSeverity",
+    "AlertChannel",
+    "AlertEvent",
+    "SlackConfig",
+    "EmailConfig",
+    "AlertManagerConfig",
+    "AlertManager",
+    "get_alert_manager",
 ]

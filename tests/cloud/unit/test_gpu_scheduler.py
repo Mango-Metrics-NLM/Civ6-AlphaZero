@@ -19,13 +19,20 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
+<<<<<<< HEAD
 from alpha_zero.cloud.gcp.exceptions import ConfigurationError
+=======
+>>>>>>> origin/HEAD
 from alpha_zero.cloud.gcp.gpu_scheduler import (
     DynamicGPUScheduler,
     GPUSchedulerConfig,
     GPUSelection,
     TrainingPhase,
 )
+<<<<<<< HEAD
+=======
+from alpha_zero.cloud.gcp.exceptions import ConfigurationError
+>>>>>>> origin/HEAD
 
 
 class TestGPUSchedulerConfig:
