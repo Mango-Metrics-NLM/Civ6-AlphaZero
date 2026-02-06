@@ -150,7 +150,7 @@ class ActionSpace:
     Supports action masking for valid action selection.
     """
 
-    def __init__(self, config: ActionSpaceConfig | None = None):
+    def __init__(self, config: ActionSpaceConfig | None = None) -> None:
         """Initialize action space.
 
         Args:
@@ -522,7 +522,7 @@ class MicroCivActionSpace:
     - CITY_PRODUCE: max_cities * num_unit_types
     """
 
-    def __init__(self, board_size: int = 16, max_units: int = 20, max_cities: int = 5):
+    def __init__(self, board_size: int = 16, max_units: int = 20, max_cities: int = 5) -> None:
         """Initialize MicroCiv action space.
 
         Args:

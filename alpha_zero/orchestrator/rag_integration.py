@@ -76,7 +76,7 @@ class RAGIntegration:
         initialized: Whether the RAG system has been initialized.
     """
 
-    def __init__(self, config: RAGConfig):
+    def __init__(self, config: RAGConfig) -> None:
         """Initialize RAG integration.
 
         Args:

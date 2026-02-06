@@ -23,10 +23,9 @@ from alpha_zero.utils.agent_tools import (
     TaskTracker,
 )
 from alpha_zero.utils.config import Civ6Config, ConfigManager, load_config
-from alpha_zero.utils.test_runner import PytestRunner as TestRunner
 
 # Import new utilities
-from alpha_zero.utils.test_runner import RunConfig, PytestRunner
+from alpha_zero.utils.test_runner import PytestRunner, RunConfig
 
 # LLM imports (optional)
 try:
@@ -77,7 +76,7 @@ class TestMicroCivIntegration:
     def test_environment_creation(self):
         """Test creating MicroCiv environment."""
         env = MicroCivEnv(board_size=8)
-        obs, info = env.reset()
+        obs, _info = env.reset()
 
         assert "spatial" in obs
         assert "vector" in obs
@@ -95,7 +94,7 @@ class TestMicroCivIntegration:
 
         if len(valid_indices) > 0:
             action = valid_indices[0]
-            next_obs, reward, terminated, truncated, info = env.step(action)
+            next_obs, reward, _terminated, _truncated, _info = env.step(action)
 
             assert "spatial" in next_obs
             assert isinstance(reward, (int, float))
@@ -361,7 +360,7 @@ class TestFullSystemIntegration:
             vector = torch.tensor(obs["vector"]).unsqueeze(0).float()
 
             with torch.no_grad():
-                policy, value = network(spatial, vector)
+                policy, _value = network(spatial, vector)
 
             # Apply action mask
             action_mask = torch.tensor(obs["action_mask"])

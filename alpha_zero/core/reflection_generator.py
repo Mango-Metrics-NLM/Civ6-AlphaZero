@@ -124,7 +124,7 @@ class GameStateDescriber(Protocol):
 class DefaultGameStateDescriber:
     """Default implementation for describing game states."""
 
-    def __init__(self, action_space: MicroCivActionSpace | None = None):
+    def __init__(self, action_space: MicroCivActionSpace | None = None) -> None:
         """Initialize describer.
 
         Args:
@@ -238,7 +238,7 @@ class DefaultGameStateDescriber:
             # Sample evenly + include first and last
             step = n_examples // (max_states - 2)
             indices = (
-                [0] + list(range(step, n_examples - 1, step))[: max_states - 2] + [n_examples - 1]
+                [0, *list(range(step, n_examples - 1, step))[:max_states - 2], n_examples - 1]
             )
 
         for _i, idx in enumerate(indices):
@@ -287,7 +287,7 @@ class ReflectionGenerator:
         config: ReflectionGeneratorConfig | None = None,
         llm_client: LLMClient | None = None,
         state_describer: GameStateDescriber | None = None,
-    ):
+    ) -> None:
         """Initialize reflection generator.
 
         Args:

@@ -89,9 +89,9 @@ __all__ = [
     # Config (sorted)
     "CloudConfig",
     "CloudEnvironment",
-    "CloudProvider",
     # Protocols (sorted)
     "CloudMonitoringProtocol",
+    "CloudProvider",
     "CloudStorageProtocol",
     "CloudTrainerProtocol",
     "PreemptionHandlerProtocol",

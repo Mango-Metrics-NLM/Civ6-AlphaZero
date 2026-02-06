@@ -121,7 +121,7 @@ class EvaluationPipeline:
         board_size: int = 16,
         max_turns: int = 200,
         seed: int | None = None,
-    ):
+    ) -> None:
         """Initialize evaluation pipeline.
 
         Args:

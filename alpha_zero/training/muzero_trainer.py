@@ -410,7 +410,7 @@ class TrajectoryBuffer:
         self,
         max_trajectories: int = 1000,
         max_positions: int = 500000,
-    ):
+    ) -> None:
         """Initialize trajectory buffer.
 
         Args:
@@ -745,7 +745,7 @@ class MuZeroTrainer:
         network: nn.Module,
         config: MuZeroTrainingConfig | None = None,
         device: str | torch.device = "cpu",
-    ):
+    ) -> None:
         """Initialize MuZero trainer.
 
         Args:
@@ -1076,7 +1076,8 @@ class MuZeroTrainer:
                 and batch.observations_vector_unroll is not None
             ):
                 try:
-                    # Get actual next observation from batch (k-1 index since unroll starts at step 1)
+                    # Get actual next observation from batch
+                    # (k-1 index since unroll starts at step 1)
                     next_obs_spatial = batch.observations_spatial_unroll[k - 1]
                     next_obs_vector = batch.observations_vector_unroll[k - 1]
 
@@ -1272,9 +1273,9 @@ class MuZeroTrainer:
 # =============================================================================
 
 __all__ = [
-    "MuZeroTrainingConfig",
     "GameTrajectory",
+    "MuZeroTrainer",
+    "MuZeroTrainingConfig",
     "TrajectoryBatchSample",
     "TrajectoryBuffer",
-    "MuZeroTrainer",
 ]

@@ -190,7 +190,7 @@ class TrainingCoordinator:
     - Evaluation and checkpointing
     """
 
-    def __init__(self, config: CoordinatorConfig):
+    def __init__(self, config: CoordinatorConfig) -> None:
         """Initialize coordinator.
 
         Args:
@@ -402,7 +402,7 @@ class TrainingCoordinator:
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful shutdown."""
 
-        def signal_handler(signum, frame):
+        def signal_handler(signum, frame) -> None:
             logger.info(f"Received signal {signum}, initiating shutdown...")
             self._shutdown_requested = True
             self.shared_storage.request_stop()
@@ -482,7 +482,7 @@ class TrainingCoordinator:
                     valid = np.where(mask > 0)[0]
                     action = rng.choice(valid) if len(valid) > 0 else 0
 
-                obs, _, terminated, truncated, info = env.step(action)
+                _obs, _, terminated, truncated, info = env.step(action)
 
                 if terminated or truncated:
                     winner = info.get("winner")

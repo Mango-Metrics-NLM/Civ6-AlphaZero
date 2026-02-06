@@ -240,7 +240,7 @@ class CloudEvaluator:
                 valid_actions = np.where(action_mask > 0)[0]
                 action = valid_actions[0] if len(valid_actions) > 0 else 0
 
-            obs, reward, terminated, truncated, info = env.step(action)
+            obs, _reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             move_count += 1
 

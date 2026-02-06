@@ -258,7 +258,7 @@ class CostOptimizationManager:
         config: CostOptimizationConfig | None = None,
         billing_client: Any | None = None,
         storage_backend: Any | None = None,
-    ):
+    ) -> None:
         """Initialize cost optimization manager.
 
         Args:

@@ -274,7 +274,7 @@ class GoalEvaluator:
         if total_capitals <= 1:
             return 1.0 if captured_capitals >= total_capitals else 0.0
 
-        return captured_capitals / total_capitals
+        return float(captured_capitals) / float(total_capitals)
 
     def _evaluate_science_victory(self, state: dict[str, Any]) -> float:
         """Evaluate science victory progress."""

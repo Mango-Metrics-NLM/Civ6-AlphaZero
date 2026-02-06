@@ -35,7 +35,7 @@ class QueryExpansion:
         Returns:
             List of all queries
         """
-        return [self.original] + self.expanded
+        return [self.original, *self.expanded]
 
 
 class QueryEnhancer:
@@ -197,7 +197,7 @@ class QueryEnhancer:
         use_synonyms: bool = True,
         max_expansions: int = 3,
         min_keyword_length: int = 3,
-    ):
+    ) -> None:
         """Initialize query enhancer.
 
         Args:

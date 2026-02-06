@@ -1017,7 +1017,7 @@ class DebugSelfPlayRunner:
 
         self.game_logger.start_game(game_id)
 
-        obs, info = self.env.reset()
+        obs, _info = self.env.reset()
         game_history: list[dict[str, Any]] = []
         step = 0
 
@@ -1140,7 +1140,7 @@ class DebugSelfPlayRunner:
             )
 
             # Take step
-            obs, reward, terminated, truncated, info = self.env.step(action)
+            obs, _reward, terminated, truncated, info = self.env.step(action)
             step += 1
             self.diagnostics.total_steps += 1
 

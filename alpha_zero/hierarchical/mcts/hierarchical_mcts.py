@@ -523,7 +523,7 @@ class HierarchicalMCTS:
         root = MCTSNode(state)
 
         # Get initial policy and value from network
-        priors, value = self._evaluate(state, goals)
+        priors, _value = self._evaluate(state, goals)
 
         # Add Dirichlet noise at root for exploration
         priors = self._add_dirichlet_noise(priors, valid_actions)
@@ -541,7 +541,7 @@ class HierarchicalMCTS:
             while node.is_expanded:
                 if self.config.use_options and node.option_children:
                     # Option selection at higher levels
-                    opt_id, node = node.select_option_child(self.config.c_puct)
+                    _opt_id, node = node.select_option_child(self.config.c_puct)
                 else:
                     # Action selection
                     _, child = node.select_child(self.config.c_puct)
@@ -619,7 +619,7 @@ class HierarchicalMCTS:
 
             # Selection
             while node.is_expanded and node.option_children:
-                opt_id, node = node.select_option_child(self.config.c_puct)
+                _opt_id, node = node.select_option_child(self.config.c_puct)
                 node.virtual_loss += self.config.virtual_loss
                 depth += 1
 

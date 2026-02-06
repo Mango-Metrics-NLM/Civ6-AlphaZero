@@ -8,16 +8,11 @@ from __future__ import annotations
 import math
 import os
 
-import pytest
-
 from alpha_zero.cloud.gcp.scaling_config import (
     BudgetTier,
-    CycleTierConfig,
-    EvaluationTierConfig,
     GPUSpec,
     ScalingTierConfig,
     SelfPlayTierConfig,
-    TrainingTierConfig,
     get_scaling_config,
 )
 

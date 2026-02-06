@@ -299,7 +299,7 @@ class CloudSelfPlayWorker:
             game_history.append(example)
 
             # Take action
-            obs, reward, terminated, truncated, info = env.step(action)
+            obs, _reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             move_count += 1
 

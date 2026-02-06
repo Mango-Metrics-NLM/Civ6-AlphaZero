@@ -184,7 +184,7 @@ class TestGCSModelStorage:
         storage.save_model(simple_model, version=3)
 
         # Load latest (should be v3)
-        state_dict, metadata = storage.load_model()
+        _state_dict, metadata = storage.load_model()
         assert metadata.version == 3
 
     def test_get_latest_version(

@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import os
 
-import pytest
-
 from alpha_zero.training.training_profiler import (
     DiminishingReturnsAnalysis,
     DiminishingReturnsLevel,

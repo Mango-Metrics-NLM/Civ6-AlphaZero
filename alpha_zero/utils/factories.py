@@ -186,7 +186,8 @@ def create_environment(
         max_turns = override_params.get("max_turns", max_turns)
 
     logger.info(
-        f"Creating environment: type={config.type}, board={board_size}x{board_size}, max_turns={max_turns}"
+        f"Creating environment: type={config.type}, "
+        f"board={board_size}x{board_size}, max_turns={max_turns}"
     )
 
     if config.type == "microciv":
@@ -515,7 +516,7 @@ def create_replay_buffer(
     class ReplayBuffer:
         """Simple replay buffer using deque."""
 
-        def __init__(self, max_size: int):
+        def __init__(self, max_size: int) -> None:
             self.buffer: deque[TrainingExample] = deque(maxlen=max_size)
             self.min_size = min_size
 

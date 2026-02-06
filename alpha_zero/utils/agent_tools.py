@@ -82,7 +82,7 @@ class CodeSymbol:
 class CodeExplorer:
     """Utility for exploring and analyzing codebases."""
 
-    def __init__(self, root_path: Path | str | None = None):
+    def __init__(self, root_path: Path | str | None = None) -> None:
         """Initialize explorer.
 
         Args:
@@ -329,7 +329,7 @@ class CodeExplorer:
 class FileManager:
     """Utility for file operations."""
 
-    def __init__(self, root_path: Path | str | None = None):
+    def __init__(self, root_path: Path | str | None = None) -> None:
         """Initialize file manager.
 
         Args:
@@ -499,7 +499,7 @@ class Task:
 class TaskTracker:
     """Track and manage tasks."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize task tracker."""
         self._tasks: dict[str, Task] = {}
         self._counter = 0
@@ -684,7 +684,7 @@ class DebugHelper:
         import time
 
         class Timer:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.start = time.perf_counter()
                 self.elapsed = 0.0
 

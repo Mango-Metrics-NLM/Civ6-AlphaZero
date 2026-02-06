@@ -107,7 +107,7 @@ class StrategyAdvisor:
         llm_client: Any,
         rag: RAGIntegration | None,
         config: StrategyAdvisorConfig,
-    ):
+    ) -> None:
         """Initialize strategy advisor.
 
         Args:

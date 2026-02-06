@@ -505,8 +505,8 @@ class ConstraintManager:
                     for match in func_pattern.finditer(content):
                         if "->" not in match.group():
                             missing_hints.append((file_path, match.group(1)))
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Error checking type hints in {file_path}: {e}")
 
             if missing_hints and len(missing_hints) > len(files) * 0.2:  # More than 20% missing
                 return ConstraintViolation(

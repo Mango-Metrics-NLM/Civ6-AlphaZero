@@ -633,17 +633,17 @@ def is_preempted() -> bool:
 
 
 __all__ = [
-    # Factory function
-    "create_preemption_handler",
-    # Global handler functions
-    "get_preemption_handler",
-    "is_preempted",
     # Mock for testing
     "MockPreemptionHandler",
     # Main classes (sorted)
     "PreemptionHandler",
     "PreemptionHandlerProtocol",
     "PreemptionState",
+    # Factory function
+    "create_preemption_handler",
+    # Global handler functions
+    "get_preemption_handler",
+    "is_preempted",
     # Global handler registration
     "register_preemption_handler",
 ]

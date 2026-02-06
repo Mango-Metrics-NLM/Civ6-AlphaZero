@@ -262,7 +262,7 @@ class TestDiplomacyManager:
         # Can make peace if at war
         relation = manager.get_relation(0, 1)
         relation.relation_type = DiplomacyType.WAR
-        can_peace, reason = manager.can_make_peace(0, 1)
+        can_peace, _reason = manager.can_make_peace(0, 1)
         assert can_peace
 
     def test_apply_action_war(self, manager: DiplomacyManager) -> None:

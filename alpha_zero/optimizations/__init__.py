@@ -63,6 +63,21 @@ from alpha_zero.optimizations.policy_pruning import (
 )
 
 __all__ = [
+    "AuxiliaryLossCalculator",
+    "AuxiliaryTargetGenerator",
+    "AuxiliaryTargets",
+    # Auxiliary targets
+    "AuxiliaryTargetsConfig",
+    "BenchmarkResult",
+    "ComparisonResult",
+    "CycleInfo",
+    # Cyclic LR
+    "CyclicLRConfig",
+    "CyclicLRScheduler",
+    "CyclicScheduleType",
+    "GamePhase",
+    # Benchmarks
+    "OptimizationBenchmark",
     # Main config
     "PerformanceOptimizationsConfig",
     # Playout cap
@@ -71,20 +86,5 @@ __all__ = [
     # Policy pruning
     "PolicyPruningConfig",
     "PolicyTargetPruner",
-    # Cyclic LR
-    "CyclicLRConfig",
-    "CyclicLRScheduler",
-    "CyclicScheduleType",
-    "CycleInfo",
-    # Auxiliary targets
-    "AuxiliaryTargetsConfig",
-    "AuxiliaryTargets",
-    "AuxiliaryTargetGenerator",
-    "AuxiliaryLossCalculator",
-    "GamePhase",
     "create_auxiliary_system",
-    # Benchmarks
-    "OptimizationBenchmark",
-    "BenchmarkResult",
-    "ComparisonResult",
 ]

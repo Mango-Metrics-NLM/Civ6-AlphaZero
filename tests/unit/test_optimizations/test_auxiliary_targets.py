@@ -414,18 +414,18 @@ class TestCreateAuxiliarySystem:
     def test_create_with_config(self):
         """Test creating system with custom config."""
         config = AuxiliaryTargetsConfig(attention_weight=0.5)
-        generator, calculator = create_auxiliary_system(config)
+        _generator, calculator = create_auxiliary_system(config)
         assert calculator.config.attention_weight == 0.5
 
     def test_create_with_dict(self):
         """Test creating system with dict config."""
         config_dict = {"enable_opponent_modeling": False}
-        generator, calculator = create_auxiliary_system(config_dict)
+        generator, _calculator = create_auxiliary_system(config_dict)
         assert generator.config.enable_opponent_modeling is False
 
     def test_create_with_params(self):
         """Test creating system with custom parameters."""
-        generator, calculator = create_auxiliary_system(
+        generator, _calculator = create_auxiliary_system(
             board_size=12,
             action_space_size=500,
             seed=123,

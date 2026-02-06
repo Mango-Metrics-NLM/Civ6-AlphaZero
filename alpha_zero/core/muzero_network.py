@@ -22,7 +22,7 @@ from typing import NamedTuple
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 
 from alpha_zero.core.civ6_network import (
     PolicyHead,
@@ -47,22 +47,22 @@ logger = logging.getLogger(__name__)
 
 # Public API - includes backward-compatible re-exports from losses.py
 __all__ = [
+    "DynamicsNetwork",
+    "DynamicsOutput",
     # Config
     "MuZeroConfig",
     # Network classes
     "MuZeroNetwork",
-    "DynamicsNetwork",
-    "ProjectionHead",
-    "PredictionHead",
-    "ValuePrefixHead",
     # Output types
     "MuZeroOutput",
-    "DynamicsOutput",
+    "PredictionHead",
+    "ProjectionHead",
+    "ValuePrefixHead",
+    "categorical_to_scalar",
+    "compute_consistency_loss",
+    "compute_muzero_loss",
     # Re-exported from losses.py for backward compatibility
     "scalar_to_categorical",
-    "categorical_to_scalar",
-    "compute_muzero_loss",
-    "compute_consistency_loss",
 ]
 
 
@@ -133,7 +133,7 @@ class ActionEmbedding(nn.Module):
         action_space_size: int,
         embedding_dim: int,
         spatial_size: int,
-    ):
+    ) -> None:
         """Initialize action embedding.
 
         Args:
@@ -189,7 +189,7 @@ class DynamicsNetwork(nn.Module):
         num_blocks: int = 4,
         reward_support_size: int = 601,
         use_categorical_reward: bool = True,
-    ):
+    ) -> None:
         """Initialize dynamics network.
 
         Args:
@@ -293,7 +293,7 @@ class RewardHead(nn.Module):
         spatial_size: int,
         support_size: int = 601,
         use_categorical: bool = True,
-    ):
+    ) -> None:
         """Initialize reward head.
 
         Args:
@@ -348,7 +348,7 @@ class ProjectionHead(nn.Module):
         hidden_channels: int,
         spatial_size: int,
         projection_dim: int = 256,
-    ):
+    ) -> None:
         """Initialize projection head.
 
         Args:
@@ -396,7 +396,7 @@ class PredictionHead(nn.Module):
         self,
         projection_dim: int = 256,
         hidden_dim: int = 128,
-    ):
+    ) -> None:
         """Initialize prediction head.
 
         Args:
@@ -435,7 +435,7 @@ class ValuePrefixHead(nn.Module):
         horizon: int = 5,
         support_size: int = 601,
         use_categorical: bool = True,
-    ):
+    ) -> None:
         """Initialize value prefix head.
 
         Args:
@@ -496,7 +496,7 @@ class MuZeroNetwork(nn.Module):
     - Value prefix prediction for credit assignment
     """
 
-    def __init__(self, config: MuZeroConfig | None = None, **kwargs):
+    def __init__(self, config: MuZeroConfig | None = None, **kwargs) -> None:
         """Initialize MuZero network.
 
         Args:

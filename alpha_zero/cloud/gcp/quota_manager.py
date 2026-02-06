@@ -307,7 +307,7 @@ class QuotaManager:
         self,
         config: QuotaManagerConfig | None = None,
         quota_client: Any | None = None,
-    ):
+    ) -> None:
         """Initialize quota manager.
 
         Args:

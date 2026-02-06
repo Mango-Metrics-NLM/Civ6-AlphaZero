@@ -111,7 +111,7 @@ class PopulationManager:
         self,
         config: PBTConfig,
         rng: np.random.Generator | None = None,
-    ):
+    ) -> None:
         """Initialize population manager.
 
         Args:

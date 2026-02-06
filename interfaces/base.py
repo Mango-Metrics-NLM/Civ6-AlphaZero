@@ -485,7 +485,7 @@ class GameInterface(ABC):
     to different game implementations (Civ6, Unciv, etc.).
     """
 
-    def __init__(self, config: InterfaceConfig | None = None):
+    def __init__(self, config: InterfaceConfig | None = None) -> None:
         """Initialize the interface.
 
         Args:

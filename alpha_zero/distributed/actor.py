@@ -99,7 +99,7 @@ class SelfPlayActor:
         config: ActorConfig,
         shared_storage: SharedStorage,
         replay_buffer: DistributedReplayBuffer,
-    ):
+    ) -> None:
         """Initialize actor.
 
         Args:
@@ -496,7 +496,7 @@ def actor_process(
     )
 
     # Handle signals for graceful shutdown
-    def signal_handler(signum, frame):
+    def signal_handler(signum, frame) -> None:
         logger.info(f"Actor {actor_id}: Received signal {signum}")
         storage.request_stop()
 
@@ -532,7 +532,7 @@ class ActorPool:
         actor_config: ActorConfig,
         storage: SharedStorage,
         replay_buffer: DistributedReplayBuffer,
-    ):
+    ) -> None:
         """Initialize actor pool.
 
         Args:

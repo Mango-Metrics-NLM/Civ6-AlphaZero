@@ -167,7 +167,7 @@ class RAGAgentWorkflow:
         vector_store: VectorStore,
         embedding_generator: EmbeddingGenerator,
         config: RAGConfig | None = None,
-    ):
+    ) -> None:
         """Initialize RAG agent workflow.
 
         Args:

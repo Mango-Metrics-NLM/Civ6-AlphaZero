@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, SupportsFloat
+from typing import Any, ClassVar, SupportsFloat
 
 import gymnasium as gym
 import numpy as np
@@ -112,12 +112,15 @@ class MicroCivEnv(gym.Env):
     - Flat discrete space covering all possible actions
     """
 
-    metadata = {"render_modes": ["ansi"]}
+    metadata: ClassVar[dict[str, list[str]]] = {"render_modes": ["ansi"]}
 
     # Unit production costs (turns)
-    UNIT_COSTS = {"warrior": 3, "settler": 5, "archer": 4}
-    UNIT_STRENGTH = {"warrior": 20, "settler": 0, "archer": 15}
-    UNIT_MOVES = {"warrior": 2, "settler": 2, "archer": 2}
+    UNIT_COSTS: ClassVar[dict[str, int]] = {"warrior": 3, "settler": 5, "archer": 4}
+    UNIT_STRENGTH: ClassVar[dict[str, int]] = {"warrior": 20, "settler": 0, "archer": 15}
+    UNIT_MOVES: ClassVar[dict[str, int]] = {"warrior": 2, "settler": 2, "archer": 2}
+
+    # Explicit type hint for MCTS compatibility
+    action_space: spaces.Discrete
 
     def __init__(
         self,
@@ -125,7 +128,7 @@ class MicroCivEnv(gym.Env):
         max_turns: int = 200,
         render_mode: str | None = None,
         seed: int | None = None,
-    ):
+    ) -> None:
         """Initialize MicroCiv environment.
 
         Args:

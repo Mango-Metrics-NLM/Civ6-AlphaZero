@@ -73,7 +73,7 @@ class VertexTrainer:
         *,
         allow_fallback: bool = False,
         force_mock: bool = False,
-    ):
+    ) -> None:
         """Initialize Vertex AI trainer.
 
         Args:

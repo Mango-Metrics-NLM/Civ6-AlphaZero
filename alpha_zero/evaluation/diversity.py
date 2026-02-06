@@ -104,7 +104,7 @@ class DiversityTracker:
     - Action entropy over time (how predictable are actions)
     """
 
-    def __init__(self, config: DiversityConfig):
+    def __init__(self, config: DiversityConfig) -> None:
         """Initialize diversity tracker.
 
         Args:

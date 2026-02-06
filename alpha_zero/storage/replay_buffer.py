@@ -439,7 +439,7 @@ class InMemoryReplayBuffer:
 
 
 __all__ = [
+    "InMemoryReplayBuffer",
     "ReplayBufferConfig",
     "StorageReplayBuffer",
-    "InMemoryReplayBuffer",
 ]

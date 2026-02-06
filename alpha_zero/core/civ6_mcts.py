@@ -20,11 +20,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Protocol, SupportsFloat
 
 import numpy as np
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 
 from alpha_zero.core.mcts_constants import (
     DEFAULT_C_VISIT,
@@ -153,7 +153,7 @@ class MCTSEnvironment(Protocol):
         """Create a deep copy of the environment for simulation."""
         ...
 
-    def step(self, action: int) -> tuple[Any, float, bool, bool, dict[str, Any]]:
+    def step(self, action: int) -> tuple[Any, SupportsFloat, bool, bool, dict[str, Any]]:
         """Execute action and return (obs, reward, terminated, truncated, info)."""
         ...
 
@@ -358,7 +358,7 @@ class Civ6MCTS:
         config: MCTSConfig | None = None,
         device: str = "cpu",
         reflection_memory: Any | None = None,
-    ):
+    ) -> None:
         """Initialize MCTS.
 
         Args:
@@ -471,6 +471,9 @@ class Civ6MCTS:
                 node.value_sum += value
                 value = -value  # Flip for opponent
 
+            # Explicit cleanup to prevent memory accumulation
+            del sim_env
+
         # Get action probabilities from visit counts
         action_probs = self._get_action_probs(root, env.action_space.n)
 
@@ -523,8 +526,8 @@ class Civ6MCTS:
                     }
                     adjustment = self._reflection_memory.get_value_adjustment_sync(state, action)
                     value_scalar = value_scalar + adjustment
-            except Exception:
-                pass  # Silently ignore reflection errors to not disrupt MCTS
+            except Exception as e:
+                logger.debug(f"Reflection memory adjustment failed: {e}")
 
         return policy, value_scalar
 
@@ -627,7 +630,7 @@ class SimpleMCTS:
         num_simulations: int = 50,
         c_puct: float = 1.5,
         rollout_depth: int = DEFAULT_ROLLOUT_DEPTH,
-    ):
+    ) -> None:
         """Initialize simple MCTS.
 
         Args:
@@ -1007,7 +1010,7 @@ class GumbelMCTS:
         network: MCTSNetwork,
         config: GumbelMCTSConfig | None = None,
         device: str = "cpu",
-    ):
+    ) -> None:
         """Initialize Gumbel MCTS.
 
         Args:
@@ -1231,7 +1234,7 @@ class GumbelMCTS:
         sim_env = env.clone()
 
         # Take the initial action
-        _, reward, terminated, truncated, _ = sim_env.step(action)
+        _, _reward, terminated, truncated, _ = sim_env.step(action)
 
         node = root.children.get(action)
         if node is None:
@@ -1390,6 +1393,9 @@ class MuZeroMCTSConfig:
         use_sequential_halving: Use sequential halving for simulation allocation.
         temperature: Temperature for action selection.
         discount: Discount factor for value computation.
+        use_categorical_reward: If True, network outputs categorical reward distribution.
+            If False, network outputs scalar reward. Must match network configuration.
+        reward_support_size: Size of categorical support (only used if use_categorical_reward=True).
     """
 
     num_simulations: int = 50
@@ -1401,6 +1407,8 @@ class MuZeroMCTSConfig:
     use_sequential_halving: bool = True
     temperature: float = 1.0
     discount: float = 0.997
+    use_categorical_reward: bool = True
+    reward_support_size: int = 601
 
 
 @dataclass
@@ -1520,7 +1528,7 @@ class MuZeroMCTS:
         network: MuZeroNetworkProtocol,
         config: MuZeroMCTSConfig | None = None,
         device: str = "cpu",
-    ):
+    ) -> None:
         """Initialize MuZero MCTS.
 
         Args:
@@ -1531,6 +1539,115 @@ class MuZeroMCTS:
         self.network = network
         self.config = config or MuZeroMCTSConfig()
         self.device = device
+
+    @classmethod
+    def from_network(
+        cls,
+        network: torch.nn.Module,
+        config: MuZeroMCTSConfig | None = None,
+        device: str = "cpu",
+    ) -> MuZeroMCTS:
+        """Create MuZeroMCTS with config derived from network.
+
+        This factory method ensures the MCTS config matches the network
+        configuration for categorical reward settings.
+
+        Args:
+            network: MuZeroNetwork instance.
+            config: Base config (reward settings will be overridden from network).
+            device: Device for inference.
+
+        Returns:
+            MuZeroMCTS instance with consistent configuration.
+        """
+        base_config = config or MuZeroMCTSConfig()
+
+        # Extract network config if available
+        if hasattr(network, "config"):
+            net_config = network.config
+            synced_config = MuZeroMCTSConfig(
+                num_simulations=base_config.num_simulations,
+                c_puct=base_config.c_puct,
+                dirichlet_alpha=base_config.dirichlet_alpha,
+                dirichlet_epsilon=base_config.dirichlet_epsilon,
+                use_gumbel=base_config.use_gumbel,
+                num_sampled_actions=base_config.num_sampled_actions,
+                use_sequential_halving=base_config.use_sequential_halving,
+                temperature=base_config.temperature,
+                discount=base_config.discount,
+                # Sync with network config
+                use_categorical_reward=getattr(net_config, "use_categorical_reward", True),
+                reward_support_size=getattr(net_config, "reward_support_size", 601),
+            )
+            return cls(network, synced_config, device)
+
+        return cls(network, base_config, device)
+
+    def _convert_reward_to_scalar(self, reward: torch.Tensor) -> float:
+        """Convert network reward output to scalar value.
+
+        Handles both categorical and scalar reward formats based on config.
+
+        Args:
+            reward: Reward tensor from network. Expected shapes:
+                - Categorical: (B, support_size) or (support_size,)
+                - Scalar: (B,) or (B, 1) or scalar
+
+        Returns:
+            Scalar reward value.
+
+        Raises:
+            ValueError: If reward shape doesn't match expected format.
+        """
+        if self.config.use_categorical_reward:
+            # Expect categorical distribution (B, support_size) or (support_size,)
+            from alpha_zero.core.muzero_network import categorical_to_scalar
+
+            if reward.dim() == 0:
+                raise ValueError(
+                    f"use_categorical_reward=True but got scalar reward with shape {reward.shape}"
+                )
+            elif reward.dim() == 1:
+                # Shape (support_size,) - single sample without batch dim
+                # Or shape (B,) where B == support_size (ambiguous - assume categorical)
+                if reward.shape[0] == self.config.reward_support_size:
+                    scalar_reward = categorical_to_scalar(
+                        reward.unsqueeze(0),
+                        apply_softmax=True,
+                    )
+                    return scalar_reward[0].item()
+                else:
+                    raise ValueError(
+                        f"Expected categorical reward with support_size={self.config.reward_support_size}, "
+                        f"got shape {reward.shape}"
+                    )
+            elif reward.dim() == 2:
+                # Shape (B, support_size)
+                if reward.shape[1] != self.config.reward_support_size:
+                    raise ValueError(
+                        f"Expected categorical reward with support_size={self.config.reward_support_size}, "
+                        f"got shape {reward.shape}"
+                    )
+                scalar_reward = categorical_to_scalar(
+                    reward,
+                    apply_softmax=True,
+                )
+                return scalar_reward[0].item()
+            else:
+                raise ValueError(f"Unexpected categorical reward shape: {reward.shape}")
+        else:
+            # Expect scalar reward: shape (), (1,), (B,), or (B, 1)
+            if reward.dim() == 0:
+                return reward.item()
+            elif reward.dim() == 1:
+                return reward[0].item()
+            elif reward.dim() == 2 and reward.shape[1] == 1:
+                return reward[0, 0].item()
+            else:
+                raise ValueError(
+                    f"use_categorical_reward=False but got unexpected reward shape {reward.shape}. "
+                    f"Expected scalar with shape (), (1,), (B,), or (B, 1)"
+                )
 
     def search(
         self,
@@ -1864,17 +1981,7 @@ class MuZeroMCTS:
             )
 
         node.hidden_state = next_hidden
-
-        # Handle categorical vs scalar reward
-        if reward.dim() == 0:
-            node.reward = reward.item()
-        elif reward.dim() == 1 and reward.shape[0] == 1:
-            node.reward = reward[0].item()
-        else:
-            from alpha_zero.core.muzero_network import categorical_to_scalar
-
-            scalar_reward = categorical_to_scalar(reward, apply_softmax=True)
-            node.reward = scalar_reward[0].item()
+        node.reward = self._convert_reward_to_scalar(reward)
 
     def _expand_leaf(
         self,
@@ -1932,20 +2039,7 @@ class MuZeroMCTS:
             )
 
         node.hidden_state = next_hidden
-
-        # Handle categorical vs scalar reward
-        if reward.dim() == 0:
-            node.reward = reward.item()
-        elif reward.dim() == 1 and reward.shape[0] == 1:
-            # Scalar reward with batch dim
-            node.reward = reward[0].item()
-        else:
-            # Categorical reward - convert to scalar
-            # Import here to avoid circular dependency
-            from alpha_zero.core.muzero_network import categorical_to_scalar
-
-            scalar_reward = categorical_to_scalar(reward, apply_softmax=True)
-            node.reward = scalar_reward[0].item()
+        node.reward = self._convert_reward_to_scalar(reward)
 
         # Get valid actions and expand
         valid_actions = np.where(action_mask > 0)[0].tolist()

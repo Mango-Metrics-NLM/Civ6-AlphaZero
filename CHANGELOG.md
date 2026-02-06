@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 A comprehensive cost optimization system targeting 60-80% cost savings through spot VMs, dynamic GPU scheduling, auto-stop idle instances, and risk mitigation systems.
 
 ##### Cost Monitoring & Budget Enforcement (`alpha_zero/cloud/gcp/cost_monitor.py`)
+
 - **CostMonitorConfig**: Configurable budget limits with environment variables (`CIV6AZ_COST_*`)
   - Daily and total budget limits in USD
   - Alert thresholds (warning at 80%, critical at 95%)
@@ -26,6 +27,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
 - **Exceptions**: `BudgetExceededError` for budget limit handling
 
 ##### Dynamic GPU Scheduler (`alpha_zero/cloud/gcp/gpu_scheduler.py`)
+
 - **GPUSchedulerConfig**: Training phase-aware GPU selection
   - Phase thresholds: Early (0-50%), Middle (50-80%), Late (80-90%), Final (90-100%)
   - Configurable GPU mappings per phase
@@ -37,6 +39,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
   - 42 unit tests
 
 ##### Preemption Handler (`alpha_zero/cloud/gcp/preemption_handler.py`)
+
 - **PreemptionHandlerConfig**: Checkpoint and retry settings
   - 5-minute checkpoint intervals (configurable)
   - Exponential backoff with max 5 retries
@@ -49,6 +52,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
 - **Exceptions**: Enhanced `QuotaExceededError` with fallback configs
 
 ##### Idle Instance Manager (`alpha_zero/cloud/gcp/idle_manager.py`)
+
 - **IdleInstanceConfig**: Idle detection settings
   - Configurable idle threshold (default 15 minutes)
   - GPU utilization threshold (default 10%)
@@ -62,6 +66,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
 - **Exceptions**: `IdleTimeoutError` for recoverable shutdowns
 
 ##### Quota Manager (`alpha_zero/cloud/gcp/quota_manager.py`)
+
 - **QuotaManagerConfig**: Quota tracking settings
   - Warning/critical thresholds (70%/90%)
   - Cache TTL for API responses
@@ -73,6 +78,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
   - Warning and exhaustion callbacks
 
 ##### Memory Guard (`alpha_zero/utils/memory_guard.py`)
+
 - **MemoryGuardConfig**: Memory protection settings
   - Warning/critical/OOM thresholds (70%/85%/95%)
   - Batch reduction factor and minimum batch size
@@ -84,6 +90,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
   - OOM prevention with garbage collection
 
 ##### Convergence Monitor (`alpha_zero/training/convergence_monitor.py`)
+
 - **ConvergenceMonitorConfig**: Training monitoring settings
   - Window size for trend analysis
   - Stall detection threshold
@@ -95,6 +102,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
   - Learning rate reduction suggestions
 
 ##### Bridge Health Checker (`alpha_zero/bridge/health_checker.py`)
+
 - **BridgeHealthConfig**: Health monitoring settings
   - Check interval and timeout configuration
   - Circuit breaker thresholds
@@ -107,6 +115,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
 - **Exceptions**: `CircuitBreakerOpenError`, `OperationTimeoutError`
 
 ##### Unified Cost Optimization Manager (`alpha_zero/cloud/gcp/cost_optimization.py`)
+
 - **CostOptimizationConfig**: Unified configuration
   - Combines all component configs
   - Environment variable support (`CIV6AZ_COST_OPT_*`)
@@ -119,6 +128,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
   - Graceful initialization and shutdown
 
 ##### Test Suite (264 new tests)
+
 - `tests/cloud/unit/test_cost_monitor.py`: Cost monitoring tests (42 tests)
 - `tests/cloud/unit/test_gpu_scheduler.py`: GPU scheduler tests (39 tests)
 - `tests/cloud/unit/test_preemption_handler.py`: Preemption tests (43 tests)
@@ -127,7 +137,9 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
 - All tests pass with comprehensive coverage
 
 ##### Configuration Pattern
+
 All components follow consistent configuration patterns:
+
 - Dataclass-based configs with validation
 - Environment variable support with `CIV6AZ_` prefix
 - YAML file loading support

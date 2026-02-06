@@ -25,7 +25,7 @@ import asyncio
 import logging
 import os
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 import gymnasium as gym
 import numpy as np
@@ -157,13 +157,13 @@ class RealCiv6Env(gym.Env):
         >>> env.close()
     """
 
-    metadata = {
+    metadata: ClassVar[dict[str, list[str] | int]] = {
         "render_modes": ["human"],
         "render_fps": 1,
     }
 
     # Default reward configuration (use RewardConfig for customization)
-    DEFAULT_REWARD_CONFIG: RewardConfig = RewardConfig()
+    DEFAULT_REWARD_CONFIG: ClassVar[RewardConfig] = RewardConfig()
 
     def __init__(
         self,
@@ -176,7 +176,7 @@ class RealCiv6Env(gym.Env):
         action_timeout: float = 30.0,
         invalid_action_penalty: float = -0.1,
         reward_config: RewardConfig | dict[str, float] | None = None,
-    ):
+    ) -> None:
         """Initialize the Civ6 environment.
 
         Args:
@@ -692,7 +692,7 @@ class MockCiv6Env(RealCiv6Env):
     Uses MockFileBridge instead of real file I/O.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         """Initialize mock environment."""
         super().__init__(**kwargs)
 

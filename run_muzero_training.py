@@ -165,7 +165,7 @@ def self_play_game(
         })
 
         # Get MCTS policy
-        action_probs, root_value = mcts.search(obs, obs["action_mask"], add_noise=True)
+        action_probs, _root_value = mcts.search(obs, obs["action_mask"], add_noise=True)
         policies.append(action_probs.copy())
 
         # Select action

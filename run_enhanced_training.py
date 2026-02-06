@@ -128,7 +128,7 @@ def self_play_game_enhanced(
         Tuple of (training examples, game stats)
     """
     examples = []
-    obs, info = env.reset()
+    obs, _info = env.reset()
 
     if reward_shaper:
         reward_shaper.reset()

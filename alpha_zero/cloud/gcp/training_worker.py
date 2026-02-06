@@ -61,7 +61,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning_rate", type=float, default=0.001, help="Learning rate")
     parser.add_argument("--checkpoint_interval", type=int, default=1000, help="Steps between checkpoints")
     parser.add_argument("--resume_from", type=str, default=None, help="Checkpoint to resume from")
-    parser.add_argument("--mode", type=str, default="training", help="Worker mode (training)")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
     return parser.parse_args()
 
@@ -75,10 +74,12 @@ def load_trajectories(
     """Load trajectories from specified iterations."""
     if dry_run:
         logger.info("Dry run: creating dummy trajectories")
-        # States must match expected shape: B, C=64, H=10, W=10 -> flattened = 6400
+        # Spatial: B, C=64, H=10, W=10 -> flattened = 6400
+        # Vector: B, V=64
         return [
             {
-                "states": [[0] * (64 * 10 * 10)],
+                "spatial": [[0.0] * (64 * 10 * 10)],  # Spatial features
+                "vector": [[0.0] * 64],               # Vector features
                 "policies": [[0.01] * 100],
                 "rewards": [0.5],
             }
@@ -99,34 +100,74 @@ def load_trajectories(
 
 def create_model(dry_run: bool = False) -> torch.nn.Module:
     """Create model architecture."""
-    from alpha_zero.network.transformer_network import TransformerPolicyValueNet
+    from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
-    return TransformerPolicyValueNet(
-        state_channels=64,
-        state_height=10,
-        state_width=10,
-        num_actions=100,
+    model_config = TransformerConfig(
+        spatial_channels=64,
+        spatial_size=10,
+        vector_dim=64,
+        action_space_size=100,
     )
+    return Civ6TransformerNetwork(config=model_config)
 
 
-def prepare_dataset(trajectories: list[dict]) -> TensorDataset:
-    """Convert trajectories to PyTorch dataset."""
-    states = []
+def prepare_dataset(
+    trajectories: list[dict],
+    vector_dim: int | None = None,
+) -> TensorDataset:
+    """Convert trajectories to PyTorch dataset.
+
+    Args:
+        trajectories: List of trajectory dictionaries.
+        vector_dim: Vector dimension for legacy format handling.
+            If None, uses default from TransformerConfig.
+
+    Returns:
+        TensorDataset with spatial, vector, policy, and value tensors.
+    """
+    # Get vector_dim from config if not specified
+    if vector_dim is None:
+        from alpha_zero.core.transformer_network import TransformerConfig
+        vector_dim = TransformerConfig().vector_dim
+
+    spatial_list = []
+    vector_list = []
     policies = []
     values = []
 
+    legacy_format_warned = False
+
     for traj in trajectories:
-        for i, state in enumerate(traj["states"]):
-            states.append(state)
-            policies.append(traj["policies"][i])
-            values.append(traj["rewards"][i])
+        # Handle both old format (states) and new format (spatial + vector)
+        if "spatial" in traj:
+            for i, spatial in enumerate(traj["spatial"]):
+                spatial_list.append(spatial)
+                vector_list.append(traj["vector"][i])
+                policies.append(traj["policies"][i])
+                values.append(traj["rewards"][i])
+        else:
+            # Legacy format: split states into spatial and dummy vector
+            if not legacy_format_warned:
+                logger.warning(
+                    "Legacy trajectory format detected (missing 'spatial' key). "
+                    "Using zero-filled vector of dimension %d. "
+                    "Consider re-generating trajectories with updated selfplay worker.",
+                    vector_dim,
+                )
+                legacy_format_warned = True
+            for i, state in enumerate(traj["states"]):
+                spatial_list.append(state)
+                vector_list.append([0.0] * vector_dim)
+                policies.append(traj["policies"][i])
+                values.append(traj["rewards"][i])
 
     # Convert to tensors
-    states_tensor = torch.tensor(states, dtype=torch.float32)
+    spatial_tensor = torch.tensor(spatial_list, dtype=torch.float32)
+    vector_tensor = torch.tensor(vector_list, dtype=torch.float32)
     policies_tensor = torch.tensor(policies, dtype=torch.float32)
     values_tensor = torch.tensor(values, dtype=torch.float32).unsqueeze(-1)
 
-    return TensorDataset(states_tensor, policies_tensor, values_tensor)
+    return TensorDataset(spatial_tensor, vector_tensor, policies_tensor, values_tensor)
 
 
 def train_epoch(
@@ -146,17 +187,18 @@ def train_epoch(
     total_value_loss = 0.0
     num_batches = 0
 
-    for states, target_policies, target_values in dataloader:
-        states = states.to(device)
+    for spatial, vector, target_policies, target_values in dataloader:
+        spatial = spatial.to(device)
+        vector = vector.to(device)
         target_policies = target_policies.to(device)
         target_values = target_values.to(device)
 
         # Forward pass
-        # Reshape states for transformer input
-        batch_size = states.shape[0]
-        states = states.view(batch_size, 64, 10, 10)  # B, C, H, W
+        # Reshape spatial for transformer input
+        batch_size = spatial.shape[0]
+        spatial = spatial.view(batch_size, 64, 10, 10)  # B, C, H, W
 
-        policy_logits, value = model(states)
+        policy_logits, value = model(spatial, vector)
 
         # Policy loss (cross-entropy)
         policy_log_probs = torch.log_softmax(policy_logits, dim=-1)
@@ -268,8 +310,26 @@ def main() -> int:
         # Load trajectories
         trajectories = load_trajectories(config, trajectory_iterations, dry_run=args.dry_run)
 
+        # Validate we have data to train on
+        if not trajectories:
+            logger.error(
+                "No trajectories found for iterations %s. "
+                "You must run self-play first to generate training data:\n"
+                "  python -m alpha_zero.cloud.gcp.cli selfplay --iteration %d --wait",
+                trajectory_iterations,
+                args.iteration,
+            )
+            return 1
+
         # Prepare dataset
         dataset = prepare_dataset(trajectories)
+
+        if len(dataset) == 0:
+            logger.error(
+                "Dataset is empty after processing trajectories. "
+                "This may indicate corrupted trajectory data."
+            )
+            return 1
         dataloader = DataLoader(
             dataset,
             batch_size=args.batch_size,
@@ -349,7 +409,7 @@ def main() -> int:
         total_time = time.time() - start_time
         logger.info("Training complete in %.1f seconds", total_time)
 
-        uri, version = save_final_model(config, model, args.iteration, args.dry_run)
+        _uri, version = save_final_model(config, model, args.iteration, args.dry_run)
         logger.info("Saved final model version %d", version)
 
         # Cleanup old checkpoints

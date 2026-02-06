@@ -114,7 +114,7 @@ class GameHistoryItem(TypedDict):
 class ReplayBuffer:
     """Replay buffer for storing training examples."""
 
-    def __init__(self, max_size: int = 50000):
+    def __init__(self, max_size: int = 50000) -> None:
         """Initialize replay buffer.
 
         Args:
@@ -150,7 +150,7 @@ class ReplayBuffer:
 class ReplayDataset(Dataset):
     """PyTorch dataset for replay buffer."""
 
-    def __init__(self, examples: list[TrainingExample]):
+    def __init__(self, examples: list[TrainingExample]) -> None:
         """Initialize dataset.
 
         Args:
@@ -396,7 +396,7 @@ def evaluate_against_random(
                 valid = np.where(mask > 0)[0]
                 action = rng.choice(valid) if len(valid) > 0 else 0
 
-            obs, _, terminated, truncated, info = env.step(action)
+            _obs, _, terminated, truncated, info = env.step(action)
 
             if terminated or truncated:
                 winner = info.get("winner")

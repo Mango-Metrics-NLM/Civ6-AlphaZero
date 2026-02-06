@@ -452,7 +452,7 @@ class SequentialTester:
         else:
             win_rate = 0.5
 
-        ci_low, ci_high = self.get_confidence_interval()
+        _ci_low, _ci_high = self.get_confidence_interval()
 
         # Calculate confidence from p-value
         confidence = 1.0 - self._calculate_p_value()

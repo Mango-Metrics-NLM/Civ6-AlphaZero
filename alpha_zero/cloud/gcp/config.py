@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class VertexTier(str, Enum):
     """Vertex AI pricing tier."""
 
-    BUDGET = "budget"  # T4 self-play + L4 training
+    BUDGET = "budget"  # T4 for both self-play and training
     ON_DEMAND = "ondemand"  # A100 for both
 
 
@@ -88,8 +88,8 @@ class TrainingWorkerConfig:
         epochs_per_iteration: Training epochs per iteration.
     """
 
-    machine_type: str = "g2-standard-8"
-    accelerator_type: str = "NVIDIA_L4"
+    machine_type: str = "n1-standard-8"
+    accelerator_type: str = "NVIDIA_TESLA_T4"
     accelerator_count: int = 1
     spot: bool = False
     checkpoint_interval: int = 1000
@@ -97,10 +97,10 @@ class TrainingWorkerConfig:
 
     @classmethod
     def budget_preset(cls) -> TrainingWorkerConfig:
-        """Create budget tier configuration (L4 GPU)."""
+        """Create budget tier configuration (T4 GPU for better quota availability)."""
         return cls(
-            machine_type="g2-standard-8",
-            accelerator_type="NVIDIA_L4",
+            machine_type="n1-standard-8",
+            accelerator_type="NVIDIA_TESLA_T4",
             accelerator_count=1,
             spot=False,
         )

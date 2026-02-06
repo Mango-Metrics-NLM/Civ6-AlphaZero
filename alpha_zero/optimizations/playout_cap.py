@@ -168,7 +168,7 @@ class PlayoutCapRandomizer:
         config: PlayoutCapConfig,
         rng: np.random.Generator | None = None,
         complexity_fn: Callable[[dict[str, np.ndarray]], float] | None = None,
-    ):
+    ) -> None:
         """Initialize playout cap randomizer.
 
         Args:

@@ -149,7 +149,7 @@ class PolicyTargetPruner:
         >>> # Use pruned_policy as training target
     """
 
-    def __init__(self, config: PolicyPruningConfig):
+    def __init__(self, config: PolicyPruningConfig) -> None:
         """Initialize policy pruner.
 
         Args:

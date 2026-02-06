@@ -191,7 +191,6 @@ evaluation_reports/
 # Benchmark results (generated)
 benchmark_results/
 *_benchmark.json
-
 # Test results
 test_results.txt
 test_output.txt

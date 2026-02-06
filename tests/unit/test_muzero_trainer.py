@@ -1025,7 +1025,7 @@ class TestUnrollingLogic:
 
     def test_initial_inference_output(self, trainer_and_network):
         """Initial inference produces correct outputs."""
-        trainer, network = trainer_and_network
+        trainer, _network = trainer_and_network
 
         batch = TrajectoryBatchSample(
             spatial=torch.randn(4, 13, 16, 16),
@@ -1048,7 +1048,7 @@ class TestUnrollingLogic:
 
     def test_unroll_step_output(self, trainer_and_network):
         """Unroll step produces correct outputs."""
-        trainer, network = trainer_and_network
+        trainer, _network = trainer_and_network
 
         hidden = torch.randn(4, 32, 16, 16)
         action = torch.randint(0, 100, (4,))
@@ -1065,7 +1065,7 @@ class TestUnrollingLogic:
 
     def test_unroll_preserves_batch_size(self, trainer_and_network):
         """Unrolling preserves batch dimension."""
-        trainer, network = trainer_and_network
+        trainer, _network = trainer_and_network
 
         batch_size = 8
         hidden = torch.randn(batch_size, 32, 16, 16)

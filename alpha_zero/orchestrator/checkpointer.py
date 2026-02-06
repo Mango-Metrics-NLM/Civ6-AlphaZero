@@ -89,7 +89,7 @@ class CheckpointManager:
         checkpoint_dir: str | Path,
         max_checkpoints: int = 10,
         best_metric: str = "win_rate",
-    ):
+    ) -> None:
         """Initialize checkpoint manager.
 
         Args:

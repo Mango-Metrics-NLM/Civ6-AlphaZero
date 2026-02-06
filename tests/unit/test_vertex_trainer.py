@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
-from alpha_zero.cloud.gcp.config import GCPConfig, StorageConfig, VertexConfig
+from alpha_zero.cloud.gcp.config import GCPConfig, TrainingWorkerConfig
 from alpha_zero.cloud.gcp.vertex_trainer import VertexTrainer
 from alpha_zero.cloud.protocols import CloudTrainerProtocol, JobStatus, TrainingJobInfo
 
@@ -28,12 +28,12 @@ class TestVertexTrainer:
         return GCPConfig(
             project_id="test-project",
             region="us-central1",
-            vertex=VertexConfig(
+            bucket="test-bucket",
+            training=TrainingWorkerConfig(
                 machine_type="n1-standard-4",
                 accelerator_type="NVIDIA_TESLA_T4",
                 accelerator_count=1,
             ),
-            storage=StorageConfig(bucket="test-bucket"),
         )
 
     def test_implements_protocol(self, config: GCPConfig) -> None:
@@ -60,11 +60,11 @@ class TestVertexTrainerMockMode:
         return GCPConfig(
             project_id="test-project",
             region="us-central1",
-            vertex=VertexConfig(
+            bucket="test-bucket",
+            training=TrainingWorkerConfig(
                 machine_type="n1-standard-4",
                 accelerator_type="NVIDIA_TESLA_T4",
             ),
-            storage=StorageConfig(bucket="test-bucket"),
         )
 
     @pytest.fixture

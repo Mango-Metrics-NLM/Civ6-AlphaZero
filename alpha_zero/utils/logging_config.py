@@ -304,12 +304,12 @@ def get_training_logger(
 
 # Convenience exports
 __all__ = [
-    "setup_logging",
+    "DEFAULT_LOG_DIR",
+    "DEFAULT_LOG_LEVEL",
+    "ColoredFormatter",
+    "StructuredFormatter",
+    "TrainingMetricsAdapter",
     "get_logger",
     "get_training_logger",
-    "StructuredFormatter",
-    "ColoredFormatter",
-    "TrainingMetricsAdapter",
-    "DEFAULT_LOG_LEVEL",
-    "DEFAULT_LOG_DIR",
+    "setup_logging",
 ]

@@ -375,14 +375,21 @@ class CostMonitor:
             Estimated cost in USD.
         """
         price_key = f"{gpu_type}_SPOT" if use_spot else gpu_type
-        hourly_rate = self.config.gpu_prices.get(
-            price_key, self.config.gpu_prices.get(gpu_type)
-        )
+        hourly_rate = self.config.gpu_prices.get(price_key)
 
         if hourly_rate is None:
+            # Try non-spot version as fallback
+            hourly_rate = self.config.gpu_prices.get(gpu_type)
+
+        if hourly_rate is None:
+            # Unknown GPU type - use conservative fallback and warn
             logger.warning(
-                f"GPU price for '{gpu_type}' (spot={use_spot}) not found in config. "
-                f"Defaulting to $1.00/hr. Cost estimation may be inaccurate."
+                "GPU price for '%s' (spot=%s) not found in config. "
+                "Using fallback $1.00/hr. Cost estimation may be inaccurate. "
+                "Available GPUs: %s",
+                gpu_type,
+                use_spot,
+                ", ".join(sorted(self.config.gpu_prices.keys())),
             )
             hourly_rate = 1.0
 

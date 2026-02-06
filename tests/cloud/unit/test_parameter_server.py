@@ -199,7 +199,7 @@ class TestParameterServer:
         new_network = SimpleNetwork()
 
         # Don't update if version <= min_version
-        updated, version = server_with_network.update_model(
+        updated, _version = server_with_network.update_model(
             new_network,
             min_version=1,
         )

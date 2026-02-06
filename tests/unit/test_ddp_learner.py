@@ -7,8 +7,6 @@ primitives, and checkpointing without requiring actual distributed setup.
 from __future__ import annotations
 
 import logging
-import tempfile
-from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
@@ -17,9 +15,6 @@ import torch
 import torch.nn as nn
 
 from alpha_zero.distributed.ddp_learner import DDPLearner, DDPLearnerConfig
-from tests.fixtures.mock_distributed import (
-    mock_ddp_context,
-)
 
 if TYPE_CHECKING:
     pass

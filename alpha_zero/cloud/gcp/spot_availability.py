@@ -20,7 +20,7 @@ import logging
 import os
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -365,7 +365,7 @@ class SpotAvailabilityTracker:
             AvailabilityLevel.
         """
         if dt is None:
-            dt = datetime.now(timezone.utc)
+            dt = datetime.now(UTC)
 
         # Check patterns
         for pattern in self.config.patterns:
@@ -412,7 +412,7 @@ class SpotAvailabilityTracker:
             Recommended worker count.
         """
         if dt is None:
-            dt = datetime.now(timezone.utc)
+            dt = datetime.now(UTC)
 
         # Find matching pattern
         multiplier = 1.0
@@ -456,7 +456,7 @@ class SpotAvailabilityTracker:
             job_duration_hours: How long job ran before preemption.
         """
         event = PreemptionEvent(
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             region=region,
             gpu_type=gpu_type,
             worker_id=worker_id,
@@ -485,7 +485,7 @@ class SpotAvailabilityTracker:
         Returns:
             Preemption rate (preemptions per hour, normalized 0-1).
         """
-        cutoff_time = datetime.now(timezone.utc).timestamp() - (hours * 3600)
+        cutoff_time = datetime.now(UTC).timestamp() - (hours * 3600)
 
         matching_events = [
             e
@@ -535,7 +535,7 @@ class SpotAvailabilityTracker:
         Returns:
             Dictionary with tracker statistics.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         current_level = self.get_current_availability()
 
         # Preemption stats by GPU type

@@ -816,7 +816,7 @@ def assert_raises_with_message(
                 raise AssertionError(
                     f"Expected message to contain '{message_contains}', "
                     f"got '{str(e)}'"
-                ) from None
+                ) from e
     return decorator
 
 

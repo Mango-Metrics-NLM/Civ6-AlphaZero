@@ -46,7 +46,7 @@ class RandomAgent(BaseAgent):
     has learned anything beyond random play.
     """
 
-    def __init__(self, seed: int | None = None):
+    def __init__(self, seed: int | None = None) -> None:
         """Initialize random agent.
 
         Args:
@@ -112,7 +112,7 @@ class GreedyHeuristicAgent(BaseAgent):
         seed: int | None = None,
         aggression: float = 0.8,
         expansion_priority: float = 0.6,
-    ):
+    ) -> None:
         """Initialize heuristic agent.
 
         Args:
@@ -329,7 +329,7 @@ class MCTSAgentWrapper(BaseAgent):
         self,
         mcts,
         temperature: float = 0.0,
-    ):
+    ) -> None:
         """Initialize MCTS agent wrapper.
 
         Args:

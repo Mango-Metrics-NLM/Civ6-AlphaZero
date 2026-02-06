@@ -266,7 +266,7 @@ class ReportGenerator:
         report.to_markdown()
     """
 
-    def __init__(self, config: EvaluationConfig):
+    def __init__(self, config: EvaluationConfig) -> None:
         """Initialize report generator.
 
         Args:

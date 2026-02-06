@@ -22,15 +22,15 @@ from .testing_agent import TestingAgent
 from .verification_agent import VerificationAgent
 
 __all__ = [
-    # Base
-    "BaseAgent",
     "AgentContext",
     "AgentResult",
     "AgentStatus",
+    # Base
+    "BaseAgent",
+    "DocumentationAgent",
+    "ImplementationAgent",
     # Specialized Agents
     "PlanningAgent",
-    "ImplementationAgent",
     "TestingAgent",
     "VerificationAgent",
-    "DocumentationAgent",
 ]

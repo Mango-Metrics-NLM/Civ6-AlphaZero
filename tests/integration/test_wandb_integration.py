@@ -178,7 +178,7 @@ class TestWandbWithRealComponents:
                 break
 
             action = np.random.choice(valid_indices)
-            obs, reward, terminated, truncated, info = env.step(action)
+            obs, reward, terminated, truncated, _info = env.step(action)
             total_reward += reward
             done = terminated or truncated
             turn += 1

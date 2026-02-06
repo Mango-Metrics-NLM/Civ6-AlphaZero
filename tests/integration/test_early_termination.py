@@ -26,7 +26,7 @@ class TestGameLength:
                 action = mcts.select_action(
                     action_probs, temperature=1.0, action_mask=obs["action_mask"]
                 )
-                obs, _, terminated, truncated, info = env.step(action)
+                obs, _, terminated, truncated, _info = env.step(action)
 
                 if terminated or truncated:
                     break
@@ -51,7 +51,7 @@ class TestGameLength:
         env = MicroCivEnv(board_size=8, max_turns=50)
 
         for _ in range(20):
-            obs, info = env.reset()
+            obs, _info = env.reset()
 
             # Immediately after reset, game should not be done
             assert not env.done, "Game is done immediately after reset"
@@ -64,7 +64,7 @@ class TestGameLength:
 
             # Take one action
             action = 0  # End turn
-            obs, reward, terminated, truncated, info = env.step(action)
+            _obs, _reward, terminated, truncated, info = env.step(action)
 
             # Should not terminate after just one end_turn
             if terminated and not truncated:
@@ -123,7 +123,7 @@ class TestActionExecutionSuccess:
 
         # Take an action
         action = 0  # End turn
-        obs, reward, terminated, truncated, info = env.step(action)
+        _obs, _reward, _terminated, _truncated, info = env.step(action)
 
         assert "action_success" in info, "info missing action_success"
         assert "action_error" in info, "info missing action_error"
@@ -144,7 +144,7 @@ class TestSelfPlayIntegration:
         max_steps = 300  # Safety limit
 
         while steps < max_steps:
-            action_probs, root_value = mcts.search(env)
+            action_probs, _root_value = mcts.search(env)
             action = mcts.select_action(
                 action_probs, temperature=1.0, action_mask=obs["action_mask"]
             )
@@ -154,7 +154,7 @@ class TestSelfPlayIntegration:
                 f"Invalid action {action} selected at step {steps}"
             )
 
-            obs, reward, terminated, truncated, info = env.step(action)
+            obs, _reward, terminated, truncated, _info = env.step(action)
             steps += 1
 
             if terminated or truncated:
@@ -203,7 +203,7 @@ class TestTerminationConditions:
 
         # Just end turn repeatedly
         for _ in range(100):
-            obs, _, terminated, truncated, info = env.step(0)  # End turn
+            _obs, _, terminated, truncated, _info = env.step(0)  # End turn
 
             if terminated or truncated:
                 assert env.turn >= 5 or env.done, (
@@ -216,7 +216,7 @@ class TestTerminationConditions:
         env = MicroCivEnv(board_size=8, max_turns=50)
 
         for _ in range(10):
-            obs, info = env.reset()
+            _obs, _info = env.reset()
 
             # Check initial state
             assert not env.done

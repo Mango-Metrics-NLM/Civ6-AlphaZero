@@ -98,59 +98,59 @@ from .utils import (
 )
 
 __all__ = [
-    # Version
-    "__version__",
-    # Configuration
-    "AgenticConfig",
-    "ConfigLoader",
-    "ConfigValidationError",
-    "load_config",
-    "get_config",
-    # Core - Template
-    "TemplateParser",
-    "ParsedTemplate",
-    "TemplateParseError",
-    # Core - Constraints
-    "ConstraintManager",
-    "Constraint",
-    "ConstraintType",
-    "ConstraintViolation",
-    "ConstraintCheckResult",
-    # Core - Permissions
-    "PermissionManager",
-    "AutonomyLevel",
     "ActionPermission",
-    "PermissionCheckResult",
-    "ScopeChecker",
-    # Core - Feedback
-    "FeedbackLoop",
-    "VerificationResult",
-    "ErrorHandler",
-    "ErrorAction",
-    "VerificationPhase",
-    # Core - Session
-    "SessionMemory",
-    "MemorySection",
-    "ArchitectureDecision",
-    "KnownIssue",
-    # Agents
-    "BaseAgent",
     "AgentContext",
     "AgentResult",
     "AgentStatus",
-    "PlanningAgent",
-    "ImplementationAgent",
-    "TestingAgent",
-    "VerificationAgent",
+    # Configuration
+    "AgenticConfig",
+    "ArchitectureDecision",
+    "AutonomyLevel",
+    # Agents
+    "BaseAgent",
+    "CommandError",
+    "CommandResult",
+    "CommandRunner",
+    "ConfigLoader",
+    "ConfigValidationError",
+    "Constraint",
+    "ConstraintCheckResult",
+    # Core - Constraints
+    "ConstraintManager",
+    "ConstraintType",
+    "ConstraintViolation",
     "DocumentationAgent",
+    "ErrorAction",
+    "ErrorHandler",
+    # Core - Feedback
+    "FeedbackLoop",
+    "ImplementationAgent",
+    "KnownIssue",
+    "LogContext",
+    "MemorySection",
     # Orchestrator
     "Orchestrator",
     "OrchestratorResult",
+    "ParsedTemplate",
+    "PermissionCheckResult",
+    # Core - Permissions
+    "PermissionManager",
+    "PlanningAgent",
+    "ScopeChecker",
+    # Core - Session
+    "SessionMemory",
+    "TemplateParseError",
+    # Core - Template
+    "TemplateParser",
+    "TestingAgent",
+    "VerificationAgent",
+    "VerificationPhase",
+    "VerificationResult",
+    # Version
+    "__version__",
+    "get_config",
+    "get_logger",
+    "load_config",
     # Utilities
     "setup_logging",
-    "get_logger",
-    "LogContext",
-    "CommandRunner",
-    "CommandResult",
-    "CommandError",
 ]

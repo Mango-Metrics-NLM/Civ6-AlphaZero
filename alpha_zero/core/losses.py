@@ -38,7 +38,7 @@ from typing import NamedTuple, Protocol, runtime_checkable
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 
 from alpha_zero.core.checkpoint_utils import validate_reduction
 
@@ -642,7 +642,7 @@ class LossConfig:
         support_size: int | None = None,
         min_value: float | None = None,
         max_value: float | None = None,
-    ):
+    ) -> None:
         """Initialize LossConfig with backwards compatibility.
 
         Args:
@@ -1072,7 +1072,7 @@ class MuZeroLossCalculator:
         num_unroll_steps: int = 5,
         use_consistency_loss: bool = True,
         use_value_prefix: bool = True,
-    ):
+    ) -> None:
         """Initialize the loss calculator.
 
         Args:
@@ -1417,28 +1417,28 @@ def compute_muzero_loss(
 # =============================================================================
 
 __all__ = [
-    # Utility functions
-    "scalar_to_categorical",
-    "categorical_to_scalar",
-    # Core losses
-    "compute_policy_loss",
-    "compute_value_loss",
-    "compute_reward_loss",
-    # EfficientZero losses
-    "compute_consistency_loss",
-    "compute_value_prefix_loss",
-    # Combined losses
-    "compute_muzero_step_loss",
-    "compute_muzero_trajectory_loss",
-    "compute_muzero_loss",
+    "AlphaZeroNetworkProtocol",
     # Data structures
     "LossConfig",
-    "StepLossOutput",
-    "TrajectoryLossOutput",
-    "TrajectoryBatch",
     # Calculator class
     "MuZeroLossCalculator",
     # Protocols
     "MuZeroNetworkProtocol",
-    "AlphaZeroNetworkProtocol",
+    "StepLossOutput",
+    "TrajectoryBatch",
+    "TrajectoryLossOutput",
+    "categorical_to_scalar",
+    # EfficientZero losses
+    "compute_consistency_loss",
+    "compute_muzero_loss",
+    # Combined losses
+    "compute_muzero_step_loss",
+    "compute_muzero_trajectory_loss",
+    # Core losses
+    "compute_policy_loss",
+    "compute_reward_loss",
+    "compute_value_loss",
+    "compute_value_prefix_loss",
+    # Utility functions
+    "scalar_to_categorical",
 ]

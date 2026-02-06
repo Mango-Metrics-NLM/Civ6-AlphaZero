@@ -9,6 +9,7 @@ Vector tensor: (512,) - encodes turn, resources, techs, diplomacy, etc.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 import numpy as np
 import torch
@@ -73,7 +74,7 @@ class Civ6StateEncoder:
     TOTAL_CHANNELS = 84
 
     # Terrain type mapping
-    TERRAIN_TYPES = {
+    TERRAIN_TYPES: ClassVar[dict[str, int]] = {
         "plains": 0,
         "grassland": 1,
         "desert": 2,
@@ -84,7 +85,7 @@ class Civ6StateEncoder:
     }
 
     # Feature mapping
-    FEATURE_TYPES = {
+    FEATURE_TYPES: ClassVar[dict[str, int]] = {
         "forest": 0,
         "jungle": 1,
         "marsh": 2,
@@ -96,7 +97,7 @@ class Civ6StateEncoder:
     }
 
     # Unit type mapping
-    UNIT_TYPES = {
+    UNIT_TYPES: ClassVar[dict[str, int]] = {
         "melee": 0,
         "warrior": 0,
         "ranged": 1,
@@ -114,7 +115,7 @@ class Civ6StateEncoder:
         "spy": 11,
     }
 
-    def __init__(self, config: EncoderConfig | None = None):
+    def __init__(self, config: EncoderConfig | None = None) -> None:
         """Initialize encoder.
 
         Args:
@@ -320,7 +321,7 @@ class MicroCivEncoder:
 
     TOTAL_CHANNELS = 13
 
-    def __init__(self, board_size: int = 16):
+    def __init__(self, board_size: int = 16) -> None:
         """Initialize encoder.
 
         Args:

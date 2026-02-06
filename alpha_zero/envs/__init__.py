@@ -33,15 +33,15 @@ def __getattr__(name: str):
 
 
 __all__ = [
-    # MicroCiv
-    "MicroCivEnv",
+    "CIVREALM_AVAILABLE",
+    "CivRealmActionHandler",
     # CivRealm (lazy loaded)
     "CivRealmConfig",
-    "CivRealmEncoder",
-    "CivRealmActionHandler",
     "CivRealmCurriculum",
+    "CivRealmEncoder",
     "CivRealmWrapper",
+    # MicroCiv
+    "MicroCivEnv",
     "MiniGameTask",
     "create_civrealm_env",
-    "CIVREALM_AVAILABLE",
 ]

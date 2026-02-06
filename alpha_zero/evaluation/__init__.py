@@ -67,39 +67,39 @@ from alpha_zero.evaluation.evaluator import (
 from alpha_zero.evaluation.reports import EvaluationReport, ReportGenerator
 from alpha_zero.evaluation.sequential_testing import (
     EvaluationDecision,
+    SequentialTester,
     SequentialTestingConfig,
     SequentialTestResult,
-    SequentialTester,
     get_sequential_tester,
 )
 
 __all__ = [
-    # Configuration
-    "EvaluationConfig",
     "BaselineConfig",
-    "BaselineType",
-    "DiversityConfig",
-    "HeuristicWeights",
+    "BaselineFactory",
     # Baselines
     "BaselinePlayer",
-    "RandomPlayer",
-    "HeuristicPlayer",
-    "NeuralNetworkPlayer",
-    "BaselineFactory",
-    # Evaluation
-    "ModelEvaluator",
-    "GameResult",
-    "EvaluationResult",
+    "BaselineType",
+    "DiversityConfig",
+    "DiversityMetrics",
     # Diversity
     "DiversityTracker",
-    "DiversityMetrics",
-    # Reports
-    "EvaluationReport",
-    "ReportGenerator",
+    # Configuration
+    "EvaluationConfig",
     # Sequential Testing (Phase 6)
     "EvaluationDecision",
-    "SequentialTestingConfig",
+    # Reports
+    "EvaluationReport",
+    "EvaluationResult",
+    "GameResult",
+    "HeuristicPlayer",
+    "HeuristicWeights",
+    # Evaluation
+    "ModelEvaluator",
+    "NeuralNetworkPlayer",
+    "RandomPlayer",
+    "ReportGenerator",
     "SequentialTestResult",
     "SequentialTester",
+    "SequentialTestingConfig",
     "get_sequential_tester",
 ]

@@ -300,7 +300,7 @@ class TestMuZeroNetwork:
         actions = torch.randint(0, 100, (4,))
         mask = torch.ones(4, 100)
 
-        next_hidden, reward, policy, value = network.recurrent_inference(hidden, actions, mask)
+        next_hidden, _reward, policy, value = network.recurrent_inference(hidden, actions, mask)
 
         assert next_hidden.shape == (4, 32, 8, 8)
         assert policy.shape == (4, 100)

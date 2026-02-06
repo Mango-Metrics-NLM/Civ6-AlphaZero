@@ -242,8 +242,8 @@ class EvaluationResult:
 
 
 __all__ = [
-    "ModelMetadata",
-    "TrajectoryMetadata",
     "CheckpointMetadata",
     "EvaluationResult",
+    "ModelMetadata",
+    "TrajectoryMetadata",
 ]
