@@ -1005,7 +1005,7 @@ class Civ6Bridge(GameInterface):
         state_dir: Path | None = None,
         action_dir: Path | None = None,
         player_id: int = 0,
-    ):
+    ) -> None:
         """Initialize the Civ6 bridge.
 
         Args:

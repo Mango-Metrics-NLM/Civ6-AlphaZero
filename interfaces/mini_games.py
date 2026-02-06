@@ -74,7 +74,7 @@ class MiniGameConfig:
 class MiniGame(ABC):
     """Abstract base class for mini-game scenarios."""
 
-    def __init__(self, config: MiniGameConfig):
+    def __init__(self, config: MiniGameConfig) -> None:
         """Initialize mini-game.
 
         Args:
@@ -756,7 +756,7 @@ class MiniGameGenerator:
         self,
         base_config: MiniGameConfig | None = None,
         seed: int | None = None,
-    ):
+    ) -> None:
         """Initialize generator.
 
         Args:

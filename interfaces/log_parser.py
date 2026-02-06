@@ -210,7 +210,7 @@ class Civ6LogParser:
         log_dir: Path | None = None,
         log_file: str = "Gameplay.log",
         poll_interval_ms: int = 100,
-    ):
+    ) -> None:
         """Initialize the log parser.
 
         Args:

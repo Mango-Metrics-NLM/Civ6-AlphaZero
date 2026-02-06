@@ -177,7 +177,7 @@ class TestPBTIntegration:
         manager = PopulationManager(config)
         manager.initialize()
 
-        agent_id = list(manager.get_agent_ids())[0]
+        agent_id = next(iter(manager.get_agent_ids()))
 
         # Add multiple fitness values
         for fitness in [0.5, 0.6, 0.7, 0.8, 0.9]:

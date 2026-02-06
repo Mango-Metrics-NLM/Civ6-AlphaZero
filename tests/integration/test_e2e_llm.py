@@ -23,10 +23,9 @@ from alpha_zero.utils.agent_tools import (
     TaskTracker,
 )
 from alpha_zero.utils.config import Civ6Config, ConfigManager, load_config
-from alpha_zero.utils.test_runner import PytestRunner as TestRunner
 
 # Import new utilities
-from alpha_zero.utils.test_runner import RunConfig, PytestRunner
+from alpha_zero.utils.test_runner import PytestRunner, RunConfig
 
 # LLM imports (optional)
 try:

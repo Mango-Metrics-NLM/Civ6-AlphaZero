@@ -5,11 +5,6 @@ Tests GCS lifecycle management and retention policies.
 
 from __future__ import annotations
 
-import os
-from unittest.mock import MagicMock, patch
-
-import pytest
-
 from alpha_zero.cloud.gcp.lifecycle import (
     CleanupResult,
     GCSLifecycleManager,
@@ -17,7 +12,6 @@ from alpha_zero.cloud.gcp.lifecycle import (
     LifecycleRule,
     RetentionPolicyConfig,
     StorageClass,
-    get_lifecycle_manager,
 )
 
 

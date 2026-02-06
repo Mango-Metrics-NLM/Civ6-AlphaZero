@@ -1,11 +1,16 @@
 """Unit tests for elo_plateau_detector module."""
 from __future__ import annotations
+
 import os
-import pytest
+
 from alpha_zero.training.elo_plateau_detector import (
-    EloPlateauDetector, EloPlateauDetectorConfig,
-    EloSnapshot, EloStatus, get_elo_detector,
+    EloPlateauDetector,
+    EloPlateauDetectorConfig,
+    EloSnapshot,
+    EloStatus,
+    get_elo_detector,
 )
+
 
 class TestEloStatus:
     def test_status_values(self) -> None:

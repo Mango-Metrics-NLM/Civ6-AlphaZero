@@ -9,10 +9,8 @@ Provides mocks for:
 from __future__ import annotations
 
 import threading
-import time
 from dataclasses import dataclass, field
-from typing import Any, Callable
-from unittest.mock import MagicMock
+from typing import Any
 
 import torch
 import torch.nn as nn

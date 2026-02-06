@@ -1,12 +1,16 @@
 """Unit tests for sequential_testing module."""
 from __future__ import annotations
+
 import os
-import pytest
+
 from alpha_zero.evaluation.sequential_testing import (
-    EvaluationDecision, GameResult, SequentialTester,
-    SequentialTestingConfig, SequentialTestResult,
+    EvaluationDecision,
+    GameResult,
+    SequentialTester,
+    SequentialTestingConfig,
     get_sequential_tester,
 )
+
 
 class TestEvaluationDecision:
     def test_decision_values(self) -> None:

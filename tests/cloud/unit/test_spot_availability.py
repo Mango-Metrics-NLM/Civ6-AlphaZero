@@ -4,8 +4,6 @@ from __future__ import annotations
 import os
 from datetime import datetime
 
-import pytest
-
 from alpha_zero.cloud.gcp.spot_availability import (
     AvailabilityLevel,
     PreemptionEvent,

@@ -1,17 +1,10 @@
 """Unit tests for alert_manager module."""
 from __future__ import annotations
 
-import os
-
-import pytest
-
 from alpha_zero.cloud.gcp.alert_manager import (
-    AlertChannel,
-    AlertEvent,
     AlertManager,
     AlertManagerConfig,
     AlertSeverity,
-    EmailConfig,
     SlackConfig,
     get_alert_manager,
 )

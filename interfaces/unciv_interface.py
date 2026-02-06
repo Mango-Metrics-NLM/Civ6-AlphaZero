@@ -505,7 +505,7 @@ class UncivInterface(GameInterface):
         player_civ: str = "Babylon",
         auto_save: bool = True,
         backup_saves: bool = True,
-    ):
+    ) -> None:
         """Initialize the Unciv interface.
 
         Args:
