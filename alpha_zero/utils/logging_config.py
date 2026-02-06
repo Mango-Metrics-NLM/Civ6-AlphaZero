@@ -21,7 +21,7 @@ import json
 import logging
 import os
 import sys
-from datetime import timezone, datetime
+from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
@@ -41,7 +41,7 @@ class StructuredFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         """Format log record as JSON."""
         log_data: dict[str, Any] = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -304,12 +304,12 @@ def get_training_logger(
 
 # Convenience exports
 __all__ = [
-    "setup_logging",
+    "DEFAULT_LOG_DIR",
+    "DEFAULT_LOG_LEVEL",
+    "ColoredFormatter",
+    "StructuredFormatter",
+    "TrainingMetricsAdapter",
     "get_logger",
     "get_training_logger",
-    "StructuredFormatter",
-    "ColoredFormatter",
-    "TrainingMetricsAdapter",
-    "DEFAULT_LOG_LEVEL",
-    "DEFAULT_LOG_DIR",
+    "setup_logging",
 ]

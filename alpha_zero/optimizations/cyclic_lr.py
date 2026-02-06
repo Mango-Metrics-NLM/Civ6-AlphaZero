@@ -149,7 +149,7 @@ class CyclicLRScheduler:
         ...     optimizer.param_groups[0]['lr'] = lr
     """
 
-    def __init__(self, config: CyclicLRConfig):
+    def __init__(self, config: CyclicLRConfig) -> None:
         """Initialize cyclic LR scheduler.
 
         Args:

@@ -71,7 +71,7 @@ class HyperparameterScheduler:
         batch_size_schedule: ScheduleConfig | None = None,
         temperature_schedule: ScheduleConfig | None = None,
         exploration_schedule: ScheduleConfig | None = None,
-    ):
+    ) -> None:
         """Initialize scheduler with schedule configurations.
 
         Args:

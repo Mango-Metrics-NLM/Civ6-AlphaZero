@@ -141,7 +141,7 @@ class HeuristicExpertGenerator:
         self,
         config: ImitationConfig,
         agent: BaseAgent | None = None,
-    ):
+    ) -> None:
         """Initialize the generator.
 
         Args:
@@ -346,7 +346,7 @@ class HeuristicExpertGenerator:
 class SupervisedDataset(Dataset):
     """PyTorch Dataset wrapper for supervised training from expert games."""
 
-    def __init__(self, trajectories: list[GameTrajectory]):
+    def __init__(self, trajectories: list[GameTrajectory]) -> None:
         """Initialize dataset from game trajectories.
 
         Args:
@@ -428,7 +428,7 @@ class ImitationPreTrainer:
         network: MicroCivNetwork | None = None,
         expert_generator: ExpertDataGenerator | None = None,
         wandb_logger: WandbLogger | None = None,
-    ):
+    ) -> None:
         """Initialize pre-trainer.
 
         Args:

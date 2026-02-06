@@ -81,7 +81,7 @@ class LRUCache(Cache[K, V]):
         value = cache.get("key")
     """
 
-    def __init__(self, maxsize: int = 128):
+    def __init__(self, maxsize: int = 128) -> None:
         """Initialize LRU cache.
 
         Args:
@@ -161,7 +161,7 @@ class TTLCache(Cache[K, V]):
         value = cache.get("key")
     """
 
-    def __init__(self, ttl: float = 300.0, maxsize: int | None = None):
+    def __init__(self, ttl: float = 300.0, maxsize: int | None = None) -> None:
         """Initialize TTL cache.
 
         Args:

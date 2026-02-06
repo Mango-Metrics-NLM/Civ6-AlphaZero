@@ -301,7 +301,7 @@ class ConfigManager:
 
     ENV_PREFIX = "CIV6AZ_"
 
-    def __init__(self, config_path: str | Path | None = None):
+    def __init__(self, config_path: str | Path | None = None) -> None:
         """Initialize configuration manager.
 
         Args:

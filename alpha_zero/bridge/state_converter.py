@@ -225,7 +225,7 @@ class StateConverter:
         terrain_mapping: TerrainMapping | None = None,
         unit_mapping: UnitMapping | None = None,
         create_encoder: bool = True,
-    ):
+    ) -> None:
         """Initialize the state converter.
 
         Args:

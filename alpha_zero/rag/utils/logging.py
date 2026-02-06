@@ -116,7 +116,7 @@ class RAGLogger:
         name: str,
         level: LogLevel = LogLevel.INFO,
         config: LoggingConfig | None = None,
-    ):
+    ) -> None:
         """Initialize RAG logger.
 
         Args:

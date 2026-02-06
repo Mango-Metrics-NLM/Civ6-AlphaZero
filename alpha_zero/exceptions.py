@@ -45,7 +45,7 @@ class Civ6AlphaZeroError(Exception):
         context: Optional dictionary with additional context information.
     """
 
-    def __init__(self, message: str, context: dict[str, Any] | None = None):
+    def __init__(self, message: str, context: dict[str, Any] | None = None) -> None:
         """Initialize exception.
 
         Args:
@@ -169,7 +169,7 @@ class InvalidActionError(EnvironmentError):
         action: int | None = None,
         valid_actions: list[int] | None = None,
         **kwargs: Any,
-    ):
+    ) -> None:
         context = kwargs.pop("context", {})
         if action is not None:
             context["action"] = action
@@ -212,7 +212,7 @@ class StateTimeoutError(BridgeError):
         message: str = "Timeout waiting for game state",
         timeout: float | None = None,
         **kwargs: Any,
-    ):
+    ) -> None:
         context = kwargs.pop("context", {})
         if timeout is not None:
             context["timeout_seconds"] = timeout
@@ -231,7 +231,7 @@ class ActionTimeoutError(BridgeError):
         timeout: float | None = None,
         action: int | None = None,
         **kwargs: Any,
-    ):
+    ) -> None:
         context = kwargs.pop("context", {})
         if timeout is not None:
             context["timeout_seconds"] = timeout
@@ -283,7 +283,7 @@ class GradientError(TrainingError):
         message: str = "Gradient computation error",
         gradient_norm: float | None = None,
         **kwargs: Any,
-    ):
+    ) -> None:
         context = kwargs.pop("context", {})
         if gradient_norm is not None:
             context["gradient_norm"] = gradient_norm
@@ -315,7 +315,7 @@ class ActorError(DistributedError):
         message: str,
         actor_id: int | None = None,
         **kwargs: Any,
-    ):
+    ) -> None:
         context = kwargs.pop("context", {})
         if actor_id is not None:
             context["actor_id"] = actor_id
@@ -342,7 +342,7 @@ class WeightSyncError(DistributedError):
         message: str = "Weight synchronization failed",
         version: int | None = None,
         **kwargs: Any,
-    ):
+    ) -> None:
         context = kwargs.pop("context", {})
         if version is not None:
             context["version"] = version

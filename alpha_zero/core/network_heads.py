@@ -160,7 +160,7 @@ class MLPHead(nn.Module):
         torch.Size([32, 100])
     """
 
-    def __init__(self, config: MLPHeadConfig):
+    def __init__(self, config: MLPHeadConfig) -> None:
         """Initialize MLP head.
 
         Args:
@@ -245,7 +245,7 @@ class SpatialPreprocessor(nn.Module):
         torch.Size([32, 512])  # 2 * 16 * 16
     """
 
-    def __init__(self, config: SpatialPreprocessorConfig):
+    def __init__(self, config: SpatialPreprocessorConfig) -> None:
         """Initialize spatial preprocessor.
 
         Args:
@@ -299,7 +299,7 @@ class FeatureCombiner(nn.Module):
         spatial_dim: int,
         vector_dim: int,
         projection_dim: int | None = None,
-    ):
+    ) -> None:
         """Initialize feature combiner.
 
         Args:
@@ -510,7 +510,7 @@ class _CNNHead(nn.Module):
         spatial_preprocessor: SpatialPreprocessor,
         combiner: FeatureCombiner,
         mlp: MLPHead,
-    ):
+    ) -> None:
         """Initialize CNN head.
 
         Args:

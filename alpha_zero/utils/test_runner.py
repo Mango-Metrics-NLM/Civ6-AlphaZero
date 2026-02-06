@@ -160,7 +160,7 @@ class RunConfig:
 class PytestRunner:
     """Test runner with comprehensive test execution capabilities."""
 
-    def __init__(self, config: RunConfig | None = None):
+    def __init__(self, config: RunConfig | None = None) -> None:
         """Initialize test runner.
 
         Args:

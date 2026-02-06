@@ -190,7 +190,7 @@ class OptimizationBenchmark:
         self,
         seed: int | None = None,
         warmup_iterations: int = 100,
-    ):
+    ) -> None:
         """Initialize benchmark suite.
 
         Args:

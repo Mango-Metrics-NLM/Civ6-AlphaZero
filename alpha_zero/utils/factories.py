@@ -516,7 +516,7 @@ def create_replay_buffer(
     class ReplayBuffer:
         """Simple replay buffer using deque."""
 
-        def __init__(self, max_size: int):
+        def __init__(self, max_size: int) -> None:
             self.buffer: deque[TrainingExample] = deque(maxlen=max_size)
             self.min_size = min_size
 

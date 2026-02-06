@@ -104,7 +104,7 @@ class HyperparameterRange:
             value = rng.uniform(self.min_value, self.max_value)
 
         if self.discrete:
-            value = int(round(value))
+            value = round(value)
 
         return value
 
@@ -150,7 +150,7 @@ class HyperparameterRange:
             new_value = np.clip(value + perturbation, self.min_value, self.max_value)
 
         if self.discrete:
-            new_value = int(round(new_value))
+            new_value = round(new_value)
 
         return new_value
 
@@ -170,7 +170,7 @@ class HyperparameterRange:
 
         clipped = np.clip(value, self.min_value, self.max_value)
         if self.discrete:
-            clipped = int(round(clipped))
+            clipped = round(clipped)
         return clipped
 
     def to_dict(self) -> dict[str, Any]:

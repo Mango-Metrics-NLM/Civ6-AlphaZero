@@ -173,7 +173,7 @@ class DefaultStateEncoder:
     the vector observation, then projecting to the target dimension.
     """
 
-    def __init__(self, config: ReflectionConfig):
+    def __init__(self, config: ReflectionConfig) -> None:
         """Initialize encoder.
 
         Args:
@@ -300,7 +300,7 @@ class ReflectionMemory:
         config: ReflectionConfig | None = None,
         vector_store: VectorStore | None = None,
         state_encoder: StateEncoder | None = None,
-    ):
+    ) -> None:
         """Initialize reflection memory.
 
         Args:

@@ -117,7 +117,7 @@ class PaddedEnvironmentWrapper:
         env: Any,
         expected_board_size: int,
         expected_action_size: int,
-    ):
+    ) -> None:
         """Initialize wrapper.
 
         Args:
@@ -254,7 +254,7 @@ class TrainingOrchestrator:
         state: Current training state.
     """
 
-    def __init__(self, config: OrchestratorConfig):
+    def __init__(self, config: OrchestratorConfig) -> None:
         """Initialize training orchestrator.
 
         Args:
@@ -717,7 +717,7 @@ class TrainingOrchestrator:
                 # Use hierarchical decision-making
                 game_state = self._build_game_state_dict(state, env, turn)
                 valid_actions = env.get_valid_actions()
-                action, hierarchical_info = self._hierarchical_integration.select_action(
+                action, _hierarchical_info = self._hierarchical_integration.select_action(
                     game_state, valid_actions
                 )
                 # Create a uniform policy for training (hierarchical provides action directly)

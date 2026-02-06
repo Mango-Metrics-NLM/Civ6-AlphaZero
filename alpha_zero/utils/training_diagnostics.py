@@ -76,7 +76,7 @@ class IterationMetrics:
 class PolicyEntropyTracker:
     """Track policy entropy over time."""
 
-    def __init__(self, window_size: int = 100):
+    def __init__(self, window_size: int = 100) -> None:
         """Initialize entropy tracker.
 
         Args:
@@ -143,7 +143,7 @@ class PolicyEntropyTracker:
 class ValuePredictionTracker:
     """Track value prediction accuracy."""
 
-    def __init__(self, window_size: int = 100):
+    def __init__(self, window_size: int = 100) -> None:
         """Initialize value prediction tracker.
 
         Args:
@@ -215,7 +215,7 @@ class ValuePredictionTracker:
 class ActionDiversityTracker:
     """Track diversity of actions taken."""
 
-    def __init__(self, num_actions: int, window_size: int = 1000):
+    def __init__(self, num_actions: int, window_size: int = 1000) -> None:
         """Initialize action diversity tracker.
 
         Args:
@@ -283,7 +283,7 @@ class TrainingDiagnostics:
         self,
         num_actions: int,
         config: DiagnosticsConfig | None = None,
-    ):
+    ) -> None:
         """Initialize training diagnostics.
 
         Args:
@@ -636,7 +636,7 @@ class ValueHeadMonitor:
         variance_threshold: float = 0.01,
         correlation_threshold: float = 0.1,
         window_size: int = 200,
-    ):
+    ) -> None:
         """Initialize value head monitor.
 
         Args:
@@ -780,7 +780,7 @@ class BaselineEvaluator:
         n_games_heuristic: int = 10,
         board_size: int = 16,
         max_turns: int = 200,
-    ):
+    ) -> None:
         """Initialize baseline evaluator.
 
         Args:

@@ -136,7 +136,7 @@ class WandbLogger:
         step: Current global step counter.
     """
 
-    def __init__(self, config: WandbConfig | None = None):
+    def __init__(self, config: WandbConfig | None = None) -> None:
         """Initialize W&B logger.
 
         Args:

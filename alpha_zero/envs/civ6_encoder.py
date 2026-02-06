@@ -115,7 +115,7 @@ class Civ6StateEncoder:
         "spy": 11,
     }
 
-    def __init__(self, config: EncoderConfig | None = None):
+    def __init__(self, config: EncoderConfig | None = None) -> None:
         """Initialize encoder.
 
         Args:
@@ -321,7 +321,7 @@ class MicroCivEncoder:
 
     TOTAL_CHANNELS = 13
 
-    def __init__(self, board_size: int = 16):
+    def __init__(self, board_size: int = 16) -> None:
         """Initialize encoder.
 
         Args:

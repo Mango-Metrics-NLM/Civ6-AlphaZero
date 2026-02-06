@@ -36,22 +36,22 @@ from alpha_zero.human_interface.visualizer import (
 )
 
 __all__ = [
-    # Config
-    "HumanInterfaceConfig",
-    "InputMode",
+    # Input
+    "ActionParser",
+    # Visualizer
+    "BoardTheme",
     # Controller
     "GameController",
     "GamePhase",
-    "TurnResult",
-    # Input
-    "ActionParser",
-    "HumanInputHandler",
-    "ParsedAction",
     # Replay
     "GameRecorder",
     "GameReplay",
+    "HumanInputHandler",
+    # Config
+    "HumanInterfaceConfig",
+    "InputMode",
+    "ParsedAction",
     "ReplayManager",
-    # Visualizer
-    "BoardTheme",
     "StateVisualizer",
+    "TurnResult",
 ]

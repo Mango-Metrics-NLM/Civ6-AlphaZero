@@ -181,7 +181,7 @@ class LeagueManager:
         >>> promoted, demoted = league.update_player_tier(player)
     """
 
-    def __init__(self, config: TournamentConfig):
+    def __init__(self, config: TournamentConfig) -> None:
         """Initialize league manager.
 
         Args:

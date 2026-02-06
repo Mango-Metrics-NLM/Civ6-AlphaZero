@@ -67,7 +67,7 @@ class Civ6Interface(BaseGameInterface):
         config: GameConfig | None = None,
         bridge_config: BridgeConfig | None = None,
         use_mock: bool = False,
-    ):
+    ) -> None:
         """Initialize Civ6 interface.
 
         Args:
@@ -370,7 +370,7 @@ def _create_mock_civ6_interface(config: GameConfig | None = None) -> Civ6Interfa
 
 
 # Register with GameAdapter
-def register_civ6_backend():
+def register_civ6_backend() -> None:
     """Register Civ6 backend with GameAdapter.
 
     Call this to make "civ6" available as a backend option.

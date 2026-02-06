@@ -38,7 +38,7 @@ class ChromaVectorStore(VectorStore):
         dimension: int = 1536,
         persist_directory: Path | None = None,
         distance_metric: str = "cosine",
-    ):
+    ) -> None:
         """Initialize ChromaDB vector store.
 
         Args:
@@ -129,7 +129,7 @@ class ChromaVectorStore(VectorStore):
         contents = [doc.content for doc in documents]
         metadatas = [self._serialize_metadata(doc.metadata.to_dict()) for doc in documents]
 
-        def _add():
+        def _add() -> None:
             self._collection.add(
                 ids=ids,
                 embeddings=embeddings,
@@ -228,7 +228,7 @@ class ChromaVectorStore(VectorStore):
         existing = await self.get(ids)
         count_before = sum(1 for doc in existing if doc is not None)
 
-        def _delete():
+        def _delete() -> None:
             self._collection.delete(ids=ids)
 
         assert self._loop is not None

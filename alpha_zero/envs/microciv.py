@@ -128,7 +128,7 @@ class MicroCivEnv(gym.Env):
         max_turns: int = 200,
         render_mode: str | None = None,
         seed: int | None = None,
-    ):
+    ) -> None:
         """Initialize MicroCiv environment.
 
         Args:

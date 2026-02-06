@@ -11,11 +11,11 @@ from alpha_zero.rag.config.settings import (
 )
 
 __all__ = [
+    "EmbeddingConfig",
+    "EmbeddingModelType",
+    "LoggingConfig",
+    "ProcessorConfig",
     "RAGConfig",
     "VectorStoreConfig",
-    "EmbeddingConfig",
-    "ProcessorConfig",
-    "LoggingConfig",
     "VectorStoreType",
-    "EmbeddingModelType",
 ]

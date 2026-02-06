@@ -153,7 +153,7 @@ class RMSNorm(nn.Module):
     More efficient than LayerNorm, used in modern transformers.
     """
 
-    def __init__(self, dim: int, eps: float = 1e-6):
+    def __init__(self, dim: int, eps: float = 1e-6) -> None:
         """Initialize RMSNorm.
 
         Args:
@@ -208,7 +208,7 @@ class RotaryEmbedding(nn.Module):
         dim: int,
         max_seq_len: int = 1024,
         base: float = 10000.0,
-    ):
+    ) -> None:
         """Initialize RoPE.
 
         Args:
@@ -316,7 +316,7 @@ class MultiHeadAttention(nn.Module):
         use_rope: bool = True,
         attention_type: AttentionType = AttentionType.STANDARD,
         max_seq_len: int = 1024,
-    ):
+    ) -> None:
         """Initialize multi-head attention.
 
         Args:
@@ -455,7 +455,7 @@ class FeedForward(nn.Module):
         hidden_dim: int | None = None,
         dropout: float = 0.0,
         use_glu: bool = True,
-    ):
+    ) -> None:
         """Initialize feed-forward network.
 
         Args:
@@ -505,7 +505,7 @@ class MixtureOfExperts(nn.Module):
         experts_per_token: int = 2,
         hidden_dim: int | None = None,
         dropout: float = 0.0,
-    ):
+    ) -> None:
         """Initialize MoE layer.
 
         Args:
@@ -585,7 +585,7 @@ class TransformerBlock(nn.Module):
         self,
         config: TransformerConfig,
         use_moe: bool = False,
-    ):
+    ) -> None:
         """Initialize transformer block.
 
         Args:
@@ -659,7 +659,7 @@ class TransformerBlock(nn.Module):
 class DropPath(nn.Module):
     """Stochastic depth (drop path) regularization."""
 
-    def __init__(self, drop_prob: float = 0.0):
+    def __init__(self, drop_prob: float = 0.0) -> None:
         """Initialize drop path.
 
         Args:
@@ -697,7 +697,7 @@ class PatchEmbed(nn.Module):
         embed_dim: int,
         patch_size: int,
         spatial_size: int,
-    ):
+    ) -> None:
         """Initialize patch embedding.
 
         Args:
@@ -740,7 +740,7 @@ class VectorProjection(nn.Module):
         vector_dim: int,
         embed_dim: int,
         num_tokens: int = 1,
-    ):
+    ) -> None:
         """Initialize vector projection.
 
         Args:
@@ -768,7 +768,7 @@ class VectorProjection(nn.Module):
 class TransformerEncoder(nn.Module):
     """Full transformer encoder with patch embedding."""
 
-    def __init__(self, config: TransformerConfig):
+    def __init__(self, config: TransformerConfig) -> None:
         """Initialize transformer encoder.
 
         Args:
@@ -904,7 +904,7 @@ class TransformerPolicyHead(nn.Module):
         action_space_size: int,
         hidden_dim: int = 256,
         dropout: float = 0.1,
-    ):
+    ) -> None:
         """Initialize policy head.
 
         Args:
@@ -951,7 +951,7 @@ class TransformerValueHead(nn.Module):
         embed_dim: int,
         hidden_dim: int = 128,
         dropout: float = 0.1,
-    ):
+    ) -> None:
         """Initialize value head.
 
         Args:
@@ -1002,7 +1002,7 @@ class Civ6TransformerNetwork(nn.Module):
     - Stochastic depth regularization
     """
 
-    def __init__(self, config: TransformerConfig | None = None, **kwargs: Any):
+    def __init__(self, config: TransformerConfig | None = None, **kwargs: Any) -> None:
         """Initialize the network.
 
         Args:

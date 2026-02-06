@@ -151,7 +151,7 @@ class ModelEvaluator:
         ...     print(f"{name}: {result.win_rate:.1%}")
     """
 
-    def __init__(self, config: EvaluationConfig):
+    def __init__(self, config: EvaluationConfig) -> None:
         """Initialize model evaluator.
 
         Args:
@@ -310,7 +310,7 @@ class ModelEvaluator:
             }
             game_history.append((action, turn_info))
 
-            obs, reward, terminated, truncated, info = env.step(action)
+            obs, _reward, terminated, truncated, _info = env.step(action)
             turn += 1
 
             if terminated or truncated:

@@ -220,7 +220,7 @@ class EnvironmentTuningConfig:
 class EarlyTerminationChecker:
     """Checks for early game termination conditions."""
 
-    def __init__(self, config: EarlyTerminationConfig):
+    def __init__(self, config: EarlyTerminationConfig) -> None:
         """Initialize early termination checker.
 
         Args:
@@ -350,7 +350,7 @@ class TunedEnvironmentWrapper(gym.Wrapper):
         self,
         env: gym.Env,
         config: EnvironmentTuningConfig | None = None,
-    ):
+    ) -> None:
         """Initialize tuned environment wrapper.
 
         Args:

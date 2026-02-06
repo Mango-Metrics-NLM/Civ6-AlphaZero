@@ -346,7 +346,7 @@ class CurriculumState:
 class CurriculumManager:
     """Manages curriculum progression during training."""
 
-    def __init__(self, config: CurriculumConfig | None = None):
+    def __init__(self, config: CurriculumConfig | None = None) -> None:
         """Initialize curriculum manager.
 
         Args:
@@ -666,7 +666,7 @@ class AdaptiveDifficultyController:
         config: CurriculumConfig,
         target_win_rate: float = 0.55,
         adjustment_rate: float = 0.05,
-    ):
+    ) -> None:
         """Initialize adaptive difficulty controller.
 
         Args:

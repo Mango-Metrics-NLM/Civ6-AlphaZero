@@ -152,7 +152,7 @@ class MetricsCollector:
         print(collector.get_summary())
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize metrics collector."""
         self._timers: dict[str, list[Timer]] = defaultdict(list)
         self._counters: dict[str, Counter] = {}

@@ -329,7 +329,7 @@ class BridgeHealth:
 class CircuitBreakerOpenError(Exception):
     """Exception raised when circuit breaker is open."""
 
-    def __init__(self, message: str = "Circuit breaker is open", retry_after: float = 0):
+    def __init__(self, message: str = "Circuit breaker is open", retry_after: float = 0) -> None:
         super().__init__(message)
         self.retry_after = retry_after
 
@@ -337,7 +337,7 @@ class CircuitBreakerOpenError(Exception):
 class OperationTimeoutError(Exception):
     """Exception raised when operation times out."""
 
-    def __init__(self, message: str = "Operation timed out", timeout: float = 0):
+    def __init__(self, message: str = "Operation timed out", timeout: float = 0) -> None:
         super().__init__(message)
         self.timeout = timeout
 
@@ -357,7 +357,7 @@ class GameBridgeHealthChecker:
         self,
         bridge: BridgeProtocol,
         config: BridgeHealthConfig | None = None,
-    ):
+    ) -> None:
         """Initialize health checker.
 
         Args:

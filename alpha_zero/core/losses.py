@@ -642,7 +642,7 @@ class LossConfig:
         support_size: int | None = None,
         min_value: float | None = None,
         max_value: float | None = None,
-    ):
+    ) -> None:
         """Initialize LossConfig with backwards compatibility.
 
         Args:
@@ -1072,7 +1072,7 @@ class MuZeroLossCalculator:
         num_unroll_steps: int = 5,
         use_consistency_loss: bool = True,
         use_value_prefix: bool = True,
-    ):
+    ) -> None:
         """Initialize the loss calculator.
 
         Args:

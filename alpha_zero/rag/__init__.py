@@ -32,21 +32,21 @@ from alpha_zero.rag.processors.base import DocumentProcessor
 from alpha_zero.rag.stores.base import Document, SearchResult, VectorStore
 
 __all__ = [
-    # Configuration
-    "RAGConfig",
-    "VectorStoreConfig",
-    "EmbeddingConfig",
-    "ProcessorConfig",
-    "LoggingConfig",
-    # Pipeline
-    "RAGPipeline",
-    # Stores
-    "VectorStore",
     "Document",
-    "SearchResult",
     # Processors
     "DocumentProcessor",
+    "EmbeddingConfig",
+    "LoggingConfig",
+    "ProcessorConfig",
     # Agents
     "RAGAgentWorkflow",
+    # Configuration
+    "RAGConfig",
+    # Pipeline
+    "RAGPipeline",
+    "SearchResult",
+    # Stores
+    "VectorStore",
+    "VectorStoreConfig",
     "WorkflowContext",
 ]

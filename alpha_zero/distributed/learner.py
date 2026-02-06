@@ -81,7 +81,7 @@ class LearningRateScheduler:
         decay_rate: float = 0.1,
         warmup_steps: int = 0,
         base_lr: float = 0.001,
-    ):
+    ) -> None:
         """Initialize scheduler.
 
         Args:
@@ -137,7 +137,7 @@ class GradientAccumulator:
         optimizer: optim.Optimizer,
         accumulation_steps: int = 1,
         gradient_clip: float = 1.0,
-    ):
+    ) -> None:
         """Initialize accumulator.
 
         Args:
@@ -200,7 +200,7 @@ class Learner:
         config: LearnerConfig,
         shared_storage: SharedStorage,
         replay_buffer: DistributedReplayBuffer,
-    ):
+    ) -> None:
         """Initialize learner.
 
         Args:
@@ -575,7 +575,7 @@ def learner_process(
     )
 
     # Handle signals
-    def signal_handler(signum, frame):
+    def signal_handler(signum, frame) -> None:
         logger.info(f"Learner: Received signal {signum}")
         storage.request_stop()
 

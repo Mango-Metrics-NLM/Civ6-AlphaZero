@@ -229,7 +229,7 @@ class AuxiliaryTargetGenerator:
         board_size: int = 16,
         action_space_size: int = 1000,
         seed: int | None = None,
-    ):
+    ) -> None:
         """Initialize auxiliary target generator.
 
         Args:
@@ -503,7 +503,7 @@ class AuxiliaryLossCalculator:
         >>> loss = calculator.compute_loss(predictions, targets)
     """
 
-    def __init__(self, config: AuxiliaryTargetsConfig):
+    def __init__(self, config: AuxiliaryTargetsConfig) -> None:
         """Initialize loss calculator.
 
         Args:

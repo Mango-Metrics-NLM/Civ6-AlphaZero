@@ -208,7 +208,7 @@ class LLMRateLimitError(LLMError):
 class LLMProviderError(LLMError):
     """Provider-specific error."""
 
-    def __init__(self, message: str, provider: LLMProvider):
+    def __init__(self, message: str, provider: LLMProvider) -> None:
         super().__init__(message)
         self.provider = provider
 
@@ -251,7 +251,7 @@ class BaseLLMClient(ABC):
 class OpenAIClient(BaseLLMClient):
     """OpenAI API client."""
 
-    def __init__(self, config: LLMConfig):
+    def __init__(self, config: LLMConfig) -> None:
         if not OPENAI_AVAILABLE:
             raise LLMConfigError("OpenAI package not installed. Run: pip install openai")
 
@@ -358,7 +358,7 @@ class OpenAIClient(BaseLLMClient):
 class AnthropicClient(BaseLLMClient):
     """Anthropic API client."""
 
-    def __init__(self, config: LLMConfig):
+    def __init__(self, config: LLMConfig) -> None:
         if not ANTHROPIC_AVAILABLE:
             raise LLMConfigError("Anthropic package not installed. Run: pip install anthropic")
 
@@ -477,7 +477,7 @@ class LLMClient:
         response = await client.generate("Hello, world!")
     """
 
-    def __init__(self, config: LLMConfig):
+    def __init__(self, config: LLMConfig) -> None:
         self.config = config
         self._clients: dict[LLMProvider, BaseLLMClient] = {}
         self._initialize_clients()

@@ -132,7 +132,7 @@ class GaussianMutation(BaseMutation):
             new_value = np.clip(value + perturbation, param_range.min_value, param_range.max_value)
 
         if param_range.discrete:
-            new_value = int(round(new_value))
+            new_value = round(new_value)
 
         return new_value
 
@@ -172,7 +172,7 @@ class UniformMutation(BaseMutation):
             new_value = np.clip(new_value, param_range.min_value, param_range.max_value)
 
         if param_range.discrete:
-            new_value = int(round(new_value))
+            new_value = round(new_value)
 
         return new_value
 
@@ -183,7 +183,7 @@ class PolynomialMutation(BaseMutation):
     Uses polynomial distribution for mutation, common in evolutionary algorithms.
     """
 
-    def __init__(self, eta: float = 20.0):
+    def __init__(self, eta: float = 20.0) -> None:
         """Initialize polynomial mutation.
 
         Args:
@@ -235,7 +235,7 @@ class PolynomialMutation(BaseMutation):
             )
 
         if param_range.discrete:
-            new_value = int(round(new_value))
+            new_value = round(new_value)
 
         return new_value
 
@@ -246,7 +246,7 @@ class DifferentialMutation(BaseMutation):
     Requires multiple candidate values to compute mutation direction.
     """
 
-    def __init__(self, f: float = 0.5):
+    def __init__(self, f: float = 0.5) -> None:
         """Initialize differential mutation.
 
         Args:
@@ -297,7 +297,7 @@ class DifferentialMutation(BaseMutation):
         new_value = np.clip(new_value, param_range.min_value, param_range.max_value)
 
         if param_range.discrete:
-            new_value = int(round(new_value))
+            new_value = round(new_value)
 
         return new_value
 
@@ -308,7 +308,7 @@ class AdaptiveMutation(BaseMutation):
     Adjusts mutation strength based on fitness improvement history.
     """
 
-    def __init__(self, base_strength: float = 0.2, adaptation_rate: float = 0.1):
+    def __init__(self, base_strength: float = 0.2, adaptation_rate: float = 0.1) -> None:
         """Initialize adaptive mutation.
 
         Args:
@@ -377,7 +377,7 @@ class CrossoverMutation(BaseMutation):
         crossover_rate: float = 0.5,
         blend_alpha: float = 0.5,
         crossover_type: str = "blend",
-    ):
+    ) -> None:
         """Initialize crossover mutation.
 
         Args:
@@ -453,7 +453,7 @@ class CrossoverMutation(BaseMutation):
         new_value = np.clip(new_value, param_range.min_value, param_range.max_value)
 
         if param_range.discrete:
-            new_value = int(round(new_value))
+            new_value = round(new_value)
 
         return new_value
 
@@ -531,7 +531,7 @@ class MutationOperator:
         self,
         config: MutationConfig | None = None,
         rng: np.random.Generator | None = None,
-    ):
+    ) -> None:
         """Initialize mutation operator.
 
         Args:

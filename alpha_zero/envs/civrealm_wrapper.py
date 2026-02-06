@@ -252,7 +252,7 @@ class CivRealmEncoder:
     TOTAL_CHANNELS = 51
     VECTOR_DIM = 256
 
-    def __init__(self, config: CivRealmConfig):
+    def __init__(self, config: CivRealmConfig) -> None:
         """Initialize encoder.
 
         Args:
@@ -692,7 +692,7 @@ class CivRealmActionHandler:
         action_size: Total number of discrete actions.
     """
 
-    def __init__(self, config: CivRealmConfig):
+    def __init__(self, config: CivRealmConfig) -> None:
         """Initialize action handler.
 
         Args:
@@ -957,7 +957,7 @@ class CivRealmCurriculum:
         ),
     ]
 
-    def __init__(self, custom_tasks: list[MiniGameTask] | None = None):
+    def __init__(self, custom_tasks: list[MiniGameTask] | None = None) -> None:
         """Initialize curriculum.
 
         Args:
@@ -1159,7 +1159,7 @@ class MockCivRealmEnv:
     Provides a simplified simulation that mimics CivRealm's interface.
     """
 
-    def __init__(self, config: CivRealmConfig):
+    def __init__(self, config: CivRealmConfig) -> None:
         """Initialize mock environment.
 
         Args:
@@ -1327,7 +1327,7 @@ class CivRealmWrapper(gym.Env):
         self,
         config: CivRealmConfig | None = None,
         curriculum: CivRealmCurriculum | None = None,
-    ):
+    ) -> None:
         """Initialize CivRealm wrapper.
 
         Args:

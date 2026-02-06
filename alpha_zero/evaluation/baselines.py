@@ -90,7 +90,7 @@ class RandomPlayer:
         name: Player name for identification
     """
 
-    def __init__(self, seed: int | None = None, name: str = "random"):
+    def __init__(self, seed: int | None = None, name: str = "random") -> None:
         """Initialize random player.
 
         Args:
@@ -170,7 +170,7 @@ class HeuristicPlayer:
         aggression: float = 0.5,
         name: str = "heuristic",
         seed: int | None = None,
-    ):
+    ) -> None:
         """Initialize heuristic player.
 
         Args:
@@ -381,7 +381,7 @@ class NeuralNetworkPlayer:
         mcts_simulations: int = 50,
         temperature: float = 0.0,
         name: str = "nn_player",
-    ):
+    ) -> None:
         """Initialize neural network player.
 
         Args:

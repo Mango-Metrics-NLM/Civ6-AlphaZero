@@ -70,7 +70,7 @@ class BridgeStats:
 class FileBridgeError(Exception):
     """Base exception for file bridge errors."""
 
-    def __init__(self, message: str, code: str = ErrorCode.UNKNOWN):
+    def __init__(self, message: str, code: str = ErrorCode.UNKNOWN) -> None:
         super().__init__(message)
         self.code = code
 
@@ -78,14 +78,14 @@ class FileBridgeError(Exception):
 class StateTimeoutError(FileBridgeError):
     """Timeout waiting for state."""
 
-    def __init__(self, timeout: float):
+    def __init__(self, timeout: float) -> None:
         super().__init__(f"Timeout waiting for state after {timeout}s", ErrorCode.TIMEOUT)
 
 
 class AckTimeoutError(FileBridgeError):
     """Timeout waiting for acknowledgment."""
 
-    def __init__(self, msg_id: int, timeout: float):
+    def __init__(self, msg_id: int, timeout: float) -> None:
         super().__init__(
             f"Timeout waiting for ack (msg_id={msg_id}) after {timeout}s",
             ErrorCode.TIMEOUT,
@@ -95,7 +95,7 @@ class AckTimeoutError(FileBridgeError):
 class ConnectionLostError(FileBridgeError):
     """Connection to game lost (heartbeat timeout)."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("Connection to game lost (heartbeat timeout)", ErrorCode.CONNECTION_LOST)
 
 
@@ -110,7 +110,7 @@ class FileBridge:
         stats: Operation statistics.
     """
 
-    def __init__(self, config: BridgeConfig | None = None):
+    def __init__(self, config: BridgeConfig | None = None) -> None:
         """Initialize the file bridge.
 
         Args:
@@ -647,7 +647,7 @@ class MockFileBridge(FileBridge):
     by this class - all operations are simulated in memory.
     """
 
-    def __init__(self, config: BridgeConfig | None = None):
+    def __init__(self, config: BridgeConfig | None = None) -> None:
         """Initialize mock bridge."""
         super().__init__(config)
         self._mock_state: dict[str, Any] | None = None

@@ -57,7 +57,7 @@ class ProtocolValidationError(ValueError):
         field_name: str | None = None,
         expected: str | None = None,
         actual: Any = None,
-    ):
+    ) -> None:
         self.field_name = field_name
         self.expected = expected
         self.actual = actual

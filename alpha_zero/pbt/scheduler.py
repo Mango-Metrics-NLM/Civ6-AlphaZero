@@ -110,7 +110,7 @@ class TournamentSelection(SelectionStrategy):
     Runs tournaments among random subsets of agents.
     """
 
-    def __init__(self, tournament_size: int = 3):
+    def __init__(self, tournament_size: int = 3) -> None:
         """Initialize tournament selection.
 
         Args:
@@ -159,7 +159,7 @@ class RankSelection(SelectionStrategy):
     Selection probability based on rank rather than raw fitness.
     """
 
-    def __init__(self, selection_pressure: float = 2.0):
+    def __init__(self, selection_pressure: float = 2.0) -> None:
         """Initialize rank selection.
 
         Args:
@@ -300,7 +300,7 @@ class FitnessEvaluator:
         self,
         games_per_evaluation: int = 20,
         rng: np.random.Generator | None = None,
-    ):
+    ) -> None:
         """Initialize fitness evaluator.
 
         Args:
@@ -444,7 +444,7 @@ class PBTScheduler:
         self,
         config: PBTConfig,
         rng: np.random.Generator | None = None,
-    ):
+    ) -> None:
         """Initialize PBT scheduler.
 
         Args:

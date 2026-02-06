@@ -77,7 +77,7 @@ class NetworkConfig:
 class ResidualBlock(nn.Module):
     """Residual block with two convolutional layers."""
 
-    def __init__(self, num_filters: int):
+    def __init__(self, num_filters: int) -> None:
         """Initialize residual block.
 
         Args:
@@ -114,7 +114,7 @@ class SpatialEncoder(nn.Module):
         in_channels: int,
         num_filters: int,
         num_res_blocks: int,
-    ):
+    ) -> None:
         """Initialize spatial encoder.
 
         Args:
@@ -157,7 +157,7 @@ class VectorEncoder(nn.Module):
         hidden_dim: int,
         output_dim: int,
         dropout: float = 0.0,
-    ):
+    ) -> None:
         """Initialize vector encoder.
 
         Args:
@@ -202,7 +202,7 @@ class PolicyHead(nn.Module):
         vector_dim: int,
         action_space_size: int,
         hidden_dim: int = 256,
-    ):
+    ) -> None:
         """Initialize policy head.
 
         Args:
@@ -268,7 +268,7 @@ class ValueHead(nn.Module):
         spatial_size: int,
         vector_dim: int,
         hidden_dim: int = 128,
-    ):
+    ) -> None:
         """Initialize value head.
 
         Args:
@@ -327,7 +327,7 @@ class Civ6Network(nn.Module):
     3. Features are combined and fed to policy and value heads
     """
 
-    def __init__(self, config: NetworkConfig | None = None, **kwargs):
+    def __init__(self, config: NetworkConfig | None = None, **kwargs) -> None:
         """Initialize network.
 
         Args:
@@ -533,7 +533,7 @@ class MicroCivNetwork(Civ6Network):
         num_filters: int = 64,
         config: NetworkConfig | None = None,
         **kwargs,
-    ):
+    ) -> None:
         """Initialize MicroCiv network.
 
         Args:
@@ -575,7 +575,7 @@ class PositionalEncoding2D(nn.Module):
         num_channels: int,
         max_size: int = 128,
         learned: bool = True,
-    ):
+    ) -> None:
         """Initialize 2D positional encoding.
 
         Args:
@@ -683,7 +683,7 @@ class SpatialSelfAttention(nn.Module):
         num_heads: int = 4,
         dropout: float = 0.1,
         use_relative_pos: bool = True,
-    ):
+    ) -> None:
         """Initialize spatial self-attention.
 
         Args:
@@ -834,7 +834,7 @@ class CrossModalAttention(nn.Module):
         vector_dim: int,
         num_heads: int = 4,
         dropout: float = 0.1,
-    ):
+    ) -> None:
         """Initialize cross-modal attention.
 
         Args:
@@ -964,7 +964,7 @@ class AttentionSpatialEncoder(nn.Module):
         attention_dropout: float = 0.1,
         attention_interval: int = 2,
         max_spatial_size: int = 128,
-    ):
+    ) -> None:
         """Initialize attention spatial encoder.
 
         Args:
@@ -1067,7 +1067,7 @@ class HierarchicalPolicyHead(nn.Module):
         action_space_size: int,
         hidden_dim: int = 256,
         category_hidden_dim: int = 128,
-    ):
+    ) -> None:
         """Initialize hierarchical policy head.
 
         Args:
@@ -1162,7 +1162,7 @@ class Civ6NetworkV2(nn.Module):
     Maintains backward compatibility with the same forward/predict/save/load interface.
     """
 
-    def __init__(self, config: NetworkConfig | None = None, **kwargs):
+    def __init__(self, config: NetworkConfig | None = None, **kwargs) -> None:
         """Initialize network.
 
         Args:

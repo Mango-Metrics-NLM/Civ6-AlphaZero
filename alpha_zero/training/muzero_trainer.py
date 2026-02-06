@@ -410,7 +410,7 @@ class TrajectoryBuffer:
         self,
         max_trajectories: int = 1000,
         max_positions: int = 500000,
-    ):
+    ) -> None:
         """Initialize trajectory buffer.
 
         Args:
@@ -745,7 +745,7 @@ class MuZeroTrainer:
         network: nn.Module,
         config: MuZeroTrainingConfig | None = None,
         device: str | torch.device = "cpu",
-    ):
+    ) -> None:
         """Initialize MuZero trainer.
 
         Args:
@@ -1273,9 +1273,9 @@ class MuZeroTrainer:
 # =============================================================================
 
 __all__ = [
-    "MuZeroTrainingConfig",
     "GameTrajectory",
+    "MuZeroTrainer",
+    "MuZeroTrainingConfig",
     "TrajectoryBatchSample",
     "TrajectoryBuffer",
-    "MuZeroTrainer",
 ]

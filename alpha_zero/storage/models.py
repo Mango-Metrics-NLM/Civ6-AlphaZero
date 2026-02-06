@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field
-from datetime import timezone, datetime
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -32,7 +32,7 @@ class ModelMetadata:
 
     iteration: int
     version: int
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     elo_rating: float | None = None
     win_rate: float | None = None
     config_hash: str | None = None
@@ -53,7 +53,7 @@ class ModelMetadata:
         return cls(
             iteration=data.get("iteration", 0),
             version=data.get("version", 0),
-            timestamp=data.get("timestamp", datetime.now(timezone.utc).isoformat()),
+            timestamp=data.get("timestamp", datetime.now(UTC).isoformat()),
             elo_rating=data.get("elo_rating"),
             win_rate=data.get("win_rate"),
             config_hash=data.get("config_hash"),
@@ -89,7 +89,7 @@ class TrajectoryMetadata:
     game_length: int = 0
     winner: int | None = None
     model_version: int = 0
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     total_reward: float = 0.0
     num_examples: int = 0
 
@@ -111,7 +111,7 @@ class TrajectoryMetadata:
             game_length=data.get("game_length", 0),
             winner=data.get("winner"),
             model_version=data.get("model_version", 0),
-            timestamp=data.get("timestamp", datetime.now(timezone.utc).isoformat()),
+            timestamp=data.get("timestamp", datetime.now(UTC).isoformat()),
             total_reward=data.get("total_reward", 0.0),
             num_examples=data.get("num_examples", 0),
         )
@@ -142,7 +142,7 @@ class CheckpointMetadata:
     iteration: int
     training_step: int = 0
     model_version: int = 0
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     games_played: int = 0
     total_examples: int = 0
     curriculum_stage: int = 0
@@ -165,7 +165,7 @@ class CheckpointMetadata:
             iteration=data.get("iteration", 0),
             training_step=data.get("training_step", 0),
             model_version=data.get("model_version", 0),
-            timestamp=data.get("timestamp", datetime.now(timezone.utc).isoformat()),
+            timestamp=data.get("timestamp", datetime.now(UTC).isoformat()),
             games_played=data.get("games_played", 0),
             total_examples=data.get("total_examples", 0),
             curriculum_stage=data.get("curriculum_stage", 0),
@@ -207,7 +207,7 @@ class EvaluationResult:
     draws: int
     win_rate: float
     promoted: bool
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     game_results: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -231,7 +231,7 @@ class EvaluationResult:
             draws=data.get("draws", 0),
             win_rate=data.get("win_rate", 0.0),
             promoted=data.get("promoted", False),
-            timestamp=data.get("timestamp", datetime.now(timezone.utc).isoformat()),
+            timestamp=data.get("timestamp", datetime.now(UTC).isoformat()),
             game_results=data.get("game_results", []),
         )
 
@@ -242,8 +242,8 @@ class EvaluationResult:
 
 
 __all__ = [
-    "ModelMetadata",
-    "TrajectoryMetadata",
     "CheckpointMetadata",
     "EvaluationResult",
+    "ModelMetadata",
+    "TrajectoryMetadata",
 ]

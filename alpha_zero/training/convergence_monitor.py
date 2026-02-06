@@ -301,7 +301,7 @@ class ConvergenceMonitor:
         config: Convergence monitor configuration.
     """
 
-    def __init__(self, config: ConvergenceMonitorConfig | None = None):
+    def __init__(self, config: ConvergenceMonitorConfig | None = None) -> None:
         """Initialize convergence monitor.
 
         Args:

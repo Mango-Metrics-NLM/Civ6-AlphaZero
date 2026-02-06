@@ -358,7 +358,7 @@ class Civ6MCTS:
         config: MCTSConfig | None = None,
         device: str = "cpu",
         reflection_memory: Any | None = None,
-    ):
+    ) -> None:
         """Initialize MCTS.
 
         Args:
@@ -630,7 +630,7 @@ class SimpleMCTS:
         num_simulations: int = 50,
         c_puct: float = 1.5,
         rollout_depth: int = DEFAULT_ROLLOUT_DEPTH,
-    ):
+    ) -> None:
         """Initialize simple MCTS.
 
         Args:
@@ -1010,7 +1010,7 @@ class GumbelMCTS:
         network: MCTSNetwork,
         config: GumbelMCTSConfig | None = None,
         device: str = "cpu",
-    ):
+    ) -> None:
         """Initialize Gumbel MCTS.
 
         Args:
@@ -1528,7 +1528,7 @@ class MuZeroMCTS:
         network: MuZeroNetworkProtocol,
         config: MuZeroMCTSConfig | None = None,
         device: str = "cpu",
-    ):
+    ) -> None:
         """Initialize MuZero MCTS.
 
         Args:

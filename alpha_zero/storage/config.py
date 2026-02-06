@@ -257,6 +257,6 @@ class StorageConfig:
 
 
 __all__ = [
-    "StorageConfig",
     "GCSConfig",
+    "StorageConfig",
 ]
