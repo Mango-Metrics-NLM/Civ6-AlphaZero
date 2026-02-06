@@ -248,9 +248,29 @@ def main() -> None:
         from dotenv import load_dotenv
         load_dotenv(env_file)
 
-    # Get project and bucket from environment
-    project_id = os.environ.get("CIV6AZ_VERTEX_PROJECT", "civ6-alphazero")
-    bucket_name = os.environ.get("CIV6AZ_GCS_BUCKET", "civ6az-training")
+    # Get project and bucket from environment with validation
+    project_id = os.environ.get("CIV6AZ_VERTEX_PROJECT")
+    bucket_name = os.environ.get("CIV6AZ_GCS_BUCKET")
+
+    # Warn about missing configuration
+    using_defaults = False
+    if not project_id:
+        print("WARNING: CIV6AZ_VERTEX_PROJECT not set, using default 'civ6-alphazero'")
+        print("  Set this environment variable for your GCP project.")
+        project_id = "civ6-alphazero"
+        using_defaults = True
+
+    if not bucket_name:
+        print("WARNING: CIV6AZ_GCS_BUCKET not set, using default 'civ6az-training'")
+        print("  Set this environment variable for your GCS bucket.")
+        bucket_name = "civ6az-training"
+        using_defaults = True
+
+    if using_defaults:
+        print("\nTo configure, set environment variables or create .env file:")
+        print("  export CIV6AZ_VERTEX_PROJECT=<your-project-id>")
+        print("  export CIV6AZ_GCS_BUCKET=<your-bucket-name>")
+        print()
 
     print(f"Project: {project_id}")
     print(f"Bucket: {bucket_name}")

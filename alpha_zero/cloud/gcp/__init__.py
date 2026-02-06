@@ -5,12 +5,9 @@ Provides cloud infrastructure components for distributed training:
 - GCS storage for models, trajectories, and checkpoints
 - Vertex AI job management for self-play and training
 - Configuration with environment variable support
-<<<<<<< HEAD
-=======
 - Cost optimization (pipeline caching, spot availability, worker autoscaling)
 - Alerting (Slack, email, W&B)
 - Data lifecycle management
->>>>>>> origin/HEAD
 
 Usage:
     from alpha_zero.cloud.gcp import GCPConfig, GCSModelStorage

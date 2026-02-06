@@ -51,7 +51,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--iteration", type=int, required=True, help="Training iteration")
     parser.add_argument("--games", type=int, default=100, help="Number of games to play")
     parser.add_argument("--mcts_simulations", type=int, default=100, help="MCTS simulations per move")
-    parser.add_argument("--mode", type=str, default="selfplay", help="Worker mode (selfplay)")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
 
     # MCTS configuration arguments
@@ -199,9 +198,11 @@ def run_selfplay(
         return dummy_trajectories
 
     trajectories: list[dict[str, Any]] = []
+    failed_games = 0
 
     for game_idx in range(num_games):
         start_time = time.time()
+        game_failed = False
 
         # Create environment and MCTS
         from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig
@@ -255,6 +256,7 @@ def run_selfplay(
                 )
                 if device != "cpu":
                     torch.cuda.empty_cache()
+                game_failed = True
                 break  # Skip this game, move to next
 
             # Store experience - flatten spatial and vector for storage
@@ -270,15 +272,20 @@ def run_selfplay(
             reward = float(step_result[1])
             done = bool(step_result[2]) or bool(step_result[3])  # terminated or truncated
 
-        # Propagate final reward to all states (only if we collected data)
-        if trajectory["spatial"]:
+        # Track failed games
+        if game_failed:
+            failed_games += 1
+            logger.warning("Game %d/%d failed, skipping", game_idx + 1, num_games)
+        # Propagate final reward to all states (only if we collected data and game didn't fail)
+        elif trajectory["spatial"]:
             final_value = reward
             num_steps = len(trajectory["spatial"])
             trajectory["rewards"] = [final_value] * num_steps
             trajectories.append(trajectory)
 
         elapsed = time.time() - start_time
-        logger.debug("Game %d/%d completed in %.1fs", game_idx + 1, num_games, elapsed)
+        if not game_failed:
+            logger.debug("Game %d/%d completed in %.1fs", game_idx + 1, num_games, elapsed)
 
         # Cleanup after each game to prevent memory accumulation
         del trajectory
@@ -302,6 +309,14 @@ def run_selfplay(
                 gc.collect()
                 if device != "cpu":
                     torch.cuda.empty_cache()
+
+    # Log final statistics including any failed games
+    if failed_games > 0:
+        logger.warning(
+            "Self-play completed with %d/%d games failed",
+            failed_games,
+            num_games,
+        )
 
     return trajectories
 

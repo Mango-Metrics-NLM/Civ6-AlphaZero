@@ -205,6 +205,9 @@ class TestMuZeroMCTS:
 
         # Value should be finite
         assert np.isfinite(root_value)
+        # Value should be bounded (untrained networks can produce larger values)
+        # Using wide bounds to catch NaN/Inf while allowing untrained variance
+        assert -100.0 <= root_value <= 100.0, f"Root value {root_value} outside reasonable range"
 
     def test_no_valid_actions_returns_zeros(self, mcts, sample_observation):
         """Returns zero probs when no valid actions."""
@@ -315,6 +318,8 @@ class TestMuZeroMCTSIntegration:
 
         assert action_probs.max() > 0.99  # Should select one action
         assert np.isfinite(root_value)
+        # Value should be bounded (untrained networks can produce larger values)
+        assert -100.0 <= root_value <= 100.0, f"Root value {root_value} outside reasonable range"
 
     def test_repeated_searches_different_results(self, network):
         """Different random seeds can produce different results."""
@@ -396,6 +401,7 @@ class TestMuZeroMCTSNoEnvCloning:
 
         assert action_probs.shape == (20,)
         assert np.isfinite(root_value)
+        # Value should be finite (untrained networks may produce large values)
 
     def test_dynamics_used_for_tree_expansion(self, network):
         """Verify dynamics function is used (not env.step)."""

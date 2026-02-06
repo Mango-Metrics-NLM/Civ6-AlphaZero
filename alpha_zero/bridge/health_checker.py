@@ -31,11 +31,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-<<<<<<< HEAD
-from typing import Any, TypeVar, cast
-=======
 from typing import Any, Protocol, TypeVar, cast
->>>>>>> origin/HEAD
 
 import yaml
 
@@ -44,8 +40,6 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-<<<<<<< HEAD
-=======
 class BridgeProtocol(Protocol):
     """Protocol for bridge objects that support health checking.
 
@@ -62,7 +56,6 @@ class BridgeProtocol(Protocol):
         ...
 
 
->>>>>>> origin/HEAD
 class CircuitState(str, Enum):
     """Circuit breaker states."""
 
@@ -362,21 +355,13 @@ class GameBridgeHealthChecker:
 
     def __init__(
         self,
-<<<<<<< HEAD
-        bridge: Any,  # FileBridge or protocol-compatible
-=======
         bridge: BridgeProtocol,
->>>>>>> origin/HEAD
         config: BridgeHealthConfig | None = None,
     ):
         """Initialize health checker.
 
         Args:
-<<<<<<< HEAD
-            bridge: File bridge to monitor (must have check_heartbeat method).
-=======
             bridge: File bridge to monitor (must implement BridgeProtocol).
->>>>>>> origin/HEAD
             config: Health checker configuration.
         """
         self.bridge = bridge
@@ -654,11 +639,7 @@ class GameBridgeHealthChecker:
 
                 return cast(T, result)
 
-<<<<<<< HEAD
-            except asyncio.TimeoutError:
-=======
             except TimeoutError:
->>>>>>> origin/HEAD
                 last_exception = OperationTimeoutError(
                     f"Operation timed out after {self.config.timeout_seconds}s",
                     timeout=self.config.timeout_seconds,

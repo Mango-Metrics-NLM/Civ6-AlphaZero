@@ -61,7 +61,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning_rate", type=float, default=0.001, help="Learning rate")
     parser.add_argument("--checkpoint_interval", type=int, default=1000, help="Steps between checkpoints")
     parser.add_argument("--resume_from", type=str, default=None, help="Checkpoint to resume from")
-    parser.add_argument("--mode", type=str, default="training", help="Worker mode (training)")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
     return parser.parse_args()
 
@@ -112,12 +111,31 @@ def create_model(dry_run: bool = False) -> torch.nn.Module:
     return Civ6TransformerNetwork(config=model_config)
 
 
-def prepare_dataset(trajectories: list[dict]) -> TensorDataset:
-    """Convert trajectories to PyTorch dataset."""
+def prepare_dataset(
+    trajectories: list[dict],
+    vector_dim: int | None = None,
+) -> TensorDataset:
+    """Convert trajectories to PyTorch dataset.
+
+    Args:
+        trajectories: List of trajectory dictionaries.
+        vector_dim: Vector dimension for legacy format handling.
+            If None, uses default from TransformerConfig.
+
+    Returns:
+        TensorDataset with spatial, vector, policy, and value tensors.
+    """
+    # Get vector_dim from config if not specified
+    if vector_dim is None:
+        from alpha_zero.core.transformer_network import TransformerConfig
+        vector_dim = TransformerConfig().vector_dim
+
     spatial_list = []
     vector_list = []
     policies = []
     values = []
+
+    legacy_format_warned = False
 
     for traj in trajectories:
         # Handle both old format (states) and new format (spatial + vector)
@@ -129,9 +147,17 @@ def prepare_dataset(trajectories: list[dict]) -> TensorDataset:
                 values.append(traj["rewards"][i])
         else:
             # Legacy format: split states into spatial and dummy vector
+            if not legacy_format_warned:
+                logger.warning(
+                    "Legacy trajectory format detected (missing 'spatial' key). "
+                    "Using zero-filled vector of dimension %d. "
+                    "Consider re-generating trajectories with updated selfplay worker.",
+                    vector_dim,
+                )
+                legacy_format_warned = True
             for i, state in enumerate(traj["states"]):
                 spatial_list.append(state)
-                vector_list.append([0.0] * 64)  # Dummy vector
+                vector_list.append([0.0] * vector_dim)
                 policies.append(traj["policies"][i])
                 values.append(traj["rewards"][i])
 

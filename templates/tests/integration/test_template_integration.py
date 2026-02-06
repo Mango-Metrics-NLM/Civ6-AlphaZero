@@ -361,11 +361,7 @@ class TestEndToEndWorkflow:
             assert config["project"]["name"] == "test-project"
 
             # 3. Setup template variables
-<<<<<<< HEAD
-            TemplateConfig(variables={
-=======
             _template_config = TemplateConfig(variables={
->>>>>>> origin/HEAD
                 "SYSTEM_NAME": config["project"]["name"],
                 "PROJECT_NAME": "test-project",
                 "PACKAGE_NAME": "test_project",
@@ -392,11 +388,7 @@ class TestEndToEndWorkflow:
             assert log_config.format == LogFormat.JSON
 
             # 6. Setup component registry
-<<<<<<< HEAD
-            FactoryRegistry()
-=======
             _registry = FactoryRegistry()
->>>>>>> origin/HEAD
 
             # 7. Plan agent workflow
             orchestrator = AgentOrchestrator()
@@ -426,7 +418,6 @@ class TestEndToEndWorkflow:
         assert "code_review" in cap_names
 
         # Suggest agent for review task
-<<<<<<< HEAD
         _suggested = registry.suggest_agent("review the authentication code")
         # Should suggest based on patterns
 
