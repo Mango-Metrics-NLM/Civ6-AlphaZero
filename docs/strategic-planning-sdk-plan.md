@@ -19,6 +19,15 @@
 7. [Testing Strategy](#7-testing-strategy)
 8. [Migration Path](#8-migration-path)
 9. [Success Criteria Verification](#9-success-criteria-verification)
+10. [Spec Gap Analysis](#10-spec-gap-analysis)
+11. [Protocol Contracts and Invariants](#11-protocol-contracts-and-invariants)
+12. [Logging, Debugging, and Observability](#12-logging-debugging-and-observability)
+13. [Domain Expansion Roadmap](#13-domain-expansion-roadmap)
+14. [Scaffolding Templates](#14-scaffolding-templates)
+15. [Execution Protocol](#15-execution-protocol)
+16. [Permission Architecture](#16-permission-architecture)
+
+**Companion Document:** [SDK Spec Reference](sdk-spec-reference.md) — Full agentic coding system prompt template with C4 diagrams, protocol definitions, config models, and appendices.
 
 ---
 
@@ -656,3 +665,647 @@ Phase 1 (Foundation) → Phase 2 (Protocols) → Phase 3 (MCTS + Networks)
 ```
 
 This produces: a working SDK that can train MicroCiv using the generalized engine, proving the architecture works. Mini-games (Phase 5.4-5.6), CLI (Phase 6.3), and documentation (Phase 7) can follow.
+
+---
+
+## 10. Spec Gap Analysis
+
+Cross-reference of the full [SDK Spec Reference](sdk-spec-reference.md) against this implementation plan. Every spec section maps to one or more plan phases, with gaps identified and addressed.
+
+### 10.1 Coverage Matrix
+
+| Spec Section | Spec Content | Plan Coverage | Gap? | Resolution |
+|---|---|---|---|---|
+| **S1.1** System Intent | SDK mission statement | Section 1 (Executive Summary) | No | |
+| **S1.2** Success Criteria | 12 mechanically verifiable criteria | Section 9 (Verification Commands) | **Partial** — missing `ruff format --check` | Added to Phase 1 verification (see 10.2) |
+| **S1.3** Problem Description | 3-paragraph system description | Section 1 (Key Insight) | **Partial** — plan focused on reuse, not failure modes | Added to Section 11 (Invariants) |
+| **S2.1** Hard Constraints | Python 3.11+, PyTorch 2.1+, deps, security | Section 5 (Dependency Management) | **Gap** — Python 3.11+ vs existing 3.10+ requirement | Resolution: SDK targets 3.11+ while `alpha_zero/` stays 3.10+ (see 10.2) |
+| **S2.2** Soft Constraints | Code style, architecture, performance, testing, logging | Sections 7, 12 | **Partial** — torch.compile, vectorized MCTS, lazy imports not explicit | Added to Phase 3 tasks (see 10.2) |
+| **S2.3** Anti-Constraints | Explicit freedoms | N/A (design principle) | No | Captured in plan Section 2.3 (Key Design Decisions) |
+| **S3** Permission Architecture | Scope, autonomy, resource budget | Not in original plan | **Gap** | Added as Section 16 |
+| **S4** C4 Architecture | 4-level Mermaid diagrams | Phase 7 task 7.1 | **Partial** — plan defers to Phase 7, but diagrams needed for Phase 2 design | Added as Phase 2 pre-req (see 10.2) |
+| **S5** Project Structure | Full directory layout | Section 2.1 | No | Plan matches spec |
+| **S6.1** StrategicEnvironment Protocol | 10-method protocol with postconditions | Phase 2 task 2.2 | **Partial** — plan lists protocol but not method contracts | Added to Section 11 |
+| **S6.2** Config Models | 8 Pydantic models (SDKConfig tree) | Phase 1 task 1.3 | **Partial** — plan references but doesn't specify all fields | Added to Section 14 (Templates) |
+| **S7** Logging/Debugging | structlog, correlation IDs, debug utilities, metrics | Phase 1 task 1.4 | **Gap** — plan only covers structlog setup, not debug utilities or metrics | Added as Section 12 |
+| **S8** Testing Strategy | conftest.py, property tests, integration tests | Section 7 | **Partial** — plan has pyramid but not fixture code or test examples | Section 7 expanded with code examples in spec ref |
+| **S9** Feedback Loop | Verification commands, error handling protocol | Section 9 | No | Plan matches spec |
+| **S10** Context Persistence | CLAUDE.md template, info to preserve | Phase 7 task 7.8 | **Partial** — template not included inline | Added to Section 14 |
+| **S11** Execution Protocol | Initial actions, implementation order, completion checklist | Phases 1-7 DoD | **Gap** — per-task workflow not specified | Added as Section 15 |
+| **S12** Domain Expansion | 7-domain mapping, reusable matrix, extension points | Phase 5 task 5.10 | **Gap** — plan only has 3 stub domains, spec has 7 with full mapping | Added as Section 13 |
+| **App A** Makefile | Complete Makefile template | Phase 7 task 7.6 | **Partial** — referenced but not included | Added to Section 14 |
+| **App B** pyproject.toml | Complete template | Phase 7 task 7.7 | **Partial** — referenced but not included | Added to Section 14 |
+
+### 10.2 Gap Resolutions
+
+**Python 3.11+ Requirement:**
+The spec requires Python 3.11+ for `TaskGroup` and `ExceptionGroup`. The existing `alpha_zero/` package targets 3.10+. Resolution:
+- `src/` (SDK) targets Python 3.11+ and uses `TaskGroup` for concurrent self-play coordination
+- `alpha_zero/` remains 3.10+ compatible
+- `pyproject.toml` declares `requires-python = ">=3.11"` for the SDK package
+- CI matrix tests both 3.11 and 3.12
+
+**Missing Verification Command:**
+Add `ruff format --check src/ tests/` to Phase 1+ verification. Update Phase DoD:
+```bash
+# Updated verification sequence (all phases)
+ruff check src/ tests/                       # 1. Lint
+ruff format --check src/ tests/              # 2. Format check (NEW)
+mypy src/ --strict                           # 3. Type check
+pytest tests/unit -v --tb=short -x           # 4. Unit tests
+```
+
+**Performance Constraints (torch.compile, vectorized MCTS):**
+Add explicit tasks to Phase 3:
+- Task 3.19: Add `torch.compile()` wrapper in `src/core/networks/model.py` with config toggle (`compile_model: bool`)
+- Task 3.20: Implement batch MCTS evaluation in `src/core/mcts/evaluation.py` (batch multiple leaf nodes for single network forward pass)
+- Task 3.21: Add lazy import guards in `src/core/networks/__init__.py` for optional backends (transformer requires `einops`, GNN requires `torch_geometric`)
+
+**C4 Diagrams Timing:**
+Phase 2 should draft component-level C4 diagrams (Level 3) before implementing protocols, not defer to Phase 7. Add task:
+- Task 2.0: Draft `docs/architecture/c4_component.mermaid` based on spec Section 4.3 to guide protocol design
+
+---
+
+## 11. Protocol Contracts and Invariants
+
+Derived from spec Sections 1.3 (failure modes) and 6.1 (StrategicEnvironment). These contracts are enforced by property-based tests and protocol compliance tests.
+
+### 11.1 StrategicEnvironment Method Contracts
+
+| Method | Preconditions | Postconditions | Enforced By |
+|--------|--------------|----------------|-------------|
+| `reset(seed)` | None | `get_valid_actions() >= 1`, `not is_terminal()`, obs matches `observation_spec.full_shape` | `test_environment_plugins.py` |
+| `step(action)` | `action in get_valid_actions()`, `not is_terminal()` | `reward in [-1.0, 1.0]`, obs matches spec, if `terminated or truncated` then no further `step()` valid | `test_environment_plugins.py` |
+| `get_valid_actions()` | `not is_terminal()` | `len(result) >= 1`, every action accepted by `step()` without `InvalidActionError` | `test_action_space.py` (property) |
+| `serialize()` | Any state | `deserialize(serialize()) == state` (deterministic) | `test_mcts_invariants.py` (property) |
+| `get_symmetries(obs, policy)` | Valid obs and policy | Result includes original `(obs, policy)` pair | `test_environment_plugins.py` |
+
+### 11.2 MCTS Invariants
+
+| Invariant | Definition | Property Test |
+|-----------|-----------|---------------|
+| Visit count consistency | `sum(child.visit_count for child in root.children) == root.visit_count` | `test_visit_count_consistency` |
+| Q-value bounds | `-1.0 <= Q(s, a) <= 1.0` for all nodes after any backpropagation sequence | `test_q_values_bounded` |
+| Deterministic search | Same seed + same state + same network → identical action selection | `test_search_deterministic_with_seed` |
+| Virtual loss correctness | Virtual loss is added during selection and removed after backup | `test_virtual_loss_lifecycle` |
+| Temperature convergence | As temperature → 0, action selection converges to argmax(visit_count) | `test_temperature_greedy_limit` |
+
+### 11.3 Training Loop Invariants
+
+| Invariant | Definition | Monitoring |
+|-----------|-----------|------------|
+| No hardcoded values | Every parameter sourced from config | `grep -rn` scan in CI + Pydantic validation |
+| Replay buffer bounded | `len(buffer) <= config.replay_buffer_size` at all times | Property test + runtime assertion |
+| Checkpoint resumability | `load(save(state)) == state` for network + optimizer + buffer | Integration test |
+| Loss monotonicity (windowed) | 100-step moving average of total loss is non-increasing | WARNING alert if violated |
+| Weight consistency | All actors use same network version within tolerance window | Actor heartbeat + version tracking |
+
+### 11.4 Failure Mode Handling
+
+| Failure Mode | Detection | Recovery | Spec Reference |
+|---|---|---|---|
+| Actor crash | Process monitor heartbeat timeout | Restart actor, replay last trajectory from WAL log | S1.3 P3 |
+| Network divergence | Auxiliary loss spike > 3 sigma | Auto-rollback to last stable checkpoint | S1.3 P3 |
+| Environment deadlock | Step timeout (configurable) | Force terminate + penalize game | S1.3 P3 |
+| Replay buffer corruption | Checksum mismatch on read | Discard corrupted entry, log WARNING | S1.3 P3 |
+| Curriculum regression | Elo drops below demotion threshold | Demote to previous stage (if `demotion_enabled`) | S1.3 P3 |
+
+---
+
+## 12. Logging, Debugging, and Observability
+
+Derived from spec Section 7. Implementation spans Phases 1 (foundation), 3 (MCTS debug), 4 (training metrics), and 6 (CLI integration).
+
+### 12.1 Structured Logging Architecture
+
+**Phase 1 deliverable:** `src/core/logging.py`
+
+```python
+# Design: structlog wrapping stdlib logging
+# - SDK modules: structlog.get_logger("component.subcomponent")
+# - Existing alpha_zero modules: logging.getLogger(__name__) still works
+# - Output: JSON (production) or pretty-print (dev) via config
+
+# Every log line automatically includes:
+bound_context = {
+    "timestamp": "ISO 8601",
+    "level": "INFO",
+    "correlation_id": "uuid4",   # For distributed tracing
+    "component": "mcts.search",  # Logger name
+    "environment_id": "mini_resource",  # Bound at orchestrator level
+    "actor_id": 0,               # Bound at actor level
+    "iteration": 42,             # Bound at training loop level
+    "step": 1000,                # Bound at training loop level
+}
+```
+
+**Implementation tasks added:**
+
+| Task | Phase | File | Description |
+|------|-------|------|-------------|
+| 1.4a | 1 | `src/core/logging.py` | structlog setup with `configure_logging(config: LoggingConfig)` |
+| 1.4b | 1 | `src/core/logging.py` | Correlation ID middleware: `bind_correlation_id()`, `get_correlation_id()` |
+| 1.4c | 1 | `configs/logging.yaml` | Component-level log config (mcts: DEBUG, training: INFO, etc.) |
+
+### 12.2 Debug Utilities
+
+**Phase 3 deliverable:** `src/core/mcts/` debug hooks
+**Phase 4 deliverable:** `src/core/training/` debug hooks
+
+| Utility | Module | Phase | Activation |
+|---------|--------|-------|------------|
+| MCTS Tree Dump | `mcts/tree.py:to_json()` | 3 | `logging.level == DEBUG` and `config.logging.log_mcts_trees` |
+| Action Mask Validator | `mcts/expansion.py:validate_mask()` | 3 | `logging.level == DEBUG` |
+| Network Activation Maps | `networks/utils.py:register_hooks()` | 3 | `config.logging.log_activation_maps` |
+| Gradient Flow Analyzer | `training/learner.py:log_gradient_norms()` | 4 | `config.logging.log_gradient_norms` |
+| Replay Buffer Inspector | `training/replay_buffer.py:get_stats()` | 4 | Every `config.logging.metrics_interval` steps |
+| Checkpoint Diff | `training/checkpoint.py:diff_checkpoints()` | 4 | On demand via CLI: `spsdk checkpoint diff ckpt1 ckpt2` |
+| Environment State Snapshots | `environments/base.py:SnapshotWrapper` | 5 | `logging.level == DEBUG` |
+
+### 12.3 Metrics Collection
+
+**Phase 4 deliverable:** `src/core/training/metrics.py`
+
+All metric names and collection intervals are configurable via `configs/logging.yaml`:
+
+```yaml
+metrics:
+  training:
+    interval: 10  # Log every N steps
+    fields: [policy_loss, value_loss, total_loss, learning_rate, gradient_norm_mean, gradient_norm_max, replay_buffer_size]
+  self_play:
+    interval: 1   # Log every game
+    fields: [game_length, outcome, total_reward, mean_mcts_depth, mean_branching_factor]
+  evaluation:
+    interval: 1   # Log every eval round
+    fields: [elo_rating, win_rate_vs_baseline, draw_rate, mean_game_length]
+  curriculum:
+    interval: 1   # Log every promotion/demotion event
+    fields: [current_stage, games_at_stage, elo_at_stage]
+  system:
+    interval: 60  # Log every N seconds
+    fields: [gpu_utilization, gpu_memory_mb, cpu_utilization, throughput_games_per_hour]
+```
+
+### 12.4 Experiment Tracking Adapter Interface
+
+**Phase 6 deliverable:** `src/adapters/experiment_tracker.py`
+
+```python
+class ExperimentTracker(Protocol):
+    """Unified interface for W&B, TensorBoard, MLflow."""
+    def log_scalar(self, name: str, value: float, step: int) -> None: ...
+    def log_histogram(self, name: str, values: NDArray, step: int) -> None: ...
+    def log_artifact(self, path: str, name: str) -> None: ...
+    def log_config(self, config: dict[str, Any]) -> None: ...
+    def finish(self) -> None: ...
+```
+
+---
+
+## 13. Domain Expansion Roadmap
+
+Derived from spec Section 12. Extends the plan's 3 stub domains to the full 7-domain mapping.
+
+### 13.1 Full Domain Mapping (7 Domains)
+
+| # | Domain | SDK Module | Civ6 Analogy | Action Hierarchy | Key Obs Channels | Phase |
+|---|--------|-----------|--------------|-----------------|-----------------|-------|
+| 1 | **AI Strategy (Logistics)** | `environments/logistics/` | Territory expansion → route optimization | Mode → Route → Load → Destination | Network graph, demand forecast, capacity, in-transit | 5 (stub) |
+| 2 | **Decision Models (Trading)** | `environments/trading/` | Tech tree → portfolio construction | Asset → Instrument → Order → Size | Price series, positions, risk metrics, order book | Post-v1.0 |
+| 3 | **Human-AI (Education)** | `environments/education/` | Strategy advisor → tutoring | Topic → Scenario → Decision → Rationale | Student state, concept mastery, curriculum progress | Post-v1.0 |
+| 4 | **Resource Mgmt (Energy)** | `environments/energy/` | City resources → grid management | Source → Distribution → Storage → Pricing | Generation capacity, demand curve, storage, weather | 5 (stub) |
+| 5 | **Simulations (Military)** | `environments/wargame/` | Unit combat → tactical planning | Unit → Movement → Engagement → Support | Terrain, force disposition, fog of war, logistics | Post-v1.0 |
+| 6 | **Climate Policy** | `environments/climate_policy/` | Diplomacy → negotiation | Policy → Implementation → Diplomacy → Trade | Emissions, GDP, temperature, commitments | 5 (stub) |
+| 7 | **AI Research (Benchmark)** | `environments/mini_games/` | Curriculum mini-games → benchmark suite | Varies by mini-game | Varies by mini-game | 5 (built) |
+
+### 13.2 Phase 5 Scope (What Gets Built vs Stubbed)
+
+| Environment | Phase 5 Scope | Files Created |
+|-------------|-------------|---------------|
+| `mini_games/resource_management` | **Full implementation** — grid-based resource allocation | environment.py, encoder.py, action_decoder.py |
+| `mini_games/territory_control` | **Full implementation** — simplified territory capture | environment.py, encoder.py, action_decoder.py |
+| `mini_games/tactical_combat` | **Full implementation** — unit combat | environment.py, encoder.py, action_decoder.py |
+| `civ6/` | **Adapter** — wraps existing `alpha_zero/envs/microciv.py` | environment.py (adapter), encoder.py (delegate), action_decoder.py (delegate) |
+| `logistics/` | **Stub** — `__init__.py` + config YAML only | `__init__.py`, `configs/environment/logistics.yaml` |
+| `energy/` | **Stub** — `__init__.py` + config YAML only | `__init__.py`, `configs/environment/energy_grid.yaml` |
+| `climate_policy/` | **Stub** — `__init__.py` + config YAML only | `__init__.py`, `configs/environment/climate_policy.yaml` |
+| `trading/` | **Not created** — Post-v1.0 | — |
+| `education/` | **Not created** — Post-v1.0 | — |
+| `wargame/` | **Not created** — Post-v1.0 | — |
+
+### 13.3 Reusable Component Matrix
+
+Components that transfer across ALL domains without modification:
+
+| Component | SDK Module | Why Reusable |
+|-----------|-----------|-------------|
+| MCTS Search Engine | `core/mcts/` | Only needs policy/value from network and valid actions from environment |
+| Hierarchical Action Picker | `core/mcts/action_picker.py` | Temperature schedule works for any action distribution |
+| Replay Buffer | `core/training/replay_buffer.py` | Stores (obs, policy, value) tuples regardless of domain |
+| Elo Evaluator | `core/training/evaluator.py` | Domain-agnostic strength measurement |
+| Curriculum Scheduler | `core/training/curriculum.py` | Elo-gated progression works for any environment sequence |
+| Checkpoint Manager | `core/training/checkpoint.py` | Serializes any model + optimizer + buffer state |
+| Explainability Tracer | `core/explain/tracer.py` | MCTS trees are domain-agnostic data structures |
+| Training Orchestrator | `core/training/orchestrator.py` | Coordinates actors/learner/evaluator for any environment |
+| Configuration Engine | `core/config.py` | Pydantic validation for any parameter set |
+| Structured Logger | `core/logging.py` | Context-bound logging works everywhere |
+
+### 13.4 Per-Domain Implementation Checklist
+
+When a domain expert adds a new domain (e.g., `logistics`):
+
+```
+1. [ ] Create src/environments/logistics/__init__.py
+2. [ ] Implement StrategicEnvironment in environment.py
+       - reset(), step(), get_valid_actions(), get_observation()
+       - serialize(), deserialize()
+       - observation_spec, action_spec properties
+3. [ ] Implement StateEncoder in encoder.py
+       - raw state dict → (spatial_tensor, vector_tensor, action_mask)
+4. [ ] Implement ActionDecoder in action_decoder.py
+       - HierarchicalAction → domain-specific command
+5. [ ] (Optional) Implement RewardShaper for intermediate rewards
+6. [ ] (Optional) Implement get_symmetries() for data augmentation
+7. [ ] Create configs/environment/logistics.yaml
+8. [ ] Register in src/environments/registry.py
+9. [ ] Write tests/unit/environments/test_logistics.py
+10. [ ] Verify: pytest tests/integration/test_environment_plugins.py -k logistics
+11. [ ] ZERO modifications to any file in src/core/
+```
+
+---
+
+## 14. Scaffolding Templates
+
+These are Phase 1 and Phase 7 deliverables — ready-to-use templates that codify the spec's requirements.
+
+### 14.1 pyproject.toml (Phase 1 deliverable)
+
+```toml
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "strategic-planning-sdk"
+version = "0.1.0"
+description = "Domain-agnostic strategic planning SDK: hierarchical MCTS + neural networks"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.1",
+    "numpy>=1.24",
+    "pydantic>=2.0",
+    "hydra-core>=1.3",
+    "omegaconf>=2.3",
+    "structlog>=23.0",
+    "rich>=13.0",
+    "click>=8.1",
+    "gymnasium>=0.29",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "pytest-xdist>=3.3",
+    "hypothesis>=6.80",
+    "mypy>=1.5",
+    "ruff>=0.1",
+    "pre-commit>=3.4",
+]
+adapters = ["mlflow>=2.7", "tensorboard>=2.14"]
+environments = []
+
+[project.scripts]
+spsdk = "src.cli:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "TCH"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow",
+    "gpu: marks tests requiring GPU",
+    "integration: marks integration tests",
+]
+addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["src/adapters/*", "tests/*"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+```
+
+### 14.2 Makefile (Phase 1 deliverable)
+
+```makefile
+.PHONY: install test lint format clean verify health-check train-smoke
+
+SRC_DIR := src
+TEST_DIR := tests
+CONFIG_DIR := configs
+COVERAGE_THRESHOLD := 85
+
+install:
+	pip install -e ".[dev]"
+	pre-commit install
+
+test: test-unit test-property test-integration
+
+test-unit:
+	pytest $(TEST_DIR)/unit -v --tb=short -x
+
+test-property:
+	pytest $(TEST_DIR)/property -v --tb=short
+
+test-integration:
+	pytest $(TEST_DIR)/integration -v --tb=short
+
+test-smoke:
+	pytest $(TEST_DIR)/smoke -v
+
+coverage:
+	pytest --cov=$(SRC_DIR)/core --cov-report=term-missing --cov-fail-under=$(COVERAGE_THRESHOLD)
+
+lint:
+	ruff check $(SRC_DIR) $(TEST_DIR)
+	mypy $(SRC_DIR) --strict
+
+format:
+	ruff format $(SRC_DIR) $(TEST_DIR)
+
+format-check:
+	ruff format --check $(SRC_DIR) $(TEST_DIR)
+
+verify: lint format-check test coverage
+
+clean:
+	find . -type d -name __pycache__ -exec rm -rf {} +
+	find . -type f -name "*.pyc" -delete
+	rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage
+
+health-check:
+	python -m $(SRC_DIR).cli health-check
+
+train-smoke:
+	python -m $(SRC_DIR).cli train --config-name=config training=smoke
+```
+
+### 14.3 SDK CLAUDE.md Template (Phase 7 deliverable)
+
+```markdown
+# CLAUDE.md — Strategic Planning SDK
+
+## Build Commands
+| Command | Purpose |
+|---------|---------|
+| `pip install -e ".[dev]"` | Install with dev dependencies |
+| `make install` | Full install with pre-commit hooks |
+
+## Test Commands
+| Command | Purpose |
+|---------|---------|
+| `make test` | Full test suite |
+| `make test-unit` | Unit tests only (fast) |
+| `make test-property` | Property-based tests |
+| `make test-integration` | Integration tests |
+| `make test-smoke` | Smoke tests (CI) |
+| `make coverage` | Coverage report |
+
+## Lint/Format Commands
+| Command | Purpose |
+|---------|---------|
+| `make lint` | Ruff check + mypy --strict |
+| `make format` | Ruff format |
+| `make format-check` | Verify formatting without changes |
+| `make verify` | Full lint + format + test + coverage |
+
+## Training Commands
+| Command | Purpose |
+|---------|---------|
+| `python -m src.cli train --config-name=config` | Default training |
+| `python -m src.cli train --env=mini_resource --iterations=10` | Mini-game |
+| `python -m src.cli train training=smoke` | Smoke test (1 iteration) |
+| `python -m src.cli evaluate --checkpoint=path/to/ckpt` | Evaluate |
+| `python -m src.cli explain --checkpoint=path/to/ckpt --env=mini_resource` | Decision trace |
+| `python -m src.cli health-check` | Validate installation |
+
+## Architecture Decisions
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| | Protocol-based environment plugins | Structural subtyping, zero inheritance |
+| | Hydra + Pydantic for config | Composition + validation, zero hardcoded values |
+| | structlog for logging | JSON production, pretty-print dev, context binding |
+| | Memory-mapped replay buffer | Avoids OOM on large training runs |
+
+## Environment Plugin Checklist
+1. Create directory: `src/environments/{name}/`
+2. Implement `StrategicEnvironment` protocol in `environment.py`
+3. Implement `StateEncoder` in `encoder.py`
+4. Implement action decoder in `action_decoder.py`
+5. Add config: `configs/environment/{name}.yaml`
+6. Register in `src/environments/registry.py`
+7. Add tests: `tests/unit/environments/test_{name}.py`
+8. Verify: `pytest tests/integration/test_environment_plugins.py -k {name}`
+```
+
+### 14.4 Hydra Root Config Template (Phase 1 deliverable)
+
+```yaml
+# configs/config.yaml — Root configuration
+# Composes all config groups. Override via CLI:
+#   python -m src.cli train network=resnet_large mcts=gumbel_muzero
+
+defaults:
+  - environment: mini_resource
+  - network: resnet_small
+  - mcts: alphazero
+  - training: default
+  - curriculum: default
+  - _self_
+
+seed: 42
+project_name: "strategic-planning-sdk"
+output_dir: "./outputs"
+```
+
+### 14.5 Environment Config Template (Phase 5 deliverable)
+
+```yaml
+# configs/environment/_template.yaml
+# Copy this file to create a new environment config.
+# All values must be explicitly set — no defaults are assumed.
+
+name: "my_environment"
+description: "Description of this environment"
+
+observation:
+  spatial_channels: 13        # Number of spatial feature planes
+  spatial_height: 16          # Board/grid height
+  spatial_width: 16           # Board/grid width
+  vector_dim: 64              # Global feature vector dimension
+  temporal_depth: 1           # Number of historical observations
+
+action_space:
+  type: "hierarchical"        # flat | hierarchical
+  hierarchy_levels: 4         # Category -> Selector -> Subtype -> Target
+  total_actions: 356          # Flat action space size
+  categories: []              # List of action category names
+
+game:
+  max_players: 2
+  max_steps: 200
+  reward_range: [-1.0, 1.0]
+  symmetries: "none"          # none | rotational | reflective | dihedral
+```
+
+---
+
+## 15. Execution Protocol
+
+Per-task implementation workflow for agents working on any phase. Derived from spec Section 11.
+
+### 15.1 Per-Task Workflow
+
+```
+For each task in the phase table:
+
+1. READ: Read all source files listed in "Source (Existing)" column
+   - Understand patterns, data structures, function signatures
+   - Note any domain-specific logic that must be abstracted
+
+2. CONFIGURE: If the task introduces new parameters:
+   - Add Pydantic fields to src/core/config.py
+   - Add YAML defaults to appropriate configs/ file
+   - Verify: no magic numbers in implementation code
+
+3. PROTOCOL: If the task defines or extends an interface:
+   - Add to src/core/protocols.py with @runtime_checkable
+   - Write Google-style docstring with Args, Returns, Raises, Examples
+   - Add postconditions as inline comments
+
+4. IMPLEMENT: Write the code
+   - Import only from protocols and config, not concrete types
+   - Add structlog calls at appropriate levels
+   - Guard debug-only code with log level checks
+
+5. TEST: Write corresponding test file
+   - Mirror src/ structure in tests/unit/
+   - Use fixtures from conftest.py, not hardcoded values
+   - Include edge cases and error conditions
+
+6. VERIFY: Run the verification sequence
+   ruff check src/ tests/
+   ruff format --check src/ tests/
+   mypy src/ --strict
+   pytest tests/unit/path/to/test_file.py -v
+
+7. COMMIT: If all verification passes
+   - Clear commit message describing what and why
+   - Reference the plan task number (e.g., "Phase 3.7: MCTS search orchestration")
+```
+
+### 15.2 Definition of Done (Per Task)
+
+```
+A task is DONE when:
+[ ] Implementation file exists at the specified SDK path
+[ ] All public functions have type hints and Google-style docstrings
+[ ] No hardcoded values — all parameters from config
+[ ] structlog logging at appropriate levels
+[ ] Corresponding test file exists and all tests pass
+[ ] mypy --strict passes on the new file
+[ ] ruff check passes on the new file
+[ ] Coverage >= 85% on the new file
+```
+
+### 15.3 Definition of Done (Per Phase)
+
+```
+A phase is DONE when:
+[ ] All tasks in the phase table are individually DONE
+[ ] Full verification sequence passes (all 8 commands)
+[ ] No regressions in existing alpha_zero tests
+[ ] CLAUDE.md updated with new commands and decisions
+[ ] Phase deliverable verified (stated at end of each phase section)
+```
+
+---
+
+## 16. Permission Architecture
+
+Guardrails for agents implementing the SDK. Derived from spec Section 3.
+
+### 16.1 Scope
+
+```
+IN SCOPE (agent can create/modify):
+  - All files in src/
+  - All files in tests/ (SDK tests)
+  - Configuration files in configs/
+  - Documentation in docs/
+  - pyproject.toml, Makefile, .pre-commit-config.yaml
+  - CLAUDE.md
+
+OUT OF SCOPE (agent must NOT modify):
+  - alpha_zero/ (existing code — read-only reference)
+  - .git/
+  - .env (contains secrets)
+  - checkpoints/ (trained model files)
+  - data/ (user data)
+```
+
+### 16.2 Autonomy Levels
+
+```
+AUTONOMOUS (proceed without asking):
+  - File creation within src/, tests/, configs/, docs/
+  - Running tests, linters, type checkers
+  - Refactoring for consistency within SDK code
+  - Adding logging, error handling, type hints
+  - Creating new test files
+  - Installing dev dependencies
+
+CONFIRM FIRST (ask human before proceeding):
+  - Architectural changes affecting > 5 SDK modules
+  - Breaking changes to StrategicEnvironment protocol
+  - Deletions > 200 lines
+  - Adding new required (non-optional) dependencies
+  - Changes to training loop invariants
+  - Modifications to checkpoint format
+
+PROHIBITED:
+  - Modifying alpha_zero/ source code
+  - Hardcoding values that should be configurable
+  - Writing code without tests
+  - Using print() instead of structlog
+  - Committing to main branch
+  - Skipping existing tests without documented reason
+  - Ignoring type errors or lint warnings
+```
+
+### 16.3 Resource Budget
+
+| Constraint | Limit |
+|-----------|-------|
+| Max failed attempts before asking for guidance | 5 |
+| Max files modified in single pass | 25 |
+| Exploration time before asking | 10 min |
+| Unit test suite runtime target | < 5 min |
+| Full test suite runtime target | < 15 min |
