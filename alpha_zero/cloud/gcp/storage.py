@@ -18,7 +18,7 @@ import io
 import json
 import logging
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from alpha_zero.cloud.gcp.exceptions import GCSStorageError
@@ -138,7 +138,7 @@ class ModelMetadata:
 
     def __post_init__(self) -> None:
         if self.timestamp is None:
-            self.timestamp = datetime.now(timezone.utc).isoformat()
+            self.timestamp = datetime.now(UTC).isoformat()
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -170,7 +170,7 @@ class TrajectoryMetadata:
 
     def __post_init__(self) -> None:
         if self.timestamp is None:
-            self.timestamp = datetime.now(timezone.utc).isoformat()
+            self.timestamp = datetime.now(UTC).isoformat()
 
 
 # =============================================================================
@@ -621,7 +621,7 @@ class GCSTrajectoryStorage:
         # Update shard info
         manifest["shards"][str(worker_id)] = {
             "num_examples": num_examples,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         manifest["total_examples"] = sum(s["num_examples"] for s in manifest["shards"].values())
 
@@ -738,7 +738,7 @@ class GCSCheckpointStorage:
             "step": step,
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict() if hasattr(optimizer, "state_dict") else None,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             **(extra or {}),
         }
 

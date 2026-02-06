@@ -47,7 +47,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import timezone, datetime
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
@@ -251,7 +251,7 @@ class PreemptionHandler:
         with self._lock:
             if self._state.preemption_time is None:
                 return None
-            return (datetime.now(timezone.utc) - self._state.preemption_time).total_seconds()
+            return (datetime.now(UTC) - self._state.preemption_time).total_seconds()
 
     def trigger_checkpoint(self) -> str | None:
         """Manually trigger checkpoint save.
@@ -330,7 +330,7 @@ class PreemptionHandler:
         )
 
         with self._lock:
-            self._state.preemption_time = datetime.now(timezone.utc)
+            self._state.preemption_time = datetime.now(UTC)
             if signum == signal.SIGTERM:
                 self._state.preemption_requested = True
             else:
@@ -448,7 +448,7 @@ class PreemptionHandler:
                     logger.warning("GCE preemption detected via metadata service")
                     with self._lock:
                         self._state.preemption_requested = True
-                        self._state.preemption_time = datetime.now(timezone.utc)
+                        self._state.preemption_time = datetime.now(UTC)
 
                     self._shutdown_event.set()
 
@@ -513,7 +513,7 @@ class MockPreemptionHandler(PreemptionHandler):
         logger.info("Mock preemption triggered")
         with self._lock:
             self._state.preemption_requested = True
-            self._state.preemption_time = datetime.now(timezone.utc)
+            self._state.preemption_time = datetime.now(UTC)
 
         self._shutdown_event.set()
         self._save_emergency_checkpoint()
@@ -633,17 +633,17 @@ def is_preempted() -> bool:
 
 
 __all__ = [
-    # Factory function
-    "create_preemption_handler",
-    # Global handler functions
-    "get_preemption_handler",
-    "is_preempted",
     # Mock for testing
     "MockPreemptionHandler",
     # Main classes (sorted)
     "PreemptionHandler",
     "PreemptionHandlerProtocol",
     "PreemptionState",
+    # Factory function
+    "create_preemption_handler",
+    # Global handler functions
+    "get_preemption_handler",
+    "is_preempted",
     # Global handler registration
     "register_preemption_handler",
 ]

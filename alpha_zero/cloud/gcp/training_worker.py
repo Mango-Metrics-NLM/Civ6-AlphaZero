@@ -409,7 +409,7 @@ def main() -> int:
         total_time = time.time() - start_time
         logger.info("Training complete in %.1f seconds", total_time)
 
-        uri, version = save_final_model(config, model, args.iteration, args.dry_run)
+        _uri, version = save_final_model(config, model, args.iteration, args.dry_run)
         logger.info("Saved final model version %d", version)
 
         # Cleanup old checkpoints

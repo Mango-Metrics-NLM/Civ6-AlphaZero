@@ -26,7 +26,7 @@ import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.mime.text import MIMEText
 from enum import Enum
 from pathlib import Path
@@ -81,7 +81,7 @@ class AlertEvent:
     message: str
     source: str
     timestamp: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+        default_factory=lambda: datetime.now(UTC).isoformat()
     )
     details: dict[str, Any] = field(default_factory=dict)
     channels_notified: list[AlertChannel] = field(default_factory=list)
@@ -360,7 +360,7 @@ class AlertManager:
             self._alert_counter += 1
             alert_id = (
                 f"{source}-{self._alert_counter}-"
-                f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+                f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
             )
 
         event = AlertEvent(

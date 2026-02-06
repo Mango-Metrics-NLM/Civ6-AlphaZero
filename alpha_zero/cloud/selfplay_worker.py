@@ -27,7 +27,7 @@ import os
 import sys
 import uuid
 from dataclasses import dataclass
-from datetime import timezone, datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -299,7 +299,7 @@ class CloudSelfPlayWorker:
             game_history.append(example)
 
             # Take action
-            obs, reward, terminated, truncated, info = env.step(action)
+            obs, _reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             move_count += 1
 
@@ -358,7 +358,7 @@ class CloudSelfPlayWorker:
         Returns:
             Statistics dictionary with run results.
         """
-        start_time = datetime.now(timezone.utc)
+        start_time = datetime.now(UTC)
         logger.info(
             f"Starting self-play: {self.config.num_games} games, iteration {self.config.iteration}"
         )
@@ -405,7 +405,7 @@ class CloudSelfPlayWorker:
                 continue
 
         # Calculate statistics
-        elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+        elapsed = (datetime.now(UTC) - start_time).total_seconds()
         stats = {
             "worker_id": self.config.worker_id,
             "iteration": self.config.iteration,

@@ -176,7 +176,7 @@ class TestMuZeroMCTS:
 
     def test_search_returns_valid_probs(self, mcts, sample_observation, sample_action_mask):
         """Search returns valid probability distribution."""
-        action_probs, root_value = mcts.search(
+        action_probs, _root_value = mcts.search(
             sample_observation, sample_action_mask, add_noise=False
         )
 

@@ -1,11 +1,19 @@
 """Unit tests for pipeline_cache module."""
 from __future__ import annotations
+
 import os
+
 import pytest
+
 from alpha_zero.cloud.gcp.pipeline_cache import (
-    CacheEntry, ComponentSignature, ComponentType,
-    PipelineCache, PipelineCacheConfig, get_pipeline_cache,
+    CacheEntry,
+    ComponentSignature,
+    ComponentType,
+    PipelineCache,
+    PipelineCacheConfig,
+    get_pipeline_cache,
 )
+
 
 class TestComponentType:
     def test_component_type_values(self) -> None:

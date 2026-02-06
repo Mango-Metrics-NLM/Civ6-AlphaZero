@@ -1,12 +1,20 @@
 """Unit tests for spot_availability module."""
 from __future__ import annotations
+
 import os
 from datetime import datetime
+
 import pytest
+
 from alpha_zero.cloud.gcp.spot_availability import (
-    AvailabilityLevel, PreemptionEvent, SpotAvailabilityConfig,
-    SpotAvailabilityTracker, SpotPattern, get_spot_tracker,
+    AvailabilityLevel,
+    PreemptionEvent,
+    SpotAvailabilityConfig,
+    SpotAvailabilityTracker,
+    SpotPattern,
+    get_spot_tracker,
 )
+
 
 class TestAvailabilityLevel:
     def test_availability_values(self) -> None:

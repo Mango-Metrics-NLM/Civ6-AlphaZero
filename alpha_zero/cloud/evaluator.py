@@ -25,7 +25,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass
-from datetime import timezone, datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -240,7 +240,7 @@ class CloudEvaluator:
                 valid_actions = np.where(action_mask > 0)[0]
                 action = valid_actions[0] if len(valid_actions) > 0 else 0
 
-            obs, reward, terminated, truncated, info = env.step(action)
+            obs, _reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             move_count += 1
 
@@ -303,7 +303,7 @@ class CloudEvaluator:
         Returns:
             Dictionary with evaluation results.
         """
-        start_time = datetime.now(timezone.utc)
+        start_time = datetime.now(UTC)
         logger.info(
             f"Starting evaluation: {self.config.num_games} games, iteration {self.config.iteration}"
         )
@@ -395,7 +395,7 @@ class CloudEvaluator:
                 f"(< {self.config.promotion_threshold:.2%})"
             )
 
-        elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+        elapsed = (datetime.now(UTC) - start_time).total_seconds()
 
         return {
             "status": "completed",
