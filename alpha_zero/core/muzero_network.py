@@ -22,7 +22,7 @@ from typing import NamedTuple
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 
 from alpha_zero.core.civ6_network import (
     PolicyHead,
@@ -47,22 +47,22 @@ logger = logging.getLogger(__name__)
 
 # Public API - includes backward-compatible re-exports from losses.py
 __all__ = [
+    "DynamicsNetwork",
+    "DynamicsOutput",
     # Config
     "MuZeroConfig",
     # Network classes
     "MuZeroNetwork",
-    "DynamicsNetwork",
-    "ProjectionHead",
-    "PredictionHead",
-    "ValuePrefixHead",
     # Output types
     "MuZeroOutput",
-    "DynamicsOutput",
+    "PredictionHead",
+    "ProjectionHead",
+    "ValuePrefixHead",
+    "categorical_to_scalar",
+    "compute_consistency_loss",
+    "compute_muzero_loss",
     # Re-exported from losses.py for backward compatibility
     "scalar_to_categorical",
-    "categorical_to_scalar",
-    "compute_muzero_loss",
-    "compute_consistency_loss",
 ]
 
 

@@ -18,12 +18,12 @@ from .logging_config import (
 )
 
 __all__ = [
-    "setup_logging",
-    "get_logger",
+    "CommandError",
+    "CommandResult",
+    "CommandRunner",
+    "CommandTimeoutError",
     "LogContext",
     "StructuredLogger",
-    "CommandRunner",
-    "CommandResult",
-    "CommandError",
-    "CommandTimeoutError",
+    "get_logger",
+    "setup_logging",
 ]

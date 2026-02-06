@@ -365,7 +365,7 @@ class WorkerAutoscaler:
             factors["utilization"] = 1.0
 
         # Apply bounds
-        target = int(round(target))
+        target = round(target)
         target = max(self.config.min_workers, target)
         target = min(self.config.max_workers, target)
 

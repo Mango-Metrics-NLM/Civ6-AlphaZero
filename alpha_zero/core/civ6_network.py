@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 
 from alpha_zero.utils.checkpoint import safe_load_checkpoint
 
@@ -1046,8 +1046,8 @@ class HierarchicalPolicyHead(nn.Module):
     """
 
     # Action categories and their sizes
-    NUM_CATEGORIES = 9
-    CATEGORY_NAMES = [
+    NUM_CATEGORIES: ClassVar[int] = 9
+    CATEGORY_NAMES: ClassVar[list[str]] = [
         "END_TURN",
         "UNIT_ACTION",
         "CITY_ACTION",

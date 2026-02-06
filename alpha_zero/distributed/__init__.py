@@ -79,41 +79,41 @@ from alpha_zero.distributed.shared_storage import (
 )
 
 __all__ = [
-    # Shared storage
-    "DistributedReplayBuffer",
-    "GameTrajectory",
-    "ReplayBufferConfig",
-    "SharedStorage",
-    "SharedStorageConfig",
-    "TrainingExample",
-    "WeightSynchronizer",
     # Actor
     "ActorConfig",
     "ActorPool",
-    "SelfPlayActor",
-    "actor_process",
-    # Learner
-    "GradientAccumulator",
-    "Learner",
-    "LearnerConfig",
-    "LearningRateScheduler",
-    "learner_process",
+    # Coordinator
+    "CoordinatorConfig",
     # DDP Learner
     "DDPBackend",
     "DDPConfig",
     "DDPLearner",
     "DDPLearnerConfig",
-    "create_ddp_learner",
-    "detect_ddp_environment",
-    "setup_ddp_environment",
     # Parameter Server
     "DistributedParameterServer",
+    # Shared storage
+    "DistributedReplayBuffer",
+    "GameTrajectory",
+    # Learner
+    "GradientAccumulator",
+    "Learner",
+    "LearnerConfig",
+    "LearningRateScheduler",
     "MockParameterServer",
     "ParameterServer",
     "ParameterServerConfig",
-    "WeightUpdateMode",
-    "create_parameter_server",
-    # Coordinator
-    "CoordinatorConfig",
+    "ReplayBufferConfig",
+    "SelfPlayActor",
+    "SharedStorage",
+    "SharedStorageConfig",
     "TrainingCoordinator",
+    "TrainingExample",
+    "WeightSynchronizer",
+    "WeightUpdateMode",
+    "actor_process",
+    "create_ddp_learner",
+    "create_parameter_server",
+    "detect_ddp_environment",
+    "learner_process",
+    "setup_ddp_environment",
 ]

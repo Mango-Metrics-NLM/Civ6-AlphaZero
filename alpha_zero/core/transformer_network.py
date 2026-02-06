@@ -21,7 +21,7 @@ from typing import Any
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 
 # Module-level logger
 logger = logging.getLogger(__name__)
@@ -536,7 +536,7 @@ class MixtureOfExperts(nn.Module):
         Returns:
             Output tensor (B, N, D).
         """
-        b, n, d = x.shape
+        _b, _n, _d = x.shape
 
         # Compute router logits and probabilities
         router_logits = self.router(x)  # (B, N, num_experts)

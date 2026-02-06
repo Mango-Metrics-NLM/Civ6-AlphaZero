@@ -39,7 +39,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Any, SupportsFloat
+from typing import Any, ClassVar, SupportsFloat
 
 import gymnasium as gym
 import numpy as np
@@ -874,7 +874,7 @@ class CivRealmCurriculum:
     """
 
     # Default mini-game tasks in order of difficulty
-    DEFAULT_TASKS = [
+    DEFAULT_TASKS: ClassVar[list[MiniGameTask]] = [
         MiniGameTask(
             name="development_build_city",
             display_name="Build Your First City",
@@ -1321,7 +1321,7 @@ class CivRealmWrapper(gym.Env):
         >>> obs, reward, terminated, truncated, info = env.step(action)
     """
 
-    metadata = {"render_modes": ["human", "ansi", None]}
+    metadata: ClassVar[dict[str, list[str | None]]] = {"render_modes": ["human", "ansi", None]}
 
     def __init__(
         self,
@@ -1663,16 +1663,16 @@ def make(
 
 # Module exports
 __all__ = [
-    "CivRealmConfig",
-    "CivRealmEncoder",
+    "CIVREALM_AVAILABLE",
+    "ActionType",
     "CivRealmActionHandler",
+    "CivRealmConfig",
     "CivRealmCurriculum",
+    "CivRealmEncoder",
     "CivRealmWrapper",
     "MiniGameTask",
     "TerrainType",
     "UnitCategory",
-    "ActionType",
     "create_civrealm_env",
     "make",
-    "CIVREALM_AVAILABLE",
 ]

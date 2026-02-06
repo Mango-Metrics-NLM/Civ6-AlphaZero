@@ -24,7 +24,7 @@ from typing import Any, Protocol, SupportsFloat
 
 import numpy as np
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 
 from alpha_zero.core.mcts_constants import (
     DEFAULT_C_VISIT,
@@ -526,8 +526,8 @@ class Civ6MCTS:
                     }
                     adjustment = self._reflection_memory.get_value_adjustment_sync(state, action)
                     value_scalar = value_scalar + adjustment
-            except Exception:
-                pass  # Silently ignore reflection errors to not disrupt MCTS
+            except Exception as e:
+                logger.debug(f"Reflection memory adjustment failed: {e}")
 
         return policy, value_scalar
 
@@ -1234,7 +1234,7 @@ class GumbelMCTS:
         sim_env = env.clone()
 
         # Take the initial action
-        _, reward, terminated, truncated, _ = sim_env.step(action)
+        _, _reward, terminated, truncated, _ = sim_env.step(action)
 
         node = root.children.get(action)
         if node is None:

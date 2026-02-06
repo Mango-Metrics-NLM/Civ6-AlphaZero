@@ -232,7 +232,7 @@ class BaseAgent(ABC):
                     agent_name=self.name,
                     status=AgentStatus.FAILED,
                     success=False,
-                    message=f"Exception during execution: {str(e)}",
+                    message=f"Exception during execution: {e!s}",
                     errors=[str(e)],
                     duration_seconds=self.elapsed_seconds,
                 )

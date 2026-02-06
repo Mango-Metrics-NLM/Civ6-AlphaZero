@@ -25,7 +25,7 @@ import asyncio
 import logging
 import os
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 import gymnasium as gym
 import numpy as np
@@ -157,13 +157,13 @@ class RealCiv6Env(gym.Env):
         >>> env.close()
     """
 
-    metadata = {
+    metadata: ClassVar[dict[str, list[str] | int]] = {
         "render_modes": ["human"],
         "render_fps": 1,
     }
 
     # Default reward configuration (use RewardConfig for customization)
-    DEFAULT_REWARD_CONFIG: RewardConfig = RewardConfig()
+    DEFAULT_REWARD_CONFIG: ClassVar[RewardConfig] = RewardConfig()
 
     def __init__(
         self,

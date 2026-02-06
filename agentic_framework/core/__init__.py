@@ -44,32 +44,32 @@ from .template_parser import (
 )
 
 __all__ = [
-    # Template Parser
-    "TemplateParser",
-    "ParsedTemplate",
-    "TemplateSection",
-    "TemplateParseError",
+    "ActionPermission",
+    "ArchitectureDecision",
+    "AutonomyLevel",
+    "Constraint",
+    "ConstraintCheckResult",
     # Constraint Manager
     "ConstraintManager",
-    "Constraint",
     "ConstraintType",
     "ConstraintViolation",
-    "ConstraintCheckResult",
-    # Permission Manager
-    "PermissionManager",
-    "AutonomyLevel",
-    "ActionPermission",
-    "PermissionCheckResult",
-    "ScopeChecker",
+    "ErrorAction",
+    "ErrorHandler",
     # Feedback Loop
     "FeedbackLoop",
-    "VerificationResult",
-    "ErrorHandler",
-    "ErrorAction",
-    "VerificationPhase",
+    "KnownIssue",
+    "MemorySection",
+    "ParsedTemplate",
+    "PermissionCheckResult",
+    # Permission Manager
+    "PermissionManager",
+    "ScopeChecker",
     # Session Memory
     "SessionMemory",
-    "MemorySection",
-    "ArchitectureDecision",
-    "KnownIssue",
+    "TemplateParseError",
+    # Template Parser
+    "TemplateParser",
+    "TemplateSection",
+    "VerificationPhase",
+    "VerificationResult",
 ]
