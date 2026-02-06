@@ -17,8 +17,14 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-import torch
-import torch.nn as nn
+
+try:
+    import torch
+    import torch.nn as nn
+
+    _HAS_TORCH = True
+except ModuleNotFoundError:
+    _HAS_TORCH = False
 
 if TYPE_CHECKING:
     from tests.fixtures.mock_distributed import MockDistributedBackend
@@ -198,60 +204,59 @@ def ddp_config():
     )
 
 
-class SimpleTestNetwork(nn.Module):
-    """Simple network for testing DDP learners."""
+if _HAS_TORCH:
 
-    def __init__(self, input_size: int = 10, output_size: int = 5) -> None:
-        """Initialize simple network."""
-        super().__init__()
-        self.linear = nn.Linear(input_size, output_size)
+    class SimpleTestNetwork(nn.Module):
+        """Simple network for testing DDP learners."""
 
-    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
-        """Forward pass."""
-        out = self.linear(x)
-        return {
-            "policy": torch.softmax(out, dim=-1),
-            "value": out.mean(dim=-1, keepdim=True),
+        def __init__(self, input_size: int = 10, output_size: int = 5) -> None:
+            """Initialize simple network."""
+            super().__init__()
+            self.linear = nn.Linear(input_size, output_size)
+
+        def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+            """Forward pass."""
+            out = self.linear(x)
+            return {
+                "policy": torch.softmax(out, dim=-1),
+                "value": out.mean(dim=-1, keepdim=True),
+            }
+
+    @pytest.fixture
+    def simple_test_network() -> SimpleTestNetwork:
+        """Create simple network for DDP testing.
+
+        Returns:
+            SimpleTestNetwork instance.
+        """
+        return SimpleTestNetwork()
+
+    @pytest.fixture
+    def mock_shared_storage() -> MagicMock:
+        """Create mock shared storage for DDP testing.
+
+        Returns:
+            MagicMock configured as SharedStorage.
+        """
+        storage = MagicMock()
+        storage.get_weights.return_value = {}
+        storage.set_weights.return_value = None
+        return storage
+
+    @pytest.fixture
+    def mock_replay_buffer() -> MagicMock:
+        """Create mock replay buffer for DDP testing.
+
+        Returns:
+            MagicMock configured with sample method.
+        """
+        buffer = MagicMock()
+        buffer.sample.return_value = {
+            "states": torch.randn(8, 10),
+            "policies": torch.randn(8, 5),
+            "values": torch.randn(8, 1),
         }
-
-
-@pytest.fixture
-def simple_test_network() -> SimpleTestNetwork:
-    """Create simple network for DDP testing.
-
-    Returns:
-        SimpleTestNetwork instance.
-    """
-    return SimpleTestNetwork()
-
-
-@pytest.fixture
-def mock_shared_storage() -> MagicMock:
-    """Create mock shared storage for DDP testing.
-
-    Returns:
-        MagicMock configured as SharedStorage.
-    """
-    storage = MagicMock()
-    storage.get_weights.return_value = {}
-    storage.set_weights.return_value = None
-    return storage
-
-
-@pytest.fixture
-def mock_replay_buffer() -> MagicMock:
-    """Create mock replay buffer for DDP testing.
-
-    Returns:
-        MagicMock configured with sample method.
-    """
-    buffer = MagicMock()
-    buffer.sample.return_value = {
-        "states": torch.randn(8, 10),
-        "policies": torch.randn(8, 5),
-        "values": torch.randn(8, 1),
-    }
-    return buffer
+        return buffer
 
 
 # =============================================================================

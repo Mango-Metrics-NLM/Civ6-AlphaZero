@@ -1,0 +1,5 @@
+# Strategic Planning SDK - Root Configuration
+# Override via: python -m src.cli train --config network=resnet_large
+seed: 42
+project_name: "strategic-planning-sdk"
+output_dir: "./outputs"

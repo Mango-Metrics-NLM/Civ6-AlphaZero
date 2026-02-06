@@ -1,0 +1,18 @@
+# Template for new environment configurations.
+# Copy this file and fill in all values.
+name: "my_environment"
+description: "Description of this environment"
+observation:
+  spatial_channels: 13
+  spatial_height: 16
+  spatial_width: 16
+  vector_dim: 64
+  temporal_depth: 1
+action_space:
+  type: "hierarchical"
+  total_actions: 356
+game:
+  max_players: 2
+  max_steps: 200
+  reward_range: [-1.0, 1.0]
+  symmetries: "none"

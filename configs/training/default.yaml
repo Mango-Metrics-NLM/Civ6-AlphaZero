@@ -1,0 +1,18 @@
+batch_size: 256
+learning_rate: 0.001
+lr_schedule:
+  0: 1.0
+  100000: 0.1
+  300000: 0.01
+weight_decay: 0.0001
+max_iterations: 1000
+games_per_iteration: 25
+replay_buffer_size: 100000
+checkpoint_interval: 10
+eval_interval: 10
+eval_games: 20
+max_steps_per_game: 200
+num_actors: 4
+device: "auto"
+mixed_precision: false
+gradient_accumulation_steps: 1
