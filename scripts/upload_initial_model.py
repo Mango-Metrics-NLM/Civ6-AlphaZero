@@ -22,7 +22,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 import torch
 
@@ -70,7 +70,7 @@ def create_initial_model(
         "version": 0,
         "initial": True,
         "description": "Initial random model for self-play training",
-        "created_at": datetime.utcnow().isoformat() + "Z",
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "config": {
             "state_channels": state_channels,
             "board_size": board_size,
