@@ -299,7 +299,7 @@ class TestMaskDtypes:
 
         with torch.no_grad():
             try:
-                policy, value = level_network(
+                policy, _value = level_network(
                     sample_inputs["spatial"],
                     sample_inputs["vector"],
                     sample_inputs["goal"],

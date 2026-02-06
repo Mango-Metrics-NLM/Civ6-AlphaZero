@@ -92,7 +92,7 @@ class TestCooldownSystem:
         manager.apply_action(war_action, current_turn=5)
 
         # Immediately trying to make peace should fail (5 turn minimum war)
-        can_peace, reason = manager.can_make_peace(0, 1)
+        _can_peace, _reason = manager.can_make_peace(0, 1)
         relation = manager.get_relation(0, 1)
 
         # Check if war started turn is set

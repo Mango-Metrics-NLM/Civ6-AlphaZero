@@ -285,7 +285,7 @@ class ModelEvaluator:
             Game result
         """
         env = self._create_environment()
-        obs, info = env.reset()
+        obs, _info = env.reset()
 
         model_player.reset()
         opponent.reset()

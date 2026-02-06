@@ -58,7 +58,7 @@ class TestPBTIntegration:
         ranking = population_manager.get_fitness_ranking()
         assert len(ranking) == 4
         # Best fitness (0.8) should be first in ranking
-        best_agent_id, best_fitness = ranking[0]
+        _best_agent_id, best_fitness = ranking[0]
         assert best_fitness == pytest.approx(0.8, rel=0.01)
 
     def test_exploit_and_explore_cycle(self, population_manager):

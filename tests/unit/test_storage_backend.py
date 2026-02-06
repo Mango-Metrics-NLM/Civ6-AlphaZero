@@ -356,7 +356,7 @@ class TestLocalStorageBackend:
         assert Path(path).exists()
 
         # Load checkpoint
-        loaded_data, metadata = local_backend.load_checkpoint(iteration=100)
+        loaded_data, _metadata = local_backend.load_checkpoint(iteration=100)
         assert loaded_data["training_step"] == 1000
         assert "model_state_dict" in loaded_data
 
@@ -366,7 +366,7 @@ class TestLocalStorageBackend:
         assert checkpoints[0].iteration == 100
 
         # Load latest
-        latest_data, latest_metadata = local_backend.load_latest_checkpoint()
+        _latest_data, latest_metadata = local_backend.load_latest_checkpoint()
         assert latest_metadata.iteration == 100
 
     def test_evaluation_operations(self, local_backend: LocalStorageBackend) -> None:

@@ -174,7 +174,7 @@ class TestNetworkProtocol:
         spatial = torch.randn(2, 13, 8, 8)
         vector = torch.randn(2, 64)
 
-        policy, value = mock_network.predict(spatial, vector)
+        policy, _value = mock_network.predict(spatial, vector)
 
         # Predict should return probabilities
         assert torch.allclose(policy.sum(dim=-1), torch.ones(2), atol=1e-5)

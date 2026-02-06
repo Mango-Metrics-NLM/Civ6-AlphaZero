@@ -203,7 +203,7 @@ class TestExecuteActionReturns:
     def test_execute_action_end_turn_success(self, env):
         """End turn should always succeed."""
         action_dict = {"type": "end_turn"}
-        reward, success, error = env._execute_action(action_dict)
+        _reward, success, error = env._execute_action(action_dict)
 
         assert success
         assert error == ""
@@ -211,7 +211,7 @@ class TestExecuteActionReturns:
     def test_execute_action_invalid_unit_idx(self, env):
         """Should fail for invalid unit index."""
         action_dict = {"type": "move", "unit_idx": 99, "direction": (1, 0)}
-        reward, success, error = env._execute_action(action_dict)
+        _reward, success, error = env._execute_action(action_dict)
 
         assert not success
         assert "Invalid unit_idx" in error
@@ -230,7 +230,7 @@ class TestExecuteActionReturns:
                 # Use env's validation to ensure we find a truly valid move
                 if env._is_valid_move(new_pos):
                     action_dict = {"type": "move", "unit_idx": 0, "direction": (dx, dy)}
-                    reward, success, error = env._execute_action(action_dict)
+                    _reward, success, error = env._execute_action(action_dict)
                     assert success, f"Move should succeed: {error}"
                     return
         # If no valid move found (unit may be surrounded), test passes silently
@@ -240,7 +240,7 @@ class TestExecuteActionReturns:
         """Step should include action_success and action_error in info."""
         action = 0  # End turn action
 
-        obs, reward, terminated, truncated, info = env.step(action)
+        _obs, _reward, _terminated, _truncated, info = env.step(action)
 
         assert "action_success" in info
         assert "action_error" in info

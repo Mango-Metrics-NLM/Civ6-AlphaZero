@@ -179,7 +179,7 @@ class TestEvaluationPipelineIntegration:
         from alpha_zero.tournament.config import TournamentConfig
         tournament_config = TournamentConfig()
 
-        update1, update2 = evaluator.elo_system.process_game_result(
+        update1, _update2 = evaluator.elo_system.process_game_result(
             evaluator.model_stats,
             baseline_stats,
             outcome,

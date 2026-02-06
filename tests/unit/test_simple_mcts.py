@@ -435,7 +435,7 @@ class TestSimpleMCTS:
         policy = np.array([0.25, 0.25, 0.25, 0.25])
         mask = np.array([0, 0, 0, 0])
 
-        action, probs = mcts.select_action(policy, mask)
+        action, _probs = mcts.select_action(policy, mask)
 
         # Should return 0 as fallback
         assert action == 0
