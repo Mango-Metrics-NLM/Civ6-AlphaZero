@@ -21,7 +21,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -129,7 +129,7 @@ class CacheEntry:
         if self.valid_until is None:
             return False
         expiry = datetime.fromisoformat(self.valid_until)
-        return datetime.now(UTC) > expiry
+        return datetime.now(timezone.utc) > expiry
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -579,7 +579,7 @@ class PipelineCache:
             return CacheEntry(
                 signature=signature,
                 output_path=output_path,
-                created_at=datetime.now(UTC).isoformat(),
+                created_at=datetime.now(timezone.utc).isoformat(),
             )
 
         self._load_index()
@@ -601,7 +601,7 @@ class PipelineCache:
             logger.warning(f"Failed to verify output path: {e}")
 
         # Create cache entry
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         expiry = now + timedelta(hours=self.config.ttl_hours) if self.config.ttl_hours > 0 else None
 
         entry = CacheEntry(

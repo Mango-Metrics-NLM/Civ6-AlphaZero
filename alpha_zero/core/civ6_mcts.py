@@ -471,6 +471,9 @@ class Civ6MCTS:
                 node.value_sum += value
                 value = -value  # Flip for opponent
 
+            # Explicit cleanup to prevent memory accumulation
+            del sim_env
+
         # Get action probabilities from visit counts
         action_probs = self._get_action_probs(root, env.action_space.n)
 

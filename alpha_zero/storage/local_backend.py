@@ -13,7 +13,7 @@ import lzma
 import pickle
 import threading
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import timezone, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -100,7 +100,7 @@ class LocalStorageBackend(StorageBackend):
 
     def _get_timestamp(self) -> str:
         """Get current ISO timestamp."""
-        return datetime.now(UTC).isoformat()
+        return datetime.now(timezone.utc).isoformat()
 
     def _serialize_weights(
         self,

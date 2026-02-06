@@ -25,7 +25,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import timezone, datetime
 from typing import TYPE_CHECKING, Any
 
 import torch
@@ -339,7 +339,7 @@ class CloudTrainer:
         Returns:
             Dictionary with training statistics.
         """
-        start_time = datetime.now(UTC)
+        start_time = datetime.now(timezone.utc)
         logger.info(
             f"Starting training: {self.config.training_steps} steps, "
             f"iteration {self.config.iteration}"
@@ -454,7 +454,7 @@ class CloudTrainer:
         self._save_model(final_metrics)
 
         # Calculate statistics
-        elapsed = (datetime.now(UTC) - start_time).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
         steps_completed = step - self._start_step
 
         result = {

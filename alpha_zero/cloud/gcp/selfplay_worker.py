@@ -19,11 +19,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import gc
 import logging
 import sys
 import time
 from typing import Any
 
+import psutil
 import torch
 
 from alpha_zero.cloud.gcp.config import GCPConfig
@@ -48,7 +50,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model_version", type=int, required=True, help="Model version to use")
     parser.add_argument("--iteration", type=int, required=True, help="Training iteration")
     parser.add_argument("--games", type=int, default=100, help="Number of games to play")
-    parser.add_argument("--mcts_simulations", type=int, default=400, help="MCTS simulations per move")
+    parser.add_argument("--mcts_simulations", type=int, default=100, help="MCTS simulations per move")
     parser.add_argument("--mode", type=str, default="selfplay", help="Worker mode (selfplay)")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
 
@@ -160,6 +162,7 @@ def run_selfplay(
     mcts_sims: int,
     mcts_config_override: dict[str, Any] | None = None,
     dry_run: bool = False,
+    device: str = "cpu",
 ) -> list[dict]:
     """Run self-play games and collect trajectories.
 
@@ -170,6 +173,7 @@ def run_selfplay(
         mcts_config_override: Optional dict of MCTS config overrides
             (c_puct, dirichlet_alpha, dirichlet_epsilon, temperature, temperature_threshold).
         dry_run: If True, create dummy trajectories without running games.
+        device: Device for neural network inference (e.g., "cuda" or "cpu").
 
     Returns:
         List of trajectory dictionaries, each containing:
@@ -221,6 +225,7 @@ def run_selfplay(
         mcts = Civ6MCTS(
             network=model,
             config=mcts_config,
+            device=device,
         )
 
         trajectory: dict[str, Any] = {
@@ -237,10 +242,20 @@ def run_selfplay(
             # Get observation with spatial, vector, action_mask
             obs = env.get_observation()
 
-            # Run MCTS - returns (policy, root_value)
-            # Pass env directly since MicroCivEnv implements MCTSEnvironment protocol
-            policy, _ = mcts.search(env)  # type: ignore[arg-type]
-            action = mcts.select_action(policy)
+            # Run MCTS with error handling
+            try:
+                # Pass env directly since MicroCivEnv implements MCTSEnvironment protocol
+                policy, _ = mcts.search(env)  # type: ignore[arg-type]
+                action = mcts.select_action(policy)
+            except Exception as e:
+                logger.error(
+                    "MCTS search failed at step %d: %s",
+                    len(trajectory["spatial"]),
+                    e,
+                )
+                if device != "cpu":
+                    torch.cuda.empty_cache()
+                break  # Skip this game, move to next
 
             # Store experience - flatten spatial and vector for storage
             spatial_flat = obs["spatial"].flatten().tolist()
@@ -255,18 +270,38 @@ def run_selfplay(
             reward = float(step_result[1])
             done = bool(step_result[2]) or bool(step_result[3])  # terminated or truncated
 
-        # Propagate final reward to all states
-        final_value = reward
-        num_steps = len(trajectory["spatial"])
-        trajectory["rewards"] = [final_value] * num_steps
-        trajectories.append(trajectory)
+        # Propagate final reward to all states (only if we collected data)
+        if trajectory["spatial"]:
+            final_value = reward
+            num_steps = len(trajectory["spatial"])
+            trajectory["rewards"] = [final_value] * num_steps
+            trajectories.append(trajectory)
 
         elapsed = time.time() - start_time
         logger.debug("Game %d/%d completed in %.1fs", game_idx + 1, num_games, elapsed)
 
-        # Log progress periodically
+        # Cleanup after each game to prevent memory accumulation
+        del trajectory
+        del mcts
+        del env
+        if device != "cpu":
+            torch.cuda.empty_cache()
+
+        # Log progress and memory usage periodically
         if (game_idx + 1) % 10 == 0:
-            logger.info("Progress: %d/%d games completed", game_idx + 1, num_games)
+            mem_mb = psutil.Process().memory_info().rss / 1024 / 1024
+            logger.info(
+                "Progress: %d/%d games, Memory: %.0f MB",
+                game_idx + 1,
+                num_games,
+                mem_mb,
+            )
+            # Force garbage collection if memory is getting high
+            if mem_mb > 6000:  # 6GB threshold for 8GB container
+                logger.warning("High memory usage (%.0f MB), forcing GC", mem_mb)
+                gc.collect()
+                if device != "cpu":
+                    torch.cuda.empty_cache()
 
     return trajectories
 
@@ -334,6 +369,7 @@ def main() -> int:
             args.mcts_simulations,
             mcts_config_override=mcts_override,
             dry_run=args.dry_run,
+            device=str(device),
         )
         elapsed = time.time() - start_time
 

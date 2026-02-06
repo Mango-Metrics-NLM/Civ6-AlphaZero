@@ -19,7 +19,7 @@ import logging
 import lzma
 import pickle
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import timezone, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
@@ -130,7 +130,7 @@ class GCSStorageBackend(StorageBackend):
 
     def _get_timestamp(self) -> str:
         """Get current ISO timestamp."""
-        return datetime.now(UTC).isoformat()
+        return datetime.now(timezone.utc).isoformat()
 
     def _gcs_path(self, *parts: str) -> str:
         """Build a GCS path from parts."""

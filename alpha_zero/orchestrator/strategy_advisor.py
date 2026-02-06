@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import timezone, datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -50,7 +50,7 @@ class AnalysisResult:
 
     def __post_init__(self):
         if not self.timestamp:
-            self.timestamp = datetime.now(UTC).isoformat()
+            self.timestamp = datetime.now(timezone.utc).isoformat()
 
 
 @dataclass
@@ -325,7 +325,7 @@ Provide 3-5 specific, actionable suggestions for improving training.
         Returns:
             Complete game report.
         """
-        game_id = game_id or datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        game_id = game_id or datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
         if not self.config.enabled or not self.llm_client:
             return GameReport(

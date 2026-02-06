@@ -25,7 +25,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import timezone, datetime
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -303,7 +303,7 @@ class CloudEvaluator:
         Returns:
             Dictionary with evaluation results.
         """
-        start_time = datetime.now(UTC)
+        start_time = datetime.now(timezone.utc)
         logger.info(
             f"Starting evaluation: {self.config.num_games} games, iteration {self.config.iteration}"
         )
@@ -395,7 +395,7 @@ class CloudEvaluator:
                 f"(< {self.config.promotion_threshold:.2%})"
             )
 
-        elapsed = (datetime.now(UTC) - start_time).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
 
         return {
             "status": "completed",
