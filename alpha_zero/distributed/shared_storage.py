@@ -90,6 +90,10 @@ class GameTrajectory:
     game_length: int = 0
     winner: int | None = None
 
+    def __len__(self) -> int:
+        """Return number of steps in trajectory."""
+        return len(self.examples)
+
     def to_bytes(self, compress: bool = False) -> bytes:
         """Serialize to bytes."""
         data = pickle.dumps(
