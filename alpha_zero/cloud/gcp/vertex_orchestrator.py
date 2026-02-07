@@ -34,7 +34,7 @@ import sys
 import time
 
 from alpha_zero.cloud.gcp.config import GCPConfig
-from alpha_zero.cloud.gcp.exceptions import PreemptionError, VertexJobError
+from alpha_zero.cloud.gcp.exceptions import GCSStorageError, PreemptionError, VertexJobError
 from alpha_zero.cloud.gcp.storage import GCSModelStorage
 from alpha_zero.cloud.gcp.vertex_jobs import (
     VertexAIClient,
@@ -146,7 +146,7 @@ def get_initial_model_version(config: GCPConfig, dry_run: bool = False) -> int:
         version = storage.get_latest_version()
         logger.info("Found latest model version: %d", version)
         return version
-    except Exception:
+    except GCSStorageError:
         logger.info("No existing models found, starting from version 0")
         return 0
 
@@ -480,8 +480,13 @@ def run_iteration(
         try:
             storage = GCSModelStorage(config)
             new_version = storage.get_latest_version()
-        except Exception:
-            new_version = model_version + 1
+        except GCSStorageError as e:
+            logger.warning(
+                "Could not get latest model version from GCS: %s. Re-using model v%d.",
+                e,
+                model_version,
+            )
+            new_version = model_version
 
     # Phase 3: Evaluation (optional)
     if args.evaluation_games > 0 and model_version > 0:

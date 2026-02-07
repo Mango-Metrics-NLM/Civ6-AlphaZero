@@ -133,7 +133,7 @@ class GPUSchedulerConfig:
 
     # GPU hourly costs (USD) for cost-aware selection
     # Defaults can be overridden via CIV6AZ_GPU_COST_* environment variables
-    gpu_costs: dict[str, float] = field(default_factory=lambda: _get_gpu_costs_with_env_overrides())
+    gpu_costs: dict[str, float] = field(default_factory=_get_gpu_costs_with_env_overrides)
 
     # Spot VM settings by job type
     spot_for_selfplay: bool = field(

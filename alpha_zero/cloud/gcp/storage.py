@@ -362,6 +362,11 @@ class GCSModelStorage:
         self._bucket = config.bucket
         self._paths = config.paths
 
+    @property
+    def bucket(self) -> str:
+        """Get the GCS bucket name."""
+        return self._bucket
+
     def save_model(
         self,
         model: ModelLike,
@@ -557,6 +562,11 @@ class GCSTrajectoryStorage:
         self._paths = config.paths
         self._compress = compress
 
+    @property
+    def bucket(self) -> str:
+        """Get the GCS bucket name."""
+        return self._bucket
+
     def save_trajectories(
         self,
         trajectories: list[Any],
@@ -713,6 +723,11 @@ class GCSCheckpointStorage:
         self.backend = backend or GCSBackend(config.project_id)
         self._bucket = config.bucket
         self._paths = config.paths
+
+    @property
+    def bucket(self) -> str:
+        """Get the GCS bucket name."""
+        return self._bucket
 
     def save_checkpoint(
         self,

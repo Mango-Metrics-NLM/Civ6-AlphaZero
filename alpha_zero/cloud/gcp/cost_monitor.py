@@ -136,7 +136,7 @@ class CostMonitorConfig:
 
     # GPU pricing estimates (hourly USD) - used when Billing API unavailable
     # Defaults can be overridden via CIV6AZ_GPU_COST_* environment variables
-    gpu_prices: dict[str, float] = field(default_factory=lambda: _get_gpu_costs_for_monitor())
+    gpu_prices: dict[str, float] = field(default_factory=_get_gpu_costs_for_monitor)
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""

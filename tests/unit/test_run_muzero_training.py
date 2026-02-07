@@ -166,11 +166,13 @@ class TestSelfPlayGame:
         trajectory = self_play_game(small_env, small_mcts, small_config)
         game_length = len(trajectory.actions)
 
-        # Should have game_length actions and game_length+1 observations
+        # Should have game_length actions/rewards and game_length+1 observations/policies/values/dones
         assert len(trajectory.actions) == game_length
-        assert len(trajectory.observations) >= game_length
-        assert len(trajectory.policies) == game_length
         assert len(trajectory.rewards) == game_length
+        assert len(trajectory.observations) == game_length + 1
+        assert len(trajectory.policies) == game_length + 1
+        assert len(trajectory.values) == game_length + 1
+        assert len(trajectory.dones) == game_length + 1
 
     def test_policies_are_valid_distributions(self, small_env, small_mcts, small_config):
         """Policies sum to 1."""

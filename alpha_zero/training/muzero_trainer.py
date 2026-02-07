@@ -216,9 +216,21 @@ class GameTrajectory:
                 f"doesn't match observations {n}"
             )
 
-        if len(self.policies) not in (0, n):
+        if len(self.policies) not in (0, n, n - 1):
             logger.warning(
                 f"Trajectory {self.game_id}: policies length {len(self.policies)} "
+                f"doesn't match observations {n}"
+            )
+
+        if len(self.values) not in (0, n, n - 1):
+            logger.warning(
+                f"Trajectory {self.game_id}: values length {len(self.values)} "
+                f"doesn't match observations {n}"
+            )
+
+        if len(self.dones) not in (0, n, n - 1):
+            logger.warning(
+                f"Trajectory {self.game_id}: dones length {len(self.dones)} "
                 f"doesn't match observations {n}"
             )
 

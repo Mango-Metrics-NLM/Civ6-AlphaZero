@@ -212,6 +212,20 @@ def self_play_game(
 
         target_values.append(value)
 
+    # Terminal value (value of the state after last action)
+    if winner is None:
+        terminal_state_value = 0.0
+    elif winner == 0:
+        terminal_state_value = 1.0
+    else:
+        terminal_state_value = -1.0
+    target_values.append(terminal_state_value)
+
+    # Terminal policy (dummy but required for T+1)
+    policies.append(np.zeros_like(policies[0]))
+    # Dones needs to match others
+    dones.append(True)
+
     return GameTrajectory(
         observations=observations,
         actions=np.array(actions, dtype=np.int64),
