@@ -28,6 +28,8 @@ from typing import Any
 import structlog
 from structlog.stdlib import BoundLogger
 
+from src.core.constants import LOGFILE_BACKUP_COUNT, MAX_LOGFILE_BYTES
+
 __all__ = [
     "MetricsLogger",
     "bind_context",
@@ -203,8 +205,8 @@ def configure_logging(
 
         file_handler = logging.handlers.RotatingFileHandler(
             filename=str(log_path / "sdk.log"),
-            maxBytes=10 * 1024 * 1024,  # 10 MiB
-            backupCount=5,
+            maxBytes=MAX_LOGFILE_BYTES,
+            backupCount=LOGFILE_BACKUP_COUNT,
             encoding="utf-8",
         )
         file_handler.setFormatter(file_formatter)

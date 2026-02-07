@@ -11,6 +11,7 @@ import logging
 from dataclasses import dataclass, field
 
 from src.core.config import CurriculumConfig, CurriculumStage
+from src.core.constants import INITIAL_ELO_RATING
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +23,8 @@ class StageStats:
     stage_name: str
     games_played: int = 0
     iterations_completed: int = 0
-    current_elo: float = 1000.0
-    peak_elo: float = 1000.0
+    current_elo: float = INITIAL_ELO_RATING
+    peak_elo: float = INITIAL_ELO_RATING
     promotion_count: int = 0
     demotion_count: int = 0
     elo_history: list[float] = field(default_factory=list)

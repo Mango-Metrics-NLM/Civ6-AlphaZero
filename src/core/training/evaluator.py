@@ -18,6 +18,12 @@ import numpy as np
 from numpy.typing import NDArray
 
 from src.core.config import MCTSConfig
+from src.core.constants import (
+    DEFAULT_ELO_K_FACTOR,
+    ELO_BASE,
+    ELO_SCALE,
+    INITIAL_ELO_RATING,
+)
 from src.core.types import GameOutcome
 
 logger = logging.getLogger(__name__)
@@ -33,17 +39,17 @@ EvalFn = Callable[
 class EloRating:
     """Elo rating tracker with update logic."""
 
-    rating: float = 1000.0
+    rating: float = INITIAL_ELO_RATING
     games_played: int = 0
     wins: int = 0
     losses: int = 0
     draws: int = 0
-    k_factor: float = 32.0
+    k_factor: float = DEFAULT_ELO_K_FACTOR
     history: list[float] = field(default_factory=list)
 
     def expected_score(self, opponent_rating: float) -> float:
         """Calculate expected score against an opponent."""
-        return 1.0 / (1.0 + math.pow(10.0, (opponent_rating - self.rating) / 400.0))
+        return 1.0 / (1.0 + math.pow(ELO_BASE, (opponent_rating - self.rating) / ELO_SCALE))
 
     def update(self, actual_score: float, opponent_rating: float) -> float:
         """Update rating after a game.
@@ -124,7 +130,7 @@ class Evaluator:
         self,
         mcts_config: MCTSConfig,
         num_eval_games: int = 20,
-        baseline_elo: float = 1000.0,
+        baseline_elo: float = INITIAL_ELO_RATING,
         seed: int | None = None,
     ) -> None:
         self._mcts_config = mcts_config
@@ -168,6 +174,13 @@ class Evaluator:
         losses = 0
         draws = 0
         outcomes: list[GameOutcome] = []
+
+        logger.debug(
+            "Starting evaluation: %d games vs %s (baseline_elo=%.1f)",
+            self._num_eval_games,
+            baseline_type,
+            self._baseline_elo,
+        )
 
         for game_idx in range(self._num_eval_games):
             # Alternate who plays first
@@ -241,9 +254,14 @@ class Evaluator:
         """
         env = env_factory()
         env.reset(seed=seed)
+        logger.debug(
+            "Eval game: candidate_is_p1=%s, seed=%d", candidate_is_p1, seed,
+        )
+
+        from src.core.constants import DEFAULT_MAX_STEPS
 
         step = 0
-        max_steps = 200
+        max_steps = DEFAULT_MAX_STEPS
 
         while not env.is_terminal() and step < max_steps:
             obs = env.get_observation()

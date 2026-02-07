@@ -9,6 +9,11 @@ import numpy as np
 from numpy.typing import NDArray
 
 from src.core.config import MCTSConfig
+from src.core.constants import (
+    DEFAULT_MAX_STEPS,
+    DEFAULT_TEMPERATURE_SCHEDULE,
+    DIRICHLET_NOISE_STEP_THRESHOLD,
+)
 from src.core.types import GameOutcome, GameTrajectory, TrainingExample
 
 logger = logging.getLogger(__name__)
@@ -38,13 +43,13 @@ class SelfPlayCollector:
         self,
         eval_fn: EvalFn,
         mcts_config: MCTSConfig,
-        max_steps: int = 200,
+        max_steps: int = DEFAULT_MAX_STEPS,
         temperature_schedule: dict[int, float] | None = None,
     ) -> None:
         self._eval_fn = eval_fn
         self._mcts_config = mcts_config
         self._max_steps = max_steps
-        self._temperature_schedule = temperature_schedule or {0: 1.0, 30: 0.1}
+        self._temperature_schedule = temperature_schedule or dict(DEFAULT_TEMPERATURE_SCHEDULE)
 
     def _get_temperature(self, step: int) -> float:
         """Get temperature for the given step from the schedule."""
@@ -85,7 +90,7 @@ class SelfPlayCollector:
             # Run MCTS search
             action_probs, _ = engine.search(
                 env,
-                add_noise=add_noise and step < 30,
+                add_noise=add_noise and step < DIRICHLET_NOISE_STEP_THRESHOLD,
             )
 
             # Get temperature and select action

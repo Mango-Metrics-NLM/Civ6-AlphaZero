@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
+from src.core.constants import RESOURCE_COLLECTION_REWARD
 from src.core.types import ObservationSpec
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,12 @@ class MiniResourceEnv:
             if (r, c) not in occupied and (r, c) not in self._resources:
                 self._resources.add((r, c))
 
+        logger.debug(
+            "MiniResource reset: board=%d, resources=%d, seed=%s",
+            self._board_size,
+            self._num_resources,
+            actual_seed,
+        )
         return self.get_observation()
 
     def step(
@@ -136,7 +143,7 @@ class MiniResourceEnv:
         if (new_row, new_col) in self._resources:
             self._resources.discard((new_row, new_col))
             self._scores[player] += 1
-            reward = 0.1  # Small intermediate reward
+            reward = RESOURCE_COLLECTION_REWARD
 
         # Switch player
         self._current_player = 1 - self._current_player

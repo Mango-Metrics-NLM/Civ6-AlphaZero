@@ -10,6 +10,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from src.core.config import MCTSConfig
+from src.core.constants import EPSILON, EPSILON_SOFTMAX
 from src.core.mcts.node import MCTSNode
 from src.core.mcts.policies import PUCTPolicy
 
@@ -67,6 +68,9 @@ class MCTSEngine:
             sums to approximately 1.0.
         """
         n_sims = num_simulations or self._config.num_simulations
+        logger.debug(
+            "MCTS search: %d simulations, noise=%s", n_sims, add_noise,
+        )
 
         # Initialize root
         root = MCTSNode()
@@ -118,6 +122,12 @@ class MCTSEngine:
 
         # Extract action probabilities from visit counts
         action_probs = get_action_probabilities(root, env.action_space_size)
+        logger.debug(
+            "MCTS search complete: root_value=%.3f, root_visits=%d, best_action=%d",
+            root.value,
+            root.visit_count,
+            int(np.argmax(action_probs)),
+        )
         return action_probs, root.value
 
     def _select_child(self, node: MCTSNode) -> tuple[int, MCTSNode]:
@@ -221,7 +231,7 @@ def select_action(
     # Apply mask
     if action_mask is not None:
         probs = probs * action_mask
-        if probs.sum() < 1e-8:
+        if probs.sum() < EPSILON:
             valid = np.where(action_mask)[0]
             if len(valid) == 0:
                 return 0
@@ -229,7 +239,7 @@ def select_action(
 
     # Normalize
     total = probs.sum()
-    if total < 1e-8:
+    if total < EPSILON:
         return int(np.argmax(action_probs))
     probs = probs / total
 
@@ -239,7 +249,7 @@ def select_action(
 
     # Apply temperature
     if temperature != 1.0:
-        probs = np.power(probs + 1e-10, 1.0 / temperature)
+        probs = np.power(probs + EPSILON_SOFTMAX, 1.0 / temperature)
         probs = probs / probs.sum()
 
     return int(np.random.choice(len(probs), p=probs))

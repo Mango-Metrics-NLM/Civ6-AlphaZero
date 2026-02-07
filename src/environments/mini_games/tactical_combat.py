@@ -140,6 +140,12 @@ class TacticalCombatEnv:
                 Unit(player=1, row=self._board_size - 1, col=col)
             )
 
+        logger.debug(
+            "TacticalCombat reset: board=%d, units=%d, seed=%s",
+            self._board_size,
+            self._num_units,
+            actual_seed,
+        )
         return self.get_observation()
 
     def step(

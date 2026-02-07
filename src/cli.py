@@ -20,6 +20,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from src.core.constants import DEFAULT_MAX_STEPS
+
 logger = logging.getLogger(__name__)
 
 
@@ -67,7 +69,9 @@ def cmd_train(args: argparse.Namespace) -> int:
     # Setup environment
     registry = _get_default_registry()
     env_name = args.env or "mini_resource"
-    env_factory = lambda: registry.create(env_name)  # noqa: E731
+
+    def env_factory() -> Any:
+        return registry.create(env_name)
 
     # Setup learner (dry-run mode if no torch)
     learner = Learner(config=config.training)
@@ -102,7 +106,9 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
 
     registry = _get_default_registry()
     env_name = args.env or "mini_resource"
-    env_factory = lambda: registry.create(env_name)  # noqa: E731
+
+    def env_factory() -> Any:
+        return registry.create(env_name)
 
     mcts_config = MCTSConfig()
     evaluator = Evaluator(
@@ -230,7 +236,7 @@ def cmd_benchmark(args: argparse.Namespace) -> int:
     for ep in range(num_episodes):
         env.reset(seed=ep)
         steps = 0
-        while not env.is_terminal() and steps < 200:
+        while not env.is_terminal() and steps < DEFAULT_MAX_STEPS:
             mask = env.get_valid_actions()
             valid_actions = np.where(mask)[0]
             if len(valid_actions) == 0:
@@ -320,9 +326,11 @@ def main(argv: list[str] | None = None) -> int:
 
     handler = commands.get(args.command)
     if handler is None:
+        logger.error("Unknown command: %s", args.command)
         parser.print_help()
         return 1
 
+    logger.debug("Executing command: %s", args.command)
     return handler(args)
 
 

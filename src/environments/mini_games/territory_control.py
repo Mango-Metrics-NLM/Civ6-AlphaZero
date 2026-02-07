@@ -93,6 +93,12 @@ class TerritoryControlEnv:
         self._step_count = 0
         self._terminated = False
         self._scores = [0, 0]
+        logger.debug(
+            "TerritoryControl reset: board=%d, max_steps=%d, seed=%s",
+            self._board_size,
+            self._max_steps,
+            actual_seed,
+        )
 
         return self.get_observation()
 

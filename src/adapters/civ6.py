@@ -17,6 +17,15 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
+from src.core.constants import (
+    DEFAULT_BOARD_SIZE,
+    DEFAULT_MAX_STEPS,
+    MICROCIV_ACTION_SPACE,
+    MICROCIV_SPATIAL_CHANNELS,
+    MICROCIV_VECTOR_DIM,
+    STUB_SPATIAL_CHANNELS,
+    STUB_VECTOR_DIM,
+)
 from src.core.types import ObservationSpec
 
 logger = logging.getLogger(__name__)
@@ -40,8 +49,8 @@ class MicroCivAdapter:
 
     def __init__(
         self,
-        board_size: int = 16,
-        max_steps: int = 200,
+        board_size: int = DEFAULT_BOARD_SIZE,
+        max_steps: int = DEFAULT_MAX_STEPS,
         use_stub: bool = False,
     ) -> None:
         self._board_size = board_size
@@ -60,7 +69,7 @@ class MicroCivAdapter:
                 self._action_space_size_val = (
                     self._env.action_space.n
                     if hasattr(self._env, "action_space")
-                    else 356
+                    else MICROCIV_ACTION_SPACE
                 )
                 logger.info("MicroCivAdapter: using real MicroCivEnv")
             except ImportError:
@@ -74,10 +83,11 @@ class MicroCivAdapter:
             logger.info("MicroCivAdapter: using stub mode (board=%d)", board_size)
 
         # Observation spec: MicroCiv uses 13 channels
-        channels = 13 if not self._use_stub else 6
+        channels = MICROCIV_SPATIAL_CHANNELS if not self._use_stub else STUB_SPATIAL_CHANNELS
+        vector_dim = MICROCIV_VECTOR_DIM if not self._use_stub else STUB_VECTOR_DIM
         self._observation_spec = ObservationSpec(
             spatial_shape=(channels, board_size, board_size),
-            vector_dim=64 if not self._use_stub else 4,
+            vector_dim=vector_dim,
         )
 
     @property
