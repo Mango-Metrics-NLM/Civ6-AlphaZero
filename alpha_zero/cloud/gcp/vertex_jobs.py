@@ -10,16 +10,31 @@ Provides job management abstractions for:
 from __future__ import annotations
 
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.exceptions import PreemptionError, QuotaExceededError, VertexJobError
 
-if TYPE_CHECKING:
-    pass
+
+def _wandb_env_vars() -> dict[str, str]:
+    """Get W&B env vars for container passthrough, filtering out empty values.
+
+    Vertex AI rejects env vars with empty string values, so we only
+    include vars that have non-empty values set.
+    """
+    candidates = {
+        "WANDB_ENABLED": os.environ.get("WANDB_ENABLED", "false"),
+        "WANDB_API_KEY": os.environ.get("WANDB_API_KEY", ""),
+        "WANDB_PROJECT": os.environ.get("WANDB_PROJECT", "civ6-alphazero"),
+        "WANDB_ENTITY": os.environ.get("WANDB_ENTITY", ""),
+        "WANDB_MODE": os.environ.get("WANDB_MODE", "online"),
+    }
+    return {k: v for k, v in candidates.items() if v}
+
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +189,6 @@ class VertexAIClient:
 
         try:
             from google.cloud import aiplatform
-            from google.protobuf import duration_pb2
 
             worker_pool_specs = [spec.to_worker_pool_spec()]
 
@@ -199,9 +213,9 @@ class VertexAIClient:
                 # Vertex AI uses restart_job_on_worker_restart for spot/preemptible
                 submit_kwargs["restart_job_on_worker_restart"] = True
 
-            # Configure timeout if specified
+            # Configure timeout if specified (SDK expects int seconds)
             if spec.timeout_seconds > 0:
-                submit_kwargs["timeout"] = duration_pb2.Duration(seconds=spec.timeout_seconds)
+                submit_kwargs["timeout"] = spec.timeout_seconds
 
             job.submit(**submit_kwargs)
 
@@ -394,6 +408,7 @@ class VertexSelfPlayJob:
         model_version: int,
         iteration: int,
         container_uri: str | None = None,
+        extra_args: list[str] | None = None,
     ) -> list[str]:
         """Launch self-play worker jobs.
 
@@ -402,6 +417,7 @@ class VertexSelfPlayJob:
             model_version: Model version for self-play.
             iteration: Current training iteration.
             container_uri: Container image URI (uses config default if None).
+            extra_args: Additional CLI args to pass to the container.
 
         Returns:
             List of job resource names.
@@ -417,20 +433,25 @@ class VertexSelfPlayJob:
         worker_config = self.config.self_play
 
         for worker_id in range(num_workers):
+            args = [
+                "--mode=selfplay",
+                f"--worker_id={worker_id}",
+                f"--model_version={model_version}",
+                f"--iteration={iteration}",
+                f"--games={worker_config.games_per_worker}",
+            ]
+            if extra_args:
+                args.extend(extra_args)
+
             spec = JobSpec(
                 display_name=f"civ6az-selfplay-iter{iteration:03d}-worker{worker_id:02d}",
                 container_uri=container,
-                args=[
-                    "--mode=selfplay",
-                    f"--worker_id={worker_id}",
-                    f"--model_version={model_version}",
-                    f"--iteration={iteration}",
-                    f"--games={worker_config.games_per_worker}",
-                ],
+                args=args,
                 env_vars={
                     "CIV6AZ_GCS_BUCKET": self.config.bucket,
                     "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
                     "CIV6AZ_VERTEX_REGION": self.config.region,
+                    **_wandb_env_vars(),
                 },
                 machine_type=worker_config.machine_type,
                 accelerator_type=worker_config.accelerator_type,
@@ -489,13 +510,15 @@ class VertexSelfPlayJob:
                 # Remove preempted job from active jobs
                 if job_name in self._active_jobs:
                     self._active_jobs.remove(job_name)
-                results.append(JobResult(
-                    job_id=job_name,
-                    job_name=job_name,
-                    state=JobState.FAILED.value,
-                    success=False,
-                    error_message="Preempted",
-                ))
+                results.append(
+                    JobResult(
+                        job_id=job_name,
+                        job_name=job_name,
+                        state=JobState.FAILED.value,
+                        success=False,
+                        error_message="Preempted",
+                    )
+                )
 
         successful = sum(1 for r in results if r.success)
         logger.info("Self-play complete: %d/%d workers succeeded", successful, len(results))
@@ -552,6 +575,7 @@ class VertexTrainingJob:
         trajectory_iterations: list[int],
         resume_from_checkpoint: str | None = None,
         container_uri: str | None = None,
+        extra_args: list[str] | None = None,
     ) -> str:
         """Launch a training job.
 
@@ -560,6 +584,7 @@ class VertexTrainingJob:
             trajectory_iterations: Iterations to sample trajectories from.
             resume_from_checkpoint: GCS path to checkpoint (optional).
             container_uri: Container image URI (uses config default if None).
+            extra_args: Additional CLI args to pass to the container.
 
         Returns:
             Job resource name.
@@ -584,6 +609,9 @@ class VertexTrainingJob:
         if resume_from_checkpoint:
             args.append(f"--resume_from={resume_from_checkpoint}")
 
+        if extra_args:
+            args.extend(extra_args)
+
         spec = JobSpec(
             display_name=f"civ6az-training-iter{iteration:03d}",
             container_uri=container,
@@ -592,6 +620,7 @@ class VertexTrainingJob:
                 "CIV6AZ_GCS_BUCKET": self.config.bucket,
                 "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
                 "CIV6AZ_VERTEX_REGION": self.config.region,
+                **_wandb_env_vars(),
             },
             machine_type=training_config.machine_type,
             accelerator_type=training_config.accelerator_type,
@@ -642,21 +671,108 @@ class VertexTrainingJob:
         self._current_job = None
         return result
 
-    def get_output_model_version(self, job_name: str | None = None) -> int | None:
-        """Get the model version produced by a training job.
-
-        Args:
-            job_name: Job to query (uses current if None).
-
-        Returns:
-            Model version or None if not available.
-        """
-        # This would typically parse job metadata or query GCS
-        # For now, return None - the caller should check GCS directly
-        return None
-
     def cancel(self) -> None:
         """Cancel the current training job."""
+        if self._current_job:
+            self.client.cancel_job(self._current_job)
+            self._current_job = None
+
+
+class VertexEvaluationJob:
+    """Manages model evaluation jobs on Vertex AI.
+
+    Runs arena matches between two model versions to measure improvement.
+    Uses CPU-only instances since evaluation is not latency-sensitive.
+    """
+
+    def __init__(self, config: GCPConfig, client: VertexAIClient) -> None:
+        self.config = config
+        self.client = client
+        self._current_job: str | None = None
+
+    def launch(
+        self,
+        model_version_new: int,
+        model_version_old: int,
+        iteration: int,
+        num_games: int = 20,
+        extra_args: list[str] | None = None,
+    ) -> str:
+        """Launch an evaluation job.
+
+        Args:
+            model_version_new: New model version to evaluate.
+            model_version_old: Baseline model version.
+            iteration: Training iteration.
+            num_games: Number of games to play.
+            extra_args: Additional container arguments.
+
+        Returns:
+            Job resource name.
+        """
+        container = self.config.container_image_uri
+        if not container:
+            raise VertexJobError("container_image_uri not configured")
+
+        args = [
+            "--mode=evaluation",
+            f"--model_version_new={model_version_new}",
+            f"--model_version_old={model_version_old}",
+            f"--iteration={iteration}",
+            f"--games={num_games}",
+        ]
+        if extra_args:
+            args.extend(extra_args)
+
+        spec = JobSpec(
+            display_name=f"civ6az-eval-iter{iteration:03d}",
+            container_uri=container,
+            args=args,
+            env_vars={
+                "CIV6AZ_GCS_BUCKET": self.config.bucket,
+                "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
+                "CIV6AZ_VERTEX_REGION": self.config.region,
+            },
+            # CPU-only: evaluation doesn't need GPU
+            machine_type="n1-standard-4",
+            accelerator_type="",
+            accelerator_count=0,
+            replica_count=1,
+            spot=False,
+            service_account=self.config.service_account,
+            timeout_seconds=3600,  # 1 hour
+        )
+
+        job_name = self.client.submit_custom_job(
+            spec,
+            staging_bucket=f"gs://{self.config.bucket}",
+        )
+        self._current_job = job_name
+
+        logger.info(
+            "Launched evaluation job: v%d vs v%d (%d games)",
+            model_version_new,
+            model_version_old,
+            num_games,
+        )
+        return job_name
+
+    def wait_for_completion(
+        self,
+        job_name: str | None = None,
+        timeout_seconds: int = 3600,
+    ) -> JobResult:
+        """Wait for evaluation job to complete."""
+        job = job_name or self._current_job
+        if not job:
+            raise VertexJobError("No evaluation job to wait for")
+
+        result = self.client.wait_for_completion(job, timeout_seconds)
+        self._current_job = None
+        return result
+
+    def cancel(self) -> None:
+        """Cancel the current evaluation job."""
         if self._current_job:
             self.client.cancel_job(self._current_job)
             self._current_job = None

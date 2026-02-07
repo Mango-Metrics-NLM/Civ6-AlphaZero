@@ -1,0 +1,51 @@
+# Git
+.git
+.gitignore
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+dist
+build
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Testing
+tests/
+.pytest_cache
+.coverage
+htmlcov/
+.mypy_cache
+
+# Docs
+docs/
+*.md
+LICENSE
+
+# Data / Checkpoints (loaded from GCS at runtime)
+checkpoints/
+data/
+wandb/
+runs/
+*.pt
+*.pth
+
+# Environment
+.env
+.env.*
+*.log
+
+# Scripts (not needed in container)
+scripts/
+notebooks/
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml

@@ -29,3 +29,7 @@ wandb>=0.15.0
 chromadb>=0.4.0
 sentence-transformers>=2.2.0
 
+# GCP / Vertex AI
+google-cloud-storage>=2.10.0
+google-cloud-aiplatform>=1.30.0
+

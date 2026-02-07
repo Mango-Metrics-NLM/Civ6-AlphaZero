@@ -93,65 +93,53 @@ class PreemptionHandlerConfig:
     """
 
     checkpoint_interval_seconds: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_CHECKPOINT_INTERVAL_S", "300")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_CHECKPOINT_INTERVAL_S", "300"))
     )
     min_checkpoint_interval_seconds: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_CHECKPOINT_MIN_INTERVAL_S", "60")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_CHECKPOINT_MIN_INTERVAL_S", "60"))
     )
     max_retries: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_PREEMPTION_MAX_RETRIES", "5")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_PREEMPTION_MAX_RETRIES", "5"))
     )
     retry_delay_seconds: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_PREEMPTION_RETRY_DELAY_S", "60")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_PREEMPTION_RETRY_DELAY_S", "60"))
     )
     backoff_multiplier: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_PREEMPTION_BACKOFF_MULTIPLIER", "2.0")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_PREEMPTION_BACKOFF_MULTIPLIER", "2.0"))
     )
     max_backoff_seconds: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_PREEMPTION_MAX_BACKOFF_S", "3600")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_PREEMPTION_MAX_BACKOFF_S", "3600"))
     )
 
     # Signal handling
     handle_sigterm: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_PREEMPTION_HANDLE_SIGTERM", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_PREEMPTION_HANDLE_SIGTERM", "true").lower()
+        == "true"
     )
     checkpoint_on_signal: bool = field(
         default_factory=lambda: os.environ.get(
             "CIV6AZ_PREEMPTION_CHECKPOINT_ON_SIGNAL", "true"
-        ).lower() == "true"
+        ).lower()
+        == "true"
     )
 
     # State preservation options
     preserve_optimizer_state: bool = field(
         default_factory=lambda: os.environ.get(
             "CIV6AZ_PREEMPTION_PRESERVE_OPTIMIZER", "true"
-        ).lower() == "true"
+        ).lower()
+        == "true"
     )
     preserve_scheduler_state: bool = field(
         default_factory=lambda: os.environ.get(
             "CIV6AZ_PREEMPTION_PRESERVE_SCHEDULER", "true"
-        ).lower() == "true"
+        ).lower()
+        == "true"
     )
 
     # GCS paths for preemption state
     preemption_state_prefix: str = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_PREEMPTION_STATE_PREFIX", "preemption_state"
-        )
+        default_factory=lambda: os.environ.get("CIV6AZ_PREEMPTION_STATE_PREFIX", "preemption_state")
     )
 
     def __post_init__(self) -> None:
@@ -172,9 +160,7 @@ class PreemptionHandlerConfig:
         if self.min_checkpoint_interval_seconds < 1:
             raise ConfigurationError(
                 "min_checkpoint_interval_seconds must be at least 1",
-                details={
-                    "min_checkpoint_interval_seconds": self.min_checkpoint_interval_seconds
-                },
+                details={"min_checkpoint_interval_seconds": self.min_checkpoint_interval_seconds},
             )
         if self.max_retries < 0:
             raise ConfigurationError(
@@ -476,17 +462,18 @@ class PreemptionHandler:
 
         # Save locally
         torch.save(checkpoint_data, local_path)
-        logger.info(
-            f"Checkpoint saved: {local_path} "
-            f"(iteration={iteration}, reason={reason})"
-        )
+        logger.info(f"Checkpoint saved: {local_path} (iteration={iteration}, reason={reason})")
 
         # Upload to GCS if configured
         gcs_path = None
         if self.gcs_storage:
             try:
-                gcs_path = self.gcs_storage.upload_checkpoint(
-                    local_path, f"checkpoints/{filename}"
+                blob_path = f"checkpoints/{filename}"
+                data = local_path.read_bytes()
+                gcs_path = self.gcs_storage.backend.upload_blob(
+                    self.gcs_storage._bucket,
+                    blob_path,
+                    data,
                 )
                 logger.info(f"Checkpoint uploaded to GCS: {gcs_path}")
             except Exception as e:
@@ -564,8 +551,7 @@ class PreemptionHandler:
         self._timer_thread.start()
 
         logger.info(
-            f"Started checkpoint timer "
-            f"(interval={self.config.checkpoint_interval_seconds}s)"
+            f"Started checkpoint timer (interval={self.config.checkpoint_interval_seconds}s)"
         )
 
     def stop_checkpoint_timer(self) -> None:
@@ -687,7 +673,10 @@ class PreemptionHandler:
         if self.gcs_storage:
             try:
                 gcs_path = f"{self.config.preemption_state_prefix}/{job_name}.yaml"
-                data_bytes = self.gcs_storage.download_bytes(gcs_path)
+                data_bytes = self.gcs_storage.backend.download_blob(
+                    self.gcs_storage._bucket,
+                    gcs_path,
+                )
                 data = yaml.safe_load(data_bytes.decode("utf-8"))
                 return PreemptionState.from_dict(data)
             except Exception as e:
@@ -712,7 +701,10 @@ class PreemptionHandler:
         if self.gcs_storage:
             try:
                 gcs_path = f"{self.config.preemption_state_prefix}/{job_name}.yaml"
-                self.gcs_storage.delete_blob(gcs_path)
+                self.gcs_storage.backend.delete_blob(
+                    self.gcs_storage._bucket,
+                    gcs_path,
+                )
                 logger.debug(f"Cleared GCS preemption state: {gcs_path}")
             except Exception as e:
                 logger.debug(f"Failed to clear GCS preemption state: {e}")
@@ -742,9 +734,7 @@ class PreemptionHandler:
             Delay in seconds before retry.
         """
         retry_count = self._retry_counts.get(job_name, 0)
-        delay = self.config.retry_delay_seconds * (
-            self.config.backoff_multiplier ** retry_count
-        )
+        delay = self.config.retry_delay_seconds * (self.config.backoff_multiplier**retry_count)
         return min(delay, self.config.max_backoff_seconds)
 
     def increment_retry_count(self, job_name: str) -> int:

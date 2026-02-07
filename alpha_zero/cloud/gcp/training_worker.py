@@ -24,8 +24,9 @@ import logging
 import sys
 import time
 
+import numpy as np
 import torch
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, Dataset
 
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.storage import (
@@ -59,31 +60,82 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=10, help="Training epochs")
     parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
     parser.add_argument("--learning_rate", type=float, default=0.001, help="Learning rate")
-    parser.add_argument("--checkpoint_interval", type=int, default=1000, help="Steps between checkpoints")
+    parser.add_argument(
+        "--checkpoint_interval", type=int, default=1000, help="Steps between checkpoints"
+    )
     parser.add_argument("--resume_from", type=str, default=None, help="Checkpoint to resume from")
+    parser.add_argument("--board_size", type=int, default=8, help="Board size")
+    parser.add_argument("--action_space_size", type=int, default=376, help="Action space size")
+    parser.add_argument("--num_res_blocks", type=int, default=6, help="Residual blocks in network")
+    parser.add_argument("--num_filters", type=int, default=64, help="Conv filters in network")
     parser.add_argument("--mode", type=str, default="training", help="Worker mode (training)")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
     return parser.parse_args()
+
+
+class TrajectoryDataset(Dataset):
+    """Dataset that holds pre-extracted training examples from trajectories."""
+
+    def __init__(
+        self,
+        spatial: torch.Tensor,
+        vector: torch.Tensor,
+        action_mask: torch.Tensor,
+        policy: torch.Tensor,
+        value: torch.Tensor,
+    ):
+        self.spatial = spatial
+        self.vector = vector
+        self.action_mask = action_mask
+        self.policy = policy
+        self.value = value
+
+    def __len__(self) -> int:
+        return self.spatial.shape[0]
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, ...]:
+        return (
+            self.spatial[idx],
+            self.vector[idx],
+            self.action_mask[idx],
+            self.policy[idx],
+            self.value[idx],
+        )
 
 
 def load_trajectories(
     config: GCPConfig,
     iterations: list[int],
     max_per_iteration: int = 50000,
+    board_size: int = 8,
+    action_space_size: int = 376,
     dry_run: bool = False,
 ) -> list[dict]:
     """Load trajectories from specified iterations."""
     if dry_run:
         logger.info("Dry run: creating dummy trajectories")
-        # States must match expected shape: B, C=64, H=10, W=10 -> flattened = 6400
-        return [
-            {
-                "states": [[0] * (64 * 10 * 10)],
-                "policies": [[0.01] * 100],
-                "rewards": [0.5],
-            }
-            for _ in range(1000)
-        ]
+        spatial_shape = (13, board_size, board_size)
+        trajectories = []
+        for _ in range(100):
+            n_states = 20
+            trajectories.append(
+                {
+                    "states": [
+                        {
+                            "spatial": np.random.randn(*spatial_shape).astype(np.float32),
+                            "vector": np.random.randn(64).astype(np.float32),
+                            "action_mask": np.ones(action_space_size, dtype=np.float32),
+                        }
+                        for _ in range(n_states)
+                    ],
+                    "policies": [
+                        np.full(action_space_size, 1.0 / action_space_size, dtype=np.float32)
+                        for _ in range(n_states)
+                    ],
+                    "values": [0.5] * n_states,
+                }
+            )
+        return trajectories
 
     storage = GCSTrajectoryStorage(config)
     all_trajectories = []
@@ -97,36 +149,58 @@ def load_trajectories(
     return all_trajectories
 
 
-def create_model(dry_run: bool = False) -> torch.nn.Module:
+def create_model(
+    board_size: int = 8,
+    action_space_size: int = 376,
+    num_res_blocks: int = 6,
+    num_filters: int = 64,
+) -> torch.nn.Module:
     """Create model architecture."""
-    from alpha_zero.network.transformer_network import TransformerPolicyValueNet
+    from alpha_zero.core.civ6_network import MicroCivNetwork
 
-    return TransformerPolicyValueNet(
-        state_channels=64,
-        state_height=10,
-        state_width=10,
-        num_actions=100,
+    return MicroCivNetwork(
+        board_size=board_size,
+        action_space_size=action_space_size,
+        num_res_blocks=num_res_blocks,
+        num_filters=num_filters,
     )
 
 
-def prepare_dataset(trajectories: list[dict]) -> TensorDataset:
+def prepare_dataset(trajectories: list[dict], action_space_size: int) -> TrajectoryDataset:
     """Convert trajectories to PyTorch dataset."""
-    states = []
-    policies = []
-    values = []
+    all_spatial = []
+    all_vector = []
+    all_mask = []
+    all_policy = []
+    all_value = []
 
     for traj in trajectories:
-        for i, state in enumerate(traj["states"]):
-            states.append(state)
-            policies.append(traj["policies"][i])
-            values.append(traj["rewards"][i])
+        states = traj["states"]
+        policies = traj["policies"]
+        values = traj.get("values", traj.get("rewards", [0.0] * len(states)))
 
-    # Convert to tensors
-    states_tensor = torch.tensor(states, dtype=torch.float32)
-    policies_tensor = torch.tensor(policies, dtype=torch.float32)
-    values_tensor = torch.tensor(values, dtype=torch.float32).unsqueeze(-1)
+        for i, state in enumerate(states):
+            all_spatial.append(state["spatial"])
+            all_vector.append(state["vector"])
+            all_mask.append(state["action_mask"])
 
-    return TensorDataset(states_tensor, policies_tensor, values_tensor)
+            # Ensure policy has correct size
+            policy = policies[i]
+            if len(policy) < action_space_size:
+                padded = np.zeros(action_space_size, dtype=np.float32)
+                padded[: len(policy)] = policy
+                policy = padded
+            all_policy.append(policy[:action_space_size])
+
+            all_value.append(float(values[i]))
+
+    return TrajectoryDataset(
+        spatial=torch.tensor(np.array(all_spatial), dtype=torch.float32),
+        vector=torch.tensor(np.array(all_vector), dtype=torch.float32),
+        action_mask=torch.tensor(np.array(all_mask), dtype=torch.float32),
+        policy=torch.tensor(np.array(all_policy), dtype=torch.float32),
+        value=torch.tensor(all_value, dtype=torch.float32),
+    )
 
 
 def train_epoch(
@@ -134,6 +208,8 @@ def train_epoch(
     dataloader: DataLoader,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
+    global_step: int = 0,
+    wandb_logger: object | None = None,
 ) -> tuple[float, float, float, int]:
     """Train for one epoch.
 
@@ -146,24 +222,22 @@ def train_epoch(
     total_value_loss = 0.0
     num_batches = 0
 
-    for states, target_policies, target_values in dataloader:
-        states = states.to(device)
-        target_policies = target_policies.to(device)
-        target_values = target_values.to(device)
+    for spatial, vector, action_mask, target_policy, target_value in dataloader:
+        spatial = spatial.to(device)
+        vector = vector.to(device)
+        action_mask = action_mask.to(device)
+        target_policy = target_policy.to(device)
+        target_value = target_value.to(device)
 
-        # Forward pass
-        # Reshape states for transformer input
-        batch_size = states.shape[0]
-        states = states.view(batch_size, 64, 10, 10)  # B, C, H, W
+        # Forward pass with proper 3-input API
+        policy_logits, value = model(spatial, vector, action_mask)
 
-        policy_logits, value = model(states)
-
-        # Policy loss (cross-entropy)
+        # Policy loss (cross-entropy with target distribution)
         policy_log_probs = torch.log_softmax(policy_logits, dim=-1)
-        policy_loss = -torch.sum(target_policies * policy_log_probs, dim=-1).mean()
+        policy_loss = -torch.sum(target_policy * policy_log_probs, dim=-1).mean()
 
         # Value loss (MSE)
-        value_loss = torch.nn.functional.mse_loss(value, target_values)
+        value_loss = torch.nn.functional.mse_loss(value, target_value)
 
         # Combined loss
         loss = policy_loss + value_loss
@@ -171,12 +245,29 @@ def train_epoch(
         # Backward pass
         optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
         total_loss += loss.item()
         total_policy_loss += policy_loss.item()
         total_value_loss += value_loss.item()
         num_batches += 1
+
+        # Log to W&B periodically
+        if (
+            wandb_logger is not None
+            and hasattr(wandb_logger, "is_enabled")
+            and wandb_logger.is_enabled
+        ):
+            if num_batches % 10 == 0:
+                lr = optimizer.param_groups[0]["lr"]
+                wandb_logger.log_training_step(
+                    step=global_step + num_batches,
+                    loss=loss.item(),
+                    policy_loss=policy_loss.item(),
+                    value_loss=value_loss.item(),
+                    learning_rate=lr,
+                )
 
     return (
         total_loss / max(num_batches, 1),
@@ -228,7 +319,6 @@ def save_final_model(
 
     storage = GCSModelStorage(config)
 
-    # Get next version number
     try:
         latest = storage.get_latest_version()
         new_version = latest + 1
@@ -238,9 +328,7 @@ def save_final_model(
     uri = storage.save_model(
         model=model,
         version=new_version,
-        metadata={
-            "iteration": iteration,
-        },
+        metadata={"iteration": iteration},
     )
     logger.info("Saved model v%d to %s", new_version, uri)
     return uri, new_version
@@ -253,34 +341,72 @@ def main() -> int:
 
     trajectory_iterations = [int(x) for x in args.trajectory_iterations.split(",")]
     logger.info("Starting training for iteration %d", args.iteration)
-    logger.info("Trajectory iterations: %s, Epochs: %d", trajectory_iterations, args.epochs)
+    logger.info(
+        "Config: trajectories from %s, %d epochs, board=%dx%d",
+        trajectory_iterations,
+        args.epochs,
+        args.board_size,
+        args.board_size,
+    )
+
+    # Initialize W&B (disabled by default, opt-in via WANDB_ENABLED env var)
+    wandb_logger = None
+    try:
+        from alpha_zero.utils.wandb_logger import WandbLogger
+
+        wandb_logger = WandbLogger.from_env()
+        if wandb_logger.is_enabled:
+            wandb_logger.init(
+                config_dict={
+                    "iteration": args.iteration,
+                    "trajectory_iterations": trajectory_iterations,
+                    "epochs": args.epochs,
+                    "batch_size": args.batch_size,
+                    "learning_rate": args.learning_rate,
+                    "board_size": args.board_size,
+                    "mode": "training",
+                }
+            )
+            logger.info("W&B logging enabled")
+    except ImportError:
+        logger.debug("W&B not available")
 
     try:
-        # Load configuration
         config = GCPConfig()
         if not args.dry_run:
             config.validate()
 
-        # Set device
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info("Using device: %s", device)
 
         # Load trajectories
-        trajectories = load_trajectories(config, trajectory_iterations, dry_run=args.dry_run)
+        trajectories = load_trajectories(
+            config,
+            trajectory_iterations,
+            board_size=args.board_size,
+            action_space_size=args.action_space_size,
+            dry_run=args.dry_run,
+        )
 
         # Prepare dataset
-        dataset = prepare_dataset(trajectories)
+        dataset = prepare_dataset(trajectories, args.action_space_size)
         dataloader = DataLoader(
             dataset,
             batch_size=args.batch_size,
             shuffle=True,
-            num_workers=4,
-            pin_memory=True,
+            # num_workers=0 avoids multiprocessing issues inside containers
+            num_workers=0,
+            pin_memory=device.type == "cuda",
         )
         logger.info("Dataset size: %d examples, %d batches", len(dataset), len(dataloader))
 
         # Create model
-        model = create_model(args.dry_run)
+        model = create_model(
+            board_size=args.board_size,
+            action_space_size=args.action_space_size,
+            num_res_blocks=args.num_res_blocks,
+            num_filters=args.num_filters,
+        )
         model = model.to(device)
 
         # Create optimizer
@@ -289,23 +415,20 @@ def main() -> int:
         # Resume from checkpoint if specified
         start_epoch = 0
         global_step = 0
-        if args.resume_from:
+        if args.resume_from and not args.dry_run:
             checkpoint_storage = GCSCheckpointStorage(config)
-            # Parse resume_from: if numeric, treat as step number; otherwise load latest
             step_to_load: int | None = None
             if args.resume_from.isdigit():
                 step_to_load = int(args.resume_from)
-                logger.info("Resuming from checkpoint step %d", step_to_load)
-            elif args.resume_from.lower() != "latest":
-                # If it's a path like "gs://..." extract step from path if possible
-                # e.g., "gs://bucket/checkpoints/.../training_step_1000.pt"
-                if "training_step_" in args.resume_from:
-                    try:
-                        step_str = args.resume_from.split("training_step_")[1].replace(".pt", "")
-                        step_to_load = int(step_str)
-                        logger.info("Extracted step %d from path: %s", step_to_load, args.resume_from)
-                    except (IndexError, ValueError):
-                        logger.warning("Could not parse step from path: %s, loading latest", args.resume_from)
+            elif "training_step_" in args.resume_from:
+                try:
+                    step_str = args.resume_from.split("training_step_")[1].replace(".pt", "")
+                    step_to_load = int(step_str)
+                except (IndexError, ValueError):
+                    logger.warning(
+                        "Failed to parse resume_from value '%s'; loading latest checkpoint",
+                        args.resume_from,
+                    )
 
             checkpoint = checkpoint_storage.load_checkpoint(step=step_to_load)
             if checkpoint:
@@ -313,7 +436,9 @@ def main() -> int:
                 optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
                 global_step = checkpoint.get("step", 0)
                 start_epoch = checkpoint.get("epoch", 0)
-                logger.info("Resumed from checkpoint at step %d, epoch %d", global_step, start_epoch)
+                logger.info(
+                    "Resumed from checkpoint at step %d, epoch %d", global_step, start_epoch
+                )
 
         # Training loop
         start_time = time.time()
@@ -321,11 +446,16 @@ def main() -> int:
         for epoch in range(start_epoch, args.epochs):
             epoch_start = time.time()
 
-            loss, policy_loss, value_loss, num_batches = train_epoch(model, dataloader, optimizer, device)
+            loss, policy_loss, value_loss, num_batches = train_epoch(
+                model,
+                dataloader,
+                optimizer,
+                device,
+                global_step=global_step,
+                wandb_logger=wandb_logger,
+            )
 
             epoch_time = time.time() - epoch_start
-
-            # Increment step count by actual batches processed (per-batch granularity)
             prev_step = global_step
             global_step += num_batches
 
@@ -341,7 +471,7 @@ def main() -> int:
                 global_step,
             )
 
-            # Checkpoint if we crossed an interval boundary during this epoch
+            # Checkpoint if we crossed an interval boundary
             if (global_step // args.checkpoint_interval) > (prev_step // args.checkpoint_interval):
                 save_checkpoint(config, model, optimizer, global_step, epoch + 1, args.dry_run)
 
@@ -367,6 +497,13 @@ def main() -> int:
     except Exception as e:
         logger.exception("Training failed: %s", e)
         return 1
+    finally:
+        if (
+            wandb_logger is not None
+            and hasattr(wandb_logger, "is_enabled")
+            and wandb_logger.is_enabled
+        ):
+            wandb_logger.finish()
 
 
 if __name__ == "__main__":

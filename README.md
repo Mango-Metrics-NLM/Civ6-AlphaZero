@@ -16,6 +16,7 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 4 | Unified Training Orchestrator | ✅ Complete |
 | Phase 5 | RAG-LLM Integration | ✅ Complete |
 | Phase 6 | Agentic Framework for Claude Code | ✅ Complete |
+| Phase 7 | GCP Vertex AI Cloud Training Pipeline | ✅ Complete |
 
 **Codebase Statistics:**
 - ~51,800 lines of core implementation
@@ -39,6 +40,10 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - **Lua Mod Integration**: Complete Civ6 mod for game state export and action execution
 - **RAG Integration**: Retrieval-Augmented Generation for knowledge-enhanced decision making
 - **Agentic Framework**: Reusable framework for Claude Code autonomous development workflows
+- **GCP Vertex AI Pipeline**: Distributed cloud training with selfplay, training, and evaluation phases
+- **GumbelMCTS**: 5-50x faster MCTS variant via Gumbel sampling (no Dirichlet noise needed)
+- **MCTS Factory**: Pluggable MCTS instantiation (`create_mcts("civ6"|"gumbel"|"muzero", ...)`)
+- **Model Evaluation Arena**: Automated new-vs-old model comparison with win rate gating
 
 ## Architecture (C4 Model)
 
@@ -543,6 +548,42 @@ python -m alpha_zero.orchestrator --config configs/orchestrator.yaml
 | `balanced` | 100 | 20 | 8x8 | 50 | Experiments |
 | `production` | 1000 | 100 | 16x16 | 200 | Full training |
 
+### Cloud Training on Vertex AI
+
+Run distributed training on GCP with the 3-phase pipeline (selfplay → training → evaluation):
+
+```bash
+# Prerequisites: set GCP env vars (see .env.template)
+export CIV6AZ_VERTEX_PROJECT=your-project
+export CIV6AZ_VERTEX_REGION=us-central1
+export CIV6AZ_GCS_BUCKET=your-bucket
+export CIV6AZ_CONTAINER_IMAGE_URI=gcr.io/your-project/civ6az-training:latest
+
+# Build and push container
+./scripts/build_container.sh
+
+# Quick cloud test (GumbelMCTS, 2 workers, 10 games each)
+python -m alpha_zero.cloud.gcp.vertex_orchestrator \
+    --iterations=1 --workers=2 --games_per_worker=10 \
+    --mcts_type=gumbel --mcts_simulations=16 \
+    --evaluation_games=10 --evaluation_win_threshold=0.50
+
+# Production run with evaluation and curriculum
+python -m alpha_zero.cloud.gcp.vertex_orchestrator \
+    --iterations=20 --workers=4 --games_per_worker=50 \
+    --mcts_type=gumbel --mcts_simulations=32 \
+    --evaluation_games=20 --evaluation_win_threshold=0.55 \
+    --curriculum --reward_shaping
+
+# Dry run (validate args without launching cloud jobs)
+python -m alpha_zero.cloud.gcp.vertex_orchestrator --dry_run --iterations=1
+```
+
+| MCTS Variant | Speed | Simulations | Best For |
+| ------------ | ----------- | ----------- | -------------------------- |
+| `civ6` | Baseline | 200 | Accuracy-focused training |
+| `gumbel` | ~13x faster | 16 | Fast iteration, cloud scale |
+
 ### Legacy Training Scripts
 
 The previous training entry points are still available:
@@ -744,7 +785,8 @@ Civ6-AlphaZero/
 │   │   └── strategy_advisor.py # LLM-based strategy guidance
 │   ├── core/                 # Core AlphaZero components
 │   │   ├── civ6_network.py   # Neural network architecture
-│   │   ├── civ6_mcts.py      # MCTS implementation
+│   │   ├── civ6_mcts.py      # MCTS (Civ6MCTS, GumbelMCTS, MuZeroMCTS)
+│   │   ├── mcts_factory.py   # MCTS factory: create_mcts("civ6"|"gumbel"|"muzero")
 │   │   ├── civ6_actions.py   # Action space handling
 │   │   ├── transformer_network.py # Transformer/ViT architecture
 │   │   └── action_pruning.py # Strategic action pruning
@@ -787,6 +829,20 @@ Civ6-AlphaZero/
 │   │   ├── base_interface.py # BaseGameInterface contract
 │   │   ├── civ6_interface.py # Real Civ6 interface
 │   │   └── unciv_interface.py # Unciv JSON interface
+│   ├── cloud/                # GCP Vertex AI cloud training (Phase 7)
+│   │   └── gcp/
+│   │       ├── config.py             # GCPConfig, GPU pricing, env-var based
+│   │       ├── storage.py            # GCS storage backends
+│   │       ├── vertex_jobs.py        # Vertex AI job wrappers
+│   │       ├── vertex_orchestrator.py # 3-phase pipeline orchestrator
+│   │       ├── selfplay_worker.py    # Self-play container worker
+│   │       ├── training_worker.py    # Training container worker
+│   │       ├── evaluation_worker.py  # Model arena container worker
+│   │       ├── entrypoint.py         # Container mode router
+│   │       ├── cost_monitor.py       # Budget enforcement
+│   │       ├── cost_optimization.py  # Unified cost optimization
+│   │       ├── gpu_scheduler.py      # Dynamic GPU selection
+│   │       └── preemption_handler.py # Spot VM preemption recovery
 │   ├── integration/          # External integrations
 │   │   └── game_connector.py # AI-to-game bridge
 │   ├── rag/                  # RAG Integration (Phase 5)
@@ -819,8 +875,14 @@ Civ6-AlphaZero/
 │   └── civ6_config.yaml      # Game-specific configuration
 ├── data/
 │   └── knowledge/            # RAG knowledge base
+├── scripts/
+│   └── build_container.sh    # Docker build & push to GCR
+├── Dockerfile                # Container image (PyTorch 2.1 + CUDA 12.1)
+├── .dockerignore             # Container build exclusions
+├── requirements-container.txt # Slim deps for container
 ├── docs/
-│   └── C4_ARCHITECTURE.md    # Architecture documentation
+│   ├── architecture.md       # C4 architecture diagrams
+│   └── C4_ARCHITECTURE.md    # Detailed architecture documentation
 ├── mod/                      # Civ6 Lua mod
 │   └── AlphaZeroAI/          # Mod package
 │       ├── AlphaZeroAI.modinfo # Mod definition
@@ -847,6 +909,8 @@ Civ6-AlphaZero/
 | Core | Python 3.11+ |
 | Deep Learning | PyTorch 2.0+ |
 | Environment | Gymnasium 0.29+ |
+| Cloud Training | GCP Vertex AI, Google Cloud Storage |
+| Containers | Docker, Google Container Registry |
 | Experiment Tracking | Weights & Biases, TensorBoard |
 | RAG / Vector DB | ChromaDB, FAISS, Pinecone |
 | Embeddings | OpenAI, Sentence Transformers |
@@ -873,9 +937,9 @@ Civ6-AlphaZero/
 
 ### Current Priorities
 
-1. **Validate training produces competent agents** - Current win rate vs random is 0%, needs extended training
-2. **Add GPU cluster support** - Enable faster iteration with multi-GPU training
-3. **Implement evaluation framework** - Tournament system for systematic agent comparison
+1. **Scale cloud training** - Run multi-iteration training on Vertex AI to improve model beyond random play
+2. **Enable W&B dashboards** - Set `WANDB_ENABLED=true` for live training metrics
+3. **Multi-GPU training** - DistributedDataParallel support for faster self-play and training
 
 ## Contributing
 

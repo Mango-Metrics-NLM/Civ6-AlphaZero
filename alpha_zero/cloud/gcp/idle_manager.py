@@ -127,9 +127,7 @@ class IdleInstanceConfig:
     """
 
     idle_threshold_minutes: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_IDLE_THRESHOLD_MINUTES", "15")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_IDLE_THRESHOLD_MINUTES", "15"))
     )
     gpu_utilization_threshold: float = field(
         default_factory=lambda: float(
@@ -137,33 +135,25 @@ class IdleInstanceConfig:
         )
     )
     check_interval_seconds: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_IDLE_CHECK_INTERVAL_S", "60")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_IDLE_CHECK_INTERVAL_S", "60"))
     )
     auto_stop_enabled: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_IDLE_AUTO_STOP_ENABLED", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_IDLE_AUTO_STOP_ENABLED", "true").lower()
+        == "true"
     )
     grace_period_seconds: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_IDLE_GRACE_PERIOD_S", "300")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_IDLE_GRACE_PERIOD_S", "300"))
     )
 
     # Checkpoint before stop
     checkpoint_before_stop: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_IDLE_CHECKPOINT_BEFORE_STOP", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_IDLE_CHECKPOINT_BEFORE_STOP", "true").lower()
+        == "true"
     )
 
     # Minimum instances to keep
     min_instances: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_IDLE_MIN_INSTANCES", "0")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_IDLE_MIN_INSTANCES", "0"))
     )
 
     # Default policies for different job types
@@ -271,9 +261,7 @@ class IdleInstanceConfig:
         config = cls(**{k: v for k, v in data.items() if k != "policies"})
 
         if policies_data:
-            config.policies = {
-                k: IdlePolicy.from_dict(v) for k, v in policies_data.items()
-            }
+            config.policies = {k: IdlePolicy.from_dict(v) for k, v in policies_data.items()}
 
         return config
 
@@ -476,10 +464,7 @@ class IdleInstanceManager:
 
             # Check GPU utilization
             gpu_util = job.get("gpu_utilization")
-            is_gpu_idle = (
-                gpu_util is not None
-                and gpu_util < self.config.gpu_utilization_threshold
-            )
+            is_gpu_idle = gpu_util is not None and gpu_util < self.config.gpu_utilization_threshold
 
             # Determine if idle
             is_idle = idle_duration >= idle_threshold or is_gpu_idle
@@ -601,8 +586,7 @@ class IdleInstanceManager:
             self._grace_period_starts.pop(job_name, None)
 
         logger.info(
-            f"Stopped idle job: {job_name} "
-            f"(idle for {status.idle_duration_seconds / 60:.1f} min)"
+            f"Stopped idle job: {job_name} (idle for {status.idle_duration_seconds / 60:.1f} min)"
         )
 
         return True
@@ -645,10 +629,7 @@ class IdleInstanceManager:
             daemon=True,
         )
         self._monitor_thread.start()
-        logger.info(
-            f"Started idle monitoring "
-            f"(interval={self.config.check_interval_seconds}s)"
-        )
+        logger.info(f"Started idle monitoring (interval={self.config.check_interval_seconds}s)")
 
     def stop_monitoring(self) -> None:
         """Stop background idle monitoring thread."""

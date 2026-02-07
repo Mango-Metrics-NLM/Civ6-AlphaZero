@@ -9,6 +9,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### GCP Vertex AI Production Pipeline
+
+End-to-end cloud training on Vertex AI with GumbelMCTS, model evaluation, W&B tracking, and opt-in curriculum/reward shaping. Successfully validated with a 3-phase cloud run (selfplay, training, evaluation) completing in 17 minutes.
+
+##### MCTS Factory (`alpha_zero/core/mcts_factory.py`) — NEW
+- `create_mcts()` factory function for instantiating any MCTS variant by name
+- Supports `"civ6"` (standard), `"gumbel"` (5-50x faster), and `"muzero"` (future)
+- Variant-specific config defaults (200 sims for civ6, 16 for gumbel, 50 for muzero)
+- Pass-through kwargs for variant-specific settings (e.g., `num_sampled_actions`)
+
+##### Evaluation Worker (`alpha_zero/cloud/gcp/evaluation_worker.py`) — NEW
+- Model arena: plays new model vs. old model to measure improvement
+- Alternates starting player each game for fairness
+- Temperature=0 (greedy) play for evaluation consistency
+- Results saved as JSON to GCS (`gs://{bucket}/evaluations/iter_{N}/results.json`)
+- Win rate threshold gate for model acceptance/rejection
+
+##### Vertex AI Orchestrator (`alpha_zero/cloud/gcp/vertex_orchestrator.py`) — NEW
+- 3-phase pipeline: selfplay → training → evaluation (with model gate)
+- CLI-driven with `--mcts_type`, `--evaluation_games`, `--curriculum`, `--reward_shaping`
+- Dry-run mode for local validation without GCS/Vertex AI
+- Curriculum learning integration via `CurriculumManager`
+- W&B metrics passthrough to containers
+
+##### Container Infrastructure — NEW
+- `Dockerfile`: PyTorch 2.1 + CUDA 12.1 base, slim dependencies
+- `.dockerignore`: Excludes tests, docs, data, IDE files
+- `requirements-container.txt`: Minimal deps (torch, numpy, gymnasium, wandb, GCP)
+- `scripts/build_container.sh`: Build and push script for GCR
+- `alpha_zero/cloud/gcp/entrypoint.py`: Routes `--mode=selfplay|training|evaluation`
+
+##### Vertex AI Job Wrappers (`alpha_zero/cloud/gcp/vertex_jobs.py`)
+- `VertexEvaluationJob`: CPU-only evaluation jobs (n1-standard-4, no GPU)
+- `_wandb_env_vars()` helper: Filters empty values (Vertex AI rejects empty env vars)
+- W&B env var passthrough to selfplay and training containers
+
+##### Self-Play Worker Enhancements (`alpha_zero/cloud/gcp/selfplay_worker.py`)
+- GumbelMCTS support via `--mcts_type=gumbel` (~13x speedup over Civ6MCTS)
+- W&B logging: per-game metrics and aggregate selfplay stats
+- Opt-in reward shaping via `--reward_shaping` and `--reward_scale`
+- Automatic noise control: Gumbel provides its own stochasticity
+
+##### Training Worker Enhancements (`alpha_zero/cloud/gcp/training_worker.py`)
+- W&B logging for per-epoch training metrics
+- Board size and action space CLI args for multi-resolution support
+
+##### Configuration (`alpha_zero/cloud/gcp/config.py`)
+- `DEFAULT_GPU_COSTS` dict: Centralized GPU pricing (T4, L4, V100, A100 on-demand/spot)
+- `get_gpu_costs()`: Env-var overridable GPU costs (`CIV6AZ_GPU_COST_*`)
+- `SelfPlayWorkerConfig` / `TrainingWorkerConfig` extensions for MCTS/W&B settings
+
+##### GPU Pricing Centralization
+- `gpu_scheduler.py`, `cost_optimization.py`, `cost_monitor.py`: All use `get_gpu_costs()` from config
+- Override any GPU price via `CIV6AZ_GPU_COST_T4`, `CIV6AZ_GPU_COST_V100`, etc.
+
+##### Preemption Handler Fixes (`alpha_zero/cloud/gcp/preemption_handler.py`)
+- Fixed 3 broken GCS method calls to use `self.gcs_storage.backend.*` API
+- Added `_upload_to_gcs()`, `_download_from_gcs()`, `_delete_from_gcs()` helpers
+
+##### `.env.template` Updates
+- Added GCP/Vertex AI configuration section (project, region, bucket, container image)
+- Added MCTS configuration (type, simulations)
+- Added GPU pricing overrides with defaults
+- Added cost budget settings
+
+##### Test Suite (50 new tests)
+- `tests/unit/test_mcts_factory.py`: 19 tests (type dispatch, config, functional)
+- `tests/cloud/unit/test_evaluation_worker.py`: 16 tests (arena, GCS, Vertex jobs)
+- `tests/cloud/unit/test_orchestrator_pipeline.py`: 15 tests (phases, args, GPU config)
+
+### Fixed
+- Removed unused `numpy` imports from evaluation_worker.py and selfplay_worker.py
+- Fixed `enhanced_rewards` import path: `alpha_zero.utils` not `alpha_zero.core`
+- Fixed unused `stage` variable in vertex_orchestrator.py
+- Removed dead `get_output_model_version()` method from vertex_jobs.py
+- Removed empty `TYPE_CHECKING` block from vertex_jobs.py
+- Fixed `dict()` → `{}` literal in evaluation_worker.py
+
+---
+
 #### Phase 5.3: Cost Optimization for GCP Cloud Training
 
 A comprehensive cost optimization system targeting 60-80% cost savings through spot VMs, dynamic GPU scheduling, auto-stop idle instances, and risk mitigation systems.
