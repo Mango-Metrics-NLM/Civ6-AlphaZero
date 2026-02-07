@@ -67,7 +67,8 @@ class PolicyHead(nn.Module):
         if action_mask is not None:
             logits = logits.masked_fill(~action_mask.bool(), -1e9)
 
-        return logits
+        result: torch.Tensor = logits
+        return result
 
 
 class ValueHead(nn.Module):

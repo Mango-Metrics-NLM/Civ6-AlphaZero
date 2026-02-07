@@ -22,8 +22,9 @@ from __future__ import annotations
 import logging
 import logging.handlers
 import uuid
+from collections.abc import MutableMapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import structlog
 from structlog.stdlib import BoundLogger
@@ -69,8 +70,8 @@ def generate_correlation_id() -> str:
 def _add_correlation_id(
     logger: logging.Logger,
     method_name: str,
-    event_dict: dict[str, Any],
-) -> dict[str, Any]:
+    event_dict: MutableMapping[str, Any],
+) -> MutableMapping[str, Any]:
     """Structlog processor that injects a correlation ID when enabled.
 
     If a ``correlation_id`` key is already present in the event dict (e.g.
@@ -234,7 +235,7 @@ def get_logger(name: str) -> BoundLogger:
         >>> log = get_logger("src.core.mcts")
         >>> log.info("search complete", nodes=1200, depth=8)
     """
-    return structlog.get_logger(name)
+    return cast(BoundLogger, structlog.get_logger(name))
 
 
 def bind_context(**kwargs: Any) -> None:

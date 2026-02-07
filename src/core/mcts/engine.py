@@ -207,7 +207,8 @@ def get_action_probabilities(
     scaled = np.power(counts, 1.0 / temperature)
     total = scaled.sum()
     if total > 0:
-        return (scaled / total).astype(np.float32)
+        result: NDArray[np.float32] = (scaled / total).astype(np.float32)
+        return result
     return counts
 
 

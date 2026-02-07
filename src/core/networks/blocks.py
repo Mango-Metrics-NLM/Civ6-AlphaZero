@@ -31,4 +31,5 @@ class ResidualBlock(nn.Module):
         out = self.relu(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
         out = out + residual
-        return self.relu(out)
+        result: torch.Tensor = self.relu(out)
+        return result

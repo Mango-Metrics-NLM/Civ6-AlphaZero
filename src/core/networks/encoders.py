@@ -38,7 +38,8 @@ class SpatialEncoder(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass: (B, C_in, H, W) -> (B, num_filters, H, W)."""
         x = self.relu(self.initial_bn(self.initial_conv(x)))
-        return self.blocks(x)
+        result: torch.Tensor = self.blocks(x)
+        return result
 
 
 class VectorEncoder(nn.Module):
@@ -69,4 +70,5 @@ class VectorEncoder(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass: (B, input_dim) -> (B, output_dim)."""
-        return self.net(x)
+        result: torch.Tensor = self.net(x)
+        return result
