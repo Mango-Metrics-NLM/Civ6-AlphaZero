@@ -16,20 +16,8 @@ import math
 import numpy as np
 import pytest
 
+from src.core import types as types_module
 from src.core.types import (
-    # Type aliases
-    ActionMask,
-    PolicyArray,
-    SpatialTensor,
-    ValueEstimate,
-    VectorFeatures,
-    # Enums
-    ActionSpaceType,
-    BackboneType,
-    DeviceType,
-    GameOutcome,
-    ReplayBufferType,
-    SelectionPolicyType,
     # Constants
     DEFAULT_C_PUCT,
     DEFAULT_DIRICHLET_ALPHA,
@@ -37,17 +25,28 @@ from src.core.types import (
     MCTS_INF,
     MIN_VISIT_COUNT,
     SDK_ENV_PREFIX,
+    # Type aliases
+    ActionMask,
+    # Enums
+    ActionSpaceType,
+    BackboneType,
+    DeviceType,
     # Data containers
     EvalResult,
+    GameOutcome,
     GameTrajectory,
     HierarchicalAction,
     HierarchicalActionSpec,
     ObservationSpec,
+    PolicyArray,
+    ReplayBufferType,
     SearchResult,
+    SelectionPolicyType,
+    SpatialTensor,
     TrainingExample,
+    ValueEstimate,
+    VectorFeatures,
 )
-from src.core import types as types_module
-
 
 # =========================================================================
 # Section 1: Enums
@@ -454,15 +453,15 @@ class TestHierarchicalActionSpec:
         assert spec.level_sizes == (100,)
 
     def test_post_init_raises_on_mismatched_level_sizes_too_few(self) -> None:
-        with pytest.raises(ValueError, match="level_sizes length.*must equal num_levels"):
+        with pytest.raises(ValueError, match=r"level_sizes length.*must equal num_levels"):
             HierarchicalActionSpec(num_levels=3, level_sizes=(5, 10))
 
     def test_post_init_raises_on_mismatched_level_sizes_too_many(self) -> None:
-        with pytest.raises(ValueError, match="level_sizes length.*must equal num_levels"):
+        with pytest.raises(ValueError, match=r"level_sizes length.*must equal num_levels"):
             HierarchicalActionSpec(num_levels=1, level_sizes=(5, 10))
 
     def test_post_init_raises_on_mismatched_category_names_too_few(self) -> None:
-        with pytest.raises(ValueError, match="category_names length.*must equal num_levels"):
+        with pytest.raises(ValueError, match=r"category_names length.*must equal num_levels"):
             HierarchicalActionSpec(
                 num_levels=2,
                 level_sizes=(5, 10),
@@ -470,7 +469,7 @@ class TestHierarchicalActionSpec:
             )
 
     def test_post_init_raises_on_mismatched_category_names_too_many(self) -> None:
-        with pytest.raises(ValueError, match="category_names length.*must equal num_levels"):
+        with pytest.raises(ValueError, match=r"category_names length.*must equal num_levels"):
             HierarchicalActionSpec(
                 num_levels=2,
                 level_sizes=(5, 10),

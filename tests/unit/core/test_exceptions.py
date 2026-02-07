@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 
+from src.core import exceptions as exceptions_module
 from src.core.exceptions import (
     CheckpointError,
     ConfigError,
@@ -37,8 +38,6 @@ from src.core.exceptions import (
     SerializationError,
     TrainingError,
 )
-from src.core import exceptions as exceptions_module
-
 
 # ---------------------------------------------------------------------------
 # 1. SDKError base class
@@ -64,7 +63,7 @@ class TestSDKError:
         assert exc.args == ("oops",)
 
     def test_catchable_as_exception(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(SDKError):
             raise SDKError("caught broadly")
 
     def test_catchable_as_sdk_error(self) -> None:

@@ -7,7 +7,6 @@ import pytest
 from src.core.config import (
     CurriculumConfig,
     CurriculumStage,
-    LoggingConfig,
     MCTSConfig,
     NetworkConfig,
     SDKConfig,
@@ -18,7 +17,6 @@ from src.core.types import (
     GameOutcome,
     GameTrajectory,
     ObservationSpec,
-    SelectionPolicyType,
     TrainingExample,
 )
 

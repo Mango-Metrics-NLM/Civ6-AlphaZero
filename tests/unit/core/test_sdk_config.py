@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from src.core.config import (
     CurriculumConfig,
@@ -43,7 +44,6 @@ from src.core.config import (
 )
 from src.core.exceptions import ConfigFileNotFoundError, ConfigValidationError
 from src.core.types import BackboneType, DeviceType, SelectionPolicyType
-
 
 # ============================================================================
 # Fixtures
@@ -337,12 +337,12 @@ class TestMCTSConfig:
 
     def test_num_simulations_zero_raises(self) -> None:
         """num_simulations=0 raises ValidationError (ge=1 constraint)."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             MCTSConfig(num_simulations=0)
 
     def test_num_simulations_negative_raises(self) -> None:
         """num_simulations=-1 raises ValidationError."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             MCTSConfig(num_simulations=-1)
 
     def test_num_simulations_one_is_valid(self) -> None:
@@ -352,12 +352,12 @@ class TestMCTSConfig:
 
     def test_c_puct_zero_raises(self) -> None:
         """c_puct=0 raises ValidationError (gt=0 constraint)."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             MCTSConfig(c_puct=0.0)
 
     def test_c_puct_negative_raises(self) -> None:
         """c_puct=-1 raises ValidationError."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             MCTSConfig(c_puct=-1.0)
 
     def test_c_puct_small_positive_is_valid(self) -> None:
@@ -371,9 +371,9 @@ class TestMCTSConfig:
         MCTSConfig(dirichlet_epsilon=0.0)
         MCTSConfig(dirichlet_epsilon=1.0)
         # Out of bounds
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             MCTSConfig(dirichlet_epsilon=1.1)
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             MCTSConfig(dirichlet_epsilon=-0.1)
 
     def test_selection_policy_alphazero(self) -> None:
@@ -424,22 +424,22 @@ class TestNetworkConfig:
 
     def test_num_residual_blocks_zero_raises(self) -> None:
         """num_residual_blocks must be >= 1."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             NetworkConfig(num_residual_blocks=0)
 
     def test_dropout_rate_at_one_raises(self) -> None:
         """dropout_rate=1.0 raises ValidationError (lt=1 means strictly less than 1)."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             NetworkConfig(dropout_rate=1.0)
 
     def test_dropout_rate_above_one_raises(self) -> None:
         """dropout_rate > 1.0 raises ValidationError."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             NetworkConfig(dropout_rate=1.5)
 
     def test_dropout_rate_negative_raises(self) -> None:
         """dropout_rate < 0 raises ValidationError (ge=0)."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             NetworkConfig(dropout_rate=-0.1)
 
     def test_dropout_rate_boundary_valid(self) -> None:
@@ -484,22 +484,22 @@ class TestTrainingConfig:
 
     def test_batch_size_zero_raises(self) -> None:
         """batch_size=0 fails validation (ge=1)."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             TrainingConfig(batch_size=0)
 
     def test_batch_size_negative_raises(self) -> None:
         """batch_size=-1 fails validation."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             TrainingConfig(batch_size=-1)
 
     def test_learning_rate_zero_raises(self) -> None:
         """learning_rate=0 fails validation (gt=0)."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             TrainingConfig(learning_rate=0.0)
 
     def test_learning_rate_negative_raises(self) -> None:
         """learning_rate=-1 fails validation."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             TrainingConfig(learning_rate=-1.0)
 
     def test_custom_values(self) -> None:
@@ -544,17 +544,17 @@ class TestCurriculumStage:
 
     def test_missing_name_raises(self) -> None:
         """Omitting 'name' raises a validation error."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             CurriculumStage(environment="mini-env")  # type: ignore[call-arg]
 
     def test_missing_environment_raises(self) -> None:
         """Omitting 'environment' raises a validation error."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             CurriculumStage(name="beginner")  # type: ignore[call-arg]
 
     def test_missing_both_raises(self) -> None:
         """Omitting both required fields raises a validation error."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             CurriculumStage()  # type: ignore[call-arg]
 
     def test_defaults(self) -> None:

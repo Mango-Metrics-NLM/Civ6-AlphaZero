@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 
+from src.core import exceptions as exceptions_module
 from src.core.exceptions import (
     CheckpointError,
     ConfigError,
@@ -42,8 +43,6 @@ from src.core.exceptions import (
     SerializationError,
     TrainingError,
 )
-from src.core import exceptions as exceptions_module
-
 
 # ---------------------------------------------------------------------------
 # 1. SDKError base class
@@ -81,7 +80,7 @@ class TestSDKError:
             raise SDKError("boom")
 
     def test_caught_as_exception(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(SDKError):
             raise SDKError("broad catch")
 
     def test_empty_message(self) -> None:

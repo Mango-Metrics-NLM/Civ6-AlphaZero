@@ -15,11 +15,10 @@ from __future__ import annotations
 
 import logging as _logging
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 import structlog
-from structlog.stdlib import BoundLogger
 
 from src.core.logging import (
     MetricsLogger,
@@ -29,7 +28,6 @@ from src.core.logging import (
     generate_correlation_id,
     get_logger,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

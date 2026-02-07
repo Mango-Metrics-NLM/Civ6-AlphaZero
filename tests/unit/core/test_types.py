@@ -7,24 +7,13 @@ from __future__ import annotations
 
 import dataclasses
 import math
+from typing import ClassVar
 
 import numpy as np
 import pytest
 
+from src.core import types as types_module
 from src.core.types import (
-    # Type aliases
-    ActionMask,
-    PolicyArray,
-    SpatialTensor,
-    ValueEstimate,
-    VectorFeatures,
-    # Enums
-    ActionSpaceType,
-    BackboneType,
-    DeviceType,
-    GameOutcome,
-    ReplayBufferType,
-    SelectionPolicyType,
     # Constants
     DEFAULT_C_PUCT,
     DEFAULT_DIRICHLET_ALPHA,
@@ -32,17 +21,28 @@ from src.core.types import (
     MCTS_INF,
     MIN_VISIT_COUNT,
     SDK_ENV_PREFIX,
+    # Type aliases
+    ActionMask,
+    # Enums
+    ActionSpaceType,
+    BackboneType,
+    DeviceType,
     # Data containers
     EvalResult,
+    GameOutcome,
     GameTrajectory,
     HierarchicalAction,
     HierarchicalActionSpec,
     ObservationSpec,
+    PolicyArray,
+    ReplayBufferType,
     SearchResult,
+    SelectionPolicyType,
+    SpatialTensor,
     TrainingExample,
+    ValueEstimate,
+    VectorFeatures,
 )
-from src.core import types as types_module
-
 
 # =========================================================================
 # Section 1: __all__ exports completeness
@@ -52,7 +52,7 @@ from src.core import types as types_module
 class TestAllExports:
     """Verify __all__ contains all public names and nothing extra."""
 
-    EXPECTED_NAMES = {
+    EXPECTED_NAMES: ClassVar[set[str]] = {
         # Type aliases
         "PolicyArray",
         "ValueEstimate",
@@ -109,7 +109,7 @@ class TestTypeAliases:
     """Verify type aliases reference the correct numpy dtypes."""
 
     def test_policy_array_is_ndarray_alias(self) -> None:
-        arr = np.zeros(5, dtype=np.float32)
+        _arr = np.zeros(5, dtype=np.float32)
         # PolicyArray is a type alias; we just verify it exists and the
         # annotation is usable at runtime.
         assert PolicyArray is not None
@@ -415,15 +415,15 @@ class TestHierarchicalActionSpec:
     # Validation errors ------------------------------------------------
 
     def test_mismatched_level_sizes_raises(self) -> None:
-        with pytest.raises(ValueError, match="level_sizes length.*must equal num_levels"):
+        with pytest.raises(ValueError, match=r"level_sizes length.*must equal num_levels"):
             HierarchicalActionSpec(num_levels=3, level_sizes=(5, 10))
 
     def test_mismatched_level_sizes_too_many(self) -> None:
-        with pytest.raises(ValueError, match="level_sizes length.*must equal num_levels"):
+        with pytest.raises(ValueError, match=r"level_sizes length.*must equal num_levels"):
             HierarchicalActionSpec(num_levels=1, level_sizes=(5, 10))
 
     def test_mismatched_category_names_raises(self) -> None:
-        with pytest.raises(ValueError, match="category_names length.*must equal num_levels"):
+        with pytest.raises(ValueError, match=r"category_names length.*must equal num_levels"):
             HierarchicalActionSpec(
                 num_levels=2,
                 level_sizes=(5, 10),
@@ -431,7 +431,7 @@ class TestHierarchicalActionSpec:
             )
 
     def test_mismatched_category_names_too_many(self) -> None:
-        with pytest.raises(ValueError, match="category_names length.*must equal num_levels"):
+        with pytest.raises(ValueError, match=r"category_names length.*must equal num_levels"):
             HierarchicalActionSpec(
                 num_levels=2,
                 level_sizes=(5, 10),

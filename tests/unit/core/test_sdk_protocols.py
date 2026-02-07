@@ -17,6 +17,7 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
+from src.core import protocols as protocols_module
 from src.core.exceptions import ProtocolViolationError
 from src.core.protocols import (
     CheckpointableProtocol,
@@ -32,9 +33,7 @@ from src.core.protocols import (
     assert_valid_environment,
     check_protocol_compliance,
 )
-from src.core import protocols as protocols_module
 from src.core.types import ObservationSpec
-
 
 # =========================================================================
 # Helpers -- minimal mock implementations
@@ -682,7 +681,7 @@ class TestAssertValidEnvironmentFailures:
                 self._step_count = 0
                 return self._make_obs()
 
-        with pytest.raises(ProtocolViolationError, match="is_terminal.*True.*after reset"):
+        with pytest.raises(ProtocolViolationError, match=r"is_terminal.*True.*after reset"):
             assert_valid_environment(TerminalAfterResetEnv())
 
     def test_get_valid_actions_wrong_shape(self) -> None:
@@ -690,7 +689,7 @@ class TestAssertValidEnvironmentFailures:
             def get_valid_actions(self) -> NDArray[np.bool_]:
                 return np.ones(32, dtype=np.bool_)  # 32 != 64
 
-        with pytest.raises(ProtocolViolationError, match="get_valid_actions.*shape"):
+        with pytest.raises(ProtocolViolationError, match=r"get_valid_actions.*shape"):
             assert_valid_environment(WrongMaskShapeEnv())
 
     def test_step_returns_wrong_tuple_length(self) -> None:
@@ -699,7 +698,7 @@ class TestAssertValidEnvironmentFailures:
                 self._step_count += 1
                 return self._make_obs(), 0.0, False  # Only 3 elements
 
-        with pytest.raises(ProtocolViolationError, match="step.*5-tuple|step.*length"):
+        with pytest.raises(ProtocolViolationError, match=r"step.*5-tuple|step.*length"):
             assert_valid_environment(BadStepEnv())
 
     def test_step_reward_outside_range(self) -> None:
@@ -710,7 +709,7 @@ class TestAssertValidEnvironmentFailures:
                 self._step_count += 1
                 return self._make_obs(), 5.0, False, False, {}  # reward > 1.0
 
-        with pytest.raises(ProtocolViolationError, match="reward.*outside"):
+        with pytest.raises(ProtocolViolationError, match=r"reward.*outside"):
             assert_valid_environment(BadRewardEnv())
 
     def test_clone_returns_same_object(self) -> None:
@@ -718,7 +717,7 @@ class TestAssertValidEnvironmentFailures:
             def clone(self) -> BadCloneEnv:
                 return self  # Returns self instead of a copy
 
-        with pytest.raises(ProtocolViolationError, match="clone.*same object"):
+        with pytest.raises(ProtocolViolationError, match=r"clone.*same object"):
             assert_valid_environment(BadCloneEnv())
 
     def test_get_symmetries_returns_empty_list(self) -> None:
@@ -730,7 +729,7 @@ class TestAssertValidEnvironmentFailures:
             ) -> list[tuple[NDArray[np.float32], NDArray[np.float32]]]:
                 return []
 
-        with pytest.raises(ProtocolViolationError, match="get_symmetries.*empty list"):
+        with pytest.raises(ProtocolViolationError, match=r"get_symmetries.*empty list"):
             assert_valid_environment(EmptySymEnv())
 
     def test_structurally_missing_method(self) -> None:
