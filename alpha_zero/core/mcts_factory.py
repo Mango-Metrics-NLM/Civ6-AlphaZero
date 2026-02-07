@@ -60,11 +60,14 @@ def create_mcts(
         An MCTS instance with search() and select_action() methods.
 
     Raises:
-        ValueError: If mcts_type is not recognized.
+        ValueError: If mcts_type is not recognized or network is None.
     """
     if mcts_type not in _MCTS_REGISTRY:
         available = ", ".join(f"'{t}'" for t in _MCTS_REGISTRY)
         raise ValueError(f"Unknown MCTS type: '{mcts_type}'. Available types: {available}")
+
+    if network is None:
+        raise ValueError("network is required for MCTS creation (got None)")
 
     # Lazy import to avoid circular dependencies
     from alpha_zero.core.civ6_mcts import (
@@ -93,8 +96,9 @@ def create_mcts(
     mcts_cls = mcts_classes[class_name]
     config_cls = config_classes[config_class_name]
 
-    # Build config with overrides
-    config_kwargs = {"num_simulations": num_simulations or default_sims}
+    # Build config with overrides (explicit None check so 0 isn't treated as falsy)
+    effective_sims = default_sims if num_simulations is None else num_simulations
+    config_kwargs = {"num_simulations": effective_sims}
 
     # Filter kwargs to only include fields that the config class accepts
     valid_fields = {f.name for f in dataclasses.fields(config_cls)}

@@ -7,22 +7,16 @@ and dispatches to the appropriate worker module.
 
 from __future__ import annotations
 
+import argparse
 import sys
 
 
 def main() -> int:
-    # Find --mode in args
-    mode = "selfplay"
-    remaining_args = []
-
-    for arg in sys.argv[1:]:
-        if arg.startswith("--mode="):
-            mode = arg.split("=", 1)[1]
-        elif arg == "--mode" and remaining_args:
-            # Handle --mode value form (shouldn't happen but be safe)
-            pass
-        else:
-            remaining_args.append(arg)
+    # Parse --mode while leaving remaining args for the target worker's argparse
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--mode", default="selfplay")
+    args, remaining_args = parser.parse_known_args()
+    mode = args.mode
 
     # Replace sys.argv for the target module's argparse
     sys.argv = [sys.argv[0]] + remaining_args

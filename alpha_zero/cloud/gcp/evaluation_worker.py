@@ -284,8 +284,8 @@ def main() -> int:
         }
         model_new = load_model(config, args.model_version_new, **model_kwargs)
         model_old = load_model(config, args.model_version_old, **model_kwargs)
-        model_new = model_new.to(device).eval()
-        model_old = model_old.to(device).eval()
+        model_new = model_new.to(device)
+        model_old = model_old.to(device)
 
         # Run arena
         start_time = time.time()

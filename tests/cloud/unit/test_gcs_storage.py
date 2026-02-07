@@ -488,7 +488,7 @@ class TestGCPConfig:
         """Test budget tier preset."""
         config = GCPConfig.with_tier("budget")
         assert config.self_play.accelerator_type == "NVIDIA_TESLA_T4"
-        assert config.training.accelerator_type == "NVIDIA_L4"
+        assert config.training.accelerator_type == "NVIDIA_TESLA_T4"
         assert config.self_play.spot is True
 
     def test_with_tier_ondemand(self) -> None:

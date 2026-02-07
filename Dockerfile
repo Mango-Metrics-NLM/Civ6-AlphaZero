@@ -8,9 +8,8 @@ LABEL maintainer="civ6az" \
 # Avoid interactive prompts during apt install
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install minimal system deps
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
+# Update apt cache and clean up (no additional system deps required)
+RUN apt-get update && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -24,7 +23,7 @@ COPY alpha_zero/ alpha_zero/
 
 # Copy setup files if they exist (for package install)
 COPY setup.py pyproject.toml* ./
-RUN pip install --no-cache-dir -e . 2>/dev/null || true
+RUN pip install --no-cache-dir -e .
 
 # Entrypoint routes to correct worker based on --mode flag
 ENTRYPOINT ["python", "-m", "alpha_zero.cloud.gcp.entrypoint"]

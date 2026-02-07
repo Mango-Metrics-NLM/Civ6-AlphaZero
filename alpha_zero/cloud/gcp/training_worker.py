@@ -108,7 +108,7 @@ def load_trajectories(
     iterations: list[int],
     max_per_iteration: int = 50000,
     board_size: int = 8,
-    action_space_size: int = 381,
+    action_space_size: int = 376,
     dry_run: bool = False,
 ) -> list[dict]:
     """Load trajectories from specified iterations."""
@@ -151,7 +151,7 @@ def load_trajectories(
 
 def create_model(
     board_size: int = 8,
-    action_space_size: int = 381,
+    action_space_size: int = 376,
     num_res_blocks: int = 6,
     num_filters: int = 64,
 ) -> torch.nn.Module:
@@ -394,6 +394,7 @@ def main() -> int:
             dataset,
             batch_size=args.batch_size,
             shuffle=True,
+            # num_workers=0 avoids multiprocessing issues inside containers
             num_workers=0,
             pin_memory=device.type == "cuda",
         )
@@ -424,7 +425,10 @@ def main() -> int:
                     step_str = args.resume_from.split("training_step_")[1].replace(".pt", "")
                     step_to_load = int(step_str)
                 except (IndexError, ValueError):
-                    pass
+                    logger.warning(
+                        "Failed to parse resume_from value '%s'; loading latest checkpoint",
+                        args.resume_from,
+                    )
 
             checkpoint = checkpoint_storage.load_checkpoint(step=step_to_load)
             if checkpoint:

@@ -9,9 +9,18 @@ set -euo pipefail
 
 PROJECT_ID="${CIV6AZ_VERTEX_PROJECT:-hrmtrain}"
 IMAGE_NAME="gcr.io/${PROJECT_ID}/civ6az-training"
-TAG="${1:-latest}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Parse flags
+LOCAL_ONLY=false
+TAG="latest"
+for arg in "$@"; do
+    case "$arg" in
+        --local) LOCAL_ONLY=true ;;
+        *) TAG="$arg" ;;
+    esac
+done
 
 echo "=== Civ6 AlphaZero Container Build ==="
 echo "Project: ${PROJECT_ID}"
@@ -27,7 +36,7 @@ echo ""
 echo "Build complete: ${IMAGE_NAME}:${TAG}"
 
 # Push unless --local flag
-if [[ "${TAG}" == "--local" || "${2:-}" == "--local" ]]; then
+if [[ "${LOCAL_ONLY}" == "true" ]]; then
     echo "Local build only - skipping push"
     exit 0
 fi

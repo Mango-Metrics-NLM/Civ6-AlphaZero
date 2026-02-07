@@ -184,7 +184,7 @@ try:
             "KnowledgeBase",
         ]
     )
-except (ImportError, Exception):
+except ImportError:
     _RAG_AVAILABLE = False
 
 # Training Improvement Modules (re-exported for public API)
