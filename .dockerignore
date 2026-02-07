@@ -23,14 +23,6 @@ env
 *.swp
 *.swo
 
-<<<<<<< HEAD
-# Testing
-tests/
-.pytest_cache
-.coverage
-htmlcov/
-.mypy_cache
-
 # Testing and coverage
 tests/
 .pytest_cache

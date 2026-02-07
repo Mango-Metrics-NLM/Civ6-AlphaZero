@@ -98,7 +98,7 @@ def load_model(
         return model
 
     storage = GCSModelStorage(config)
-    state_dict, metadata = storage.load_model(version)
+    state_dict, metadata, _ = storage.load_model(version)
     model.load_state_dict(state_dict)
     model.eval()
 

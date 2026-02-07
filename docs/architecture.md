@@ -61,8 +61,6 @@ C4Container
     Person(user, "User/Researcher")
 
     System_Boundary(c1, "Civ6 AlphaZero System") {
-<<<<<<< HEAD
-    System_Boundary(c1, "Civ6 AlphaZero System") {
         Container(orchestrator, "Training Orchestrator", "Python", "Unified training coordination, hyperparameter scheduling")
         Container(selfplay, "Self-Play Engine", "Python/multiprocessing", "Generates training data via MCTS games")
         Container(learner, "Neural Network Trainer", "PyTorch", "Optimizes policy and value networks")
