@@ -188,7 +188,7 @@ def compute_shaped_reward(
 class RewardShaper:
     """Stateful reward shaper that tracks previous state for shaping calculations."""
 
-    def __init__(self, config: RewardShapingConfig | None = None, board_size: int = 8):
+    def __init__(self, config: RewardShapingConfig | None = None, board_size: int = 8) -> None:
         """Initialize the reward shaper.
 
         Args:

@@ -10,10 +10,12 @@
 | Phase 2 | Hierarchical Reinforcement Learning | ✅ Complete |
 | Phase 3 | Training Improvements (Curriculum, Rewards) | ✅ Complete |
 | Phase 4 | Unified Training Orchestrator | ✅ Complete |
-| Phase 5 | RAG-LLM Integration | ✅ Complete |
-| Phase 6 | Agentic Framework for Claude Code | ✅ Complete |
+| Phase 5a | RAG-LLM Integration | ✅ Complete |
+| Phase 5b | GCP/Vertex AI Cloud Infrastructure | ✅ Complete |
+| Phase 5c | Cost Optimization & Resource Management | ✅ Complete |
+| Phase 6 | Agentic Framework & Search Optimizations | ✅ Complete |
 
-**Codebase Statistics:** ~51,800 LOC core + ~14,600 LOC agentic framework, 350+ tests
+**Codebase Statistics:** ~66,400 LOC total (51,800 core + 14,600 agentic), 350+ tests, >80% coverage
 
 ---
 
@@ -1359,6 +1361,139 @@ Legend:
 
 ---
 
+## Level 2: Agent Data Mesh Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        AGENT DATA MESH                               │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │
+│  │   Memory     │  │   SQLite     │  │   ChromaDB   │              │
+│  │  (Graph KB)  │  │ (Structured) │  │  (Vectors)   │              │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘              │
+│         │                 │                 │                       │
+│         └─────────────────┼─────────────────┘                       │
+│                           │                                         │
+│                    ┌──────▼──────┐                                  │
+│                    │  Filesystem │                                  │
+│                    │   (Shared)  │                                  │
+│                    └─────────────┘                                  │
+│                           │                                         │
+│         ┌─────────────────┼─────────────────┐                       │
+│         │                 │                 │                       │
+│  ┌──────▼──────┐  ┌───────▼──────┐  ┌──────▼──────┐               │
+│  │ Civ6 Agents │  │ AlphaGalerkin│  │  Global     │               │
+│  │             │  │    Agents    │  │  Agents     │               │
+│  └─────────────┘  └──────────────┘  └─────────────┘               │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Data Stores
+
+| Store | Purpose | Access Method | Use Cases |
+|-------|---------|---------------|-----------|
+| Memory Server | Entity relationships, cross-session context | MCP `memory` tools | "Remember that network X worked well" |
+| SQLite | Structured, queryable experiment data | MCP `sqlite` tools | Experiments, agent logs, decisions, metrics |
+| ChromaDB | Vector embeddings for semantic search | MCP `chroma` tools | Code patterns, error solutions, strategy docs |
+| Filesystem | Shared files across projects | MCP `filesystem` tools | Knowledge bases, project data |
+
+### Agent Data Access Matrix
+
+| Agent | Primary Store | Secondary | Use Case |
+|-------|--------------|-----------|----------|
+| ml-training-orchestrator | SQLite | Memory | Track experiments |
+| experiment-reviewer | W&B + SQLite | Memory | Analyze runs |
+| neural-network-architect | Memory | ChromaDB | Design patterns |
+| mcts-optimizer | Memory | SQLite | Tuning history |
+| code-quality | ChromaDB | - | Error patterns |
+| test-runner | SQLite | - | Test history |
+| rag-specialist | ChromaDB + Pinecone | - | Embeddings |
+
+---
+
+## Level 2: GCP Cloud Infrastructure (Phase 2)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      GCP DISTRIBUTED TRAINING INFRASTRUCTURE                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                         CLOUD CONFIGURATION                          │   │
+│   │   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                │   │
+│   │   │  CloudConfig │  │ Environment │  │    YAML     │                │   │
+│   │   │  (Dataclass) │◄─┤  Variables  │◄─┤   Config    │                │   │
+│   │   │             │  │  (GCP_/CIV6)|  │   Files     │                │   │
+│   │   └─────────────┘  └─────────────┘  └─────────────┘                │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                      GCP SERVICE INTEGRATIONS                        │   │
+│   │                                                                      │   │
+│   │  ┌──────────────────┐    ┌──────────────────┐                       │   │
+│   │  │  GCS Checkpoint  │    │  Vertex AI       │                       │   │
+│   │  │     Manager      │    │    Trainer       │                       │   │
+│   │  ├──────────────────┤    ├──────────────────┤                       │   │
+│   │  │ • Upload/Download│    │ • Job submission │                       │   │
+│   │  │ • Metadata track │    │ • GPU/TPU config │                       │   │
+│   │  │ • Version control│    │ • Spot instances │                       │   │
+│   │  │ • Mock support   │    │ • Monitoring     │                       │   │
+│   │  └──────────────────┘    └──────────────────┘                       │   │
+│   │                                                                      │   │
+│   │  ┌──────────────────┐    ┌──────────────────┐                       │   │
+│   │  │   Preemption     │    │  Cloud Logger/   │                       │   │
+│   │  │    Handler       │    │  Metrics Export  │                       │   │
+│   │  ├──────────────────┤    ├──────────────────┤                       │   │
+│   │  │ • 30s warning    │    │ • Structured logs│                       │   │
+│   │  │ • Checkpoint CB  │    │ • Custom metrics │                       │   │
+│   │  │ • Signal handlers│    │ • Correlation ID │                       │   │
+│   │  │ • Graceful stop  │    │ • Severity levels│                       │   │
+│   │  └──────────────────┘    └──────────────────┘                       │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                     DISTRIBUTED TRAINING LAYER                       │   │
+│   │                                                                      │   │
+│   │  ┌──────────────────┐    ┌──────────────────┐                       │   │
+│   │  │    DDP Learner   │◄──►│ Cloud Coordinator│                       │   │
+│   │  ├──────────────────┤    ├──────────────────┤                       │   │
+│   │  │ • Multi-GPU sync │    │ • Resource mgmt  │                       │   │
+│   │  │ • Gradient accum │    │ • Auto-scaling   │                       │   │
+│   │  │ • Checkpoint sync│    │ • Job lifecycle  │                       │   │
+│   │  └──────────────────┘    └──────────────────┘                       │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### GCP Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| CloudConfig | `alpha_zero/cloud/config.py` | Unified configuration with env/yaml loading |
+| GCSCheckpointManager | `alpha_zero/cloud/gcp/storage.py` | Checkpoint storage in GCS |
+| VertexAITrainer | `alpha_zero/cloud/gcp/vertex.py` | Managed training job submission |
+| PreemptionHandler | `alpha_zero/cloud/gcp/preemption.py` | Graceful spot instance handling |
+| CloudLogger | `alpha_zero/cloud/gcp/monitoring.py` | Cloud Logging integration |
+| CloudMetricsExporter | `alpha_zero/cloud/gcp/monitoring.py` | Cloud Monitoring metrics |
+| DDPLearner | `alpha_zero/distributed/ddp_learner.py` | PyTorch DDP multi-GPU training |
+| CloudCoordinator | `alpha_zero/distributed/cloud_coordinator.py` | GCP resource orchestration |
+
+### Mock Support Pattern
+
+All GCP components support `force_mock=True` for testing without SDK:
+
+```python
+# Testing without GCP
+manager = GCSCheckpointManager(config, force_mock=True)
+trainer = VertexAITrainer(config, force_mock=True)
+handler = PreemptionHandler(force_mock=True)
+```
+
+---
+
 ## Roadmap
 
 ### Completed Phases
@@ -1375,7 +1510,7 @@ Legend:
 | Priority | Feature | Description |
 |----------|---------|-------------|
 | P1 | Training Validation | Achieve >50% win rate vs random |
-| P2 | Multi-GPU Training | DistributedDataParallel support |
+| ~~P2~~ | ~~Multi-GPU Training~~ | ~~DistributedDataParallel support~~ ✅ Complete |
 | P3 | Tournament System | ELO-based agent ranking |
 | P4 | Population-Based Training | Adaptive hyperparameters |
 | P5 | Human vs AI Interface | Web-based gameplay UI |
@@ -1383,5 +1518,5 @@ Legend:
 
 ---
 
-*Last updated: 2026-01-24*
-*Architecture version: 3.0*
+*Last updated: 2026-02-02*
+*Architecture version: 3.1*

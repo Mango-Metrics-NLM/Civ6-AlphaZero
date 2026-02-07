@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 
 from alpha_zero.utils.checkpoint import safe_load_checkpoint
 
@@ -33,12 +33,12 @@ try:
     try:
         import numpy.core.multiarray as _ma_legacy
 
-        safe_types.append(_ma_legacy.scalar)
+        safe_types.append(_ma_legacy.scalar)  # type: ignore[attr-defined]
     except (ImportError, AttributeError):
         try:
             import numpy._core.multiarray as _ma_modern
 
-            safe_types.append(_ma_modern.scalar)
+            safe_types.append(_ma_modern.scalar)  # type: ignore[attr-defined]
         except (ImportError, AttributeError):
             pass
 
@@ -77,7 +77,7 @@ class NetworkConfig:
 class ResidualBlock(nn.Module):
     """Residual block with two convolutional layers."""
 
-    def __init__(self, num_filters: int):
+    def __init__(self, num_filters: int) -> None:
         """Initialize residual block.
 
         Args:
@@ -114,7 +114,7 @@ class SpatialEncoder(nn.Module):
         in_channels: int,
         num_filters: int,
         num_res_blocks: int,
-    ):
+    ) -> None:
         """Initialize spatial encoder.
 
         Args:
@@ -157,7 +157,7 @@ class VectorEncoder(nn.Module):
         hidden_dim: int,
         output_dim: int,
         dropout: float = 0.0,
-    ):
+    ) -> None:
         """Initialize vector encoder.
 
         Args:
@@ -183,7 +183,7 @@ class VectorEncoder(nn.Module):
         out = F.relu(self.fc1(x))
         out = self.dropout(out)
         out = self.fc2(out)
-        return out
+        return out  # type: ignore[no-any-return]
 
 
 class PolicyHead(nn.Module):
@@ -202,7 +202,7 @@ class PolicyHead(nn.Module):
         vector_dim: int,
         action_space_size: int,
         hidden_dim: int = 256,
-    ):
+    ) -> None:
         """Initialize policy head.
 
         Args:
@@ -250,7 +250,7 @@ class PolicyHead(nn.Module):
         # Output
         out = F.relu(self.fc1(combined))
         out = self.fc2(out)
-        return out
+        return out  # type: ignore[no-any-return]
 
 
 class ValueHead(nn.Module):
@@ -268,7 +268,7 @@ class ValueHead(nn.Module):
         spatial_size: int,
         vector_dim: int,
         hidden_dim: int = 128,
-    ):
+    ) -> None:
         """Initialize value head.
 
         Args:
@@ -327,7 +327,7 @@ class Civ6Network(nn.Module):
     3. Features are combined and fed to policy and value heads
     """
 
-    def __init__(self, config: NetworkConfig | None = None, **kwargs):
+    def __init__(self, config: NetworkConfig | None = None, **kwargs) -> None:
         """Initialize network.
 
         Args:
@@ -533,7 +533,7 @@ class MicroCivNetwork(Civ6Network):
         num_filters: int = 64,
         config: NetworkConfig | None = None,
         **kwargs,
-    ):
+    ) -> None:
         """Initialize MicroCiv network.
 
         Args:
@@ -575,7 +575,7 @@ class PositionalEncoding2D(nn.Module):
         num_channels: int,
         max_size: int = 128,
         learned: bool = True,
-    ):
+    ) -> None:
         """Initialize 2D positional encoding.
 
         Args:
@@ -664,7 +664,8 @@ class PositionalEncoding2D(nn.Module):
             )  # (H, W, C)
             pos_enc = pos_enc.permute(2, 0, 1).unsqueeze(0)  # (1, C, H, W)
         else:
-            pos_enc = self.pos_encoding[:, :h, :w].unsqueeze(0)  # (1, C, H, W)
+            # pos_encoding is a registered buffer
+            pos_enc = self.pos_encoding[:, :h, :w].unsqueeze(0)  # type: ignore[index]  # (1, C, H, W)
 
         return x + pos_enc.to(x.device)
 
@@ -682,7 +683,7 @@ class SpatialSelfAttention(nn.Module):
         num_heads: int = 4,
         dropout: float = 0.1,
         use_relative_pos: bool = True,
-    ):
+    ) -> None:
         """Initialize spatial self-attention.
 
         Args:
@@ -818,7 +819,7 @@ class SpatialSelfAttention(nn.Module):
         # Reshape back to spatial: (B, H*W, C) -> (B, C, H, W)
         out = out.transpose(1, 2).reshape(b, c, h, w)
 
-        return out
+        return out  # type: ignore[no-any-return]
 
 
 class CrossModalAttention(nn.Module):
@@ -833,7 +834,7 @@ class CrossModalAttention(nn.Module):
         vector_dim: int,
         num_heads: int = 4,
         dropout: float = 0.1,
-    ):
+    ) -> None:
         """Initialize cross-modal attention.
 
         Args:
@@ -963,7 +964,7 @@ class AttentionSpatialEncoder(nn.Module):
         attention_dropout: float = 0.1,
         attention_interval: int = 2,
         max_spatial_size: int = 128,
-    ):
+    ) -> None:
         """Initialize attention spatial encoder.
 
         Args:
@@ -1034,7 +1035,7 @@ class AttentionSpatialEncoder(nn.Module):
         # Final attention
         out = self.final_attention(out)
 
-        return out
+        return out  # type: ignore[no-any-return]
 
 
 class HierarchicalPolicyHead(nn.Module):
@@ -1045,8 +1046,8 @@ class HierarchicalPolicyHead(nn.Module):
     """
 
     # Action categories and their sizes
-    NUM_CATEGORIES = 9
-    CATEGORY_NAMES = [
+    NUM_CATEGORIES: ClassVar[int] = 9
+    CATEGORY_NAMES: ClassVar[list[str]] = [
         "END_TURN",
         "UNIT_ACTION",
         "CITY_ACTION",
@@ -1066,7 +1067,7 @@ class HierarchicalPolicyHead(nn.Module):
         action_space_size: int,
         hidden_dim: int = 256,
         category_hidden_dim: int = 128,
-    ):
+    ) -> None:
         """Initialize hierarchical policy head.
 
         Args:
@@ -1145,8 +1146,8 @@ class HierarchicalPolicyHead(nn.Module):
         action_logits = self.action_fc2(act_hidden)
 
         if return_category_probs:
-            return action_logits, category_probs
-        return action_logits
+            return action_logits, category_probs  # type: ignore[no-any-return]
+        return action_logits  # type: ignore[no-any-return]
 
 
 class Civ6NetworkV2(nn.Module):
@@ -1161,7 +1162,7 @@ class Civ6NetworkV2(nn.Module):
     Maintains backward compatibility with the same forward/predict/save/load interface.
     """
 
-    def __init__(self, config: NetworkConfig | None = None, **kwargs):
+    def __init__(self, config: NetworkConfig | None = None, **kwargs) -> None:
         """Initialize network.
 
         Args:
@@ -1193,7 +1194,8 @@ class Civ6NetworkV2(nn.Module):
 
         self.config = config
 
-        # Attention-enhanced spatial encoder
+        # Attention-enhanced spatial encoder - Union type for both possibilities
+        self.spatial_encoder: AttentionSpatialEncoder | SpatialEncoder
         if config.use_attention:
             self.spatial_encoder = AttentionSpatialEncoder(
                 in_channels=config.spatial_channels,

@@ -610,7 +610,7 @@ class WeightTransferManager:
     between environment tiers with different state/action spaces.
     """
 
-    def __init__(self, config: TransferLearningConfig):
+    def __init__(self, config: TransferLearningConfig) -> None:
         """Initialize weight transfer manager.
 
         Args:
@@ -852,7 +852,7 @@ class DefaultEnvironmentFactory(EnvironmentFactory):
         microciv_class: type | None = None,
         unciv_interface: Any | None = None,
         civ6_interface: Any | None = None,
-    ):
+    ) -> None:
         """Initialize factory.
 
         Args:
@@ -943,7 +943,7 @@ class CurriculumPipeline:
         self,
         config: CurriculumPipelineConfig,
         environment_factory: EnvironmentFactory | None = None,
-    ):
+    ) -> None:
         """Initialize curriculum pipeline.
 
         Args:

@@ -173,6 +173,25 @@ class GameTrajectory:
         """Return number of steps in trajectory."""
         return len(self.observations)
 
+    @property
+    def game_length(self) -> int:
+        """Return the game length (number of actions taken)."""
+        return len(self.actions)
+
+    @property
+    def observations_spatial(self) -> np.ndarray:
+        """Stack spatial observations into array of shape (T, C, H, W)."""
+        if not self.observations:
+            return np.array([], dtype=np.float32)
+        return np.stack([obs["spatial"] for obs in self.observations])
+
+    @property
+    def observations_vector(self) -> np.ndarray:
+        """Stack vector observations into array of shape (T, V)."""
+        if not self.observations:
+            return np.array([], dtype=np.float32)
+        return np.stack([obs["vector"] for obs in self.observations])
+
     def __post_init__(self):
         """Validate trajectory after initialization."""
         if len(self.observations) > 0:
@@ -391,7 +410,7 @@ class TrajectoryBuffer:
         self,
         max_trajectories: int = 1000,
         max_positions: int = 500000,
-    ):
+    ) -> None:
         """Initialize trajectory buffer.
 
         Args:
@@ -726,7 +745,7 @@ class MuZeroTrainer:
         network: nn.Module,
         config: MuZeroTrainingConfig | None = None,
         device: str | torch.device = "cpu",
-    ):
+    ) -> None:
         """Initialize MuZero trainer.
 
         Args:
@@ -1057,7 +1076,8 @@ class MuZeroTrainer:
                 and batch.observations_vector_unroll is not None
             ):
                 try:
-                    # Get actual next observation from batch (k-1 index since unroll starts at step 1)
+                    # Get actual next observation from batch
+                    # (k-1 index since unroll starts at step 1)
                     next_obs_spatial = batch.observations_spatial_unroll[k - 1]
                     next_obs_vector = batch.observations_vector_unroll[k - 1]
 
@@ -1253,9 +1273,9 @@ class MuZeroTrainer:
 # =============================================================================
 
 __all__ = [
-    "MuZeroTrainingConfig",
     "GameTrajectory",
+    "MuZeroTrainer",
+    "MuZeroTrainingConfig",
     "TrajectoryBatchSample",
     "TrajectoryBuffer",
-    "MuZeroTrainer",
 ]

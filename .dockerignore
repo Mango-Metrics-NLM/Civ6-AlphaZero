@@ -7,8 +7,15 @@ __pycache__
 *.pyc
 *.pyo
 *.egg-info
-dist
+.eggs
 build
+dist
+*.egg
+
+# Virtual environments
+venv
+.venv
+env
 
 # IDE
 .vscode
@@ -16,6 +23,7 @@ build
 *.swp
 *.swo
 
+<<<<<<< HEAD
 # Testing
 tests/
 .pytest_cache
@@ -23,29 +31,28 @@ tests/
 htmlcov/
 .mypy_cache
 
-# Docs
-docs/
-*.md
-LICENSE
+# Testing and coverage
+tests/
+.pytest_cache
+.coverage
+htmlcov/
+.mypy_cache
+.tox
+.nox
 
-# Data / Checkpoints (loaded from GCS at runtime)
-checkpoints/
-data/
-wandb/
-runs/
-*.pt
-*.pth
+# Documentation build
+docs/_build
 
-# Environment
+# Environment files
 .env
 .env.*
+.env.local
+
+# Temporary files
+*.tmp
+*.temp
 *.log
 
-# Scripts (not needed in container)
-scripts/
-notebooks/
-
-# Docker
-Dockerfile
-.dockerignore
-docker-compose*.yml
+# OS
+.DS_Store
+Thumbs.db

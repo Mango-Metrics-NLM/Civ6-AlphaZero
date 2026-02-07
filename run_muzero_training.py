@@ -20,32 +20,30 @@ import logging
 import os
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass, field
-from functools import partial
+from dataclasses import dataclass
 from multiprocessing import cpu_count
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import torch
-
 from tqdm import tqdm
+
+from alpha_zero.core.civ6_mcts import MuZeroMCTS, MuZeroMCTSConfig
 
 # Core imports
 from alpha_zero.core.muzero_network import MuZeroConfig, MuZeroNetwork
-from alpha_zero.core.civ6_mcts import MuZeroMCTS, MuZeroMCTSConfig
-
-from alpha_zero.training.muzero_trainer import (
-    MuZeroTrainingConfig,
-    MuZeroTrainer,
-    TrajectoryBuffer,
-    GameTrajectory,
-)
 from alpha_zero.envs.microciv import MicroCivEnv
+from alpha_zero.training.muzero_trainer import (
+    GameTrajectory,
+    MuZeroTrainer,
+    MuZeroTrainingConfig,
+    TrajectoryBuffer,
+)
 
 # W&B import (optional)
 try:
-    from alpha_zero.utils.wandb_logger import WandbLogger, WandbConfig
+    from alpha_zero.utils.wandb_logger import WandbConfig, WandbLogger
     WANDB_AVAILABLE = True
 except ImportError:
     WANDB_AVAILABLE = False
@@ -167,7 +165,7 @@ def self_play_game(
         })
 
         # Get MCTS policy
-        action_probs, root_value = mcts.search(obs, obs["action_mask"], add_noise=True)
+        action_probs, _root_value = mcts.search(obs, obs["action_mask"], add_noise=True)
         policies.append(action_probs.copy())
 
         # Select action
@@ -180,6 +178,13 @@ def self_play_game(
         rewards.append(reward)
         done = terminated or truncated
         dones.append(done)
+
+    # Append terminal observation (MuZero requires T+1 observations for T actions)
+    observations.append({
+        "spatial": obs["spatial"].copy(),
+        "vector": obs["vector"].copy(),
+        "action_mask": obs["action_mask"].copy(),
+    })
 
     # Compute target values based on game outcome
     winner = info.get("winner")
@@ -397,7 +402,7 @@ def train(config: MuZeroRunConfig, wandb_logger: Any = None) -> dict[str, float]
             num_batches = max(1, len(trajectory_buffer) * 10 // config.batch_size)
             epoch_losses = []
 
-            for batch_idx in range(num_batches):
+            for _batch_idx in range(num_batches):
                 # Sample batch from buffer
                 batch = trajectory_buffer.sample_positions(
                     batch_size=config.batch_size,
@@ -418,7 +423,7 @@ def train(config: MuZeroRunConfig, wandb_logger: Any = None) -> dict[str, float]
             # Aggregate losses
             if epoch_losses:
                 avg_losses = {
-                    key: np.mean([l[key] for l in epoch_losses if key in l])
+                    key: np.mean([loss[key] for loss in epoch_losses if key in loss])
                     for key in epoch_losses[0].keys()
                 }
 

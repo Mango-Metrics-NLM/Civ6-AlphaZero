@@ -19,14 +19,13 @@ import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 from .base import (
     ActionType,
     City,
     GameAction,
     GameState,
-    InterfaceConfig,
     Position,
     Tile,
     Unit,
@@ -56,7 +55,7 @@ class MiniGameConfig:
     max_turns: int = 50
     num_players: int = 2
     difficulty: float = 0.5  # 0.0 = easy, 1.0 = hard
-    random_seed: Optional[int] = None
+    random_seed: int | None = None
     custom_params: dict[str, Any] = field(default_factory=dict)
 
     def with_difficulty(self, difficulty: float) -> MiniGameConfig:
@@ -75,7 +74,7 @@ class MiniGameConfig:
 class MiniGame(ABC):
     """Abstract base class for mini-game scenarios."""
 
-    def __init__(self, config: MiniGameConfig):
+    def __init__(self, config: MiniGameConfig) -> None:
         """Initialize mini-game.
 
         Args:
@@ -83,10 +82,10 @@ class MiniGame(ABC):
         """
         self.config = config
         self._rng = random.Random(config.random_seed)
-        self._state: Optional[GameState] = None
+        self._state: GameState | None = None
         self._turn = 0
         self._done = False
-        self._winner: Optional[int] = None
+        self._winner: int | None = None
 
     @property
     def state(self) -> GameState:
@@ -101,7 +100,7 @@ class MiniGame(ABC):
         return self._done
 
     @property
-    def winner(self) -> Optional[int]:
+    def winner(self) -> int | None:
         """Get winner player ID."""
         return self._winner
 
@@ -127,7 +126,7 @@ class MiniGame(ABC):
         pass
 
     @abstractmethod
-    def check_victory(self) -> Optional[int]:
+    def check_victory(self) -> int | None:
         """Check if a player has won.
 
         Returns:
@@ -169,7 +168,7 @@ class MiniGame(ABC):
 
         return self.state, reward, self._done
 
-    def reset(self, seed: Optional[int] = None) -> GameState:
+    def reset(self, seed: int | None = None) -> GameState:
         """Reset the game to initial state.
 
         Args:
@@ -507,7 +506,7 @@ class CombatMiniGame(MiniGame):
 
         return 0.0
 
-    def check_victory(self) -> Optional[int]:
+    def check_victory(self) -> int | None:
         """Check if one side eliminated."""
         p0_units = [u for u in self.state.units if u.player == 0]
         p1_units = [u for u in self.state.units if u.player == 1]
@@ -592,7 +591,7 @@ class CityDevelopmentMiniGame(MiniGame):
         score = (own_pop + own_military) - (enemy_pop + enemy_military)
         return max(-1.0, min(1.0, score * 0.1))
 
-    def check_victory(self) -> Optional[int]:
+    def check_victory(self) -> int | None:
         """Check if one side lost all cities."""
         p0_cities = [c for c in self.state.cities if c.player == 0]
         p1_cities = [c for c in self.state.cities if c.player == 1]
@@ -720,7 +719,7 @@ class ExpansionMiniGame(MiniGame):
 
         return max(-1.0, min(1.0, city_diff * 0.3 + total_bonus))
 
-    def check_victory(self) -> Optional[int]:
+    def check_victory(self) -> int | None:
         """Check victory by city count or elimination."""
         p0_cities = [c for c in self.state.cities if c.player == 0]
         p1_cities = [c for c in self.state.cities if c.player == 1]
@@ -755,9 +754,9 @@ class MiniGameGenerator:
 
     def __init__(
         self,
-        base_config: Optional[MiniGameConfig] = None,
-        seed: Optional[int] = None,
-    ):
+        base_config: MiniGameConfig | None = None,
+        seed: int | None = None,
+    ) -> None:
         """Initialize generator.
 
         Args:

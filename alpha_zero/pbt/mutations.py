@@ -33,6 +33,7 @@ class MutationStrategy(str, Enum):
     POLYNOMIAL = "polynomial"
     DIFFERENTIAL = "differential"
     ADAPTIVE = "adaptive"
+    CROSSOVER = "crossover"
 
 
 @dataclass
@@ -131,7 +132,7 @@ class GaussianMutation(BaseMutation):
             new_value = np.clip(value + perturbation, param_range.min_value, param_range.max_value)
 
         if param_range.discrete:
-            new_value = int(round(new_value))
+            new_value = round(new_value)
 
         return new_value
 
@@ -171,7 +172,7 @@ class UniformMutation(BaseMutation):
             new_value = np.clip(new_value, param_range.min_value, param_range.max_value)
 
         if param_range.discrete:
-            new_value = int(round(new_value))
+            new_value = round(new_value)
 
         return new_value
 
@@ -182,7 +183,7 @@ class PolynomialMutation(BaseMutation):
     Uses polynomial distribution for mutation, common in evolutionary algorithms.
     """
 
-    def __init__(self, eta: float = 20.0):
+    def __init__(self, eta: float = 20.0) -> None:
         """Initialize polynomial mutation.
 
         Args:
@@ -234,7 +235,7 @@ class PolynomialMutation(BaseMutation):
             )
 
         if param_range.discrete:
-            new_value = int(round(new_value))
+            new_value = round(new_value)
 
         return new_value
 
@@ -245,7 +246,7 @@ class DifferentialMutation(BaseMutation):
     Requires multiple candidate values to compute mutation direction.
     """
 
-    def __init__(self, f: float = 0.5):
+    def __init__(self, f: float = 0.5) -> None:
         """Initialize differential mutation.
 
         Args:
@@ -296,7 +297,7 @@ class DifferentialMutation(BaseMutation):
         new_value = np.clip(new_value, param_range.min_value, param_range.max_value)
 
         if param_range.discrete:
-            new_value = int(round(new_value))
+            new_value = round(new_value)
 
         return new_value
 
@@ -307,7 +308,7 @@ class AdaptiveMutation(BaseMutation):
     Adjusts mutation strength based on fitness improvement history.
     """
 
-    def __init__(self, base_strength: float = 0.2, adaptation_rate: float = 0.1):
+    def __init__(self, base_strength: float = 0.2, adaptation_rate: float = 0.1) -> None:
         """Initialize adaptive mutation.
 
         Args:
@@ -363,6 +364,160 @@ class AdaptiveMutation(BaseMutation):
         return self._adapted_strength
 
 
+class CrossoverMutation(BaseMutation):
+    """Crossover mutation strategy.
+
+    Combines hyperparameters from two parent agents to create offspring,
+    similar to genetic algorithms. This strategy requires a second parent
+    to be set before mutation.
+    """
+
+    def __init__(
+        self,
+        crossover_rate: float = 0.5,
+        blend_alpha: float = 0.5,
+        crossover_type: str = "blend",
+    ) -> None:
+        """Initialize crossover mutation.
+
+        Args:
+            crossover_rate: Probability of using crossover vs original
+            blend_alpha: Blending factor for BLX-alpha crossover
+            crossover_type: Type of crossover ("uniform", "blend", "simulated_binary")
+        """
+        self.crossover_rate = crossover_rate
+        self.blend_alpha = blend_alpha
+        self.crossover_type = crossover_type
+        self._parent_values: dict[str, float | int | Any] = {}
+
+    def set_crossover_parent(self, parent_values: dict[str, float | int | Any]) -> None:
+        """Set the second parent's values for crossover.
+
+        Args:
+            parent_values: Hyperparameter values from second parent
+        """
+        self._parent_values = parent_values
+
+    def mutate(
+        self,
+        value: float | int,
+        param_range: HyperparameterRange,
+        rng: np.random.Generator,
+        strength: float = 0.2,
+    ) -> float | int:
+        """Apply crossover mutation.
+
+        Args:
+            value: Current value (from first parent)
+            param_range: Valid range for the parameter
+            rng: Random number generator
+            strength: Mutation strength (affects blend ratio)
+
+        Returns:
+            Crossed-over value.
+        """
+        # Get parent 2's value for this parameter
+        parent2_value = self._parent_values.get(param_range.name)
+
+        # If no parent 2 value, fall back to Gaussian mutation
+        if parent2_value is None:
+            return GaussianMutation().mutate(value, param_range, rng, strength)
+
+        # Decide whether to apply crossover
+        if rng.random() > self.crossover_rate:
+            return value
+
+        if param_range.scale == "categorical":
+            # For categorical: randomly pick from either parent
+            return rng.choice([value, parent2_value])
+
+        # Apply crossover based on type
+        if self.crossover_type == "uniform":
+            # Uniform crossover: randomly pick from either parent
+            new_value = rng.choice([value, parent2_value])
+        elif self.crossover_type == "blend":
+            # BLX-alpha: blend values with extension
+            new_value = self._blend_crossover(
+                value, parent2_value, param_range, rng
+            )
+        elif self.crossover_type == "simulated_binary":
+            # SBX: simulated binary crossover
+            new_value = self._sbx_crossover(
+                value, parent2_value, param_range, rng
+            )
+        else:
+            # Default: average
+            new_value = (value + parent2_value) / 2
+
+        # Clip to valid range
+        new_value = np.clip(new_value, param_range.min_value, param_range.max_value)
+
+        if param_range.discrete:
+            new_value = round(new_value)
+
+        return new_value
+
+    def _blend_crossover(
+        self,
+        p1: float,
+        p2: float,
+        param_range: HyperparameterRange,
+        rng: np.random.Generator,
+    ) -> float:
+        """BLX-alpha blending crossover.
+
+        Creates offspring in range [min - alpha*d, max + alpha*d]
+        where d = |p1 - p2|.
+        """
+        if param_range.scale == "log":
+            # Work in log space
+            log_p1 = math.log(max(p1, 1e-10))
+            log_p2 = math.log(max(p2, 1e-10))
+
+            d = abs(log_p2 - log_p1)
+            lo = min(log_p1, log_p2) - self.blend_alpha * d
+            hi = max(log_p1, log_p2) + self.blend_alpha * d
+
+            log_min = math.log(param_range.min_value)
+            log_max = math.log(param_range.max_value)
+
+            new_log = rng.uniform(max(lo, log_min), min(hi, log_max))
+            return math.exp(new_log)
+        else:
+            d = abs(p2 - p1)
+            lo = min(p1, p2) - self.blend_alpha * d
+            hi = max(p1, p2) + self.blend_alpha * d
+
+            return rng.uniform(
+                max(lo, param_range.min_value),
+                min(hi, param_range.max_value),
+            )
+
+    def _sbx_crossover(
+        self,
+        p1: float,
+        p2: float,
+        param_range: HyperparameterRange,
+        rng: np.random.Generator,
+        eta: float = 20.0,
+    ) -> float:
+        """Simulated Binary Crossover (SBX)."""
+        u = rng.random()
+
+        if u <= 0.5:
+            beta = (2 * u) ** (1 / (eta + 1))
+        else:
+            beta = (1 / (2 * (1 - u))) ** (1 / (eta + 1))
+
+        if param_range.scale == "log":
+            log_p1 = math.log(max(p1, 1e-10))
+            log_p2 = math.log(max(p2, 1e-10))
+            child_log = 0.5 * ((1 + beta) * log_p1 + (1 - beta) * log_p2)
+            return math.exp(child_log)
+        else:
+            return 0.5 * ((1 + beta) * p1 + (1 - beta) * p2)
+
+
 class MutationOperator:
     """Main mutation operator combining strategy and configuration.
 
@@ -376,7 +531,7 @@ class MutationOperator:
         self,
         config: MutationConfig | None = None,
         rng: np.random.Generator | None = None,
-    ):
+    ) -> None:
         """Initialize mutation operator.
 
         Args:
@@ -392,6 +547,7 @@ class MutationOperator:
             "polynomial": PolynomialMutation(self.config.polynomial_eta),
             "differential": DifferentialMutation(self.config.differential_f),
             "adaptive": AdaptiveMutation(self.config.strength, adaptation_rate=0.1),
+            "crossover": CrossoverMutation(),
         }
 
         self._generation: int = 0
@@ -465,6 +621,19 @@ class MutationOperator:
             strategy = self._strategies["differential"]
             if isinstance(strategy, DifferentialMutation):
                 strategy.set_candidates(candidates)
+
+    def set_crossover_parent(
+        self, parent_values: dict[str, float | int | Any]
+    ) -> None:
+        """Set the second parent for crossover mutation.
+
+        Args:
+            parent_values: Hyperparameter values from second parent
+        """
+        if "crossover" in self._strategies:
+            strategy = self._strategies["crossover"]
+            if isinstance(strategy, CrossoverMutation):
+                strategy.set_crossover_parent(parent_values)
 
     def record_adaptive_outcome(self, success: bool) -> None:
         """Record outcome for adaptive mutation.

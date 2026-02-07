@@ -95,11 +95,11 @@ class JobSpec:
             "image_uri": self.container_uri,
         }
         if self.command:
-            container_spec["command"] = self.command
+            container_spec["command"] = self.command  # type: ignore[assignment]
         if self.args:
-            container_spec["args"] = self.args
+            container_spec["args"] = self.args  # type: ignore[assignment]
         if self.env_vars:
-            container_spec["env"] = [{"name": k, "value": v} for k, v in self.env_vars.items()]
+            container_spec["env"] = [{"name": k, "value": v} for k, v in self.env_vars.items()]  # type: ignore[assignment]
 
         machine_spec: dict[str, Any] = {"machine_type": self.machine_type}
         if self.accelerator_type and self.accelerator_count > 0:
@@ -434,7 +434,6 @@ class VertexSelfPlayJob:
 
         for worker_id in range(num_workers):
             args = [
-                "--mode=selfplay",
                 f"--worker_id={worker_id}",
                 f"--model_version={model_version}",
                 f"--iteration={iteration}",
@@ -446,6 +445,7 @@ class VertexSelfPlayJob:
             spec = JobSpec(
                 display_name=f"civ6az-selfplay-iter{iteration:03d}-worker{worker_id:02d}",
                 container_uri=container,
+                command=["python", "-m", "alpha_zero.cloud.gcp.selfplay_worker"],
                 args=args,
                 env_vars={
                     "CIV6AZ_GCS_BUCKET": self.config.bucket,
@@ -599,7 +599,7 @@ class VertexTrainingJob:
         training_config = self.config.training
 
         args = [
-            "--mode=training",
+
             f"--iteration={iteration}",
             f"--trajectory_iterations={','.join(map(str, trajectory_iterations))}",
             f"--epochs={training_config.epochs_per_iteration}",
@@ -615,6 +615,7 @@ class VertexTrainingJob:
         spec = JobSpec(
             display_name=f"civ6az-training-iter{iteration:03d}",
             container_uri=container,
+            command=["python", "-m", "alpha_zero.cloud.gcp.training_worker"],
             args=args,
             env_vars={
                 "CIV6AZ_GCS_BUCKET": self.config.bucket,

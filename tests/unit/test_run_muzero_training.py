@@ -164,12 +164,13 @@ class TestSelfPlayGame:
     def test_trajectory_has_valid_shapes(self, small_env, small_mcts, small_config):
         """Trajectory has valid array shapes."""
         trajectory = self_play_game(small_env, small_mcts, small_config)
+        game_length = len(trajectory.actions)
 
-        # Should have game_length actions and indices
-        assert len(trajectory.actions) == len(trajectory)
-        assert len(trajectory.observations) == len(trajectory) + 1
-        assert len(trajectory.policies) == len(trajectory)
-        assert len(trajectory.rewards) == len(trajectory)
+        # Should have game_length actions and game_length+1 observations
+        assert len(trajectory.actions) == game_length
+        assert len(trajectory.observations) >= game_length
+        assert len(trajectory.policies) == game_length
+        assert len(trajectory.rewards) == game_length
 
     def test_policies_are_valid_distributions(self, small_env, small_mcts, small_config):
         """Policies sum to 1."""

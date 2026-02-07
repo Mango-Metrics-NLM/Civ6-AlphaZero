@@ -42,7 +42,7 @@ class FAISSVectorStore(VectorStore):
         index_type: str = "Flat",
         distance_metric: str = "cosine",
         nlist: int = 100,
-    ):
+    ) -> None:
         """Initialize FAISS vector store.
 
         Args:

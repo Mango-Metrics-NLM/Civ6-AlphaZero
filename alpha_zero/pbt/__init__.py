@@ -20,9 +20,9 @@ from alpha_zero.pbt.config import (
 )
 
 __all__ = [
+    "AgentState",
     "HyperparameterRange",
     "HyperparameterSpace",
     "PBTConfig",
-    "AgentState",
     "SelectionMethod",
 ]

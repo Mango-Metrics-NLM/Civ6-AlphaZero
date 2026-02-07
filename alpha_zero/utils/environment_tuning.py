@@ -220,7 +220,7 @@ class EnvironmentTuningConfig:
 class EarlyTerminationChecker:
     """Checks for early game termination conditions."""
 
-    def __init__(self, config: EarlyTerminationConfig):
+    def __init__(self, config: EarlyTerminationConfig) -> None:
         """Initialize early termination checker.
 
         Args:
@@ -260,22 +260,41 @@ class EarlyTerminationChecker:
         if not self.config.enabled:
             return False, None, ""
 
-        # Always check elimination conditions (player has no cities)
+        # Skip early termination checks on turn 0 - game hasn't really started
+        # Players may start with 0 cities (only settlers) which is normal
+        if turn < 1:
+            return False, None, ""
+
+        # Also skip if both players still have units (game is still active)
+        # Early termination should only happen when someone is truly eliminated
+        total_units = player_units + opponent_units
+        total_cities = player_cities + opponent_cities
+
+        # If no one has founded cities yet and both have units, game is still early
+        if total_cities == 0 and total_units > 0 and turn < 5:
+            return False, None, ""
+
+        # Check elimination conditions (player has no cities AND no units)
         # These are decisive and should not wait for check_interval
-        if opponent_cities == 0 and player_cities > 0:
+        if opponent_cities == 0 and opponent_units == 0 and (player_cities > 0 or player_units > 0):
             self._logger.debug(
-                f"Early termination: opponent eliminated (0 cities) at turn {turn}",
+                f"Early termination: opponent eliminated (0 cities, 0 units) at turn {turn}",
             )
             return True, 0, "opponent_eliminated"
 
-        if player_cities == 0 and opponent_cities > 0:
+        if player_cities == 0 and player_units == 0 and (opponent_cities > 0 or opponent_units > 0):
             self._logger.debug(
-                f"Early termination: player eliminated (0 cities) at turn {turn}",
+                f"Early termination: player eliminated (0 cities, 0 units) at turn {turn}",
             )
             return True, 1, "player_eliminated"
 
-        # Both have no cities - draw
-        if player_cities == 0 and opponent_cities == 0:
+        # Both have no cities AND no units - mutual elimination (draw)
+        if (
+            player_cities == 0
+            and opponent_cities == 0
+            and player_units == 0
+            and opponent_units == 0
+        ):
             self._logger.debug(
                 f"Early termination: mutual elimination at turn {turn}",
             )
@@ -331,7 +350,7 @@ class TunedEnvironmentWrapper(gym.Wrapper):
         self,
         env: gym.Env,
         config: EnvironmentTuningConfig | None = None,
-    ):
+    ) -> None:
         """Initialize tuned environment wrapper.
 
         Args:

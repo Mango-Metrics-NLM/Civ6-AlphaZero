@@ -100,7 +100,7 @@ class ContextBuilder:
         min_score: float = 0.0,
         deduplicate: bool = True,
         include_metadata: bool = True,
-    ):
+    ) -> None:
         """Initialize context builder.
 
         Args:

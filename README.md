@@ -19,6 +19,7 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 7 | GCP Vertex AI Cloud Training Pipeline | ✅ Complete |
 
 **Codebase Statistics:**
+
 - ~51,800 lines of core implementation
 - ~14,600 lines of agentic framework
 - 2,250+ tests with >80% coverage on core modules
@@ -950,6 +951,10 @@ Civ6-AlphaZero/
 5. Commit your changes (`git commit -m 'Add amazing feature'`)
 6. Push to the branch (`git push origin feature/amazing-feature`)
 7. Open a Pull Request
+
+## Development By
+
+Ian Cruickshank
 
 ## License
 

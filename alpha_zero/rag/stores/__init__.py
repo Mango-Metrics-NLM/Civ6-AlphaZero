@@ -12,16 +12,16 @@ from alpha_zero.rag.stores.faiss_store import FAISSVectorStore
 from alpha_zero.rag.stores.memory_store import MemoryVectorStore
 
 __all__ = [
+    "ChromaVectorStore",
+    "Document",
+    "DocumentMetadata",
+    "FAISSVectorStore",
+    # Implementations
+    "MemoryVectorStore",
+    "SearchResult",
     # Base
     "VectorStore",
-    "Document",
-    "SearchResult",
-    "DocumentMetadata",
     # Factory
     "VectorStoreFactory",
     "create_vector_store",
-    # Implementations
-    "MemoryVectorStore",
-    "ChromaVectorStore",
-    "FAISSVectorStore",
 ]

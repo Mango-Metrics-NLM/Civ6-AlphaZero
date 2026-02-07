@@ -32,7 +32,7 @@ class TestGumbelSampleActions:
         policy = np.array([0.5, 0.5, 0.0])
         mask = np.array([1, 1, 0])
 
-        actions, scores = gumbel_sample_actions(policy, mask, num_actions=10)
+        actions, _scores = gumbel_sample_actions(policy, mask, num_actions=10)
 
         assert len(actions) == 2
         assert set(actions) == {0, 1}
@@ -42,7 +42,7 @@ class TestGumbelSampleActions:
         policy = np.array([0.1, 0.1, 0.3, 0.3, 0.2])
         mask = np.array([0, 0, 1, 1, 0])  # Only actions 2, 3 valid
 
-        actions, scores = gumbel_sample_actions(policy, mask, num_actions=5)
+        actions, _scores = gumbel_sample_actions(policy, mask, num_actions=5)
 
         assert all(a in [2, 3] for a in actions)
 
@@ -76,7 +76,7 @@ class TestGumbelSampleActions:
         policy = np.array([0.25, 0.25, 0.25, 0.25])
         mask = np.ones(4)
 
-        actions, scores = gumbel_sample_actions(policy, mask, num_actions=4)
+        _actions, scores = gumbel_sample_actions(policy, mask, num_actions=4)
 
         # Scores should be in descending order
         assert all(scores[i] >= scores[i + 1] for i in range(len(scores) - 1))
@@ -277,7 +277,7 @@ class TestGumbelMCTS:
     def test_search_returns_probs(self, mcts, env):
         """Search returns valid probability distribution."""
         env.reset()
-        action_probs, root_value = mcts.search(env)
+        action_probs, _root_value = mcts.search(env)
 
         assert action_probs.shape == (env.action_space.n,)
         assert np.all(action_probs >= 0)

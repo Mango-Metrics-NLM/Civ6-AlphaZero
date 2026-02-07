@@ -228,7 +228,7 @@ class MatchHistory:
         self,
         database_path: str | Path = "tournament.db",
         config: TournamentConfig | None = None,
-    ):
+    ) -> None:
         """Initialize match history.
 
         Args:

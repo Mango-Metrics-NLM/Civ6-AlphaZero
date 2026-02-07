@@ -47,29 +47,29 @@ from alpha_zero.tournament.matchmaking import (
 __all__ = [
     # Config
     "ELOConfig",
-    "MatchmakingConfig",
-    "MatchOutcome",
-    "MatchResult",
-    "PlayerStats",
-    "TierConfig",
-    "TournamentConfig",
     # ELO
     "ELORatingSystem",
-    "RatingLeaderboard",
-    "RatingUpdate",
-    "calculate_expected_score",
-    "calculate_rating_change",
-    # History
-    "MatchHistory",
-    "MatchRecord",
-    "PlayerStatistics",
     # League
     "LeagueManager",
-    "SeasonInfo",
-    "TierProgress",
+    # History
+    "MatchHistory",
     # Matchmaking
     "MatchMaker",
+    "MatchOutcome",
+    "MatchRecord",
+    "MatchResult",
+    "MatchmakingConfig",
     "OpponentSelector",
     "PendingMatch",
+    "PlayerStatistics",
+    "PlayerStats",
     "QueueEntry",
+    "RatingLeaderboard",
+    "RatingUpdate",
+    "SeasonInfo",
+    "TierConfig",
+    "TierProgress",
+    "TournamentConfig",
+    "calculate_expected_score",
+    "calculate_rating_change",
 ]

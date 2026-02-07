@@ -2,15 +2,26 @@
 
 This module provides diagnostic tools to track and analyze training progress,
 identify issues, and provide actionable insights during AlphaZero training.
+
+Enhanced with:
+- Baseline evaluation integration (vs random, vs heuristic)
+- Value head stuck detection
+- Win rate tracking against external opponents
 """
 
 from __future__ import annotations
 
+import logging
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from alpha_zero.core.civ6_mcts import Civ6MCTS
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -65,7 +76,7 @@ class IterationMetrics:
 class PolicyEntropyTracker:
     """Track policy entropy over time."""
 
-    def __init__(self, window_size: int = 100):
+    def __init__(self, window_size: int = 100) -> None:
         """Initialize entropy tracker.
 
         Args:
@@ -132,7 +143,7 @@ class PolicyEntropyTracker:
 class ValuePredictionTracker:
     """Track value prediction accuracy."""
 
-    def __init__(self, window_size: int = 100):
+    def __init__(self, window_size: int = 100) -> None:
         """Initialize value prediction tracker.
 
         Args:
@@ -204,7 +215,7 @@ class ValuePredictionTracker:
 class ActionDiversityTracker:
     """Track diversity of actions taken."""
 
-    def __init__(self, num_actions: int, window_size: int = 1000):
+    def __init__(self, num_actions: int, window_size: int = 1000) -> None:
         """Initialize action diversity tracker.
 
         Args:
@@ -272,7 +283,7 @@ class TrainingDiagnostics:
         self,
         num_actions: int,
         config: DiagnosticsConfig | None = None,
-    ):
+    ) -> None:
         """Initialize training diagnostics.
 
         Args:
@@ -374,7 +385,7 @@ class TrainingDiagnostics:
 
         # Track value prediction accuracy
         if self.config.track_value_predictions and self._current_episode_values:
-            avg_pred = np.mean(self._current_episode_values)
+            avg_pred = float(np.mean(self._current_episode_values))
             self.value_tracker.add(avg_pred, total_reward)
 
         # Reset episode tracking
@@ -421,9 +432,9 @@ class TrainingDiagnostics:
 
         # Calculate metrics from episodes
         num_episodes = len(self._episode_metrics)
-        avg_turns = np.mean([m.turns for m in self._episode_metrics])
-        avg_reward = np.mean([m.total_reward for m in self._episode_metrics])
-        avg_entropy = np.mean([m.avg_policy_entropy for m in self._episode_metrics])
+        avg_turns = float(np.mean([m.turns for m in self._episode_metrics]))
+        avg_reward = float(np.mean([m.total_reward for m in self._episode_metrics]))
+        avg_entropy = float(np.mean([m.avg_policy_entropy for m in self._episode_metrics]))
 
         # Calculate outcome rates
         outcomes = [m.outcome for m in self._episode_metrics]
@@ -591,3 +602,392 @@ def create_diagnostics(
     """
     config = DiagnosticsConfig(window_size=window_size, **kwargs)
     return TrainingDiagnostics(num_actions=num_actions, config=config)
+
+
+@dataclass
+class ValueHeadDiagnostics:
+    """Diagnostics specifically for the value head."""
+
+    is_stuck: bool = False
+    variance: float = 0.0
+    mean_prediction: float = 0.0
+    correlation_with_outcome: float = 0.0
+    num_samples: int = 0
+
+    def __str__(self) -> str:
+        status = "STUCK" if self.is_stuck else "OK"
+        return (
+            f"ValueHead[{status}]: variance={self.variance:.4f}, "
+            f"mean={self.mean_prediction:.3f}, corr={self.correlation_with_outcome:.3f}"
+        )
+
+
+class ValueHeadMonitor:
+    """Monitor for detecting value head learning issues.
+
+    Detects:
+    - Stuck value head (constant predictions)
+    - No correlation with outcomes
+    - Extreme bias
+    """
+
+    def __init__(
+        self,
+        variance_threshold: float = 0.01,
+        correlation_threshold: float = 0.1,
+        window_size: int = 200,
+    ) -> None:
+        """Initialize value head monitor.
+
+        Args:
+            variance_threshold: Minimum variance to not be "stuck".
+            correlation_threshold: Minimum correlation for learning.
+            window_size: Number of samples to consider.
+        """
+        self.variance_threshold = variance_threshold
+        self.correlation_threshold = correlation_threshold
+        self.window_size = window_size
+
+        self._predictions: deque[float] = deque(maxlen=window_size)
+        self._outcomes: deque[float] = deque(maxlen=window_size)
+
+    def record(self, prediction: float, outcome: float) -> None:
+        """Record a prediction-outcome pair.
+
+        Args:
+            prediction: Value head prediction.
+            outcome: Actual game outcome (+1, 0, -1).
+        """
+        self._predictions.append(prediction)
+        self._outcomes.append(outcome)
+
+    def diagnose(self) -> ValueHeadDiagnostics:
+        """Generate diagnostics for the value head.
+
+        Returns:
+            ValueHeadDiagnostics with current status.
+        """
+        if len(self._predictions) < 10:
+            return ValueHeadDiagnostics(
+                is_stuck=False,
+                variance=0.0,
+                mean_prediction=0.0,
+                correlation_with_outcome=0.0,
+                num_samples=len(self._predictions),
+            )
+
+        preds = np.array(self._predictions)
+        outcomes = np.array(self._outcomes)
+
+        variance = float(np.var(preds))
+        mean_pred = float(np.mean(preds))
+
+        # Calculate correlation
+        if np.std(preds) > 1e-6 and np.std(outcomes) > 1e-6:
+            correlation = float(np.corrcoef(preds, outcomes)[0, 1])
+        else:
+            correlation = 0.0
+
+        # Determine if stuck
+        is_stuck = variance < self.variance_threshold
+
+        return ValueHeadDiagnostics(
+            is_stuck=is_stuck,
+            variance=variance,
+            mean_prediction=mean_pred,
+            correlation_with_outcome=correlation,
+            num_samples=len(self._predictions),
+        )
+
+    def check_alerts(self) -> list[str]:
+        """Check for value head alerts.
+
+        Returns:
+            List of alert messages.
+        """
+        alerts: list[str] = []
+        diag = self.diagnose()
+
+        if diag.num_samples < 50:
+            return alerts  # Not enough data
+
+        if diag.is_stuck:
+            alerts.append(
+                f"VALUE HEAD STUCK: Variance {diag.variance:.6f} < {self.variance_threshold}. "
+                f"Network may be outputting constant values."
+            )
+
+        if abs(diag.correlation_with_outcome) < self.correlation_threshold:
+            alerts.append(
+                f"VALUE HEAD NOT LEARNING: Correlation {diag.correlation_with_outcome:.3f} "
+                f"with outcomes is too low (< {self.correlation_threshold}). "
+                f"Value predictions are not tracking game results."
+            )
+
+        if diag.mean_prediction > 0.8:
+            alerts.append(
+                f"VALUE HEAD OVERCONFIDENT: Mean prediction {diag.mean_prediction:.3f} "
+                "is very high. Network may be predicting wins regardless of position."
+            )
+        elif diag.mean_prediction < -0.8:
+            alerts.append(
+                f"VALUE HEAD PESSIMISTIC: Mean prediction {diag.mean_prediction:.3f} "
+                "is very low. Network may be predicting losses regardless of position."
+            )
+
+        return alerts
+
+    def reset(self) -> None:
+        """Reset monitor state."""
+        self._predictions.clear()
+        self._outcomes.clear()
+
+
+@dataclass
+class BaselineEvaluationResult:
+    """Result of baseline evaluation during training."""
+
+    iteration: int
+    win_rate_vs_random: float
+    win_rate_vs_heuristic: float | None
+    games_played: int
+    value_correlation: float
+    alerts: list[str] = field(default_factory=list)
+
+    def __str__(self) -> str:
+        heuristic_str = (
+            f", vs_heuristic={self.win_rate_vs_heuristic:.1f}%"
+            if self.win_rate_vs_heuristic is not None
+            else ""
+        )
+        return (
+            f"Iter {self.iteration}: vs_random={self.win_rate_vs_random:.1f}%"
+            f"{heuristic_str}, corr={self.value_correlation:.3f}"
+        )
+
+
+class BaselineEvaluator:
+    """Evaluator for running baseline evaluations during training.
+
+    Integrates with the evaluation pipeline to periodically test
+    trained models against random and heuristic opponents.
+    """
+
+    def __init__(
+        self,
+        eval_interval: int = 10,
+        n_games_random: int = 20,
+        n_games_heuristic: int = 10,
+        board_size: int = 16,
+        max_turns: int = 200,
+    ) -> None:
+        """Initialize baseline evaluator.
+
+        Args:
+            eval_interval: Run evaluation every N iterations.
+            n_games_random: Games to play vs random per evaluation.
+            n_games_heuristic: Games to play vs heuristic per evaluation.
+            board_size: Board size for evaluation games.
+            max_turns: Max turns per game.
+        """
+        self.eval_interval = eval_interval
+        self.n_games_random = n_games_random
+        self.n_games_heuristic = n_games_heuristic
+        self.board_size = board_size
+        self.max_turns = max_turns
+
+        self._evaluation_history: list[BaselineEvaluationResult] = []
+        self._last_win_rate = 0.0
+
+    def should_evaluate(self, iteration: int) -> bool:
+        """Check if evaluation should run at this iteration.
+
+        Args:
+            iteration: Current training iteration.
+
+        Returns:
+            True if evaluation should run.
+        """
+        return iteration > 0 and iteration % self.eval_interval == 0
+
+    def evaluate(
+        self,
+        mcts: Civ6MCTS,
+        iteration: int,
+        include_heuristic: bool = True,
+    ) -> BaselineEvaluationResult:
+        """Run baseline evaluation.
+
+        Args:
+            mcts: MCTS instance with trained network.
+            iteration: Current training iteration.
+            include_heuristic: Whether to include heuristic evaluation.
+
+        Returns:
+            BaselineEvaluationResult with win rates and diagnostics.
+        """
+        from alpha_zero.evaluation.evaluation_pipeline import EvaluationPipeline
+
+        pipeline = EvaluationPipeline(
+            board_size=self.board_size,
+            max_turns=self.max_turns,
+        )
+
+        logger.info(f"Running baseline evaluation at iteration {iteration}")
+
+        # Evaluate vs random
+        random_result = pipeline.evaluate_vs_random(
+            mcts,
+            n_games=self.n_games_random,
+            log_interval=self.n_games_random,  # Only log at end
+        )
+
+        # Evaluate vs heuristic
+        heuristic_win_rate = None
+        if include_heuristic:
+            heuristic_result = pipeline.evaluate_vs_heuristic(
+                mcts,
+                n_games=self.n_games_heuristic,
+                log_interval=self.n_games_heuristic,
+            )
+            heuristic_win_rate = heuristic_result.win_rate.win_rate
+
+        # Generate alerts
+        alerts = []
+        if random_result.win_rate.win_rate < 5.0:
+            alerts.append(
+                f"CRITICAL: Win rate vs random ({random_result.win_rate.win_rate:.1f}%) "
+                "is below 5%. Agent is not learning basic gameplay."
+            )
+        elif random_result.win_rate.win_rate < 30.0:
+            alerts.append(
+                f"WARNING: Win rate vs random ({random_result.win_rate.win_rate:.1f}%) "
+                "is below 30%. Agent needs improvement."
+            )
+
+        # Check for regression
+        if random_result.win_rate.win_rate < self._last_win_rate - 10:
+            alerts.append(
+                f"REGRESSION: Win rate dropped from {self._last_win_rate:.1f}% "
+                f"to {random_result.win_rate.win_rate:.1f}%"
+            )
+
+        self._last_win_rate = random_result.win_rate.win_rate
+
+        result = BaselineEvaluationResult(
+            iteration=iteration,
+            win_rate_vs_random=random_result.win_rate.win_rate,
+            win_rate_vs_heuristic=heuristic_win_rate,
+            games_played=self.n_games_random + (self.n_games_heuristic if include_heuristic else 0),
+            value_correlation=random_result.value_correlation,
+            alerts=alerts,
+        )
+
+        self._evaluation_history.append(result)
+        logger.info(str(result))
+
+        for alert in alerts:
+            logger.warning(alert)
+
+        return result
+
+    def get_history(self) -> list[BaselineEvaluationResult]:
+        """Get evaluation history.
+
+        Returns:
+            List of all baseline evaluation results.
+        """
+        return self._evaluation_history.copy()
+
+    def get_win_rate_curve(self) -> dict[str, list[float]]:
+        """Get win rate progression over training.
+
+        Returns:
+            Dictionary with iterations and win rates.
+        """
+        return {
+            "iterations": [r.iteration for r in self._evaluation_history],
+            "win_rate_vs_random": [r.win_rate_vs_random for r in self._evaluation_history],
+            "win_rate_vs_heuristic": [
+                r.win_rate_vs_heuristic
+                for r in self._evaluation_history
+                if r.win_rate_vs_heuristic is not None
+            ],
+        }
+
+
+def check_value_head(
+    mcts: Civ6MCTS,
+    n_positions: int = 100,
+    board_size: int = 16,
+) -> ValueHeadDiagnostics:
+    """Standalone function to check value head health.
+
+    Generates random positions and checks if value head produces
+    varied predictions. This helps detect stuck/constant outputs.
+
+    Args:
+        mcts: MCTS instance with network.
+        n_positions: Number of positions to sample.
+        board_size: Board size for test games.
+
+    Returns:
+        ValueHeadDiagnostics with analysis.
+    """
+    import torch
+
+    from alpha_zero.envs.microciv import MicroCivEnv
+
+    logger.info(f"Checking value head health with {n_positions} positions...")
+
+    env = MicroCivEnv(board_size=board_size)
+    predictions = []
+
+    network = mcts.network
+    device = mcts.device if hasattr(mcts, "device") else "cpu"
+    network.eval()
+
+    for _ in range(n_positions):
+        # Reset to random position
+        obs, _ = env.reset()
+
+        # Take some random steps to get varied positions
+        for _ in range(np.random.randint(5, 30)):
+            action_mask = obs["action_mask"]
+            valid_actions = np.where(action_mask > 0)[0]
+            if len(valid_actions) == 0:
+                break
+            action = np.random.choice(valid_actions)
+            obs, _, terminated, truncated, _ = env.step(action)
+            if terminated or truncated:
+                obs, _ = env.reset()
+                break
+
+        # Get value prediction
+        spatial = torch.tensor(obs["spatial"], dtype=torch.float32).unsqueeze(0).to(device)
+        vector = torch.tensor(obs["vector"], dtype=torch.float32).unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            _, value = network(spatial, vector)
+            predictions.append(float(value.item()))
+
+    predictions = np.array(predictions)
+    variance = float(np.var(predictions))
+    mean_pred = float(np.mean(predictions))
+
+    is_stuck = variance < 0.01
+
+    diag = ValueHeadDiagnostics(
+        is_stuck=is_stuck,
+        variance=variance,
+        mean_prediction=mean_pred,
+        correlation_with_outcome=0.0,  # Not available in this test
+        num_samples=n_positions,
+    )
+
+    if is_stuck:
+        logger.error(f"VALUE HEAD IS STUCK: {diag}")
+    else:
+        logger.info(f"Value head OK: {diag}")
+
+    return diag

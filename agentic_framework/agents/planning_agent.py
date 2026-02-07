@@ -285,8 +285,8 @@ class PlanningAgent(BaseAgent):
                 if matches >= 2:
                     if rel_path not in critical:
                         critical.append(rel_path)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Error checking file {path}: {e}")
 
         return critical[:20]  # Limit to 20 files
 

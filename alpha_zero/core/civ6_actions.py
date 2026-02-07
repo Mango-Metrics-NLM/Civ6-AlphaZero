@@ -12,11 +12,15 @@ Action hierarchy:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import numpy as np
+
+# Module-level logger
+logger = logging.getLogger(__name__)
 
 
 class ActionCategory(IntEnum):
@@ -117,18 +121,26 @@ class HierarchicalAction:
 
 
 class ActionSpaceConfig(NamedTuple):
-    """Configuration for action space dimensions."""
+    """Configuration for action space dimensions.
+
+    All values are configurable to support different game versions,
+    testing scenarios, and simplified environments.
+    """
 
     board_size: int = 16
     max_units: int = 100
     max_cities: int = 20
-    num_techs: int = 73
-    num_civics: int = 56
+    num_techs: int = 73  # Standard Civ6 tech count
+    num_civics: int = 56  # Standard Civ6 civic count
     num_players: int = 8
     num_production_items: int = 200
     num_unit_action_types: int = 17
     num_city_action_types: int = 12
     num_diplomacy_actions: int = 9
+    # Simplified action space sizes (for espionage, government, great people)
+    num_espionage_actions: int = 50
+    num_government_actions: int = 50
+    num_great_person_actions: int = 20
 
 
 class ActionSpace:
@@ -138,7 +150,7 @@ class ActionSpace:
     Supports action masking for valid action selection.
     """
 
-    def __init__(self, config: ActionSpaceConfig | None = None):
+    def __init__(self, config: ActionSpaceConfig | None = None) -> None:
         """Initialize action space.
 
         Args:
@@ -162,9 +174,9 @@ class ActionSpace:
             ActionCategory.RESEARCH_TECH: cfg.num_techs,
             ActionCategory.RESEARCH_CIVIC: cfg.num_civics,
             ActionCategory.DIPLOMACY: cfg.num_players * cfg.num_diplomacy_actions,
-            ActionCategory.ESPIONAGE: 50,  # Simplified
-            ActionCategory.GOVERNMENT: 50,  # Simplified
-            ActionCategory.GREAT_PERSON: 20,  # Simplified
+            ActionCategory.ESPIONAGE: cfg.num_espionage_actions,
+            ActionCategory.GOVERNMENT: cfg.num_government_actions,
+            ActionCategory.GREAT_PERSON: cfg.num_great_person_actions,
         }
 
         # Compute offsets
@@ -510,7 +522,7 @@ class MicroCivActionSpace:
     - CITY_PRODUCE: max_cities * num_unit_types
     """
 
-    def __init__(self, board_size: int = 16, max_units: int = 20, max_cities: int = 5):
+    def __init__(self, board_size: int = 16, max_units: int = 20, max_cities: int = 5) -> None:
         """Initialize MicroCiv action space.
 
         Args:
@@ -672,6 +684,66 @@ class MicroCivActionSpace:
         unit_type = local_idx % self.num_unit_types
         unit_names = ["warrior", "settler", "archer"]
         return {"type": "produce", "city_idx": city_idx, "unit_type": unit_names[unit_type]}
+
+    def validate_action(self, action_idx: int, game_state: dict[str, Any]) -> tuple[bool, str]:
+        """Validate that an action index is valid for the current game state.
+
+        This method checks that the decoded action refers to valid entities
+        (units/cities) that actually exist in the current game state.
+
+        Args:
+            action_idx: The flat action index to validate.
+            game_state: Current game state dictionary containing:
+                - current_player: int
+                - units: list of unit dicts with 'player' key
+                - cities: list of city dicts with 'player' key
+
+        Returns:
+            Tuple of (is_valid, error_message).
+            If is_valid is True, error_message will be empty string.
+        """
+        action = self.decode_action(action_idx)
+        action_type = action.get("type")
+        current_player = game_state.get("current_player", 0)
+
+        if action_type == "end_turn":
+            return True, ""
+
+        if action_type in ("move", "attack", "skip", "found_city"):
+            unit_idx = action.get("unit_idx", 0)
+
+            # Count player's own units
+            own_units = [
+                u for u in game_state.get("units", []) if u.get("player") == current_player
+            ]
+
+            if unit_idx < 0:
+                return False, f"Negative unit_idx: {unit_idx}"
+            if unit_idx >= len(own_units):
+                return False, f"unit_idx {unit_idx} >= num_units {len(own_units)}"
+            if unit_idx >= self.max_units:
+                return False, f"unit_idx {unit_idx} >= max_units {self.max_units}"
+
+            return True, ""
+
+        if action_type == "produce":
+            city_idx = action.get("city_idx", 0)
+
+            # Count player's own cities
+            own_cities = [
+                c for c in game_state.get("cities", []) if c.get("player") == current_player
+            ]
+
+            if city_idx < 0:
+                return False, f"Negative city_idx: {city_idx}"
+            if city_idx >= len(own_cities):
+                return False, f"city_idx {city_idx} >= num_cities {len(own_cities)}"
+            if city_idx >= self.max_cities:
+                return False, f"city_idx {city_idx} >= max_cities {self.max_cities}"
+
+            return True, ""
+
+        return False, f"Unknown action type: {action_type}"
 
     def encode_action(self, action: dict) -> int:
         """Encode action dict to flat index.

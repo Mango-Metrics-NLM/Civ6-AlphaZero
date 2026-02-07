@@ -5,6 +5,8 @@ This module provides:
 - DistributedReplayBuffer: Process-safe replay buffer
 - SelfPlayActor: Self-play worker for generating training data
 - Learner: Central network training component
+- DDPLearner: Distributed Data Parallel learner for multi-GPU training
+- ParameterServer: Central weight management for multi-node training
 - TrainingCoordinator: Orchestrates the distributed training process
 
 Usage:
@@ -18,6 +20,13 @@ Usage:
     )
     coordinator = TrainingCoordinator(config)
     coordinator.run()
+
+    # Multi-GPU training with DDP
+    from alpha_zero.distributed import DDPLearner, DDPConfig
+
+    ddp_config = DDPConfig.from_env()  # Detect from environment
+    learner = create_ddp_learner(learner_config, ddp_config)
+    learner.run()
 
     # Or run as script:
     # python -m alpha_zero.distributed.coordinator --num_actors=4 --dry_run
@@ -33,12 +42,31 @@ from alpha_zero.distributed.coordinator import (
     CoordinatorConfig,
     TrainingCoordinator,
 )
+from alpha_zero.distributed.ddp_config import (
+    DDPBackend,
+    DDPConfig,
+    detect_ddp_environment,
+    setup_ddp_environment,
+)
+from alpha_zero.distributed.ddp_learner import (
+    DDPLearner,
+    DDPLearnerConfig,
+    create_ddp_learner,
+)
 from alpha_zero.distributed.learner import (
     GradientAccumulator,
     Learner,
     LearnerConfig,
     LearningRateScheduler,
     learner_process,
+)
+from alpha_zero.distributed.parameter_server import (
+    DistributedParameterServer,
+    MockParameterServer,
+    ParameterServer,
+    ParameterServerConfig,
+    WeightUpdateMode,
+    create_parameter_server,
 )
 from alpha_zero.distributed.shared_storage import (
     DistributedReplayBuffer,
@@ -51,26 +79,41 @@ from alpha_zero.distributed.shared_storage import (
 )
 
 __all__ = [
-    # Shared storage
-    "SharedStorage",
-    "SharedStorageConfig",
-    "DistributedReplayBuffer",
-    "ReplayBufferConfig",
-    "TrainingExample",
-    "GameTrajectory",
-    "WeightSynchronizer",
     # Actor
-    "SelfPlayActor",
     "ActorConfig",
     "ActorPool",
-    "actor_process",
+    # Coordinator
+    "CoordinatorConfig",
+    # DDP Learner
+    "DDPBackend",
+    "DDPConfig",
+    "DDPLearner",
+    "DDPLearnerConfig",
+    # Parameter Server
+    "DistributedParameterServer",
+    # Shared storage
+    "DistributedReplayBuffer",
+    "GameTrajectory",
     # Learner
+    "GradientAccumulator",
     "Learner",
     "LearnerConfig",
     "LearningRateScheduler",
-    "GradientAccumulator",
-    "learner_process",
-    # Coordinator
+    "MockParameterServer",
+    "ParameterServer",
+    "ParameterServerConfig",
+    "ReplayBufferConfig",
+    "SelfPlayActor",
+    "SharedStorage",
+    "SharedStorageConfig",
     "TrainingCoordinator",
-    "CoordinatorConfig",
+    "TrainingExample",
+    "WeightSynchronizer",
+    "WeightUpdateMode",
+    "actor_process",
+    "create_ddp_learner",
+    "create_parameter_server",
+    "detect_ddp_environment",
+    "learner_process",
+    "setup_ddp_environment",
 ]

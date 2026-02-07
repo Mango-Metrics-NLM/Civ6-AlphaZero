@@ -60,7 +60,7 @@ class MemoryVectorStore(VectorStore):
         collection_name: str = "memory_store",
         dimension: int = 1536,
         distance_metric: str = "cosine",
-    ):
+    ) -> None:
         """Initialize memory vector store.
 
         Args:

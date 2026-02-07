@@ -121,6 +121,7 @@ class TestDistributedComponentIntegration:
         buffer_config = ReplayBufferConfig(
             max_size=config.training.replay_buffer_size,
             min_size=config.training.min_replay_size,
+            compress=config.distributed.compression_enabled,
         )
 
         assert buffer_config.max_size == 500000
@@ -177,6 +178,7 @@ class TestDistributedComponentIntegration:
             max_games=config.distributed.max_training_steps,
             eval_interval=config.distributed.evaluation_interval,
             save_interval=config.distributed.checkpoint_interval,
+            eval_games=20,
         )
 
         assert coord_config.num_actors == 64
@@ -211,6 +213,8 @@ class TestUncivInterfaceIntegration:
 
         interface = create_unciv_interface(
             board_size=config.unciv.board_size,
+            max_units=100,
+            max_cities=20,
         )
 
         assert interface is not None
@@ -222,35 +226,29 @@ class TestLoggingIntegration:
 
     def test_game_logger_creation(self) -> None:
         """Test GameLogger can be created and used."""
-        from alpha_zero.utils import GameLogger, LogConfig
+        from alpha_zero.utils import GameLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             logger = GameLogger(log_dir=tmpdir)
+            # Start a game
             logger.start_game(game_id="test_game_1")
 
-            # Log some states
+            # Log a state/action
             logger.log_state(
                 turn=1,
                 player=0,
-                action=5,
-            )
-            logger.log_state(
-                turn=1,
-                player=1,
                 action=0,
             )
 
             # End the game
             logger.end_game(winner=0, total_turns=1)
 
-            # Check log file was created
-            _log_files = list(Path(tmpdir).glob("*.json"))
             # GameLogger may or may not create files depending on config
             assert True  # Test passes if no exception
 
     def test_training_logger_creation(self) -> None:
         """Test TrainingLogger can be created and used."""
-        from alpha_zero.utils import LogConfig, TrainingLogger
+        from alpha_zero.utils import TrainingLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             logger = TrainingLogger(log_dir=tmpdir)
@@ -277,7 +275,7 @@ class TestLoggingIntegration:
 
         tracker = MetricsTracker(window_size=10)
 
-        # Add some metrics
+        # Add some metrics using correct method name
         for i in range(20):
             tracker.update("loss", float(i) / 10)
             tracker.update("win_rate", 0.5 + i * 0.01)
@@ -444,7 +442,6 @@ class TestEndToEndWorkflow:
     def test_logging_with_metrics_workflow(self) -> None:
         """Test logging and metrics tracking workflow."""
         from alpha_zero.utils import (
-            LogConfig,
             MetricsTracker,
             TrainingLogger,
             get_default_config,
@@ -453,12 +450,7 @@ class TestEndToEndWorkflow:
         config = get_default_config()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            log_config = LogConfig(
-                level=config.logging.level,
-                log_dir=tmpdir,
-            )
-
-            logger = TrainingLogger(log_dir=tmpdir)
+            logger = TrainingLogger(log_dir=tmpdir, tensorboard=False)
             tracker = MetricsTracker(window_size=config.logging.metrics_window)
 
             # Simulate training loop
@@ -468,10 +460,13 @@ class TestEndToEndWorkflow:
                 logger.log_training_step(
                     iteration=epoch,
                     loss=loss,
-                    policy_loss=0.5 * loss,
-                    value_loss=0.5 * loss,
+                    policy_loss=loss * 0.6,
+                    value_loss=loss * 0.4,
                 )
 
-            summary = tracker.get_summary("loss")
-            assert summary["count"] == 5
-            assert summary["mean"] > 0
+            stats = tracker.get_summary("loss")
+            assert stats["count"] == 5
+            assert stats["mean"] > 0
+
+            # Clean up logger before temp directory cleanup
+            logger.close()

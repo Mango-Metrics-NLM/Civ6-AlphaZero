@@ -76,7 +76,7 @@ class TestMicroCivIntegration:
     def test_environment_creation(self):
         """Test creating MicroCiv environment."""
         env = MicroCivEnv(board_size=8)
-        obs, info = env.reset()
+        obs, _info = env.reset()
 
         assert "spatial" in obs
         assert "vector" in obs
@@ -94,7 +94,7 @@ class TestMicroCivIntegration:
 
         if len(valid_indices) > 0:
             action = valid_indices[0]
-            next_obs, reward, terminated, truncated, info = env.step(action)
+            next_obs, reward, _terminated, _truncated, _info = env.step(action)
 
             assert "spatial" in next_obs
             assert isinstance(reward, (int, float))
@@ -196,7 +196,7 @@ class TestAgentToolsIntegration:
         assert deps["pytest"] is True
 
 
-class TestTestRunnerIntegration:
+class TestPytestRunnerIntegration:
     """Test test runner integration."""
 
     def test_test_runner_initialization(self):
@@ -360,7 +360,7 @@ class TestFullSystemIntegration:
             vector = torch.tensor(obs["vector"]).unsqueeze(0).float()
 
             with torch.no_grad():
-                policy, value = network(spatial, vector)
+                policy, _value = network(spatial, vector)
 
             # Apply action mask
             action_mask = torch.tensor(obs["action_mask"])
@@ -427,11 +427,11 @@ class TestUtilsImports:
     def test_import_test_runner(self):
         """Test importing test runner utilities."""
         from alpha_zero.utils import (
-            TestRunner,
+            PytestRunner,
             TestStatus,
         )
 
-        assert TestRunner is not None
+        assert PytestRunner is not None
         assert TestStatus.PASSED.value == "passed"
 
     def test_import_agent_tools(self):

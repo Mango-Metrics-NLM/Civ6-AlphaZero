@@ -157,7 +157,7 @@ class SharedStorage:
         self,
         config: SharedStorageConfig | None = None,
         manager: SyncManager | None = None,
-    ):
+    ) -> None:
         """Initialize shared storage.
 
         Args:
@@ -421,7 +421,7 @@ class DistributedReplayBuffer:
         self,
         config: ReplayBufferConfig | None = None,
         manager: SyncManager | None = None,
-    ):
+    ) -> None:
         """Initialize replay buffer.
 
         Args:
@@ -633,7 +633,7 @@ class WeightSynchronizer:
         self,
         shared_storage: SharedStorage,
         update_interval: float = 1.0,
-    ):
+    ) -> None:
         """Initialize weight synchronizer.
 
         Args:

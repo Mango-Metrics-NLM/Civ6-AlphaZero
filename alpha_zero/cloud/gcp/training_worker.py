@@ -64,11 +64,6 @@ def parse_args() -> argparse.Namespace:
         "--checkpoint_interval", type=int, default=1000, help="Steps between checkpoints"
     )
     parser.add_argument("--resume_from", type=str, default=None, help="Checkpoint to resume from")
-    parser.add_argument("--board_size", type=int, default=8, help="Board size")
-    parser.add_argument("--action_space_size", type=int, default=376, help="Action space size")
-    parser.add_argument("--num_res_blocks", type=int, default=6, help="Residual blocks in network")
-    parser.add_argument("--num_filters", type=int, default=64, help="Conv filters in network")
-    parser.add_argument("--mode", type=str, default="training", help="Worker mode (training)")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
     return parser.parse_args()
 
@@ -114,28 +109,17 @@ def load_trajectories(
     """Load trajectories from specified iterations."""
     if dry_run:
         logger.info("Dry run: creating dummy trajectories")
-        spatial_shape = (13, board_size, board_size)
-        trajectories = []
-        for _ in range(100):
-            n_states = 20
-            trajectories.append(
-                {
-                    "states": [
-                        {
-                            "spatial": np.random.randn(*spatial_shape).astype(np.float32),
-                            "vector": np.random.randn(64).astype(np.float32),
-                            "action_mask": np.ones(action_space_size, dtype=np.float32),
-                        }
-                        for _ in range(n_states)
-                    ],
-                    "policies": [
-                        np.full(action_space_size, 1.0 / action_space_size, dtype=np.float32)
-                        for _ in range(n_states)
-                    ],
-                    "values": [0.5] * n_states,
-                }
-            )
-        return trajectories
+        # Spatial: B, C=64, H=10, W=10 -> flattened = 6400
+        # Vector: B, V=64
+        return [
+            {
+                "spatial": [[0.0] * (64 * 10 * 10)],  # Spatial features
+                "vector": [[0.0] * 64],               # Vector features
+                "policies": [[0.01] * 100],
+                "rewards": [0.5],
+            }
+            for _ in range(1000)
+        ]
 
     storage = GCSTrajectoryStorage(config)
     all_trajectories = []
@@ -156,51 +140,77 @@ def create_model(
     num_filters: int = 64,
 ) -> torch.nn.Module:
     """Create model architecture."""
-    from alpha_zero.core.civ6_network import MicroCivNetwork
+    from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
-    return MicroCivNetwork(
-        board_size=board_size,
-        action_space_size=action_space_size,
-        num_res_blocks=num_res_blocks,
-        num_filters=num_filters,
+    model_config = TransformerConfig(
+        spatial_channels=64,
+        spatial_size=10,
+        vector_dim=64,
+        action_space_size=100,
     )
+    return Civ6TransformerNetwork(config=model_config)
 
 
-def prepare_dataset(trajectories: list[dict], action_space_size: int) -> TrajectoryDataset:
-    """Convert trajectories to PyTorch dataset."""
-    all_spatial = []
-    all_vector = []
-    all_mask = []
-    all_policy = []
-    all_value = []
+def prepare_dataset(
+    trajectories: list[dict],
+    vector_dim: int | None = None,
+) -> TensorDataset:
+    """Convert trajectories to PyTorch dataset.
+
+    Args:
+        trajectories: List of trajectory dictionaries.
+        vector_dim: Vector dimension for legacy format handling.
+            If None, uses default from TransformerConfig.
+
+    Returns:
+        TensorDataset with spatial, vector, policy, and value tensors.
+    """
+    from torch.utils.data import TensorDataset
+
+    # Get vector_dim from config if not specified
+    if vector_dim is None:
+        from alpha_zero.core.transformer_network import TransformerConfig
+        vector_dim = TransformerConfig().vector_dim
+
+    spatial_list = []
+    vector_list = []
+    policies = []
+    values = []
+
+    legacy_format_warned = False
 
     for traj in trajectories:
-        states = traj["states"]
-        policies = traj["policies"]
-        values = traj.get("values", traj.get("rewards", [0.0] * len(states)))
+        # Handle both old format (states) and new format (spatial + vector)
+        if "spatial" in traj:
+            for i, spatial in enumerate(traj["spatial"]):
+                spatial_list.append(spatial)
+                vector_list.append(traj["vector"][i])
+                policies.append(traj["policies"][i])
+                values.append(traj["rewards"][i])
+        else:
+            # Legacy format: split states into spatial and dummy vector
+            if not legacy_format_warned:
+                logger.warning(
+                    "Legacy trajectory format detected (missing 'spatial' key). "
+                    "Using zero-filled vector of dimension %d. "
+                    "Consider re-generating trajectories with updated selfplay worker.",
+                    vector_dim,
+                )
+                legacy_format_warned = True
+            for i, state in enumerate(traj["states"]):
+                spatial_list.append(state)
+                vector_list.append([0.0] * vector_dim)
+                policies.append(traj["policies"][i])
+                values.append(traj["rewards"][i])
 
-        for i, state in enumerate(states):
-            all_spatial.append(state["spatial"])
-            all_vector.append(state["vector"])
-            all_mask.append(state["action_mask"])
+    # Convert to tensors
+    spatial_tensor = torch.tensor(spatial_list, dtype=torch.float32)
+    vector_tensor = torch.tensor(vector_list, dtype=torch.float32)
+    policies_tensor = torch.tensor(policies, dtype=torch.float32)
+    values_tensor = torch.tensor(values, dtype=torch.float32).unsqueeze(-1)
 
-            # Ensure policy has correct size
-            policy = policies[i]
-            if len(policy) < action_space_size:
-                padded = np.zeros(action_space_size, dtype=np.float32)
-                padded[: len(policy)] = policy
-                policy = padded
-            all_policy.append(policy[:action_space_size])
-
-            all_value.append(float(values[i]))
-
-    return TrajectoryDataset(
-        spatial=torch.tensor(np.array(all_spatial), dtype=torch.float32),
-        vector=torch.tensor(np.array(all_vector), dtype=torch.float32),
-        action_mask=torch.tensor(np.array(all_mask), dtype=torch.float32),
-        policy=torch.tensor(np.array(all_policy), dtype=torch.float32),
-        value=torch.tensor(all_value, dtype=torch.float32),
-    )
+    from torch.utils.data import TensorDataset
+    return TensorDataset(spatial_tensor, vector_tensor, policies_tensor, values_tensor)
 
 
 def train_epoch(
@@ -222,22 +232,25 @@ def train_epoch(
     total_value_loss = 0.0
     num_batches = 0
 
-    for spatial, vector, action_mask, target_policy, target_value in dataloader:
+    for spatial, vector, target_policies, target_values in dataloader:
         spatial = spatial.to(device)
         vector = vector.to(device)
-        action_mask = action_mask.to(device)
-        target_policy = target_policy.to(device)
-        target_value = target_value.to(device)
+        target_policies = target_policies.to(device)
+        target_values = target_values.to(device)
 
-        # Forward pass with proper 3-input API
-        policy_logits, value = model(spatial, vector, action_mask)
+        # Forward pass
+        # Reshape spatial for transformer input
+        batch_size = spatial.shape[0]
+        spatial = spatial.view(batch_size, 64, 10, 10)  # B, C, H, W
 
-        # Policy loss (cross-entropy with target distribution)
+        policy_logits, value = model(spatial, vector)
+
+        # Policy loss (cross-entropy)
         policy_log_probs = torch.log_softmax(policy_logits, dim=-1)
-        policy_loss = -torch.sum(target_policy * policy_log_probs, dim=-1).mean()
+        policy_loss = -torch.sum(target_policies * policy_log_probs, dim=-1).mean()
 
         # Value loss (MSE)
-        value_loss = torch.nn.functional.mse_loss(value, target_value)
+        value_loss = torch.nn.functional.mse_loss(value, target_values)
 
         # Combined loss
         loss = policy_loss + value_loss
@@ -388,8 +401,26 @@ def main() -> int:
             dry_run=args.dry_run,
         )
 
+        # Validate we have data to train on
+        if not trajectories:
+            logger.error(
+                "No trajectories found for iterations %s. "
+                "You must run self-play first to generate training data:\n"
+                "  python -m alpha_zero.cloud.gcp.cli selfplay --iteration %d --wait",
+                trajectory_iterations,
+                args.iteration,
+            )
+            return 1
+
         # Prepare dataset
-        dataset = prepare_dataset(trajectories, args.action_space_size)
+        dataset = prepare_dataset(trajectories)
+
+        if len(dataset) == 0:
+            logger.error(
+                "Dataset is empty after processing trajectories. "
+                "This may indicate corrupted trajectory data."
+            )
+            return 1
         dataloader = DataLoader(
             dataset,
             batch_size=args.batch_size,
@@ -479,7 +510,7 @@ def main() -> int:
         total_time = time.time() - start_time
         logger.info("Training complete in %.1f seconds", total_time)
 
-        uri, version = save_final_model(config, model, args.iteration, args.dry_run)
+        _uri, version = save_final_model(config, model, args.iteration, args.dry_run)
         logger.info("Saved final model version %d", version)
 
         # Cleanup old checkpoints

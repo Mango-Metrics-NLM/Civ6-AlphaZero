@@ -119,7 +119,7 @@ class RAGPipeline:
         embedding_generator: EmbeddingGenerator,
         processor: TextDocumentProcessor,
         logger: RAGLogger | None = None,
-    ):
+    ) -> None:
         """Initialize RAG pipeline.
 
         Args:

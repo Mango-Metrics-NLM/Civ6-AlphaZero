@@ -103,7 +103,7 @@ class ActionParser:
         self,
         board_size: tuple[int, int] = (10, 10),
         input_mode: InputMode = InputMode.COORDINATE,
-    ):
+    ) -> None:
         """Initialize action parser.
 
         Args:
@@ -305,7 +305,7 @@ class HumanInputHandler:
         self,
         config: HumanInterfaceConfig | None = None,
         board_size: tuple[int, int] = (10, 10),
-    ):
+    ) -> None:
         """Initialize input handler.
 
         Args:

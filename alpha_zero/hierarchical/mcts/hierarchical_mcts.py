@@ -523,7 +523,7 @@ class HierarchicalMCTS:
         root = MCTSNode(state)
 
         # Get initial policy and value from network
-        priors, value = self._evaluate(state, goals)
+        priors, _value = self._evaluate(state, goals)
 
         # Add Dirichlet noise at root for exploration
         priors = self._add_dirichlet_noise(priors, valid_actions)
@@ -541,7 +541,7 @@ class HierarchicalMCTS:
             while node.is_expanded:
                 if self.config.use_options and node.option_children:
                     # Option selection at higher levels
-                    opt_id, node = node.select_option_child(self.config.c_puct)
+                    _opt_id, node = node.select_option_child(self.config.c_puct)
                 else:
                     # Action selection
                     _, child = node.select_child(self.config.c_puct)
@@ -619,7 +619,7 @@ class HierarchicalMCTS:
 
             # Selection
             while node.is_expanded and node.option_children:
-                opt_id, node = node.select_option_child(self.config.c_puct)
+                _opt_id, node = node.select_option_child(self.config.c_puct)
                 node.virtual_loss += self.config.virtual_loss
                 depth += 1
 
@@ -665,21 +665,31 @@ class HierarchicalMCTS:
         # Note: State spatial/vector tensors are obtained directly from state dict below
         # The state encoder is used externally to prepare the state before MCTS
 
-        # Encode goals
+        # Encode goals - support both GoalEncoder and HierarchicalGoalEncoder
         level_goals = [g for g in goals if g.level == self.level]
-        goal_encoding = self.goal_encoder.encode_goals_for_level(level_goals, self.level, state)
+        if hasattr(self.goal_encoder, "encode_goals_for_level"):
+            # HierarchicalGoalEncoder
+            goal_encoding = self.goal_encoder.encode_goals_for_level(level_goals, self.level, state)
+        elif hasattr(self.goal_encoder, "encode_batch"):
+            # Basic GoalEncoder
+            goal_encoding = self.goal_encoder.encode_batch(level_goals, state)
+        else:
+            # Fallback: return zeros
+            goal_encoding = np.zeros((1, self.goal_dim), dtype=np.float32)
 
         # Convert to tensors using configured shapes
         with torch.no_grad():
             # Get spatial and vector from state, use instance shape params for defaults
             spatial = (
-                torch.from_numpy(
-                    state.get("spatial", np.zeros(self.spatial_shape))
-                ).float().unsqueeze(0)
+                torch.from_numpy(state.get("spatial", np.zeros(self.spatial_shape)))
+                .float()
+                .unsqueeze(0)
             )
-            vector = torch.from_numpy(
-                state.get("vector", np.zeros(self.vector_dim))
-            ).float().unsqueeze(0)
+            vector = (
+                torch.from_numpy(state.get("vector", np.zeros(self.vector_dim)))
+                .float()
+                .unsqueeze(0)
+            )
             goal_emb = (
                 torch.from_numpy(
                     goal_encoding[0] if len(goal_encoding) > 0 else np.zeros(self.goal_dim)
