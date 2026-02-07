@@ -104,6 +104,13 @@ training_results/
 models/
 artifacts/
 
+# Docker (build context only — tracked files are .dockerignore and Dockerfile)
+docker-compose*.yml
+
+# GCS / Cloud artifacts
+trajectories/
+evaluations/
+
 # Profiling
 *.prof
 *.lprof

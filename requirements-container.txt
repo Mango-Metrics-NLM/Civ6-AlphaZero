@@ -1,0 +1,16 @@
+# Container dependencies (slim - no RAG/dev tools)
+torch>=1.13.0
+numpy>=1.23.0
+gymnasium>=0.29.0
+
+# Utilities
+pyyaml>=6.0
+tqdm>=4.65.0
+python-dotenv>=1.0.0
+
+# Experiment tracking (optional, enabled via WANDB_ENABLED=true)
+wandb>=0.15.0
+
+# GCP / Vertex AI
+google-cloud-storage>=2.10.0
+google-cloud-aiplatform>=1.30.0
