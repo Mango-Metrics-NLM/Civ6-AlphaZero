@@ -58,12 +58,21 @@ def setup_ddp() -> tuple[int, int, int]:
         Tuple of (rank, local_rank, world_size).
     """
     if "WORLD_SIZE" in os.environ:
-        dist.init_process_group(backend="nccl")
         rank = int(os.environ["RANK"])
         local_rank = int(os.environ["LOCAL_RANK"])
         world_size = int(os.environ["WORLD_SIZE"])
-        torch.cuda.set_device(local_rank)
-        print(f"Initialized DDP: rank={rank}, local_rank={local_rank}, world_size={world_size}")
+
+        # Select backend based on CUDA availability to support CPU-only envs.
+        backend = "nccl" if torch.cuda.is_available() else "gloo"
+        dist.init_process_group(backend=backend)
+
+        if torch.cuda.is_available():
+            torch.cuda.set_device(local_rank)
+
+        logger.info(
+            "Initialized DDP: rank=%d, local_rank=%d, world_size=%d, backend=%s",
+            rank, local_rank, world_size, backend,
+        )
         return rank, local_rank, world_size
     return 0, 0, 1
 

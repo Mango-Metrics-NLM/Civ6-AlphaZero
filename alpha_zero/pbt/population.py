@@ -130,9 +130,9 @@ class PopulationManager:
         agent = self.agents[agent_id]
         agent.update_fitness(fitness, self.config.fitness_smoothing_window)
         if games_played:
-            agent.games_played = games_played
+            agent.games_played += games_played
         if training_steps:
-            agent.training_steps = training_steps
+            agent.training_steps += training_steps
             
     def get_fitness_ranking(self) -> List[Tuple[str, float]]:
         """Return list of (agent_id, score) sorted descending."""

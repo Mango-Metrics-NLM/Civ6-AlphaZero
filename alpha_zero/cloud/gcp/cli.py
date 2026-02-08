@@ -29,7 +29,7 @@ import argparse
 import logging
 import os
 import sys
-from typing import NoReturn
+
 
 from alpha_zero.cloud.gcp.config import GCPConfig, VertexTier
 from alpha_zero.cloud.gcp.exceptions import ConfigurationError, VertexJobError

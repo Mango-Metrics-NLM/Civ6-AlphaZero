@@ -2,40 +2,31 @@
 
 from __future__ import annotations
 
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Mock google.cloud namespace to avoid ImportError when libs aren't installed
-# ---------------------------------------------------------------------------
-
-_mock_aiplatform = MagicMock()
-_mock_google_cloud = MagicMock()
-_mock_google_cloud.aiplatform = _mock_aiplatform
-
-if "google" not in sys.modules:
-    sys.modules["google"] = MagicMock()
-if "google.cloud" not in sys.modules:
-    sys.modules["google.cloud"] = _mock_google_cloud
-else:
-    # Ensure the aiplatform attribute resolves to our mock even if google.cloud
-    # was already partially populated by another test module.
-    sys.modules["google.cloud"].aiplatform = _mock_aiplatform  # type: ignore[attr-defined]
-
-sys.modules["google.cloud.aiplatform"] = _mock_aiplatform
-
-from alpha_zero.cloud.gcp.config import GCPConfig, GCSPathConfig  # noqa: E402
-from alpha_zero.cloud.gcp.vertex_jobs import (  # noqa: E402
-    VertexAIClient,
-    VertexTuningJob,
-)
+from alpha_zero.cloud.gcp.config import GCPConfig, GCSPathConfig
 
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _patch_google_cloud(monkeypatch: pytest.MonkeyPatch):
+    """Scope the google.cloud.aiplatform mock so it doesn't leak into other tests."""
+    mock_aiplatform = MagicMock()
+    mock_google = MagicMock()
+    mock_google_cloud = MagicMock()
+    mock_google_cloud.aiplatform = mock_aiplatform
+
+    import sys
+
+    monkeypatch.setitem(sys.modules, "google", mock_google)
+    monkeypatch.setitem(sys.modules, "google.cloud", mock_google_cloud)
+    monkeypatch.setitem(sys.modules, "google.cloud.aiplatform", mock_aiplatform)
 
 
 @pytest.fixture
@@ -55,14 +46,17 @@ def gcp_config() -> GCPConfig:
 
 
 @pytest.fixture
-def mock_aiplatform() -> MagicMock:
-    """Yield the shared mock that ``from google.cloud import aiplatform`` resolves to."""
+def mock_aiplatform():  # type: ignore[misc]
+    """Yield the mock that ``from google.cloud import aiplatform`` resolves to."""
+    import sys
+
+    mock_aip = sys.modules["google.cloud.aiplatform"]
+
     with patch(
         "alpha_zero.cloud.gcp.vertex_jobs.VertexAIClient._ensure_initialized"
     ):
-        # Reset call tracking between tests
-        _mock_aiplatform.reset_mock()
-        yield _mock_aiplatform
+        mock_aip.reset_mock()
+        yield mock_aip
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +68,8 @@ def test_tuning_job_submission(
     gcp_config: GCPConfig, mock_aiplatform: MagicMock
 ) -> None:
     """Test submission of a hyperparameter tuning job."""
+    from alpha_zero.cloud.gcp.vertex_jobs import VertexAIClient, VertexTuningJob
+
     client = VertexAIClient(gcp_config.project_id, gcp_config.region)
     job_manager = VertexTuningJob(gcp_config, client)
 
@@ -116,6 +112,8 @@ def test_tuning_job_args(
     gcp_config: GCPConfig, mock_aiplatform: MagicMock
 ) -> None:
     """Test that arguments are correctly passed to the tuning job."""
+    from alpha_zero.cloud.gcp.vertex_jobs import VertexAIClient, VertexTuningJob
+
     client = VertexAIClient(gcp_config.project_id, gcp_config.region)
     job_manager = VertexTuningJob(gcp_config, client)
 

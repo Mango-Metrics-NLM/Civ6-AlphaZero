@@ -187,7 +187,7 @@ class TestGCSLive:
             metadata={"iteration": 1, "elo": 1200.0},
         )
 
-        loaded_state, metadata = storage.load_model(version=1)
+        loaded_state, metadata, _ = storage.load_model(version=1)
         assert metadata.iteration == 1
         assert metadata.elo == pytest.approx(1200.0)
         assert torch.equal(loaded_state["weight"], state_dict["weight"])

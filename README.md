@@ -935,7 +935,7 @@ Civ6-AlphaZero/
 ### Completed
 
 - ✅ **GCP Vertex AI Pipeline** — Cloud training with GumbelMCTS, 3-phase pipeline (selfplay → training → evaluation)
-- ✅ **Population-Based Training** — Adaptive hyperparameter optimization with configurable mutation strategies
+- 🚧 **Population-Based Training** — Adaptive hyperparameter optimization with configurable mutation strategies (evaluation uses placeholder fitness — cross-agent eval TODO)
 - ✅ **CI/CD & Test Infrastructure** — Release automation, 6-tier test coverage (unit, integration, e2e, security, sanity, cloud)
 
 ### Planned Features

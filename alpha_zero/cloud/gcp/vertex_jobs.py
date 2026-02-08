@@ -731,6 +731,15 @@ class VertexTrainingJob:
 
         training_config = self.config.training
 
+        # Multi-node DDP is not yet supported — only single-node torchrun.
+        # TODO: Add multi-node rendezvous args (--nnodes, --rdzv_*) when needed.
+        if training_config.replica_count > 1:
+            raise VertexJobError(
+                f"Multi-node training (replica_count={training_config.replica_count}) "
+                "is not yet supported. Use replica_count=1 with multiple GPUs "
+                "for single-node DDP via torchrun."
+            )
+
         if training_config.accelerator_count > 1:
             # Use torchrun for DDP
             command = [
