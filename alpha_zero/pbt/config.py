@@ -689,6 +689,10 @@ class PBTConfig:
             )
         if self.evaluation_games_per_match < 1:
             raise ValueError("evaluation_games_per_match must be >= 1")
+        if self.elo_initial_rating <= 0:
+            raise ValueError("elo_initial_rating must be > 0")
+        if self.elo_k_factor <= 0:
+            raise ValueError("elo_k_factor must be > 0")
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> PBTConfig:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from typing import Any
 
@@ -303,7 +304,9 @@ class PBTOrchestrator:
         report = self.evaluator.evaluate_population(
             agents,
             generation=gen,
-            arena_runner=_local_arena_runner,
+            arena_runner=lambda an, ao, ng: _local_arena_runner(
+                an, ao, ng, gcp_config=self.gcp_config
+            ),
         )
 
         for agent in agents:
@@ -335,37 +338,58 @@ def _local_arena_runner(
     agent_new: AgentState,
     agent_old: AgentState,
     num_games: int,
+    gcp_config: GCPConfig | None = None,
 ) -> MatchResult:
     """Local arena runner using lazy torch import.
 
-    Falls back to a balanced placeholder result if torch/networks
-    are not importable (e.g. in CI or CPU-only environments).
+    Attempts to load agent checkpoints if *gcp_config* is provided.
+    Falls back to random initialization or placeholder results if
+    torch/networks are not importable.
     """
     try:
         import torch  # type: ignore[import-untyped]
 
         from alpha_zero.cloud.gcp.evaluation_worker import run_arena
+        from alpha_zero.utils.config import NetworkConfig
         from alpha_zero.utils.factories import create_network
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # In a real scenario, these should be loaded from GCS checkpoints
-        # For now, we use default configs but with correct factory signatures
-        from alpha_zero.utils.config import NetworkConfig
+        # Derive board_size/action_space from environment or fallback to defaults
+        # In a real run, these should come from Global Config
+        board_size = int(os.environ.get("CIV6AZ_BOARD_SIZE", 6))
+        action_space_size = int(os.environ.get("CIV6AZ_ACTION_SPACE", 158))
 
         net_config = NetworkConfig()
-        model_new = create_network(
-            config=net_config,
-            board_size=6,
-            action_space_size=158,
-            device=str(device),
-        )
-        model_old = create_network(
-            config=net_config,
-            board_size=6,
-            action_space_size=158,
-            device=str(device),
-        )
+
+        def _prepare_model(agent: AgentState) -> torch.nn.Module:
+            model = create_network(
+                config=net_config,
+                board_size=board_size,
+                action_space_size=action_space_size,
+                device=str(device),
+            )
+            if agent.model_path and gcp_config:
+                try:
+                    # Load weights from GCS using GCSModelStorage
+                    from alpha_zero.cloud.gcp.storage import GCSModelStorage
+                    storage = GCSModelStorage(gcp_config)
+                    # Use provided version/path. If it's a version number, convert to int.
+                    try:
+                        version = int(agent.model_path)
+                        state_dict, _, _ = storage.load_model(version)
+                        model.load_state_dict(state_dict)
+                        logger.info("Loaded weights for agent %s (v%d) from GCS", agent.agent_id, version)
+                    except ValueError:
+                        # Handle as a path if not an integer version
+                        logger.warning("Agent %s model_path '%s' is not a version number; skipping weight load.", 
+                                       agent.agent_id, agent.model_path)
+                except Exception as e:
+                    logger.warning("Failed to load weights for agent %s: %r. Using random init.", agent.agent_id, e)
+            return model
+
+        model_new = _prepare_model(agent_new)
+        model_old = _prepare_model(agent_old)
 
         results = run_arena(
             model_new=model_new,
@@ -374,7 +398,7 @@ def _local_arena_runner(
             mcts_type="gumbel",
             mcts_sims=25,
             gumbel_num_actions=8,
-            board_size=6,
+            board_size=board_size,
             max_turns=100,
             device=device,
         )
