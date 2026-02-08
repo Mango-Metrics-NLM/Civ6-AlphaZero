@@ -155,26 +155,32 @@ class GCSPathConfig:
     trajectories_prefix: str = "trajectories/civ6az"
     checkpoints_prefix: str = "checkpoints/civ6az"
     logs_prefix: str = "logs/civ6az"
+    agent_id: str | None = None
 
     def model_path(self, version: int) -> str:
         """Get path for a model version."""
-        return f"{self.models_prefix}/v{version:03d}/model.pt"
+        prefix = f"{self.models_prefix}/{self.agent_id}" if self.agent_id else self.models_prefix
+        return f"{prefix}/v{version:03d}/model.pt"
 
     def metadata_path(self, version: int) -> str:
         """Get path for model metadata."""
-        return f"{self.models_prefix}/v{version:03d}/metadata.json"
+        prefix = f"{self.models_prefix}/{self.agent_id}" if self.agent_id else self.models_prefix
+        return f"{prefix}/v{version:03d}/metadata.json"
 
     def trajectory_path(self, iteration: int, worker_id: int) -> str:
         """Get path for trajectory shard."""
-        return f"{self.trajectories_prefix}/iter_{iteration:03d}/shard_worker_{worker_id}.pt"
+        prefix = f"{self.trajectories_prefix}/{self.agent_id}" if self.agent_id else self.trajectories_prefix
+        return f"{prefix}/iter_{iteration:03d}/shard_worker_{worker_id}.pt"
 
     def checkpoint_path(self, step: int) -> str:
         """Get path for training checkpoint."""
-        return f"{self.checkpoints_prefix}/training_step_{step}.pt"
+        prefix = f"{self.checkpoints_prefix}/{self.agent_id}" if self.agent_id else self.checkpoints_prefix
+        return f"{prefix}/training_step_{step}.pt"
 
     def latest_checkpoint_path(self) -> str:
         """Get path for latest checkpoint marker."""
-        return f"{self.checkpoints_prefix}/latest.pt"
+        prefix = f"{self.checkpoints_prefix}/{self.agent_id}" if self.agent_id else self.checkpoints_prefix
+        return f"{prefix}/latest.pt"
 
 
 @dataclass

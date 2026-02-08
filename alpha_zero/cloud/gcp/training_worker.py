@@ -120,6 +120,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=10, help="Training epochs")
     parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
     parser.add_argument("--learning_rate", type=float, default=0.001, help="Learning rate")
+    parser.add_argument("--agent_id", type=str, default=None, help="PBT Agent ID")
     parser.add_argument(
         "--checkpoint_interval", type=int, default=1000, help="Steps between checkpoints"
     )
@@ -437,6 +438,11 @@ def main() -> int:
 
     try:
         config = GCPConfig()
+        if args.agent_id:
+            config.paths.agent_id = args.agent_id
+            if is_main_process:
+                logger.info("Using Agent ID: %s", args.agent_id)
+
         if not args.dry_run and is_main_process:
             config.validate()
 

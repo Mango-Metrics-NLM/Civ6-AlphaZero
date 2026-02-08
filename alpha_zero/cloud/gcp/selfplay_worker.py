@@ -47,6 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model_version", type=int, required=True, help="Model version to use")
     parser.add_argument("--iteration", type=int, required=True, help="Training iteration")
     parser.add_argument("--games", type=int, default=100, help="Number of games to play")
+    parser.add_argument("--agent_id", type=str, default=None, help="PBT Agent ID")
     parser.add_argument(
         "--mcts_simulations", type=int, default=400, help="MCTS simulations per move"
     )
@@ -56,6 +57,9 @@ def parse_args() -> argparse.Namespace:
         default="civ6",
         choices=["civ6", "gumbel"],
         help="MCTS algorithm variant",
+    )
+    parser.add_argument(
+        "--c_puct", type=float, default=1.5, help="MCTS exploration constant"
     )
     parser.add_argument(
         "--gumbel_num_actions",
@@ -125,6 +129,7 @@ def run_selfplay(
     temperature: float,
     device: torch.device,
     mcts_type: str = "civ6",
+    c_puct: float = 1.5,
     gumbel_num_actions: int = 16,
     reward_shaping: bool = False,
     reward_scale: float = 1.0,
@@ -171,6 +176,7 @@ def run_selfplay(
             device=str(device),
             num_simulations=mcts_sims,
             num_sampled_actions=gumbel_num_actions,
+            c_puct=c_puct,
         )
 
         trajectory: dict[str, list] = {
@@ -324,6 +330,10 @@ def main() -> int:
 
     try:
         config = GCPConfig()
+        if args.agent_id:
+            config.paths.agent_id = args.agent_id
+            logger.info("Using Agent ID: %s", args.agent_id)
+
         if not args.dry_run:
             config.validate()
 
@@ -354,6 +364,7 @@ def main() -> int:
             temperature=args.temperature,
             device=device,
             mcts_type=args.mcts_type,
+            c_puct=args.c_puct,
             gumbel_num_actions=args.gumbel_num_actions,
             reward_shaping=args.reward_shaping,
             reward_scale=args.reward_scale,
