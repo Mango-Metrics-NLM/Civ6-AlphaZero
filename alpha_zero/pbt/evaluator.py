@@ -143,6 +143,11 @@ class PBTEvaluator:
             config.elo_k_factor,
         )
 
+    @property
+    def arena_runner(self) -> ArenaRunner | Callable[..., MatchResult] | None:
+        """Get the configured arena runner."""
+        return self._arena_runner
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------

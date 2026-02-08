@@ -301,13 +301,16 @@ class PBTOrchestrator:
         logger.info("Phase 3: Evaluation (gen=%d)", gen)
 
         agents = self.manager.get_all_agents()
-        report = self.evaluator.evaluate_population(
-            agents,
-            generation=gen,
-            arena_runner=lambda an, ao, ng: _local_arena_runner(
+
+        # Prepare evaluation arguments
+        eval_kwargs: dict[str, Any] = {"generation": gen}
+        if self.evaluator.arena_runner is None:
+            logger.info("No arena_runner configured; falling back to local runner")
+            eval_kwargs["arena_runner"] = lambda an, ao, ng: _local_arena_runner(
                 an, ao, ng, gcp_config=self.gcp_config
-            ),
-        )
+            )
+
+        report = self.evaluator.evaluate_population(agents, **eval_kwargs)
 
         for agent in agents:
             logger.info(
