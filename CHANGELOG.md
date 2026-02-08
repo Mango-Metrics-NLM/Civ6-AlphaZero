@@ -166,6 +166,17 @@ End-to-end cloud training on Vertex AI with GumbelMCTS, model evaluation, W&B tr
 
 ---
 
+#### Phase 5.4: Cost Estimator & Robust Preemption (Finalization)
+
+- **`CostEstimator` (`alpha_zero/cloud/gcp/cost.py`)**:
+  - Real-time job cost estimation based on machine type and accelerator count.
+  - Integration with `vertex_orchestrator.py` for cost visibility in logs.
+- **Robust Preemption Handling**:
+  - `SignalHandler` in `training_worker.py` for graceful `SIGTERM` handling.
+  - Immediate checkpoint saving upon preemption signal.
+- **Unified Dashboard**:
+  - `configs/wandb_dashboard.json`: Comprehensive W&B dashboard template.
+
 #### Phase 5.3: Cost Optimization for GCP Cloud Training
 
 A comprehensive cost optimization system targeting 60-80% cost savings through spot VMs, dynamic GPU scheduling, auto-stop idle instances, and risk mitigation systems.
