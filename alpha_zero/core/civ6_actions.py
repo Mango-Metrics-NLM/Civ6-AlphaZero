@@ -777,7 +777,7 @@ class MicroCivActionSpace:
 
         if action_type == "found_city":
             unit_idx = action.get("unit_idx", 0)
-            return self.found_city_offset + unit_idx
+            return int(self.found_city_offset + unit_idx)
 
         if action_type == "produce":
             city_idx = int(action.get("city_idx", 0))
@@ -802,3 +802,6 @@ class MicroCivActionSpace:
         if len(valid_indices) == 0:
             return self.end_turn_offset
         return int(rng.choice(valid_indices))
+
+# Alias for backward compatibility
+HierarchicalActionSpace = ActionSpace

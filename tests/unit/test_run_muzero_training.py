@@ -166,11 +166,13 @@ class TestSelfPlayGame:
         trajectory = self_play_game(small_env, small_mcts, small_config)
         game_length = len(trajectory.actions)
 
-        # Should have game_length actions and game_length+1 observations
+        # Should have game_length actions/rewards and game_length+1 observations/policies/values/dones
         assert len(trajectory.actions) == game_length
-        assert len(trajectory.observations) >= game_length
-        assert len(trajectory.policies) >= game_length
-        assert len(trajectory.rewards) >= game_length
+        assert len(trajectory.rewards) == game_length
+        assert len(trajectory.observations) == game_length + 1
+        assert len(trajectory.policies) == game_length + 1
+        assert len(trajectory.values) == game_length + 1
+        assert len(trajectory.dones) == game_length + 1
 
     def test_policies_are_valid_distributions(self, small_env, small_mcts, small_config):
         """Policies sum to 1."""
@@ -259,12 +261,7 @@ class TestTrainingIntegration:
 
         total_steps = sum(len(t) for t in trajectories)
         assert total_steps > 0
-        # Check observations have expected shape from dict structure
-        for t in trajectories:
-            if len(t.observations) > 0:
-                obs = t.observations[0]
-                if "spatial" in obs:
-                    assert obs["spatial"].shape[-2:] == (8, 8)
+        assert all(t.observations[0]["spatial"].shape == (13, 8, 8) for t in trajectories)
 
     def test_network_can_be_saved_and_loaded(self, minimal_config):
         """Network state can be saved and loaded."""

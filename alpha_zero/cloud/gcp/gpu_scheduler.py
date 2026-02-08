@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from alpha_zero.cloud.gcp.config import get_gpu_costs
 from alpha_zero.cloud.gcp.cost_monitor import AlertLevel
 from alpha_zero.cloud.gcp.exceptions import ConfigurationError
 
@@ -23,6 +24,11 @@ if TYPE_CHECKING:
     from alpha_zero.cloud.gcp.cost_monitor import CostMonitor
 
 logger = logging.getLogger(__name__)
+
+
+def _get_gpu_costs_with_env_overrides() -> dict[str, float]:
+    """Get GPU costs using centralized config with env-var overrides."""
+    return get_gpu_costs()
 
 
 class TrainingPhase(str, Enum):
@@ -78,46 +84,31 @@ class GPUSchedulerConfig:
     """
 
     default_gpu: str = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_GPU_DEFAULT", "NVIDIA_TESLA_T4"
-        )
+        default_factory=lambda: os.environ.get("CIV6AZ_GPU_DEFAULT", "NVIDIA_TESLA_T4")
     )
     final_phase_gpu: str = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_GPU_FINAL_PHASE", "NVIDIA_TESLA_V100"
-        )
+        default_factory=lambda: os.environ.get("CIV6AZ_GPU_FINAL_PHASE", "NVIDIA_TESLA_V100")
     )
     final_phase_threshold: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_GPU_FINAL_PHASE_THRESHOLD", "0.9")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_GPU_FINAL_PHASE_THRESHOLD", "0.9"))
     )
     prefer_spot: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_GPU_PREFER_SPOT", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_GPU_PREFER_SPOT", "true").lower() == "true"
     )
     upgrade_enabled: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_GPU_UPGRADE_ENABLED", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_GPU_UPGRADE_ENABLED", "true").lower()
+        == "true"
     )
 
     # Phase thresholds (percentage of total iterations)
     early_phase_end: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_GPU_EARLY_PHASE_END", "0.5")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_GPU_EARLY_PHASE_END", "0.5"))
     )
     middle_phase_end: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_GPU_MIDDLE_PHASE_END", "0.8")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_GPU_MIDDLE_PHASE_END", "0.8"))
     )
     late_phase_end: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_GPU_LATE_PHASE_END", "0.9")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_GPU_LATE_PHASE_END", "0.9"))
     )
 
     # GPU tier mappings for different training phases
@@ -141,29 +132,16 @@ class GPUSchedulerConfig:
     )
 
     # GPU hourly costs (USD) for cost-aware selection
-    gpu_costs: dict[str, float] = field(
-        default_factory=lambda: {
-            "NVIDIA_TESLA_T4": 0.35,
-            "NVIDIA_TESLA_T4_SPOT": 0.11,
-            "NVIDIA_L4": 0.81,
-            "NVIDIA_L4_SPOT": 0.24,
-            "NVIDIA_TESLA_V100": 2.48,
-            "NVIDIA_TESLA_V100_SPOT": 0.74,
-            "NVIDIA_TESLA_A100": 3.67,
-            "NVIDIA_TESLA_A100_SPOT": 1.10,
-        }
-    )
+    # Defaults can be overridden via CIV6AZ_GPU_COST_* environment variables
+    gpu_costs: dict[str, float] = field(default_factory=_get_gpu_costs_with_env_overrides)
 
     # Spot VM settings by job type
     spot_for_selfplay: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_GPU_SPOT_SELFPLAY", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_GPU_SPOT_SELFPLAY", "true").lower() == "true"
     )
     spot_for_training: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_GPU_SPOT_TRAINING", "false"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_GPU_SPOT_TRAINING", "false").lower()
+        == "true"
     )
 
     def __post_init__(self) -> None:
@@ -410,9 +388,7 @@ class DynamicGPUScheduler:
             gpu_type = self.config.final_phase_gpu
             reason = f"Final training phase ({phase.value}): using high-performance GPU"
         else:
-            gpu_type = self.config.phase_gpu_mapping.get(
-                phase.value, self.config.default_gpu
-            )
+            gpu_type = self.config.phase_gpu_mapping.get(phase.value, self.config.default_gpu)
             reason = f"Training phase {phase.value}: using configured GPU"
 
         # Determine spot usage
@@ -429,15 +405,11 @@ class DynamicGPUScheduler:
             use_spot = self.config.prefer_spot
 
         # Get machine type
-        machine_type = self.config.gpu_machine_types.get(
-            gpu_type, "n1-standard-8"
-        )
+        machine_type = self.config.gpu_machine_types.get(gpu_type, "n1-standard-8")
 
         # Calculate cost
         cost_key = f"{gpu_type}_SPOT" if use_spot else gpu_type
-        hourly_cost = self.config.gpu_costs.get(
-            cost_key, self.config.gpu_costs.get(gpu_type, 1.0)
-        )
+        hourly_cost = self.config.gpu_costs.get(cost_key, self.config.gpu_costs.get(gpu_type, 1.0))
 
         # Budget-aware selection
         if budget_remaining is not None and budget_remaining < hourly_cost:
@@ -445,9 +417,7 @@ class DynamicGPUScheduler:
             cheaper_gpu = self._find_cheaper_gpu(hourly_cost, use_spot)
             if cheaper_gpu:
                 gpu_type, hourly_cost = cheaper_gpu
-                machine_type = self.config.gpu_machine_types.get(
-                    gpu_type, "n1-standard-8"
-                )
+                machine_type = self.config.gpu_machine_types.get(gpu_type, "n1-standard-8")
                 reason = f"Budget constraint: downgraded to {gpu_type}"
 
         # Cost monitor integration
@@ -459,9 +429,7 @@ class DynamicGPUScheduler:
                 cheapest = self._get_cheapest_gpu(use_spot=True)
                 if cheapest:
                     gpu_type, hourly_cost = cheapest
-                    machine_type = self.config.gpu_machine_types.get(
-                        gpu_type, "n1-standard-8"
-                    )
+                    machine_type = self.config.gpu_machine_types.get(gpu_type, "n1-standard-8")
                     use_spot = True
                     reason = "Budget critical: using cheapest GPU with spot"
 
@@ -540,9 +508,7 @@ class DynamicGPUScheduler:
         Returns:
             GPU type string.
         """
-        return self.config.phase_gpu_mapping.get(
-            phase.value, self.config.default_gpu
-        )
+        return self.config.phase_gpu_mapping.get(phase.value, self.config.default_gpu)
 
     def get_statistics(self) -> dict[str, Any]:
         """Get scheduler statistics for logging.

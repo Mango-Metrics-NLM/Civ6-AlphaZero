@@ -1,13 +1,6 @@
-"""Integration tests for Phase 2 components.
-
-Tests the integration between distributed training, Unciv interface,
-logging, and configuration systems.
-"""
-
-from __future__ import annotations
-
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -184,6 +177,7 @@ class TestDistributedComponentIntegration:
             num_actors=config.distributed.num_actors,
             max_games=config.distributed.max_training_steps,
             eval_interval=config.distributed.evaluation_interval,
+            save_interval=config.distributed.checkpoint_interval,
             eval_games=20,
         )
 
@@ -236,7 +230,6 @@ class TestLoggingIntegration:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             logger = GameLogger(log_dir=tmpdir)
-
             # Start a game
             logger.start_game(game_id="test_game_1")
 
@@ -287,15 +280,15 @@ class TestLoggingIntegration:
             tracker.update("loss", float(i) / 10)
             tracker.update("win_rate", 0.5 + i * 0.01)
 
-        # Get statistics using correct method name
-        loss_stats = tracker.get_summary("loss")
-        assert "mean" in loss_stats
-        assert "std" in loss_stats
-        assert "min" in loss_stats
-        assert "max" in loss_stats
+        # Get statistics
+        loss_summary = tracker.get_summary("loss")
+        assert "mean" in loss_summary
+        assert "std" in loss_summary
+        assert "min" in loss_summary
+        assert "max" in loss_summary
 
         # Window should only keep last 10
-        assert loss_stats["count"] == 10
+        assert loss_summary["count"] == 10
 
 
 class TestTrainingExampleFormat:
@@ -346,12 +339,11 @@ class TestTrainingExampleFormat:
             examples=examples,
             game_id=1,
             winner=0,
-            game_length=10,
         )
 
         assert len(trajectory.examples) == 10
         assert trajectory.winner == 0
-        assert trajectory.game_length == 10
+        assert len(trajectory) == 10
 
 
 class TestEncoderCompatibility:
@@ -387,13 +379,21 @@ class TestEncoderCompatibility:
 class TestActionSpaceCompatibility:
     """Test action space compatibility."""
 
-    def test_action_space_module_exists(self) -> None:
-        """Test action space module can be imported."""
-        from alpha_zero.core import civ6_actions
+    def test_hierarchical_action_space_exists(self) -> None:
+        """Test hierarchical action space class exists."""
+        from alpha_zero.core.civ6_actions import HierarchicalActionSpace, ActionSpaceConfig
 
-        assert civ6_actions is not None
-        # Verify the module has the expected action space class
-        assert hasattr(civ6_actions, "Civ6ActionSpace")
+        action_space = HierarchicalActionSpace(
+            config=ActionSpaceConfig(
+                max_units=100,
+                max_cities=20,
+            )
+        )
+
+        assert action_space is not None
+        # Verify it has expected methods
+        assert hasattr(action_space, "decode_action")
+        assert hasattr(action_space, "encode_action")
 
 
 class TestEndToEndWorkflow:

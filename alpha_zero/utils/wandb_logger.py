@@ -44,14 +44,13 @@ import numpy as np
 if TYPE_CHECKING:
     from alpha_zero.evaluation.evaluation_pipeline import EvaluationResult
 
-# Optional wandb import
+# Optional wandb import — single import avoids isort ambiguity across ruff versions
 try:
-    from wandb.sdk.wandb_run import Run
-
     import wandb
 
+    Run = wandb.sdk.wandb_run.Run
     WANDB_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
     WANDB_AVAILABLE = False
     wandb = None
     Run = None

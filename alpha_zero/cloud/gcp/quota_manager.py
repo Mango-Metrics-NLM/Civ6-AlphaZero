@@ -152,24 +152,17 @@ class QuotaManagerConfig:
     """
 
     warning_threshold: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_QUOTA_WARNING_THRESHOLD", "0.7")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_QUOTA_WARNING_THRESHOLD", "0.7"))
     )
     critical_threshold: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_QUOTA_CRITICAL_THRESHOLD", "0.9")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_QUOTA_CRITICAL_THRESHOLD", "0.9"))
     )
     cache_ttl_seconds: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_QUOTA_CACHE_TTL", "300.0")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_QUOTA_CACHE_TTL", "300.0"))
     )
     enable_fallback: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_QUOTA_ENABLE_FALLBACK", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_QUOTA_ENABLE_FALLBACK", "true").lower()
+        == "true"
     )
     preferred_regions: list[str] = field(
         default_factory=lambda: os.environ.get(
@@ -183,14 +176,11 @@ class QuotaManagerConfig:
         ).split(",")
     )
     enable_spot_fallback: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_QUOTA_SPOT_FALLBACK", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_QUOTA_SPOT_FALLBACK", "true").lower()
+        == "true"
     )
     max_fallback_attempts: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_QUOTA_MAX_FALLBACK", "5")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_QUOTA_MAX_FALLBACK", "5"))
     )
 
     def __post_init__(self) -> None:
@@ -697,9 +687,7 @@ class QuotaManager:
 
         return remaining / rate
 
-    def register_warning_callback(
-        self, callback: Callable[[QuotaInfo], None]
-    ) -> None:
+    def register_warning_callback(self, callback: Callable[[QuotaInfo], None]) -> None:
         """Register callback for quota warnings.
 
         Args:
@@ -707,9 +695,7 @@ class QuotaManager:
         """
         self._on_quota_warning.append(callback)
 
-    def register_exhausted_callback(
-        self, callback: Callable[[QuotaInfo], None]
-    ) -> None:
+    def register_exhausted_callback(self, callback: Callable[[QuotaInfo], None]) -> None:
         """Register callback for quota exhaustion.
 
         Args:
@@ -770,9 +756,7 @@ class QuotaManager:
                 "quota_checks": self._quota_checks,
                 "cache_hits": self._cache_hits,
                 "cache_hit_ratio": (
-                    self._cache_hits / self._quota_checks
-                    if self._quota_checks > 0
-                    else 0.0
+                    self._cache_hits / self._quota_checks if self._quota_checks > 0 else 0.0
                 ),
                 "fallback_count": self._fallback_count,
                 "cached_quotas": len(self._cache),

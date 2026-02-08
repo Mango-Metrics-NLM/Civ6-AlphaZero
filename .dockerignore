@@ -2,10 +2,14 @@
 .git
 .gitignore
 
-# Python
+# AI coding assistants
+.agent/
+.gemini/
+
+# Python cache
 __pycache__
-*.py[cod]
-*$py.class
+*.pyc
+*.pyo
 *.egg-info
 .eggs
 build
@@ -24,23 +28,61 @@ env
 *.swo
 
 # Testing and coverage
+tests/
 .pytest_cache
 .coverage
-htmlcov
+htmlcov/
+.mypy_cache
 .tox
 .nox
+.ruff_cache
 
-# Documentation build
-docs/_build
+# Documentation
+docs/
+*.md
+!requirements*.txt
 
-# Environment files
+# Environment / secrets
 .env
+.env.*
 .env.local
+credentials.json
+secrets.json
+service_account*.json
+application_default_credentials.json
+*.pem
+*.key
 
-# Temporary files
+# Cloud / Terraform
+.gcloud/
+gcloud/
+.terraform/
+terraform.tfstate*
+
+# Model & training artifacts (use GCS)
+checkpoints/
+models/
+artifacts/
+training_results/
+wandb/
+*.wandb
+*.pt
+*.pth
+*.pkl
+*.npy
+*.faiss
+
+# Logs
+logs/
+*.log
 *.tmp
 *.temp
-*.log
+
+# Profiling
+*.prof
+*.lprof
+*.pstats
+profile_output/
 
 # OS
 .DS_Store

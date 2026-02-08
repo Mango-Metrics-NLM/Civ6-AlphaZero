@@ -22,6 +22,34 @@ from alpha_zero.cloud.gcp.exceptions import ConfigurationError
 
 logger = logging.getLogger(__name__)
 
+# Default GPU pricing (USD/hour) - can be overridden via CIV6AZ_GPU_COST_* env vars
+DEFAULT_GPU_COSTS: dict[str, float] = {
+    "NVIDIA_TESLA_T4": 0.35,
+    "NVIDIA_TESLA_T4_SPOT": 0.11,
+    "NVIDIA_L4": 0.70,
+    "NVIDIA_L4_SPOT": 0.22,
+    "NVIDIA_TESLA_V100": 2.48,
+    "NVIDIA_TESLA_V100_SPOT": 0.74,
+    "NVIDIA_TESLA_P100": 1.46,
+    "NVIDIA_TESLA_P100_SPOT": 0.43,
+    "NVIDIA_TESLA_A100": 3.67,
+    "NVIDIA_TESLA_A100_SPOT": 1.10,
+}
+
+
+def get_gpu_costs() -> dict[str, float]:
+    """Get GPU costs, allowing env-var overrides.
+
+    Each GPU type can be overridden via CIV6AZ_GPU_COST_{NAME} env var,
+    where NAME is the GPU type with NVIDIA_ and TESLA_ prefixes stripped.
+    Example: CIV6AZ_GPU_COST_T4=0.40 overrides NVIDIA_TESLA_T4 pricing.
+    """
+    costs = {}
+    for gpu_type, default_cost in DEFAULT_GPU_COSTS.items():
+        env_key = f"CIV6AZ_GPU_COST_{gpu_type.replace('NVIDIA_', '').replace('TESLA_', '')}"
+        costs[gpu_type] = float(os.environ.get(env_key, str(default_cost)))
+    return costs
+
 
 class VertexTier(str, Enum):
     """Vertex AI pricing tier."""
@@ -164,15 +192,11 @@ class GCPConfig:
         CIV6AZ_CONTAINER_IMAGE_URI: Container image URI (optional)
     """
 
-    project_id: str = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_VERTEX_PROJECT", "")
-    )
+    project_id: str = field(default_factory=lambda: os.environ.get("CIV6AZ_VERTEX_PROJECT", ""))
     region: str = field(
         default_factory=lambda: os.environ.get("CIV6AZ_VERTEX_REGION", "us-central1")
     )
-    bucket: str = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_GCS_BUCKET", "")
-    )
+    bucket: str = field(default_factory=lambda: os.environ.get("CIV6AZ_GCS_BUCKET", ""))
     service_account: str | None = field(
         default_factory=lambda: os.environ.get("CIV6AZ_VERTEX_SERVICE_ACCOUNT")
     )
@@ -253,8 +277,12 @@ class GCPConfig:
         training_data = data.pop("training", {})
         paths_data = data.pop("paths", {})
 
-        self_play = SelfPlayWorkerConfig(**self_play_data) if self_play_data else SelfPlayWorkerConfig()
-        training = TrainingWorkerConfig(**training_data) if training_data else TrainingWorkerConfig()
+        self_play = (
+            SelfPlayWorkerConfig(**self_play_data) if self_play_data else SelfPlayWorkerConfig()
+        )
+        training = (
+            TrainingWorkerConfig(**training_data) if training_data else TrainingWorkerConfig()
+        )
         paths = GCSPathConfig(**paths_data) if paths_data else GCSPathConfig()
 
         tier_str = data.pop("tier", "budget")

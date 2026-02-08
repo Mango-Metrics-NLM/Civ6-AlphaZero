@@ -34,7 +34,8 @@ C4Context
     System_Ext(civ6, "Civilization VI", "Firaxis game via Lua mod bridge")
     System_Ext(unciv, "Unciv", "Open-source Civ clone via JSON interface")
     System_Ext(wandb, "Weights & Biases", "Experiment tracking and metrics")
-    System_Ext(gcp, "Google Cloud Platform", "Vertex AI, GCS, Cloud Monitoring")
+    System_Ext(vertex, "Vertex AI", "GCP managed ML platform for distributed training")
+    System_Ext(gcs, "Google Cloud Storage", "Stores models, trajectories, and evaluation results")
     System_Ext(llm, "LLM APIs", "OpenAI/Anthropic for strategy advice")
     System_Ext(vectordb, "Vector Databases", "ChromaDB/FAISS for RAG knowledge")
 
@@ -43,7 +44,8 @@ C4Context
     Rel(civ6ai, civ6, "Game state, actions via Lua IPC")
     Rel(civ6ai, unciv, "Game state via JSON")
     Rel(civ6ai, wandb, "Logs metrics, artifacts")
-    Rel(civ6ai, gcp, "Distributed training, storage")
+    Rel(civ6ai, vertex, "Submits training jobs")
+    Rel(civ6ai, gcs, "Stores/loads models and data")
     Rel(civ6ai, llm, "Strategy queries")
     Rel(civ6ai, vectordb, "Knowledge retrieval")
 ```
@@ -66,6 +68,7 @@ C4Container
         
         Container(mcts, "MCTS Engine", "Python/NumPy", "Monte Carlo Tree Search with Gumbel/PUCT")
         Container(network, "Neural Networks", "PyTorch", "ResNet, Transformer, Hierarchical architectures")
+        Container(factory, "MCTS Factory", "Python", "Creates MCTS variants by name")
         Container(buffer, "Replay Buffer", "Python", "Prioritized experience storage")
         
         Container(hierarchical, "Hierarchical RL", "Python", "3-level decision hierarchy with goal conditioning")
@@ -81,7 +84,8 @@ C4Container
     }
 
     System_Ext(wandb, "W&B Cloud")
-    System_Ext(gcp, "GCP Services")
+    System_Ext(vertex, "Vertex AI", "GCP managed ML platform")
+    System_Ext(gcs, "Google Cloud Storage", "Cloud object storage")
 
     Rel(user, orchestrator, "Configures, monitors")
     Rel(orchestrator, selfplay, "Triggers games")
@@ -101,10 +105,49 @@ C4Container
     Rel(selfplay, bridge, "Real Civ6 games")
     Rel(microciv, mechanics, "Game rules")
     
+    Rel(selfplay, factory, "Creates MCTS instances")
+    Rel(evaluator, factory, "Creates MCTS instances")
+    
     Rel(orchestrator, rag, "Strategy context")
     Rel(orchestrator, cloud, "Distributed execution")
-    Rel(cloud, gcp, "Vertex AI, GCS")
+    Rel(cloud, vertex, "Submits jobs")
+    Rel(cloud, gcs, "Storage operations")
     Rel(orchestrator, wandb, "Metrics logging")
+```
+
+## Cloud Training Pipeline
+
+```mermaid
+sequenceDiagram
+    participant U as User / CLI
+    participant O as Vertex Orchestrator
+    participant SP as Self-Play Workers (N)
+    participant GCS as Google Cloud Storage
+    participant TR as Training Worker
+    participant EV as Evaluation Worker
+
+    U->>O: python -m vertex_orchestrator --iterations=K
+    loop For each iteration
+        O->>SP: Launch N self-play jobs (Vertex AI)
+        SP->>SP: MCTS self-play games
+        SP->>GCS: Save trajectories
+        SP-->>O: Jobs complete
+
+        O->>TR: Launch training job (Vertex AI)
+        TR->>GCS: Load trajectories
+        TR->>TR: Train neural network
+        TR->>GCS: Save new model (v_new)
+        TR-->>O: Job complete
+
+        O->>EV: Launch evaluation job (Vertex AI)
+        EV->>GCS: Load model v_new and v_old
+        EV->>EV: Arena: v_new vs v_old
+        EV->>GCS: Save results JSON
+        EV-->>O: Job complete
+
+        O->>O: Accept/reject model (win_rate > threshold?)
+    end
+    O-->>U: Pipeline complete
 ```
 
 ---

@@ -50,16 +50,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model_version", type=int, required=True, help="Model version to use")
     parser.add_argument("--iteration", type=int, required=True, help="Training iteration")
     parser.add_argument("--games", type=int, default=100, help="Number of games to play")
-    parser.add_argument("--mcts_simulations", type=int, default=100, help="MCTS simulations per move")
-    parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
-
     # MCTS configuration arguments
+    parser.add_argument("--mcts_simulations", type=int, default=100, help="MCTS simulations per move")
+    parser.add_argument("--mcts_type", type=str, default="civ6", help="MCTS variant to use")
+    parser.add_argument("--board_size", type=int, default=10, help="Size of the hex board")
+    parser.add_argument("--max_turns", type=int, default=200, help="Max turns per game")
     parser.add_argument("--c_puct", type=float, default=None, help="MCTS exploration constant")
     parser.add_argument("--dirichlet_alpha", type=float, default=None, help="Dirichlet noise alpha")
     parser.add_argument("--dirichlet_epsilon", type=float, default=None, help="Dirichlet noise weight")
     parser.add_argument("--temperature", type=float, default=None, help="Action selection temperature")
     parser.add_argument("--temperature_threshold", type=int, default=None, help="Turn for temperature=0")
-
+    # Additional hyperparameters passed by the Vertex orchestrator
+    parser.add_argument("--gumbel_num_actions", type=int, default=16, help="Gumbel MCTS sampled actions")
+    parser.add_argument("--action_space_size", type=int, default=381, help="Size of the action space")
+    parser.add_argument("--num_res_blocks", type=int, default=8, help="Number of transformer layers")
+    parser.add_argument("--num_filters", type=int, default=256, help="Model embedding dimension")
+    parser.add_argument("--reward_shaping", action="store_true", help="Enable reward shaping")
+    parser.add_argument("--reward_scale", type=float, default=1.0, help="Reward scaling factor")
+    parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
 
     return parser.parse_args()
 
@@ -159,6 +167,10 @@ def run_selfplay(
     model: torch.nn.Module,
     num_games: int,
     mcts_sims: int,
+    mcts_type: str = "civ6",
+    board_size: int = 16,
+    max_turns: int = 200,
+    gumbel_num_actions: int = 16,
     mcts_config_override: dict[str, Any] | None = None,
     dry_run: bool = False,
     device: str = "cpu",
@@ -169,6 +181,10 @@ def run_selfplay(
         model: Neural network model for MCTS evaluation.
         num_games: Number of self-play games to run.
         mcts_sims: Number of MCTS simulations per move.
+        mcts_type: MCTS variant to use ("civ6" or "gumbel").
+        board_size: Size of the game board.
+        max_turns: Maximum turns per game.
+        gumbel_num_actions: Number of sampled actions for Gumbel MCTS.
         mcts_config_override: Optional dict of MCTS config overrides
             (c_puct, dirichlet_alpha, dirichlet_epsilon, temperature, temperature_threshold).
         dry_run: If True, create dummy trajectories without running games.
@@ -185,11 +201,14 @@ def run_selfplay(
     # For dry run, return dummy trajectories without needing actual env/MCTS
     if dry_run:
         logger.info("Dry run: creating dummy trajectories")
+        # MicroCivEncoder.TOTAL_CHANNELS = 13 for spatial encoding
+        spatial_channels = 13
+        vector_dim = 64
         dummy_trajectories: list[dict[str, Any]] = []
         for _ in range(num_games):
             dummy_traj: dict[str, Any] = {
-                "spatial": [[0.0] * (64 * 10 * 10) for _ in range(5)],
-                "vector": [[0.0] * 64 for _ in range(5)],
+                "spatial": [[0.0] * (spatial_channels * board_size * board_size) for _ in range(5)],
+                "vector": [[0.0] * vector_dim for _ in range(5)],
                 "policies": [[1.0 / 100] * 100 for _ in range(5)],
                 "actions": [0] * 5,
                 "rewards": [0.5] * 5,
@@ -205,28 +224,40 @@ def run_selfplay(
         game_failed = False
 
         # Create environment and MCTS
-        from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig
+        from alpha_zero.core.mcts_factory import create_mcts
         from alpha_zero.envs.microciv import MicroCivEnv
 
-        env = MicroCivEnv()
+        env = MicroCivEnv(board_size=board_size, max_turns=max_turns)
 
-        # Build MCTS config with optional overrides
-        mcts_params: dict[str, Any] = {
+        # Build variant-aware MCTS kwargs to avoid passing invalid params
+        puct_variants = {"puct", "civ6"}
+        gumbel_variants = {"gumbel"}
+
+        mcts_kwargs: dict[str, Any] = {
             "num_simulations": mcts_sims,
-            "c_puct": 1.5,
-            "dirichlet_alpha": 0.3,
-            "dirichlet_epsilon": 0.25,
             "temperature": 1.0,
             "temperature_threshold": 30,
         }
-        if mcts_config_override:
-            mcts_params.update({k: v for k, v in mcts_config_override.items() if v is not None})
 
-        mcts_config = MCTSConfig(**mcts_params)
-        mcts = Civ6MCTS(
+        if mcts_type in puct_variants:
+            mcts_kwargs.update({
+                "c_puct": 1.5,
+                "dirichlet_alpha": 0.3,
+                "dirichlet_epsilon": 0.25,
+            })
+        elif mcts_type in gumbel_variants:
+            mcts_kwargs["num_sampled_actions"] = mcts_kwargs.get(
+                "num_sampled_actions", gumbel_num_actions,
+            )
+
+        if mcts_config_override:
+            mcts_kwargs.update({k: v for k, v in mcts_config_override.items() if v is not None})
+
+        mcts = create_mcts(
+            variant=mcts_type,
             network=model,
-            config=mcts_config,
             device=device,
+            **mcts_kwargs,
         )
 
         trajectory: dict[str, Any] = {
@@ -331,7 +362,10 @@ def save_trajectories(
 ) -> str | None:
     """Save trajectories to GCS."""
     if dry_run:
-        logger.info("Dry run: would save %d trajectories", len(trajectories))
+        total_states = sum(len(t["spatial"]) for t in trajectories)
+        logger.info(
+            "Dry run: would save %d trajectories (%d states)", len(trajectories), total_states
+        )
         return None
 
     storage = GCSTrajectoryStorage(config, compress=True)
@@ -351,24 +385,59 @@ def main() -> int:
     setup_logging(args.worker_id)
 
     logger.info("Starting self-play worker %d for iteration %d", args.worker_id, args.iteration)
-    logger.info("Model version: %d, Games: %d, MCTS sims: %d", args.model_version, args.games, args.mcts_simulations)
+    logger.info(
+        "Config: model_v%d, %d games, %d MCTS sims (%s), %dx%d board",
+        args.model_version,
+        args.games,
+        args.mcts_simulations,
+        args.mcts_type,
+        args.board_size,
+        args.board_size,
+    )
+
+    # Initialize W&B (disabled by default, opt-in via WANDB_ENABLED env var)
+    wandb_logger = None
+    try:
+        from alpha_zero.utils.wandb_logger import WandbLogger
+
+        wandb_logger = WandbLogger.from_env()
+        if wandb_logger.is_enabled:
+            wandb_logger.init(
+                config_dict={
+                    "worker_id": args.worker_id,
+                    "iteration": args.iteration,
+                    "model_version": args.model_version,
+                    "mcts_type": args.mcts_type,
+                    "mcts_simulations": args.mcts_simulations,
+                    "board_size": args.board_size,
+                    "max_turns": args.max_turns,
+                    "games": args.games,
+                    "mode": "selfplay",
+                }
+            )
+            logger.info("W&B logging enabled")
+    except ImportError:
+        logger.debug("W&B not available")
 
     try:
-        # Load configuration from environment
         config = GCPConfig()
         if not args.dry_run:
             config.validate()
 
-        # Load model
-        model = load_model(config, args.model_version, args.dry_run)
-
-        # Set device
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model = model.to(device)
         logger.info("Using device: %s", device)
 
-        # Build MCTS config overrides from CLI arguments
-        mcts_override: dict[str, Any] = {
+        # Load model
+        model = load_model(
+            config,
+            args.model_version,
+            dry_run=args.dry_run,
+        )
+        model = model.to(device)
+        model.eval()
+
+        # Build MCTS override dict from CLI args
+        mcts_override = {
             "c_puct": args.c_puct,
             "dirichlet_alpha": args.dirichlet_alpha,
             "dirichlet_epsilon": args.dirichlet_epsilon,
@@ -379,21 +448,40 @@ def main() -> int:
         # Run self-play
         start_time = time.time()
         trajectories = run_selfplay(
-            model,
-            args.games,
-            args.mcts_simulations,
+            model=model,
+            num_games=args.games,
+            mcts_sims=args.mcts_simulations,
+            mcts_type=args.mcts_type,
+            board_size=args.board_size,
+            max_turns=args.max_turns,
+            gumbel_num_actions=args.gumbel_num_actions,
             mcts_config_override=mcts_override,
             dry_run=args.dry_run,
             device=str(device),
         )
         elapsed = time.time() - start_time
 
+        # Calculate total states generated (using spatial list length)
+        total_states = sum(len(t["spatial"]) for t in trajectories)
         logger.info(
-            "Self-play complete: %d trajectories in %.1fs (%.1f games/min)",
+            "Self-play complete: %d games, %d states in %.1fs (%.1f games/min)",
             len(trajectories),
+            total_states,
             elapsed,
             len(trajectories) / max(elapsed / 60, 0.001),
         )
+
+        # Log aggregate selfplay metrics to W&B
+        if (
+            wandb_logger is not None
+            and hasattr(wandb_logger, "is_enabled")
+            and wandb_logger.is_enabled
+        ):
+            wandb_logger.log_selfplay(
+                games_completed=len(trajectories),
+                buffer_size=total_states,
+                samples_generated=total_states,
+            )
 
         # Save trajectories
         save_trajectories(
@@ -414,6 +502,13 @@ def main() -> int:
     except Exception as e:
         logger.exception("Worker %d failed: %s", args.worker_id, e)
         return 1
+    finally:
+        if (
+            wandb_logger is not None
+            and hasattr(wandb_logger, "is_enabled")
+            and wandb_logger.is_enabled
+        ):
+            wandb_logger.finish()
 
 
 if __name__ == "__main__":

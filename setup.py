@@ -7,7 +7,7 @@ setup(
     version="0.2.0",
     description="AlphaZero-based AI for Civilization VI with RAG integration",
     packages=find_packages(),
-    python_requires=">=3.11",
+    python_requires=">=3.10",
     install_requires=[
         "torch>=1.13.0",
         "numpy>=1.23.0",
@@ -21,6 +21,7 @@ setup(
             "pytest-asyncio>=0.21.0",
             "mypy>=1.0.0",
             "ruff>=0.1.0",
+            "tqdm>=4.65.0",
             "types-setuptools",
         ],
         "rag": [

@@ -4,6 +4,10 @@ This module provides a unified interface for creating different MCTS variants,
 making it easier to switch between implementations and ensuring consistent
 configuration.
 
+All MCTS variants share a common interface:
+    search(env, add_noise) -> (action_probs, root_value)
+    select_action(action_probs, temperature) -> int
+
 Supported variants:
 - "puct": Standard AlphaZero PUCT-based MCTS (Civ6MCTS)
 - "gumbel": Gumbel MuZero MCTS for efficient inference
@@ -25,17 +29,18 @@ Usage:
 
 from __future__ import annotations
 
+import dataclasses
 from enum import Enum
 from typing import Any, Protocol
 
 import numpy as np
-
-from alpha_zero.utils.constants import MCTS as MCTS_CONSTANTS
+import torch
 
 
 class MCTSVariant(Enum):
     """Available MCTS variants."""
 
+    CIV6 = "civ6"
     PUCT = "puct"
     GUMBEL = "gumbel"
     SIMPLE = "simple"
@@ -85,9 +90,19 @@ class MCTSProtocol(Protocol):
         ...
 
 
+# Registry of MCTS types -> (class_name, config_class_name, default_simulations)
+_MCTS_REGISTRY: dict[str, tuple[str, str, int]] = {
+    "civ6": ("Civ6MCTS", "MCTSConfig", 200),
+    "puct": ("Civ6MCTS", "MCTSConfig", 200),
+    "gumbel": ("GumbelMCTS", "GumbelMCTSConfig", 16),
+    "muzero": ("MuZeroMCTS", "MuZeroMCTSConfig", 50),
+    "simple": ("SimpleMCTS", "None", 20),
+}
+
+
 def create_mcts(
     variant: str | MCTSVariant = "puct",
-    network: Any | None = None,
+    network: torch.nn.Module | None = None,
     config: Any | None = None,
     device: str = "cpu",
     **kwargs: Any,
@@ -109,26 +124,16 @@ def create_mcts(
         device: Device for network inference ("cpu" or "cuda").
         **kwargs: Additional arguments passed to MCTS constructor.
             Common kwargs:
-            - num_simulations: Number of MCTS simulations (default: 50)
-            - c_puct: Exploration constant (default: 1.5)
-            - dirichlet_alpha: Dirichlet noise parameter (default: 0.3)
-            - dirichlet_epsilon: Noise weight (default: 0.25)
+            - num_simulations: Number of MCTS simulations (default: variant default)
+            - c_puct: Exploration constant
+            - dirichlet_alpha: Dirichlet noise parameter
+            - dirichlet_epsilon: Noise weight
 
     Returns:
         MCTS instance implementing MCTSProtocol.
 
     Raises:
         ValueError: If variant is unknown or required arguments are missing.
-
-    Examples:
-        >>> # Simple MCTS for testing (no network needed)
-        >>> mcts = create_mcts("simple", num_simulations=20)
-
-        >>> # Network-guided MCTS for training
-        >>> mcts = create_mcts("puct", network=my_network, num_simulations=100)
-
-        >>> # Efficient inference with Gumbel MCTS
-        >>> mcts = create_mcts("gumbel", network=my_network, num_simulations=16)
     """
     # Normalize variant to string
     if isinstance(variant, MCTSVariant):
@@ -136,68 +141,64 @@ def create_mcts(
 
     variant = variant.lower()
 
-    # Extract common kwargs with defaults from constants
-    num_simulations = kwargs.pop("num_simulations", MCTS_CONSTANTS.DEFAULT_NUM_SIMULATIONS)
-    c_puct = kwargs.pop("c_puct", MCTS_CONSTANTS.DEFAULT_C_PUCT)
-    dirichlet_alpha = kwargs.pop("dirichlet_alpha", MCTS_CONSTANTS.DEFAULT_DIRICHLET_ALPHA)
-    dirichlet_epsilon = kwargs.pop("dirichlet_epsilon", MCTS_CONSTANTS.DEFAULT_DIRICHLET_EPSILON)
+    if variant not in _MCTS_REGISTRY:
+        valid_variants = list(_MCTS_REGISTRY.keys())
+        raise ValueError(f"Unknown MCTS variant: {variant!r}. Valid variants are: {valid_variants}")
+
+    class_name, config_class_name, default_sims = _MCTS_REGISTRY[variant]
+
+    # Normalize simulations
+    num_simulations = kwargs.pop("num_simulations", default_sims)
+
+    # Lazy import to avoid circular dependencies
+    from alpha_zero.core.civ6_mcts import (
+        Civ6MCTS,
+        GumbelMCTS,
+        GumbelMCTSConfig,
+        MCTSConfig,
+        MuZeroMCTS,
+        MuZeroMCTSConfig,
+        SimpleMCTS,
+    )
 
     if variant == "simple":
-        from alpha_zero.core.civ6_mcts import SimpleMCTS
-
         return SimpleMCTS(
             num_simulations=num_simulations,
-            c_puct=c_puct,
             **kwargs,
         )
 
-    elif variant == "puct":
-        if network is None:
-            raise ValueError("Network is required for PUCT MCTS variant")
+    if network is None:
+        raise ValueError(f"Network is required for {variant} MCTS variant")
 
-        from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig
+    # Resolve classes
+    mcts_classes = {
+        "Civ6MCTS": Civ6MCTS,
+        "GumbelMCTS": GumbelMCTS,
+        "MuZeroMCTS": MuZeroMCTS,
+    }
+    config_classes = {
+        "MCTSConfig": MCTSConfig,
+        "GumbelMCTSConfig": GumbelMCTSConfig,
+        "MuZeroMCTSConfig": MuZeroMCTSConfig,
+    }
 
-        if config is None:
-            config = MCTSConfig(
-                num_simulations=num_simulations,
-                c_puct=c_puct,
-                dirichlet_alpha=dirichlet_alpha,
-                dirichlet_epsilon=dirichlet_epsilon,
-            )
+    mcts_cls = mcts_classes[class_name]
 
-        return Civ6MCTS(network, config, device=device, **kwargs)
+    if config is None:
+        config_cls = config_classes[config_class_name]
+        # Build config with overrides
+        config_kwargs = {"num_simulations": num_simulations}
 
-    elif variant == "gumbel":
-        if network is None:
-            raise ValueError("Network is required for Gumbel MCTS variant")
+        # Filter kwargs to only include fields that the config class accepts
+        valid_fields = {f.name for f in dataclasses.fields(config_cls)}
+        for key, value in list(kwargs.items()):
+            if key in valid_fields:
+                config_kwargs[key] = value
+                kwargs.pop(key)  # Remove from kwargs so it doesn't get passed to MCTS twice
 
-        from alpha_zero.core.civ6_mcts import GumbelMCTS, GumbelMCTSConfig
+        config = config_cls(**config_kwargs)
 
-        if config is None:
-            config = GumbelMCTSConfig(
-                num_simulations=num_simulations,
-                c_puct=c_puct,
-            )
-
-        return GumbelMCTS(network, config, device=device, **kwargs)
-
-    elif variant == "muzero":
-        if network is None:
-            raise ValueError("Network is required for MuZero MCTS variant")
-
-        from alpha_zero.core.civ6_mcts import MuZeroMCTS, MuZeroMCTSConfig
-
-        if config is None:
-            config = MuZeroMCTSConfig(
-                num_simulations=num_simulations,
-                c_puct=c_puct,
-            )
-
-        return MuZeroMCTS(network, config, device=device, **kwargs)
-
-    else:
-        valid_variants = [v.value for v in MCTSVariant]
-        raise ValueError(f"Unknown MCTS variant: {variant!r}. Valid variants are: {valid_variants}")
+    return mcts_cls(network=network, config=config, device=device, **kwargs)
 
 
 def get_default_config(variant: str | MCTSVariant) -> Any:
@@ -217,24 +218,25 @@ def get_default_config(variant: str | MCTSVariant) -> Any:
     if variant == "simple":
         return None  # SimpleMCTS doesn't use a config object
 
-    elif variant == "puct":
-        from alpha_zero.core.civ6_mcts import MCTSConfig
+    # Lazy import
+    from alpha_zero.core.civ6_mcts import (
+        GumbelMCTSConfig,
+        MCTSConfig,
+        MuZeroMCTSConfig,
+    )
 
-        return MCTSConfig()
+    config_classes = {
+        "civ6": MCTSConfig,
+        "puct": MCTSConfig,
+        "gumbel": GumbelMCTSConfig,
+        "muzero": MuZeroMCTSConfig,
+    }
 
-    elif variant == "gumbel":
-        from alpha_zero.core.civ6_mcts import GumbelMCTSConfig
+    if variant in config_classes:
+        return config_classes[variant]()
 
-        return GumbelMCTSConfig()
-
-    elif variant == "muzero":
-        from alpha_zero.core.civ6_mcts import MuZeroMCTSConfig
-
-        return MuZeroMCTSConfig()
-
-    else:
-        valid_variants = [v.value for v in MCTSVariant]
-        raise ValueError(f"Unknown MCTS variant: {variant!r}. Valid variants are: {valid_variants}")
+    valid_variants = list(_MCTS_REGISTRY.keys())
+    raise ValueError(f"Unknown MCTS variant: {variant!r}. Valid variants are: {valid_variants}")
 
 
 def list_variants() -> list[str]:
@@ -243,4 +245,13 @@ def list_variants() -> list[str]:
     Returns:
         List of variant names.
     """
-    return [v.value for v in MCTSVariant]
+    return list(_MCTS_REGISTRY.keys())
+
+
+def get_available_mcts_types() -> list[str]:
+    """List all available MCTS types (alias for list_variants).
+
+    Returns:
+        List of variant names.
+    """
+    return list_variants()

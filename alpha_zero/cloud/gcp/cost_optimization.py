@@ -146,31 +146,22 @@ class CostOptimizationConfig:
     """
 
     enabled: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_COST_OPT_ENABLED", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_COST_OPT_ENABLED", "true").lower() == "true"
     )
     cost_monitor: CostMonitorConfig = field(default_factory=CostMonitorConfig)
     gpu_scheduler: GPUSchedulerConfig = field(default_factory=GPUSchedulerConfig)
     idle_manager: IdleInstanceConfig = field(default_factory=IdleInstanceConfig)
-    preemption_handler: PreemptionHandlerConfig = field(
-        default_factory=PreemptionHandlerConfig
-    )
+    preemption_handler: PreemptionHandlerConfig = field(default_factory=PreemptionHandlerConfig)
     quota_manager: QuotaManagerConfig = field(default_factory=QuotaManagerConfig)
     default_region: str = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_DEFAULT_REGION", "us-central1"
-        )
+        default_factory=lambda: os.environ.get("CIV6AZ_DEFAULT_REGION", "us-central1")
     )
     enable_spot_vms: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_ENABLE_SPOT_VMS", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_ENABLE_SPOT_VMS", "true").lower() == "true"
     )
     fallback_to_on_demand: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_FALLBACK_ON_DEMAND", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_FALLBACK_ON_DEMAND", "true").lower()
+        == "true"
     )
 
     @classmethod
@@ -375,6 +366,7 @@ class CostOptimizationManager:
 
     def _register_callbacks(self) -> None:
         """Register internal callbacks between components."""
+
         # Notify idle manager when job completes checkpoint
         def on_checkpoint(path: str) -> None:
             self._checkpoints += 1
@@ -430,9 +422,7 @@ class CostOptimizationManager:
         region = self.config.default_region
         if not self.quota_manager.can_launch(gpu_type, gpu_count, region):
             # Try fallback
-            fallback = self.quota_manager.get_fallback_config(
-                gpu_type, region, gpu_count
-            )
+            fallback = self.quota_manager.get_fallback_config(gpu_type, region, gpu_count)
             if fallback:
                 if fallback.gpu_type:
                     gpu_type = fallback.gpu_type
@@ -571,16 +561,16 @@ class CostOptimizationManager:
 
         # GPU optimization savings (T4 vs V100 differential)
         # Simplified: estimate 50% savings from using T4 for early phases
-        gpu_optimization_savings = (self._spot_hours + self._on_demand_hours) * 0.5 * (v100_on_demand - t4_on_demand)
+        gpu_optimization_savings = (
+            (self._spot_hours + self._on_demand_hours) * 0.5 * (v100_on_demand - t4_on_demand)
+        )
 
         total_cost = spot_cost + on_demand_cost
         estimated_full_price = spot_full_price + on_demand_cost + gpu_optimization_savings
         total_savings = spot_savings + idle_savings + gpu_optimization_savings
 
         savings_percentage = (
-            (total_savings / estimated_full_price * 100)
-            if estimated_full_price > 0
-            else 0.0
+            (total_savings / estimated_full_price * 100) if estimated_full_price > 0 else 0.0
         )
 
         return SavingsReport(
@@ -608,11 +598,13 @@ class CostOptimizationManager:
             "monitoring": self._monitoring,
             "uptime_hours": (time.time() - self._start_time) / 3600 if self._start_time else 0,
             "cost_monitor": self.cost_monitor.get_statistics() if self._cost_monitor else None,
-            "gpu_scheduler": {
-                "current_config": self.gpu_scheduler.config.to_dict()
-            } if self._gpu_scheduler else None,
+            "gpu_scheduler": {"current_config": self.gpu_scheduler.config.to_dict()}
+            if self._gpu_scheduler
+            else None,
             "idle_manager": self.idle_manager.get_statistics() if self._idle_manager else None,
-            "preemption_handler": self.preemption_handler.get_statistics() if self._preemption_handler else None,
+            "preemption_handler": self.preemption_handler.get_statistics()
+            if self._preemption_handler
+            else None,
             "quota_manager": self.quota_manager.get_statistics() if self._quota_manager else None,
             "savings": self.get_savings_report().to_dict(),
         }

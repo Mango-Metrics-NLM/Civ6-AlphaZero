@@ -57,6 +57,10 @@ class MockStorageBackend:
                 results.append(key.split("/", 1)[1])
         return results
 
+    def delete_blob(self, bucket: str, blob_path: str) -> None:
+        key = f"{bucket}/{blob_path}"
+        self._storage.pop(key, None)
+
 
 class MockModel(nn.Module):
     """Simple mock model for testing."""
@@ -146,7 +150,7 @@ class TestParseArgs:
         assert args.model_version == 10
         assert args.iteration == 20
         assert args.games == 100  # default
-        assert args.mcts_simulations == 400  # default
+        assert args.mcts_simulations == 100  # default
         assert args.dry_run is False  # default
 
     def test_parse_args_with_custom_values(self) -> None:
@@ -372,6 +376,7 @@ class TestRunSelfplay:
             # policies should be list
             assert isinstance(traj["policies"][0], list)
 
+
     def test_mcts_config_override(self, mock_model: MockModel) -> None:
         """Test that MCTS config override is applied."""
         from alpha_zero.cloud.gcp.selfplay_worker import run_selfplay
@@ -391,6 +396,82 @@ class TestRunSelfplay:
         )
 
         assert len(trajectories) == 1
+
+    @patch("alpha_zero.envs.microciv.MicroCivEnv")
+    @patch("alpha_zero.core.mcts_factory.create_mcts")
+    def test_run_selfplay_gumbel_configuration(
+        self, mock_create_mcts: MagicMock, mock_env_cls: MagicMock, mock_model: MockModel
+    ) -> None:
+        """Test that Gumbel MCTS configuration is correctly passed."""
+        from alpha_zero.cloud.gcp.selfplay_worker import run_selfplay
+
+        # Mock environment
+        mock_env = mock_env_cls.return_value
+        mock_env.get_observation.return_value = {
+            "spatial": MagicMock(flatten=lambda: MagicMock(tolist=lambda: [])),
+            "vector": MagicMock(flatten=lambda: MagicMock(tolist=lambda: [])),
+        }
+        mock_env.step.return_value = (None, 0.5, True, False, {})
+        
+        # Mock MCTS
+        mock_mcts = mock_create_mcts.return_value
+        mock_mcts.search.return_value = (MagicMock(tolist=lambda: []), {})
+        mock_mcts.select_action.return_value = 0
+
+        # Run with Gumbel MCTS and specific num_actions
+        run_selfplay(
+            model=mock_model,
+            num_games=1,
+            mcts_sims=50,
+            mcts_type="gumbel",
+            gumbel_num_actions=8,
+            dry_run=False,
+        )
+
+        # Verify create_mcts was called with correct parameters
+        mock_create_mcts.assert_called_once()
+        call_kwargs = mock_create_mcts.call_args[1]
+        
+        assert call_kwargs["variant"] == "gumbel"
+        assert call_kwargs["num_simulations"] == 50
+        assert call_kwargs["num_sampled_actions"] == 8
+
+    @patch("alpha_zero.envs.microciv.MicroCivEnv")
+    @patch("alpha_zero.core.mcts_factory.create_mcts")
+    def test_run_selfplay_gumbel_defaults(
+        self, mock_create_mcts: MagicMock, mock_env_cls: MagicMock, mock_model: MockModel
+    ) -> None:
+        """Test that Gumbel MCTS defaults to sims if num_actions not provided (legacy behavior)."""
+        from alpha_zero.cloud.gcp.selfplay_worker import run_selfplay
+
+         # Mock environment
+        mock_env = mock_env_cls.return_value
+        mock_env.get_observation.return_value = {
+            "spatial": MagicMock(flatten=lambda: MagicMock(tolist=lambda: [])),
+            "vector": MagicMock(flatten=lambda: MagicMock(tolist=lambda: [])),
+        }
+        mock_env.step.return_value = (None, 0.5, True, False, {})
+        
+        # Mock MCTS
+        mock_mcts = mock_create_mcts.return_value
+        mock_mcts.search.return_value = (MagicMock(tolist=lambda: []), {})
+        mock_mcts.select_action.return_value = 0
+
+        # Run with Gumbel MCTS but without explicit gumbel_num_actions (using function default 16)
+        run_selfplay(
+            model=mock_model,
+            num_games=1,
+            mcts_sims=50,
+            mcts_type="gumbel",
+            # gumbel_num_actions defaults to 16
+            dry_run=False,
+        )
+
+        # Verify create_mcts was called with default 16
+        mock_create_mcts.assert_called_once()
+        call_args = mock_create_mcts.call_args[1]
+        assert call_args["variant"] == "gumbel"
+        assert call_args["num_sampled_actions"] == 16
 
 
 # =============================================================================

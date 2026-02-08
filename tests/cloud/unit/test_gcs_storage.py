@@ -163,7 +163,7 @@ class TestGCSModelStorage:
         storage.save_model(simple_model, version=1, metadata={"iteration": 50})
 
         # Load back
-        state_dict, metadata = storage.load_model(version=1)
+        state_dict, metadata, _model_config = storage.load_model(version=1)
 
         assert "weight" in state_dict
         assert metadata.version == 1
@@ -184,7 +184,7 @@ class TestGCSModelStorage:
         storage.save_model(simple_model, version=3)
 
         # Load latest (should be v3)
-        _state_dict, metadata = storage.load_model()
+        _state_dict, metadata, _model_config = storage.load_model()
         assert metadata.version == 3
 
     def test_get_latest_version(
@@ -488,7 +488,7 @@ class TestGCPConfig:
         """Test budget tier preset."""
         config = GCPConfig.with_tier("budget")
         assert config.self_play.accelerator_type == "NVIDIA_TESLA_T4"
-        assert config.training.accelerator_type == "NVIDIA_L4"
+        assert config.training.accelerator_type == "NVIDIA_TESLA_T4"
         assert config.self_play.spot is True
 
     def test_with_tier_ondemand(self) -> None:

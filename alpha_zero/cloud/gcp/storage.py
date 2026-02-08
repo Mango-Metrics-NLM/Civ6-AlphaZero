@@ -362,6 +362,11 @@ class GCSModelStorage:
         self._bucket = config.bucket
         self._paths = config.paths
 
+    @property
+    def bucket(self) -> str:
+        """Get the GCS bucket name."""
+        return self._bucket
+
     def save_model(
         self,
         model: ModelLike,
@@ -557,6 +562,11 @@ class GCSTrajectoryStorage:
         self._paths = config.paths
         self._compress = compress
 
+    @property
+    def bucket(self) -> str:
+        """Get the GCS bucket name."""
+        return self._bucket
+
     def save_trajectories(
         self,
         trajectories: list[Any],
@@ -714,6 +724,11 @@ class GCSCheckpointStorage:
         self._bucket = config.bucket
         self._paths = config.paths
 
+    @property
+    def bucket(self) -> str:
+        """Get the GCS bucket name."""
+        return self._bucket
+
     def save_checkpoint(
         self,
         model: ModelLike,
@@ -778,7 +793,9 @@ class GCSCheckpointStorage:
             buffer = io.BytesIO(data)
             # weights_only=False needed for optimizer state and training metadata
             checkpoint = _torch_load_compat(buffer, map_location="cpu", weights_only=False)
-            logger.info("Loaded checkpoint from %s (step %d)", ckpt_path, checkpoint.get("step", -1))
+            logger.info(
+                "Loaded checkpoint from %s (step %d)", ckpt_path, checkpoint.get("step", -1)
+            )
             return checkpoint
         except GCSStorageError:
             logger.warning("No checkpoint found at %s", ckpt_path)

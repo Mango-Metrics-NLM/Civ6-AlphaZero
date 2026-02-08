@@ -25,6 +25,13 @@ from alpha_zero.cloud.gcp.exceptions import BudgetExceededError, ConfigurationEr
 logger = logging.getLogger(__name__)
 
 
+def _get_gpu_costs_for_monitor() -> dict[str, float]:
+    """Get GPU costs from centralized config with env-var overrides."""
+    from alpha_zero.cloud.gcp.config import get_gpu_costs
+
+    return get_gpu_costs()
+
+
 class AlertLevel(str, Enum):
     """Cost alert severity levels."""
 
@@ -123,24 +130,13 @@ class CostMonitorConfig:
         default_factory=lambda: int(os.environ.get("CIV6AZ_COST_CHECK_INTERVAL_S", "300"))
     )
     billing_api_enabled: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_COST_BILLING_API_ENABLED", "false"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_COST_BILLING_API_ENABLED", "false").lower()
+        == "true"
     )
 
     # GPU pricing estimates (hourly USD) - used when Billing API unavailable
-    gpu_prices: dict[str, float] = field(
-        default_factory=lambda: {
-            "NVIDIA_TESLA_T4": 0.35,
-            "NVIDIA_TESLA_T4_SPOT": 0.11,
-            "NVIDIA_L4": 0.81,
-            "NVIDIA_L4_SPOT": 0.24,
-            "NVIDIA_TESLA_V100": 2.48,
-            "NVIDIA_TESLA_V100_SPOT": 0.74,
-            "NVIDIA_TESLA_A100": 3.67,
-            "NVIDIA_TESLA_A100_SPOT": 1.10,
-        }
-    )
+    # Defaults can be overridden via CIV6AZ_GPU_COST_* environment variables
+    gpu_prices: dict[str, float] = field(default_factory=_get_gpu_costs_for_monitor)
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -313,8 +309,7 @@ class CostMonitor:
         if current_day > self._current_day_start:
             with self._lock:
                 logger.info(
-                    f"New day started, resetting daily cost "
-                    f"(previous: ${self._daily_cost_usd:.2f})"
+                    f"New day started, resetting daily cost (previous: ${self._daily_cost_usd:.2f})"
                 )
                 self._daily_cost_usd = 0.0
                 self._current_day_start = current_day
@@ -339,13 +334,9 @@ class CostMonitor:
             self._daily_cost_usd += amount_usd
 
             if gpu_type:
-                self._costs_by_gpu[gpu_type] = (
-                    self._costs_by_gpu.get(gpu_type, 0.0) + amount_usd
-                )
+                self._costs_by_gpu[gpu_type] = self._costs_by_gpu.get(gpu_type, 0.0) + amount_usd
             if job_type:
-                self._costs_by_job[job_type] = (
-                    self._costs_by_job.get(job_type, 0.0) + amount_usd
-                )
+                self._costs_by_job[job_type] = self._costs_by_job.get(job_type, 0.0) + amount_usd
 
         logger.debug(
             f"Recorded cost: ${amount_usd:.4f} "
@@ -427,9 +418,7 @@ class CostMonitor:
         # Calculate estimated daily rate
         elapsed_hours = (time.time() - self._tracking_start_time) / 3600.0
         estimated_rate = (
-            breakdown.total_project_usd / elapsed_hours * 24
-            if elapsed_hours > 0
-            else 0.0
+            breakdown.total_project_usd / elapsed_hours * 24 if elapsed_hours > 0 else 0.0
         )
 
         # Determine alert level
@@ -567,10 +556,7 @@ class CostMonitor:
             daemon=True,
         )
         self._monitor_thread.start()
-        logger.info(
-            f"Started cost monitoring "
-            f"(interval={self.config.check_interval_seconds}s)"
-        )
+        logger.info(f"Started cost monitoring (interval={self.config.check_interval_seconds}s)")
 
     def stop_monitoring(self) -> None:
         """Stop background cost monitoring thread."""

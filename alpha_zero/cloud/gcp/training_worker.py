@@ -25,7 +25,7 @@ import sys
 import time
 
 import torch
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.storage import (
@@ -59,16 +59,55 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=10, help="Training epochs")
     parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
     parser.add_argument("--learning_rate", type=float, default=0.001, help="Learning rate")
-    parser.add_argument("--checkpoint_interval", type=int, default=1000, help="Steps between checkpoints")
+    parser.add_argument(
+        "--checkpoint_interval", type=int, default=1000, help="Steps between checkpoints"
+    )
     parser.add_argument("--resume_from", type=str, default=None, help="Checkpoint to resume from")
+    # Network architecture args passed by the Vertex orchestrator
+    parser.add_argument("--board_size", type=int, default=16, help="Board size (spatial_size)")
+    parser.add_argument("--action_space_size", type=int, default=381, help="Action space size")
+    parser.add_argument("--num_res_blocks", type=int, default=8, help="Number of transformer layers")
+    parser.add_argument("--num_filters", type=int, default=256, help="Model embedding dimension")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
     return parser.parse_args()
+
+
+class TrajectoryDataset(Dataset):
+    """Dataset that holds pre-extracted training examples from trajectories."""
+
+    def __init__(
+        self,
+        spatial: torch.Tensor,
+        vector: torch.Tensor,
+        action_mask: torch.Tensor,
+        policy: torch.Tensor,
+        value: torch.Tensor,
+    ) -> None:
+        self.spatial = spatial
+        self.vector = vector
+        self.action_mask = action_mask
+        self.policy = policy
+        self.value = value
+
+    def __len__(self) -> int:
+        return self.spatial.shape[0]
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, ...]:
+        return (
+            self.spatial[idx],
+            self.vector[idx],
+            self.action_mask[idx],
+            self.policy[idx],
+            self.value[idx],
+        )
 
 
 def load_trajectories(
     config: GCPConfig,
     iterations: list[int],
     max_per_iteration: int = 50000,
+    board_size: int = 8,
+    action_space_size: int = 376,
     dry_run: bool = False,
 ) -> list[dict]:
     """Load trajectories from specified iterations."""
@@ -98,15 +137,40 @@ def load_trajectories(
     return all_trajectories
 
 
-def create_model(dry_run: bool = False) -> torch.nn.Module:
-    """Create model architecture."""
+# MicroCivEncoder.TOTAL_CHANNELS — input spatial feature planes from the encoder
+ENCODER_SPATIAL_CHANNELS: int = 13
+
+
+def create_model(
+    board_size: int = 16,
+    action_space_size: int = 381,
+    num_res_blocks: int = 8,
+    num_filters: int = 256,
+    spatial_channels: int = ENCODER_SPATIAL_CHANNELS,
+) -> torch.nn.Module:
+    """Create model architecture.
+
+    Args:
+        board_size: Board size = spatial_size input dimension (H=W).
+        action_space_size: Total number of actions.
+        num_res_blocks: Maps to TransformerConfig.num_layers.
+        num_filters: Maps to TransformerConfig.embed_dim.
+        spatial_channels: Input spatial channels (from encoder, default 13).
+    """
     from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
     model_config = TransformerConfig(
-        spatial_channels=64,
-        spatial_size=10,
+        spatial_channels=spatial_channels,
+        spatial_size=board_size,
         vector_dim=64,
-        action_space_size=100,
+        action_space_size=action_space_size,
+        num_layers=num_res_blocks,
+        embed_dim=num_filters,
+    )
+    logger.info(
+        "Creating model: spatial=(%d, %d, %d), actions=%d, layers=%d, embed_dim=%d",
+        spatial_channels, board_size, board_size,
+        action_space_size, num_res_blocks, num_filters,
     )
     return Civ6TransformerNetwork(config=model_config)
 
@@ -125,6 +189,8 @@ def prepare_dataset(
     Returns:
         TensorDataset with spatial, vector, policy, and value tensors.
     """
+    from torch.utils.data import TensorDataset
+
     # Get vector_dim from config if not specified
     if vector_dim is None:
         from alpha_zero.core.transformer_network import TransformerConfig
@@ -165,7 +231,7 @@ def prepare_dataset(
     spatial_tensor = torch.tensor(spatial_list, dtype=torch.float32)
     vector_tensor = torch.tensor(vector_list, dtype=torch.float32)
     policies_tensor = torch.tensor(policies, dtype=torch.float32)
-    values_tensor = torch.tensor(values, dtype=torch.float32).unsqueeze(-1)
+    values_tensor = torch.tensor(values, dtype=torch.float32)
 
     return TensorDataset(spatial_tensor, vector_tensor, policies_tensor, values_tensor)
 
@@ -175,6 +241,10 @@ def train_epoch(
     dataloader: DataLoader,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
+    global_step: int = 0,
+    wandb_logger: object | None = None,
+    spatial_channels: int = 64,
+    spatial_size: int = 10,
 ) -> tuple[float, float, float, int]:
     """Train for one epoch.
 
@@ -194,9 +264,16 @@ def train_epoch(
         target_values = target_values.to(device)
 
         # Forward pass
-        # Reshape spatial for transformer input
+        # Reshape spatial for transformer input and validate
         batch_size = spatial.shape[0]
-        spatial = spatial.view(batch_size, 64, 10, 10)  # B, C, H, W
+        expected_flat = spatial_channels * spatial_size * spatial_size
+        if spatial.shape[1] != expected_flat:
+            raise ValueError(
+                f"Spatial tensor flat dim {spatial.shape[1]} != "
+                f"expected {spatial_channels}x{spatial_size}x{spatial_size}={expected_flat}. "
+                f"Ensure encoder channels and board_size match between selfplay and training."
+            )
+        spatial = spatial.view(batch_size, spatial_channels, spatial_size, spatial_size)  # B, C, H, W
 
         policy_logits, value = model(spatial, vector)
 
@@ -213,12 +290,29 @@ def train_epoch(
         # Backward pass
         optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
         total_loss += loss.item()
         total_policy_loss += policy_loss.item()
         total_value_loss += value_loss.item()
         num_batches += 1
+
+        # Log to W&B periodically
+        if (
+            wandb_logger is not None
+            and hasattr(wandb_logger, "is_enabled")
+            and wandb_logger.is_enabled
+        ):
+            if num_batches % 10 == 0:
+                lr = optimizer.param_groups[0]["lr"]
+                wandb_logger.log_training_step(
+                    step=global_step + num_batches,
+                    loss=loss.item(),
+                    policy_loss=policy_loss.item(),
+                    value_loss=value_loss.item(),
+                    learning_rate=lr,
+                )
 
     return (
         total_loss / max(num_batches, 1),
@@ -270,7 +364,6 @@ def save_final_model(
 
     storage = GCSModelStorage(config)
 
-    # Get next version number
     try:
         latest = storage.get_latest_version()
         new_version = latest + 1
@@ -280,9 +373,7 @@ def save_final_model(
     uri = storage.save_model(
         model=model,
         version=new_version,
-        metadata={
-            "iteration": iteration,
-        },
+        metadata={"iteration": iteration},
     )
     logger.info("Saved model v%d to %s", new_version, uri)
     return uri, new_version
@@ -295,20 +386,52 @@ def main() -> int:
 
     trajectory_iterations = [int(x) for x in args.trajectory_iterations.split(",")]
     logger.info("Starting training for iteration %d", args.iteration)
-    logger.info("Trajectory iterations: %s, Epochs: %d", trajectory_iterations, args.epochs)
+    logger.info(
+        "Config: trajectories from %s, %d epochs, board=%dx%d",
+        trajectory_iterations,
+        args.epochs,
+        args.board_size,
+        args.board_size,
+    )
+
+    # Initialize W&B (disabled by default, opt-in via WANDB_ENABLED env var)
+    wandb_logger = None
+    try:
+        from alpha_zero.utils.wandb_logger import WandbLogger
+
+        wandb_logger = WandbLogger.from_env()
+        if wandb_logger.is_enabled:
+            wandb_logger.init(
+                config_dict={
+                    "iteration": args.iteration,
+                    "trajectory_iterations": trajectory_iterations,
+                    "epochs": args.epochs,
+                    "batch_size": args.batch_size,
+                    "learning_rate": args.learning_rate,
+                    "board_size": args.board_size,
+                    "mode": "training",
+                }
+            )
+            logger.info("W&B logging enabled")
+    except ImportError:
+        logger.debug("W&B not available")
 
     try:
-        # Load configuration
         config = GCPConfig()
         if not args.dry_run:
             config.validate()
 
-        # Set device
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info("Using device: %s", device)
 
         # Load trajectories
-        trajectories = load_trajectories(config, trajectory_iterations, dry_run=args.dry_run)
+        trajectories = load_trajectories(
+            config,
+            trajectory_iterations,
+            board_size=args.board_size,
+            action_space_size=args.action_space_size,
+            dry_run=args.dry_run,
+        )
 
         # Validate we have data to train on
         if not trajectories:
@@ -334,13 +457,19 @@ def main() -> int:
             dataset,
             batch_size=args.batch_size,
             shuffle=True,
-            num_workers=4,
-            pin_memory=True,
+            # num_workers=0 avoids multiprocessing issues inside containers
+            num_workers=0,
+            pin_memory=device.type == "cuda",
         )
         logger.info("Dataset size: %d examples, %d batches", len(dataset), len(dataloader))
 
         # Create model
-        model = create_model(args.dry_run)
+        model = create_model(
+            board_size=args.board_size,
+            action_space_size=args.action_space_size,
+            num_res_blocks=args.num_res_blocks,
+            num_filters=args.num_filters,
+        )
         model = model.to(device)
 
         # Create optimizer
@@ -349,23 +478,20 @@ def main() -> int:
         # Resume from checkpoint if specified
         start_epoch = 0
         global_step = 0
-        if args.resume_from:
+        if args.resume_from and not args.dry_run:
             checkpoint_storage = GCSCheckpointStorage(config)
-            # Parse resume_from: if numeric, treat as step number; otherwise load latest
             step_to_load: int | None = None
             if args.resume_from.isdigit():
                 step_to_load = int(args.resume_from)
-                logger.info("Resuming from checkpoint step %d", step_to_load)
-            elif args.resume_from.lower() != "latest":
-                # If it's a path like "gs://..." extract step from path if possible
-                # e.g., "gs://bucket/checkpoints/.../training_step_1000.pt"
-                if "training_step_" in args.resume_from:
-                    try:
-                        step_str = args.resume_from.split("training_step_")[1].replace(".pt", "")
-                        step_to_load = int(step_str)
-                        logger.info("Extracted step %d from path: %s", step_to_load, args.resume_from)
-                    except (IndexError, ValueError):
-                        logger.warning("Could not parse step from path: %s, loading latest", args.resume_from)
+            elif "training_step_" in args.resume_from:
+                try:
+                    step_str = args.resume_from.split("training_step_")[1].replace(".pt", "")
+                    step_to_load = int(step_str)
+                except (IndexError, ValueError):
+                    logger.warning(
+                        "Failed to parse resume_from value '%s'; loading latest checkpoint",
+                        args.resume_from,
+                    )
 
             checkpoint = checkpoint_storage.load_checkpoint(step=step_to_load)
             if checkpoint:
@@ -373,7 +499,9 @@ def main() -> int:
                 optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
                 global_step = checkpoint.get("step", 0)
                 start_epoch = checkpoint.get("epoch", 0)
-                logger.info("Resumed from checkpoint at step %d, epoch %d", global_step, start_epoch)
+                logger.info(
+                    "Resumed from checkpoint at step %d, epoch %d", global_step, start_epoch
+                )
 
         # Training loop
         start_time = time.time()
@@ -381,11 +509,22 @@ def main() -> int:
         for epoch in range(start_epoch, args.epochs):
             epoch_start = time.time()
 
-            loss, policy_loss, value_loss, num_batches = train_epoch(model, dataloader, optimizer, device)
+            # Spatial dims must match encoder output, NOT model embed_dim
+            spatial_channels = ENCODER_SPATIAL_CHANNELS
+            spatial_size = args.board_size
+
+            loss, policy_loss, value_loss, num_batches = train_epoch(
+                model,
+                dataloader,
+                optimizer,
+                device,
+                global_step=global_step,
+                wandb_logger=wandb_logger,
+                spatial_channels=spatial_channels,
+                spatial_size=spatial_size,
+            )
 
             epoch_time = time.time() - epoch_start
-
-            # Increment step count by actual batches processed (per-batch granularity)
             prev_step = global_step
             global_step += num_batches
 
@@ -401,7 +540,7 @@ def main() -> int:
                 global_step,
             )
 
-            # Checkpoint if we crossed an interval boundary during this epoch
+            # Checkpoint if we crossed an interval boundary
             if (global_step // args.checkpoint_interval) > (prev_step // args.checkpoint_interval):
                 save_checkpoint(config, model, optimizer, global_step, epoch + 1, args.dry_run)
 
@@ -427,6 +566,13 @@ def main() -> int:
     except Exception as e:
         logger.exception("Training failed: %s", e)
         return 1
+    finally:
+        if (
+            wandb_logger is not None
+            and hasattr(wandb_logger, "is_enabled")
+            and wandb_logger.is_enabled
+        ):
+            wandb_logger.finish()
 
 
 if __name__ == "__main__":
