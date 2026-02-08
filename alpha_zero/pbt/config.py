@@ -407,6 +407,7 @@ class AgentState:
         generation: Generation number (increments on exploitation)
         parent_id: ID of parent agent (if created via exploitation)
         model_path: Path to saved model weights
+        elo_rating: ELO rating for tournament-based fitness evaluation
         created_at: Timestamp of agent creation
         last_updated: Timestamp of last update
     """
@@ -420,6 +421,7 @@ class AgentState:
     generation: int = 0
     parent_id: str | None = None
     model_path: str | None = None
+    elo_rating: float = 1200.0
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     last_updated: str = field(default_factory=lambda: datetime.utcnow().isoformat())
 
@@ -493,6 +495,7 @@ class AgentState:
             "generation": self.generation,
             "parent_id": self.parent_id,
             "model_path": self.model_path,
+            "elo_rating": self.elo_rating,
             "created_at": self.created_at,
             "last_updated": self.last_updated,
         }
@@ -510,6 +513,7 @@ class AgentState:
             generation=data.get("generation", 0),
             parent_id=data.get("parent_id"),
             model_path=data.get("model_path"),
+            elo_rating=data.get("elo_rating", 1200.0),
             created_at=data.get("created_at", datetime.utcnow().isoformat()),
             last_updated=data.get("last_updated", datetime.utcnow().isoformat()),
         )
@@ -609,6 +613,12 @@ class PBTConfig:
     convergence_threshold: float = 0.01
     convergence_window: int = 50
 
+    # Cross-agent evaluation settings
+    evaluation_strategy: str = "round_robin"  # "round_robin" or "top_k_vs_best"
+    evaluation_games_per_match: int = 10
+    elo_initial_rating: float = 1200.0
+    elo_k_factor: float = 32.0
+
     ENV_PREFIX: str = field(default="CIV6AZ_PBT_", repr=False)
 
     def __post_init__(self) -> None:
@@ -624,6 +634,14 @@ class PBTConfig:
             raise ValueError("mutation_probability must be between 0 and 1")
         if not 0 < self.mutation_strength <= 1:
             raise ValueError("mutation_strength must be between 0 and 1")
+        _valid_strategies = {"round_robin", "top_k_vs_best"}
+        if self.evaluation_strategy not in _valid_strategies:
+            raise ValueError(
+                f"evaluation_strategy must be one of {_valid_strategies}, "
+                f"got '{self.evaluation_strategy}'"
+            )
+        if self.evaluation_games_per_match < 1:
+            raise ValueError("evaluation_games_per_match must be >= 1")
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> PBTConfig:
@@ -669,6 +687,7 @@ class PBTConfig:
             current_value = getattr(config, param_name)
 
             try:
+                typed_value: Any
                 if isinstance(current_value, bool):
                     typed_value = value.lower() in ("true", "1", "yes")
                 elif isinstance(current_value, int):
@@ -729,6 +748,10 @@ class PBTConfig:
             "wandb_tags": self.wandb_tags,
             "convergence_threshold": self.convergence_threshold,
             "convergence_window": self.convergence_window,
+            "evaluation_strategy": self.evaluation_strategy,
+            "evaluation_games_per_match": self.evaluation_games_per_match,
+            "elo_initial_rating": self.elo_initial_rating,
+            "elo_k_factor": self.elo_k_factor,
         }
 
     def save(self, path: str | Path) -> None:
