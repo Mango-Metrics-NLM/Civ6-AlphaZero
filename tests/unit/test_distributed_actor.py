@@ -496,7 +496,7 @@ class TestActorPool:
         restart_process.is_alive.return_value = True
 
         # Use side_effect to return different mocks in sequence
-        mock_process_class.side_effect = initial_processes + [restart_process]
+        mock_process_class.side_effect = [*initial_processes, restart_process]
 
         pool = ActorPool(
             num_actors=3,

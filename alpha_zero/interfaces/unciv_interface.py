@@ -950,7 +950,7 @@ class UncivInterface:
         board_size: int = 16,
         max_units: int = 100,
         max_cities: int = 20,
-    ):
+    ) -> None:
         """Initialize the Unciv interface.
 
         Args:

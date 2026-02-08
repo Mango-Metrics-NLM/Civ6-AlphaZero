@@ -1,0 +1,36 @@
+# Self-play worker image for distributed training
+# Runs self-play games and writes trajectories to storage
+#
+# Build: docker build -f dockerfiles/Dockerfile.selfplay -t civ6-selfplay .
+# Run: docker run -e CIV6_GCS_BUCKET=my-bucket civ6-selfplay --num-games=100
+
+ARG BASE_IMAGE=civ6-alphazero-base:latest
+FROM ${BASE_IMAGE}
+
+# Metadata
+LABEL maintainer="Civ6-AlphaZero"
+LABEL description="Self-play worker for Civ6 AlphaZero"
+LABEL component="selfplay"
+
+# Self-play specific environment
+ENV CIV6_COMPONENT=selfplay \
+    # Worker configuration (can be overridden)
+    CIV6_NUM_GAMES=100 \
+    CIV6_NUM_SIMULATIONS=800 \
+    CIV6_WORKER_ID=0 \
+    CIV6_ITERATION=0 \
+    # MCTS configuration
+    CIV6_MCTS_C_PUCT=1.5 \
+    CIV6_MCTS_DIRICHLET_ALPHA=0.3 \
+    CIV6_MCTS_DIRICHLET_EPSILON=0.25 \
+    # Device configuration
+    CIV6_DEVICE=cuda
+
+# Copy entry point script
+COPY --chown=appuser:appuser infra/entrypoints/selfplay_entrypoint.py /app/entrypoints/
+
+# Set entry point
+ENTRYPOINT ["python", "-m", "alpha_zero.cloud.selfplay_worker"]
+
+# Default arguments (can be overridden)
+CMD ["--help"]

@@ -27,7 +27,7 @@ Usage:
 
     # Check if game is alive
     if bridge.check_heartbeat():
-        print("Game is connected")
+        logger.info("Game is connected")
 """
 
 from alpha_zero.bridge.config import (
@@ -60,35 +60,35 @@ from alpha_zero.bridge.protocol import (
 )
 
 __all__ = [
+    "MAP_SIZES",
+    "AckMessage",
+    "ActionType",
     # Config
     "BridgeConfig",
+    "CityData",
+    "CommandMessage",
+    "ErrorCode",
+    "ErrorMessage",
+    "GameStateData",
+    "LegalAction",
+    "LuaCommand",
+    "MapData",
     "MapSizeConfig",
-    "MAP_SIZES",
-    "get_map_config",
     # Protocol - Enums
     "MessageType",
-    "ActionType",
-    "ErrorCode",
+    "PlayerData",
     # Protocol - Data classes
     "Position",
-    "LuaCommand",
-    "TileData",
-    "UnitData",
-    "CityData",
-    "PlayerData",
-    "LegalAction",
-    "MapData",
-    "GameStateData",
     # Protocol - Messages
     "StateMessage",
-    "CommandMessage",
-    "AckMessage",
-    "ErrorMessage",
-    # Protocol - Utilities
-    "validate_state_json",
+    "TileData",
+    "UnitData",
+    "create_city_produce_command",
     "create_end_turn_command",
     "create_unit_move_command",
-    "create_city_produce_command",
+    "get_map_config",
+    # Protocol - Utilities
+    "validate_state_json",
 ]
 
 

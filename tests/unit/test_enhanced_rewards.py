@@ -169,7 +169,7 @@ class TestWinConditionEvaluator:
             enemy_cities=2,
         )
 
-        bonus, victory_type = evaluator.evaluate(
+        bonus, _victory_type = evaluator.evaluate(
             features=features,
             game_ended=True,
             winner=1,  # Enemy wins

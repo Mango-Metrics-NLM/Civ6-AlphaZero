@@ -10,10 +10,8 @@ Tests cover:
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -37,10 +35,8 @@ from template_system.factories import (
     ComponentMetadata,
     FactoryRegistry,
     LifecycleManager,
-    SimpleFactory,
 )
 from template_system.logging_config import (
-    BoundLogger,
     LogConfig,
     LogFormat,
     LogLevel,
@@ -50,7 +46,6 @@ from template_system.logging_config import (
 )
 from template_system.testing import (
     TestConfig,
-    TestRunner,
     capture_logs,
     environment_override,
     temporary_directory,
@@ -366,7 +361,7 @@ class TestEndToEndWorkflow:
             assert config["project"]["name"] == "test-project"
 
             # 3. Setup template variables
-            template_config = TemplateConfig(variables={
+            _template_config = TemplateConfig(variables={
                 "SYSTEM_NAME": config["project"]["name"],
                 "PROJECT_NAME": "test-project",
                 "PACKAGE_NAME": "test_project",
@@ -393,7 +388,7 @@ class TestEndToEndWorkflow:
             assert log_config.format == LogFormat.JSON
 
             # 6. Setup component registry
-            registry = FactoryRegistry()
+            _registry = FactoryRegistry()
 
             # 7. Plan agent workflow
             orchestrator = AgentOrchestrator()
@@ -423,7 +418,7 @@ class TestEndToEndWorkflow:
         assert "code_review" in cap_names
 
         # Suggest agent for review task
-        suggested = registry.suggest_agent("review the authentication code")
+        _suggested = registry.suggest_agent("review the authentication code")
         # Should suggest based on patterns
 
 
@@ -438,7 +433,7 @@ class TestErrorHandlingIntegration:
             bad_config.write_text("{ invalid json }")
 
             loader = ConfigLoader()
-            with pytest.raises(Exception):  # json.JSONDecodeError
+            with pytest.raises((ValueError, json.JSONDecodeError)):
                 loader.load_file(bad_config)
 
     def test_factory_creation_with_invalid_config(self) -> None:

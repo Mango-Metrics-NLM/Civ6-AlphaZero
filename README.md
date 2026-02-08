@@ -14,7 +14,7 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 2 | Hierarchical Reinforcement Learning | ✅ Complete |
 | Phase 3 | Training Improvements (Curriculum, Rewards) | ✅ Complete |
 | Phase 4 | Unified Training Orchestrator | ✅ Complete |
-| Phase 5 | RAG-LLM Integration | ✅ Complete |
+| Phase 5 | Cost Optimization & Monitoring | ✅ Complete |
 | Phase 6 | Agentic Framework for Claude Code | ✅ Complete |
 | Phase 7 | GCP Vertex AI Cloud Training Pipeline | ✅ Complete |
 
@@ -935,7 +935,7 @@ Civ6-AlphaZero/
 ### Completed
 
 - ✅ **GCP Vertex AI Pipeline** — Cloud training with GumbelMCTS, 3-phase pipeline (selfplay → training → evaluation)
-- ✅ **Population-Based Training** — Adaptive hyperparameter optimization with configurable mutation strategies
+- 🚧 **Population-Based Training** — Adaptive hyperparameter optimization with configurable mutation strategies (evaluation uses placeholder fitness — cross-agent eval TODO)
 - ✅ **CI/CD & Test Infrastructure** — Release automation, 6-tier test coverage (unit, integration, e2e, security, sanity, cloud)
 
 ### Planned Features
@@ -963,6 +963,10 @@ Civ6-AlphaZero/
 5. Commit your changes (`git commit -m 'Add amazing feature'`)
 6. Push to the branch (`git push origin feature/amazing-feature`)
 7. Open a Pull Request
+
+## Development By
+
+Ian Cruickshank
 
 ## License
 

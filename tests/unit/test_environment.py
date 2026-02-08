@@ -15,7 +15,7 @@ class TestMicroCivEnv:
 
     def test_reset_returns_observation(self, env):
         """Reset returns valid observation."""
-        obs, info = env.reset()
+        obs, _info = env.reset()
 
         assert "spatial" in obs
         assert "vector" in obs
@@ -38,11 +38,11 @@ class TestMicroCivEnv:
 
     def test_step_changes_state(self, env):
         """Taking an action changes game state."""
-        obs1, _ = env.reset()
+        _obs1, _ = env.reset()
 
         # Take END_TURN action
         end_turn_idx = env.action_space_handler.end_turn_offset
-        obs2, _, _, _, _ = env.step(end_turn_idx)
+        _obs2, _, _, _, _ = env.step(end_turn_idx)
 
         # State should change (different player's turn)
         assert env.current_player == 1

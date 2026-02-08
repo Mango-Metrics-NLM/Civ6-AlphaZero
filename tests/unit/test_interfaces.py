@@ -586,7 +586,7 @@ class TestCombatMiniGame:
 
         # End turn
         action = GameAction.end_turn()
-        new_state, reward, done = game.step(action)
+        new_state, _reward, _done = game.step(action)
 
         assert new_state.current_player == 1
 

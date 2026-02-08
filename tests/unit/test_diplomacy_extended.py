@@ -92,7 +92,7 @@ class TestCooldownSystem:
         manager.apply_action(war_action, current_turn=5)
 
         # Immediately trying to make peace should fail (5 turn minimum war)
-        can_peace, reason = manager.can_make_peace(0, 1)
+        _can_peace, _reason = manager.can_make_peace(0, 1)
         relation = manager.get_relation(0, 1)
 
         # Check if war started turn is set
@@ -389,17 +389,13 @@ class TestGetValidDiplomaticActions:
         assert relation.relation_type == DiplomacyType.NEUTRAL
 
         # Get valid actions for player 0
-        actions = manager.get_valid_diplomatic_actions(
-            player=0, game_state=game_state
-        )
+        actions = manager.get_valid_diplomatic_actions(player=0, game_state=game_state)
 
         # Should include war declaration option against player 1 or 2
         war_actions = [a for a in actions if a.action_type == DiplomaticActionType.DECLARE_WAR]
         assert len(war_actions) > 0
 
-    def test_filters_by_cooldown(
-        self, manager: DiplomacyManager
-    ) -> None:
+    def test_filters_by_cooldown(self, manager: DiplomacyManager) -> None:
         """Test that actions on cooldown are filtered out."""
         # Create war then peace to trigger cooldown
         relation = manager.get_relation(0, 1)
@@ -415,20 +411,17 @@ class TestGetValidDiplomaticActions:
 
         # Get valid actions immediately after peace
         game_state = MockGameState(player_count=3, current_turn=6)
-        actions = manager.get_valid_diplomatic_actions(
-            player=0, game_state=game_state
-        )
+        actions = manager.get_valid_diplomatic_actions(player=0, game_state=game_state)
 
         # War declaration against player 1 should not be available (on cooldown/treaty)
         war_actions = [
-            a for a in actions
+            a
+            for a in actions
             if a.action_type == DiplomaticActionType.DECLARE_WAR and a.target_player == 1
         ]
         assert len(war_actions) == 0
 
-    def test_filters_by_relation_type(
-        self, manager: DiplomacyManager
-    ) -> None:
+    def test_filters_by_relation_type(self, manager: DiplomacyManager) -> None:
         """Test that actions are filtered by current relation type."""
         # Set relation to WAR
         relation = manager.get_relation(0, 1)
@@ -436,31 +429,27 @@ class TestGetValidDiplomaticActions:
         relation.turn_started = 0
 
         game_state = MockGameState(player_count=3, current_turn=10)
-        actions = manager.get_valid_diplomatic_actions(
-            player=0, game_state=game_state
-        )
+        actions = manager.get_valid_diplomatic_actions(player=0, game_state=game_state)
 
         # War declaration should not be available (already at war)
         war_actions = [
-            a for a in actions
+            a
+            for a in actions
             if a.action_type == DiplomaticActionType.DECLARE_WAR and a.target_player == 1
         ]
         assert len(war_actions) == 0
 
         # Peace should be available
         peace_actions = [
-            a for a in actions
+            a
+            for a in actions
             if a.action_type == DiplomaticActionType.MAKE_PEACE and a.target_player == 1
         ]
         assert len(peace_actions) > 0
 
-    def test_no_self_actions(
-        self, manager: DiplomacyManager, game_state: MockGameState
-    ) -> None:
+    def test_no_self_actions(self, manager: DiplomacyManager, game_state: MockGameState) -> None:
         """Test that players cannot take diplomatic actions against themselves."""
-        actions = manager.get_valid_diplomatic_actions(
-            player=0, game_state=game_state
-        )
+        actions = manager.get_valid_diplomatic_actions(player=0, game_state=game_state)
 
         # Should be no actions against self
         self_actions = [a for a in actions if a.target_player == 0]
@@ -500,7 +489,10 @@ class TestDiplomacyEdgeCases:
 
         # Should be 20, not 30 (replaced, not stacked)
         assert relation.relationship_score == 20
-        assert len([m for m in relation.modifiers if m.modifier_type == ModifierType.TRADE_PARTNER]) == 1
+        assert (
+            len([m for m in relation.modifiers if m.modifier_type == ModifierType.TRADE_PARTNER])
+            == 1
+        )
 
     def test_decay_with_zero_value(self) -> None:
         """Test decay behavior when value is already zero."""

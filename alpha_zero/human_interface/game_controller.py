@@ -151,7 +151,7 @@ class GameController:
         config: HumanInterfaceConfig | None = None,
         game_interface: Any | None = None,
         ai_agent: Any | None = None,
-    ):
+    ) -> None:
         """Initialize game controller.
 
         Args:

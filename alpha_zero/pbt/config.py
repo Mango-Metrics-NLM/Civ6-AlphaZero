@@ -26,7 +26,7 @@ import math
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -104,7 +104,7 @@ class HyperparameterRange:
             value = rng.uniform(self.min_value, self.max_value)
 
         if self.discrete:
-            value = int(round(value))
+            value = round(value)
 
         return value
 
@@ -150,7 +150,7 @@ class HyperparameterRange:
             new_value = np.clip(value + perturbation, self.min_value, self.max_value)
 
         if self.discrete:
-            new_value = int(round(new_value))
+            new_value = round(new_value)
 
         return new_value
 
@@ -170,7 +170,7 @@ class HyperparameterRange:
 
         clipped = np.clip(value, self.min_value, self.max_value)
         if self.discrete:
-            clipped = int(round(clipped))
+            clipped = round(clipped)
         return clipped
 
     def to_dict(self) -> dict[str, Any]:
@@ -207,6 +207,9 @@ class HyperparameterSpace:
         c_puct: MCTS exploration constant range
         dirichlet_alpha: Dirichlet noise alpha range
         temperature: MCTS temperature range
+        temperature_initial: Initial temperature for schedule
+        temperature_final: Final temperature for schedule
+        temperature_decay_steps: Steps over which temperature decays
         batch_size: Training batch size range
         num_simulations: MCTS simulations per move range
         replay_buffer_size: Replay buffer size range
@@ -253,6 +256,32 @@ class HyperparameterSpace:
             scale="linear",
         )
     )
+    # Temperature schedule parameters
+    temperature_initial: HyperparameterRange = field(
+        default_factory=lambda: HyperparameterRange(
+            name="temperature_initial",
+            min_value=1.0,
+            max_value=2.5,
+            scale="linear",
+        )
+    )
+    temperature_final: HyperparameterRange = field(
+        default_factory=lambda: HyperparameterRange(
+            name="temperature_final",
+            min_value=0.1,
+            max_value=1.0,
+            scale="linear",
+        )
+    )
+    temperature_decay_steps: HyperparameterRange = field(
+        default_factory=lambda: HyperparameterRange(
+            name="temperature_decay_steps",
+            min_value=10,
+            max_value=50,
+            scale="linear",
+            discrete=True,
+        )
+    )
     batch_size: HyperparameterRange = field(
         default_factory=lambda: HyperparameterRange(
             name="batch_size",
@@ -294,6 +323,9 @@ class HyperparameterSpace:
             "c_puct": self.c_puct,
             "dirichlet_alpha": self.dirichlet_alpha,
             "temperature": self.temperature,
+            "temperature_initial": self.temperature_initial,
+            "temperature_final": self.temperature_final,
+            "temperature_decay_steps": self.temperature_decay_steps,
             "batch_size": self.batch_size,
             "num_simulations": self.num_simulations,
             "replay_buffer_size": self.replay_buffer_size,
@@ -350,6 +382,9 @@ class HyperparameterSpace:
             "c_puct": self.c_puct.to_dict(),
             "dirichlet_alpha": self.dirichlet_alpha.to_dict(),
             "temperature": self.temperature.to_dict(),
+            "temperature_initial": self.temperature_initial.to_dict(),
+            "temperature_final": self.temperature_final.to_dict(),
+            "temperature_decay_steps": self.temperature_decay_steps.to_dict(),
             "batch_size": self.batch_size.to_dict(),
             "num_simulations": self.num_simulations.to_dict(),
             "replay_buffer_size": self.replay_buffer_size.to_dict(),
@@ -380,6 +415,15 @@ class HyperparameterSpace:
             temperature=HyperparameterRange.from_dict(data.get("temperature", {}))
             if "temperature" in data
             else HyperparameterRange("temperature", 0.5, 2.0),
+            temperature_initial=HyperparameterRange.from_dict(data.get("temperature_initial", {}))
+            if "temperature_initial" in data
+            else HyperparameterRange("temperature_initial", 1.0, 2.5),
+            temperature_final=HyperparameterRange.from_dict(data.get("temperature_final", {}))
+            if "temperature_final" in data
+            else HyperparameterRange("temperature_final", 0.1, 1.0),
+            temperature_decay_steps=HyperparameterRange.from_dict(data.get("temperature_decay_steps", {}))
+            if "temperature_decay_steps" in data
+            else HyperparameterRange("temperature_decay_steps", 10, 50, discrete=True),
             batch_size=HyperparameterRange.from_dict(data.get("batch_size", {}))
             if "batch_size" in data
             else HyperparameterRange("batch_size", 32, 512, discrete=True),
@@ -422,8 +466,8 @@ class AgentState:
     parent_id: str | None = None
     model_path: str | None = None
     elo_rating: float = 1200.0
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    last_updated: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    last_updated: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def update_fitness(self, new_fitness: float, max_history: int = 100) -> None:
         """Update fitness score and history.
@@ -436,7 +480,7 @@ class AgentState:
         self.fitness_history.append(new_fitness)
         if len(self.fitness_history) > max_history:
             self.fitness_history = self.fitness_history[-max_history:]
-        self.last_updated = datetime.utcnow().isoformat()
+        self.last_updated = datetime.now(timezone.utc).isoformat()
 
     def get_smoothed_fitness(self, window: int = 10) -> float:
         """Get smoothed fitness score using recent history.
@@ -514,8 +558,8 @@ class AgentState:
             parent_id=data.get("parent_id"),
             model_path=data.get("model_path"),
             elo_rating=data.get("elo_rating", 1200.0),
-            created_at=data.get("created_at", datetime.utcnow().isoformat()),
-            last_updated=data.get("last_updated", datetime.utcnow().isoformat()),
+            created_at=data.get("created_at", datetime.now(timezone.utc).isoformat()),
+            last_updated=data.get("last_updated", datetime.now(timezone.utc).isoformat()),
         )
 
     def save(self, path: str | Path) -> None:
@@ -612,6 +656,9 @@ class PBTConfig:
     # Convergence detection
     convergence_threshold: float = 0.01
     convergence_window: int = 50
+    
+    # Runtime
+    num_generations: int = 50
 
     # Cross-agent evaluation settings
     evaluation_strategy: str = "round_robin"  # "round_robin" or "top_k_vs_best"

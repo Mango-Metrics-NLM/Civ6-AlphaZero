@@ -175,7 +175,7 @@ class VectorStore(ABC):
     the required abstract methods.
     """
 
-    def __init__(self, collection_name: str = "documents", dimension: int = 1536):
+    def __init__(self, collection_name: str = "documents", dimension: int = 1536) -> None:
         """Initialize vector store.
 
         Args:

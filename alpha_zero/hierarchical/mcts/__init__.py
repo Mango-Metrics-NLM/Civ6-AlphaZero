@@ -24,9 +24,9 @@ from alpha_zero.hierarchical.mcts.hierarchical_mcts import (
 
 __all__ = [
     "HierarchicalMCTS",
-    "MCTSNode",
     "MCTSConfig",
-    "SearchStats",
+    "MCTSNode",
     "Option",
     "OptionTermination",
+    "SearchStats",
 ]

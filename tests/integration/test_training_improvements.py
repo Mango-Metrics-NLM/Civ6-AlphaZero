@@ -39,7 +39,7 @@ class TestTunedEnvironmentTraining:
 
         env = create_tuned_environment(config, board_size=8)
 
-        obs, info = env.reset()
+        obs, _info = env.reset()
 
         total_reward = 0.0
         steps = 0
@@ -52,7 +52,7 @@ class TestTunedEnvironmentTraining:
             valid_actions = np.where(action_mask > 0)[0]
             action = np.random.choice(valid_actions) if len(valid_actions) > 0 else 0
 
-            obs, reward, terminated, truncated, info = env.step(action)
+            _obs, reward, terminated, truncated, info = env.step(action)
             total_reward += reward
             steps += 1
 
@@ -86,7 +86,7 @@ class TestTunedEnvironmentTraining:
                 valid_actions = np.where(action_mask > 0)[0]
                 action = np.random.choice(valid_actions) if len(valid_actions) > 0 else 0
 
-                obs, reward, terminated, truncated, info = env.step(action)
+                _obs, _reward, terminated, truncated, info = env.step(action)
 
                 if info.get("early_termination"):
                     early_terminations += 1
@@ -109,7 +109,7 @@ class TestEnhancedRewardsTraining:
             board_size=8,
         )
 
-        obs, info = env.reset()
+        obs, _info = env.reset()
         reward_shaper.reset()
 
         total_base_reward = 0.0
@@ -263,7 +263,7 @@ class TestFullTrainingPipeline:
 
         # 5. Run a few games
         for _ in range(5):
-            obs, info = env.reset()
+            obs, _info = env.reset()
             reward_shaper.reset()
 
             terminated = False

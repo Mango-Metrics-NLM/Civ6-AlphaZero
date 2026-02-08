@@ -247,7 +247,7 @@ class EnhancedStateFeatures:
 class WinConditionEvaluator:
     """Evaluates multiple win conditions and assigns appropriate rewards."""
 
-    def __init__(self, config: EnhancedRewardsConfig):
+    def __init__(self, config: EnhancedRewardsConfig) -> None:
         """Initialize win condition evaluator.
 
         Args:
@@ -358,7 +358,7 @@ class EnhancedRewardShaper:
         self,
         config: EnhancedRewardsConfig | None = None,
         board_size: int = 16,
-    ):
+    ) -> None:
         """Initialize enhanced reward shaper.
 
         Args:
@@ -589,7 +589,7 @@ class EnhancedRewardShaper:
             winner = info.get("winner")
             current_player = info.get("current_player", 0)
 
-            victory_bonus, victory_type = self._win_evaluator.evaluate(
+            victory_bonus, _victory_type = self._win_evaluator.evaluate(
                 curr_features,
                 game_ended=True,
                 winner=winner,

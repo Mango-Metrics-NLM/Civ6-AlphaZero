@@ -1,0 +1,145 @@
+# GCP Distributed Training Configuration
+# ======================================
+# Configuration for running AlphaZero training on Google Cloud Platform.
+# All values can be overridden via environment variables with CIV6AZ_ prefix.
+
+# Cloud Configuration
+cloud:
+  gcp:
+    # GCP Project Settings (required)
+    # Set via GCP_PROJECT_ID environment variable
+    project_id: ""
+
+    # Region and Zone
+    # Set via GCP_REGION and GCP_ZONE environment variables
+    region: "us-central1"
+    zone: "us-central1-a"
+
+    # GCS Storage Settings
+    # Set via GCS_BUCKET_NAME environment variable
+    bucket_name: ""
+    checkpoint_prefix: "checkpoints/"
+    artifact_prefix: "artifacts/"
+
+    # Observability
+    enable_cloud_logging: true
+    enable_cloud_monitoring: true
+    log_level: "INFO"
+
+    # Compute Configuration
+    machine_type: "n1-standard-8"
+    accelerator_type: "NVIDIA_TESLA_T4" # Options: NVIDIA_TESLA_T4, NVIDIA_TESLA_V100, NVIDIA_TESLA_A100
+    accelerator_count: 1
+    replica_count: 1
+
+    # Spot/Preemptible Instance Settings
+    use_spot: true
+    max_run_duration_seconds: 86400 # 24 hours
+    preemption_check_interval: 5.0
+    checkpoint_on_preemption: true
+
+    # Custom Labels for Resource Organization
+    custom_labels:
+      project: "civ6-alphazero"
+      team: "research"
+
+# Distributed Training Configuration
+distributed:
+  # Sync interval for cloud checkpoints (seconds)
+  sync_interval: 300.0
+
+  # Enable cloud checkpoint sync
+  enable_cloud_checkpoints: true
+
+  # Enable preemption handling
+  enable_preemption_handling: true
+
+  # Upload metrics to Cloud Monitoring
+  upload_metrics: true
+
+# DDP (Distributed Data Parallel) Configuration
+ddp:
+  # PyTorch distributed backend
+  # Options: nccl (recommended for GPU), gloo (CPU), mpi
+  backend: "nccl"
+
+  # Process group initialization method
+  init_method: "env://"
+
+  # DDP-specific settings
+  find_unused_parameters: false
+  broadcast_buffers: true
+  gradient_as_bucket_view: true
+  gradient_sync_interval: 1
+
+# Training Configuration
+training:
+  # Batch size per GPU
+  batch_size: 256
+
+  # Learning rate (scaled by world_size for large batch training)
+  learning_rate: 0.001
+  learning_rate_schedule:
+    warmup_steps: 1000
+    decay_steps: 100000
+    min_learning_rate: 0.0001
+
+  # Gradient settings
+  max_grad_norm: 1.0
+  gradient_accumulation_steps: 1
+
+  # Checkpoint settings
+  checkpoint_interval: 1000 # steps
+  keep_checkpoint_count: 5
+
+  # Evaluation settings
+  eval_interval: 5000
+  eval_games: 100
+
+# Vertex AI Job Configuration
+vertex_ai:
+  # Job display name template
+  display_name_template: "civ6-alphazero-training-{timestamp}"
+
+  # Container image
+  container_uri: "gcr.io/cloud-aiplatform/training/pytorch-gpu.1-13:latest"
+
+  # Boot disk size in GB
+  boot_disk_size_gb: 100
+
+  # Enable web access for debugging
+  enable_web_access: false
+
+  # Timeout for waiting for job completion
+  job_timeout_seconds: 172800 # 48 hours
+
+# Network Configuration (optional, for private VPC)
+# networking:
+#   network: "projects/{project}/global/networks/{network}"
+#   subnetwork: "projects/{project}/regions/{region}/subnetworks/{subnet}"
+
+# Logging Configuration
+logging:
+  # Log name in Cloud Logging
+  log_name: "alphazero-training"
+
+  # Structured logging format
+  structured: true
+
+  # Buffer size for log batching
+  buffer_size: 100
+
+# Monitoring Configuration
+monitoring:
+  # Custom metric prefix
+  metric_prefix: "custom.googleapis.com/alphazero"
+
+  # Metrics to export
+  export_metrics:
+    - loss
+    - policy_loss
+    - value_loss
+    - entropy
+    - learning_rate
+    - games_played
+    - training_step

@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from alpha_zero.cloud.gcp.config import GCPConfig
+from alpha_zero.cloud.gcp.exceptions import GCSStorageError
 from alpha_zero.cloud.gcp.vertex_orchestrator import (
     build_evaluation_extra_args,
     build_selfplay_extra_args,
@@ -144,7 +145,7 @@ class TestGetInitialModelVersion:
     def test_gcs_error_returns_zero(self, gcp_config: GCPConfig) -> None:
         """Returns 0 if GCS has no models."""
         mock_storage = MagicMock()
-        mock_storage.get_latest_version.side_effect = Exception("No models found")
+        mock_storage.get_latest_version.side_effect = GCSStorageError("No models found")
 
         with patch(
             "alpha_zero.cloud.gcp.vertex_orchestrator.GCSModelStorage",

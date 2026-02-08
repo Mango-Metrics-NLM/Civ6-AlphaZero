@@ -1,0 +1,33 @@
+# Evaluator image for model comparison
+# Plays matches between candidate and champion models
+#
+# Build: docker build -f dockerfiles/Dockerfile.evaluator -t civ6-evaluator .
+# Run: docker run -e CIV6_GCS_BUCKET=my-bucket civ6-evaluator --num-games=400
+
+ARG BASE_IMAGE=civ6-alphazero-base:latest
+FROM ${BASE_IMAGE}
+
+# Metadata
+LABEL maintainer="Civ6-AlphaZero"
+LABEL description="Model evaluator for Civ6 AlphaZero"
+LABEL component="evaluator"
+
+# Evaluator specific environment
+ENV CIV6_COMPONENT=evaluator \
+    # Evaluation configuration
+    CIV6_EVAL_GAMES=400 \
+    CIV6_PROMOTION_THRESHOLD=0.55 \
+    CIV6_ITERATION=0 \
+    # MCTS configuration (lower simulations for faster eval)
+    CIV6_NUM_SIMULATIONS=200 \
+    # Device configuration
+    CIV6_DEVICE=cuda
+
+# Copy entry point script
+COPY --chown=appuser:appuser infra/entrypoints/evaluator_entrypoint.py /app/entrypoints/
+
+# Set entry point
+ENTRYPOINT ["python", "-m", "alpha_zero.cloud.evaluator"]
+
+# Default arguments (can be overridden)
+CMD ["--help"]

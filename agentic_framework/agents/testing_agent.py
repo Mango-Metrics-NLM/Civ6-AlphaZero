@@ -232,7 +232,7 @@ class TestingAgent(BaseAgent):
             command = f"python -m {self.test_framework}"
 
         # Run tests
-        success, stdout, stderr = self.run_command(command, timeout=self.timeout_seconds)
+        _success, stdout, stderr = self.run_command(command, timeout=self.timeout_seconds)
 
         # Parse pytest output
         if self.test_framework == "pytest":

@@ -1,15 +1,16 @@
 """Population Based Training orchestrator for Vertex AI.
 
-Manages the PBT lifecycle: initialize population → self-play → train →
-evaluate → evolve → repeat.  The evaluation phase uses :class:`PBTEvaluator`
+Manages the PBT lifecycle: initialize population -> self-play -> train ->
+evaluate -> evolve -> repeat.  The evaluation phase uses :class:`PBTEvaluator`
 to run cross-agent arena matches and compute ELO-based fitness.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import time
-from typing import Any
+from typing import Any, Dict
 
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.storage import GCSBackend, GCSModelStorage
@@ -46,33 +47,41 @@ class PBTOrchestrator:
     run cross-agent arena matches and produce ELO-derived fitness scores.
 
     Args:
-        gcp_config: GCP project / bucket / region configuration.
         pbt_config: PBT hyperparameters and evaluation settings.
-        evaluator: Optional pre-built evaluator — if *None*, one is
+        gcp_config: GCP project / bucket / region configuration.
+        evaluator: Optional pre-built evaluator -- if *None*, one is
             created automatically.
     """
 
     def __init__(
         self,
-        gcp_config: GCPConfig,
         pbt_config: PBTConfig,
+        gcp_config: GCPConfig | None = None,
         evaluator: PBTEvaluator | None = None,
     ) -> None:
-        self.gcp = gcp_config
-        self.pbt = pbt_config
+        self.pbt_config = pbt_config
+        self.gcp_config = gcp_config or GCPConfig()
 
+        # Vertex AI client
         self.client = VertexAIClient(
-            gcp_config.project_id,
-            gcp_config.region,
-            gcp_config.service_account,
+            project=self.gcp_config.project_id,
+            region=self.gcp_config.region,
+            service_account=self.gcp_config.service_account,
         )
 
-        self.manager = PopulationManager(pbt_config)
-        self.evaluator = evaluator or PBTEvaluator(pbt_config)
+        self.manager = PopulationManager(self.pbt_config)
+        self.evaluator = evaluator or PBTEvaluator(self.pbt_config)
 
-        self._selfplay = VertexSelfPlayJob(gcp_config, self.client)
-        self._training = VertexTrainingJob(gcp_config, self.client)
-        self._evaluation = VertexEvaluationJob(gcp_config, self.client)
+        # Job managers
+        self.training_job_manager = VertexTrainingJob(self.gcp_config, self.client)
+        self.selfplay_job_manager = VertexSelfPlayJob(self.gcp_config, self.client)
+        self.eval_job_manager = VertexEvaluationJob(self.gcp_config, self.client)
+
+        # State storage
+        self.storage_backend = GCSBackend(self.gcp_config.project_id)
+        self.population_state_path = (
+            f"{self.gcp_config.paths.logs_prefix}/pbt_state.json"
+        )
 
         logger.info(
             "PBTOrchestrator initialised: pop=%d, strategy=%s",
@@ -81,30 +90,94 @@ class PBTOrchestrator:
         )
 
     # ------------------------------------------------------------------
+    # State persistence
+    # ------------------------------------------------------------------
+
+    def load_state(self) -> None:
+        """Load population state from GCS."""
+        try:
+            if self.storage_backend.blob_exists(
+                self.gcp_config.bucket, self.population_state_path
+            ):
+                data = self.storage_backend.download_blob(
+                    self.gcp_config.bucket, self.population_state_path
+                )
+                state_dict = json.loads(data.decode())
+
+                self.manager.generation = state_dict.get("generation", 0)
+                agents_data: list[dict[str, Any]] = state_dict.get("agents", [])
+                existing_agents = [AgentState.from_dict(ad) for ad in agents_data]
+                self.manager.initialize(existing_agents=existing_agents)
+
+                logger.info(
+                    "Loaded PBT state from GCS: gen=%d, agents=%d",
+                    self.manager.generation,
+                    len(self.manager.agents),
+                )
+            else:
+                logger.info("No PBT state found in GCS, starting fresh.")
+        except Exception:
+            logger.exception("Failed to load PBT state")
+
+    def save_state(self) -> None:
+        """Save population state to GCS."""
+        try:
+            state_dict = {
+                "generation": self.manager.generation,
+                "agents": [a.to_dict() for a in self.manager.get_all_agents()],
+            }
+            data = json.dumps(state_dict, indent=2).encode()
+            self.storage_backend.upload_blob(
+                self.gcp_config.bucket, self.population_state_path, data
+            )
+            logger.info("Saved PBT state to GCS.")
+        except Exception:
+            logger.exception("Failed to save PBT state")
+
+    # ------------------------------------------------------------------
     # Main loop
     # ------------------------------------------------------------------
 
-    def run(self, num_generations: int = 10) -> None:
-        """Run the complete PBT loop for *num_generations*."""
-        logger.info("Starting PBT loop for %d generations", num_generations)
+    def run(self, num_generations: int | None = None) -> None:
+        """Run the complete PBT loop.
 
-        for gen in range(1, num_generations + 1):
+        Args:
+            num_generations: Number of generations to run.  Falls back
+                to ``self.pbt_config.num_generations`` when *None*.
+        """
+        self.load_state()
+
+        total = num_generations or getattr(self.pbt_config, "num_generations", 10)
+        logger.info("Starting PBT loop for %d generations", total)
+
+        # Initialize if empty
+        if not self.manager.agents:
+            logger.info("Initializing new population...")
+            self.manager.initialize()
+            for agent in self.manager.get_all_agents():
+                agent.model_path = str(_DEFAULT_MODEL_VERSION)
+            self.save_state()
+
+        start_gen = self.manager.generation
+        for gen in range(start_gen, start_gen + total):
+            gen_num = gen + 1
             logger.info("=" * 60)
-            logger.info("Generation %d / %d", gen, num_generations)
+            logger.info("Generation %d / %d", gen_num, start_gen + total)
             logger.info("=" * 60)
 
             t0 = time.monotonic()
 
-            self._run_selfplay_phase(gen)
-            self._run_training_phase(gen)
-            report = self._run_evaluation_phase(gen)
-            self._run_evolution_phase(gen)
+            self._run_selfplay_phase(gen_num)
+            self._run_training_phase(gen_num)
+            report = self._run_evaluation_phase(gen_num)
+            self._run_evolution_phase(gen_num)
+            self.save_state()
 
             elapsed = time.monotonic() - t0
             logger.info(
                 "Generation %d complete in %.1fs | "
                 "matchups=%d | top_elo=%.0f",
-                gen,
+                gen_num,
                 elapsed,
                 len(report.matchups),
                 max(report.elo_ratings.values())
@@ -119,57 +192,101 @@ class PBTOrchestrator:
     def _run_selfplay_phase(self, gen: int) -> None:
         """Launch self-play jobs for each agent in the population."""
         logger.info("Phase 1: Self-play (gen=%d)", gen)
+        job_names: list[str] = []
 
         for agent in self.manager.get_all_agents():
             version = _safe_int(agent.model_path, _DEFAULT_MODEL_VERSION)
+
+            extra_args = [
+                f"--c_puct={agent.hyperparameters.get('c_puct', 1.5)}",
+                f"--agent_id={agent.agent_id}",
+            ]
+
             try:
-                job_names = self._selfplay.launch(
+                jobs = self.selfplay_job_manager.launch(
                     num_workers=1,
                     model_version=version,
                     iteration=gen,
+                    extra_args=extra_args,
                 )
-                for job_name in job_names:
-                    result = self._selfplay.wait_for_completion(job_name)
-                    if result.success:
-                        agent.games_played += self.pbt.evaluation_games
-                        logger.info(
-                            "Self-play OK: agent=%s, games=%d",
-                            agent.agent_id,
-                            agent.games_played,
-                        )
-                    else:
-                        logger.warning(
-                            "Self-play FAILED: agent=%s, error=%s",
-                            agent.agent_id,
-                            result.error_message,
-                        )
+                job_names.extend(jobs)
             except Exception:
                 logger.exception(
                     "Self-play error for agent %s", agent.agent_id
                 )
+
+        if job_names:
+            self.selfplay_job_manager.wait_for_completion(job_names)
+        else:
+            logger.warning("No self-play jobs launched.")
 
     # ------------------------------------------------------------------
     # Phase 2: Training
     # ------------------------------------------------------------------
 
     def _run_training_phase(self, gen: int) -> None:
-        """Launch training jobs for each agent."""
+        """Launch and wait for training jobs."""
         logger.info("Phase 2: Training (gen=%d)", gen)
+        job_map: Dict[str, AgentState] = {}
 
         for agent in self.manager.get_all_agents():
-            try:
-                storage = GCSModelStorage(self.gcp)
-                new_version = storage.get_latest_version()
-                agent.model_path = str(new_version)
-                logger.info(
-                    "Updated agent %s to model v%d",
-                    agent.agent_id,
-                    new_version,
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to update version for agent %s", agent.agent_id
-                )
+            extra_args = [
+                f"--learning_rate={agent.hyperparameters.get('learning_rate', 0.01)}",
+                f"--agent_id={agent.agent_id}",
+            ]
+
+            logger.info("Launching training for agent %s...", agent.agent_id)
+            job_name = self.training_job_manager.launch(
+                iteration=gen,
+                trajectory_iterations=[gen],
+                resume_from_checkpoint="latest",
+                extra_args=extra_args,
+            )
+            job_map[job_name] = agent
+
+        self._poll_jobs(job_map)
+
+    def _poll_jobs(self, job_map: Dict[str, AgentState]) -> None:
+        """Poll until all jobs in *job_map* reach a terminal state."""
+        active_jobs = set(job_map.keys())
+
+        while active_jobs:
+            for job_name in list(active_jobs):
+                state, _ = self.client.get_job_state(job_name)
+                if state not in _TERMINAL_JOB_STATES:
+                    continue
+
+                active_jobs.discard(job_name)
+                agent = job_map[job_name]
+
+                if state == "JOB_STATE_SUCCEEDED":
+                    logger.info("Training succeeded for agent %s", agent.agent_id)
+                    self._update_agent_model_version(agent)
+                else:
+                    logger.error(
+                        "Training failed for agent %s (state: %s)",
+                        agent.agent_id,
+                        state,
+                    )
+
+            if active_jobs:
+                time.sleep(_JOB_POLL_INTERVAL_SECONDS)
+
+    def _update_agent_model_version(self, agent: AgentState) -> None:
+        """Query GCS for the latest model version and update the agent."""
+        try:
+            agent_config = GCPConfig()
+            agent_config.paths.agent_id = agent.agent_id
+            storage = GCSModelStorage(agent_config)
+            new_version = storage.get_latest_version()
+            agent.model_path = str(new_version)
+            logger.info(
+                "Updated agent %s to model v%d", agent.agent_id, new_version
+            )
+        except Exception:
+            logger.exception(
+                "Failed to update version for agent %s", agent.agent_id
+            )
 
     # ------------------------------------------------------------------
     # Phase 3: Evaluation

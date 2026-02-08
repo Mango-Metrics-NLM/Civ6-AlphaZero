@@ -34,7 +34,7 @@ class RecursiveTextSplitter(TextSplitter):
         chunk_overlap: int = 200,
         separators: list[str] | None = None,
         keep_separator: bool = True,
-    ):
+    ) -> None:
         """Initialize recursive text splitter.
 
         Args:
@@ -197,7 +197,7 @@ class TextDocumentProcessor(DocumentProcessor):
         result = await processor.process(text, source="document.txt")
     """
 
-    def __init__(self, config: ProcessorConfig | None = None):
+    def __init__(self, config: ProcessorConfig | None = None) -> None:
         """Initialize text document processor.
 
         Args:
@@ -253,7 +253,7 @@ class TextDocumentProcessor(DocumentProcessor):
                 current_pos = end_pos
 
         except Exception as e:
-            errors.append(f"Processing error: {str(e)}")
+            errors.append(f"Processing error: {e!s}")
             chunks = []
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
@@ -305,7 +305,7 @@ class TextDocumentProcessor(DocumentProcessor):
             return ProcessingResult(
                 chunks=[],
                 source=str(path),
-                errors=[f"Error reading file: {str(e)}"],
+                errors=[f"Error reading file: {e!s}"],
             )
 
     def _clean_whitespace(self, text: str) -> str:

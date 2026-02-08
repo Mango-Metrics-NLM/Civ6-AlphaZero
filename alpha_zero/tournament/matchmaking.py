@@ -165,7 +165,7 @@ class MatchMaker:
         ...     pass
     """
 
-    def __init__(self, config: TournamentConfig):
+    def __init__(self, config: TournamentConfig) -> None:
         """Initialize matchmaker.
 
         Args:
@@ -477,7 +477,7 @@ class OpponentSelector:
         self,
         player_pool: list[PlayerStats] | None = None,
         config: TournamentConfig | None = None,
-    ):
+    ) -> None:
         """Initialize opponent selector.
 
         Args:

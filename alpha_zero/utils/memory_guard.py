@@ -272,7 +272,7 @@ class MemoryGuard:
         config: Memory guard configuration.
     """
 
-    def __init__(self, config: MemoryGuardConfig | None = None):
+    def __init__(self, config: MemoryGuardConfig | None = None) -> None:
         """Initialize memory guard.
 
         Args:

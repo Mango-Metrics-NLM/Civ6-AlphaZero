@@ -327,7 +327,7 @@ class RAGConfig:
             vector_store_data["store_type"] = VectorStoreType(
                 vector_store_data["store_type"],
             )
-        if "persist_directory" in vector_store_data and vector_store_data["persist_directory"]:
+        if vector_store_data.get("persist_directory"):
             vector_store_data["persist_directory"] = Path(
                 vector_store_data["persist_directory"],
             )

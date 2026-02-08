@@ -39,7 +39,7 @@ class EmbeddingResult:
 class EmbeddingGenerator(ABC):
     """Abstract base class for embedding generators."""
 
-    def __init__(self, dimension: int = 1536):
+    def __init__(self, dimension: int = 1536) -> None:
         """Initialize embedding generator.
 
         Args:
@@ -111,7 +111,7 @@ class OpenAIEmbeddings(EmbeddingGenerator):
         batch_size: int = 100,
         max_retries: int = 3,
         timeout: float = 30.0,
-    ):
+    ) -> None:
         """Initialize OpenAI embeddings.
 
         Args:
@@ -258,7 +258,7 @@ class LocalEmbeddings(EmbeddingGenerator):
         vector = await embeddings.embed_text("Hello world")
     """
 
-    def __init__(self, dimension: int = 1536, seed: int = 42):
+    def __init__(self, dimension: int = 1536, seed: int = 42) -> None:
         """Initialize local embeddings.
 
         Args:
@@ -325,7 +325,7 @@ class SentenceTransformerEmbeddings(EmbeddingGenerator):
         model_name: str = "all-MiniLM-L6-v2",
         device: str = "cpu",
         batch_size: int = 32,
-    ):
+    ) -> None:
         """Initialize Sentence Transformer embeddings.
 
         Args:

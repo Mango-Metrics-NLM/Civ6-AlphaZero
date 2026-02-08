@@ -22,6 +22,7 @@ setup(
             "mypy>=1.0.0",
             "ruff>=0.1.0",
             "tqdm>=4.65.0",
+            "types-setuptools",
         ],
         "rag": [
             "chromadb>=0.4.0",

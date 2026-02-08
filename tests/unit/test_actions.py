@@ -158,7 +158,7 @@ class TestMicroCivActionSpace:
         assert mask[action_idx] == 1.0, "FOUND_CITY action should be valid"
 
         # Execute action
-        obs, reward, terminated, _, info = env.step(action_idx)
+        _obs, _reward, _terminated, _, _info = env.step(action_idx)
 
         # Verify city was founded
         assert any(c.position == settler.position for c in env.cities), (

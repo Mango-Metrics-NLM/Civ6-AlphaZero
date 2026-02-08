@@ -345,10 +345,10 @@ if TORCH_AVAILABLE:
                 if action_mask.sum() == 0:
                     action_mask = action_mask.clone()
                     action_mask[..., 0] = 1.0  # Enable fallback action
-                # Use large finite value instead of -inf to prevent NaN in softmax
+                # Mask invalid actions with -inf (softmax handles this correctly)
                 policy_logits = policy_logits.masked_fill(
                     action_mask == 0,
-                    -1e9,
+                    float("-inf"),
                 )
 
             # Goal-conditioned value

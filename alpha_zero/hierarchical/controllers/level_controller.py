@@ -302,7 +302,7 @@ class StrategicController(LevelController):
         # Run MCTS to evaluate strategic options
         active_goals = self.get_active_goals()
         if active_goals and self.network:
-            action, stats = self.mcts.search(game_state, active_goals)
+            _action, stats = self.mcts.search(game_state, active_goals)
             decision.value_estimate = stats.root_value
             decision.search_stats = stats
 
@@ -592,7 +592,7 @@ class TacticalController(LevelController):
         # Run MCTS for tactical options
         active_goals = self.get_active_goals()
         if active_goals and self.network:
-            action, stats = self.mcts.search(game_state, active_goals)
+            _action, stats = self.mcts.search(game_state, active_goals)
             decision.value_estimate = stats.root_value
             decision.search_stats = stats
 

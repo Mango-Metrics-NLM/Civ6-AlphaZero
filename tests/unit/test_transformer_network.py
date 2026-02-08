@@ -150,7 +150,7 @@ class TestRotaryEmbedding:
         q = torch.ones(2, 4, 16, 32)
         k = torch.ones(2, 4, 16, 32)
 
-        q_rot, k_rot = rope(q, k)
+        q_rot, _k_rot = rope(q, k)
 
         # Different positions should have different values
         assert not torch.allclose(q_rot[:, :, 0, :], q_rot[:, :, 1, :])
@@ -160,7 +160,7 @@ class TestRotaryEmbedding:
         q = torch.randn(2, 4, 200, 32)  # Longer than max_seq_len
         k = torch.randn(2, 4, 200, 32)
 
-        q_rot, k_rot = rope(q, k, seq_len=200)
+        q_rot, _k_rot = rope(q, k, seq_len=200)
         assert q_rot.shape[2] == 200
 
 
@@ -479,7 +479,7 @@ class TestTransformerEncoder:
         spatial = torch.randn(2, 13, 16, 16)
         vector = torch.randn(2, 64)
 
-        pooled, sequence = encoder(spatial, vector)
+        _pooled, sequence = encoder(spatial, vector)
 
         # CLS token should be at position 0
         assert sequence.shape[1] == config.num_patches + 2  # CLS + vector + patches
@@ -583,7 +583,7 @@ class TestCiv6TransformerNetwork:
         mask = torch.ones(2, 381)
         mask[:, 100:] = 0  # Mask out some actions
 
-        policy_logits, value = network(spatial, vector, mask)
+        policy_logits, _value = network(spatial, vector, mask)
 
         # Masked actions should have very low logits
         assert policy_logits[:, 100:].max() < -1e8
@@ -593,7 +593,7 @@ class TestCiv6TransformerNetwork:
         spatial = torch.randn(2, 13, 16, 16)
         vector = torch.randn(2, 64)
 
-        probs, value = network.predict(spatial, vector)
+        probs, _value = network.predict(spatial, vector)
 
         # Probabilities should sum to 1
         assert torch.allclose(probs.sum(dim=-1), torch.ones(2), atol=1e-5)
@@ -870,5 +870,5 @@ class TestTransformerIntegration:
             spatial = torch.randn(2, 13, spatial_size, spatial_size)
             vector = torch.randn(2, 64)
 
-            policy, value = network(spatial, vector)
+            policy, _value = network(spatial, vector)
             assert policy.shape == (2, 381)

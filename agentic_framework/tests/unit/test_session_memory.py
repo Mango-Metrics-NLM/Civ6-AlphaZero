@@ -213,7 +213,7 @@ class TestSessionMemory:
         memory = SessionMemory(memory_file=memory_file)
         assert not memory.exists()
 
-        memory_file.write_text("# Test")
+        memory_file.write_text("# Test", encoding="utf-8")
         assert memory.exists()
 
     def test_render_full(self, tmp_path):
