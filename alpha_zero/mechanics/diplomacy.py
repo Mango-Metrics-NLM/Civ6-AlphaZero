@@ -507,7 +507,7 @@ class DiplomacyManager:
         relation = self.get_relation(action.source_player, action.target_player)
 
         if action.action_type == DiplomaticActionType.DECLARE_WAR:
-            can_declare, reason = self.can_declare_war(
+            can_declare, _reason = self.can_declare_war(
                 action.source_player,
                 action.target_player,
                 current_turn,

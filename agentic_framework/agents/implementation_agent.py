@@ -274,11 +274,12 @@ class ImplementationAgent(BaseAgent):
         # Ensure parent directory exists
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Write atomically
+        # Write atomically using replace() for cross-platform compatibility
         temp_path = path.with_suffix(path.suffix + ".tmp")
         try:
             temp_path.write_text(content)
-            temp_path.rename(path)
+            # Use replace() instead of rename() - works on Windows when target exists
+            temp_path.replace(path)
             logger.info(f"Wrote file: {path}")
         except Exception as e:
             if temp_path.exists():
@@ -303,6 +304,10 @@ class ImplementationAgent(BaseAgent):
         Returns:
             True if file was created.
         """
+        # Ensure context is available for permission checking
+        if self._context is None:
+            self._context = context
+
         if path.exists():
             logger.warning(f"File already exists: {path}")
             return False
@@ -340,6 +345,10 @@ class ImplementationAgent(BaseAgent):
         Returns:
             True if file was modified.
         """
+        # Ensure context is available for permission checking
+        if self._context is None:
+            self._context = context
+
         if not path.exists():
             logger.warning(f"File does not exist: {path}")
             return False
@@ -378,6 +387,10 @@ class ImplementationAgent(BaseAgent):
         Returns:
             True if file was deleted.
         """
+        # Ensure context is available for permission checking
+        if self._context is None:
+            self._context = context
+
         if not path.exists():
             logger.warning(f"File does not exist: {path}")
             return True  # Already deleted

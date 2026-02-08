@@ -110,7 +110,7 @@ class PBTCoordinator:
         config: PBTConfig,
         rng: np.random.Generator | None = None,
         wandb_logger: Any | None = None,
-    ):
+    ) -> None:
         """Initialize PBT coordinator.
 
         Args:
@@ -500,7 +500,7 @@ class PBTCoordinator:
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful shutdown."""
 
-        def handle_signal(signum, frame):
+        def handle_signal(signum, frame) -> None:
             logger.info(f"Received signal {signum}, requesting shutdown")
             self._shutdown_requested = True
 

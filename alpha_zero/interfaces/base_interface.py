@@ -142,7 +142,7 @@ class BaseGameInterface(ABC):
         >>> result = interface.step(action)
     """
 
-    def __init__(self, config: GameConfig | None = None):
+    def __init__(self, config: GameConfig | None = None) -> None:
         """Initialize the game interface.
 
         Args:
@@ -286,7 +286,7 @@ class DummyGameInterface(BaseGameInterface):
     for testing without a real game backend.
     """
 
-    def __init__(self, config: GameConfig | None = None):
+    def __init__(self, config: GameConfig | None = None) -> None:
         """Initialize dummy interface."""
         super().__init__(config)
         self._turn = 0
@@ -417,7 +417,7 @@ class GameAdapter:
         backend: str = "dummy",
         config: GameConfig | None = None,
         **kwargs,
-    ):
+    ) -> None:
         """Initialize game adapter.
 
         Args:

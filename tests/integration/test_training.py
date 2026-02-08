@@ -326,7 +326,7 @@ class TestFullGameSimulation:
             action = simple_mcts.select_action(action_probs, temperature=0.5)
 
             # Take action
-            obs, reward, terminated, truncated, info = small_env.step(action)
+            _obs, _reward, terminated, truncated, _info = small_env.step(action)
             steps += 1
 
             if terminated or truncated:
@@ -354,7 +354,7 @@ class TestFullGameSimulation:
             assert -1 <= root_value <= 1
 
             # Take action
-            obs, reward, terminated, truncated, info = small_env.step(action)
+            _obs, _reward, terminated, truncated, _info = small_env.step(action)
             steps += 1
 
             if terminated or truncated:
@@ -371,7 +371,7 @@ class TestFullGameSimulation:
         for _ in range(max_steps):
             action_probs, _ = simple_mcts.search(small_env)
             action = simple_mcts.select_action(action_probs, temperature=0.5)
-            obs, reward, terminated, truncated, info = small_env.step(action)
+            _obs, _reward, terminated, truncated, info = small_env.step(action)
 
             if terminated or truncated:
                 break

@@ -1,0 +1,241 @@
+# 4-Node Distributed Training Configuration for Civ6 AlphaZero
+#
+# Architecture:
+#   - Node 0 (Coordinator): Learner GPU + 16 CPU actors + Parameter Server
+#   - Node 1 (Learner): Learner GPU + 16 CPU actors
+#   - Node 2 (Actor): 32 CPU actors
+#   - Node 3 (Actor): 32 CPU actors
+#
+# Total: 2 Learner GPUs (DDP), 96 CPU actors
+#
+# Environment variables required:
+#   - CIV6AZ_GCP_PROJECT_ID: GCP project ID
+#   - CIV6AZ_GCS_BUCKET: GCS bucket name
+#   - MASTER_ADDR: Coordinator node address (set by orchestrator)
+#   - MASTER_PORT: DDP port (default: 29500)
+#   - WORLD_SIZE: Total DDP processes (2 for this config)
+#   - RANK: DDP rank (0 or 1)
+
+# Cloud Configuration
+cloud:
+  provider: "gcp"
+  project_id: "${CIV6AZ_GCP_PROJECT_ID}"
+  region: "${CIV6AZ_GCP_REGION:us-central1}"
+  zone: "${CIV6AZ_GCP_ZONE:us-central1-a}"
+  environment: "production"
+
+  # GCS settings
+  gcs:
+    bucket_name: "${CIV6AZ_GCS_BUCKET}"
+    checkpoint_prefix: "checkpoints/distributed"
+    model_prefix: "models/distributed"
+    log_prefix: "logs/distributed"
+    enable_compression: true
+    max_checkpoints: 20  # Keep more for distributed runs
+
+  # Vertex AI settings for node provisioning
+  vertex:
+    machine_type: "n1-standard-16"
+    accelerator_type: "NVIDIA_TESLA_T4"
+    accelerator_count: 1
+    boot_disk_size_gb: 200
+    replica_count: 4
+
+  # Preemption handling
+  preemption:
+    enabled: true
+    check_interval_seconds: 5.0
+    checkpoint_on_preemption: true
+    graceful_shutdown_timeout: 60
+    max_retry_count: 5
+
+  # Cloud Logging
+  logging:
+    enabled: true
+    log_name: "civ6-alphazero-distributed"
+    structured: true
+    buffer_size: 100
+    export_interval_seconds: 30.0
+
+  # Cloud Monitoring
+  monitoring:
+    enabled: true
+    export_metrics:
+      - "loss"
+      - "policy_loss"
+      - "value_loss"
+      - "learning_rate"
+      - "games_per_second"
+      - "steps_per_second"
+      - "buffer_size"
+      - "gradient_norm"
+    custom_metrics:
+      - "ddp_throughput"
+      - "actor_utilization"
+      - "parameter_server_latency"
+
+# Distributed Data Parallel Configuration
+ddp:
+  enabled: true
+  world_size: 2  # 2 learner nodes with GPUs
+  backend: "nccl"  # NCCL for GPU communication
+  init_method: "env://"  # Use environment variables
+  timeout_seconds: 1800
+
+  # GPU settings
+  use_cuda: true
+  find_unused_parameters: false
+  broadcast_buffers: true
+  gradient_as_bucket_view: true
+  bucket_cap_mb: 25
+
+  # Mixed precision
+  use_amp: true
+  amp_dtype: "float16"
+
+  # Fault tolerance
+  elastic_training: false  # Not using elastic for now
+  min_world_size: 2
+  max_restarts: 3
+
+# Parameter Server Configuration
+parameter_server:
+  enabled: true
+  compress_weights: true
+  compression_level: 3
+  max_version_history: 10
+
+  # For async gradient aggregation (if needed)
+  update_mode: "replace"  # "replace", "gradient", or "delta"
+  gradient_staleness_threshold: 10
+
+# Training Configuration
+training:
+  # Network
+  board_size: 16
+  num_res_blocks: 10  # Larger network for distributed
+  num_filters: 128
+
+  # Batch size per GPU (effective = batch_size * world_size)
+  batch_size: 512
+  effective_batch_size: 1024  # batch_size * ddp.world_size
+
+  # Optimizer
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  gradient_clip: 1.0
+
+  # Learning rate schedule
+  lr_decay_steps: [100000, 200000, 300000]
+  lr_decay_rate: 0.1
+  warmup_steps: 1000
+
+  # Gradient accumulation (if needed for larger effective batch)
+  gradient_accumulation_steps: 1
+
+  # Training loop
+  games_per_iteration: 400  # 4x more games with 96 actors
+  min_buffer_size: 50000
+  max_training_steps: 0  # Unlimited
+
+  # Weight publishing
+  publish_interval: 100
+
+  # Checkpointing
+  checkpoint_interval: 5000
+  checkpoint_only_on_main: true
+
+# Actor Configuration
+actors:
+  # Per-node actor counts
+  node_configs:
+    - node_id: 0
+      num_actors: 16
+      role: "coordinator"
+    - node_id: 1
+      num_actors: 16
+      role: "learner"
+    - node_id: 2
+      num_actors: 32
+      role: "actor"
+    - node_id: 3
+      num_actors: 32
+      role: "actor"
+
+  # Total actors
+  total_actors: 96
+
+  # MCTS settings
+  mcts:
+    num_simulations: 100
+    c_puct: 1.5
+    dirichlet_alpha: 0.3
+    dirichlet_epsilon: 0.25
+    temperature: 1.0
+    temperature_threshold: 30
+    use_virtual_loss: true  # For parallel MCTS
+
+  # Weight synchronization
+  weight_update_interval: 10  # Seconds between weight checks
+
+  # Game settings
+  max_game_length: 500
+  resign_threshold: -0.95
+  resign_enabled: true
+
+# Replay Buffer Configuration
+replay_buffer:
+  max_size: 2000000  # 2M examples for larger runs
+  min_size: 50000
+  use_prioritized: false
+  compress: false  # Compression handled at GCS level
+  trajectory_queue_size: 2000
+  sample_batch_size: 512
+
+# Coordinator Configuration
+coordinator:
+  # Heartbeat monitoring
+  heartbeat_interval: 10.0
+  heartbeat_timeout: 60.0
+
+  # Health monitoring
+  health_check_interval: 30.0
+  unhealthy_threshold: 3
+
+  # Auto-recovery
+  auto_restart_actors: true
+  max_actor_restarts: 5
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s [%(name)s] [%(levelname)s] %(message)s"
+
+  # Console output
+  console: true
+  console_level: "INFO"
+
+  # File output
+  file: true
+  file_path: "logs/distributed_training.log"
+  file_level: "DEBUG"
+  max_bytes: 10485760  # 10MB
+  backup_count: 5
+
+# Metrics and Monitoring
+metrics:
+  # Weights & Biases (optional)
+  wandb:
+    enabled: false
+    project: "civ6-alphazero"
+    entity: "${WANDB_ENTITY:}"
+    tags:
+      - "distributed"
+      - "4-node"
+      - "production"
+
+  # Local metrics export
+  local:
+    enabled: true
+    export_path: "metrics/"
+    export_interval: 60

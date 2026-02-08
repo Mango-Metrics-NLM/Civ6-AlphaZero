@@ -58,6 +58,8 @@ class EncoderConstants:
 
     # Normalization factors
     YIELD_NORMALIZATION: float = 10.0
+    # Score normalization (typical max score for progress calculation)
+    MAX_TYPICAL_SCORE: float = 1000.0
     POPULATION_NORMALIZATION: float = 30.0
     HEALTH_NORMALIZATION: float = 100.0
     STRENGTH_NORMALIZATION: float = 100.0
@@ -383,6 +385,12 @@ class DistributedConstants:
     # Compression
     COMPRESSION_ENABLED: bool = True
     COMPRESSION_LEVEL: int = 6  # LZMA compression level
+
+    # Timeout values (seconds)
+    TRAJECTORY_SUBMISSION_TIMEOUT: float = 5.0
+    ACTOR_POOL_STOP_TIMEOUT: float = 10.0
+    DEFAULT_STATE_TIMEOUT: float = 60.0
+    DEFAULT_ACTION_TIMEOUT: float = 30.0
 
 
 # =============================================================================

@@ -27,12 +27,12 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 # Optional imports - gracefully handle missing dependencies
 # Use TYPE_CHECKING to avoid mypy issues with conditional imports
 if TYPE_CHECKING:
-    from anthropic import Anthropic, AsyncAnthropic
+    from anthropic import Anthropic, AsyncAnthropic  # type: ignore[import]
     from openai import AsyncOpenAI, OpenAI
 
 try:
@@ -45,7 +45,7 @@ except ImportError:
     OpenAI = None  # type: ignore[misc,assignment]
 
 try:
-    from anthropic import Anthropic, AsyncAnthropic
+    from anthropic import Anthropic, AsyncAnthropic  # type: ignore[import, no-redef]
 
     ANTHROPIC_AVAILABLE = True
 except ImportError:
@@ -208,7 +208,7 @@ class LLMRateLimitError(LLMError):
 class LLMProviderError(LLMError):
     """Provider-specific error."""
 
-    def __init__(self, message: str, provider: LLMProvider):
+    def __init__(self, message: str, provider: LLMProvider) -> None:
         super().__init__(message)
         self.provider = provider
 
@@ -227,7 +227,7 @@ class BaseLLMClient(ABC):
         """Generate a response from the LLM."""
 
     @abstractmethod
-    async def generate_stream(
+    def generate_stream(
         self,
         prompt: str,
         system_prompt: str | None = None,
@@ -235,6 +235,7 @@ class BaseLLMClient(ABC):
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """Generate a streaming response from the LLM."""
+        ...
 
     def generate_sync(
         self,
@@ -250,7 +251,7 @@ class BaseLLMClient(ABC):
 class OpenAIClient(BaseLLMClient):
     """OpenAI API client."""
 
-    def __init__(self, config: LLMConfig):
+    def __init__(self, config: LLMConfig) -> None:
         if not OPENAI_AVAILABLE:
             raise LLMConfigError("OpenAI package not installed. Run: pip install openai")
 
@@ -288,7 +289,7 @@ class OpenAIClient(BaseLLMClient):
 
         response = await self._async_client.chat.completions.create(
             model=model,
-            messages=[m.to_openai_format() for m in request_messages],
+            messages=cast(list[Any], [m.to_openai_format() for m in request_messages]),
             max_tokens=max_tokens,
             temperature=temperature,
         )
@@ -311,7 +312,7 @@ class OpenAIClient(BaseLLMClient):
             raw_response=response,
         )
 
-    async def generate_stream(  # type: ignore[override]
+    async def generate_stream(
         self,
         prompt: str,
         system_prompt: str | None = None,
@@ -325,9 +326,10 @@ class OpenAIClient(BaseLLMClient):
         max_tokens = kwargs.get("max_tokens", self.config.openai_max_tokens)
         temperature = kwargs.get("temperature", self.config.openai_temperature)
 
+        openai_messages: list[Any] = [m.to_openai_format() for m in request_messages]
         stream = await self._async_client.chat.completions.create(
             model=model,
-            messages=[m.to_openai_format() for m in request_messages],
+            messages=openai_messages,
             max_tokens=max_tokens,
             temperature=temperature,
             stream=True,
@@ -356,7 +358,7 @@ class OpenAIClient(BaseLLMClient):
 class AnthropicClient(BaseLLMClient):
     """Anthropic API client."""
 
-    def __init__(self, config: LLMConfig):
+    def __init__(self, config: LLMConfig) -> None:
         if not ANTHROPIC_AVAILABLE:
             raise LLMConfigError("Anthropic package not installed. Run: pip install anthropic")
 
@@ -423,7 +425,7 @@ class AnthropicClient(BaseLLMClient):
             raw_response=response,
         )
 
-    async def generate_stream(  # type: ignore[override]
+    async def generate_stream(
         self,
         prompt: str,
         system_prompt: str | None = None,
@@ -475,7 +477,7 @@ class LLMClient:
         response = await client.generate("Hello, world!")
     """
 
-    def __init__(self, config: LLMConfig):
+    def __init__(self, config: LLMConfig) -> None:
         self.config = config
         self._clients: dict[LLMProvider, BaseLLMClient] = {}
         self._initialize_clients()

@@ -29,17 +29,17 @@ from alpha_zero.hierarchical.goals.goal_types import (
 )
 
 __all__ = [
-    # Types and enums
-    "GoalStatus",
-    "HierarchyLevel",
-    "StrategicGoalType",
-    "TacticalGoalType",
-    "OperationalGoalType",
     # Core classes
     "Goal",
-    "GoalTarget",
-    "GoalNode",
-    "GoalHierarchy",
     "GoalEvaluator",
+    "GoalHierarchy",
+    "GoalNode",
     "GoalPropagator",
+    # Types and enums
+    "GoalStatus",
+    "GoalTarget",
+    "HierarchyLevel",
+    "OperationalGoalType",
+    "StrategicGoalType",
+    "TacticalGoalType",
 ]

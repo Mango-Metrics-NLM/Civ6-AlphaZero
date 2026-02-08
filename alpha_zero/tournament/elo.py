@@ -141,7 +141,7 @@ class ELORatingSystem:
         ... )
     """
 
-    def __init__(self, config: ELOConfig | None = None):
+    def __init__(self, config: ELOConfig | None = None) -> None:
         """Initialize ELO rating system.
 
         Args:
@@ -456,7 +456,7 @@ class RatingLeaderboard:
         >>> top = leaderboard.get_top(10)
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize empty leaderboard."""
         self._ratings: dict[str, float] = {}
 

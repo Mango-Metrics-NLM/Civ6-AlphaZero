@@ -34,7 +34,7 @@ import sys
 import time
 
 from alpha_zero.cloud.gcp.config import GCPConfig
-from alpha_zero.cloud.gcp.exceptions import PreemptionError, VertexJobError
+from alpha_zero.cloud.gcp.exceptions import GCSStorageError, PreemptionError, VertexJobError
 from alpha_zero.cloud.gcp.storage import GCSModelStorage
 from alpha_zero.cloud.gcp.vertex_jobs import (
     VertexAIClient,
@@ -146,7 +146,7 @@ def get_initial_model_version(config: GCPConfig, dry_run: bool = False) -> int:
         version = storage.get_latest_version()
         logger.info("Found latest model version: %d", version)
         return version
-    except Exception:
+    except GCSStorageError:
         logger.info("No existing models found, starting from version 0")
         return 0
 

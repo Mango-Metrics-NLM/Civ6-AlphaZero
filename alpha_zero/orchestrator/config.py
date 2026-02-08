@@ -279,6 +279,102 @@ class StrategyAdvisorConfig:
 
 
 @dataclass
+class ReflectionIntegrationConfig:
+    """Configuration for LATS-style reflection memory integration."""
+
+    enabled: bool = False  # Disabled by default for backwards compatibility
+    storage_backend: str = "memory"  # "memory", "chroma", "faiss"
+    collection_name: str = "game_reflections"
+    embedding_dimension: int = 384
+    similarity_threshold: float = 0.7
+    max_retrievals: int = 5
+    warning_penalty: float = 0.1  # Penalty applied to MCTS value
+    max_entries: int = 10000
+    persist_directory: str = "data/reflections"
+
+    # LLM reflection generation settings
+    generate_critiques: bool = True  # Use LLM to generate verbal critiques
+    llm_temperature: float = 0.3
+    llm_max_tokens: int = 500
+    cache_critiques: bool = True
+    use_fallback_on_failure: bool = True
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ReflectionIntegrationConfig:
+        """Create from dictionary."""
+        return cls(
+            enabled=data.get("enabled", False),
+            storage_backend=data.get("storage_backend", "memory"),
+            collection_name=data.get("collection_name", "game_reflections"),
+            embedding_dimension=int(data.get("embedding_dimension", 384)),
+            similarity_threshold=float(data.get("similarity_threshold", 0.7)),
+            max_retrievals=int(data.get("max_retrievals", 5)),
+            warning_penalty=float(data.get("warning_penalty", 0.1)),
+            max_entries=int(data.get("max_entries", 10000)),
+            persist_directory=data.get("persist_directory", "data/reflections"),
+            generate_critiques=data.get("generate_critiques", True),
+            llm_temperature=float(data.get("llm_temperature", 0.3)),
+            llm_max_tokens=int(data.get("llm_max_tokens", 500)),
+            cache_critiques=data.get("cache_critiques", True),
+            use_fallback_on_failure=data.get("use_fallback_on_failure", True),
+        )
+
+    @classmethod
+    def from_env(cls) -> ReflectionIntegrationConfig:
+        """Load from environment variables."""
+        return cls(
+            enabled=os.getenv("CIV6AZ_REFLECTION_ENABLED", "false").lower() == "true",
+            storage_backend=os.getenv("CIV6AZ_REFLECTION_BACKEND", "memory"),
+            embedding_dimension=int(os.getenv("CIV6AZ_REFLECTION_EMBED_DIM", "384")),
+            warning_penalty=float(os.getenv("CIV6AZ_REFLECTION_WARNING_PENALTY", "0.1")),
+        )
+
+
+@dataclass
+class HierarchicalConfig:
+    """Configuration for hierarchical planning integration."""
+
+    enabled: bool = False  # Disabled by default for backwards compatibility
+
+    # Strategic layer (long-term goals)
+    strategic_interval: int = 50  # Re-evaluate strategy every N turns
+    use_rag_for_strategy: bool = True
+
+    # Tactical layer (medium-term objectives)
+    tactical_interval: int = 10  # Re-evaluate tactics every N turns
+    goal_types: list[str] = field(
+        default_factory=lambda: ["expand_cities", "build_military", "research_tech"]
+    )
+
+    # Operational layer (per-turn actions)
+    use_goal_guided_mcts: bool = True
+    goal_weight: float = 0.3  # Weight of goal progress in value
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> HierarchicalConfig:
+        """Create from dictionary."""
+        return cls(
+            enabled=data.get("enabled", False),
+            strategic_interval=int(data.get("strategic_interval", 50)),
+            use_rag_for_strategy=data.get("use_rag_for_strategy", True),
+            tactical_interval=int(data.get("tactical_interval", 10)),
+            goal_types=data.get("goal_types", ["expand_cities", "build_military", "research_tech"]),
+            use_goal_guided_mcts=data.get("use_goal_guided_mcts", True),
+            goal_weight=float(data.get("goal_weight", 0.3)),
+        )
+
+    @classmethod
+    def from_env(cls) -> HierarchicalConfig:
+        """Load from environment variables."""
+        return cls(
+            enabled=os.getenv("CIV6AZ_HIERARCHICAL_ENABLED", "false").lower() == "true",
+            strategic_interval=int(os.getenv("CIV6AZ_STRATEGIC_INTERVAL", "50")),
+            tactical_interval=int(os.getenv("CIV6AZ_TACTICAL_INTERVAL", "10")),
+            goal_weight=float(os.getenv("CIV6AZ_GOAL_WEIGHT", "0.3")),
+        )
+
+
+@dataclass
 class EnvironmentConfig:
     """Environment configuration."""
 
@@ -609,6 +705,16 @@ class OrchestratorConfig:
         default_factory=StrategyAdvisorConfig,
     )
 
+    # Reflection memory (LATS-style learning from failures)
+    reflection: ReflectionIntegrationConfig = field(
+        default_factory=ReflectionIntegrationConfig,
+    )
+
+    # Hierarchical planning (strategic/tactical/operational layers)
+    hierarchical: HierarchicalConfig = field(
+        default_factory=HierarchicalConfig,
+    )
+
     # Resource management
     resources: ResourceBudget = field(default_factory=ResourceBudget)
     autonomy: AutonomyLevel = field(default_factory=AutonomyLevel)
@@ -672,6 +778,12 @@ class OrchestratorConfig:
             llm=LLMConfig.from_dict(data.get("llm", {})),
             strategy_advisor=StrategyAdvisorConfig.from_dict(
                 data.get("strategy_advisor", {}),
+            ),
+            reflection=ReflectionIntegrationConfig.from_dict(
+                data.get("reflection", {}),
+            ),
+            hierarchical=HierarchicalConfig.from_dict(
+                data.get("hierarchical", {}),
             ),
             resources=ResourceBudget.from_dict(data.get("resources", {})),
             autonomy=AutonomyLevel.from_dict(data.get("autonomy", {})),
@@ -821,6 +933,8 @@ class OrchestratorConfig:
             "rag": self.rag,
             "llm": self.llm,
             "resources": self.resources,
+            "reflection": self.reflection,
+            "hierarchical": self.hierarchical,
         }
 
         if section not in section_map:
@@ -954,6 +1068,18 @@ class OrchestratorConfig:
             "strategy_advisor": {
                 "enabled": self.strategy_advisor.enabled,
                 "analysis_interval": self.strategy_advisor.analysis_interval,
+            },
+            "reflection": {
+                "enabled": self.reflection.enabled,
+                "storage_backend": self.reflection.storage_backend,
+                "warning_penalty": self.reflection.warning_penalty,
+                "generate_critiques": self.reflection.generate_critiques,
+            },
+            "hierarchical": {
+                "enabled": self.hierarchical.enabled,
+                "strategic_interval": self.hierarchical.strategic_interval,
+                "tactical_interval": self.hierarchical.tactical_interval,
+                "goal_weight": self.hierarchical.goal_weight,
             },
             "checkpoint_dir": self.checkpoint_dir,
             "log_dir": self.log_dir,

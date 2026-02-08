@@ -57,8 +57,14 @@ class PopulationManager:
     def __init__(
         self,
         config: PBTConfig,
-        rng: Optional[np.random.Generator] = None,
-    ):
+        rng: np.random.Generator | None = None,
+    ) -> None:
+        """Initialize population manager.
+
+        Args:
+            config: PBT configuration
+            rng: Random number generator for reproducibility
+        """
         self.config = config
         self.rng = rng or np.random.default_rng()
         self.agents: Dict[str, AgentState] = {}

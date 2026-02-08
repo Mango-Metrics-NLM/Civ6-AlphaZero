@@ -1,73 +1,154 @@
-"""Factory for creating MCTS instances by type name.
+"""Factory for creating MCTS instances.
+
+This module provides a unified interface for creating different MCTS variants,
+making it easier to switch between implementations and ensuring consistent
+configuration.
 
 All MCTS variants share a common interface:
     search(env, add_noise) -> (action_probs, root_value)
     select_action(action_probs, temperature) -> int
 
-This factory allows runtime selection of the MCTS algorithm via a string
-type name, enabling configuration-driven switching without code changes.
+Supported variants:
+- "puct": Standard AlphaZero PUCT-based MCTS (Civ6MCTS)
+- "gumbel": Gumbel MuZero MCTS for efficient inference
+- "simple": Random rollout MCTS for bootstrapping/testing
+- "muzero": MuZero MCTS with learned dynamics
 
 Usage:
-    mcts = create_mcts("gumbel", network, device="cuda", num_simulations=16)
-    action_probs, value = mcts.search(env, add_noise=True)
-    action = mcts.select_action(action_probs, temperature=1.0)
+    from alpha_zero.core.mcts_factory import create_mcts, MCTSVariant
+
+    # Create simple MCTS for testing
+    mcts = create_mcts("simple", num_simulations=20)
+
+    # Create network-guided MCTS
+    mcts = create_mcts("puct", network=network, num_simulations=100)
+
+    # Using enum
+    mcts = create_mcts(MCTSVariant.GUMBEL, network=network, config=config)
 """
 
 from __future__ import annotations
 
 import dataclasses
-from typing import TYPE_CHECKING
+from enum import Enum
+from typing import Any, Protocol
 
+import numpy as np
 import torch
 
-if TYPE_CHECKING:
-    from alpha_zero.core.civ6_mcts import Civ6MCTS, GumbelMCTS, MuZeroMCTS
+
+class MCTSVariant(Enum):
+    """Available MCTS variants."""
+
+    CIV6 = "civ6"
+    PUCT = "puct"
+    GUMBEL = "gumbel"
+    SIMPLE = "simple"
+    MUZERO = "muzero"
+
+
+class MCTSProtocol(Protocol):
+    """Protocol that all MCTS implementations should follow.
+
+    This protocol defines the minimal interface that MCTS implementations
+    must provide to be compatible with the training pipeline.
+    """
+
+    def search(
+        self,
+        env_or_obs: Any,
+        add_noise: bool = True,
+    ) -> tuple[np.ndarray, float]:
+        """Run MCTS search and return policy and value.
+
+        Args:
+            env_or_obs: Environment instance or observation dict.
+            add_noise: Whether to add exploration noise at root.
+
+        Returns:
+            Tuple of (action_probabilities, root_value).
+        """
+        ...
+
+    def select_action(
+        self,
+        action_probs: np.ndarray,
+        temperature: float = 1.0,
+        action_mask: np.ndarray | None = None,
+    ) -> int:
+        """Select action from probability distribution.
+
+        Args:
+            action_probs: Action probability distribution.
+            temperature: Temperature for action selection.
+            action_mask: Optional mask indicating which actions are legal/valid.
+                If provided, implementations should respect this mask.
+
+        Returns:
+            Selected action index.
+        """
+        ...
+
 
 # Registry of MCTS types -> (class_name, config_class_name, default_simulations)
 _MCTS_REGISTRY: dict[str, tuple[str, str, int]] = {
     "civ6": ("Civ6MCTS", "MCTSConfig", 200),
+    "puct": ("Civ6MCTS", "MCTSConfig", 200),
     "gumbel": ("GumbelMCTS", "GumbelMCTSConfig", 16),
     "muzero": ("MuZeroMCTS", "MuZeroMCTSConfig", 50),
+    "simple": ("SimpleMCTS", "None", 20),
 }
 
 
-def get_available_mcts_types() -> list[str]:
-    """Return list of supported MCTS type names."""
-    return list(_MCTS_REGISTRY.keys())
-
-
 def create_mcts(
-    mcts_type: str = "civ6",
+    variant: str | MCTSVariant = "puct",
     network: torch.nn.Module | None = None,
+    config: Any | None = None,
     device: str = "cpu",
-    num_simulations: int | None = None,
-    **kwargs,
-) -> Civ6MCTS | GumbelMCTS | MuZeroMCTS:
-    """Create an MCTS instance by type name.
+    **kwargs: Any,
+) -> MCTSProtocol:
+    """Factory function to create MCTS instances.
+
+    This is the recommended way to create MCTS instances as it provides
+    a consistent interface across all variants and handles configuration
+    validation.
 
     Args:
-        mcts_type: MCTS variant to create ("civ6", "gumbel", or "muzero").
-        network: Neural network for evaluation.
-        device: Device for neural network inference.
-        num_simulations: Override default simulation count.
-            Defaults: civ6=200, gumbel=16, muzero=50.
-        **kwargs: Additional config parameters passed to the config dataclass.
-            For gumbel: num_sampled_actions, max_considered_actions, c_visit, etc.
-            For muzero: use_gumbel, discount, etc.
-            For civ6: c_puct, dirichlet_alpha, dirichlet_epsilon, etc.
+        variant: MCTS variant to create. One of:
+            - "puct": Standard AlphaZero PUCT-based MCTS
+            - "gumbel": Gumbel MuZero for efficient inference
+            - "simple": Random rollout MCTS (no network needed)
+            - "muzero": MuZero with learned dynamics
+        network: Neural network for evaluation (required for puct, gumbel, muzero).
+        config: Optional configuration object. If None, defaults are used.
+        device: Device for network inference ("cpu" or "cuda").
+        **kwargs: Additional arguments passed to MCTS constructor.
+            Common kwargs:
+            - num_simulations: Number of MCTS simulations (default: variant default)
+            - c_puct: Exploration constant
+            - dirichlet_alpha: Dirichlet noise parameter
+            - dirichlet_epsilon: Noise weight
 
     Returns:
-        An MCTS instance with search() and select_action() methods.
+        MCTS instance implementing MCTSProtocol.
 
     Raises:
-        ValueError: If mcts_type is not recognized or network is None.
+        ValueError: If variant is unknown or required arguments are missing.
     """
-    if mcts_type not in _MCTS_REGISTRY:
-        available = ", ".join(f"'{t}'" for t in _MCTS_REGISTRY)
-        raise ValueError(f"Unknown MCTS type: '{mcts_type}'. Available types: {available}")
+    # Normalize variant to string
+    if isinstance(variant, MCTSVariant):
+        variant = variant.value
 
-    if network is None:
-        raise ValueError("network is required for MCTS creation (got None)")
+    variant = variant.lower()
+
+    if variant not in _MCTS_REGISTRY:
+        valid_variants = list(_MCTS_REGISTRY.keys())
+        raise ValueError(f"Unknown MCTS variant: {variant!r}. Valid variants are: {valid_variants}")
+
+    class_name, config_class_name, default_sims = _MCTS_REGISTRY[variant]
+
+    # Normalize simulations
+    num_simulations = kwargs.pop("num_simulations", default_sims)
 
     # Lazy import to avoid circular dependencies
     from alpha_zero.core.civ6_mcts import (
@@ -77,9 +158,17 @@ def create_mcts(
         MCTSConfig,
         MuZeroMCTS,
         MuZeroMCTSConfig,
+        SimpleMCTS,
     )
 
-    class_name, config_class_name, default_sims = _MCTS_REGISTRY[mcts_type]
+    if variant == "simple":
+        return SimpleMCTS(
+            num_simulations=num_simulations,
+            **kwargs,
+        )
+
+    if network is None:
+        raise ValueError(f"Network is required for {variant} MCTS variant")
 
     # Resolve classes
     mcts_classes = {
@@ -94,18 +183,75 @@ def create_mcts(
     }
 
     mcts_cls = mcts_classes[class_name]
-    config_cls = config_classes[config_class_name]
 
-    # Build config with overrides (explicit None check so 0 isn't treated as falsy)
-    effective_sims = default_sims if num_simulations is None else num_simulations
-    config_kwargs = {"num_simulations": effective_sims}
+    if config is None:
+        config_cls = config_classes[config_class_name]
+        # Build config with overrides
+        config_kwargs = {"num_simulations": num_simulations}
 
-    # Filter kwargs to only include fields that the config class accepts
-    valid_fields = {f.name for f in dataclasses.fields(config_cls)}
-    for key, value in kwargs.items():
-        if key in valid_fields:
-            config_kwargs[key] = value
+        # Filter kwargs to only include fields that the config class accepts
+        valid_fields = {f.name for f in dataclasses.fields(config_cls)}
+        for key, value in list(kwargs.items()):
+            if key in valid_fields:
+                config_kwargs[key] = value
+                kwargs.pop(key)  # Remove from kwargs so it doesn't get passed to MCTS twice
 
-    config = config_cls(**config_kwargs)
+        config = config_cls(**config_kwargs)
 
-    return mcts_cls(network=network, config=config, device=device)
+    return mcts_cls(network=network, config=config, device=device, **kwargs)
+
+
+def get_default_config(variant: str | MCTSVariant) -> Any:
+    """Get default configuration for a variant.
+
+    Args:
+        variant: MCTS variant.
+
+    Returns:
+        Default configuration object for the variant.
+    """
+    if isinstance(variant, MCTSVariant):
+        variant = variant.value
+
+    variant = variant.lower()
+
+    if variant == "simple":
+        return None  # SimpleMCTS doesn't use a config object
+
+    # Lazy import
+    from alpha_zero.core.civ6_mcts import (
+        GumbelMCTSConfig,
+        MCTSConfig,
+        MuZeroMCTSConfig,
+    )
+
+    config_classes = {
+        "civ6": MCTSConfig,
+        "puct": MCTSConfig,
+        "gumbel": GumbelMCTSConfig,
+        "muzero": MuZeroMCTSConfig,
+    }
+
+    if variant in config_classes:
+        return config_classes[variant]()
+
+    valid_variants = list(_MCTS_REGISTRY.keys())
+    raise ValueError(f"Unknown MCTS variant: {variant!r}. Valid variants are: {valid_variants}")
+
+
+def list_variants() -> list[str]:
+    """List all available MCTS variants.
+
+    Returns:
+        List of variant names.
+    """
+    return list(_MCTS_REGISTRY.keys())
+
+
+def get_available_mcts_types() -> list[str]:
+    """List all available MCTS types (alias for list_variants).
+
+    Returns:
+        List of variant names.
+    """
+    return list_variants()

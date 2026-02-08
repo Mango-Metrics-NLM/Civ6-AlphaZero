@@ -54,9 +54,9 @@ def list_templates() -> list[str]:
 
 
 __all__ = [
-    "TEMPLATE_DIR",
-    "AGENTIC_PROMPT_YAML",
     "AGENTIC_PROMPT_MD",
+    "AGENTIC_PROMPT_YAML",
+    "TEMPLATE_DIR",
     "get_template_path",
     "list_templates",
 ]

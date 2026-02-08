@@ -515,7 +515,7 @@ class TestAgentSelectionMatrix:
 
     def test_matrix_values_are_lists(self) -> None:
         """Test that all matrix values are lists of AgentType."""
-        for task, agents in AGENT_SELECTION_MATRIX.items():
+        for _task, agents in AGENT_SELECTION_MATRIX.items():
             assert isinstance(agents, list)
             for agent in agents:
                 assert isinstance(agent, AgentType)

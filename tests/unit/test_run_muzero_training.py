@@ -159,18 +159,20 @@ class TestSelfPlayGame:
         trajectory = self_play_game(small_env, small_mcts, small_config)
 
         assert isinstance(trajectory, GameTrajectory)
-        assert trajectory.game_length > 0
+        assert len(trajectory) > 0
 
     def test_trajectory_has_valid_shapes(self, small_env, small_mcts, small_config):
         """Trajectory has valid array shapes."""
         trajectory = self_play_game(small_env, small_mcts, small_config)
+        game_length = len(trajectory.actions)
 
-        # Should have game_length actions and game_length+1 observations
-        assert len(trajectory.actions) == trajectory.game_length
-        assert len(trajectory.observations_spatial) == trajectory.game_length + 1
-        assert len(trajectory.observations_vector) == trajectory.game_length + 1
-        assert len(trajectory.policies) == trajectory.game_length
-        assert len(trajectory.rewards) == trajectory.game_length
+        # Should have game_length actions/rewards and game_length+1 observations/policies/values/dones
+        assert len(trajectory.actions) == game_length
+        assert len(trajectory.rewards) == game_length
+        assert len(trajectory.observations) == game_length + 1
+        assert len(trajectory.policies) == game_length + 1
+        assert len(trajectory.values) == game_length + 1
+        assert len(trajectory.dones) == game_length + 1
 
     def test_policies_are_valid_distributions(self, small_env, small_mcts, small_config):
         """Policies sum to 1."""
@@ -221,7 +223,7 @@ class TestRunSelfPlay:
         trajectories = run_self_play(network, small_config, num_games=3)
 
         # Check that not all trajectories are identical
-        lengths = [t.game_length for t in trajectories]
+        lengths = [len(t) for t in trajectories]
         # At least some variation expected (not all same length)
         # This is probabilistic but very likely to pass
         assert len(set(lengths)) >= 1
@@ -257,9 +259,9 @@ class TestTrainingIntegration:
             num_games=minimal_config.num_games_per_iteration,
         )
 
-        total_steps = sum(t.game_length for t in trajectories)
+        total_steps = sum(len(t) for t in trajectories)
         assert total_steps > 0
-        assert all(t.observations_spatial.shape[1:] == (13, 8, 8) for t in trajectories)
+        assert all(t.observations[0]["spatial"].shape == (13, 8, 8) for t in trajectories)
 
     def test_network_can_be_saved_and_loaded(self, minimal_config):
         """Network state can be saved and loaded."""

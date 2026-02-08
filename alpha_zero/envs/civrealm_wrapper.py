@@ -39,7 +39,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Any, SupportsFloat
+from typing import Any, ClassVar, SupportsFloat
 
 import gymnasium as gym
 import numpy as np
@@ -252,7 +252,7 @@ class CivRealmEncoder:
     TOTAL_CHANNELS = 51
     VECTOR_DIM = 256
 
-    def __init__(self, config: CivRealmConfig):
+    def __init__(self, config: CivRealmConfig) -> None:
         """Initialize encoder.
 
         Args:
@@ -692,7 +692,7 @@ class CivRealmActionHandler:
         action_size: Total number of discrete actions.
     """
 
-    def __init__(self, config: CivRealmConfig):
+    def __init__(self, config: CivRealmConfig) -> None:
         """Initialize action handler.
 
         Args:
@@ -874,7 +874,7 @@ class CivRealmCurriculum:
     """
 
     # Default mini-game tasks in order of difficulty
-    DEFAULT_TASKS = [
+    DEFAULT_TASKS: ClassVar[list[MiniGameTask]] = [
         MiniGameTask(
             name="development_build_city",
             display_name="Build Your First City",
@@ -957,7 +957,7 @@ class CivRealmCurriculum:
         ),
     ]
 
-    def __init__(self, custom_tasks: list[MiniGameTask] | None = None):
+    def __init__(self, custom_tasks: list[MiniGameTask] | None = None) -> None:
         """Initialize curriculum.
 
         Args:
@@ -1159,7 +1159,7 @@ class MockCivRealmEnv:
     Provides a simplified simulation that mimics CivRealm's interface.
     """
 
-    def __init__(self, config: CivRealmConfig):
+    def __init__(self, config: CivRealmConfig) -> None:
         """Initialize mock environment.
 
         Args:
@@ -1321,13 +1321,13 @@ class CivRealmWrapper(gym.Env):
         >>> obs, reward, terminated, truncated, info = env.step(action)
     """
 
-    metadata = {"render_modes": ["human", "ansi", None]}
+    metadata: ClassVar[dict[str, list[str | None]]] = {"render_modes": ["human", "ansi", None]}
 
     def __init__(
         self,
         config: CivRealmConfig | None = None,
         curriculum: CivRealmCurriculum | None = None,
-    ):
+    ) -> None:
         """Initialize CivRealm wrapper.
 
         Args:
@@ -1663,16 +1663,16 @@ def make(
 
 # Module exports
 __all__ = [
-    "CivRealmConfig",
-    "CivRealmEncoder",
+    "CIVREALM_AVAILABLE",
+    "ActionType",
     "CivRealmActionHandler",
+    "CivRealmConfig",
     "CivRealmCurriculum",
+    "CivRealmEncoder",
     "CivRealmWrapper",
     "MiniGameTask",
     "TerrainType",
     "UnitCategory",
-    "ActionType",
     "create_civrealm_env",
     "make",
-    "CIVREALM_AVAILABLE",
 ]

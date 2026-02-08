@@ -2,13 +2,24 @@
 .git
 .gitignore
 
+# AI coding assistants
+.agent/
+.gemini/
+
 # Python cache
 __pycache__
 *.pyc
 *.pyo
 *.egg-info
-dist
+.eggs
 build
+dist
+*.egg
+
+# Virtual environments
+venv
+.venv
+env
 
 # IDE
 .vscode
@@ -16,36 +27,63 @@ build
 *.swp
 *.swo
 
-# Testing
+# Testing and coverage
 tests/
 .pytest_cache
 .coverage
 htmlcov/
 .mypy_cache
+.tox
+.nox
+.ruff_cache
 
-# Docs
+# Documentation
 docs/
 *.md
-LICENSE
+!requirements*.txt
 
-# Data / Checkpoints (loaded from GCS at runtime)
-checkpoints/
-data/
-wandb/
-runs/
-*.pt
-*.pth
-
-# Environment
+# Environment / secrets
 .env
 .env.*
+.env.local
+credentials.json
+secrets.json
+service_account*.json
+application_default_credentials.json
+*.pem
+*.key
+
+# Cloud / Terraform
+.gcloud/
+gcloud/
+.terraform/
+terraform.tfstate*
+
+# Model & training artifacts (use GCS)
+checkpoints/
+models/
+artifacts/
+training_results/
+wandb/
+*.wandb
+*.pt
+*.pth
+*.pkl
+*.npy
+*.faiss
+
+# Logs
+logs/
 *.log
+*.tmp
+*.temp
 
-# Scripts (not needed in container)
-scripts/
-notebooks/
+# Profiling
+*.prof
+*.lprof
+*.pstats
+profile_output/
 
-# Docker
-Dockerfile
-.dockerignore
-docker-compose*.yml
+# OS
+.DS_Store
+Thumbs.db

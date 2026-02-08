@@ -61,7 +61,7 @@ class RAGConfig:
 class RAGClient:
     """Client for RAG operations using ChromaDB."""
 
-    def __init__(self, config: RAGConfig | None = None):
+    def __init__(self, config: RAGConfig | None = None) -> None:
         self.config = config or RAGConfig.from_env()
 
         if not CHROMA_AVAILABLE:
@@ -73,7 +73,7 @@ class RAGClient:
 
         self._init_db()
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         """Initialize ChromaDB client and collection."""
         try:
             # Ensure persist directory exists
@@ -93,7 +93,8 @@ class RAGClient:
                 embedding_function=embedding_func,
             )
             logger.info(
-                f"RAG initialized at {self.config.persist_directory}, collection: {self.config.collection_name}"
+                f"RAG initialized at {self.config.persist_directory}, "
+                f"collection: {self.config.collection_name}"
             )
 
         except Exception as e:

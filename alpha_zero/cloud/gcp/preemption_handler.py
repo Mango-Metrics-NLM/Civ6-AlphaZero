@@ -471,7 +471,7 @@ class PreemptionHandler:
                 blob_path = f"checkpoints/{filename}"
                 data = local_path.read_bytes()
                 gcs_path = self.gcs_storage.backend.upload_blob(
-                    self.gcs_storage._bucket,
+                    self.gcs_storage.bucket,
                     blob_path,
                     data,
                 )
@@ -644,7 +644,11 @@ class PreemptionHandler:
             try:
                 gcs_path = f"{self.config.preemption_state_prefix}/{self._job_name}.yaml"
                 state_bytes = yaml.dump(state.to_dict()).encode("utf-8")
-                self.gcs_storage.upload_bytes(state_bytes, gcs_path)
+                self.gcs_storage.backend.upload_blob(
+                    self.gcs_storage.bucket,
+                    gcs_path,
+                    state_bytes,
+                )
                 logger.info(f"Preemption state uploaded to GCS: {gcs_path}")
             except Exception as e:
                 logger.error(f"Failed to upload preemption state to GCS: {e}")
@@ -674,7 +678,7 @@ class PreemptionHandler:
             try:
                 gcs_path = f"{self.config.preemption_state_prefix}/{job_name}.yaml"
                 data_bytes = self.gcs_storage.backend.download_blob(
-                    self.gcs_storage._bucket,
+                    self.gcs_storage.bucket,
                     gcs_path,
                 )
                 data = yaml.safe_load(data_bytes.decode("utf-8"))
@@ -702,7 +706,7 @@ class PreemptionHandler:
             try:
                 gcs_path = f"{self.config.preemption_state_prefix}/{job_name}.yaml"
                 self.gcs_storage.backend.delete_blob(
-                    self.gcs_storage._bucket,
+                    self.gcs_storage.bucket,
                     gcs_path,
                 )
                 logger.debug(f"Cleared GCS preemption state: {gcs_path}")

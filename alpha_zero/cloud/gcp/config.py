@@ -54,7 +54,7 @@ def get_gpu_costs() -> dict[str, float]:
 class VertexTier(str, Enum):
     """Vertex AI pricing tier."""
 
-    BUDGET = "budget"  # T4 self-play + L4 training
+    BUDGET = "budget"  # T4 for both self-play and training
     ON_DEMAND = "ondemand"  # A100 for both
 
 
@@ -122,14 +122,16 @@ class TrainingWorkerConfig:
     spot: bool = False
     checkpoint_interval: int = 1000
     epochs_per_iteration: int = 10
+    replica_count: int = 1
 
     @classmethod
     def budget_preset(cls) -> TrainingWorkerConfig:
-        """Create budget tier configuration (T4 GPU)."""
+        """Create budget tier configuration (T4 GPU for better quota availability)."""
         return cls(
             machine_type="n1-standard-8",
             accelerator_type="NVIDIA_TESLA_T4",
             accelerator_count=1,
+            replica_count=1,
             spot=False,
         )
 
@@ -140,6 +142,7 @@ class TrainingWorkerConfig:
             machine_type="a2-highgpu-8g",
             accelerator_type="NVIDIA_TESLA_A100",
             accelerator_count=8,
+            replica_count=1,
             spot=False,
         )
 

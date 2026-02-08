@@ -15,6 +15,7 @@ from typing import Any
 
 from ..config import AgenticConfig
 from ..utils.logging_config import get_logger
+from .constants import DEFAULT_CLAUDE_MD_FILENAME, DEFAULT_SECTION_ORDER
 
 logger = get_logger("session_memory")
 
@@ -28,7 +29,7 @@ class SectionFormat(Enum):
     TEXT = "text"
 
 
-@dataclass
+@dataclass(slots=True)
 class MemorySection:
     """Represents a section in the session memory."""
 
@@ -134,7 +135,7 @@ class MemorySection:
         return section
 
 
-@dataclass
+@dataclass(slots=True)
 class ArchitectureDecision:
     """Represents an architecture decision record."""
 
@@ -151,7 +152,7 @@ class ArchitectureDecision:
         }
 
 
-@dataclass
+@dataclass(slots=True)
 class KnownIssue:
     """Represents a known issue with workaround."""
 
@@ -179,6 +180,9 @@ class SessionMemory:
     - Track changes for commit messages
     """
 
+    # Compiled regex pattern for section headers (class-level for efficiency)
+    _SECTION_PATTERN = re.compile(r"^(#{1,3})\s+(.+)$", re.MULTILINE)
+
     def __init__(
         self,
         memory_file: Path | None = None,
@@ -190,7 +194,7 @@ class SessionMemory:
             memory_file: Path to memory file (default: CLAUDE.md in cwd).
             config: Configuration for section setup.
         """
-        self.memory_file = memory_file or Path.cwd() / "CLAUDE.md"
+        self.memory_file = memory_file or Path.cwd() / DEFAULT_CLAUDE_MD_FILENAME
         self.config = config
         self._sections: dict[str, MemorySection] = {}
         self._raw_content: str = ""
@@ -231,7 +235,7 @@ class SessionMemory:
             return False
 
         try:
-            self._raw_content = self.memory_file.read_text()
+            self._raw_content = self.memory_file.read_text(encoding="utf-8")
             self._parse_content()
             logger.info(f"Loaded session memory from {self.memory_file}")
             return True
@@ -241,9 +245,8 @@ class SessionMemory:
 
     def _parse_content(self) -> None:
         """Parse the raw content into sections."""
-        # Split by headers
-        section_pattern = re.compile(r"^(#{1,3})\s+(.+)$", re.MULTILINE)
-        matches = list(section_pattern.finditer(self._raw_content))
+        # Split by headers using class-level compiled pattern
+        matches = list(self._SECTION_PATTERN.finditer(self._raw_content))
 
         for i, match in enumerate(matches):
             level = len(match.group(1))
@@ -272,8 +275,10 @@ class SessionMemory:
             True if file was saved successfully.
         """
         try:
+            if not self.memory_file.parent.exists():
+                self.memory_file.parent.mkdir(parents=True, exist_ok=True)
             content = self.render()
-            self.memory_file.write_text(content)
+            self.memory_file.write_text(content, encoding="utf-8")
             self._modified = False
             logger.info(f"Saved session memory to {self.memory_file}")
             return True
@@ -289,20 +294,10 @@ class SessionMemory:
         """
         lines = ["# CLAUDE.md", ""]
 
-        # Render in a consistent order
-        section_order = [
-            "Build Commands",
-            "Test Commands",
-            "Architecture Decisions",
-            "Known Issues",
-            "Environment Setup",
-            "Gotchas",
-        ]
-
         rendered_sections = set()
 
-        # Render ordered sections first
-        for name in section_order:
+        # Render ordered sections first (using centralized order)
+        for name in DEFAULT_SECTION_ORDER:
             if name in self._sections:
                 section = self._sections[name]
                 if section.persist:
@@ -352,27 +347,6 @@ class SessionMemory:
         self._sections[section_name].content.append(item)
         self._modified = True
         logger.debug(f"Added item to section: {section_name}")
-
-    def remove_from_section(self, section_name: str, item: Any) -> bool:
-        """Remove an item from a section.
-
-        Args:
-            section_name: Name of the section.
-            item: Item to remove.
-
-        Returns:
-            True if item was found and removed.
-        """
-        if section_name not in self._sections:
-            return False
-
-        section = self._sections[section_name]
-        if item in section.content:
-            section.content.remove(item)
-            self._modified = True
-            logger.debug(f"Removed item from section: {section_name}")
-            return True
-        return False
 
     # Convenience methods for common sections
 

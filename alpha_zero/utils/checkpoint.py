@@ -218,7 +218,7 @@ def save_checkpoint(
 
 __all__ = [
     "CheckpointLoadResult",
-    "safe_load_checkpoint",
     "load_model_state",
+    "safe_load_checkpoint",
     "save_checkpoint",
 ]

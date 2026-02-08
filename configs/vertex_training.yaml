@@ -1,0 +1,142 @@
+# Vertex AI Training Configuration for Civ6 AlphaZero
+#
+# This configuration file defines the settings for running training on
+# Google Vertex AI. It can be loaded by the training CLI.
+#
+# Usage:
+#   python -m alpha_zero.cloud.gcp run --config configs/vertex_training.yaml
+#
+# Environment variables (required):
+#   CIV6AZ_VERTEX_PROJECT - GCP project ID
+#   CIV6AZ_GCS_BUCKET - GCS bucket name
+#   CIV6AZ_CONTAINER_IMAGE_URI - Container image URI
+#
+# Optional environment variables:
+#   CIV6AZ_VERTEX_REGION - GCP region (default: us-central1)
+#   CIV6AZ_VERTEX_SERVICE_ACCOUNT - Service account email
+#   WANDB_API_KEY - Weights & Biases API key
+
+# ============================================================
+# Tier Selection
+# ============================================================
+# budget: T4 Spot VMs for self-play, L4 for training (~$2/hr total)
+# ondemand: A100 GPUs for everything (~$15/hr total)
+tier: budget
+
+# ============================================================
+# Training Loop Configuration
+# ============================================================
+training_loop:
+  # Number of training iterations
+  num_iterations: 50
+
+  # Number of parallel self-play workers
+  selfplay_workers: 5
+
+  # Games each worker generates per iteration
+  games_per_worker: 50
+
+  # Number of recent iterations to sample trajectories from
+  trajectory_window: 3
+
+  # Starting iteration (useful for resuming)
+  start_iteration: 1
+
+# ============================================================
+# Self-Play Worker Configuration (Budget Tier)
+# ============================================================
+self_play:
+  # Machine configuration
+  machine_type: n1-standard-8
+  accelerator_type: NVIDIA_TESLA_T4
+  accelerator_count: 1
+
+  # Number of workers to launch (overridden by training_loop.selfplay_workers)
+  replica_count: 5
+
+  # Use Spot VMs for cost savings (can be preempted)
+  spot: true
+
+  # Games per worker per iteration
+  games_per_worker: 50
+
+  # MCTS configuration
+  mcts_simulations: 400
+
+  # Maximum retries on preemption
+  max_retries: 3
+
+# ============================================================
+# Training Worker Configuration (Budget Tier)
+# ============================================================
+training:
+  # Machine configuration - Using T4 instead of L4 for better quota availability
+  machine_type: n1-standard-8
+  accelerator_type: NVIDIA_TESLA_T4
+  accelerator_count: 1
+
+  # Don't use Spot for training (checkpointing overhead not worth it)
+  spot: false
+
+  # Training epochs per iteration
+  epochs_per_iteration: 10
+
+  # Checkpoint every N training steps
+  checkpoint_interval: 1000
+
+  # Batch size
+  batch_size: 256
+
+  # Learning rate
+  learning_rate: 0.001
+
+# ============================================================
+# GCS Storage Paths
+# ============================================================
+gcs:
+  # Prefix paths within the bucket
+  models_prefix: models/civ6az
+  trajectories_prefix: trajectories/civ6az
+  checkpoints_prefix: checkpoints/civ6az
+  logs_prefix: logs/civ6az
+
+# ============================================================
+# Preemption Handling
+# ============================================================
+preemption:
+  # Enable preemption handling for Spot VMs
+  enabled: true
+
+  # Checkpoint interval when running on preemptible VMs
+  checkpoint_interval_seconds: 300
+
+  # Maximum retries after preemption
+  max_retries: 5
+
+  # Backoff multiplier for retries
+  backoff_multiplier: 2.0
+
+# ============================================================
+# Experiment Tracking (Weights & Biases)
+# ============================================================
+wandb:
+  enabled: true
+  project: civ6-alphazero
+  # entity: your-wandb-entity  # Uncomment and set if using teams
+  mode: online  # online, offline, or disabled
+  log_frequency: 10
+  log_model: true
+  log_gradients: false
+
+# ============================================================
+# Cost Monitoring
+# ============================================================
+cost:
+  # Daily budget limit (USD)
+  daily_budget_usd: 50.0
+
+  # Total budget limit for the training run
+  total_budget_usd: 500.0
+
+  # Alert when this percentage of budget is reached
+  alert_threshold: 0.8

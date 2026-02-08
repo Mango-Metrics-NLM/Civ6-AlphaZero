@@ -95,11 +95,11 @@ class JobSpec:
             "image_uri": self.container_uri,
         }
         if self.command:
-            container_spec["command"] = self.command
+            container_spec["command"] = self.command  # type: ignore[assignment]
         if self.args:
-            container_spec["args"] = self.args
+            container_spec["args"] = self.args  # type: ignore[assignment]
         if self.env_vars:
-            container_spec["env"] = [{"name": k, "value": v} for k, v in self.env_vars.items()]
+            container_spec["env"] = [{"name": k, "value": v} for k, v in self.env_vars.items()]  # type: ignore[assignment]
 
         machine_spec: dict[str, Any] = {"machine_type": self.machine_type}
         if self.accelerator_type and self.accelerator_count > 0:
@@ -336,6 +336,65 @@ class VertexAIClient:
                 f"Failed to submit tuning job {spec.display_name}: {e}",
             ) from e
 
+    def wait_for_completion(
+        self,
+        job_name: str,
+        timeout_seconds: int = 86400,
+        poll_interval_seconds: int = 10,
+    ) -> JobResult:
+        """Wait for a job to complete.
+
+        Args:
+            job_name: Job resource name.
+            timeout_seconds: Maximum wait time.
+            poll_interval_seconds: Polling interval.
+
+        Returns:
+            JobResult with final state.
+        """
+        start_time = time.time()
+        while True:
+            state, metadata = self.get_job_state(job_name)
+
+            if JobState.is_terminal(state):
+                success = (state == JobState.SUCCEEDED.value)
+                return JobResult(
+                    job_id=job_name,
+                    job_name=metadata.get("display_name", job_name),
+                    state=state,
+                    success=success,
+                    start_time=metadata.get("start_time"),
+                    end_time=metadata.get("end_time"),
+                    error_message=metadata.get("status_message"),
+                    metadata=metadata,
+                )
+
+            if time.time() - start_time > timeout_seconds:
+                raise VertexJobError(f"Job {job_name} timed out after {timeout_seconds} seconds")
+
+            time.sleep(poll_interval_seconds)
+
+    def cancel_job(self, job_name: str) -> None:
+        """Cancel a running job.
+
+        Args:
+            job_name: Job resource name.
+        """
+        self._ensure_initialized()
+        try:
+            from google.cloud import aiplatform
+
+            # Try to get as CustomJob first, then HyperparameterTuningJob
+            try:
+                job: Any = aiplatform.CustomJob.get(job_name)
+            except Exception:
+                job = aiplatform.HyperparameterTuningJob.get(job_name)
+
+            job.cancel()
+            logger.info("Cancelled job: %s", job_name)
+        except Exception as e:
+            raise VertexJobError(f"Failed to cancel job {job_name}: {e}")
+
 class VertexTuningJob:
     """Manages hyperparameter tuning jobs on Vertex AI."""
 
@@ -508,7 +567,6 @@ class VertexSelfPlayJob:
 
         for worker_id in range(num_workers):
             args = [
-                "--mode=selfplay",
                 f"--worker_id={worker_id}",
                 f"--model_version={model_version}",
                 f"--iteration={iteration}",
@@ -520,6 +578,7 @@ class VertexSelfPlayJob:
             spec = JobSpec(
                 display_name=f"civ6az-selfplay-iter{iteration:03d}-worker{worker_id:02d}",
                 container_uri=container,
+                command=["python", "-m", "alpha_zero.cloud.gcp.selfplay_worker"],
                 args=args,
                 env_vars={
                     "CIV6AZ_GCS_BUCKET": self.config.bucket,
@@ -674,22 +733,17 @@ class VertexTrainingJob:
 
         if training_config.accelerator_count > 1:
             # Use torchrun for DDP
-            # Note: We pass the module as an argument to torchrun
-            # The args list will be passed to the module
             command = [
                 "torchrun",
                 f"--nproc_per_node={training_config.accelerator_count}",
                 "-m",
                 "alpha_zero.cloud.gcp.training_worker",
             ]
-            # args are now arguments to the module, not the container entrypoint directly
-            # safely assuming the container entrypoint handles this or we override 'command'
         else:
-            command = [] # Use default entrypoint or whatever is configured
+            command = ["python", "-m", "alpha_zero.cloud.gcp.training_worker"]
 
         # Base args for the worker
         worker_args = [
-            "--mode=training",
             f"--iteration={iteration}",
             f"--trajectory_iterations={','.join(map(str, trajectory_iterations))}",
             f"--epochs={training_config.epochs_per_iteration}",
@@ -716,7 +770,7 @@ class VertexTrainingJob:
             machine_type=training_config.machine_type,
             accelerator_type=training_config.accelerator_type,
             accelerator_count=training_config.accelerator_count,
-            replica_count=1,
+            replica_count=training_config.replica_count,
             spot=training_config.spot,  # Usually False for training
             service_account=self.config.service_account,
             timeout_seconds=86400,  # 24 hours

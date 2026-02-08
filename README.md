@@ -964,6 +964,10 @@ Civ6-AlphaZero/
 6. Push to the branch (`git push origin feature/amazing-feature`)
 7. Open a Pull Request
 
+## Development By
+
+Ian Cruickshank
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

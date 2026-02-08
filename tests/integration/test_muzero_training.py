@@ -383,7 +383,7 @@ class TestMuZeroSelfPlay:
             action = mcts.select_action(action_probs, temperature=1.0)
             trajectory.actions.append(action)
 
-            obs, reward, terminated, truncated, info = small_env.step(action)
+            obs, reward, terminated, truncated, _info = small_env.step(action)
             trajectory.rewards.append(float(reward))
 
             if terminated or truncated:
@@ -611,7 +611,7 @@ class TestMuZeroTrainingLoop:
         hidden = output.hidden_state
         actions = torch.tensor([5])  # Arbitrary action
 
-        next_hidden, reward, policy, value = small_network.recurrent_inference(
+        next_hidden, _reward, _policy, value = small_network.recurrent_inference(
             hidden, actions, mask
         )
 
@@ -897,7 +897,7 @@ class TestBackwardsCompatibility:
         optimizer.zero_grad()
 
         policy_logits, value = small_network(spatial, vector, mask)
-        loss, policy_loss, value_loss = compute_loss(
+        loss, _policy_loss, _value_loss = compute_loss(
             policy_logits, value, target_policy, target_value, mask
         )
 

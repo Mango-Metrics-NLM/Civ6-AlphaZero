@@ -21,8 +21,8 @@ from alpha_zero.hierarchical.network.hierarchical_network import (
 )
 
 __all__ = [
+    "GoalConditionedHead",
     "HierarchicalNetwork",
     "HierarchicalNetworkConfig",
     "LevelNetwork",
-    "GoalConditionedHead",
 ]

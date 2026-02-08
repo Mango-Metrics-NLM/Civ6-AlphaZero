@@ -34,7 +34,7 @@ class MCTSNode:
         prior: float = 0.0,
         parent: MCTSNode | None = None,
         action: int | None = None,
-    ):
+    ) -> None:
         """Initialize MCTS node.
 
         Args:
@@ -155,7 +155,7 @@ class MCTS:
         self,
         config: MCTSConfig | None = None,
         network_fn: Callable[[dict[str, np.ndarray]], tuple[np.ndarray, float]] | None = None,
-    ):
+    ) -> None:
         """Initialize MCTS.
 
         Args:
@@ -200,7 +200,7 @@ class MCTS:
         num_actions = len(action_mask)
 
         # Get initial policy and value for root
-        policy, value = self.network_fn(obs)
+        policy, _value = self.network_fn(obs)
 
         # Create root node
         self.root = MCTSNode()
@@ -369,7 +369,7 @@ class SimpleMCTS:
     def __init__(
         self,
         config: MCTSConfig | None = None,
-    ):
+    ) -> None:
         """Initialize simplified MCTS.
 
         Args:

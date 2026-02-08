@@ -51,20 +51,20 @@ except ImportError:
     _REAL_CIV6_AVAILABLE = False
 
 __all__ = [
-    # Version
-    "__version__",
+    "ActionSpace",
+    "CategoricalSupportConfig",
     # Core
     "Civ6MCTS",
-    "ActionSpace",
-    "HierarchicalAction",
     "Civ6Network",
-    "MicroCivNetwork",
+    "HierarchicalAction",
     "LossConfig",
-    "CategoricalSupportConfig",
     # Environments
     "MicroCivEnv",
+    "MicroCivNetwork",
     # Configuration
     "TimeoutConfig",
+    # Version
+    "__version__",
     "get_timeout_config",
 ]
 

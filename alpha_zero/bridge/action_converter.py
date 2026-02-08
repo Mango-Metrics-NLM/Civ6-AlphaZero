@@ -177,7 +177,7 @@ def _convert_item_id_to_int(item_id: Any) -> int | None:
 class InvalidActionError(Exception):
     """Raised when an action cannot be converted or is invalid."""
 
-    def __init__(self, message: str, action_idx: int | None = None):
+    def __init__(self, message: str, action_idx: int | None = None) -> None:
         super().__init__(message)
         self.action_idx = action_idx
 
@@ -216,7 +216,7 @@ class ActionConverter:
         self,
         board_size: int = 16,
         action_space_config: ActionSpaceConfig | None = None,
-    ):
+    ) -> None:
         """Initialize the action converter.
 
         Args:

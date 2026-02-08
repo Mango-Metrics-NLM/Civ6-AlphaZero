@@ -248,7 +248,7 @@ class TestTournamentRobustness:
         assert abs(update1.rating_change) < 5
 
         # Process upset - weak player wins
-        update1, update2 = elo.process_game_result(p2, p1, MatchOutcome.WIN, config)
+        update1, _update2 = elo.process_game_result(p2, p1, MatchOutcome.WIN, config)
 
         # Weak player should gain significant rating
         assert update1.rating_change > 20

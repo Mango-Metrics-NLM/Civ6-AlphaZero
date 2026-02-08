@@ -58,8 +58,23 @@ except ImportError:
     _LLM_AVAILABLE = False
 
 # Test Runner
+from alpha_zero.utils.test_runner import (
+    PytestRunner,
+    RunConfig,
+    RunResult,
+    RunStatus,
+    quick_test,
+    run_tests,
+)
+
+# Backwards compatibility aliases for test runner
+TestRunner = PytestRunner
+TestConfig = RunConfig
+TestResult = RunResult
+TestStatus = RunStatus
+
 # Agent Tools
-from alpha_zero.utils.agent_tools import (
+from alpha_zero.utils.agent_tools import (  # noqa: E402
     CodeExplorer,
     CodeLocation,
     CodeSymbol,
@@ -72,64 +87,64 @@ from alpha_zero.utils.agent_tools import (
 )
 
 __all__ = [
-    # Logging
-    "GameLogger",
-    "LogConfig",
-    "MetricsTracker",
-    "TrainingLogger",
-    "get_logger",
-    "setup_logging",
-    "timer",
-    "timed_section",
     # Configuration
     "ActionSpaceConfig",
-    "Civ6Config",
-    "ConfigManager",
-    "DistributedConfig",
-    "EnvironmentConfig",
-    "LoggingConfig",
-    "MCTSConfig",
-    "NetworkConfig",
-    "RewardsConfig",
-    "TrainingConfig",
-    "UncivConfig",
-    "get_default_config",
-    "load_config",
-    "merge_configs",
-    "save_config",
+    "AgentTaskStatus",
     # Benchmarks
     "BenchmarkConfig",
     "BenchmarkResult",
-    "Benchmarker",
     "BenchmarkSuite",
-    "benchmark_function",
-    "create_mechanics_benchmarks",
-    "run_all_benchmarks",
-    "time_function",
-    # Test Runner (new names)
-    "PytestRunner",
-    "RunConfig",
-    "RunResult",
-    "RunStatus",
-    # Test Runner (backwards compatibility)
-    "TestRunner",
-    "TestConfig",
-    "TestResult",
-    "TestStatus",
-    "run_tests",
-    "quick_test",
+    "Benchmarker",
+    "Civ6Config",
     # Agent Tools
     "CodeExplorer",
     "CodeLocation",
     "CodeSymbol",
-    "FileManager",
-    "TaskTracker",
-    "AgentTaskStatus",
-    "Task",
+    "ConfigManager",
     "DebugHelper",
+    "DistributedConfig",
+    "EnvironmentConfig",
+    "FileManager",
+    # Logging
+    "GameLogger",
+    "LogConfig",
+    "LoggingConfig",
+    "MCTSConfig",
+    "MetricsTracker",
+    "NetworkConfig",
+    # Test Runner (new names)
+    "PytestRunner",
+    "RewardsConfig",
+    "RunConfig",
+    "RunResult",
+    "RunStatus",
+    "Task",
+    "TaskTracker",
+    "TestConfig",
+    "TestResult",
+    # Test Runner (backwards compatibility)
+    "TestRunner",
+    "TestStatus",
+    "TrainingConfig",
+    "TrainingLogger",
+    "UncivConfig",
+    "benchmark_function",
+    "create_mechanics_benchmarks",
     "explore",
-    "search",
     "find_definition",
+    "get_default_config",
+    "get_logger",
+    "load_config",
+    "merge_configs",
+    "quick_test",
+    "run_all_benchmarks",
+    "run_tests",
+    "save_config",
+    "search",
+    "setup_logging",
+    "time_function",
+    "timed_section",
+    "timer",
 ]
 
 # Add LLM exports if available
@@ -138,10 +153,10 @@ if _LLM_AVAILABLE:
         [
             "LLMClient",
             "LLMConfig",
-            "LLMMessage",
-            "LLMResponse",
-            "LLMProvider",
             "LLMError",
+            "LLMMessage",
+            "LLMProvider",
+            "LLMResponse",
             "create_llm_client",
             "llm_generate",
         ]
@@ -159,8 +174,8 @@ try:
     _WANDB_AVAILABLE = True
     __all__.extend(
         [
-            "WandbLogger",
             "WandbConfig",
+            "WandbLogger",
             "get_wandb_logger",
             "init_wandb",
             "log_metrics",
@@ -179,16 +194,16 @@ try:
     _RAG_AVAILABLE = True
     __all__.extend(
         [
+            "KnowledgeBase",
             "RAGClient",
             "RAGConfig",
-            "KnowledgeBase",
         ]
     )
 except ImportError:
     _RAG_AVAILABLE = False
 
 # Training Improvement Modules (re-exported for public API)
-from alpha_zero.utils.curriculum_learning import (  # noqa: F401
+from alpha_zero.utils.curriculum_learning import (  # noqa: E402, F401
     AdaptiveDifficultyController,
     CurriculumConfig,
     CurriculumManager,
@@ -197,7 +212,7 @@ from alpha_zero.utils.curriculum_learning import (  # noqa: F401
     DifficultyDimension,
     create_curriculum_manager,
 )
-from alpha_zero.utils.enhanced_rewards import (  # noqa: F401
+from alpha_zero.utils.enhanced_rewards import (  # noqa: E402, F401
     EnhancedRewardsConfig,
     EnhancedRewardShaper,
     EnhancedStateFeatures,
@@ -210,7 +225,7 @@ from alpha_zero.utils.enhanced_rewards import (  # noqa: F401
     get_balanced_rewards_config,
     get_defensive_rewards_config,
 )
-from alpha_zero.utils.environment_tuning import (  # noqa: F401
+from alpha_zero.utils.environment_tuning import (  # noqa: E402, F401
     CombatConfig,
     EarlyTerminationChecker,
     EarlyTerminationConfig,
@@ -222,7 +237,7 @@ from alpha_zero.utils.environment_tuning import (  # noqa: F401
     get_default_fast_config,
     get_default_realistic_config,
 )
-from alpha_zero.utils.training_config_enhanced import (  # noqa: F401
+from alpha_zero.utils.training_config_enhanced import (  # noqa: E402, F401
     EnhancedTrainingConfig,
     ParameterSchedule,
     ResourceConfig,
@@ -236,45 +251,45 @@ from alpha_zero.utils.training_config_enhanced import (  # noqa: F401
 
 __all__.extend(
     [
-        # Environment Tuning
-        "EnvironmentTuningConfig",
-        "EarlyTerminationConfig",
-        "ProductionConfig",
+        "AdaptiveDifficultyController",
         "CombatConfig",
-        "TunedEnvironmentWrapper",
-        "EarlyTerminationChecker",
-        "create_tuned_environment",
-        "get_default_fast_config",
-        "get_default_balanced_config",
-        "get_default_realistic_config",
-        # Enhanced Rewards
-        "EnhancedRewardsConfig",
-        "IntermediateRewardsConfig",
-        "VictoryBonusConfig",
-        "EnhancedStateFeatures",
-        "EnhancedRewardShaper",
-        "WinCondition",
-        "WinConditionEvaluator",
-        "create_enhanced_reward_shaper",
-        "get_aggressive_rewards_config",
-        "get_defensive_rewards_config",
-        "get_balanced_rewards_config",
         # Curriculum Learning
         "CurriculumConfig",
+        "CurriculumManager",
         "CurriculumStage",
         "CurriculumState",
-        "CurriculumManager",
         "DifficultyDimension",
-        "AdaptiveDifficultyController",
-        "create_curriculum_manager",
+        "EarlyTerminationChecker",
+        "EarlyTerminationConfig",
+        "EnhancedRewardShaper",
+        # Enhanced Rewards
+        "EnhancedRewardsConfig",
+        "EnhancedStateFeatures",
         # Enhanced Training Config
         "EnhancedTrainingConfig",
+        # Environment Tuning
+        "EnvironmentTuningConfig",
+        "IntermediateRewardsConfig",
         "ParameterSchedule",
-        "SchedulePoint",
-        "ScheduleType",
+        "ProductionConfig",
         "ResourceConfig",
         "ResourceManager",
+        "SchedulePoint",
+        "ScheduleType",
+        "TunedEnvironmentWrapper",
+        "VictoryBonusConfig",
+        "WinCondition",
+        "WinConditionEvaluator",
+        "create_curriculum_manager",
+        "create_enhanced_reward_shaper",
         "create_training_config",
+        "create_tuned_environment",
+        "get_aggressive_rewards_config",
+        "get_balanced_rewards_config",
+        "get_default_balanced_config",
+        "get_default_fast_config",
+        "get_default_realistic_config",
+        "get_defensive_rewards_config",
         "get_fast_training_config",
         "get_production_training_config",
     ]

@@ -107,7 +107,7 @@ class TestSimpleMCTS:
     def test_search_returns_probs(self, mcts, env):
         """Search returns valid probability distribution."""
         env.reset()
-        action_probs, root_value = mcts.search(env)
+        action_probs, _root_value = mcts.search(env)
 
         # Should be valid distribution
         assert action_probs.shape == (env.action_space.n,)
@@ -178,7 +178,7 @@ class TestCiv6MCTS:
     def test_search_returns_probs(self, mcts, env):
         """Search returns valid probability distribution."""
         env.reset()
-        action_probs, root_value = mcts.search(env)
+        action_probs, _root_value = mcts.search(env)
 
         assert action_probs.shape == (env.action_space.n,)
         assert np.all(action_probs >= 0)

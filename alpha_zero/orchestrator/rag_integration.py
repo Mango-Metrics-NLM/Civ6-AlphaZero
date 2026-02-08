@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -62,7 +62,7 @@ class TrainingInsight:
 
     def __post_init__(self):
         if not self.timestamp:
-            self.timestamp = datetime.now(timezone.utc).isoformat()
+            self.timestamp = datetime.now(UTC).isoformat()
 
 
 class RAGIntegration:
@@ -76,7 +76,7 @@ class RAGIntegration:
         initialized: Whether the RAG system has been initialized.
     """
 
-    def __init__(self, config: RAGConfig):
+    def __init__(self, config: RAGConfig) -> None:
         """Initialize RAG integration.
 
         Args:
@@ -128,7 +128,7 @@ class RAGIntegration:
             )
 
             # Generate session ID
-            self._session_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            self._session_id = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
 
             # Auto-ingest knowledge if configured
             if self.config.auto_ingest:
@@ -332,7 +332,7 @@ class RAGIntegration:
                 "outcome": outcome,
                 "iteration": iteration,
                 "session_id": self._session_id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 **metrics,
             }
 
