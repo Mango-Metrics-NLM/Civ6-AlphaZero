@@ -149,3 +149,7 @@ test_output.txt
 # AI Coding Assistant
 .agent/
 .gemini/
+
+# Local config overrides (may contain real API keys)
+configs/*_local.yaml
+configs/*_local_*.yaml

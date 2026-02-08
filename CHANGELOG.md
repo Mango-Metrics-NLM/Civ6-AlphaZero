@@ -5,6 +5,61 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] — 2026-02-08
+
+### Added — Comprehensive Test Infrastructure & CI/CD (Phases 1-6)
+
+#### Phase 1: Test Coverage Hardening
+
+- `tests/sanity/test_import_sanity.py` — dynamic import verification for all `alpha_zero` submodules
+- `tests/security/test_security_sanity.py` — secret scanning, `.gitignore`/`.dockerignore` validation
+- Coverage threshold raised in `pyproject.toml` and CI configuration
+
+#### Phase 2: CI/CD Pipeline Enhancements
+
+- `.github/workflows/release.yml` — automated changelog generation and GitHub releases
+- `.env.template` — environment variable documentation for W&B, GCP, and training config
+
+#### Phase 3: GCP E2E Validation
+
+- `tests/e2e/test_gcs_live.py` — live GCS storage operations (upload/download roundtrip, JSON, large payloads)
+- `tests/e2e/test_vertex_submission.py` — Vertex AI job submission dry-run validation
+
+#### Phase 4: Local Training Smoke Tests
+
+- `tests/e2e/test_local_training_smoke.py` — end-to-end pipeline validation (self-play → training → evaluation)
+
+#### Phase 5: Distributed Training Dry-Run
+
+- `tests/integration/test_distributed_coordination.py` — multi-worker coordination simulation
+- `tests/integration/test_preemption_recovery.py` — Spot VM preemption and checkpoint recovery
+
+#### Phase 6: PBT Optimization & Evaluation
+
+- `configs/pbt_config.yaml` — production PBT configuration with hyperparameter search spaces
+- `tests/integration/test_pbt_lifecycle.py` — population lifecycle, exploitation, exploration, mutation tests
+- `.agent/workflows/pbt-launch.md` — PBT launch workflow
+
+#### Cross-Cutting
+
+- `NEXT_STEPS.md` — comprehensive 6-phase development roadmap
+- Vertex AI smoke config templates (`configs/vertex_selfplay_smoke.yaml`, `configs/vertex_training_smoke.yaml`)
+- Sanitized W&B API key handling in config templates
+
+### Changed
+
+- `.gitignore` — added patterns for local config overrides, AI coding assistant directories
+- Updated C4 architecture roadmap to reflect completed GCP and CI/CD phases
+- Updated README test categories and project structure
+
+### Fixed
+
+- CI/CD pipeline stability improvements across all test tiers
+- Vertex AI pipeline fixes (PR #34): resolved 3 CI failures
+- Cost optimization (PR #29): addressed Gemini and Copilot review issues
+
+---
+
 ## [Unreleased]
 
 ### Added
@@ -14,12 +69,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 End-to-end cloud training on Vertex AI with GumbelMCTS, model evaluation, W&B tracking, and opt-in curriculum/reward shaping. Successfully validated with a 3-phase cloud run (selfplay, training, evaluation) completing in 17 minutes.
 
 ##### MCTS Factory (`alpha_zero/core/mcts_factory.py`) — NEW
+
 - `create_mcts()` factory function for instantiating any MCTS variant by name
 - Supports `"civ6"` (standard), `"gumbel"` (5-50x faster), and `"muzero"` (future)
 - Variant-specific config defaults (200 sims for civ6, 16 for gumbel, 50 for muzero)
 - Pass-through kwargs for variant-specific settings (e.g., `num_sampled_actions`)
 
 ##### Evaluation Worker (`alpha_zero/cloud/gcp/evaluation_worker.py`) — NEW
+
 - Model arena: plays new model vs. old model to measure improvement
 - Alternates starting player each game for fairness
 - Temperature=0 (greedy) play for evaluation consistency
@@ -27,6 +84,7 @@ End-to-end cloud training on Vertex AI with GumbelMCTS, model evaluation, W&B tr
 - Win rate threshold gate for model acceptance/rejection
 
 ##### Vertex AI Orchestrator (`alpha_zero/cloud/gcp/vertex_orchestrator.py`) — NEW
+
 - 3-phase pipeline: selfplay → training → evaluation (with model gate)
 - CLI-driven with `--mcts_type`, `--evaluation_games`, `--curriculum`, `--reward_shaping`
 - Dry-run mode for local validation without GCS/Vertex AI
@@ -34,6 +92,7 @@ End-to-end cloud training on Vertex AI with GumbelMCTS, model evaluation, W&B tr
 - W&B metrics passthrough to containers
 
 ##### Container Infrastructure — NEW
+
 - `Dockerfile`: PyTorch 2.1 + CUDA 12.1 base, slim dependencies
 - `.dockerignore`: Excludes tests, docs, data, IDE files
 - `requirements-container.txt`: Minimal deps (torch, numpy, gymnasium, wandb, GCP)
@@ -41,45 +100,54 @@ End-to-end cloud training on Vertex AI with GumbelMCTS, model evaluation, W&B tr
 - `alpha_zero/cloud/gcp/entrypoint.py`: Routes `--mode=selfplay|training|evaluation`
 
 ##### Vertex AI Job Wrappers (`alpha_zero/cloud/gcp/vertex_jobs.py`)
+
 - `VertexEvaluationJob`: CPU-only evaluation jobs (n1-standard-4, no GPU)
 - `_wandb_env_vars()` helper: Filters empty values (Vertex AI rejects empty env vars)
 - W&B env var passthrough to selfplay and training containers
 
 ##### Self-Play Worker Enhancements (`alpha_zero/cloud/gcp/selfplay_worker.py`)
+
 - GumbelMCTS support via `--mcts_type=gumbel` (~13x speedup over Civ6MCTS)
 - W&B logging: per-game metrics and aggregate selfplay stats
 - Opt-in reward shaping via `--reward_shaping` and `--reward_scale`
 - Automatic noise control: Gumbel provides its own stochasticity
 
 ##### Training Worker Enhancements (`alpha_zero/cloud/gcp/training_worker.py`)
+
 - W&B logging for per-epoch training metrics
 - Board size and action space CLI args for multi-resolution support
 
 ##### Configuration (`alpha_zero/cloud/gcp/config.py`)
+
 - `DEFAULT_GPU_COSTS` dict: Centralized GPU pricing (T4, L4, V100, A100 on-demand/spot)
 - `get_gpu_costs()`: Env-var overridable GPU costs (`CIV6AZ_GPU_COST_*`)
 - `SelfPlayWorkerConfig` / `TrainingWorkerConfig` extensions for MCTS/W&B settings
 
 ##### GPU Pricing Centralization
+
 - `gpu_scheduler.py`, `cost_optimization.py`, `cost_monitor.py`: All use `get_gpu_costs()` from config
 - Override any GPU price via `CIV6AZ_GPU_COST_T4`, `CIV6AZ_GPU_COST_V100`, etc.
 
 ##### Preemption Handler Fixes (`alpha_zero/cloud/gcp/preemption_handler.py`)
+
 - Fixed 3 broken GCS method calls to use `self.gcs_storage.backend.*` API
 - Added `_upload_to_gcs()`, `_download_from_gcs()`, `_delete_from_gcs()` helpers
 
 ##### `.env.template` Updates
+
 - Added GCP/Vertex AI configuration section (project, region, bucket, container image)
 - Added MCTS configuration (type, simulations)
 - Added GPU pricing overrides with defaults
 - Added cost budget settings
 
 ##### Test Suite (50 new tests)
+
 - `tests/unit/test_mcts_factory.py`: 19 tests (type dispatch, config, functional)
 - `tests/cloud/unit/test_evaluation_worker.py`: 16 tests (arena, GCS, Vertex jobs)
 - `tests/cloud/unit/test_orchestrator_pipeline.py`: 15 tests (phases, args, GPU config)
 
 ### Fixed
+
 - Removed unused `numpy` imports from evaluation_worker.py and selfplay_worker.py
 - Fixed `enhanced_rewards` import path: `alpha_zero.utils` not `alpha_zero.core`
 - Fixed unused `stage` variable in vertex_orchestrator.py
@@ -94,6 +162,7 @@ End-to-end cloud training on Vertex AI with GumbelMCTS, model evaluation, W&B tr
 A comprehensive cost optimization system targeting 60-80% cost savings through spot VMs, dynamic GPU scheduling, auto-stop idle instances, and risk mitigation systems.
 
 ##### Cost Monitoring & Budget Enforcement (`alpha_zero/cloud/gcp/cost_monitor.py`)
+
 - **CostMonitorConfig**: Configurable budget limits with environment variables (`CIV6AZ_COST_*`)
   - Daily and total budget limits in USD
   - Alert thresholds (warning at 80%, critical at 95%)
@@ -106,6 +175,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
 - **Exceptions**: `BudgetExceededError` for budget limit handling
 
 ##### Dynamic GPU Scheduler (`alpha_zero/cloud/gcp/gpu_scheduler.py`)
+
 - **GPUSchedulerConfig**: Training phase-aware GPU selection
   - Phase thresholds: Early (0-50%), Middle (50-80%), Late (80-90%), Final (90-100%)
   - Configurable GPU mappings per phase
@@ -117,6 +187,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
   - 42 unit tests
 
 ##### Preemption Handler (`alpha_zero/cloud/gcp/preemption_handler.py`)
+
 - **PreemptionHandlerConfig**: Checkpoint and retry settings
   - 5-minute checkpoint intervals (configurable)
   - Exponential backoff with max 5 retries
@@ -129,6 +200,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
 - **Exceptions**: Enhanced `QuotaExceededError` with fallback configs
 
 ##### Idle Instance Manager (`alpha_zero/cloud/gcp/idle_manager.py`)
+
 - **IdleInstanceConfig**: Idle detection settings
   - Configurable idle threshold (default 15 minutes)
   - GPU utilization threshold (default 10%)
@@ -142,6 +214,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
 - **Exceptions**: `IdleTimeoutError` for recoverable shutdowns
 
 ##### Quota Manager (`alpha_zero/cloud/gcp/quota_manager.py`)
+
 - **QuotaManagerConfig**: Quota tracking settings
   - Warning/critical thresholds (70%/90%)
   - Cache TTL for API responses
@@ -153,6 +226,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
   - Warning and exhaustion callbacks
 
 ##### Memory Guard (`alpha_zero/utils/memory_guard.py`)
+
 - **MemoryGuardConfig**: Memory protection settings
   - Warning/critical/OOM thresholds (70%/85%/95%)
   - Batch reduction factor and minimum batch size
@@ -164,6 +238,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
   - OOM prevention with garbage collection
 
 ##### Convergence Monitor (`alpha_zero/training/convergence_monitor.py`)
+
 - **ConvergenceMonitorConfig**: Training monitoring settings
   - Window size for trend analysis
   - Stall detection threshold
@@ -175,6 +250,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
   - Learning rate reduction suggestions
 
 ##### Bridge Health Checker (`alpha_zero/bridge/health_checker.py`)
+
 - **BridgeHealthConfig**: Health monitoring settings
   - Check interval and timeout configuration
   - Circuit breaker thresholds
@@ -187,6 +263,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
 - **Exceptions**: `CircuitBreakerOpenError`, `OperationTimeoutError`
 
 ##### Unified Cost Optimization Manager (`alpha_zero/cloud/gcp/cost_optimization.py`)
+
 - **CostOptimizationConfig**: Unified configuration
   - Combines all component configs
   - Environment variable support (`CIV6AZ_COST_OPT_*`)
@@ -199,6 +276,7 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
   - Graceful initialization and shutdown
 
 ##### Test Suite (264 new tests)
+
 - `tests/cloud/unit/test_cost_monitor.py`: Cost monitoring tests (42 tests)
 - `tests/cloud/unit/test_gpu_scheduler.py`: GPU scheduler tests (39 tests)
 - `tests/cloud/unit/test_preemption_handler.py`: Preemption tests (43 tests)
@@ -207,7 +285,9 @@ A comprehensive cost optimization system targeting 60-80% cost savings through s
 - All tests pass with comprehensive coverage
 
 ##### Configuration Pattern
+
 All components follow consistent configuration patterns:
+
 - Dataclass-based configs with validation
 - Environment variable support with `CIV6AZ_` prefix
 - YAML file loading support
@@ -215,9 +295,11 @@ All components follow consistent configuration patterns:
 - Thread-safe implementations with proper locking
 
 #### Real Civ6 Bridge System
+
 A complete bridge system enabling the AlphaZero agent to play actual Civilization VI through file-based IPC.
 
 ##### Python Bridge (`alpha_zero/bridge/`)
+
 - **config.py**: `BridgeConfig` dataclass with validation
   - Communication directory configuration
   - Polling intervals, timeouts, retry settings
@@ -244,6 +326,7 @@ A complete bridge system enabling the AlphaZero agent to play actual Civilizatio
   - Validation with detailed error reporting
 
 ##### Gymnasium Environment (`alpha_zero/envs/real_civ6_env.py`)
+
 - **RealCiv6Env**: Full Gymnasium-compliant environment
   - Dict observation space: spatial (84, 16, 16), vector (512,), action_mask
   - Discrete action space from hierarchical action encoding
@@ -254,6 +337,7 @@ A complete bridge system enabling the AlphaZero agent to play actual Civilizatio
   - Compatible with all training code
 
 ##### Game Interface (`alpha_zero/interfaces/civ6_interface.py`)
+
 - **Civ6Interface**: Implements `BaseGameInterface`
   - `connect()`, `disconnect()` for session management
   - `reset()`, `step()` for game control
@@ -262,6 +346,7 @@ A complete bridge system enabling the AlphaZero agent to play actual Civilizatio
   - Registered as "civ6" backend with `GameAdapter`
 
 ##### Civilization VI Lua Mod (`mod/AlphaZeroAI/`)
+
 - **AlphaZeroAI.modinfo**: Mod metadata and configuration
   - File references and dependencies
   - Action criteria for enabling AI control
@@ -296,6 +381,7 @@ A complete bridge system enabling the AlphaZero agent to play actual Civilizatio
   - Acknowledgment writing
 
 ##### Test Suite
+
 - **tests/unit/test_bridge.py**: 93 unit tests for bridge components
 - **tests/unit/test_state_converter.py**: State conversion tests
 - **tests/unit/test_action_converter.py**: Action conversion tests
@@ -491,9 +577,11 @@ A comprehensive RAG system for enhancing agent decision-making with external kno
 ### Changed
 
 #### Phase 3: Enhanced Training Pipeline
+
 A comprehensive suite of training improvements designed to accelerate learning convergence and improve agent performance.
 
 ##### Curriculum Learning System (`alpha_zero/utils/curriculum_learning.py`)
+
 - **CurriculumStage**: Dataclass defining difficulty stages with configurable parameters
   - Board size, max turns, opponent strength, starting resources
   - Win rate thresholds for automatic promotion/demotion
@@ -508,6 +596,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
   - Configurable adjustment rates and bounds
 
 ##### Potential-Based Reward Shaping (`alpha_zero/utils/enhanced_rewards.py`)
+
 - **WinConditionEvaluator**: Multi-factor game state evaluation
   - Score advantage assessment with configurable weights
   - City count and production evaluation
@@ -520,6 +609,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
   - Smooth reward signals for faster credit assignment
 
 ##### Environment Tuning (`alpha_zero/utils/environment_tuning.py`)
+
 - **EarlyTerminationConfig**: Configurable early game termination
   - Decisive advantage detection
   - Stalemate prevention
@@ -534,6 +624,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
   - Observation and action space preservation
 
 ##### Training Configuration (`alpha_zero/utils/training_config_enhanced.py`)
+
 - **ParameterSchedule**: Six schedule types for hyperparameter annealing
   - Constant: Fixed value throughout training
   - Step: Discrete value changes at specified iterations
@@ -547,6 +638,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
   - Worker count optimization
 
 ##### Weights & Biases Integration (`alpha_zero/utils/wandb_logger.py`)
+
 - **WandbConfig**: Typed configuration for W&B initialization
   - Project, entity, run name, and tags configuration
   - Mode selection (online/offline/disabled)
@@ -562,6 +654,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
   - `finish()`: Graceful run completion
 
 ##### Enhanced Training Orchestration (`run_enhanced_training.py`)
+
 - **Training Presets**: Pre-configured training profiles
   - Fast: Quick iteration for development (2 iterations, 2 games)
   - Balanced: Standard training (10 iterations, 20 games)
@@ -577,18 +670,22 @@ A comprehensive suite of training improvements designed to accelerate learning c
   - Final summary statistics
 
 ##### Simplified MCTS (`alpha_zero/utils/simple_mcts.py`)
+
 - Lightweight MCTS implementation for evaluation
 - Configurable simulation count
 - Temperature-based action selection
 - Compatible with enhanced training pipeline
 
 #### New Run Scripts
+
 - `run_enhanced_training.py`: Main training orchestration with all Phase 3 features
 - `run_training_wandb.py`: W&B-focused training runner
 - `run_civ6_ai.py`: Simple AI evaluation runner
 
 #### Test Suite Expansion
+
 ##### Unit Tests (14 new files)
+
 - `tests/unit/test_curriculum_learning.py`: Curriculum stage and manager tests
 - `tests/unit/test_enhanced_rewards.py`: Reward shaping validation
 - `tests/unit/test_environment_tuning.py`: Environment wrapper tests
@@ -605,6 +702,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
 - `tests/unit/test_performance.py`: Performance benchmark tests
 
 ##### Integration Tests (6 new files)
+
 - `tests/integration/test_enhanced_training.py`: End-to-end training tests
 - `tests/integration/test_enhanced_training_wandb.py`: W&B integration tests
 - `tests/integration/test_training_pipeline.py`: Full pipeline tests
@@ -613,12 +711,14 @@ A comprehensive suite of training improvements designed to accelerate learning c
 - `tests/integration/test_full_training_cycle.py`: Complete training cycle tests
 
 #### Documentation
+
 - `PLAN_IMPROVE_LEARNING.md`: Implementation plan for Phase 3 improvements
 - `TRAINING_IMPROVEMENTS_TEMPLATE.md`: Template for training experiments
 - `.env.template`: Environment variable template for W&B configuration
 - Updated `CLAUDE.md`: Comprehensive project documentation refresh
 
 #### Modified Files
+
 - **`.gitignore`**: Added W&B directories, training artifacts, profiling files
 - **`alpha_zero/utils/__init__.py`**: Exported all new Phase 3 modules
   - CurriculumStage, CurriculumManager, AdaptiveDifficultyController
@@ -635,6 +735,7 @@ A comprehensive suite of training improvements designed to accelerate learning c
 ### Technical Highlights
 
 #### Design Patterns
+
 - **Dataclass Configuration**: All configuration uses typed dataclasses for IDE support
 - **Factory Pattern**: ParameterSchedule.create() for schedule instantiation
 - **Wrapper Pattern**: TunedEnvironmentWrapper for non-invasive environment modification
@@ -642,12 +743,14 @@ A comprehensive suite of training improvements designed to accelerate learning c
 - **Optional Dependencies**: W&B integration with graceful fallback when unavailable
 
 #### Performance Considerations
+
 - Potential-based reward shaping preserves optimal policy (mathematically proven)
 - Curriculum learning reduces sample complexity through staged difficulty
 - Early termination prevents wasted computation on decided games
 - Batch-aware resource management for memory efficiency
 
 #### Testing Philosophy
+
 - 400+ test methods across 33 test files
 - Unit tests validate individual components in isolation
 - Integration tests verify component interactions
