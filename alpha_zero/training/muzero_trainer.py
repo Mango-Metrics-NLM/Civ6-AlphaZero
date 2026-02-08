@@ -576,13 +576,13 @@ class TrajectoryBuffer:
         vectors = []
         action_masks = []
         all_actions = []
-        all_target_policies = [[] for _ in range(unroll_steps + 1)]
-        all_target_values = [[] for _ in range(unroll_steps + 1)]
-        all_target_rewards = [[] for _ in range(unroll_steps)]
-        all_action_masks_unroll = [[] for _ in range(unroll_steps)]
+        all_target_policies: list[list[np.ndarray]] = [[] for _ in range(unroll_steps + 1)]
+        all_target_values: list[list[float]] = [[] for _ in range(unroll_steps + 1)]
+        all_target_rewards: list[list[float]] = [[] for _ in range(unroll_steps)]
+        all_action_masks_unroll: list[list[np.ndarray]] = [[] for _ in range(unroll_steps)]
         # For EfficientZero consistency loss: collect next observations
-        all_obs_spatial_unroll = [[] for _ in range(unroll_steps)]
-        all_obs_vector_unroll = [[] for _ in range(unroll_steps)]
+        all_obs_spatial_unroll: list[list[np.ndarray]] = [[] for _ in range(unroll_steps)]
+        all_obs_vector_unroll: list[list[np.ndarray]] = [[] for _ in range(unroll_steps)]
         # Track sampled indices for priority updates
         sampled_indices: list[tuple[int, int]] = []
 
