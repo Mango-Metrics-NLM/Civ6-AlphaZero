@@ -75,6 +75,38 @@ def cleanup_ddp() -> None:
         dist.destroy_process_group()
 
 
+def report_tuning_metric(metric: dict[str, float], step: int) -> None:
+    """Report hyperparameter tuning metric to Vertex AI Vizier.
+
+    Writes to the file specified by CLOUD_ML_HP_METRIC_FILE environment variable.
+    """
+    metric_file = os.environ.get("CLOUD_ML_HP_METRIC_FILE")
+    if not metric_file:
+        return
+
+    try:
+        import json
+        
+        # Format required by Vertex AI Vizier
+        data = {
+            "timestamp": time.time(),
+            "step": step,
+            **metric,
+        }
+        
+        # Write generic metric to file (append or overwrite?) 
+        # Vizier expects one JSON per line or just one JSON?
+        # Documentation says: "Write the metric to the file... Each line in the file is a JSON object"
+        
+        with open(metric_file, "a") as f:
+            f.write(json.dumps(data) + "\n")
+            
+        logger.debug("Reported tuning metric: %s", data)
+        
+    except Exception as e:
+        logger.warning("Failed to report tuning metric: %s", e)
+
+
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Civ6AZ Training Worker")
@@ -521,16 +553,20 @@ def main() -> int:
 
             if is_main_process:
                 logger.info(
-                    "Epoch %d/%d - Loss: %.4f (P: %.4f, V: %.4f) - %.1fs - Steps: %d->%d",
-                    epoch + 1,
-                    args.epochs,
-                    loss,
-                    policy_loss,
-                    value_loss,
-                    epoch_time,
-                    prev_step,
                     global_step,
                 )
+
+                # Report to Vizier
+                report_tuning_metric(
+                    {
+                        "loss": loss,
+                        "policy_loss": policy_loss,
+                        "value_loss": value_loss,
+                    },
+                    step=global_step,
+                )
+
+            # Checkpoint if we crossed an interval boundary
 
             # Checkpoint if we crossed an interval boundary
             # Checkpoint if we crossed an interval boundary
