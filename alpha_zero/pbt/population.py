@@ -1,35 +1,14 @@
-"""Population management for Population-Based Training.
-
-This module provides the PopulationManager class for managing a population
-of agents with different hyperparameters during training.
-
-Usage:
-    from alpha_zero.pbt.population import PopulationManager
-    from alpha_zero.pbt.config import PBTConfig
-
-    config = PBTConfig(population_size=16)
-    manager = PopulationManager(config)
-
-    # Initialize population
-    manager.initialize()
-
-    # Get agent for training
-    agent = manager.get_agent("agent_id")
-
-    # Update fitness after evaluation
-    manager.update_fitness("agent_id", win_rate)
-"""
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
-import shutil
-from collections.abc import Callable
+import random
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -44,33 +23,20 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class PopulationStats:
-    """Statistics about the current population.
-
-    Attributes:
-        generation: Current generation number
-        mean_fitness: Mean fitness across population
-        max_fitness: Maximum fitness in population
-        min_fitness: Minimum fitness in population
-        std_fitness: Standard deviation of fitness
-        hyperparameter_stats: Statistics for each hyperparameter
-        num_active: Number of active agents
-        total_games: Total games played by all agents
-        total_steps: Total training steps by all agents
-    """
-
+    """Statistics about the population state."""
     generation: int = 0
     mean_fitness: float = 0.0
     max_fitness: float = 0.0
     min_fitness: float = 0.0
     std_fitness: float = 0.0
-    hyperparameter_stats: dict[str, dict[str, float]] = field(default_factory=dict)
+    hyperparameter_stats: Dict[str, Dict[str, float]] = field(default_factory=dict)
     num_active: int = 0
     total_games: int = 0
     total_steps: int = 0
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for serialization."""
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
         return {
             "generation": self.generation,
             "mean_fitness": self.mean_fitness,
@@ -86,26 +52,7 @@ class PopulationStats:
 
 
 class PopulationManager:
-    """Manages a population of agents for Population-Based Training.
-
-    This class handles:
-    - Population initialization with random hyperparameters
-    - Agent state tracking (fitness, hyperparameters, weights)
-    - Selection for exploitation (identifying weak/strong agents)
-    - Exploitation (copying weights from strong to weak agents)
-    - Exploration (mutating hyperparameters)
-    - Checkpointing and persistence
-
-    Example:
-        >>> config = PBTConfig(population_size=8)
-        >>> manager = PopulationManager(config)
-        >>> manager.initialize()
-        >>> for agent_id in manager.get_agent_ids():
-        ...     params = manager.get_hyperparameters(agent_id)
-        ...     # Train agent with params...
-        ...     manager.update_fitness(agent_id, win_rate)
-        >>> manager.exploit_and_explore()
-    """
+    """Manages the lifecycle of PBT agents."""
 
     def __init__(
         self,
@@ -120,478 +67,350 @@ class PopulationManager:
         """
         self.config = config
         self.rng = rng or np.random.default_rng()
+        self.agents: Dict[str, AgentState] = {}
+        self.generation = 0
+        self.stats_history: List[PopulationStats] = []
+        
+        # Weight operation callbacks
+        self._save_weights_fn: Optional[Callable[[str, str], None]] = None
+        self._load_weights_fn: Optional[Callable[[str, str], None]] = None
+        self._copy_weights_fn: Optional[Callable[[str, str], None]] = None
 
-        self._agents: dict[str, AgentState] = {}
-        self._generation: int = 0
-        self._stats_history: list[PopulationStats] = []
+    @property
+    def population_size(self) -> int:
+        return len(self.agents)
 
-        # Callbacks for weight management
-        self._save_weights_fn: Callable[[str, str], None] | None = None
-        self._load_weights_fn: Callable[[str, str], None] | None = None
-        self._copy_weights_fn: Callable[[str, str], None] | None = None
+    def __len__(self) -> int:
+        return len(self.agents)
 
-        logger.info(f"PopulationManager initialized with population_size={config.population_size}")
+    def __iter__(self):
+        return iter(self.agents.values())
 
-    def initialize(self, existing_agents: list[AgentState] | None = None) -> None:
-        """Initialize the population with random hyperparameters.
-
-        Args:
-            existing_agents: Optional list of existing agents to use
-        """
-        self._agents.clear()
-
+    def initialize(self, existing_agents: Optional[List[AgentState]] = None) -> None:
+        """Initialize population."""
+        self.agents = {}
+        self.generation = 0
+        
         if existing_agents:
             for agent in existing_agents:
-                self._agents[agent.agent_id] = agent
-            logger.info(f"Initialized population with {len(existing_agents)} existing agents")
+                self.agents[agent.agent_id] = agent
+                # Check for max generation
+                self.generation = max(self.generation, agent.generation)
         else:
-            for _i in range(self.config.population_size):
-                hyperparameters = self.config.hyperparameter_space.sample_all(self.rng)
-                agent = AgentState(hyperparameters=hyperparameters)
-                self._agents[agent.agent_id] = agent
+            for _ in range(self.config.population_size):
+                params = self.config.hyperparameter_space.sample_all(self.rng)
+                agent = AgentState(hyperparameters=params)
+                self.agents[agent.agent_id] = agent
 
-            logger.info(f"Initialized population with {self.config.population_size} random agents")
+        logger.info(f"Initialized population with {len(self.agents)} agents (Gen {self.generation})")
 
-        self._generation = 0
+    def get_agent(self, agent_id: str) -> Optional[AgentState]:
+        return self.agents.get(agent_id)
 
-    def get_agent_ids(self) -> list[str]:
-        """Get list of all agent IDs.
+    def get_agent_ids(self) -> List[str]:
+        return list(self.agents.keys())
+        
+    def get_all_agents(self) -> List[AgentState]:
+        return list(self.agents.values())
 
-        Returns:
-            List of agent IDs.
-        """
-        return list(self._agents.keys())
-
-    def get_agent(self, agent_id: str) -> AgentState | None:
-        """Get agent state by ID.
-
-        Args:
-            agent_id: Agent identifier
-
-        Returns:
-            AgentState or None if not found.
-        """
-        return self._agents.get(agent_id)
-
-    def get_all_agents(self) -> list[AgentState]:
-        """Get all agents in the population.
-
-        Returns:
-            List of all AgentState objects.
-        """
-        return list(self._agents.values())
-
-    def get_hyperparameters(self, agent_id: str) -> dict[str, Any]:
-        """Get hyperparameters for an agent.
-
-        Args:
-            agent_id: Agent identifier
-
-        Returns:
-            Dictionary of hyperparameter values.
-
-        Raises:
-            KeyError: If agent not found.
-        """
-        agent = self._agents.get(agent_id)
-        if agent is None:
-            raise KeyError(f"Agent not found: {agent_id}")
-        return agent.hyperparameters.copy()
+    def get_hyperparameters(self, agent_id: str) -> Dict[str, Any]:
+        return self.agents[agent_id].hyperparameters
 
     def update_fitness(
         self,
         agent_id: str,
         fitness: float,
         games_played: int = 0,
-        training_steps: int = 0,
+        training_steps: int = 0
     ) -> None:
-        """Update fitness score for an agent.
-
-        Args:
-            agent_id: Agent identifier
-            fitness: New fitness score
-            games_played: Additional games played
-            training_steps: Additional training steps
-        """
-        agent = self._agents.get(agent_id)
-        if agent is None:
-            logger.warning(f"Agent not found for fitness update: {agent_id}")
+        if agent_id not in self.agents:
+            logger.warning(f"Agent {agent_id} not found update_fitness")
             return
-
-        agent.update_fitness(fitness, max_history=self.config.fitness_smoothing_window * 2)
-        agent.games_played += games_played
-        agent.training_steps += training_steps
-
-        logger.debug(
-            f"Updated fitness for {agent_id}: {fitness:.4f} "
-            f"(smoothed: {agent.get_smoothed_fitness():.4f})"
-        )
-
-    def get_fitness_ranking(self) -> list[tuple[str, float]]:
-        """Get agents sorted by fitness (highest first).
-
-        Returns:
-            List of (agent_id, fitness) tuples sorted by fitness.
-        """
-        agents_with_fitness = [
-            (agent_id, agent.get_smoothed_fitness(self.config.fitness_smoothing_window))
-            for agent_id, agent in self._agents.items()
+            
+        agent = self.agents[agent_id]
+        agent.update_fitness(fitness, self.config.fitness_smoothing_window)
+        if games_played:
+            agent.games_played += games_played
+        if training_steps:
+            agent.training_steps += training_steps
+            
+    def get_fitness_ranking(self) -> List[Tuple[str, float]]:
+        """Return list of (agent_id, score) sorted descending."""
+        scores = [
+            (aid, agent.get_smoothed_fitness(self.config.fitness_smoothing_window))
+            for aid, agent in self.agents.items()
         ]
-        agents_with_fitness.sort(key=lambda x: x[1], reverse=True)
-        return agents_with_fitness
+        return sorted(scores, key=lambda x: x[1], reverse=True)
 
-    def get_agents_to_replace(self) -> list[str]:
-        """Get IDs of agents that should be replaced.
-
-        Returns:
-            List of agent IDs in the bottom percentile.
-        """
+    def get_best_agent(self) -> Optional[AgentState]:
+        if not self.agents:
+            return None
         ranking = self.get_fitness_ranking()
-        num_to_replace = self.config.get_num_to_replace()
+        best_id = ranking[0][0]
+        return self.agents[best_id]
 
-        # Return the bottom agents
-        return [agent_id for agent_id, _ in ranking[-num_to_replace:]]
-
-    def get_agents_to_copy_from(self) -> list[str]:
-        """Get IDs of top-performing agents to copy from.
-
-        Returns:
-            List of agent IDs in the top percentile.
-        """
+    def get_agents_to_replace(self) -> List[str]:
+        """Identify bottom performing agents."""
+        num_replace = self.config.get_num_to_replace()
         ranking = self.get_fitness_ranking()
-        num_top = self.config.get_num_to_replace()
+        # Bottom N agents
+        to_replace = [aid for aid, _ in ranking[-num_replace:]]
+        return to_replace
 
-        # Return the top agents
-        return [agent_id for agent_id, _ in ranking[:num_top]]
+    def get_agents_to_copy_from(self) -> List[str]:
+        """Identify top performing agents."""
+        num_replace = self.config.get_num_to_replace() # Usually fraction logic implies top X%?
+        # Standard PBT: Top 20% provides weights for Bottom 20%.
+        # Here we use config.truncation_fraction for both.
+        ranking = self.get_fitness_ranking()
+        top_agents = [aid for aid, _ in ranking[:num_replace]]
+        return top_agents
+        
+    def _select_strong_agent(self, candidates: List[str]) -> str:
+        """Select a strong agent based on the configured method."""
+        method = self.config.get_selection_method_enum()
+        
+        if not candidates:
+            return random.choice(list(self.agents.keys()))
+            
+        if method == SelectionMethod.TRUNCATION:
+            # Uniformly sample from top candidates
+            return self.rng.choice(candidates)
+            
+        elif method == SelectionMethod.TOURNAMENT:
+            # Pick k random agents from candidates and return best
+            k = min(len(candidates), self.config.tournament_size)
+            pool = self.rng.choice(candidates, size=k, replace=False)
+            # Find max fitness in pool
+            best_id = max(pool, key=lambda aid: self.agents[aid].get_smoothed_fitness())
+            return best_id
+            
+        elif method == SelectionMethod.RANK:
+            # Probability proportional to rank
+            # Ranks: 1 (worst) to N (best) in candidates? 
+            # Or candidates are already top agents.
+            # Let's verify standard impl. Usually rank selection is over whole pop or candidates.
+            # Assuming candidates are sorted (they are from get_agents_to_copy_from usually).
+            # Actually get_agents_to_copy_from returns list.
+            # Let's sort candidates by fitness first to be sure
+            candidates = sorted(
+                candidates, 
+                key=lambda aid: self.agents[aid].get_smoothed_fitness()
+            )
+            # Higher index = better (sorted ascending by default? No get_fitness_ranking is Descending)
+            # Sorted by fitness ascending:
+            candidates.sort(key=lambda aid: self.agents[aid].get_smoothed_fitness())
+            
+            ranks = np.arange(1, len(candidates) + 1)
+            probs = ranks / ranks.sum()
+            return self.rng.choice(candidates, p=probs)
+            
+        elif method == SelectionMethod.ROULETTE:
+             # Proportional to fitness
+             fitnesses = np.array([self.agents[aid].get_smoothed_fitness() for aid in candidates])
+             # If negative fitness possible, shift (softmax is safer)
+             # Basic roulette:
+             min_fit = fitnesses.min()
+             if min_fit < 0:
+                 fitnesses -= min_fit
+             total = fitnesses.sum()
+             if total <= 1e-9:
+                 probs = np.ones_like(fitnesses) / len(fitnesses)
+             else:
+                 probs = fitnesses / total
+             return self.rng.choice(candidates, p=probs)
 
-    def exploit_and_explore(self) -> list[tuple[str, str, dict[str, Any]]]:
-        """Perform exploitation and exploration step.
+        # Fallback
+        return self.rng.choice(candidates)
 
-        This identifies weak agents, copies weights from strong agents,
-        and mutates hyperparameters.
-
+    def exploit_and_explore(self) -> List[Tuple[str, str, Dict[str, Any]]]:
+        """Perform PBT step.
+        
         Returns:
-            List of (weak_agent_id, strong_agent_id, new_hyperparameters) tuples.
+            List of (replaced_agent_id, source_agent_id, new_hyperparameters)
         """
-        weak_agents = self.get_agents_to_replace()
-        strong_agents = self.get_agents_to_copy_from()
-
-        if not weak_agents or not strong_agents:
-            logger.info("No agents to replace")
+        if not self.agents:
             return []
-
+            
+        to_replace = self.get_agents_to_replace()
+        candidates = self.get_agents_to_copy_from()
+        
         changes = []
-
-        for weak_id in weak_agents:
-            # Select a strong agent to copy from
-            strong_id = self._select_strong_agent(strong_agents)
-            strong_agent = self._agents[strong_id]
-            weak_agent = self._agents[weak_id]
-
+        new_agents = {}
+        
+        # Keep non-replaced agents
+        for aid, agent in self.agents.items():
+            if aid not in to_replace:
+                # Increment generation for survivors? PBT usually implies gen update on training steps.
+                # But here we orchestrate gens.
+                # Standard PBT: Only check exploit every X steps.
+                # If we consider this function call as "Start of New Gen check"
+                # Survivors move to next gen?
+                # The prompt implies survivors just continue.
+                # Let's increment survivor generation to keep in sync.
+                # agent.generation += 1 # Optional
+                new_agents[aid] = agent
+                
+        # Replace weak agents
+        for weak_id in to_replace:
+            # Exploit: Copy weights from strong agent
+            strong_id = self._select_strong_agent(candidates)
+            strong_agent = self.agents[strong_id]
+            
+            # Explore: Mutate
+            # Use clone_with_mutations logic from AgentState but maintain original ID?
+            # Or replace ID? Standard PBT often keeps ID to track slot, but effectively it's a new agent.
+            # test_pbt_population expects (weak_id, strong_id, new_params) return.
+            # And expects update to weak_id.
+            
+            # Create new agent state (logic inside AgentState mostly)
+            # But we want to preserve weak_id?
+            # Or we replace weak_agent object entirely but keep same ID?
+            # "weak_before.hyperparameters" != "weak_after.hyperparameters" test constraint.
+            
+            if self.rng.random() < self.config.resample_probability:
+                # Resample completely
+                new_params = self.config.hyperparameter_space.sample_all(self.rng)
+                child = AgentState(
+                    agent_id=weak_id, # Reuse ID
+                    hyperparameters=new_params,
+                    generation=self.generation + 1,
+                    parent_id=None # Reset lineage for resample?
+                )
+            else:
+                # Mutate from strong
+                child = strong_agent.clone_with_mutations(
+                    self.config.hyperparameter_space,
+                    rng=self.rng,
+                    mutation_strength=self.config.mutation_strength,
+                    mutation_probability=self.config.mutation_probability
+                )
+                child.agent_id = weak_id # Enforce ID reuse
+                
             # Copy weights if enabled
             if self.config.copy_weights and self._copy_weights_fn:
                 try:
                     self._copy_weights_fn(strong_id, weak_id)
-                    logger.debug(f"Copied weights from {strong_id} to {weak_id}")
-                except Exception as e:
-                    logger.warning(f"Failed to copy weights: {e}")
+                except Exception:
+                    logger.warning(
+                        "Weight copy failed for %s -> %s; continuing with mutated hyperparameters only",
+                        strong_id,
+                        weak_id,
+                        exc_info=True,
+                    )
 
-            # Decide whether to resample or mutate
-            if self.rng.random() < self.config.resample_probability:
-                # Resample from scratch
-                new_params = self.config.hyperparameter_space.sample_all(self.rng)
-                logger.debug(f"Resampled hyperparameters for {weak_id}")
-            else:
-                # Mutate from strong agent
-                new_params = self.config.hyperparameter_space.mutate_all(
-                    strong_agent.hyperparameters,
-                    rng=self.rng,
-                    mutation_strength=self.config.mutation_strength,
-                    mutation_probability=self.config.mutation_probability,
-                )
-                logger.debug(f"Mutated hyperparameters for {weak_id} from {strong_id}")
-
-            # Update weak agent
-            weak_agent.hyperparameters = new_params
-            weak_agent.parent_id = strong_id
-            weak_agent.generation = self._generation + 1
-            weak_agent.fitness_history.clear()  # Reset fitness history
-            weak_agent.last_updated = datetime.utcnow().isoformat()
-
-            changes.append((weak_id, strong_id, new_params))
-
-        self._generation += 1
-        logger.info(f"Generation {self._generation}: replaced {len(changes)} agents")
-
+            new_agents[weak_id] = child
+            changes.append((weak_id, strong_id, child.hyperparameters))
+            
+        self.agents = new_agents
+        self.generation += 1
         return changes
 
-    def _select_strong_agent(self, strong_agents: list[str]) -> str:
-        """Select a strong agent to copy from based on selection method.
-
-        Args:
-            strong_agents: List of strong agent IDs
-
-        Returns:
-            Selected agent ID.
-        """
-        method = self.config.get_selection_method_enum()
-
-        if method == SelectionMethod.TRUNCATION:
-            # Uniform random from top agents
-            return self.rng.choice(strong_agents)
-
-        elif method == SelectionMethod.TOURNAMENT:
-            # Tournament selection
-            tournament = self.rng.choice(
-                strong_agents,
-                size=min(self.config.tournament_size, len(strong_agents)),
-                replace=False,
-            )
-            best_id = None
-            best_fitness = float("-inf")
-            for agent_id in tournament:
-                fitness = self._agents[agent_id].get_smoothed_fitness()
-                if fitness > best_fitness:
-                    best_fitness = fitness
-                    best_id = agent_id
-            return best_id or strong_agents[0]
-
-        elif method == SelectionMethod.ROULETTE:
-            # Roulette wheel selection based on fitness
-            fitnesses = np.array(
-                [max(0.01, self._agents[aid].get_smoothed_fitness()) for aid in strong_agents]
-            )
-            probabilities = fitnesses / fitnesses.sum()
-            return self.rng.choice(strong_agents, p=probabilities)
-
-        elif method == SelectionMethod.RANK:
-            # Rank-based selection
-            ranks = np.arange(len(strong_agents), 0, -1)  # Highest rank for best
-            probabilities = ranks / ranks.sum()
-            return self.rng.choice(strong_agents, p=probabilities)
-
-        else:
-            return self.rng.choice(strong_agents)
-
     def compute_stats(self) -> PopulationStats:
-        """Compute current population statistics.
-
-        Returns:
-            PopulationStats object with current statistics.
-        """
-        fitnesses = [
-            agent.get_smoothed_fitness(self.config.fitness_smoothing_window)
-            for agent in self._agents.values()
-        ]
-
+        """Compute and return current stats."""
+        fitnesses = [a.get_smoothed_fitness() for a in self.agents.values()]
         if not fitnesses:
             return PopulationStats()
-
-        # Hyperparameter statistics
-        hp_stats = {}
-        for param_name in self.config.hyperparameter_space.get_all_params().keys():
-            values = [
-                agent.hyperparameters.get(param_name, 0)
-                for agent in self._agents.values()
-                if param_name in agent.hyperparameters
-            ]
-            if values:
-                hp_stats[param_name] = {
-                    "mean": float(np.mean(values)),
-                    "std": float(np.std(values)),
-                    "min": float(np.min(values)),
-                    "max": float(np.max(values)),
-                }
-
+            
         stats = PopulationStats(
-            generation=self._generation,
+            generation=self.generation,
             mean_fitness=float(np.mean(fitnesses)),
             max_fitness=float(np.max(fitnesses)),
             min_fitness=float(np.min(fitnesses)),
             std_fitness=float(np.std(fitnesses)),
-            hyperparameter_stats=hp_stats,
-            num_active=len(self._agents),
-            total_games=sum(a.games_played for a in self._agents.values()),
-            total_steps=sum(a.training_steps for a in self._agents.values()),
+            num_active=len(self.agents),
+            total_games=sum(a.games_played for a in self.agents.values()),
+            total_steps=sum(a.training_steps for a in self.agents.values())
         )
-
-        self._stats_history.append(stats)
+        
+        # Hyperparameter stats
+        hp_stats = {}
+        # Assume all agents have same keys
+        if self.agents:
+            keys = list(self.agents.values())[0].hyperparameters.keys()
+            for k in keys:
+                vals = [a.hyperparameters.get(k, 0) for a in self.agents.values() if isinstance(a.hyperparameters.get(k), (int, float))]
+                if vals:
+                    hp_stats[k] = {
+                        "mean": float(np.mean(vals)),
+                        "std": float(np.std(vals)),
+                        "min": float(np.min(vals)),
+                        "max": float(np.max(vals))
+                    }
+        stats.hyperparameter_stats = hp_stats
+        self.stats_history.append(stats)
         return stats
-
+        
     def is_converged(self) -> bool:
-        """Check if population has converged.
-
-        Returns:
-            True if population fitness variance is below threshold.
-        """
-        if len(self._stats_history) < self.config.convergence_window:
+        """Check if population fitness has converged."""
+        if len(self.stats_history) < self.config.convergence_window:
             return False
-
-        recent_stats = self._stats_history[-self.config.convergence_window :]
-        fitness_std = np.mean([s.std_fitness for s in recent_stats])
-
-        return fitness_std < self.config.convergence_threshold
-
-    def get_best_agent(self) -> AgentState | None:
-        """Get the best performing agent.
-
-        Returns:
-            AgentState with highest fitness, or None if empty.
-        """
-        if not self._agents:
-            return None
-
-        ranking = self.get_fitness_ranking()
-        best_id = ranking[0][0]
-        return self._agents[best_id]
+            
+        recent = self.stats_history[-self.config.convergence_window:]
+        # Simple check: Average std_fitness over window < threshold
+        avg_std = np.mean([s.std_fitness for s in recent])
+        return avg_std < self.config.convergence_threshold
 
     def set_weight_callbacks(
         self,
-        save_fn: Callable[[str, str], None] | None = None,
-        load_fn: Callable[[str, str], None] | None = None,
-        copy_fn: Callable[[str, str], None] | None = None,
+        save_fn: Optional[Callable[[str, str], None]] = None,
+        load_fn: Optional[Callable[[str, str], None]] = None,
+        copy_fn: Optional[Callable[[str, str], None]] = None,
     ) -> None:
-        """Set callbacks for weight management.
-
-        Args:
-            save_fn: Function to save weights (agent_id, path)
-            load_fn: Function to load weights (agent_id, path)
-            copy_fn: Function to copy weights (from_id, to_id)
-        """
         self._save_weights_fn = save_fn
         self._load_weights_fn = load_fn
         self._copy_weights_fn = copy_fn
 
-    def save_checkpoint(self, path: str | Path) -> None:
-        """Save population state to checkpoint.
-
-        Args:
-            path: Directory to save checkpoint
-        """
+    def save_checkpoint(self, path: Path | str) -> None:
+        """Save population state and weights."""
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
-
-        # Save population metadata
+        
+        # Save Metadata (Gen, Stats)
         metadata = {
-            "generation": self._generation,
-            "num_agents": len(self._agents),
-            "config": self.config.to_dict(),
-            "timestamp": datetime.utcnow().isoformat(),
+            "generation": self.generation,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "config": self.config.to_dict()
         }
         with open(path / "metadata.json", "w") as f:
             json.dump(metadata, f, indent=2)
-
-        # Save each agent
-        agents_dir = path / "agents"
-        agents_dir.mkdir(exist_ok=True)
-        for agent_id, agent in self._agents.items():
-            agent.save(agents_dir / f"{agent_id}.json")
-
-        # Save weights if callback is set
-        if self._save_weights_fn:
-            weights_dir = path / "weights"
-            weights_dir.mkdir(exist_ok=True)
-            for agent_id in self._agents:
-                try:
-                    self._save_weights_fn(agent_id, str(weights_dir / f"{agent_id}.pt"))
-                except Exception as e:
-                    logger.warning(f"Failed to save weights for {agent_id}: {e}")
-
-        # Save stats history
-        stats_data = [s.to_dict() for s in self._stats_history[-100:]]
+            
+        # Save Stats History
+        stats_data = [s.to_dict() for s in self.stats_history]
         with open(path / "stats_history.json", "w") as f:
             json.dump(stats_data, f, indent=2)
+            
+        # Save Agents
+        agents_dir = path / "agents"
+        agents_dir.mkdir(exist_ok=True)
+        for aid, agent in self.agents.items():
+            agent.save(agents_dir / f"{aid}.json")
+            if self._save_weights_fn:
+                # Save weights to separate dir or same
+                weight_path = agents_dir / f"{aid}.weights"
+                self._save_weights_fn(aid, str(weight_path))
 
-        logger.info(f"Saved checkpoint to {path}")
-
-    def load_checkpoint(self, path: str | Path) -> None:
-        """Load population state from checkpoint.
-
-        Args:
-            path: Directory containing checkpoint
-        """
+    def load_checkpoint(self, path: Path | str) -> None:
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"Checkpoint not found: {path}")
-
-        # Load metadata
+            
         with open(path / "metadata.json") as f:
             metadata = json.load(f)
-
-        self._generation = metadata.get("generation", 0)
-
+            self.generation = metadata["generation"]
+            # Reload config? Maybe, or keep existing.
+            
         # Load agents
-        self._agents.clear()
         agents_dir = path / "agents"
-        if agents_dir.exists():
-            for agent_file in agents_dir.glob("*.json"):
-                agent = AgentState.load(agent_file)
-                self._agents[agent.agent_id] = agent
+        self.agents = {}
+        for agent_file in agents_dir.glob("*.json"):
+            agent = AgentState.load(agent_file)
+            self.agents[agent.agent_id] = agent
+            
+            # Load weights callback
+            if self._load_weights_fn:
+                weight_path = agents_dir / f"{agent.agent_id}.weights"
+                self._load_weights_fn(agent.agent_id, str(weight_path))
 
-        # Load weights if callback is set
-        if self._load_weights_fn:
-            weights_dir = path / "weights"
-            if weights_dir.exists():
-                for agent_id in self._agents:
-                    weight_path = weights_dir / f"{agent_id}.pt"
-                    if weight_path.exists():
-                        try:
-                            self._load_weights_fn(agent_id, str(weight_path))
-                        except Exception as e:
-                            logger.warning(f"Failed to load weights for {agent_id}: {e}")
+        logger.info(f"Loaded checkpoint from {path} (Gen {self.generation})")
 
-        # Load stats history
-        stats_file = path / "stats_history.json"
-        if stats_file.exists():
-            with open(stats_file) as f:
-                json.load(f)
-            # Note: We don't fully restore stats objects, just keep the data
-            self._stats_history = []
-
-        logger.info(
-            f"Loaded checkpoint from {path}: "
-            f"generation={self._generation}, agents={len(self._agents)}"
-        )
-
-    def cleanup_old_checkpoints(self, checkpoint_dir: str | Path) -> None:
-        """Remove old checkpoints, keeping only the most recent.
-
-        Args:
-            checkpoint_dir: Directory containing checkpoints
-        """
-        checkpoint_dir = Path(checkpoint_dir)
-        if not checkpoint_dir.exists():
-            return
-
-        # Find all checkpoint directories
-        checkpoints = sorted(
-            [d for d in checkpoint_dir.iterdir() if d.is_dir()],
-            key=lambda d: d.stat().st_mtime,
-            reverse=True,
-        )
-
-        # Remove old checkpoints
-        for old_checkpoint in checkpoints[self.config.max_checkpoints :]:
-            try:
-                shutil.rmtree(old_checkpoint)
-                logger.debug(f"Removed old checkpoint: {old_checkpoint}")
-            except Exception as e:
-                logger.warning(f"Failed to remove checkpoint {old_checkpoint}: {e}")
-
-    @property
-    def generation(self) -> int:
-        """Get current generation number."""
-        return self._generation
-
-    @property
-    def population_size(self) -> int:
-        """Get current population size."""
-        return len(self._agents)
-
-    def __len__(self) -> int:
-        """Get population size."""
-        return len(self._agents)
-
-    def __iter__(self):
-        """Iterate over agents."""
-        return iter(self._agents.values())

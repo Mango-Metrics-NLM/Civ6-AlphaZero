@@ -1,9 +1,12 @@
-"""
-Vertex AI Training CLI for Civ6 AlphaZero.
+"""GCP CLI for AlphaZero.
 
-This CLI provides commands for managing training runs on Google Vertex AI.
+Provides command-line utilities for managing GCP resources,
+validating configuration, and launching training jobs on Vertex AI.
 
 Usage:
+    # Validate GCP configuration
+    python -m alpha_zero.cloud.gcp validate --config configs/civ6_config.yaml
+
     # Initialize training (verify setup, upload initial model)
     python -m alpha_zero.cloud.gcp init --tier budget
 
@@ -18,13 +21,6 @@ Usage:
 
     # Check job status
     python -m alpha_zero.cloud.gcp status
-
-Environment Variables:
-    CIV6AZ_VERTEX_PROJECT: GCP project ID (required)
-    CIV6AZ_GCS_BUCKET: GCS bucket name (required)
-    CIV6AZ_VERTEX_REGION: GCP region (default: us-central1)
-    CIV6AZ_CONTAINER_IMAGE_URI: Container image URI
-    WANDB_API_KEY: W&B API key for experiment tracking
 """
 
 from __future__ import annotations
@@ -34,16 +30,68 @@ import logging
 import os
 import sys
 
+
 from alpha_zero.cloud.gcp.config import GCPConfig, VertexTier
 from alpha_zero.cloud.gcp.exceptions import ConfigurationError, VertexJobError
-from alpha_zero.cloud.gcp.storage import GCSModelStorage
+from alpha_zero.cloud.gcp.storage import GCSBackend, GCSModelStorage
 from alpha_zero.cloud.gcp.vertex_jobs import (
     JobState,
     VertexSelfPlayJob,
     VertexTrainingJob,
 )
+from alpha_zero.utils.config import ConfigManager
 
 logger = logging.getLogger(__name__)
+
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    """Validate GCP configuration and permissions."""
+    print("Validating GCP Configuration...")
+
+    try:
+        # 1. Load Configs
+        try:
+            _ = ConfigManager(args.config)
+            print(f"  Civ6 Config '{args.config}' loaded successfully")
+        except Exception as e:
+            print(f"  Warning: Failed to load '{args.config}': {e}")
+
+        # Load GCP Config from Env
+        gcp_config = GCPConfig.from_env(validate=False)
+        print(f"  GCP Config: Project={gcp_config.project_id}, Region={gcp_config.region}")
+
+        if not gcp_config.project_id or not gcp_config.bucket:
+            print("  ERROR: Project ID or Bucket missing in environment")
+            return 1
+
+        # 2. Check Storage Access
+        print("\nVerifying Storage Access...")
+        storage = GCSBackend(gcp_config.project_id)
+        try:
+            bucket_obj = storage.client.get_bucket(gcp_config.bucket)
+            print(f"  Bucket gs://{gcp_config.bucket} is accessible")
+        except Exception as e:
+            print(f"  ERROR: Failed to access bucket '{gcp_config.bucket}': {e}")
+            return 1
+
+        # 3. Check Vertex AI
+        print("\nVerifying Vertex AI initialization...")
+        from google.cloud import aiplatform
+
+        aiplatform.init(
+            project=gcp_config.project_id,
+            location=gcp_config.region,
+            staging_bucket=f"gs://{gcp_config.bucket}",
+        )
+        print("  Vertex AI initialized successfully")
+
+        print("\nValidation complete: All checks passed!")
+        return 0
+
+    except Exception as e:
+        print(f"\nERROR: Validation failed - {e}")
+        logger.exception("Validation failed")
+        return 1
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -430,6 +478,15 @@ def main() -> int:
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
+    # validate command
+    validate_parser = subparsers.add_parser("validate", help="Validate GCP configuration")
+    validate_parser.add_argument(
+        "--config",
+        type=str,
+        default="configs/civ6_config.yaml",
+        help="Path to configuration file",
+    )
+
     # init command
     init_parser = subparsers.add_parser("init", help="Initialize training environment")
     init_parser.add_argument("--tier", choices=["budget", "ondemand"], default="budget")
@@ -483,6 +540,7 @@ def main() -> int:
     setup_logging(args.verbose)
 
     commands = {
+        "validate": cmd_validate,
         "init": cmd_init,
         "selfplay": cmd_selfplay,
         "train": cmd_train,

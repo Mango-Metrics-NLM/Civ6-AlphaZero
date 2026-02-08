@@ -26,7 +26,7 @@ import math
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -464,8 +464,8 @@ class AgentState:
     generation: int = 0
     parent_id: str | None = None
     model_path: str | None = None
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    last_updated: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    last_updated: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def update_fitness(self, new_fitness: float, max_history: int = 100) -> None:
         """Update fitness score and history.
@@ -478,7 +478,7 @@ class AgentState:
         self.fitness_history.append(new_fitness)
         if len(self.fitness_history) > max_history:
             self.fitness_history = self.fitness_history[-max_history:]
-        self.last_updated = datetime.utcnow().isoformat()
+        self.last_updated = datetime.now(timezone.utc).isoformat()
 
     def get_smoothed_fitness(self, window: int = 10) -> float:
         """Get smoothed fitness score using recent history.
@@ -554,8 +554,8 @@ class AgentState:
             generation=data.get("generation", 0),
             parent_id=data.get("parent_id"),
             model_path=data.get("model_path"),
-            created_at=data.get("created_at", datetime.utcnow().isoformat()),
-            last_updated=data.get("last_updated", datetime.utcnow().isoformat()),
+            created_at=data.get("created_at", datetime.now(timezone.utc).isoformat()),
+            last_updated=data.get("last_updated", datetime.now(timezone.utc).isoformat()),
         )
 
     def save(self, path: str | Path) -> None:
@@ -652,6 +652,9 @@ class PBTConfig:
     # Convergence detection
     convergence_threshold: float = 0.01
     convergence_window: int = 50
+    
+    # Runtime
+    num_generations: int = 50
 
     ENV_PREFIX: str = field(default="CIV6AZ_PBT_", repr=False)
 
@@ -713,6 +716,7 @@ class PBTConfig:
             current_value = getattr(config, param_name)
 
             try:
+                typed_value: Any
                 if isinstance(current_value, bool):
                     typed_value = value.lower() in ("true", "1", "yes")
                 elif isinstance(current_value, int):

@@ -122,6 +122,7 @@ class TrainingWorkerConfig:
     spot: bool = False
     checkpoint_interval: int = 1000
     epochs_per_iteration: int = 10
+    replica_count: int = 1
 
     @classmethod
     def budget_preset(cls) -> TrainingWorkerConfig:
@@ -130,6 +131,7 @@ class TrainingWorkerConfig:
             machine_type="n1-standard-8",
             accelerator_type="NVIDIA_TESLA_T4",
             accelerator_count=1,
+            replica_count=1,
             spot=False,
         )
 
@@ -140,6 +142,7 @@ class TrainingWorkerConfig:
             machine_type="a2-highgpu-8g",
             accelerator_type="NVIDIA_TESLA_A100",
             accelerator_count=8,
+            replica_count=1,
             spot=False,
         )
 
@@ -155,26 +158,33 @@ class GCSPathConfig:
     trajectories_prefix: str = "trajectories/civ6az"
     checkpoints_prefix: str = "checkpoints/civ6az"
     logs_prefix: str = "logs/civ6az"
+    agent_id: str | None = None
+
+    def _resolve_prefix(self, base_prefix: str) -> str:
+        """Return agent-scoped prefix when agent_id is set, otherwise base."""
+        if self.agent_id:
+            return f"{base_prefix}/{self.agent_id}"
+        return base_prefix
 
     def model_path(self, version: int) -> str:
         """Get path for a model version."""
-        return f"{self.models_prefix}/v{version:03d}/model.pt"
+        return f"{self._resolve_prefix(self.models_prefix)}/v{version:03d}/model.pt"
 
     def metadata_path(self, version: int) -> str:
         """Get path for model metadata."""
-        return f"{self.models_prefix}/v{version:03d}/metadata.json"
+        return f"{self._resolve_prefix(self.models_prefix)}/v{version:03d}/metadata.json"
 
     def trajectory_path(self, iteration: int, worker_id: int) -> str:
         """Get path for trajectory shard."""
-        return f"{self.trajectories_prefix}/iter_{iteration:03d}/shard_worker_{worker_id}.pt"
+        return f"{self._resolve_prefix(self.trajectories_prefix)}/iter_{iteration:03d}/shard_worker_{worker_id}.pt"
 
     def checkpoint_path(self, step: int) -> str:
         """Get path for training checkpoint."""
-        return f"{self.checkpoints_prefix}/training_step_{step}.pt"
+        return f"{self._resolve_prefix(self.checkpoints_prefix)}/training_step_{step}.pt"
 
     def latest_checkpoint_path(self) -> str:
         """Get path for latest checkpoint marker."""
-        return f"{self.checkpoints_prefix}/latest.pt"
+        return f"{self._resolve_prefix(self.checkpoints_prefix)}/latest.pt"
 
 
 @dataclass

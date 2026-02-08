@@ -50,17 +50,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model_version", type=int, required=True, help="Model version to use")
     parser.add_argument("--iteration", type=int, required=True, help="Training iteration")
     parser.add_argument("--games", type=int, default=100, help="Number of games to play")
+    parser.add_argument("--agent_id", type=str, default=None, help="PBT Agent ID")
+    parser.add_argument("--mode", type=str, default="selfplay", help="Worker mode (selfplay)")
+    
     # MCTS configuration arguments
-    parser.add_argument("--mcts_simulations", type=int, default=100, help="MCTS simulations per move")
-    parser.add_argument("--mcts_type", type=str, default="civ6", help="MCTS variant to use")
-    parser.add_argument("--board_size", type=int, default=10, help="Size of the hex board")
-    parser.add_argument("--max_turns", type=int, default=200, help="Max turns per game")
-    parser.add_argument("--c_puct", type=float, default=None, help="MCTS exploration constant")
-    parser.add_argument("--dirichlet_alpha", type=float, default=None, help="Dirichlet noise alpha")
-    parser.add_argument("--dirichlet_epsilon", type=float, default=None, help="Dirichlet noise weight")
-    parser.add_argument("--temperature", type=float, default=None, help="Action selection temperature")
-    parser.add_argument("--temperature_threshold", type=int, default=None, help="Turn for temperature=0")
-    # Additional hyperparameters passed by the Vertex orchestrator
+    parser.add_argument("--mcts_simulations", type=int, default=400, help="MCTS simulations per move")
+    parser.add_argument("--mcts_type", type=str, default="civ6", choices=["civ6", "gumbel"], help="MCTS variant to use")
+    parser.add_argument("--board_size", type=int, default=8, help="Size of the hex board")
+    parser.add_argument("--max_turns", type=int, default=30, help="Max turns per game")
+    parser.add_argument("--c_puct", type=float, default=1.5, help="MCTS exploration constant")
+    parser.add_argument("--dirichlet_alpha", type=float, default=0.3, help="Dirichlet noise alpha")
+    parser.add_argument("--dirichlet_epsilon", type=float, default=0.25, help="Dirichlet noise weight")
+    parser.add_argument("--temperature", type=float, default=1.0, help="Action selection temperature")
+    parser.add_argument("--temperature_threshold", type=int, default=30, help="Turn for temperature=0")
+    
+    # Additional hyperparameters
     parser.add_argument("--gumbel_num_actions", type=int, default=16, help="Gumbel MCTS sampled actions")
     parser.add_argument("--action_space_size", type=int, default=381, help="Size of the action space")
     parser.add_argument("--num_res_blocks", type=int, default=8, help="Number of transformer layers")
@@ -168,8 +172,8 @@ def run_selfplay(
     num_games: int,
     mcts_sims: int,
     mcts_type: str = "civ6",
-    board_size: int = 16,
-    max_turns: int = 200,
+    board_size: int = 8,
+    max_turns: int = 30,
     gumbel_num_actions: int = 16,
     mcts_config_override: dict[str, Any] | None = None,
     dry_run: bool = False,
@@ -421,6 +425,10 @@ def main() -> int:
 
     try:
         config = GCPConfig()
+        if args.agent_id:
+            config.paths.agent_id = args.agent_id
+            logger.info("Using Agent ID: %s", args.agent_id)
+
         if not args.dry_run:
             config.validate()
 

@@ -1,0 +1,46 @@
+# Vertex AI Training Smoke Test Configuration
+#
+# Usage:
+#   1. Copy this template to vertex_training_smoke_local.yaml
+#   2. Set WANDB_API_KEY via one of:
+#      a) Google Secret Manager (recommended for production)
+#      b) Environment variable in your local copy
+#   3. The *_local.yaml files are gitignored and safe for real keys
+#
+# For Secret Manager integration, replace the WANDB_API_KEY env block with:
+#   - name: WANDB_API_KEY
+#     valueFrom:
+#       secretKeyRef:
+#         name: 'wandb-api-key'    # Secret Manager secret name
+#         key: 'latest'            # Secret version
+
+workerPoolSpecs:
+  - machineSpec:
+      machineType: n1-standard-4
+    replicaCount: 1
+    containerSpec:
+      imageUri: us-central1-docker.pkg.dev/hrmtrain/vertex-ai-training/hrm-training:v11-smoke
+      args:
+        - "--mode=training"
+        - "--iteration=1"
+        - "--trajectory_iterations=1"
+        - "--epochs=5"
+        - "--batch_size=128"
+        - "--learning_rate=0.001"
+        - "--board_size=6"
+        - "--action_space_size=376"
+        - "--num_res_blocks=2"
+        - "--num_filters=32"
+      env:
+        # WANDB_API_KEY: Inject via Secret Manager or local override.
+        # DO NOT commit real keys here. See header for setup instructions.
+        - name: WANDB_PROJECT
+          value: "civ6-alphazero"
+        - name: WANDB_ENABLED
+          value: "true"
+        - name: CIV6AZ_GCS_BUCKET
+          value: "civ6az-training"
+        - name: CIV6AZ_VERTEX_PROJECT
+          value: "hrmtrain"
+        - name: CIV6AZ_VERTEX_REGION
+          value: "us-central1"

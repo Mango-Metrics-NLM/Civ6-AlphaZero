@@ -91,7 +91,7 @@ class JobSpec:
 
     def to_worker_pool_spec(self) -> dict[str, Any]:
         """Convert to Vertex AI worker pool spec format."""
-        container_spec = {
+        container_spec: dict[str, Any] = {
             "image_uri": self.container_uri,
         }
         if self.command:
@@ -280,32 +280,67 @@ class VertexAIClient:
                 job_id=job_name,
             ) from e
 
-    def cancel_job(self, job_name: str) -> None:
-        """Cancel a running job.
+    def submit_tuning_job(
+        self,
+        spec: JobSpec,
+        metric_spec: dict[str, str],
+        parameter_spec: dict[str, Any],
+        max_trial_count: int,
+        parallel_trial_count: int,
+        staging_bucket: str | None = None,
+    ) -> str:
+        """Submit a specific HyperparameterTuningJob.
 
         Args:
-            job_name: Job resource name.
+            spec: Job specification for the trial job.
+            metric_spec: Dictionary mapping metric IDs to 'maximize' or 'minimize'.
+            parameter_spec: Dictionary defining the search space.
+            max_trial_count: Total number of trials.
+            parallel_trial_count: Number of parallel trials.
+            staging_bucket: GCS bucket for staging.
+
+        Returns:
+            Job resource name.
         """
         self._ensure_initialized()
 
         try:
             from google.cloud import aiplatform
 
-            job = aiplatform.CustomJob.get(job_name)
-            job.cancel()
-            logger.info("Cancelled job: %s", job_name)
+            worker_pool_specs = [spec.to_worker_pool_spec()]
+
+            # Create the custom job spec for each trial
+            custom_job = aiplatform.CustomJob(
+                display_name=spec.display_name,
+                worker_pool_specs=worker_pool_specs,
+                staging_bucket=staging_bucket,
+            )
+
+            # Create the tuning job
+            tuning_job = aiplatform.HyperparameterTuningJob(
+                display_name=f"{spec.display_name}-tuning",
+                custom_job=custom_job,
+                metric_spec=metric_spec,
+                parameter_spec=parameter_spec,
+                max_trial_count=max_trial_count,
+                parallel_trial_count=parallel_trial_count,
+            )
+
+            tuning_job.submit(service_account=spec.service_account)
+
+            logger.info("Submitted tuning job: %s (resource: %s)", spec.display_name, tuning_job.resource_name)
+            return tuning_job.resource_name
 
         except Exception as e:
             raise VertexJobError(
-                f"Failed to cancel job: {e}",
-                job_id=job_name,
+                f"Failed to submit tuning job {spec.display_name}: {e}",
             ) from e
 
     def wait_for_completion(
         self,
         job_name: str,
         timeout_seconds: int = 86400,
-        poll_interval_seconds: int = 30,
+        poll_interval_seconds: int = 10,
     ) -> JobResult:
         """Wait for a job to complete.
 
@@ -316,61 +351,159 @@ class VertexAIClient:
 
         Returns:
             JobResult with final state.
-
-        Raises:
-            VertexJobError: If job fails or times out.
-            PreemptionError: If job was preempted.
         """
         start_time = time.time()
-
         while True:
-            elapsed = time.time() - start_time
-            if elapsed > timeout_seconds:
-                raise VertexJobError(
-                    f"Job timed out after {timeout_seconds} seconds",
-                    job_id=job_name,
-                )
-
             state, metadata = self.get_job_state(job_name)
 
             if JobState.is_terminal(state):
-                success = state == JobState.SUCCEEDED.value
-                error_message = None
-
-                if not success:
-                    # Check for preemption in job metadata/error message
-                    # The state string (e.g. JOB_STATE_FAILED) doesn't contain preemption info
-                    error_info = metadata.get("error", {})
-                    error_msg = ""
-                    if isinstance(error_info, dict):
-                        error_msg = error_info.get("message", "")
-                    elif isinstance(error_info, str):
-                        error_msg = error_info
-
-                    # Also check status_message for preemption indicators
-                    status_msg = metadata.get("status_message", "")
-                    combined_msg = f"{error_msg} {status_msg}".lower()
-
-                    if "preempt" in combined_msg or "spot" in combined_msg:
-                        raise PreemptionError(
-                            f"Job was preempted: {error_msg or status_msg}",
-                            job_id=job_name,
-                        )
-                    error_message = f"Job ended with state: {state}. {error_msg}"
-
+                success = (state == JobState.SUCCEEDED.value)
                 return JobResult(
                     job_id=job_name,
-                    job_name=metadata.get("display_name", ""),
+                    job_name=metadata.get("display_name", job_name),
                     state=state,
                     success=success,
                     start_time=metadata.get("start_time"),
                     end_time=metadata.get("end_time"),
-                    error_message=error_message,
+                    error_message=metadata.get("status_message"),
                     metadata=metadata,
                 )
 
-            logger.debug("Job %s in state %s, waiting...", job_name, state)
+            if time.time() - start_time > timeout_seconds:
+                raise VertexJobError(f"Job {job_name} timed out after {timeout_seconds} seconds")
+
             time.sleep(poll_interval_seconds)
+
+    def cancel_job(self, job_name: str) -> None:
+        """Cancel a running job.
+
+        Args:
+            job_name: Job resource name.
+        """
+        self._ensure_initialized()
+        try:
+            from google.cloud import aiplatform
+
+            # Try to get as CustomJob first, then HyperparameterTuningJob
+            try:
+                job: Any = aiplatform.CustomJob.get(job_name)
+            except Exception:
+                job = aiplatform.HyperparameterTuningJob.get(job_name)
+
+            job.cancel()
+            logger.info("Cancelled job: %s", job_name)
+        except Exception as e:
+            raise VertexJobError(f"Failed to cancel job {job_name}: {e}")
+
+class VertexTuningJob:
+    """Manages hyperparameter tuning jobs on Vertex AI."""
+
+    def __init__(
+        self,
+        config: GCPConfig,
+        client: VertexAIClient | None = None,
+    ) -> None:
+        self.config = config
+        self.client = client or VertexAIClient(
+            project=config.project_id,
+            region=config.region,
+            service_account=config.service_account,
+        )
+
+    def launch(
+        self,
+        iteration: int,
+        parameter_spec: dict[str, Any],
+        metric_spec: dict[str, str],
+        max_trials: int = 20,
+        parallel_trials: int = 4,
+        container_uri: str | None = None,
+        extra_args: list[str] | None = None,
+    ) -> str:
+        """Launch a hyperparameter tuning job.
+
+        Args:
+            iteration: Current iteration (for naming).
+            parameter_spec: Vizier parameter search space.
+            metric_spec: Metric to optimize (e.g. {'elo': 'maximize'}).
+            max_trials: Total trials to run.
+            parallel_trials: Trials to run in parallel.
+            container_uri: Container image URI.
+            extra_args: Additional args for the container.
+
+        Returns:
+            Job resource name.
+        """
+        container = container_uri or self.config.container_image_uri
+        if not container:
+            raise VertexJobError("No container image URI configured")
+
+        # Base args - Vizier will append hyperparameters as CLI flags
+        args = [
+            "--mode=tuning_worker",
+            f"--iteration={iteration}",
+        ]
+        if extra_args:
+            args.extend(extra_args)
+
+        # Create base job spec
+        spec = JobSpec(
+            display_name=f"civ6az-tuning-iter{iteration:03d}",
+            container_uri=container,
+            args=args,
+            env_vars={
+                "CIV6AZ_GCS_BUCKET": self.config.bucket,
+                "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
+                "CIV6AZ_VERTEX_REGION": self.config.region,
+                **_wandb_env_vars(),
+            },
+            machine_type="n1-standard-4", # Tuning trials usually smaller
+            accelerator_type="NVIDIA_TESLA_T4",
+            accelerator_count=1,
+            replica_count=1,
+            spot=False, # Vizier can use spot, but it's simpler to use on-demand for reliability
+            service_account=self.config.service_account,
+        )
+
+        job_name = self.client.submit_tuning_job(
+            spec=spec,
+            metric_spec=metric_spec,
+            parameter_spec=parameter_spec,
+            max_trial_count=max_trials,
+            parallel_trial_count=parallel_trials,
+            staging_bucket=f"gs://{self.config.bucket}",
+        )
+        
+        return job_name
+
+    def wait_for_completion(
+        self,
+        job_name: str,
+        timeout_seconds: int = 86400,
+    ) -> JobResult:
+        """Wait for tuning job to complete.
+
+        Args:
+            job_name: Job resource name.
+            timeout_seconds: Maximum wait time.
+
+        Returns:
+            JobResult with final state.
+        """
+        # Tuning jobs are long running, so we might want a longer poll interval
+        return self.client.wait_for_completion(
+            job_name,
+            timeout_seconds=timeout_seconds,
+            poll_interval_seconds=60,
+        )
+
+    def cancel(self, job_name: str) -> None:
+        """Cancel a tuning job.
+
+        Args:
+            job_name: Job resource name.
+        """
+        self.client.cancel_job(job_name)
 
 
 class VertexSelfPlayJob:
@@ -598,25 +731,45 @@ class VertexTrainingJob:
 
         training_config = self.config.training
 
-        args = [
+        # Multi-node DDP is not yet supported — only single-node torchrun.
+        # TODO: Add multi-node rendezvous args (--nnodes, --rdzv_*) when needed.
+        if training_config.replica_count > 1:
+            raise VertexJobError(
+                f"Multi-node training (replica_count={training_config.replica_count}) "
+                "is not yet supported. Use replica_count=1 with multiple GPUs "
+                "for single-node DDP via torchrun."
+            )
 
+        if training_config.accelerator_count > 1:
+            # Use torchrun for DDP
+            command = [
+                "torchrun",
+                f"--nproc_per_node={training_config.accelerator_count}",
+                "-m",
+                "alpha_zero.cloud.gcp.training_worker",
+            ]
+        else:
+            command = ["python", "-m", "alpha_zero.cloud.gcp.training_worker"]
+
+        # Base args for the worker
+        worker_args = [
             f"--iteration={iteration}",
             f"--trajectory_iterations={','.join(map(str, trajectory_iterations))}",
             f"--epochs={training_config.epochs_per_iteration}",
             f"--checkpoint_interval={training_config.checkpoint_interval}",
         ]
-
+        
         if resume_from_checkpoint:
-            args.append(f"--resume_from={resume_from_checkpoint}")
+            worker_args.append(f"--resume_from={resume_from_checkpoint}")
 
         if extra_args:
-            args.extend(extra_args)
+            worker_args.extend(extra_args)
 
         spec = JobSpec(
             display_name=f"civ6az-training-iter{iteration:03d}",
             container_uri=container,
-            command=["python", "-m", "alpha_zero.cloud.gcp.training_worker"],
-            args=args,
+            command=command,
+            args=worker_args,
             env_vars={
                 "CIV6AZ_GCS_BUCKET": self.config.bucket,
                 "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
@@ -626,7 +779,7 @@ class VertexTrainingJob:
             machine_type=training_config.machine_type,
             accelerator_type=training_config.accelerator_type,
             accelerator_count=training_config.accelerator_count,
-            replica_count=1,
+            replica_count=training_config.replica_count,
             spot=training_config.spot,  # Usually False for training
             service_account=self.config.service_account,
             timeout_seconds=86400,  # 24 hours

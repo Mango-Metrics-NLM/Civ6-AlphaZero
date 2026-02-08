@@ -23,9 +23,13 @@ import argparse
 import logging
 import sys
 import time
+import os
 
 import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, Dataset, TensorDataset
+from torch.utils.data.distributed import DistributedSampler
 
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.storage import (
@@ -33,6 +37,7 @@ from alpha_zero.cloud.gcp.storage import (
     GCSModelStorage,
     GCSTrajectoryStorage,
 )
+from alpha_zero.utils.wandb_logger import WandbLogger
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +49,70 @@ def setup_logging() -> None:
         format="[Training] %(asctime)s - %(levelname)s - %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
+
+
+def setup_ddp() -> tuple[int, int, int]:
+    """Initialize distributed training.
+    
+    Returns:
+        Tuple of (rank, local_rank, world_size).
+    """
+    if "WORLD_SIZE" in os.environ:
+        rank = int(os.environ["RANK"])
+        local_rank = int(os.environ["LOCAL_RANK"])
+        world_size = int(os.environ["WORLD_SIZE"])
+
+        # Select backend based on CUDA availability to support CPU-only envs.
+        backend = "nccl" if torch.cuda.is_available() else "gloo"
+        dist.init_process_group(backend=backend)
+
+        if torch.cuda.is_available():
+            torch.cuda.set_device(local_rank)
+
+        logger.info(
+            "Initialized DDP: rank=%d, local_rank=%d, world_size=%d, backend=%s",
+            rank, local_rank, world_size, backend,
+        )
+        return rank, local_rank, world_size
+    return 0, 0, 1
+
+
+def cleanup_ddp() -> None:
+    """Clean up distributed training."""
+    if dist.is_initialized():
+        dist.destroy_process_group()
+
+
+def report_tuning_metric(metric: dict[str, float], step: int) -> None:
+    """Report hyperparameter tuning metric to Vertex AI Vizier.
+
+    Writes to the file specified by CLOUD_ML_HP_METRIC_FILE environment variable.
+    """
+    metric_file = os.environ.get("CLOUD_ML_HP_METRIC_FILE")
+    if not metric_file:
+        return
+
+    try:
+        import json
+        
+        # Format required by Vertex AI Vizier
+        data = {
+            "timestamp": time.time(),
+            "step": step,
+            **metric,
+        }
+        
+        # Write generic metric to file (append or overwrite?) 
+        # Vizier expects one JSON per line or just one JSON?
+        # Documentation says: "Write the metric to the file... Each line in the file is a JSON object"
+        
+        with open(metric_file, "a") as f:
+            f.write(json.dumps(data) + "\n")
+            
+        logger.debug("Reported tuning metric: %s", data)
+        
+    except Exception as e:
+        logger.warning("Failed to report tuning metric: %s", e)
 
 
 def parse_args() -> argparse.Namespace:
@@ -59,6 +128,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=10, help="Training epochs")
     parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
     parser.add_argument("--learning_rate", type=float, default=0.001, help="Learning rate")
+    parser.add_argument("--agent_id", type=str, default=None, help="PBT Agent ID")
     parser.add_argument(
         "--checkpoint_interval", type=int, default=1000, help="Steps between checkpoints"
     )
@@ -242,9 +312,9 @@ def train_epoch(
     optimizer: torch.optim.Optimizer,
     device: torch.device,
     global_step: int = 0,
-    wandb_logger: object | None = None,
-    spatial_channels: int = 64,
-    spatial_size: int = 10,
+    wandb_logger: WandbLogger | None = None,
+    spatial_channels: int = 13,
+    spatial_size: int = 8,
 ) -> tuple[float, float, float, int]:
     """Train for one epoch.
 
@@ -416,15 +486,33 @@ def main() -> int:
     except ImportError:
         logger.debug("W&B not available")
 
+    # DDP setup
+    rank, local_rank, world_size = setup_ddp()
+    is_main_process = rank == 0
+
     try:
         config = GCPConfig()
-        if not args.dry_run:
+        if args.agent_id:
+            config.paths.agent_id = args.agent_id
+            if is_main_process:
+                logger.info("Using Agent ID: %s", args.agent_id)
+
+        if not args.dry_run and is_main_process:
             config.validate()
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        logger.info("Using device: %s", device)
+        if torch.cuda.is_available():
+            device = torch.device(f"cuda:{local_rank}")
+        else:
+            device = torch.device("cpu")
+        
+        if is_main_process:
+            logger.info("Using device: %s (World size: %d)", device, world_size)
 
-        # Load trajectories
+        # Load trajectories (only on main process or cached?)
+        # For simplicity, all processes load data. In data-parallel, this is fine for small datasets.
+        # For huge datasets, we'd want to shard reading.
+        # GCS storage might be slow if 8 GPUs hit it at once. 
+        # But for now assuming each node caches it independently or it's fast enough.
         trajectories = load_trajectories(
             config,
             trajectory_iterations,
@@ -445,7 +533,7 @@ def main() -> int:
             return 1
 
         # Prepare dataset
-        dataset = prepare_dataset(trajectories)
+        dataset = prepare_dataset(trajectories, args.action_space_size)
 
         if len(dataset) == 0:
             logger.error(
@@ -453,15 +541,23 @@ def main() -> int:
                 "This may indicate corrupted trajectory data."
             )
             return 1
+        
+        # Distributed sampler
+        sampler: DistributedSampler | None = (
+            DistributedSampler(dataset) if world_size > 1 else None
+        )
         dataloader = DataLoader(
             dataset,
             batch_size=args.batch_size,
-            shuffle=True,
+            shuffle=(sampler is None),
+            sampler=sampler,
             # num_workers=0 avoids multiprocessing issues inside containers
             num_workers=0,
             pin_memory=device.type == "cuda",
         )
-        logger.info("Dataset size: %d examples, %d batches", len(dataset), len(dataloader))
+        
+        if is_main_process:
+            logger.info("Dataset size: %d examples, %d batches", len(dataset), len(dataloader))
 
         # Create model
         model = create_model(
@@ -471,6 +567,10 @@ def main() -> int:
             num_filters=args.num_filters,
         )
         model = model.to(device)
+        
+        # Wrap DDP
+        if world_size > 1:
+            model = DDP(model, device_ids=[local_rank])
 
         # Create optimizer
         optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
@@ -499,14 +599,18 @@ def main() -> int:
                 optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
                 global_step = checkpoint.get("step", 0)
                 start_epoch = checkpoint.get("epoch", 0)
-                logger.info(
-                    "Resumed from checkpoint at step %d, epoch %d", global_step, start_epoch
-                )
+                if is_main_process:
+                    logger.info(
+                        "Resumed from checkpoint at step %d, epoch %d", global_step, start_epoch
+                    )
 
         # Training loop
         start_time = time.time()
 
         for epoch in range(start_epoch, args.epochs):
+            if sampler is not None:
+                sampler.set_epoch(epoch)
+                
             epoch_start = time.time()
 
             # Spatial dims must match encoder output, NOT model embed_dim
@@ -528,35 +632,52 @@ def main() -> int:
             prev_step = global_step
             global_step += num_batches
 
-            logger.info(
-                "Epoch %d/%d - Loss: %.4f (P: %.4f, V: %.4f) - %.1fs - Steps: %d->%d",
-                epoch + 1,
-                args.epochs,
-                loss,
-                policy_loss,
-                value_loss,
-                epoch_time,
-                prev_step,
-                global_step,
-            )
+
+
+            if is_main_process:
+                logger.info(
+                    "Epoch %d/%d completed: loss=%.4f (policy=%.4f, value=%.4f), "
+                    "time=%.2fs, steps %d-%d",
+                    epoch + 1,
+                    args.epochs,
+                    loss,
+                    policy_loss,
+                    value_loss,
+                    epoch_time,
+                    prev_step + 1,
+                    global_step,
+                )
+
+                # Report to Vizier
+                report_tuning_metric(
+                    {
+                        "loss": loss,
+                        "policy_loss": policy_loss,
+                        "value_loss": value_loss,
+                    },
+                    step=global_step,
+                )
 
             # Checkpoint if we crossed an interval boundary
-            if (global_step // args.checkpoint_interval) > (prev_step // args.checkpoint_interval):
+            if is_main_process and (global_step // args.checkpoint_interval) > (prev_step // args.checkpoint_interval):
                 save_checkpoint(config, model, optimizer, global_step, epoch + 1, args.dry_run)
 
         # Save final model
         total_time = time.time() - start_time
-        logger.info("Training complete in %.1f seconds", total_time)
+        if is_main_process:
+            logger.info("Training complete in %.1f seconds", total_time)
 
-        _uri, version = save_final_model(config, model, args.iteration, args.dry_run)
-        logger.info("Saved final model version %d", version)
+            # Unwrap model if DDP
+            model_to_save: torch.nn.Module = model.module if world_size > 1 else model  # type: ignore[attr-defined]
+            uri, version = save_final_model(config, model_to_save, args.iteration, args.dry_run)
+            logger.info("Saved final model version %d to %s", version, uri)
 
-        # Cleanup old checkpoints
-        if not args.dry_run:
-            checkpoint_storage = GCSCheckpointStorage(config)
-            deleted = checkpoint_storage.cleanup_old_checkpoints(keep_last=3)
-            if deleted:
-                logger.info("Cleaned up %d old checkpoints", deleted)
+            # Cleanup old checkpoints
+            if not args.dry_run:
+                checkpoint_storage = GCSCheckpointStorage(config)
+                deleted = checkpoint_storage.cleanup_old_checkpoints(keep_last=3)
+                if deleted:
+                    logger.info("Cleaned up %d old checkpoints", deleted)
 
         return 0
 
@@ -567,6 +688,7 @@ def main() -> int:
         logger.exception("Training failed: %s", e)
         return 1
     finally:
+        cleanup_ddp()
         if (
             wandb_logger is not None
             and hasattr(wandb_logger, "is_enabled")

@@ -14,7 +14,7 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 2 | Hierarchical Reinforcement Learning | ✅ Complete |
 | Phase 3 | Training Improvements (Curriculum, Rewards) | ✅ Complete |
 | Phase 4 | Unified Training Orchestrator | ✅ Complete |
-| Phase 5 | RAG-LLM Integration | ✅ Complete |
+| Phase 5 | Cost Optimization & Monitoring | ✅ Complete |
 | Phase 6 | Agentic Framework for Claude Code | ✅ Complete |
 | Phase 7 | GCP Vertex AI Cloud Training Pipeline | ✅ Complete |
 
@@ -767,7 +767,11 @@ pytest -k "curriculum" -v
 ### Test Categories
 
 - **Unit Tests** (`tests/unit/`): Test individual components in isolation
-- **Integration Tests** (`tests/integration/`): Test component interactions
+- **Integration Tests** (`tests/integration/`): Test component interactions (PBT lifecycle, distributed coordination, preemption recovery)
+- **E2E Tests** (`tests/e2e/`): End-to-end pipeline validation (local training smoke, GCS live, Vertex AI submission)
+- **Security Tests** (`tests/security/`): Secret scanning, `.gitignore`/`.dockerignore` validation
+- **Sanity Tests** (`tests/sanity/`): Import verification for all submodules
+- **Cloud Tests** (`tests/cloud/`): Cloud worker unit tests
 - **Performance Tests**: Benchmark critical paths
 
 ## Project Structure
@@ -895,7 +899,11 @@ Civ6-AlphaZero/
 │           └── JsonEncoder.lua # Pure Lua JSON
 ├── tests/                    # Test suite (2,250+ tests)
 │   ├── unit/                 # Unit tests
-│   ├── integration/          # Integration tests
+│   ├── integration/          # Integration tests (PBT, distributed, preemption)
+│   ├── e2e/                  # End-to-end tests (training smoke, GCS, Vertex)
+│   ├── security/             # Security sanity tests
+│   ├── sanity/               # Import verification tests
+│   ├── cloud/                # Cloud worker unit tests
 │   └── fixtures/             # Test data
 │       └── game_states/      # Sample Civ6 states
 ├── CLAUDE.md                 # Agent instructions & constraints
@@ -924,6 +932,12 @@ Civ6-AlphaZero/
 
 ## Roadmap
 
+### Completed
+
+- ✅ **GCP Vertex AI Pipeline** — Cloud training with GumbelMCTS, 3-phase pipeline (selfplay → training → evaluation)
+- 🚧 **Population-Based Training** — Adaptive hyperparameter optimization with configurable mutation strategies (evaluation uses placeholder fitness — cross-agent eval TODO)
+- ✅ **CI/CD & Test Infrastructure** — Release automation, 6-tier test coverage (unit, integration, e2e, security, sanity, cloud)
+
 ### Planned Features
 
 | Priority | Feature | Description |
@@ -931,16 +945,14 @@ Civ6-AlphaZero/
 | P1 | Training Validation | Extended training to achieve >50% win rate |
 | P2 | Multi-GPU Training | DistributedDataParallel support for faster training |
 | P3 | Tournament System | ELO-based agent ranking and matchmaking |
-| P4 | Population-Based Training | Adaptive hyperparameter optimization |
-| P5 | Human vs AI Interface | Web-based UI for human gameplay |
-| P6 | Full Civ 6 Integration | Direct game interface via modding API |
-| P7 | RAG Strategy Recommendations | LLM-powered move explanations |
+| P4 | Human vs AI Interface | Web-based UI for human gameplay |
+| P5 | Full Civ 6 Integration | Direct game interface via modding API |
 
 ### Current Priorities
 
-1. **Scale cloud training** - Run multi-iteration training on Vertex AI to improve model beyond random play
-2. **Enable W&B dashboards** - Set `WANDB_ENABLED=true` for live training metrics
-3. **Multi-GPU training** - DistributedDataParallel support for faster self-play and training
+1. **Scale cloud training** — Run multi-iteration training on Vertex AI to improve model beyond random play
+2. **Enable W&B dashboards** — Set `WANDB_ENABLED=true` for live training metrics
+3. **Multi-GPU training** — DistributedDataParallel support for faster self-play and training
 
 ## Contributing
 
