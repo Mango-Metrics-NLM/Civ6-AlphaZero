@@ -91,7 +91,7 @@ class JobSpec:
 
     def to_worker_pool_spec(self) -> dict[str, Any]:
         """Convert to Vertex AI worker pool spec format."""
-        container_spec = {
+        container_spec: dict[str, Any] = {
             "image_uri": self.container_uri,
         }
         if self.command:
@@ -598,24 +598,41 @@ class VertexTrainingJob:
 
         training_config = self.config.training
 
-        args = [
+        if training_config.accelerator_count > 1:
+            # Use torchrun for DDP
+            # Note: We pass the module as an argument to torchrun
+            # The args list will be passed to the module
+            command = [
+                "torchrun",
+                f"--nproc_per_node={training_config.accelerator_count}",
+                "-m",
+                "alpha_zero.cloud.gcp.training_worker",
+            ]
+            # args are now arguments to the module, not the container entrypoint directly
+            # safely assuming the container entrypoint handles this or we override 'command'
+        else:
+            command = [] # Use default entrypoint or whatever is configured
+
+        # Base args for the worker
+        worker_args = [
             "--mode=training",
             f"--iteration={iteration}",
             f"--trajectory_iterations={','.join(map(str, trajectory_iterations))}",
             f"--epochs={training_config.epochs_per_iteration}",
             f"--checkpoint_interval={training_config.checkpoint_interval}",
         ]
-
+        
         if resume_from_checkpoint:
-            args.append(f"--resume_from={resume_from_checkpoint}")
+            worker_args.append(f"--resume_from={resume_from_checkpoint}")
 
         if extra_args:
-            args.extend(extra_args)
+            worker_args.extend(extra_args)
 
         spec = JobSpec(
             display_name=f"civ6az-training-iter{iteration:03d}",
             container_uri=container,
-            args=args,
+            command=command,
+            args=worker_args,
             env_vars={
                 "CIV6AZ_GCS_BUCKET": self.config.bucket,
                 "CIV6AZ_VERTEX_PROJECT": self.config.project_id,

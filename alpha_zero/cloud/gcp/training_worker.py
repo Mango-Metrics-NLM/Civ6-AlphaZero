@@ -23,10 +23,14 @@ import argparse
 import logging
 import sys
 import time
+import os
 
 import numpy as np
 import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, Dataset
+from torch.utils.data.distributed import DistributedSampler
 
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.storage import (
@@ -34,6 +38,7 @@ from alpha_zero.cloud.gcp.storage import (
     GCSModelStorage,
     GCSTrajectoryStorage,
 )
+from alpha_zero.utils.wandb_logger import WandbLogger
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +50,29 @@ def setup_logging() -> None:
         format="[Training] %(asctime)s - %(levelname)s - %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
+
+
+def setup_ddp() -> tuple[int, int, int]:
+    """Initialize distributed training.
+    
+    Returns:
+        Tuple of (rank, local_rank, world_size).
+    """
+    if "WORLD_SIZE" in os.environ:
+        dist.init_process_group(backend="nccl")
+        rank = int(os.environ["RANK"])
+        local_rank = int(os.environ["LOCAL_RANK"])
+        world_size = int(os.environ["WORLD_SIZE"])
+        torch.cuda.set_device(local_rank)
+        print(f"Initialized DDP: rank={rank}, local_rank={local_rank}, world_size={world_size}")
+        return rank, local_rank, world_size
+    return 0, 0, 1
+
+
+def cleanup_ddp() -> None:
+    """Clean up distributed training."""
+    if dist.is_initialized():
+        dist.destroy_process_group()
 
 
 def parse_args() -> argparse.Namespace:
@@ -209,7 +237,7 @@ def train_epoch(
     optimizer: torch.optim.Optimizer,
     device: torch.device,
     global_step: int = 0,
-    wandb_logger: object | None = None,
+    wandb_logger: WandbLogger | None = None,
 ) -> tuple[float, float, float, int]:
     """Train for one epoch.
 
@@ -371,15 +399,28 @@ def main() -> int:
     except ImportError:
         logger.debug("W&B not available")
 
+    # DDP setup
+    rank, local_rank, world_size = setup_ddp()
+    is_main_process = rank == 0
+
     try:
         config = GCPConfig()
-        if not args.dry_run:
+        if not args.dry_run and is_main_process:
             config.validate()
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        logger.info("Using device: %s", device)
+        if torch.cuda.is_available():
+            device = torch.device(f"cuda:{local_rank}")
+        else:
+            device = torch.device("cpu")
+        
+        if is_main_process:
+            logger.info("Using device: %s (World size: %d)", device, world_size)
 
-        # Load trajectories
+        # Load trajectories (only on main process or cached?)
+        # For simplicity, all processes load data. In data-parallel, this is fine for small datasets.
+        # For huge datasets, we'd want to shard reading.
+        # GCS storage might be slow if 8 GPUs hit it at once. 
+        # But for now assuming each node caches it independently or it's fast enough.
         trajectories = load_trajectories(
             config,
             trajectory_iterations,
@@ -390,15 +431,24 @@ def main() -> int:
 
         # Prepare dataset
         dataset = prepare_dataset(trajectories, args.action_space_size)
+        
+        # Distributed sampler
+        sampler: DistributedSampler | None = (
+            DistributedSampler(dataset) if world_size > 1 else None
+        )
+        
         dataloader = DataLoader(
             dataset,
             batch_size=args.batch_size,
-            shuffle=True,
+            shuffle=(sampler is None),
+            sampler=sampler,
             # num_workers=0 avoids multiprocessing issues inside containers
             num_workers=0,
             pin_memory=device.type == "cuda",
         )
-        logger.info("Dataset size: %d examples, %d batches", len(dataset), len(dataloader))
+        
+        if is_main_process:
+            logger.info("Dataset size: %d examples, %d batches", len(dataset), len(dataloader))
 
         # Create model
         model = create_model(
@@ -408,6 +458,10 @@ def main() -> int:
             num_filters=args.num_filters,
         )
         model = model.to(device)
+        
+        # Wrap DDP
+        if world_size > 1:
+            model = DDP(model, device_ids=[local_rank])
 
         # Create optimizer
         optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
@@ -436,14 +490,18 @@ def main() -> int:
                 optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
                 global_step = checkpoint.get("step", 0)
                 start_epoch = checkpoint.get("epoch", 0)
-                logger.info(
-                    "Resumed from checkpoint at step %d, epoch %d", global_step, start_epoch
-                )
+                if is_main_process:
+                    logger.info(
+                        "Resumed from checkpoint at step %d, epoch %d", global_step, start_epoch
+                    )
 
         # Training loop
         start_time = time.time()
 
         for epoch in range(start_epoch, args.epochs):
+            if sampler is not None:
+                sampler.set_epoch(epoch)
+                
             epoch_start = time.time()
 
             loss, policy_loss, value_loss, num_batches = train_epoch(
@@ -459,36 +517,44 @@ def main() -> int:
             prev_step = global_step
             global_step += num_batches
 
-            logger.info(
-                "Epoch %d/%d - Loss: %.4f (P: %.4f, V: %.4f) - %.1fs - Steps: %d->%d",
-                epoch + 1,
-                args.epochs,
-                loss,
-                policy_loss,
-                value_loss,
-                epoch_time,
-                prev_step,
-                global_step,
-            )
+
+
+            if is_main_process:
+                logger.info(
+                    "Epoch %d/%d - Loss: %.4f (P: %.4f, V: %.4f) - %.1fs - Steps: %d->%d",
+                    epoch + 1,
+                    args.epochs,
+                    loss,
+                    policy_loss,
+                    value_loss,
+                    epoch_time,
+                    prev_step,
+                    global_step,
+                )
 
             # Checkpoint if we crossed an interval boundary
-            if (global_step // args.checkpoint_interval) > (prev_step // args.checkpoint_interval):
+            # Checkpoint if we crossed an interval boundary
+            if is_main_process and (global_step // args.checkpoint_interval) > (prev_step // args.checkpoint_interval):
                 save_checkpoint(config, model, optimizer, global_step, epoch + 1, args.dry_run)
 
         # Save final model
         total_time = time.time() - start_time
-        logger.info("Training complete in %.1f seconds", total_time)
+        if is_main_process:
+            logger.info("Training complete in %.1f seconds", total_time)
 
-        uri, version = save_final_model(config, model, args.iteration, args.dry_run)
-        logger.info("Saved final model version %d", version)
+            # Unwrap model if DDP
+            model_to_save: torch.nn.Module = model.module if world_size > 1 else model  # type: ignore[attr-defined]
+            uri, version = save_final_model(config, model_to_save, args.iteration, args.dry_run)
+            logger.info("Saved final model version %d", version)
 
-        # Cleanup old checkpoints
-        if not args.dry_run:
-            checkpoint_storage = GCSCheckpointStorage(config)
-            deleted = checkpoint_storage.cleanup_old_checkpoints(keep_last=3)
-            if deleted:
-                logger.info("Cleaned up %d old checkpoints", deleted)
+            # Cleanup old checkpoints
+            if not args.dry_run:
+                checkpoint_storage = GCSCheckpointStorage(config)
+                deleted = checkpoint_storage.cleanup_old_checkpoints(keep_last=3)
+                if deleted:
+                    logger.info("Cleaned up %d old checkpoints", deleted)
 
+        cleanup_ddp()
         return 0
 
     except KeyboardInterrupt:

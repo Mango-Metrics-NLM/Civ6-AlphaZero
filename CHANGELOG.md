@@ -64,6 +64,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Cloud Training Enhancements (Phase 5)
+
+- **Multi-GPU Training Support**: Implemented `DistributedDataParallel` (DDP) in `alpha_zero/cloud/gcp/training_worker.py`
+  - Automatic `torchrun` execution for multi-accelerator jobs via `VertexTrainingJob`
+  - Efficient `DistributedSampler` for data sharding
+  - Rank-0 only logging and checkpointing
+- **Training Validation Infrastructure**: Added `configs/vertex_orchestrator_smoke.yaml` for multi-iteration loop validation
+- **DDP Test Suite**: Added `tests/cloud/unit/test_training_worker.py` and updated `test_vertex_jobs.py`
+
 #### GCP Vertex AI Production Pipeline
 
 End-to-end cloud training on Vertex AI with GumbelMCTS, model evaluation, W&B tracking, and opt-in curriculum/reward shaping. Successfully validated with a 3-phase cloud run (selfplay, training, evaluation) completing in 17 minutes.
