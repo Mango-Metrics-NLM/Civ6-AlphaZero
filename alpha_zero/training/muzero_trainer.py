@@ -147,10 +147,15 @@ class GameTrajectory:
     - MCTS policies (targets for policy prediction)
     - Value targets (computed from n-step returns + bootstrapped value)
 
-    All arrays should have the same length (number of steps in game).
+    Length invariant:
+        Observations have length T+1 (includes the terminal observation),
+        while actions, rewards, policies, values, and dones have length T.
+        Arrays may also be empty (length 0) if not yet populated, or
+        length T+1 when the final observation shares the same index.
 
     Attributes:
-        observations: List of observation dicts with 'spatial', 'vector', 'action_mask'.
+        observations: List of observation dicts with 'spatial', 'vector', 'action_mask',
+            shape conceptually (T+1,).
         actions: Actions taken at each step, shape (T,).
         rewards: Rewards received after each action, shape (T,).
         policies: MCTS visit count policies at each step, shape (T, A).
