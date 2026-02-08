@@ -170,6 +170,7 @@ def run_selfplay(
     mcts_type: str = "civ6",
     board_size: int = 16,
     max_turns: int = 200,
+    gumbel_num_actions: int = 16,
     mcts_config_override: dict[str, Any] | None = None,
     dry_run: bool = False,
     device: str = "cpu",
@@ -180,6 +181,10 @@ def run_selfplay(
         model: Neural network model for MCTS evaluation.
         num_games: Number of self-play games to run.
         mcts_sims: Number of MCTS simulations per move.
+        mcts_type: MCTS variant to use ("civ6" or "gumbel").
+        board_size: Size of the game board.
+        max_turns: Maximum turns per game.
+        gumbel_num_actions: Number of sampled actions for Gumbel MCTS.
         mcts_config_override: Optional dict of MCTS config overrides
             (c_puct, dirichlet_alpha, dirichlet_epsilon, temperature, temperature_threshold).
         dry_run: If True, create dummy trajectories without running games.
@@ -242,7 +247,7 @@ def run_selfplay(
             })
         elif mcts_type in gumbel_variants:
             mcts_kwargs["num_sampled_actions"] = mcts_kwargs.get(
-                "num_sampled_actions", mcts_sims,
+                "num_sampled_actions", gumbel_num_actions,
             )
 
         if mcts_config_override:
@@ -449,6 +454,7 @@ def main() -> int:
             mcts_type=args.mcts_type,
             board_size=args.board_size,
             max_turns=args.max_turns,
+            gumbel_num_actions=args.gumbel_num_actions,
             mcts_config_override=mcts_override,
             dry_run=args.dry_run,
             device=str(device),

@@ -202,3 +202,10 @@ benchmark_results/
 test_results.txt
 test_output.txt
 *_test_output.txt
+*_sanity.txt
+
+# ===========================================
+# AI Coding Assistant
+# ===========================================
+.agent/
+.gemini/

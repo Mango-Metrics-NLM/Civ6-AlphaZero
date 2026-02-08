@@ -98,6 +98,7 @@ disallow_untyped_defs = false
 [tool.pyright]
 pythonVersion = "3.11"
 reportMissingTypeStubs = false
+reportMissingModuleSource = false
 reportUnknownMemberType = false
 
 [tool.pytest.ini_options]
