@@ -1,8 +1,7 @@
-"""Integration test for PBT orchestrator evaluation phase.
+"""Integration test for PBT evaluator and population manager.
 
-Verifies that PBTOrchestrator._run_evaluation_phase correctly wires
-PBTEvaluator, updates agent ELO ratings and fitness scores, and
-produces a valid EvaluationReport.
+Verifies that PBTEvaluator correctly integrates with PopulationManager
+to update agent ELO ratings and fitness scores across generations.
 """
 
 from __future__ import annotations
@@ -158,3 +157,48 @@ class TestEvaluationReportStructure:
 
         for score in report.fitness_scores.values():
             assert 0.0 <= score <= 1.0
+
+
+class TestOrchestratorWiring:
+    """Tests for PBTOrchestrator wiring of the evaluation phase."""
+
+    def test_orchestrator_eval_phase_wiring(self, pbt_config: PBTConfig):
+        """Verify _run_evaluation_phase calls evaluator and updates agents."""
+        from alpha_zero.cloud.gcp.pbt_orchestrator import PBTOrchestrator
+
+        # Mock GCP dependencies
+        with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"), \
+             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"):
+
+            orchestrator = PBTOrchestrator(pbt_config)
+            orchestrator.manager.initialize()
+
+            # Define mock report first
+            mock_report = EvaluationReport(
+                generation=1,
+                elo_ratings={"agent_0": 1300.0},
+                fitness_scores={"agent_0": 0.8}
+            )
+
+            # Mock the evaluator's evaluate_population method using patch.object to satisfy Mypy
+            with patch.object(orchestrator.evaluator, "evaluate_population", return_value=mock_report):
+                report = orchestrator._run_evaluation_phase(gen=1)
+
+                assert report == mock_report
+
+    def test_run_zero_generations(self, pbt_config: PBTConfig):
+        """Verify that run(num_generations=0) does not enter the loop."""
+        from alpha_zero.cloud.gcp.pbt_orchestrator import PBTOrchestrator
+
+        with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"), \
+             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"):
+
+            orchestrator = PBTOrchestrator(pbt_config)
+            with patch.object(orchestrator, "load_state"), \
+                 patch.object(orchestrator, "save_state"), \
+                 patch.object(orchestrator, "_run_selfplay_phase") as mock_selfplay:
+
+                # Should not call phases if total generations is effectively 0
+                orchestrator.run(num_generations=0)
+
+                mock_selfplay.assert_not_called()

@@ -160,8 +160,9 @@ class TestEvaluatePopulation:
         evaluator.evaluate_population(agents, generation=1)
 
         for agent in agents:
-            assert agent.elo_rating != 0.0
-            assert agent.fitness_score >= 0.0
+            assert agent.elo_rating != 1200.0
+            assert 0.0 <= agent.fitness_score <= 1.0
+            assert agent.fitness_score != 0.5  # Asymmetric runner should produce non-0.5 fitness
 
     def test_all_draws_equal_fitness(self, pbt_config: PBTConfig, agents: list[AgentState]) -> None:
         runner = _make_arena_runner(win_rate=0.0, draw_rate=1.0, loss_rate=0.0)
@@ -206,6 +207,23 @@ class TestEvaluatePopulation:
         evaluator = PBTEvaluator(pbt_config, arena_runner=default_runner)
         report = evaluator.evaluate_population(agents, generation=1, arena_runner=override_runner)
         assert len(report.matchups) == 6
+
+    def test_games_played_propagated(self, pbt_config: PBTConfig, agents: list[AgentState]) -> None:
+        """Verify that agent.games_played is updated after evaluation."""
+        games_per_match = pbt_config.evaluation_games_per_match
+        runner = _make_arena_runner()
+        evaluator = PBTEvaluator(pbt_config, arena_runner=runner)
+
+        # Initial games
+        for a in agents:
+            a.games_played = 5
+
+        evaluator.evaluate_population(agents, generation=1)
+
+        # In round-robin with 4 agents, each plays 3 matches
+        expected_increase = games_per_match * 3
+        for agent in agents:
+            assert agent.games_played == 5 + expected_increase
 
 
 # ---------------------------------------------------------------------------

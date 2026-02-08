@@ -10,13 +10,12 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any, Dict
+from typing import Any
 
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.storage import GCSBackend, GCSModelStorage
 from alpha_zero.cloud.gcp.vertex_jobs import (
     VertexAIClient,
-    VertexEvaluationJob,
     VertexSelfPlayJob,
     VertexTrainingJob,
 )
@@ -75,7 +74,6 @@ class PBTOrchestrator:
         # Job managers
         self.training_job_manager = VertexTrainingJob(self.gcp_config, self.client)
         self.selfplay_job_manager = VertexSelfPlayJob(self.gcp_config, self.client)
-        self.eval_job_manager = VertexEvaluationJob(self.gcp_config, self.client)
 
         # State storage
         self.storage_backend = GCSBackend(self.gcp_config.project_id)
@@ -147,7 +145,8 @@ class PBTOrchestrator:
         """
         self.load_state()
 
-        total = num_generations or getattr(self.pbt_config, "num_generations", 10)
+        total_gen_val = num_generations if num_generations is not None else getattr(self.pbt_config, "num_generations", 10)
+        total: int = int(total_gen_val) if total_gen_val is not None else 10
         logger.info("Starting PBT loop for %d generations", total)
 
         # Initialize if empty
@@ -227,7 +226,7 @@ class PBTOrchestrator:
     def _run_training_phase(self, gen: int) -> None:
         """Launch and wait for training jobs."""
         logger.info("Phase 2: Training (gen=%d)", gen)
-        job_map: Dict[str, AgentState] = {}
+        job_map: dict[str, AgentState] = {}
 
         for agent in self.manager.get_all_agents():
             extra_args = [
@@ -246,7 +245,7 @@ class PBTOrchestrator:
 
         self._poll_jobs(job_map)
 
-    def _poll_jobs(self, job_map: Dict[str, AgentState]) -> None:
+    def _poll_jobs(self, job_map: dict[str, AgentState]) -> None:
         """Poll until all jobs in *job_map* reach a terminal state."""
         active_jobs = set(job_map.keys())
 
@@ -346,13 +345,27 @@ def _local_arena_runner(
         import torch  # type: ignore[import-untyped]
 
         from alpha_zero.cloud.gcp.evaluation_worker import run_arena
+        from alpha_zero.utils.factories import create_network
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        from alpha_zero.core.networks import create_network  # type: ignore[import-untyped]
+        # In a real scenario, these should be loaded from GCS checkpoints
+        # For now, we use default configs but with correct factory signatures
+        from alpha_zero.utils.config import NetworkConfig
 
-        model_new = create_network("transformer", device=str(device))
-        model_old = create_network("transformer", device=str(device))
+        net_config = NetworkConfig()
+        model_new = create_network(
+            config=net_config,
+            board_size=6,
+            action_space_size=158,
+            device=str(device),
+        )
+        model_old = create_network(
+            config=net_config,
+            board_size=6,
+            action_space_size=158,
+            device=str(device),
+        )
 
         results = run_arena(
             model_new=model_new,

@@ -12,15 +12,16 @@ Usage::
     from alpha_zero.pbt.evaluator import PBTEvaluator
 
     evaluator = PBTEvaluator(pbt_config)
-    evaluator.evaluate_population(agents, model_loader=my_loader)
+    evaluator.evaluate_population(agents, arena_runner=my_runner)
 """
 
 from __future__ import annotations
 
 import itertools
 import logging
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Callable, Protocol, Sequence
+from typing import Protocol
 
 from alpha_zero.pbt.config import AgentState, PBTConfig
 from alpha_zero.tournament.config import ELOConfig
@@ -58,9 +59,9 @@ class MatchResult:
     Attributes:
         agent_id_new: ID of the challenger agent.
         agent_id_old: ID of the baseline agent.
-        win_rate: Win rate from challenger's perspective (0.0–1.0).
-        draw_rate: Draw rate (0.0–1.0).
-        loss_rate: Loss rate from challenger's perspective (0.0–1.0).
+        win_rate: Win rate from challenger's perspective (0.0-1.0).
+        draw_rate: Draw rate (0.0-1.0).
+        loss_rate: Loss rate from challenger's perspective (0.0-1.0).
         total_games: Number of games played.
     """
 
@@ -97,6 +98,7 @@ class EvaluationReport:
     matchups: list[MatchResult] = field(default_factory=list)
     elo_ratings: dict[str, float] = field(default_factory=dict)
     fitness_scores: dict[str, float] = field(default_factory=dict)
+    games_played: dict[str, int] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +135,7 @@ class PBTEvaluator:
         self._elo = ELORatingSystem(elo_config)
 
         logger.info(
-            "PBTEvaluator initialised: strategy=%s, games_per_match=%d, "
+            "PBTEvaluator initialized: strategy=%s, games_per_match=%d, "
             "elo_initial=%.0f, elo_k=%.1f",
             config.evaluation_strategy,
             config.evaluation_games_per_match,
@@ -214,6 +216,8 @@ class PBTEvaluator:
                 agent.elo_rating = report.elo_ratings[agent.agent_id]
             if agent.agent_id in report.fitness_scores:
                 agent.update_fitness(report.fitness_scores[agent.agent_id])
+            if agent.agent_id in report.games_played:
+                agent.games_played = report.games_played[agent.agent_id]
 
         logger.info(
             "Generation %d evaluation complete: %d matchups, "
@@ -352,6 +356,7 @@ class PBTEvaluator:
             matchups=results,
             elo_ratings=ratings,
             fitness_scores=fitness,
+            games_played=games_played,
         )
 
     @staticmethod
@@ -375,7 +380,7 @@ class PBTEvaluator:
         spread = max_r - min_r
 
         if spread < 1e-9:
-            return {aid: 0.5 for aid in ratings}
+            return dict.fromkeys(ratings, 0.5)
 
         return {
             aid: (r - min_r) / spread

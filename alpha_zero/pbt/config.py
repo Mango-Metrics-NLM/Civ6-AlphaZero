@@ -26,7 +26,7 @@ import math
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -466,8 +466,8 @@ class AgentState:
     parent_id: str | None = None
     model_path: str | None = None
     elo_rating: float = 1200.0
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    last_updated: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    last_updated: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def update_fitness(self, new_fitness: float, max_history: int = 100) -> None:
         """Update fitness score and history.
@@ -480,7 +480,7 @@ class AgentState:
         self.fitness_history.append(new_fitness)
         if len(self.fitness_history) > max_history:
             self.fitness_history = self.fitness_history[-max_history:]
-        self.last_updated = datetime.now(timezone.utc).isoformat()
+        self.last_updated = datetime.now(UTC).isoformat()
 
     def get_smoothed_fitness(self, window: int = 10) -> float:
         """Get smoothed fitness score using recent history.
@@ -558,8 +558,8 @@ class AgentState:
             parent_id=data.get("parent_id"),
             model_path=data.get("model_path"),
             elo_rating=data.get("elo_rating", 1200.0),
-            created_at=data.get("created_at", datetime.now(timezone.utc).isoformat()),
-            last_updated=data.get("last_updated", datetime.now(timezone.utc).isoformat()),
+            created_at=data.get("created_at", datetime.now(UTC).isoformat()),
+            last_updated=data.get("last_updated", datetime.now(UTC).isoformat()),
         )
 
     def save(self, path: str | Path) -> None:
@@ -656,7 +656,7 @@ class PBTConfig:
     # Convergence detection
     convergence_threshold: float = 0.01
     convergence_window: int = 50
-    
+
     # Runtime
     num_generations: int = 50
 
@@ -681,10 +681,10 @@ class PBTConfig:
             raise ValueError("mutation_probability must be between 0 and 1")
         if not 0 < self.mutation_strength <= 1:
             raise ValueError("mutation_strength must be between 0 and 1")
-        _valid_strategies = {"round_robin", "top_k_vs_best"}
+        _valid_strategies = ("round_robin", "top_k_vs_best")
         if self.evaluation_strategy not in _valid_strategies:
             raise ValueError(
-                f"evaluation_strategy must be one of {_valid_strategies}, "
+                f"evaluation_strategy must be one of {sorted(_valid_strategies)}, "
                 f"got '{self.evaluation_strategy}'"
             )
         if self.evaluation_games_per_match < 1:
@@ -750,6 +750,8 @@ class PBTConfig:
             except (ValueError, yaml.YAMLError):
                 pass
 
+        # Re-validate after overrides
+        config.__post_init__()
         return config
 
     @classmethod
