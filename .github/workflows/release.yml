@@ -1,0 +1,113 @@
+name: Release
+
+on:
+    push:
+        tags:
+            - "v*.*.*"
+
+permissions:
+    contents: write
+
+jobs:
+    release:
+        name: Create Release
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0 # Full history for changelog generation
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
+
+            - name: Extract version from tag
+              id: version
+              run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+            - name: Generate changelog from conventional commits
+              id: changelog
+              run: |
+                  # Get the previous tag (if any)
+                  PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+                  if [ -z "$PREV_TAG" ]; then
+                    RANGE="HEAD"
+                  else
+                    RANGE="${PREV_TAG}..HEAD"
+                  fi
+
+                  # Generate categorized changelog
+                  echo "## What's Changed" > release_notes.md
+                  echo "" >> release_notes.md
+
+                  # Features
+                  FEATS=$(git log $RANGE --pretty=format:"%s" | grep -E "^feat" | sed 's/^feat[^:]*: /- ✨ /' || true)
+                  if [ -n "$FEATS" ]; then
+                    echo "### ✨ Features" >> release_notes.md
+                    echo "$FEATS" >> release_notes.md
+                    echo "" >> release_notes.md
+                  fi
+
+                  # Bug Fixes
+                  FIXES=$(git log $RANGE --pretty=format:"%s" | grep -E "^fix" | sed 's/^fix[^:]*: /- 🐛 /' || true)
+                  if [ -n "$FIXES" ]; then
+                    echo "### 🐛 Bug Fixes" >> release_notes.md
+                    echo "$FIXES" >> release_notes.md
+                    echo "" >> release_notes.md
+                  fi
+
+                  # Performance
+                  PERFS=$(git log $RANGE --pretty=format:"%s" | grep -E "^perf" | sed 's/^perf[^:]*: /- 🚀 /' || true)
+                  if [ -n "$PERFS" ]; then
+                    echo "### 🚀 Performance" >> release_notes.md
+                    echo "$PERFS" >> release_notes.md
+                    echo "" >> release_notes.md
+                  fi
+
+                  # Tests
+                  TESTS=$(git log $RANGE --pretty=format:"%s" | grep -E "^test" | sed 's/^test[^:]*: /- 🧪 /' || true)
+                  if [ -n "$TESTS" ]; then
+                    echo "### 🧪 Tests" >> release_notes.md
+                    echo "$TESTS" >> release_notes.md
+                    echo "" >> release_notes.md
+                  fi
+
+                  # Documentation
+                  DOCS=$(git log $RANGE --pretty=format:"%s" | grep -E "^docs" | sed 's/^docs[^:]*: /- 📚 /' || true)
+                  if [ -n "$DOCS" ]; then
+                    echo "### 📚 Documentation" >> release_notes.md
+                    echo "$DOCS" >> release_notes.md
+                    echo "" >> release_notes.md
+                  fi
+
+                  # CI/Build
+                  CI=$(git log $RANGE --pretty=format:"%s" | grep -E "^(ci|build)" | sed 's/^[^:]*: /- ⚙️ /' || true)
+                  if [ -n "$CI" ]; then
+                    echo "### ⚙️ CI & Build" >> release_notes.md
+                    echo "$CI" >> release_notes.md
+                    echo "" >> release_notes.md
+                  fi
+
+                  # Chores/Refactoring
+                  CHORES=$(git log $RANGE --pretty=format:"%s" | grep -E "^(chore|refactor)" | sed 's/^[^:]*: /- 🔧 /' || true)
+                  if [ -n "$CHORES" ]; then
+                    echo "### 🔧 Maintenance" >> release_notes.md
+                    echo "$CHORES" >> release_notes.md
+                    echo "" >> release_notes.md
+                  fi
+
+                  echo "" >> release_notes.md
+                  echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...v${{ steps.version.outputs.VERSION }}" >> release_notes.md
+
+            - name: Create GitHub Release
+              uses: softprops/action-gh-release@v2
+              with:
+                  body_path: release_notes.md
+                  generate_release_notes: false
+                  draft: false
+                  prerelease: ${{ contains(github.ref, '-') }}
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
