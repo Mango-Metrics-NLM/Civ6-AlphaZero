@@ -1,25 +1,27 @@
 """Population Based Training orchestrator for Vertex AI.
 
-Manages the PBT lifecycle: initialize population → self-play → train →
-evaluate → evolve → repeat.
+Manages the PBT lifecycle: initialize population -> self-play -> train ->
+evaluate -> evolve -> repeat.  The evaluation phase uses :class:`PBTEvaluator`
+to run cross-agent arena matches and compute ELO-based fitness.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 import time
-from typing import Any, Dict
+from typing import Any
 
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.storage import GCSBackend, GCSModelStorage
 from alpha_zero.cloud.gcp.vertex_jobs import (
     VertexAIClient,
-    VertexEvaluationJob,
     VertexSelfPlayJob,
     VertexTrainingJob,
 )
 from alpha_zero.pbt.config import AgentState, PBTConfig
+from alpha_zero.pbt.evaluator import EvaluationReport, MatchResult, PBTEvaluator
 from alpha_zero.pbt.population import PopulationManager
 
 logger = logging.getLogger(__name__)
@@ -38,12 +40,24 @@ _TERMINAL_JOB_STATES = frozenset({
 
 
 class PBTOrchestrator:
-    """Orchestrates Population Based Training on Vertex AI."""
+    """Orchestrates Population-Based Training on Vertex AI.
+
+    Coordinates the self-play, training, evaluation, and evolution
+    phases of PBT.  The evaluation phase uses :class:`PBTEvaluator` to
+    run cross-agent arena matches and produce ELO-derived fitness scores.
+
+    Args:
+        pbt_config: PBT hyperparameters and evaluation settings.
+        gcp_config: GCP project / bucket / region configuration.
+        evaluator: Optional pre-built evaluator -- if *None*, one is
+            created automatically.
+    """
 
     def __init__(
         self,
         pbt_config: PBTConfig,
         gcp_config: GCPConfig | None = None,
+        evaluator: PBTEvaluator | None = None,
     ) -> None:
         self.pbt_config = pbt_config
         self.gcp_config = gcp_config or GCPConfig()
@@ -56,16 +70,22 @@ class PBTOrchestrator:
         )
 
         self.manager = PopulationManager(self.pbt_config)
+        self.evaluator = evaluator or PBTEvaluator(self.pbt_config)
 
         # Job managers
         self.training_job_manager = VertexTrainingJob(self.gcp_config, self.client)
         self.selfplay_job_manager = VertexSelfPlayJob(self.gcp_config, self.client)
-        self.eval_job_manager = VertexEvaluationJob(self.gcp_config, self.client)
 
         # State storage
         self.storage_backend = GCSBackend(self.gcp_config.project_id)
         self.population_state_path = (
             f"{self.gcp_config.paths.logs_prefix}/pbt_state.json"
+        )
+
+        logger.info(
+            "PBTOrchestrator initialised: pop=%d, strategy=%s",
+            pbt_config.population_size,
+            pbt_config.evaluation_strategy,
         )
 
     # ------------------------------------------------------------------
@@ -117,11 +137,18 @@ class PBTOrchestrator:
     # Main loop
     # ------------------------------------------------------------------
 
-    def run(self) -> None:
-        """Execute the PBT training loop."""
+    def run(self, num_generations: int | None = None) -> None:
+        """Run the complete PBT loop.
+
+        Args:
+            num_generations: Number of generations to run.  Falls back
+                to ``self.pbt_config.num_generations`` when *None*.
+        """
         self.load_state()
 
-        logger.info("Starting PBT loop. Config: %s", self.pbt_config)
+        total_gen_val = num_generations if num_generations is not None else getattr(self.pbt_config, "num_generations", 10)
+        total: int = int(total_gen_val) if total_gen_val is not None else 10
+        logger.info("Starting PBT loop for %d generations", total)
 
         # Initialize if empty
         if not self.manager.agents:
@@ -132,45 +159,61 @@ class PBTOrchestrator:
             self.save_state()
 
         start_gen = self.manager.generation
-        for gen in range(start_gen, self.pbt_config.num_generations):
-            logger.info("=== Starting Generation %d ===", gen + 1)
+        for gen in range(start_gen, start_gen + total):
+            gen_num = gen + 1
+            logger.info("=" * 60)
+            logger.info("Generation %d / %d", gen_num, start_gen + total)
+            logger.info("=" * 60)
 
-            self._run_self_play_phase(gen + 1)
-            self._run_training_phase(gen + 1)
-            self._run_evaluation_phase(gen + 1)
+            t0 = time.monotonic()
 
-            self.manager.exploit_and_explore()
+            self._run_selfplay_phase(gen_num)
+            self._run_training_phase(gen_num)
+            report = self._run_evaluation_phase(gen_num)
+            self._run_evolution_phase(gen_num)
             self.save_state()
+
+            elapsed = time.monotonic() - t0
+            logger.info(
+                "Generation %d complete in %.1fs | "
+                "matchups=%d | top_elo=%.0f",
+                gen_num,
+                elapsed,
+                len(report.matchups),
+                max(report.elo_ratings.values())
+                if report.elo_ratings
+                else 0,
+            )
 
     # ------------------------------------------------------------------
     # Phase 1: Self-play
     # ------------------------------------------------------------------
 
-    def _run_self_play_phase(self, gen: int) -> None:
-        """Launch and wait for self-play jobs."""
-        logger.info("Phase 1: Self-Play")
+    def _run_selfplay_phase(self, gen: int) -> None:
+        """Launch self-play jobs for each agent in the population."""
+        logger.info("Phase 1: Self-play (gen=%d)", gen)
         job_names: list[str] = []
 
         for agent in self.manager.get_all_agents():
-            model_version = _safe_int(agent.model_path, _DEFAULT_MODEL_VERSION)
+            version = _safe_int(agent.model_path, _DEFAULT_MODEL_VERSION)
 
             extra_args = [
                 f"--c_puct={agent.hyperparameters.get('c_puct', 1.5)}",
                 f"--agent_id={agent.agent_id}",
             ]
 
-            logger.info(
-                "Launching self-play for agent %s (v%d)...",
-                agent.agent_id,
-                model_version,
-            )
-            jobs = self.selfplay_job_manager.launch(
-                num_workers=1,
-                model_version=model_version,
-                iteration=gen,
-                extra_args=extra_args,
-            )
-            job_names.extend(jobs)
+            try:
+                jobs = self.selfplay_job_manager.launch(
+                    num_workers=1,
+                    model_version=version,
+                    iteration=gen,
+                    extra_args=extra_args,
+                )
+                job_names.extend(jobs)
+            except Exception:
+                logger.exception(
+                    "Self-play error for agent %s", agent.agent_id
+                )
 
         if job_names:
             self.selfplay_job_manager.wait_for_completion(job_names)
@@ -183,8 +226,8 @@ class PBTOrchestrator:
 
     def _run_training_phase(self, gen: int) -> None:
         """Launch and wait for training jobs."""
-        logger.info("Phase 2: Training")
-        job_map: Dict[str, AgentState] = {}
+        logger.info("Phase 2: Training (gen=%d)", gen)
+        job_map: dict[str, AgentState] = {}
 
         for agent in self.manager.get_all_agents():
             extra_args = [
@@ -203,7 +246,7 @@ class PBTOrchestrator:
 
         self._poll_jobs(job_map)
 
-    def _poll_jobs(self, job_map: Dict[str, AgentState]) -> None:
+    def _poll_jobs(self, job_map: dict[str, AgentState]) -> None:
         """Poll until all jobs in *job_map* reach a terminal state."""
         active_jobs = set(job_map.keys())
 
@@ -249,26 +292,140 @@ class PBTOrchestrator:
     # Phase 3: Evaluation
     # ------------------------------------------------------------------
 
-    def _run_evaluation_phase(self, gen: int) -> None:
-        """Assign fitness scores to all agents.
+    def _run_evaluation_phase(self, gen: int) -> EvaluationReport:
+        """Assign fitness scores via cross-agent arena evaluation.
 
-        TODO: Implement real cross-agent evaluation via VertexEvaluationJob
-        once the evaluation worker supports ``--agent_id_new`` /
-        ``--agent_id_old`` for cross-prefix model loading.
-
-        Current MVP uses a constant fitness of 0.5 so that evolution mechanics
-        can be validated end-to-end without cross-agent storage wiring.
+        Uses :class:`PBTEvaluator` to run round-robin (or top-k) arena
+        matches, then converts match results into ELO-derived fitness.
         """
-        logger.info("Phase 3: Evaluation")
+        logger.info("Phase 3: Evaluation (gen=%d)", gen)
 
-        for agent in self.manager.get_all_agents():
-            # Placeholder: neutral fitness until real eval is wired up.
-            agent.fitness_score = 0.5
+        agents = self.manager.get_all_agents()
 
+        # Prepare evaluation arguments
+        eval_kwargs: dict[str, Any] = {"generation": gen}
+        if self.evaluator.arena_runner is None:
+            logger.info("No arena_runner configured; falling back to local runner")
+            eval_kwargs["arena_runner"] = lambda an, ao, ng: _local_arena_runner(
+                an, ao, ng, gcp_config=self.gcp_config
+            )
+
+        report = self.evaluator.evaluate_population(agents, **eval_kwargs)
+
+        for agent in agents:
+            logger.info(
+                "Agent %s: elo=%.0f fitness=%.3f",
+                agent.agent_id,
+                agent.elo_rating,
+                agent.fitness_score,
+            )
+
+        return report
+
+    # ------------------------------------------------------------------
+    # Phase 4: Evolution
+    # ------------------------------------------------------------------
+
+    def _run_evolution_phase(self, gen: int) -> None:
+        """Run PBT exploit-and-explore on the population."""
+        logger.info("Phase 4: Evolution (gen=%d)", gen)
+        self.manager.exploit_and_explore()
+
+
+# ---------------------------------------------------------------------------
+# Default arena runner (local mode)
+# ---------------------------------------------------------------------------
+
+
+def _local_arena_runner(
+    agent_new: AgentState,
+    agent_old: AgentState,
+    num_games: int,
+    gcp_config: GCPConfig | None = None,
+) -> MatchResult:
+    """Local arena runner using lazy torch import.
+
+    Attempts to load agent checkpoints if *gcp_config* is provided.
+    Falls back to random initialization or placeholder results if
+    torch/networks are not importable.
+    """
+    try:
+        import torch  # type: ignore[import-untyped]
+
+        from alpha_zero.cloud.gcp.evaluation_worker import run_arena
+        from alpha_zero.utils.config import NetworkConfig
+        from alpha_zero.utils.factories import create_network
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Derive board_size/action_space from environment or fallback to defaults
+        # In a real run, these should come from Global Config
+        board_size = int(os.environ.get("CIV6AZ_BOARD_SIZE", 6))
+        action_space_size = int(os.environ.get("CIV6AZ_ACTION_SPACE", 158))
+
+        net_config = NetworkConfig()
+
+        def _prepare_model(agent: AgentState) -> torch.nn.Module:
+            model = create_network(
+                config=net_config,
+                board_size=board_size,
+                action_space_size=action_space_size,
+                device=str(device),
+            )
+            if agent.model_path and gcp_config:
+                try:
+                    # Load weights from GCS using GCSModelStorage
+                    from alpha_zero.cloud.gcp.storage import GCSModelStorage
+                    storage = GCSModelStorage(gcp_config)
+                    # Use provided version/path. If it's a version number, convert to int.
+                    try:
+                        version = int(agent.model_path)
+                        state_dict, _, _ = storage.load_model(version)
+                        model.load_state_dict(state_dict)
+                        logger.info("Loaded weights for agent %s (v%d) from GCS", agent.agent_id, version)
+                    except ValueError:
+                        # Handle as a path if not an integer version
+                        logger.warning("Agent %s model_path '%s' is not a version number; skipping weight load.", 
+                                       agent.agent_id, agent.model_path)
+                except Exception as e:
+                    logger.warning("Failed to load weights for agent %s: %r. Using random init.", agent.agent_id, e)
+            return model
+
+        model_new = _prepare_model(agent_new)
+        model_old = _prepare_model(agent_old)
+
+        results = run_arena(
+            model_new=model_new,
+            model_old=model_old,
+            num_games=num_games,
+            mcts_type="gumbel",
+            mcts_sims=25,
+            gumbel_num_actions=8,
+            board_size=board_size,
+            max_turns=100,
+            device=device,
+        )
+
+        return MatchResult(
+            agent_id_new=agent_new.agent_id,
+            agent_id_old=agent_old.agent_id,
+            win_rate=results["win_rate"],
+            draw_rate=results["draw_rate"],
+            loss_rate=results["loss_rate"],
+            total_games=int(results["total_games"]),
+        )
+
+    except ImportError:
         logger.warning(
-            "Evaluation phase using placeholder fitness (gen=%d). "
-            "TODO: implement cross-agent evaluation.",
-            gen,
+            "torch/networks not available; returning placeholder result"
+        )
+        return MatchResult(
+            agent_id_new=agent_new.agent_id,
+            agent_id_old=agent_old.agent_id,
+            win_rate=0.5,
+            draw_rate=0.0,
+            loss_rate=0.5,
+            total_games=num_games,
         )
 
 
