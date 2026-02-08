@@ -36,7 +36,7 @@ from typing import Any, Protocol, TYPE_CHECKING
 import numpy as np
 import torch
 
-from alpha_zero.utils.constants import MCTS as MCTS_CONSTANTS
+
 
 if TYPE_CHECKING:
     from alpha_zero.core.civ6_mcts import Civ6MCTS, GumbelMCTS, MuZeroMCTS, SimpleMCTS
@@ -45,6 +45,7 @@ if TYPE_CHECKING:
 class MCTSVariant(Enum):
     """Available MCTS variants."""
 
+    CIV6 = "civ6"
     PUCT = "puct"
     GUMBEL = "gumbel"
     SIMPLE = "simple"
@@ -96,7 +97,8 @@ class MCTSProtocol(Protocol):
 
 # Registry of MCTS types -> (class_name, config_class_name, default_simulations)
 _MCTS_REGISTRY: dict[str, tuple[str, str, int]] = {
-    "puct": ("Civ6MCTS", "MCTSConfig", MCTS_CONSTANTS.DEFAULT_NUM_SIMULATIONS),
+    "civ6": ("Civ6MCTS", "MCTSConfig", 200),
+    "puct": ("Civ6MCTS", "MCTSConfig", 200),
     "gumbel": ("GumbelMCTS", "GumbelMCTSConfig", 16),
     "muzero": ("MuZeroMCTS", "MuZeroMCTSConfig", 50),
     "simple": ("SimpleMCTS", "None", 20),
@@ -248,3 +250,12 @@ def list_variants() -> list[str]:
         List of variant names.
     """
     return list(_MCTS_REGISTRY.keys())
+
+
+def get_available_mcts_types() -> list[str]:
+    """List all available MCTS types (alias for list_variants).
+
+    Returns:
+        List of variant names.
+    """
+    return list_variants()

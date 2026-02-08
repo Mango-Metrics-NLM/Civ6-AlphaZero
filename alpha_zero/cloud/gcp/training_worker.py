@@ -24,7 +24,7 @@ import logging
 import sys
 import time
 
-import numpy as np
+
 import torch
 from torch.utils.data import DataLoader, Dataset
 
@@ -142,11 +142,13 @@ def create_model(
     """Create model architecture."""
     from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
+    # Derive spatial_size from board_size (board + 2 padding)
+    spatial_size = board_size + 2
     model_config = TransformerConfig(
-        spatial_channels=64,
-        spatial_size=10,
-        vector_dim=64,
-        action_space_size=100,
+        spatial_channels=num_filters,
+        spatial_size=spatial_size,
+        vector_dim=num_filters,
+        action_space_size=action_space_size,
     )
     return Civ6TransformerNetwork(config=model_config)
 
@@ -220,6 +222,8 @@ def train_epoch(
     device: torch.device,
     global_step: int = 0,
     wandb_logger: object | None = None,
+    spatial_channels: int = 64,
+    spatial_size: int = 10,
 ) -> tuple[float, float, float, int]:
     """Train for one epoch.
 
@@ -241,7 +245,7 @@ def train_epoch(
         # Forward pass
         # Reshape spatial for transformer input
         batch_size = spatial.shape[0]
-        spatial = spatial.view(batch_size, 64, 10, 10)  # B, C, H, W
+        spatial = spatial.view(batch_size, spatial_channels, spatial_size, spatial_size)  # B, C, H, W
 
         policy_logits, value = model(spatial, vector)
 
@@ -477,6 +481,10 @@ def main() -> int:
         for epoch in range(start_epoch, args.epochs):
             epoch_start = time.time()
 
+            # Derive spatial dims from model config for reshape
+            spatial_channels = getattr(args, 'num_filters', 64)
+            spatial_size = getattr(args, 'board_size', 8) + 2
+
             loss, policy_loss, value_loss, num_batches = train_epoch(
                 model,
                 dataloader,
@@ -484,6 +492,8 @@ def main() -> int:
                 device,
                 global_step=global_step,
                 wandb_logger=wandb_logger,
+                spatial_channels=spatial_channels,
+                spatial_size=spatial_size,
             )
 
             epoch_time = time.time() - epoch_start
