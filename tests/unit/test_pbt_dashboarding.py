@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch, call
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.pbt_orchestrator import PBTOrchestrator
 from alpha_zero.pbt.config import AgentState, PBTConfig
-from alpha_zero.pbt.evaluator import EvaluationReport, MatchResult
+from alpha_zero.pbt.evaluator import EvaluationReport
 from alpha_zero.utils.wandb_logger import WandbConfig, WandbLogger
 
 
