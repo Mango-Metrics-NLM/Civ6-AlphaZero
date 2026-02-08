@@ -515,8 +515,6 @@ class TestPBTConfigNewFields:
         assert d["evaluation_strategy_switch_gen"] == 15
 
     def test_new_fields_yaml_roundtrip(self):
-        import tempfile
-
         config = PBTConfig(
             baseline_interval=7,
             checkpoint_retention_generations=10,
