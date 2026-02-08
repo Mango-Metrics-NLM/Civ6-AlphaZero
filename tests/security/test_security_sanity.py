@@ -13,7 +13,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Generator
+from typing import Any, Generator
 
 import pytest
 
@@ -47,6 +47,28 @@ _SCAN_EXTENSIONS: frozenset[str] = frozenset({
     ".py", ".yaml", ".yml", ".toml", ".cfg", ".ini", ".json", ".sh", ".ps1",
 })
 
+# Known placeholder values that are safe to commit
+_SAFE_PLACEHOLDERS: frozenset[str] = frozenset({
+    "YOUR_WANDB_API_KEY_HERE",
+    "YOUR_API_KEY_HERE",
+    "test-key",
+    "placeholder",
+    "changeme",
+    "REPLACE_ME",
+})
+
+# Sensitive environment variable names to scan for real values
+_SENSITIVE_ENV_NAMES: frozenset[str] = frozenset({
+    "WANDB_API_KEY",
+    "API_KEY",
+    "SECRET_KEY",
+    "DB_PASSWORD",
+    "AWS_SECRET_ACCESS_KEY",
+    "GCP_SERVICE_ACCOUNT_KEY",
+    "PRIVATE_KEY",
+    "AUTH_TOKEN",
+})
+
 # Patterns that indicate potential hardcoded secrets
 _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("AWS Access Key", re.compile(r"AKIA[0-9A-Z]{16}", re.ASCII)),
@@ -54,6 +76,10 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("Private Key Block", re.compile(r"-----BEGIN (?:RSA |EC )?PRIVATE KEY-----")),
     ("Generic API Key Assignment", re.compile(
         r"""(?:api[_-]?key|secret[_-]?key|password|token)\s*[=:]\s*["'][A-Za-z0-9+/=]{16,}["']""",
+        re.IGNORECASE,
+    )),
+    ("YAML Env Secret Value", re.compile(
+        r"""value:\s*["'][A-Za-z0-9+/=]{20,}["']""",
         re.IGNORECASE,
     )),
 ]
@@ -213,3 +239,77 @@ class TestSecuritySanity:
         assert not violations, (
             f"Hardcoded DEBUG=True found: {violations}"
         )
+
+    def test_yaml_configs_no_real_secrets(self) -> None:
+        """Scan YAML config files for non-placeholder secret values.
+
+        Catches secrets in nested YAML structures like Vertex AI env blocks
+        that regex-only scanning may miss.
+        """
+        try:
+            import yaml
+        except ImportError:
+            pytest.skip("PyYAML not installed")
+
+        violations: list[str] = []
+        config_dir = _PROJECT_ROOT / "configs"
+
+        if not config_dir.exists():
+            return
+
+        for filepath in config_dir.rglob("*.yaml"):
+            if _is_exempt(filepath):
+                continue
+            try:
+                content = filepath.read_text(encoding="utf-8")
+                docs = yaml.safe_load_all(content)
+                for doc in docs:
+                    if doc is not None:
+                        self._scan_yaml_node(
+                            doc, filepath.relative_to(_PROJECT_ROOT),
+                            violations,
+                        )
+            except (OSError, yaml.YAMLError):
+                continue
+
+        if violations:
+            msg = (
+                "Potential real secrets in YAML configs:\n"
+                + "\n".join(f"  - {v}" for v in violations)
+            )
+            pytest.fail(msg)
+        else:
+            logger.info("No real secrets found in YAML configs")
+
+    @staticmethod
+    def _scan_yaml_node(
+        node: Any,
+        filepath: Path,
+        violations: list[str],
+        *,
+        parent_key: str = "",
+    ) -> None:
+        """Recursively scan a YAML node for sensitive env values."""
+        if isinstance(node, dict):
+            name = node.get("name", "")
+            value = node.get("value", "")
+            # Check for env-block pattern: {name: SENSITIVE, value: real_key}
+            if (
+                isinstance(name, str)
+                and isinstance(value, str)
+                and name.upper() in _SENSITIVE_ENV_NAMES
+                and value not in _SAFE_PLACEHOLDERS
+                and len(value) > 8  # noqa: PLR2004
+            ):
+                violations.append(
+                    f"{filepath}: {name} has non-placeholder value"
+                )
+            for key, child in node.items():
+                TestSecuritySanity._scan_yaml_node(
+                    child, filepath, violations, parent_key=str(key),
+                )
+        elif isinstance(node, list):
+            for item in node:
+                TestSecuritySanity._scan_yaml_node(
+                    item, filepath, violations, parent_key=parent_key,
+                )

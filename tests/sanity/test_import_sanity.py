@@ -78,13 +78,30 @@ class TestImportSanity:
         logger.info("alpha_zero version: %s", mod.__version__)
 
     def test_version_format(self) -> None:
-        """``__version__`` follows semantic versioning (X.Y.Z)."""
+        """``__version__`` follows PEP 440 / semantic versioning."""
         import alpha_zero
 
-        parts = alpha_zero.__version__.split(".")
-        assert len(parts) >= 2, f"Version '{alpha_zero.__version__}' should be semver"
-        for part in parts:
-            assert part.isdigit(), f"Version part '{part}' should be numeric"
+        try:
+            from packaging.version import Version
+
+            ver = Version(alpha_zero.__version__)
+            assert ver.release is not None, (
+                f"Version '{alpha_zero.__version__}' has no release segment"
+            )
+            assert len(ver.release) >= 3, (  # noqa: PLR2004
+                f"Version '{alpha_zero.__version__}' should have at least "
+                f"3 release segments (X.Y.Z), got {len(ver.release)}"
+            )
+            logger.info(
+                "Version %s parsed: release=%s, pre=%s",
+                alpha_zero.__version__, ver.release, ver.pre,
+            )
+        except ImportError:
+            # Fallback: basic check if packaging is not installed
+            parts = alpha_zero.__version__.split(".")
+            assert len(parts) >= 3, (  # noqa: PLR2004
+                f"Version '{alpha_zero.__version__}' should be semver X.Y.Z"
+            )
 
     def test_public_api_exports(self) -> None:
         """``__all__`` is defined and non-empty."""

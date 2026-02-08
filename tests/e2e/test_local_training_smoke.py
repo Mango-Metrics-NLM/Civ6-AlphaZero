@@ -17,6 +17,27 @@ import torch
 logger = logging.getLogger(__name__)
 
 
+def _torch_load_compat(
+    path: Path,
+    *,
+    map_location: str = "cpu",
+    weights_only: bool = True,
+) -> Any:
+    """Load PyTorch checkpoint with backwards compatibility.
+
+    Handles PyTorch versions that don't support the ``weights_only``
+    parameter (added in 1.13+, enforced in 2.0+).
+    """
+    try:
+        return torch.load(path, map_location=map_location, weights_only=weights_only)
+    except TypeError:
+        # Fallback for older PyTorch without weights_only parameter
+        logger.warning(
+            "torch.load weights_only not supported; falling back to default load"
+        )
+        return torch.load(path, map_location=map_location)  # noqa: S614
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -131,7 +152,7 @@ class TestLocalTrainingSmoke:
         assert checkpoint_path.stat().st_size > 0
 
         net2 = Civ6Network(config=cfg)
-        net2.load_state_dict(torch.load(checkpoint_path, weights_only=True))
+        net2.load_state_dict(_torch_load_compat(checkpoint_path, weights_only=True))
 
         for key in net.state_dict():
             assert torch.equal(net.state_dict()[key], net2.state_dict()[key])
