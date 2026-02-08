@@ -209,7 +209,7 @@ def prepare_dataset(
     spatial_tensor = torch.tensor(spatial_list, dtype=torch.float32)
     vector_tensor = torch.tensor(vector_list, dtype=torch.float32)
     policies_tensor = torch.tensor(policies, dtype=torch.float32)
-    values_tensor = torch.tensor(values, dtype=torch.float32).unsqueeze(-1)
+    values_tensor = torch.tensor(values, dtype=torch.float32)
 
     from torch.utils.data import TensorDataset
     return TensorDataset(spatial_tensor, vector_tensor, policies_tensor, values_tensor)

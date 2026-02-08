@@ -160,6 +160,9 @@ def run_selfplay(
     model: torch.nn.Module,
     num_games: int,
     mcts_sims: int,
+    mcts_type: str = "civ6",
+    board_size: int = 16,
+    max_turns: int = 200,
     mcts_config_override: dict[str, Any] | None = None,
     dry_run: bool = False,
     device: str = "cpu",
@@ -186,11 +189,14 @@ def run_selfplay(
     # For dry run, return dummy trajectories without needing actual env/MCTS
     if dry_run:
         logger.info("Dry run: creating dummy trajectories")
+        # MicroCivEncoder.TOTAL_CHANNELS = 13 for spatial encoding
+        spatial_channels = 13
+        vector_dim = 64
         dummy_trajectories: list[dict[str, Any]] = []
         for _ in range(num_games):
             dummy_traj: dict[str, Any] = {
-                "spatial": [[0.0] * (64 * 10 * 10) for _ in range(5)],
-                "vector": [[0.0] * 64 for _ in range(5)],
+                "spatial": [[0.0] * (spatial_channels * board_size * board_size) for _ in range(5)],
+                "vector": [[0.0] * vector_dim for _ in range(5)],
                 "policies": [[1.0 / 100] * 100 for _ in range(5)],
                 "actions": [0] * 5,
                 "rewards": [0.5] * 5,
@@ -206,13 +212,13 @@ def run_selfplay(
         game_failed = False
 
         # Create environment and MCTS
-        from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig
+        from alpha_zero.core.mcts_factory import create_mcts
         from alpha_zero.envs.microciv import MicroCivEnv
 
-        env = MicroCivEnv()
+        env = MicroCivEnv(board_size=board_size, max_turns=max_turns)
 
         # Build MCTS config with optional overrides
-        mcts_params: dict[str, Any] = {
+        mcts_kwargs: dict[str, Any] = {
             "num_simulations": mcts_sims,
             "c_puct": 1.5,
             "dirichlet_alpha": 0.3,
@@ -221,13 +227,13 @@ def run_selfplay(
             "temperature_threshold": 30,
         }
         if mcts_config_override:
-            mcts_params.update({k: v for k, v in mcts_config_override.items() if v is not None})
+            mcts_kwargs.update({k: v for k, v in mcts_config_override.items() if v is not None})
 
-        mcts_config = MCTSConfig(**mcts_params)
-        mcts = Civ6MCTS(
+        mcts = create_mcts(
+            variant=mcts_type,
             network=model,
-            config=mcts_config,
             device=device,
+            **mcts_kwargs,
         )
 
         trajectory: dict[str, Any] = {
@@ -334,7 +340,7 @@ def save_trajectories(
 ) -> str | None:
     """Save trajectories to GCS."""
     if dry_run:
-        total_states = sum(len(t["states"]) for t in trajectories)
+        total_states = sum(len(t["spatial"]) for t in trajectories)
         logger.info(
             "Dry run: would save %d trajectories (%d states)", len(trajectories), total_states
         )
@@ -423,6 +429,9 @@ def main() -> int:
             model=model,
             num_games=args.games,
             mcts_sims=args.mcts_simulations,
+            mcts_type=args.mcts_type,
+            board_size=args.board_size,
+            max_turns=args.max_turns,
             mcts_config_override=mcts_override,
             dry_run=args.dry_run,
             device=str(device),
