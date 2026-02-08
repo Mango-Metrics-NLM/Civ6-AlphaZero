@@ -60,6 +60,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dirichlet_epsilon", type=float, default=None, help="Dirichlet noise weight")
     parser.add_argument("--temperature", type=float, default=None, help="Action selection temperature")
     parser.add_argument("--temperature_threshold", type=int, default=None, help="Turn for temperature=0")
+    # Additional hyperparameters passed by the Vertex orchestrator
+    parser.add_argument("--gumbel_num_actions", type=int, default=16, help="Gumbel MCTS sampled actions")
+    parser.add_argument("--action_space_size", type=int, default=381, help="Size of the action space")
+    parser.add_argument("--num_res_blocks", type=int, default=8, help="Number of transformer layers")
+    parser.add_argument("--num_filters", type=int, default=256, help="Model embedding dimension")
+    parser.add_argument("--reward_shaping", action="store_true", help="Enable reward shaping")
+    parser.add_argument("--reward_scale", type=float, default=1.0, help="Reward scaling factor")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
 
     return parser.parse_args()
@@ -217,15 +224,27 @@ def run_selfplay(
 
         env = MicroCivEnv(board_size=board_size, max_turns=max_turns)
 
-        # Build MCTS config with optional overrides
+        # Build variant-aware MCTS kwargs to avoid passing invalid params
+        puct_variants = {"puct", "civ6"}
+        gumbel_variants = {"gumbel"}
+
         mcts_kwargs: dict[str, Any] = {
             "num_simulations": mcts_sims,
-            "c_puct": 1.5,
-            "dirichlet_alpha": 0.3,
-            "dirichlet_epsilon": 0.25,
             "temperature": 1.0,
             "temperature_threshold": 30,
         }
+
+        if mcts_type in puct_variants:
+            mcts_kwargs.update({
+                "c_puct": 1.5,
+                "dirichlet_alpha": 0.3,
+                "dirichlet_epsilon": 0.25,
+            })
+        elif mcts_type in gumbel_variants:
+            mcts_kwargs["num_sampled_actions"] = mcts_kwargs.get(
+                "num_sampled_actions", mcts_sims,
+            )
+
         if mcts_config_override:
             mcts_kwargs.update({k: v for k, v in mcts_config_override.items() if v is not None})
 
@@ -245,8 +264,6 @@ def run_selfplay(
 
         env.reset()
         done = False
-        move_count = 0
-        cumulative_shaped_reward = 0.0
 
         while not done:
             # Get observation with spatial, vector, action_mask

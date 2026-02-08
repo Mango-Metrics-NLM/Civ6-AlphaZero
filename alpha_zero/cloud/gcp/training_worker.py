@@ -24,9 +24,8 @@ import logging
 import sys
 import time
 
-
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.storage import (
@@ -64,6 +63,11 @@ def parse_args() -> argparse.Namespace:
         "--checkpoint_interval", type=int, default=1000, help="Steps between checkpoints"
     )
     parser.add_argument("--resume_from", type=str, default=None, help="Checkpoint to resume from")
+    # Network architecture args passed by the Vertex orchestrator
+    parser.add_argument("--board_size", type=int, default=16, help="Board size (spatial_size)")
+    parser.add_argument("--action_space_size", type=int, default=381, help="Action space size")
+    parser.add_argument("--num_res_blocks", type=int, default=8, help="Number of transformer layers")
+    parser.add_argument("--num_filters", type=int, default=256, help="Model embedding dimension")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
     return parser.parse_args()
 
@@ -78,7 +82,7 @@ class TrajectoryDataset(Dataset):
         action_mask: torch.Tensor,
         policy: torch.Tensor,
         value: torch.Tensor,
-    ):
+    ) -> None:
         self.spatial = spatial
         self.vector = vector
         self.action_mask = action_mask
@@ -133,22 +137,40 @@ def load_trajectories(
     return all_trajectories
 
 
+# MicroCivEncoder.TOTAL_CHANNELS — input spatial feature planes from the encoder
+ENCODER_SPATIAL_CHANNELS: int = 13
+
+
 def create_model(
-    board_size: int = 8,
-    action_space_size: int = 376,
-    num_res_blocks: int = 6,
-    num_filters: int = 64,
+    board_size: int = 16,
+    action_space_size: int = 381,
+    num_res_blocks: int = 8,
+    num_filters: int = 256,
+    spatial_channels: int = ENCODER_SPATIAL_CHANNELS,
 ) -> torch.nn.Module:
-    """Create model architecture."""
+    """Create model architecture.
+
+    Args:
+        board_size: Board size = spatial_size input dimension (H=W).
+        action_space_size: Total number of actions.
+        num_res_blocks: Maps to TransformerConfig.num_layers.
+        num_filters: Maps to TransformerConfig.embed_dim.
+        spatial_channels: Input spatial channels (from encoder, default 13).
+    """
     from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
-    # Derive spatial_size from board_size (board + 2 padding)
-    spatial_size = board_size + 2
     model_config = TransformerConfig(
-        spatial_channels=num_filters,
-        spatial_size=spatial_size,
-        vector_dim=num_filters,
+        spatial_channels=spatial_channels,
+        spatial_size=board_size,
+        vector_dim=64,
         action_space_size=action_space_size,
+        num_layers=num_res_blocks,
+        embed_dim=num_filters,
+    )
+    logger.info(
+        "Creating model: spatial=(%d, %d, %d), actions=%d, layers=%d, embed_dim=%d",
+        spatial_channels, board_size, board_size,
+        action_space_size, num_res_blocks, num_filters,
     )
     return Civ6TransformerNetwork(config=model_config)
 
@@ -211,7 +233,6 @@ def prepare_dataset(
     policies_tensor = torch.tensor(policies, dtype=torch.float32)
     values_tensor = torch.tensor(values, dtype=torch.float32)
 
-    from torch.utils.data import TensorDataset
     return TensorDataset(spatial_tensor, vector_tensor, policies_tensor, values_tensor)
 
 
@@ -243,8 +264,15 @@ def train_epoch(
         target_values = target_values.to(device)
 
         # Forward pass
-        # Reshape spatial for transformer input
+        # Reshape spatial for transformer input and validate
         batch_size = spatial.shape[0]
+        expected_flat = spatial_channels * spatial_size * spatial_size
+        if spatial.shape[1] != expected_flat:
+            raise ValueError(
+                f"Spatial tensor flat dim {spatial.shape[1]} != "
+                f"expected {spatial_channels}x{spatial_size}x{spatial_size}={expected_flat}. "
+                f"Ensure encoder channels and board_size match between selfplay and training."
+            )
         spatial = spatial.view(batch_size, spatial_channels, spatial_size, spatial_size)  # B, C, H, W
 
         policy_logits, value = model(spatial, vector)
@@ -481,9 +509,9 @@ def main() -> int:
         for epoch in range(start_epoch, args.epochs):
             epoch_start = time.time()
 
-            # Derive spatial dims from model config for reshape
-            spatial_channels = getattr(args, 'num_filters', 64)
-            spatial_size = getattr(args, 'board_size', 8) + 2
+            # Spatial dims must match encoder output, NOT model embed_dim
+            spatial_channels = ENCODER_SPATIAL_CHANNELS
+            spatial_size = args.board_size
 
             loss, policy_loss, value_loss, num_batches = train_epoch(
                 model,

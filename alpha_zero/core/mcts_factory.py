@@ -31,15 +31,10 @@ from __future__ import annotations
 
 import dataclasses
 from enum import Enum
-from typing import Any, Protocol, TYPE_CHECKING
+from typing import Any, Protocol
 
 import numpy as np
 import torch
-
-
-
-if TYPE_CHECKING:
-    from alpha_zero.core.civ6_mcts import Civ6MCTS, GumbelMCTS, MuZeroMCTS, SimpleMCTS
 
 
 class MCTSVariant(Enum):
@@ -231,6 +226,7 @@ def get_default_config(variant: str | MCTSVariant) -> Any:
     )
 
     config_classes = {
+        "civ6": MCTSConfig,
         "puct": MCTSConfig,
         "gumbel": GumbelMCTSConfig,
         "muzero": MuZeroMCTSConfig,
