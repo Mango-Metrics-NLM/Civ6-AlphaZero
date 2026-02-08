@@ -1,127 +1,154 @@
-"""E2E tests for Vertex AI job submission (dry-run validation).
+"""Dry-run tests for Vertex AI job submission.
 
-These tests validate job spec generation without actually submitting
-to Vertex AI. For live submission tests, set GCP env vars.
-
-Run with:  pytest tests/e2e/test_vertex_submission.py -v
+Verifies that job specifications are correctly constructed and submitted
+to the Vertex AI SDK, without actually triggering cloud resources.
 """
 
-from __future__ import annotations
-
-import logging
-from typing import Any
 from unittest.mock import MagicMock, patch
 
-logger = logging.getLogger(__name__)
+import pytest
+
+from alpha_zero.cloud.gcp.config import GCPConfig, SelfPlayWorkerConfig, TrainingWorkerConfig
+from alpha_zero.cloud.gcp.vertex_jobs import (
+    VertexAIClient,
+    VertexEvaluationJob,
+    VertexSelfPlayJob,
+    VertexTrainingJob,
+)
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
+@pytest.fixture
+def gcp_config():
+    """Create a standard GCP config for testing."""
+    config = GCPConfig(
+        project_id="test-project",
+        bucket="test-bucket",
+        region="us-central1",
+        container_image_uri="gcr.io/test/image:latest",
+    )
+    # Configure sub-components
+    config.self_play = SelfPlayWorkerConfig(
+        machine_type="n2-standard-4",
+        accelerator_type="NVIDIA_TESLA_T4",
+        accelerator_count=1,
+    )
+    config.training = TrainingWorkerConfig(
+        machine_type="n1-standard-8",
+        accelerator_type="NVIDIA_TESLA_V100",
+        accelerator_count=2,  # DDP trigger
+    )
+    return config
 
 
-class TestVertexJobSpecValidation:
-    """Validate Vertex AI job spec structures without live submission."""
+@pytest.fixture
+def mock_aiplatform():
+    """Mock the google.cloud.aiplatform module."""
+    import sys
+    mock = MagicMock()
+    
+    # Create a mock for google.cloud package
+    mock_google = MagicMock()
+    mock_cloud = MagicMock()
+    mock_cloud.aiplatform = mock
+    mock_google.cloud = mock_cloud
+    
+    # Patch sys.modules to intercept the import
+    with patch.dict(sys.modules, {
+        "google": mock_google,
+        "google.cloud": mock_cloud,
+        "google.cloud.aiplatform": mock,
+    }):
+        # Setup CustomJob mock
+        mock_job = MagicMock()
+        mock_job.resource_name = "projects/123/locations/us-central1/customJobs/456"
+        mock.CustomJob.return_value = mock_job
+        yield mock
 
-    def test_job_spec_dataclass(self) -> None:
-        """JobSpec dataclass creates valid worker pool spec."""
-        from alpha_zero.cloud.gcp.vertex_jobs import JobSpec
 
-        spec = JobSpec(
-            display_name="test-selfplay-job",
-            container_uri="gcr.io/test/image:latest",
-            args=["--mode", "selfplay", "--num_games", "10"],
-            machine_type="n1-standard-4",
-            accelerator_type="NVIDIA_TESLA_T4",
-            spot=True,
+class TestVertexSubmission:
+    """Verify Vertex AI job specs."""
+
+    def test_self_play_submission(self, gcp_config, mock_aiplatform):
+        """Verify self-play job construction."""
+        client = VertexSelfPlayJob(config=gcp_config)
+        
+        # Launch
+        job_names = client.launch(
+            num_workers=2,
+            model_version=10,
+            iteration=5,
         )
+        
+        assert len(job_names) == 2
+        assert mock_aiplatform.CustomJob.call_count == 2
+        
+        # Verify first worker spec
+        call_args = mock_aiplatform.CustomJob.call_args_list[0]
+        _, kwargs = call_args
+        
+        # Check display name
+        assert kwargs["display_name"] == "civ6az-selfplay-iter005-worker00"
+        
+        # Check worker pool spec
+        worker_specs = kwargs["worker_pool_specs"]
+        worker_spec = worker_specs[0]
+        assert worker_spec["container_spec"]["image_uri"] == "gcr.io/test/image:latest"
+        
+        # Check args
+        cmd_args = worker_spec["container_spec"].get("args", [])
+        assert "--mode=selfplay" in cmd_args
+        assert "--worker_id=0" in cmd_args
+        
+        # Check machine spec
+        assert worker_spec["machine_spec"]["machine_type"] == "n2-standard-4"
+        assert worker_spec["machine_spec"]["accelerator_type"] == "NVIDIA_TESLA_T4"
 
-        pool = spec.to_worker_pool_spec()
-        assert pool is not None
-        assert "containerSpec" in pool or isinstance(pool, dict)
-        logger.info("JobSpec to_worker_pool_spec OK")
-
-    def test_gcp_config_defaults(self) -> None:
-        """GCPConfig has sensible defaults."""
-        from alpha_zero.cloud.gcp.config import GCPConfig
-
-        config = GCPConfig(
-            project_id="test-project",
-            bucket="test-bucket",
-            container_image_uri="gcr.io/test/image:latest",
+    def test_training_submission_ddp(self, gcp_config, mock_aiplatform):
+        """Verify training job construction with DDP (torchrun)."""
+        client = VertexTrainingJob(config=gcp_config)
+        
+        client.launch(
+            iteration=5,
+            trajectory_iterations=[3, 4, 5],
         )
+        
+        assert mock_aiplatform.CustomJob.call_count == 1
+        _, kwargs = mock_aiplatform.CustomJob.call_args
+        
+        worker_spec = kwargs["worker_pool_specs"][0]
+        command = worker_spec["container_spec"].get("command", [])
+        args = worker_spec["container_spec"].get("args", [])
+        
+        # Verify torchrun Usage since accelerator_count=2
+        assert "torchrun" in command
+        assert "--nproc_per_node=2" in command
+        
+        # Verify args
+        assert "--mode=training" in args
+        assert "--iteration=5" in args
+        
+        # Verify machine spec
+        assert worker_spec["machine_spec"]["machine_type"] == "n1-standard-8"
+        assert worker_spec["machine_spec"]["accelerator_count"] == 2
 
-        assert config.project_id == "test-project"
-        assert config.bucket == "test-bucket"
-        assert config.region is not None  # Should have a default
-        logger.info("GCPConfig defaults OK: region=%s", config.region)
-
-    def test_vertex_ai_client_initialization(self) -> None:
-        """VertexAIClient initializes without calling GCP APIs."""
-        from alpha_zero.cloud.gcp.vertex_jobs import VertexAIClient
-
-        client = VertexAIClient(
-            project="test-project",
-            region="us-central1",
+    def test_evaluation_submission(self, gcp_config, mock_aiplatform):
+        """Verify evaluation job construction."""
+        # Reuse the client from training/selfplay or create new one
+        # Use a real client wrapper which uses the mocked SDK
+        client_wrapper = VertexAIClient(gcp_config.project_id, gcp_config.region)
+        eval_client = VertexEvaluationJob(config=gcp_config, client=client_wrapper)
+        
+        eval_client.launch(
+            model_version_new=10,
+            model_version_old=5,
+            iteration=5,
         )
-
-        assert client is not None
-        # Client should lazy-init — no API calls yet
-        logger.info("VertexAIClient initialized (lazy)")
-
-    def test_selfplay_job_creation(self) -> None:
-        """VertexSelfPlayJob creates with valid GCPConfig."""
-        from alpha_zero.cloud.gcp.config import GCPConfig
-        from alpha_zero.cloud.gcp.vertex_jobs import VertexSelfPlayJob
-
-        config = GCPConfig(
-            project_id="test-project",
-            bucket="test-bucket",
-            container_image_uri="gcr.io/test/image:latest",
-        )
-
-        mock_client = MagicMock()
-        job = VertexSelfPlayJob(config=config, client=mock_client)
-
-        assert job is not None
-        logger.info("VertexSelfPlayJob created")
-
-    def test_wandb_env_vars_filter_empty(self) -> None:
-        """W&B env var helper filters out empty values."""
-        from alpha_zero.cloud.gcp.vertex_jobs import _wandb_env_vars
-
-        with patch.dict("os.environ", {
-            "WANDB_API_KEY": "test-key",
-            "WANDB_PROJECT": "civ6-alphazero",
-            "WANDB_ENTITY": "",  # Empty — should be filtered
-        }, clear=False):
-            env = _wandb_env_vars()
-
-        # Empty values should be excluded
-        assert "WANDB_ENTITY" not in env or env.get("WANDB_ENTITY") != ""
-        logger.info("W&B env filter OK: %d vars", len(env))
-
-    def test_job_state_terminal_check(self) -> None:
-        """JobState correctly identifies terminal states."""
-        from alpha_zero.cloud.gcp.vertex_jobs import JobState
-
-        assert JobState.is_terminal(JobState.SUCCEEDED)
-        assert JobState.is_terminal(JobState.FAILED)
-        assert JobState.is_terminal(JobState.CANCELLED)
-        assert not JobState.is_terminal(JobState.RUNNING)
-        assert not JobState.is_terminal(JobState.PENDING)
-
-    def test_job_result_dataclass(self) -> None:
-        """JobResult holds completion data."""
-        from alpha_zero.cloud.gcp.vertex_jobs import JobResult
-
-        result = JobResult(
-            job_id="job-123",
-            job_name="test-job",
-            state="JOB_STATE_SUCCEEDED",
-            success=True,
-        )
-
-        assert result.success
-        assert result.job_id == "job-123"
-        assert result.error_message is None
+        
+        _, kwargs = mock_aiplatform.CustomJob.call_args
+        worker_spec = kwargs["worker_pool_specs"][0]
+        
+        assert worker_spec["machine_spec"]["machine_type"] == "n1-standard-4"
+        assert "accelerator_count" not in worker_spec["machine_spec"]
+        
+        args = worker_spec["container_spec"].get("args", [])
+        assert "--mode=evaluation" in args

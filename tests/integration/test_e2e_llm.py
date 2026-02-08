@@ -25,7 +25,7 @@ from alpha_zero.utils.agent_tools import (
 from alpha_zero.utils.config import Civ6Config, ConfigManager, load_config
 
 # Import new utilities
-from alpha_zero.utils.test_runner import TestConfig, TestRunner
+from alpha_zero.utils.test_runner import RunConfig as TestConfig, PytestRunner as TestRunner
 
 # LLM imports (optional)
 try:
