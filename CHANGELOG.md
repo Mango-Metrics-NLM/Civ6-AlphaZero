@@ -5,6 +5,72 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] — 2026-02-08
+
+### Added — Phase 7: Production Scaling & Training Validation
+
+#### W&B Population Dashboards
+
+- `WandbLogger.log_population_stats()` — Logs `pbt/` namespaced metrics (ELO, fitness, mutations) per generation
+- `WandbLogger.define_pbt_charts()` — Registers W&B metric axes with summary types (max, min, last, sum)
+- Per-agent ELO tracking via `pbt/agent/{agent_id}/elo` metrics
+- Mutation event tables logged via `WandbLogger.log_table()`
+
+#### GCS Checkpoint Rotation
+
+- `PBTOrchestrator._rotate_checkpoints()` — Manifest-based checkpoint pruning in GCS
+- Configurable `checkpoint_retention_generations` (default: 5, 0=unlimited)
+- Manifest stored at `{prefix}/checkpoint_manifest.json` mapping generations to blob paths
+- Graceful error handling — rotation failures never crash the main loop
+
+#### GPU Quota Guard
+
+- `PBTOrchestrator._check_quota()` — Queries active Vertex AI jobs and counts GPUs
+- `PBTOrchestrator._wait_for_quota()` — Exponential backoff polling (60s→300s cap, 1800s max)
+- Configurable via `CIV6AZ_GPU_QUOTA_LIMIT` and `CIV6AZ_QUOTA_WAIT_MAX_SECONDS` env vars
+- Optimistic fallback on API errors (returns `True` on failure)
+
+#### Baseline Benchmarking
+
+- `PBTEvaluator.run_baseline_benchmarks()` — Runs population agents vs baseline agents at configurable intervals
+- `EvaluationReport.baseline_results` field for storing benchmark match results
+- Baselines do NOT affect ELO ratings — serves as absolute performance anchor
+- Configurable via `baseline_interval` (default: 5, 0=disabled) and `baseline_agents` list
+
+#### Dynamic Evaluation Strategy Switch
+
+- `PBTOrchestrator._maybe_switch_strategy()` — Switches from `round_robin` to `top_k_vs_best` at configurable generation
+- `evaluation_strategy_switch_gen` config field (default: 0 = never switch)
+- Reduces evaluation cost as population matures
+
+#### PBTConfig Enhancements
+
+- 4 new fields: `baseline_interval`, `baseline_agents`, `checkpoint_retention_generations`, `evaluation_strategy_switch_gen`
+- Full validation (`>= 0` checks), `to_dict()`/`from_dict()` serialization, YAML round-trip support
+- Backwards compatible — all fields have defaults, existing configs unchanged
+
+#### Production Configuration
+
+- `configs/pbt_prod.yaml` — Production PBT config with GumbelMCTS-tuned hyperparameter ranges
+  - `population_size: 8`, `evaluation_strategy_switch_gen: 11`, `baseline_interval: 5`
+  - Full hyperparameter search space (learning_rate, c_puct, num_simulations, batch_size, etc.)
+
+#### Test Suite (279 PBT tests passing)
+
+- `tests/unit/test_pbt_dashboarding.py` — 14 tests for W&B population dashboard methods
+- `tests/integration/test_production_resilience.py` — 18 tests for checkpoint rotation, quota guard, strategy switch, baseline benchmarks
+- `tests/unit/test_pbt_config.py` — 12 new tests for Phase 7 config fields
+- `tests/unit/test_pbt_evaluator.py` — 8 new tests for baseline benchmarking
+- Fixed pre-existing `test_pbt_orchestrator.py` bugs (invalid VertexEvaluationJob patch, missing arena runner mock)
+
+### Fixed
+
+- `pbt_orchestrator.py` — Lambda keyword arg mismatch in `_run_evaluation_phase` fallback arena runner
+- `pbt_orchestrator.py` — Pre-existing trailing whitespace lint issue in `_local_arena_runner`
+- `test_pbt_orchestrator.py` — Removed invalid `VertexEvaluationJob` patch, added mock arena runner and `checkpoints_prefix` mock
+
+---
+
 ## [0.8.0] — 2026-02-08
 
 ### Added — Comprehensive Test Infrastructure & CI/CD (Phases 1-6)

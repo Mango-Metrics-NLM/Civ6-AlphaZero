@@ -666,6 +666,16 @@ class PBTConfig:
     elo_initial_rating: float = 1200.0
     elo_k_factor: float = 32.0
 
+    # Baseline benchmarking
+    baseline_interval: int = 5  # Run baselines every N generations (0=never)
+    baseline_agents: list[str] = field(default_factory=lambda: ["random", "heuristic"])
+
+    # Checkpoint retention
+    checkpoint_retention_generations: int = 5  # Keep last N gens (0=unlimited)
+
+    # Dynamic strategy switching
+    evaluation_strategy_switch_gen: int = 0  # Switch to top_k_vs_best at gen N (0=never)
+
     ENV_PREFIX: str = field(default="CIV6AZ_PBT_", repr=False)
 
     def __post_init__(self) -> None:
@@ -693,6 +703,12 @@ class PBTConfig:
             raise ValueError("elo_initial_rating must be > 0")
         if self.elo_k_factor <= 0:
             raise ValueError("elo_k_factor must be > 0")
+        if self.baseline_interval < 0:
+            raise ValueError("baseline_interval must be >= 0")
+        if self.checkpoint_retention_generations < 0:
+            raise ValueError("checkpoint_retention_generations must be >= 0")
+        if self.evaluation_strategy_switch_gen < 0:
+            raise ValueError("evaluation_strategy_switch_gen must be >= 0")
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> PBTConfig:
@@ -805,6 +821,10 @@ class PBTConfig:
             "evaluation_games_per_match": self.evaluation_games_per_match,
             "elo_initial_rating": self.elo_initial_rating,
             "elo_k_factor": self.elo_k_factor,
+            "baseline_interval": self.baseline_interval,
+            "baseline_agents": self.baseline_agents,
+            "checkpoint_retention_generations": self.checkpoint_retention_generations,
+            "evaluation_strategy_switch_gen": self.evaluation_strategy_switch_gen,
         }
 
     def save(self, path: str | Path) -> None:

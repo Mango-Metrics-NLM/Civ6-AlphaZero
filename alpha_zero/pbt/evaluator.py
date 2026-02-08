@@ -92,6 +92,9 @@ class EvaluationReport:
         matchups: List of match results.
         elo_ratings: Mapping of agent_id -> updated ELO rating.
         fitness_scores: Mapping of agent_id -> derived fitness score.
+        games_played: Mapping of agent_id -> total games played.
+        baseline_results: Results from baseline benchmarking (does not
+            affect ELO ratings — baselines serve as absolute anchors).
     """
 
     generation: int = 0
@@ -99,6 +102,7 @@ class EvaluationReport:
     elo_ratings: dict[str, float] = field(default_factory=dict)
     fitness_scores: dict[str, float] = field(default_factory=dict)
     games_played: dict[str, int] = field(default_factory=dict)
+    baseline_results: list[MatchResult] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -124,9 +128,17 @@ class PBTEvaluator:
         self,
         config: PBTConfig,
         arena_runner: ArenaRunner | Callable[..., MatchResult] | None = None,
+        *,
+        baseline_agents: list[AgentState] | None = None,
+        baseline_interval: int | None = None,
     ) -> None:
         self._config = config
         self._arena_runner = arena_runner
+        self._baseline_agents = baseline_agents or []
+        self._baseline_interval = (
+            baseline_interval if baseline_interval is not None
+            else config.baseline_interval
+        )
 
         elo_config = ELOConfig(
             initial_rating=config.elo_initial_rating,
@@ -136,11 +148,12 @@ class PBTEvaluator:
 
         logger.info(
             "PBTEvaluator initialized: strategy=%s, games_per_match=%d, "
-            "elo_initial=%.0f, elo_k=%.1f",
+            "elo_initial=%.0f, elo_k=%.1f, baselines=%d",
             config.evaluation_strategy,
             config.evaluation_games_per_match,
             config.elo_initial_rating,
             config.elo_k_factor,
+            len(self._baseline_agents),
         )
 
     @property
@@ -224,11 +237,18 @@ class PBTEvaluator:
             if agent.agent_id in report.games_played:
                 agent.games_played = report.games_played[agent.agent_id]
 
+        # Run baseline benchmarks if configured
+        baseline_results = self.run_baseline_benchmarks(
+            agents, generation, arena_runner=runner,
+        )
+        report.baseline_results = baseline_results
+
         logger.info(
             "Generation %d evaluation complete: %d matchups, "
-            "ratings=[%s]",
+            "%d baselines, ratings=[%s]",
             generation,
             len(results),
+            len(baseline_results),
             ", ".join(
                 f"{aid}={r:.0f}"
                 for aid, r in sorted(
@@ -240,6 +260,68 @@ class PBTEvaluator:
         )
 
         return report
+
+    def run_baseline_benchmarks(
+        self,
+        agents: Sequence[AgentState],
+        generation: int,
+        arena_runner: ArenaRunner | Callable[..., MatchResult] | None = None,
+    ) -> list[MatchResult]:
+        """Run population agents against baseline agents.
+
+        Baseline results are *not* used to update ELO ratings — they
+        serve as absolute performance anchors.
+
+        Args:
+            agents: Population agents to benchmark.
+            generation: Current PBT generation.
+            arena_runner: Override runner for this call.
+
+        Returns:
+            List of :class:`MatchResult` for each (agent, baseline) pair.
+            Empty list if interval not met or no baselines configured.
+        """
+        if self._baseline_interval <= 0:
+            return []
+        if generation % self._baseline_interval != 0:
+            return []
+        if not self._baseline_agents:
+            return []
+
+        runner = arena_runner or self._arena_runner
+        if runner is None:
+            logger.warning("No arena_runner for baseline benchmarks; skipping.")
+            return []
+
+        results: list[MatchResult] = []
+        for agent in agents:
+            for baseline in self._baseline_agents:
+                try:
+                    result = runner(
+                        agent_new=agent,
+                        agent_old=baseline,
+                        num_games=self._config.evaluation_games_per_match,
+                    )
+                    results.append(result)
+                    logger.debug(
+                        "Baseline: %s vs %s: win=%.2f",
+                        result.agent_id_new,
+                        result.agent_id_old,
+                        result.win_rate,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Baseline match failed: %s vs %s",
+                        agent.agent_id,
+                        baseline.agent_id,
+                    )
+
+        logger.info(
+            "Generation %d baseline benchmarks: %d matches completed",
+            generation,
+            len(results),
+        )
+        return results
 
     # ------------------------------------------------------------------
     # Matchup strategies

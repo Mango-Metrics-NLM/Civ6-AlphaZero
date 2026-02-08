@@ -1,0 +1,132 @@
+# Production PBT Configuration
+# ─────────────────────────────────────────────────────────
+# Uses PBTConfig.from_yaml() flat schema.  Override any value
+# via environment variables with the CIV6AZ_PBT_ prefix.
+
+# Population
+population_size: 8
+min_population_size: 4
+
+# Generations
+num_generations: 100
+
+# Evaluation
+evaluation_interval: 1000
+evaluation_games: 20
+fitness_smoothing_window: 10
+evaluation_strategy: round_robin
+evaluation_games_per_match: 10
+elo_initial_rating: 1200.0
+elo_k_factor: 32.0
+
+# Dynamic strategy switch — move to top_k_vs_best at gen 11
+evaluation_strategy_switch_gen: 11
+
+# Selection
+selection_method: truncation
+truncation_fraction: 0.25
+tournament_size: 3
+
+# Mutation
+mutation_probability: 0.8
+mutation_strength: 0.2
+resample_probability: 0.05
+
+# Exploitation
+exploit_threshold: 0.2
+copy_weights: true
+
+# Baseline benchmarking
+baseline_interval: 5
+baseline_agents:
+  - random
+  - heuristic
+
+# Checkpoint retention (keep last N generations)
+checkpoint_retention_generations: 5
+
+# Checkpointing
+checkpoint_dir: checkpoints/pbt
+checkpoint_interval: 5000
+max_checkpoints: 10
+
+# Logging
+log_dir: logs/pbt
+wandb_enabled: true
+wandb_project: civ6-alphazero-pbt
+wandb_tags:
+  - production
+  - phase7
+
+# Convergence
+convergence_threshold: 0.01
+convergence_window: 50
+
+# Hyperparameter search space (GumbelMCTS-tuned ranges)
+hyperparameter_space:
+  learning_rate:
+    name: learning_rate
+    min_value: 0.00001
+    max_value: 0.01
+    scale: log
+    discrete: false
+  weight_decay:
+    name: weight_decay
+    min_value: 0.000001
+    max_value: 0.001
+    scale: log
+    discrete: false
+  c_puct:
+    name: c_puct
+    min_value: 0.5
+    max_value: 5.0
+    scale: linear
+    discrete: false
+  dirichlet_alpha:
+    name: dirichlet_alpha
+    min_value: 0.1
+    max_value: 1.0
+    scale: linear
+    discrete: false
+  temperature:
+    name: temperature
+    min_value: 0.5
+    max_value: 2.0
+    scale: linear
+    discrete: false
+  temperature_initial:
+    name: temperature_initial
+    min_value: 1.0
+    max_value: 2.5
+    scale: linear
+    discrete: false
+  temperature_final:
+    name: temperature_final
+    min_value: 0.1
+    max_value: 1.0
+    scale: linear
+    discrete: false
+  temperature_decay_steps:
+    name: temperature_decay_steps
+    min_value: 10
+    max_value: 50
+    scale: linear
+    discrete: true
+  batch_size:
+    name: batch_size
+    min_value: 64
+    max_value: 512
+    scale: log
+    discrete: true
+  num_simulations:
+    name: num_simulations
+    min_value: 100
+    max_value: 800
+    scale: log
+    discrete: true
+  replay_buffer_size:
+    name: replay_buffer_size
+    min_value: 10000
+    max_value: 200000
+    scale: linear
+    discrete: true
