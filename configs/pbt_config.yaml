@@ -1,0 +1,85 @@
+# PBT (Population-Based Training) Configuration
+# ─────────────────────────────────────────────────────────
+# All numeric values are defaults — override via environment
+# variables with CIV6AZ_PBT_ prefix.
+
+population:
+  size: 8
+  selection_method: truncation  # truncation | tournament | roulette | rank
+  truncation_ratio: 0.25        # Bottom 25% replaced
+  elite_ratio: 0.1              # Top 10% protected from mutation
+
+generations:
+  max_generations: 100
+  eval_interval: 5              # Evaluate every N generations
+  checkpoint_interval: 10       # Save population every N generations
+
+hyperparameters:
+  learning_rate:
+    min: 0.00001
+    max: 0.01
+    scale: log
+    default: 0.001
+
+  weight_decay:
+    min: 0.00001
+    max: 0.01
+    scale: log
+    default: 0.0001
+
+  c_puct:
+    min: 0.5
+    max: 5.0
+    scale: linear
+    default: 1.5
+
+  temperature:
+    min: 0.1
+    max: 2.0
+    scale: linear
+    default: 1.0
+
+  discount_factor:
+    min: 0.9
+    max: 0.999
+    scale: linear
+    default: 0.99
+
+  batch_size:
+    min: 32
+    max: 512
+    scale: log
+    default: 256
+    type: integer
+
+  mcts_simulations:
+    min: 8
+    max: 200
+    scale: log
+    default: 50
+    type: integer
+
+mutation:
+  probability: 0.8              # Probability of mutating a hyperparameter
+  strength: 0.2                 # Relative strength of perturbation
+  resample_probability: 0.05    # Probability of resampling from scratch
+
+fitness:
+  metric: elo_rating            # elo_rating | win_rate | combined
+  smoothing_window: 10          # Number of recent scores to average
+  min_games: 5                  # Minimum games before fitness is valid
+
+# Vertex AI integration
+vertex_ai:
+  enabled: false
+  machine_type: n1-standard-8
+  gpu_type: NVIDIA_TESLA_T4
+  gpu_count: 1
+  max_concurrent_jobs: 4
+  spot_vm: true
+
+# W&B tracking
+wandb:
+  enabled: false
+  project: civ6-alphazero-pbt
+  group: pbt-sweep

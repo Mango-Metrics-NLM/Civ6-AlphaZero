@@ -69,6 +69,9 @@ venv.bak/
 secrets.json
 credentials.json
 *.credentials
+service_account*.json
+!service_account.json.template
+application_default_credentials.json
 
 # IDE
 .idea/
@@ -141,3 +144,12 @@ ray_results/
 test_results.txt
 test_output.txt
 *_test_output.txt
+*_sanity.txt
+
+# AI Coding Assistant
+.agent/
+.gemini/
+
+# Local config overrides (may contain real API keys)
+configs/*_local.yaml
+configs/*_local_*.yaml

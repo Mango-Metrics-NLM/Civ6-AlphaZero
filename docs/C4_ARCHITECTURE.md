@@ -1363,12 +1363,14 @@ Legend:
 
 ### Completed Phases
 
-1. **Phase 1**: Core AlphaZero - MCTS + Neural Network ✅
-2. **Phase 2**: Hierarchical RL - Multi-level decision making ✅
-3. **Phase 3**: Training Improvements - Curriculum, rewards, tuning ✅
-4. **Phase 4**: Unified Orchestrator - Single training entry point ✅
-5. **Phase 5**: RAG Integration - Knowledge-enhanced decisions ✅
-6. **Phase 6**: Agentic Framework - Claude Code automation ✅
+1. **Phase 1**: Core AlphaZero — MCTS + Neural Network ✅
+2. **Phase 2**: Hierarchical RL — Multi-level decision making ✅
+3. **Phase 3**: Training Improvements — Curriculum, rewards, tuning ✅
+4. **Phase 4**: Unified Orchestrator — Single training entry point ✅
+5. **Phase 5**: RAG Integration — Knowledge-enhanced decisions ✅
+6. **Phase 6**: Agentic Framework — Claude Code automation ✅
+7. **Phase 7**: GCP Vertex AI Pipeline — Cloud training with GumbelMCTS, 3-phase pipeline ✅
+8. **Phase 8**: CI/CD & Test Infrastructure — Release automation, 6-tier test coverage ✅
 
 ### Planned Features
 
@@ -1377,11 +1379,10 @@ Legend:
 | P1 | Training Validation | Achieve >50% win rate vs random |
 | P2 | Multi-GPU Training | DistributedDataParallel support |
 | P3 | Tournament System | ELO-based agent ranking |
-| P4 | Population-Based Training | Adaptive hyperparameters |
-| P5 | Human vs AI Interface | Web-based gameplay UI |
-| P6 | Full Civ 6 Integration | Direct game modding API |
+| P4 | Human vs AI Interface | Web-based gameplay UI |
+| P5 | Full Civ 6 Integration | Direct game modding API |
 
 ---
 
-*Last updated: 2026-01-24*
-*Architecture version: 3.0*
+*Last updated: 2026-02-08*
+*Architecture version: 3.1*
