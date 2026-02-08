@@ -2,7 +2,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 from alpha_zero.cloud.gcp.pbt_orchestrator import PBTOrchestrator
-from alpha_zero.pbt.config import PBTConfig, AgentState
+from alpha_zero.pbt.config import PBTConfig
 from alpha_zero.pbt.evaluator import MatchResult
 from alpha_zero.cloud.gcp.config import GCPConfig
 
