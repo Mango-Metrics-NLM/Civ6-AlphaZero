@@ -287,9 +287,17 @@ class PopulationManager:
                 )
                 child.agent_id = weak_id # Enforce ID reuse
                 
-            # Copy Weights if enabled
+            # Copy weights if enabled
             if self.config.copy_weights and self._copy_weights_fn:
-                 self._copy_weights_fn(strong_id, weak_id)
+                try:
+                    self._copy_weights_fn(strong_id, weak_id)
+                except Exception:
+                    logger.warning(
+                        "Weight copy failed for %s -> %s; continuing with mutated hyperparameters only",
+                        strong_id,
+                        weak_id,
+                        exc_info=True,
+                    )
 
             new_agents[weak_id] = child
             changes.append((weak_id, strong_id, child.hyperparameters))

@@ -576,16 +576,14 @@ def main() -> int:
                 )
                 eval_duration = (time.time() - eval_start) / 3600.0
                 
-                # Estimate calc cost (using training/eval machine type - assuming same as training for now or similar)
-                # EvaluationJob uses CustomJob logic which defaults to n1-standard-4 + T4 if not specified in config override
-                # Note: EvaluationJob logic in vertex_jobs.py uses default worker spec if not configures.
-                # For estimation simplicity, we assume budget tier (n1-standard-4 + T4).
+                # Estimate eval cost using the actual VertexEvaluationJob spec:
+                # CPU-only worker on n1-standard-4 with no accelerators.
                 eval_cost = cost_estimator.estimate_job_cost(
-                    machine_type="n1-standard-4", 
-                    accelerator_type="NVIDIA_TESLA_T4",
-                    accelerator_count=1,
+                    machine_type="n1-standard-4",
+                    accelerator_type="",
+                    accelerator_count=0,
                     duration_hours=eval_duration,
-                    is_spot=False
+                    is_spot=False,
                 )
                 total_estimated_cost += eval_cost
                 logger.info("Evaluation phase cost (est): $%.2f", eval_cost)

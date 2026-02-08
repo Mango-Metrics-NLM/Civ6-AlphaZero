@@ -627,8 +627,16 @@ def main() -> int:
 
             if is_main_process:
                 logger.info(
-                    "Epoch %d/%d complete, Loss: %.4f, Step: %d",
-                    epoch + 1, args.epochs, loss, global_step,
+                    "Epoch %d/%d completed: loss=%.4f (policy=%.4f, value=%.4f), "
+                    "time=%.2fs, steps %d-%d",
+                    epoch + 1,
+                    args.epochs,
+                    loss,
+                    policy_loss,
+                    value_loss,
+                    epoch_time,
+                    prev_step + 1,
+                    global_step,
                 )
 
                 # Report to Vizier
@@ -641,9 +649,6 @@ def main() -> int:
                     step=global_step,
                 )
 
-            # Checkpoint if we crossed an interval boundary
-
-            # Checkpoint if we crossed an interval boundary
             # Checkpoint if we crossed an interval boundary
             if is_main_process and (global_step // args.checkpoint_interval) > (prev_step // args.checkpoint_interval):
                 save_checkpoint(config, model, optimizer, global_step, epoch + 1, args.dry_run)
@@ -665,7 +670,6 @@ def main() -> int:
                 if deleted:
                     logger.info("Cleaned up %d old checkpoints", deleted)
 
-        cleanup_ddp()
         return 0
 
     except KeyboardInterrupt:
@@ -675,6 +679,7 @@ def main() -> int:
         logger.exception("Training failed: %s", e)
         return 1
     finally:
+        cleanup_ddp()
         if (
             wandb_logger is not None
             and hasattr(wandb_logger, "is_enabled")

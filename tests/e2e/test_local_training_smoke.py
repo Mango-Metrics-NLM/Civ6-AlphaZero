@@ -109,15 +109,19 @@ class TestLocalTrainingSmoke:
         from alpha_zero.core.civ6_network import Civ6Network, NetworkConfig
         from alpha_zero.envs.microciv import MicroCivEnv
 
+        env = MicroCivEnv(board_size=smoke_config["spatial_size"])
+        env.reset()
+
+        # Use the env's real action space to avoid shape mismatches
+        actual_action_size = env.action_space.n
+
         net_cfg = NetworkConfig(
             spatial_size=smoke_config["spatial_size"],
-            action_space_size=smoke_config["action_space_size"],
+            action_space_size=actual_action_size,
             num_res_blocks=smoke_config["num_res_blocks"],
             num_filters=smoke_config["num_filters"],
         )
         net = Civ6Network(config=net_cfg)
-        env = MicroCivEnv(board_size=smoke_config["spatial_size"])
-        env.reset()
 
         mcts_cfg = MCTSConfig(num_simulations=smoke_config["mcts_simulations"])
         mcts = Civ6MCTS(network=net, config=mcts_cfg)
@@ -126,8 +130,10 @@ class TestLocalTrainingSmoke:
             result = mcts.search(env)
             assert result is not None
             logger.info("MCTS search completed")
-        except Exception as exc:
-            logger.warning("MCTS search raised %s: %s", type(exc).__name__, exc)
+        except (ImportError, ModuleNotFoundError) as exc:
+            pytest.skip(f"Optional dependency missing: {exc}")
+        except NotImplementedError as exc:
+            pytest.skip(f"Feature not yet implemented: {exc}")
 
     def test_model_save_load_roundtrip(
         self,
