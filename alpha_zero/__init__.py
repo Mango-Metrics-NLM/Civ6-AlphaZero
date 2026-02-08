@@ -23,7 +23,7 @@ Usage:
     from alpha_zero import Civ6MCTS, ActionSpace, MicroCivEnv
 """
 
-__version__ = "0.1.0"
+__version__ = "0.8.0"
 
 # Core components
 from alpha_zero.core import (
