@@ -437,7 +437,7 @@ class TestTunedEnvironmentWrapper:
         config = EnvironmentTuningConfig()
         wrapper = TunedEnvironmentWrapper(base_env, config)
 
-        obs, _info = wrapper.reset()
+        obs, info = wrapper.reset()
 
         assert "spatial" in obs
         assert "vector" in obs

@@ -521,8 +521,16 @@ class TestDistributedReplayBuffer:
             success = buffer.submit_trajectory(game_trajectory, timeout=1.0)
             assert success is True
 
-            # Process it
-            processed = buffer.process_pending_trajectories(max_count=10)
+            # mp.Queue uses a background feeder thread — give it time to flush
+            # the data to the underlying pipe before calling get_nowait().
+            import time
+
+            processed = 0
+            for _ in range(20):
+                processed = buffer.process_pending_trajectories(max_count=10)
+                if processed > 0:
+                    break
+                time.sleep(0.05)
             assert processed == 1
 
             # Check buffer state

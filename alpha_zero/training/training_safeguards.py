@@ -58,7 +58,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from alpha_zero.training.convergence_monitor import ConvergenceMonitor, ConvergenceStatus
 from alpha_zero.utils.memory_guard import MemoryGuard, MemoryStatus

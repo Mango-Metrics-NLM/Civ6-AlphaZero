@@ -325,7 +325,7 @@ class TournamentAnalyzer:
 
             if top_hyperparams:
                 # Calculate mean and std for each hyperparameter
-                all_keys = set()
+                all_keys: set[str] = set()
                 for hparams in top_hyperparams.values():
                     all_keys.update(hparams.keys())
 
@@ -539,7 +539,7 @@ class TournamentAnalyzer:
 
     def _export_json(self, path: Path) -> None:
         """Export report as JSON."""
-        report = {
+        report: dict[str, Any] = {
             "tournament_statistics": {},
             "top_players": [],
             "upset_frequency": 0.0,

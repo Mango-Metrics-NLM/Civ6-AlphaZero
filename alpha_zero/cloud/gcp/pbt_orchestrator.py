@@ -762,7 +762,7 @@ def _local_arena_runner(
         import torch
 
         from alpha_zero.cloud.gcp.evaluation_worker import run_arena
-        from alpha_zero.utils.config import NetworkConfig
+        from alpha_zero.orchestrator.config import NetworkConfig
         from alpha_zero.utils.factories import create_network
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
