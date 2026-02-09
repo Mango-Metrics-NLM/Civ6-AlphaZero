@@ -20,10 +20,10 @@ try:
 
     TORCH_AVAILABLE = True
 except ImportError:
-    torch = None  # type: ignore[assignment]
+    torch = None
     TORCH_AVAILABLE = False
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 logger = logging.getLogger(__name__)
 
@@ -291,7 +291,7 @@ class MuZeroTrainingBridge:
         # Apply overrides
         config_dict.update(overrides)
 
-        return MuZeroTrainingConfig(**config_dict)
+        return MuZeroTrainingConfig(**config_dict)  # type: ignore[arg-type]
 
     def selfplay_step(
         self,
@@ -411,4 +411,4 @@ class MuZeroTrainingBridge:
             f"total_loss={metrics.get('total_loss', 0.0):.4f}"
         )
 
-        return metrics
+        return metrics  # type: ignore[no-any-return]

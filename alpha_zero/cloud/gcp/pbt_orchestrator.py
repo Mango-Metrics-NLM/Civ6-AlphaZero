@@ -329,7 +329,7 @@ class PBTOrchestrator:
             return True
 
         try:
-            from google.cloud import aiplatform  # type: ignore[import-untyped]
+            from google.cloud import aiplatform
 
             quota_limit = int(quota_limit_str)
 
@@ -759,7 +759,7 @@ def _local_arena_runner(
     torch/networks are not importable.
     """
     try:
-        import torch  # type: ignore[import-untyped]
+        import torch
 
         from alpha_zero.cloud.gcp.evaluation_worker import run_arena
         from alpha_zero.utils.config import NetworkConfig

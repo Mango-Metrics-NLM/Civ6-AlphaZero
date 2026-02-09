@@ -777,7 +777,7 @@ class TrainingOrchestrator:
                 network=self._network,
                 env=env,
                 mcts=mcts,
-                max_moves=self.config.training.max_moves,
+                max_moves=self.config.environment.max_turns,
             )
 
             # Convert MuZero trajectory to GameResult
