@@ -382,7 +382,7 @@ def evaluate_against_random(
     rng = np.random.default_rng()
 
     for game_idx in range(num_games):
-        obs, _ = env.reset()
+        _obs, _info = env.reset()
         network_player = game_idx % 2  # Alternate who goes first
 
         while True:

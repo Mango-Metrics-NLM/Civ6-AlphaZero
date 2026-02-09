@@ -660,7 +660,7 @@ def create_mutation_operator(
     strategy: str = "gaussian",
     strength: float = 0.2,
     rng: np.random.Generator | None = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> MutationOperator:
     """Factory function to create a mutation operator.
 

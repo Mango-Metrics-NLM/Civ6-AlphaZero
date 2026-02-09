@@ -19,7 +19,7 @@ def main() -> int:
     mode = args.mode
 
     # Replace sys.argv for the target module's argparse
-    sys.argv = [sys.argv[0]] + remaining_args
+    sys.argv = [sys.argv[0], *remaining_args]
 
     if mode == "selfplay":
         from alpha_zero.cloud.gcp.selfplay_worker import main as worker_main

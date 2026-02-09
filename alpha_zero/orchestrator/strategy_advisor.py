@@ -48,7 +48,7 @@ class AnalysisResult:
     confidence: float = 0.0
     timestamp: str = ""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not self.timestamp:
             self.timestamp = datetime.now(UTC).isoformat()
 

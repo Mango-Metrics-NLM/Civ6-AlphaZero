@@ -286,7 +286,7 @@ class StorageReplayBuffer(IterableDataset):
 
         # Random sampling with replacement until we have enough
         while len(all_examples) < batch_size:
-            meta = random.choice(metadata_list)
+            meta = random.choice(metadata_list)  # noqa: S311
             try:
                 trajectory = self.storage.load_trajectory(
                     iteration=meta.iteration,

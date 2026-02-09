@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -198,7 +198,7 @@ class GreedyHeuristicAgent(BaseAgent):
     def _score_single_action(
         self,
         action: int,
-        action_space,
+        action_space: Any,
         own_units: list,
         own_cities: list,
         enemy_targets: list[tuple[int, int]],
@@ -327,7 +327,7 @@ class MCTSAgentWrapper(BaseAgent):
 
     def __init__(
         self,
-        mcts,
+        mcts: Any,
         temperature: float = 0.0,
     ) -> None:
         """Initialize MCTS agent wrapper.

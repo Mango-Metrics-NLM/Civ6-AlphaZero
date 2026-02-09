@@ -372,7 +372,7 @@ class ReflectionGenerator:
 
     def _compute_cache_key(self, trajectory: GameTrajectory) -> str:
         """Compute cache key for trajectory."""
-        hasher = hashlib.md5()
+        hasher = hashlib.md5(usedforsecurity=False)
         hasher.update(str(trajectory.game_id).encode())
         hasher.update(str(trajectory.game_length).encode())
         hasher.update(str(trajectory.winner).encode())

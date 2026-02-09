@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import torch
 import torch.nn as nn
@@ -496,7 +496,7 @@ class MuZeroNetwork(nn.Module):
     - Value prefix prediction for credit assignment
     """
 
-    def __init__(self, config: MuZeroConfig | None = None, **kwargs) -> None:
+    def __init__(self, config: MuZeroConfig | None = None, **kwargs: Any) -> None:
         """Initialize MuZero network.
 
         Args:

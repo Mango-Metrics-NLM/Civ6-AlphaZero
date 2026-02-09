@@ -435,7 +435,7 @@ class ReflectionMemory:
             state_hash = self._compute_state_hash(failure_state)
         else:
             embedding = self._encoder.encode_trajectory(trajectory)
-            state_hash = hashlib.md5(critique.encode()).hexdigest()
+            state_hash = hashlib.md5(critique.encode(), usedforsecurity=False).hexdigest()
 
         # Check for duplicate
         if state_hash in self._entry_cache:
@@ -487,7 +487,7 @@ class ReflectionMemory:
 
     def _compute_state_hash(self, state: dict[str, np.ndarray]) -> str:
         """Compute hash of game state for deduplication."""
-        hasher = hashlib.md5()
+        hasher = hashlib.md5(usedforsecurity=False)
 
         if "vector" in state:
             hasher.update(state["vector"].tobytes())

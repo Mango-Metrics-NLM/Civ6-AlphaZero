@@ -129,7 +129,12 @@ class FileBridge:
         await self.start()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object | None,
+    ) -> None:
         """Async context manager exit."""
         await self.stop()
 
@@ -587,7 +592,7 @@ class FileBridge:
                         try:
                             errors.append(ErrorMessage.from_json(line))
                         except Exception:
-                            pass
+                            logger.debug("Failed to parse error line", exc_info=True)
                 return errors
 
         except Exception as e:

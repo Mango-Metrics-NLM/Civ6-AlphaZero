@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -328,7 +328,7 @@ class EvaluationPipeline:
                         value = self._get_value_prediction(agent.mcts, env, obs)
                         value_predictions.append((value, 0.0))  # outcome filled later
                     except Exception:
-                        pass
+                        logger.debug("Failed to get value prediction", exc_info=True)
             else:
                 action = opponent.select_action(env, obs)
 
@@ -370,7 +370,7 @@ class EvaluationPipeline:
 
     def _get_value_prediction(
         self,
-        mcts,
+        mcts: Any,
         env: MicroCivEnv,
         obs: dict[str, np.ndarray],
     ) -> float:
@@ -456,7 +456,7 @@ class EvaluationPipeline:
 
 
 def run_baseline_evaluation(
-    mcts,
+    mcts: Any,
     n_games_random: int = 100,
     n_games_heuristic: int = 50,
     board_size: int = 16,

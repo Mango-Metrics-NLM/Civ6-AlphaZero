@@ -26,6 +26,7 @@ import ast
 import logging
 import os
 import re
+from collections.abc import Generator
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -672,7 +673,7 @@ class DebugHelper:
         return f"{func_name}({all_args})"
 
     @staticmethod
-    def measure_time(description: str):
+    def measure_time(description: str) -> Generator[Any, None, None]:
         """Context manager for timing code blocks.
 
         Args:

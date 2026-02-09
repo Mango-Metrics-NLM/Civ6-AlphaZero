@@ -281,7 +281,7 @@ cloud:
             gcs=GCSConfig(bucket_name="my-bucket"),
             training=TrainingConfig(batch_size=256, learning_rate=0.001),
         )
-        issues = config.validate()
+        issues = config.validate(raise_on_error=False)
         assert len(issues) == 0
         assert config.is_valid()
 
@@ -290,14 +290,14 @@ cloud:
         config = CloudConfig(
             gcs=GCSConfig(bucket_name="my-bucket"),
         )
-        issues = config.validate()
+        issues = config.validate(raise_on_error=False)
         assert any("project_id" in issue for issue in issues)
         assert not config.is_valid()
 
     def test_validate_missing_bucket(self) -> None:
         """Test validation catches missing bucket."""
         config = CloudConfig(project_id="my-project")
-        issues = config.validate()
+        issues = config.validate(raise_on_error=False)
         assert any("bucket_name" in issue for issue in issues)
 
     def test_validate_invalid_batch_size(self) -> None:
@@ -307,7 +307,7 @@ cloud:
             gcs=GCSConfig(bucket_name="my-bucket"),
             training=TrainingConfig(batch_size=0),
         )
-        issues = config.validate()
+        issues = config.validate(raise_on_error=False)
         assert any("batch_size" in issue for issue in issues)
 
     def test_to_dict(self) -> None:

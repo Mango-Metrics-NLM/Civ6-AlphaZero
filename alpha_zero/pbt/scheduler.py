@@ -220,7 +220,7 @@ class SteadyStateSelection(SelectionStrategy):
         return sorted_agents[:num_to_select]
 
 
-def create_selection_strategy(method: SelectionMethod, **kwargs) -> SelectionStrategy:
+def create_selection_strategy(method: SelectionMethod, **kwargs: Any) -> SelectionStrategy:
     """Factory function to create a selection strategy.
 
     Args:

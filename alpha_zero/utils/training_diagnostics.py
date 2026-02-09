@@ -588,7 +588,7 @@ class TrainingDiagnostics:
 def create_diagnostics(
     num_actions: int,
     window_size: int = 100,
-    **kwargs,
+    **kwargs: Any,
 ) -> TrainingDiagnostics:
     """Factory function to create training diagnostics.
 

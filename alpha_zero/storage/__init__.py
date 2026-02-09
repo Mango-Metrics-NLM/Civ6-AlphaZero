@@ -32,6 +32,8 @@ Usage:
     storage.save_trajectory(trajectory, worker_id=0, game_id=42)
 """
 
+from typing import Any
+
 from alpha_zero.storage.backend import StorageBackend
 from alpha_zero.storage.config import GCSConfig, StorageConfig
 from alpha_zero.storage.factory import create_storage_backend, get_storage_backend_from_env
@@ -70,7 +72,7 @@ __all__ = [
 ]
 
 # Lazy imports for optional GCS backend
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     """Lazy import for optional dependencies."""
     if name == "GCSStorageBackend":
         from alpha_zero.storage.gcs_backend import GCSStorageBackend

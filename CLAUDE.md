@@ -980,6 +980,53 @@ python -m infra.vertex_launcher \
 
 ---
 
-*Last updated: 2026-02-01*
+## SECTION 14: KNOWLEDGE BASE PROTOCOL
+
+This project uses a structured knowledge base in `kb/` for session continuity
+across a three-role workflow pipeline: Planning → DEV-SQE → Pre-PR.
+
+### 14.1 Directory Structure
+- `kb/summaries/` — Rolling summaries per workflow role
+- `kb/sessions/` — Session state with resume pointers (one mutable file per role)
+- `kb/ledger/` — Append-only JSONL event log (shared across all roles)
+- `kb/handoffs/` — Immutable cross-role handoff documents
+
+### 14.2 Workflow Roles
+
+| Role | Purpose | Upstream | Downstream |
+|------|---------|----------|------------|
+| **Planning** | Task breakdown, arch decisions, acceptance criteria | — | DEV-SQE |
+| **DEV-SQE** | Implementation, testing, quality engineering | Planning | Pre-PR |
+| **Pre-PR** | Validation, PR preparation, documentation | DEV-SQE | (PR ready) |
+
+### 14.3 Handoff Flow
+- Planning → DEV-SQE: `PLANNING-HANDOFF` event + handoff doc
+- DEV-SQE → Pre-PR: `DEV-SQE-HANDOFF` event + handoff doc
+- DEV-SQE → Planning: `DESIGN-GAP` event (feedback loop)
+- Pre-PR → DEV-SQE: `QA-GAP` event (feedback loop)
+- Pre-PR → Planning: `SCOPE-CHANGE` event (feedback loop)
+
+### 14.4 Handoff Skills
+- Planning: `.claude/skills/planning-handoff/SKILL.md`
+- DEV-SQE: `.claude/skills/dev-sqe-handoff/SKILL.md`
+- Pre-PR: `.claude/skills/pre-pr-handoff/SKILL.md`
+
+### 14.5 Rules
+1. NEVER overwrite or truncate `kb/ledger/ledger.jsonl` — only append
+2. Handoff files in `kb/handoffs/` are immutable once created
+3. Session state files (`kb/sessions/*.state.json`) are the ONLY mutable state per role
+4. Summary files are append-at-top with a cap of 20 entries
+5. All JSONL entries must be valid JSON — validate after writing
+6. In Agent Teams, designate ONE teammate (the team lead) as the sole writer
+   to `kb/ledger/ledger.jsonl` to avoid race conditions
+7. When spawning Agent Teams, each teammate should read relevant KB summaries
+   before starting work
+8. Every session that does meaningful work MUST run its role's handoff skill
+   before stopping
+9. Cross-role handoffs create BOTH a ledger event AND a handoff doc
+
+---
+
+*Last updated: 2026-02-08*
 *Phase: 5 - Google Vertex AI Cloud Deployment*
 *Current Focus: Budget-tier cloud deployment with GCS storage and Spot VMs*

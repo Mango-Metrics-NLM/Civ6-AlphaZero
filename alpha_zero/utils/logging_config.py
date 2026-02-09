@@ -24,7 +24,7 @@ import sys
 from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 # Default configuration from environment
 DEFAULT_LOG_LEVEL = os.environ.get("CIV6AZ_LOG_LEVEL", "INFO").upper()
@@ -95,7 +95,7 @@ class StructuredFormatter(logging.Formatter):
 class ColoredFormatter(logging.Formatter):
     """Colored console formatter for better readability."""
 
-    COLORS = {
+    COLORS: ClassVar[dict[str, str]] = {
         "DEBUG": "\033[36m",  # Cyan
         "INFO": "\033[32m",  # Green
         "WARNING": "\033[33m",  # Yellow

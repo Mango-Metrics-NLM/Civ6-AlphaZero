@@ -60,7 +60,7 @@ class TrainingInsight:
     metrics: dict[str, float] = field(default_factory=dict)
     timestamp: str = ""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not self.timestamp:
             self.timestamp = datetime.now(UTC).isoformat()
 
@@ -425,7 +425,12 @@ class RAGIntegration:
         self.initialize()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object | None,
+    ) -> None:
         """Context manager exit."""
         self.close()
 

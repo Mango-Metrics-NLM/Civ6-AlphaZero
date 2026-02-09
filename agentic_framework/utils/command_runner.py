@@ -268,7 +268,7 @@ class CommandRunner:
         try:
             if mode == OutputMode.STREAM:
                 # Stream output directly to console
-                process = subprocess.Popen(
+                process = subprocess.Popen(  # noqa: S603
                     command,
                     shell=self.shell,
                     cwd=str(cwd),
@@ -286,7 +286,7 @@ class CommandRunner:
 
             else:
                 # Capture output
-                process = subprocess.Popen(
+                process = subprocess.Popen(  # noqa: S603
                     command,
                     shell=self.shell,
                     cwd=str(cwd),

@@ -19,7 +19,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -406,7 +406,7 @@ class GameAdapter:
         >>> obs = adapter.reset()
     """
 
-    BACKENDS = {
+    BACKENDS: ClassVar[dict[str, type[BaseGameInterface]]] = {
         "dummy": DummyGameInterface,
         # "microciv": MicroCivInterface,  # To be implemented
         # "unciv": UncivInterface,  # Existing implementation
@@ -416,7 +416,7 @@ class GameAdapter:
         self,
         backend: str = "dummy",
         config: GameConfig | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize game adapter.
 

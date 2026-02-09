@@ -626,7 +626,7 @@ class UnitData:
         # Parse required and optional fields with validation
         unit_id = _validate_int(data.get("id"), "id", context="UnitData", default=0)
         unit_type = _validate_string(
-            data.get("type", data.get("type_name")),
+            data.get("unit_type", data.get("type", data.get("type_name"))),
             "unit_type",
             context="UnitData",
             default="UNIT_WARRIOR",
@@ -947,7 +947,7 @@ class LegalAction:
             city_id = _validate_int(city_id, "city_id", context="LegalAction")
 
         action_type = _validate_string(
-            data.get("action", data.get("type")),
+            data.get("action_type", data.get("action", data.get("type"))),
             "action_type",
             context="LegalAction",
             default="end_turn",

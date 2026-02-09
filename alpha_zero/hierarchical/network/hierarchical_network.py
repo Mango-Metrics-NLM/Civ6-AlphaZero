@@ -20,14 +20,14 @@ from typing import Any
 try:
     import torch
     import torch.nn as nn
-    import torch.nn.functional as F
+    import torch.nn.functional as F  # noqa: N812
 
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
 
     # Create dummy classes for type hints
-    class nn:
+    class nn:  # noqa: N801
         class Module:
             pass
 

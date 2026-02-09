@@ -575,7 +575,7 @@ def learner_process(
     )
 
     # Handle signals
-    def signal_handler(signum, frame) -> None:
+    def signal_handler(signum: int, frame: object | None) -> None:
         logger.info(f"Learner: Received signal {signum}")
         storage.request_stop()
 

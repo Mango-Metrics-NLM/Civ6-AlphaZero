@@ -8,10 +8,12 @@ CivRealm components are lazily imported to avoid import errors when the CivRealm
 server is not running.
 """
 
+from typing import Any
+
 from alpha_zero.envs.microciv import MicroCivEnv
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     """Lazy import CivRealm components to avoid import errors."""
     civrealm_exports = {
         "CivRealmConfig",

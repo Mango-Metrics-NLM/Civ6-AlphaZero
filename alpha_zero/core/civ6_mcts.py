@@ -2170,7 +2170,7 @@ class MuZeroMCTS:
 
     def search_from_env(
         self,
-        env,
+        env: Any,
         add_noise: bool = True,
     ) -> tuple[np.ndarray, float]:
         """Convenience method to search from an environment.

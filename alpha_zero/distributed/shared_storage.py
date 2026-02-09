@@ -70,7 +70,7 @@ class TrainingExample:
         """
         if compressed:
             data = lzma.decompress(data)
-        d = pickle.loads(data)
+        d = pickle.loads(data)  # noqa: S301
         return cls(
             spatial=d["spatial"],
             vector=d["vector"],
@@ -114,7 +114,7 @@ class GameTrajectory:
         """Deserialize from bytes."""
         if compressed:
             data = lzma.decompress(data)
-        d = pickle.loads(data)
+        d = pickle.loads(data)  # noqa: S301
         return cls(
             examples=[TrainingExample.from_bytes(ex) for ex in d["examples"]],
             game_id=d["game_id"],

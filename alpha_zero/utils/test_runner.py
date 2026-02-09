@@ -273,7 +273,7 @@ class PytestRunner:
         start_time = time.time()
 
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: S603
                 args,
                 cwd=str(self.config.project_root),
                 capture_output=True,

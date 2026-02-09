@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 
 @dataclass
@@ -51,7 +51,7 @@ class QueryEnhancer:
     """
 
     # Common stop words to filter
-    STOP_WORDS = {
+    STOP_WORDS: ClassVar[set[str]] = {
         "a",
         "an",
         "the",
@@ -177,7 +177,7 @@ class QueryEnhancer:
     }
 
     # Domain-specific synonyms (can be expanded)
-    SYNONYMS = {
+    SYNONYMS: ClassVar[dict[str, list[str]]] = {
         "win": ["victory", "succeed", "triumph"],
         "lose": ["defeat", "fail", "lost"],
         "strategy": ["tactic", "approach", "plan"],

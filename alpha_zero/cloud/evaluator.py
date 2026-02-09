@@ -174,7 +174,7 @@ class CloudEvaluator:
 
         return True
 
-    def _create_mcts(self):
+    def _create_mcts(self) -> Any:
         """Create MCTS instance for evaluation."""
         from alpha_zero.core.civ6_mcts import SimpleMCTS
 
@@ -185,7 +185,7 @@ class CloudEvaluator:
             dirichlet_epsilon=0.0,
         )
 
-    def _create_environment(self):
+    def _create_environment(self) -> Any:
         """Create game environment."""
         from alpha_zero.envs.microciv import MicroCivEnv
 

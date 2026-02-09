@@ -145,7 +145,7 @@ class TestCloudConfigFromYaml:
 
     def test_from_yaml_file_not_found(self) -> None:
         """Test error when YAML file doesn't exist."""
-        with pytest.raises(CloudConfigError, match="not found"):
+        with pytest.raises(FileNotFoundError, match="not found"):
             CloudConfig.from_yaml("/nonexistent/path.yaml")
 
     def test_from_yaml_invalid_yaml(self) -> None:
@@ -165,6 +165,7 @@ class TestCloudConfigValidation:
         """Test successful validation."""
         config = CloudConfig(
             project_id="valid-project",
+            bucket_name="test-bucket",
             accelerator_count=4,
             replica_count=2,
             use_spot=True,
@@ -183,7 +184,7 @@ class TestCloudConfigValidation:
 
     def test_validate_optional_project(self) -> None:
         """Test validation passes when project_id is optional."""
-        config = CloudConfig()
+        config = CloudConfig(bucket_name="test-bucket")
 
         # Should not raise
         config.validate(require_project=False)
@@ -260,8 +261,10 @@ class TestCloudConfigHelpers:
 
         data = config.to_dict()
 
-        assert data["project_id"] == "test-project"
-        assert data["region"] == "us-west1"
-        assert data["bucket_name"] == "test-bucket"
-        assert "checkpoint_prefix" in data
-        assert "custom_labels" in data
+        assert "cloud" in data
+        assert "training" in data
+        assert data["cloud"]["project_id"] == "test-project"
+        assert data["cloud"]["region"] == "us-west1"
+        assert data["cloud"]["bucket_name"] == "test-bucket"
+        assert "checkpoint_prefix" in data["cloud"]
+        assert "custom_labels" in data["cloud"]

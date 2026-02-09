@@ -21,13 +21,13 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import time
-import os
 
 import torch
 import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.nn.parallel import DistributedDataParallel as DDP  # noqa: N817
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
 
@@ -53,7 +53,7 @@ def setup_logging() -> None:
 
 def setup_ddp() -> tuple[int, int, int]:
     """Initialize distributed training.
-    
+
     Returns:
         Tuple of (rank, local_rank, world_size).
     """
@@ -94,23 +94,23 @@ def report_tuning_metric(metric: dict[str, float], step: int) -> None:
 
     try:
         import json
-        
+
         # Format required by Vertex AI Vizier
         data = {
             "timestamp": time.time(),
             "step": step,
             **metric,
         }
-        
-        # Write generic metric to file (append or overwrite?) 
+
+        # Write generic metric to file (append or overwrite?)
         # Vizier expects one JSON per line or just one JSON?
         # Documentation says: "Write the metric to the file... Each line in the file is a JSON object"
-        
+
         with open(metric_file, "a") as f:
             f.write(json.dumps(data) + "\n")
-            
+
         logger.debug("Reported tuning metric: %s", data)
-        
+
     except Exception as e:
         logger.warning("Failed to report tuning metric: %s", e)
 
@@ -504,14 +504,14 @@ def main() -> int:
             device = torch.device(f"cuda:{local_rank}")
         else:
             device = torch.device("cpu")
-        
+
         if is_main_process:
             logger.info("Using device: %s (World size: %d)", device, world_size)
 
         # Load trajectories (only on main process or cached?)
         # For simplicity, all processes load data. In data-parallel, this is fine for small datasets.
         # For huge datasets, we'd want to shard reading.
-        # GCS storage might be slow if 8 GPUs hit it at once. 
+        # GCS storage might be slow if 8 GPUs hit it at once.
         # But for now assuming each node caches it independently or it's fast enough.
         trajectories = load_trajectories(
             config,
@@ -541,7 +541,7 @@ def main() -> int:
                 "This may indicate corrupted trajectory data."
             )
             return 1
-        
+
         # Distributed sampler
         sampler: DistributedSampler | None = (
             DistributedSampler(dataset) if world_size > 1 else None
@@ -555,7 +555,7 @@ def main() -> int:
             num_workers=0,
             pin_memory=device.type == "cuda",
         )
-        
+
         if is_main_process:
             logger.info("Dataset size: %d examples, %d batches", len(dataset), len(dataloader))
 
@@ -567,7 +567,7 @@ def main() -> int:
             num_filters=args.num_filters,
         )
         model = model.to(device)
-        
+
         # Wrap DDP
         if world_size > 1:
             model = DDP(model, device_ids=[local_rank])
@@ -610,7 +610,7 @@ def main() -> int:
         for epoch in range(start_epoch, args.epochs):
             if sampler is not None:
                 sampler.set_epoch(epoch)
-                
+
             epoch_start = time.time()
 
             # Spatial dims must match encoder output, NOT model embed_dim

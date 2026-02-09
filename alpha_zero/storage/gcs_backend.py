@@ -471,7 +471,7 @@ class GCSStorageBackend(StorageBackend):
         if self.config.compress_trajectories:
             trajectory = GameTrajectory.from_bytes(data, compressed=True)
         else:
-            trajectory = pickle.loads(data)
+            trajectory = pickle.loads(data)  # noqa: S301
 
         return trajectory
 
