@@ -315,7 +315,7 @@ class EspionageManager:
         """
         self.config = config or EspionageConfig()
         self._mission_configs = mission_configs or DEFAULT_MISSION_CONFIGS
-        self._rng = random.Random(random_seed)
+        self._rng = random.Random(random_seed)  # noqa: S311
 
         self._spies: dict[str, Spy] = {}
         self._missions: dict[str, Mission] = {}

@@ -264,7 +264,7 @@ class ClimateManager:
         """
         self.config = config or ClimateConfig()
         self._disaster_configs = disaster_configs or DEFAULT_DISASTER_CONFIGS
-        self._rng = random.Random(random_seed)
+        self._rng = random.Random(random_seed)  # noqa: S311
 
         self._total_co2: float = 0.0
         self._current_phase: ClimatePhase = ClimatePhase.NORMAL

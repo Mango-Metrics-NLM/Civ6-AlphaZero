@@ -299,3 +299,109 @@ class TestConfigIntegration:
         d = config.to_dict()
         assert d["evaluation_strategy"] == "top_k_vs_best"
         assert "elo_k_factor" in d
+
+
+# ---------------------------------------------------------------------------
+# Baseline benchmarking tests
+# ---------------------------------------------------------------------------
+
+
+class TestBaselineBenchmarking:
+    """Tests for PBTEvaluator baseline benchmark features."""
+
+    def test_baseline_results_field_default(self) -> None:
+        report = EvaluationReport(generation=1)
+        assert report.baseline_results == []
+
+    def test_baseline_results_field_populated(self) -> None:
+        result = MatchResult("a1", "baseline_random", 0.8, 0.1, 0.1, 10)
+        report = EvaluationReport(generation=1, baseline_results=[result])
+        assert len(report.baseline_results) == 1
+
+    def test_run_baseline_benchmarks_at_interval(self) -> None:
+        baselines = [AgentState(agent_id="baseline_random")]
+        config = PBTConfig(population_size=4, baseline_interval=5)
+        runner = _make_arena_runner(win_rate=0.7, draw_rate=0.1, loss_rate=0.2)
+        evaluator = PBTEvaluator(
+            config,
+            arena_runner=runner,
+            baseline_agents=baselines,
+            baseline_interval=5,
+        )
+
+        agents = [AgentState(agent_id=f"a{i}") for i in range(4)]
+
+        # gen=1: should NOT run
+        results = evaluator.run_baseline_benchmarks(agents, generation=1)
+        assert results == []
+
+        # gen=5: SHOULD run (4 agents x 1 baseline = 4 matches)
+        results = evaluator.run_baseline_benchmarks(agents, generation=5)
+        assert len(results) == 4
+
+        # gen=10: SHOULD run
+        results = evaluator.run_baseline_benchmarks(agents, generation=10)
+        assert len(results) == 4
+
+    def test_run_baseline_benchmarks_no_baselines(self) -> None:
+        config = PBTConfig(population_size=4, baseline_interval=5)
+        runner = _make_arena_runner()
+        evaluator = PBTEvaluator(
+            config, arena_runner=runner, baseline_agents=[], baseline_interval=5,
+        )
+        agents = [AgentState(agent_id="a1")]
+        results = evaluator.run_baseline_benchmarks(agents, generation=5)
+        assert results == []
+
+    def test_run_baseline_benchmarks_interval_zero(self) -> None:
+        baselines = [AgentState(agent_id="baseline_random")]
+        config = PBTConfig(population_size=4, baseline_interval=0)
+        runner = _make_arena_runner()
+        evaluator = PBTEvaluator(
+            config, arena_runner=runner, baseline_agents=baselines, baseline_interval=0,
+        )
+        agents = [AgentState(agent_id="a1")]
+        results = evaluator.run_baseline_benchmarks(agents, generation=5)
+        assert results == []
+
+    def test_baseline_does_not_affect_elo(self) -> None:
+        baselines = [AgentState(agent_id="baseline_random", elo_rating=1200.0)]
+        config = PBTConfig(population_size=4, baseline_interval=1)
+        runner = _make_arena_runner(win_rate=1.0, draw_rate=0.0, loss_rate=0.0)
+        evaluator = PBTEvaluator(
+            config, arena_runner=runner, baseline_agents=baselines, baseline_interval=1,
+        )
+
+        agents = [
+            AgentState(agent_id="a1", elo_rating=1200.0),
+            AgentState(agent_id="a2", elo_rating=1200.0),
+        ]
+
+        evaluator.evaluate_population(agents, generation=1)
+
+        # Baseline ELO should not have been modified
+        assert baselines[0].elo_rating == 1200.0
+
+    def test_evaluate_population_includes_baseline_results(self) -> None:
+        baselines = [AgentState(agent_id="baseline_random")]
+        config = PBTConfig(
+            population_size=4, baseline_interval=1, evaluation_games_per_match=10,
+        )
+        runner = _make_arena_runner()
+        evaluator = PBTEvaluator(
+            config, arena_runner=runner, baseline_agents=baselines, baseline_interval=1,
+        )
+
+        agents = [
+            AgentState(agent_id="a1", elo_rating=1200.0),
+            AgentState(agent_id="a2", elo_rating=1200.0),
+            AgentState(agent_id="a3", elo_rating=1200.0),
+        ]
+
+        report = evaluator.evaluate_population(agents, generation=1)
+        assert len(report.baseline_results) == 3  # 3 agents x 1 baseline
+
+    def test_baseline_interval_from_config(self) -> None:
+        config = PBTConfig(population_size=4, baseline_interval=7)
+        evaluator = PBTEvaluator(config)
+        assert evaluator._baseline_interval == 7

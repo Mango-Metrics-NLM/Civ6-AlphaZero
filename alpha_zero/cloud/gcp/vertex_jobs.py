@@ -393,7 +393,7 @@ class VertexAIClient:
             job.cancel()
             logger.info("Cancelled job: %s", job_name)
         except Exception as e:
-            raise VertexJobError(f"Failed to cancel job {job_name}: {e}")
+            raise VertexJobError(f"Failed to cancel job {job_name}: {e}") from e
 
 class VertexTuningJob:
     """Manages hyperparameter tuning jobs on Vertex AI."""
@@ -473,7 +473,7 @@ class VertexTuningJob:
             parallel_trial_count=parallel_trials,
             staging_bucket=f"gs://{self.config.bucket}",
         )
-        
+
         return job_name
 
     def wait_for_completion(
@@ -758,7 +758,7 @@ class VertexTrainingJob:
             f"--epochs={training_config.epochs_per_iteration}",
             f"--checkpoint_interval={training_config.checkpoint_interval}",
         ]
-        
+
         if resume_from_checkpoint:
             worker_args.append(f"--resume_from={resume_from_checkpoint}")
 

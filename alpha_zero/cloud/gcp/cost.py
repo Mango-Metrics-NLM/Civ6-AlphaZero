@@ -1,7 +1,6 @@
 """GCP cost estimation utilities for Vertex AI jobs."""
 
 import logging
-from typing import Optional
 
 from alpha_zero.cloud.gcp.config import GCPConfig, get_gpu_costs
 
@@ -14,7 +13,7 @@ _DEFAULT_SPOT_DISCOUNT = 0.3
 class CostEstimator:
     """Estimates GCP costs for Vertex AI jobs."""
 
-    def __init__(self, config: Optional[GCPConfig] = None):
+    def __init__(self, config: GCPConfig | None = None) -> None:
         """Initialize with optional config; falls back to env-based defaults."""
         self.config = config or GCPConfig.from_env(validate=False)
         self.gpu_costs = get_gpu_costs()

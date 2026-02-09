@@ -98,7 +98,7 @@ def load_model(
         return model
 
     storage = GCSModelStorage(config)
-    state_dict, metadata, _ = storage.load_model(version)
+    state_dict, _metadata, _ = storage.load_model(version)
     model.load_state_dict(state_dict)
     model.eval()
 
@@ -139,21 +139,21 @@ def run_arena(
 
         env = MicroCivEnv(board_size=board_size, max_turns=max_turns)
         mcts_new = create_mcts(
-            mcts_type=mcts_type,
+            variant=mcts_type,
             network=model_new,
             device=str(device),
             num_simulations=mcts_sims,
             num_sampled_actions=gumbel_num_actions,
         )
         mcts_old = create_mcts(
-            mcts_type=mcts_type,
+            variant=mcts_type,
             network=model_old,
             device=str(device),
             num_simulations=mcts_sims,
             num_sampled_actions=gumbel_num_actions,
         )
 
-        obs, _ = env.reset()
+        _obs, _info = env.reset()
         done = False
         move_count = 0
 
@@ -167,7 +167,7 @@ def run_arena(
             action_probs, _ = mcts.search(env, add_noise=False)
             action = mcts.select_action(action_probs, temperature=0.0)
 
-            obs, reward, terminated, truncated, _ = env.step(action)
+            _obs, _reward, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
             move_count += 1
 

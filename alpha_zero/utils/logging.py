@@ -39,7 +39,7 @@ from datetime import datetime
 from enum import Enum
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, ClassVar, TypeVar
 
 import numpy as np
 
@@ -174,7 +174,7 @@ class ColoredFormatter(logging.Formatter):
     """Colored console formatter for better readability."""
 
     # ANSI color codes
-    COLORS = {
+    COLORS: ClassVar[dict[str, str]] = {
         "DEBUG": "\033[36m",  # Cyan
         "INFO": "\033[32m",  # Green
         "WARNING": "\033[33m",  # Yellow

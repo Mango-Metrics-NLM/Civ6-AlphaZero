@@ -124,7 +124,7 @@ class RetryConfig:
             self.base_delay * (self.exponential_base**attempt),
             self.max_delay,
         )
-        jitter = delay * self.jitter * random.uniform(-1, 1)
+        jitter = delay * self.jitter * random.uniform(-1, 1)  # noqa: S311
         return max(0, delay + jitter)
 
 

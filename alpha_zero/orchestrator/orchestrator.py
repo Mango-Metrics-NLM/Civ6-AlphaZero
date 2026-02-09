@@ -30,7 +30,7 @@ from typing import Any
 
 import numpy as np
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 
 from alpha_zero.orchestrator.checkpointer import CheckpointManager
 from alpha_zero.orchestrator.config import OrchestratorConfig
@@ -191,7 +191,7 @@ class PaddedEnvironmentWrapper:
         mask = self._env.get_valid_actions()
         return self._pad_actions(mask)
 
-    def reset(self, **kwargs) -> tuple[Any, dict]:
+    def reset(self, **kwargs: Any) -> tuple[Any, dict]:
         """Reset environment and return padded observation.
 
         Returns:
@@ -314,7 +314,7 @@ class TrainingOrchestrator:
             )
             logging.getLogger().addHandler(file_handler)
 
-    def _handle_shutdown(self, signum, frame) -> None:
+    def _handle_shutdown(self, signum: int, frame: object | None) -> None:
         """Handle shutdown signals gracefully."""
         logger.info("Shutdown signal received, finishing current iteration...")
         self._shutdown_requested = True

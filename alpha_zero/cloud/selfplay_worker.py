@@ -28,7 +28,7 @@ import sys
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import torch
@@ -215,7 +215,7 @@ class CloudSelfPlayWorker:
             logger.warning(f"Failed to check model staleness: {e}")
             return False
 
-    def _create_environment(self):
+    def _create_environment(self) -> Any:
         """Create game environment."""
         from alpha_zero.envs.microciv import MicroCivEnv
 
@@ -224,7 +224,7 @@ class CloudSelfPlayWorker:
             max_turns=self.config.max_moves,
         )
 
-    def _create_mcts(self):
+    def _create_mcts(self) -> Any:
         """Create MCTS instance."""
         from alpha_zero.core.civ6_mcts import SimpleMCTS
 

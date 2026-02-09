@@ -197,7 +197,7 @@ class GameTrajectory:
             return np.array([], dtype=np.float32)
         return np.stack([obs["vector"] for obs in self.observations])
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate trajectory after initialization."""
         if len(self.observations) > 0:
             self._validate()
@@ -1007,7 +1007,7 @@ class MuZeroTrainer:
         Returns:
             Dict with all loss components.
         """
-        K = self.config.unroll_steps
+        K = self.config.unroll_steps  # noqa: N806
         losses: dict[str, torch.Tensor] = {}
 
         # Accumulate losses

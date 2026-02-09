@@ -17,6 +17,7 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 5 | Cost Optimization & Monitoring | ✅ Complete |
 | Phase 6 | Agentic Framework for Claude Code | ✅ Complete |
 | Phase 7 | GCP Vertex AI Cloud Training Pipeline | ✅ Complete |
+| Phase 7+ | Production PBT Scaling & Validation | ✅ Complete |
 
 **Codebase Statistics:**
 
@@ -45,6 +46,10 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - **GumbelMCTS**: 5-50x faster MCTS variant via Gumbel sampling (no Dirichlet noise needed)
 - **MCTS Factory**: Pluggable MCTS instantiation (`create_mcts("civ6"|"gumbel"|"muzero", ...)`)
 - **Model Evaluation Arena**: Automated new-vs-old model comparison with win rate gating
+- **Population-Based Training**: Production PBT with W&B dashboards, ELO evaluation, 6 mutation strategies
+- **Baseline Benchmarking**: Absolute performance tracking against random/heuristic agents
+- **GCS Checkpoint Rotation**: Manifest-based checkpoint pruning with configurable retention
+- **GPU Quota Guard**: Automatic quota checking with exponential backoff polling
 
 ## Architecture (C4 Model)
 
@@ -310,7 +315,14 @@ graph TB
 
         subgraph "Scheduling"
             Scheduler["PBTScheduler<br/><i>Timing control</i>"]
-            Evaluator["FitnessEvaluator<br/><i>Game-based fitness</i>"]
+            Evaluator["PBTEvaluator<br/><i>ELO-based fitness</i>"]
+        end
+
+        subgraph "Production (Phase 7)"
+            Dashboard["W&B Dashboard<br/><i>pbt/* metrics</i>"]
+            Rotation["Checkpoint Rotation<br/><i>GCS manifest-based</i>"]
+            QuotaGuard["Quota Guard<br/><i>GPU availability</i>"]
+            Baseline["Baseline Benchmarks<br/><i>Absolute anchors</i>"]
         end
     end
 
@@ -329,11 +341,17 @@ graph TB
     Adaptive --> AgentState
 
     Evaluator --> Scheduler
-    Evaluator -->|"Update fitness"| AgentState
+    Evaluator -->|"Update ELO & fitness"| AgentState
+    Evaluator --> Baseline
+
+    Dashboard --> PopMgr
+    Rotation --> Scheduler
 
     style PopMgr fill:#1168bd,stroke:#0b4884,color:#ffffff
     style Scheduler fill:#438dd5,stroke:#2e6295,color:#ffffff
     style Adaptive fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style Dashboard fill:#85bbf0,stroke:#5d82a8,color:#000000
+    style QuotaGuard fill:#85bbf0,stroke:#5d82a8,color:#000000
 ```
 
 ### Level 3: Component Diagram - Hierarchical RL
@@ -844,10 +862,18 @@ Civ6-AlphaZero/
 │   │       ├── training_worker.py    # Training container worker
 │   │       ├── evaluation_worker.py  # Model arena container worker
 │   │       ├── entrypoint.py         # Container mode router
+│   │       ├── pbt_orchestrator.py    # Production PBT loop (Phase 7+)
 │   │       ├── cost_monitor.py       # Budget enforcement
 │   │       ├── cost_optimization.py  # Unified cost optimization
 │   │       ├── gpu_scheduler.py      # Dynamic GPU selection
 │   │       └── preemption_handler.py # Spot VM preemption recovery
+│   ├── pbt/                 # Population-Based Training
+│   │   ├── config.py        # PBTConfig (incl. Phase 7+ fields)
+│   │   ├── evaluator.py     # PBTEvaluator (ELO + baselines)
+│   │   ├── population.py    # PopulationManager
+│   │   ├── mutations.py     # 6 mutation strategies
+│   │   ├── scheduler.py     # PBTScheduler
+│   │   └── coordinator.py   # PBT coordination
 │   ├── integration/          # External integrations
 │   │   └── game_connector.py # AI-to-game bridge
 │   ├── rag/                  # RAG Integration (Phase 5)
@@ -877,6 +903,7 @@ Civ6-AlphaZero/
 │   ├── orchestrator.yaml     # Master configuration
 │   ├── orchestrator_fast.yaml
 │   ├── orchestrator_production.yaml
+│   ├── pbt_prod.yaml         # Production PBT config (Phase 7+)
 │   └── civ6_config.yaml      # Game-specific configuration
 ├── data/
 │   └── knowledge/            # RAG knowledge base
@@ -935,24 +962,26 @@ Civ6-AlphaZero/
 ### Completed
 
 - ✅ **GCP Vertex AI Pipeline** — Cloud training with GumbelMCTS, 3-phase pipeline (selfplay → training → evaluation)
-- 🚧 **Population-Based Training** — Adaptive hyperparameter optimization with configurable mutation strategies (evaluation uses placeholder fitness — cross-agent eval TODO)
+- ✅ **Population-Based Training** — Full PBT with cross-agent ELO evaluation, 6 mutation strategies, W&B dashboards
+- ✅ **Production PBT Scaling** — Checkpoint rotation, GPU quota guard, baseline benchmarking, dynamic strategy switch
 - ✅ **CI/CD & Test Infrastructure** — Release automation, 6-tier test coverage (unit, integration, e2e, security, sanity, cloud)
 
-### Planned Features
+### Next Steps
 
 | Priority | Feature | Description |
 |----------|---------|-------------|
-| P1 | Training Validation | Extended training to achieve >50% win rate |
-| P2 | Multi-GPU Training | DistributedDataParallel support for faster training |
-| P3 | Tournament System | ELO-based agent ranking and matchmaking |
+| P0 | Extended Training Run | Run 50+ generation PBT on Vertex AI to validate convergence |
+| P1 | Training Validation | Achieve >50% win rate vs random baseline |
+| P2 | MuZeroMCTS Integration | Learned dynamics model for model-based planning |
+| P3 | Tournament System | Multi-agent ELO-based ranking and matchmaking |
 | P4 | Human vs AI Interface | Web-based UI for human gameplay |
 | P5 | Full Civ 6 Integration | Direct game interface via modding API |
 
 ### Current Priorities
 
-1. **Scale cloud training** — Run multi-iteration training on Vertex AI to improve model beyond random play
-2. **Enable W&B dashboards** — Set `WANDB_ENABLED=true` for live training metrics
-3. **Multi-GPU training** — DistributedDataParallel support for faster self-play and training
+1. **Launch PBT training** — Run `configs/pbt_prod.yaml` on Vertex AI with population_size=8
+2. **Monitor W&B dashboards** — Track `pbt/elo_*` and `pbt/fitness_*` metrics for convergence
+3. **Baseline benchmarking** — Verify win rate improvements against random/heuristic agents at every 5th generation
 
 ## Contributing
 

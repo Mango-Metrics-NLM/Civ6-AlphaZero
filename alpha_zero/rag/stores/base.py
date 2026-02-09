@@ -87,7 +87,7 @@ class Document:
     embedding: np.ndarray | None = None
     metadata: DocumentMetadata = field(default_factory=DocumentMetadata)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate and convert embedding if needed."""
         if self.embedding is not None and not isinstance(self.embedding, np.ndarray):
             self.embedding = np.array(self.embedding, dtype=np.float32)
@@ -310,7 +310,12 @@ class VectorStore(ABC):
         await self.initialize()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object | None,
+    ) -> None:
         """Async context manager exit."""
         await self.close()
 

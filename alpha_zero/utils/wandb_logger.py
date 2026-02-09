@@ -577,6 +577,91 @@ class WandbLogger:
         except Exception as e:
             logger.warning(f"Failed to define baseline charts: {e}")
 
+    def log_population_stats(
+        self,
+        generation: int,
+        mean_fitness: float,
+        max_fitness: float,
+        min_fitness: float,
+        mean_elo: float,
+        max_elo: float,
+        min_elo: float,
+        population_size: int,
+        mutations_count: int = 0,
+        **kwargs: Any,
+    ) -> None:
+        """Log PBT population-level metrics.
+
+        All metrics are namespaced under ``pbt/`` for W&B dashboard grouping.
+
+        Args:
+            generation: Current PBT generation.
+            mean_fitness: Mean fitness across the population.
+            max_fitness: Max fitness.
+            min_fitness: Min fitness.
+            mean_elo: Mean ELO rating.
+            max_elo: Max ELO rating.
+            min_elo: Min ELO rating.
+            population_size: Number of agents.
+            mutations_count: Number of mutations this generation.
+            **kwargs: Additional metrics (auto-prefixed with ``pbt/``).
+        """
+        if not self.is_initialized:
+            return
+
+        data: dict[str, Any] = {
+            "pbt/generation": generation,
+            "pbt/fitness_mean": mean_fitness,
+            "pbt/fitness_max": max_fitness,
+            "pbt/fitness_min": min_fitness,
+            "pbt/elo_mean": mean_elo,
+            "pbt/elo_max": max_elo,
+            "pbt/elo_min": min_elo,
+            "pbt/population_size": population_size,
+            "pbt/mutations_count": mutations_count,
+        }
+
+        for key, value in kwargs.items():
+            if not key.startswith("pbt/"):
+                key = f"pbt/{key}"
+            data[key] = value
+
+        self.log(data, step=generation)
+
+    def define_pbt_charts(self) -> None:
+        """Define W&B metric axes for PBT population dashboards.
+
+        Registers ``pbt/generation`` as the step metric and sets up
+        summary types for ELO, fitness, and mutation metrics. Should be
+        called after ``init()``.
+        """
+        if not self.is_initialized:
+            return
+
+        try:
+            wandb.define_metric("pbt/generation")
+
+            for metric, summary in [
+                ("pbt/elo_max", "max"),
+                ("pbt/elo_mean", "last"),
+                ("pbt/elo_min", "min"),
+                ("pbt/fitness_max", "max"),
+                ("pbt/fitness_mean", "last"),
+                ("pbt/fitness_min", "min"),
+                ("pbt/population_size", "last"),
+                ("pbt/mutations_count", "sum"),
+            ]:
+                wandb.define_metric(
+                    metric,
+                    step_metric="pbt/generation",
+                    summary=summary,
+                )
+
+            logger.info("Defined PBT population WandB charts")
+
+        except Exception as e:
+            logger.warning(f"Failed to define PBT charts: {e}")
+
     def log_selfplay(
         self,
         games_completed: int,

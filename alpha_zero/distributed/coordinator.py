@@ -402,7 +402,7 @@ class TrainingCoordinator:
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful shutdown."""
 
-        def signal_handler(signum, frame) -> None:
+        def signal_handler(signum: int, frame: object | None) -> None:
             logger.info(f"Received signal {signum}, initiating shutdown...")
             self._shutdown_requested = True
             self.shared_storage.request_stop()
@@ -470,7 +470,7 @@ class TrainingCoordinator:
         rng = np.random.default_rng()
 
         for game_idx in range(num_games):
-            obs, _ = env.reset()
+            _obs, _info = env.reset()
             network_player = game_idx % 2
 
             while True:

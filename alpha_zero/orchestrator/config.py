@@ -578,7 +578,7 @@ class CurriculumConfig:
     metrics_window: int = 100
     stages: list[CurriculumStageConfig] = field(default_factory=list)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize default stages if none provided."""
         if not self.stages:
             self.stages = [

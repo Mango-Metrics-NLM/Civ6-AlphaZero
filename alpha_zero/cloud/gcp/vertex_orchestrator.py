@@ -458,7 +458,7 @@ def main() -> int:
         for i in range(args.iterations):
             iteration_start = time.time()
             iteration = args.start_iteration + i
-            
+
             logger.info("=" * 60)
             logger.info("Starting iteration %d (model v%d)", iteration, model_version)
             logger.info("=" * 60)
@@ -496,7 +496,7 @@ def main() -> int:
                 dry_run=args.dry_run,
             )
             sp_duration = (time.time() - sp_start) / 3600.0
-            
+
             # Estimate self-play cost
             sp_cost = cost_estimator.estimate_job_cost(
                 machine_type=config.self_play.machine_type,
@@ -529,7 +529,7 @@ def main() -> int:
                 dry_run=args.dry_run,
             )
             train_duration = (time.time() - train_start) / 3600.0
-            
+
             # Estimate training cost
             train_cost = cost_estimator.estimate_job_cost(
                 machine_type=config.training.machine_type,
@@ -575,7 +575,7 @@ def main() -> int:
                     dry_run=args.dry_run,
                 )
                 eval_duration = (time.time() - eval_start) / 3600.0
-                
+
                 # Estimate eval cost using the actual VertexEvaluationJob spec:
                 # CPU-only worker on n1-standard-4 with no accelerators.
                 eval_cost = cost_estimator.estimate_job_cost(
@@ -602,7 +602,7 @@ def main() -> int:
                         won=(win_rate >= args.evaluation_win_threshold),
                         metrics={"win_rate": win_rate},
                     )
-            
+
             iteration_duration = (time.time() - iteration_start) / 60.0 # minutes
             logger.info("Iteration %d complete in %.1f minutes. Model: v%d", iteration, iteration_duration, new_version)
 

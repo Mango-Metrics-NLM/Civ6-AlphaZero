@@ -30,6 +30,8 @@ Usage:
         logger.info("Game is connected")
 """
 
+from typing import Any
+
 from alpha_zero.bridge.config import (
     MAP_SIZES,
     BridgeConfig,
@@ -98,7 +100,7 @@ __all__ = [
 # (asyncio, torch, numpy) that are not needed for basic protocol definitions.
 # This pattern allows users who only need protocol types to import faster.
 # IDE auto-completion may not recognize these lazy-loaded attributes.
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     """Lazy import for FileBridge and converters.
 
     This function enables lazy loading of heavier modules to optimize import times.

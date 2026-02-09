@@ -14,8 +14,9 @@
 | Phase 5b | GCP/Vertex AI Cloud Infrastructure | ✅ Complete |
 | Phase 5c | Cost Optimization & Resource Management | ✅ Complete |
 | Phase 6 | Agentic Framework & Search Optimizations | ✅ Complete |
+| Phase 7 | Production PBT Scaling & Validation | ✅ Complete |
 
-**Codebase Statistics:** ~66,400 LOC total (51,800 core + 14,600 agentic), 350+ tests, >80% coverage
+**Codebase Statistics:** ~68,000 LOC total (53,400 core + 14,600 agentic), 2,250+ tests, >80% coverage
 
 ---
 
@@ -1494,6 +1495,96 @@ handler = PreemptionHandler(force_mock=True)
 
 ---
 
+## Level 3: Component Diagram - PBT Production Pipeline (Phase 7)
+
+Production-hardened Population-Based Training with W&B dashboards, GCS checkpoint rotation, GPU quota guarding, and baseline benchmarking.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    PBT PRODUCTION PIPELINE (Phase 7)                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                        PBT ORCHESTRATOR                              │   │
+│   │   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐             │   │
+│   │   │  Generation   │  │   Quota      │  │  Strategy    │             │   │
+│   │   │    Loop       │──│   Guard      │──│   Switch     │             │   │
+│   │   │              │  │  (GPU check) │  │(round_robin→ │             │   │
+│   │   │  selfplay    │  │  exp backoff │  │ top_k_vs_best│             │   │
+│   │   │  → train     │  └──────────────┘  │ at gen N)    │             │   │
+│   │   │  → evaluate  │                    └──────────────┘             │   │
+│   │   │  → evolve    │                                                  │   │
+│   │   │  → rotate    │  ┌──────────────┐  ┌──────────────┐             │   │
+│   │   │  → dashboard │  │  Checkpoint  │  │   W&B        │             │   │
+│   │   │              │──│  Rotation    │──│  Dashboard   │             │   │
+│   │   └──────────────┘  │  (manifest)  │  │  (pbt/*)     │             │   │
+│   │                      └──────────────┘  └──────────────┘             │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                     EVALUATION LAYER                                 │   │
+│   │                                                                      │   │
+│   │  ┌──────────────────┐    ┌──────────────────┐                       │   │
+│   │  │  PBTEvaluator    │    │  Baseline         │                       │   │
+│   │  ├──────────────────┤    │  Benchmarks       │                       │   │
+│   │  │ • Round-robin /  │    ├──────────────────┤                       │   │
+│   │  │   top_k_vs_best  │    │ • Random agent   │                       │   │
+│   │  │ • ELO ratings    │    │ • Heuristic agent│                       │   │
+│   │  │ • Fitness scores │    │ • Interval-based │                       │   │
+│   │  │ • Arena runner   │    │ • No ELO impact  │                       │   │
+│   │  └──────────────────┘    └──────────────────┘                       │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                     OBSERVABILITY                                    │   │
+│   │                                                                      │   │
+│   │  ┌──────────────────┐    ┌──────────────────┐                       │   │
+│   │  │  Population      │    │  Mutation         │                       │   │
+│   │  │  Stats           │    │  Events           │                       │   │
+│   │  ├──────────────────┤    ├──────────────────┤                       │   │
+│   │  │ pbt/elo_max      │    │ pbt/mutations_cnt│                       │   │
+│   │  │ pbt/elo_mean     │    │ W&B table:       │                       │   │
+│   │  │ pbt/elo_min      │    │  replaced_id     │                       │   │
+│   │  │ pbt/fitness_*    │    │  source_id       │                       │   │
+│   │  │ pbt/agent/*/elo  │    │  new_lr, new_c   │                       │   │
+│   │  └──────────────────┘    └──────────────────┘                       │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Phase 7 Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| PBTOrchestrator | `alpha_zero/cloud/gcp/pbt_orchestrator.py` | Production PBT loop with all Phase 7 features |
+| PBTEvaluator | `alpha_zero/pbt/evaluator.py` | Cross-agent ELO evaluation + baseline benchmarks |
+| PBTConfig | `alpha_zero/pbt/config.py` | Configuration with 4 new Phase 7 fields |
+| WandbLogger | `alpha_zero/utils/wandb_logger.py` | Population dashboards + PBT chart definitions |
+| PopulationManager | `alpha_zero/pbt/population.py` | Agent lifecycle, exploit & explore |
+| MutationOperator | `alpha_zero/pbt/mutations.py` | 6 mutation strategies (Gaussian, Adaptive, etc.) |
+| PBTScheduler | `alpha_zero/pbt/scheduler.py` | Generation timing control |
+| pbt_prod.yaml | `configs/pbt_prod.yaml` | Production config with GumbelMCTS-tuned ranges |
+
+### Phase 7 Data Flow
+
+```text
+Generation N:
+  1. _maybe_switch_strategy(N)     → evaluation_strategy updated if N >= switch_gen
+  2. _check_quota(N)               → GPU availability verified (optimistic fallback)
+  3. _wait_for_quota(N)            → Exponential backoff if over quota
+  4. _run_selfplay_phase(N)        → GumbelMCTS self-play on Vertex AI
+  5. _run_training_phase(N)        → Neural network training on Vertex AI
+  6. _run_evaluation_phase(N)      → Cross-agent ELO + baseline benchmarks
+  7. _run_evolution_phase(N)       → Exploit (truncation) + Explore (mutation)
+  8. _save_state(N)                → GCS state persistence
+  9. _rotate_checkpoints(N)        → Prune old generations from GCS
+ 10. _log_population_dashboard(N)  → W&B pbt/* metrics
+ 11. _log_mutation_events(N)       → W&B mutation table
+```
+
+---
+
 ## Roadmap
 
 ### Completed Phases
@@ -1506,22 +1597,20 @@ handler = PreemptionHandler(force_mock=True)
 6. **Phase 6**: Agentic Framework — Claude Code automation ✅
 7. **Phase 7**: GCP Vertex AI Pipeline — Cloud training with GumbelMCTS, 3-phase pipeline ✅
 8. **Phase 8**: CI/CD & Test Infrastructure — Release automation, 6-tier test coverage ✅
+9. **Phase 7+**: Production PBT Scaling — W&B dashboards, checkpoint rotation, quota guard, baselines ✅
 
-### Planned Features
+### Next Steps
 
 | Priority | Feature | Description |
 |----------|---------|-------------|
-| P1 | Training Validation | Achieve >50% win rate vs random |
-| ~~P2~~ | ~~Multi-GPU Training~~ | ~~DistributedDataParallel support~~ ✅ Complete |
-| P3 | Tournament System | ELO-based agent ranking |
-| P4 | Human vs AI Interface | Web-based gameplay UI |
-| P5 | Full Civ 6 Integration | Direct game modding API |
+| P0 | Extended Training Run | Run 50+ generation PBT on Vertex AI to validate convergence |
+| P1 | Training Validation | Achieve >50% win rate vs random baseline |
+| P2 | MuZeroMCTS Integration | Learned dynamics model for model-based planning |
+| P3 | Tournament System | Multi-agent ELO-based ranking and matchmaking |
+| P4 | Human vs AI Interface | Web-based UI for human gameplay |
+| P5 | Full Civ 6 Integration | Direct game interface via modding API |
 
 ---
 
-<<<<<<< HEAD
 *Last updated: 2026-02-08*
-=======
-*Last updated: 2026-02-02*
->>>>>>> origin/claude/civ6-alphazero-implementation-vMnun
-*Architecture version: 3.1*
+*Architecture version: 4.0*

@@ -599,7 +599,7 @@ class RealCiv6Env(gym.Env):
 
         return reward
 
-    def _run_async(self, coro):
+    def _run_async(self, coro: Any) -> Any:
         """Run async coroutine from sync context.
 
         Manages the event loop lifecycle safely, handling closed loops
@@ -692,7 +692,7 @@ class MockCiv6Env(RealCiv6Env):
     Uses MockFileBridge instead of real file I/O.
     """
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         """Initialize mock environment."""
         super().__init__(**kwargs)
 

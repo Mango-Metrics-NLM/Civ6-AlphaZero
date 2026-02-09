@@ -386,7 +386,7 @@ class PipelineCache:
                     current_generation = index_blob.generation
                 except Exception:
                     # Blob doesn't exist yet, that's OK
-                    pass
+                    logger.debug("Blob does not exist yet", exc_info=True)
 
                 data = {key: entry.to_dict() for key, entry in self._cache_index.items()}
 

@@ -409,7 +409,7 @@ class PlayerStats:
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     last_game_at: str | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize display name if not set."""
         if not self.display_name:
             self.display_name = self.player_id

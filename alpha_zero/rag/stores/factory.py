@@ -6,7 +6,7 @@ based on configuration, enabling runtime backend selection.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from alpha_zero.rag.config.settings import VectorStoreConfig, VectorStoreType
 from alpha_zero.rag.stores.base import VectorStore
@@ -27,7 +27,7 @@ class VectorStoreFactory:
         store = factory.create(config)
     """
 
-    _registry: dict[VectorStoreType, type[VectorStore]] = {}
+    _registry: ClassVar[dict[VectorStoreType, type[VectorStore]]] = {}
 
     @classmethod
     def register(

@@ -30,7 +30,6 @@ import logging
 import os
 import sys
 
-
 from alpha_zero.cloud.gcp.config import GCPConfig, VertexTier
 from alpha_zero.cloud.gcp.exceptions import ConfigurationError, VertexJobError
 from alpha_zero.cloud.gcp.storage import GCSBackend, GCSModelStorage
@@ -68,7 +67,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
         print("\nVerifying Storage Access...")
         storage = GCSBackend(gcp_config.project_id)
         try:
-            bucket_obj = storage.client.get_bucket(gcp_config.bucket)
+            storage.client.get_bucket(gcp_config.bucket)
             print(f"  Bucket gs://{gcp_config.bucket} is accessible")
         except Exception as e:
             print(f"  ERROR: Failed to access bucket '{gcp_config.bucket}': {e}")

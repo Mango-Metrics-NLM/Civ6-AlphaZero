@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -441,6 +441,8 @@ class CloudConfig:
     """
 
     # Core GCP settings
+    provider: str = "gcp"
+    environment: str = "dev"
     project_id: str = ""
     region: str = "us-central1"
     zone: str = ""
@@ -521,6 +523,7 @@ class CloudConfig:
             CloudConfig instance with values from environment.
         """
         # Map environment variables to config fields
+        # CIV6AZ_ prefixed vars take priority over bare prefix vars
         env_mapping = {
             f"{prefix}PROJECT_ID": "project_id",
             f"{prefix}REGION": "region",
@@ -550,6 +553,13 @@ class CloudConfig:
         # Float fields that need conversion
         float_fields = {"preemption_check_interval"}
 
+        # CIV6AZ_ overrides (higher priority, checked after base mapping)
+        civ6az_overrides = {
+            f"CIV6AZ_{prefix}PROJECT_ID": "project_id",
+            f"CIV6AZ_{prefix}REGION": "region",
+            f"CIV6AZ_{prefix}ZONE": "zone",
+        }
+
         kwargs: dict[str, Any] = {}
         for env_var, field_name in env_mapping.items():
             value = os.environ.get(env_var)
@@ -563,6 +573,12 @@ class CloudConfig:
                 else:
                     kwargs[field_name] = value
 
+        # Apply CIV6AZ_ overrides (take priority over bare prefix)
+        for env_var, field_name in civ6az_overrides.items():
+            value = os.environ.get(env_var)
+            if value is not None:
+                kwargs[field_name] = value
+
         # Also load nested configs from environment
         kwargs["gcs"] = GCSConfig.from_env()
         kwargs["vertex"] = VertexConfig.from_env()
@@ -574,33 +590,22 @@ class CloudConfig:
         return cls(**kwargs)
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> CloudConfig:
-        """Load configuration from YAML file.
+    def from_dict(cls, data: dict[str, Any]) -> CloudConfig:
+        """Load configuration from a dictionary.
+
+        Handles various nesting patterns: ``cloud.gcp``, ``cloud``, ``gcp``,
+        or flat.
 
         Args:
-            path: Path to YAML configuration file.
+            data: Configuration dictionary (may contain ``cloud`` / ``training``
+                top-level keys).
 
         Returns:
             CloudConfig instance.
-
-        Raises:
-            CloudConfigError: If file cannot be read or parsed.
         """
-        path = Path(path)
-        if not path.exists():
-            raise CloudConfigError(f"Configuration file not found: {path}")
-
-        try:
-            with open(path, encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-        except yaml.YAMLError as e:
-            raise CloudConfigError(f"Failed to parse YAML: {path}", cause=e) from e
-
         # Extract cloud/gcp section if present
-        # Handle various nesting patterns: cloud.gcp, cloud, gcp, or flat
         if "cloud" in data:
             cloud_data = data["cloud"]
-            # Also check for nested gcp within cloud
             if "gcp" in cloud_data:
                 cloud_data = cloud_data["gcp"]
         elif "gcp" in data:
@@ -610,6 +615,7 @@ class CloudConfig:
 
         # Filter to valid fields only (flat structure)
         flat_fields = {
+            "provider", "environment",
             "project_id", "region", "zone", "bucket_name",
             "checkpoint_prefix", "artifact_prefix",
             "enable_cloud_logging", "enable_cloud_monitoring", "log_level",
@@ -638,6 +644,48 @@ class CloudConfig:
             kwargs["training"] = TrainingConfig.from_dict(data["training"])
 
         return cls(**kwargs)
+
+    @classmethod
+    def from_yaml(cls, path: str | Path) -> CloudConfig:
+        """Load configuration from YAML file.
+
+        Args:
+            path: Path to YAML configuration file.
+
+        Returns:
+            CloudConfig instance with environment variable overrides applied.
+
+        Raises:
+            FileNotFoundError: If the YAML file does not exist.
+            CloudConfigError: If file cannot be parsed.
+        """
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f"Configuration file not found: {path}")
+
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        except yaml.YAMLError as e:
+            raise CloudConfigError(f"Failed to parse YAML: {path}", cause=e) from e
+
+        config = cls.from_dict(data)
+
+        # Apply environment variable overrides (CIV6AZ_ takes priority)
+        env_overrides = {
+            "CIV6AZ_GCP_PROJECT_ID": "project_id",
+            "CIV6AZ_GCP_REGION": "region",
+            "CIV6AZ_GCP_ZONE": "zone",
+            "GCP_PROJECT_ID": "project_id",
+            "GCP_REGION": "region",
+            "GCP_ZONE": "zone",
+        }
+        for env_var, field_name in env_overrides.items():
+            value = os.environ.get(env_var)
+            if value is not None:
+                setattr(config, field_name, value)
+
+        return config
 
     def validate(self, require_project: bool = True, raise_on_error: bool = True) -> list[str]:
         """Validate configuration settings.
@@ -671,6 +719,17 @@ class CloudConfig:
         if self.replica_count < 1:
             issues.append("replica_count must be at least 1")
 
+        # Validate bucket_name (either flat or nested)
+        bucket = self.bucket_name or self.gcs.bucket_name
+        if not bucket:
+            issues.append(
+                "bucket_name is required. Set GCS_BUCKET_NAME or CIV6AZ_GCS_BUCKET."
+            )
+
+        # Validate training config
+        if self.training.batch_size < 1:
+            issues.append("training.batch_size must be at least 1")
+
         if issues and raise_on_error:
             raise CloudConfigError("; ".join(issues))
 
@@ -685,7 +744,7 @@ class CloudConfig:
         Returns:
             True if configuration is valid, False otherwise.
         """
-        return len(self.validate(require_project=require_project)) == 0
+        return len(self.validate(require_project=require_project, raise_on_error=False)) == 0
 
     def get_checkpoint_uri(self, checkpoint_name: str) -> str:
         """Get full GCS URI for a checkpoint.
@@ -721,9 +780,12 @@ class CloudConfig:
         """Convert configuration to dictionary.
 
         Returns:
-            Dictionary representation of configuration.
+            Dictionary with ``cloud`` and ``training`` top-level keys,
+            matching the format accepted by :meth:`from_dict`.
         """
-        return {
+        cloud_section: dict[str, Any] = {
+            "provider": self.provider,
+            "environment": self.environment,
             "project_id": self.project_id,
             "region": self.region,
             "zone": self.zone,
@@ -745,4 +807,21 @@ class CloudConfig:
             "preemption_check_interval": self.preemption_check_interval,
             "checkpoint_on_preemption": self.checkpoint_on_preemption,
             "custom_labels": self.custom_labels,
+            "gcs": asdict(self.gcs),
+            "vertex": asdict(self.vertex),
         }
+        return {
+            "cloud": cloud_section,
+            "training": asdict(self.training),
+        }
+
+    def to_yaml(self, path: str | Path) -> None:
+        """Save configuration to a YAML file.
+
+        Args:
+            path: Path to write the YAML configuration file.
+        """
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.dump(self.to_dict(), f, default_flow_style=False, sort_keys=False)

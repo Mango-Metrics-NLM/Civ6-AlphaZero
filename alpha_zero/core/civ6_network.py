@@ -327,7 +327,7 @@ class Civ6Network(nn.Module):
     3. Features are combined and fed to policy and value heads
     """
 
-    def __init__(self, config: NetworkConfig | None = None, **kwargs) -> None:
+    def __init__(self, config: NetworkConfig | None = None, **kwargs: Any) -> None:
         """Initialize network.
 
         Args:
@@ -532,7 +532,7 @@ class MicroCivNetwork(Civ6Network):
         num_res_blocks: int = 6,
         num_filters: int = 64,
         config: NetworkConfig | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize MicroCiv network.
 
@@ -1162,7 +1162,7 @@ class Civ6NetworkV2(nn.Module):
     Maintains backward compatibility with the same forward/predict/save/load interface.
     """
 
-    def __init__(self, config: NetworkConfig | None = None, **kwargs) -> None:
+    def __init__(self, config: NetworkConfig | None = None, **kwargs: Any) -> None:
         """Initialize network.
 
         Args:

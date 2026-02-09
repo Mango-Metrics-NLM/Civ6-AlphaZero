@@ -61,6 +61,7 @@ ignore = [
     "E501",    # Line length handled separately
     "ANN401",  # Any type allowed for duck typing with cloud SDKs
     "S101",    # Use of assert (needed for tests)
+    "UP042",   # Prefer StrEnum over (str, Enum) — deferred refactor
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -69,6 +70,7 @@ ignore = [
 "agentic_framework/tests/*" = ["S101", "ANN"]  # Allow asserts and skip annotations in framework tests
 "alpha_zero/cloud/preemption.py" = ["S310"]  # GCE metadata URL is intentional
 "run_*.py" = ["ANN"]  # Skip annotations in run scripts
+"alpha_zero/utils/reward_shaping.py" = ["RUF002"]  # Greek math symbols (γ, Φ) in formulas
 
 [tool.mypy]
 python_version = "3.11"

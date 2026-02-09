@@ -496,7 +496,7 @@ def actor_process(
     )
 
     # Handle signals for graceful shutdown
-    def signal_handler(signum, frame) -> None:
+    def signal_handler(signum: int, frame: object | None) -> None:
         logger.info(f"Actor {actor_id}: Received signal {signum}")
         storage.request_stop()
 

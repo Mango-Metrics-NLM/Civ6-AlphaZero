@@ -12,6 +12,7 @@ import asyncio
 import hashlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -98,7 +99,7 @@ class OpenAIEmbeddings(EmbeddingGenerator):
         vector = await embeddings.embed_text("Hello world")
     """
 
-    MODEL_DIMENSIONS = {
+    MODEL_DIMENSIONS: ClassVar[dict[EmbeddingModelType, int]] = {
         EmbeddingModelType.OPENAI_ADA: 1536,
         EmbeddingModelType.OPENAI_3_SMALL: 1536,
         EmbeddingModelType.OPENAI_3_LARGE: 3072,
@@ -136,7 +137,7 @@ class OpenAIEmbeddings(EmbeddingGenerator):
         self.timeout = timeout
         self._client = None
 
-    async def _get_client(self):
+    async def _get_client(self) -> Any:
         """Get or create OpenAI client."""
         if self._client is None:
             try:
@@ -186,7 +187,7 @@ class OpenAIEmbeddings(EmbeddingGenerator):
 
     async def _embed_batch_with_retry(
         self,
-        client,
+        client: Any,
         texts: list[str],
     ) -> list[np.ndarray]:
         """Embed a batch of texts with retry logic.
@@ -279,7 +280,7 @@ class LocalEmbeddings(EmbeddingGenerator):
             Embedding vector (deterministic based on text hash)
         """
         # Check cache
-        cache_key = hashlib.md5(text.encode()).hexdigest()
+        cache_key = hashlib.md5(text.encode(), usedforsecurity=False).hexdigest()
         if cache_key in self._cache:
             return self._cache[cache_key]
 
@@ -373,7 +374,7 @@ class SentenceTransformerEmbeddings(EmbeddingGenerator):
         if self._loop is None:
             self._loop = asyncio.get_event_loop()
 
-        def _encode():
+        def _encode() -> Any:
             return self._model.encode(
                 texts,
                 batch_size=self.batch_size,

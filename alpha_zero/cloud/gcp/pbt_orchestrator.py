@@ -23,6 +23,7 @@ from alpha_zero.cloud.gcp.vertex_jobs import (
 from alpha_zero.pbt.config import AgentState, PBTConfig
 from alpha_zero.pbt.evaluator import EvaluationReport, MatchResult, PBTEvaluator
 from alpha_zero.pbt.population import PopulationManager
+from alpha_zero.utils.wandb_logger import WandbLogger
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,11 @@ class PBTOrchestrator:
         pbt_config: PBTConfig,
         gcp_config: GCPConfig | None = None,
         evaluator: PBTEvaluator | None = None,
+        *,
+        wandb_logger: WandbLogger | None = None,
+        checkpoint_retention: int | None = None,
+        evaluation_strategy_switch_gen: int | None = None,
+        baseline_agents: list[AgentState] | None = None,
     ) -> None:
         self.pbt_config = pbt_config
         self.gcp_config = gcp_config or GCPConfig()
@@ -82,10 +88,29 @@ class PBTOrchestrator:
             f"{self.gcp_config.paths.logs_prefix}/pbt_state.json"
         )
 
+        # Production features
+        self.wandb_logger = wandb_logger
+        self.checkpoint_retention = (
+            checkpoint_retention if checkpoint_retention is not None
+            else pbt_config.checkpoint_retention_generations
+        )
+        self.evaluation_strategy_switch_gen = (
+            evaluation_strategy_switch_gen if evaluation_strategy_switch_gen is not None
+            else pbt_config.evaluation_strategy_switch_gen
+        )
+        self.baseline_agents = baseline_agents or []
+
+        # Define PBT W&B charts if logger is provided
+        if self.wandb_logger is not None and pbt_config.wandb_enabled:
+            self.wandb_logger.define_pbt_charts()
+
         logger.info(
-            "PBTOrchestrator initialised: pop=%d, strategy=%s",
+            "PBTOrchestrator initialised: pop=%d, strategy=%s, "
+            "checkpoint_retention=%d, strategy_switch_gen=%d",
             pbt_config.population_size,
             pbt_config.evaluation_strategy,
+            self.checkpoint_retention,
+            self.evaluation_strategy_switch_gen,
         )
 
     # ------------------------------------------------------------------
@@ -134,6 +159,220 @@ class PBTOrchestrator:
             logger.exception("Failed to save PBT state")
 
     # ------------------------------------------------------------------
+    # Production features
+    # ------------------------------------------------------------------
+
+    def _log_population_dashboard(
+        self,
+        gen: int,
+        report: EvaluationReport,
+        elapsed: float,
+    ) -> None:
+        """Log population-level metrics to W&B."""
+        if self.wandb_logger is None:
+            return
+
+        agents = self.manager.get_all_agents()
+        if not agents:
+            return
+
+        elo_values = [a.elo_rating for a in agents]
+        fitness_values = [a.fitness_score for a in agents]
+
+        self.wandb_logger.log_population_stats(
+            generation=gen,
+            mean_fitness=sum(fitness_values) / len(fitness_values),
+            max_fitness=max(fitness_values),
+            min_fitness=min(fitness_values),
+            mean_elo=sum(elo_values) / len(elo_values),
+            max_elo=max(elo_values),
+            min_elo=min(elo_values),
+            population_size=len(agents),
+            elapsed_seconds=elapsed,
+        )
+
+        # Per-agent ELO
+        per_agent_data = {
+            f"pbt/agent/{a.agent_id}/elo": a.elo_rating for a in agents
+        }
+        self.wandb_logger.log(per_agent_data, step=gen)
+
+    def _log_mutation_events(
+        self,
+        gen: int,
+        changes: list[tuple[str, str, dict[str, Any]]],
+    ) -> None:
+        """Log mutation events to W&B."""
+        if self.wandb_logger is None:
+            return
+
+        self.wandb_logger.log({"pbt/mutations_count": len(changes)}, step=gen)
+
+        if changes:
+            columns = ["replaced_id", "source_id", "learning_rate", "c_puct"]
+            rows = [
+                [
+                    replaced_id,
+                    source_id,
+                    new_hp.get("learning_rate", ""),
+                    new_hp.get("c_puct", ""),
+                ]
+                for replaced_id, source_id, new_hp in changes
+            ]
+            self.wandb_logger.log_table(
+                f"pbt/mutations_gen_{gen}", columns, rows
+            )
+
+    def _rotate_checkpoints(self, gen: int) -> None:
+        """Delete old checkpoint generations beyond retention window."""
+        if self.checkpoint_retention <= 0:
+            return
+
+        try:
+            bucket = self.gcp_config.bucket
+            manifest_path = f"{self.gcp_config.paths.checkpoints_prefix}/checkpoint_manifest.json"
+
+            # Load or create manifest
+            manifest: dict[str, list[str]] = {}
+            try:
+                if self.storage_backend.blob_exists(bucket, manifest_path):
+                    data = self.storage_backend.download_blob(bucket, manifest_path)
+                    manifest = json.loads(data.decode())
+            except Exception:
+                logger.debug("No existing checkpoint manifest; creating new one.")
+
+            # Record current generation's checkpoint paths
+            gen_key = str(gen)
+            prefix = f"{self.gcp_config.paths.checkpoints_prefix}/gen_{gen}/"
+            try:
+                current_blobs = self.storage_backend.list_blobs(bucket, prefix)
+                manifest[gen_key] = current_blobs
+            except Exception:
+                logger.debug("No checkpoint blobs found for gen %d", gen)
+                manifest[gen_key] = []
+
+            # Determine which generations to prune
+            all_gens = sorted(int(k) for k in manifest)
+            cutoff = gen - self.checkpoint_retention
+            to_prune = [g for g in all_gens if g <= cutoff]
+
+            deleted_count = 0
+            for old_gen in to_prune:
+                old_key = str(old_gen)
+                for blob_path in manifest.get(old_key, []):
+                    try:
+                        self.storage_backend.delete_blob(bucket, blob_path)
+                        deleted_count += 1
+                    except Exception:
+                        logger.debug("Failed to delete blob: %s", blob_path)
+                manifest.pop(old_key, None)
+
+            if deleted_count > 0:
+                logger.info(
+                    "Checkpoint rotation: deleted %d blobs from %d old generations",
+                    deleted_count,
+                    len(to_prune),
+                )
+
+            # Save updated manifest
+            manifest_data = json.dumps(manifest, indent=2).encode()
+            self.storage_backend.upload_blob(bucket, manifest_path, manifest_data)
+
+        except Exception:
+            logger.warning("Checkpoint rotation failed (non-fatal)", exc_info=True)
+
+    def _check_quota(self, gen: int) -> bool:
+        """Check whether GPU quota is available for the next phase.
+
+        Returns ``True`` if quota is sufficient or on any error
+        (optimistic fallback).
+        """
+        quota_limit_str = os.environ.get("CIV6AZ_GPU_QUOTA_LIMIT", "")
+        if not quota_limit_str:
+            return True
+
+        try:
+            from google.cloud import aiplatform  # type: ignore[import-untyped]
+
+            quota_limit = int(quota_limit_str)
+
+            aiplatform.init(
+                project=self.gcp_config.project_id,
+                location=self.gcp_config.region,
+            )
+            active_jobs = aiplatform.CustomJob.list(
+                filter='state="JOB_STATE_RUNNING"',
+                project=self.gcp_config.project_id,
+                location=self.gcp_config.region,
+            )
+
+            gpu_count = sum(
+                int(getattr(job, "gpu_count", 1) or 1)
+                for job in active_jobs
+            )
+
+            if gpu_count >= quota_limit:
+                logger.warning(
+                    "GPU quota exceeded: %d active >= %d limit (gen=%d)",
+                    gpu_count,
+                    quota_limit,
+                    gen,
+                )
+                return False
+
+            return True
+
+        except Exception:
+            logger.debug("Quota check failed (optimistic fallback)", exc_info=True)
+            return True
+
+    def _wait_for_quota(self, gen: int) -> None:
+        """Poll until GPU quota becomes available."""
+        max_wait = int(os.environ.get("CIV6AZ_QUOTA_WAIT_MAX_SECONDS", "1800"))
+        wait_time = 60
+        max_interval = 300
+        elapsed = 0
+
+        while elapsed < max_wait:
+            logger.warning(
+                "Waiting for GPU quota (gen=%d, waited=%ds/%ds)...",
+                gen,
+                elapsed,
+                max_wait,
+            )
+            time.sleep(wait_time)
+            elapsed += wait_time
+
+            if self._check_quota(gen):
+                logger.info("GPU quota available after %ds", elapsed)
+                return
+
+            wait_time = min(wait_time * 2, max_interval)
+
+        logger.warning(
+            "Quota wait timeout after %ds; proceeding anyway (gen=%d)",
+            max_wait,
+            gen,
+        )
+
+    def _maybe_switch_strategy(self, gen: int) -> None:
+        """Switch evaluation strategy at the configured generation."""
+        switch_gen = self.evaluation_strategy_switch_gen
+        if switch_gen <= 0 or gen < switch_gen:
+            return
+
+        if self.pbt_config.evaluation_strategy == "top_k_vs_best":
+            return  # Already switched
+
+        old_strategy = self.pbt_config.evaluation_strategy
+        self.pbt_config.evaluation_strategy = "top_k_vs_best"
+        logger.info(
+            "Evaluation strategy switched: %s -> top_k_vs_best at gen %d",
+            old_strategy,
+            gen,
+        )
+
+    # ------------------------------------------------------------------
     # Main loop
     # ------------------------------------------------------------------
 
@@ -167,13 +406,26 @@ class PBTOrchestrator:
 
             t0 = time.monotonic()
 
+            # Dynamic strategy switch
+            self._maybe_switch_strategy(gen_num)
+
+            # Quota guard
+            if not self._check_quota(gen_num):
+                self._wait_for_quota(gen_num)
+
             self._run_selfplay_phase(gen_num)
             self._run_training_phase(gen_num)
             report = self._run_evaluation_phase(gen_num)
-            self._run_evolution_phase(gen_num)
+            changes = self._run_evolution_phase(gen_num)
             self.save_state()
+            self._rotate_checkpoints(gen_num)
 
             elapsed = time.monotonic() - t0
+
+            # W&B dashboards
+            self._log_population_dashboard(gen_num, report, elapsed)
+            self._log_mutation_events(gen_num, changes)
+
             logger.info(
                 "Generation %d complete in %.1fs | "
                 "matchups=%d | top_elo=%.0f",
@@ -306,8 +558,8 @@ class PBTOrchestrator:
         eval_kwargs: dict[str, Any] = {"generation": gen}
         if self.evaluator.arena_runner is None:
             logger.info("No arena_runner configured; falling back to local runner")
-            eval_kwargs["arena_runner"] = lambda an, ao, ng: _local_arena_runner(
-                an, ao, ng, gcp_config=self.gcp_config
+            eval_kwargs["arena_runner"] = lambda agent_new, agent_old, num_games: _local_arena_runner(
+                agent_new, agent_old, num_games, gcp_config=self.gcp_config
             )
 
         report = self.evaluator.evaluate_population(agents, **eval_kwargs)
@@ -326,10 +578,16 @@ class PBTOrchestrator:
     # Phase 4: Evolution
     # ------------------------------------------------------------------
 
-    def _run_evolution_phase(self, gen: int) -> None:
-        """Run PBT exploit-and-explore on the population."""
+    def _run_evolution_phase(
+        self, gen: int
+    ) -> list[tuple[str, str, dict[str, Any]]]:
+        """Run PBT exploit-and-explore on the population.
+
+        Returns:
+            List of ``(replaced_id, source_id, new_hyperparameters)`` tuples.
+        """
         logger.info("Phase 4: Evolution (gen=%d)", gen)
-        self.manager.exploit_and_explore()
+        return self.manager.exploit_and_explore()
 
 
 # ---------------------------------------------------------------------------
@@ -385,8 +643,10 @@ def _local_arena_runner(
                         logger.info("Loaded weights for agent %s (v%d) from GCS", agent.agent_id, version)
                     except ValueError:
                         # Handle as a path if not an integer version
-                        logger.warning("Agent %s model_path '%s' is not a version number; skipping weight load.", 
-                                       agent.agent_id, agent.model_path)
+                        logger.warning(
+                            "Agent %s model_path '%s' is not a version number; skipping weight load.",
+                            agent.agent_id, agent.model_path,
+                        )
                 except Exception as e:
                     logger.warning("Failed to load weights for agent %s: %r. Using random init.", agent.agent_id, e)
             return model
