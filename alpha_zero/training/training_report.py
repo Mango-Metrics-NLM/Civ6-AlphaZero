@@ -207,7 +207,7 @@ class TrainingReport:
         self._safeguard_events: list[dict[str, Any]] = []
 
         # Interval tracking
-        self._interval_start_step: int = 0
+        self._interval_start_step: int | None = None
         self._interval_start_time: float = time.monotonic()
 
         # Generated reports
@@ -234,7 +234,7 @@ class TrainingReport:
             **metrics: Additional metrics to track (e.g., policy_loss=0.5).
         """
         # Initialize interval start on first step
-        if self._interval_start_step == 0:
+        if self._interval_start_step is None:
             self._interval_start_step = step
             self._interval_start_time = time.monotonic()
 
@@ -295,8 +295,9 @@ class TrainingReport:
         }
 
         # Build report
+        start_step = self._interval_start_step if self._interval_start_step is not None else step
         report = TrainingReportData(
-            step_range=(self._interval_start_step, step),
+            step_range=(start_step, step),
             num_steps=num_steps,
             mean_loss=mean_loss,
             min_loss=min_loss,
@@ -318,7 +319,7 @@ class TrainingReport:
         self._learning_rates.clear()
         self._extra_metrics.clear()
         self._safeguard_events.clear()
-        self._interval_start_step = 0
+        self._interval_start_step = None
         self._interval_start_time = time.monotonic()
 
         self._logger.info(
@@ -352,7 +353,7 @@ class TrainingReport:
         self._learning_rates.clear()
         self._extra_metrics.clear()
         self._safeguard_events.clear()
-        self._interval_start_step = 0
+        self._interval_start_step = None
         self._interval_start_time = time.monotonic()
         self._reports.clear()
         self._logger.info("Training report tracker reset")

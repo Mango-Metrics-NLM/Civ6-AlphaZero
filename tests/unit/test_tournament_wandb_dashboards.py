@@ -149,17 +149,20 @@ class TestTournamentWandbLogger:
         mock_wandb_logger.log.assert_not_called()
 
     def test_log_tournament_summary(self, tournament_logger, mock_wandb_logger):
-        """Test logging tournament summary."""
-        # Create mock tournament result
-        result = MagicMock()
-        result.winner_id = "champion"
+        """Test logging tournament summary with TournamentResult-style object."""
+        from alpha_zero.tournament.orchestrator import PlayerStanding
+
+        # Create mock tournament result using TournamentResult field names
+        result = MagicMock(spec=["winner", "total_games", "total_rounds",
+                                  "duration_seconds", "final_standings"])
+        result.winner = "champion"
         result.total_games = 100
         result.total_rounds = 5
         result.duration_seconds = 3600.0
         result.final_standings = [
-            {"rating": 1800.0},
-            {"rating": 1700.0},
-            {"rating": 1600.0},
+            PlayerStanding("p1", rank=1, wins=5, losses=0, draws=0, elo_rating=1800.0, points=5.0),
+            PlayerStanding("p2", rank=2, wins=3, losses=2, draws=0, elo_rating=1700.0, points=3.0),
+            PlayerStanding("p3", rank=3, wins=1, losses=4, draws=0, elo_rating=1600.0, points=1.0),
         ]
 
         tournament_logger.log_tournament_summary(result)

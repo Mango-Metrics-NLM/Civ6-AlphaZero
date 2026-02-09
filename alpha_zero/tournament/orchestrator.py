@@ -109,9 +109,16 @@ class Bracket:
     current_round: int = 0
     results: dict[int, list[MatchResult]] = field(default_factory=dict)
 
+    max_swiss_rounds: int = 5
+    bye_advanced: dict[int, list[str]] = field(default_factory=dict)
+
     @property
     def is_complete(self) -> bool:
         """Check if bracket is complete."""
+        # Swiss brackets generate rounds dynamically; an empty rounds list
+        # means the tournament hasn't started yet, not that it's finished.
+        if self.format == TournamentFormat.SWISS:
+            return self.current_round >= self.max_swiss_rounds
         return self.current_round >= len(self.rounds)
 
     @property
@@ -348,6 +355,7 @@ class TournamentOrchestrator:
         *,
         format: TournamentFormat = TournamentFormat.ROUND_ROBIN,
         seeding: dict[str, int] | None = None,
+        max_swiss_rounds: int = 5,
     ) -> Bracket:
         """Create a tournament bracket.
 
@@ -355,6 +363,7 @@ class TournamentOrchestrator:
             players: List of player IDs
             format: Tournament format
             seeding: Optional seeding (player_id -> seed number)
+            max_swiss_rounds: Maximum rounds for Swiss format
 
         Returns:
             Created Bracket.
@@ -367,12 +376,13 @@ class TournamentOrchestrator:
             seeding = {player: i + 1 for i, player in enumerate(players)}
 
         # Create rounds based on format
+        bye_advanced: list[str] = []
         if format == TournamentFormat.ROUND_ROBIN:
             rounds = self._create_round_robin_rounds(players)
         elif format == TournamentFormat.SINGLE_ELIMINATION:
-            rounds = self._create_single_elimination_rounds(players, seeding)
+            rounds, bye_advanced = self._create_single_elimination_rounds(players, seeding)
         elif format == TournamentFormat.DOUBLE_ELIMINATION:
-            rounds = self._create_double_elimination_rounds(players, seeding)
+            rounds, bye_advanced = self._create_double_elimination_rounds(players, seeding)
         elif format == TournamentFormat.SWISS:
             # Swiss format generates rounds dynamically
             rounds = []
@@ -384,6 +394,8 @@ class TournamentOrchestrator:
             rounds=rounds,
             players=players,
             seeding=seeding,
+            max_swiss_rounds=max_swiss_rounds,
+            bye_advanced={0: bye_advanced} if bye_advanced else {},
         )
 
         logger.info(
@@ -420,8 +432,12 @@ class TournamentOrchestrator:
 
     def _create_single_elimination_rounds(
         self, players: list[str], seeding: dict[str, int]
-    ) -> list[list[Matchup]]:
-        """Create single-elimination bracket."""
+    ) -> tuple[list[list[Matchup]], list[str]]:
+        """Create single-elimination bracket.
+
+        Returns:
+            Tuple of (rounds, bye_advanced_players).
+        """
         # Sort by seeding
         sorted_players = sorted(players, key=lambda p: seeding.get(p, 999))
 
@@ -435,30 +451,46 @@ class TournamentOrchestrator:
         byes_needed = bracket_size - n
         sorted_players.extend([f"BYE_{i}" for i in range(byes_needed)])
 
-        # Create initial round
-        rounds = []
-        current_players = sorted_players
-        round_num = 0
+        # Create first round only; subsequent rounds are populated by advance_bracket
+        round_matchups: list[Matchup] = []
+        bye_advanced: list[str] = []
 
-        while len(current_players) > 1:
-            round_matchups = []
-            for i in range(0, len(current_players), 2):
-                player_a = current_players[i]
-                player_b = current_players[i + 1]
+        for i in range(0, len(sorted_players), 2):
+            player_a = sorted_players[i]
+            player_b = sorted_players[i + 1]
 
-                # Skip if bye
-                if not player_a.startswith("BYE_") and not player_b.startswith("BYE_"):
-                    round_matchups.append(Matchup(player_a, player_b, round_num))
+            a_is_bye = player_a.startswith("BYE_")
+            b_is_bye = player_b.startswith("BYE_")
 
-            rounds.append(round_matchups)
-            current_players = current_players[: len(current_players) // 2]
-            round_num += 1
+            if a_is_bye and b_is_bye:
+                # Both byes — skip entirely (shouldn't happen with normal inputs)
+                continue
+            elif a_is_bye:
+                # Player B auto-advances (BYE)
+                bye_advanced.append(player_b)
+            elif b_is_bye:
+                # Player A auto-advances (BYE)
+                bye_advanced.append(player_a)
+            else:
+                round_matchups.append(Matchup(player_a, player_b, 0))
 
-        return rounds
+        rounds: list[list[Matchup]] = [round_matchups]
+
+        # Pre-create empty rounds for the remaining bracket depth
+        num_total_rounds = 0
+        remaining = bracket_size
+        while remaining > 1:
+            remaining //= 2
+            num_total_rounds += 1
+
+        for _r in range(1, num_total_rounds):
+            rounds.append([])  # Placeholder — filled by advance_bracket
+
+        return rounds, bye_advanced
 
     def _create_double_elimination_rounds(
         self, players: list[str], seeding: dict[str, int]
-    ) -> list[list[Matchup]]:
+    ) -> tuple[list[list[Matchup]], list[str]]:
         """Create double-elimination bracket (simplified - winners bracket only)."""
         # For simplicity, just do single elimination
         # Full double elimination requires tracking losers bracket
@@ -487,7 +519,7 @@ class TournamentOrchestrator:
 
             round_results = self.run_round(bracket, bracket.current_round)
             bracket.results[bracket.current_round] = round_results
-            total_games += len(round_results)
+            total_games += len(round_results) * self.games_per_match
 
             # Advance to next round
             if bracket.format in (
@@ -630,44 +662,34 @@ class TournamentOrchestrator:
         Returns:
             List of PlayerStanding sorted by rank.
         """
-        standings_data = []
+        # Build unranked standings
+        unranked: list[PlayerStanding] = []
 
         for player_id in bracket.players:
             wins, losses, draws = bracket.get_player_record(player_id)
             points = wins + 0.5 * draws
-
             stats = self._get_or_create_player_stats(player_id)
 
-            standings_data.append(
-                {
-                    "player_id": player_id,
-                    "wins": wins,
-                    "losses": losses,
-                    "draws": draws,
-                    "points": points,
-                    "elo_rating": stats.rating,
-                }
-            )
-
-        # Sort by points (descending), then by rating
-        standings_data.sort(key=lambda x: (-x["points"], -x["elo_rating"]))
-
-        # Create standings with ranks
-        standings = []
-        for rank, data in enumerate(standings_data, 1):
-            standings.append(
+            unranked.append(
                 PlayerStanding(
-                    player_id=data["player_id"],
-                    rank=rank,
-                    wins=data["wins"],
-                    losses=data["losses"],
-                    draws=data["draws"],
-                    elo_rating=data["elo_rating"],
-                    points=data["points"],
+                    player_id=player_id,
+                    rank=0,  # Assigned after sorting
+                    wins=wins,
+                    losses=losses,
+                    draws=draws,
+                    elo_rating=stats.rating,
+                    points=points,
                 )
             )
 
-        return standings
+        # Sort by points (descending), then by rating
+        unranked.sort(key=lambda s: (-s.points, -s.elo_rating))
+
+        # Assign ranks
+        for rank, standing in enumerate(unranked, 1):
+            standing.rank = rank
+
+        return unranked
 
     def advance_bracket(
         self,
@@ -691,8 +713,8 @@ class TournamentOrchestrator:
             bracket.current_round += 1
             return bracket
 
-        # Get winners from current round
-        winners = []
+        # Get winners from current round (match winners + BYE auto-advances)
+        winners = list(bracket.bye_advanced.get(bracket.current_round, []))
         for result in round_results:
             if result.winner_id:
                 winners.append(result.winner_id)

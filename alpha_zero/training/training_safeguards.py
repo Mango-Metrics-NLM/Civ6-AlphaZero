@@ -202,10 +202,13 @@ class Intervention:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
-            "action": self.action,
+            "action": self.action.value,
             "reason": self.reason,
             "severity": self.severity,
-            "metadata": self.metadata,
+            "metadata": {
+                k: v.value if isinstance(v, Enum) else v
+                for k, v in self.metadata.items()
+            },
         }
 
 
@@ -257,9 +260,11 @@ class SafeguardReport:
             "grad_norm": self.grad_norm,
             "nan_detected": self.nan_detected,
             "loss_exploding": self.loss_exploding,
-            "gradient_status": self.gradient_status,
-            "memory_status": self.memory_status,
-            "convergence_status": self.convergence_status,
+            "gradient_status": self.gradient_status.value if self.gradient_status else None,
+            "memory_status": self.memory_status.value if self.memory_status else None,
+            "convergence_status": (
+                self.convergence_status.value if self.convergence_status else None
+            ),
             "intervention": self.intervention.to_dict() if self.intervention else None,
             "timestamp": self.timestamp,
         }

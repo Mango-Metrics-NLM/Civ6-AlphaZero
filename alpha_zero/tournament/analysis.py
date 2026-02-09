@@ -237,17 +237,29 @@ class TournamentAnalyzer:
         win_history = []
 
         for match in reversed(matches):  # Chronological order
-            # Determine which player position
+            # Determine which player position and normalize outcome
             if match.player1_id == player_id:
                 elo = match.player1_rating_after
-                won = match.outcome == "win"
+                outcome_for_player = match.outcome
             else:
                 elo = match.player2_rating_after
                 # Flip outcome for player 2
-                won = match.outcome == "loss"
+                if match.outcome == "win":
+                    outcome_for_player = "loss"
+                elif match.outcome == "loss":
+                    outcome_for_player = "win"
+                else:
+                    outcome_for_player = match.outcome  # draw stays draw
+
+            if outcome_for_player == "win":
+                result_score = 1.0
+            elif outcome_for_player == "draw":
+                result_score = 0.5
+            else:
+                result_score = 0.0
 
             elo_values.append(elo)
-            win_history.append(1.0 if won else 0.0)
+            win_history.append(result_score)
 
         trend.elo_history = elo_values
         trend.games_played = len(matches)
@@ -430,8 +442,15 @@ class TournamentAnalyzer:
                 gen_a = int(gen_a_players[0].split("_")[1])
             if gen_b_players:
                 gen_b = int(gen_b_players[0].split("_")[1])
-        except (IndexError, ValueError):
-            pass
+        except (IndexError, ValueError) as exc:
+            # Player IDs may not follow the expected "name_gen" pattern;
+            # keep the default generation indices and log at debug level.
+            logger.debug(
+                "Failed to parse generation numbers from player IDs %s / %s: %s",
+                gen_a_players,
+                gen_b_players,
+                exc,
+            )
 
         comparison = GenerationComparison(gen_a=gen_a, gen_b=gen_b)
 

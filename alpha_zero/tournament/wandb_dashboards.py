@@ -268,8 +268,10 @@ class TournamentWandbLogger:
         # Handle various result formats (duck typing for cross-module compatibility)
         data: dict[str, Any] = {}
 
-        if hasattr(result, "winner_id"):
-            data["tournament/summary/winner"] = result.winner_id
+        # Support both TournamentResult.winner and generic winner_id
+        winner = getattr(result, "winner", None) or getattr(result, "winner_id", None)
+        if winner is not None:
+            data["tournament/summary/winner"] = winner
 
         if hasattr(result, "total_games"):
             data["tournament/summary/total_games"] = result.total_games
@@ -282,19 +284,18 @@ class TournamentWandbLogger:
 
         if hasattr(result, "final_standings"):
             # Log top 3 finishers if available
+            # Support both dataclass (PlayerStanding) and dict standings
             standings = result.final_standings
-            if len(standings) >= 1:
-                data["tournament/summary/first_place_rating"] = standings[0].get(
-                    "rating", 0.0
-                )
-            if len(standings) >= 2:
-                data["tournament/summary/second_place_rating"] = standings[1].get(
-                    "rating", 0.0
-                )
-            if len(standings) >= 3:
-                data["tournament/summary/third_place_rating"] = standings[2].get(
-                    "rating", 0.0
-                )
+            for idx, label in enumerate(
+                ["first_place_rating", "second_place_rating", "third_place_rating"]
+            ):
+                if idx < len(standings):
+                    entry = standings[idx]
+                    rating = (
+                        getattr(entry, "elo_rating", None)
+                        or (entry.get("rating", 0.0) if isinstance(entry, dict) else 0.0)
+                    )
+                    data[f"tournament/summary/{label}"] = rating
 
         if data:
             self.wandb_logger.log(data, step=step)

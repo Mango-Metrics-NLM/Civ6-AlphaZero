@@ -8,7 +8,6 @@ This example demonstrates how to use the tournament orchestrator to:
 """
 
 import uuid
-from typing import Any
 
 from alpha_zero.tournament import (
     MatchResult,

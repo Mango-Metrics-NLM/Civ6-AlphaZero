@@ -78,29 +78,20 @@ from alpha_zero.utils.factories import (
 
 # Training safeguards (optional, graceful degradation)
 try:
-    from alpha_zero.training.training_safeguards import (
-        TrainingSafeguard,
-        TrainingSafeguardConfig,
-    )
+    import alpha_zero.training.training_safeguards  # noqa: F401
 
     SAFEGUARDS_AVAILABLE = True
 except ImportError:
     SAFEGUARDS_AVAILABLE = False
-    TrainingSafeguard = None  # type: ignore[assignment, misc]
-    TrainingSafeguardConfig = None  # type: ignore[assignment, misc]
 
 # MuZero integration (optional, graceful degradation)
 try:
-    from alpha_zero.training.muzero_integration import (
-        MuZeroIntegrationConfig,
-        MuZeroTrainingBridge,
-    )
+    from alpha_zero.training.muzero_integration import MuZeroTrainingBridge
 
     MUZERO_AVAILABLE = True
 except ImportError:
     MUZERO_AVAILABLE = False
     MuZeroTrainingBridge = None  # type: ignore[assignment, misc]
-    MuZeroIntegrationConfig = None  # type: ignore[assignment, misc]
 
 logger = logging.getLogger(__name__)
 
@@ -762,8 +753,8 @@ class TrainingOrchestrator:
         results = []
         self._network.eval()
 
-        # Create MuZero MCTS instance
-        mcts = self._muzero_bridge.create_mcts(self._network)
+        # Create MuZero MCTS instance on the orchestrator's device
+        mcts = self._muzero_bridge.create_mcts(self._network, device=self._device)
 
         logger.info("Starting MuZero self-play: %d games", num_games)
         for game_idx in range(num_games):
@@ -807,7 +798,9 @@ class TrainingOrchestrator:
                     if isinstance(obs, dict):
                         self._replay_buffer.add({
                             "spatial": obs.get("spatial", obs.get("observation")),
-                            "vector": obs.get("vector", np.zeros(64)),
+                            "vector": obs.get(
+                                "vector", np.zeros(self.config.network.vector_dim)
+                            ),
                             "action_mask": obs.get(
                                 "action_mask",
                                 np.ones(self._expected_action_size),

@@ -494,17 +494,13 @@ class PBTOrchestrator:
                 f"--agent_id={agent.agent_id}",
             ]
 
-            # Pass MuZero config if configured
+            # NOTE: MuZero config is picked up by workers via
+            # CIV6AZ_MUZERO_* environment variables, not CLI flags.
             if self.muzero_config is not None:
-                extra_args.append("--training_mode=muzero")
-                extra_args.append(
-                    f"--muzero_unroll_steps={self.muzero_config.unroll_steps}"
-                )
-                extra_args.append(
-                    f"--muzero_td_steps={self.muzero_config.td_steps}"
-                )
-                extra_args.append(
-                    f"--muzero_discount={self.muzero_config.discount}"
+                logger.debug(
+                    "MuZero config detected for agent %s self-play — "
+                    "workers read CIV6AZ_MUZERO_* env vars.",
+                    agent.agent_id,
                 )
 
             try:
@@ -540,32 +536,22 @@ class PBTOrchestrator:
                 f"--agent_id={agent.agent_id}",
             ]
 
-            # Pass MuZero config as extra args if configured
+            # NOTE: MuZero and safeguard configs are passed via environment
+            # variables (CIV6AZ_MUZERO_* / CIV6AZ_SAFEGUARD_*) rather than
+            # CLI flags, because the Vertex training workers do not define
+            # these arguments in their argparse parsers.
             if self.muzero_config is not None:
-                extra_args.append("--training_mode=muzero")
-                extra_args.append(
-                    f"--muzero_unroll_steps={self.muzero_config.unroll_steps}"
-                )
-                extra_args.append(
-                    f"--muzero_td_steps={self.muzero_config.td_steps}"
-                )
-                extra_args.append(
-                    f"--muzero_consistency_weight="
-                    f"{self.muzero_config.consistency_loss_weight}"
-                )
-                extra_args.append(
-                    f"--muzero_reward_weight="
-                    f"{self.muzero_config.reward_loss_weight}"
+                logger.debug(
+                    "MuZero config detected for agent %s — workers will "
+                    "pick up settings via CIV6AZ_MUZERO_* env vars.",
+                    agent.agent_id,
                 )
 
-            # Pass safeguard config as env-var overrides if configured
             if self.training_safeguard_config is not None:
-                cfg = self.training_safeguard_config
-                extra_args.append(
-                    f"--safeguard_loss_threshold={cfg.loss_explosion_threshold}"
-                )
-                extra_args.append(
-                    f"--safeguard_max_nan={cfg.max_consecutive_nan_steps}"
+                logger.debug(
+                    "Safeguard config detected for agent %s — workers will "
+                    "pick up settings via CIV6AZ_SAFEGUARD_* env vars.",
+                    agent.agent_id,
                 )
 
             logger.info("Launching training for agent %s...", agent.agent_id)
@@ -729,7 +715,10 @@ class PBTOrchestrator:
                     step=gen,
                 )
 
-        except Exception:
+        except (ValueError, OSError, RuntimeError):
+            # Catch expected failure modes: bracket creation errors,
+            # match history I/O errors, and arena runner failures.
+            # Unexpected errors propagate to the caller.
             logger.warning(
                 "Tournament evaluation failed at gen %d (non-fatal)",
                 gen,

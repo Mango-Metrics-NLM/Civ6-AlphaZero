@@ -17,9 +17,10 @@ if TYPE_CHECKING:
 
 try:
     import torch
+
     TORCH_AVAILABLE = True
 except ImportError:
-    torch = None
+    torch = None  # type: ignore[assignment]
     TORCH_AVAILABLE = False
 
 import yaml
