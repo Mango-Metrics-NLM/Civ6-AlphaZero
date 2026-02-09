@@ -11,6 +11,7 @@ Usage::
 """
 from __future__ import annotations
 
+import copy
 import logging
 from typing import Any
 
@@ -23,6 +24,7 @@ from src.core.constants import (
     MICROCIV_ACTION_SPACE,
     MICROCIV_SPATIAL_CHANNELS,
     MICROCIV_VECTOR_DIM,
+    STUB_ACTION_DIRECTIONS,
     STUB_SPATIAL_CHANNELS,
     STUB_VECTOR_DIM,
 )
@@ -79,7 +81,9 @@ class MicroCivAdapter:
                 self._use_stub = True
 
         if self._use_stub:
-            self._action_space_size_val = 5 * board_size * board_size + 1  # simplified
+            self._action_space_size_val = (
+                STUB_ACTION_DIRECTIONS * board_size * board_size + 1
+            )
             logger.info("MicroCivAdapter: using stub mode (board=%d)", board_size)
 
         # Observation spec: MicroCiv uses 13 channels
@@ -192,7 +196,6 @@ class MicroCivAdapter:
             A new MicroCivAdapter instance whose state is identical
             to this one but fully independent.
         """
-        import copy
         return copy.deepcopy(self)
 
     def get_symmetries(

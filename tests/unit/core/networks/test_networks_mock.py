@@ -289,6 +289,51 @@ class TestResidualBlock:
         params = list(sig.parameters.keys())
         assert params == ["self", "x"]
 
+    def test_forward_returns_result(
+        self, fresh_nn_mocks: tuple[MagicMock, MagicMock]
+    ) -> None:
+        """forward() executes the residual path and returns a tensor."""
+        block = ResidualBlock(num_filters=64)
+        x = MagicMock()
+        result = block.forward(x)
+        # conv1 is called at least once (shares mock with conv2)
+        assert block.conv1.called
+        assert result is not None
+
+    def test_forward_calls_conv_chain(
+        self, fresh_nn_mocks: tuple[MagicMock, MagicMock]
+    ) -> None:
+        """forward() chains conv1 -> bn1 -> relu -> conv2 -> bn2."""
+        block = ResidualBlock(num_filters=64)
+        x = MagicMock()
+        block.forward(x)
+        # Both convolutions should be called
+        assert block.conv1.called
+        assert block.conv2.called
+        # Both batch norms should be called
+        assert block.bn1.called
+        assert block.bn2.called
+
+    def test_forward_applies_relu(
+        self, fresh_nn_mocks: tuple[MagicMock, MagicMock]
+    ) -> None:
+        """forward() applies relu at least twice (after bn1 and on residual sum)."""
+        block = ResidualBlock(num_filters=64)
+        x = MagicMock()
+        block.forward(x)
+        # relu is called twice: once after bn1(conv1(x)), once on (out + residual)
+        assert block.relu.call_count == 2
+
+    def test_forward_callable_via_call(
+        self, fresh_nn_mocks: tuple[MagicMock, MagicMock]
+    ) -> None:
+        """__call__ delegates to forward (nn.Module pattern)."""
+        block = ResidualBlock(num_filters=64)
+        x = MagicMock()
+        result = block(x)  # Uses __call__ -> forward
+        assert result is not None
+        assert block.conv1.called
+
 
 # ============================================================================
 # Tests: heads.py -- PolicyHead

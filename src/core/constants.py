@@ -63,6 +63,9 @@ STUB_SPATIAL_CHANNELS: int = 6
 STUB_VECTOR_DIM: int = 4
 """Vector feature dimension in stub mode."""
 
+STUB_ACTION_DIRECTIONS: int = 5
+"""Number of action directions per cell in stub action-space formula."""
+
 RESOURCE_COLLECTION_REWARD: float = 0.1
 """Small intermediate reward for collecting a resource in MiniResource."""
 

@@ -9,15 +9,16 @@ import numpy as np
 import pytest
 
 from src.adapters.civ6 import MicroCivAdapter
+from src.core.constants import (
+    DEFAULT_BOARD_SIZE,
+    DEFAULT_MAX_STEPS,
+    STUB_SPATIAL_CHANNELS,
+    STUB_VECTOR_DIM,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-DEFAULT_BOARD_SIZE = 16
-DEFAULT_MAX_STEPS = 200
-STUB_CHANNELS = 6
-STUB_VECTOR_DIM = 4
 
 
 @pytest.fixture()
@@ -86,7 +87,7 @@ class TestConstructor:
     def test_stub_observation_spec_channels(self) -> None:
         """Stub uses 6 channels (not 13 like real MicroCiv)."""
         adapter = MicroCivAdapter(use_stub=True)
-        assert adapter.observation_spec.spatial_shape[0] == STUB_CHANNELS
+        assert adapter.observation_spec.spatial_shape[0] == STUB_SPATIAL_CHANNELS
 
     def test_stub_observation_spec_vector_dim(self) -> None:
         """Stub uses vector_dim=4 (not 64 like real MicroCiv)."""
@@ -106,7 +107,7 @@ class TestObservationSpec:
         board = 12
         adapter = MicroCivAdapter(board_size=board, use_stub=True)
         spec = adapter.observation_spec
-        assert spec.spatial_shape == (STUB_CHANNELS, board, board)
+        assert spec.spatial_shape == (STUB_SPATIAL_CHANNELS, board, board)
 
     def test_vector_dim(self, adapter: MicroCivAdapter) -> None:
         assert adapter.observation_spec.vector_dim == STUB_VECTOR_DIM
@@ -656,7 +657,7 @@ class TestStubObservation:
     def test_shape_varies_with_board_size(self, board: int) -> None:
         adapter = MicroCivAdapter(board_size=board, use_stub=True)
         obs = adapter._stub_observation()
-        assert obs["spatial"].shape == (STUB_CHANNELS, board, board)
+        assert obs["spatial"].shape == (STUB_SPATIAL_CHANNELS, board, board)
 
 
 # ---------------------------------------------------------------------------

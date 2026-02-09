@@ -17,28 +17,46 @@ import argparse
 import logging
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from src.core.constants import DEFAULT_MAX_STEPS
+from src.environments.registry import EnvironmentRegistry
 
 logger = logging.getLogger(__name__)
 
 
-def _get_default_registry() -> Any:
+def _get_default_registry() -> EnvironmentRegistry:
     """Create and populate the default environment registry."""
     from src.environments.mini_games import (
         MiniResourceEnv,
         TacticalCombatEnv,
         TerritoryControlEnv,
     )
-    from src.environments.registry import EnvironmentRegistry
 
     registry = EnvironmentRegistry()
     registry.register("mini_resource", MiniResourceEnv)
     registry.register("territory_control", TerritoryControlEnv)
     registry.register("tactical_combat", TacticalCombatEnv)
     return registry
+
+
+def _make_env_factory(
+    registry: EnvironmentRegistry, env_name: str,
+) -> Callable[[], Any]:
+    """Create a reusable environment factory from a registry and name.
+
+    Args:
+        registry: The environment registry to look up environments.
+        env_name: Name of the registered environment.
+
+    Returns:
+        A zero-argument callable that creates a fresh environment instance.
+    """
+    def factory() -> Any:
+        return registry.create(env_name)
+    return factory
 
 
 def cmd_train(args: argparse.Namespace) -> int:
@@ -69,9 +87,7 @@ def cmd_train(args: argparse.Namespace) -> int:
     # Setup environment
     registry = _get_default_registry()
     env_name = args.env or "mini_resource"
-
-    def env_factory() -> Any:
-        return registry.create(env_name)
+    env_factory = _make_env_factory(registry, env_name)
 
     # Setup learner (dry-run mode if no torch)
     learner = Learner(config=config.training)
@@ -106,9 +122,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
 
     registry = _get_default_registry()
     env_name = args.env or "mini_resource"
-
-    def env_factory() -> Any:
-        return registry.create(env_name)
+    env_factory = _make_env_factory(registry, env_name)
 
     mcts_config = MCTSConfig()
     evaluator = Evaluator(
