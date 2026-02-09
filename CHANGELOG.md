@@ -5,6 +5,120 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] — 2026-02-09
+
+### Added — Phases 8-10: Training Safeguards, MuZero Integration & Tournament System
+
+#### Phase 8: Training Validation & Safeguards
+
+##### Training Safeguards (`alpha_zero/training/training_safeguards.py`) — NEW
+
+- **TrainingSafeguard**: Unified training health monitor wired into orchestrators
+  - `check_step(loss, grad_norm, step)` — Runs all checks, returns `SafeguardReport`
+  - NaN detection with configurable consecutive threshold (`max_consecutive_nan_steps`)
+  - Loss explosion detection via rolling baseline comparison (`loss_explosion_threshold`)
+  - Gradient health monitoring: NORMAL, HIGH, EXPLODING status levels
+  - Memory pressure detection via existing `MemoryGuard` integration
+  - Checkpoint validation: tensor shape, dtype, NaN presence verification
+  - Automated intervention recommendations: REDUCE_LR, ROLLBACK, REDUCE_BATCH_SIZE, EARLY_STOP
+- **TrainingSafeguardConfig**: Fully configurable with `to_dict()`/`from_dict()` serialization
+- **SafeguardReport**, **Intervention**, **GradientStatus**, **InterventionAction** dataclasses
+
+##### Training Reports (`alpha_zero/training/training_report.py`) — NEW
+
+- **TrainingReport**: Periodic training report generation at configurable intervals
+  - `record_step()` / `generate_report()` / `to_wandb_dict()` pipeline
+  - Computes mean/min/max loss, gradient norms, throughput (steps/sec)
+  - Includes safeguard events triggered during interval
+- **TrainingReportConfig**, **TrainingReportData** dataclasses
+
+##### Orchestrator Integration
+
+- **TrainingOrchestrator**: Added `set_training_safeguard()` setter for backwards compatibility
+  - Safeguard checks after each training step in `_train_epochs()`
+  - NaN triggers rollback to last checkpoint + LR reduction
+  - Loss explosion triggers LR reduction by factor 0.5
+  - Memory pressure triggers batch size reduction via `MemoryGuard`
+- **PBTOrchestrator**: Added `training_safeguard_config` keyword-only param
+  - Per-agent safeguard creation, events logged to W&B
+
+#### Phase 9: MuZero Integration Bridge
+
+##### MuZero Training Bridge (`alpha_zero/training/muzero_integration.py`) — NEW
+
+- **MuZeroTrainingBridge**: High-level interface connecting MuZero components to orchestrators
+  - `create_network()`, `create_trainer()`, `create_mcts()` — Factory methods
+  - `selfplay_step()` — Self-play via MuZeroMCTS (no env cloning needed)
+  - `training_step()` — Wraps `MuZeroTrainer.train_step()` with metric extraction
+  - `to_training_config()` — Converts integration config to `MuZeroTrainingConfig`
+- **MuZeroIntegrationConfig**: Env-var configurable (`CIV6AZ_MUZERO_*` prefix)
+  - `from_env()`, `from_yaml()`, `from_dict()`, `to_yaml()` serialization
+
+##### MuZero PBT Hyperparameters (`alpha_zero/pbt/muzero_hyperparams.py`) — NEW
+
+- `create_muzero_hyperparameter_space()` — PBT-compatible hyperparameter space
+- `merge_with_base_space()` — Combines MuZero params with existing AlphaZero space
+
+##### Orchestrator Integration
+
+- **TrainingOrchestrator**: Added `set_muzero_bridge()` setter, `training_mode` dispatch
+  - Default `training_mode="alphazero"` preserves existing behavior
+- **PBTOrchestrator**: Added `muzero_config` keyword-only param
+
+##### Configuration
+
+- `configs/muzero_pbt.yaml` — MuZero PBT config (population_size=6, mutation_strength=0.15)
+
+#### Phase 10: Tournament & Matchmaking System
+
+##### Tournament Orchestrator (`alpha_zero/tournament/orchestrator.py`) — NEW
+
+- **TournamentOrchestrator**: Bracket generation, match execution, standings
+  - Formats: `round_robin`, `single_elimination`, `swiss`
+  - Integrates with existing `ELORatingSystem`, `MatchMaker`, `MatchHistory`
+- **TournamentFormat** enum, **Bracket**, **Matchup**, **PlayerStanding**, **TournamentResult**
+
+##### Tournament Analysis (`alpha_zero/tournament/analysis.py`) — NEW
+
+- **TournamentAnalyzer**: Post-tournament analytics
+  - Head-to-head matrix, player trends, meta-analysis, upset detection
+  - Cross-generation strength comparison, JSON/markdown report export
+
+##### Tournament W&B Dashboards (`alpha_zero/tournament/wandb_dashboards.py`) — NEW
+
+- **TournamentWandbLogger**: `tournament/` namespaced W&B metrics
+  - Match results, round summaries, ELO leaderboard, head-to-head heatmap, ELO history
+
+##### PBT Integration
+
+- **PBTOrchestrator**: Added `tournament_interval` and `tournament_games_per_match` params
+  - `_run_tournament_evaluation()` — Runs at configured intervals, logs to W&B
+
+##### Configuration
+
+- `configs/tournament.yaml` — Tournament config (format, ELO, matchmaking, analysis, baselines)
+
+#### Test Suite (234 new tests, 495 total Phase 7-10)
+
+- `tests/unit/test_training_safeguards.py` — 56 tests
+- `tests/unit/test_training_report.py` — 16 tests
+- `tests/integration/test_safeguard_integration.py` — 9 tests
+- `tests/unit/test_muzero_integration.py` — 37 tests
+- `tests/unit/test_muzero_hyperparams.py` — 32 tests
+- `tests/unit/test_tournament_orchestrator.py` — 33 tests
+- `tests/unit/test_tournament_analysis.py` — 15 tests
+- `tests/unit/test_tournament_wandb_dashboards.py` — 15 tests
+
+### Changed
+
+- `.gitignore` — Added tournament DB, tournament reports, verify_ruff.py patterns
+- `alpha_zero/training/__init__.py` — Added Phase 8-9 exports
+- `alpha_zero/pbt/__init__.py` — Added Phase 9 exports
+- `alpha_zero/tournament/__init__.py` — Added Phase 10 exports
+- All new modules use graceful degradation (`try/except ImportError` with `_AVAILABLE` flags)
+
+---
+
 ## [0.8.0] — 2026-02-08
 
 ### Added — Phase 7: Production Scaling & Training Validation
