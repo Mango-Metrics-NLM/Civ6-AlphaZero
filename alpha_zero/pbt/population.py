@@ -181,36 +181,26 @@ class PopulationManager:
             # Pick k random agents from candidates and return best
             k = min(len(candidates), self.config.tournament_size)
             pool = self.rng.choice(candidates, size=k, replace=False)
-            # Find max fitness in pool
-            best_id = max(pool, key=lambda aid: self.agents[aid].get_smoothed_fitness())
+            window = self.config.fitness_smoothing_window
+            best_id = max(pool, key=lambda aid: self.agents[aid].get_smoothed_fitness(window))
             return best_id
 
         elif method == SelectionMethod.RANK:
-            # Probability proportional to rank
-            # Ranks: 1 (worst) to N (best) in candidates?
-            # Or candidates are already top agents.
-            # Let's verify standard impl. Usually rank selection is over whole pop or candidates.
-            # Assuming candidates are sorted (they are from get_agents_to_copy_from usually).
-            # Actually get_agents_to_copy_from returns list.
-            # Let's sort candidates by fitness first to be sure
+            # Probability proportional to rank (ascending: worst=rank 1, best=rank N)
+            window = self.config.fitness_smoothing_window
             candidates = sorted(
                 candidates,
-                key=lambda aid: self.agents[aid].get_smoothed_fitness(),
+                key=lambda aid: self.agents[aid].get_smoothed_fitness(window),
             )
-            # Higher index = better (sorted ascending by default? No get_fitness_ranking is Descending)
-            # Sorted by fitness ascending:
-            candidates.sort(
-                key=lambda aid: self.agents[aid].get_smoothed_fitness()
-            )
-
             ranks = np.arange(1, len(candidates) + 1)
             probs = ranks / ranks.sum()
             return self.rng.choice(candidates, p=probs)
 
         elif method == SelectionMethod.ROULETTE:
             # Proportional to fitness
+            window = self.config.fitness_smoothing_window
             fitnesses = np.array(
-                [self.agents[aid].get_smoothed_fitness() for aid in candidates]
+                [self.agents[aid].get_smoothed_fitness(window) for aid in candidates]
             )
             # If negative fitness possible, shift (softmax is safer)
             # Basic roulette:

@@ -69,10 +69,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pbt_orchestrator.py` — Pre-existing trailing whitespace lint issue in `_local_arena_runner`
 - `test_pbt_orchestrator.py` — Removed invalid `VertexEvaluationJob` patch, added mock arena runner and `checkpoints_prefix` mock
 
----
-
-## [0.8.0] — 2026-02-08
-
 ### Added — Comprehensive Test Infrastructure & CI/CD (Phases 1-6)
 
 #### Phase 1: Test Coverage Hardening
