@@ -61,6 +61,7 @@ ignore = [
     "E501",    # Line length handled separately
     "ANN401",  # Any type allowed for duck typing with cloud SDKs
     "S101",    # Use of assert (needed for tests)
+    "UP042",   # Prefer StrEnum over (str, Enum) — deferred refactor
 ]
 
 [tool.ruff.lint.per-file-ignores]

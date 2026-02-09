@@ -907,7 +907,7 @@ class TestCivRealmWrapper:
         curriculum = CivRealmCurriculum()
         wrapper = CivRealmWrapper(config, curriculum)
 
-        _obs, _info = wrapper.reset()
+        _obs, info = wrapper.reset()
 
         assert wrapper.curriculum is not None
         assert "task" in info
