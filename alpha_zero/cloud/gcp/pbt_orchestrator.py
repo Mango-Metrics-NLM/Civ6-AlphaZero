@@ -25,6 +25,35 @@ from alpha_zero.pbt.evaluator import EvaluationReport, MatchResult, PBTEvaluator
 from alpha_zero.pbt.population import PopulationManager
 from alpha_zero.utils.wandb_logger import WandbLogger
 
+# Training safeguards (optional, graceful degradation)
+try:
+    from alpha_zero.training.training_safeguards import TrainingSafeguardConfig
+
+    _SAFEGUARDS_AVAILABLE = True
+except ImportError:
+    _SAFEGUARDS_AVAILABLE = False
+    TrainingSafeguardConfig = None  # type: ignore[assignment, misc]
+
+# MuZero integration (optional, graceful degradation)
+try:
+    from alpha_zero.training.muzero_integration import MuZeroIntegrationConfig
+
+    _MUZERO_AVAILABLE = True
+except ImportError:
+    _MUZERO_AVAILABLE = False
+    MuZeroIntegrationConfig = None  # type: ignore[assignment, misc]
+
+# Tournament integration (optional, graceful degradation)
+try:
+    from alpha_zero.tournament.orchestrator import (
+        TournamentOrchestrator,
+    )
+
+    _TOURNAMENT_AVAILABLE = True
+except ImportError:
+    _TOURNAMENT_AVAILABLE = False
+    TournamentOrchestrator = None  # type: ignore[assignment, misc]
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -64,6 +93,10 @@ class PBTOrchestrator:
         checkpoint_retention: int | None = None,
         evaluation_strategy_switch_gen: int | None = None,
         baseline_agents: list[AgentState] | None = None,
+        training_safeguard_config: TrainingSafeguardConfig | None = None,
+        muzero_config: MuZeroIntegrationConfig | None = None,
+        tournament_interval: int = 0,
+        tournament_games_per_match: int = 10,
     ) -> None:
         self.pbt_config = pbt_config
         self.gcp_config = gcp_config or GCPConfig()
@@ -99,6 +132,10 @@ class PBTOrchestrator:
             else pbt_config.evaluation_strategy_switch_gen
         )
         self.baseline_agents = baseline_agents or []
+        self.training_safeguard_config = training_safeguard_config
+        self.muzero_config = muzero_config
+        self.tournament_interval = tournament_interval
+        self.tournament_games_per_match = tournament_games_per_match
 
         # Define PBT W&B charts if logger is provided
         if self.wandb_logger is not None and pbt_config.wandb_enabled:
@@ -292,7 +329,7 @@ class PBTOrchestrator:
             return True
 
         try:
-            from google.cloud import aiplatform  # type: ignore[import-untyped]
+            from google.cloud import aiplatform
 
             quota_limit = int(quota_limit_str)
 
@@ -420,6 +457,9 @@ class PBTOrchestrator:
             self.save_state()
             self._rotate_checkpoints(gen_num)
 
+            # Tournament evaluation (Phase 10)
+            self._run_tournament_evaluation(gen_num)
+
             elapsed = time.monotonic() - t0
 
             # W&B dashboards
@@ -454,6 +494,15 @@ class PBTOrchestrator:
                 f"--agent_id={agent.agent_id}",
             ]
 
+            # NOTE: MuZero config is picked up by workers via
+            # CIV6AZ_MUZERO_* environment variables, not CLI flags.
+            if self.muzero_config is not None:
+                logger.debug(
+                    "MuZero config detected for agent %s self-play — "
+                    "workers read CIV6AZ_MUZERO_* env vars.",
+                    agent.agent_id,
+                )
+
             try:
                 jobs = self.selfplay_job_manager.launch(
                     num_workers=1,
@@ -486,6 +535,24 @@ class PBTOrchestrator:
                 f"--learning_rate={agent.hyperparameters.get('learning_rate', 0.01)}",
                 f"--agent_id={agent.agent_id}",
             ]
+
+            # NOTE: MuZero and safeguard configs are passed via environment
+            # variables (CIV6AZ_MUZERO_* / CIV6AZ_SAFEGUARD_*) rather than
+            # CLI flags, because the Vertex training workers do not define
+            # these arguments in their argparse parsers.
+            if self.muzero_config is not None:
+                logger.debug(
+                    "MuZero config detected for agent %s — workers will "
+                    "pick up settings via CIV6AZ_MUZERO_* env vars.",
+                    agent.agent_id,
+                )
+
+            if self.training_safeguard_config is not None:
+                logger.debug(
+                    "Safeguard config detected for agent %s — workers will "
+                    "pick up settings via CIV6AZ_SAFEGUARD_* env vars.",
+                    agent.agent_id,
+                )
 
             logger.info("Launching training for agent %s...", agent.agent_id)
             job_name = self.training_job_manager.launch(
@@ -575,6 +642,90 @@ class PBTOrchestrator:
         return report
 
     # ------------------------------------------------------------------
+    # Phase 3b: Tournament evaluation (optional)
+    # ------------------------------------------------------------------
+
+    def _run_tournament_evaluation(self, gen: int) -> None:
+        """Run tournament evaluation if configured.
+
+        Runs a mini-tournament among population agents at the configured
+        interval.  Results are logged to W&B if available.
+
+        Args:
+            gen: Current generation number.
+        """
+        if self.tournament_interval <= 0:
+            return
+        if gen % self.tournament_interval != 0:
+            return
+        if not _TOURNAMENT_AVAILABLE:
+            logger.debug(
+                "Tournament module not available; skipping tournament "
+                "evaluation at gen %d",
+                gen,
+            )
+            return
+
+        logger.info("Running tournament evaluation at gen %d", gen)
+
+        try:
+            agents = self.manager.get_all_agents()
+            player_ids = [a.agent_id for a in agents]
+
+            if len(player_ids) < 2:
+                logger.warning(
+                    "Need at least 2 agents for tournament; skipping"
+                )
+                return
+
+            # Create tournament orchestrator with existing evaluator's
+            # arena runner if available
+            arena_runner = getattr(
+                self.evaluator, "arena_runner", None
+            )
+            tournament = TournamentOrchestrator(
+                arena_runner=arena_runner,
+                games_per_match=self.tournament_games_per_match,
+            )
+
+            # Create and run bracket
+            bracket = tournament.create_bracket(player_ids)
+            result = tournament.run_tournament(bracket)
+
+            logger.info(
+                "Tournament at gen %d complete: winner=%s, "
+                "games=%d, standings=%d",
+                gen,
+                result.winner,
+                result.total_games,
+                len(result.final_standings),
+            )
+
+            # Log to W&B if available
+            if self.wandb_logger is not None:
+                self.wandb_logger.log(
+                    {
+                        "tournament/generation": gen,
+                        "tournament/total_games": result.total_games,
+                        "tournament/winner": result.winner,
+                        "tournament/duration_seconds": (
+                            result.duration_seconds
+                        ),
+                    },
+                    step=gen,
+                )
+
+        except (ValueError, OSError, RuntimeError):
+            # Catch expected failure modes: bracket creation errors,
+            # match history I/O errors, and arena runner failures.
+            # Unexpected errors propagate to the caller.
+            logger.warning(
+                "Tournament evaluation failed at gen %d (non-fatal)",
+                gen,
+                exc_info=True,
+            )
+
+    # ------------------------------------------------------------------
     # Phase 4: Evolution
     # ------------------------------------------------------------------
 
@@ -608,10 +759,10 @@ def _local_arena_runner(
     torch/networks are not importable.
     """
     try:
-        import torch  # type: ignore[import-untyped]
+        import torch
 
         from alpha_zero.cloud.gcp.evaluation_worker import run_arena
-        from alpha_zero.utils.config import NetworkConfig
+        from alpha_zero.orchestrator.config import NetworkConfig
         from alpha_zero.utils.factories import create_network
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

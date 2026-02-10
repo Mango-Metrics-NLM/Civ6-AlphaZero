@@ -38,6 +38,12 @@ from .elo_plateau_detector import (
     get_elo_detector,
 )
 
+# Phase 9: MuZero Integration
+from .muzero_integration import (
+    MuZeroIntegrationConfig,
+    MuZeroTrainingBridge,
+)
+
 # Phase 6: Training Profiler
 from .training_profiler import (
     DiminishingReturnsAnalysis,
@@ -48,7 +54,25 @@ from .training_profiler import (
     get_training_profiler,
 )
 
+# Phase 8: Training Safeguards & Reports
+from .training_report import (
+    TrainingReport,
+    TrainingReportConfig,
+    TrainingReportData,
+)
+from .training_safeguards import (
+    CheckpointValidation,
+    GradientStatus,
+    Intervention,
+    InterventionAction,
+    SafeguardReport,
+    TrainingSafeguard,
+    TrainingSafeguardConfig,
+)
+
 __all__ = [
+    # Phase 8: Training Safeguards
+    "CheckpointValidation",
     # Main pipeline
     "CurriculumPipeline",
     "CurriculumPipelineConfig",
@@ -69,10 +93,21 @@ __all__ = [
     "EnvironmentTierConfig",
     # MuZero components
     "GameTrajectory",
+    "GradientStatus",
+    "Intervention",
+    "InterventionAction",
+    "MuZeroIntegrationConfig",
     "MuZeroTrainer",
+    "MuZeroTrainingBridge",
     "MuZeroTrainingConfig",
+    "SafeguardReport",
     "TrainingProfiler",
     "TrainingProfilerConfig",
+    "TrainingReport",
+    "TrainingReportConfig",
+    "TrainingReportData",
+    "TrainingSafeguard",
+    "TrainingSafeguardConfig",
     "TrainingStepMetrics",
     "TrajectoryBuffer",
     "TransferLearningConfig",

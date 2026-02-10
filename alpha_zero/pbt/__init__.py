@@ -19,10 +19,18 @@ from alpha_zero.pbt.config import (
     SelectionMethod,
 )
 
+# Phase 9: MuZero hyperparameter space
+from alpha_zero.pbt.muzero_hyperparams import (
+    create_muzero_hyperparameter_space,
+    merge_with_base_space,
+)
+
 __all__ = [
     "AgentState",
     "HyperparameterRange",
     "HyperparameterSpace",
     "PBTConfig",
     "SelectionMethod",
+    "create_muzero_hyperparameter_space",
+    "merge_with_base_space",
 ]

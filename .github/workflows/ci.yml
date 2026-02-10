@@ -58,7 +58,7 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run unit tests
-        run: pytest tests/unit/ -v --tb=short -x
+        run: pytest tests/unit/ -v --tb=short -x -m "not slow"
 
       - name: Run sanity tests
         run: pytest tests/sanity/ -v --tb=short

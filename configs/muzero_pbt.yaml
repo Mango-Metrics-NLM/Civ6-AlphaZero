@@ -1,0 +1,123 @@
+# MuZero PBT (Population-Based Training) Configuration
+# ─────────────────────────────────────────────────────────
+# Extends base PBT config with MuZero-specific hyperparameters.
+# Smaller population due to longer training with learned dynamics.
+# Override via environment variables with CIV6AZ_MUZERO_ prefix.
+
+training_mode: muzero
+
+population:
+  size: 6                        # Smaller than AlphaZero due to higher compute
+  selection_method: truncation   # truncation | tournament | roulette | rank
+  truncation_ratio: 0.25
+  elite_ratio: 0.1
+
+generations:
+  max_generations: 50
+  eval_interval: 3
+  checkpoint_interval: 5
+
+# Base hyperparameters (shared with AlphaZero)
+hyperparameters:
+  learning_rate:
+    min: 0.00001
+    max: 0.01
+    scale: log
+    default: 0.001
+
+  weight_decay:
+    min: 0.000001
+    max: 0.001
+    scale: log
+    default: 0.0001
+
+  c_puct:
+    min: 0.5
+    max: 5.0                    # Wider range for learned dynamics exploration
+    scale: linear
+    default: 1.5
+
+  batch_size:
+    min: 32
+    max: 256                    # Smaller max due to unroll memory overhead
+    scale: log
+    default: 128
+    type: integer
+
+  num_simulations:
+    min: 50
+    max: 400
+    scale: log
+    default: 100
+    type: integer
+
+# MuZero-specific hyperparameters
+muzero:
+  unroll_steps:
+    min: 3
+    max: 10
+    scale: linear
+    default: 5
+    type: integer
+
+  td_steps:
+    min: 5
+    max: 20
+    scale: linear
+    default: 10
+    type: integer
+
+  discount:
+    min: 0.95
+    max: 0.999
+    scale: linear
+    default: 0.997
+
+  consistency_loss_weight:
+    min: 0.5
+    max: 5.0
+    scale: linear
+    default: 2.0
+
+  reward_loss_weight:
+    min: 0.5
+    max: 2.0
+    scale: linear
+    default: 1.0
+
+  use_reanalyze: false
+  reanalyze_fraction: 0.5
+  value_prefix: false
+
+mutation:
+  probability: 0.8
+  strength: 0.15                # More conservative for learned dynamics
+  resample_probability: 0.05
+
+fitness:
+  metric: elo_rating
+  smoothing_window: 10
+  min_games: 5
+
+evaluation:
+  games_per_match: 8
+  strategy: round_robin          # round_robin | swiss
+  baseline_interval: 5
+  baseline_agents:
+    - random
+    - greedy
+
+# Vertex AI integration
+vertex_ai:
+  enabled: false
+  machine_type: n1-standard-8
+  gpu_type: NVIDIA_TESLA_T4
+  gpu_count: 1
+  max_concurrent_jobs: 3        # Fewer due to larger per-job memory
+  spot_vm: true
+
+# W&B tracking
+wandb:
+  enabled: false
+  project: civ6-alphazero-pbt
+  group: muzero-pbt-sweep

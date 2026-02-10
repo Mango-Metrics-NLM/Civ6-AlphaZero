@@ -76,6 +76,23 @@ from alpha_zero.utils.factories import (
     create_wandb_logger,
 )
 
+# Training safeguards (optional, graceful degradation)
+try:
+    import alpha_zero.training.training_safeguards  # noqa: F401
+
+    SAFEGUARDS_AVAILABLE = True
+except ImportError:
+    SAFEGUARDS_AVAILABLE = False
+
+# MuZero integration (optional, graceful degradation)
+try:
+    from alpha_zero.training.muzero_integration import MuZeroTrainingBridge
+
+    MUZERO_AVAILABLE = True
+except ImportError:
+    MUZERO_AVAILABLE = False
+    MuZeroTrainingBridge = None  # type: ignore[assignment, misc]
+
 logger = logging.getLogger(__name__)
 
 
@@ -286,6 +303,13 @@ class TrainingOrchestrator:
         # Hierarchical decision-making system
         self._hierarchical_integration: Any = None
 
+        # Training safeguards (Phase 8)
+        self._training_safeguard: Any = None
+
+        # MuZero integration (Phase 9)
+        self._muzero_bridge: Any = None
+        self._training_mode: str = "alphazero"
+
         # Signal handling
         self._shutdown_requested = False
         signal.signal(signal.SIGINT, self._handle_shutdown)
@@ -318,6 +342,38 @@ class TrainingOrchestrator:
         """Handle shutdown signals gracefully."""
         logger.info("Shutdown signal received, finishing current iteration...")
         self._shutdown_requested = True
+
+    def set_training_safeguard(self, safeguard: Any) -> None:
+        """Set optional training safeguard for health monitoring.
+
+        Args:
+            safeguard: A :class:`TrainingSafeguard` instance, or *None*
+                to disable safeguards.
+        """
+        self._training_safeguard = safeguard
+
+    def set_muzero_bridge(
+        self,
+        bridge: Any,
+        *,
+        training_mode: str = "muzero",
+    ) -> None:
+        """Set optional MuZero training bridge.
+
+        When set with ``training_mode="muzero"``, self-play and training
+        will use MuZero components (learned dynamics model, MuZeroMCTS)
+        instead of standard AlphaZero MCTS.
+
+        Args:
+            bridge: A :class:`MuZeroTrainingBridge` instance, or *None*
+                to disable MuZero mode.
+            training_mode: Training mode to use — ``"alphazero"`` (default)
+                or ``"muzero"``.
+        """
+        self._muzero_bridge = bridge
+        self._training_mode = training_mode
+        if bridge is not None:
+            logger.info("MuZero bridge set, training_mode=%s", training_mode)
 
     def initialize(self) -> bool:
         """Initialize all training components.
@@ -636,6 +692,10 @@ class TrainingOrchestrator:
     ) -> list[GameResult]:
         """Run self-play games to generate training data.
 
+        When ``training_mode == "muzero"`` and a :class:`MuZeroTrainingBridge`
+        is set, self-play uses :meth:`MuZeroTrainingBridge.selfplay_step`
+        (MuZeroMCTS, no environment cloning) instead of standard MCTS.
+
         Args:
             num_games: Number of games to play.
             env_params: Optional environment parameter overrides.
@@ -644,6 +704,10 @@ class TrainingOrchestrator:
             List of game results.
         """
         assert self._network is not None
+
+        # MuZero self-play path
+        if self._training_mode == "muzero" and self._muzero_bridge is not None:
+            return self._run_muzero_self_play(num_games, env_params)
 
         results = []
         self._network.eval()
@@ -663,6 +727,100 @@ class TrainingOrchestrator:
             # Process game result for reflection (on losses)
             if self._reflection_memory is not None:
                 self._process_game_result(result)
+
+        return results
+
+    def _run_muzero_self_play(
+        self,
+        num_games: int,
+        env_params: dict[str, Any] | None = None,
+    ) -> list[GameResult]:
+        """Run MuZero self-play games using the MuZero training bridge.
+
+        MuZero MCTS searches over the learned dynamics model rather than
+        cloning the environment, which is faster for complex environments.
+
+        Args:
+            num_games: Number of games to play.
+            env_params: Optional environment parameter overrides.
+
+        Returns:
+            List of game results.
+        """
+        assert self._network is not None
+        assert self._muzero_bridge is not None
+
+        results = []
+        self._network.eval()
+
+        # Create MuZero MCTS instance on the orchestrator's device
+        mcts = self._muzero_bridge.create_mcts(self._network, device=self._device)
+
+        logger.info("Starting MuZero self-play: %d games", num_games)
+        for game_idx in range(num_games):
+            game_start = time.time()
+
+            # Create fresh environment
+            if env_params:
+                base_env = create_environment(self.config.environment, env_params)
+            else:
+                base_env = create_environment(self.config.environment)
+
+            env = PaddedEnvironmentWrapper(
+                base_env,
+                self._expected_board_size,
+                self._expected_action_size,
+            )
+
+            # Run self-play via bridge (MuZeroMCTS, no env cloning)
+            trajectory = self._muzero_bridge.selfplay_step(
+                network=self._network,
+                env=env,
+                mcts=mcts,
+                max_moves=self.config.environment.max_turns,
+            )
+
+            # Convert MuZero trajectory to GameResult
+            total_reward = sum(trajectory.rewards) if trajectory.rewards else 0.0
+            winner = 1 if total_reward > 0 else (-1 if total_reward < 0 else 0)
+
+            result = GameResult(
+                trajectory=[],  # Raw trajectory stored separately
+                winner=winner,
+                total_reward=total_reward,
+                turns=len(trajectory.actions),
+                metrics={"muzero_mode": 1.0},
+            )
+
+            # Store trajectory data in replay buffer
+            if self._replay_buffer is not None:
+                for i, obs in enumerate(trajectory.observations):
+                    if isinstance(obs, dict):
+                        self._replay_buffer.add({
+                            "spatial": obs.get("spatial", obs.get("observation")),
+                            "vector": obs.get(
+                                "vector", np.zeros(self.config.network.vector_dim)
+                            ),
+                            "action_mask": obs.get(
+                                "action_mask",
+                                np.ones(self._expected_action_size),
+                            ),
+                            "policy": trajectory.policies[i],
+                            "value": trajectory.values[i],
+                        })
+
+            game_time = time.time() - game_start
+            results.append(result)
+            logger.info(
+                "MuZero game %d/%d: turns=%d, winner=%d, "
+                "reward=%.2f, time=%.1fs",
+                game_idx + 1,
+                num_games,
+                result.turns,
+                result.winner,
+                result.total_reward,
+                game_time,
+            )
 
         return results
 
@@ -1015,6 +1173,10 @@ class TrainingOrchestrator:
     def _train_epochs(self, num_epochs: int) -> dict[str, float]:
         """Train network for specified epochs.
 
+        When ``training_mode == "muzero"`` and a MuZero training bridge is
+        set, training uses :meth:`MuZeroTrainingBridge.training_step`
+        instead of the standard AlphaZero loss computation.
+
         Args:
             num_epochs: Number of training epochs.
 
@@ -1024,6 +1186,10 @@ class TrainingOrchestrator:
         assert self._network is not None
         assert self._optimizer is not None
         assert self._scheduler is not None
+
+        # MuZero training path
+        if self._training_mode == "muzero" and self._muzero_bridge is not None:
+            return self._train_muzero_epochs(num_epochs)
 
         self._network.train()
         total_policy_loss = 0.0
@@ -1090,6 +1256,26 @@ class TrainingOrchestrator:
             total_loss += loss.item()
             num_batches += 1
 
+            # Training safeguard check (Phase 8)
+            if self._training_safeguard is not None:
+                grad_norm = sum(
+                    p.grad.data.norm(2).item() ** 2
+                    for p in self._network.parameters()
+                    if p.grad is not None
+                ) ** 0.5
+                report = self._training_safeguard.check_step(
+                    loss=loss.item(),
+                    grad_norm=grad_norm,
+                    step=self.state.total_steps + num_batches,
+                    device=self._device,
+                )
+                if report.intervention is not None:
+                    logger.warning(
+                        "Safeguard intervention: %s (reason: %s)",
+                        report.intervention.action.value,
+                        report.intervention.reason,
+                    )
+
         if num_batches > 0:
             avg_policy = total_policy_loss / num_batches
             avg_value = total_value_loss / num_batches
@@ -1104,6 +1290,76 @@ class TrainingOrchestrator:
                 "value_loss": avg_value,
                 "total_loss": avg_total,
             }
+
+        return {}
+
+    def _train_muzero_epochs(self, num_epochs: int) -> dict[str, float]:
+        """Train using MuZero trainer for the specified number of epochs.
+
+        Delegates batch preparation and training to the MuZero bridge,
+        which uses unrolled dynamics loss (policy + value + reward +
+        consistency).
+
+        Args:
+            num_epochs: Number of training epochs.
+
+        Returns:
+            Training metrics dictionary.
+        """
+        assert self._network is not None
+        assert self._muzero_bridge is not None
+        assert self._scheduler is not None
+
+        self._network.train()
+
+        # Create or reuse MuZero trainer
+        trainer = self._muzero_bridge.create_trainer(
+            self._network, device=self._device
+        )
+
+        batch_size = self._scheduler.get_batch_size()
+        total_loss = 0.0
+        num_batches = 0
+
+        for _epoch_idx in range(num_epochs):
+            batch = self._replay_buffer.sample(batch_size)
+            if not batch:
+                continue
+
+            # Training step via bridge
+            metrics = self._muzero_bridge.training_step(
+                trainer=trainer,
+                batch=batch,
+                step=self.state.total_steps + num_batches,
+            )
+
+            step_loss = metrics.get("total_loss", 0.0)
+            total_loss += step_loss
+            num_batches += 1
+
+            # Training safeguard check
+            if self._training_safeguard is not None:
+                grad_norm = metrics.get("grad_norm", 0.0)
+                report = self._training_safeguard.check_step(
+                    loss=step_loss,
+                    grad_norm=grad_norm,
+                    step=self.state.total_steps + num_batches,
+                    device=self._device,
+                )
+                if report.intervention is not None:
+                    logger.warning(
+                        "Safeguard intervention (MuZero): %s (reason: %s)",
+                        report.intervention.action.value,
+                        report.intervention.reason,
+                    )
+
+        if num_batches > 0:
+            avg_loss = total_loss / num_batches
+            self.state.recent_losses.append(avg_loss)
+            if len(self.state.recent_losses) > 100:
+                self.state.recent_losses.pop(0)
+
+            return {"total_loss": avg_loss, "training_mode": 1.0}
 
         return {}
 

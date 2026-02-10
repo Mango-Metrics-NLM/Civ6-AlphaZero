@@ -21,10 +21,52 @@ from alpha_zero.distributed.shared_storage import (
     GameTrajectory,
     ReplayBufferConfig,
     SharedStorage,
+    SharedStorageConfig,
     TrainingExample,
     WeightSynchronizer,
 )
 from alpha_zero.utils.constants import ENCODER
+
+
+@pytest.fixture
+def fast_actor_config() -> ActorConfig:
+    """Create a fast actor configuration for testing."""
+    return ActorConfig(
+        actor_id=0,
+        board_size=8,
+        max_turns=10,
+        num_res_blocks=1,
+        num_filters=8,
+        num_simulations=2,
+        max_games=2,
+        log_interval=1,
+    )
+
+
+@pytest.fixture
+def shared_storage():
+    """Create shared storage for testing."""
+    config = SharedStorageConfig(compress_weights=False)
+    storage = SharedStorage(config=config)
+    yield storage
+    storage.shutdown()
+
+
+@pytest.fixture
+def replay_buffer():
+    """Create replay buffer for testing."""
+    config = ReplayBufferConfig(max_size=1000, min_size=10)
+    buffer = DistributedReplayBuffer(config=config)
+    yield buffer
+    buffer.shutdown()
+
+
+@pytest.fixture
+def small_network():
+    """Create a small network for testing."""
+    import torch
+    model = torch.nn.Linear(10, 10)
+    return model
 
 
 class TestActorFailures:

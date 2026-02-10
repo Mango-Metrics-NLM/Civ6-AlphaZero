@@ -387,7 +387,7 @@ class TestObservationShapes:
 
         # Civ6StateEncoder uses 84 spatial channels
         config = encoder.config
-        assert config.num_spatial_channels == 84
+        assert config.spatial_channels == 84
         assert config.board_size == 16
 
     def test_encoder_vector_shape(self) -> None:

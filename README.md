@@ -18,12 +18,15 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 6 | Agentic Framework for Claude Code | ✅ Complete |
 | Phase 7 | GCP Vertex AI Cloud Training Pipeline | ✅ Complete |
 | Phase 7+ | Production PBT Scaling & Validation | ✅ Complete |
+| Phase 8 | Training Safeguards & Automated Intervention | ✅ Complete |
+| Phase 9 | MuZero Integration Bridge | ✅ Complete |
+| Phase 10 | Tournament & Matchmaking System | ✅ Complete |
 
 **Codebase Statistics:**
 
-- ~51,800 lines of core implementation
+- ~55,000 lines of core implementation
 - ~14,600 lines of agentic framework
-- 2,250+ tests with >80% coverage on core modules
+- 3,800+ tests with >80% coverage on core modules
 - 11 game mechanics modules
 
 ## Key Features
@@ -50,6 +53,10 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - **Baseline Benchmarking**: Absolute performance tracking against random/heuristic agents
 - **GCS Checkpoint Rotation**: Manifest-based checkpoint pruning with configurable retention
 - **GPU Quota Guard**: Automatic quota checking with exponential backoff polling
+- **Training Safeguards**: NaN detection, loss explosion monitoring, gradient health, automated interventions
+- **MuZero Integration**: Learned dynamics model bridge with MuZeroNetwork, MuZeroTrainer, MuZeroMCTS
+- **Tournament System**: Bracket generation (round-robin, single-elimination, Swiss), ELO standings, W&B dashboards
+- **Tournament Analysis**: Head-to-head matrix, player trends, meta-analysis, cross-generation comparison
 
 ## Architecture (C4 Model)
 
@@ -352,6 +359,153 @@ graph TB
     style Adaptive fill:#438dd5,stroke:#2e6295,color:#ffffff
     style Dashboard fill:#85bbf0,stroke:#5d82a8,color:#000000
     style QuotaGuard fill:#85bbf0,stroke:#5d82a8,color:#000000
+```
+
+### Level 3: Component Diagram - Training Safeguards & MuZero (Phases 8-9)
+
+Internal structure of the training safeguard and MuZero integration systems.
+
+```mermaid
+graph TB
+    subgraph "Training Safeguards (Phase 8)"
+        subgraph "Health Monitoring"
+            Safeguard["TrainingSafeguard<br/><i>Unified health monitor</i>"]
+            NaNDetect["NaN Detection<br/><i>Consecutive threshold</i>"]
+            LossExplode["Loss Explosion<br/><i>Rolling baseline comparison</i>"]
+            GradHealth["Gradient Health<br/><i>NORMAL / HIGH / EXPLODING</i>"]
+            MemCheck["Memory Check<br/><i>Delegates to MemoryGuard</i>"]
+        end
+
+        subgraph "Interventions"
+            Intervention["Intervention Engine<br/><i>Automated responses</i>"]
+            ReduceLR["Reduce LR<br/><i>Loss explosion recovery</i>"]
+            Rollback["Rollback Checkpoint<br/><i>NaN recovery</i>"]
+            ReduceBatch["Reduce Batch Size<br/><i>Memory pressure</i>"]
+            EarlyStop["Early Stop<br/><i>Convergence stalled</i>"]
+        end
+
+        subgraph "Reporting"
+            Report["TrainingReport<br/><i>Periodic summaries</i>"]
+            SafeReport["SafeguardReport<br/><i>Per-step health data</i>"]
+        end
+    end
+
+    Safeguard --> NaNDetect
+    Safeguard --> LossExplode
+    Safeguard --> GradHealth
+    Safeguard --> MemCheck
+    Safeguard --> SafeReport
+    SafeReport --> Intervention
+    Intervention --> ReduceLR
+    Intervention --> Rollback
+    Intervention --> ReduceBatch
+    Intervention --> EarlyStop
+    SafeReport --> Report
+
+    style Safeguard fill:#1168bd,stroke:#0b4884,color:#ffffff
+    style Intervention fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style Report fill:#85bbf0,stroke:#5d82a8,color:#000000
+```
+
+```mermaid
+graph TB
+    subgraph "MuZero Integration (Phase 9)"
+        subgraph "Training Bridge"
+            Bridge["MuZeroTrainingBridge<br/><i>Orchestrator interface</i>"]
+            CreateNet["create_network()<br/><i>MuZeroNetwork factory</i>"]
+            CreateTrainer["create_trainer()<br/><i>MuZeroTrainer factory</i>"]
+            CreateMCTS["create_mcts()<br/><i>MuZeroMCTS factory</i>"]
+        end
+
+        subgraph "MuZero Core"
+            MZNet["MuZeroNetwork<br/><i>Representation + Dynamics + Prediction</i>"]
+            MZTrainer["MuZeroTrainer<br/><i>Unrolled dynamics training</i>"]
+            MZSearch["MuZeroMCTS<br/><i>Search with learned model</i>"]
+        end
+
+        subgraph "PBT Integration"
+            HyperSpace["MuZero Hyperparameter Space<br/><i>unroll_steps, td_steps, discount</i>"]
+            MergeSpace["merge_with_base_space()<br/><i>Combined AlphaZero + MuZero</i>"]
+        end
+
+        subgraph "Configuration"
+            IntConfig["MuZeroIntegrationConfig<br/><i>YAML / env-var / dict</i>"]
+            PBTConfig["configs/muzero_pbt.yaml<br/><i>Population size 6</i>"]
+        end
+    end
+
+    Bridge --> CreateNet --> MZNet
+    Bridge --> CreateTrainer --> MZTrainer
+    Bridge --> CreateMCTS --> MZSearch
+    IntConfig --> Bridge
+    HyperSpace --> MergeSpace
+    PBTConfig --> IntConfig
+
+    style Bridge fill:#1168bd,stroke:#0b4884,color:#ffffff
+    style MZNet fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style MZSearch fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style HyperSpace fill:#85bbf0,stroke:#5d82a8,color:#000000
+```
+
+### Level 3: Component Diagram - Tournament System (Phase 10)
+
+Internal structure of the tournament orchestration and analysis system.
+
+```mermaid
+graph TB
+    subgraph "Tournament System (Phase 10)"
+        subgraph "Orchestration"
+            TournOrch["TournamentOrchestrator<br/><i>Bracket generation & execution</i>"]
+            Bracket["Bracket<br/><i>Round-robin / Elimination / Swiss</i>"]
+            MatchRunner["Match Runner<br/><i>arena_runner callback</i>"]
+            Standings["Standings<br/><i>ELO + win rate ranking</i>"]
+        end
+
+        subgraph "Analysis"
+            Analyzer["TournamentAnalyzer<br/><i>Post-tournament analytics</i>"]
+            H2H["Head-to-Head Matrix<br/><i>N x N win rates</i>"]
+            Trends["Player Trends<br/><i>ELO / win rate over time</i>"]
+            Meta["Meta Analysis<br/><i>Top-k hyperparameters</i>"]
+            Upsets["Upset Detection<br/><i>ELO difference threshold</i>"]
+        end
+
+        subgraph "Existing Infrastructure"
+            ELO["ELORatingSystem<br/><i>tournament/elo.py</i>"]
+            MatchMaker["MatchMaker<br/><i>tournament/matchmaking.py</i>"]
+            History["MatchHistory<br/><i>tournament/history.py</i>"]
+            League["LeagueManager<br/><i>tournament/league.py</i>"]
+        end
+
+        subgraph "Visualization"
+            WandbLog["TournamentWandbLogger<br/><i>tournament/* metrics</i>"]
+            Leaderboard["ELO Leaderboard<br/><i>W&B table</i>"]
+            Heatmap["Head-to-Head Heatmap<br/><i>W&B chart</i>"]
+            ELOChart["ELO History<br/><i>Per-player line chart</i>"]
+        end
+    end
+
+    TournOrch --> Bracket
+    TournOrch --> MatchRunner
+    TournOrch --> Standings
+    MatchRunner --> ELO
+    MatchRunner --> History
+    Bracket --> MatchMaker
+    Standings --> ELO
+
+    Analyzer --> H2H
+    Analyzer --> Trends
+    Analyzer --> Meta
+    Analyzer --> Upsets
+    Analyzer --> History
+
+    WandbLog --> Leaderboard
+    WandbLog --> Heatmap
+    WandbLog --> ELOChart
+
+    style TournOrch fill:#1168bd,stroke:#0b4884,color:#ffffff
+    style Analyzer fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style ELO fill:#85bbf0,stroke:#5d82a8,color:#000000
+    style WandbLog fill:#85bbf0,stroke:#5d82a8,color:#000000
 ```
 
 ### Level 3: Component Diagram - Hierarchical RL
@@ -873,7 +1027,25 @@ Civ6-AlphaZero/
 │   │   ├── population.py    # PopulationManager
 │   │   ├── mutations.py     # 6 mutation strategies
 │   │   ├── scheduler.py     # PBTScheduler
-│   │   └── coordinator.py   # PBT coordination
+│   │   ├── coordinator.py   # PBT coordination
+│   │   └── muzero_hyperparams.py # MuZero PBT hyperparameter space (Phase 9)
+│   ├── tournament/           # Tournament System (Phase 10)
+│   │   ├── config.py         # TournamentConfig, MatchResult, PlayerStats
+│   │   ├── elo.py            # ELORatingSystem, RatingLeaderboard
+│   │   ├── matchmaking.py    # MatchMaker, OpponentSelector
+│   │   ├── history.py        # MatchHistory, PlayerStatistics
+│   │   ├── league.py         # LeagueManager, SeasonInfo
+│   │   ├── orchestrator.py   # TournamentOrchestrator, Bracket
+│   │   ├── analysis.py       # TournamentAnalyzer, head-to-head
+│   │   └── wandb_dashboards.py # TournamentWandbLogger
+│   ├── training/             # Training Infrastructure
+│   │   ├── muzero_trainer.py       # MuZeroTrainer, MuZeroTrainingConfig
+│   │   ├── muzero_integration.py   # MuZeroTrainingBridge (Phase 9)
+│   │   ├── training_safeguards.py  # TrainingSafeguard (Phase 8)
+│   │   ├── training_report.py      # TrainingReport (Phase 8)
+│   │   ├── convergence_monitor.py  # ConvergenceMonitor
+│   │   ├── training_profiler.py    # TrainingProfiler
+│   │   └── elo_plateau_detector.py # EloPlateauDetector
 │   ├── integration/          # External integrations
 │   │   └── game_connector.py # AI-to-game bridge
 │   ├── rag/                  # RAG Integration (Phase 5)
@@ -904,6 +1076,8 @@ Civ6-AlphaZero/
 │   ├── orchestrator_fast.yaml
 │   ├── orchestrator_production.yaml
 │   ├── pbt_prod.yaml         # Production PBT config (Phase 7+)
+│   ├── muzero_pbt.yaml       # MuZero PBT config (Phase 9)
+│   ├── tournament.yaml       # Tournament config (Phase 10)
 │   └── civ6_config.yaml      # Game-specific configuration
 ├── data/
 │   └── knowledge/            # RAG knowledge base
@@ -924,7 +1098,7 @@ Civ6-AlphaZero/
 │           ├── ActionExecutor.lua # Command execution
 │           ├── FileIO.lua    # File operations
 │           └── JsonEncoder.lua # Pure Lua JSON
-├── tests/                    # Test suite (2,250+ tests)
+├── tests/                    # Test suite (3,800+ tests)
 │   ├── unit/                 # Unit tests
 │   ├── integration/          # Integration tests (PBT, distributed, preemption)
 │   ├── e2e/                  # End-to-end tests (training smoke, GCS, Vertex)
@@ -965,6 +1139,9 @@ Civ6-AlphaZero/
 - ✅ **Population-Based Training** — Full PBT with cross-agent ELO evaluation, 6 mutation strategies, W&B dashboards
 - ✅ **Production PBT Scaling** — Checkpoint rotation, GPU quota guard, baseline benchmarking, dynamic strategy switch
 - ✅ **CI/CD & Test Infrastructure** — Release automation, 6-tier test coverage (unit, integration, e2e, security, sanity, cloud)
+- ✅ **Training Safeguards** — NaN detection, loss explosion monitoring, gradient health, automated interventions
+- ✅ **MuZero Integration** — MuZeroTrainingBridge connecting network/trainer/MCTS to orchestrators and PBT
+- ✅ **Tournament System** — Bracket orchestration (round-robin, elimination, Swiss), analysis, W&B dashboards
 
 ### Next Steps
 
@@ -972,16 +1149,18 @@ Civ6-AlphaZero/
 |----------|---------|-------------|
 | P0 | Extended Training Run | Run 50+ generation PBT on Vertex AI to validate convergence |
 | P1 | Training Validation | Achieve >50% win rate vs random baseline |
-| P2 | MuZeroMCTS Integration | Learned dynamics model for model-based planning |
-| P3 | Tournament System | Multi-agent ELO-based ranking and matchmaking |
+| P2 | MuZero Training Run | Run MuZero PBT with `configs/muzero_pbt.yaml` to validate learned dynamics |
+| P3 | Tournament Evaluation | Deploy tournament-based evaluation alongside PBT generations |
 | P4 | Human vs AI Interface | Web-based UI for human gameplay |
 | P5 | Full Civ 6 Integration | Direct game interface via modding API |
 
 ### Current Priorities
 
 1. **Launch PBT training** — Run `configs/pbt_prod.yaml` on Vertex AI with population_size=8
-2. **Monitor W&B dashboards** — Track `pbt/elo_*` and `pbt/fitness_*` metrics for convergence
+2. **Monitor W&B dashboards** — Track `pbt/elo_*`, `pbt/fitness_*`, and `tournament/*` metrics
 3. **Baseline benchmarking** — Verify win rate improvements against random/heuristic agents at every 5th generation
+4. **MuZero experiments** — Compare AlphaZero vs MuZero training modes using `configs/muzero_pbt.yaml`
+5. **Tournament analysis** — Run cross-generation tournaments to measure agent strength progression
 
 ## Contributing
 
