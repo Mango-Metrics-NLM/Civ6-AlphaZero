@@ -61,6 +61,7 @@ ignore = [
     "E501",    # Line length handled separately
     "ANN401",  # Any type allowed for duck typing with cloud SDKs
     "S101",    # Use of assert (needed for tests)
+    "UP038",   # isinstance(x, (A, B)) is faster than isinstance(x, A | B) — deprecated in ruff 0.9+
     "UP042",   # Prefer StrEnum over (str, Enum) — deferred refactor
 ]
 
