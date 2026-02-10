@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.core.config import SDKConfig
+from src.core.protocols import StrategicEnvironment
 from src.core.training.checkpoint import CheckpointManager, CheckpointMetadata
 from src.core.training.curriculum import CurriculumScheduler
 from src.core.training.evaluator import EvalResult, Evaluator
@@ -92,7 +93,7 @@ class TrainingOrchestrator:
     def __init__(
         self,
         config: SDKConfig,
-        env_factory: Callable[[], Any],
+        env_factory: Callable[[], StrategicEnvironment],
         learner: Learner | None = None,
         replay_buffer: ReplayBuffer | None = None,
         evaluator: Evaluator | None = None,

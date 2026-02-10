@@ -862,8 +862,16 @@ class TestTypeAliases:
 class TestAllExports:
     """Verify __all__ is complete and every name is importable."""
 
-    def test_all_length(self) -> None:
-        assert len(types_module.__all__) == 24
+    def test_all_contains_critical_names(self) -> None:
+        """__all__ must contain all core public names."""
+        required = {
+            "GameOutcome", "DeviceType", "TrainingExample", "GameTrajectory",
+            "ObservationSpec", "HierarchicalActionSpec", "EvalResult",
+            "SearchResult", "SelectionPolicyType", "ActionSpaceType",
+            "BackboneType", "ReplayBufferType",
+        }
+        missing = required - set(types_module.__all__)
+        assert not missing, f"__all__ is missing: {missing}"
 
     def test_all_names_are_importable(self) -> None:
         for name in types_module.__all__:

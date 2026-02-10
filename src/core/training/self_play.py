@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -14,6 +13,7 @@ from src.core.constants import (
     DEFAULT_TEMPERATURE_SCHEDULE,
     DIRICHLET_NOISE_STEP_THRESHOLD,
 )
+from src.core.protocols import StrategicEnvironment
 from src.core.types import GameOutcome, GameTrajectory, TrainingExample
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ class SelfPlayCollector:
 
     def play_game(
         self,
-        env: Any,  # StrategicEnvironment
+        env: StrategicEnvironment,
         add_noise: bool = True,
         seed: int | None = None,
     ) -> GameTrajectory:
@@ -79,6 +79,10 @@ class SelfPlayCollector:
         """
         from src.core.mcts.engine import MCTSEngine, select_action
 
+        logger.debug(
+            "Starting self-play game: seed=%s, noise=%s, max_steps=%d",
+            seed, add_noise, self._max_steps,
+        )
         env.reset(seed=seed)
         engine = MCTSEngine(self._mcts_config, self._eval_fn)
 
@@ -158,7 +162,7 @@ class SelfPlayCollector:
 
     def play_games(
         self,
-        env_factory: Callable[[], Any],
+        env_factory: Callable[[], StrategicEnvironment],
         num_games: int,
         seed_offset: int = 0,
     ) -> list[GameTrajectory]:

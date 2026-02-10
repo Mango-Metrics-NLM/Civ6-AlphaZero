@@ -20,10 +20,12 @@ from numpy.typing import NDArray
 from src.core.config import MCTSConfig
 from src.core.constants import (
     DEFAULT_ELO_K_FACTOR,
+    DEFAULT_MAX_STEPS,
     ELO_BASE,
     ELO_SCALE,
     INITIAL_ELO_RATING,
 )
+from src.core.protocols import StrategicEnvironment
 from src.core.types import GameOutcome
 
 logger = logging.getLogger(__name__)
@@ -151,7 +153,7 @@ class Evaluator:
     def evaluate(
         self,
         candidate_fn: EvalFn,
-        env_factory: Callable[[], Any],
+        env_factory: Callable[[], StrategicEnvironment],
         baseline_fn: EvalFn | None = None,
         baseline_type: str = "random",
     ) -> EvalResult:
@@ -234,7 +236,7 @@ class Evaluator:
         self,
         candidate_fn: EvalFn,
         baseline_fn: EvalFn,
-        env_factory: Callable[[], Any],
+        env_factory: Callable[[], StrategicEnvironment],
         candidate_is_p1: bool,
         seed: int,
     ) -> GameOutcome:
@@ -257,8 +259,6 @@ class Evaluator:
         logger.debug(
             "Eval game: candidate_is_p1=%s, seed=%d", candidate_is_p1, seed,
         )
-
-        from src.core.constants import DEFAULT_MAX_STEPS
 
         step = 0
         max_steps = DEFAULT_MAX_STEPS

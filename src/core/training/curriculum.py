@@ -118,6 +118,10 @@ class CurriculumScheduler:
         stats.iterations_completed += 1
         stats.games_played += games_played
         stats.record_elo(elo)
+        logger.debug(
+            "Curriculum iteration recorded: stage=%s, elo=%.1f, iter=%d",
+            self.current_stage_name, elo, stats.iterations_completed,
+        )
 
         # Check for promotion
         if self._should_promote(stats):
