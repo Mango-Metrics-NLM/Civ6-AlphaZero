@@ -13,7 +13,7 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, TypeVar
 
@@ -92,7 +92,7 @@ class WorkflowContext:
     metadata: dict[str, Any] = field(default_factory=dict)
     steps: list[WorkflowStep] = field(default_factory=list)
     state: WorkflowState = WorkflowState.IDLE
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def add_step(self, step: WorkflowStep) -> None:
         """Add a step to the workflow."""
@@ -302,7 +302,7 @@ class RAGAgentWorkflow:
             description="Enhance user query for better retrieval",
             input_data={"query": context.query},
         )
-        step.started_at = datetime.utcnow()
+        step.started_at = datetime.now(UTC)
         context.add_step(step)
 
         await self._run_hooks("pre_query", context)
@@ -312,7 +312,7 @@ class RAGAgentWorkflow:
         context.enhanced_query = context.query
 
         step.output_data = {"enhanced_query": context.enhanced_query}
-        step.completed_at = datetime.utcnow()
+        step.completed_at = datetime.now(UTC)
 
         await self._run_hooks("post_query", context)
 
@@ -327,14 +327,14 @@ class RAGAgentWorkflow:
             description="Generate query embedding",
             input_data={"query": context.enhanced_query},
         )
-        step.started_at = datetime.utcnow()
+        step.started_at = datetime.now(UTC)
         context.add_step(step)
 
         embedding = await self.embedding_generator.embed_text(context.enhanced_query)
         context.metadata["query_embedding"] = embedding
 
         step.output_data = {"embedding_dimension": len(embedding)}
-        step.completed_at = datetime.utcnow()
+        step.completed_at = datetime.now(UTC)
 
     async def _step_retrieve_documents(
         self,
@@ -354,7 +354,7 @@ class RAGAgentWorkflow:
             description="Retrieve relevant documents from vector store",
             input_data={"top_k": top_k, "filter_metadata": filter_metadata},
         )
-        step.started_at = datetime.utcnow()
+        step.started_at = datetime.now(UTC)
         context.add_step(step)
 
         await self._run_hooks("pre_retrieve", context)
@@ -371,7 +371,7 @@ class RAGAgentWorkflow:
             "num_documents": len(results),
             "scores": [r.score for r in results],
         }
-        step.completed_at = datetime.utcnow()
+        step.completed_at = datetime.now(UTC)
 
         await self._run_hooks("post_retrieve", context)
 
@@ -386,7 +386,7 @@ class RAGAgentWorkflow:
             description="Build context from retrieved documents",
             input_data={"num_documents": len(context.retrieved_documents)},
         )
-        step.started_at = datetime.utcnow()
+        step.started_at = datetime.now(UTC)
         context.add_step(step)
 
         # Build context text from documents
@@ -401,7 +401,7 @@ class RAGAgentWorkflow:
         context.context_text = "\n\n---\n\n".join(context_parts)
 
         step.output_data = {"context_length": len(context.context_text)}
-        step.completed_at = datetime.utcnow()
+        step.completed_at = datetime.now(UTC)
 
     async def add_documents(
         self,

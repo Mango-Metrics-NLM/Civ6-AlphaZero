@@ -237,9 +237,11 @@ class DefaultGameStateDescriber:
         else:
             # Sample evenly + include first and last
             step = n_examples // (max_states - 2)
-            indices = (
-                [0, *list(range(step, n_examples - 1, step))[:max_states - 2], n_examples - 1]
-            )
+            indices = [
+                0,
+                *list(range(step, n_examples - 1, step))[: max_states - 2],
+                n_examples - 1,
+            ]
 
         for _i, idx in enumerate(indices):
             example = trajectory.examples[idx]

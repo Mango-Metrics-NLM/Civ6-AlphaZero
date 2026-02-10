@@ -515,9 +515,7 @@ class SpotAvailabilityTracker:
             List of (start_hour, end_hour) tuples in UTC.
         """
         # Find patterns with HIGH availability
-        high_patterns = [
-            p for p in self.config.patterns if p.level == AvailabilityLevel.HIGH
-        ]
+        high_patterns = [p for p in self.config.patterns if p.level == AvailabilityLevel.HIGH]
 
         if not high_patterns:
             # No high availability patterns, return early morning

@@ -124,9 +124,7 @@ class GCSStorageBackend(StorageBackend):
             deadline=config.gcs.timeout * config.gcs.retry_max_attempts,
         )
 
-        logger.info(
-            f"GCSStorageBackend initialized: gs://{self.bucket_name}/{self.prefix}"
-        )
+        logger.info(f"GCSStorageBackend initialized: gs://{self.bucket_name}/{self.prefix}")
 
     def _get_timestamp(self) -> str:
         """Get current ISO timestamp."""
@@ -201,7 +199,10 @@ class GCSStorageBackend(StorageBackend):
         if self.config.compress_weights:
             data = lzma.decompress(data)
         buffer = io.BytesIO(data)
-        return cast(dict[str, torch.Tensor], torch.load(buffer, map_location=map_location, weights_only=True))
+        return cast(
+            dict[str, torch.Tensor],
+            torch.load(buffer, map_location=map_location, weights_only=True),
+        )
 
     # =========================================================================
     # Model Operations
@@ -376,8 +377,7 @@ class GCSStorageBackend(StorageBackend):
     ) -> str:
         """Save a game trajectory to GCS."""
         trajectory_prefix = (
-            f"{self.config.games_subdir}/iteration_{iteration:08d}/"
-            f"worker_{worker_id:04d}"
+            f"{self.config.games_subdir}/iteration_{iteration:08d}/worker_{worker_id:04d}"
         )
         trajectory_path = self._gcs_path(trajectory_prefix, f"{game_id}.pkl")
 
@@ -403,9 +403,7 @@ class GCSStorageBackend(StorageBackend):
         self._upload_json(metadata.to_dict(), metadata_path)
 
         gcs_uri = f"gs://{self.bucket_name}/{trajectory_path}"
-        logger.debug(
-            f"Saved trajectory {game_id} (iter={iteration}, worker={worker_id})"
-        )
+        logger.debug(f"Saved trajectory {game_id} (iter={iteration}, worker={worker_id})")
         return gcs_uri
 
     def list_trajectories(
@@ -418,10 +416,7 @@ class GCSStorageBackend(StorageBackend):
 
         # Build prefix based on filters
         if iteration is not None and worker_id is not None:
-            prefix = (
-                f"{self.config.games_subdir}/iteration_{iteration:08d}/"
-                f"worker_{worker_id:04d}"
-            )
+            prefix = f"{self.config.games_subdir}/iteration_{iteration:08d}/worker_{worker_id:04d}"
         elif iteration is not None:
             prefix = f"{self.config.games_subdir}/iteration_{iteration:08d}"
         else:
@@ -456,8 +451,7 @@ class GCSStorageBackend(StorageBackend):
         from alpha_zero.distributed.shared_storage import GameTrajectory
 
         trajectory_prefix = (
-            f"{self.config.games_subdir}/iteration_{iteration:08d}/"
-            f"worker_{worker_id:04d}"
+            f"{self.config.games_subdir}/iteration_{iteration:08d}/worker_{worker_id:04d}"
         )
         trajectory_path = self._gcs_path(trajectory_prefix, f"{game_id}.pkl")
 
@@ -719,6 +713,7 @@ class GCSStorageBackend(StorageBackend):
 
         if pattern:
             import fnmatch
+
             blobs = [b for b in blobs if fnmatch.fnmatch(b.split("/")[-1], pattern)]
 
         return [f"gs://{self.bucket_name}/{b}" for b in blobs]

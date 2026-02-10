@@ -261,10 +261,8 @@ class PolicyTargetPruner:
         # Interpolate threshold based on entropy
         # High entropy (uniform) -> higher threshold (prune more)
         # Low entropy (peaked) -> lower threshold (keep more)
-        threshold = (
-            self.config.entropy_min_threshold
-            + normalized_entropy
-            * (self.config.entropy_max_threshold - self.config.entropy_min_threshold)
+        threshold = self.config.entropy_min_threshold + normalized_entropy * (
+            self.config.entropy_max_threshold - self.config.entropy_min_threshold
         )
 
         return threshold

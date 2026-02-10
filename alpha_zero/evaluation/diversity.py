@@ -86,9 +86,7 @@ class DiversityMetrics:
 
         if self.victory_type_distribution:
             lines.append("  Victory Distribution:")
-            for vtype, freq in sorted(
-                self.victory_type_distribution.items(), key=lambda x: -x[1]
-            ):
+            for vtype, freq in sorted(self.victory_type_distribution.items(), key=lambda x: -x[1]):
                 lines.append(f"    {vtype}: {freq:.1%}")
 
         return "\n".join(lines)
@@ -141,9 +139,7 @@ class DiversityTracker:
         self._total_games += 1
 
         # Extract model's actions
-        model_actions = [
-            action for action, info in game_history if info.get("is_model", True)
-        ]
+        model_actions = [action for action, info in game_history if info.get("is_model", True)]
 
         # Track opening sequence
         if self.config.track_opening_moves and model_actions:
@@ -177,9 +173,7 @@ class DiversityTracker:
         # Opening diversity
         if self._opening_counts:
             metrics.unique_openings = len(self._opening_counts)
-            metrics.opening_entropy = self._compute_entropy(
-                list(self._opening_counts.values())
-            )
+            metrics.opening_entropy = self._compute_entropy(list(self._opening_counts.values()))
 
         # Game length statistics
         if self._game_lengths:
@@ -247,16 +241,12 @@ class DiversityTracker:
             result["game_length_std"] = float(np.std(lengths))
         return result
 
-    def get_opening_distribution(
-        self, top_k: int = 10
-    ) -> list[tuple[tuple[int, ...], int, float]]:
+    def get_opening_distribution(self, top_k: int = 10) -> list[tuple[tuple[int, ...], int, float]]:
         """Get the most common opening sequences."""
         if not self._opening_counts:
             return []
         total = sum(self._opening_counts.values())
-        sorted_openings = sorted(
-            self._opening_counts.items(), key=lambda x: -x[1]
-        )[:top_k]
+        sorted_openings = sorted(self._opening_counts.items(), key=lambda x: -x[1])[:top_k]
         return [(opening, count, count / total) for opening, count in sorted_openings]
 
     def reset(self) -> None:

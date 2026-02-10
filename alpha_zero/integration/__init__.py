@@ -6,6 +6,15 @@ with error recovery, retry logic, and latency compensation.
 
 from __future__ import annotations
 
+import warnings
+
+warnings.warn(
+    "alpha_zero.integration is deprecated and not used by the training pipeline. "
+    "It will be activated in a future phase for CivRealm integration.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 from .game_connector import (
     CheckpointManager,
     ConnectionConfig,

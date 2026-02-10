@@ -48,8 +48,7 @@ class ArenaRunner(Protocol):
         agent_new: AgentState,
         agent_old: AgentState,
         num_games: int,
-    ) -> MatchResult:
-        ...
+    ) -> MatchResult: ...
 
 
 @dataclass(frozen=True)
@@ -136,8 +135,7 @@ class PBTEvaluator:
         self._arena_runner = arena_runner
         self._baseline_agents = baseline_agents or []
         self._baseline_interval = (
-            baseline_interval if baseline_interval is not None
-            else config.baseline_interval
+            baseline_interval if baseline_interval is not None else config.baseline_interval
         )
 
         elo_config = ELOConfig(
@@ -194,8 +192,7 @@ class PBTEvaluator:
 
         if len(agents) < 2:
             logger.warning(
-                "Population has fewer than 2 agents (%d); "
-                "skipping evaluation.",
+                "Population has fewer than 2 agents (%d); skipping evaluation.",
                 len(agents),
             )
             return EvaluationReport(generation=generation)
@@ -239,13 +236,14 @@ class PBTEvaluator:
 
         # Run baseline benchmarks if configured
         baseline_results = self.run_baseline_benchmarks(
-            agents, generation, arena_runner=runner,
+            agents,
+            generation,
+            arena_runner=runner,
         )
         report.baseline_results = baseline_results
 
         logger.info(
-            "Generation %d evaluation complete: %d matchups, "
-            "%d baselines, ratings=[%s]",
+            "Generation %d evaluation complete: %d matchups, %d baselines, ratings=[%s]",
             generation,
             len(results),
             len(baseline_results),
@@ -371,11 +369,7 @@ class PBTEvaluator:
             return []
 
         best = max(agents, key=lambda a: a.elo_rating)
-        return [
-            (agent, best)
-            for agent in agents
-            if agent.agent_id != best.agent_id
-        ]
+        return [(agent, best) for agent in agents if agent.agent_id != best.agent_id]
 
     # ------------------------------------------------------------------
     # ELO-based fitness computation
@@ -401,21 +395,13 @@ class PBTEvaluator:
             EvaluationReport with ratings and fitness scores.
         """
         # Initialise ratings from current agent state
-        ratings: dict[str, float] = {
-            a.agent_id: a.elo_rating for a in agents
-        }
-        games_played: dict[str, int] = {
-            a.agent_id: a.games_played for a in agents
-        }
+        ratings: dict[str, float] = {a.agent_id: a.elo_rating for a in agents}
+        games_played: dict[str, int] = {a.agent_id: a.games_played for a in agents}
 
         # Process each match through the ELO system
         for result in results:
-            r_new = ratings.get(
-                result.agent_id_new, self._config.elo_initial_rating
-            )
-            r_old = ratings.get(
-                result.agent_id_old, self._config.elo_initial_rating
-            )
+            r_new = ratings.get(result.agent_id_new, self._config.elo_initial_rating)
+            r_old = ratings.get(result.agent_id_old, self._config.elo_initial_rating)
             gp_new = games_played.get(result.agent_id_new, 0)
             gp_old = games_played.get(result.agent_id_old, 0)
 
@@ -469,7 +455,4 @@ class PBTEvaluator:
         if spread < 1e-9:
             return dict.fromkeys(ratings, 0.5)
 
-        return {
-            aid: (r - min_r) / spread
-            for aid, r in ratings.items()
-        }
+        return {aid: (r - min_r) / spread for aid, r in ratings.items()}

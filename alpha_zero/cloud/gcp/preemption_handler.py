@@ -14,7 +14,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -444,7 +444,7 @@ class PreemptionHandler:
         checkpoint_data: dict[str, Any] = {
             "model_state_dict": model.state_dict(),
             "iteration": iteration,
-            "checkpoint_time": datetime.utcnow().isoformat(),
+            "checkpoint_time": datetime.now(UTC).isoformat(),
             "reason": reason,
             "checkpoint_number": self._checkpoint_count,
         }
@@ -456,7 +456,7 @@ class PreemptionHandler:
             checkpoint_data["extra"] = extra
 
         # Generate checkpoint filename
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         filename = f"checkpoint_{timestamp}_iter_{iteration}.pt"
         local_path = self.checkpoint_dir / filename
 
@@ -626,7 +626,7 @@ class PreemptionHandler:
             job_type=self._job_type,
             iteration=self._current_iteration,
             checkpoint_path=checkpoint_path,
-            preemption_time=datetime.utcnow().isoformat(),
+            preemption_time=datetime.now(UTC).isoformat(),
             retry_count=self._retry_counts.get(self._job_name, 0),
             metadata=metadata or {},
         )

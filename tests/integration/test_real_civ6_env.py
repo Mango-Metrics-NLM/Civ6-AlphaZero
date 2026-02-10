@@ -99,13 +99,12 @@ class TestMockCiv6Env:
         assert isinstance(env.action_space, gym.spaces.Discrete)
         assert env.action_space.n > 0
 
-    @pytest.mark.xfail(reason="Pre-existing: CivRealm mock environment out of sync", strict=False)
     def test_reset(self, bridge_config):
         """Test environment reset."""
         env = MockCiv6Env(bridge_config=bridge_config, board_size=16)
 
         # MockCiv6Env creates its own mock state on reset
-        obs, _info = env.reset()
+        obs, info = env.reset()
 
         # Verify observation structure
         assert "spatial" in obs

@@ -19,10 +19,13 @@ jobs:
           python-version: "3.11"
 
       - name: Install linting tools
-        run: pip install ruff mypy
+        run: pip install ruff==0.8.0 mypy==1.13.0 bandit==1.8.0
 
       - name: Run ruff linter
-        run: ruff check alpha_zero/ agentic_framework/ --output-format=github
+        run: ruff check alpha_zero/ --output-format=github
+
+      - name: Run ruff formatter check
+        run: ruff format --check alpha_zero/
 
       - name: Run mypy type checker
         run: mypy alpha_zero/ --ignore-missing-imports --show-error-codes
@@ -113,7 +116,7 @@ jobs:
         run: pytest tests/security/ -v --tb=short
 
       - name: Run bandit security scan
-        run: bandit -r alpha_zero/ -s B101 -f json -o bandit-report.json || true
+        run: bandit -r alpha_zero/ -s B101 --severity-level high --confidence-level high -f json -o bandit-report.json
 
       - name: Upload bandit report
         uses: actions/upload-artifact@v4

@@ -399,9 +399,6 @@ def run_evaluation_phase(
         return False, 0.0
 
 
-
-
-
 def main() -> int:
     """Main entry point."""
     args = parse_args()
@@ -448,6 +445,7 @@ def main() -> int:
 
         # Initialize cost estimator
         from alpha_zero.cloud.gcp.cost import CostEstimator
+
         cost_estimator = CostEstimator(config)
         total_estimated_cost = 0.0
 
@@ -498,13 +496,16 @@ def main() -> int:
             sp_duration = (time.time() - sp_start) / 3600.0
 
             # Estimate self-play cost
-            sp_cost = cost_estimator.estimate_job_cost(
-                machine_type=config.self_play.machine_type,
-                accelerator_type=config.self_play.accelerator_type,
-                accelerator_count=config.self_play.accelerator_count,
-                duration_hours=sp_duration,
-                is_spot=config.self_play.spot
-            ) * args.workers
+            sp_cost = (
+                cost_estimator.estimate_job_cost(
+                    machine_type=config.self_play.machine_type,
+                    accelerator_type=config.self_play.accelerator_type,
+                    accelerator_count=config.self_play.accelerator_count,
+                    duration_hours=sp_duration,
+                    is_spot=config.self_play.spot,
+                )
+                * args.workers
+            )
             total_estimated_cost += sp_cost
             logger.info("Self-play phase cost (est): $%.2f", sp_cost)
 
@@ -518,7 +519,9 @@ def main() -> int:
             earliest = max(0, iteration - args.trajectory_window + 1)
             trajectory_iterations = list(range(earliest, iteration + 1))
 
-            logger.info("Phase 2: Training on trajectories from iterations %s", trajectory_iterations)
+            logger.info(
+                "Phase 2: Training on trajectories from iterations %s", trajectory_iterations
+            )
             training_ok = run_training_phase(
                 config=config,
                 client=client,
@@ -536,7 +539,7 @@ def main() -> int:
                 accelerator_type=config.training.accelerator_type,
                 accelerator_count=config.training.accelerator_count,
                 duration_hours=train_duration,
-                is_spot=config.training.spot
+                is_spot=config.training.spot,
             )
             total_estimated_cost += train_cost
             logger.info("Training phase cost (est): $%.2f", train_cost)
@@ -603,8 +606,13 @@ def main() -> int:
                         metrics={"win_rate": win_rate},
                     )
 
-            iteration_duration = (time.time() - iteration_start) / 60.0 # minutes
-            logger.info("Iteration %d complete in %.1f minutes. Model: v%d", iteration, iteration_duration, new_version)
+            iteration_duration = (time.time() - iteration_start) / 60.0  # minutes
+            logger.info(
+                "Iteration %d complete in %.1f minutes. Model: v%d",
+                iteration,
+                iteration_duration,
+                new_version,
+            )
 
             if new_version is not None:
                 model_version = new_version

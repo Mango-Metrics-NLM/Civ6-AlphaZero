@@ -286,37 +286,54 @@ class TestQuotaGuard:
             result = orchestrator._check_quota(gen=1)
             assert result is True
 
-    @pytest.mark.xfail(
-        reason="Pre-existing: _check_quota mock patching doesn't intercept aiplatform correctly",
-        strict=False,
-    )
     def test_quota_guard_fails_over_limit(
         self, pbt_config: PBTConfig, gcp_config: GCPConfig
     ) -> None:
-        """When GPU usage exceeds limit, should return False."""
-        # Mock 6 GPUs active
-        mock_aiplatform = MagicMock()
-        mock_job1 = MagicMock()
-        mock_job1.gpu_count = 4
-        mock_job2 = MagicMock()
-        mock_job2.gpu_count = 2
+        """When GPU usage exceeds limit, should return False.
 
-        mock_aiplatform.init.return_value = None
-        mock_aiplatform.CustomJob.list.return_value = [mock_job1, mock_job2]
-
+        Note: This test mocks the google.cloud.aiplatform module that is
+        imported dynamically inside the _check_quota method. The key is to
+        create a mock module object and insert it into sys.modules BEFORE
+        the import statement executes.
+        """
         with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"), \
              patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"), \
              patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"), \
              patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"), \
              patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"), \
-             patch.dict(os.environ, {"CIV6AZ_GPU_QUOTA_LIMIT": "5"}), \
-             patch.dict(sys.modules, {"google.cloud.aiplatform": mock_aiplatform}):
+             patch.dict(os.environ, {"CIV6AZ_GPU_QUOTA_LIMIT": "5"}):
 
-            orchestrator = PBTOrchestrator(pbt_config, gcp_config)
+                orchestrator = PBTOrchestrator(pbt_config, gcp_config)
 
-            # 4 + 2 = 6 GPUs active >= 5 limit
-            result = orchestrator._check_quota(gen=1)
-            assert result is False
+                # Create mocks for the aiplatform module structure
+                # Mock 6 GPUs active (4 + 2 = 6 >= 5 limit)
+                mock_job1 = MagicMock()
+                mock_job1.gpu_count = 4
+                mock_job2 = MagicMock()
+                mock_job2.gpu_count = 2
+
+                # Create a mock module that mimics google.cloud.aiplatform
+                mock_aiplatform = MagicMock()
+                mock_aiplatform.init = MagicMock(return_value=None)
+                mock_aiplatform.CustomJob = MagicMock()
+                mock_aiplatform.CustomJob.list = MagicMock(return_value=[mock_job1, mock_job2])
+
+                # Create parent modules for proper import chain
+                mock_google = MagicMock()
+                mock_google_cloud = MagicMock()
+                mock_google.cloud = mock_google_cloud
+                mock_google_cloud.aiplatform = mock_aiplatform
+
+                # Patch sys.modules with the complete chain
+                with patch.dict(sys.modules, {
+                    "google": mock_google,
+                    "google.cloud": mock_google_cloud,
+                    "google.cloud.aiplatform": mock_aiplatform,
+                }):
+                    # Now when _check_quota does "from google.cloud import aiplatform",
+                    # it will get our mock
+                    result = orchestrator._check_quota(gen=1)
+                    assert result is False
 
     def test_quota_guard_optimistic_on_error(
         self, pbt_config: PBTConfig, gcp_config: GCPConfig

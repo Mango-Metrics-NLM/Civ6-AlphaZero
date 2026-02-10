@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -23,6 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PopulationStats:
     """Statistics about the population state."""
+
     generation: int = 0
     mean_fitness: float = 0.0
     max_fitness: float = 0.0
@@ -101,7 +101,9 @@ class PopulationManager:
                 agent = AgentState(hyperparameters=params)
                 self.agents[agent.agent_id] = agent
 
-        logger.info(f"Initialized population with {len(self.agents)} agents (Gen {self.generation})")
+        logger.info(
+            f"Initialized population with {len(self.agents)} agents (Gen {self.generation})"
+        )
 
     def get_agent(self, agent_id: str) -> AgentState | None:
         return self.agents.get(agent_id)
@@ -266,10 +268,10 @@ class PopulationManager:
                 # Resample completely
                 new_params = self.config.hyperparameter_space.sample_all(self.rng)
                 child = AgentState(
-                    agent_id=weak_id, # Reuse ID
+                    agent_id=weak_id,  # Reuse ID
                     hyperparameters=new_params,
                     generation=self.generation + 1,
-                    parent_id=None # Reset lineage for resample?
+                    parent_id=None,  # Reset lineage for resample?
                 )
             else:
                 # Mutate from strong
@@ -277,9 +279,9 @@ class PopulationManager:
                     self.config.hyperparameter_space,
                     rng=self.rng,
                     mutation_strength=self.config.mutation_strength,
-                    mutation_probability=self.config.mutation_probability
+                    mutation_probability=self.config.mutation_probability,
                 )
-                child.agent_id = weak_id # Enforce ID reuse
+                child.agent_id = weak_id  # Enforce ID reuse
 
             # Copy weights if enabled
             if self.config.copy_weights and self._copy_weights_fn:
@@ -344,7 +346,7 @@ class PopulationManager:
         if len(self.stats_history) < self.config.convergence_window:
             return False
 
-        recent = self.stats_history[-self.config.convergence_window:]
+        recent = self.stats_history[-self.config.convergence_window :]
         # Simple check: Average std_fitness over window < threshold
         avg_std = np.mean([s.std_fitness for s in recent])
         return avg_std < self.config.convergence_threshold
@@ -411,4 +413,3 @@ class PopulationManager:
                 self._load_weights_fn(agent.agent_id, str(weight_path))
 
         logger.info(f"Loaded checkpoint from {path} (Gen {self.generation})")
-

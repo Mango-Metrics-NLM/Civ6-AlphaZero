@@ -205,9 +205,7 @@ class PreemptionHandler:
             True if preemption or shutdown was requested.
         """
         with self._lock:
-            return (
-                self._state.preemption_requested or self._state.shutdown_requested
-            )
+            return self._state.preemption_requested or self._state.shutdown_requested
 
     def is_preemption_pending(self) -> bool:
         """Check if preemption is pending.
@@ -289,18 +287,12 @@ class PreemptionHandler:
         # Only install handlers on Unix-like systems or when not in mock mode
         if sys.platform == "win32" and not self._force_mock:
             logger.info("Signal handlers limited on Windows")
-            self._original_sigint = signal.signal(
-                signal.SIGINT, self._handle_signal
-            )
+            self._original_sigint = signal.signal(signal.SIGINT, self._handle_signal)
             return
 
         try:
-            self._original_sigterm = signal.signal(
-                signal.SIGTERM, self._handle_signal
-            )
-            self._original_sigint = signal.signal(
-                signal.SIGINT, self._handle_signal
-            )
+            self._original_sigterm = signal.signal(signal.SIGTERM, self._handle_signal)
+            self._original_sigint = signal.signal(signal.SIGINT, self._handle_signal)
             logger.debug("Signal handlers installed (SIGTERM, SIGINT)")
         except ValueError as e:
             # Can happen if not main thread

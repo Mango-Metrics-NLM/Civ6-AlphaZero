@@ -71,9 +71,7 @@ class PerformanceOptimizationsConfig:
     playout_cap: PlayoutCapConfig = field(default_factory=PlayoutCapConfig)
     policy_pruning: PolicyPruningConfig = field(default_factory=PolicyPruningConfig)
     cyclic_lr: CyclicLRConfig = field(default_factory=CyclicLRConfig)
-    auxiliary_targets: AuxiliaryTargetsConfig = field(
-        default_factory=AuxiliaryTargetsConfig
-    )
+    auxiliary_targets: AuxiliaryTargetsConfig = field(default_factory=AuxiliaryTargetsConfig)
     log_optimization_stats: bool = True
     stats_log_interval: int = 1000
 
@@ -88,17 +86,13 @@ class PerformanceOptimizationsConfig:
 
         # Boolean enables
         if os.environ.get(f"{prefix}PLAYOUT_CAP_ENABLED"):
-            self.enable_playout_cap = (
-                os.environ[f"{prefix}PLAYOUT_CAP_ENABLED"].lower() == "true"
-            )
+            self.enable_playout_cap = os.environ[f"{prefix}PLAYOUT_CAP_ENABLED"].lower() == "true"
         if os.environ.get(f"{prefix}POLICY_PRUNING_ENABLED"):
             self.enable_policy_pruning = (
                 os.environ[f"{prefix}POLICY_PRUNING_ENABLED"].lower() == "true"
             )
         if os.environ.get(f"{prefix}CYCLIC_LR_ENABLED"):
-            self.enable_cyclic_lr = (
-                os.environ[f"{prefix}CYCLIC_LR_ENABLED"].lower() == "true"
-            )
+            self.enable_cyclic_lr = os.environ[f"{prefix}CYCLIC_LR_ENABLED"].lower() == "true"
         if os.environ.get(f"{prefix}AUXILIARY_TARGETS_ENABLED"):
             self.enable_auxiliary_targets = (
                 os.environ[f"{prefix}AUXILIARY_TARGETS_ENABLED"].lower() == "true"
@@ -121,9 +115,7 @@ class PerformanceOptimizationsConfig:
     def _validate(self) -> None:
         """Validate configuration consistency."""
         if self.stats_log_interval < 1:
-            raise ValueError(
-                f"stats_log_interval must be >= 1, got {self.stats_log_interval}"
-            )
+            raise ValueError(f"stats_log_interval must be >= 1, got {self.stats_log_interval}")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> PerformanceOptimizationsConfig:
@@ -153,9 +145,7 @@ class PerformanceOptimizationsConfig:
         if "playout_cap" in data:
             config_data["playout_cap"] = PlayoutCapConfig.from_dict(data["playout_cap"])
         if "policy_pruning" in data:
-            config_data["policy_pruning"] = PolicyPruningConfig.from_dict(
-                data["policy_pruning"]
-            )
+            config_data["policy_pruning"] = PolicyPruningConfig.from_dict(data["policy_pruning"])
         if "cyclic_lr" in data:
             config_data["cyclic_lr"] = CyclicLRConfig.from_dict(data["cyclic_lr"])
         if "auxiliary_targets" in data:

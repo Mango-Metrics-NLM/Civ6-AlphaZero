@@ -123,9 +123,7 @@ class StorageReplayBuffer(IterableDataset):
         self.current_iteration = current_iteration or 0
 
         # Cache for loaded trajectories
-        self._trajectory_cache: deque[GameTrajectory] = deque(
-            maxlen=self.config.cache_size
-        )
+        self._trajectory_cache: deque[GameTrajectory] = deque(maxlen=self.config.cache_size)
 
         # Shuffle buffer for examples
         self._shuffle_buffer: list[TrainingExample] = []
@@ -241,18 +239,12 @@ class StorageReplayBuffer(IterableDataset):
             return {}
 
         return {
-            "spatial": torch.stack(
-                [torch.from_numpy(ex.spatial).float() for ex in examples]
-            ),
-            "vector": torch.stack(
-                [torch.from_numpy(ex.vector).float() for ex in examples]
-            ),
+            "spatial": torch.stack([torch.from_numpy(ex.spatial).float() for ex in examples]),
+            "vector": torch.stack([torch.from_numpy(ex.vector).float() for ex in examples]),
             "action_mask": torch.stack(
                 [torch.from_numpy(ex.action_mask).float() for ex in examples]
             ),
-            "policy": torch.stack(
-                [torch.from_numpy(ex.policy).float() for ex in examples]
-            ),
+            "policy": torch.stack([torch.from_numpy(ex.policy).float() for ex in examples]),
             "value": torch.tensor([ex.value for ex in examples]).float(),
         }
 
@@ -299,9 +291,7 @@ class StorageReplayBuffer(IterableDataset):
 
         # Sample batch
         if len(all_examples) >= batch_size:
-            batch_indices = np.random.choice(
-                len(all_examples), size=batch_size, replace=False
-            )
+            batch_indices = np.random.choice(len(all_examples), size=batch_size, replace=False)
             batch_examples = [all_examples[i] for i in batch_indices]
         else:
             batch_examples = all_examples
@@ -402,18 +392,12 @@ class InMemoryReplayBuffer:
         batch_examples = [self._buffer[i] for i in indices]
 
         return {
-            "spatial": torch.stack(
-                [torch.from_numpy(ex.spatial).float() for ex in batch_examples]
-            ),
-            "vector": torch.stack(
-                [torch.from_numpy(ex.vector).float() for ex in batch_examples]
-            ),
+            "spatial": torch.stack([torch.from_numpy(ex.spatial).float() for ex in batch_examples]),
+            "vector": torch.stack([torch.from_numpy(ex.vector).float() for ex in batch_examples]),
             "action_mask": torch.stack(
                 [torch.from_numpy(ex.action_mask).float() for ex in batch_examples]
             ),
-            "policy": torch.stack(
-                [torch.from_numpy(ex.policy).float() for ex in batch_examples]
-            ),
+            "policy": torch.stack([torch.from_numpy(ex.policy).float() for ex in batch_examples]),
             "value": torch.tensor([ex.value for ex in batch_examples]).float(),
         }
 

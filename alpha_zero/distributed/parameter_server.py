@@ -138,9 +138,7 @@ class ParameterServer:
                     raw_bytes,
                     preset=self.config.compression_level,
                 )
-                self._stats["compression_ratio"] = (
-                    len(self._serialized_weights) / len(raw_bytes)
-                )
+                self._stats["compression_ratio"] = len(self._serialized_weights) / len(raw_bytes)
             else:
                 self._serialized_weights = raw_bytes
                 self._stats["compression_ratio"] = 1.0
@@ -153,9 +151,7 @@ class ParameterServer:
 
                 # Prune old versions
                 if len(self._weight_history) > self.config.max_version_history:
-                    self._weight_history = self._weight_history[
-                        -self.config.max_version_history :
-                    ]
+                    self._weight_history = self._weight_history[-self.config.max_version_history :]
 
             self._stats["total_updates"] += 1
             self._stats["last_update_time"] = time.time()
@@ -360,8 +356,7 @@ class ParameterServer:
             # Only apply if source version matches current
             if source_version != self._version:
                 logger.warning(
-                    f"Version mismatch: delta from v{source_version}, "
-                    f"current is v{self._version}"
+                    f"Version mismatch: delta from v{source_version}, current is v{self._version}"
                 )
                 return None
 
@@ -403,9 +398,7 @@ class ParameterServer:
                 "last_update_time": self._stats["last_update_time"],
                 "history_size": len(self._weight_history),
                 "weights_size_bytes": (
-                    len(self._serialized_weights)
-                    if self._serialized_weights
-                    else 0
+                    len(self._serialized_weights) if self._serialized_weights else 0
                 ),
             }
 
@@ -480,11 +473,13 @@ class MockParameterServer(ParameterServer):
         version = super().set_weights(state_dict, increment_version)
 
         # Track update
-        self._update_history.append({
-            "version": version,
-            "time": time.time(),
-            "param_count": len(state_dict),
-        })
+        self._update_history.append(
+            {
+                "version": version,
+                "time": time.time(),
+                "param_count": len(state_dict),
+            }
+        )
 
         return version
 
@@ -640,10 +635,7 @@ class DistributedParameterServer(ParameterServer):
         with self._client_lock:
             if client_type is None:
                 return len(self._clients)
-            return sum(
-                1 for c in self._clients.values()
-                if c["type"] == client_type
-            )
+            return sum(1 for c in self._clients.values() if c["type"] == client_type)
 
     def broadcast_weights(self) -> dict[str, bool]:
         """Broadcast weights to all registered clients.

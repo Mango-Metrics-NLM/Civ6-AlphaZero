@@ -5,7 +5,80 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.0] — 2026-02-09
+## [0.9.0] — 2026-02-10
+
+### Changed — Phase 11: Code Quality, Tech Debt Reduction & Production Hardening
+
+#### Dead Code Removal (~14,600 LOC)
+
+- Deleted `agentic_framework/` directory (41 modules, 14,600 LOC) — confirmed zero imports from `alpha_zero/`
+- Removed `agentic_framework/` from ruff check in CI, pyproject.toml per-file-ignores
+
+#### Deprecated Modules (with warnings, not deleted)
+
+- `alpha_zero/mechanics/` — 12 files, 223 tests; future Civ6 integration
+- `alpha_zero/human_interface/` — 5 files, 58 tests; future Human vs AI
+- `alpha_zero/integration/game_connector.py` — 38 tests; future CivRealm integration
+- Each `__init__.py` emits `DeprecationWarning` on import
+
+#### XFailed Test Fixes (16 of 27 → passes)
+
+- Fixed 2 `test_vertex_trainer.py` tests (outdated mock constructor params)
+- Fixed 1 `test_e2e_llm.py` test (AsyncOpenAI mock chain)
+- Fixed 1 `test_production_resilience.py` test (mock patching path)
+- Fixed 1 `test_run_muzero_training.py` test (policy sum tolerance)
+- Fixed 5 `test_state_extraction.py` tests (mock dataclass alignment with StateConverter)
+- Fixed 1 `test_hierarchical_network.py` test (INVALID_ACTION_LOGIT constant)
+- Fixed 1 `test_action_masks.py` test (per-batch all-masked check)
+- Fixed 1 `test_training.py` test (checkpoint resume API)
+- Fixed 1 `test_real_civ6_env.py` test (CivRealmWrapper mock sync)
+- Remaining 13 xfails: 12 DDP tests (different API) + 1 hierarchical action space (deferred to Phase 14)
+
+#### Deprecated `datetime.utcnow()` Migration (19 files)
+
+- Replaced `datetime.utcnow()` with `datetime.now(UTC)` across 19 files
+- Added `from datetime import UTC` imports (Python 3.12+ deprecation fix)
+- Files: logging_config.py, tournament (config/elo/history/league), evaluation (reports), pbt (scheduler/coordinator), cloud (gcs_storage/preemption_handler/cost_monitor), core (reflection_memory), rag (5 files), human_interface (2 files)
+
+#### Logging Consolidation
+
+- **`logging_config.py` is now canonical** — absorbs MetricsTracker, TrainingLogger, GameLogger, PerformanceProfiler, CircularBuffer, LogConfig from old `logging.py`
+- **`logging.py` is now a thin re-export** with `DeprecationWarning`
+- Standardized env vars: `CIV6AZ_LOG_LEVEL`, `CIV6AZ_LOG_FORMAT`, `CIV6AZ_LOG_JSON`
+- Removed duplicate `ColoredFormatter` and `JSONFormatter` (kept `logging_config.py` versions)
+- Backward-compatible `setup_logging()` accepts deprecated `config=`, `console_output=`, `file_output=` kwargs
+
+#### Production `print()` Cleanup
+
+- Replaced `print()` with `logger.info()` in 5 production modules (evaluator.py, reports.py, diversity.py, entrypoint.py, analysis.py)
+- CLI modules (`cli.py`, `lifecycle_cli.py`) retain `print()` — intentional CLI output
+
+#### Mypy Incremental Strictness
+
+- Added `disallow_untyped_defs = true` + `disallow_incomplete_defs = true` for 4 packages:
+  - `alpha_zero.core.*`, `alpha_zero.training.*`, `alpha_zero.tournament.*`, `alpha_zero.pbt.*`
+- 0 new `no-untyped-def` errors (packages were already well-typed)
+
+#### CI Hardening
+
+- Pinned tool versions: `ruff==0.8.0`, `mypy==1.13.0`, `bandit==1.8.0`
+- Added `ruff format --check alpha_zero/` to lint job
+- Bandit now enforced (removed `|| true`): `--severity-level high --confidence-level high`
+- Added `benchmark` pytest marker to `pyproject.toml`
+
+#### Edge Case Tests (16 new tests)
+
+- `tests/unit/test_mcts_edge_cases.py` — 4 tests (single valid action, extreme values, zero input, batch size one)
+- `tests/unit/test_buffer_edge_cases.py` — 4 tests (empty buffer, overflow, concurrent access, zero batch size)
+- `tests/unit/test_training_safeguards.py` — 4 edge case tests (NaN+grad, inf loss, negative loss, small gradient)
+- `tests/unit/test_tournament_orchestrator.py` — 4 edge case tests (single player, two players, extreme ELO, all draws)
+
+#### Version & Documentation
+
+- Bumped version: `0.8.0` → `0.9.0`
+- Updated MEMORY.md with Phase 11 status
+
+---
 
 ### Added — Phases 8-10: Training Safeguards, MuZero Integration & Tournament System
 

@@ -166,22 +166,17 @@ class PipelineCacheConfig:
     """
 
     enabled: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_CACHE_ENABLED", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_CACHE_ENABLED", "true").lower() == "true"
     )
     ttl_hours: int = field(
         default_factory=lambda: int(os.environ.get("CIV6AZ_CACHE_TTL_HOURS", "168"))
     )
     gcs_prefix: str = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_CACHE_GCS_PREFIX", "cache/pipeline"
-        )
+        default_factory=lambda: os.environ.get("CIV6AZ_CACHE_GCS_PREFIX", "cache/pipeline")
     )
     include_code_hash: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_CACHE_INCLUDE_CODE_HASH", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_CACHE_INCLUDE_CODE_HASH", "true").lower()
+        == "true"
     )
     max_entries: int = field(
         default_factory=lambda: int(os.environ.get("CIV6AZ_CACHE_MAX_ENTRIES", "1000"))
@@ -315,9 +310,7 @@ class PipelineCache:
             project_id: GCP project ID.
         """
         self.config = config or PipelineCacheConfig.from_env()
-        self._bucket = (bucket or os.environ.get("CIV6AZ_GCS_BUCKET", "")).removeprefix(
-            "gs://"
-        )
+        self._bucket = (bucket or os.environ.get("CIV6AZ_GCS_BUCKET", "")).removeprefix("gs://")
         self._project_id = project_id or os.environ.get("CIV6AZ_VERTEX_PROJECT")
         self._client: gcs_lib.Client | None = None
         self._cache_index: dict[str, CacheEntry] = {}
@@ -334,6 +327,7 @@ class PipelineCache:
         if self._client is None:
             try:
                 from google.cloud import storage as gcs_lib
+
                 self._client = gcs_lib.Client(project=self._project_id)
             except ImportError as err:
                 raise ImportError(
@@ -732,9 +726,7 @@ class PipelineCache:
         """
         self._load_index()
 
-        keys_to_remove = [
-            key for key, entry in self._cache_index.items() if entry.is_expired()
-        ]
+        keys_to_remove = [key for key, entry in self._cache_index.items() if entry.is_expired()]
 
         for key in keys_to_remove:
             del self._cache_index[key]

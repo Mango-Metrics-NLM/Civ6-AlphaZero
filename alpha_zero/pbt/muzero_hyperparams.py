@@ -32,13 +32,15 @@ from alpha_zero.pbt.config import HyperparameterRange, HyperparameterSpace
 logger = logging.getLogger(__name__)
 
 # MuZero-specific parameter names
-MUZERO_PARAM_NAMES: frozenset[str] = frozenset({
-    "unroll_steps",
-    "td_steps",
-    "discount",
-    "consistency_loss_weight",
-    "reward_loss_weight",
-})
+MUZERO_PARAM_NAMES: frozenset[str] = frozenset(
+    {
+        "unroll_steps",
+        "td_steps",
+        "discount",
+        "consistency_loss_weight",
+        "reward_loss_weight",
+    }
+)
 
 
 def get_muzero_custom_params() -> dict[str, HyperparameterRange]:

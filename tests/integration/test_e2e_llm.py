@@ -244,10 +244,6 @@ class TestLLMIntegration:
         assert msg.role == "user"
         assert "game state" in msg.content
 
-    @pytest.mark.xfail(
-        reason="Pre-existing: LLM mock patching broken (NoneType not callable)",
-        strict=False,
-    )
     @pytest.mark.asyncio
     async def test_llm_client_with_mock(self):
         """Test LLM client with mocked response."""
@@ -266,6 +262,7 @@ class TestLLMIntegration:
                 mock_response.usage.prompt_tokens = 50
                 mock_response.usage.completion_tokens = 10
 
+                # Create proper mock client with AsyncMock chain
                 mock_client = MagicMock()
                 mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
                 mock_openai.return_value = mock_client

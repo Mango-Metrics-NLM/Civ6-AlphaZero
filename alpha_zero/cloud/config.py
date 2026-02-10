@@ -105,14 +105,10 @@ class GCSConfig:
         """Create from environment variables."""
         return cls(
             bucket_name=os.environ.get("CIV6AZ_GCS_BUCKET", ""),
-            checkpoint_prefix=os.environ.get(
-                "CIV6AZ_GCS_CHECKPOINT_PREFIX", "checkpoints"
-            ),
+            checkpoint_prefix=os.environ.get("CIV6AZ_GCS_CHECKPOINT_PREFIX", "checkpoints"),
             artifact_prefix=os.environ.get("CIV6AZ_GCS_ARTIFACT_PREFIX", "artifacts"),
             logs_prefix=os.environ.get("CIV6AZ_GCS_LOGS_PREFIX", "logs"),
-            enable_compression=os.environ.get(
-                "CIV6AZ_GCS_ENABLE_COMPRESSION", "true"
-            ).lower()
+            enable_compression=os.environ.get("CIV6AZ_GCS_ENABLE_COMPRESSION", "true").lower()
             == "true",
             max_checkpoints=int(os.environ.get("CIV6AZ_GCS_MAX_CHECKPOINTS", "10")),
         )
@@ -160,9 +156,7 @@ class VertexConfig:
             ),
             service_account=str(data.get("service_account", "")),
             network=str(data.get("network", "")),
-            max_run_duration_seconds=int(
-                data.get("max_run_duration_seconds", 172800)
-            ),
+            max_run_duration_seconds=int(data.get("max_run_duration_seconds", 172800)),
             enable_web_access=bool(data.get("enable_web_access", False)),
         )
 
@@ -171,15 +165,9 @@ class VertexConfig:
         """Create from environment variables."""
         return cls(
             machine_type=os.environ.get("CIV6AZ_VERTEX_MACHINE_TYPE", "n1-standard-8"),
-            accelerator_type=os.environ.get(
-                "CIV6AZ_VERTEX_ACCELERATOR_TYPE", "NVIDIA_TESLA_T4"
-            ),
-            accelerator_count=int(
-                os.environ.get("CIV6AZ_VERTEX_ACCELERATOR_COUNT", "1")
-            ),
-            boot_disk_size_gb=int(
-                os.environ.get("CIV6AZ_VERTEX_BOOT_DISK_SIZE_GB", "100")
-            ),
+            accelerator_type=os.environ.get("CIV6AZ_VERTEX_ACCELERATOR_TYPE", "NVIDIA_TESLA_T4"),
+            accelerator_count=int(os.environ.get("CIV6AZ_VERTEX_ACCELERATOR_COUNT", "1")),
+            boot_disk_size_gb=int(os.environ.get("CIV6AZ_VERTEX_BOOT_DISK_SIZE_GB", "100")),
             container_uri=os.environ.get(
                 "CIV6AZ_VERTEX_CONTAINER_URI",
                 "gcr.io/cloud-aiplatform/training/pytorch-gpu.1-13:latest",
@@ -189,9 +177,7 @@ class VertexConfig:
             max_run_duration_seconds=int(
                 os.environ.get("CIV6AZ_VERTEX_MAX_RUN_DURATION", "172800")
             ),
-            enable_web_access=os.environ.get(
-                "CIV6AZ_VERTEX_ENABLE_WEB_ACCESS", "false"
-            ).lower()
+            enable_web_access=os.environ.get("CIV6AZ_VERTEX_ENABLE_WEB_ACCESS", "false").lower()
             == "true",
         )
 
@@ -232,24 +218,13 @@ class PreemptionConfig:
     def from_env(cls) -> PreemptionConfig:
         """Create from environment variables."""
         return cls(
-            enabled=os.environ.get("CIV6AZ_PREEMPTION_ENABLED", "true").lower()
+            enabled=os.environ.get("CIV6AZ_PREEMPTION_ENABLED", "true").lower() == "true",
+            check_interval_seconds=float(os.environ.get("CIV6AZ_PREEMPTION_CHECK_INTERVAL", "5.0")),
+            warning_seconds=float(os.environ.get("CIV6AZ_PREEMPTION_WARNING_SECONDS", "30.0")),
+            checkpoint_on_preemption=os.environ.get("CIV6AZ_PREEMPTION_CHECKPOINT", "true").lower()
             == "true",
-            check_interval_seconds=float(
-                os.environ.get("CIV6AZ_PREEMPTION_CHECK_INTERVAL", "5.0")
-            ),
-            warning_seconds=float(
-                os.environ.get("CIV6AZ_PREEMPTION_WARNING_SECONDS", "30.0")
-            ),
-            checkpoint_on_preemption=os.environ.get(
-                "CIV6AZ_PREEMPTION_CHECKPOINT", "true"
-            ).lower()
-            == "true",
-            max_retry_count=int(
-                os.environ.get("CIV6AZ_PREEMPTION_MAX_RETRY", "3")
-            ),
-            backoff_multiplier=float(
-                os.environ.get("CIV6AZ_PREEMPTION_BACKOFF", "2.0")
-            ),
+            max_retry_count=int(os.environ.get("CIV6AZ_PREEMPTION_MAX_RETRY", "3")),
+            backoff_multiplier=float(os.environ.get("CIV6AZ_PREEMPTION_BACKOFF", "2.0")),
         )
 
 
@@ -286,15 +261,9 @@ class CloudLoggingConfig:
     def from_env(cls) -> CloudLoggingConfig:
         """Create from environment variables."""
         return cls(
-            enabled=os.environ.get("CIV6AZ_CLOUD_LOGGING_ENABLED", "true").lower()
-            == "true",
-            log_name=os.environ.get(
-                "CIV6AZ_CLOUD_LOGGING_NAME", "civ6-alphazero-training"
-            ),
-            structured=os.environ.get(
-                "CIV6AZ_CLOUD_LOGGING_STRUCTURED", "true"
-            ).lower()
-            == "true",
+            enabled=os.environ.get("CIV6AZ_CLOUD_LOGGING_ENABLED", "true").lower() == "true",
+            log_name=os.environ.get("CIV6AZ_CLOUD_LOGGING_NAME", "civ6-alphazero-training"),
+            structured=os.environ.get("CIV6AZ_CLOUD_LOGGING_STRUCTURED", "true").lower() == "true",
             buffer_size=int(os.environ.get("CIV6AZ_CLOUD_LOGGING_BUFFER_SIZE", "100")),
             flush_interval_seconds=float(
                 os.environ.get("CIV6AZ_CLOUD_LOGGING_FLUSH_INTERVAL", "30.0")
@@ -342,9 +311,7 @@ class CloudMonitoringConfig:
         ]
         return cls(
             enabled=bool(data.get("enabled", True)),
-            metric_prefix=str(
-                data.get("metric_prefix", "custom.googleapis.com/alphazero")
-            ),
+            metric_prefix=str(data.get("metric_prefix", "custom.googleapis.com/alphazero")),
             export_interval_seconds=float(data.get("export_interval_seconds", 60.0)),
             export_metrics=list(data.get("export_metrics", default_metrics)),
         )
@@ -353,8 +320,7 @@ class CloudMonitoringConfig:
     def from_env(cls) -> CloudMonitoringConfig:
         """Create from environment variables."""
         return cls(
-            enabled=os.environ.get("CIV6AZ_CLOUD_MONITORING_ENABLED", "true").lower()
-            == "true",
+            enabled=os.environ.get("CIV6AZ_CLOUD_MONITORING_ENABLED", "true").lower() == "true",
             metric_prefix=os.environ.get(
                 "CIV6AZ_CLOUD_MONITORING_PREFIX", "custom.googleapis.com/alphazero"
             ),
@@ -402,13 +368,9 @@ class TrainingConfig:
         return cls(
             batch_size=int(os.environ.get("CIV6AZ_TRAINING_BATCH_SIZE", "256")),
             learning_rate=float(os.environ.get("CIV6AZ_TRAINING_LR", "0.001")),
-            games_per_iteration=int(
-                os.environ.get("CIV6AZ_TRAINING_GAMES_PER_ITER", "100")
-            ),
+            games_per_iteration=int(os.environ.get("CIV6AZ_TRAINING_GAMES_PER_ITER", "100")),
             num_iterations=int(os.environ.get("CIV6AZ_TRAINING_NUM_ITERATIONS", "1000")),
-            checkpoint_interval=int(
-                os.environ.get("CIV6AZ_TRAINING_CHECKPOINT_INTERVAL", "100")
-            ),
+            checkpoint_interval=int(os.environ.get("CIV6AZ_TRAINING_CHECKPOINT_INTERVAL", "100")),
             eval_interval=int(os.environ.get("CIV6AZ_TRAINING_EVAL_INTERVAL", "500")),
         )
 
@@ -615,14 +577,28 @@ class CloudConfig:
 
         # Filter to valid fields only (flat structure)
         flat_fields = {
-            "provider", "environment",
-            "project_id", "region", "zone", "bucket_name",
-            "checkpoint_prefix", "artifact_prefix",
-            "enable_cloud_logging", "enable_cloud_monitoring", "log_level",
-            "service_account", "network", "subnetwork",
-            "machine_type", "accelerator_type", "accelerator_count", "replica_count",
-            "use_spot", "max_run_duration_seconds",
-            "preemption_check_interval", "checkpoint_on_preemption",
+            "provider",
+            "environment",
+            "project_id",
+            "region",
+            "zone",
+            "bucket_name",
+            "checkpoint_prefix",
+            "artifact_prefix",
+            "enable_cloud_logging",
+            "enable_cloud_monitoring",
+            "log_level",
+            "service_account",
+            "network",
+            "subnetwork",
+            "machine_type",
+            "accelerator_type",
+            "accelerator_count",
+            "replica_count",
+            "use_spot",
+            "max_run_duration_seconds",
+            "preemption_check_interval",
+            "checkpoint_on_preemption",
             "custom_labels",
         }
         kwargs = {k: v for k, v in cloud_data.items() if k in flat_fields}
@@ -637,9 +613,7 @@ class CloudConfig:
         if "logging" in cloud_data:
             kwargs["logging"] = CloudLoggingConfig.from_dict(cloud_data["logging"])
         if "monitoring" in cloud_data:
-            kwargs["monitoring"] = CloudMonitoringConfig.from_dict(
-                cloud_data["monitoring"]
-            )
+            kwargs["monitoring"] = CloudMonitoringConfig.from_dict(cloud_data["monitoring"])
         if "training" in data:
             kwargs["training"] = TrainingConfig.from_dict(data["training"])
 
@@ -704,14 +678,10 @@ class CloudConfig:
         issues: list[str] = []
 
         if require_project and not self.project_id:
-            issues.append(
-                "project_id is required. Set GCP_PROJECT_ID environment variable."
-            )
+            issues.append("project_id is required. Set GCP_PROJECT_ID environment variable.")
 
         if self.use_spot and self.max_run_duration_seconds < 60:
-            issues.append(
-                "max_run_duration_seconds must be at least 60 for spot instances"
-            )
+            issues.append("max_run_duration_seconds must be at least 60 for spot instances")
 
         if self.accelerator_count < 0:
             issues.append("accelerator_count must be non-negative")
@@ -722,9 +692,7 @@ class CloudConfig:
         # Validate bucket_name (either flat or nested)
         bucket = self.bucket_name or self.gcs.bucket_name
         if not bucket:
-            issues.append(
-                "bucket_name is required. Set GCS_BUCKET_NAME or CIV6AZ_GCS_BUCKET."
-            )
+            issues.append("bucket_name is required. Set GCS_BUCKET_NAME or CIV6AZ_GCS_BUCKET.")
 
         # Validate training config
         if self.training.batch_size < 1:

@@ -365,10 +365,6 @@ class TestLevelNetwork:
         assert torch.all(value >= -1.0)
         assert torch.all(value <= 1.0)
 
-    @pytest.mark.xfail(
-        reason="LevelNetwork masking doesn't match NETWORK.INVALID_ACTION_LOGIT constant",
-        strict=True,
-    )
     def test_action_masking(
         self,
         network_config: HierarchicalNetworkConfig,

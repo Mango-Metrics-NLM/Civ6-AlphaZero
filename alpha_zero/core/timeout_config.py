@@ -86,7 +86,7 @@ class TimeoutConfig(ConfigMixin):
     command_timeout_ms: int = 5000
     heartbeat_timeout_s: float = 2.0
 
-    # Agent timeouts (from agentic_framework)
+    # Agent timeouts (for future LLM-based agent operations)
     planning_timeout: float = 300.0
     implementation_timeout: float = 600.0
     testing_timeout: float = 600.0

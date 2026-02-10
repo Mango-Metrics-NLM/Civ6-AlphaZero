@@ -107,7 +107,7 @@ class VertexTrainer:
         aiplatform.init(
             project=self.config.project_id,
             location=self.config.region,
-            staging_bucket=f"gs://{self.config.storage.bucket}",
+            staging_bucket=f"gs://{self.config.bucket}",
         )
         self._initialized = True
         logger.info(
@@ -164,18 +164,18 @@ class VertexTrainer:
         """
         self._ensure_initialized()
 
-        # Apply defaults from config
-        machine_type = machine_type or self.config.vertex.machine_type
-        accelerator_type = accelerator_type or self.config.vertex.accelerator_type
-        accelerator_count = accelerator_count or self.config.vertex.accelerator_count
-        container_uri = container_uri or self.config.vertex.container_uri
-        replica_count = replica_count or self.config.vertex.replica_count
-        boot_disk_size_gb = boot_disk_size_gb or self.config.vertex.boot_disk_size_gb
-        timeout_seconds = timeout_seconds or self.config.vertex.timeout_seconds
+        # Apply defaults from config.training
+        machine_type = machine_type or self.config.training.machine_type
+        accelerator_type = accelerator_type or self.config.training.accelerator_type
+        accelerator_count = accelerator_count or self.config.training.accelerator_count
+        container_uri = container_uri or self.config.container_image_uri
+        replica_count = replica_count or 1  # Default to single replica
+        boot_disk_size_gb = boot_disk_size_gb or 100  # Default boot disk size
+        timeout_seconds = timeout_seconds or 3600  # Default 1 hour timeout
         job_name = job_name or self._generate_job_name()
 
         if base_output_dir is None:
-            base_output_dir = f"gs://{self.config.storage.bucket}/output/{job_name}"
+            base_output_dir = f"gs://{self.config.bucket}/output/{job_name}"
 
         # Build args list
         script_args = list(args) if args else []
@@ -234,7 +234,7 @@ class VertexTrainer:
             display_name=job_name,
             worker_pool_specs=worker_pool_specs,
             base_output_dir=base_output_dir,
-            labels=self.config.labels,
+            labels={},  # GCPConfig doesn't have labels attribute
         )
 
         logger.info(

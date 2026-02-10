@@ -62,11 +62,13 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_MODEL_VERSION = 1
 _JOB_POLL_INTERVAL_SECONDS = 30
-_TERMINAL_JOB_STATES = frozenset({
-    "JOB_STATE_SUCCEEDED",
-    "JOB_STATE_FAILED",
-    "JOB_STATE_CANCELLED",
-})
+_TERMINAL_JOB_STATES = frozenset(
+    {
+        "JOB_STATE_SUCCEEDED",
+        "JOB_STATE_FAILED",
+        "JOB_STATE_CANCELLED",
+    }
+)
 
 
 class PBTOrchestrator:
@@ -117,18 +119,18 @@ class PBTOrchestrator:
 
         # State storage
         self.storage_backend = GCSBackend(self.gcp_config.project_id)
-        self.population_state_path = (
-            f"{self.gcp_config.paths.logs_prefix}/pbt_state.json"
-        )
+        self.population_state_path = f"{self.gcp_config.paths.logs_prefix}/pbt_state.json"
 
         # Production features
         self.wandb_logger = wandb_logger
         self.checkpoint_retention = (
-            checkpoint_retention if checkpoint_retention is not None
+            checkpoint_retention
+            if checkpoint_retention is not None
             else pbt_config.checkpoint_retention_generations
         )
         self.evaluation_strategy_switch_gen = (
-            evaluation_strategy_switch_gen if evaluation_strategy_switch_gen is not None
+            evaluation_strategy_switch_gen
+            if evaluation_strategy_switch_gen is not None
             else pbt_config.evaluation_strategy_switch_gen
         )
         self.baseline_agents = baseline_agents or []
@@ -157,9 +159,7 @@ class PBTOrchestrator:
     def load_state(self) -> None:
         """Load population state from GCS."""
         try:
-            if self.storage_backend.blob_exists(
-                self.gcp_config.bucket, self.population_state_path
-            ):
+            if self.storage_backend.blob_exists(self.gcp_config.bucket, self.population_state_path):
                 data = self.storage_backend.download_blob(
                     self.gcp_config.bucket, self.population_state_path
                 )
@@ -229,9 +229,7 @@ class PBTOrchestrator:
         )
 
         # Per-agent ELO
-        per_agent_data = {
-            f"pbt/agent/{a.agent_id}/elo": a.elo_rating for a in agents
-        }
+        per_agent_data = {f"pbt/agent/{a.agent_id}/elo": a.elo_rating for a in agents}
         self.wandb_logger.log(per_agent_data, step=gen)
 
     def _log_mutation_events(
@@ -256,9 +254,7 @@ class PBTOrchestrator:
                 ]
                 for replaced_id, source_id, new_hp in changes
             ]
-            self.wandb_logger.log_table(
-                f"pbt/mutations_gen_{gen}", columns, rows
-            )
+            self.wandb_logger.log_table(f"pbt/mutations_gen_{gen}", columns, rows)
 
     def _rotate_checkpoints(self, gen: int) -> None:
         """Delete old checkpoint generations beyond retention window."""
@@ -343,10 +339,7 @@ class PBTOrchestrator:
                 location=self.gcp_config.region,
             )
 
-            gpu_count = sum(
-                int(getattr(job, "gpu_count", 1) or 1)
-                for job in active_jobs
-            )
+            gpu_count = sum(int(getattr(job, "gpu_count", 1) or 1) for job in active_jobs)
 
             if gpu_count >= quota_limit:
                 logger.warning(
@@ -422,7 +415,11 @@ class PBTOrchestrator:
         """
         self.load_state()
 
-        total_gen_val = num_generations if num_generations is not None else getattr(self.pbt_config, "num_generations", 10)
+        total_gen_val = (
+            num_generations
+            if num_generations is not None
+            else getattr(self.pbt_config, "num_generations", 10)
+        )
         total: int = int(total_gen_val) if total_gen_val is not None else 10
         logger.info("Starting PBT loop for %d generations", total)
 
@@ -467,14 +464,11 @@ class PBTOrchestrator:
             self._log_mutation_events(gen_num, changes)
 
             logger.info(
-                "Generation %d complete in %.1fs | "
-                "matchups=%d | top_elo=%.0f",
+                "Generation %d complete in %.1fs | matchups=%d | top_elo=%.0f",
                 gen_num,
                 elapsed,
                 len(report.matchups),
-                max(report.elo_ratings.values())
-                if report.elo_ratings
-                else 0,
+                max(report.elo_ratings.values()) if report.elo_ratings else 0,
             )
 
     # ------------------------------------------------------------------
@@ -512,9 +506,7 @@ class PBTOrchestrator:
                 )
                 job_names.extend(jobs)
             except Exception:
-                logger.exception(
-                    "Self-play error for agent %s", agent.agent_id
-                )
+                logger.exception("Self-play error for agent %s", agent.agent_id)
 
         if job_names:
             self.selfplay_job_manager.wait_for_completion(job_names)
@@ -599,13 +591,9 @@ class PBTOrchestrator:
             storage = GCSModelStorage(agent_config)
             new_version = storage.get_latest_version()
             agent.model_path = str(new_version)
-            logger.info(
-                "Updated agent %s to model v%d", agent.agent_id, new_version
-            )
+            logger.info("Updated agent %s to model v%d", agent.agent_id, new_version)
         except Exception:
-            logger.exception(
-                "Failed to update version for agent %s", agent.agent_id
-            )
+            logger.exception("Failed to update version for agent %s", agent.agent_id)
 
     # ------------------------------------------------------------------
     # Phase 3: Evaluation
@@ -625,8 +613,10 @@ class PBTOrchestrator:
         eval_kwargs: dict[str, Any] = {"generation": gen}
         if self.evaluator.arena_runner is None:
             logger.info("No arena_runner configured; falling back to local runner")
-            eval_kwargs["arena_runner"] = lambda agent_new, agent_old, num_games: _local_arena_runner(
-                agent_new, agent_old, num_games, gcp_config=self.gcp_config
+            eval_kwargs["arena_runner"] = (
+                lambda agent_new, agent_old, num_games: _local_arena_runner(
+                    agent_new, agent_old, num_games, gcp_config=self.gcp_config
+                )
             )
 
         report = self.evaluator.evaluate_population(agents, **eval_kwargs)
@@ -660,8 +650,7 @@ class PBTOrchestrator:
             return
         if not _TOURNAMENT_AVAILABLE:
             logger.debug(
-                "Tournament module not available; skipping tournament "
-                "evaluation at gen %d",
+                "Tournament module not available; skipping tournament evaluation at gen %d",
                 gen,
             )
             return
@@ -673,16 +662,12 @@ class PBTOrchestrator:
             player_ids = [a.agent_id for a in agents]
 
             if len(player_ids) < 2:
-                logger.warning(
-                    "Need at least 2 agents for tournament; skipping"
-                )
+                logger.warning("Need at least 2 agents for tournament; skipping")
                 return
 
             # Create tournament orchestrator with existing evaluator's
             # arena runner if available
-            arena_runner = getattr(
-                self.evaluator, "arena_runner", None
-            )
+            arena_runner = getattr(self.evaluator, "arena_runner", None)
             tournament = TournamentOrchestrator(
                 arena_runner=arena_runner,
                 games_per_match=self.tournament_games_per_match,
@@ -693,8 +678,7 @@ class PBTOrchestrator:
             result = tournament.run_tournament(bracket)
 
             logger.info(
-                "Tournament at gen %d complete: winner=%s, "
-                "games=%d, standings=%d",
+                "Tournament at gen %d complete: winner=%s, games=%d, standings=%d",
                 gen,
                 result.winner,
                 result.total_games,
@@ -708,9 +692,7 @@ class PBTOrchestrator:
                         "tournament/generation": gen,
                         "tournament/total_games": result.total_games,
                         "tournament/winner": result.winner,
-                        "tournament/duration_seconds": (
-                            result.duration_seconds
-                        ),
+                        "tournament/duration_seconds": (result.duration_seconds),
                     },
                     step=gen,
                 )
@@ -729,9 +711,7 @@ class PBTOrchestrator:
     # Phase 4: Evolution
     # ------------------------------------------------------------------
 
-    def _run_evolution_phase(
-        self, gen: int
-    ) -> list[tuple[str, str, dict[str, Any]]]:
+    def _run_evolution_phase(self, gen: int) -> list[tuple[str, str, dict[str, Any]]]:
         """Run PBT exploit-and-explore on the population.
 
         Returns:
@@ -785,21 +765,29 @@ def _local_arena_runner(
                 try:
                     # Load weights from GCS using GCSModelStorage
                     from alpha_zero.cloud.gcp.storage import GCSModelStorage
+
                     storage = GCSModelStorage(gcp_config)
                     # Use provided version/path. If it's a version number, convert to int.
                     try:
                         version = int(agent.model_path)
                         state_dict, _, _ = storage.load_model(version)
                         model.load_state_dict(state_dict)
-                        logger.info("Loaded weights for agent %s (v%d) from GCS", agent.agent_id, version)
+                        logger.info(
+                            "Loaded weights for agent %s (v%d) from GCS", agent.agent_id, version
+                        )
                     except ValueError:
                         # Handle as a path if not an integer version
                         logger.warning(
                             "Agent %s model_path '%s' is not a version number; skipping weight load.",
-                            agent.agent_id, agent.model_path,
+                            agent.agent_id,
+                            agent.model_path,
                         )
                 except Exception as e:
-                    logger.warning("Failed to load weights for agent %s: %r. Using random init.", agent.agent_id, e)
+                    logger.warning(
+                        "Failed to load weights for agent %s: %r. Using random init.",
+                        agent.agent_id,
+                        e,
+                    )
             return model
 
         model_new = _prepare_model(agent_new)
@@ -827,9 +815,7 @@ def _local_arena_runner(
         )
 
     except ImportError:
-        logger.warning(
-            "torch/networks not available; returning placeholder result"
-        )
+        logger.warning("torch/networks not available; returning placeholder result")
         return MatchResult(
             agent_id_new=agent_new.agent_id,
             agent_id_old=agent_old.agent_id,

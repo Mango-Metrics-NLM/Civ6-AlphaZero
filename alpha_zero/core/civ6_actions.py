@@ -803,5 +803,6 @@ class MicroCivActionSpace:
             return self.end_turn_offset
         return int(rng.choice(valid_indices))
 
+
 # Alias for backward compatibility
 HierarchicalActionSpace = ActionSpace

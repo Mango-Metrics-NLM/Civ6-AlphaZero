@@ -437,14 +437,10 @@ class CrossoverMutation(BaseMutation):
             new_value = rng.choice([value, parent2_value])
         elif self.crossover_type == "blend":
             # BLX-alpha: blend values with extension
-            new_value = self._blend_crossover(
-                value, parent2_value, param_range, rng
-            )
+            new_value = self._blend_crossover(value, parent2_value, param_range, rng)
         elif self.crossover_type == "simulated_binary":
             # SBX: simulated binary crossover
-            new_value = self._sbx_crossover(
-                value, parent2_value, param_range, rng
-            )
+            new_value = self._sbx_crossover(value, parent2_value, param_range, rng)
         else:
             # Default: average
             new_value = (value + parent2_value) / 2
@@ -622,9 +618,7 @@ class MutationOperator:
             if isinstance(strategy, DifferentialMutation):
                 strategy.set_candidates(candidates)
 
-    def set_crossover_parent(
-        self, parent_values: dict[str, float | int | Any]
-    ) -> None:
+    def set_crossover_parent(self, parent_values: dict[str, float | int | Any]) -> None:
         """Set the second parent for crossover mutation.
 
         Args:

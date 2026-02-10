@@ -752,7 +752,9 @@ class GCSCheckpointStorage:
         checkpoint = {
             "step": step,
             "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict() if hasattr(optimizer, "state_dict") else None,
+            "optimizer_state_dict": optimizer.state_dict()
+            if hasattr(optimizer, "state_dict")
+            else None,
             "timestamp": datetime.now(UTC).isoformat(),
             **(extra or {}),
         }

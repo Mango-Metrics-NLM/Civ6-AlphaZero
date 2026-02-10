@@ -9,7 +9,7 @@ This module provides the unified interface for RAG operations:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -365,7 +365,7 @@ class RAGPipeline:
         self._check_initialized()
         correlation_id = set_correlation_id()
 
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
 
         self.logger.debug(
             "Processing query",
@@ -407,7 +407,7 @@ class RAGPipeline:
         context = self.context_builder.build(search_results)
 
         # Calculate total time
-        total_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+        total_time = (datetime.now(UTC) - start_time).total_seconds() * 1000
 
         result = QueryResult(
             query=query,

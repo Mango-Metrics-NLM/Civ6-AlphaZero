@@ -54,20 +54,40 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mode", type=str, default="selfplay", help="Worker mode (selfplay)")
 
     # MCTS configuration arguments
-    parser.add_argument("--mcts_simulations", type=int, default=400, help="MCTS simulations per move")
-    parser.add_argument("--mcts_type", type=str, default="civ6", choices=["civ6", "gumbel"], help="MCTS variant to use")
+    parser.add_argument(
+        "--mcts_simulations", type=int, default=400, help="MCTS simulations per move"
+    )
+    parser.add_argument(
+        "--mcts_type",
+        type=str,
+        default="civ6",
+        choices=["civ6", "gumbel"],
+        help="MCTS variant to use",
+    )
     parser.add_argument("--board_size", type=int, default=8, help="Size of the hex board")
     parser.add_argument("--max_turns", type=int, default=30, help="Max turns per game")
     parser.add_argument("--c_puct", type=float, default=1.5, help="MCTS exploration constant")
     parser.add_argument("--dirichlet_alpha", type=float, default=0.3, help="Dirichlet noise alpha")
-    parser.add_argument("--dirichlet_epsilon", type=float, default=0.25, help="Dirichlet noise weight")
-    parser.add_argument("--temperature", type=float, default=1.0, help="Action selection temperature")
-    parser.add_argument("--temperature_threshold", type=int, default=30, help="Turn for temperature=0")
+    parser.add_argument(
+        "--dirichlet_epsilon", type=float, default=0.25, help="Dirichlet noise weight"
+    )
+    parser.add_argument(
+        "--temperature", type=float, default=1.0, help="Action selection temperature"
+    )
+    parser.add_argument(
+        "--temperature_threshold", type=int, default=30, help="Turn for temperature=0"
+    )
 
     # Additional hyperparameters
-    parser.add_argument("--gumbel_num_actions", type=int, default=16, help="Gumbel MCTS sampled actions")
-    parser.add_argument("--action_space_size", type=int, default=381, help="Size of the action space")
-    parser.add_argument("--num_res_blocks", type=int, default=8, help="Number of transformer layers")
+    parser.add_argument(
+        "--gumbel_num_actions", type=int, default=16, help="Gumbel MCTS sampled actions"
+    )
+    parser.add_argument(
+        "--action_space_size", type=int, default=381, help="Size of the action space"
+    )
+    parser.add_argument(
+        "--num_res_blocks", type=int, default=8, help="Number of transformer layers"
+    )
     parser.add_argument("--num_filters", type=int, default=256, help="Model embedding dimension")
     parser.add_argument("--reward_shaping", action="store_true", help="Enable reward shaping")
     parser.add_argument("--reward_scale", type=float, default=1.0, help="Reward scaling factor")
@@ -120,9 +140,11 @@ def load_model(config: GCPConfig, version: int, dry_run: bool = False) -> torch.
         # Convert string enums to actual enum values
         if "norm_type" in config_copy and isinstance(config_copy["norm_type"], str):
             from alpha_zero.core.transformer_network import NormType
+
             config_copy["norm_type"] = NormType(config_copy["norm_type"])
         if "attention_type" in config_copy and isinstance(config_copy["attention_type"], str):
             from alpha_zero.core.transformer_network import AttentionType
+
             config_copy["attention_type"] = AttentionType(config_copy["attention_type"])
 
         # Remove computed fields that shouldn't be passed to constructor
@@ -244,14 +266,17 @@ def run_selfplay(
         }
 
         if mcts_type in puct_variants:
-            mcts_kwargs.update({
-                "c_puct": 1.5,
-                "dirichlet_alpha": 0.3,
-                "dirichlet_epsilon": 0.25,
-            })
+            mcts_kwargs.update(
+                {
+                    "c_puct": 1.5,
+                    "dirichlet_alpha": 0.3,
+                    "dirichlet_epsilon": 0.25,
+                }
+            )
         elif mcts_type in gumbel_variants:
             mcts_kwargs["num_sampled_actions"] = mcts_kwargs.get(
-                "num_sampled_actions", gumbel_num_actions,
+                "num_sampled_actions",
+                gumbel_num_actions,
             )
 
         if mcts_config_override:

@@ -13,7 +13,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -299,7 +299,7 @@ class CostMonitor:
 
     def _get_day_start(self) -> float:
         """Get timestamp for start of current day (UTC)."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         return day_start.timestamp()
 
@@ -400,7 +400,7 @@ class CostMonitor:
                 total_project_usd=self._total_cost_usd,
                 by_gpu_type=dict(self._costs_by_gpu),
                 by_job_type=dict(self._costs_by_job),
-                timestamp=datetime.utcnow().isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
             )
 
     def get_cost_status(self) -> CostStatus:

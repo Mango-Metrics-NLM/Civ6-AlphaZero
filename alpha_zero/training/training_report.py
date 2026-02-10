@@ -87,16 +87,12 @@ class TrainingReportConfig:
         return cls(
             report_interval=int(os.environ.get("CIV6AZ_REPORT_INTERVAL", "100")),
             include_safeguard_events=(
-                os.environ.get("CIV6AZ_REPORT_SAFEGUARD_EVENTS", "true").lower()
-                == "true"
+                os.environ.get("CIV6AZ_REPORT_SAFEGUARD_EVENTS", "true").lower() == "true"
             ),
             include_hyperparameters=(
-                os.environ.get("CIV6AZ_REPORT_HYPERPARAMETERS", "true").lower()
-                == "true"
+                os.environ.get("CIV6AZ_REPORT_HYPERPARAMETERS", "true").lower() == "true"
             ),
-            wandb_prefix=os.environ.get(
-                "CIV6AZ_REPORT_WANDB_PREFIX", "training_report/"
-            ),
+            wandb_prefix=os.environ.get("CIV6AZ_REPORT_WANDB_PREFIX", "training_report/"),
         )
 
 
@@ -290,8 +286,7 @@ class TrainingReport:
 
         # Compute extra metrics means
         extra_metrics = {
-            name: statistics.mean(values)
-            for name, values in self._extra_metrics.items()
+            name: statistics.mean(values) for name, values in self._extra_metrics.items()
         }
 
         # Build report

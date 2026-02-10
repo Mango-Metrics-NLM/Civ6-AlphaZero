@@ -118,9 +118,7 @@ class EvaluationResult:
             "loss_rate": self.loss_rate,
             "draw_rate": self.draw_rate,
             "avg_game_length": self.avg_game_length,
-            "elo_update": (
-                asdict(self.elo_update) if self.elo_update else None
-            ),
+            "elo_update": (asdict(self.elo_update) if self.elo_update else None),
         }
 
     def summary(self) -> str:
@@ -323,9 +321,7 @@ class ModelEvaluator:
             winner = None
             model_score = 0.5
             opponent_score = 0.5
-        elif (env_winner == 0 and model_plays_first) or (
-            env_winner == 1 and not model_plays_first
-        ):
+        elif (env_winner == 0 and model_plays_first) or (env_winner == 1 and not model_plays_first):
             winner = 0  # Model won
             model_score = 1.0
             opponent_score = 0.0
@@ -365,7 +361,9 @@ class ModelEvaluator:
         total_turns = 0
         game_results: list[GameResult] = []
 
-        logger.info(f"Starting evaluation vs {baseline_config.name} ({baseline_config.num_games} games)")
+        logger.info(
+            f"Starting evaluation vs {baseline_config.name} ({baseline_config.num_games} games)"
+        )
 
         for game_idx in range(baseline_config.num_games):
             # Alternate who plays first for fairness
@@ -385,7 +383,9 @@ class ModelEvaluator:
 
             # Track diversity
             if self.diversity_tracker:
-                victory_type = "win" if result.winner == 0 else ("loss" if result.winner == 1 else "draw")
+                victory_type = (
+                    "win" if result.winner == 0 else ("loss" if result.winner == 1 else "draw")
+                )
                 self.diversity_tracker.record_game(
                     result.game_history,
                     baseline_name=baseline_config.name,
@@ -424,7 +424,9 @@ class ModelEvaluator:
             except Exception as e:
                 logger.warning(f"ELO update failed: {e}")
 
-        avg_game_length = total_turns / baseline_config.num_games if baseline_config.num_games > 0 else 0
+        avg_game_length = (
+            total_turns / baseline_config.num_games if baseline_config.num_games > 0 else 0
+        )
 
         return EvaluationResult(
             baseline_name=baseline_config.name,
@@ -536,14 +538,16 @@ class ModelEvaluator:
         total_losses = sum(r.losses for r in results.values())
         total_draws = sum(r.draws for r in results.values())
 
-        lines.extend([
-            f"Total Games: {total_games}",
-            f"Overall Record: {total_wins}W-{total_losses}L-{total_draws}D",
-            f"Overall Win Rate: {total_wins/total_games:.1%}" if total_games > 0 else "N/A",
-            "",
-            "Results by Baseline:",
-            "-" * 30,
-        ])
+        lines.extend(
+            [
+                f"Total Games: {total_games}",
+                f"Overall Record: {total_wins}W-{total_losses}L-{total_draws}D",
+                f"Overall Win Rate: {total_wins / total_games:.1%}" if total_games > 0 else "N/A",
+                "",
+                "Results by Baseline:",
+                "-" * 30,
+            ]
+        )
 
         for name, result in results.items():
             lines.append(f"  {name}: {result.win_rate:.1%} ({result.wins}/{result.games_played})")
@@ -553,12 +557,14 @@ class ModelEvaluator:
 
         diversity = self.get_diversity_metrics()
         if diversity:
-            lines.extend([
-                "",
-                "Diversity Metrics:",
-                f"  Unique Openings: {diversity.unique_openings}",
-                f"  Opening Entropy: {diversity.opening_entropy:.2f}",
-                f"  Avg Game Length: {diversity.avg_game_length:.1f}",
-            ])
+            lines.extend(
+                [
+                    "",
+                    "Diversity Metrics:",
+                    f"  Unique Openings: {diversity.unique_openings}",
+                    f"  Opening Entropy: {diversity.opening_entropy:.2f}",
+                    f"  Avg Game Length: {diversity.avg_game_length:.1f}",
+                ]
+            )
 
         return "\n".join(lines)

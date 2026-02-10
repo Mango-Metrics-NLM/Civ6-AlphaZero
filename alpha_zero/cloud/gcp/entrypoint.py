@@ -8,7 +8,10 @@ and dispatches to the appropriate worker module.
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
+
+logger = logging.getLogger(__name__)
 
 
 def main() -> int:
@@ -34,9 +37,7 @@ def main() -> int:
 
         return worker_main()
     else:
-        print(
-            f"Unknown mode: {mode}. Use 'selfplay', 'training', or 'evaluation'.", file=sys.stderr
-        )
+        logger.error(f"Unknown mode: {mode}. Use 'selfplay', 'training', or 'evaluation'.")
         return 1
 
 
