@@ -30,6 +30,7 @@ Usage:
 from __future__ import annotations
 
 import dataclasses
+import inspect
 from enum import Enum
 from typing import Any, Protocol
 
@@ -198,7 +199,16 @@ def create_mcts(
 
         config = config_cls(**config_kwargs)
 
-    return mcts_cls(network=network, config=config, device=device, **kwargs)
+    # Filter remaining kwargs to only include params the MCTS class __init__ accepts
+    valid_init_params = set(inspect.signature(mcts_cls.__init__).parameters.keys()) - {
+        "self",
+        "network",
+        "config",
+        "device",
+    }
+    filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_init_params}
+
+    return mcts_cls(network=network, config=config, device=device, **filtered_kwargs)
 
 
 def get_default_config(variant: str | MCTSVariant) -> Any:

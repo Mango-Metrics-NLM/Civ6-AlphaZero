@@ -188,13 +188,14 @@ def load_trajectories(
     """Load trajectories from specified iterations."""
     if dry_run:
         logger.info("Dry run: creating dummy trajectories")
-        # Spatial: B, C=64, H=10, W=10 -> flattened = 6400
-        # Vector: B, V=64
+        spatial_dim = ENCODER_SPATIAL_CHANNELS * board_size * board_size
+        vector_dim = 64
+        policy_val = 1.0 / action_space_size
         return [
             {
-                "spatial": [[0.0] * (64 * 10 * 10)],  # Spatial features
-                "vector": [[0.0] * 64],  # Vector features
-                "policies": [[0.01] * 100],
+                "spatial": [[0.0] * spatial_dim],
+                "vector": [[0.0] * vector_dim],
+                "policies": [[policy_val] * action_space_size],
                 "rewards": [0.5],
             }
             for _ in range(1000)
