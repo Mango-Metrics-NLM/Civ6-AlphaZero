@@ -128,6 +128,7 @@ class TestCreateMCTS:
         assert mcts.config.use_gumbel is False
 
 
+@pytest.mark.slow
 class TestSelfPlayGame:
     """Test self-play game generation."""
 
@@ -193,6 +194,7 @@ class TestSelfPlayGame:
             assert 0 <= action < small_env.action_space.n
 
 
+@pytest.mark.slow
 class TestRunSelfPlay:
     """Test multiple self-play games."""
 
@@ -233,6 +235,7 @@ class TestRunSelfPlay:
         assert len(set(lengths)) >= 1
 
 
+@pytest.mark.slow
 class TestTrainingIntegration:
     """Integration tests for training components."""
 
