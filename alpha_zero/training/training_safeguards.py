@@ -154,9 +154,7 @@ class TrainingSafeguardConfig:
     def from_env(cls) -> TrainingSafeguardConfig:
         """Create from environment variables with CIV6AZ_SAFEGUARD_ prefix."""
         return cls(
-            nan_detection_enabled=os.environ.get(
-                "CIV6AZ_SAFEGUARD_NAN_DETECTION", "true"
-            ).lower()
+            nan_detection_enabled=os.environ.get("CIV6AZ_SAFEGUARD_NAN_DETECTION", "true").lower()
             == "true",
             loss_explosion_threshold=float(
                 os.environ.get("CIV6AZ_SAFEGUARD_LOSS_EXPLOSION_THRESHOLD", "10.0")
@@ -168,9 +166,7 @@ class TrainingSafeguardConfig:
             gradient_norm_alert_threshold=float(
                 os.environ.get("CIV6AZ_SAFEGUARD_GRAD_ALERT", "5.0")
             ),
-            memory_budget_fraction=float(
-                os.environ.get("CIV6AZ_SAFEGUARD_MEMORY_BUDGET", "0.85")
-            ),
+            memory_budget_fraction=float(os.environ.get("CIV6AZ_SAFEGUARD_MEMORY_BUDGET", "0.85")),
             checkpoint_validation_enabled=os.environ.get(
                 "CIV6AZ_SAFEGUARD_CHECKPOINT_VALIDATION", "true"
             ).lower()
@@ -179,9 +175,7 @@ class TrainingSafeguardConfig:
                 "CIV6AZ_SAFEGUARD_AUTO_INTERVENTION", "true"
             ).lower()
             == "true",
-            max_consecutive_nan_steps=int(
-                os.environ.get("CIV6AZ_SAFEGUARD_MAX_NAN_STEPS", "3")
-            ),
+            max_consecutive_nan_steps=int(os.environ.get("CIV6AZ_SAFEGUARD_MAX_NAN_STEPS", "3")),
         )
 
 
@@ -206,8 +200,7 @@ class Intervention:
             "reason": self.reason,
             "severity": self.severity,
             "metadata": {
-                k: v.value if isinstance(v, Enum) else v
-                for k, v in self.metadata.items()
+                k: v.value if isinstance(v, Enum) else v for k, v in self.metadata.items()
             },
         }
 
@@ -329,7 +322,9 @@ class TrainingSafeguard:
         self._step_count = step
 
         # Run all checks
-        nan_detected = self.check_nan(loss, grad_norm) if self.config.nan_detection_enabled else False
+        nan_detected = (
+            self.check_nan(loss, grad_norm) if self.config.nan_detection_enabled else False
+        )
         loss_exploding = self.check_loss_explosion(loss, step)
         gradient_status = self.check_gradient_health(grad_norm)
         memory_status = self.check_memory(device)
@@ -369,8 +364,7 @@ class TrainingSafeguard:
             )
         else:
             logger.debug(
-                f"Step {step}: All checks passed - loss: {loss:.4f}, "
-                f"grad_norm: {grad_norm:.4f}"
+                f"Step {step}: All checks passed - loss: {loss:.4f}, grad_norm: {grad_norm:.4f}"
             )
 
         return report
@@ -485,14 +479,10 @@ class TrainingSafeguard:
             CheckpointValidation with validation results
         """
         if not self.config.checkpoint_validation_enabled:
-            return CheckpointValidation(
-                valid=True, path=str(path), error="Validation disabled"
-            )
+            return CheckpointValidation(valid=True, path=str(path), error="Validation disabled")
 
         if not TORCH_AVAILABLE:
-            return CheckpointValidation(
-                valid=False, path=str(path), error="PyTorch not available"
-            )
+            return CheckpointValidation(valid=False, path=str(path), error="PyTorch not available")
 
         path_str = str(path)
 

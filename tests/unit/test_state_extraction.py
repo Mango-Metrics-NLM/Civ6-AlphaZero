@@ -63,285 +63,316 @@ class MockGameStateData:
             self.map_data.height = 16
 
 
-@pytest.mark.xfail(reason="Mock objects out of sync with StateConverter API", strict=False)
 class TestResourceExtraction:
     """Tests for resource extraction methods."""
 
-    def test_extract_core_resources(self):
-        """Test extraction of core resources (gold, faith, etc.)."""
+    def test_extract_resources_from_tiles(self):
+        """Test extraction of map tile resources (iron, horses, etc.)."""
+        from alpha_zero.bridge.state_converter import StateConverter
+        from alpha_zero.bridge.protocol import TileData
+
+        converter = StateConverter()
+
+        # Create mock game state with resource tiles
+        tiles = [
+            TileData(x=0, y=0, terrain="TERRAIN_PLAINS", resource="RESOURCE_IRON", owner_id=0),
+            TileData(x=1, y=0, terrain="TERRAIN_GRASSLAND", resource="RESOURCE_IRON", owner_id=0),
+            TileData(x=2, y=0, terrain="TERRAIN_HILLS", resource="RESOURCE_HORSES", owner_id=0),
+            TileData(x=3, y=0, terrain="TERRAIN_PLAINS", resource="RESOURCE_WHEAT", owner_id=1),  # Enemy owned
+        ]
+
+        from unittest.mock import MagicMock
+        state = MagicMock()
+        state.player_id = 0
+        state.map_data.tiles = tiles
+
+        resources = converter._extract_resources(state)
+
+        # Should only count resources on tiles we own (owner_id=0)
+        assert resources["iron"] == 2
+        assert resources["horses"] == 1
+        assert "wheat" not in resources  # Enemy owned
+
+    def test_extract_resources_empty_map(self):
+        """Test resource extraction with no resources on map."""
         from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
-        # Create mock game state with player data
-        player = MockPlayerData(
-            id=0,
-            gold=500,
-            faith=100,
-            science_per_turn=25,
-            culture_per_turn=20,
-        )
-        state = MockGameStateData(
-            player_id=0,
-            players=[player],
-            cities=[],
-        )
+        from unittest.mock import MagicMock
+        state = MagicMock()
+        state.player_id = 0
+        state.map_data.tiles = []
 
         resources = converter._extract_resources(state)
 
-        assert resources["gold"] == 500
-        assert resources["faith"] == 100
-        assert resources["science_per_turn"] == 25
-        assert resources["culture_per_turn"] == 20
+        # Should return empty dict
+        assert resources == {}
 
-    def test_extract_resources_empty_players(self):
-        """Test resource extraction with no matching player."""
+    def test_extract_resources_no_ownership(self):
+        """Test resource extraction when no tiles are owned."""
         from alpha_zero.bridge.state_converter import StateConverter
+        from alpha_zero.bridge.protocol import TileData
 
         converter = StateConverter()
 
-        state = MockGameStateData(
-            player_id=0,
-            players=[],
-            cities=[],
-        )
+        tiles = [
+            TileData(x=0, y=0, terrain="TERRAIN_PLAINS", resource="RESOURCE_IRON", owner_id=None),
+            TileData(x=1, y=0, terrain="TERRAIN_GRASSLAND", resource="RESOURCE_HORSES", owner_id=None),
+        ]
+
+        from unittest.mock import MagicMock
+        state = MagicMock()
+        state.player_id = 0
+        state.map_data.tiles = tiles
 
         resources = converter._extract_resources(state)
 
-        # Should return default values
-        assert resources["gold"] == 0
-        assert resources["faith"] == 0
-
-    def test_extract_resources_with_cities(self):
-        """Test resource extraction including city production."""
-        from alpha_zero.bridge.state_converter import StateConverter
-
-        converter = StateConverter()
-
-        # Create mock cities with population
-        city1 = MockCity(owner_id=0, population=5)  # 5 * 2 = 10 production
-        city2 = MockCity(owner_id=0, population=8)  # 8 * 2 = 16 production
-
-        player = MockPlayerData(
-            id=0,
-            gold=100,
-        )
-
-        state = MockGameStateData(
-            player_id=0,
-            players=[player],
-            cities=[city1, city2],
-        )
-
-        resources = converter._extract_resources(state)
-
-        # Production should be sum based on population (pop * 2)
-        assert resources["production_per_turn"] == 26  # (5+8) * 2 = 26
+        # Should return empty dict since no tiles are owned by player 0
+        assert resources == {}
 
 
-@pytest.mark.xfail(reason="Mock objects out of sync with StateConverter API", strict=False)
 class TestTechnologyExtraction:
     """Tests for technology extraction methods."""
 
     def test_extract_researched_techs(self):
         """Test extraction of researched technologies."""
         from alpha_zero.bridge.state_converter import StateConverter
+        from alpha_zero.bridge.protocol import PlayerData
 
         converter = StateConverter()
 
-        player = MockPlayerData(
+        player = PlayerData(
             id=0,
-            techs_researched=["pottery", "mining", "writing"],
+            civilization="ROME",
+            techs_researched=["TECH_POTTERY", "TECH_MINING", "TECH_WRITING"],
         )
-        state = MockGameStateData(
-            player_id=0,
-            players=[player],
-            cities=[],
-        )
+
+        from unittest.mock import MagicMock
+        state = MagicMock()
+        state.player_id = 0
+        state.players = [player]
 
         techs = converter._extract_technologies(state)
 
-        assert "pottery" in techs["researched"]
-        assert "mining" in techs["researched"]
-        assert "writing" in techs["researched"]
-        assert techs["count"] == 3
+        # _extract_technologies returns a list of normalized tech names
+        assert "pottery" in techs
+        assert "mining" in techs
+        assert "writing" in techs
+        assert len(techs) == 3
 
     def test_extract_techs_empty(self):
         """Test technology extraction with no researched techs."""
         from alpha_zero.bridge.state_converter import StateConverter
+        from alpha_zero.bridge.protocol import PlayerData
 
         converter = StateConverter()
 
-        player = MockPlayerData(id=0, techs_researched=[])
-        state = MockGameStateData(
-            player_id=0,
-            players=[player],
-            cities=[],
-        )
+        player = PlayerData(id=0, civilization="ROME", techs_researched=[])
+
+        from unittest.mock import MagicMock
+        state = MagicMock()
+        state.player_id = 0
+        state.players = [player]
 
         techs = converter._extract_technologies(state)
 
-        assert techs["researched"] == []
-        assert techs["count"] == 0
+        assert techs == []
 
-    def test_extract_current_research(self):
-        """Test extraction of current research progress."""
+    def test_extract_techs_no_player(self):
+        """Test technology extraction when player is not found."""
         from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
-        player = MockPlayerData(id=0, current_research="sailing")
-        state = MockGameStateData(
-            player_id=0,
-            players=[player],
-            cities=[],
-        )
+        from unittest.mock import MagicMock
+        state = MagicMock()
+        state.player_id = 0
+        state.players = []
 
         techs = converter._extract_technologies(state)
 
-        # Should have in_progress field
-        assert "in_progress" in techs
-        assert techs["in_progress"] == "sailing"
+        # Should return empty list
+        assert techs == []
 
 
-@pytest.mark.xfail(reason="Mock objects out of sync with StateConverter API", strict=False)
 class TestCivicExtraction:
     """Tests for civic extraction methods."""
 
-    def test_extract_civics_returns_default_structure(self):
-        """Test that civic extraction returns correct default structure."""
+    def test_extract_civics_returns_empty_list(self):
+        """Test that civic extraction returns empty list (placeholder implementation)."""
         from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
-        state = MockGameStateData(
-            player_id=0,
-            players=[MockPlayerData(id=0)],
-            cities=[],
-        )
+        from unittest.mock import MagicMock
+        state = MagicMock()
+        state.player_id = 0
+        state.players = []
 
         civics = converter._extract_civics(state)
 
-        # Should have expected keys with default values
-        # (Civics are a placeholder in current implementation)
-        assert "completed" in civics
-        assert "in_progress" in civics
-        assert "active_government" in civics
-        assert civics["completed"] == []
+        # _extract_civics returns a list (currently empty as placeholder)
+        assert civics == []
 
-    def test_extract_civics_empty_players(self):
-        """Test civic extraction with no players."""
+    def test_extract_civics_with_player(self):
+        """Test civic extraction with player data."""
         from alpha_zero.bridge.state_converter import StateConverter
+        from alpha_zero.bridge.protocol import PlayerData
 
         converter = StateConverter()
 
-        state = MockGameStateData(
-            player_id=0,
-            players=[],
-            cities=[],
-        )
+        player = PlayerData(id=0, civilization="ROME")
+
+        from unittest.mock import MagicMock
+        state = MagicMock()
+        state.player_id = 0
+        state.players = [player]
 
         civics = converter._extract_civics(state)
 
-        # Should return default structure
-        assert civics["completed"] == []
+        # Should return empty list (civics not yet implemented in protocol)
+        assert civics == []
 
 
-@pytest.mark.xfail(reason="Mock objects out of sync with StateConverter API", strict=False)
 class TestVictoryProgressExtraction:
     """Tests for victory progress extraction methods."""
 
     def test_extract_victory_progress_default(self):
         """Test default victory progress values."""
         from alpha_zero.bridge.state_converter import StateConverter
+        from alpha_zero.bridge.protocol import PlayerData, CityData
 
         converter = StateConverter()
 
-        player = MockPlayerData(id=0)
-        state = MockGameStateData(
-            player_id=0,
-            players=[player],
-            cities=[],
-        )
+        player = PlayerData(id=0, civilization="ROME", score=100)
+
+        from unittest.mock import MagicMock
+        state = MagicMock()
+        state.player_id = 0
+        state.players = [player]
+        state.cities = []
+        state.is_game_over = False
+        state.winner_id = None
 
         victory = converter._extract_victory_progress(state)
 
-        # All victory types should be present
-        assert "domination" in victory
+        # Should have science, domination, score, and complete keys
         assert "science" in victory
-        assert "culture" in victory
-        assert "religious" in victory
-        assert "diplomatic" in victory
+        assert "domination" in victory
         assert "score" in victory
+        assert "complete" in victory
 
-        # Default values should be 0.0
-        for value in victory.values():
-            assert 0.0 <= value <= 1.0
+        # Default values should be in [0.0, 1.0]
+        for key, value in victory.items():
+            assert isinstance(value, float)
+            if key == "complete":
+                assert value in [-1.0, 0.0, 1.0]
+            else:
+                assert 0.0 <= value <= 1.0
 
     def test_extract_domination_progress(self):
         """Test domination victory progress calculation."""
         from alpha_zero.bridge.state_converter import StateConverter
+        from alpha_zero.bridge.protocol import PlayerData, CityData
 
         converter = StateConverter()
 
-        # Create player with some units
-        player = MockPlayerData(id=0)
+        player = PlayerData(id=0, civilization="ROME", score=100)
+        enemy = PlayerData(id=1, civilization="GREECE", score=50)
 
-        # Create mock enemy with cities
-        enemy = MockPlayerData(id=1)
+        # Create cities (2 ours, 1 enemy)
+        cities = [
+            CityData(id=1, name="Rome", owner_id=0, x=0, y=0),
+            CityData(id=2, name="Antium", owner_id=0, x=5, y=5),
+            CityData(id=3, name="Athens", owner_id=1, x=10, y=10),
+        ]
 
-        state = MockGameStateData(
-            player_id=0,
-            players=[player, enemy],
-            cities=[],
-        )
+        from unittest.mock import MagicMock
+        state = MagicMock()
+        state.player_id = 0
+        state.players = [player, enemy]
+        state.cities = cities
+        state.is_game_over = False
+        state.winner_id = None
 
         victory = converter._extract_victory_progress(state)
 
-        # Domination progress should be calculated
+        # Domination progress = our cities / total cities = 2/3 ≈ 0.667
         assert "domination" in victory
-        assert isinstance(victory["domination"], float)
+        assert abs(victory["domination"] - 2/3) < 0.01
 
     def test_extract_science_progress(self):
         """Test science victory progress calculation."""
         from alpha_zero.bridge.state_converter import StateConverter
+        from alpha_zero.bridge.protocol import PlayerData
 
         converter = StateConverter()
 
-        player = MockPlayerData(
+        player = PlayerData(
             id=0,
-            techs_researched=["pottery", "mining", "writing", "sailing", "astrology"],
+            civilization="ROME",
+            score=100,
+            techs_researched=["TECH_POTTERY", "TECH_MINING", "TECH_WRITING", "TECH_SAILING", "TECH_ASTROLOGY"],
         )
-        state = MockGameStateData(
-            player_id=0,
-            players=[player],
-            cities=[],
-        )
+
+        from unittest.mock import MagicMock
+        state = MagicMock()
+        state.player_id = 0
+        state.players = [player]
+        state.cities = []
+        state.is_game_over = False
+        state.winner_id = None
 
         victory = converter._extract_victory_progress(state)
 
-        # Science progress based on tech count
+        # Science progress based on tech count / 70
         assert "science" in victory
-        assert victory["science"] >= 0.0
+        assert victory["science"] == min(1.0, 5 / 70.0)
 
-    def test_extract_culture_progress(self):
-        """Test culture victory progress calculation."""
+    def test_extract_game_over_victory(self):
+        """Test victory progress when game is over and player wins."""
         from alpha_zero.bridge.state_converter import StateConverter
+        from alpha_zero.bridge.protocol import PlayerData
 
         converter = StateConverter()
 
-        player = MockPlayerData(id=0)
-        state = MockGameStateData(
-            player_id=0,
-            players=[player],
-            cities=[],
-        )
+        player = PlayerData(id=0, civilization="ROME", score=500)
+
+        from unittest.mock import MagicMock
+        state = MagicMock()
+        state.player_id = 0
+        state.players = [player]
+        state.cities = []
+        state.is_game_over = True
+        state.winner_id = 0  # Player wins
 
         victory = converter._extract_victory_progress(state)
 
-        # Culture progress based on civic count
-        assert "culture" in victory
-        assert victory["culture"] >= 0.0
+        # complete should be 1.0 for victory
+        assert victory["complete"] == 1.0
+
+    def test_extract_game_over_defeat(self):
+        """Test victory progress when game is over and player loses."""
+        from alpha_zero.bridge.state_converter import StateConverter
+        from alpha_zero.bridge.protocol import PlayerData
+
+        converter = StateConverter()
+
+        player = PlayerData(id=0, civilization="ROME", score=100)
+
+        from unittest.mock import MagicMock
+        state = MagicMock()
+        state.player_id = 0
+        state.players = [player]
+        state.cities = []
+        state.is_game_over = True
+        state.winner_id = 1  # Enemy wins
+
+        victory = converter._extract_victory_progress(state)
+
+        # complete should be -1.0 for defeat
+        assert victory["complete"] == -1.0
 
 
 class TestStateConverterIntegration:
@@ -411,7 +442,6 @@ class TestMicroCivFallback:
         assert obs["spatial"].shape == (13, 16, 16)
 
 
-@pytest.mark.xfail(reason="Mock objects out of sync with StateConverter API", strict=False)
 class TestStateExtractionEdgeCases:
     """Tests for edge cases in state extraction."""
 
@@ -421,11 +451,14 @@ class TestStateExtractionEdgeCases:
 
         converter = StateConverter()
 
-        state = MockGameStateData(
-            player_id=0,
-            players=[],
-            cities=[],
-        )
+        from unittest.mock import MagicMock
+        state = MagicMock()
+        state.player_id = 0
+        state.players = []
+        state.cities = []
+        state.map_data.tiles = []
+        state.is_game_over = False
+        state.winner_id = None
 
         # Should not raise
         resources = converter._extract_resources(state)
@@ -433,30 +466,43 @@ class TestStateExtractionEdgeCases:
         civics = converter._extract_civics(state)
         victory = converter._extract_victory_progress(state)
 
-        assert resources["gold"] == 0
-        assert techs["count"] == 0
-        # Civics don't have count field in placeholder implementation
-        assert civics["completed"] == []
-        # Victory progress should have all types with default values
+        assert resources == {}  # No resources on map
+        assert techs == []  # No player = no techs
+        assert civics == []  # No player = no civics
+        # Victory progress should have default values
         assert "domination" in victory
+        assert victory["domination"] == 0.0
 
     def test_wrong_player_id(self):
         """Test extraction when player_id doesn't match any player."""
         from alpha_zero.bridge.state_converter import StateConverter
+        from alpha_zero.bridge.protocol import PlayerData, TileData
 
         converter = StateConverter()
 
-        player = MockPlayerData(id=1, gold=500)  # ID is 1
-        state = MockGameStateData(
-            player_id=0,  # Looking for ID 0
-            players=[player],
-            cities=[],
-        )
+        player = PlayerData(id=1, civilization="ROME", gold=500)  # ID is 1
+
+        # Create a tile owned by player 1
+        tile = TileData(x=0, y=0, terrain="TERRAIN_PLAINS", resource="RESOURCE_IRON", owner_id=1)
+
+        from unittest.mock import MagicMock
+        state = MagicMock()
+        state.player_id = 0  # Looking for ID 0
+        state.players = [player]
+        state.cities = []
+        state.map_data.tiles = [tile]
+        state.is_game_over = False
+        state.winner_id = None
 
         resources = converter._extract_resources(state)
 
-        # Should return defaults since no matching player
-        assert resources["gold"] == 0
+        # Should return empty since no tiles owned by player 0
+        assert resources == {}
+
+        techs = converter._extract_technologies(state)
+
+        # Should return empty list since no matching player
+        assert techs == []
 
 
 if __name__ == "__main__":

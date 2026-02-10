@@ -131,29 +131,20 @@ class TrainingProfilerConfig:
         default_factory=lambda: int(os.environ.get("CIV6AZ_PROFILE_MIN_SAMPLES", "50"))
     )
     severe_threshold: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_PROFILE_SEVERE_THRESHOLD", "0.001")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_PROFILE_SEVERE_THRESHOLD", "0.001"))
     )
     moderate_threshold: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_PROFILE_MODERATE_THRESHOLD", "0.005")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_PROFILE_MODERATE_THRESHOLD", "0.005"))
     )
     mild_threshold: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_PROFILE_MILD_THRESHOLD", "0.01")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_PROFILE_MILD_THRESHOLD", "0.01"))
     )
     cost_per_step_usd: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_PROFILE_COST_PER_STEP", "0.001")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_PROFILE_COST_PER_STEP", "0.001"))
     )
     early_stop_enabled: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_PROFILE_EARLY_STOP_ENABLED", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_PROFILE_EARLY_STOP_ENABLED", "true").lower()
+        == "true"
     )
 
     # Recommended steps configuration
@@ -186,6 +177,7 @@ class TrainingProfilerConfig:
 
         if errors:
             from alpha_zero.cloud.gcp.exceptions import ConfigurationError
+
             raise ConfigurationError(
                 f"Invalid profiler configuration: {'; '.join(errors)}",
                 details={"errors": errors},
@@ -202,6 +194,7 @@ class TrainingProfilerConfig:
         path = Path(path)
         if not path.exists():
             from alpha_zero.cloud.gcp.exceptions import ConfigurationError
+
             raise ConfigurationError(f"Profiler config file not found: {path}")
 
         try:
@@ -209,6 +202,7 @@ class TrainingProfilerConfig:
                 data = yaml.safe_load(f)
         except yaml.YAMLError as e:
             from alpha_zero.cloud.gcp.exceptions import ConfigurationError
+
             raise ConfigurationError(f"Invalid YAML in {path}: {e}") from e
 
         return cls.from_dict(data)
@@ -273,9 +267,7 @@ class TrainingProfiler:
         """
         self.config = config or TrainingProfilerConfig.from_env()
         self._current_iteration: int = -1
-        self._step_history: deque[TrainingStepMetrics] = deque(
-            maxlen=self.config.window_size * 2
-        )
+        self._step_history: deque[TrainingStepMetrics] = deque(maxlen=self.config.window_size * 2)
         self._iteration_history: dict[int, list[TrainingStepMetrics]] = {}
 
         logger.info(
@@ -369,9 +361,7 @@ class TrainingProfiler:
             cost_per_improvement = float("inf")
 
         # Get recommended steps
-        recommended_steps = self._calculate_recommended_steps(
-            len(metrics), improvement_rate, level
-        )
+        recommended_steps = self._calculate_recommended_steps(len(metrics), improvement_rate, level)
 
         # Build reason
         reason = self._build_reason(level, improvement_rate, len(metrics))
@@ -484,14 +474,10 @@ class TrainingProfiler:
 
                     if late_improvement < self.config.severe_threshold:
                         # Reduce steps if previous iteration had severe diminishing returns
-                        return max(
-                            self.config.min_steps_per_iteration, int(prev_steps * 0.8)
-                        )
+                        return max(self.config.min_steps_per_iteration, int(prev_steps * 0.8))
                     elif late_improvement > self.config.mild_threshold * 2:
                         # Increase steps if previous iteration still improving
-                        return min(
-                            self.config.max_steps_per_iteration, int(prev_steps * 1.2)
-                        )
+                        return min(self.config.max_steps_per_iteration, int(prev_steps * 1.2))
 
         return default_steps
 
@@ -533,7 +519,9 @@ class TrainingProfiler:
         elif level == DiminishingReturnsLevel.MILD:
             return f"Mild diminishing returns at step {step_count} (rate={improvement_rate:.4f})"
         elif level == DiminishingReturnsLevel.MODERATE:
-            return f"Moderate diminishing returns at step {step_count} (rate={improvement_rate:.4f})"
+            return (
+                f"Moderate diminishing returns at step {step_count} (rate={improvement_rate:.4f})"
+            )
         else:
             return f"Severe diminishing returns at step {step_count} (rate={improvement_rate:.6f})"
 
@@ -582,9 +570,7 @@ class TrainingProfiler:
             "total_iterations_tracked": len(self._iteration_history),
             "window_size": self.config.window_size,
             "early_stop_enabled": self.config.early_stop_enabled,
-            "current_improvement_rate": self.get_improvement_rate()
-            if current_metrics
-            else None,
+            "current_improvement_rate": self.get_improvement_rate() if current_metrics else None,
         }
 
 

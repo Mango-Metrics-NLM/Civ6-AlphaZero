@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
 import numpy as np
@@ -29,7 +29,7 @@ class DocumentMetadata:
     """
 
     source: str = ""
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
     chunk_index: int = 0
     total_chunks: int = 1
@@ -63,7 +63,7 @@ class DocumentMetadata:
 
         return cls(
             source=data.get("source", ""),
-            created_at=created_at or datetime.utcnow(),
+            created_at=created_at or datetime.now(UTC),
             updated_at=updated_at,
             chunk_index=data.get("chunk_index", 0),
             total_chunks=data.get("total_chunks", 1),

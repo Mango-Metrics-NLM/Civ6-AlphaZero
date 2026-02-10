@@ -300,10 +300,12 @@ class GoalEvaluator:
         military_strengths: dict[Any, Any] = state.get("military_strength", {})
 
         player_strength = float(military_strengths.get(player_id, 0))
-        max_other = float(max(
-            (s for pid, s in military_strengths.items() if pid != player_id),
-            default=1,
-        ))
+        max_other = float(
+            max(
+                (s for pid, s in military_strengths.items() if pid != player_id),
+                default=1,
+            )
+        )
 
         # Progress is ratio of our strength to strongest opponent
         if max_other <= 0:
@@ -317,10 +319,12 @@ class GoalEvaluator:
         gold_incomes: dict[Any, Any] = state.get("gold_income", {})
 
         player_income = float(gold_incomes.get(player_id, 0))
-        max_other = float(max(
-            (g for pid, g in gold_incomes.items() if pid != player_id),
-            default=1,
-        ))
+        max_other = float(
+            max(
+                (g for pid, g in gold_incomes.items() if pid != player_id),
+                default=1,
+            )
+        )
 
         if max_other <= 0:
             return 1.0
@@ -422,10 +426,12 @@ class GoalEvaluator:
             return 0.0
 
         # Calculate distance progress
-        min_dist = float(min(
-            abs(s[0] - target.position[0]) + abs(s[1] - target.position[1])
-            for s in settler_positions
-        ))
+        min_dist = float(
+            min(
+                abs(s[0] - target.position[0]) + abs(s[1] - target.position[1])
+                for s in settler_positions
+            )
+        )
         max_dist = float(state.get("map_size", 32))
 
         return max(0.0, 1.0 - (min_dist / max_dist))

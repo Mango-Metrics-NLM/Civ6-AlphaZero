@@ -291,9 +291,8 @@ class TournamentWandbLogger:
             ):
                 if idx < len(standings):
                     entry = standings[idx]
-                    rating = (
-                        getattr(entry, "elo_rating", None)
-                        or (entry.get("rating", 0.0) if isinstance(entry, dict) else 0.0)
+                    rating = getattr(entry, "elo_rating", None) or (
+                        entry.get("rating", 0.0) if isinstance(entry, dict) else 0.0
                     )
                     data[f"tournament/summary/{label}"] = rating
 
@@ -375,9 +374,7 @@ class TournamentWandbLogger:
             matrix = np.array(matrix)
 
         if matrix.shape[0] != len(players) or matrix.shape[1] != len(players):
-            logger.error(
-                f"Matrix shape {matrix.shape} does not match players count {len(players)}"
-            )
+            logger.error(f"Matrix shape {matrix.shape} does not match players count {len(players)}")
             return
 
         # Prepare table with row/column headers

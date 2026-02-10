@@ -123,7 +123,10 @@ class LocalStorageBackend(StorageBackend):
         if self.config.compress_weights:
             data = lzma.decompress(data)
         buffer = io.BytesIO(data)
-        return cast(dict[str, torch.Tensor], torch.load(buffer, map_location=map_location, weights_only=True))
+        return cast(
+            dict[str, torch.Tensor],
+            torch.load(buffer, map_location=map_location, weights_only=True),
+        )
 
     # =========================================================================
     # Model Operations
@@ -137,11 +140,7 @@ class LocalStorageBackend(StorageBackend):
     ) -> str:
         """Save model weights to storage."""
         with self._lock:
-            model_dir = (
-                self.base_path
-                / self.config.models_subdir
-                / f"iteration_{iteration:08d}"
-            )
+            model_dir = self.base_path / self.config.models_subdir / f"iteration_{iteration:08d}"
             model_dir.mkdir(parents=True, exist_ok=True)
 
             # Save model weights
@@ -169,9 +168,7 @@ class LocalStorageBackend(StorageBackend):
         map_location: str | torch.device = "cpu",
     ) -> tuple[dict[str, torch.Tensor], ModelMetadata]:
         """Load model weights from a specific iteration."""
-        model_dir = (
-            self.base_path / self.config.models_subdir / f"iteration_{iteration:08d}"
-        )
+        model_dir = self.base_path / self.config.models_subdir / f"iteration_{iteration:08d}"
         model_path = model_dir / "model.pt"
         metadata_path = model_dir / "metadata.json"
 
@@ -224,11 +221,7 @@ class LocalStorageBackend(StorageBackend):
     ) -> str:
         """Save model as the current champion."""
         with self._lock:
-            champion_dir = (
-                self.base_path
-                / self.config.models_subdir
-                / self.config.champion_subdir
-            )
+            champion_dir = self.base_path / self.config.models_subdir / self.config.champion_subdir
             champion_dir.mkdir(parents=True, exist_ok=True)
 
             # Save model weights
@@ -251,9 +244,7 @@ class LocalStorageBackend(StorageBackend):
         map_location: str | torch.device = "cpu",
     ) -> tuple[dict[str, torch.Tensor], ModelMetadata]:
         """Load the current champion model."""
-        champion_dir = (
-            self.base_path / self.config.models_subdir / self.config.champion_subdir
-        )
+        champion_dir = self.base_path / self.config.models_subdir / self.config.champion_subdir
         model_path = champion_dir / "model.pt"
         metadata_path = champion_dir / "metadata.json"
 
@@ -273,9 +264,7 @@ class LocalStorageBackend(StorageBackend):
 
     def get_champion_version(self) -> int:
         """Get the current champion model version."""
-        champion_dir = (
-            self.base_path / self.config.models_subdir / self.config.champion_subdir
-        )
+        champion_dir = self.base_path / self.config.models_subdir / self.config.champion_subdir
         metadata_path = champion_dir / "metadata.json"
 
         if not metadata_path.exists():
@@ -286,9 +275,7 @@ class LocalStorageBackend(StorageBackend):
 
     def champion_exists(self) -> bool:
         """Check if a champion model exists."""
-        champion_dir = (
-            self.base_path / self.config.models_subdir / self.config.champion_subdir
-        )
+        champion_dir = self.base_path / self.config.models_subdir / self.config.champion_subdir
         return (champion_dir / "model.pt").exists()
 
     # =========================================================================
@@ -335,9 +322,7 @@ class LocalStorageBackend(StorageBackend):
             metadata_path = trajectory_dir / f"{game_id}.meta.json"
             metadata_path.write_text(metadata.to_json())
 
-            logger.debug(
-                f"Saved trajectory {game_id} (iter={iteration}, worker={worker_id})"
-            )
+            logger.debug(f"Saved trajectory {game_id} (iter={iteration}, worker={worker_id})")
             return str(trajectory_path)
 
     def list_trajectories(
@@ -461,9 +446,7 @@ class LocalStorageBackend(StorageBackend):
         """Save a full training checkpoint."""
         with self._lock:
             checkpoint_dir = (
-                self.base_path
-                / self.config.checkpoints_subdir
-                / f"iteration_{iteration:08d}"
+                self.base_path / self.config.checkpoints_subdir / f"iteration_{iteration:08d}"
             )
             checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
@@ -499,9 +482,7 @@ class LocalStorageBackend(StorageBackend):
         if not checkpoint_path.exists():
             raise FileNotFoundError(f"Checkpoint not found at iteration {iteration}")
 
-        checkpoint_data = torch.load(
-            checkpoint_path, map_location=map_location, weights_only=False
-        )
+        checkpoint_data = torch.load(checkpoint_path, map_location=map_location, weights_only=False)
 
         if metadata_path.exists():
             metadata = CheckpointMetadata.from_json(metadata_path.read_text())
@@ -556,9 +537,7 @@ class LocalStorageBackend(StorageBackend):
         """Save evaluation results."""
         with self._lock:
             eval_dir = (
-                self.base_path
-                / self.config.eval_subdir
-                / f"iteration_{result.iteration:08d}"
+                self.base_path / self.config.eval_subdir / f"iteration_{result.iteration:08d}"
             )
             eval_dir.mkdir(parents=True, exist_ok=True)
 
@@ -577,10 +556,7 @@ class LocalStorageBackend(StorageBackend):
     ) -> EvaluationResult:
         """Load evaluation results for an iteration."""
         result_path = (
-            self.base_path
-            / self.config.eval_subdir
-            / f"iteration_{iteration:08d}"
-            / "results.json"
+            self.base_path / self.config.eval_subdir / f"iteration_{iteration:08d}" / "results.json"
         )
 
         if not result_path.exists():
@@ -621,11 +597,7 @@ class LocalStorageBackend(StorageBackend):
     ) -> str:
         """Save training configuration."""
         with self._lock:
-            config_dir = (
-                self.base_path
-                / self.config.configs_subdir
-                / f"iteration_{iteration:08d}"
-            )
+            config_dir = self.base_path / self.config.configs_subdir / f"iteration_{iteration:08d}"
             config_dir.mkdir(parents=True, exist_ok=True)
 
             config_path = config_dir / "config.json"

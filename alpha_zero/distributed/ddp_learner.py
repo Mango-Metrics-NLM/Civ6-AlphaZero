@@ -590,7 +590,9 @@ class DDPLearner(Learner):
 
         return checkpoint_path
 
-    def load_checkpoint(self, path: str, strict: bool = True, validate_world_size: bool = True) -> int:
+    def load_checkpoint(
+        self, path: str, strict: bool = True, validate_world_size: bool = True
+    ) -> int:
         """Load a training checkpoint.
 
         All processes load the checkpoint for consistency.
@@ -804,9 +806,7 @@ class DDPLearner(Learner):
                 and self.training_step >= self.config.max_training_steps
             ):
                 if self.is_main_process():
-                    logger.info(
-                        f"Reached max training steps ({self.config.max_training_steps})"
-                    )
+                    logger.info(f"Reached max training steps ({self.config.max_training_steps})")
                 break
 
             # Training step
@@ -846,13 +846,15 @@ class DDPLearner(Learner):
                     f"{effective_throughput:.1f} steps/sec (x{self.ddp_config.world_size})"
                 )
 
-                self.storage.add_loss_entry({
-                    "step": self.training_step,
-                    "total_loss": avg_total,
-                    "policy_loss": avg_policy,
-                    "value_loss": avg_value,
-                    "learning_rate": losses["learning_rate"],
-                })
+                self.storage.add_loss_entry(
+                    {
+                        "step": self.training_step,
+                        "total_loss": avg_total,
+                        "policy_loss": avg_policy,
+                        "value_loss": avg_value,
+                        "learning_rate": losses["learning_rate"],
+                    }
+                )
 
                 step_losses = {"total": 0.0, "policy": 0.0, "value": 0.0}
                 log_steps = 0
@@ -932,6 +934,7 @@ def create_ddp_learner(
     # Detect DDP environment if not provided
     if ddp_config is None:
         from alpha_zero.distributed.ddp_config import detect_ddp_environment
+
         ddp_config = detect_ddp_environment()
 
     # Create combined config

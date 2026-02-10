@@ -302,8 +302,7 @@ class OptimizationBenchmark:
 
         # Compute effective speedup: max_playouts / average_cap
         effective_speedup = (
-            config.max_playouts / stats.average_cap
-            if stats.average_cap > 0 else 1.0
+            config.max_playouts / stats.average_cap if stats.average_cap > 0 else 1.0
         )
 
         additional = {
@@ -458,12 +457,24 @@ class OptimizationBenchmark:
             state = {
                 "board": self._rng.random((board_size, board_size)),
                 "turn": int(self._rng.integers(0, 100)),
-                "units": [{"position": (int(self._rng.integers(0, board_size)),
-                                        int(self._rng.integers(0, board_size)))}
-                          for _ in range(5)],
-                "cities": [{"position": (int(self._rng.integers(0, board_size)),
-                                         int(self._rng.integers(0, board_size)))}
-                           for _ in range(2)],
+                "units": [
+                    {
+                        "position": (
+                            int(self._rng.integers(0, board_size)),
+                            int(self._rng.integers(0, board_size)),
+                        )
+                    }
+                    for _ in range(5)
+                ],
+                "cities": [
+                    {
+                        "position": (
+                            int(self._rng.integers(0, board_size)),
+                            int(self._rng.integers(0, board_size)),
+                        )
+                    }
+                    for _ in range(2)
+                ],
                 "action_mask": self._rng.random(action_space_size) > 0.5,
             }
             game_states.append(state)
@@ -541,18 +552,22 @@ class OptimizationBenchmark:
             phase_target = np.zeros(3)
             phase_target[phase_idx] = 1.0
 
-            predictions_list.append({
-                "attention": attention_pred,
-                "opponent": opponent_pred,
-                "phase": phase_pred,
-                "future_value": float(self._rng.random() * 2 - 1),
-            })
-            targets_list.append(AuxiliaryTargets(
-                attention_map=attention_target,
-                opponent_action=opponent_target,
-                game_phase=phase_target,
-                future_value=float(self._rng.random() * 2 - 1),
-            ))
+            predictions_list.append(
+                {
+                    "attention": attention_pred,
+                    "opponent": opponent_pred,
+                    "phase": phase_pred,
+                    "future_value": float(self._rng.random() * 2 - 1),
+                }
+            )
+            targets_list.append(
+                AuxiliaryTargets(
+                    attention_map=attention_target,
+                    opponent_action=opponent_target,
+                    game_phase=phase_target,
+                    future_value=float(self._rng.random() * 2 - 1),
+                )
+            )
 
         idx = [0]
 
@@ -624,14 +639,10 @@ class OptimizationBenchmark:
         results = {}
 
         logger.info("Running playout cap benchmark...")
-        results["playout_cap"] = self.run_playout_cap_benchmark(
-            num_iterations=num_iterations
-        )
+        results["playout_cap"] = self.run_playout_cap_benchmark(num_iterations=num_iterations)
 
         logger.info("Running policy pruning benchmark...")
-        results["policy_pruning"] = self.run_policy_pruning_benchmark(
-            num_iterations=num_iterations
-        )
+        results["policy_pruning"] = self.run_policy_pruning_benchmark(num_iterations=num_iterations)
 
         logger.info("Running cyclic LR benchmark...")
         results["cyclic_lr"] = self.run_cyclic_lr_benchmark(
@@ -644,9 +655,7 @@ class OptimizationBenchmark:
         )
 
         logger.info("Running auxiliary loss benchmark...")
-        results["auxiliary_loss"] = self.run_auxiliary_loss_benchmark(
-            num_iterations=num_iterations
-        )
+        results["auxiliary_loss"] = self.run_auxiliary_loss_benchmark(num_iterations=num_iterations)
 
         return results
 
@@ -678,9 +687,11 @@ class OptimizationBenchmark:
         ]
 
         for result in self._results:
-            lines.extend([
-                result.summary(),
-                "",
-            ])
+            lines.extend(
+                [
+                    result.summary(),
+                    "",
+                ]
+            )
 
         return "\n".join(lines)

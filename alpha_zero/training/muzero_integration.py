@@ -50,17 +50,13 @@ class MuZeroIntegrationConfig:
         if not 0.0 <= self.discount <= 1.0:
             raise ValueError(f"discount must be in [0, 1], got {self.discount}")
         if not 0.0 <= self.reanalyze_fraction <= 1.0:
-            raise ValueError(
-                f"reanalyze_fraction must be in [0, 1], got {self.reanalyze_fraction}"
-            )
+            raise ValueError(f"reanalyze_fraction must be in [0, 1], got {self.reanalyze_fraction}")
         if self.consistency_loss_weight < 0.0:
             raise ValueError(
                 f"consistency_loss_weight must be >= 0, got {self.consistency_loss_weight}"
             )
         if self.reward_loss_weight < 0.0:
-            raise ValueError(
-                f"reward_loss_weight must be >= 0, got {self.reward_loss_weight}"
-            )
+            raise ValueError(f"reward_loss_weight must be >= 0, got {self.reward_loss_weight}")
 
     def to_dict(self) -> dict[str, Any]:
         """Convert config to dictionary."""
@@ -96,19 +92,13 @@ class MuZeroIntegrationConfig:
             unroll_steps=int(os.environ.get("CIV6AZ_MUZERO_UNROLL_STEPS", "5")),
             td_steps=int(os.environ.get("CIV6AZ_MUZERO_TD_STEPS", "10")),
             discount=float(os.environ.get("CIV6AZ_MUZERO_DISCOUNT", "0.997")),
-            use_reanalyze=os.environ.get("CIV6AZ_MUZERO_REANALYZE", "false").lower()
-            == "true",
-            reanalyze_fraction=float(
-                os.environ.get("CIV6AZ_MUZERO_REANALYZE_FRACTION", "0.5")
-            ),
+            use_reanalyze=os.environ.get("CIV6AZ_MUZERO_REANALYZE", "false").lower() == "true",
+            reanalyze_fraction=float(os.environ.get("CIV6AZ_MUZERO_REANALYZE_FRACTION", "0.5")),
             consistency_loss_weight=float(
                 os.environ.get("CIV6AZ_MUZERO_CONSISTENCY_LOSS_WEIGHT", "2.0")
             ),
-            reward_loss_weight=float(
-                os.environ.get("CIV6AZ_MUZERO_REWARD_LOSS_WEIGHT", "1.0")
-            ),
-            value_prefix=os.environ.get("CIV6AZ_MUZERO_VALUE_PREFIX", "false").lower()
-            == "true",
+            reward_loss_weight=float(os.environ.get("CIV6AZ_MUZERO_REWARD_LOSS_WEIGHT", "1.0")),
+            value_prefix=os.environ.get("CIV6AZ_MUZERO_VALUE_PREFIX", "false").lower() == "true",
         )
 
     @classmethod
@@ -182,9 +172,7 @@ class MuZeroTrainingBridge:
         )
         return network
 
-    def create_trainer(
-        self, network: nn.Module, device: str = "cpu", **kwargs: Any
-    ) -> Any:
+    def create_trainer(self, network: nn.Module, device: str = "cpu", **kwargs: Any) -> Any:
         """Create a MuZero trainer instance.
 
         Args:
@@ -206,9 +194,7 @@ class MuZeroTrainingBridge:
         # Build training config from integration config + overrides
         training_config = self.to_training_config(**kwargs)
 
-        trainer = MuZeroTrainer(
-            network=network, config=training_config, device=device
-        )
+        trainer = MuZeroTrainer(network=network, config=training_config, device=device)
         logger.info(f"Created MuZeroTrainer on device={device}")
         return trainer
 
@@ -352,9 +338,7 @@ class MuZeroTrainingBridge:
                 action_mask = np.ones(env.action_space.n, dtype=bool)
 
             # MCTS search
-            action_probs, value = mcts.search(
-                observation, action_mask, add_noise=(move_count < 30)
-            )
+            action_probs, value = mcts.search(observation, action_mask, add_noise=(move_count < 30))
 
             # Select action
             action = mcts.select_action(action_probs, temperature, action_mask)
@@ -387,9 +371,7 @@ class MuZeroTrainingBridge:
 
         return trajectory
 
-    def training_step(
-        self, trainer: Any, batch: Any, step: int
-    ) -> dict[str, float]:
+    def training_step(self, trainer: Any, batch: Any, step: int) -> dict[str, float]:
         """Execute a single training step.
 
         Args:
@@ -407,8 +389,7 @@ class MuZeroTrainingBridge:
         metrics["step"] = float(step)
 
         logger.debug(
-            f"Training step {step} completed: "
-            f"total_loss={metrics.get('total_loss', 0.0):.4f}"
+            f"Training step {step} completed: total_loss={metrics.get('total_loss', 0.0):.4f}"
         )
 
         return metrics  # type: ignore[no-any-return]

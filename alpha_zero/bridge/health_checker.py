@@ -92,59 +92,37 @@ class BridgeHealthConfig:
     """
 
     check_interval_seconds: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_BRIDGE_CHECK_INTERVAL", "5.0")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_BRIDGE_CHECK_INTERVAL", "5.0"))
     )
     timeout_seconds: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_BRIDGE_TIMEOUT", "10.0")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_BRIDGE_TIMEOUT", "10.0"))
     )
     max_retries: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_BRIDGE_MAX_RETRIES", "5")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_BRIDGE_MAX_RETRIES", "5"))
     )
     retry_delay_seconds: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_BRIDGE_RETRY_DELAY", "1.0")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_BRIDGE_RETRY_DELAY", "1.0"))
     )
     backoff_multiplier: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_BRIDGE_BACKOFF_MULTIPLIER", "2.0")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_BRIDGE_BACKOFF_MULTIPLIER", "2.0"))
     )
     max_backoff_seconds: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_BRIDGE_MAX_BACKOFF", "60.0")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_BRIDGE_MAX_BACKOFF", "60.0"))
     )
     circuit_breaker_threshold: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_BRIDGE_CIRCUIT_THRESHOLD", "3")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_BRIDGE_CIRCUIT_THRESHOLD", "3"))
     )
     circuit_breaker_timeout_seconds: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_BRIDGE_CIRCUIT_TIMEOUT", "30.0")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_BRIDGE_CIRCUIT_TIMEOUT", "30.0"))
     )
     success_threshold: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_BRIDGE_SUCCESS_THRESHOLD", "2")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_BRIDGE_SUCCESS_THRESHOLD", "2"))
     )
     health_window_size: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_BRIDGE_HEALTH_WINDOW", "10")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_BRIDGE_HEALTH_WINDOW", "10"))
     )
     degraded_threshold: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_BRIDGE_DEGRADED_THRESHOLD", "0.3")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_BRIDGE_DEGRADED_THRESHOLD", "0.3"))
     )
 
     def __post_init__(self) -> None:
@@ -633,8 +611,7 @@ class GameBridgeHealthChecker:
                 self.record_success()
 
                 logger.debug(
-                    f"Operation succeeded on attempt {attempt + 1}, "
-                    f"latency={latency_ms:.1f}ms"
+                    f"Operation succeeded on attempt {attempt + 1}, latency={latency_ms:.1f}ms"
                 )
 
                 return cast(T, result)
@@ -655,9 +632,7 @@ class GameBridgeHealthChecker:
             # Check if we should retry
             if attempt < self.config.max_retries:
                 if self.is_circuit_open():
-                    raise CircuitBreakerOpenError(
-                        "Circuit breaker opened during retries"
-                    )
+                    raise CircuitBreakerOpenError("Circuit breaker opened during retries")
 
                 logger.debug(f"Retrying in {delay:.1f}s...")
                 await asyncio.sleep(delay)
@@ -687,9 +662,7 @@ class GameBridgeHealthChecker:
         """
         self._on_circuit_close.append(callback)
 
-    def register_health_change_callback(
-        self, callback: Callable[[BridgeHealth], None]
-    ) -> None:
+    def register_health_change_callback(self, callback: Callable[[BridgeHealth], None]) -> None:
         """Register callback for health status changes.
 
         Args:

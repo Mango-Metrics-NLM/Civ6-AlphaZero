@@ -15,19 +15,20 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 3 | Training Improvements (Curriculum, Rewards) | ✅ Complete |
 | Phase 4 | Unified Training Orchestrator | ✅ Complete |
 | Phase 5 | Cost Optimization & Monitoring | ✅ Complete |
-| Phase 6 | Agentic Framework for Claude Code | ✅ Complete |
+| Phase 6 | ~~Agentic Framework~~ (removed in Phase 11) | ✅ Removed |
 | Phase 7 | GCP Vertex AI Cloud Training Pipeline | ✅ Complete |
 | Phase 7+ | Production PBT Scaling & Validation | ✅ Complete |
 | Phase 8 | Training Safeguards & Automated Intervention | ✅ Complete |
 | Phase 9 | MuZero Integration Bridge | ✅ Complete |
 | Phase 10 | Tournament & Matchmaking System | ✅ Complete |
+| Phase 11 | Code Quality & Tech Debt Reduction | ✅ Complete |
 
 **Codebase Statistics:**
 
 - ~55,000 lines of core implementation
-- ~14,600 lines of agentic framework
-- 3,800+ tests with >80% coverage on core modules
-- 11 game mechanics modules
+- 4,000+ tests with >80% coverage on core modules
+- 11 game mechanics modules (deprecated, future Civ6 integration)
+- 13 remaining xfail tests (12 DDP + 1 hierarchical — deferred to Phase 14)
 
 ## Key Features
 
@@ -44,7 +45,6 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - **Real Civ6 Bridge**: File-based IPC bridge for playing actual Civilization VI
 - **Lua Mod Integration**: Complete Civ6 mod for game state export and action execution
 - **RAG Integration**: Retrieval-Augmented Generation for knowledge-enhanced decision making
-- **Agentic Framework**: Reusable framework for Claude Code autonomous development workflows
 - **GCP Vertex AI Pipeline**: Distributed cloud training with selfplay, training, and evaluation phases
 - **GumbelMCTS**: 5-50x faster MCTS variant via Gumbel sampling (no Dirichlet noise needed)
 - **MCTS Factory**: Pluggable MCTS instantiation (`create_mcts("civ6"|"gumbel"|"muzero", ...)`)
@@ -508,6 +508,55 @@ graph TB
     style WandbLog fill:#85bbf0,stroke:#5d82a8,color:#000000
 ```
 
+### Level 3: Component Diagram - Code Quality Infrastructure (Phase 11)
+
+Internal structure of the production hardening and code quality systems.
+
+```mermaid
+graph TB
+    subgraph "Code Quality Infrastructure (Phase 11)"
+        subgraph "Logging (Consolidated)"
+            LogConfig["logging_config.py<br/><i>Canonical module</i>"]
+            MetricsTracker["MetricsTracker<br/><i>Training metrics</i>"]
+            TrainingLogger["TrainingLogger<br/><i>Structured logs</i>"]
+            GameLogger["GameLogger<br/><i>MCTS debugging</i>"]
+            Profiler["PerformanceProfiler<br/><i>Timing sections</i>"]
+            DeprecatedLog["logging.py<br/><i>Deprecated re-export</i>"]
+        end
+
+        subgraph "CI Pipeline"
+            Ruff["Ruff 0.8.0<br/><i>Lint + Format check</i>"]
+            Mypy["Mypy 1.13.0<br/><i>Strict per-package</i>"]
+            Bandit["Bandit 1.8.0<br/><i>Security scan (enforced)</i>"]
+            Tests["Pytest<br/><i>4,000+ tests</i>"]
+        end
+
+        subgraph "Type Safety"
+            CoreTypes["alpha_zero.core.*<br/><i>disallow_untyped_defs</i>"]
+            TrainingTypes["alpha_zero.training.*<br/><i>disallow_untyped_defs</i>"]
+            TournTypes["alpha_zero.tournament.*<br/><i>disallow_untyped_defs</i>"]
+            PBTTypes["alpha_zero.pbt.*<br/><i>disallow_untyped_defs</i>"]
+        end
+    end
+
+    DeprecatedLog -->|"re-exports"| LogConfig
+    LogConfig --> MetricsTracker
+    LogConfig --> TrainingLogger
+    LogConfig --> GameLogger
+    LogConfig --> Profiler
+
+    Mypy --> CoreTypes
+    Mypy --> TrainingTypes
+    Mypy --> TournTypes
+    Mypy --> PBTTypes
+
+    style LogConfig fill:#1168bd,stroke:#0b4884,color:#ffffff
+    style Ruff fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style Mypy fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style Bandit fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style DeprecatedLog fill:#999999,stroke:#666666,color:#ffffff
+```
+
 ### Level 3: Component Diagram - Hierarchical RL
 
 Internal structure of the multi-level decision hierarchy.
@@ -950,7 +999,7 @@ pytest -k "curriculum" -v
 
 ```
 Civ6-AlphaZero/
-├── alpha_zero/               # Core AI system (~51,800 LOC)
+├── alpha_zero/               # Core AI system (~55,000 LOC)
 │   ├── orchestrator/         # Unified training orchestrator (Phase 4)
 │   │   ├── __init__.py       # Module exports
 │   │   ├── __main__.py       # CLI entry point
@@ -1064,13 +1113,6 @@ Civ6-AlphaZero/
 │       ├── llm_client.py           # LLM API integration
 │       ├── factories.py            # Component factories
 │       └── wandb_logger.py         # W&B integration
-├── agentic_framework/        # Claude Code agent system (~14,600 LOC)
-│   ├── config/               # Configuration management
-│   ├── core/                 # Template parser, constraints, permissions
-│   ├── agents/               # Planning, Implementation, Testing agents
-│   ├── templates/            # Built-in agent templates
-│   ├── utils/                # Command execution, logging
-│   └── orchestrator.py       # Main orchestrator
 ├── configs/                  # Configuration files
 │   ├── orchestrator.yaml     # Master configuration
 │   ├── orchestrator_fast.yaml
@@ -1098,7 +1140,7 @@ Civ6-AlphaZero/
 │           ├── ActionExecutor.lua # Command execution
 │           ├── FileIO.lua    # File operations
 │           └── JsonEncoder.lua # Pure Lua JSON
-├── tests/                    # Test suite (3,800+ tests)
+├── tests/                    # Test suite (4,000+ tests)
 │   ├── unit/                 # Unit tests
 │   ├── integration/          # Integration tests (PBT, distributed, preemption)
 │   ├── e2e/                  # End-to-end tests (training smoke, GCS, Vertex)
@@ -1128,7 +1170,7 @@ Civ6-AlphaZero/
 | Configuration | PyYAML, Pydantic |
 | Testing | Pytest 7.0+, pytest-asyncio, pytest-cov |
 | Visualization | Mermaid.js, Matplotlib |
-| Code Quality | MyPy, Ruff |
+| Code Quality | MyPy, Ruff, Bandit |
 | Numerical | NumPy 1.23+ |
 
 ## Roadmap
@@ -1142,17 +1184,19 @@ Civ6-AlphaZero/
 - ✅ **Training Safeguards** — NaN detection, loss explosion monitoring, gradient health, automated interventions
 - ✅ **MuZero Integration** — MuZeroTrainingBridge connecting network/trainer/MCTS to orchestrators and PBT
 - ✅ **Tournament System** — Bracket orchestration (round-robin, elimination, Swiss), analysis, W&B dashboards
+- ✅ **Code Quality & Tech Debt** (Phase 11) — Removed 14,600 LOC dead code, fixed 16 xfailed tests, consolidated logging, CI hardening, mypy strictness, 16 new edge case tests
 
 ### Next Steps
 
 | Priority | Feature | Description |
 |----------|---------|-------------|
-| P0 | Extended Training Run | Run 50+ generation PBT on Vertex AI to validate convergence |
-| P1 | Training Validation | Achieve >50% win rate vs random baseline |
-| P2 | MuZero Training Run | Run MuZero PBT with `configs/muzero_pbt.yaml` to validate learned dynamics |
-| P3 | Tournament Evaluation | Deploy tournament-based evaluation alongside PBT generations |
-| P4 | Human vs AI Interface | Web-based UI for human gameplay |
-| P5 | Full Civ 6 Integration | Direct game interface via modding API |
+| P0 | Inference Optimization & Vectorized Self-Play (Phase 12) | Batch MCTS inference, vectorized environments for 10x+ throughput |
+| P1 | Extended Training Run | Run 50+ generation PBT on Vertex AI to validate convergence |
+| P2 | Training Validation | Achieve >50% win rate vs random baseline |
+| P3 | MuZero Training Run | Run MuZero PBT with `configs/muzero_pbt.yaml` to validate learned dynamics |
+| P4 | DDP Test Rewrites (Phase 14) | Fix remaining 12 DDP xfailed tests, full mypy strict mode |
+| P5 | Human vs AI Interface | Web-based UI for human gameplay |
+| P6 | Full Civ 6 Integration | Direct game interface via modding API |
 
 ### Current Priorities
 
@@ -1160,7 +1204,7 @@ Civ6-AlphaZero/
 2. **Monitor W&B dashboards** — Track `pbt/elo_*`, `pbt/fitness_*`, and `tournament/*` metrics
 3. **Baseline benchmarking** — Verify win rate improvements against random/heuristic agents at every 5th generation
 4. **MuZero experiments** — Compare AlphaZero vs MuZero training modes using `configs/muzero_pbt.yaml`
-5. **Tournament analysis** — Run cross-generation tournaments to measure agent strength progression
+5. **Vectorized self-play** — Implement batch MCTS inference for Phase 12
 
 ## Contributing
 

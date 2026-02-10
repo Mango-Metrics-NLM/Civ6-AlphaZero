@@ -179,23 +179,18 @@ class LifecycleConfig:
     """
 
     enabled: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_LIFECYCLE_ENABLED", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_LIFECYCLE_ENABLED", "true").lower() == "true"
     )
     dry_run: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_LIFECYCLE_DRY_RUN", "false"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_LIFECYCLE_DRY_RUN", "false").lower()
+        == "true"
     )
 
     # Trajectory retention: Keep last N iterations in STANDARD, archive older
     trajectories_retention: RetentionPolicyConfig = field(
         default_factory=lambda: RetentionPolicyConfig(
             prefix="trajectories/",
-            keep_recent_iterations=int(
-                os.environ.get("CIV6AZ_TRAJECTORY_KEEP_ITERATIONS", "20")
-            ),
+            keep_recent_iterations=int(os.environ.get("CIV6AZ_TRAJECTORY_KEEP_ITERATIONS", "20")),
             archive_storage_class=StorageClass.NEARLINE,
             archive_after_days=30,
             delete_after_days=0,  # Never delete trajectories
@@ -247,15 +242,12 @@ class LifecycleConfig:
     )
 
     apply_gcs_lifecycle_rules: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_APPLY_GCS_LIFECYCLE", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_APPLY_GCS_LIFECYCLE", "true").lower()
+        == "true"
     )
 
     iteration_cleanup_interval: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_LIFECYCLE_CLEANUP_INTERVAL", "10")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_LIFECYCLE_CLEANUP_INTERVAL", "10"))
     )
 
     def __post_init__(self) -> None:
@@ -316,21 +308,15 @@ class LifecycleConfig:
                 data["trajectories_retention"]
             )
         if "models_retention" in data:
-            config.models_retention = RetentionPolicyConfig.from_dict(
-                data["models_retention"]
-            )
+            config.models_retention = RetentionPolicyConfig.from_dict(data["models_retention"])
         if "checkpoints_retention" in data:
             config.checkpoints_retention = RetentionPolicyConfig.from_dict(
                 data["checkpoints_retention"]
             )
         if "logs_retention" in data:
-            config.logs_retention = RetentionPolicyConfig.from_dict(
-                data["logs_retention"]
-            )
+            config.logs_retention = RetentionPolicyConfig.from_dict(data["logs_retention"])
         if "eval_retention" in data:
-            config.eval_retention = RetentionPolicyConfig.from_dict(
-                data["eval_retention"]
-            )
+            config.eval_retention = RetentionPolicyConfig.from_dict(data["eval_retention"])
 
         return config
 
@@ -419,6 +405,7 @@ class GCSLifecycleManager:
         if self._client is None:
             try:
                 from google.cloud import storage as gcs_lib
+
                 self._client = gcs_lib.Client(project=self._project_id)
             except ImportError as err:
                 raise ImportError(
@@ -461,9 +448,7 @@ class GCSLifecycleManager:
                 continue  # Skip policies that keep everything
 
             try:
-                policy_result = self._cleanup_policy(
-                    pol, current_iteration, self.config.dry_run
-                )
+                policy_result = self._cleanup_policy(pol, current_iteration, self.config.dry_run)
                 result = result.merge(policy_result)
             except Exception as e:
                 error_msg = f"Policy {pol.prefix}: {e}"

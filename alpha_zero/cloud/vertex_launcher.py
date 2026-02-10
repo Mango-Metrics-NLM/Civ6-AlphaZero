@@ -148,7 +148,9 @@ class MockCustomJob:
         MockCustomJob._job_counter += 1
         self.display_name = display_name
         self.worker_pool_specs = worker_pool_specs
-        self.resource_name = f"projects/mock/locations/mock/customJobs/mock-{MockCustomJob._job_counter}"
+        self.resource_name = (
+            f"projects/mock/locations/mock/customJobs/mock-{MockCustomJob._job_counter}"
+        )
         self._state = "JOB_STATE_PENDING"
         self._create_time = datetime.now()
         self._start_time: datetime | None = None
@@ -376,9 +378,7 @@ class VertexJobLauncher:
         if args:
             container_spec["args"] = args
         if env_vars:
-            container_spec["env"] = [
-                {"name": k, "value": v} for k, v in env_vars.items()
-            ]
+            container_spec["env"] = [{"name": k, "value": v} for k, v in env_vars.items()]
 
         worker_pool_specs = [
             {

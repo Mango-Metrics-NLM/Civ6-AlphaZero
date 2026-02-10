@@ -207,9 +207,7 @@ class TournamentAnalyzer:
         logger.debug(f"Generated head-to-head matrix for {n} players")
         return matrix
 
-    def get_player_trends(
-        self, player_id: str, *, window: int = 20
-    ) -> PlayerTrend:
+    def get_player_trends(self, player_id: str, *, window: int = 20) -> PlayerTrend:
         """Get player performance trends over time.
 
         Args:
@@ -281,8 +279,7 @@ class TournamentAnalyzer:
             trend.current_streak = stats.current_streak
 
         logger.debug(
-            f"Player {player_id}: {trend.games_played} games, "
-            f"peak ELO {trend.peak_elo:.1f}"
+            f"Player {player_id}: {trend.games_played} games, peak ELO {trend.peak_elo:.1f}"
         )
         return trend
 
@@ -318,9 +315,7 @@ class TournamentAnalyzer:
         # Analyze hyperparameters if provided
         if hyperparameters:
             top_hyperparams = {
-                pid: hyperparameters[pid]
-                for pid in top_player_ids
-                if pid in hyperparameters
+                pid: hyperparameters[pid] for pid in top_player_ids if pid in hyperparameters
             }
 
             if top_hyperparams:
@@ -390,9 +385,7 @@ class TournamentAnalyzer:
         qualifying_games = 0
 
         for match in matches:
-            elo_diff = abs(
-                match.player1_rating_before - match.player2_rating_before
-            )
+            elo_diff = abs(match.player1_rating_before - match.player2_rating_before)
 
             # Only count games with significant ELO difference
             if elo_diff < elo_diff_threshold:
@@ -477,9 +470,7 @@ class TournamentAnalyzer:
             comparison.gen_a_win_rate = gen_a_wins / total_matches
             comparison.gen_b_win_rate = gen_b_wins / total_matches
         else:
-            logger.warning(
-                f"No matches found between generations {gen_a} and {gen_b}"
-            )
+            logger.warning(f"No matches found between generations {gen_a} and {gen_b}")
 
         # Calculate average ELO difference
         gen_a_elos = []
@@ -516,9 +507,7 @@ class TournamentAnalyzer:
         )
         return comparison
 
-    def export_report(
-        self, path: str | Path, *, format: str = "json"
-    ) -> None:
+    def export_report(self, path: str | Path, *, format: str = "json") -> None:
         """Export analysis report to file.
 
         Args:
@@ -547,9 +536,7 @@ class TournamentAnalyzer:
 
         if self.match_history:
             # Global statistics
-            report["tournament_statistics"] = (
-                self.match_history.get_global_statistics()
-            )
+            report["tournament_statistics"] = self.match_history.get_global_statistics()
 
             # Top players
             leaderboard = self.match_history.get_leaderboard(limit=10, min_games=5)
@@ -599,13 +586,8 @@ class TournamentAnalyzer:
             )
 
             leaderboard = self.match_history.get_leaderboard(limit=10, min_games=5)
-            for rank, (player_id, rating, games, win_rate) in enumerate(
-                leaderboard, 1
-            ):
-                lines.append(
-                    f"| {rank} | {player_id} | {rating:.1f} | {games} | "
-                    f"{win_rate:.2%} |"
-                )
+            for rank, (player_id, rating, games, win_rate) in enumerate(leaderboard, 1):
+                lines.append(f"| {rank} | {player_id} | {rating:.1f} | {games} | {win_rate:.2%} |")
 
             # Upset frequency
             upset_rate = self.get_upset_frequency()

@@ -108,17 +108,11 @@ def create_storage_backend(
                 "Set CIV6_GCS_BUCKET environment variable or configure gcs.bucket."
             )
 
-        logger.info(
-            f"Creating GCSStorageBackend: "
-            f"gs://{config.gcs.bucket}/{config.gcs.prefix}"
-        )
+        logger.info(f"Creating GCSStorageBackend: gs://{config.gcs.bucket}/{config.gcs.prefix}")
         return GCSStorageBackend(config)
 
     else:
-        raise ValueError(
-            f"Invalid backend type: {effective_backend}. "
-            f"Must be 'local' or 'gcs'."
-        )
+        raise ValueError(f"Invalid backend type: {effective_backend}. Must be 'local' or 'gcs'.")
 
 
 def get_storage_backend_from_env() -> StorageBackend:

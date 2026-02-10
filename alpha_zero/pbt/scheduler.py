@@ -23,7 +23,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -265,7 +265,7 @@ class EvaluationResult:
     losses: int = 0
     draws: int = 0
     details: dict[str, Any] = field(default_factory=dict)
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     @property
     def win_rate(self) -> float:

@@ -539,3 +539,96 @@ class TestTournamentOrchestrator:
         orchestrator._generate_swiss_round(bracket)
         assert len(bracket.rounds) == 1
         assert len(bracket.rounds[0]) >= 1  # At least one match
+
+
+class TestTournamentEdgeCases:
+    """Edge case tests for tournament orchestration."""
+
+    def test_tournament_with_single_player(self):
+        """Tournament with only 1 player should raise error."""
+        orchestrator = TournamentOrchestrator()
+
+        with pytest.raises(ValueError, match="at least 2 players"):
+            orchestrator.create_bracket(["p1"], format=TournamentFormat.ROUND_ROBIN)
+
+    def test_tournament_with_two_players(self):
+        """Minimal tournament with exactly 2 players."""
+        def mock_runner(p1, p2, num_games):
+            # p1 always wins
+            return MatchResult(
+                match_id=str(uuid.uuid4())[:8],
+                player1_id=p1,
+                player2_id=p2,
+                player1_score=float(num_games),
+                player2_score=0.0,
+                winner_id=p1,
+            )
+
+        orchestrator = TournamentOrchestrator(arena_runner=mock_runner, games_per_match=1)
+        bracket = orchestrator.create_bracket(["p1", "p2"], format=TournamentFormat.ROUND_ROBIN)
+
+        result = orchestrator.run_tournament(bracket)
+
+        assert result.winner == "p1"
+        assert len(result.final_standings) == 2
+        assert result.total_games == 1
+
+    def test_elo_extreme_rating_difference(self):
+        """Tournament with extreme ELO differences should handle properly."""
+        orchestrator = TournamentOrchestrator()
+
+        # Create players with extreme ELO difference
+        high_elo_stats = orchestrator._get_or_create_player_stats("high")
+        low_elo_stats = orchestrator._get_or_create_player_stats("low")
+
+        high_elo_stats.rating = 2800  # Very high
+        low_elo_stats.rating = 800   # Very low
+
+        def mock_runner(p1, p2, num_games):
+            # High ELO player wins
+            winner = "high" if "high" in [p1, p2] else p1
+            return MatchResult(
+                match_id=str(uuid.uuid4())[:8],
+                player1_id=p1,
+                player2_id=p2,
+                player1_score=float(num_games) if winner == p1 else 0.0,
+                player2_score=float(num_games) if winner == p2 else 0.0,
+                winner_id=winner,
+            )
+
+        orchestrator.arena_runner = mock_runner
+        bracket = orchestrator.create_bracket(
+            ["high", "low"], format=TournamentFormat.ROUND_ROBIN
+        )
+
+        # Should not crash with extreme ratings
+        result = orchestrator.run_tournament(bracket)
+        assert result.winner in ["high", "low"]
+
+    def test_all_draws_tournament(self):
+        """Tournament where every match is a draw."""
+        def mock_runner(p1, p2, num_games):
+            # All draws
+            return MatchResult(
+                match_id=str(uuid.uuid4())[:8],
+                player1_id=p1,
+                player2_id=p2,
+                player1_score=float(num_games) / 2,
+                player2_score=float(num_games) / 2,
+                winner_id=None,  # Draw
+            )
+
+        orchestrator = TournamentOrchestrator(arena_runner=mock_runner, games_per_match=2)
+        bracket = orchestrator.create_bracket(
+            ["p1", "p2", "p3"], format=TournamentFormat.ROUND_ROBIN
+        )
+
+        result = orchestrator.run_tournament(bracket)
+
+        # Winner should be determined by tiebreaker (could be any player)
+        assert result.winner in ["p1", "p2", "p3"]
+
+        # All players should have same number of wins (0) and draws
+        standings = result.final_standings
+        assert all(s.wins == 0 for s in standings)
+        assert all(s.draws == 2 for s in standings)  # Each plays 2 matches

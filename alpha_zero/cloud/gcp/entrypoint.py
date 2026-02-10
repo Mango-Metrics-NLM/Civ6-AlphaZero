@@ -35,7 +35,8 @@ def main() -> int:
         return worker_main()
     else:
         print(
-            f"Unknown mode: {mode}. Use 'selfplay', 'training', or 'evaluation'.", file=sys.stderr
+            f"Unknown mode: {mode}. Use 'selfplay', 'training', or 'evaluation'.",
+            file=sys.stderr,
         )
         return 1
 

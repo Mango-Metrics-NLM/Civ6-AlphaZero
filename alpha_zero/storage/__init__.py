@@ -71,10 +71,12 @@ __all__ = [
     "get_storage_backend_from_env",
 ]
 
+
 # Lazy imports for optional GCS backend
 def __getattr__(name: str) -> Any:
     """Lazy import for optional dependencies."""
     if name == "GCSStorageBackend":
         from alpha_zero.storage.gcs_backend import GCSStorageBackend
+
         return GCSStorageBackend
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

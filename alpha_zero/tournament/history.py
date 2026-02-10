@@ -26,7 +26,7 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -64,7 +64,7 @@ class MatchRecord:
     player1_rating_after: float
     player2_rating_after: float
     outcome: str
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     game_length: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -402,7 +402,7 @@ class MatchHistory:
         timestamp: str,
     ) -> None:
         """Update player statistics after a match."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(UTC).isoformat()
 
         # Check if player exists
         cursor.execute("SELECT * FROM players WHERE player_id = ?", (player_id,))
@@ -852,7 +852,7 @@ class MatchHistory:
         data = {
             "matches": matches,
             "players": players,
-            "exported_at": datetime.utcnow().isoformat(),
+            "exported_at": datetime.now(UTC).isoformat(),
         }
 
         output_path = Path(output_path)

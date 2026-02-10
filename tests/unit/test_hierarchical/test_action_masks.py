@@ -57,10 +57,6 @@ def sample_inputs() -> dict:
 class TestAllActionsInvalid:
     """Test behavior when all actions are masked as invalid."""
 
-    @pytest.mark.xfail(
-        reason="LevelNetwork produces Inf when all actions masked — needs network-level fix",
-        strict=True,
-    )
     def test_all_actions_invalid_returns_valid_output(
         self, level_network: LevelNetwork, sample_inputs: dict
     ) -> None:

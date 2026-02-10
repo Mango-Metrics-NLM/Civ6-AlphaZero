@@ -31,7 +31,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -101,7 +101,7 @@ class ReflectionEntry:
     action_taken: int = -1  # The bad action
     better_alternatives: list[int] = field(default_factory=list)
     game_outcome: float = 0.0  # -1 for loss, 0 for draw
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     metadata: dict[str, Any] = field(default_factory=dict)
 
     # State information for similarity search
@@ -134,7 +134,7 @@ class ReflectionEntry:
             action_taken=data.get("action_taken", -1),
             better_alternatives=data.get("better_alternatives", []),
             game_outcome=data.get("game_outcome", 0.0),
-            timestamp=data.get("timestamp", datetime.utcnow().isoformat()),
+            timestamp=data.get("timestamp", datetime.now(UTC).isoformat()),
             state_hash=data.get("state_hash", ""),
             metadata=data.get("metadata", {}),
         )

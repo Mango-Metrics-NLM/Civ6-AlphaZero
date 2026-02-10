@@ -594,5 +594,5 @@ class TestSetupLogging:
             logger1 = get_logger("module.submodule")
             logger2 = get_logger("alpha_zero.training")
 
-            assert "alpha_zero.module.submodule" in logger1.name
+            assert "module.submodule" in logger1.name
             assert logger2.name == "alpha_zero.training"

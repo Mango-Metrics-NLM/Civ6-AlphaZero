@@ -35,7 +35,6 @@ from alpha_zero.evaluation.config import (
 )
 
 if TYPE_CHECKING:
-
     from alpha_zero.core.civ6_mcts import Civ6MCTS
     from alpha_zero.core.civ6_network import MicroCivNetwork
     from alpha_zero.envs.microciv import MicroCivEnv
@@ -277,8 +276,8 @@ class HeuristicPlayer:
 
         # Bonus for attacking weaker targets
         if "target_strength" in action_info and "attacker_strength" in action_info:
-            strength_ratio = (
-                action_info["attacker_strength"] / max(1, action_info["target_strength"])
+            strength_ratio = action_info["attacker_strength"] / max(
+                1, action_info["target_strength"]
             )
             if strength_ratio > 1.5:
                 base_score *= 1.5
@@ -341,7 +340,7 @@ class HeuristicPlayer:
         if unit_type == "settler":
             base_score *= self.weights.expansion_weight
         elif unit_type == "warrior":
-            base_score *= (0.5 + 0.5 * self.aggression)
+            base_score *= 0.5 + 0.5 * self.aggression
         elif unit_type == "archer":
             base_score *= self.weights.defense_weight
 
@@ -637,9 +636,7 @@ class BaselineFactory:
 
         elif config.type in (BaselineType.PREVIOUS_MODEL, BaselineType.SPECIFIC_CHECKPOINT):
             if config.checkpoint_path is None:
-                raise ValueError(
-                    f"checkpoint_path required for baseline type {config.type}"
-                )
+                raise ValueError(f"checkpoint_path required for baseline type {config.type}")
             return NeuralNetworkPlayer.from_checkpoint(
                 checkpoint_path=config.checkpoint_path,
                 device=device,

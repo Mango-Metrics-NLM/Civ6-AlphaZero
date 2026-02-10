@@ -22,7 +22,7 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -74,7 +74,7 @@ class TurnResult:
     ai_evaluation: float | None = None
     move_probabilities: np.ndarray | None = None
     thinking_time: float = 0.0
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -214,7 +214,7 @@ class GameController:
             current_player=0,
             human_player=human_player,
             phase=GamePhase.IN_PROGRESS,
-            start_time=datetime.utcnow().isoformat(),
+            start_time=datetime.now(UTC).isoformat(),
         )
         self._undo_stack.clear()
 

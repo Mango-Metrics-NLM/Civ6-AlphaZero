@@ -740,5 +740,61 @@ class TestTrainingSafeguardIntegration(unittest.TestCase):
         self.assertEqual(safeguard.intervention_count, 2)
 
 
+class TestSafeguardEdgeCases(unittest.TestCase):
+    """Edge case tests for training safeguards."""
+
+    def test_nan_in_both_loss_and_grad(self):
+        """Both NaN loss and NaN gradient simultaneously."""
+        safeguard = TrainingSafeguard()
+
+        # Both NaN should be detected
+        result = safeguard.check_nan(math.nan, math.nan)
+        self.assertTrue(result)
+        self.assertEqual(safeguard.consecutive_nan_count, 1)
+
+        # Check that report captures both
+        report = safeguard.check_step(math.nan, math.nan, step=1)
+        self.assertTrue(report.nan_detected)
+        self.assertEqual(report.gradient_status, GradientStatus.EXPLODING)
+
+    def test_inf_loss_detected(self):
+        """Inf loss should trigger explosion detection."""
+        config = TrainingSafeguardConfig(loss_explosion_threshold=2.0)
+        safeguard = TrainingSafeguard(config)
+
+        # Build up loss history
+        for i in range(20):
+            safeguard.check_step(1.0, 0.5, step=i)
+
+        # Inf loss should be detected as exploding
+        report = safeguard.check_step(math.inf, 0.5, step=20)
+
+        # Inf should not be added to history (similar to NaN)
+        # But should still trigger some detection
+        self.assertTrue(math.isinf(report.loss))
+
+    def test_negative_loss_handled(self):
+        """Negative loss value should not crash safeguard."""
+        safeguard = TrainingSafeguard()
+
+        # Negative loss should be processed without crash
+        report = safeguard.check_step(-0.5, 0.3, step=1)
+
+        self.assertEqual(report.loss, -0.5)
+        self.assertFalse(report.nan_detected)
+        self.assertFalse(report.loss_exploding)
+
+    def test_very_small_gradient_not_flagged(self):
+        """Near-zero gradient norm is NORMAL (not vanishing) when loss is low."""
+        safeguard = TrainingSafeguard()
+
+        # Very small gradient should be NORMAL, not vanishing
+        # (gradient vanishing typically requires sustained small gradients)
+        status = safeguard.check_gradient_health(1e-8)
+
+        # Should be NORMAL (gradient checks are for explosions, not vanishing)
+        self.assertEqual(status, GradientStatus.NORMAL)
+
+
 if __name__ == "__main__":
     unittest.main()

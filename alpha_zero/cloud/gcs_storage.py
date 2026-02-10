@@ -28,7 +28,7 @@ import logging
 import lzma
 import tempfile
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, BinaryIO, Protocol
 
@@ -365,7 +365,7 @@ class GCSCheckpointManager:
             training_step=training_step,
             model_version=model_version,
             iteration=iteration,
-            created=datetime.utcnow().isoformat(),
+            created=datetime.now(UTC).isoformat(),
             metrics=metrics or {},
             custom=custom_metadata or {},
         )
@@ -582,9 +582,7 @@ class GCSCheckpointManager:
         to_delete = checkpoints[: -self.max_checkpoints]
         for meta in to_delete:
             self.delete_checkpoint(meta.iteration)
-            logger.info(
-                f"Cleaned up old checkpoint: iteration={meta.iteration}"
-            )
+            logger.info(f"Cleaned up old checkpoint: iteration={meta.iteration}")
 
     def get_latest_iteration(self) -> int | None:
         """Get the latest checkpoint iteration number.
@@ -663,7 +661,7 @@ class GCSModelStorage:
         model_data: dict[str, Any] = {
             "model_state_dict": model.state_dict(),
             "version": version,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "metrics": metrics or {},
         }
         if optimizer_state:

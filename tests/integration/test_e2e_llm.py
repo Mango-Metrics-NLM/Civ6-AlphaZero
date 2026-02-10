@@ -244,41 +244,44 @@ class TestLLMIntegration:
         assert msg.role == "user"
         assert "game state" in msg.content
 
-    @pytest.mark.xfail(
-        reason="Pre-existing: LLM mock patching broken (NoneType not callable)",
-        strict=False,
-    )
     @pytest.mark.asyncio
     async def test_llm_client_with_mock(self):
         """Test LLM client with mocked response."""
         config = LLMConfig()
         config.openai_api_key = "test-key"  # Fake key for testing
 
-        # Mock the OpenAI client
-        with patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True):
-            with patch("alpha_zero.utils.llm_client.AsyncOpenAI") as mock_openai:
-                # Setup mock response
-                mock_response = MagicMock()
-                mock_response.choices = [MagicMock()]
-                mock_response.choices[0].message.content = "Move warrior to (3, 4)"
-                mock_response.choices[0].finish_reason = "stop"
-                mock_response.usage = MagicMock()
-                mock_response.usage.prompt_tokens = 50
-                mock_response.usage.completion_tokens = 10
+        # Mock both sync and async OpenAI clients (both are called in __init__)
+        with (
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI") as mock_async_openai,
+            patch("alpha_zero.utils.llm_client.OpenAI") as mock_sync_openai,
+        ):
+            # Setup mock response
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = "Move warrior to (3, 4)"
+            mock_response.choices[0].finish_reason = "stop"
+            mock_response.usage = MagicMock()
+            mock_response.usage.prompt_tokens = 50
+            mock_response.usage.completion_tokens = 10
 
-                mock_client = MagicMock()
-                mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
-                mock_openai.return_value = mock_client
+            # Create proper mock async client with AsyncMock chain
+            mock_async_client = MagicMock()
+            mock_async_client.chat.completions.create = AsyncMock(return_value=mock_response)
+            mock_async_openai.return_value = mock_async_client
 
-                from alpha_zero.utils.llm_client import OpenAIClient
+            # Create mock sync client (needed by OpenAIClient.__init__)
+            mock_sync_openai.return_value = MagicMock()
 
-                client = OpenAIClient(config)
-                response = await client.generate(
-                    prompt="What's the best move?",
-                    system_prompt="You are a Civ6 strategy expert.",
-                )
+            from alpha_zero.utils.llm_client import OpenAIClient
 
-                assert "warrior" in response.content.lower() or "move" in response.content.lower()
+            client = OpenAIClient(config)
+            response = await client.generate(
+                prompt="What's the best move?",
+                system_prompt="You are a Civ6 strategy expert.",
+            )
+
+            assert "warrior" in response.content.lower() or "move" in response.content.lower()
 
     def test_llm_response_properties(self):
         """Test LLM response properties."""

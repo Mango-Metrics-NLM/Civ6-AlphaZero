@@ -107,7 +107,7 @@ class VertexTrainer:
         aiplatform.init(
             project=self.config.project_id,
             location=self.config.region,
-            staging_bucket=f"gs://{self.config.storage.bucket}",
+            staging_bucket=f"gs://{self.config.bucket}",
         )
         self._initialized = True
         logger.info(
@@ -164,18 +164,26 @@ class VertexTrainer:
         """
         self._ensure_initialized()
 
-        # Apply defaults from config
-        machine_type = machine_type or self.config.vertex.machine_type
-        accelerator_type = accelerator_type or self.config.vertex.accelerator_type
-        accelerator_count = accelerator_count or self.config.vertex.accelerator_count
-        container_uri = container_uri or self.config.vertex.container_uri
-        replica_count = replica_count or self.config.vertex.replica_count
-        boot_disk_size_gb = boot_disk_size_gb or self.config.vertex.boot_disk_size_gb
-        timeout_seconds = timeout_seconds or self.config.vertex.timeout_seconds
-        job_name = job_name or self._generate_job_name()
+        # Apply defaults from config — use `is None` to preserve valid falsy values (e.g. 0)
+        if machine_type is None:
+            machine_type = self.config.training.machine_type
+        if accelerator_type is None:
+            accelerator_type = self.config.training.accelerator_type
+        if accelerator_count is None:
+            accelerator_count = self.config.training.accelerator_count
+        if container_uri is None:
+            container_uri = self.config.container_image_uri
+        if replica_count is None:
+            replica_count = 1
+        if boot_disk_size_gb is None:
+            boot_disk_size_gb = 100
+        if timeout_seconds is None:
+            timeout_seconds = 3600
+        if job_name is None:
+            job_name = self._generate_job_name()
 
         if base_output_dir is None:
-            base_output_dir = f"gs://{self.config.storage.bucket}/output/{job_name}"
+            base_output_dir = f"gs://{self.config.bucket}/output/{job_name}"
 
         # Build args list
         script_args = list(args) if args else []
@@ -234,7 +242,7 @@ class VertexTrainer:
             display_name=job_name,
             worker_pool_specs=worker_pool_specs,
             base_output_dir=base_output_dir,
-            labels=self.config.labels,
+            labels=getattr(self.config, "custom_labels", {}),
         )
 
         logger.info(

@@ -305,9 +305,7 @@ class TournamentOrchestrator:
         """
         self.config = config or TournamentConfig()
         self.elo_system = elo_system or ELORatingSystem(self.config.elo)
-        self.match_history = match_history or MatchHistory(
-            self.config.database_path, self.config
-        )
+        self.match_history = match_history or MatchHistory(self.config.database_path, self.config)
         self.league_manager = league_manager or LeagueManager(self.config)
         self.matchmaker = matchmaker or MatchMaker(self.config)
         self.arena_runner = arena_runner
@@ -399,8 +397,7 @@ class TournamentOrchestrator:
         )
 
         logger.info(
-            f"Created {format.value} bracket: "
-            f"{len(players)} players, {bracket.total_rounds} rounds"
+            f"Created {format.value} bracket: {len(players)} players, {bracket.total_rounds} rounds"
         )
 
         return bracket
@@ -509,7 +506,9 @@ class TournamentOrchestrator:
         start_time = time.time()
         total_games = 0
 
-        logger.info(f"Starting {bracket.format.value} tournament with {len(bracket.players)} players")
+        logger.info(
+            f"Starting {bracket.format.value} tournament with {len(bracket.players)} players"
+        )
 
         # Run each round
         while not bracket.is_complete:
@@ -551,8 +550,7 @@ class TournamentOrchestrator:
         )
 
         logger.info(
-            f"Tournament complete: winner={winner}, "
-            f"games={total_games}, duration={duration:.1f}s"
+            f"Tournament complete: winner={winner}, games={total_games}, duration={duration:.1f}s"
         )
 
         return result
@@ -573,7 +571,9 @@ class TournamentOrchestrator:
         matchups = bracket.rounds[round_num]
         results = []
 
-        logger.info(f"Running round {round_num + 1}/{bracket.total_rounds} ({len(matchups)} matches)")
+        logger.info(
+            f"Running round {round_num + 1}/{bracket.total_rounds} ({len(matchups)} matches)"
+        )
 
         for matchup in matchups:
             result = self.run_match(matchup.player_a, matchup.player_b)
@@ -770,4 +770,6 @@ class TournamentOrchestrator:
         else:
             bracket.rounds.append(round_matchups)
 
-        logger.debug(f"Generated Swiss round {bracket.current_round + 1}: {len(round_matchups)} matches")
+        logger.debug(
+            f"Generated Swiss round {bracket.current_round + 1}: {len(round_matchups)} matches"
+        )

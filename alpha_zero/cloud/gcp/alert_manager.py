@@ -80,9 +80,7 @@ class AlertEvent:
     title: str
     message: str
     source: str
-    timestamp: str = field(
-        default_factory=lambda: datetime.now(UTC).isoformat()
-    )
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     details: dict[str, Any] = field(default_factory=dict)
     channels_notified: list[AlertChannel] = field(default_factory=list)
 
@@ -105,17 +103,14 @@ class SlackConfig:
     """Slack alert configuration."""
 
     enabled: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_ALERT_SLACK_ENABLED", "false"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_ALERT_SLACK_ENABLED", "false").lower()
+        == "true"
     )
     webhook_url: str = field(
         default_factory=lambda: os.environ.get("CIV6AZ_ALERT_SLACK_WEBHOOK", "")
     )
     channel: str = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_ALERT_SLACK_CHANNEL", "#civ6-training"
-        )
+        default_factory=lambda: os.environ.get("CIV6AZ_ALERT_SLACK_CHANNEL", "#civ6-training")
     )
     username: str = "Civ6 AlphaZero Bot"
     icon_emoji: str = ":robot_face:"
@@ -136,27 +131,20 @@ class EmailConfig:
     """Email alert configuration."""
 
     enabled: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_ALERT_EMAIL_ENABLED", "false"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_ALERT_EMAIL_ENABLED", "false").lower()
+        == "true"
     )
     smtp_host: str = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_ALERT_SMTP_HOST", "smtp.gmail.com"
-        )
+        default_factory=lambda: os.environ.get("CIV6AZ_ALERT_SMTP_HOST", "smtp.gmail.com")
     )
     smtp_port: int = field(
         default_factory=lambda: int(os.environ.get("CIV6AZ_ALERT_SMTP_PORT", "587"))
     )
-    smtp_user: str = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_ALERT_SMTP_USER", "")
-    )
+    smtp_user: str = field(default_factory=lambda: os.environ.get("CIV6AZ_ALERT_SMTP_USER", ""))
     smtp_password: str = field(
         default_factory=lambda: os.environ.get("CIV6AZ_ALERT_SMTP_PASSWORD", "")
     )
-    from_address: str = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_ALERT_FROM_EMAIL", "")
-    )
+    from_address: str = field(default_factory=lambda: os.environ.get("CIV6AZ_ALERT_FROM_EMAIL", ""))
     to_addresses: list[str] = field(
         default_factory=lambda: [
             addr.strip()
@@ -176,9 +164,8 @@ class AlertManagerConfig:
 
     # W&B integration
     wandb_enabled: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_ALERT_WANDB_ENABLED", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_ALERT_WANDB_ENABLED", "true").lower()
+        == "true"
     )
 
     # Console logging
@@ -186,9 +173,7 @@ class AlertManagerConfig:
 
     # Rate limiting to prevent alert spam
     rate_limit_seconds: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_ALERT_RATE_LIMIT", "300")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_ALERT_RATE_LIMIT", "300"))
     )
 
     # Alert history retention
@@ -359,8 +344,7 @@ class AlertManager:
         with self._lock:
             self._alert_counter += 1
             alert_id = (
-                f"{source}-{self._alert_counter}-"
-                f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+                f"{source}-{self._alert_counter}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
             )
 
         event = AlertEvent(
@@ -440,9 +424,7 @@ class AlertManager:
         try:
             import requests
 
-            color = self.config.slack.severity_colors.get(
-                event.severity.value, "#000000"
-            )
+            color = self.config.slack.severity_colors.get(event.severity.value, "#000000")
 
             fields = [
                 {"title": k, "value": str(v), "short": True}
@@ -484,13 +466,9 @@ class AlertManager:
             return False
 
         try:
-            subject = (
-                f"[Civ6 AlphaZero {event.severity.value.upper()}] {event.title}"
-            )
+            subject = f"[Civ6 AlphaZero {event.severity.value.upper()}] {event.title}"
 
-            details_str = "\n".join(
-                f"  {k}: {v}" for k, v in event.details.items()
-            )
+            details_str = "\n".join(f"  {k}: {v}" for k, v in event.details.items())
 
             body = f"""Alert: {event.title}
 Severity: {event.severity.value}
@@ -509,13 +487,9 @@ Details:
             msg["From"] = self.config.email.from_address
             msg["To"] = ", ".join(self.config.email.to_addresses)
 
-            with smtplib.SMTP(
-                self.config.email.smtp_host, self.config.email.smtp_port
-            ) as server:
+            with smtplib.SMTP(self.config.email.smtp_host, self.config.email.smtp_port) as server:
                 server.starttls()
-                server.login(
-                    self.config.email.smtp_user, self.config.email.smtp_password
-                )
+                server.login(self.config.email.smtp_user, self.config.email.smtp_password)
                 server.send_message(msg)
 
             return True
@@ -614,8 +588,7 @@ Details:
             severity=AlertSeverity.WARNING,
             title="Budget Warning",
             message=(
-                f"Reached {percentage:.0%} of monthly budget "
-                f"(${current_spend:.2f}/${budget:.2f})"
+                f"Reached {percentage:.0%} of monthly budget (${current_spend:.2f}/${budget:.2f})"
             ),
             source="budget",
             details={
@@ -754,9 +727,7 @@ Details:
 
             for event in self._history:
                 by_source[event.source] = by_source.get(event.source, 0) + 1
-                by_severity[event.severity.value] = (
-                    by_severity.get(event.severity.value, 0) + 1
-                )
+                by_severity[event.severity.value] = by_severity.get(event.severity.value, 0) + 1
 
         return {
             "total_alerts": len(self._history),

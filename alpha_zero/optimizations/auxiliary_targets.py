@@ -87,32 +87,23 @@ class AuxiliaryTargetsConfig:
     def __post_init__(self) -> None:
         """Validate configuration."""
         if self.attention_weight < 0:
-            raise ValueError(
-                f"attention_weight must be >= 0, got {self.attention_weight}"
-            )
+            raise ValueError(f"attention_weight must be >= 0, got {self.attention_weight}")
         if self.opponent_weight < 0:
             raise ValueError(f"opponent_weight must be >= 0, got {self.opponent_weight}")
         if self.phase_weight < 0:
             raise ValueError(f"phase_weight must be >= 0, got {self.phase_weight}")
         if self.future_value_weight < 0:
-            raise ValueError(
-                f"future_value_weight must be >= 0, got {self.future_value_weight}"
-            )
+            raise ValueError(f"future_value_weight must be >= 0, got {self.future_value_weight}")
         if self.future_value_steps < 1:
-            raise ValueError(
-                f"future_value_steps must be >= 1, got {self.future_value_steps}"
-            )
+            raise ValueError(f"future_value_steps must be >= 1, got {self.future_value_steps}")
         if len(self.phase_thresholds) != 2:
             raise ValueError("phase_thresholds must have exactly 2 values")
         if self.phase_thresholds[0] >= self.phase_thresholds[1]:
             raise ValueError(
-                f"phase_thresholds[0] must be < phase_thresholds[1], "
-                f"got {self.phase_thresholds}"
+                f"phase_thresholds[0] must be < phase_thresholds[1], got {self.phase_thresholds}"
             )
         if self.attention_blur_sigma < 0:
-            raise ValueError(
-                f"attention_blur_sigma must be >= 0, got {self.attention_blur_sigma}"
-            )
+            raise ValueError(f"attention_blur_sigma must be >= 0, got {self.attention_blur_sigma}")
         if self.opponent_history_length < 1:
             raise ValueError(
                 f"opponent_history_length must be >= 1, got {self.opponent_history_length}"
@@ -200,9 +191,7 @@ class AuxiliaryTargets:
     def from_dict(cls, data: dict[str, Any]) -> AuxiliaryTargets:
         """Create from dictionary."""
         return cls(
-            attention_map=np.array(data["attention_map"])
-            if "attention_map" in data
-            else None,
+            attention_map=np.array(data["attention_map"]) if "attention_map" in data else None,
             opponent_action=np.array(data["opponent_action"])
             if "opponent_action" in data
             else None,
@@ -266,17 +255,13 @@ class AuxiliaryTargetGenerator:
             targets.attention_map = self._generate_attention_targets(game_state)
 
         if self.config.enable_opponent_modeling:
-            targets.opponent_action = self._generate_opponent_targets(
-                game_state, game_history
-            )
+            targets.opponent_action = self._generate_opponent_targets(game_state, game_history)
 
         if self.config.enable_phase_prediction:
             targets.game_phase = self._generate_phase_targets(game_state)
 
         if self.config.enable_future_value:
-            targets.future_value = self._generate_future_value_targets(
-                game_state, future_states
-            )
+            targets.future_value = self._generate_future_value_targets(game_state, future_states)
 
         self._targets_generated += 1
         return targets
@@ -543,9 +528,7 @@ class AuxiliaryLossCalculator:
         if self.config.enable_opponent_modeling and targets.opponent_action is not None:
             pred_opponent = predictions.get("opponent")
             if pred_opponent is not None:
-                opponent_loss = self._cross_entropy_loss(
-                    pred_opponent, targets.opponent_action
-                )
+                opponent_loss = self._cross_entropy_loss(pred_opponent, targets.opponent_action)
                 losses["opponent_loss"] = opponent_loss
                 total_loss += opponent_loss * self.config.opponent_weight
 

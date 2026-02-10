@@ -119,18 +119,14 @@ class BaselineConfig:
             raise ValueError(f"num_games must be at least 1, got {self.num_games}")
 
         if self.mcts_simulations < 1:
-            raise ValueError(
-                f"mcts_simulations must be at least 1, got {self.mcts_simulations}"
-            )
+            raise ValueError(f"mcts_simulations must be at least 1, got {self.mcts_simulations}")
 
         if self.type in (
             BaselineType.PREVIOUS_MODEL,
             BaselineType.SPECIFIC_CHECKPOINT,
         ):
             if self.checkpoint_path is None:
-                raise ValueError(
-                    f"checkpoint_path required for baseline type {self.type}"
-                )
+                raise ValueError(f"checkpoint_path required for baseline type {self.type}")
 
         if isinstance(self.heuristic_weights, dict):
             self.heuristic_weights = HeuristicWeights.from_dict(self.heuristic_weights)
@@ -142,14 +138,10 @@ class BaselineConfig:
         if "type" in data and isinstance(data["type"], str):
             data["type"] = BaselineType(data["type"])
         if "heuristic_weights" in data and isinstance(data["heuristic_weights"], dict):
-            data["heuristic_weights"] = HeuristicWeights.from_dict(
-                data["heuristic_weights"]
-            )
+            data["heuristic_weights"] = HeuristicWeights.from_dict(data["heuristic_weights"])
         if "heuristic_params" in data:
             # Support legacy key name
-            data["heuristic_weights"] = HeuristicWeights.from_dict(
-                data.pop("heuristic_params")
-            )
+            data["heuristic_weights"] = HeuristicWeights.from_dict(data.pop("heuristic_params"))
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
     def to_dict(self) -> dict[str, Any]:
@@ -260,29 +252,20 @@ class EvaluationConfig:
         """Validate configuration after initialization."""
         if self.elo_initial_rating < 100 or self.elo_initial_rating > 3000:
             raise ValueError(
-                f"elo_initial_rating must be between 100 and 3000, "
-                f"got {self.elo_initial_rating}"
+                f"elo_initial_rating must be between 100 and 3000, got {self.elo_initial_rating}"
             )
 
         if self.parallel_games < 1:
-            raise ValueError(
-                f"parallel_games must be at least 1, got {self.parallel_games}"
-            )
+            raise ValueError(f"parallel_games must be at least 1, got {self.parallel_games}")
 
         if self.max_game_logs < 0:
-            raise ValueError(
-                f"max_game_logs must be non-negative, got {self.max_game_logs}"
-            )
+            raise ValueError(f"max_game_logs must be non-negative, got {self.max_game_logs}")
 
         if self.env_board_size < 4:
-            raise ValueError(
-                f"env_board_size must be at least 4, got {self.env_board_size}"
-            )
+            raise ValueError(f"env_board_size must be at least 4, got {self.env_board_size}")
 
         if self.env_max_turns < 1:
-            raise ValueError(
-                f"env_max_turns must be at least 1, got {self.env_max_turns}"
-            )
+            raise ValueError(f"env_max_turns must be at least 1, got {self.env_max_turns}")
 
         # Convert diversity dict to DiversityConfig if needed
         if isinstance(self.diversity, dict):
@@ -315,8 +298,7 @@ class EvaluationConfig:
 
         if "baselines" in data:
             data["baselines"] = [
-                BaselineConfig.from_dict(b) if isinstance(b, dict) else b
-                for b in data["baselines"]
+                BaselineConfig.from_dict(b) if isinstance(b, dict) else b for b in data["baselines"]
             ]
 
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
@@ -377,9 +359,7 @@ class EvaluationConfig:
                     value = converter(os.environ[env_key])
                     setattr(config, attr, value)
                 except (ValueError, TypeError) as e:
-                    raise ValueError(
-                        f"Invalid value for {env_key}: {os.environ[env_key]}"
-                    ) from e
+                    raise ValueError(f"Invalid value for {env_key}: {os.environ[env_key]}") from e
 
         return config
 
@@ -541,8 +521,6 @@ class EvaluationConfig:
             )
 
         if self.model_checkpoint_path and not Path(self.model_checkpoint_path).exists():
-            warnings.append(
-                f"Model checkpoint not found: {self.model_checkpoint_path}"
-            )
+            warnings.append(f"Model checkpoint not found: {self.model_checkpoint_path}")
 
         return warnings

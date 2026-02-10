@@ -84,9 +84,7 @@ class CyclicLRConfig:
         if self.max_lr <= 0:
             raise ValueError(f"max_lr must be > 0, got {self.max_lr}")
         if self.max_lr < self.base_lr:
-            raise ValueError(
-                f"max_lr ({self.max_lr}) must be >= base_lr ({self.base_lr})"
-            )
+            raise ValueError(f"max_lr ({self.max_lr}) must be >= base_lr ({self.base_lr})")
         if self.step_size_up < 1:
             raise ValueError(f"step_size_up must be >= 1, got {self.step_size_up}")
         if self.warmup_steps < 0:
@@ -270,9 +268,8 @@ class CyclicLRScheduler:
 
         # Cosine from max to base over cycle
         cosine_value = math.cos(math.pi * x / self._cycle_length)
-        return (
-            self.config.base_lr
-            + 0.5 * (self.config.max_lr - self.config.base_lr) * (1 + cosine_value)
+        return self.config.base_lr + 0.5 * (self.config.max_lr - self.config.base_lr) * (
+            1 + cosine_value
         )
 
     def _warm_restarts(self, step: int) -> float:
@@ -289,9 +286,8 @@ class CyclicLRScheduler:
 
         # Cosine decay within current cycle
         cosine_value = math.cos(math.pi * t_cur / t_i)
-        return (
-            self.config.base_lr
-            + 0.5 * (self.config.max_lr - self.config.base_lr) * (1 + cosine_value)
+        return self.config.base_lr + 0.5 * (self.config.max_lr - self.config.base_lr) * (
+            1 + cosine_value
         )
 
     def get_cycle_info(self, step: int) -> CycleInfo:

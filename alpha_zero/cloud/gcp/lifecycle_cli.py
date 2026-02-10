@@ -508,12 +508,14 @@ Environment Variables:
         help="Skip confirmation prompts",
     )
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         type=str,
         help="Output file path for JSON results",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Enable verbose logging",
     )

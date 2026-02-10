@@ -103,19 +103,13 @@ class EloPlateauDetectorConfig:
     """
 
     plateau_threshold_iterations: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_ELO_PLATEAU_THRESHOLD", "5")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_ELO_PLATEAU_THRESHOLD", "5"))
     )
     improvement_threshold_elo: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_ELO_IMPROVEMENT_THRESHOLD", "10.0")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_ELO_IMPROVEMENT_THRESHOLD", "10.0"))
     )
     regression_threshold_elo: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_ELO_REGRESSION_THRESHOLD", "50.0")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_ELO_REGRESSION_THRESHOLD", "50.0"))
     )
     window_size: int = field(
         default_factory=lambda: int(os.environ.get("CIV6AZ_ELO_WINDOW_SIZE", "10"))
@@ -124,9 +118,8 @@ class EloPlateauDetectorConfig:
         default_factory=lambda: int(os.environ.get("CIV6AZ_ELO_MIN_ITERATIONS", "3"))
     )
     alert_on_plateau: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_ELO_ALERT_ON_PLATEAU", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_ELO_ALERT_ON_PLATEAU", "true").lower()
+        == "true"
     )
 
     def __post_init__(self) -> None:
@@ -154,6 +147,7 @@ class EloPlateauDetectorConfig:
 
         if errors:
             from alpha_zero.cloud.gcp.exceptions import ConfigurationError
+
             raise ConfigurationError(
                 f"Invalid Elo detector configuration: {'; '.join(errors)}",
                 details={"errors": errors},
@@ -170,6 +164,7 @@ class EloPlateauDetectorConfig:
         path = Path(path)
         if not path.exists():
             from alpha_zero.cloud.gcp.exceptions import ConfigurationError
+
             raise ConfigurationError(f"Elo detector config file not found: {path}")
 
         try:
@@ -177,6 +172,7 @@ class EloPlateauDetectorConfig:
                 data = yaml.safe_load(f)
         except yaml.YAMLError as e:
             from alpha_zero.cloud.gcp.exceptions import ConfigurationError
+
             raise ConfigurationError(f"Invalid YAML in {path}: {e}") from e
 
         return cls.from_dict(data)
@@ -348,10 +344,7 @@ class EloPlateauDetector:
             self._best_elo_iteration = iteration
             self._iterations_since_improvement = 0
 
-            logger.info(
-                f"Elo improvement: {old_best:.0f} -> {elo_rating:.0f} "
-                f"(+{improvement:.0f})"
-            )
+            logger.info(f"Elo improvement: {old_best:.0f} -> {elo_rating:.0f} (+{improvement:.0f})")
             return True
         else:
             self._iterations_since_improvement += 1
@@ -371,10 +364,7 @@ class EloPlateauDetector:
         if len(self._history) < self.config.min_iterations:
             return False
 
-        return (
-            self._iterations_since_improvement
-            >= self.config.plateau_threshold_iterations
-        )
+        return self._iterations_since_improvement >= self.config.plateau_threshold_iterations
 
     def get_status(self) -> EloStatus:
         """Get current Elo progression status.
@@ -388,10 +378,7 @@ class EloPlateauDetector:
         if self._iterations_since_improvement == 0:
             return EloStatus.IMPROVING
 
-        if (
-            self._iterations_since_improvement
-            >= self.config.plateau_threshold_iterations
-        ):
+        if self._iterations_since_improvement >= self.config.plateau_threshold_iterations:
             return EloStatus.PLATEAU
 
         # Check for regression
@@ -405,10 +392,7 @@ class EloPlateauDetector:
                 first_mean = statistics.mean(first_half)
                 second_mean = statistics.mean(second_half)
 
-                if (
-                    first_mean - second_mean
-                    >= self.config.regression_threshold_elo
-                ):
+                if first_mean - second_mean >= self.config.regression_threshold_elo:
                     return EloStatus.REGRESSING
 
         return EloStatus.STABLE
@@ -435,9 +419,7 @@ class EloPlateauDetector:
         x_mean = (n - 1) / 2
         y_mean = statistics.mean(ratings)
 
-        numerator = sum(
-            (i - x_mean) * (r - y_mean) for i, r in enumerate(ratings)
-        )
+        numerator = sum((i - x_mean) * (r - y_mean) for i, r in enumerate(ratings))
         denominator = sum((i - x_mean) ** 2 for i in range(n))
 
         if denominator == 0:
@@ -474,9 +456,7 @@ class EloPlateauDetector:
             "current_status": self.get_status().value,
             "plateau_count": self._plateau_count,
             "current_elo": self._history[-1].elo_rating if self._history else None,
-            "recent_mean_elo": (
-                statistics.mean(recent_ratings) if recent_ratings else None
-            ),
+            "recent_mean_elo": (statistics.mean(recent_ratings) if recent_ratings else None),
             "recent_std_elo": (
                 statistics.stdev(recent_ratings) if len(recent_ratings) > 1 else None
             ),
@@ -484,9 +464,7 @@ class EloPlateauDetector:
             "is_plateau": self.is_plateau(),
         }
 
-    def register_plateau_callback(
-        self, callback: Callable[[EloSnapshot], None]
-    ) -> None:
+    def register_plateau_callback(self, callback: Callable[[EloSnapshot], None]) -> None:
         """Register callback for plateau detection.
 
         Args:
@@ -494,9 +472,7 @@ class EloPlateauDetector:
         """
         self._plateau_callbacks.append(callback)
 
-    def register_improvement_callback(
-        self, callback: Callable[[EloSnapshot], None]
-    ) -> None:
+    def register_improvement_callback(self, callback: Callable[[EloSnapshot], None]) -> None:
         """Register callback for improvements.
 
         Args:

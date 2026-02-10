@@ -796,24 +796,25 @@ class TrainingOrchestrator:
             if self._replay_buffer is not None:
                 for i, obs in enumerate(trajectory.observations):
                     if isinstance(obs, dict):
-                        self._replay_buffer.add({
-                            "spatial": obs.get("spatial", obs.get("observation")),
-                            "vector": obs.get(
-                                "vector", np.zeros(self.config.network.vector_dim)
-                            ),
-                            "action_mask": obs.get(
-                                "action_mask",
-                                np.ones(self._expected_action_size),
-                            ),
-                            "policy": trajectory.policies[i],
-                            "value": trajectory.values[i],
-                        })
+                        self._replay_buffer.add(
+                            {
+                                "spatial": obs.get("spatial", obs.get("observation")),
+                                "vector": obs.get(
+                                    "vector", np.zeros(self.config.network.vector_dim)
+                                ),
+                                "action_mask": obs.get(
+                                    "action_mask",
+                                    np.ones(self._expected_action_size),
+                                ),
+                                "policy": trajectory.policies[i],
+                                "value": trajectory.values[i],
+                            }
+                        )
 
             game_time = time.time() - game_start
             results.append(result)
             logger.info(
-                "MuZero game %d/%d: turns=%d, winner=%d, "
-                "reward=%.2f, time=%.1fs",
+                "MuZero game %d/%d: turns=%d, winner=%d, reward=%.2f, time=%.1fs",
                 game_idx + 1,
                 num_games,
                 result.turns,
@@ -1258,11 +1259,14 @@ class TrainingOrchestrator:
 
             # Training safeguard check (Phase 8)
             if self._training_safeguard is not None:
-                grad_norm = sum(
-                    p.grad.data.norm(2).item() ** 2
-                    for p in self._network.parameters()
-                    if p.grad is not None
-                ) ** 0.5
+                grad_norm = (
+                    sum(
+                        p.grad.data.norm(2).item() ** 2
+                        for p in self._network.parameters()
+                        if p.grad is not None
+                    )
+                    ** 0.5
+                )
                 report = self._training_safeguard.check_step(
                     loss=loss.item(),
                     grad_norm=grad_norm,
@@ -1313,9 +1317,7 @@ class TrainingOrchestrator:
         self._network.train()
 
         # Create or reuse MuZero trainer
-        trainer = self._muzero_bridge.create_trainer(
-            self._network, device=self._device
-        )
+        trainer = self._muzero_bridge.create_trainer(self._network, device=self._device)
 
         batch_size = self._scheduler.get_batch_size()
         total_loss = 0.0

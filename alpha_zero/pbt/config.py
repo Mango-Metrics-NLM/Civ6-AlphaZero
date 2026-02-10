@@ -421,7 +421,9 @@ class HyperparameterSpace:
             temperature_final=HyperparameterRange.from_dict(data.get("temperature_final", {}))
             if "temperature_final" in data
             else HyperparameterRange("temperature_final", 0.1, 1.0),
-            temperature_decay_steps=HyperparameterRange.from_dict(data.get("temperature_decay_steps", {}))
+            temperature_decay_steps=HyperparameterRange.from_dict(
+                data.get("temperature_decay_steps", {})
+            )
             if "temperature_decay_steps" in data
             else HyperparameterRange("temperature_decay_steps", 10, 50, discrete=True),
             batch_size=HyperparameterRange.from_dict(data.get("batch_size", {}))

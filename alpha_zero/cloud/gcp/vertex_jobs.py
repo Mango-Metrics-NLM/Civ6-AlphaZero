@@ -328,7 +328,11 @@ class VertexAIClient:
 
             tuning_job.submit(service_account=spec.service_account)
 
-            logger.info("Submitted tuning job: %s (resource: %s)", spec.display_name, tuning_job.resource_name)
+            logger.info(
+                "Submitted tuning job: %s (resource: %s)",
+                spec.display_name,
+                tuning_job.resource_name,
+            )
             return tuning_job.resource_name
 
         except Exception as e:
@@ -357,7 +361,7 @@ class VertexAIClient:
             state, metadata = self.get_job_state(job_name)
 
             if JobState.is_terminal(state):
-                success = (state == JobState.SUCCEEDED.value)
+                success = state == JobState.SUCCEEDED.value
                 return JobResult(
                     job_id=job_name,
                     job_name=metadata.get("display_name", job_name),
@@ -394,6 +398,7 @@ class VertexAIClient:
             logger.info("Cancelled job: %s", job_name)
         except Exception as e:
             raise VertexJobError(f"Failed to cancel job {job_name}: {e}") from e
+
 
 class VertexTuningJob:
     """Manages hyperparameter tuning jobs on Vertex AI."""
@@ -457,11 +462,11 @@ class VertexTuningJob:
                 "CIV6AZ_VERTEX_REGION": self.config.region,
                 **_wandb_env_vars(),
             },
-            machine_type="n1-standard-4", # Tuning trials usually smaller
+            machine_type="n1-standard-4",  # Tuning trials usually smaller
             accelerator_type="NVIDIA_TESLA_T4",
             accelerator_count=1,
             replica_count=1,
-            spot=False, # Vizier can use spot, but it's simpler to use on-demand for reliability
+            spot=False,  # Vizier can use spot, but it's simpler to use on-demand for reliability
             service_account=self.config.service_account,
         )
 

@@ -71,7 +71,10 @@ def setup_ddp() -> tuple[int, int, int]:
 
         logger.info(
             "Initialized DDP: rank=%d, local_rank=%d, world_size=%d, backend=%s",
-            rank, local_rank, world_size, backend,
+            rank,
+            local_rank,
+            world_size,
+            backend,
         )
         return rank, local_rank, world_size
     return 0, 0, 1
@@ -136,7 +139,9 @@ def parse_args() -> argparse.Namespace:
     # Network architecture args passed by the Vertex orchestrator
     parser.add_argument("--board_size", type=int, default=16, help="Board size (spatial_size)")
     parser.add_argument("--action_space_size", type=int, default=381, help="Action space size")
-    parser.add_argument("--num_res_blocks", type=int, default=8, help="Number of transformer layers")
+    parser.add_argument(
+        "--num_res_blocks", type=int, default=8, help="Number of transformer layers"
+    )
     parser.add_argument("--num_filters", type=int, default=256, help="Model embedding dimension")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
     return parser.parse_args()
@@ -188,7 +193,7 @@ def load_trajectories(
         return [
             {
                 "spatial": [[0.0] * (64 * 10 * 10)],  # Spatial features
-                "vector": [[0.0] * 64],               # Vector features
+                "vector": [[0.0] * 64],  # Vector features
                 "policies": [[0.01] * 100],
                 "rewards": [0.5],
             }
@@ -239,8 +244,12 @@ def create_model(
     )
     logger.info(
         "Creating model: spatial=(%d, %d, %d), actions=%d, layers=%d, embed_dim=%d",
-        spatial_channels, board_size, board_size,
-        action_space_size, num_res_blocks, num_filters,
+        spatial_channels,
+        board_size,
+        board_size,
+        action_space_size,
+        num_res_blocks,
+        num_filters,
     )
     return Civ6TransformerNetwork(config=model_config)
 
@@ -264,6 +273,7 @@ def prepare_dataset(
     # Get vector_dim from config if not specified
     if vector_dim is None:
         from alpha_zero.core.transformer_network import TransformerConfig
+
         vector_dim = TransformerConfig().vector_dim
 
     spatial_list = []
@@ -343,7 +353,9 @@ def train_epoch(
                 f"expected {spatial_channels}x{spatial_size}x{spatial_size}={expected_flat}. "
                 f"Ensure encoder channels and board_size match between selfplay and training."
             )
-        spatial = spatial.view(batch_size, spatial_channels, spatial_size, spatial_size)  # B, C, H, W
+        spatial = spatial.view(
+            batch_size, spatial_channels, spatial_size, spatial_size
+        )  # B, C, H, W
 
         policy_logits, value = model(spatial, vector)
 
@@ -543,9 +555,7 @@ def main() -> int:
             return 1
 
         # Distributed sampler
-        sampler: DistributedSampler | None = (
-            DistributedSampler(dataset) if world_size > 1 else None
-        )
+        sampler: DistributedSampler | None = DistributedSampler(dataset) if world_size > 1 else None
         dataloader = DataLoader(
             dataset,
             batch_size=args.batch_size,
@@ -632,8 +642,6 @@ def main() -> int:
             prev_step = global_step
             global_step += num_batches
 
-
-
             if is_main_process:
                 logger.info(
                     "Epoch %d/%d completed: loss=%.4f (policy=%.4f, value=%.4f), "
@@ -659,7 +667,9 @@ def main() -> int:
                 )
 
             # Checkpoint if we crossed an interval boundary
-            if is_main_process and (global_step // args.checkpoint_interval) > (prev_step // args.checkpoint_interval):
+            if is_main_process and (global_step // args.checkpoint_interval) > (
+                prev_step // args.checkpoint_interval
+            ):
                 save_checkpoint(config, model, optimizer, global_step, epoch + 1, args.dry_run)
 
         # Save final model

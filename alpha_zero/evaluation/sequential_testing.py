@@ -127,29 +127,19 @@ class SequentialTestingConfig:
         default_factory=lambda: int(os.environ.get("CIV6AZ_EVAL_MAX_GAMES", "400"))
     )
     early_stop_threshold: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_EVAL_EARLY_STOP_THRESHOLD", "200")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_EVAL_EARLY_STOP_THRESHOLD", "200"))
     )
     significance_level: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_EVAL_SIGNIFICANCE_LEVEL", "0.05")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_EVAL_SIGNIFICANCE_LEVEL", "0.05"))
     )
     win_threshold: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_EVAL_WIN_THRESHOLD", "0.55")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_EVAL_WIN_THRESHOLD", "0.55"))
     )
     decisive_margin: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_EVAL_DECISIVE_MARGIN", "0.1")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_EVAL_DECISIVE_MARGIN", "0.1"))
     )
     cost_per_game_usd: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_EVAL_COST_PER_GAME", "0.01")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_EVAL_COST_PER_GAME", "0.01"))
     )
 
     def __post_init__(self) -> None:
@@ -186,6 +176,7 @@ class SequentialTestingConfig:
 
         if errors:
             from alpha_zero.cloud.gcp.exceptions import ConfigurationError
+
             raise ConfigurationError(
                 f"Invalid sequential testing configuration: {'; '.join(errors)}",
                 details={"errors": errors},
@@ -202,6 +193,7 @@ class SequentialTestingConfig:
         path = Path(path)
         if not path.exists():
             from alpha_zero.cloud.gcp.exceptions import ConfigurationError
+
             raise ConfigurationError(f"Sequential testing config not found: {path}")
 
         try:
@@ -209,6 +201,7 @@ class SequentialTestingConfig:
                 data = yaml.safe_load(f)
         except yaml.YAMLError as e:
             from alpha_zero.cloud.gcp.exceptions import ConfigurationError
+
             raise ConfigurationError(f"Invalid YAML in {path}: {e}") from e
 
         return cls.from_dict(data)
@@ -545,8 +538,7 @@ class SequentialTester:
             )
         else:
             return (
-                f"Need more games: {games}/{self.config.max_games} played, "
-                f"win rate {win_rate:.1%}"
+                f"Need more games: {games}/{self.config.max_games} played, win rate {win_rate:.1%}"
             )
 
     def _calculate_cost_savings(self, games_played: int) -> float:

@@ -51,7 +51,6 @@ class TestVertexTrainer:
             assert len(name) > 20  # Includes timestamp and UUID
 
 
-@pytest.mark.xfail(reason="VertexTrainer mock mode implementation out of date", strict=False)
 class TestVertexTrainerMockMode:
     """Tests for VertexTrainer in mock/fallback mode."""
 
@@ -71,7 +70,8 @@ class TestVertexTrainerMockMode:
     @pytest.fixture
     def trainer(self, config: GCPConfig) -> VertexTrainer:
         """Create trainer in mock mode using force_mock parameter."""
-        return VertexTrainer(config, force_mock=True)
+        # Use keyword-only argument syntax
+        return VertexTrainer(config=config, force_mock=True)
 
     def test_submit_training_job(self, trainer: VertexTrainer) -> None:
         """Test job submission in mock mode."""
@@ -227,7 +227,6 @@ class TestTrainingJobInfo:
         assert job.duration_seconds() is None
 
 
-@pytest.mark.xfail(reason="VertexTrainer mock mode implementation out of date", strict=False)
 class TestVertexTrainerWithoutSDK:
     """Tests for behavior when Vertex AI SDK is not available."""
 
@@ -240,12 +239,12 @@ class TestVertexTrainerWithoutSDK:
         """Test ImportError when SDK unavailable and fallback=False."""
         with patch("alpha_zero.cloud.gcp.vertex_trainer.VERTEX_AVAILABLE", False):
             with pytest.raises(ImportError):
-                VertexTrainer(config, allow_fallback=False)
+                VertexTrainer(config=config, allow_fallback=False)
 
     def test_works_with_fallback(self, config: GCPConfig) -> None:
         """Test mock mode works when fallback=True."""
         with patch("alpha_zero.cloud.gcp.vertex_trainer.VERTEX_AVAILABLE", False):
-            trainer = VertexTrainer(config, allow_fallback=True)
+            trainer = VertexTrainer(config=config, allow_fallback=True)
 
             job_id = trainer.submit_training_job(
                 script_path="train.py",

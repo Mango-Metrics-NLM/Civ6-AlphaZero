@@ -22,6 +22,15 @@ All mechanics are designed to be:
 
 from __future__ import annotations
 
+import warnings
+
+warnings.warn(
+    "alpha_zero.mechanics is deprecated and not used by the training pipeline. "
+    "It will be activated in a future phase for full Civ6 mechanics integration.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 from .climate import (
     ClimateConfig,
     ClimateManager,

@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from alpha_zero.tournament.config import (
@@ -138,7 +138,7 @@ class SeasonInfo:
 
     season_id: str
     name: str = "Season 1"
-    start_date: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    start_date: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     end_date: str | None = None
     is_active: bool = True
     rewards: dict[str, Any] = field(default_factory=dict)
@@ -494,7 +494,7 @@ class LeagueManager:
         # End current season if active
         if self._current_season and self._current_season.is_active:
             self._current_season.is_active = False
-            self._current_season.end_date = datetime.utcnow().isoformat()
+            self._current_season.end_date = datetime.now(UTC).isoformat()
 
         # Create new season
         season = SeasonInfo(
@@ -528,7 +528,7 @@ class LeagueManager:
             return None
 
         self._current_season.is_active = False
-        self._current_season.end_date = datetime.utcnow().isoformat()
+        self._current_season.end_date = datetime.now(UTC).isoformat()
 
         ended_season = self._current_season
         self._current_season = None

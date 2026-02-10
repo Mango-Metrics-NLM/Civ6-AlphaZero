@@ -287,7 +287,9 @@ class MCTSNode:
         best_action = -1
         best_child = None
 
-        sqrt_parent_visits = np.sqrt(self.visit_count + self.virtual_loss if use_virtual_loss else self.visit_count)
+        sqrt_parent_visits = np.sqrt(
+            self.visit_count + self.virtual_loss if use_virtual_loss else self.visit_count
+        )
 
         for action, child in self.children.items():
             # PUCT formula with optional virtual loss
@@ -1449,7 +1451,9 @@ class MuZeroNode:
         """Check if node has been expanded."""
         return len(self.children) > 0
 
-    def select_child(self, c_puct: float, min_q: float, max_q: float) -> tuple[int, MuZeroNode | None]:
+    def select_child(
+        self, c_puct: float, min_q: float, max_q: float
+    ) -> tuple[int, MuZeroNode | None]:
         """Select child with highest UCB score using normalized Q-values.
 
         Args:

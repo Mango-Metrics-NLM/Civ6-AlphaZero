@@ -25,7 +25,7 @@ import logging
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -69,7 +69,7 @@ class GameRecording:
 
     game_id: str
     version: str = "1.0"
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     game_config: dict[str, Any] = field(default_factory=dict)
     human_player: int = 0
     initial_state: list | None = None

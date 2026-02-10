@@ -115,9 +115,7 @@ class WorkerAutoscalerConfig:
     """
 
     enabled: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_AUTOSCALE_ENABLED", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_AUTOSCALE_ENABLED", "true").lower() == "true"
     )
     base_workers: int = field(
         default_factory=lambda: int(os.environ.get("CIV6AZ_AUTOSCALE_BASE_WORKERS", "10"))
@@ -129,9 +127,7 @@ class WorkerAutoscalerConfig:
         default_factory=lambda: int(os.environ.get("CIV6AZ_AUTOSCALE_MAX_WORKERS", "50"))
     )
     scale_up_threshold: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_AUTOSCALE_SCALE_UP_THRESHOLD", "0.8")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_AUTOSCALE_SCALE_UP_THRESHOLD", "0.8"))
     )
     scale_down_threshold: float = field(
         default_factory=lambda: float(
@@ -139,9 +135,7 @@ class WorkerAutoscalerConfig:
         )
     )
     cooldown_seconds: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_AUTOSCALE_COOLDOWN_SECONDS", "300")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_AUTOSCALE_COOLDOWN_SECONDS", "300"))
     )
 
     # Factors for scaling decision
@@ -395,8 +389,7 @@ class WorkerAutoscaler:
             self._scaling_history.append(decision)
 
         logger.info(
-            f"Scaling decision: {action.value} from {current_workers} to {target} "
-            f"({reason})"
+            f"Scaling decision: {action.value} from {current_workers} to {target} ({reason})"
         )
 
         return decision
@@ -540,9 +533,7 @@ class WorkerAutoscaler:
             Dictionary with autoscaler statistics.
         """
         now = time.time()
-        cooldown_remaining = max(
-            0, self.config.cooldown_seconds - (now - self._last_scaling_time)
-        )
+        cooldown_remaining = max(0, self.config.cooldown_seconds - (now - self._last_scaling_time))
 
         recent_decisions = [d.to_dict() for d in self._scaling_history[-10:]]
 
