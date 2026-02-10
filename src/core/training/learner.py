@@ -152,7 +152,9 @@ class Learner:
         policy_logits, predicted_value = self._network(spatial, vector, action_mask)
 
         # Compute loss
-        assert self._loss_fn is not None
+        if self._loss_fn is None:
+            msg = "Loss function not initialized; call _setup_torch() first"
+            raise RuntimeError(msg)
         total_loss, metrics = self._loss_fn(
             policy_logits,
             target_policy,
@@ -194,10 +196,8 @@ class Learner:
 
     def _get_current_lr(self) -> float:
         """Get the current learning rate from the optimizer."""
-        if self._optimizer is None:
-            return self._config.learning_rate
-        for param_group in self._optimizer.param_groups:
-            return float(param_group["lr"])
+        if self._optimizer is not None and self._optimizer.param_groups:
+            return float(self._optimizer.param_groups[0]["lr"])
         return self._config.learning_rate
 
     def update_learning_rate(self, new_lr: float) -> None:

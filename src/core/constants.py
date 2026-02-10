@@ -6,6 +6,28 @@ Import from here rather than hard-coding values.
 
 from __future__ import annotations
 
+__all__ = [
+    "DEFAULT_BOARD_SIZE",
+    "DEFAULT_ELO_K_FACTOR",
+    "DEFAULT_MAX_STEPS",
+    "DEFAULT_TEMPERATURE_SCHEDULE",
+    "DIRICHLET_NOISE_STEP_THRESHOLD",
+    "ELO_BASE",
+    "ELO_SCALE",
+    "EPSILON",
+    "EPSILON_SOFTMAX",
+    "INITIAL_ELO_RATING",
+    "LOGFILE_BACKUP_COUNT",
+    "MAX_LOGFILE_BYTES",
+    "MICROCIV_ACTION_SPACE",
+    "MICROCIV_SPATIAL_CHANNELS",
+    "MICROCIV_VECTOR_DIM",
+    "RESOURCE_COLLECTION_REWARD",
+    "STUB_ACTION_DIRECTIONS",
+    "STUB_SPATIAL_CHANNELS",
+    "STUB_VECTOR_DIM",
+]
+
 # ---------------------------------------------------------------------------
 # Numerical stability
 # ---------------------------------------------------------------------------
