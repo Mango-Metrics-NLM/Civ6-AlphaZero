@@ -376,3 +376,43 @@ class TestSelfPlayCollectorPlayGames:
         for traj in trajectories:
             assert isinstance(traj, GameTrajectory)
             assert len(traj.examples) > 0
+
+
+class TestSelfPlayCollectorUpdateEvalFn:
+    """Tests for the update_eval_fn public method."""
+
+    def test_update_eval_fn_replaces_function(self) -> None:
+        """update_eval_fn replaces the internal _eval_fn."""
+        collector = SelfPlayCollector(
+            eval_fn=_dummy_eval_fn,
+            mcts_config=MCTSConfig(num_simulations=2),
+        )
+        assert collector._eval_fn is _dummy_eval_fn
+
+        def new_eval_fn(
+            spatial: np.ndarray, vector: np.ndarray, action_mask: np.ndarray
+        ) -> tuple[np.ndarray, float]:
+            return np.zeros(len(action_mask), dtype=np.float32), 0.0
+
+        collector.update_eval_fn(new_eval_fn)
+        assert collector._eval_fn is new_eval_fn
+
+    def test_update_eval_fn_used_in_subsequent_games(self) -> None:
+        """After update_eval_fn, subsequent games use the new function."""
+        call_tracker: list[bool] = []
+
+        def tracking_eval_fn(
+            spatial: np.ndarray, vector: np.ndarray, action_mask: np.ndarray
+        ) -> tuple[np.ndarray, float]:
+            call_tracker.append(True)
+            num_actions = len(action_mask)
+            return np.ones(num_actions, dtype=np.float32) / num_actions, 0.0
+
+        collector = SelfPlayCollector(
+            eval_fn=_dummy_eval_fn,
+            mcts_config=MCTSConfig(num_simulations=2),
+            max_steps=10,
+        )
+        collector.update_eval_fn(tracking_eval_fn)
+        collector.play_game(MockEnv(), add_noise=False, seed=0)
+        assert len(call_tracker) > 0

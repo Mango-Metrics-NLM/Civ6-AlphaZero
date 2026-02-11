@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import math
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 
 from src.core.config import MCTSConfig
 from src.core.training.evaluator import EloRating, EvalResult, Evaluator, random_eval_fn
+from src.core.types import GameOutcome
 from src.environments.mini_games.mini_resource import MiniResourceEnv
 
 # ---------------------------------------------------------------------------
@@ -620,3 +622,165 @@ class TestPlayEvalGame:
             results.append((r.wins, r.losses, r.draws, r.elo))
 
         assert results[0] == pytest.approx(results[1])
+
+
+# ===========================================================================
+# _play_eval_game -- reward / mask edge cases
+# ===========================================================================
+
+
+def _make_mock_env(
+    *,
+    terminate_at_step: int = 1,
+    reward: float = 1.0,
+    num_actions: int = 5,
+    spatial_shape: tuple[int, ...] = (6, 4, 4),
+    vector_dim: int = 4,
+    empty_mask_at_step: int | None = None,
+) -> MagicMock:
+    """Build a mock StrategicEnvironment with configurable termination reward."""
+    env = MagicMock()
+    step_counter = {"n": 0}
+
+    def _reset(seed: int | None = None) -> None:
+        step_counter["n"] = 0
+
+    def _is_terminal() -> bool:
+        return step_counter["n"] >= terminate_at_step
+
+    def _get_observation() -> dict[str, np.ndarray]:
+        return {
+            "spatial": np.zeros(spatial_shape, dtype=np.float32),
+            "vector": np.zeros(vector_dim, dtype=np.float32),
+        }
+
+    def _get_valid_actions() -> np.ndarray:
+        if empty_mask_at_step is not None and step_counter["n"] >= empty_mask_at_step:
+            return np.zeros(num_actions, dtype=np.bool_)
+        return np.ones(num_actions, dtype=np.bool_)
+
+    def _step(action: int) -> tuple[dict, float, bool, bool, dict]:
+        step_counter["n"] += 1
+        terminated = step_counter["n"] >= terminate_at_step
+        return _get_observation(), reward if terminated else 0.0, terminated, False, {}
+
+    env.reset = MagicMock(side_effect=_reset)
+    env.is_terminal = MagicMock(side_effect=_is_terminal)
+    env.get_observation = MagicMock(side_effect=_get_observation)
+    env.get_valid_actions = MagicMock(side_effect=_get_valid_actions)
+    env.step = MagicMock(side_effect=_step)
+    return env
+
+
+class TestPlayEvalGameRewardPaths:
+    """Tests for _play_eval_game reward interpretation branches."""
+
+    def test_candidate_p1_negative_reward_returns_loss(self) -> None:
+        """When candidate is p1 and reward < 0, outcome is loss."""
+        env = _make_mock_env(terminate_at_step=1, reward=-1.0)
+        evaluator = Evaluator(MCTSConfig(), num_eval_games=1, seed=0)
+        outcome = evaluator._play_eval_game(
+            candidate_fn=_dummy_eval_fn,
+            baseline_fn=_dummy_eval_fn,
+            env_factory=lambda: env,
+            candidate_is_p1=True,
+            seed=0,
+        )
+        assert outcome == GameOutcome.loss
+
+    def test_candidate_p1_positive_reward_returns_win(self) -> None:
+        """When candidate is p1 and reward > 0, outcome is win."""
+        env = _make_mock_env(terminate_at_step=1, reward=1.0)
+        evaluator = Evaluator(MCTSConfig(), num_eval_games=1, seed=0)
+        outcome = evaluator._play_eval_game(
+            candidate_fn=_dummy_eval_fn,
+            baseline_fn=_dummy_eval_fn,
+            env_factory=lambda: env,
+            candidate_is_p1=True,
+            seed=0,
+        )
+        assert outcome == GameOutcome.win
+
+    def test_candidate_p2_negative_reward_returns_win(self) -> None:
+        """When candidate is p2 and reward < 0, outcome is win (p1 lost)."""
+        env = _make_mock_env(terminate_at_step=1, reward=-1.0)
+        evaluator = Evaluator(MCTSConfig(), num_eval_games=1, seed=0)
+        outcome = evaluator._play_eval_game(
+            candidate_fn=_dummy_eval_fn,
+            baseline_fn=_dummy_eval_fn,
+            env_factory=lambda: env,
+            candidate_is_p1=False,
+            seed=0,
+        )
+        assert outcome == GameOutcome.win
+
+    def test_candidate_p2_positive_reward_returns_loss(self) -> None:
+        """When candidate is p2 and reward > 0, outcome is loss (p1 won)."""
+        env = _make_mock_env(terminate_at_step=1, reward=1.0)
+        evaluator = Evaluator(MCTSConfig(), num_eval_games=1, seed=0)
+        outcome = evaluator._play_eval_game(
+            candidate_fn=_dummy_eval_fn,
+            baseline_fn=_dummy_eval_fn,
+            env_factory=lambda: env,
+            candidate_is_p1=False,
+            seed=0,
+        )
+        assert outcome == GameOutcome.loss
+
+    def test_terminated_zero_reward_returns_draw(self) -> None:
+        """When game terminates with reward == 0, outcome is draw."""
+        env = _make_mock_env(terminate_at_step=1, reward=0.0)
+        evaluator = Evaluator(MCTSConfig(), num_eval_games=1, seed=0)
+        outcome = evaluator._play_eval_game(
+            candidate_fn=_dummy_eval_fn,
+            baseline_fn=_dummy_eval_fn,
+            env_factory=lambda: env,
+            candidate_is_p1=True,
+            seed=0,
+        )
+        assert outcome == GameOutcome.draw
+
+
+class TestPlayEvalGameMaskExhaustion:
+    """Tests for _play_eval_game action mask exhaustion fallback."""
+
+    def test_empty_mask_breaks_loop_returns_draw(self) -> None:
+        """When all valid actions are exhausted (mask all False), the game breaks and returns draw."""
+        env = _make_mock_env(
+            terminate_at_step=100,
+            reward=0.0,
+            empty_mask_at_step=0,
+        )
+        evaluator = Evaluator(MCTSConfig(), num_eval_games=1, seed=0)
+        outcome = evaluator._play_eval_game(
+            candidate_fn=_dummy_eval_fn,
+            baseline_fn=_dummy_eval_fn,
+            env_factory=lambda: env,
+            candidate_is_p1=True,
+            seed=0,
+        )
+        assert outcome == GameOutcome.draw
+
+    def test_empty_mask_fallback_with_policy_zero(self) -> None:
+        """When policy produces zero mass and mask is empty, the game breaks cleanly."""
+        def zero_policy_fn(
+            spatial: np.ndarray,
+            vector: np.ndarray,
+            action_mask: np.ndarray,
+        ) -> tuple[np.ndarray, float]:
+            return np.zeros_like(action_mask, dtype=np.float32), 0.0
+
+        env = _make_mock_env(
+            terminate_at_step=100,
+            reward=0.0,
+            empty_mask_at_step=0,
+        )
+        evaluator = Evaluator(MCTSConfig(), num_eval_games=1, seed=0)
+        outcome = evaluator._play_eval_game(
+            candidate_fn=zero_policy_fn,
+            baseline_fn=zero_policy_fn,
+            env_factory=lambda: env,
+            candidate_is_p1=True,
+            seed=0,
+        )
+        assert outcome == GameOutcome.draw

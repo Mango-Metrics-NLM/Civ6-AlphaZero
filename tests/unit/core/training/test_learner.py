@@ -1037,3 +1037,34 @@ class TestBatchSizeReporting:
         batch = _make_batch(batch_size=1)
         result = learner.train_step(batch)
         assert result["batch_size"] == 1.0
+
+
+# ===================================================================
+# _torch_train_step loss_fn guard
+# ===================================================================
+
+
+class TestTorchTrainStepLossFnGuard:
+    """Tests for RuntimeError when _loss_fn is None in _torch_train_step."""
+
+    def test_raises_runtime_error_when_loss_fn_is_none(self) -> None:
+        """_torch_train_step raises RuntimeError if _loss_fn is None."""
+        mock_net = _make_mock_network()
+        mock_torch = _make_mock_torch()
+
+        # Network forward must return (policy_logits, value) so we reach the guard
+        mock_policy_logits = MagicMock()
+        mock_value = MagicMock()
+        mock_net.return_value = (mock_policy_logits, mock_value)
+        mock_net.train.return_value = None
+
+        with (
+            patch("src.core.training.learner.HAS_TORCH", True),
+            patch.dict("sys.modules", {"torch": mock_torch}),
+        ):
+            learner = Learner(_make_config(), network=mock_net)
+            # Force _loss_fn to None to trigger the guard
+            learner._loss_fn = None
+
+            with pytest.raises(RuntimeError, match=r"Loss function not initialized"):
+                learner._torch_train_step(_make_batch())

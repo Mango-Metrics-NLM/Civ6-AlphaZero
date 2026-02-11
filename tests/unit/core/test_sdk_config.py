@@ -1026,6 +1026,16 @@ class TestApplyEnvOverrides:
         new_cfg = cfg.apply_env_overrides()
         assert new_cfg.network.num_filters == 256
 
+    def test_validation_error_after_env_override(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Env override that passes coercion but fails Pydantic validation raises ConfigValidationError."""
+        # batch_size has ge=1, so 0 is coercible to int but fails validation
+        monkeypatch.setenv("SPSDK_TRAINING_BATCH_SIZE", "0")
+        cfg = SDKConfig()
+        with pytest.raises(ConfigValidationError, match=r"Validation failed after applying env overrides"):
+            cfg.apply_env_overrides()
+
 
 # ============================================================================
 # 13. Tests: load_config

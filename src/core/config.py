@@ -439,9 +439,6 @@ class SDKConfig(BaseModel):
             remainder = env_key[len(prefix) :].lower()
             parts = remainder.split("_")
 
-            if not parts:
-                continue
-
             # Try to navigate the nested config
             # First, check if the first part matches a top-level section
             resolved = False

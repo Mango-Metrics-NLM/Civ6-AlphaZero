@@ -51,6 +51,10 @@ class SelfPlayCollector:
         self._max_steps = max_steps
         self._temperature_schedule = temperature_schedule or dict(DEFAULT_TEMPERATURE_SCHEDULE)
 
+    def update_eval_fn(self, eval_fn: EvalFn) -> None:
+        """Replace the evaluation function (e.g. after network weights update)."""
+        self._eval_fn = eval_fn
+
     def _get_temperature(self, step: int) -> float:
         """Get temperature for the given step from the schedule."""
         temp = 1.0

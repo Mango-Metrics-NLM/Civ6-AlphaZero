@@ -255,7 +255,7 @@ def cmd_benchmark(args: argparse.Namespace) -> int:
             valid_actions = np.where(mask)[0]
             if len(valid_actions) == 0:
                 break
-            action = int(valid_actions[ep % len(valid_actions)])
+            action = int(valid_actions[steps % len(valid_actions)])
             env.step(action)
             steps += 1
         total_steps += steps

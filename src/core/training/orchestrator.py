@@ -278,7 +278,7 @@ class TrainingOrchestrator:
         num_games = self._config.training.games_per_iteration
 
         # Update eval function with latest network weights
-        self._collector._eval_fn = self._learner.get_eval_fn()
+        self._collector.update_eval_fn(self._learner.get_eval_fn())
 
         trajectories = self._collector.play_games(
             env_factory=self._env_factory,
