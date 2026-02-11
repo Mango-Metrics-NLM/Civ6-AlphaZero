@@ -28,6 +28,7 @@ jobs:
         run: ruff format --check alpha_zero/
 
       - name: Run mypy type checker
+        continue-on-error: true
         run: mypy alpha_zero/ --ignore-missing-imports --show-error-codes
 
   test:

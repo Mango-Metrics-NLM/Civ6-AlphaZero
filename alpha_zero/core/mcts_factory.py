@@ -31,11 +31,14 @@ from __future__ import annotations
 
 import dataclasses
 import inspect
+import logging
 from enum import Enum
 from typing import Any, Protocol
 
 import numpy as np
 import torch
+
+logger = logging.getLogger(__name__)
 
 
 class MCTSVariant(Enum):
@@ -207,6 +210,14 @@ def create_mcts(
         "device",
     }
     filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_init_params}
+
+    # Reject unrecognized kwargs — likely indicates a caller bug
+    unrecognized = set(kwargs.keys()) - set(filtered_kwargs.keys())
+    if unrecognized:
+        raise TypeError(
+            f"create_mcts() got unexpected keyword argument(s): {unrecognized}. "
+            f"Valid config fields: {valid_fields}, valid init params: {valid_init_params}"
+        )
 
     return mcts_cls(network=network, config=config, device=device, **filtered_kwargs)
 

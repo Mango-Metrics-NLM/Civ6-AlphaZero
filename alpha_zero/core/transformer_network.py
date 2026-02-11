@@ -132,9 +132,9 @@ class TransformerConfig:
         self._num_patches = (self.spatial_size // self.patch_size) ** 2
         self._head_dim = self.embed_dim // self.num_heads
 
-        assert self.embed_dim % self.num_heads == 0, (
-            f"embed_dim ({self.embed_dim}) must be divisible by num_heads ({self.num_heads})"
-        )
+        assert (
+            self.embed_dim % self.num_heads == 0
+        ), f"embed_dim ({self.embed_dim}) must be divisible by num_heads ({self.num_heads})"
 
     @property
     def num_patches(self) -> int:
