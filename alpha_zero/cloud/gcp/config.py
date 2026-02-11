@@ -188,6 +188,68 @@ class GCSPathConfig:
 
 
 @dataclass
+class NetworkArchitectureConfig:
+    """Network architecture defaults for the Civ6 Transformer model.
+
+    Provides a single source of truth for architecture parameters used by
+    selfplay, training, and evaluation workers. Defaults match the current
+    Civ6TransformerNetwork / MicroCivEncoder architecture.
+
+    All values can be overridden via environment variables prefixed with CIV6AZ_.
+
+    Attributes:
+        board_size: Board size (spatial_size H=W).
+        action_space_size: Total discrete actions (1 + 20*8 + 20*8 + 20 + 20 + 5*3 = 376).
+        spatial_channels: Input spatial feature planes from MicroCivEncoder.
+        vector_dim: Dimension of the vector (non-spatial) observation.
+        num_layers: Number of transformer layers (maps to TransformerConfig.num_layers).
+        embed_dim: Transformer embedding dimension (maps to TransformerConfig.embed_dim).
+    """
+
+    board_size: int = 8
+    action_space_size: int = 376
+    spatial_channels: int = 13
+    vector_dim: int = 64
+    num_layers: int = 6
+    embed_dim: int = 64
+
+    @classmethod
+    def from_env(cls) -> NetworkArchitectureConfig:
+        """Create from environment variables.
+
+        Environment Variables:
+            CIV6AZ_BOARD_SIZE: Board size (default: 8)
+            CIV6AZ_ACTION_SPACE_SIZE: Action space size (default: 376)
+            CIV6AZ_SPATIAL_CHANNELS: Spatial channels (default: 13)
+            CIV6AZ_VECTOR_DIM: Vector dimension (default: 64)
+            CIV6AZ_NUM_LAYERS: Transformer layers (default: 6)
+            CIV6AZ_EMBED_DIM: Embedding dimension (default: 64)
+
+        Returns:
+            NetworkArchitectureConfig instance.
+        """
+        return cls(
+            board_size=int(os.environ.get("CIV6AZ_BOARD_SIZE", "8")),
+            action_space_size=int(os.environ.get("CIV6AZ_ACTION_SPACE_SIZE", "376")),
+            spatial_channels=int(os.environ.get("CIV6AZ_SPATIAL_CHANNELS", "13")),
+            vector_dim=int(os.environ.get("CIV6AZ_VECTOR_DIM", "64")),
+            num_layers=int(os.environ.get("CIV6AZ_NUM_LAYERS", "6")),
+            embed_dim=int(os.environ.get("CIV6AZ_EMBED_DIM", "64")),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            "board_size": self.board_size,
+            "action_space_size": self.action_space_size,
+            "spatial_channels": self.spatial_channels,
+            "vector_dim": self.vector_dim,
+            "num_layers": self.num_layers,
+            "embed_dim": self.embed_dim,
+        }
+
+
+@dataclass
 class GCPConfig:
     """Main GCP configuration for Vertex AI training.
 
@@ -220,6 +282,9 @@ class GCPConfig:
 
     # Path configuration
     paths: GCSPathConfig = field(default_factory=GCSPathConfig)
+
+    # Network architecture
+    network: NetworkArchitectureConfig = field(default_factory=NetworkArchitectureConfig)
 
     # Tier selection
     tier: VertexTier = VertexTier.BUDGET
@@ -286,6 +351,7 @@ class GCPConfig:
         self_play_data = data.pop("self_play", {})
         training_data = data.pop("training", {})
         paths_data = data.pop("paths", {})
+        network_data = data.pop("network", {})
 
         self_play = (
             SelfPlayWorkerConfig(**self_play_data) if self_play_data else SelfPlayWorkerConfig()
@@ -294,6 +360,11 @@ class GCPConfig:
             TrainingWorkerConfig(**training_data) if training_data else TrainingWorkerConfig()
         )
         paths = GCSPathConfig(**paths_data) if paths_data else GCSPathConfig()
+        network = (
+            NetworkArchitectureConfig(**network_data)
+            if network_data
+            else NetworkArchitectureConfig()
+        )
 
         tier_str = data.pop("tier", "budget")
         tier = VertexTier(tier_str) if isinstance(tier_str, str) else tier_str
@@ -302,6 +373,7 @@ class GCPConfig:
             self_play=self_play,
             training=training,
             paths=paths,
+            network=network,
             tier=tier,
             **data,
         )
@@ -392,6 +464,7 @@ class GCPConfig:
                 "checkpoints_prefix": self.paths.checkpoints_prefix,
                 "logs_prefix": self.paths.logs_prefix,
             },
+            "network": self.network.to_dict(),
         }
 
     def __repr__(self) -> str:

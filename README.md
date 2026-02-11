@@ -22,13 +22,16 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 9 | MuZero Integration Bridge | ✅ Complete |
 | Phase 10 | Tournament & Matchmaking System | ✅ Complete |
 | Phase 11 | Code Quality & Tech Debt Reduction | ✅ Complete |
+| Phase 12-Prep | Docker v0.9.0, Container Smoke Tests, Vertex AI Smoke Test | ✅ Complete |
+| Phase 13 | Multi-Iteration Training & Post-Run Evaluation | ✅ Complete |
 
 **Codebase Statistics:**
 
 - ~55,000 lines of core implementation
-- 4,000+ tests with >80% coverage on core modules
+- 3,544+ tests with >80% coverage on core modules
+- Docker v0.10.2 on GCR, 7 model versions (v0-v6) in GCS
 - 11 game mechanics modules (deprecated, future Civ6 integration)
-- 13 remaining xfail tests (12 DDP + 1 hierarchical — deferred to Phase 14)
+- 13 remaining xfail tests (12 DDP + 1 hierarchical — deferred)
 
 ## Key Features
 
@@ -57,6 +60,11 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - **MuZero Integration**: Learned dynamics model bridge with MuZeroNetwork, MuZeroTrainer, MuZeroMCTS
 - **Tournament System**: Bracket generation (round-robin, single-elimination, Swiss), ELO standings, W&B dashboards
 - **Tournament Analysis**: Head-to-head matrix, player trends, meta-analysis, cross-generation comparison
+- **Post-Run Tournament**: Automated round-robin ELO tournament across all model versions after training
+- **NetworkArchitectureConfig**: Centralized architecture defaults (board_size=8, action_space_size=376, embed_dim=64)
+- **Arena Module**: Shared arena logic for evaluation and tournament play
+- **Orchestrator W&B Logging**: Iteration metrics, cost tracking, phase timing, and final summaries
+- **Docker Container Pipeline**: PyTorch 2.5 + CUDA 12.4 container with healthcheck, deployed to GCR
 
 ## Architecture (C4 Model)
 
@@ -799,6 +807,13 @@ python -m alpha_zero.cloud.gcp.vertex_orchestrator \
 
 # Dry run (validate args without launching cloud jobs)
 python -m alpha_zero.cloud.gcp.vertex_orchestrator --dry_run --iterations=1
+
+# Multi-iteration training with post-run tournament
+python -m alpha_zero.cloud.gcp.vertex_orchestrator \
+    --iterations=3 --workers=1 --games_per_worker=10 \
+    --mcts_type=gumbel --mcts_simulations=8 --board_size=8 \
+    --epochs=3 --max_turns=15 --evaluation_games=4 \
+    --post_run_tournament --tournament_games=4 --tournament_mcts_sims=8
 ```
 
 | MCTS Variant | Speed | Simulations | Best For |
@@ -1055,17 +1070,19 @@ Civ6-AlphaZero/
 │   │   ├── base_interface.py # BaseGameInterface contract
 │   │   ├── civ6_interface.py # Real Civ6 interface
 │   │   └── unciv_interface.py # Unciv JSON interface
-│   ├── cloud/                # GCP Vertex AI cloud training (Phase 7)
+│   ├── cloud/                # GCP Vertex AI cloud training
 │   │   └── gcp/
-│   │       ├── config.py             # GCPConfig, GPU pricing, env-var based
+│   │       ├── config.py             # GCPConfig + NetworkArchitectureConfig
 │   │       ├── storage.py            # GCS storage backends
 │   │       ├── vertex_jobs.py        # Vertex AI job wrappers
-│   │       ├── vertex_orchestrator.py # 3-phase pipeline orchestrator
+│   │       ├── vertex_orchestrator.py # Multi-iteration pipeline + W&B + tournament
 │   │       ├── selfplay_worker.py    # Self-play container worker
-│   │       ├── training_worker.py    # Training container worker
-│   │       ├── evaluation_worker.py  # Model arena container worker
+│   │       ├── training_worker.py    # Training container worker (saves model_config)
+│   │       ├── evaluation_worker.py  # Model arena (Civ6TransformerNetwork)
+│   │       ├── arena.py              # Shared arena logic (Phase 13)
 │   │       ├── entrypoint.py         # Container mode router
-│   │       ├── pbt_orchestrator.py    # Production PBT loop (Phase 7+)
+│   │       ├── container_healthcheck.py # Container import validation
+│   │       ├── pbt_orchestrator.py    # Production PBT loop
 │   │       ├── cost_monitor.py       # Budget enforcement
 │   │       ├── cost_optimization.py  # Unified cost optimization
 │   │       ├── gpu_scheduler.py      # Dynamic GPU selection
@@ -1125,7 +1142,7 @@ Civ6-AlphaZero/
 │   └── knowledge/            # RAG knowledge base
 ├── scripts/
 │   └── build_container.sh    # Docker build & push to GCR
-├── Dockerfile                # Container image (PyTorch 2.1 + CUDA 12.1)
+├── Dockerfile                # Container image (PyTorch 2.5 + CUDA 12.4)
 ├── .dockerignore             # Container build exclusions
 ├── requirements-container.txt # Slim deps for container
 ├── docs/

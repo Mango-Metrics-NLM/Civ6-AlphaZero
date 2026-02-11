@@ -35,6 +35,7 @@ PHASE_MODULES: dict[str, list[str]] = {
         "alpha_zero.cloud.gcp.selfplay_worker",
         "alpha_zero.cloud.gcp.training_worker",
         "alpha_zero.cloud.gcp.evaluation_worker",
+        "alpha_zero.cloud.gcp.arena",
         "alpha_zero.cloud.gcp.vertex_jobs",
         "alpha_zero.cloud.gcp.vertex_orchestrator",
         "alpha_zero.cloud.gcp.storage",

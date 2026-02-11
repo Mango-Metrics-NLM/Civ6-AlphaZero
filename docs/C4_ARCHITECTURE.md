@@ -1,6 +1,7 @@
 # C4 Architecture - Civ6 AlphaZero AI Framework
 
 > Architecture documentation using the C4 model for comprehensive system visualization.
+> For Mermaid-rendered diagrams, see [architecture.md](architecture.md).
 
 ## Project Status
 
@@ -13,10 +14,16 @@
 | Phase 5a | RAG-LLM Integration | ✅ Complete |
 | Phase 5b | GCP/Vertex AI Cloud Infrastructure | ✅ Complete |
 | Phase 5c | Cost Optimization & Resource Management | ✅ Complete |
-| Phase 6 | Agentic Framework & Search Optimizations | ✅ Complete |
+| Phase 6 | ~~Agentic Framework~~ (removed in Phase 11) | ❌ Removed |
 | Phase 7 | Production PBT Scaling & Validation | ✅ Complete |
+| Phase 8 | Training Safeguards & Automated Intervention | ✅ Complete |
+| Phase 9 | MuZero Integration Bridge | ✅ Complete |
+| Phase 10 | Tournament & Matchmaking System | ✅ Complete |
+| Phase 11 | Code Quality & Tech Debt Reduction | ✅ Complete |
+| Phase 12-Prep | Docker & Vertex AI Smoke Test | ✅ Complete |
+| Phase 13 | Multi-Iteration Training & Post-Run Evaluation | ✅ Complete |
 
-**Codebase Statistics:** ~68,000 LOC total (53,400 core + 14,600 agentic), 2,250+ tests, >80% coverage
+**Codebase Statistics:** ~55,000 LOC core, 3,544+ tests, Docker v0.10.2
 
 ---
 
@@ -627,21 +634,23 @@ Legend:
 
 | Layer | Component | Technology | Purpose |
 |-------|-----------|------------|---------|
-| Core AI | Neural Network | PyTorch | Model training/inference |
-| Core AI | MCTS | NumPy | Tree search |
-| Environment | MicroCiv | Gymnasium | Training environment |
-| Environment | Unciv | JSON/Python | Bridge environment |
-| Environment | Civ6 | Lua mod | Production game |
+| Core AI | Neural Network | PyTorch 2.0+ | Model training/inference |
+| Core AI | MCTS | NumPy | Tree search algorithms |
+| Core AI | Transformer | PyTorch | ViT with RoPE, MoE |
+| Environment | MicroCiv | Gymnasium | Training simulation |
+| Environment | Civ6 Bridge | Lua/Python IPC | Real game integration |
 | Training | Orchestrator | Python | Training coordination |
 | Training | Distributed | multiprocessing | Parallel self-play |
-| Training | Checkpointing | PyTorch | Model persistence |
-| Knowledge | RAG | ChromaDB/FAISS | Strategy knowledge |
+| Training | PBT | Python | Hyperparameter evolution |
+| Cloud | Compute | Vertex AI | Distributed training |
+| Cloud | Storage | GCS | Artifacts, checkpoints |
+| Cloud | Container | Docker + GCR | Containerized workers (v0.10.2) |
+| Cloud | Optimization | Python | Cost/quota management |
+| Knowledge | RAG | ChromaDB/FAISS | Vector search |
 | Knowledge | LLM | OpenAI/Anthropic | Strategy advisor |
-| Logging | Metrics | TensorBoard/W&B | Experiment tracking |
-| Logging | Structured | JSON/Python logging | Debug/audit |
-| Config | Settings | YAML/Pydantic | Configuration management |
-| Testing | Framework | pytest | Test execution |
-| Linting | Code Quality | ruff/mypy | Static analysis |
+| Logging | Metrics | W&B, TensorBoard | Experiment tracking |
+| Testing | Framework | pytest | 3,544+ tests, >80% coverage |
+| Linting | Quality | ruff, mypy, bandit | Static analysis, security |
 
 ---
 
@@ -653,11 +662,12 @@ Legend:
 | Curriculum learning | Faster convergence, better generalization | Requires environment abstraction |
 | Process-based distribution | Avoid GIL, maximize CPU for MCTS | IPC overhead |
 | ResNet + Attention | Proven spatial reasoning + global context | Computational cost |
-| JSON state serialization | Human-readable, compatible with Unciv | Parsing overhead |
-| YAML configuration | Readable, environment overrides | Schema validation needed |
-| Action pruning | Reduce search space intelligently | May prune good actions |
-| Macro actions | Multi-turn planning abstraction | Learning complexity |
-| Hierarchical RL | Multi-level decision making | Coordination complexity |
+| GCP Spot VMs | 60-91% cost reduction for self-play | Preemption handling complexity |
+| Protocol-driven cloud | Backend-agnostic design for testability | Abstraction layers |
+| LZMA trajectory compression | Minimizes GCS egress costs | CPU overhead |
+| NetworkArchitectureConfig | Single source of truth for model dimensions | Must stay in sync with TransformerConfig |
+| Post-run tournament local | Avoids extra Vertex AI job cost for evaluation | Limited by local CPU speed |
+| model_config persistence | Enables legacy model loading with correct architecture | Enum→string conversion needed |
 | RAG integration | Knowledge-enhanced decisions | Latency for queries |
 
 ---
@@ -717,50 +727,136 @@ Legend:
 
 ---
 
-## Level 2: Agentic Framework (Phase 6)
+## Level 2: Agentic Framework (Phase 6) — REMOVED
 
-```
+> The agentic framework (~14,600 LOC) was removed in Phase 11 as dead code.
+> See CHANGELOG.md for details.
+
+---
+
+## Level 3: Component Diagram — Training Safeguards (Phase 8)
+
+```text
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                         AGENTIC FRAMEWORK (~14,600 LOC)                       │
+│                         TRAINING SAFEGUARDS (Phase 8)                         │
 │                                                                               │
 │  ┌────────────────────────────────────────────────────────────────────────┐  │
-│  │                           CORE COMPONENTS                               │  │
+│  │                       HEALTH MONITORING                                │  │
 │  │                                                                         │  │
 │  │   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐             │  │
-│  │   │  Constraint  │    │  Permission  │    │   Session    │             │  │
-│  │   │  Manager     │    │  Manager     │    │   Memory     │             │  │
-│  │   │ - hard/soft  │    │ - scope      │    │ - CLAUDE.md  │             │  │
-│  │   │ - validate() │    │ - autonomy   │    │ - persist()  │             │  │
+│  │   │  NaN         │    │  Loss        │    │  Gradient    │             │  │
+│  │   │  Detection   │    │  Explosion   │    │  Health      │             │  │
+│  │   │ - consecutive│    │ - rolling    │    │ - NORMAL     │             │  │
+│  │   │   threshold  │    │   baseline   │    │ - HIGH       │             │  │
+│  │   │              │    │   comparison │    │ - EXPLODING  │             │  │
 │  │   └──────────────┘    └──────────────┘    └──────────────┘             │  │
 │  └────────────────────────────────────────────────────────────────────────┘  │
 │                                                                               │
 │  ┌────────────────────────────────────────────────────────────────────────┐  │
-│  │                          SPECIALIZED AGENTS                             │  │
+│  │                      AUTOMATED INTERVENTIONS                           │  │
 │  │                                                                         │  │
 │  │   ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐     │  │
-│  │   │  Planning   │ │Implementation│ │  Testing   │ │Verification │     │  │
-│  │   │   Agent     │ │    Agent    │ │   Agent    │ │   Agent     │     │  │
-│  │   │ - analyze   │ │ - write code│ │ - pytest   │ │ - lint/type │     │  │
-│  │   │ - plan      │ │ - rollback  │ │ - coverage │ │ - verify    │     │  │
+│  │   │  Reduce LR  │ │  Rollback   │ │  Reduce     │ │  Early      │     │  │
+│  │   │  (loss      │ │  Checkpoint │ │  Batch Size │ │  Stop       │     │  │
+│  │   │   explode)  │ │  (NaN)      │ │  (memory)   │ │  (stalled)  │     │  │
 │  │   └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘     │  │
-│  │                                                                         │  │
-│  │   ┌─────────────────────────────────────────────────────────────────┐  │  │
-│  │   │                    DOCUMENTATION AGENT                          │  │  │
-│  │   │  - Update CLAUDE.md with new patterns                           │  │  │
-│  │   │  - Generate docstrings and README updates                       │  │  │
-│  │   │  - Track architectural decisions                                │  │  │
-│  │   └─────────────────────────────────────────────────────────────────┘  │  │
 │  └────────────────────────────────────────────────────────────────────────┘  │
 │                                                                               │
 │  ┌────────────────────────────────────────────────────────────────────────┐  │
-│  │                           FEEDBACK LOOP                                 │  │
+│  │                          REPORTING                                     │  │
 │  │                                                                         │  │
 │  │   ┌──────────────────────────────────────────────────────────────────┐ │  │
-│  │   │ 1. Lint → 2. Type Check → 3. Unit Test → 4. Integration Test    │ │  │
-│  │   │         ↓ (on failure)                                           │ │  │
-│  │   │ 5. Auto-fix → 6. Retry (max 3x) → 7. Report with hypothesis     │ │  │
+│  │   │ TrainingReport: periodic summaries, SafeguardReport: per-step    │ │  │
 │  │   └──────────────────────────────────────────────────────────────────┘ │  │
 │  └────────────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Level 3: Component Diagram — Tournament System (Phase 10)
+
+```text
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         TOURNAMENT SYSTEM (Phase 10)                          │
+│                                                                               │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │                       ORCHESTRATION                                    │  │
+│  │                                                                         │  │
+│  │   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐             │  │
+│  │   │  Tournament  │    │   Bracket    │    │  Standings   │             │  │
+│  │   │ Orchestrator │───►│ Round-Robin  │───►│  ELO + Win%  │             │  │
+│  │   │              │    │ Elimination  │    │  Rankings    │             │  │
+│  │   │              │    │ Swiss        │    │              │             │  │
+│  │   └──────────────┘    └──────────────┘    └──────────────┘             │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                               │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │                        ANALYSIS                                        │  │
+│  │                                                                         │  │
+│  │   ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐     │  │
+│  │   │ Head-to-Head│ │  Player     │ │   Meta      │ │   Upset     │     │  │
+│  │   │   Matrix    │ │  Trends     │ │  Analysis   │ │  Detection  │     │  │
+│  │   │  N×N wins   │ │  ELO/time   │ │  top-k HPs  │ │  ELO diff   │     │  │
+│  │   └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘     │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                               │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │                      W&B VISUALIZATION                                 │  │
+│  │                                                                         │  │
+│  │   ┌──────────────────────────────────────────────────────────────────┐ │  │
+│  │   │ TournamentWandbLogger: Leaderboard, Heatmap, ELO History chart  │ │  │
+│  │   └──────────────────────────────────────────────────────────────────┘ │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Cloud Training Pipeline (Phases 12-13)
+
+```text
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                    VERTEX AI TRAINING PIPELINE (Phase 13)                     │
+│                                                                               │
+│  User / CLI                                                                  │
+│      │                                                                       │
+│      ▼                                                                       │
+│  ┌─────────────────┐                                                        │
+│  │ Vertex           │─── W&B init ──► W&B Cloud                             │
+│  │ Orchestrator     │                                                        │
+│  │ (local machine)  │                                                        │
+│  └────────┬─────────┘                                                        │
+│           │                                                                  │
+│           │  For each iteration:                                             │
+│           │                                                                  │
+│           ├──► Self-Play Workers (N) ──► GCS (trajectories)                 │
+│           │        (Vertex AI T4)                                            │
+│           │                                                                  │
+│           ├──► Training Worker ──► GCS (model v_new + model_config)          │
+│           │        (Vertex AI T4)                                            │
+│           │                                                                  │
+│           ├──► Evaluation Worker ──► GCS (results JSON)                     │
+│           │        (Vertex AI T4)                                            │
+│           │                                                                  │
+│           ├──► Accept/Reject model (win_rate > threshold?)                   │
+│           └──► Log iteration metrics + cost ──► W&B                         │
+│                                                                               │
+│  Post-Run Tournament (optional, runs LOCALLY on orchestrator):               │
+│  ┌─────────────────────────────────────────────────────────────────────┐     │
+│  │  Load all model versions from GCS                                   │     │
+│  │  Round-robin arena games (CPU) ──► ELO ratings                     │     │
+│  │  Save results ──► GCS (tournament/post_run_results.json)           │     │
+│  │  Log ELO rankings ──► W&B                                          │     │
+│  └─────────────────────────────────────────────────────────────────────┘     │
+│                                                                               │
+│  Key Components:                                                             │
+│  ┌──────────────┐  ┌──────────────────┐  ┌──────────────────┐               │
+│  │ NetworkArch  │  │      Arena       │  │  GCS Storage     │               │
+│  │   Config     │  │ (shared eval +   │  │ - ModelStorage   │               │
+│  │ (defaults)   │  │  tournament)     │  │ - TrajectoryStore│               │
+│  └──────────────┘  └──────────────────┘  │ - CheckpointStore│               │
+│                                          └──────────────────┘               │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -778,9 +874,9 @@ Legend:
 │  │                       NETWORK HIERARCHY                                  │ │
 │  │                                                                          │ │
 │  │   ┌──────────────────┐                                                   │ │
-│  │   │  MicroCivNetwork │ ◄─── Training Entry Point                        │ │
+│  │   │  MicroCivNetwork │ ◄─── LEGACY (Phase 12 and earlier)               │ │
 │  │   │   (13 channels)  │      Simple, fast iteration                      │ │
-│  │   │   381 actions    │                                                   │ │
+│  │   │   376 actions    │                                                   │ │
 │  │   └────────┬─────────┘                                                   │ │
 │  │            │ Transfer Learning                                           │ │
 │  │            ▼                                                             │ │
@@ -1594,21 +1690,29 @@ Generation N:
 3. **Phase 3**: Training Improvements — Curriculum, rewards, tuning ✅
 4. **Phase 4**: Unified Orchestrator — Single training entry point ✅
 5. **Phase 5**: RAG Integration — Knowledge-enhanced decisions ✅
-6. **Phase 6**: Agentic Framework — Claude Code automation ✅
+6. **Phase 6**: ~~Agentic Framework~~ — Removed in Phase 11 (14,600 LOC dead code) ❌
 7. **Phase 7**: GCP Vertex AI Pipeline — Cloud training with GumbelMCTS, 3-phase pipeline ✅
-8. **Phase 8**: CI/CD & Test Infrastructure — Release automation, 6-tier test coverage ✅
-9. **Phase 7+**: Production PBT Scaling — W&B dashboards, checkpoint rotation, quota guard, baselines ✅
+8. **Phase 7+**: Production PBT Scaling — W&B dashboards, checkpoint rotation, quota guard ✅
+9. **Phase 8**: Training Safeguards — NaN detection, loss explosion, gradient health, auto-intervention ✅
+10. **Phase 9**: MuZero Integration — MuZeroTrainingBridge, MuZeroMCTS, PBT hyperparameters ✅
+11. **Phase 10**: Tournament System — Round-robin, elimination, Swiss brackets, ELO, W&B dashboards ✅
+12. **Phase 11**: Code Quality — Deleted 14.6k LOC, fixed xfails, CI hardened, mypy strict ✅
+13. **Phase 12-Prep**: Docker v0.9.0 → GCR, container smoke tests, Vertex AI smoke test ($0.04) ✅
+14. **Phase 13**: Multi-Iteration Training — NetworkArchitectureConfig, arena module, post-run tournament, W&B orchestrator logging, 6 bug fixes, Docker v0.10.2 ✅
 
 ### Next Steps
 
+See [NEXT_STEPS.md](../NEXT_STEPS.md) for the full post-Phase 13 roadmap.
+
 | Priority | Feature | Description |
 |----------|---------|-------------|
-| P0 | Extended Training Run | Run 50+ generation PBT on Vertex AI to validate convergence |
-| P1 | Training Validation | Achieve >50% win rate vs random baseline |
-| P2 | MuZeroMCTS Integration | Learned dynamics model for model-based planning |
-| P3 | Tournament System | Multi-agent ELO-based ranking and matchmaking |
-| P4 | Human vs AI Interface | Web-based UI for human gameplay |
-| P5 | Full Civ 6 Integration | Direct game interface via modding API |
+| P0 | Extended Training (Phase 14) | Run 20-50 iterations, verify learning signal propagates |
+| P1 | PBT on Vertex AI (Phase 15) | Population-based training with auto hyperparameter tuning |
+| P2 | Inference Optimization (Phase 16) | Batch MCTS, vectorized envs for 10x+ throughput |
+| P3 | MuZero Training Run (Phase 17) | Validate learned dynamics model on MicroCiv |
+| P4 | DDP Test Rewrites (Phase 18) | Fix 12 remaining DDP xfails, full mypy strict |
+| P5 | Human vs AI Interface (Phase 19) | Web-based UI for playing against trained agent |
+| P6 | Full Civ6 Integration (Phase 20) | Direct game interface via Lua mod bridge |
 
 ---
 

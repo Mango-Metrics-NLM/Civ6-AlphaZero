@@ -150,7 +150,7 @@ class TestParseArgs:
         assert args.model_version == 10
         assert args.iteration == 20
         assert args.games == 100  # default
-        assert args.mcts_simulations == 100  # default
+        assert args.mcts_simulations == 400  # default
         assert args.dry_run is False  # default
 
     def test_parse_args_with_custom_values(self) -> None:
@@ -289,8 +289,11 @@ class TestLoadModel:
         from alpha_zero.cloud.gcp.storage import GCSModelStorage
         from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
-        # Create a model with default config and save just state_dict
-        config = TransformerConfig()  # Use defaults
+        # Create a model matching pipeline architecture (NetworkArchitectureConfig defaults)
+        config = TransformerConfig(
+            spatial_channels=13, spatial_size=8, vector_dim=64,
+            action_space_size=376, num_layers=6, embed_dim=64,
+        )
         real_model = Civ6TransformerNetwork(config=config)
 
         import io
@@ -412,7 +415,7 @@ class TestRunSelfplay:
             "vector": MagicMock(flatten=lambda: MagicMock(tolist=lambda: [])),
         }
         mock_env.step.return_value = (None, 0.5, True, False, {})
-        
+
         # Mock MCTS
         mock_mcts = mock_create_mcts.return_value
         mock_mcts.search.return_value = (MagicMock(tolist=lambda: []), {})
@@ -431,7 +434,7 @@ class TestRunSelfplay:
         # Verify create_mcts was called with correct parameters
         mock_create_mcts.assert_called_once()
         call_kwargs = mock_create_mcts.call_args[1]
-        
+
         assert call_kwargs["variant"] == "gumbel"
         assert call_kwargs["num_simulations"] == 50
         assert call_kwargs["num_sampled_actions"] == 8
@@ -451,7 +454,7 @@ class TestRunSelfplay:
             "vector": MagicMock(flatten=lambda: MagicMock(tolist=lambda: [])),
         }
         mock_env.step.return_value = (None, 0.5, True, False, {})
-        
+
         # Mock MCTS
         mock_mcts = mock_create_mcts.return_value
         mock_mcts.search.return_value = (MagicMock(tolist=lambda: []), {})

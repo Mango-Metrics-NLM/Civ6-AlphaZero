@@ -1,107 +1,139 @@
-# Civ6 AlphaZero — Comprehensive Next Steps Plan
+# Civ6 AlphaZero — Next Steps (Post-Phase 13)
 
-Post-merge roadmap covering quality hardening, CI/CD maturation, cloud validation, training execution, and evaluation — leveraging all available agent skills, tools, and MCPs.
+All infrastructure phases (1-13) are complete. The system can run multi-iteration training on Vertex AI with selfplay, training, evaluation, and post-run tournament. Docker v0.10.2 is deployed on GCR. 7 model versions (v0-v6) exist in GCS.
 
----
-
-## Phase 1: Test Coverage Hardening (65% → 80%)
-
-**Goal**: Raise `--cov-fail-under` from 65 to 80 using the `python-testing-patterns` skill.
-
-**Rationale**: User rule requires 80% coverage across unit, integration, functional, e2e, user journey, security, and sanity tests. Current CI enforces only 65%.
-
-### Changes
-
-- **`pyproject.toml`** — Add `pytest-benchmark`, `pytest-xdist` to dev deps
-- **`ci.yml`** — Raise `--cov-fail-under` to 80, add cloud unit + security jobs
-- **New `tests/unit/test_pbt.py`** — PBT population lifecycle tests
-- **New `tests/unit/test_tournament.py`** — ELO/matchmaking tests
-- **New `tests/unit/test_hierarchical_mcts.py`** — 3-level hierarchy tests
-- **New `tests/security/test_security_sanity.py`** — Credential leak checks
-- **New `tests/sanity/test_import_sanity.py`** — Module importability checks
+**Current state**: Models train but don't yet show meaningful improvement over random play (~25% win rate in evaluation). The priority is now making the agent actually learn.
 
 ---
 
-## Phase 2: CI/CD Pipeline Enhancements
+## Phase 14: Extended Training & Learning Signal Validation
 
-**Goal**: Mature CI with parallel jobs, cloud test isolation, and release automation (`changelog-automation` skill).
+**Goal**: Run 20-50 iterations and verify that later model versions beat earlier ones.
 
-### Changes
+**Why this matters**: The pipeline works end-to-end, but 3-iteration runs are too short to observe learning. We need to confirm the training signal propagates correctly through the selfplay → training → evaluation loop.
 
-- **`ci.yml`** — Add `cloud-tests`, `security` jobs; add Python 3.12 to matrix
-- **New `.github/workflows/release.yml`** — Auto changelog + GitHub Release on `v*.*.*` tags
-- **`CHANGELOG.md`** — Add `[Unreleased]` section for PRs #29, #31, #34
+### Tasks
 
----
+1. **Long training run** (20-50 iterations)
+   ```bash
+   python -m alpha_zero.cloud.gcp.vertex_orchestrator \
+       --iterations=20 --workers=2 --games_per_worker=25 \
+       --mcts_type=gumbel --mcts_simulations=16 --board_size=8 \
+       --epochs=5 --max_turns=20 --evaluation_games=10 \
+       --post_run_tournament --tournament_games=6 --tournament_mcts_sims=16
+   ```
+   Estimated cost: ~$2-4 (20 iterations x ~$0.10-0.20/iteration)
 
-## Phase 3: GCP E2E Cloud Validation
+2. **Monitor W&B metrics**
+   - `orchestrator/eval_win_rate` — should trend upward over iterations
+   - `training/loss` — should decrease
+   - `tournament/elo_*` — later versions should have higher ELO
 
-**Goal**: Validate GCS storage + Vertex AI jobs against live GCP. Uses `ml-pipeline-workflow` skill.
+3. **Diagnose if learning stalls**
+   - Check policy entropy (too high = random, too low = collapsed)
+   - Check value accuracy (predicted vs actual game outcomes)
+   - Verify trajectory quality (are selfplay games diverse?)
+   - Consider increasing games_per_worker or epochs
 
-### Changes
+4. **Hyperparameter tuning** based on W&B data
+   - Learning rate (currently default from TransformerConfig)
+   - MCTS simulations (8-32 range)
+   - Training epochs per iteration (3-10)
+   - Temperature schedule for selfplay exploration
 
-- **New `tests/e2e/test_gcs_live.py`** — Real GCS upload/download roundtrip
-- **New `tests/e2e/test_vertex_submission.py`** — Dry-run job spec validation
-- **`alpha_zero/cloud/gcp/cli.py`** — Add `validate` subcommand for pre-flight checks
-- **New `.agent/workflows/gcp-validate.md`** — GCP auth + quota validation workflow
-
----
-
-## Phase 4: Local Training Smoke Test
-
-**Goal**: Validate self-play → training → eval locally. Uses `systematic-debugging` + `ml-pipeline-workflow` skills.
-
-### Changes
-
-- **New `tests/e2e/test_local_training_smoke.py`** — End-to-end dry-run validation
-- **New `.agent/workflows/local-smoke-test.md`** — Step-by-step local smoke test workflow
-- **`alpha_zero/training_civ6.py`** — Add `--max-iters` flag for bounded testing
-
----
-
-## Phase 5: Distributed Training Dry-Run
-
-**Goal**: Verify multi-worker coordination, trajectory merging, and preemption recovery.
-
-### Changes
-
-- **New `tests/integration/test_distributed_coordination.py`** — 4-worker simulation with mock GCS
-- **New `tests/integration/test_preemption_recovery.py`** — Spot VM preemption simulation
-- **`alpha_zero/distributed/`** — Add health-check heartbeat and structured logging
+### Success Criteria
+- Evaluation win rate > 55% for at least 3 consecutive iterations
+- Post-run tournament shows monotonic ELO increase for later versions
+- Training loss decreases over iterations
 
 ---
 
-## Phase 6: PBT Optimization & Evaluation League
+## Phase 15: Population-Based Training on Vertex AI
 
-**Goal**: Launch PBT with automated hyperparameter mutation and ELO evaluation. Uses `ml-pipeline-workflow` skill.
+**Goal**: Run PBT with population_size=8 to automatically tune hyperparameters.
 
-### Changes
+**Prerequisite**: Phase 14 shows that single-agent training works (models improve).
 
-- **New `configs/pbt_config.yaml`** — Population size, mutation rates, search space
-- **`alpha_zero/pbt/`** — Wire PBT to Vertex AI lifecycle + W&B tracking
-- **New `tests/integration/test_pbt_lifecycle.py`** — Full PBT cycle simulation
-- **New `.agent/workflows/pbt-launch.md`** — Step-by-step PBT launch workflow
+### Tasks
 
----
+1. Launch PBT with `configs/pbt_prod.yaml`
+2. Monitor W&B `pbt/elo_*`, `pbt/fitness_*`, `pbt/mutation_*` metrics
+3. Validate baseline benchmarks at every 5th generation
+4. Use dynamic evaluation strategy switch after generation 11
 
-## Skills & MCP Integration Matrix
-
-| Skill / MCP | Phases | Usage |
-|---|---|---|
-| `python-testing-patterns` | 1, 3-6 | Fixtures, parameterization, AAA pattern in all test files |
-| `ml-pipeline-workflow` | 3, 4, 6 | Pipeline stage validation, data contracts |
-| `changelog-automation` | 2 | Conventional commits, auto release notes |
-| `systematic-debugging` | 4 | Root-cause-first debugging in smoke tests |
-| **GitKraken MCP** | All | Branch management, PR creation, pushes |
-| **GitHub CI** | 1-2 | Enhanced pipeline with coverage/security jobs |
+### Estimated Cost
+- 8 agents x 10 generations x ~$0.20/iteration = ~$16
 
 ---
 
-## Execution Priority
+## Phase 16: Inference Optimization & Vectorized Self-Play
+
+**Goal**: 10x+ self-play throughput via batch MCTS inference and vectorized environments.
+
+### Tasks
+
+1. **Batch MCTS inference**: Accumulate leaf nodes from multiple MCTS trees and evaluate in a single GPU batch
+2. **Vectorized environments**: Run N games simultaneously using vectorized MicroCivEnv
+3. **CUDA graph optimization**: Capture and replay GPU execution graphs for fixed-size batches
+4. **Benchmark**: Target ~50 games/min vs current ~4.4 games/min (GumbelMCTS, 8 sims)
+
+---
+
+## Phase 17: MuZero Training Run
+
+**Goal**: Validate learned dynamics model on MicroCiv.
+
+### Tasks
+
+1. Run MuZero PBT with `configs/muzero_pbt.yaml` (population_size=6)
+2. Compare AlphaZero vs MuZero training modes on identical hyperparameters
+3. Measure MuZero's advantage in search efficiency (no env cloning needed)
+
+---
+
+## Phase 18: DDP Test Rewrites & Full Type Safety
+
+**Goal**: Fix remaining 12 DDP xfailed tests and achieve full mypy strict mode.
+
+### Tasks
+
+1. Rewrite DDP tests to use `torch.multiprocessing.spawn` instead of subprocess
+2. Add `disallow_untyped_defs` for remaining packages (cloud, evaluation, rag)
+3. Target: 0 xfails, 0 mypy errors
+
+---
+
+## Phase 19: Human vs AI Interface
+
+**Goal**: Web-based UI for playing against the trained agent.
+
+### Tasks
+
+1. FastAPI backend serving the trained model
+2. WebSocket game state streaming
+3. React/HTMX frontend with MicroCiv board visualization
+4. Move history and agent confidence display
+
+---
+
+## Phase 20: Full Civ6 Integration
+
+**Goal**: Play against the real Civilization VI game.
+
+### Tasks
+
+1. Validate Lua mod with current Civ6 version
+2. Scale model to 16x16 board with 84 spatial channels
+3. Implement full 483K hierarchical action space
+4. Bridge latency optimization
+
+---
+
+## Priority Order
 
 ```
-Phase 1 (Test Coverage) ──→ Phase 2 (CI/CD) ──→ Phase 3 (GCP E2E) ──→ Phase 5 (Distributed) ──→ Phase 6 (PBT)
-                                             ╰──→ Phase 4 (Local Smoke) ─╯
+Phase 14 (Learn!) ──→ Phase 15 (PBT) ──→ Phase 16 (Speed) ──→ Phase 17 (MuZero)
+                                      ╰──→ Phase 18 (DDP/Types) ──→ Phase 19 (UI) ──→ Phase 20 (Civ6)
 ```
 
-**Estimated**: Phases 1-2 (1-2 days) → Phases 3-4 (2-3 days) → Phase 5 (3-5 days) → Phase 6 (1-2 weeks)
+**Immediate focus**: Phase 14 — make the agent learn. Everything else depends on this.

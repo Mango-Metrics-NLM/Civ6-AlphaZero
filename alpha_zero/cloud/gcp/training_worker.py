@@ -41,6 +41,8 @@ from alpha_zero.utils.wandb_logger import WandbLogger
 
 logger = logging.getLogger(__name__)
 
+CHECKPOINT_RETENTION: int = 3
+
 
 def setup_logging() -> None:
     """Configure logging for training worker."""
@@ -137,12 +139,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--resume_from", type=str, default=None, help="Checkpoint to resume from")
     # Network architecture args passed by the Vertex orchestrator
-    parser.add_argument("--board_size", type=int, default=16, help="Board size (spatial_size)")
-    parser.add_argument("--action_space_size", type=int, default=381, help="Action space size")
+    parser.add_argument("--board_size", type=int, default=8, help="Board size (spatial_size)")
+    parser.add_argument("--action_space_size", type=int, default=376, help="Action space size")
     parser.add_argument(
-        "--num_res_blocks", type=int, default=8, help="Number of transformer layers"
+        "--num_res_blocks", type=int, default=6, help="Number of transformer layers"
     )
-    parser.add_argument("--num_filters", type=int, default=256, help="Model embedding dimension")
+    parser.add_argument("--num_filters", type=int, default=64, help="Model embedding dimension")
+    parser.add_argument(
+        "--wandb_log_interval", type=int, default=10, help="W&B logging frequency (batches)"
+    )
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
     return parser.parse_args()
 
@@ -218,10 +223,10 @@ ENCODER_SPATIAL_CHANNELS: int = 13
 
 
 def create_model(
-    board_size: int = 16,
-    action_space_size: int = 381,
-    num_res_blocks: int = 8,
-    num_filters: int = 256,
+    board_size: int = 8,
+    action_space_size: int = 376,
+    num_res_blocks: int = 6,
+    num_filters: int = 64,
     spatial_channels: int = ENCODER_SPATIAL_CHANNELS,
 ) -> torch.nn.Module:
     """Create model architecture.
@@ -326,6 +331,7 @@ def train_epoch(
     wandb_logger: WandbLogger | None = None,
     spatial_channels: int = 13,
     spatial_size: int = 8,
+    wandb_log_interval: int = 10,
 ) -> tuple[float, float, float, int]:
     """Train for one epoch.
 
@@ -387,7 +393,7 @@ def train_epoch(
             and hasattr(wandb_logger, "is_enabled")
             and wandb_logger.is_enabled
         ):
-            if num_batches % 10 == 0:
+            if num_batches % wandb_log_interval == 0:
                 lr = optimizer.param_groups[0]["lr"]
                 wandb_logger.log_training_step(
                     step=global_step + num_batches,
@@ -453,12 +459,27 @@ def save_final_model(
     except Exception:
         new_version = 1
 
+    # Extract model config for architecture reconstruction
+    model_config_dict = None
+    if hasattr(model, "config"):
+        import dataclasses
+        from enum import Enum
+
+        model_config_dict = dataclasses.asdict(model.config)
+        # Convert enums to string values for JSON serialization
+        for key, value in model_config_dict.items():
+            if isinstance(value, Enum):
+                model_config_dict[key] = value.value
+
     uri = storage.save_model(
         model=model,
         version=new_version,
         metadata={"iteration": iteration},
+        model_config=model_config_dict,
     )
-    logger.info("Saved model v%d to %s", new_version, uri)
+    logger.info(
+        "Saved model v%d to %s (with config: %s)", new_version, uri, model_config_dict is not None
+    )
     return uri, new_version
 
 
@@ -546,7 +567,7 @@ def main() -> int:
             return 1
 
         # Prepare dataset
-        dataset = prepare_dataset(trajectories, args.action_space_size)
+        dataset = prepare_dataset(trajectories)
 
         if len(dataset) == 0:
             logger.error(
@@ -637,6 +658,7 @@ def main() -> int:
                 wandb_logger=wandb_logger,
                 spatial_channels=spatial_channels,
                 spatial_size=spatial_size,
+                wandb_log_interval=args.wandb_log_interval,
             )
 
             epoch_time = time.time() - epoch_start
@@ -686,7 +708,7 @@ def main() -> int:
             # Cleanup old checkpoints
             if not args.dry_run:
                 checkpoint_storage = GCSCheckpointStorage(config)
-                deleted = checkpoint_storage.cleanup_old_checkpoints(keep_last=3)
+                deleted = checkpoint_storage.cleanup_old_checkpoints(keep_last=CHECKPOINT_RETENTION)
                 if deleted:
                     logger.info("Cleaned up %d old checkpoints", deleted)
 

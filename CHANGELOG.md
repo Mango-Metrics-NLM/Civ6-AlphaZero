@@ -5,6 +5,99 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] — 2026-02-10
+
+### Fixed — Live Training Bug Fixes
+
+- **Legacy model config fallback**: Models v0-v2 (saved before Phase 13) had no `model_config`. The fallback was using `TransformerConfig()` defaults (embed_dim=256, spatial_size=16) causing size mismatch errors. Fixed to use `NetworkArchitectureConfig` pipeline defaults (embed_dim=64, board_size=8) in both `selfplay_worker.py` and `evaluation_worker.py`
+- **Training worker model_config persistence**: Training worker now saves `model_config` dict (via `dataclasses.asdict()` + Enum→value conversion) alongside model weights to GCS, enabling future models to load with correct architecture
+- **Post-run tournament version range**: Fixed bug where `get_initial_model_version()` was called after the training loop (returning latest=5) instead of saving initial version before the loop. Tournament `range(5, 3)` was empty. Fixed to use `range(initial_model_version, latest_version + 1)`
+- **Test fixes**: Updated `test_load_model_legacy_no_config`, `test_load_model_bad_config_falls_back`, and `test_load_model_legacy_format` to create state dicts matching pipeline architecture (embed_dim=64) instead of TransformerConfig defaults (embed_dim=256)
+
+### Changed
+
+- Docker image: v0.10.1 → v0.10.2 (`gcr.io/hrmtrain/civ6az-training:v0.10.2`)
+- Validated with live Vertex AI run: trim-night-121 (1-iter + tournament, $0.06)
+
+---
+
+## [0.10.0] — 2026-02-09
+
+### Added — Phase 13: Multi-Iteration Training & Post-Run Evaluation
+
+#### NetworkArchitectureConfig (`alpha_zero/cloud/gcp/config.py`)
+
+- **NetworkArchitectureConfig** dataclass: Single source of truth for architecture defaults
+  - `board_size=8`, `action_space_size=376`, `spatial_channels=13`, `vector_dim=64`, `num_layers=6`, `embed_dim=64`
+  - `from_env()` class method for environment variable overrides (`CIV6AZ_BOARD_SIZE`, etc.)
+- Added `network: NetworkArchitectureConfig` field to `GCPConfig`
+
+#### Shared Arena Module (`alpha_zero/cloud/gcp/arena.py`) — NEW
+
+- **`run_arena()`**: Extracted from `evaluation_worker.py` into reusable module
+  - Plays N games between two models with alternating sides
+  - Returns `ArenaResult` dataclass (wins, losses, draws, win_rate)
+  - Used by both evaluation_worker and post-run tournament
+- **`ArenaResult`**: Dataclass with `to_dict()` serialization
+
+#### Orchestrator W&B Logging (`vertex_orchestrator.py`)
+
+- Orchestrator-level W&B initialization (opt-in via `WANDB_ENABLED` env var)
+- Per-iteration metrics: `orchestrator/iteration`, `orchestrator/model_version`, `orchestrator/phase_*_duration`
+- Cost tracking: `orchestrator/iteration_cost`, `orchestrator/cumulative_cost`
+- Evaluation metrics: `orchestrator/eval_win_rate`, `orchestrator/eval_accepted`
+- Final summary: total iterations, success/fail counts, total cost, total duration
+
+#### Post-Run Tournament (`vertex_orchestrator.py`)
+
+- **`run_post_run_evaluation()`**: Round-robin tournament across all model versions
+  - Loads models from GCS, runs arena games locally on orchestrator machine
+  - Computes ELO ratings (K=32, starting 1500.0)
+  - Logs to W&B (`tournament/elo_*`, `tournament/best_model`, `tournament/best_elo`)
+  - Saves results JSON to GCS (`tournament/post_run_results.json`)
+- CLI flags: `--post_run_tournament`, `--tournament_games`, `--tournament_mcts_sims`
+
+#### Evaluation Worker Migration
+
+- Migrated from `MicroCivNetwork` (legacy, 381 actions) to `Civ6TransformerNetwork`
+- Loads `model_config` from GCS for correct architecture reconstruction
+- Handles enum string conversion (`norm_type`, `attention_type`)
+- Handles legacy models without config (falls back to `NetworkArchitectureConfig` defaults)
+
+### Fixed — 6 Critical Bugs
+
+| # | File | Bug | Fix |
+|---|------|-----|-----|
+| 1 | `selfplay_worker.py` | `action_space_size` default `381` | Changed to `376` |
+| 2 | `selfplay_worker.py` | `num_res_blocks=8`, `num_filters=256` | Changed to `6`, `64` |
+| 3 | `training_worker.py` | `board_size=16`, `action_space_size=381`, etc. | Changed to `8`, `376`, `6`, `64` |
+| 4 | `training_worker.py` | `prepare_dataset(trajectories, args.action_space_size)` | Pass `None` (uses TransformerConfig default) |
+| 5 | `evaluation_worker.py` | Uses `MicroCivNetwork` (legacy) | Migrated to `Civ6TransformerNetwork` |
+| 6 | `vertex_orchestrator.py` | `if new_version is not None` always True | Removed dead branch |
+
+### Changed
+
+- Docker image: v0.9.0 → v0.10.0 (`gcr.io/hrmtrain/civ6az-training:v0.10.0`)
+- Version: `0.9.0` → `0.10.0`
+- `container_healthcheck.py`: Added `arena` module to import check
+
+#### Test Suite (Phase 13)
+
+- `tests/cloud/unit/test_arena.py` — Arena module unit tests
+- `tests/cloud/unit/test_config_network.py` — NetworkArchitectureConfig tests
+- `tests/cloud/unit/test_orchestrator_wandb.py` — Orchestrator W&B logging tests
+- `tests/cloud/unit/test_post_run_evaluation.py` — Post-run tournament tests
+- Updated `test_evaluation_worker.py` — Migrated to Civ6TransformerNetwork
+- Updated `test_selfplay_worker.py` — Updated legacy format test
+
+#### Live Validation
+
+- **wandering-yogurt-88**: 3-iteration run, 54.5 min, $0.32 — all phases succeeded
+- **trim-night-121**: 1-iteration + post-run tournament, $0.06 — tournament produced ELO rankings, saved to GCS
+- GCS models: v0 through v6
+
+---
+
 ## [0.9.0] — 2026-02-10
 
 ### Changed — Phase 11: Code Quality, Tech Debt Reduction & Production Hardening

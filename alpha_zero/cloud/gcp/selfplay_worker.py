@@ -33,6 +33,9 @@ from alpha_zero.cloud.gcp.storage import GCSModelStorage, GCSTrajectoryStorage
 
 logger = logging.getLogger(__name__)
 
+# Memory threshold for triggering garbage collection (in MB)
+MEMORY_THRESHOLD_MB: int = 6000
+
 
 def setup_logging(worker_id: int) -> None:
     """Configure logging for worker."""
@@ -83,12 +86,12 @@ def parse_args() -> argparse.Namespace:
         "--gumbel_num_actions", type=int, default=16, help="Gumbel MCTS sampled actions"
     )
     parser.add_argument(
-        "--action_space_size", type=int, default=381, help="Size of the action space"
+        "--action_space_size", type=int, default=376, help="Size of the action space"
     )
     parser.add_argument(
-        "--num_res_blocks", type=int, default=8, help="Number of transformer layers"
+        "--num_res_blocks", type=int, default=6, help="Number of transformer layers"
     )
-    parser.add_argument("--num_filters", type=int, default=256, help="Model embedding dimension")
+    parser.add_argument("--num_filters", type=int, default=64, help="Model embedding dimension")
     parser.add_argument("--reward_shaping", action="store_true", help="Enable reward shaping")
     parser.add_argument("--reward_scale", type=float, default=1.0, help="Reward scaling factor")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
@@ -154,16 +157,36 @@ def load_model(config: GCPConfig, version: int, dry_run: bool = False) -> torch.
         try:
             transformer_config = TransformerConfig(**config_copy)
         except TypeError as e:
-            logger.warning("Failed to parse model config, using defaults: %s", e)
-            transformer_config = TransformerConfig()
+            net_cfg = config.network
+            logger.warning("Failed to parse model config (%s), using pipeline defaults", e)
+            transformer_config = TransformerConfig(
+                spatial_channels=net_cfg.spatial_channels,
+                spatial_size=net_cfg.board_size,
+                vector_dim=net_cfg.vector_dim,
+                action_space_size=net_cfg.action_space_size,
+                num_layers=net_cfg.num_layers,
+                embed_dim=net_cfg.embed_dim,
+            )
     else:
-        # Legacy model without config - use defaults and warn
+        # Legacy model without config - use NetworkArchitectureConfig as fallback
+        net_cfg = config.network
         logger.warning(
-            "Model v%d has no saved config, using defaults. "
-            "This may cause shape mismatches if model was trained with different architecture.",
+            "Model v%d has no saved config. Using pipeline architecture defaults: "
+            "spatial_size=%d, action_space=%d, embed_dim=%d, num_layers=%d",
             version,
+            net_cfg.board_size,
+            net_cfg.action_space_size,
+            net_cfg.embed_dim,
+            net_cfg.num_layers,
         )
-        transformer_config = TransformerConfig()
+        transformer_config = TransformerConfig(
+            spatial_channels=net_cfg.spatial_channels,
+            spatial_size=net_cfg.board_size,
+            vector_dim=net_cfg.vector_dim,
+            action_space_size=net_cfg.action_space_size,
+            num_layers=net_cfg.num_layers,
+            embed_dim=net_cfg.embed_dim,
+        )
 
     # Create model and load state dict
     try:
@@ -261,8 +284,6 @@ def run_selfplay(
 
         mcts_kwargs: dict[str, Any] = {
             "num_simulations": mcts_sims,
-            "temperature": 1.0,
-            "temperature_threshold": 30,
         }
 
         if mcts_type in puct_variants:
@@ -364,7 +385,7 @@ def run_selfplay(
                 mem_mb,
             )
             # Force garbage collection if memory is getting high
-            if mem_mb > 6000:  # 6GB threshold for 8GB container
+            if mem_mb > MEMORY_THRESHOLD_MB:
                 logger.warning("High memory usage (%.0f MB), forcing GC", mem_mb)
                 gc.collect()
                 if device != "cpu":
