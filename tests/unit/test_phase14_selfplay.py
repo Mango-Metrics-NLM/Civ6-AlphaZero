@@ -244,3 +244,107 @@ class TestComputeTemperatureEdgeCases:
         # progress = min(50/30, 1.0) = 1.0
         # temperature * 0.5 * (1.0 + cos(pi * 1.0)) = 0.0
         assert result == pytest.approx(0.0)
+
+
+class TestMCTSKwargsFiltering:
+    """Test that mcts_config_override is filtered by MCTS variant.
+
+    Regression test for: create_mcts() got unexpected keyword argument(s):
+    {'dirichlet_epsilon', 'dirichlet_alpha', 'c_puct'} when using GumbelMCTS.
+    """
+
+    def test_gumbel_rejects_civ6_kwargs_via_create_mcts(self) -> None:
+        """GumbelMCTS should NOT receive c_puct/dirichlet_* from create_mcts."""
+        from unittest.mock import MagicMock
+
+        from alpha_zero.core.mcts_factory import create_mcts
+
+        mock_network = MagicMock()
+
+        # These are the Gumbel-valid kwargs — should succeed
+        mcts = create_mcts(
+            variant="gumbel",
+            network=mock_network,
+            num_simulations=8,
+            num_sampled_actions=4,
+        )
+        assert mcts is not None
+
+        # These include civ6-only kwargs — should raise TypeError
+        with pytest.raises(TypeError, match="unexpected keyword argument"):
+            create_mcts(
+                variant="gumbel",
+                network=mock_network,
+                num_simulations=8,
+                c_puct=1.5,
+                dirichlet_alpha=0.3,
+                dirichlet_epsilon=0.25,
+            )
+
+    def test_selfplay_override_filters_civ6_keys_for_gumbel(self) -> None:
+        """Verify that selfplay worker's filtering logic removes civ6-only keys.
+
+        This directly tests the filtering pattern used in run_selfplay().
+        """
+        # Simulate the filtering logic from run_selfplay
+        civ6_only_keys = {"c_puct", "dirichlet_alpha", "dirichlet_epsilon"}
+        gumbel_only_keys = {"num_sampled_actions", "c_visit", "c_scale"}
+        puct_variants = {"puct", "civ6"}
+        gumbel_variants = {"gumbel"}
+
+        mcts_config_override = {
+            "c_puct": 1.5,
+            "dirichlet_alpha": 0.3,
+            "dirichlet_epsilon": 0.25,
+            "num_simulations": 16,
+        }
+
+        # For gumbel MCTS type
+        mcts_type = "gumbel"
+        filtered = {}
+        for k, v in mcts_config_override.items():
+            if v is None:
+                continue
+            if mcts_type in gumbel_variants and k in civ6_only_keys:
+                continue
+            if mcts_type in puct_variants and k in gumbel_only_keys:
+                continue
+            filtered[k] = v
+
+        # Only num_simulations should remain
+        assert "c_puct" not in filtered
+        assert "dirichlet_alpha" not in filtered
+        assert "dirichlet_epsilon" not in filtered
+        assert filtered["num_simulations"] == 16
+
+    def test_selfplay_override_keeps_civ6_keys_for_puct(self) -> None:
+        """Verify civ6-only keys are kept for puct/civ6 MCTS type."""
+        civ6_only_keys = {"c_puct", "dirichlet_alpha", "dirichlet_epsilon"}
+        gumbel_only_keys = {"num_sampled_actions", "c_visit", "c_scale"}
+        puct_variants = {"puct", "civ6"}
+        gumbel_variants = {"gumbel"}
+
+        mcts_config_override = {
+            "c_puct": 1.5,
+            "dirichlet_alpha": 0.3,
+            "dirichlet_epsilon": 0.25,
+            "num_simulations": 16,
+        }
+
+        # For civ6 MCTS type
+        mcts_type = "civ6"
+        filtered = {}
+        for k, v in mcts_config_override.items():
+            if v is None:
+                continue
+            if mcts_type in gumbel_variants and k in civ6_only_keys:
+                continue
+            if mcts_type in puct_variants and k in gumbel_only_keys:
+                continue
+            filtered[k] = v
+
+        # All keys should remain for civ6
+        assert filtered["c_puct"] == 1.5
+        assert filtered["dirichlet_alpha"] == 0.3
+        assert filtered["dirichlet_epsilon"] == 0.25
+        assert filtered["num_simulations"] == 16

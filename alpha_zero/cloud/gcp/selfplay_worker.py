@@ -360,8 +360,20 @@ def run_selfplay(
             )
 
         # Apply remaining MCTS config overrides (temperature already extracted)
+        # Filter to only keys valid for the current MCTS variant to avoid
+        # passing e.g. c_puct/dirichlet_* to GumbelMCTS
+        civ6_only_keys = {"c_puct", "dirichlet_alpha", "dirichlet_epsilon"}
+        gumbel_only_keys = {"num_sampled_actions", "c_visit", "c_scale"}
         if mcts_config_override:
-            mcts_kwargs.update({k: v for k, v in mcts_config_override.items() if v is not None})
+            for k, v in mcts_config_override.items():
+                if v is None:
+                    continue
+                # Skip keys that belong to a different MCTS variant
+                if mcts_type in gumbel_variants and k in civ6_only_keys:
+                    continue
+                if mcts_type in puct_variants and k in gumbel_only_keys:
+                    continue
+                mcts_kwargs[k] = v
 
         mcts = create_mcts(
             variant=mcts_type,
