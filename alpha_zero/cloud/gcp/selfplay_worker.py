@@ -80,6 +80,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--temperature_threshold", type=int, default=30, help="Turn for temperature=0"
     )
+    parser.add_argument(
+        "--temperature_schedule",
+        type=str,
+        default="threshold",
+        choices=["threshold", "linear", "cosine"],
+        help="Temperature decay schedule (threshold=step at threshold, linear/cosine=smooth decay)",
+    )
 
     # Additional hyperparameters
     parser.add_argument(
@@ -212,6 +219,41 @@ def load_model(config: GCPConfig, version: int, dry_run: bool = False) -> torch.
     return model
 
 
+def compute_temperature(
+    turn: int,
+    max_turns: int,
+    temperature: float,
+    temperature_threshold: int,
+    schedule: str = "threshold",
+) -> float:
+    """Compute action selection temperature for a given turn.
+
+    Args:
+        turn: Current turn number (0-indexed).
+        max_turns: Maximum turns in the game.
+        temperature: Base temperature value.
+        temperature_threshold: Turn at which threshold schedule drops to 0.
+        schedule: Schedule type ("threshold", "linear", "cosine").
+
+    Returns:
+        Temperature value for this turn.
+    """
+    if schedule == "threshold":
+        return temperature if turn < temperature_threshold else 0.0
+    elif schedule == "linear":
+        # Linear decay from temperature to 0 over max_turns
+        progress = min(turn / max(max_turns, 1), 1.0)
+        return temperature * (1.0 - progress)
+    elif schedule == "cosine":
+        # Cosine annealing from temperature to 0
+        import math
+
+        progress = min(turn / max(max_turns, 1), 1.0)
+        return temperature * 0.5 * (1.0 + math.cos(math.pi * progress))
+    else:
+        return temperature
+
+
 def run_selfplay(
     model: torch.nn.Module,
     num_games: int,
@@ -223,6 +265,7 @@ def run_selfplay(
     mcts_config_override: dict[str, Any] | None = None,
     dry_run: bool = False,
     device: str = "cpu",
+    temperature_schedule: str = "threshold",
 ) -> list[dict]:
     """Run self-play games and collect trajectories.
 
@@ -265,6 +308,22 @@ def run_selfplay(
             dummy_trajectories.append(dummy_traj)
         return dummy_trajectories
 
+    # Extract temperature params from override before the game loop
+    # These are action selection params, not MCTS config fields
+    sel_temperature = 1.0
+    sel_threshold = max_turns
+    if mcts_config_override:
+        sel_temperature = mcts_config_override.pop("temperature", 1.0)
+        sel_threshold = mcts_config_override.pop("temperature_threshold", max_turns)
+
+    logger.info(
+        "Temperature schedule: %s (temp=%.2f, threshold=%d, max_turns=%d)",
+        temperature_schedule,
+        sel_temperature,
+        sel_threshold,
+        max_turns,
+    )
+
     trajectories: list[dict[str, Any]] = []
     failed_games = 0
 
@@ -300,6 +359,7 @@ def run_selfplay(
                 gumbel_num_actions,
             )
 
+        # Apply remaining MCTS config overrides (temperature already extracted)
         if mcts_config_override:
             mcts_kwargs.update({k: v for k, v in mcts_config_override.items() if v is not None})
 
@@ -328,7 +388,15 @@ def run_selfplay(
             try:
                 # Pass env directly since MicroCivEnv implements MCTSEnvironment protocol
                 policy, _ = mcts.search(env)  # type: ignore[arg-type]
-                action = mcts.select_action(policy)
+                turn = len(trajectory["spatial"])
+                temp = compute_temperature(
+                    turn=turn,
+                    max_turns=max_turns,
+                    temperature=sel_temperature,
+                    temperature_threshold=sel_threshold,
+                    schedule=temperature_schedule,
+                )
+                action = mcts.select_action(policy, temperature=temp)
             except Exception as e:
                 logger.error(
                     "MCTS search failed at step %d: %s",
@@ -512,6 +580,7 @@ def main() -> int:
             mcts_config_override=mcts_override,
             dry_run=args.dry_run,
             device=str(device),
+            temperature_schedule=args.temperature_schedule,
         )
         elapsed = time.time() - start_time
 

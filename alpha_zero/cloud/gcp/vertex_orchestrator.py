@@ -146,6 +146,34 @@ def parse_args() -> argparse.Namespace:
         help="MCTS simulations per move in tournament games",
     )
 
+    # Learning rate schedule (passed through to training worker)
+    parser.add_argument(
+        "--lr_schedule_type",
+        type=str,
+        default="constant",
+        choices=["constant", "linear", "cosine", "warmup_cosine", "exponential", "step"],
+        help="LR schedule type for training worker",
+    )
+    parser.add_argument("--lr_initial", type=float, default=0.001, help="Initial learning rate")
+    parser.add_argument("--lr_final", type=float, default=0.0001, help="Final learning rate")
+    parser.add_argument("--lr_warmup_steps", type=int, default=0, help="LR warmup steps")
+    parser.add_argument("--lr_decay_steps", type=int, default=0, help="LR decay steps (0=auto)")
+    parser.add_argument("--weight_decay", type=float, default=0.01, help="AdamW weight decay")
+
+    # Stall detection
+    parser.add_argument(
+        "--stall_lookback",
+        type=int,
+        default=5,
+        help="Iterations to check for improvement (stall detection)",
+    )
+    parser.add_argument(
+        "--stall_threshold",
+        type=float,
+        default=0.02,
+        help="Minimum win rate improvement to not be stalled",
+    )
+
     # Dry run
     parser.add_argument(
         "--dry_run", action="store_true", help="Validate without launching cloud jobs"
@@ -190,12 +218,26 @@ def build_selfplay_extra_args(args: argparse.Namespace) -> list[str]:
 
 def build_training_extra_args(args: argparse.Namespace) -> list[str]:
     """Build extra args list for training container."""
-    return [
+    extra = [
         f"--board_size={args.board_size}",
         f"--action_space_size={args.action_space_size}",
         f"--num_res_blocks={args.num_res_blocks}",
         f"--num_filters={args.num_filters}",
     ]
+    # Pass through LR schedule args (only if non-default to keep backwards compat)
+    if args.lr_schedule_type != "constant":
+        extra.extend(
+            [
+                f"--lr_schedule_type={args.lr_schedule_type}",
+                f"--lr_initial={args.lr_initial}",
+                f"--lr_final={args.lr_final}",
+                f"--lr_warmup_steps={args.lr_warmup_steps}",
+                f"--lr_decay_steps={args.lr_decay_steps}",
+            ]
+        )
+    if args.weight_decay != 0.01:
+        extra.append(f"--weight_decay={args.weight_decay}")
+    return extra
 
 
 def build_evaluation_extra_args(args: argparse.Namespace) -> list[str]:
@@ -662,6 +704,7 @@ def main() -> int:
         total_start = time.time()
         successful_iterations = 0
         failed_iterations = 0
+        win_rate_history: list[float] = []
 
         for i in range(args.iterations):
             iteration_start = time.time()
@@ -822,6 +865,48 @@ def main() -> int:
 
             iteration_duration = (time.time() - iteration_start) / 60.0  # minutes
 
+            # Stall detection (only when evaluation is enabled)
+            stall_detected = False
+            win_rate_trend = 0.0
+            if args.evaluation_games > 0 and model_version > 0:
+                win_rate_history.append(win_rate)
+
+                try:
+                    from alpha_zero.training.diagnostics import TrainingDiagnostics
+
+                    _stall_diag = TrainingDiagnostics(stall_threshold=args.stall_threshold)
+                    stall_detected = _stall_diag.detect_learning_stall(
+                        win_rate_history,
+                        lookback=args.stall_lookback,
+                        threshold=args.stall_threshold,
+                    )
+                    win_rate_trend = _stall_diag.compute_win_rate_trend(
+                        win_rate_history,
+                        lookback=args.stall_lookback,
+                    )
+
+                    if stall_detected:
+                        logger.warning(
+                            "Learning stall detected at iteration %d: "
+                            "win rate trend=%.4f over last %d iterations",
+                            iteration,
+                            win_rate_trend,
+                            args.stall_lookback,
+                        )
+                        if wandb_logger is not None and wandb_logger.is_enabled:
+                            wandb_logger.alert(
+                                title="Learning Stall Detected",
+                                text=(
+                                    f"Win rate hasn't improved >{args.stall_threshold:.0%} "
+                                    f"in {args.stall_lookback} iterations. "
+                                    f"Current: {win_rate:.1%}, "
+                                    f"Trend: {win_rate_trend:+.4f}/iter"
+                                ),
+                                level="WARN",
+                            )
+                except ImportError:
+                    logger.debug("TrainingDiagnostics not available for stall detection")
+
             # Log iteration metrics to W&B
             if wandb_logger is not None and wandb_logger.is_enabled:
                 iteration_metrics = {
@@ -831,6 +916,8 @@ def main() -> int:
                     "orchestrator/selfplay_cost": sp_cost,
                     "orchestrator/training_cost": train_cost,
                     "orchestrator/cumulative_cost": total_estimated_cost,
+                    "orchestrator/stall_detected": int(stall_detected),
+                    "orchestrator/win_rate_trend": win_rate_trend,
                 }
                 if args.evaluation_games > 0 and model_version > 0:
                     iteration_metrics["orchestrator/eval_win_rate"] = win_rate

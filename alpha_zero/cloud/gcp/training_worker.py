@@ -148,6 +148,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--wandb_log_interval", type=int, default=10, help="W&B logging frequency (batches)"
     )
+    # Learning rate schedule args (backwards-compatible: constant=no change)
+    parser.add_argument(
+        "--lr_schedule_type",
+        type=str,
+        default="constant",
+        choices=["constant", "linear", "cosine", "warmup_cosine", "exponential", "step"],
+        help="LR schedule type (default: constant=fixed LR)",
+    )
+    parser.add_argument("--lr_initial", type=float, default=0.001, help="Initial learning rate")
+    parser.add_argument("--lr_final", type=float, default=0.0001, help="Final learning rate")
+    parser.add_argument("--lr_warmup_steps", type=int, default=0, help="LR warmup steps")
+    parser.add_argument(
+        "--lr_decay_steps",
+        type=int,
+        default=0,
+        help="LR decay steps (0=auto-compute from epochs*batches)",
+    )
+    parser.add_argument("--weight_decay", type=float, default=0.01, help="AdamW weight decay")
+    parser.add_argument(
+        "--diagnostic_window", type=int, default=100, help="Diagnostics rolling window size"
+    )
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
     return parser.parse_args()
 
@@ -332,8 +353,27 @@ def train_epoch(
     spatial_channels: int = 13,
     spatial_size: int = 8,
     wandb_log_interval: int = 10,
+    lr_scheduler: object | None = None,
+    diagnostics: object | None = None,
+    report: object | None = None,
+    profiler: object | None = None,
 ) -> tuple[float, float, float, int]:
     """Train for one epoch.
+
+    Args:
+        model: Neural network model.
+        dataloader: Training data loader.
+        optimizer: Optimizer instance.
+        device: Training device.
+        global_step: Global step counter for W&B logging.
+        wandb_logger: Optional W&B logger.
+        spatial_channels: Number of spatial channels.
+        spatial_size: Board size.
+        wandb_log_interval: W&B logging frequency in batches.
+        lr_scheduler: Optional HyperparameterScheduler for LR scheduling.
+        diagnostics: Optional TrainingDiagnostics for metric tracking.
+        report: Optional TrainingReport for periodic summary generation.
+        profiler: Optional PerformanceProfiler for section timing.
 
     Returns:
         Tuple of (total_loss, policy_loss, value_loss, num_batches).
@@ -350,6 +390,13 @@ def train_epoch(
         target_policies = target_policies.to(device)
         target_values = target_values.to(device)
 
+        # Update learning rate from scheduler if available
+        current_step = global_step + num_batches
+        if lr_scheduler is not None:
+            scheduled_lr = lr_scheduler.get_learning_rate(current_step)
+            for param_group in optimizer.param_groups:
+                param_group["lr"] = scheduled_lr
+
         # Forward pass
         # Reshape spatial for transformer input and validate
         batch_size = spatial.shape[0]
@@ -364,6 +411,9 @@ def train_epoch(
             batch_size, spatial_channels, spatial_size, spatial_size
         )  # B, C, H, W
 
+        if profiler is not None:
+            profiler.start("forward_pass")
+
         policy_logits, value = model(spatial, vector)
 
         # Policy loss (cross-entropy)
@@ -376,16 +426,63 @@ def train_epoch(
         # Combined loss
         loss = policy_loss + value_loss
 
+        if profiler is not None:
+            profiler.stop("forward_pass")
+
         # Backward pass
+        if profiler is not None:
+            profiler.start("backward_pass")
+
         optimizer.zero_grad()
         loss.backward()
+
+        # Compute gradient stats BEFORE clipping (for diagnostics)
+        grad_norm_pre_clip = 0.0
+        if diagnostics is not None:
+            grad_stats = diagnostics.compute_gradient_stats(model)
+            grad_norm_pre_clip = grad_stats["total_norm"]
+
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
+
+        if profiler is not None:
+            profiler.stop("backward_pass")
 
         total_loss += loss.item()
         total_policy_loss += policy_loss.item()
         total_value_loss += value_loss.item()
         num_batches += 1
+
+        # Record step in training report
+        if report is not None:
+            report.record_step(
+                step=current_step,
+                loss=loss.item(),
+                grad_norm=grad_norm_pre_clip,
+                lr=optimizer.param_groups[0]["lr"],
+                policy_loss=policy_loss.item(),
+                value_loss=value_loss.item(),
+            )
+
+        # Compute diagnostic metrics
+        diagnostic_kwargs: dict[str, float] = {}
+        if diagnostics is not None:
+            policy_entropy = diagnostics.compute_policy_entropy(policy_logits)
+            value_accuracy = diagnostics.compute_value_accuracy(value, target_values)
+            diagnostic_kwargs = {
+                "policy_entropy": policy_entropy,
+                "value_sign_accuracy": value_accuracy["sign_accuracy"],
+                "value_correlation": value_accuracy["correlation"],
+                "value_mae": value_accuracy["mae"],
+                "grad_norm_pre_clip": grad_norm_pre_clip,
+            }
+            logger.debug(
+                "Step %d: entropy=%.3f, sign_acc=%.3f, corr=%.3f",
+                current_step,
+                policy_entropy,
+                value_accuracy["sign_accuracy"],
+                value_accuracy["correlation"],
+            )
 
         # Log to W&B periodically
         if (
@@ -401,7 +498,20 @@ def train_epoch(
                     policy_loss=policy_loss.item(),
                     value_loss=value_loss.item(),
                     learning_rate=lr,
+                    **diagnostic_kwargs,
                 )
+
+    # Generate training report if interval reached
+    end_step = global_step + num_batches
+    if report is not None and report.should_report(end_step):
+        report_data = report.generate_report(end_step)
+        if (
+            report_data is not None
+            and wandb_logger is not None
+            and hasattr(wandb_logger, "is_enabled")
+            and wandb_logger.is_enabled
+        ):
+            wandb_logger.log(report_data.to_wandb_dict())
 
     return (
         total_loss / max(num_batches, 1),
@@ -604,8 +714,99 @@ def main() -> int:
         if world_size > 1:
             model = DDP(model, device_ids=[local_rank])
 
-        # Create optimizer
-        optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
+        # Enable W&B model watching for automatic gradient histograms
+        if (
+            wandb_logger is not None
+            and hasattr(wandb_logger, "is_enabled")
+            and wandb_logger.is_enabled
+        ):
+            try:
+                wandb_logger.watch_model(model, log="gradients", log_freq=100)
+                logger.info("W&B model gradient watching enabled")
+            except Exception as e:
+                logger.debug("Failed to enable W&B model watching: %s", e)
+
+        # Create optimizer with explicit weight_decay
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=args.learning_rate,
+            weight_decay=args.weight_decay,
+        )
+
+        # Create LR scheduler (backwards-compatible: constant=no change)
+        lr_scheduler = None
+        try:
+            from alpha_zero.orchestrator.config import ScheduleConfig
+            from alpha_zero.orchestrator.scheduler import HyperparameterScheduler
+
+            if args.lr_schedule_type != "constant":
+                lr_schedule_config = ScheduleConfig(
+                    schedule_type=args.lr_schedule_type,
+                    initial_value=args.lr_initial,
+                    final_value=args.lr_final,
+                    warmup_steps=args.lr_warmup_steps,
+                    decay_steps=args.lr_decay_steps
+                    if args.lr_decay_steps > 0
+                    else (args.epochs * len(dataloader)),
+                )
+                lr_scheduler = HyperparameterScheduler(lr_schedule=lr_schedule_config)
+                if is_main_process:
+                    logger.info(
+                        "LR schedule: %s (%.6f -> %.6f, warmup=%d, decay=%d steps)",
+                        args.lr_schedule_type,
+                        args.lr_initial,
+                        args.lr_final,
+                        args.lr_warmup_steps,
+                        lr_schedule_config.decay_steps,
+                    )
+        except ImportError:
+            logger.debug("HyperparameterScheduler not available, using constant LR")
+
+        # Initialize training diagnostics
+        diagnostics = None
+        try:
+            from alpha_zero.training.diagnostics import TrainingDiagnostics
+
+            diagnostics = TrainingDiagnostics(window_size=args.diagnostic_window)
+            if is_main_process:
+                logger.info("Training diagnostics enabled (window=%d)", args.diagnostic_window)
+        except ImportError:
+            logger.debug("TrainingDiagnostics not available")
+
+        # Initialize training report
+        report = None
+        try:
+            from alpha_zero.training.training_report import TrainingReport, TrainingReportConfig
+
+            report = TrainingReport(TrainingReportConfig(report_interval=max(len(dataloader), 1)))
+            if is_main_process:
+                logger.info("Training report enabled (interval=%d steps)", max(len(dataloader), 1))
+        except ImportError:
+            logger.debug("TrainingReport not available")
+
+        # Initialize performance profiler
+        profiler = None
+        try:
+            from alpha_zero.utils.logging_config import PerformanceProfiler
+
+            profiler = PerformanceProfiler()
+            if is_main_process:
+                logger.info("Performance profiler enabled")
+        except ImportError:
+            logger.debug("PerformanceProfiler not available")
+
+        # Log trajectory quality before training
+        if diagnostics is not None and is_main_process:
+            traj_quality = diagnostics.analyze_trajectory_quality(trajectories)
+            if (
+                wandb_logger is not None
+                and hasattr(wandb_logger, "is_enabled")
+                and wandb_logger.is_enabled
+            ):
+                wandb_logger.log(
+                    {f"train/{k}": v for k, v in traj_quality.items()},
+                    commit=False,
+                )
 
         # Resume from checkpoint if specified
         start_epoch = 0
@@ -659,9 +860,30 @@ def main() -> int:
                 spatial_channels=spatial_channels,
                 spatial_size=spatial_size,
                 wandb_log_interval=args.wandb_log_interval,
+                lr_scheduler=lr_scheduler,
+                diagnostics=diagnostics,
+                report=report,
+                profiler=profiler,
             )
 
             epoch_time = time.time() - epoch_start
+
+            # Log profiler timing summary
+            if (
+                profiler is not None
+                and is_main_process
+                and wandb_logger is not None
+                and hasattr(wandb_logger, "is_enabled")
+                and wandb_logger.is_enabled
+            ):
+                for section_name in ["forward_pass", "backward_pass"]:
+                    summary = profiler.get_summary(section_name)
+                    if summary:
+                        wandb_logger.log(
+                            {f"profiler/{section_name}_mean_ms": summary["mean"] * 1000},
+                            commit=False,
+                        )
+
             prev_step = global_step
             global_step += num_batches
 

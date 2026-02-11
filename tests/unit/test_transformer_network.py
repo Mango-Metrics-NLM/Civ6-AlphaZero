@@ -45,9 +45,13 @@ class TestTransformerConfig:
         """Test default configuration values."""
         config = TransformerConfig()
         assert config.spatial_channels == 13
-        assert config.spatial_size == 16
-        assert config.embed_dim == 256
+        assert config.spatial_size == 8
+        assert config.embed_dim == 64
         assert config.num_heads == 8
+        assert config.action_space_size == 376
+        assert config.num_layers == 6
+        assert config.value_head_dim == 64
+        assert config.policy_hidden_dim == 128
 
     def test_custom_config(self) -> None:
         """Test custom configuration."""
@@ -871,4 +875,4 @@ class TestTransformerIntegration:
             vector = torch.randn(2, 64)
 
             policy, _value = network(spatial, vector)
-            assert policy.shape == (2, 381)
+            assert policy.shape == (2, 376)
