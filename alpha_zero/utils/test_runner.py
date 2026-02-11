@@ -93,7 +93,8 @@ class RunResult:
             "=" * 50,
             f"Status: {self.status.value.upper()}",
             f"Duration: {self.duration_seconds:.2f}s",
-            f"Total: {self.total_tests} | Passed: {self.passed} | Failed: {self.failed} | Errors: {self.errors} | Skipped: {self.skipped}",
+            f"Total: {self.total_tests} | Passed: {self.passed} | "
+            f"Failed: {self.failed} | Errors: {self.errors} | Skipped: {self.skipped}",
         ]
 
         if self.coverage_percent is not None:
@@ -159,7 +160,7 @@ class RunConfig:
 class PytestRunner:
     """Test runner with comprehensive test execution capabilities."""
 
-    def __init__(self, config: RunConfig | None = None):
+    def __init__(self, config: RunConfig | None = None) -> None:
         """Initialize test runner.
 
         Args:
@@ -272,7 +273,7 @@ class PytestRunner:
         start_time = time.time()
 
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: S603
                 args,
                 cwd=str(self.config.project_root),
                 capture_output=True,

@@ -29,14 +29,14 @@ from alpha_zero.hierarchical.encoders.state_encoder import (
 )
 
 __all__ = [
+    "GoalEmbedding",
+    # Goal encoders
+    "GoalEncoder",
+    "HierarchicalGoalEncoder",
+    "HierarchicalStateEncoder",
+    "OperationalStateEncoder",
     # State encoders
     "StateEncoder",
     "StrategicStateEncoder",
     "TacticalStateEncoder",
-    "OperationalStateEncoder",
-    "HierarchicalStateEncoder",
-    # Goal encoders
-    "GoalEncoder",
-    "GoalEmbedding",
-    "HierarchicalGoalEncoder",
 ]

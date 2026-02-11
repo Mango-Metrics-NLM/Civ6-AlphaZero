@@ -86,7 +86,12 @@ class LogContext:
             set_correlation_id(self.correlation_id)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object | None,
+    ) -> None:
         """Exit context."""
 
     def to_dict(self) -> dict[str, Any]:
@@ -116,7 +121,7 @@ class RAGLogger:
         name: str,
         level: LogLevel = LogLevel.INFO,
         config: LoggingConfig | None = None,
-    ):
+    ) -> None:
         """Initialize RAG logger.
 
         Args:

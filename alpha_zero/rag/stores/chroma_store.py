@@ -38,7 +38,7 @@ class ChromaVectorStore(VectorStore):
         dimension: int = 1536,
         persist_directory: Path | None = None,
         distance_metric: str = "cosine",
-    ):
+    ) -> None:
         """Initialize ChromaDB vector store.
 
         Args:
@@ -67,7 +67,7 @@ class ChromaVectorStore(VectorStore):
         self._loop = asyncio.get_event_loop()
 
         # Create client in thread pool to avoid blocking
-        def _create_client():
+        def _create_client() -> Any:
             if self.persist_directory:
                 self.persist_directory.mkdir(parents=True, exist_ok=True)
                 return chromadb.PersistentClient(
@@ -91,7 +91,7 @@ class ChromaVectorStore(VectorStore):
             "inner_product": "ip",
         }.get(self.distance_metric, "cosine")
 
-        def _get_collection():
+        def _get_collection() -> Any:
             return self._client.get_or_create_collection(
                 name=self.collection_name,
                 metadata={"hnsw:space": distance_fn},
@@ -129,7 +129,7 @@ class ChromaVectorStore(VectorStore):
         contents = [doc.content for doc in documents]
         metadatas = [self._serialize_metadata(doc.metadata.to_dict()) for doc in documents]
 
-        def _add():
+        def _add() -> None:
             self._collection.add(
                 ids=ids,
                 embeddings=embeddings,
@@ -164,7 +164,7 @@ class ChromaVectorStore(VectorStore):
         if filter_metadata:
             where_filter = self._build_where_filter(filter_metadata)
 
-        def _query():
+        def _query() -> Any:
             return self._collection.query(
                 query_embeddings=[query_embedding.tolist()],
                 n_results=top_k,
@@ -228,7 +228,7 @@ class ChromaVectorStore(VectorStore):
         existing = await self.get(ids)
         count_before = sum(1 for doc in existing if doc is not None)
 
-        def _delete():
+        def _delete() -> None:
             self._collection.delete(ids=ids)
 
         assert self._loop is not None
@@ -247,7 +247,7 @@ class ChromaVectorStore(VectorStore):
         if not self._is_initialized:
             raise RuntimeError("Store not initialized. Call initialize() first.")
 
-        def _get():
+        def _get() -> Any:
             return self._collection.get(
                 ids=ids,
                 include=["embeddings", "documents", "metadatas"],
@@ -328,7 +328,7 @@ class ChromaVectorStore(VectorStore):
         return {"$and": conditions}
 
     @classmethod
-    def from_config(cls, config) -> ChromaVectorStore:
+    def from_config(cls, config: Any) -> ChromaVectorStore:
         """Create store from VectorStoreConfig.
 
         Args:

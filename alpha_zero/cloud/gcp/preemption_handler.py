@@ -14,7 +14,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -444,7 +444,7 @@ class PreemptionHandler:
         checkpoint_data: dict[str, Any] = {
             "model_state_dict": model.state_dict(),
             "iteration": iteration,
-            "checkpoint_time": datetime.utcnow().isoformat(),
+            "checkpoint_time": datetime.now(UTC).isoformat(),
             "reason": reason,
             "checkpoint_number": self._checkpoint_count,
         }
@@ -456,7 +456,7 @@ class PreemptionHandler:
             checkpoint_data["extra"] = extra
 
         # Generate checkpoint filename
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         filename = f"checkpoint_{timestamp}_iter_{iteration}.pt"
         local_path = self.checkpoint_dir / filename
 
@@ -471,7 +471,7 @@ class PreemptionHandler:
                 blob_path = f"checkpoints/{filename}"
                 data = local_path.read_bytes()
                 gcs_path = self.gcs_storage.backend.upload_blob(
-                    self.gcs_storage._bucket,
+                    self.gcs_storage.bucket,
                     blob_path,
                     data,
                 )
@@ -626,7 +626,7 @@ class PreemptionHandler:
             job_type=self._job_type,
             iteration=self._current_iteration,
             checkpoint_path=checkpoint_path,
-            preemption_time=datetime.utcnow().isoformat(),
+            preemption_time=datetime.now(UTC).isoformat(),
             retry_count=self._retry_counts.get(self._job_name, 0),
             metadata=metadata or {},
         )
@@ -644,7 +644,11 @@ class PreemptionHandler:
             try:
                 gcs_path = f"{self.config.preemption_state_prefix}/{self._job_name}.yaml"
                 state_bytes = yaml.dump(state.to_dict()).encode("utf-8")
-                self.gcs_storage.upload_bytes(state_bytes, gcs_path)
+                self.gcs_storage.backend.upload_blob(
+                    self.gcs_storage.bucket,
+                    gcs_path,
+                    state_bytes,
+                )
                 logger.info(f"Preemption state uploaded to GCS: {gcs_path}")
             except Exception as e:
                 logger.error(f"Failed to upload preemption state to GCS: {e}")
@@ -674,7 +678,7 @@ class PreemptionHandler:
             try:
                 gcs_path = f"{self.config.preemption_state_prefix}/{job_name}.yaml"
                 data_bytes = self.gcs_storage.backend.download_blob(
-                    self.gcs_storage._bucket,
+                    self.gcs_storage.bucket,
                     gcs_path,
                 )
                 data = yaml.safe_load(data_bytes.decode("utf-8"))
@@ -702,7 +706,7 @@ class PreemptionHandler:
             try:
                 gcs_path = f"{self.config.preemption_state_prefix}/{job_name}.yaml"
                 self.gcs_storage.backend.delete_blob(
-                    self.gcs_storage._bucket,
+                    self.gcs_storage.bucket,
                     gcs_path,
                 )
                 logger.debug(f"Cleared GCS preemption state: {gcs_path}")

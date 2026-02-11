@@ -70,7 +70,7 @@ class TrainingExample:
         """
         if compressed:
             data = lzma.decompress(data)
-        d = pickle.loads(data)
+        d = pickle.loads(data)  # noqa: S301
         return cls(
             spatial=d["spatial"],
             vector=d["vector"],
@@ -89,6 +89,10 @@ class GameTrajectory:
     actor_id: int = 0
     game_length: int = 0
     winner: int | None = None
+
+    def __len__(self) -> int:
+        """Return number of steps in trajectory."""
+        return len(self.examples)
 
     def to_bytes(self, compress: bool = False) -> bytes:
         """Serialize to bytes."""
@@ -110,7 +114,7 @@ class GameTrajectory:
         """Deserialize from bytes."""
         if compressed:
             data = lzma.decompress(data)
-        d = pickle.loads(data)
+        d = pickle.loads(data)  # noqa: S301
         return cls(
             examples=[TrainingExample.from_bytes(ex) for ex in d["examples"]],
             game_id=d["game_id"],
@@ -153,7 +157,7 @@ class SharedStorage:
         self,
         config: SharedStorageConfig | None = None,
         manager: SyncManager | None = None,
-    ):
+    ) -> None:
         """Initialize shared storage.
 
         Args:
@@ -417,7 +421,7 @@ class DistributedReplayBuffer:
         self,
         config: ReplayBufferConfig | None = None,
         manager: SyncManager | None = None,
-    ):
+    ) -> None:
         """Initialize replay buffer.
 
         Args:
@@ -629,7 +633,7 @@ class WeightSynchronizer:
         self,
         shared_storage: SharedStorage,
         update_interval: float = 1.0,
-    ):
+    ) -> None:
         """Initialize weight synchronizer.
 
         Args:

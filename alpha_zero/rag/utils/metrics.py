@@ -12,7 +12,7 @@ from __future__ import annotations
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -54,7 +54,12 @@ class Timer:
         """Context manager entry."""
         return self.start()
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object | None,
+    ) -> None:
         """Context manager exit."""
         self.stop()
 
@@ -152,12 +157,12 @@ class MetricsCollector:
         print(collector.get_summary())
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize metrics collector."""
         self._timers: dict[str, list[Timer]] = defaultdict(list)
         self._counters: dict[str, Counter] = {}
         self._gauges: dict[str, Gauge] = {}
-        self._start_time = datetime.utcnow()
+        self._start_time = datetime.now(UTC)
 
     def timer(self, name: str, **labels: str) -> Timer:
         """Get or create a timer.
@@ -235,7 +240,7 @@ class MetricsCollector:
         Returns:
             Dictionary with all metric values
         """
-        uptime = (datetime.utcnow() - self._start_time).total_seconds()
+        uptime = (datetime.now(UTC) - self._start_time).total_seconds()
 
         summary = {
             "uptime_seconds": uptime,
@@ -269,4 +274,4 @@ class MetricsCollector:
         self._timers.clear()
         self._counters.clear()
         self._gauges.clear()
-        self._start_time = datetime.utcnow()
+        self._start_time = datetime.now(UTC)

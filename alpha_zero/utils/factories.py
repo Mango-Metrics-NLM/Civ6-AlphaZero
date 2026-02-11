@@ -72,7 +72,7 @@ def create_network(
             f"Creating MicroCivNetwork: board={board_size}, "
             f"actions={action_space_size}, filters={config.num_filters}",
         )
-        network = MicroCivNetwork(
+        network: torch.nn.Module = MicroCivNetwork(
             board_size=board_size,
             action_space_size=action_space_size,
             num_res_blocks=config.num_res_blocks,
@@ -100,6 +100,7 @@ def create_mcts(
     network: torch.nn.Module | None = None,
     device: str = "cpu",
     use_simple: bool = False,
+    reflection_memory: Any = None,
 ) -> Any:
     """Create MCTS instance from configuration.
 
@@ -111,6 +112,9 @@ def create_mcts(
         network: Neural network for evaluation. Required unless use_simple=True.
         device: Compute device.
         use_simple: Use SimpleMCTS (random rollouts) instead of NN-guided.
+        reflection_memory: Optional ReflectionMemory for LATS-style learning.
+            When provided, MCTS will penalize actions that led to failures
+            in similar states.
 
     Returns:
         Configured MCTS instance.
@@ -149,9 +153,10 @@ def create_mcts(
 
     logger.info(
         f"Creating Civ6MCTS: simulations={config.num_simulations}, "
-        f"c_puct={config.c_puct}, device={device}",
+        f"c_puct={config.c_puct}, device={device}, "
+        f"reflection={'enabled' if reflection_memory else 'disabled'}",
     )
-    return Civ6MCTS(network, mcts_config, device=device)
+    return Civ6MCTS(network, mcts_config, device=device, reflection_memory=reflection_memory)
 
 
 def create_environment(
@@ -181,7 +186,8 @@ def create_environment(
         max_turns = override_params.get("max_turns", max_turns)
 
     logger.info(
-        f"Creating environment: type={config.type}, board={board_size}x{board_size}, max_turns={max_turns}"
+        f"Creating environment: type={config.type}, "
+        f"board={board_size}x{board_size}, max_turns={max_turns}"
     )
 
     if config.type == "microciv":
@@ -510,7 +516,7 @@ def create_replay_buffer(
     class ReplayBuffer:
         """Simple replay buffer using deque."""
 
-        def __init__(self, max_size: int):
+        def __init__(self, max_size: int) -> None:
             self.buffer: deque[TrainingExample] = deque(maxlen=max_size)
             self.min_size = min_size
 

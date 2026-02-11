@@ -11,6 +11,15 @@ Components:
 - replay: Game save/load and replay functionality
 """
 
+import warnings
+
+warnings.warn(
+    "alpha_zero.human_interface is deprecated and not used by the training pipeline. "
+    "It will be activated in a future phase for Human vs AI gameplay.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 from alpha_zero.human_interface.config import (
     HumanInterfaceConfig,
     InputMode,
@@ -36,22 +45,22 @@ from alpha_zero.human_interface.visualizer import (
 )
 
 __all__ = [
-    # Config
-    "HumanInterfaceConfig",
-    "InputMode",
+    # Input
+    "ActionParser",
+    # Visualizer
+    "BoardTheme",
     # Controller
     "GameController",
     "GamePhase",
-    "TurnResult",
-    # Input
-    "ActionParser",
-    "HumanInputHandler",
-    "ParsedAction",
     # Replay
     "GameRecorder",
     "GameReplay",
+    "HumanInputHandler",
+    # Config
+    "HumanInterfaceConfig",
+    "InputMode",
+    "ParsedAction",
     "ReplayManager",
-    # Visualizer
-    "BoardTheme",
     "StateVisualizer",
+    "TurnResult",
 ]

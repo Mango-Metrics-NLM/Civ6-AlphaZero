@@ -128,7 +128,9 @@ class TestMicroCivNetwork:
         loaded = MicroCivNetwork.load(str(path))
 
         # Check weights match
-        for (n1, p1), (n2, p2) in zip(network.named_parameters(), loaded.named_parameters(), strict=True):
+        for (n1, p1), (n2, p2) in zip(
+            network.named_parameters(), loaded.named_parameters(), strict=True
+        ):
             assert n1 == n2
             assert torch.allclose(p1, p2)
 
@@ -153,7 +155,7 @@ class TestCiv6Network:
         spatial = torch.randn(2, 84, 44, 44)
         vector = torch.randn(2, 512)
 
-        policy_logits, value = network(spatial, vector)
+        policy_logits, _value = network(spatial, vector)
 
         assert policy_logits.shape == (2, 10000)
 
@@ -188,7 +190,7 @@ class TestComputeLoss:
         target_policy = torch.softmax(torch.randn(8, 100), dim=-1)
         target_value = torch.randn(8)
 
-        total, policy, value_loss = compute_loss(policy_logits, value, target_policy, target_value)
+        total, _policy, value_loss = compute_loss(policy_logits, value, target_policy, target_value)
 
         assert total >= 0
         assert value_loss >= 0
@@ -220,7 +222,7 @@ class TestComputeLoss:
         target_value = torch.tensor([0.5, -0.5, 0.0, 1.0])
         value = target_value.clone()
 
-        total, policy, value_loss = compute_loss(policy_logits, value, target_policy, target_value)
+        total, _policy, value_loss = compute_loss(policy_logits, value, target_policy, target_value)
 
         assert value_loss < 1e-6
         assert total < 1.0  # Should be small

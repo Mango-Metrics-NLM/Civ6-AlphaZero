@@ -249,7 +249,7 @@ class CostOptimizationManager:
         config: CostOptimizationConfig | None = None,
         billing_client: Any | None = None,
         storage_backend: Any | None = None,
-    ):
+    ) -> None:
         """Initialize cost optimization manager.
 
         Args:
@@ -444,13 +444,13 @@ class CostOptimizationManager:
             # More frequent checkpoints for spot VMs
             checkpoint_interval = min(checkpoint_interval, 300)
 
-        # Estimate cost using centralized GPU pricing (env-var overridable)
-        from alpha_zero.cloud.gcp.config import get_gpu_costs
-
-        gpu_costs = get_gpu_costs()
-        on_demand = gpu_costs.get(gpu_type, 1.0)
-        spot_cost = gpu_costs.get(f"{gpu_type}_SPOT", on_demand * 0.3)
-        estimated_cost = (spot_cost if use_spot else on_demand) * gpu_count
+        # Estimate cost using centralized cost_monitor (1 hour baseline)
+        estimated_cost = self.cost_monitor.estimate_job_cost(
+            gpu_type=gpu_type,
+            duration_hours=1.0,
+            gpu_count=gpu_count,
+            use_spot=use_spot,
+        )
 
         return JobSpec(
             gpu_type=gpu_type,

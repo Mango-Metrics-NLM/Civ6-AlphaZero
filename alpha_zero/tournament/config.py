@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -406,10 +406,10 @@ class PlayerStats:
     tier: str = "Bronze"
     is_provisional: bool = True
     rating_history: list[tuple[str, float]] = field(default_factory=list)
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     last_game_at: str | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize display name if not set."""
         if not self.display_name:
             self.display_name = self.player_id
@@ -443,7 +443,7 @@ class PlayerStats:
         """
         self.games_played += 1
         self.rating += rating_change
-        self.last_game_at = datetime.utcnow().isoformat()
+        self.last_game_at = datetime.now(UTC).isoformat()
 
         if outcome == MatchOutcome.WIN:
             self.wins += 1
@@ -468,7 +468,7 @@ class PlayerStats:
             self.tier = tier_config.name
 
         # Record history
-        self.rating_history.append((datetime.utcnow().isoformat(), self.rating))
+        self.rating_history.append((datetime.now(UTC).isoformat(), self.rating))
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -546,7 +546,7 @@ class MatchResult:
     winner_id: str | None = None
     game_details: list[dict[str, Any]] = field(default_factory=list)
     duration_seconds: float = 0.0
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     @property
     def is_draw(self) -> bool:

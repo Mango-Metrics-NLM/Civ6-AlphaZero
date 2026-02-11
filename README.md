@@ -14,16 +14,24 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 2 | Hierarchical Reinforcement Learning | ✅ Complete |
 | Phase 3 | Training Improvements (Curriculum, Rewards) | ✅ Complete |
 | Phase 4 | Unified Training Orchestrator | ✅ Complete |
-| Phase 5 | RAG-LLM Integration | ✅ Complete |
-| Phase 6 | Agentic Framework for Claude Code | ✅ Complete |
+| Phase 5 | Cost Optimization & Monitoring | ✅ Complete |
+| Phase 6 | ~~Agentic Framework~~ (removed in Phase 11) | ✅ Removed |
 | Phase 7 | GCP Vertex AI Cloud Training Pipeline | ✅ Complete |
+| Phase 7+ | Production PBT Scaling & Validation | ✅ Complete |
+| Phase 8 | Training Safeguards & Automated Intervention | ✅ Complete |
+| Phase 9 | MuZero Integration Bridge | ✅ Complete |
+| Phase 10 | Tournament & Matchmaking System | ✅ Complete |
+| Phase 11 | Code Quality & Tech Debt Reduction | ✅ Complete |
+| Phase 12-Prep | Docker v0.9.0, Container Smoke Tests, Vertex AI Smoke Test | ✅ Complete |
+| Phase 13 | Multi-Iteration Training & Post-Run Evaluation | ✅ Complete |
 
 **Codebase Statistics:**
 
-- ~51,800 lines of core implementation
-- ~14,600 lines of agentic framework
-- 2,250+ tests with >80% coverage on core modules
-- 11 game mechanics modules
+- ~55,000 lines of core implementation
+- 3,544+ tests with >80% coverage on core modules
+- Docker v0.10.2 on GCR, 7 model versions (v0-v6) in GCS
+- 11 game mechanics modules (deprecated, future Civ6 integration)
+- 13 remaining xfail tests (12 DDP + 1 hierarchical — deferred)
 
 ## Key Features
 
@@ -40,11 +48,23 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - **Real Civ6 Bridge**: File-based IPC bridge for playing actual Civilization VI
 - **Lua Mod Integration**: Complete Civ6 mod for game state export and action execution
 - **RAG Integration**: Retrieval-Augmented Generation for knowledge-enhanced decision making
-- **Agentic Framework**: Reusable framework for Claude Code autonomous development workflows
 - **GCP Vertex AI Pipeline**: Distributed cloud training with selfplay, training, and evaluation phases
 - **GumbelMCTS**: 5-50x faster MCTS variant via Gumbel sampling (no Dirichlet noise needed)
 - **MCTS Factory**: Pluggable MCTS instantiation (`create_mcts("civ6"|"gumbel"|"muzero", ...)`)
 - **Model Evaluation Arena**: Automated new-vs-old model comparison with win rate gating
+- **Population-Based Training**: Production PBT with W&B dashboards, ELO evaluation, 6 mutation strategies
+- **Baseline Benchmarking**: Absolute performance tracking against random/heuristic agents
+- **GCS Checkpoint Rotation**: Manifest-based checkpoint pruning with configurable retention
+- **GPU Quota Guard**: Automatic quota checking with exponential backoff polling
+- **Training Safeguards**: NaN detection, loss explosion monitoring, gradient health, automated interventions
+- **MuZero Integration**: Learned dynamics model bridge with MuZeroNetwork, MuZeroTrainer, MuZeroMCTS
+- **Tournament System**: Bracket generation (round-robin, single-elimination, Swiss), ELO standings, W&B dashboards
+- **Tournament Analysis**: Head-to-head matrix, player trends, meta-analysis, cross-generation comparison
+- **Post-Run Tournament**: Automated round-robin ELO tournament across all model versions after training
+- **NetworkArchitectureConfig**: Centralized architecture defaults (board_size=8, action_space_size=376, embed_dim=64)
+- **Arena Module**: Shared arena logic for evaluation and tournament play
+- **Orchestrator W&B Logging**: Iteration metrics, cost tracking, phase timing, and final summaries
+- **Docker Container Pipeline**: PyTorch 2.5 + CUDA 12.4 container with healthcheck, deployed to GCR
 
 ## Architecture (C4 Model)
 
@@ -310,7 +330,14 @@ graph TB
 
         subgraph "Scheduling"
             Scheduler["PBTScheduler<br/><i>Timing control</i>"]
-            Evaluator["FitnessEvaluator<br/><i>Game-based fitness</i>"]
+            Evaluator["PBTEvaluator<br/><i>ELO-based fitness</i>"]
+        end
+
+        subgraph "Production (Phase 7)"
+            Dashboard["W&B Dashboard<br/><i>pbt/* metrics</i>"]
+            Rotation["Checkpoint Rotation<br/><i>GCS manifest-based</i>"]
+            QuotaGuard["Quota Guard<br/><i>GPU availability</i>"]
+            Baseline["Baseline Benchmarks<br/><i>Absolute anchors</i>"]
         end
     end
 
@@ -329,11 +356,213 @@ graph TB
     Adaptive --> AgentState
 
     Evaluator --> Scheduler
-    Evaluator -->|"Update fitness"| AgentState
+    Evaluator -->|"Update ELO & fitness"| AgentState
+    Evaluator --> Baseline
+
+    Dashboard --> PopMgr
+    Rotation --> Scheduler
 
     style PopMgr fill:#1168bd,stroke:#0b4884,color:#ffffff
     style Scheduler fill:#438dd5,stroke:#2e6295,color:#ffffff
     style Adaptive fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style Dashboard fill:#85bbf0,stroke:#5d82a8,color:#000000
+    style QuotaGuard fill:#85bbf0,stroke:#5d82a8,color:#000000
+```
+
+### Level 3: Component Diagram - Training Safeguards & MuZero (Phases 8-9)
+
+Internal structure of the training safeguard and MuZero integration systems.
+
+```mermaid
+graph TB
+    subgraph "Training Safeguards (Phase 8)"
+        subgraph "Health Monitoring"
+            Safeguard["TrainingSafeguard<br/><i>Unified health monitor</i>"]
+            NaNDetect["NaN Detection<br/><i>Consecutive threshold</i>"]
+            LossExplode["Loss Explosion<br/><i>Rolling baseline comparison</i>"]
+            GradHealth["Gradient Health<br/><i>NORMAL / HIGH / EXPLODING</i>"]
+            MemCheck["Memory Check<br/><i>Delegates to MemoryGuard</i>"]
+        end
+
+        subgraph "Interventions"
+            Intervention["Intervention Engine<br/><i>Automated responses</i>"]
+            ReduceLR["Reduce LR<br/><i>Loss explosion recovery</i>"]
+            Rollback["Rollback Checkpoint<br/><i>NaN recovery</i>"]
+            ReduceBatch["Reduce Batch Size<br/><i>Memory pressure</i>"]
+            EarlyStop["Early Stop<br/><i>Convergence stalled</i>"]
+        end
+
+        subgraph "Reporting"
+            Report["TrainingReport<br/><i>Periodic summaries</i>"]
+            SafeReport["SafeguardReport<br/><i>Per-step health data</i>"]
+        end
+    end
+
+    Safeguard --> NaNDetect
+    Safeguard --> LossExplode
+    Safeguard --> GradHealth
+    Safeguard --> MemCheck
+    Safeguard --> SafeReport
+    SafeReport --> Intervention
+    Intervention --> ReduceLR
+    Intervention --> Rollback
+    Intervention --> ReduceBatch
+    Intervention --> EarlyStop
+    SafeReport --> Report
+
+    style Safeguard fill:#1168bd,stroke:#0b4884,color:#ffffff
+    style Intervention fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style Report fill:#85bbf0,stroke:#5d82a8,color:#000000
+```
+
+```mermaid
+graph TB
+    subgraph "MuZero Integration (Phase 9)"
+        subgraph "Training Bridge"
+            Bridge["MuZeroTrainingBridge<br/><i>Orchestrator interface</i>"]
+            CreateNet["create_network()<br/><i>MuZeroNetwork factory</i>"]
+            CreateTrainer["create_trainer()<br/><i>MuZeroTrainer factory</i>"]
+            CreateMCTS["create_mcts()<br/><i>MuZeroMCTS factory</i>"]
+        end
+
+        subgraph "MuZero Core"
+            MZNet["MuZeroNetwork<br/><i>Representation + Dynamics + Prediction</i>"]
+            MZTrainer["MuZeroTrainer<br/><i>Unrolled dynamics training</i>"]
+            MZSearch["MuZeroMCTS<br/><i>Search with learned model</i>"]
+        end
+
+        subgraph "PBT Integration"
+            HyperSpace["MuZero Hyperparameter Space<br/><i>unroll_steps, td_steps, discount</i>"]
+            MergeSpace["merge_with_base_space()<br/><i>Combined AlphaZero + MuZero</i>"]
+        end
+
+        subgraph "Configuration"
+            IntConfig["MuZeroIntegrationConfig<br/><i>YAML / env-var / dict</i>"]
+            PBTConfig["configs/muzero_pbt.yaml<br/><i>Population size 6</i>"]
+        end
+    end
+
+    Bridge --> CreateNet --> MZNet
+    Bridge --> CreateTrainer --> MZTrainer
+    Bridge --> CreateMCTS --> MZSearch
+    IntConfig --> Bridge
+    HyperSpace --> MergeSpace
+    PBTConfig --> IntConfig
+
+    style Bridge fill:#1168bd,stroke:#0b4884,color:#ffffff
+    style MZNet fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style MZSearch fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style HyperSpace fill:#85bbf0,stroke:#5d82a8,color:#000000
+```
+
+### Level 3: Component Diagram - Tournament System (Phase 10)
+
+Internal structure of the tournament orchestration and analysis system.
+
+```mermaid
+graph TB
+    subgraph "Tournament System (Phase 10)"
+        subgraph "Orchestration"
+            TournOrch["TournamentOrchestrator<br/><i>Bracket generation & execution</i>"]
+            Bracket["Bracket<br/><i>Round-robin / Elimination / Swiss</i>"]
+            MatchRunner["Match Runner<br/><i>arena_runner callback</i>"]
+            Standings["Standings<br/><i>ELO + win rate ranking</i>"]
+        end
+
+        subgraph "Analysis"
+            Analyzer["TournamentAnalyzer<br/><i>Post-tournament analytics</i>"]
+            H2H["Head-to-Head Matrix<br/><i>N x N win rates</i>"]
+            Trends["Player Trends<br/><i>ELO / win rate over time</i>"]
+            Meta["Meta Analysis<br/><i>Top-k hyperparameters</i>"]
+            Upsets["Upset Detection<br/><i>ELO difference threshold</i>"]
+        end
+
+        subgraph "Existing Infrastructure"
+            ELO["ELORatingSystem<br/><i>tournament/elo.py</i>"]
+            MatchMaker["MatchMaker<br/><i>tournament/matchmaking.py</i>"]
+            History["MatchHistory<br/><i>tournament/history.py</i>"]
+            League["LeagueManager<br/><i>tournament/league.py</i>"]
+        end
+
+        subgraph "Visualization"
+            WandbLog["TournamentWandbLogger<br/><i>tournament/* metrics</i>"]
+            Leaderboard["ELO Leaderboard<br/><i>W&B table</i>"]
+            Heatmap["Head-to-Head Heatmap<br/><i>W&B chart</i>"]
+            ELOChart["ELO History<br/><i>Per-player line chart</i>"]
+        end
+    end
+
+    TournOrch --> Bracket
+    TournOrch --> MatchRunner
+    TournOrch --> Standings
+    MatchRunner --> ELO
+    MatchRunner --> History
+    Bracket --> MatchMaker
+    Standings --> ELO
+
+    Analyzer --> H2H
+    Analyzer --> Trends
+    Analyzer --> Meta
+    Analyzer --> Upsets
+    Analyzer --> History
+
+    WandbLog --> Leaderboard
+    WandbLog --> Heatmap
+    WandbLog --> ELOChart
+
+    style TournOrch fill:#1168bd,stroke:#0b4884,color:#ffffff
+    style Analyzer fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style ELO fill:#85bbf0,stroke:#5d82a8,color:#000000
+    style WandbLog fill:#85bbf0,stroke:#5d82a8,color:#000000
+```
+
+### Level 3: Component Diagram - Code Quality Infrastructure (Phase 11)
+
+Internal structure of the production hardening and code quality systems.
+
+```mermaid
+graph TB
+    subgraph "Code Quality Infrastructure (Phase 11)"
+        subgraph "Logging (Consolidated)"
+            LogConfig["logging_config.py<br/><i>Canonical module</i>"]
+            MetricsTracker["MetricsTracker<br/><i>Training metrics</i>"]
+            TrainingLogger["TrainingLogger<br/><i>Structured logs</i>"]
+            GameLogger["GameLogger<br/><i>MCTS debugging</i>"]
+            Profiler["PerformanceProfiler<br/><i>Timing sections</i>"]
+            DeprecatedLog["logging.py<br/><i>Deprecated re-export</i>"]
+        end
+
+        subgraph "CI Pipeline"
+            Ruff["Ruff 0.8.0<br/><i>Lint + Format check</i>"]
+            Mypy["Mypy 1.13.0<br/><i>Strict per-package</i>"]
+            Bandit["Bandit 1.8.0<br/><i>Security scan (enforced)</i>"]
+            Tests["Pytest<br/><i>4,000+ tests</i>"]
+        end
+
+        subgraph "Type Safety"
+            CoreTypes["alpha_zero.core.*<br/><i>disallow_untyped_defs</i>"]
+            TrainingTypes["alpha_zero.training.*<br/><i>disallow_untyped_defs</i>"]
+            TournTypes["alpha_zero.tournament.*<br/><i>disallow_untyped_defs</i>"]
+            PBTTypes["alpha_zero.pbt.*<br/><i>disallow_untyped_defs</i>"]
+        end
+    end
+
+    DeprecatedLog -->|"re-exports"| LogConfig
+    LogConfig --> MetricsTracker
+    LogConfig --> TrainingLogger
+    LogConfig --> GameLogger
+    LogConfig --> Profiler
+
+    Mypy --> CoreTypes
+    Mypy --> TrainingTypes
+    Mypy --> TournTypes
+    Mypy --> PBTTypes
+
+    style LogConfig fill:#1168bd,stroke:#0b4884,color:#ffffff
+    style Ruff fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style Mypy fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style Bandit fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style DeprecatedLog fill:#999999,stroke:#666666,color:#ffffff
 ```
 
 ### Level 3: Component Diagram - Hierarchical RL
@@ -578,6 +807,13 @@ python -m alpha_zero.cloud.gcp.vertex_orchestrator \
 
 # Dry run (validate args without launching cloud jobs)
 python -m alpha_zero.cloud.gcp.vertex_orchestrator --dry_run --iterations=1
+
+# Multi-iteration training with post-run tournament
+python -m alpha_zero.cloud.gcp.vertex_orchestrator \
+    --iterations=3 --workers=1 --games_per_worker=10 \
+    --mcts_type=gumbel --mcts_simulations=8 --board_size=8 \
+    --epochs=3 --max_turns=15 --evaluation_games=4 \
+    --post_run_tournament --tournament_games=4 --tournament_mcts_sims=8
 ```
 
 | MCTS Variant | Speed | Simulations | Best For |
@@ -778,7 +1014,7 @@ pytest -k "curriculum" -v
 
 ```
 Civ6-AlphaZero/
-├── alpha_zero/               # Core AI system (~51,800 LOC)
+├── alpha_zero/               # Core AI system (~55,000 LOC)
 │   ├── orchestrator/         # Unified training orchestrator (Phase 4)
 │   │   ├── __init__.py       # Module exports
 │   │   ├── __main__.py       # CLI entry point
@@ -834,20 +1070,48 @@ Civ6-AlphaZero/
 │   │   ├── base_interface.py # BaseGameInterface contract
 │   │   ├── civ6_interface.py # Real Civ6 interface
 │   │   └── unciv_interface.py # Unciv JSON interface
-│   ├── cloud/                # GCP Vertex AI cloud training (Phase 7)
+│   ├── cloud/                # GCP Vertex AI cloud training
 │   │   └── gcp/
-│   │       ├── config.py             # GCPConfig, GPU pricing, env-var based
+│   │       ├── config.py             # GCPConfig + NetworkArchitectureConfig
 │   │       ├── storage.py            # GCS storage backends
 │   │       ├── vertex_jobs.py        # Vertex AI job wrappers
-│   │       ├── vertex_orchestrator.py # 3-phase pipeline orchestrator
+│   │       ├── vertex_orchestrator.py # Multi-iteration pipeline + W&B + tournament
 │   │       ├── selfplay_worker.py    # Self-play container worker
-│   │       ├── training_worker.py    # Training container worker
-│   │       ├── evaluation_worker.py  # Model arena container worker
+│   │       ├── training_worker.py    # Training container worker (saves model_config)
+│   │       ├── evaluation_worker.py  # Model arena (Civ6TransformerNetwork)
+│   │       ├── arena.py              # Shared arena logic (Phase 13)
 │   │       ├── entrypoint.py         # Container mode router
+│   │       ├── container_healthcheck.py # Container import validation
+│   │       ├── pbt_orchestrator.py    # Production PBT loop
 │   │       ├── cost_monitor.py       # Budget enforcement
 │   │       ├── cost_optimization.py  # Unified cost optimization
 │   │       ├── gpu_scheduler.py      # Dynamic GPU selection
 │   │       └── preemption_handler.py # Spot VM preemption recovery
+│   ├── pbt/                 # Population-Based Training
+│   │   ├── config.py        # PBTConfig (incl. Phase 7+ fields)
+│   │   ├── evaluator.py     # PBTEvaluator (ELO + baselines)
+│   │   ├── population.py    # PopulationManager
+│   │   ├── mutations.py     # 6 mutation strategies
+│   │   ├── scheduler.py     # PBTScheduler
+│   │   ├── coordinator.py   # PBT coordination
+│   │   └── muzero_hyperparams.py # MuZero PBT hyperparameter space (Phase 9)
+│   ├── tournament/           # Tournament System (Phase 10)
+│   │   ├── config.py         # TournamentConfig, MatchResult, PlayerStats
+│   │   ├── elo.py            # ELORatingSystem, RatingLeaderboard
+│   │   ├── matchmaking.py    # MatchMaker, OpponentSelector
+│   │   ├── history.py        # MatchHistory, PlayerStatistics
+│   │   ├── league.py         # LeagueManager, SeasonInfo
+│   │   ├── orchestrator.py   # TournamentOrchestrator, Bracket
+│   │   ├── analysis.py       # TournamentAnalyzer, head-to-head
+│   │   └── wandb_dashboards.py # TournamentWandbLogger
+│   ├── training/             # Training Infrastructure
+│   │   ├── muzero_trainer.py       # MuZeroTrainer, MuZeroTrainingConfig
+│   │   ├── muzero_integration.py   # MuZeroTrainingBridge (Phase 9)
+│   │   ├── training_safeguards.py  # TrainingSafeguard (Phase 8)
+│   │   ├── training_report.py      # TrainingReport (Phase 8)
+│   │   ├── convergence_monitor.py  # ConvergenceMonitor
+│   │   ├── training_profiler.py    # TrainingProfiler
+│   │   └── elo_plateau_detector.py # EloPlateauDetector
 │   ├── integration/          # External integrations
 │   │   └── game_connector.py # AI-to-game bridge
 │   ├── rag/                  # RAG Integration (Phase 5)
@@ -866,23 +1130,19 @@ Civ6-AlphaZero/
 │       ├── llm_client.py           # LLM API integration
 │       ├── factories.py            # Component factories
 │       └── wandb_logger.py         # W&B integration
-├── agentic_framework/        # Claude Code agent system (~14,600 LOC)
-│   ├── config/               # Configuration management
-│   ├── core/                 # Template parser, constraints, permissions
-│   ├── agents/               # Planning, Implementation, Testing agents
-│   ├── templates/            # Built-in agent templates
-│   ├── utils/                # Command execution, logging
-│   └── orchestrator.py       # Main orchestrator
 ├── configs/                  # Configuration files
 │   ├── orchestrator.yaml     # Master configuration
 │   ├── orchestrator_fast.yaml
 │   ├── orchestrator_production.yaml
+│   ├── pbt_prod.yaml         # Production PBT config (Phase 7+)
+│   ├── muzero_pbt.yaml       # MuZero PBT config (Phase 9)
+│   ├── tournament.yaml       # Tournament config (Phase 10)
 │   └── civ6_config.yaml      # Game-specific configuration
 ├── data/
 │   └── knowledge/            # RAG knowledge base
 ├── scripts/
 │   └── build_container.sh    # Docker build & push to GCR
-├── Dockerfile                # Container image (PyTorch 2.1 + CUDA 12.1)
+├── Dockerfile                # Container image (PyTorch 2.5 + CUDA 12.4)
 ├── .dockerignore             # Container build exclusions
 ├── requirements-container.txt # Slim deps for container
 ├── docs/
@@ -897,7 +1157,7 @@ Civ6-AlphaZero/
 │           ├── ActionExecutor.lua # Command execution
 │           ├── FileIO.lua    # File operations
 │           └── JsonEncoder.lua # Pure Lua JSON
-├── tests/                    # Test suite (2,250+ tests)
+├── tests/                    # Test suite (4,000+ tests)
 │   ├── unit/                 # Unit tests
 │   ├── integration/          # Integration tests (PBT, distributed, preemption)
 │   ├── e2e/                  # End-to-end tests (training smoke, GCS, Vertex)
@@ -927,7 +1187,7 @@ Civ6-AlphaZero/
 | Configuration | PyYAML, Pydantic |
 | Testing | Pytest 7.0+, pytest-asyncio, pytest-cov |
 | Visualization | Mermaid.js, Matplotlib |
-| Code Quality | MyPy, Ruff |
+| Code Quality | MyPy, Ruff, Bandit |
 | Numerical | NumPy 1.23+ |
 
 ## Roadmap
@@ -935,24 +1195,33 @@ Civ6-AlphaZero/
 ### Completed
 
 - ✅ **GCP Vertex AI Pipeline** — Cloud training with GumbelMCTS, 3-phase pipeline (selfplay → training → evaluation)
-- ✅ **Population-Based Training** — Adaptive hyperparameter optimization with configurable mutation strategies
+- ✅ **Population-Based Training** — Full PBT with cross-agent ELO evaluation, 6 mutation strategies, W&B dashboards
+- ✅ **Production PBT Scaling** — Checkpoint rotation, GPU quota guard, baseline benchmarking, dynamic strategy switch
 - ✅ **CI/CD & Test Infrastructure** — Release automation, 6-tier test coverage (unit, integration, e2e, security, sanity, cloud)
+- ✅ **Training Safeguards** — NaN detection, loss explosion monitoring, gradient health, automated interventions
+- ✅ **MuZero Integration** — MuZeroTrainingBridge connecting network/trainer/MCTS to orchestrators and PBT
+- ✅ **Tournament System** — Bracket orchestration (round-robin, elimination, Swiss), analysis, W&B dashboards
+- ✅ **Code Quality & Tech Debt** (Phase 11) — Removed 14,600 LOC dead code, fixed 16 xfailed tests, consolidated logging, CI hardening, mypy strictness, 16 new edge case tests
 
-### Planned Features
+### Next Steps
 
 | Priority | Feature | Description |
 |----------|---------|-------------|
-| P1 | Training Validation | Extended training to achieve >50% win rate |
-| P2 | Multi-GPU Training | DistributedDataParallel support for faster training |
-| P3 | Tournament System | ELO-based agent ranking and matchmaking |
-| P4 | Human vs AI Interface | Web-based UI for human gameplay |
-| P5 | Full Civ 6 Integration | Direct game interface via modding API |
+| P0 | Inference Optimization & Vectorized Self-Play (Phase 12) | Batch MCTS inference, vectorized environments for 10x+ throughput |
+| P1 | Extended Training Run | Run 50+ generation PBT on Vertex AI to validate convergence |
+| P2 | Training Validation | Achieve >50% win rate vs random baseline |
+| P3 | MuZero Training Run | Run MuZero PBT with `configs/muzero_pbt.yaml` to validate learned dynamics |
+| P4 | DDP Test Rewrites (Phase 14) | Fix remaining 12 DDP xfailed tests, full mypy strict mode |
+| P5 | Human vs AI Interface | Web-based UI for human gameplay |
+| P6 | Full Civ 6 Integration | Direct game interface via modding API |
 
 ### Current Priorities
 
-1. **Scale cloud training** — Run multi-iteration training on Vertex AI to improve model beyond random play
-2. **Enable W&B dashboards** — Set `WANDB_ENABLED=true` for live training metrics
-3. **Multi-GPU training** — DistributedDataParallel support for faster self-play and training
+1. **Launch PBT training** — Run `configs/pbt_prod.yaml` on Vertex AI with population_size=8
+2. **Monitor W&B dashboards** — Track `pbt/elo_*`, `pbt/fitness_*`, and `tournament/*` metrics
+3. **Baseline benchmarking** — Verify win rate improvements against random/heuristic agents at every 5th generation
+4. **MuZero experiments** — Compare AlphaZero vs MuZero training modes using `configs/muzero_pbt.yaml`
+5. **Vectorized self-play** — Implement batch MCTS inference for Phase 12
 
 ## Contributing
 
@@ -963,6 +1232,10 @@ Civ6-AlphaZero/
 5. Commit your changes (`git commit -m 'Add amazing feature'`)
 6. Push to the branch (`git push origin feature/amazing-feature`)
 7. Open a Pull Request
+
+## Development By
+
+Ian Cruickshank
 
 ## License
 

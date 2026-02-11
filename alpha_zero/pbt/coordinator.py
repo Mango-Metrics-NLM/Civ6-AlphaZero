@@ -22,7 +22,7 @@ import signal
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -63,7 +63,7 @@ class PBTProgress:
     evaluations_completed: int = 0
     exploit_explore_cycles: int = 0
     elapsed_time: float = 0.0
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -110,7 +110,7 @@ class PBTCoordinator:
         config: PBTConfig,
         rng: np.random.Generator | None = None,
         wandb_logger: Any | None = None,
-    ):
+    ) -> None:
         """Initialize PBT coordinator.
 
         Args:
@@ -500,7 +500,7 @@ class PBTCoordinator:
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful shutdown."""
 
-        def handle_signal(signum, frame):
+        def handle_signal(signum: int, frame: object | None) -> None:
             logger.info(f"Received signal {signum}, requesting shutdown")
             self._shutdown_requested = True
 
@@ -509,7 +509,7 @@ class PBTCoordinator:
             signal.signal(signal.SIGTERM, handle_signal)
         except Exception:
             # Signal handling may not be available on all platforms
-            pass
+            logger.debug("Signal handling setup failed", exc_info=True)
 
     def get_progress(self) -> PBTProgress:
         """Get current training progress.
@@ -552,7 +552,7 @@ def create_pbt_coordinator(
     evaluation_interval: int = 1000,
     evaluation_games: int = 20,
     mutation_strength: float = 0.2,
-    **kwargs,
+    **kwargs: Any,
 ) -> PBTCoordinator:
     """Factory function to create a PBT coordinator.
 

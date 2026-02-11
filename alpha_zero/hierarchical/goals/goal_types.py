@@ -555,7 +555,7 @@ class Goal:
             goal_type=goal_type,
             target=target or GoalTarget.no_target(),
             priority=priority,
-            estimated_duration=goal_type.category == "victory" and 100 or 50,
+            estimated_duration=(goal_type.category == "victory" and 100) or 50,
             **kwargs,
         )
 

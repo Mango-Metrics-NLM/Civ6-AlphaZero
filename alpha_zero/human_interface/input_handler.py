@@ -17,7 +17,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, ClassVar
 
 from alpha_zero.human_interface.config import HumanInterfaceConfig, InputMode
 
@@ -90,7 +90,7 @@ class ActionParser:
     """
 
     # Special command patterns
-    COMMANDS = {
+    COMMANDS: ClassVar[dict[str, ActionType]] = {
         r"^(undo|u)$": ActionType.UNDO,
         r"^(resign|quit|q)$": ActionType.RESIGN,
         r"^(pause|p)$": ActionType.PAUSE,
@@ -103,7 +103,7 @@ class ActionParser:
         self,
         board_size: tuple[int, int] = (10, 10),
         input_mode: InputMode = InputMode.COORDINATE,
-    ):
+    ) -> None:
         """Initialize action parser.
 
         Args:
@@ -305,7 +305,7 @@ class HumanInputHandler:
         self,
         config: HumanInterfaceConfig | None = None,
         board_size: tuple[int, int] = (10, 10),
-    ):
+    ) -> None:
         """Initialize input handler.
 
         Args:

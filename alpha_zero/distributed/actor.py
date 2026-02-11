@@ -26,6 +26,8 @@ from alpha_zero.distributed.shared_storage import (
     WeightSynchronizer,
 )
 from alpha_zero.envs.microciv import MicroCivEnv
+from alpha_zero.utils.constants import DISTRIBUTED, GAME
+from alpha_zero.utils.reward_shaping import RewardShaper, RewardShapingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +40,8 @@ class ActorConfig:
     actor_id: int = 0
 
     # Environment settings
-    board_size: int = 16
-    max_turns: int = 200
+    board_size: int = GAME.DEFAULT_BOARD_SIZE
+    max_turns: int = GAME.DEFAULT_MAX_TURNS
 
     # Network settings
     num_res_blocks: int = 6
@@ -62,10 +64,15 @@ class ActorConfig:
     weight_update_interval: float = 1.0  # Seconds between weight checks
 
     # Timeout settings
-    trajectory_submission_timeout: float = 5.0  # Timeout for trajectory submission
+    trajectory_submission_timeout: float = DISTRIBUTED.TRAJECTORY_SUBMISSION_TIMEOUT
 
     # Logging
     log_interval: int = 10  # Log every N games
+
+    # Reward shaping settings
+    use_reward_shaping: bool = True
+    reward_shaping_weight: float = 0.5  # How much to weight shaped rewards vs outcome
+    n_step_returns: int = 5  # N-step return for value targets (0 = full game)
 
 
 @dataclass
@@ -77,6 +84,7 @@ class GameHistoryItem:
     action_mask: np.ndarray
     policy: np.ndarray
     player: int
+    shaped_reward: float = 0.0  # Intermediate reward from reward shaping
 
 
 class SelfPlayActor:
@@ -91,7 +99,7 @@ class SelfPlayActor:
         config: ActorConfig,
         shared_storage: SharedStorage,
         replay_buffer: DistributedReplayBuffer,
-    ):
+    ) -> None:
         """Initialize actor.
 
         Args:
@@ -203,6 +211,11 @@ class SelfPlayActor:
 
         Returns:
             Game trajectory with training examples.
+
+        Enhanced with reward shaping:
+        - Tracks intermediate rewards for better credit assignment
+        - Computes n-step returns for value targets
+        - Blends shaped rewards with final outcome
         """
         if self.mcts is None:
             raise RuntimeError("MCTS not initialized")
@@ -210,10 +223,28 @@ class SelfPlayActor:
         game_history: list[GameHistoryItem] = []
         obs, _ = self.env.reset()
 
+        # Initialize reward shaper if enabled
+        reward_shaper = None
+        if self.config.use_reward_shaping:
+            shaping_config = RewardShapingConfig(
+                enabled=True,
+                gamma=0.99,
+            )
+            reward_shaper = RewardShaper(shaping_config, self.config.board_size)
+
         # Play until game ends
         while True:
             # Get MCTS policy
             action_probs, _ = self.mcts.search(self.env)
+
+            # Compute shaped reward for this state
+            shaped_reward = 0.0
+            if reward_shaper is not None:
+                shaped_reward = reward_shaper.shape_reward(
+                    obs=obs,
+                    reward=0.0,  # No terminal reward yet
+                    terminated=False,
+                )
 
             # Store state and policy
             game_history.append(
@@ -223,6 +254,7 @@ class SelfPlayActor:
                     action_mask=obs["action_mask"].copy(),
                     policy=action_probs.copy(),
                     player=self.env.current_player,
+                    shaped_reward=shaped_reward,
                 ),
             )
 
@@ -240,27 +272,9 @@ class SelfPlayActor:
             if terminated or truncated:
                 break
 
-        # Create training examples with final values
+        # Create training examples with value targets
         winner = info.get("winner")
-        examples = []
-
-        for hist in game_history:
-            if winner is None:
-                value = 0.0  # Draw
-            elif winner == hist.player:
-                value = 1.0  # Win
-            else:
-                value = -1.0  # Loss
-
-            examples.append(
-                TrainingExample(
-                    spatial=hist.spatial,
-                    vector=hist.vector,
-                    action_mask=hist.action_mask,
-                    policy=hist.policy,
-                    value=value,
-                ),
-            )
+        examples = self._create_training_examples(game_history, winner)
 
         # Create trajectory
         self._game_id_counter += 1
@@ -273,6 +287,98 @@ class SelfPlayActor:
         )
 
         return trajectory
+
+    def _create_training_examples(
+        self,
+        game_history: list[GameHistoryItem],
+        winner: int | None,
+    ) -> list[TrainingExample]:
+        """Create training examples with enhanced value targets.
+
+        Args:
+            game_history: List of game history items.
+            winner: Winner of the game (0, 1, or None for draw).
+
+        Returns:
+            List of training examples with computed value targets.
+        """
+        examples = []
+        _n_steps = len(game_history)  # Reserved for future n-step return
+        gamma = 0.99
+
+        for i, hist in enumerate(game_history):
+            # Base value from game outcome
+            if winner is None:
+                outcome_value = 0.0  # Draw
+            elif winner == hist.player:
+                outcome_value = 1.0  # Win
+            else:
+                outcome_value = -1.0  # Loss
+
+            # Compute value target
+            if self.config.use_reward_shaping and self.config.n_step_returns > 0:
+                # N-step return: sum of discounted shaped rewards + bootstrapped value
+                value = self._compute_n_step_value(
+                    game_history,
+                    i,
+                    outcome_value,
+                    gamma,
+                    self.config.n_step_returns,
+                )
+                # Blend with outcome
+                value = (
+                    self.config.reward_shaping_weight * value
+                    + (1 - self.config.reward_shaping_weight) * outcome_value
+                )
+            else:
+                # Traditional: just use game outcome
+                value = outcome_value
+
+            examples.append(
+                TrainingExample(
+                    spatial=hist.spatial,
+                    vector=hist.vector,
+                    action_mask=hist.action_mask,
+                    policy=hist.policy,
+                    value=value,
+                ),
+            )
+
+        return examples
+
+    def _compute_n_step_value(
+        self,
+        game_history: list[GameHistoryItem],
+        start_idx: int,
+        final_value: float,
+        gamma: float,
+        n_steps: int,
+    ) -> float:
+        """Compute n-step return value for a state.
+
+        Args:
+            game_history: Full game history.
+            start_idx: Index of the state.
+            final_value: Final game outcome value.
+            gamma: Discount factor.
+            n_steps: Number of steps to look ahead.
+
+        Returns:
+            N-step return value.
+        """
+        total_return = 0.0
+        discount = 1.0
+        end_idx = min(start_idx + n_steps, len(game_history))
+
+        # Sum discounted shaped rewards
+        for i in range(start_idx, end_idx):
+            total_return += discount * game_history[i].shaped_reward
+            discount *= gamma
+
+        # Bootstrap with final value
+        total_return += discount * final_value
+
+        return total_return
 
     def run(self) -> None:
         """Main actor loop.
@@ -390,7 +496,7 @@ def actor_process(
     )
 
     # Handle signals for graceful shutdown
-    def signal_handler(signum, frame):
+    def signal_handler(signum: int, frame: object | None) -> None:
         logger.info(f"Actor {actor_id}: Received signal {signum}")
         storage.request_stop()
 
@@ -426,7 +532,7 @@ class ActorPool:
         actor_config: ActorConfig,
         storage: SharedStorage,
         replay_buffer: DistributedReplayBuffer,
-    ):
+    ) -> None:
         """Initialize actor pool.
 
         Args:

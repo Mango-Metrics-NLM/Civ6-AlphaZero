@@ -25,10 +25,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.optim as optim
+import numpy as np  # type: ignore[import-untyped]
+import torch  # type: ignore[import-untyped]
+import torch.nn as nn  # type: ignore[import-untyped]
+import torch.optim as optim  # type: ignore[import-untyped]
 
 from alpha_zero.core.losses import (
     LossConfig,
@@ -147,10 +147,15 @@ class GameTrajectory:
     - MCTS policies (targets for policy prediction)
     - Value targets (computed from n-step returns + bootstrapped value)
 
-    All arrays should have the same length (number of steps in game).
+    Length invariant:
+        Observations have length T+1 (includes the terminal observation),
+        while actions, rewards, policies, values, and dones have length T.
+        Arrays may also be empty (length 0) if not yet populated, or
+        length T+1 when the final observation shares the same index.
 
     Attributes:
-        observations: List of observation dicts with 'spatial', 'vector', 'action_mask'.
+        observations: List of observation dicts with 'spatial', 'vector', 'action_mask',
+            shape conceptually (T+1,).
         actions: Actions taken at each step, shape (T,).
         rewards: Rewards received after each action, shape (T,).
         policies: MCTS visit count policies at each step, shape (T, A).
@@ -173,7 +178,26 @@ class GameTrajectory:
         """Return number of steps in trajectory."""
         return len(self.observations)
 
-    def __post_init__(self):
+    @property
+    def game_length(self) -> int:
+        """Return the game length (number of actions taken)."""
+        return len(self.actions)
+
+    @property
+    def observations_spatial(self) -> np.ndarray:
+        """Stack spatial observations into array of shape (T, C, H, W)."""
+        if not self.observations:
+            return np.array([], dtype=np.float32)
+        return np.stack([obs["spatial"] for obs in self.observations])
+
+    @property
+    def observations_vector(self) -> np.ndarray:
+        """Stack vector observations into array of shape (T, V)."""
+        if not self.observations:
+            return np.array([], dtype=np.float32)
+        return np.stack([obs["vector"] for obs in self.observations])
+
+    def __post_init__(self) -> None:
         """Validate trajectory after initialization."""
         if len(self.observations) > 0:
             self._validate()
@@ -197,9 +221,21 @@ class GameTrajectory:
                 f"doesn't match observations {n}"
             )
 
-        if len(self.policies) not in (0, n):
+        if len(self.policies) not in (0, n, n - 1):
             logger.warning(
                 f"Trajectory {self.game_id}: policies length {len(self.policies)} "
+                f"doesn't match observations {n}"
+            )
+
+        if len(self.values) not in (0, n, n - 1):
+            logger.warning(
+                f"Trajectory {self.game_id}: values length {len(self.values)} "
+                f"doesn't match observations {n}"
+            )
+
+        if len(self.dones) not in (0, n, n - 1):
+            logger.warning(
+                f"Trajectory {self.game_id}: dones length {len(self.dones)} "
                 f"doesn't match observations {n}"
             )
 
@@ -391,7 +427,7 @@ class TrajectoryBuffer:
         self,
         max_trajectories: int = 1000,
         max_positions: int = 500000,
-    ):
+    ) -> None:
         """Initialize trajectory buffer.
 
         Args:
@@ -540,13 +576,13 @@ class TrajectoryBuffer:
         vectors = []
         action_masks = []
         all_actions = []
-        all_target_policies = [[] for _ in range(unroll_steps + 1)]
-        all_target_values = [[] for _ in range(unroll_steps + 1)]
-        all_target_rewards = [[] for _ in range(unroll_steps)]
-        all_action_masks_unroll = [[] for _ in range(unroll_steps)]
+        all_target_policies: list[list[np.ndarray]] = [[] for _ in range(unroll_steps + 1)]
+        all_target_values: list[list[float]] = [[] for _ in range(unroll_steps + 1)]
+        all_target_rewards: list[list[float]] = [[] for _ in range(unroll_steps)]
+        all_action_masks_unroll: list[list[np.ndarray]] = [[] for _ in range(unroll_steps)]
         # For EfficientZero consistency loss: collect next observations
-        all_obs_spatial_unroll = [[] for _ in range(unroll_steps)]
-        all_obs_vector_unroll = [[] for _ in range(unroll_steps)]
+        all_obs_spatial_unroll: list[list[np.ndarray]] = [[] for _ in range(unroll_steps)]
+        all_obs_vector_unroll: list[list[np.ndarray]] = [[] for _ in range(unroll_steps)]
         # Track sampled indices for priority updates
         sampled_indices: list[tuple[int, int]] = []
 
@@ -726,7 +762,7 @@ class MuZeroTrainer:
         network: nn.Module,
         config: MuZeroTrainingConfig | None = None,
         device: str | torch.device = "cpu",
-    ):
+    ) -> None:
         """Initialize MuZero trainer.
 
         Args:
@@ -971,7 +1007,7 @@ class MuZeroTrainer:
         Returns:
             Dict with all loss components.
         """
-        K = self.config.unroll_steps
+        K = self.config.unroll_steps  # noqa: N806
         losses: dict[str, torch.Tensor] = {}
 
         # Accumulate losses
@@ -1057,7 +1093,8 @@ class MuZeroTrainer:
                 and batch.observations_vector_unroll is not None
             ):
                 try:
-                    # Get actual next observation from batch (k-1 index since unroll starts at step 1)
+                    # Get actual next observation from batch
+                    # (k-1 index since unroll starts at step 1)
                     next_obs_spatial = batch.observations_spatial_unroll[k - 1]
                     next_obs_vector = batch.observations_vector_unroll[k - 1]
 
@@ -1253,9 +1290,9 @@ class MuZeroTrainer:
 # =============================================================================
 
 __all__ = [
-    "MuZeroTrainingConfig",
     "GameTrajectory",
+    "MuZeroTrainer",
+    "MuZeroTrainingConfig",
     "TrajectoryBatchSample",
     "TrajectoryBuffer",
-    "MuZeroTrainer",
 ]

@@ -34,7 +34,7 @@ import sys
 import time
 
 from alpha_zero.cloud.gcp.config import GCPConfig
-from alpha_zero.cloud.gcp.exceptions import PreemptionError, VertexJobError
+from alpha_zero.cloud.gcp.exceptions import GCSStorageError, PreemptionError, VertexJobError
 from alpha_zero.cloud.gcp.storage import GCSModelStorage
 from alpha_zero.cloud.gcp.vertex_jobs import (
     VertexAIClient,
@@ -127,6 +127,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward_shaping", action="store_true", help="Enable reward shaping")
     parser.add_argument("--reward_scale", type=float, default=1.0, help="Reward shaping scale")
 
+    # Post-run tournament (disabled by default)
+    parser.add_argument(
+        "--post_run_tournament",
+        action="store_true",
+        help="Run round-robin tournament of all model versions after training",
+    )
+    parser.add_argument(
+        "--tournament_games",
+        type=int,
+        default=10,
+        help="Games per matchup in post-run tournament",
+    )
+    parser.add_argument(
+        "--tournament_mcts_sims",
+        type=int,
+        default=25,
+        help="MCTS simulations per move in tournament games",
+    )
+
     # Dry run
     parser.add_argument(
         "--dry_run", action="store_true", help="Validate without launching cloud jobs"
@@ -146,7 +165,7 @@ def get_initial_model_version(config: GCPConfig, dry_run: bool = False) -> int:
         version = storage.get_latest_version()
         logger.info("Found latest model version: %d", version)
         return version
-    except Exception:
+    except GCSStorageError:
         logger.info("No existing models found, starting from version 0")
         return 0
 
@@ -399,138 +418,200 @@ def run_evaluation_phase(
         return False, 0.0
 
 
-def run_iteration(
+def run_post_run_evaluation(
     config: GCPConfig,
-    client: VertexAIClient,
-    iteration: int,
-    model_version: int,
+    model_versions: list[int],
     args: argparse.Namespace,
-    curriculum_manager: object | None = None,
-) -> int | None:
-    """Run one full AlphaZero iteration (self-play + training + evaluation).
+    wandb_logger: object | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Run post-run tournament across all model versions.
 
-    Returns new model version if successful, None if failed.
+    Plays a round-robin tournament between all model versions produced during
+    the training run, computing ELO ratings and head-to-head results.
+
+    Args:
+        config: GCP configuration.
+        model_versions: List of model versions to include in tournament.
+        args: Parsed CLI arguments (tournament_games, mcts_type, etc.).
+        wandb_logger: Optional WandbLogger for metrics logging.
+        dry_run: If True, simulate tournament without loading real models.
+
+    Returns:
+        Dict with tournament results including ELO ratings and match results.
     """
-    logger.info("=" * 60)
-    logger.info("Starting iteration %d (model v%d)", iteration, model_version)
-    logger.info("=" * 60)
+    import json
+    from typing import Any
 
-    start_time = time.time()
+    import torch
 
-    # Apply curriculum overrides if enabled
-    if curriculum_manager is not None:
-        env_params = curriculum_manager.get_environment_params()
-        args.board_size = env_params.get("board_size", args.board_size)
-        args.max_turns = env_params.get("max_turns", args.max_turns)
+    from alpha_zero.cloud.gcp.arena import run_arena
+
+    if len(model_versions) < 2:
         logger.info(
-            "Curriculum stage=%s, board=%dx%d, max_turns=%d",
-            curriculum_manager.get_current_stage(),
-            args.board_size,
-            args.board_size,
-            args.max_turns,
+            "Post-run tournament skipped: need >= 2 model versions (have %d)", len(model_versions)
+        )
+        return {}
+
+    logger.info("=" * 60)
+    logger.info("Post-Run Tournament: %d model versions", len(model_versions))
+    logger.info("=" * 60)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Load all models
+    models: dict[str, torch.nn.Module] = {}
+    for version in model_versions:
+        player_id = f"v{version:03d}"
+        if dry_run:
+            from alpha_zero.core.transformer_network import (
+                Civ6TransformerNetwork,
+                TransformerConfig,
+            )
+
+            models[player_id] = Civ6TransformerNetwork(
+                config=TransformerConfig(
+                    spatial_size=args.board_size,
+                    action_space_size=config.network.action_space_size,
+                )
+            )
+        else:
+            from alpha_zero.cloud.gcp.evaluation_worker import load_model
+
+            model = load_model(config, version)
+            model = model.to(device)
+            models[player_id] = model
+
+    logger.info("Loaded %d models for tournament", len(models))
+
+    # Run round-robin: every pair plays tournament_games
+    player_ids = sorted(models.keys())
+    match_results: list[dict[str, Any]] = []
+    elo_ratings: dict[str, float] = dict.fromkeys(player_ids, 1500.0)
+
+    # ELO update constants
+    k_factor = 32.0
+
+    for i, player_a in enumerate(player_ids):
+        for player_b in player_ids[i + 1 :]:
+            logger.info(
+                "Match: %s vs %s (%d games)",
+                player_a,
+                player_b,
+                args.tournament_games,
+            )
+
+            result = run_arena(
+                model_a=models[player_a],
+                model_b=models[player_b],
+                num_games=args.tournament_games,
+                mcts_type=args.mcts_type,
+                mcts_sims=args.tournament_mcts_sims,
+                gumbel_num_actions=args.gumbel_num_actions,
+                board_size=args.board_size,
+                max_turns=args.max_turns,
+                device=device,
+            )
+
+            logger.info(
+                "Result: %s vs %s -> W:%d D:%d L:%d (win_rate=%.2f%%)",
+                player_a,
+                player_b,
+                result.wins,
+                result.draws,
+                result.losses,
+                result.win_rate * 100,
+            )
+
+            match_results.append(
+                {
+                    "player_a": player_a,
+                    "player_b": player_b,
+                    **result.to_dict(),
+                }
+            )
+
+            # Update ELO ratings
+            expected_a = 1.0 / (
+                1.0 + 10.0 ** ((elo_ratings[player_b] - elo_ratings[player_a]) / 400.0)
+            )
+            score_a = (result.wins + 0.5 * result.draws) / max(result.total_games, 1)
+            elo_ratings[player_a] += k_factor * (score_a - expected_a)
+            elo_ratings[player_b] += k_factor * ((1.0 - score_a) - (1.0 - expected_a))
+
+    # Build results summary
+    elo_ranking = sorted(elo_ratings.items(), key=lambda x: x[1], reverse=True)
+
+    logger.info("=" * 60)
+    logger.info("Tournament Results - ELO Rankings:")
+    for rank, (player_id, elo) in enumerate(elo_ranking, 1):
+        logger.info("  %d. %s: %.1f ELO", rank, player_id, elo)
+    logger.info("=" * 60)
+
+    tournament_results: dict[str, Any] = {
+        "model_versions": model_versions,
+        "elo_ratings": dict(elo_ranking),
+        "matches": match_results,
+        "best_model": elo_ranking[0][0] if elo_ranking else None,
+        "best_elo": elo_ranking[0][1] if elo_ranking else 0.0,
+    }
+
+    # Log to W&B
+    if wandb_logger is not None and hasattr(wandb_logger, "is_enabled") and wandb_logger.is_enabled:
+        for player_id, elo in elo_ratings.items():
+            wandb_logger.log({f"tournament/elo_{player_id}": elo})  # type: ignore[attr-defined]
+        wandb_logger.log(
+            {  # type: ignore[attr-defined]
+                "tournament/best_model": elo_ranking[0][0] if elo_ranking else "",
+                "tournament/best_elo": elo_ranking[0][1] if elo_ranking else 0.0,
+                "tournament/num_models": len(model_versions),
+                "tournament/total_matches": len(match_results),
+            }
         )
 
-    # Phase 1: Self-play
-    logger.info(
-        "Phase 1: Self-play (%d workers, %d games each, %s MCTS)",
-        args.workers,
-        args.games_per_worker,
-        args.mcts_type,
-    )
-    selfplay_ok = run_selfplay_phase(
-        config=config,
-        client=client,
-        iteration=iteration,
-        model_version=model_version,
-        num_workers=args.workers,
-        games_per_worker=args.games_per_worker,
-        args=args,
-        max_retries=args.max_retries,
-        dry_run=args.dry_run,
-    )
-
-    if not selfplay_ok:
-        logger.error("Self-play phase failed for iteration %d", iteration)
-        return None
-
-    # Phase 2: Training
-    # Use trajectories from recent iterations (sliding window)
-    earliest = max(0, iteration - args.trajectory_window + 1)
-    trajectory_iterations = list(range(earliest, iteration + 1))
-
-    logger.info("Phase 2: Training on trajectories from iterations %s", trajectory_iterations)
-    training_ok = run_training_phase(
-        config=config,
-        client=client,
-        iteration=iteration,
-        trajectory_iterations=trajectory_iterations,
-        args=args,
-        max_retries=args.max_retries,
-        dry_run=args.dry_run,
-    )
-
-    if not training_ok:
-        logger.error("Training phase failed for iteration %d", iteration)
-        return None
-
-    # Get new model version
-    if args.dry_run:
-        new_version = model_version + 1
-    else:
+    # Save results to GCS
+    if not dry_run:
         try:
-            storage = GCSModelStorage(config)
-            new_version = storage.get_latest_version()
-        except Exception:
-            new_version = model_version + 1
+            from alpha_zero.cloud.gcp.storage import GCSBackend
 
-    # Phase 3: Evaluation (optional)
-    if args.evaluation_games > 0 and model_version > 0:
-        logger.info(
-            "Phase 3: Evaluating v%d vs v%d (%d games)",
-            new_version,
-            model_version,
-            args.evaluation_games,
-        )
-        eval_ok, win_rate = run_evaluation_phase(
-            config=config,
-            client=client,
-            iteration=iteration,
-            model_version_new=new_version,
-            model_version_old=model_version,
-            args=args,
-            dry_run=args.dry_run,
-        )
+            backend = GCSBackend(config.project_id)
+            data = json.dumps(tournament_results, indent=2).encode("utf-8")
+            uri = backend.upload_blob(config.bucket, "tournament/post_run_results.json", data)
+            logger.info("Saved tournament results to %s", uri)
+        except Exception as e:
+            logger.warning("Failed to save tournament results to GCS: %s", e)
 
-        if eval_ok and win_rate < args.evaluation_win_threshold:
-            logger.warning(
-                "New model rejected: win_rate=%.2f%% < threshold=%.2f%%",
-                win_rate * 100,
-                args.evaluation_win_threshold * 100,
-            )
-            new_version = model_version  # Keep old model
-
-        # Record results for curriculum progression
-        if curriculum_manager is not None and eval_ok:
-            curriculum_manager.record_game(
-                won=(win_rate >= args.evaluation_win_threshold),
-                metrics={"win_rate": win_rate},
-            )
-
-    elapsed = time.time() - start_time
-    logger.info(
-        "Iteration %d complete in %.1f minutes. Model: v%d",
-        iteration,
-        elapsed / 60,
-        new_version,
-    )
-
-    return new_version
+    return tournament_results
 
 
 def main() -> int:
     """Main entry point."""
     args = parse_args()
     setup_logging()
+
+    # Initialize W&B for orchestrator (opt-in via WANDB_ENABLED env var)
+    wandb_logger = None
+    try:
+        from alpha_zero.utils.wandb_logger import WandbLogger
+
+        wandb_logger = WandbLogger.from_env()
+        if wandb_logger.is_enabled:
+            wandb_logger.init(
+                config_dict={
+                    "iterations": args.iterations,
+                    "workers": args.workers,
+                    "games_per_worker": args.games_per_worker,
+                    "mcts_type": args.mcts_type,
+                    "mcts_simulations": args.mcts_simulations,
+                    "board_size": args.board_size,
+                    "evaluation_games": args.evaluation_games,
+                    "epochs": args.epochs,
+                    "mode": "orchestrator",
+                }
+            )
+            logger.info("W&B logging enabled for orchestrator")
+    except ImportError:
+        logger.debug("W&B not available")
 
     logger.info("Civ6 AlphaZero Vertex AI Orchestrator")
     logger.info(
@@ -568,35 +649,203 @@ def main() -> int:
             service_account=config.service_account,
         )
 
-        # Get starting model version
+        # Get starting model version (save for post-run tournament)
         model_version = get_initial_model_version(config, args.dry_run)
+        initial_model_version = model_version
+
+        # Initialize cost estimator
+        from alpha_zero.cloud.gcp.cost import CostEstimator
+
+        cost_estimator = CostEstimator(config)
+        total_estimated_cost = 0.0
 
         total_start = time.time()
         successful_iterations = 0
         failed_iterations = 0
 
         for i in range(args.iterations):
+            iteration_start = time.time()
             iteration = args.start_iteration + i
 
-            new_version = run_iteration(
+            logger.info("=" * 60)
+            logger.info("Starting iteration %d (model v%d)", iteration, model_version)
+            logger.info("=" * 60)
+
+            # Apply curriculum overrides if enabled
+            if curriculum_manager is not None:
+                env_params = curriculum_manager.get_environment_params()
+                args.board_size = env_params.get("board_size", args.board_size)
+                args.max_turns = env_params.get("max_turns", args.max_turns)
+                logger.info(
+                    "Curriculum stage=%s, board=%dx%d, max_turns=%d",
+                    curriculum_manager.get_current_stage(),
+                    args.board_size,
+                    args.board_size,
+                    args.max_turns,
+                )
+
+            # Phase 1: Self-play
+            sp_start = time.time()
+            logger.info(
+                "Phase 1: Self-play (%d workers, %d games each, %s MCTS)",
+                args.workers,
+                args.games_per_worker,
+                args.mcts_type,
+            )
+            selfplay_ok = run_selfplay_phase(
                 config=config,
                 client=client,
                 iteration=iteration,
                 model_version=model_version,
+                num_workers=args.workers,
+                games_per_worker=args.games_per_worker,
                 args=args,
-                curriculum_manager=curriculum_manager,
+                max_retries=args.max_retries,
+                dry_run=args.dry_run,
+            )
+            sp_duration = (time.time() - sp_start) / 3600.0
+
+            # Estimate self-play cost
+            sp_cost = (
+                cost_estimator.estimate_job_cost(
+                    machine_type=config.self_play.machine_type,
+                    accelerator_type=config.self_play.accelerator_type,
+                    accelerator_count=config.self_play.accelerator_count,
+                    duration_hours=sp_duration,
+                    is_spot=config.self_play.spot,
+                )
+                * args.workers
+            )
+            total_estimated_cost += sp_cost
+            logger.info("Self-play phase cost (est): $%.2f", sp_cost)
+
+            if not selfplay_ok:
+                logger.error("Self-play phase failed for iteration %d", iteration)
+                failed_iterations += 1
+                continue
+
+            # Phase 2: Training
+            train_start = time.time()
+            earliest = max(0, iteration - args.trajectory_window + 1)
+            trajectory_iterations = list(range(earliest, iteration + 1))
+
+            logger.info(
+                "Phase 2: Training on trajectories from iterations %s", trajectory_iterations
+            )
+            training_ok = run_training_phase(
+                config=config,
+                client=client,
+                iteration=iteration,
+                trajectory_iterations=trajectory_iterations,
+                args=args,
+                max_retries=args.max_retries,
+                dry_run=args.dry_run,
+            )
+            train_duration = (time.time() - train_start) / 3600.0
+
+            # Estimate training cost
+            train_cost = cost_estimator.estimate_job_cost(
+                machine_type=config.training.machine_type,
+                accelerator_type=config.training.accelerator_type,
+                accelerator_count=config.training.accelerator_count,
+                duration_hours=train_duration,
+                is_spot=config.training.spot,
+            )
+            total_estimated_cost += train_cost
+            logger.info("Training phase cost (est): $%.2f", train_cost)
+
+            if not training_ok:
+                logger.error("Training phase failed for iteration %d", iteration)
+                failed_iterations += 1
+                continue
+
+            # Get new model version
+            if args.dry_run:
+                new_version = model_version + 1
+            else:
+                try:
+                    storage = GCSModelStorage(config)
+                    new_version = storage.get_latest_version()
+                except Exception:
+                    new_version = model_version + 1
+
+            # Initialize metrics for logging
+            win_rate = 0.0
+            eval_cost = 0.0
+
+            # Phase 3: Evaluation (optional)
+            if args.evaluation_games > 0 and model_version > 0:
+                eval_start = time.time()
+                logger.info(
+                    "Phase 3: Evaluating v%d vs v%d (%d games)",
+                    new_version,
+                    model_version,
+                    args.evaluation_games,
+                )
+                eval_ok, win_rate = run_evaluation_phase(
+                    config=config,
+                    client=client,
+                    iteration=iteration,
+                    model_version_new=new_version,
+                    model_version_old=model_version,
+                    args=args,
+                    dry_run=args.dry_run,
+                )
+                eval_duration = (time.time() - eval_start) / 3600.0
+
+                # Estimate eval cost using the actual VertexEvaluationJob spec:
+                # CPU-only worker on n1-standard-4 with no accelerators.
+                eval_cost = cost_estimator.estimate_job_cost(
+                    machine_type="n1-standard-4",
+                    accelerator_type="",
+                    accelerator_count=0,
+                    duration_hours=eval_duration,
+                    is_spot=False,
+                )
+                total_estimated_cost += eval_cost
+                logger.info("Evaluation phase cost (est): $%.2f", eval_cost)
+
+                if eval_ok and win_rate < args.evaluation_win_threshold:
+                    logger.warning(
+                        "New model rejected: win_rate=%.2f%% < threshold=%.2f%%",
+                        win_rate * 100,
+                        args.evaluation_win_threshold * 100,
+                    )
+                    new_version = model_version  # Keep old model
+
+                # Record results for curriculum progression
+                if curriculum_manager is not None and eval_ok:
+                    curriculum_manager.record_game(
+                        won=(win_rate >= args.evaluation_win_threshold),
+                        metrics={"win_rate": win_rate},
+                    )
+
+            iteration_duration = (time.time() - iteration_start) / 60.0  # minutes
+
+            # Log iteration metrics to W&B
+            if wandb_logger is not None and wandb_logger.is_enabled:
+                iteration_metrics = {
+                    "orchestrator/iteration": iteration,
+                    "orchestrator/model_version": new_version,
+                    "orchestrator/iteration_duration_min": iteration_duration,
+                    "orchestrator/selfplay_cost": sp_cost,
+                    "orchestrator/training_cost": train_cost,
+                    "orchestrator/cumulative_cost": total_estimated_cost,
+                }
+                if args.evaluation_games > 0 and model_version > 0:
+                    iteration_metrics["orchestrator/eval_win_rate"] = win_rate
+                    iteration_metrics["orchestrator/eval_cost"] = eval_cost
+                wandb_logger.log(iteration_metrics, step=iteration)
+
+            logger.info(
+                "Iteration %d complete in %.1f minutes. Model: v%d",
+                iteration,
+                iteration_duration,
+                new_version,
             )
 
-            if new_version is not None:
-                model_version = new_version
-                successful_iterations += 1
-            else:
-                failed_iterations += 1
-                logger.warning(
-                    "Iteration %d failed. Continuing with model v%d",
-                    iteration,
-                    model_version,
-                )
+            model_version = new_version
+            successful_iterations += 1
 
         total_elapsed = time.time() - total_start
         logger.info("=" * 60)
@@ -608,15 +857,48 @@ def main() -> int:
             total_elapsed / 60,
         )
         logger.info("Final model version: v%d", model_version)
+        logger.info("Total Estimated Cost: $%.2f", total_estimated_cost)
         logger.info("=" * 60)
+
+        # Phase 4: Post-run tournament (optional)
+        if args.post_run_tournament and successful_iterations > 0:
+            # Collect all model versions: initial + all produced during training
+            latest_version = get_initial_model_version(config, args.dry_run)
+            all_versions = list(range(initial_model_version, latest_version + 1))
+            if len(all_versions) >= 2:
+                run_post_run_evaluation(
+                    config=config,
+                    model_versions=all_versions,
+                    args=args,
+                    wandb_logger=wandb_logger,
+                    dry_run=args.dry_run,
+                )
+
+        # Log final summary to W&B
+        if wandb_logger is not None and wandb_logger.is_enabled:
+            wandb_logger.log(
+                {
+                    "orchestrator/total_iterations": args.iterations,
+                    "orchestrator/successful_iterations": successful_iterations,
+                    "orchestrator/failed_iterations": failed_iterations,
+                    "orchestrator/total_cost": total_estimated_cost,
+                    "orchestrator/total_duration_min": total_elapsed / 60,
+                    "orchestrator/final_model_version": model_version,
+                }
+            )
+            wandb_logger.finish()
 
         return 0 if failed_iterations == 0 else 1
 
     except KeyboardInterrupt:
         logger.warning("Orchestrator interrupted by user")
+        if wandb_logger is not None and wandb_logger.is_enabled:
+            wandb_logger.finish(exit_code=130)
         return 130
     except Exception as e:
         logger.exception("Orchestrator failed: %s", e)
+        if wandb_logger is not None and wandb_logger.is_enabled:
+            wandb_logger.finish(exit_code=1)
         return 1
 
 

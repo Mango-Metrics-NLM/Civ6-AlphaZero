@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class KnowledgeBase:
     """Manages document ingestion for the RAG system."""
 
-    def __init__(self, rag_client: RAGClient):
+    def __init__(self, rag_client: RAGClient) -> None:
         self.rag_client = rag_client
 
     def ingest_directory(self, directory: str | Path, pattern: str = "**/*.md") -> int:
@@ -97,7 +97,7 @@ class KnowledgeBase:
         # Split by headers or paragraphs
         paragraphs = text.split("\n\n")
 
-        current_chunk = []
+        current_chunk: list[str] = []
         current_len = 0
 
         for para in paragraphs:
@@ -121,7 +121,7 @@ class KnowledgeBase:
         if current_chunk:
             yield "\n\n".join(current_chunk)
 
-    def clear(self):
+    def clear(self) -> None:
         """Clear the backend database (if supported)."""
         # Chroma's delete collection or reset logic if needed
         # For now, not exposed to avoid accidental data loss via this API

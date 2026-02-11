@@ -38,7 +38,9 @@ from typing import NamedTuple, Protocol, runtime_checkable
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
+
+from alpha_zero.core.checkpoint_utils import validate_reduction
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -303,6 +305,8 @@ def compute_policy_loss(
         The loss is computed as -sum(target * log(softmax(logits))).
         This is equivalent to cross-entropy when targets are probabilities.
     """
+    validate_reduction(reduction)
+
     logger.debug(
         "Computing policy loss: logits=%s, target=%s, mask=%s, reduction=%s",
         policy_logits.shape,
@@ -328,10 +332,8 @@ def compute_policy_loss(
         loss = per_sample_loss.mean()
     elif reduction == "sum":
         loss = per_sample_loss.sum()
-    elif reduction == "none":
+    else:  # reduction == "none"
         loss = per_sample_loss
-    else:
-        raise ValueError(f"Unknown reduction: {reduction}")
 
     logger.debug("Policy loss computed: %f", loss.item() if loss.dim() == 0 else loss.mean().item())
     return loss
@@ -360,6 +362,8 @@ def compute_value_loss(
     Returns:
         Value loss as a scalar tensor (or per-sample if reduction='none').
     """
+    validate_reduction(reduction)
+
     if config is None:
         config = LossConfig()
 
@@ -387,14 +391,8 @@ def compute_value_loss(
             pred = pred.squeeze(-1)
         if target.dim() == 2 and target.shape[1] == 1:
             target = target.squeeze(-1)
-        if reduction == "mean":
-            value_loss = F.mse_loss(pred, target, reduction="mean")
-        elif reduction == "sum":
-            value_loss = F.mse_loss(pred, target, reduction="sum")
-        elif reduction == "none":
-            value_loss = F.mse_loss(pred, target, reduction="none")
-        else:
-            raise ValueError(f"Unknown reduction: {reduction}")
+        # Valid reduction already validated at function start
+        value_loss = F.mse_loss(pred, target, reduction=reduction)
 
     logger.debug(
         "Value loss computed: %f",
@@ -425,6 +423,8 @@ def compute_reward_loss(
     Returns:
         Reward loss as a scalar tensor (or per-sample if reduction='none').
     """
+    validate_reduction(reduction)
+
     if config is None:
         config = LossConfig()
 
@@ -447,14 +447,8 @@ def compute_reward_loss(
         reward_loss = F.cross_entropy(pred, target_categorical, reduction=reduction)
     else:
         # Mean squared error for scalar predictions
-        if reduction == "mean":
-            reward_loss = F.mse_loss(pred, target, reduction="mean")
-        elif reduction == "sum":
-            reward_loss = F.mse_loss(pred, target, reduction="sum")
-        elif reduction == "none":
-            reward_loss = F.mse_loss(pred, target, reduction="none")
-        else:
-            raise ValueError(f"Unknown reduction: {reduction}")
+        # Valid reduction already validated at function start
+        reward_loss = F.mse_loss(pred, target, reduction=reduction)
 
     logger.debug(
         "Reward loss computed: %f",
@@ -504,6 +498,8 @@ def compute_consistency_loss(
         >>> proj_obs = torch.randn(4, 256)
         >>> loss = compute_consistency_loss(proj_dyn, proj_obs.detach())
     """
+    validate_reduction(reduction)
+
     logger.debug(
         "Computing consistency loss: proj1=%s, proj2=%s, reduction=%s",
         proj1.shape,
@@ -524,10 +520,8 @@ def compute_consistency_loss(
         loss = per_sample_loss.mean()
     elif reduction == "sum":
         loss = per_sample_loss.sum()
-    elif reduction == "none":
+    else:  # reduction == "none"
         loss = per_sample_loss
-    else:
-        raise ValueError(f"Unknown reduction: {reduction}")
 
     logger.debug(
         "Consistency loss computed: %f", loss.item() if loss.dim() == 0 else loss.mean().item()
@@ -558,6 +552,8 @@ def compute_value_prefix_loss(
     Returns:
         Value prefix loss as a scalar tensor (or per-sample if reduction='none').
     """
+    validate_reduction(reduction)
+
     if config is None:
         config = LossConfig()
 
@@ -577,14 +573,8 @@ def compute_value_prefix_loss(
         )
         prefix_loss = F.cross_entropy(pred, target_categorical, reduction=reduction)
     else:
-        if reduction == "mean":
-            prefix_loss = F.mse_loss(pred, target, reduction="mean")
-        elif reduction == "sum":
-            prefix_loss = F.mse_loss(pred, target, reduction="sum")
-        elif reduction == "none":
-            prefix_loss = F.mse_loss(pred, target, reduction="none")
-        else:
-            raise ValueError(f"Unknown reduction: {reduction}")
+        # Valid reduction already validated at function start
+        prefix_loss = F.mse_loss(pred, target, reduction=reduction)
 
     logger.debug(
         "Value prefix loss computed: %f",
@@ -652,7 +642,7 @@ class LossConfig:
         support_size: int | None = None,
         min_value: float | None = None,
         max_value: float | None = None,
-    ):
+    ) -> None:
         """Initialize LossConfig with backwards compatibility.
 
         Args:
@@ -695,16 +685,19 @@ class LossConfig:
     @property
     def support_size(self) -> int:
         """Size of categorical support (backwards-compatible property)."""
+        assert self.categorical_support is not None, "categorical_support is always initialized"
         return self.categorical_support.support_size
 
     @property
     def min_value(self) -> float:
         """Minimum value in support range (backwards-compatible property)."""
+        assert self.categorical_support is not None, "categorical_support is always initialized"
         return self.categorical_support.min_value
 
     @property
     def max_value(self) -> float:
         """Maximum value in support range (backwards-compatible property)."""
+        assert self.categorical_support is not None, "categorical_support is always initialized"
         return self.categorical_support.max_value
 
 
@@ -952,24 +945,28 @@ def compute_muzero_trajectory_loss(
         )
         step_losses.append(step_k_loss)
 
-    # Aggregate losses across all steps
-    total_loss = sum(s.total_loss for s in step_losses)
-    policy_loss = sum(s.policy_loss for s in step_losses)
-    value_loss = sum(s.value_loss for s in step_losses)
+    # Aggregate losses across all steps - use stack().sum() to guarantee Tensor return type
+    total_loss = torch.stack([s.total_loss for s in step_losses]).sum()
+    policy_loss = torch.stack([s.policy_loss for s in step_losses]).sum()
+    value_loss = torch.stack([s.value_loss for s in step_losses]).sum()
 
     # Reward loss (only for k >= 1)
-    reward_losses = [s.reward_loss for s in step_losses if s.reward_loss is not None]
-    reward_loss = sum(reward_losses) if reward_losses else torch.tensor(0.0)
+    reward_loss_list = [s.reward_loss for s in step_losses if s.reward_loss is not None]
+    reward_loss = torch.stack(reward_loss_list).sum() if reward_loss_list else torch.tensor(0.0)
 
     # Consistency loss (only if any step has it)
-    consistency_losses = [s.consistency_loss for s in step_losses if s.consistency_loss is not None]
-    consistency_loss = sum(consistency_losses) if consistency_losses else None
+    consistency_loss_list = [
+        s.consistency_loss for s in step_losses if s.consistency_loss is not None
+    ]
+    consistency_loss = torch.stack(consistency_loss_list).sum() if consistency_loss_list else None
 
     # Value prefix loss (only if any step has it)
-    value_prefix_losses = [
+    value_prefix_loss_list = [
         s.value_prefix_loss for s in step_losses if s.value_prefix_loss is not None
     ]
-    value_prefix_loss = sum(value_prefix_losses) if value_prefix_losses else None
+    value_prefix_loss = (
+        torch.stack(value_prefix_loss_list).sum() if value_prefix_loss_list else None
+    )
 
     logger.info(
         "Trajectory loss computed: total=%f, policy=%f, value=%f, reward=%f",
@@ -1075,7 +1072,7 @@ class MuZeroLossCalculator:
         num_unroll_steps: int = 5,
         use_consistency_loss: bool = True,
         use_value_prefix: bool = True,
-    ):
+    ) -> None:
         """Initialize the loss calculator.
 
         Args:
@@ -1148,8 +1145,8 @@ class MuZeroLossCalculator:
         """Compute loss using MuZero network interface with dynamics unrolling."""
         logger.debug("Using MuZero network interface")
 
-        # Initial inference
-        initial_output = network.initial_inference(
+        # Initial inference - duck-typed method call
+        initial_output = network.initial_inference(  # type: ignore[operator]
             batch.observations_spatial[0],
             batch.observations_vector[0],
             batch.action_masks[0] if batch.action_masks else None,
@@ -1182,8 +1179,8 @@ class MuZeroLossCalculator:
         for k in range(len(batch.actions)):
             logger.debug("Unrolling dynamics step %d", k)
 
-            # Recurrent inference
-            recurrent_output = network.recurrent_inference(
+            # Recurrent inference - duck-typed method call
+            recurrent_output = network.recurrent_inference(  # type: ignore[operator]
                 current_hidden,
                 batch.actions[k],
                 batch.action_masks[k + 1] if batch.action_masks else None,
@@ -1217,7 +1214,8 @@ class MuZeroLossCalculator:
                     ),
                 ).detach()  # Stop gradient for SimSiam
                 projected_dynamics_list.append(proj_dyn)
-                projected_observation_list.append(proj_obs)
+                if projected_observation_list is not None:
+                    projected_observation_list.append(proj_obs)
 
             # Value prefix predictions
             if self.use_value_prefix and predicted_value_prefixes is not None:
@@ -1293,10 +1291,10 @@ class MuZeroLossCalculator:
             )
             step_losses.append(step_loss)
 
-        # Aggregate losses
-        total_loss = sum(s.total_loss for s in step_losses)
-        policy_loss = sum(s.policy_loss for s in step_losses)
-        value_loss = sum(s.value_loss for s in step_losses)
+        # Aggregate losses - use stack().sum() to guarantee Tensor return type
+        total_loss = torch.stack([s.total_loss for s in step_losses]).sum()
+        policy_loss = torch.stack([s.policy_loss for s in step_losses]).sum()
+        value_loss = torch.stack([s.value_loss for s in step_losses]).sum()
 
         return TrajectoryLossOutput(
             total_loss=total_loss,
@@ -1311,7 +1309,7 @@ class MuZeroLossCalculator:
     def _get_projection(self, network: nn.Module, hidden_state: torch.Tensor) -> torch.Tensor:
         """Get projection from hidden state for consistency loss."""
         if hasattr(network, "project"):
-            return network.project(hidden_state)
+            return network.project(hidden_state)  # type: ignore[operator, no-any-return]
         else:
             logger.warning("Network doesn't have project method, using identity")
             return hidden_state.mean(dim=(2, 3)) if hidden_state.dim() == 4 else hidden_state
@@ -1324,7 +1322,7 @@ class MuZeroLossCalculator:
     ) -> torch.Tensor:
         """Get representation from observation."""
         if hasattr(network, "representation"):
-            return network.representation(spatial, vector)
+            return network.representation(spatial, vector)  # type: ignore[operator, no-any-return]
         else:
             logger.warning("Network doesn't have representation method")
             return spatial
@@ -1336,7 +1334,7 @@ class MuZeroLossCalculator:
     ) -> torch.Tensor:
         """Get value prefix prediction from hidden state."""
         if hasattr(network, "predict_value_prefix"):
-            return network.predict_value_prefix(hidden_state)
+            return network.predict_value_prefix(hidden_state)  # type: ignore[operator, no-any-return]
         else:
             logger.warning("Network doesn't have predict_value_prefix method")
             batch_size = hidden_state.size(0)
@@ -1419,28 +1417,28 @@ def compute_muzero_loss(
 # =============================================================================
 
 __all__ = [
-    # Utility functions
-    "scalar_to_categorical",
-    "categorical_to_scalar",
-    # Core losses
-    "compute_policy_loss",
-    "compute_value_loss",
-    "compute_reward_loss",
-    # EfficientZero losses
-    "compute_consistency_loss",
-    "compute_value_prefix_loss",
-    # Combined losses
-    "compute_muzero_step_loss",
-    "compute_muzero_trajectory_loss",
-    "compute_muzero_loss",
+    "AlphaZeroNetworkProtocol",
     # Data structures
     "LossConfig",
-    "StepLossOutput",
-    "TrajectoryLossOutput",
-    "TrajectoryBatch",
     # Calculator class
     "MuZeroLossCalculator",
     # Protocols
     "MuZeroNetworkProtocol",
-    "AlphaZeroNetworkProtocol",
+    "StepLossOutput",
+    "TrajectoryBatch",
+    "TrajectoryLossOutput",
+    "categorical_to_scalar",
+    # EfficientZero losses
+    "compute_consistency_loss",
+    "compute_muzero_loss",
+    # Combined losses
+    "compute_muzero_step_loss",
+    "compute_muzero_trajectory_loss",
+    # Core losses
+    "compute_policy_loss",
+    "compute_reward_loss",
+    "compute_value_loss",
+    "compute_value_prefix_loss",
+    # Utility functions
+    "scalar_to_categorical",
 ]

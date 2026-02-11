@@ -31,7 +31,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -89,7 +89,7 @@ class CheckpointManager:
         checkpoint_dir: str | Path,
         max_checkpoints: int = 10,
         best_metric: str = "win_rate",
-    ):
+    ) -> None:
         """Initialize checkpoint manager.
 
         Args:
@@ -447,7 +447,7 @@ class CheckpointManager:
 
     def _get_timestamp(self) -> str:
         """Get current timestamp string in ISO format."""
-        return datetime.now(timezone.utc).isoformat()
+        return datetime.now(UTC).isoformat()
 
     def __repr__(self) -> str:
         """String representation of checkpoint manager."""

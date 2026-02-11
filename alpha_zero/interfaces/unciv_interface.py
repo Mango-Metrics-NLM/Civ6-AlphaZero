@@ -20,7 +20,7 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -795,7 +795,7 @@ class UncivMappings:
     """Mapping tables for converting between Unciv and internal formats."""
 
     # Terrain base types to internal format
-    TERRAIN_TO_INTERNAL = {
+    TERRAIN_TO_INTERNAL: ClassVar[dict[str, str]] = {
         "Grassland": "grassland",
         "Plains": "plains",
         "Desert": "desert",
@@ -806,10 +806,10 @@ class UncivMappings:
         "Lakes": "coast",  # Treat lakes as coast
     }
 
-    INTERNAL_TO_TERRAIN = {v: k for k, v in TERRAIN_TO_INTERNAL.items()}
+    INTERNAL_TO_TERRAIN: ClassVar[dict[str, str]] = {v: k for k, v in TERRAIN_TO_INTERNAL.items()}
 
     # Terrain features to internal format
-    FEATURE_TO_INTERNAL = {
+    FEATURE_TO_INTERNAL: ClassVar[dict[str, str]] = {
         "Forest": "forest",
         "Jungle": "jungle",
         "Marsh": "marsh",
@@ -820,10 +820,10 @@ class UncivMappings:
         "Ice": "ice",
     }
 
-    INTERNAL_TO_FEATURE = {v: k for k, v in FEATURE_TO_INTERNAL.items()}
+    INTERNAL_TO_FEATURE: ClassVar[dict[str, str]] = {v: k for k, v in FEATURE_TO_INTERNAL.items()}
 
     # Unit types to internal categories
-    UNIT_TO_CATEGORY = {
+    UNIT_TO_CATEGORY: ClassVar[dict[str, str]] = {
         # Melee
         "Warrior": "melee",
         "Spearman": "melee",
@@ -883,7 +883,7 @@ class UncivMappings:
     }
 
     # Era mapping (based on tech count)
-    ERA_THRESHOLDS = [
+    ERA_THRESHOLDS: ClassVar[list[tuple[int, int]]] = [
         (0, 0),  # Ancient
         (10, 1),  # Classical
         (20, 2),  # Medieval
@@ -950,7 +950,7 @@ class UncivInterface:
         board_size: int = 16,
         max_units: int = 100,
         max_cities: int = 20,
-    ):
+    ) -> None:
         """Initialize the Unciv interface.
 
         Args:
@@ -970,7 +970,7 @@ class UncivInterface:
             f"max_units={max_units}, max_cities={max_cities}",
         )
 
-    def _load_actions_module(self):
+    def _load_actions_module(self) -> Any:
         """Load the civ6_actions module without triggering torch import.
 
         Returns:
@@ -997,12 +997,12 @@ class UncivInterface:
         return actions_module
 
     @property
-    def action_space(self):
+    def action_space(self) -> Any:
         """Lazy load the action space."""
         if self._action_space is None:
             actions_module = self._load_actions_module()
-            ActionSpace = actions_module.ActionSpace
-            ActionSpaceConfig = actions_module.ActionSpaceConfig
+            ActionSpace = actions_module.ActionSpace  # noqa: N806
+            ActionSpaceConfig = actions_module.ActionSpaceConfig  # noqa: N806
 
             self._action_space = ActionSpace(
                 ActionSpaceConfig(
@@ -1415,7 +1415,7 @@ class UncivInterface:
         """
         return self.action_space.get_full_mask(state)
 
-    def _get_action_enums(self):
+    def _get_action_enums(self) -> Any:
         """Get action enum classes, loading them if needed."""
         actions_module = self._load_actions_module()
         return (
@@ -1441,7 +1441,7 @@ class UncivInterface:
             UncivActionError: If the action cannot be applied
         """
         try:
-            ActionCategory, UnitActionType, CityActionType = self._get_action_enums()
+            ActionCategory, UnitActionType, CityActionType = self._get_action_enums()  # noqa: N806
 
             # Decode the action
             decoded = self.action_space.decode(action)

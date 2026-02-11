@@ -5,7 +5,349 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] — 2026-02-10
+
+### Fixed — Live Training Bug Fixes
+
+- **Legacy model config fallback**: Models v0-v2 (saved before Phase 13) had no `model_config`. The fallback was using `TransformerConfig()` defaults (embed_dim=256, spatial_size=16) causing size mismatch errors. Fixed to use `NetworkArchitectureConfig` pipeline defaults (embed_dim=64, board_size=8) in both `selfplay_worker.py` and `evaluation_worker.py`
+- **Training worker model_config persistence**: Training worker now saves `model_config` dict (via `dataclasses.asdict()` + Enum→value conversion) alongside model weights to GCS, enabling future models to load with correct architecture
+- **Post-run tournament version range**: Fixed bug where `get_initial_model_version()` was called after the training loop (returning latest=5) instead of saving initial version before the loop. Tournament `range(5, 3)` was empty. Fixed to use `range(initial_model_version, latest_version + 1)`
+- **Test fixes**: Updated `test_load_model_legacy_no_config`, `test_load_model_bad_config_falls_back`, and `test_load_model_legacy_format` to create state dicts matching pipeline architecture (embed_dim=64) instead of TransformerConfig defaults (embed_dim=256)
+
+### Changed
+
+- Docker image: v0.10.1 → v0.10.2 (`gcr.io/hrmtrain/civ6az-training:v0.10.2`)
+- Validated with live Vertex AI run: trim-night-121 (1-iter + tournament, $0.06)
+
+---
+
+## [0.10.0] — 2026-02-09
+
+### Added — Phase 13: Multi-Iteration Training & Post-Run Evaluation
+
+#### NetworkArchitectureConfig (`alpha_zero/cloud/gcp/config.py`)
+
+- **NetworkArchitectureConfig** dataclass: Single source of truth for architecture defaults
+  - `board_size=8`, `action_space_size=376`, `spatial_channels=13`, `vector_dim=64`, `num_layers=6`, `embed_dim=64`
+  - `from_env()` class method for environment variable overrides (`CIV6AZ_BOARD_SIZE`, etc.)
+- Added `network: NetworkArchitectureConfig` field to `GCPConfig`
+
+#### Shared Arena Module (`alpha_zero/cloud/gcp/arena.py`) — NEW
+
+- **`run_arena()`**: Extracted from `evaluation_worker.py` into reusable module
+  - Plays N games between two models with alternating sides
+  - Returns `ArenaResult` dataclass (wins, losses, draws, win_rate)
+  - Used by both evaluation_worker and post-run tournament
+- **`ArenaResult`**: Dataclass with `to_dict()` serialization
+
+#### Orchestrator W&B Logging (`vertex_orchestrator.py`)
+
+- Orchestrator-level W&B initialization (opt-in via `WANDB_ENABLED` env var)
+- Per-iteration metrics: `orchestrator/iteration`, `orchestrator/model_version`, `orchestrator/phase_*_duration`
+- Cost tracking: `orchestrator/iteration_cost`, `orchestrator/cumulative_cost`
+- Evaluation metrics: `orchestrator/eval_win_rate`, `orchestrator/eval_accepted`
+- Final summary: total iterations, success/fail counts, total cost, total duration
+
+#### Post-Run Tournament (`vertex_orchestrator.py`)
+
+- **`run_post_run_evaluation()`**: Round-robin tournament across all model versions
+  - Loads models from GCS, runs arena games locally on orchestrator machine
+  - Computes ELO ratings (K=32, starting 1500.0)
+  - Logs to W&B (`tournament/elo_*`, `tournament/best_model`, `tournament/best_elo`)
+  - Saves results JSON to GCS (`tournament/post_run_results.json`)
+- CLI flags: `--post_run_tournament`, `--tournament_games`, `--tournament_mcts_sims`
+
+#### Evaluation Worker Migration
+
+- Migrated from `MicroCivNetwork` (legacy, 381 actions) to `Civ6TransformerNetwork`
+- Loads `model_config` from GCS for correct architecture reconstruction
+- Handles enum string conversion (`norm_type`, `attention_type`)
+- Handles legacy models without config (falls back to `NetworkArchitectureConfig` defaults)
+
+### Fixed — 6 Critical Bugs
+
+| # | File | Bug | Fix |
+|---|------|-----|-----|
+| 1 | `selfplay_worker.py` | `action_space_size` default `381` | Changed to `376` |
+| 2 | `selfplay_worker.py` | `num_res_blocks=8`, `num_filters=256` | Changed to `6`, `64` |
+| 3 | `training_worker.py` | `board_size=16`, `action_space_size=381`, etc. | Changed to `8`, `376`, `6`, `64` |
+| 4 | `training_worker.py` | `prepare_dataset(trajectories, args.action_space_size)` | Pass `None` (uses TransformerConfig default) |
+| 5 | `evaluation_worker.py` | Uses `MicroCivNetwork` (legacy) | Migrated to `Civ6TransformerNetwork` |
+| 6 | `vertex_orchestrator.py` | `if new_version is not None` always True | Removed dead branch |
+
+### Changed
+
+- Docker image: v0.9.0 → v0.10.0 (`gcr.io/hrmtrain/civ6az-training:v0.10.0`)
+- Version: `0.9.0` → `0.10.0`
+- `container_healthcheck.py`: Added `arena` module to import check
+
+#### Test Suite (Phase 13)
+
+- `tests/cloud/unit/test_arena.py` — Arena module unit tests
+- `tests/cloud/unit/test_config_network.py` — NetworkArchitectureConfig tests
+- `tests/cloud/unit/test_orchestrator_wandb.py` — Orchestrator W&B logging tests
+- `tests/cloud/unit/test_post_run_evaluation.py` — Post-run tournament tests
+- Updated `test_evaluation_worker.py` — Migrated to Civ6TransformerNetwork
+- Updated `test_selfplay_worker.py` — Updated legacy format test
+
+#### Live Validation
+
+- **wandering-yogurt-88**: 3-iteration run, 54.5 min, $0.32 — all phases succeeded
+- **trim-night-121**: 1-iteration + post-run tournament, $0.06 — tournament produced ELO rankings, saved to GCS
+- GCS models: v0 through v6
+
+---
+
+## [0.9.0] — 2026-02-10
+
+### Changed — Phase 11: Code Quality, Tech Debt Reduction & Production Hardening
+
+#### Dead Code Removal (~14,600 LOC)
+
+- Deleted `agentic_framework/` directory (41 modules, 14,600 LOC) — confirmed zero imports from `alpha_zero/`
+- Removed `agentic_framework/` from ruff check in CI, pyproject.toml per-file-ignores
+
+#### Deprecated Modules (with warnings, not deleted)
+
+- `alpha_zero/mechanics/` — 12 files, 223 tests; future Civ6 integration
+- `alpha_zero/human_interface/` — 5 files, 58 tests; future Human vs AI
+- `alpha_zero/integration/game_connector.py` — 38 tests; future CivRealm integration
+- Each `__init__.py` emits `DeprecationWarning` on import
+
+#### XFailed Test Fixes (16 of 27 → passes)
+
+- Fixed 2 `test_vertex_trainer.py` tests (outdated mock constructor params)
+- Fixed 1 `test_e2e_llm.py` test (AsyncOpenAI mock chain)
+- Fixed 1 `test_production_resilience.py` test (mock patching path)
+- Fixed 1 `test_run_muzero_training.py` test (policy sum tolerance)
+- Fixed 5 `test_state_extraction.py` tests (mock dataclass alignment with StateConverter)
+- Fixed 1 `test_hierarchical_network.py` test (INVALID_ACTION_LOGIT constant)
+- Fixed 1 `test_action_masks.py` test (per-batch all-masked check)
+- Fixed 1 `test_training.py` test (checkpoint resume API)
+- Fixed 1 `test_real_civ6_env.py` test (CivRealmWrapper mock sync)
+- Remaining 13 xfails: 12 DDP tests (different API) + 1 hierarchical action space (deferred to Phase 14)
+
+#### Deprecated `datetime.utcnow()` Migration (19 files)
+
+- Replaced `datetime.utcnow()` with `datetime.now(UTC)` across 19 files
+- Added `from datetime import UTC` imports (Python 3.12+ deprecation fix)
+- Files: logging_config.py, tournament (config/elo/history/league), evaluation (reports), pbt (scheduler/coordinator), cloud (gcs_storage/preemption_handler/cost_monitor), core (reflection_memory), rag (5 files), human_interface (2 files)
+
+#### Logging Consolidation
+
+- **`logging_config.py` is now canonical** — absorbs MetricsTracker, TrainingLogger, GameLogger, PerformanceProfiler, CircularBuffer, LogConfig from old `logging.py`
+- **`logging.py` is now a thin re-export** with `DeprecationWarning`
+- Standardized env vars: `CIV6AZ_LOG_LEVEL`, `CIV6AZ_LOG_FORMAT`, `CIV6AZ_LOG_JSON`
+- Removed duplicate `ColoredFormatter` and `JSONFormatter` (kept `logging_config.py` versions)
+- Backward-compatible `setup_logging()` accepts deprecated `config=`, `console_output=`, `file_output=` kwargs
+
+#### Production `print()` Cleanup
+
+- Replaced `print()` with `logger.info()` in 5 production modules (evaluator.py, reports.py, diversity.py, entrypoint.py, analysis.py)
+- CLI modules (`cli.py`, `lifecycle_cli.py`) retain `print()` — intentional CLI output
+
+#### Mypy Incremental Strictness
+
+- Added `disallow_untyped_defs = true` + `disallow_incomplete_defs = true` for 4 packages:
+  - `alpha_zero.core.*`, `alpha_zero.training.*`, `alpha_zero.tournament.*`, `alpha_zero.pbt.*`
+- 0 new `no-untyped-def` errors (packages were already well-typed)
+
+#### CI Hardening
+
+- Pinned tool versions: `ruff==0.8.0`, `mypy==1.13.0`, `bandit==1.8.0`
+- Added `ruff format --check alpha_zero/` to lint job
+- Bandit now enforced (removed `|| true`): `--severity-level high --confidence-level high`
+- Added `benchmark` pytest marker to `pyproject.toml`
+
+#### Edge Case Tests (16 new tests)
+
+- `tests/unit/test_mcts_edge_cases.py` — 4 tests (single valid action, extreme values, zero input, batch size one)
+- `tests/unit/test_buffer_edge_cases.py` — 4 tests (empty buffer, overflow, concurrent access, zero batch size)
+- `tests/unit/test_training_safeguards.py` — 4 edge case tests (NaN+grad, inf loss, negative loss, small gradient)
+- `tests/unit/test_tournament_orchestrator.py` — 4 edge case tests (single player, two players, extreme ELO, all draws)
+
+#### Version & Documentation
+
+- Bumped version: `0.8.0` → `0.9.0`
+- Updated MEMORY.md with Phase 11 status
+
+---
+
+### Added — Phases 8-10: Training Safeguards, MuZero Integration & Tournament System
+
+#### Phase 8: Training Validation & Safeguards
+
+##### Training Safeguards (`alpha_zero/training/training_safeguards.py`) — NEW
+
+- **TrainingSafeguard**: Unified training health monitor wired into orchestrators
+  - `check_step(loss, grad_norm, step)` — Runs all checks, returns `SafeguardReport`
+  - NaN detection with configurable consecutive threshold (`max_consecutive_nan_steps`)
+  - Loss explosion detection via rolling baseline comparison (`loss_explosion_threshold`)
+  - Gradient health monitoring: NORMAL, HIGH, EXPLODING status levels
+  - Memory pressure detection via existing `MemoryGuard` integration
+  - Checkpoint validation: tensor shape, dtype, NaN presence verification
+  - Automated intervention recommendations: REDUCE_LR, ROLLBACK, REDUCE_BATCH_SIZE, EARLY_STOP
+- **TrainingSafeguardConfig**: Fully configurable with `to_dict()`/`from_dict()` serialization
+- **SafeguardReport**, **Intervention**, **GradientStatus**, **InterventionAction** dataclasses
+
+##### Training Reports (`alpha_zero/training/training_report.py`) — NEW
+
+- **TrainingReport**: Periodic training report generation at configurable intervals
+  - `record_step()` / `generate_report()` / `to_wandb_dict()` pipeline
+  - Computes mean/min/max loss, gradient norms, throughput (steps/sec)
+  - Includes safeguard events triggered during interval
+- **TrainingReportConfig**, **TrainingReportData** dataclasses
+
+##### Orchestrator Integration
+
+- **TrainingOrchestrator**: Added `set_training_safeguard()` setter for backwards compatibility
+  - Safeguard checks after each training step in `_train_epochs()`
+  - NaN triggers rollback to last checkpoint + LR reduction
+  - Loss explosion triggers LR reduction by factor 0.5
+  - Memory pressure triggers batch size reduction via `MemoryGuard`
+- **PBTOrchestrator**: Added `training_safeguard_config` keyword-only param
+  - Per-agent safeguard creation, events logged to W&B
+
+#### Phase 9: MuZero Integration Bridge
+
+##### MuZero Training Bridge (`alpha_zero/training/muzero_integration.py`) — NEW
+
+- **MuZeroTrainingBridge**: High-level interface connecting MuZero components to orchestrators
+  - `create_network()`, `create_trainer()`, `create_mcts()` — Factory methods
+  - `selfplay_step()` — Self-play via MuZeroMCTS (no env cloning needed)
+  - `training_step()` — Wraps `MuZeroTrainer.train_step()` with metric extraction
+  - `to_training_config()` — Converts integration config to `MuZeroTrainingConfig`
+- **MuZeroIntegrationConfig**: Env-var configurable (`CIV6AZ_MUZERO_*` prefix)
+  - `from_env()`, `from_yaml()`, `from_dict()`, `to_yaml()` serialization
+
+##### MuZero PBT Hyperparameters (`alpha_zero/pbt/muzero_hyperparams.py`) — NEW
+
+- `create_muzero_hyperparameter_space()` — PBT-compatible hyperparameter space
+- `merge_with_base_space()` — Combines MuZero params with existing AlphaZero space
+
+##### Orchestrator Integration
+
+- **TrainingOrchestrator**: Added `set_muzero_bridge()` setter, `training_mode` dispatch
+  - Default `training_mode="alphazero"` preserves existing behavior
+- **PBTOrchestrator**: Added `muzero_config` keyword-only param
+
+##### Configuration
+
+- `configs/muzero_pbt.yaml` — MuZero PBT config (population_size=6, mutation_strength=0.15)
+
+#### Phase 10: Tournament & Matchmaking System
+
+##### Tournament Orchestrator (`alpha_zero/tournament/orchestrator.py`) — NEW
+
+- **TournamentOrchestrator**: Bracket generation, match execution, standings
+  - Formats: `round_robin`, `single_elimination`, `swiss`
+  - Integrates with existing `ELORatingSystem`, `MatchMaker`, `MatchHistory`
+- **TournamentFormat** enum, **Bracket**, **Matchup**, **PlayerStanding**, **TournamentResult**
+
+##### Tournament Analysis (`alpha_zero/tournament/analysis.py`) — NEW
+
+- **TournamentAnalyzer**: Post-tournament analytics
+  - Head-to-head matrix, player trends, meta-analysis, upset detection
+  - Cross-generation strength comparison, JSON/markdown report export
+
+##### Tournament W&B Dashboards (`alpha_zero/tournament/wandb_dashboards.py`) — NEW
+
+- **TournamentWandbLogger**: `tournament/` namespaced W&B metrics
+  - Match results, round summaries, ELO leaderboard, head-to-head heatmap, ELO history
+
+##### PBT Integration
+
+- **PBTOrchestrator**: Added `tournament_interval` and `tournament_games_per_match` params
+  - `_run_tournament_evaluation()` — Runs at configured intervals, logs to W&B
+
+##### Configuration
+
+- `configs/tournament.yaml` — Tournament config (format, ELO, matchmaking, analysis, baselines)
+
+#### Test Suite (234 new tests, 495 total Phase 7-10)
+
+- `tests/unit/test_training_safeguards.py` — 56 tests
+- `tests/unit/test_training_report.py` — 16 tests
+- `tests/integration/test_safeguard_integration.py` — 9 tests
+- `tests/unit/test_muzero_integration.py` — 37 tests
+- `tests/unit/test_muzero_hyperparams.py` — 32 tests
+- `tests/unit/test_tournament_orchestrator.py` — 33 tests
+- `tests/unit/test_tournament_analysis.py` — 15 tests
+- `tests/unit/test_tournament_wandb_dashboards.py` — 15 tests
+
+### Changed
+
+- `.gitignore` — Added tournament DB, tournament reports, verify_ruff.py patterns
+- `alpha_zero/training/__init__.py` — Added Phase 8-9 exports
+- `alpha_zero/pbt/__init__.py` — Added Phase 9 exports
+- `alpha_zero/tournament/__init__.py` — Added Phase 10 exports
+- All new modules use graceful degradation (`try/except ImportError` with `_AVAILABLE` flags)
+
+---
+
 ## [0.8.0] — 2026-02-08
+
+### Added — Phase 7: Production Scaling & Training Validation
+
+#### W&B Population Dashboards
+
+- `WandbLogger.log_population_stats()` — Logs `pbt/` namespaced metrics (ELO, fitness, mutations) per generation
+- `WandbLogger.define_pbt_charts()` — Registers W&B metric axes with summary types (max, min, last, sum)
+- Per-agent ELO tracking via `pbt/agent/{agent_id}/elo` metrics
+- Mutation event tables logged via `WandbLogger.log_table()`
+
+#### GCS Checkpoint Rotation
+
+- `PBTOrchestrator._rotate_checkpoints()` — Manifest-based checkpoint pruning in GCS
+- Configurable `checkpoint_retention_generations` (default: 5, 0=unlimited)
+- Manifest stored at `{prefix}/checkpoint_manifest.json` mapping generations to blob paths
+- Graceful error handling — rotation failures never crash the main loop
+
+#### GPU Quota Guard
+
+- `PBTOrchestrator._check_quota()` — Queries active Vertex AI jobs and counts GPUs
+- `PBTOrchestrator._wait_for_quota()` — Exponential backoff polling (60s→300s cap, 1800s max)
+- Configurable via `CIV6AZ_GPU_QUOTA_LIMIT` and `CIV6AZ_QUOTA_WAIT_MAX_SECONDS` env vars
+- Optimistic fallback on API errors (returns `True` on failure)
+
+#### Baseline Benchmarking
+
+- `PBTEvaluator.run_baseline_benchmarks()` — Runs population agents vs baseline agents at configurable intervals
+- `EvaluationReport.baseline_results` field for storing benchmark match results
+- Baselines do NOT affect ELO ratings — serves as absolute performance anchor
+- Configurable via `baseline_interval` (default: 5, 0=disabled) and `baseline_agents` list
+
+#### Dynamic Evaluation Strategy Switch
+
+- `PBTOrchestrator._maybe_switch_strategy()` — Switches from `round_robin` to `top_k_vs_best` at configurable generation
+- `evaluation_strategy_switch_gen` config field (default: 0 = never switch)
+- Reduces evaluation cost as population matures
+
+#### PBTConfig Enhancements
+
+- 4 new fields: `baseline_interval`, `baseline_agents`, `checkpoint_retention_generations`, `evaluation_strategy_switch_gen`
+- Full validation (`>= 0` checks), `to_dict()`/`from_dict()` serialization, YAML round-trip support
+- Backwards compatible — all fields have defaults, existing configs unchanged
+
+#### Production Configuration
+
+- `configs/pbt_prod.yaml` — Production PBT config with GumbelMCTS-tuned hyperparameter ranges
+  - `population_size: 8`, `evaluation_strategy_switch_gen: 11`, `baseline_interval: 5`
+  - Full hyperparameter search space (learning_rate, c_puct, num_simulations, batch_size, etc.)
+
+#### Test Suite (279 PBT tests passing)
+
+- `tests/unit/test_pbt_dashboarding.py` — 14 tests for W&B population dashboard methods
+- `tests/integration/test_production_resilience.py` — 18 tests for checkpoint rotation, quota guard, strategy switch, baseline benchmarks
+- `tests/unit/test_pbt_config.py` — 12 new tests for Phase 7 config fields
+- `tests/unit/test_pbt_evaluator.py` — 8 new tests for baseline benchmarking
+- Fixed pre-existing `test_pbt_orchestrator.py` bugs (invalid VertexEvaluationJob patch, missing arena runner mock)
+
+### Fixed
+
+- `pbt_orchestrator.py` — Lambda keyword arg mismatch in `_run_evaluation_phase` fallback arena runner
+- `pbt_orchestrator.py` — Pre-existing trailing whitespace lint issue in `_local_arena_runner`
+- `test_pbt_orchestrator.py` — Removed invalid `VertexEvaluationJob` patch, added mock arena runner and `checkpoints_prefix` mock
 
 ### Added — Comprehensive Test Infrastructure & CI/CD (Phases 1-6)
 
@@ -63,6 +405,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+#### Cloud Training Enhancements (Phase 5)
+
+- **Multi-GPU Training Support**: Implemented `DistributedDataParallel` (DDP) in `alpha_zero/cloud/gcp/training_worker.py`
+  - Automatic `torchrun` execution for multi-accelerator jobs via `VertexTrainingJob`
+  - Efficient `DistributedSampler` for data sharding
+  - Rank-0 only logging and checkpointing
+- **Training Validation Infrastructure**: Added `configs/vertex_orchestrator_smoke.yaml` for multi-iteration loop validation
+- **DDP Test Suite**: Added `tests/cloud/unit/test_training_worker.py` and updated `test_vertex_jobs.py`
 
 #### GCP Vertex AI Production Pipeline
 
@@ -156,6 +507,17 @@ End-to-end cloud training on Vertex AI with GumbelMCTS, model evaluation, W&B tr
 - Fixed `dict()` → `{}` literal in evaluation_worker.py
 
 ---
+
+#### Phase 5.4: Cost Estimator & Robust Preemption (Finalization)
+
+- **`CostEstimator` (`alpha_zero/cloud/gcp/cost.py`)**:
+  - Real-time job cost estimation based on machine type and accelerator count.
+  - Integration with `vertex_orchestrator.py` for cost visibility in logs.
+- **Robust Preemption Handling**:
+  - `SignalHandler` in `training_worker.py` for graceful `SIGTERM` handling.
+  - Immediate checkpoint saving upon preemption signal.
+- **Unified Dashboard**:
+  - `configs/wandb_dashboard.json`: Comprehensive W&B dashboard template.
 
 #### Phase 5.3: Cost Optimization for GCP Cloud Training
 
@@ -293,6 +655,144 @@ All components follow consistent configuration patterns:
 - YAML file loading support
 - `from_dict()` and `to_dict()` serialization
 - Thread-safe implementations with proper locking
+
+#### Phase 4.1: Model Evaluation Framework
+
+A comprehensive model evaluation system for measuring trained model performance against configurable baselines.
+
+##### Evaluation Module (`alpha_zero/evaluation/`)
+
+- **EvaluationConfig** (`config.py`): Unified configuration for evaluation
+  - Experiment naming and output directory configuration
+  - Board size and max turns settings
+  - ELO rating integration settings
+  - Environment variable support (`CIV6AZ_EVAL_*` prefix)
+
+- **BaselineConfig** (`config.py`): Configuration for baseline opponents
+  - Support for RANDOM, HEURISTIC, and NEURAL_NETWORK baseline types
+  - Per-baseline game count and weight configuration
+  - HeuristicWeights for customizable heuristic behavior
+
+- **DiversityConfig** (`config.py`): Diversity tracking configuration
+  - Opening move tracking with configurable depth
+  - Game length distribution analysis
+
+- **BaselinePlayer** (`baselines.py`): Protocol and implementations
+  - RandomPlayer: Uniform random action selection with seeding
+  - HeuristicPlayer: Configurable weighted heuristic evaluation
+  - NeuralNetworkPlayer: Model checkpoint loading with optional MCTS
+  - BaselineFactory: Factory pattern for baseline creation
+
+- **ModelEvaluator** (`evaluator.py`): Main evaluation orchestrator
+  - Integration with existing ELORatingSystem from tournament/elo.py
+  - GameResult and EvaluationResult dataclasses
+  - play_game(), evaluate_against_baseline(), evaluate_model() methods
+
+- **DiversityTracker** (`diversity.py`): Game diversity analysis
+  - Opening sequence tracking with entropy calculation
+  - Game length statistics (mean, std, min, max)
+  - Baseline-specific diversity breakdowns
+
+- **ReportGenerator** (`reports.py`): Multi-format report generation
+  - EvaluationReport dataclass with full evaluation results
+  - JSON export with to_json() method
+  - Markdown export with to_markdown() method
+
+##### Evaluation Test Suite (62 new tests)
+
+- `tests/unit/test_evaluation/test_config.py`: Configuration validation (10 tests)
+- `tests/unit/test_evaluation/test_baselines.py`: Baseline player tests (15 tests)
+- `tests/unit/test_evaluation/test_diversity.py`: Diversity tracking tests (12 tests)
+- `tests/unit/test_evaluation/test_evaluator.py`: Evaluator tests (14 tests)
+- `tests/unit/test_evaluation/test_reports.py`: Report generation tests (11 tests)
+- `tests/integration/test_evaluation_pipeline.py`: Integration tests (11 tests)
+
+##### Evaluation Configuration (`configs/evaluation.yaml`)
+
+- Complete YAML configuration template
+- Random and heuristic baseline definitions
+- Diversity tracking settings
+- ELO integration settings
+
+#### Phase 4.2: PBT Enhancements
+
+Enhanced Population-Based Training with temperature scheduling and crossover mutations.
+
+##### Temperature Schedule (`alpha_zero/pbt/config.py`)
+
+- **HyperparameterSpace** enhancements:
+  - temperature_initial: Starting temperature for exploration
+  - temperature_final: Ending temperature for exploitation
+  - temperature_decay_steps: Steps over which temperature decays
+  - Updated get_all_params() and serialization methods
+
+##### Crossover Mutation (`alpha_zero/pbt/mutations.py`)
+
+- **CrossoverMutation** class:
+  - BLX-alpha blending crossover (default α=0.5)
+  - Simulated Binary Crossover (SBX) with η=20
+  - Uniform crossover with 50% probability
+  - Automatic fallback to perturbation without parent
+
+- **MutationOperator** enhancements:
+  - CROSSOVER strategy in MutationStrategy enum
+  - set_crossover_parent() method for parent injection
+  - Integration with existing mutation infrastructure
+
+#### Phase 4.3: Performance Optimizations
+
+Research-based optimizations for faster training and improved sample efficiency.
+
+##### Optimizations Module (`alpha_zero/optimizations/`)
+
+- **PlayoutCapRandomizer** (`playout_cap.py`): Playout cap randomization
+  - Geometric, uniform, and exponential cap distributions
+  - Position complexity scaling for root vs non-root nodes
+  - Statistics tracking (total samples, average cap, speedup estimates)
+  - Configurable min/max playouts with geometric_p parameter
+
+- **PolicyTargetPruner** (`policy_pruning.py`): Policy target pruning
+  - Top-k preservation for important actions
+  - Minimum probability threshold filtering
+  - Maximum actions limiting
+  - Entropy-based dynamic thresholding
+  - Action reduction statistics tracking
+
+- **CyclicLRScheduler** (`cyclic_lr.py`): Cyclic learning rate schedules
+  - Five schedule types: triangular, triangular2, exp_range, cosine_annealing, warm_restarts
+  - Momentum cycling with base_momentum and max_momentum
+  - Warmup steps support
+  - Iteration tracking and state serialization
+
+- **AuxiliaryTargetGenerator** (`auxiliary_targets.py`): Auxiliary policy targets
+  - Attention target generation from board positions
+  - Opponent modeling for predicting opponent moves
+  - Game phase prediction (early/mid/late classification)
+  - Future value prediction for N-step lookahead
+  - AuxiliaryLossCalculator for weighted loss computation
+
+- **PerformanceOptimizationsConfig** (`config.py`): Unified configuration
+  - Enable flags for each optimization type
+  - Nested configs for all optimization parameters
+  - fast_preset() and quality_preset() factory methods
+  - YAML serialization and environment variable support
+
+##### Optimizations Test Suite (148 new tests)
+
+- `tests/unit/test_optimizations/test_playout_cap.py`: Playout cap tests (26 tests)
+- `tests/unit/test_optimizations/test_policy_pruning.py`: Policy pruning tests (24 tests)
+- `tests/unit/test_optimizations/test_cyclic_lr.py`: Cyclic LR tests (30 tests)
+- `tests/unit/test_optimizations/test_auxiliary_targets.py`: Auxiliary targets tests (51 tests)
+- `tests/unit/test_optimizations/test_config.py`: Config tests (17 tests)
+- `tests/integration/test_optimizations_integration.py`: Integration tests (17 tests)
+
+##### Optimizations Configuration (`configs/optimizations.yaml`)
+
+- Complete YAML configuration template
+- Playout cap settings with distribution parameters
+- Policy pruning thresholds
+- Cyclic LR schedule configuration
+- Auxiliary target weights
 
 #### Real Civ6 Bridge System
 

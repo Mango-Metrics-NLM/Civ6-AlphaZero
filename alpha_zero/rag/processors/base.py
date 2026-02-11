@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from alpha_zero.rag.stores.base import Document, DocumentMetadata
@@ -54,7 +54,7 @@ class TextChunk:
             content=self.content,
             metadata=DocumentMetadata(
                 source=source,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
                 chunk_index=self.chunk_index,
                 total_chunks=self.total_chunks,
                 custom={

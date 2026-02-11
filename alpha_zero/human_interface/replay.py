@@ -25,7 +25,7 @@ import logging
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -69,7 +69,7 @@ class GameRecording:
 
     game_id: str
     version: str = "1.0"
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     game_config: dict[str, Any] = field(default_factory=dict)
     human_player: int = 0
     initial_state: list | None = None
@@ -172,7 +172,7 @@ class GameReplay:
         >>> replay.jump_to_turn(5)
     """
 
-    def __init__(self, recording: GameRecording):
+    def __init__(self, recording: GameRecording) -> None:
         """Initialize replay.
 
         Args:
@@ -237,7 +237,7 @@ class GameReplay:
         self._state.current_turn += 1
 
         # Update state if available
-        if "state_after" in turn_data and turn_data["state_after"]:
+        if turn_data.get("state_after"):
             self._state.current_state = np.array(turn_data["state_after"])
 
         return turn_data
@@ -255,7 +255,7 @@ class GameReplay:
         turn_data = self.recording.turns[self._state.current_turn]
 
         # Update state if available
-        if "state_before" in turn_data and turn_data["state_before"]:
+        if turn_data.get("state_before"):
             self._state.current_state = np.array(turn_data["state_before"])
 
         return turn_data
@@ -280,7 +280,7 @@ class GameReplay:
             return None
 
         turn_data = self.recording.turns[turn - 1]
-        if "state_after" in turn_data and turn_data["state_after"]:
+        if turn_data.get("state_after"):
             self._state.current_state = np.array(turn_data["state_after"])
 
         return turn_data
@@ -345,7 +345,7 @@ class GameRecorder:
         >>> recording.save("game.replay")
     """
 
-    def __init__(self, config: HumanInterfaceConfig | None = None):
+    def __init__(self, config: HumanInterfaceConfig | None = None) -> None:
         """Initialize recorder.
 
         Args:
@@ -488,7 +488,7 @@ class ReplayManager:
         >>> manager.save_recording(recording)
     """
 
-    def __init__(self, config: HumanInterfaceConfig | None = None):
+    def __init__(self, config: HumanInterfaceConfig | None = None) -> None:
         """Initialize replay manager.
 
         Args:

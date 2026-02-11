@@ -27,8 +27,10 @@ Usage:
 
     # Check if game is alive
     if bridge.check_heartbeat():
-        print("Game is connected")
+        logger.info("Game is connected")
 """
+
+from typing import Any
 
 from alpha_zero.bridge.config import (
     MAP_SIZES,
@@ -60,35 +62,35 @@ from alpha_zero.bridge.protocol import (
 )
 
 __all__ = [
+    "MAP_SIZES",
+    "AckMessage",
+    "ActionType",
     # Config
     "BridgeConfig",
+    "CityData",
+    "CommandMessage",
+    "ErrorCode",
+    "ErrorMessage",
+    "GameStateData",
+    "LegalAction",
+    "LuaCommand",
+    "MapData",
     "MapSizeConfig",
-    "MAP_SIZES",
-    "get_map_config",
     # Protocol - Enums
     "MessageType",
-    "ActionType",
-    "ErrorCode",
+    "PlayerData",
     # Protocol - Data classes
     "Position",
-    "LuaCommand",
-    "TileData",
-    "UnitData",
-    "CityData",
-    "PlayerData",
-    "LegalAction",
-    "MapData",
-    "GameStateData",
     # Protocol - Messages
     "StateMessage",
-    "CommandMessage",
-    "AckMessage",
-    "ErrorMessage",
-    # Protocol - Utilities
-    "validate_state_json",
+    "TileData",
+    "UnitData",
+    "create_city_produce_command",
     "create_end_turn_command",
     "create_unit_move_command",
-    "create_city_produce_command",
+    "get_map_config",
+    # Protocol - Utilities
+    "validate_state_json",
 ]
 
 
@@ -98,7 +100,7 @@ __all__ = [
 # (asyncio, torch, numpy) that are not needed for basic protocol definitions.
 # This pattern allows users who only need protocol types to import faster.
 # IDE auto-completion may not recognize these lazy-loaded attributes.
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     """Lazy import for FileBridge and converters.
 
     This function enables lazy loading of heavier modules to optimize import times.

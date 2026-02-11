@@ -19,7 +19,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -142,7 +142,7 @@ class BaseGameInterface(ABC):
         >>> result = interface.step(action)
     """
 
-    def __init__(self, config: GameConfig | None = None):
+    def __init__(self, config: GameConfig | None = None) -> None:
         """Initialize the game interface.
 
         Args:
@@ -286,7 +286,7 @@ class DummyGameInterface(BaseGameInterface):
     for testing without a real game backend.
     """
 
-    def __init__(self, config: GameConfig | None = None):
+    def __init__(self, config: GameConfig | None = None) -> None:
         """Initialize dummy interface."""
         super().__init__(config)
         self._turn = 0
@@ -406,7 +406,7 @@ class GameAdapter:
         >>> obs = adapter.reset()
     """
 
-    BACKENDS = {
+    BACKENDS: ClassVar[dict[str, type[BaseGameInterface]]] = {
         "dummy": DummyGameInterface,
         # "microciv": MicroCivInterface,  # To be implemented
         # "unciv": UncivInterface,  # Existing implementation
@@ -416,8 +416,8 @@ class GameAdapter:
         self,
         backend: str = "dummy",
         config: GameConfig | None = None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """Initialize game adapter.
 
         Args:

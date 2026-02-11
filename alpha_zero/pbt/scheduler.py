@@ -23,7 +23,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -110,7 +110,7 @@ class TournamentSelection(SelectionStrategy):
     Runs tournaments among random subsets of agents.
     """
 
-    def __init__(self, tournament_size: int = 3):
+    def __init__(self, tournament_size: int = 3) -> None:
         """Initialize tournament selection.
 
         Args:
@@ -159,7 +159,7 @@ class RankSelection(SelectionStrategy):
     Selection probability based on rank rather than raw fitness.
     """
 
-    def __init__(self, selection_pressure: float = 2.0):
+    def __init__(self, selection_pressure: float = 2.0) -> None:
         """Initialize rank selection.
 
         Args:
@@ -220,7 +220,7 @@ class SteadyStateSelection(SelectionStrategy):
         return sorted_agents[:num_to_select]
 
 
-def create_selection_strategy(method: SelectionMethod, **kwargs) -> SelectionStrategy:
+def create_selection_strategy(method: SelectionMethod, **kwargs: Any) -> SelectionStrategy:
     """Factory function to create a selection strategy.
 
     Args:
@@ -265,7 +265,7 @@ class EvaluationResult:
     losses: int = 0
     draws: int = 0
     details: dict[str, Any] = field(default_factory=dict)
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     @property
     def win_rate(self) -> float:
@@ -300,7 +300,7 @@ class FitnessEvaluator:
         self,
         games_per_evaluation: int = 20,
         rng: np.random.Generator | None = None,
-    ):
+    ) -> None:
         """Initialize fitness evaluator.
 
         Args:
@@ -444,7 +444,7 @@ class PBTScheduler:
         self,
         config: PBTConfig,
         rng: np.random.Generator | None = None,
-    ):
+    ) -> None:
         """Initialize PBT scheduler.
 
         Args:

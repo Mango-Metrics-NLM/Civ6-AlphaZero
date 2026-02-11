@@ -24,7 +24,7 @@ import numpy as np
 try:
     import torch  # noqa: F401
     import torch.nn as nn  # noqa: F401
-    import torch.nn.functional as F  # noqa: F401
+    import torch.nn.functional as F  # noqa: F401, N812
 
     TORCH_AVAILABLE = True
 except ImportError:

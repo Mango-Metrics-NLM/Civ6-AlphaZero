@@ -31,13 +31,29 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, TypeVar, cast
+from typing import Any, Protocol, TypeVar, cast
 
 import yaml
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+
+class BridgeProtocol(Protocol):
+    """Protocol for bridge objects that support health checking.
+
+    Any bridge implementation must provide a check_heartbeat method
+    for use with GameBridgeHealthChecker.
+    """
+
+    def check_heartbeat(self) -> bool:
+        """Check if the bridge connection is alive.
+
+        Returns:
+            True if heartbeat succeeds, False otherwise.
+        """
+        ...
 
 
 class CircuitState(str, Enum):
@@ -76,59 +92,37 @@ class BridgeHealthConfig:
     """
 
     check_interval_seconds: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_BRIDGE_CHECK_INTERVAL", "5.0")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_BRIDGE_CHECK_INTERVAL", "5.0"))
     )
     timeout_seconds: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_BRIDGE_TIMEOUT", "10.0")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_BRIDGE_TIMEOUT", "10.0"))
     )
     max_retries: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_BRIDGE_MAX_RETRIES", "5")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_BRIDGE_MAX_RETRIES", "5"))
     )
     retry_delay_seconds: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_BRIDGE_RETRY_DELAY", "1.0")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_BRIDGE_RETRY_DELAY", "1.0"))
     )
     backoff_multiplier: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_BRIDGE_BACKOFF_MULTIPLIER", "2.0")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_BRIDGE_BACKOFF_MULTIPLIER", "2.0"))
     )
     max_backoff_seconds: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_BRIDGE_MAX_BACKOFF", "60.0")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_BRIDGE_MAX_BACKOFF", "60.0"))
     )
     circuit_breaker_threshold: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_BRIDGE_CIRCUIT_THRESHOLD", "3")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_BRIDGE_CIRCUIT_THRESHOLD", "3"))
     )
     circuit_breaker_timeout_seconds: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_BRIDGE_CIRCUIT_TIMEOUT", "30.0")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_BRIDGE_CIRCUIT_TIMEOUT", "30.0"))
     )
     success_threshold: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_BRIDGE_SUCCESS_THRESHOLD", "2")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_BRIDGE_SUCCESS_THRESHOLD", "2"))
     )
     health_window_size: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_BRIDGE_HEALTH_WINDOW", "10")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_BRIDGE_HEALTH_WINDOW", "10"))
     )
     degraded_threshold: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_BRIDGE_DEGRADED_THRESHOLD", "0.3")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_BRIDGE_DEGRADED_THRESHOLD", "0.3"))
     )
 
     def __post_init__(self) -> None:
@@ -313,7 +307,7 @@ class BridgeHealth:
 class CircuitBreakerOpenError(Exception):
     """Exception raised when circuit breaker is open."""
 
-    def __init__(self, message: str = "Circuit breaker is open", retry_after: float = 0):
+    def __init__(self, message: str = "Circuit breaker is open", retry_after: float = 0) -> None:
         super().__init__(message)
         self.retry_after = retry_after
 
@@ -321,7 +315,7 @@ class CircuitBreakerOpenError(Exception):
 class OperationTimeoutError(Exception):
     """Exception raised when operation times out."""
 
-    def __init__(self, message: str = "Operation timed out", timeout: float = 0):
+    def __init__(self, message: str = "Operation timed out", timeout: float = 0) -> None:
         super().__init__(message)
         self.timeout = timeout
 
@@ -339,13 +333,13 @@ class GameBridgeHealthChecker:
 
     def __init__(
         self,
-        bridge: Any,  # FileBridge or protocol-compatible
+        bridge: BridgeProtocol,
         config: BridgeHealthConfig | None = None,
-    ):
+    ) -> None:
         """Initialize health checker.
 
         Args:
-            bridge: File bridge to monitor (must have check_heartbeat method).
+            bridge: File bridge to monitor (must implement BridgeProtocol).
             config: Health checker configuration.
         """
         self.bridge = bridge
@@ -617,13 +611,12 @@ class GameBridgeHealthChecker:
                 self.record_success()
 
                 logger.debug(
-                    f"Operation succeeded on attempt {attempt + 1}, "
-                    f"latency={latency_ms:.1f}ms"
+                    f"Operation succeeded on attempt {attempt + 1}, latency={latency_ms:.1f}ms"
                 )
 
                 return cast(T, result)
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 last_exception = OperationTimeoutError(
                     f"Operation timed out after {self.config.timeout_seconds}s",
                     timeout=self.config.timeout_seconds,
@@ -639,9 +632,7 @@ class GameBridgeHealthChecker:
             # Check if we should retry
             if attempt < self.config.max_retries:
                 if self.is_circuit_open():
-                    raise CircuitBreakerOpenError(
-                        "Circuit breaker opened during retries"
-                    )
+                    raise CircuitBreakerOpenError("Circuit breaker opened during retries")
 
                 logger.debug(f"Retrying in {delay:.1f}s...")
                 await asyncio.sleep(delay)
@@ -671,9 +662,7 @@ class GameBridgeHealthChecker:
         """
         self._on_circuit_close.append(callback)
 
-    def register_health_change_callback(
-        self, callback: Callable[[BridgeHealth], None]
-    ) -> None:
+    def register_health_change_callback(self, callback: Callable[[BridgeHealth], None]) -> None:
         """Register callback for health status changes.
 
         Args:

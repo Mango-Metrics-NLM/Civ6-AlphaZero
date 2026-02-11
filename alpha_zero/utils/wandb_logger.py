@@ -37,9 +37,12 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from alpha_zero.evaluation.evaluation_pipeline import EvaluationResult
 
 # Optional wandb import — single import avoids isort ambiguity across ruff versions
 try:
@@ -132,7 +135,7 @@ class WandbLogger:
         step: Current global step counter.
     """
 
-    def __init__(self, config: WandbConfig | None = None):
+    def __init__(self, config: WandbConfig | None = None) -> None:
         """Initialize W&B logger.
 
         Args:
@@ -372,6 +375,292 @@ class WandbLogger:
             data[key] = value
 
         self.log(data)
+
+    def log_baseline_evaluation(
+        self,
+        results: dict[str, EvaluationResult],
+        iteration: int | None = None,
+    ) -> None:
+        """Log baseline evaluation results from EvaluationPipeline.
+
+        Logs detailed win rate metrics for each opponent type (random, heuristic,
+        checkpoint) with metrics namespaced as eval/{opponent}/{metric}.
+
+        Args:
+            results: Dictionary mapping opponent names to EvaluationResult.
+                     Keys should be "random", "heuristic", or "checkpoint".
+            iteration: Training iteration. If None, uses internal step counter.
+
+        Example:
+            >>> results = {
+            ...     "random": pipeline.evaluate_vs_random(agent),
+            ...     "heuristic": pipeline.evaluate_vs_heuristic(agent),
+            ... }
+            >>> logger.log_baseline_evaluation(results, iteration=100)
+        """
+        if not self.is_initialized:
+            return
+
+        data: dict[str, Any] = {}
+
+        for opponent_name, result in results.items():
+            prefix = f"eval/{opponent_name}"
+
+            # Win rate metrics
+            data[f"{prefix}/win_rate"] = result.win_rate.win_rate
+            data[f"{prefix}/loss_rate"] = result.win_rate.loss_rate
+            data[f"{prefix}/draw_rate"] = result.win_rate.draw_rate
+            data[f"{prefix}/wins"] = result.win_rate.wins
+            data[f"{prefix}/losses"] = result.win_rate.losses
+            data[f"{prefix}/draws"] = result.win_rate.draws
+            data[f"{prefix}/games_played"] = result.win_rate.total_games
+
+            # Game statistics
+            data[f"{prefix}/avg_game_length"] = result.avg_game_length
+            data[f"{prefix}/avg_cities_won"] = result.avg_cities_won
+            data[f"{prefix}/avg_cities_lost"] = result.avg_cities_lost
+            data[f"{prefix}/avg_units_won"] = result.avg_units_won
+            data[f"{prefix}/avg_units_lost"] = result.avg_units_lost
+
+            # Value head diagnostics
+            data[f"{prefix}/value_correlation"] = result.value_correlation
+            data[f"{prefix}/evaluation_time"] = result.total_evaluation_time
+
+        self.log(data, step=iteration)
+
+    def log_reflection_stats(
+        self,
+        total_entries: int,
+        unique_patterns: int | None = None,
+        recent_additions: int | None = None,
+        avg_critique_length: float | None = None,
+        iteration: int | None = None,
+    ) -> None:
+        """Log reflection memory statistics.
+
+        Tracks the size and characteristics of the LATS-style reflection memory
+        system that learns from failed games.
+
+        Args:
+            total_entries: Total number of stored reflections.
+            unique_patterns: Number of unique failure patterns identified.
+            recent_additions: Reflections added since last log.
+            avg_critique_length: Average length of stored critiques.
+            iteration: Training iteration. If None, uses internal step counter.
+        """
+        if not self.is_initialized:
+            return
+
+        data: dict[str, Any] = {
+            "reflection/total_entries": total_entries,
+        }
+
+        if unique_patterns is not None:
+            data["reflection/unique_patterns"] = unique_patterns
+
+        if recent_additions is not None:
+            data["reflection/recent_additions"] = recent_additions
+
+        if avg_critique_length is not None:
+            data["reflection/avg_critique_length"] = avg_critique_length
+
+        self.log(data, step=iteration)
+
+    def log_imitation_training(
+        self,
+        epoch: int,
+        loss: float,
+        policy_loss: float,
+        value_loss: float,
+        policy_accuracy: float | None = None,
+        value_mse: float | None = None,
+        games_used: int | None = None,
+        samples_per_epoch: int | None = None,
+    ) -> None:
+        """Log imitation pre-training progress.
+
+        Tracks the supervised learning phase where the network learns from
+        heuristic agent demonstrations before self-play begins.
+
+        Args:
+            epoch: Current training epoch.
+            loss: Total combined loss.
+            policy_loss: Policy head cross-entropy loss.
+            value_loss: Value head MSE loss.
+            policy_accuracy: Optional top-1 policy prediction accuracy.
+            value_mse: Optional raw value mean squared error.
+            games_used: Number of expert games in training set.
+            samples_per_epoch: Training samples seen per epoch.
+        """
+        if not self.is_initialized:
+            return
+
+        data: dict[str, Any] = {
+            "imitation/epoch": epoch,
+            "imitation/loss": loss,
+            "imitation/policy_loss": policy_loss,
+            "imitation/value_loss": value_loss,
+        }
+
+        if policy_accuracy is not None:
+            data["imitation/policy_accuracy"] = policy_accuracy
+
+        if value_mse is not None:
+            data["imitation/value_mse"] = value_mse
+
+        if games_used is not None:
+            data["imitation/games_used"] = games_used
+
+        if samples_per_epoch is not None:
+            data["imitation/samples_per_epoch"] = samples_per_epoch
+
+        self.log(data)
+
+    def define_baseline_charts(self) -> None:
+        """Define custom WandB charts for baseline evaluation tracking.
+
+        Sets up x-axis metrics and chart configurations for win rate tracking
+        over training iterations. Should be called after init().
+
+        Creates:
+            - Win rate vs iteration charts for each opponent type
+            - Value correlation tracking
+            - Reflection memory growth charts
+        """
+        if not self.is_initialized:
+            return
+
+        try:
+            # Define iteration as the step metric for evaluation charts
+            wandb.define_metric("iteration")
+
+            # Win rate charts for each opponent type
+            for opponent in ["random", "heuristic", "checkpoint"]:
+                wandb.define_metric(
+                    f"eval/{opponent}/win_rate",
+                    step_metric="iteration",
+                    summary="max",
+                )
+                wandb.define_metric(
+                    f"eval/{opponent}/value_correlation",
+                    step_metric="iteration",
+                    summary="max",
+                )
+                wandb.define_metric(
+                    f"eval/{opponent}/avg_game_length",
+                    step_metric="iteration",
+                    summary="mean",
+                )
+
+            # Reflection memory metrics
+            wandb.define_metric(
+                "reflection/total_entries",
+                step_metric="iteration",
+                summary="last",
+            )
+
+            # Imitation training metrics (use epoch as x-axis)
+            wandb.define_metric("imitation/epoch")
+            wandb.define_metric(
+                "imitation/loss",
+                step_metric="imitation/epoch",
+                summary="min",
+            )
+            wandb.define_metric(
+                "imitation/policy_accuracy",
+                step_metric="imitation/epoch",
+                summary="max",
+            )
+
+            logger.info("Defined baseline evaluation WandB charts")
+
+        except Exception as e:
+            logger.warning(f"Failed to define baseline charts: {e}")
+
+    def log_population_stats(
+        self,
+        generation: int,
+        mean_fitness: float,
+        max_fitness: float,
+        min_fitness: float,
+        mean_elo: float,
+        max_elo: float,
+        min_elo: float,
+        population_size: int,
+        mutations_count: int = 0,
+        **kwargs: Any,
+    ) -> None:
+        """Log PBT population-level metrics.
+
+        All metrics are namespaced under ``pbt/`` for W&B dashboard grouping.
+
+        Args:
+            generation: Current PBT generation.
+            mean_fitness: Mean fitness across the population.
+            max_fitness: Max fitness.
+            min_fitness: Min fitness.
+            mean_elo: Mean ELO rating.
+            max_elo: Max ELO rating.
+            min_elo: Min ELO rating.
+            population_size: Number of agents.
+            mutations_count: Number of mutations this generation.
+            **kwargs: Additional metrics (auto-prefixed with ``pbt/``).
+        """
+        if not self.is_initialized:
+            return
+
+        data: dict[str, Any] = {
+            "pbt/generation": generation,
+            "pbt/fitness_mean": mean_fitness,
+            "pbt/fitness_max": max_fitness,
+            "pbt/fitness_min": min_fitness,
+            "pbt/elo_mean": mean_elo,
+            "pbt/elo_max": max_elo,
+            "pbt/elo_min": min_elo,
+            "pbt/population_size": population_size,
+            "pbt/mutations_count": mutations_count,
+        }
+
+        for key, value in kwargs.items():
+            if not key.startswith("pbt/"):
+                key = f"pbt/{key}"
+            data[key] = value
+
+        self.log(data, step=generation)
+
+    def define_pbt_charts(self) -> None:
+        """Define W&B metric axes for PBT population dashboards.
+
+        Registers ``pbt/generation`` as the step metric and sets up
+        summary types for ELO, fitness, and mutation metrics. Should be
+        called after ``init()``.
+        """
+        if not self.is_initialized:
+            return
+
+        try:
+            wandb.define_metric("pbt/generation")
+
+            for metric, summary in [
+                ("pbt/elo_max", "max"),
+                ("pbt/elo_mean", "last"),
+                ("pbt/elo_min", "min"),
+                ("pbt/fitness_max", "max"),
+                ("pbt/fitness_mean", "last"),
+                ("pbt/fitness_min", "min"),
+                ("pbt/population_size", "last"),
+                ("pbt/mutations_count", "sum"),
+            ]:
+                wandb.define_metric(
+                    metric,
+                    step_metric="pbt/generation",
+                    summary=summary,
+                )
+
+            logger.info("Defined PBT population WandB charts")
+
+        except Exception as e:
+            logger.warning(f"Failed to define PBT charts: {e}")
 
     def log_selfplay(
         self,

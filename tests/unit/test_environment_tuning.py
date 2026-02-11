@@ -102,7 +102,7 @@ class TestEarlyTerminationChecker:
         config = EarlyTerminationConfig(enabled=False)
         checker = EarlyTerminationChecker(config)
 
-        should_terminate, winner, reason = checker.check(
+        should_terminate, _winner, _reason = checker.check(
             turn=100,
             player_units=10,
             player_cities=3,
@@ -167,7 +167,7 @@ class TestEarlyTerminationChecker:
         )
         checker = EarlyTerminationChecker(config)
 
-        should_terminate, winner, reason = checker.check(
+        should_terminate, winner, _reason = checker.check(
             turn=10,
             player_units=1,
             player_cities=0,
@@ -231,12 +231,13 @@ class TestEliminationConditions:
         checker = EarlyTerminationChecker(config)
 
         # Turn 7 is not on interval (7 % 10 != 0), but elimination should still trigger
+        # Elimination requires BOTH 0 cities AND 0 units
         should_terminate, winner, reason = checker.check(
             turn=7,
             player_units=5,
             player_cities=2,
-            opponent_units=3,
-            opponent_cities=0,  # Opponent eliminated
+            opponent_units=0,  # No units
+            opponent_cities=0,  # No cities = fully eliminated
         )
 
         assert should_terminate is True
@@ -274,12 +275,13 @@ class TestEliminationConditions:
         )
         checker = EarlyTerminationChecker(config)
 
+        # Mutual elimination requires BOTH players to have 0 cities AND 0 units
         should_terminate, winner, reason = checker.check(
             turn=8,
-            player_units=2,
-            player_cities=0,  # Both have 0 cities
-            opponent_units=1,
-            opponent_cities=0,
+            player_units=0,  # No units
+            player_cities=0,  # No cities
+            opponent_units=0,  # No units
+            opponent_cities=0,  # No cities
         )
 
         assert should_terminate is True
@@ -331,7 +333,7 @@ class TestEliminationConditions:
         assert should_terminate is False
 
         # Turn 10 is on interval - advantage SHOULD trigger
-        should_terminate, winner, reason = checker.check(
+        should_terminate, winner, _reason = checker.check(
             turn=10,
             player_units=10,
             player_cities=5,
@@ -454,7 +456,7 @@ class TestTunedEnvironmentWrapper:
         valid_actions = np.where(action_mask > 0)[0]
         action = valid_actions[0] if len(valid_actions) > 0 else 0
 
-        obs, reward, terminated, truncated, info = wrapper.step(action)
+        obs, _reward, _terminated, _truncated, info = wrapper.step(action)
 
         assert "spatial" in obs
         assert "episode_stats" in info
@@ -464,7 +466,7 @@ class TestTunedEnvironmentWrapper:
         config = EnvironmentTuningConfig(enabled=False)
         wrapper = TunedEnvironmentWrapper(base_env, config)
 
-        obs, info = wrapper.reset()
+        _obs, info = wrapper.reset()
 
         assert info["tuning_enabled"] is False
 

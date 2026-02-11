@@ -24,10 +24,10 @@ from alpha_zero.hierarchical.controllers.level_controller import (
 )
 
 __all__ = [
+    "ControllerDecision",
+    "ControllerState",
     "LevelController",
+    "OperationalController",
     "StrategicController",
     "TacticalController",
-    "OperationalController",
-    "ControllerState",
-    "ControllerDecision",
 ]

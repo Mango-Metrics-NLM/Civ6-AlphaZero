@@ -8,6 +8,7 @@ faster by providing more frequent feedback than sparse terminal rewards.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -175,7 +176,7 @@ def compute_shaped_reward(
     prev_potential = compute_state_potential(prev_features, config)
     curr_potential = compute_state_potential(curr_features, config)
 
-    # Potential-based shaping: γ * Φ(s') - Φ(s)
+    # Potential-based shaping: γ * Φ(s') - Φ(s)  # noqa: RUF003
     # When terminated, curr_potential is 0 (terminal states have 0 potential)
     if terminated:
         shaping_bonus = -prev_potential
@@ -188,7 +189,7 @@ def compute_shaped_reward(
 class RewardShaper:
     """Stateful reward shaper that tracks previous state for shaping calculations."""
 
-    def __init__(self, config: RewardShapingConfig | None = None, board_size: int = 8):
+    def __init__(self, config: RewardShapingConfig | None = None, board_size: int = 8) -> None:
         """Initialize the reward shaper.
 
         Args:
@@ -280,7 +281,7 @@ class RewardShaper:
 def create_reward_shaper(
     enabled: bool = True,
     board_size: int = 8,
-    **kwargs,
+    **kwargs: Any,
 ) -> RewardShaper:
     """Factory function to create a reward shaper.
 

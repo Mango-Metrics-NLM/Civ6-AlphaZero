@@ -128,7 +128,7 @@ def self_play_game_enhanced(
         Tuple of (training examples, game stats)
     """
     examples = []
-    obs, info = env.reset()
+    obs, _info = env.reset()
 
     if reward_shaper:
         reward_shaper.reset()
@@ -164,9 +164,11 @@ def self_play_game_enhanced(
             "player": underlying_env.current_player,
         })
 
-        # Select action with temperature
+        # Select action with temperature and action mask enforcement
         temp = temperature if underlying_env.turn < temperature_threshold else 0.0
-        action = mcts.select_action(action_probs, temp)
+        action = mcts.select_action(
+            action_probs, temp, action_mask=obs["action_mask"]
+        )
 
         # Take action
         obs, base_reward, terminated, truncated, info = env.step(action)
@@ -372,7 +374,9 @@ def evaluate_network(
                 # Network's turn
                 underlying_env = env.env if hasattr(env, 'env') else env
                 action_probs, _ = mcts.search(underlying_env, add_noise=False)
-                action = mcts.select_action(action_probs, temperature=0.0)
+                action = mcts.select_action(
+                    action_probs, temperature=0.0, action_mask=obs["action_mask"]
+                )
             else:
                 # Random player's turn
                 mask = env.get_valid_actions()

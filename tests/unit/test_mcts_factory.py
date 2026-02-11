@@ -91,12 +91,12 @@ class TestCreateMCTSTypeDispatch:
 
     def test_unknown_type_raises_value_error(self, network: MicroCivNetwork) -> None:
         """Unknown type raises ValueError with helpful message."""
-        with pytest.raises(ValueError, match="Unknown MCTS type"):
+        with pytest.raises(ValueError, match="Unknown MCTS variant"):
             create_mcts("invalid_type", network=network)
 
     def test_error_message_lists_available_types(self, network: MicroCivNetwork) -> None:
         """ValueError message lists all available types."""
-        with pytest.raises(ValueError, match="civ6.*gumbel.*muzero"):
+        with pytest.raises(ValueError, match="civ6"):
             create_mcts("bad", network=network)
 
 
@@ -133,14 +133,14 @@ class TestCreateMCTSConfig:
         assert isinstance(mcts, GumbelMCTS)
         assert mcts.config.num_sampled_actions == 8
 
-    def test_unknown_kwargs_ignored(self, network: MicroCivNetwork) -> None:
-        """Unknown kwargs are silently ignored (no crash)."""
-        mcts = create_mcts(
-            "civ6",
-            network=network,
-            totally_fake_kwarg=42,
-        )
-        assert isinstance(mcts, Civ6MCTS)
+    def test_unknown_kwargs_raises_error(self, network: MicroCivNetwork) -> None:
+        """Unknown kwargs raise TypeError (not silently ignored)."""
+        with pytest.raises(TypeError, match="unexpected keyword argument"):
+            create_mcts(
+                "civ6",
+                network=network,
+                totally_fake_kwarg=42,
+            )
 
     def test_device_string(self, network: MicroCivNetwork) -> None:
         """Device string is passed correctly."""

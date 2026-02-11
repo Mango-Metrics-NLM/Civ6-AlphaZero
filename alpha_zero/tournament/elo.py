@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from alpha_zero.tournament.config import (
@@ -100,7 +100,7 @@ class RatingUpdate:
     actual_score: float
     k_factor: float
     opponent_rating: float
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -141,7 +141,7 @@ class ELORatingSystem:
         ... )
     """
 
-    def __init__(self, config: ELOConfig | None = None):
+    def __init__(self, config: ELOConfig | None = None) -> None:
         """Initialize ELO rating system.
 
         Args:
@@ -456,7 +456,7 @@ class RatingLeaderboard:
         >>> top = leaderboard.get_top(10)
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize empty leaderboard."""
         self._ratings: dict[str, float] = {}
 

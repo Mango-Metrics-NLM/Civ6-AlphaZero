@@ -470,6 +470,85 @@ wandb_enabled: false
         assert method == SelectionMethod.TOURNAMENT
 
 
+class TestPBTConfigNewFields:
+    """Tests for Phase 7 config fields."""
+
+    def test_baseline_interval_default(self):
+        config = PBTConfig()
+        assert config.baseline_interval == 5
+
+    def test_baseline_agents_default(self):
+        config = PBTConfig()
+        assert config.baseline_agents == ["random", "heuristic"]
+
+    def test_checkpoint_retention_default(self):
+        config = PBTConfig()
+        assert config.checkpoint_retention_generations == 5
+
+    def test_evaluation_strategy_switch_gen_default(self):
+        config = PBTConfig()
+        assert config.evaluation_strategy_switch_gen == 0
+
+    def test_baseline_interval_validation(self):
+        with pytest.raises(ValueError, match="baseline_interval"):
+            PBTConfig(baseline_interval=-1)
+
+    def test_checkpoint_retention_validation(self):
+        with pytest.raises(ValueError, match="checkpoint_retention_generations"):
+            PBTConfig(checkpoint_retention_generations=-1)
+
+    def test_strategy_switch_gen_validation(self):
+        with pytest.raises(ValueError, match="evaluation_strategy_switch_gen"):
+            PBTConfig(evaluation_strategy_switch_gen=-1)
+
+    def test_new_fields_in_to_dict(self):
+        config = PBTConfig(
+            baseline_interval=10,
+            baseline_agents=["random"],
+            checkpoint_retention_generations=3,
+            evaluation_strategy_switch_gen=15,
+        )
+        d = config.to_dict()
+        assert d["baseline_interval"] == 10
+        assert d["baseline_agents"] == ["random"]
+        assert d["checkpoint_retention_generations"] == 3
+        assert d["evaluation_strategy_switch_gen"] == 15
+
+    def test_new_fields_yaml_roundtrip(self):
+        config = PBTConfig(
+            baseline_interval=7,
+            checkpoint_retention_generations=10,
+            evaluation_strategy_switch_gen=20,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "config.yaml"
+            config.save(path)
+            loaded = PBTConfig.from_yaml(path)
+
+        assert loaded.baseline_interval == 7
+        assert loaded.checkpoint_retention_generations == 10
+        assert loaded.evaluation_strategy_switch_gen == 20
+
+    def test_new_fields_env_override(self):
+        os.environ["CIV6AZ_PBT_BASELINE_INTERVAL"] = "10"
+        os.environ["CIV6AZ_PBT_CHECKPOINT_RETENTION_GENERATIONS"] = "3"
+        try:
+            config = PBTConfig.from_env()
+            assert config.baseline_interval == 10
+            assert config.checkpoint_retention_generations == 3
+        finally:
+            del os.environ["CIV6AZ_PBT_BASELINE_INTERVAL"]
+            del os.environ["CIV6AZ_PBT_CHECKPOINT_RETENTION_GENERATIONS"]
+
+    def test_zero_baseline_interval_valid(self):
+        config = PBTConfig(baseline_interval=0)
+        assert config.baseline_interval == 0
+
+    def test_zero_checkpoint_retention_valid(self):
+        config = PBTConfig(checkpoint_retention_generations=0)
+        assert config.checkpoint_retention_generations == 0
+
+
 class TestSelectionMethod:
     """Tests for SelectionMethod enum."""
 

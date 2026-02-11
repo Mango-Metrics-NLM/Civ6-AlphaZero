@@ -42,7 +42,7 @@ class FAISSVectorStore(VectorStore):
         index_type: str = "Flat",
         distance_metric: str = "cosine",
         nlist: int = 100,
-    ):
+    ) -> None:
         """Initialize FAISS vector store.
 
         Args:
@@ -91,7 +91,7 @@ class FAISSVectorStore(VectorStore):
         """Create a new FAISS index."""
         import faiss
 
-        def _create():
+        def _create() -> Any:
             if self.distance_metric == "cosine":
                 # For cosine similarity, use IP with normalized vectors
                 if self.index_type == "Flat":
@@ -120,7 +120,7 @@ class FAISSVectorStore(VectorStore):
         """Load existing index from disk."""
         import faiss
 
-        def _load():
+        def _load() -> Any:
             index = faiss.read_index(str(self._index_file))
 
             # Load metadata
@@ -402,7 +402,7 @@ class FAISSVectorStore(VectorStore):
             return len(self._documents)
 
     @classmethod
-    def from_config(cls, config) -> FAISSVectorStore:
+    def from_config(cls, config: Any) -> FAISSVectorStore:
         """Create store from VectorStoreConfig.
 
         Args:

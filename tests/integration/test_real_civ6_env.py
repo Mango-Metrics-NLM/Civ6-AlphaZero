@@ -147,7 +147,7 @@ class TestMockCiv6Env:
 
         # Take multiple steps
         for _ in range(5):
-            obs, reward, terminated, truncated, info = env.step(0)
+            _obs, _reward, terminated, truncated, _info = env.step(0)
 
             if terminated or truncated:
                 break
@@ -286,7 +286,7 @@ class TestGymnasiumCompliance:
             action = env.action_space.sample()
             assert env.action_space.contains(action)
 
-            obs, _, terminated, truncated, _ = env.step(action)
+            _obs, _, terminated, truncated, _ = env.step(action)
             if terminated or truncated:
                 env.reset()
 
@@ -455,7 +455,7 @@ class TestGameLoopIntegration:
         """Test simple game loop with MockCiv6Env."""
         env = MockCiv6Env(bridge_config=bridge_config, board_size=16)
 
-        obs, info = env.reset()
+        obs, _info = env.reset()
         total_reward = 0
         steps = 0
         max_steps = 100
@@ -526,7 +526,7 @@ class TestGameLoopIntegration:
             steps = 0
 
             while steps < 10:
-                obs, reward, terminated, truncated, info = env.step(0)
+                _obs, _reward, terminated, truncated, _info = env.step(0)
                 steps += 1
                 if terminated or truncated:
                     break

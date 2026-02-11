@@ -13,7 +13,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -136,7 +136,7 @@ class CostMonitorConfig:
 
     # GPU pricing estimates (hourly USD) - used when Billing API unavailable
     # Defaults can be overridden via CIV6AZ_GPU_COST_* environment variables
-    gpu_prices: dict[str, float] = field(default_factory=lambda: _get_gpu_costs_for_monitor())
+    gpu_prices: dict[str, float] = field(default_factory=_get_gpu_costs_for_monitor)
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -299,7 +299,7 @@ class CostMonitor:
 
     def _get_day_start(self) -> float:
         """Get timestamp for start of current day (UTC)."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         return day_start.timestamp()
 
@@ -366,9 +366,24 @@ class CostMonitor:
             Estimated cost in USD.
         """
         price_key = f"{gpu_type}_SPOT" if use_spot else gpu_type
-        hourly_rate = self.config.gpu_prices.get(
-            price_key, self.config.gpu_prices.get(gpu_type, 1.0)
-        )
+        hourly_rate = self.config.gpu_prices.get(price_key)
+
+        if hourly_rate is None:
+            # Try non-spot version as fallback
+            hourly_rate = self.config.gpu_prices.get(gpu_type)
+
+        if hourly_rate is None:
+            # Unknown GPU type - use conservative fallback and warn
+            logger.warning(
+                "GPU price for '%s' (spot=%s) not found in config. "
+                "Using fallback $1.00/hr. Cost estimation may be inaccurate. "
+                "Available GPUs: %s",
+                gpu_type,
+                use_spot,
+                ", ".join(sorted(self.config.gpu_prices.keys())),
+            )
+            hourly_rate = 1.0
+
         return hourly_rate * duration_hours * gpu_count
 
     def get_current_costs(self) -> CostBreakdown:
@@ -385,7 +400,7 @@ class CostMonitor:
                 total_project_usd=self._total_cost_usd,
                 by_gpu_type=dict(self._costs_by_gpu),
                 by_job_type=dict(self._costs_by_job),
-                timestamp=datetime.utcnow().isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
             )
 
     def get_cost_status(self) -> CostStatus:

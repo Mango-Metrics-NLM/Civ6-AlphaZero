@@ -114,7 +114,7 @@ class StateVisualizer:
         >>> print(output)
     """
 
-    def __init__(self, config: HumanInterfaceConfig | None = None):
+    def __init__(self, config: HumanInterfaceConfig | None = None) -> None:
         """Initialize visualizer.
 
         Args:
@@ -192,7 +192,7 @@ class StateVisualizer:
         # Try to infer board dimensions
         if observation.ndim == 3:
             # CHW format
-            channels, height, width = observation.shape
+            _channels, height, width = observation.shape
             board = observation[player_channel]
         elif observation.ndim == 2:
             # HW format
@@ -290,7 +290,7 @@ class StateVisualizer:
         Returns:
             ASCII representation of probabilities.
         """
-        height, width = board_size
+        _height, width = board_size
 
         lines = []
         lines.append(self._color("Move Probabilities:", Colors.BOLD))

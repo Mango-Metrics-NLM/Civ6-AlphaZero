@@ -17,7 +17,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from alpha_zero.hierarchical.goals.goal_types import (
     Goal,
@@ -106,7 +106,7 @@ class StrategicDecomposition(DecompositionStrategy):
     """Decomposition strategy for strategic goals."""
 
     # Mapping of strategic goals to tactical sub-goals
-    DECOMPOSITION_MAP: dict[StrategicGoalType, list[TacticalGoalType]] = {
+    DECOMPOSITION_MAP: ClassVar[dict[StrategicGoalType, list[TacticalGoalType]]] = {
         StrategicGoalType.DOMINATION_VICTORY: [
             TacticalGoalType.CAPTURE_CITY,
             TacticalGoalType.BUILD_ARMY,
@@ -257,7 +257,7 @@ class TacticalDecomposition(DecompositionStrategy):
     """Decomposition strategy for tactical goals."""
 
     # Mapping of tactical goals to operational sub-goals
-    DECOMPOSITION_MAP: dict[TacticalGoalType, list[OperationalGoalType]] = {
+    DECOMPOSITION_MAP: ClassVar[dict[TacticalGoalType, list[OperationalGoalType]]] = {
         TacticalGoalType.CAPTURE_CITY: [
             OperationalGoalType.MOVE_UNIT,
             OperationalGoalType.ATTACK_TARGET,

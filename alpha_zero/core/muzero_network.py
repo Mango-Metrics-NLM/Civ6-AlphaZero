@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 
 from alpha_zero.core.civ6_network import (
     PolicyHead,
@@ -47,22 +47,22 @@ logger = logging.getLogger(__name__)
 
 # Public API - includes backward-compatible re-exports from losses.py
 __all__ = [
+    "DynamicsNetwork",
+    "DynamicsOutput",
     # Config
     "MuZeroConfig",
     # Network classes
     "MuZeroNetwork",
-    "DynamicsNetwork",
-    "ProjectionHead",
-    "PredictionHead",
-    "ValuePrefixHead",
     # Output types
     "MuZeroOutput",
-    "DynamicsOutput",
+    "PredictionHead",
+    "ProjectionHead",
+    "ValuePrefixHead",
+    "categorical_to_scalar",
+    "compute_consistency_loss",
+    "compute_muzero_loss",
     # Re-exported from losses.py for backward compatibility
     "scalar_to_categorical",
-    "categorical_to_scalar",
-    "compute_muzero_loss",
-    "compute_consistency_loss",
 ]
 
 
@@ -133,7 +133,7 @@ class ActionEmbedding(nn.Module):
         action_space_size: int,
         embedding_dim: int,
         spatial_size: int,
-    ):
+    ) -> None:
         """Initialize action embedding.
 
         Args:
@@ -164,7 +164,7 @@ class ActionEmbedding(nn.Module):
         embed = embed.unsqueeze(-1).unsqueeze(-1)
         embed = embed.expand(-1, -1, self.spatial_size, self.spatial_size)
 
-        return embed
+        return embed  # type: ignore[no-any-return]
 
 
 class DynamicsNetwork(nn.Module):
@@ -189,7 +189,7 @@ class DynamicsNetwork(nn.Module):
         num_blocks: int = 4,
         reward_support_size: int = 601,
         use_categorical_reward: bool = True,
-    ):
+    ) -> None:
         """Initialize dynamics network.
 
         Args:
@@ -293,7 +293,7 @@ class RewardHead(nn.Module):
         spatial_size: int,
         support_size: int = 601,
         use_categorical: bool = True,
-    ):
+    ) -> None:
         """Initialize reward head.
 
         Args:
@@ -333,7 +333,7 @@ class RewardHead(nn.Module):
         if not self.use_categorical:
             reward = reward.squeeze(-1)
 
-        return reward
+        return reward  # type: ignore[no-any-return]
 
 
 class ProjectionHead(nn.Module):
@@ -348,7 +348,7 @@ class ProjectionHead(nn.Module):
         hidden_channels: int,
         spatial_size: int,
         projection_dim: int = 256,
-    ):
+    ) -> None:
         """Initialize projection head.
 
         Args:
@@ -382,7 +382,7 @@ class ProjectionHead(nn.Module):
         x = F.relu(self.bn(self.conv(hidden_state)))
         x = self.pool(x)
         x = x.view(x.size(0), -1)
-        return self.fc(x)
+        return self.fc(x)  # type: ignore[no-any-return]
 
 
 class PredictionHead(nn.Module):
@@ -396,7 +396,7 @@ class PredictionHead(nn.Module):
         self,
         projection_dim: int = 256,
         hidden_dim: int = 128,
-    ):
+    ) -> None:
         """Initialize prediction head.
 
         Args:
@@ -419,7 +419,7 @@ class PredictionHead(nn.Module):
         Returns:
             Predicted embedding (B, projection_dim).
         """
-        return self.net(projection)
+        return self.net(projection)  # type: ignore[no-any-return]
 
 
 class ValuePrefixHead(nn.Module):
@@ -435,7 +435,7 @@ class ValuePrefixHead(nn.Module):
         horizon: int = 5,
         support_size: int = 601,
         use_categorical: bool = True,
-    ):
+    ) -> None:
         """Initialize value prefix head.
 
         Args:
@@ -477,7 +477,7 @@ class ValuePrefixHead(nn.Module):
         if not self.use_categorical:
             prefix = prefix.squeeze(-1)
 
-        return prefix
+        return prefix  # type: ignore[no-any-return]
 
 
 class MuZeroNetwork(nn.Module):
@@ -496,7 +496,7 @@ class MuZeroNetwork(nn.Module):
     - Value prefix prediction for credit assignment
     """
 
-    def __init__(self, config: MuZeroConfig | None = None, **kwargs):
+    def __init__(self, config: MuZeroConfig | None = None, **kwargs: Any) -> None:
         """Initialize MuZero network.
 
         Args:
@@ -628,7 +628,7 @@ class MuZeroNetwork(nn.Module):
         # Combine (residual addition)
         hidden_state = spatial_features + 0.1 * vector_spatial
 
-        return hidden_state
+        return hidden_state  # type: ignore[no-any-return]
 
     def dynamics_function(
         self,
@@ -646,7 +646,12 @@ class MuZeroNetwork(nn.Module):
         Returns:
             DynamicsOutput with next_hidden_state and reward.
         """
-        return self.dynamics(hidden_state, action)
+        result = self.dynamics(hidden_state, action)
+        # Return with proper typing
+        return DynamicsOutput(
+            next_hidden_state=result.next_hidden_state,
+            reward=result.reward,
+        )
 
     def prediction_function(
         self,
@@ -802,7 +807,7 @@ class MuZeroNetwork(nn.Module):
         """
         if self.projection_head is None:
             raise ValueError("Consistency loss not enabled in config")
-        return self.projection_head(hidden_state)
+        return self.projection_head(hidden_state)  # type: ignore[no-any-return]
 
     def predict_projection(self, projection: torch.Tensor) -> torch.Tensor:
         """Predict target embedding from projection.
@@ -818,7 +823,7 @@ class MuZeroNetwork(nn.Module):
         """
         if self.prediction_head is None:
             raise ValueError("Consistency loss not enabled in config")
-        return self.prediction_head(projection)
+        return self.prediction_head(projection)  # type: ignore[no-any-return]
 
     def predict_value_prefix(self, hidden_state: torch.Tensor) -> torch.Tensor:
         """Predict cumulative future rewards (value prefix).
@@ -834,7 +839,7 @@ class MuZeroNetwork(nn.Module):
         """
         if self.value_prefix_head is None:
             raise ValueError("Value prefix not enabled in config")
-        return self.value_prefix_head(hidden_state)
+        return self.value_prefix_head(hidden_state)  # type: ignore[no-any-return]
 
     # =========================================================================
     # Utility methods

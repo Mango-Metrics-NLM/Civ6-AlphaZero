@@ -9,6 +9,7 @@ Vector tensor: (512,) - encodes turn, resources, techs, diplomacy, etc.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 import numpy as np
 import torch
@@ -73,7 +74,7 @@ class Civ6StateEncoder:
     TOTAL_CHANNELS = 84
 
     # Terrain type mapping
-    TERRAIN_TYPES = {
+    TERRAIN_TYPES: ClassVar[dict[str, int]] = {
         "plains": 0,
         "grassland": 1,
         "desert": 2,
@@ -84,7 +85,7 @@ class Civ6StateEncoder:
     }
 
     # Feature mapping
-    FEATURE_TYPES = {
+    FEATURE_TYPES: ClassVar[dict[str, int]] = {
         "forest": 0,
         "jungle": 1,
         "marsh": 2,
@@ -96,7 +97,7 @@ class Civ6StateEncoder:
     }
 
     # Unit type mapping
-    UNIT_TYPES = {
+    UNIT_TYPES: ClassVar[dict[str, int]] = {
         "melee": 0,
         "warrior": 0,
         "ranged": 1,
@@ -114,7 +115,7 @@ class Civ6StateEncoder:
         "spy": 11,
     }
 
-    def __init__(self, config: EncoderConfig | None = None):
+    def __init__(self, config: EncoderConfig | None = None) -> None:
         """Initialize encoder.
 
         Args:
@@ -262,14 +263,18 @@ class Civ6StateEncoder:
         # Technologies (70-169)
         techs = game_state.get("technologies", [])
         for tech_id in techs:
-            if 0 <= tech_id < 100:
+            # Handle both integer IDs and string identifiers
+            if isinstance(tech_id, int) and 0 <= tech_id < 100:
                 vector[70 + tech_id] = 1.0
+            # String tech IDs are not yet supported; skip gracefully
 
         # Civics (180-279)
         civics = game_state.get("civics", [])
         for civic_id in civics:
-            if 0 <= civic_id < 100:
+            # Handle both integer IDs and string identifiers
+            if isinstance(civic_id, int) and 0 <= civic_id < 100:
                 vector[180 + civic_id] = 1.0
+            # String civic IDs are not yet supported; skip gracefully
 
         # Economy (300-319)
         vector[300] = game_state.get("gold", 0) / 1000.0
@@ -316,7 +321,7 @@ class MicroCivEncoder:
 
     TOTAL_CHANNELS = 13
 
-    def __init__(self, board_size: int = 16):
+    def __init__(self, board_size: int = 16) -> None:
         """Initialize encoder.
 
         Args:

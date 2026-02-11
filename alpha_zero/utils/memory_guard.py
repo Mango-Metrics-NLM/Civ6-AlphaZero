@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 # Try to import torch for GPU memory tracking
 try:
     import torch
+
     TORCH_AVAILABLE = True
 except ImportError:
     torch = None  # type: ignore[assignment]
@@ -50,6 +51,7 @@ except ImportError:
 # Try to import psutil for CPU memory tracking
 try:
     import psutil
+
     PSUTIL_AVAILABLE = True
 except ImportError:
     psutil = None  # type: ignore[assignment]
@@ -115,54 +117,37 @@ class MemoryGuardConfig:
     """
 
     warning_threshold: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_MEMORY_WARNING_THRESHOLD", "0.7")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_MEMORY_WARNING_THRESHOLD", "0.7"))
     )
     critical_threshold: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_MEMORY_CRITICAL_THRESHOLD", "0.85")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_MEMORY_CRITICAL_THRESHOLD", "0.85"))
     )
     oom_threshold: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_MEMORY_OOM_THRESHOLD", "0.95")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_MEMORY_OOM_THRESHOLD", "0.95"))
     )
     min_batch_size: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_MEMORY_MIN_BATCH", "1")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_MEMORY_MIN_BATCH", "1"))
     )
     batch_reduction_factor: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_MEMORY_BATCH_REDUCTION", "0.5")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_MEMORY_BATCH_REDUCTION", "0.5"))
     )
     enable_gradient_checkpointing: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_MEMORY_GRADIENT_CHECKPOINT", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_MEMORY_GRADIENT_CHECKPOINT", "true").lower()
+        == "true"
     )
     gc_on_warning: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_MEMORY_GC_ON_WARNING", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_MEMORY_GC_ON_WARNING", "true").lower()
+        == "true"
     )
     monitor_interval_seconds: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_MEMORY_MONITOR_INTERVAL", "10.0")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_MEMORY_MONITOR_INTERVAL", "10.0"))
     )
     memory_reserve_mb: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_MEMORY_RESERVE_MB", "512.0")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_MEMORY_RESERVE_MB", "512.0"))
     )
     enable_cuda_memory_management: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_MEMORY_CUDA_MANAGEMENT", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_MEMORY_CUDA_MANAGEMENT", "true").lower()
+        == "true"
     )
 
     def __post_init__(self) -> None:
@@ -229,9 +214,7 @@ class MemoryGuardConfig:
         if "batch_reduction_factor" in data:
             kwargs["batch_reduction_factor"] = float(data["batch_reduction_factor"])
         if "enable_gradient_checkpointing" in data:
-            kwargs["enable_gradient_checkpointing"] = bool(
-                data["enable_gradient_checkpointing"]
-            )
+            kwargs["enable_gradient_checkpointing"] = bool(data["enable_gradient_checkpointing"])
         if "gc_on_warning" in data:
             kwargs["gc_on_warning"] = bool(data["gc_on_warning"])
         if "monitor_interval_seconds" in data:
@@ -239,9 +222,7 @@ class MemoryGuardConfig:
         if "memory_reserve_mb" in data:
             kwargs["memory_reserve_mb"] = float(data["memory_reserve_mb"])
         if "enable_cuda_memory_management" in data:
-            kwargs["enable_cuda_memory_management"] = bool(
-                data["enable_cuda_memory_management"]
-            )
+            kwargs["enable_cuda_memory_management"] = bool(data["enable_cuda_memory_management"])
 
         return cls(**kwargs)
 
@@ -272,7 +253,7 @@ class MemoryGuard:
         config: Memory guard configuration.
     """
 
-    def __init__(self, config: MemoryGuardConfig | None = None):
+    def __init__(self, config: MemoryGuardConfig | None = None) -> None:
         """Initialize memory guard.
 
         Args:
@@ -443,9 +424,9 @@ class MemoryGuard:
         if status == MemoryStatus.WARNING:
             reduction = self.config.batch_reduction_factor
         elif status == MemoryStatus.CRITICAL:
-            reduction = self.config.batch_reduction_factor ** 2
+            reduction = self.config.batch_reduction_factor**2
         else:  # OOM_RISK
-            reduction = self.config.batch_reduction_factor ** 3
+            reduction = self.config.batch_reduction_factor**3
 
         new_batch = max(
             self.config.min_batch_size,
@@ -497,7 +478,7 @@ class MemoryGuard:
         if mem_info:
             self._memory_history.append(mem_info)
             if len(self._memory_history) > self._max_history:
-                self._memory_history = self._memory_history[-self._max_history:]
+                self._memory_history = self._memory_history[-self._max_history :]
 
         if status == MemoryStatus.WARNING:
             if self.config.gc_on_warning:
@@ -531,14 +512,13 @@ class MemoryGuard:
             logger.error(
                 f"OOM risk detected on {device}! "
                 f"Memory: {mem_info.used_mb:.0f}/{mem_info.total_mb:.0f} MB"
-                if mem_info else f"OOM risk detected on {device}!"
+                if mem_info
+                else f"OOM risk detected on {device}!"
             )
 
         return status
 
-    def enable_gradient_checkpointing(
-        self, model: Any, enable: bool = True
-    ) -> None:
+    def enable_gradient_checkpointing(self, model: Any, enable: bool = True) -> None:
         """Enable or disable gradient checkpointing on a model.
 
         Args:
@@ -609,21 +589,15 @@ class MemoryGuard:
 
         logger.info("Stopped memory monitoring")
 
-    def register_warning_callback(
-        self, callback: Callable[[MemoryInfo], None]
-    ) -> None:
+    def register_warning_callback(self, callback: Callable[[MemoryInfo], None]) -> None:
         """Register callback for memory warnings."""
         self._on_warning.append(callback)
 
-    def register_critical_callback(
-        self, callback: Callable[[MemoryInfo], None]
-    ) -> None:
+    def register_critical_callback(self, callback: Callable[[MemoryInfo], None]) -> None:
         """Register callback for critical memory."""
         self._on_critical.append(callback)
 
-    def register_oom_risk_callback(
-        self, callback: Callable[[MemoryInfo], None]
-    ) -> None:
+    def register_oom_risk_callback(self, callback: Callable[[MemoryInfo], None]) -> None:
         """Register callback for OOM risk."""
         self._on_oom_risk.append(callback)
 

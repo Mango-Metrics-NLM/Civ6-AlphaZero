@@ -81,7 +81,7 @@ class LearningRateScheduler:
         decay_rate: float = 0.1,
         warmup_steps: int = 0,
         base_lr: float = 0.001,
-    ):
+    ) -> None:
         """Initialize scheduler.
 
         Args:
@@ -137,7 +137,7 @@ class GradientAccumulator:
         optimizer: optim.Optimizer,
         accumulation_steps: int = 1,
         gradient_clip: float = 1.0,
-    ):
+    ) -> None:
         """Initialize accumulator.
 
         Args:
@@ -200,7 +200,7 @@ class Learner:
         config: LearnerConfig,
         shared_storage: SharedStorage,
         replay_buffer: DistributedReplayBuffer,
-    ):
+    ) -> None:
         """Initialize learner.
 
         Args:
@@ -351,6 +351,13 @@ class Learner:
         if not batch:
             return None
 
+        logger.debug(
+            "Training step %d: batch_size=%d, buffer_size=%d",
+            self.training_step,
+            self.config.batch_size,
+            self.replay_buffer.size(),
+        )
+
         # Move to device
         spatial = batch["spatial"].to(self.config.device)
         vector = batch["vector"].to(self.config.device)
@@ -377,6 +384,27 @@ class Learner:
         if did_step:
             self.training_step += 1
             self.lr_scheduler.step()
+
+            # Compute gradient norm for debugging
+            grad_norm = (
+                sum(
+                    p.grad.norm().item() ** 2
+                    for p in self.network.parameters()
+                    if p.grad is not None
+                )
+                ** 0.5
+            )
+
+            logger.debug(
+                "Gradient update: step=%d, total_loss=%.4f, policy_loss=%.4f, "
+                "value_loss=%.4f, grad_norm=%.4f, lr=%.6f",
+                self.training_step,
+                total_loss.item(),
+                p_loss.item(),
+                v_loss.item(),
+                grad_norm,
+                self.lr_scheduler.get_lr(),
+            )
 
         # Update statistics
         self.total_loss += total_loss.item()
@@ -547,7 +575,7 @@ def learner_process(
     )
 
     # Handle signals
-    def signal_handler(signum, frame):
+    def signal_handler(signum: int, frame: object | None) -> None:
         logger.info(f"Learner: Received signal {signum}")
         storage.request_stop()
 

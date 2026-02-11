@@ -39,7 +39,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-import yaml
+import yaml  # type: ignore[import]
 
 logger = logging.getLogger(__name__)
 
@@ -158,14 +158,10 @@ class ConvergenceMonitorConfig:
     """
 
     window_size: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_CONVERGENCE_WINDOW", "50")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_CONVERGENCE_WINDOW", "50"))
     )
     stall_threshold_iterations: int = field(
-        default_factory=lambda: int(
-            os.environ.get("CIV6AZ_CONVERGENCE_STALL_THRESHOLD", "100")
-        )
+        default_factory=lambda: int(os.environ.get("CIV6AZ_CONVERGENCE_STALL_THRESHOLD", "100"))
     )
     improvement_threshold: float = field(
         default_factory=lambda: float(
@@ -178,34 +174,26 @@ class ConvergenceMonitorConfig:
         )
     )
     min_win_rate: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_CONVERGENCE_MIN_WIN_RATE", "0.5")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_CONVERGENCE_MIN_WIN_RATE", "0.5"))
     )
     target_win_rate: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_CONVERGENCE_TARGET_WIN_RATE", "0.7")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_CONVERGENCE_TARGET_WIN_RATE", "0.7"))
     )
     lr_reduction_factor: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_CONVERGENCE_LR_REDUCTION", "0.5")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_CONVERGENCE_LR_REDUCTION", "0.5"))
     )
     exploration_boost_factor: float = field(
-        default_factory=lambda: float(
-            os.environ.get("CIV6AZ_CONVERGENCE_EXPLORATION_BOOST", "1.5")
-        )
+        default_factory=lambda: float(os.environ.get("CIV6AZ_CONVERGENCE_EXPLORATION_BOOST", "1.5"))
     )
     enable_pbt_recommendations: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_CONVERGENCE_PBT_ENABLED", "true"
-        ).lower() == "true"
+        default_factory=lambda: os.environ.get("CIV6AZ_CONVERGENCE_PBT_ENABLED", "true").lower()
+        == "true"
     )
     enable_curriculum_recommendations: bool = field(
         default_factory=lambda: os.environ.get(
             "CIV6AZ_CONVERGENCE_CURRICULUM_ENABLED", "true"
-        ).lower() == "true"
+        ).lower()
+        == "true"
     )
 
     def __post_init__(self) -> None:
@@ -301,7 +289,7 @@ class ConvergenceMonitor:
         config: Convergence monitor configuration.
     """
 
-    def __init__(self, config: ConvergenceMonitorConfig | None = None):
+    def __init__(self, config: ConvergenceMonitorConfig | None = None) -> None:
         """Initialize convergence monitor.
 
         Args:
@@ -378,12 +366,14 @@ class ConvergenceMonitor:
         improved = False
 
         if total_loss is not None:
-            if self._best_loss is None or total_loss < self._best_loss - self.config.improvement_threshold:
+            threshold = self.config.improvement_threshold
+            if self._best_loss is None or total_loss < self._best_loss - threshold:
                 self._best_loss = total_loss
                 improved = True
 
         if win_rate is not None:
-            if self._best_win_rate is None or win_rate > self._best_win_rate + self.config.improvement_threshold:
+            threshold = self.config.improvement_threshold
+            if self._best_win_rate is None or win_rate > self._best_win_rate + threshold:
                 self._best_win_rate = win_rate
                 improved = True
 
@@ -414,14 +404,14 @@ class ConvergenceMonitor:
             return ConvergenceStatus.STALLED
 
         # Calculate recent trend
-        recent = list(self._history)[-self.config.window_size:]
+        recent = list(self._history)[-self.config.window_size :]
         losses = [s.total_loss for s in recent if s.total_loss is not None]
         win_rates = [s.win_rate for s in recent if s.win_rate is not None]
 
         # Check for divergence (loss increasing significantly)
         if len(losses) >= 5:
-            first_half = losses[:len(losses)//2]
-            second_half = losses[len(losses)//2:]
+            first_half = losses[: len(losses) // 2]
+            second_half = losses[len(losses) // 2 :]
             if first_half and second_half:
                 first_avg = statistics.mean(first_half)
                 second_avg = statistics.mean(second_half)
@@ -430,8 +420,8 @@ class ConvergenceMonitor:
 
         # Check for improvement
         if len(losses) >= 5:
-            first_half = losses[:len(losses)//2]
-            second_half = losses[len(losses)//2:]
+            first_half = losses[: len(losses) // 2]
+            second_half = losses[len(losses) // 2 :]
             if first_half and second_half:
                 first_avg = statistics.mean(first_half)
                 second_avg = statistics.mean(second_half)
@@ -440,8 +430,8 @@ class ConvergenceMonitor:
 
         # Check win rate trend
         if len(win_rates) >= 5:
-            first_half = win_rates[:len(win_rates)//2]
-            second_half = win_rates[len(win_rates)//2:]
+            first_half = win_rates[: len(win_rates) // 2]
+            second_half = win_rates[len(win_rates) // 2 :]
             if first_half and second_half:
                 first_avg = statistics.mean(first_half)
                 second_avg = statistics.mean(second_half)
@@ -489,60 +479,72 @@ class ConvergenceMonitor:
         status = self.get_status()
 
         if status == ConvergenceStatus.IMPROVING:
-            recommendations.append(Recommendation(
-                type=RecommendationType.CONTINUE,
-                priority=1,
-                reason="Training is improving, continue current approach",
-                confidence=0.9,
-            ))
+            recommendations.append(
+                Recommendation(
+                    type=RecommendationType.CONTINUE,
+                    priority=1,
+                    reason="Training is improving, continue current approach",
+                    confidence=0.9,
+                )
+            )
             return recommendations
 
         # Get recent metrics
-        recent = list(self._history)[-self.config.window_size:] if self._history else []
+        recent = list(self._history)[-self.config.window_size :] if self._history else []
 
         # Learning rate recommendation
         if status in (ConvergenceStatus.STALLED, ConvergenceStatus.SLOWING):
             current_lr = recent[-1].learning_rate if recent and recent[-1].learning_rate else None
             if current_lr:
                 new_lr = current_lr * self.config.lr_reduction_factor
-                recommendations.append(Recommendation(
-                    type=RecommendationType.REDUCE_LR,
-                    priority=8 if status == ConvergenceStatus.STALLED else 5,
-                    reason="Learning rate may be too high for current state",
-                    suggested_value=new_lr,
-                    confidence=0.7,
-                ))
+                recommendations.append(
+                    Recommendation(
+                        type=RecommendationType.REDUCE_LR,
+                        priority=8 if status == ConvergenceStatus.STALLED else 5,
+                        reason="Learning rate may be too high for current state",
+                        suggested_value=new_lr,
+                        confidence=0.7,
+                    )
+                )
 
         # Exploration recommendation
         if status == ConvergenceStatus.STALLED:
-            current_exploration = recent[-1].exploration_rate if recent and recent[-1].exploration_rate else None
+            has_exploration = recent and recent[-1].exploration_rate
+            current_exploration = recent[-1].exploration_rate if has_exploration else None
             if current_exploration:
-                new_exploration = min(1.0, current_exploration * self.config.exploration_boost_factor)
-                recommendations.append(Recommendation(
-                    type=RecommendationType.INCREASE_EXPLORATION,
-                    priority=6,
-                    reason="Increase exploration to escape local minimum",
-                    suggested_value=new_exploration,
-                    confidence=0.6,
-                ))
+                boost = self.config.exploration_boost_factor
+                new_exploration = min(1.0, current_exploration * boost)
+                recommendations.append(
+                    Recommendation(
+                        type=RecommendationType.INCREASE_EXPLORATION,
+                        priority=6,
+                        reason="Increase exploration to escape local minimum",
+                        suggested_value=new_exploration,
+                        confidence=0.6,
+                    )
+                )
 
         # MCTS simulations recommendation
         if status == ConvergenceStatus.SLOWING:
-            recommendations.append(Recommendation(
-                type=RecommendationType.INCREASE_SIMULATIONS,
-                priority=4,
-                reason="More MCTS simulations may improve policy quality",
-                confidence=0.5,
-            ))
+            recommendations.append(
+                Recommendation(
+                    type=RecommendationType.INCREASE_SIMULATIONS,
+                    priority=4,
+                    reason="More MCTS simulations may improve policy quality",
+                    confidence=0.5,
+                )
+            )
 
         # PBT mutation recommendation
         if self.config.enable_pbt_recommendations and status == ConvergenceStatus.STALLED:
-            recommendations.append(Recommendation(
-                type=RecommendationType.PBT_MUTATE,
-                priority=7,
-                reason="Consider PBT mutation to explore new hyperparameters",
-                confidence=0.65,
-            ))
+            recommendations.append(
+                Recommendation(
+                    type=RecommendationType.PBT_MUTATE,
+                    priority=7,
+                    reason="Consider PBT mutation to explore new hyperparameters",
+                    confidence=0.65,
+                )
+            )
 
         # Curriculum recommendations
         if self.config.enable_curriculum_recommendations:
@@ -551,38 +553,47 @@ class ConvergenceMonitor:
                 avg_win_rate = statistics.mean(win_rates)
 
                 if avg_win_rate >= self.config.target_win_rate:
-                    recommendations.append(Recommendation(
-                        type=RecommendationType.CURRICULUM_ADVANCE,
-                        priority=9,
-                        reason=f"Win rate {avg_win_rate:.1%} exceeds target, advance curriculum",
-                        confidence=0.8,
-                    ))
-                elif avg_win_rate < self.config.min_win_rate and status == ConvergenceStatus.STALLED:
-                    recommendations.append(Recommendation(
-                        type=RecommendationType.CURRICULUM_RETREAT,
-                        priority=8,
-                        reason=f"Win rate {avg_win_rate:.1%} too low, consider easier curriculum",
-                        confidence=0.7,
-                    ))
+                    recommendations.append(
+                        Recommendation(
+                            type=RecommendationType.CURRICULUM_ADVANCE,
+                            priority=9,
+                            reason=f"Win rate {avg_win_rate:.1%} exceeds target, advance curriculum",
+                            confidence=0.8,
+                        )
+                    )
+                is_stalled = status == ConvergenceStatus.STALLED
+                if avg_win_rate < self.config.min_win_rate and is_stalled:
+                    recommendations.append(
+                        Recommendation(
+                            type=RecommendationType.CURRICULUM_RETREAT,
+                            priority=8,
+                            reason=f"Win rate {avg_win_rate:.1%} too low, retreat curriculum",
+                            confidence=0.7,
+                        )
+                    )
 
         # Divergence recommendation
         if status == ConvergenceStatus.DIVERGING:
-            recommendations.append(Recommendation(
-                type=RecommendationType.REDUCE_LR,
-                priority=10,
-                reason="Training is diverging, reduce learning rate urgently",
-                suggested_value=(recent[-1].learning_rate or 0.001) * 0.1,
-                confidence=0.85,
-            ))
+            recommendations.append(
+                Recommendation(
+                    type=RecommendationType.REDUCE_LR,
+                    priority=10,
+                    reason="Training is diverging, reduce learning rate urgently",
+                    suggested_value=(recent[-1].learning_rate or 0.001) * 0.1,
+                    confidence=0.85,
+                )
+            )
 
         # Early stopping recommendation
         if self._iterations_since_improvement > self.config.stall_threshold_iterations * 2:
-            recommendations.append(Recommendation(
-                type=RecommendationType.EARLY_STOP,
-                priority=3,
-                reason="No improvement for extended period, consider early stopping",
-                confidence=0.6,
-            ))
+            recommendations.append(
+                Recommendation(
+                    type=RecommendationType.EARLY_STOP,
+                    priority=3,
+                    reason="No improvement for extended period, consider early stopping",
+                    confidence=0.6,
+                )
+            )
 
         # Sort by priority (higher = more important)
         recommendations.sort(key=lambda r: r.priority, reverse=True)
@@ -599,14 +610,14 @@ class ConvergenceMonitor:
         if len(self._history) < self.config.window_size:
             return None
 
-        recent = list(self._history)[-self.config.window_size:]
+        recent = list(self._history)[-self.config.window_size :]
         losses = [s.total_loss for s in recent if s.total_loss is not None]
 
         if len(losses) < 2:
             return None
 
-        first_avg = statistics.mean(losses[:len(losses)//2])
-        second_avg = statistics.mean(losses[len(losses)//2:])
+        first_avg = statistics.mean(losses[: len(losses) // 2])
+        second_avg = statistics.mean(losses[len(losses) // 2 :])
 
         if first_avg == 0:
             return None
@@ -626,15 +637,11 @@ class ConvergenceMonitor:
             "iterations_since_improvement": self._iterations_since_improvement,
         }
 
-    def register_stall_callback(
-        self, callback: Callable[[ConvergenceStatus], None]
-    ) -> None:
+    def register_stall_callback(self, callback: Callable[[ConvergenceStatus], None]) -> None:
         """Register callback for training stalls."""
         self._on_stall.append(callback)
 
-    def register_improvement_callback(
-        self, callback: Callable[[MetricSnapshot], None]
-    ) -> None:
+    def register_improvement_callback(self, callback: Callable[[MetricSnapshot], None]) -> None:
         """Register callback for improvements."""
         self._on_improvement.append(callback)
 

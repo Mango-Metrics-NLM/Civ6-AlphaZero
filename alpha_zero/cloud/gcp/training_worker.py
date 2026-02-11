@@ -21,12 +21,15 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import time
 
-import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP  # noqa: N817
+from torch.utils.data import DataLoader, Dataset, TensorDataset
+from torch.utils.data.distributed import DistributedSampler
 
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.storage import (
@@ -34,8 +37,11 @@ from alpha_zero.cloud.gcp.storage import (
     GCSModelStorage,
     GCSTrajectoryStorage,
 )
+from alpha_zero.utils.wandb_logger import WandbLogger
 
 logger = logging.getLogger(__name__)
+
+CHECKPOINT_RETENTION: int = 3
 
 
 def setup_logging() -> None:
@@ -45,6 +51,73 @@ def setup_logging() -> None:
         format="[Training] %(asctime)s - %(levelname)s - %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
+
+
+def setup_ddp() -> tuple[int, int, int]:
+    """Initialize distributed training.
+
+    Returns:
+        Tuple of (rank, local_rank, world_size).
+    """
+    if "WORLD_SIZE" in os.environ:
+        rank = int(os.environ["RANK"])
+        local_rank = int(os.environ["LOCAL_RANK"])
+        world_size = int(os.environ["WORLD_SIZE"])
+
+        # Select backend based on CUDA availability to support CPU-only envs.
+        backend = "nccl" if torch.cuda.is_available() else "gloo"
+        dist.init_process_group(backend=backend)
+
+        if torch.cuda.is_available():
+            torch.cuda.set_device(local_rank)
+
+        logger.info(
+            "Initialized DDP: rank=%d, local_rank=%d, world_size=%d, backend=%s",
+            rank,
+            local_rank,
+            world_size,
+            backend,
+        )
+        return rank, local_rank, world_size
+    return 0, 0, 1
+
+
+def cleanup_ddp() -> None:
+    """Clean up distributed training."""
+    if dist.is_initialized():
+        dist.destroy_process_group()
+
+
+def report_tuning_metric(metric: dict[str, float], step: int) -> None:
+    """Report hyperparameter tuning metric to Vertex AI Vizier.
+
+    Writes to the file specified by CLOUD_ML_HP_METRIC_FILE environment variable.
+    """
+    metric_file = os.environ.get("CLOUD_ML_HP_METRIC_FILE")
+    if not metric_file:
+        return
+
+    try:
+        import json
+
+        # Format required by Vertex AI Vizier
+        data = {
+            "timestamp": time.time(),
+            "step": step,
+            **metric,
+        }
+
+        # Write generic metric to file (append or overwrite?)
+        # Vizier expects one JSON per line or just one JSON?
+        # Documentation says: "Write the metric to the file... Each line in the file is a JSON object"
+
+        with open(metric_file, "a") as f:
+            f.write(json.dumps(data) + "\n")
+
+        logger.debug("Reported tuning metric: %s", data)
+
+    except Exception as e:
+        logger.warning("Failed to report tuning metric: %s", e)
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,15 +133,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=10, help="Training epochs")
     parser.add_argument("--batch_size", type=int, default=256, help="Batch size")
     parser.add_argument("--learning_rate", type=float, default=0.001, help="Learning rate")
+    parser.add_argument("--agent_id", type=str, default=None, help="PBT Agent ID")
     parser.add_argument(
         "--checkpoint_interval", type=int, default=1000, help="Steps between checkpoints"
     )
     parser.add_argument("--resume_from", type=str, default=None, help="Checkpoint to resume from")
-    parser.add_argument("--board_size", type=int, default=8, help="Board size")
+    # Network architecture args passed by the Vertex orchestrator
+    parser.add_argument("--board_size", type=int, default=8, help="Board size (spatial_size)")
     parser.add_argument("--action_space_size", type=int, default=376, help="Action space size")
-    parser.add_argument("--num_res_blocks", type=int, default=6, help="Residual blocks in network")
-    parser.add_argument("--num_filters", type=int, default=64, help="Conv filters in network")
-    parser.add_argument("--mode", type=str, default="training", help="Worker mode (training)")
+    parser.add_argument(
+        "--num_res_blocks", type=int, default=6, help="Number of transformer layers"
+    )
+    parser.add_argument("--num_filters", type=int, default=64, help="Model embedding dimension")
+    parser.add_argument(
+        "--wandb_log_interval", type=int, default=10, help="W&B logging frequency (batches)"
+    )
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
     return parser.parse_args()
 
@@ -83,7 +162,7 @@ class TrajectoryDataset(Dataset):
         action_mask: torch.Tensor,
         policy: torch.Tensor,
         value: torch.Tensor,
-    ):
+    ) -> None:
         self.spatial = spatial
         self.vector = vector
         self.action_mask = action_mask
@@ -114,28 +193,18 @@ def load_trajectories(
     """Load trajectories from specified iterations."""
     if dry_run:
         logger.info("Dry run: creating dummy trajectories")
-        spatial_shape = (13, board_size, board_size)
-        trajectories = []
-        for _ in range(100):
-            n_states = 20
-            trajectories.append(
-                {
-                    "states": [
-                        {
-                            "spatial": np.random.randn(*spatial_shape).astype(np.float32),
-                            "vector": np.random.randn(64).astype(np.float32),
-                            "action_mask": np.ones(action_space_size, dtype=np.float32),
-                        }
-                        for _ in range(n_states)
-                    ],
-                    "policies": [
-                        np.full(action_space_size, 1.0 / action_space_size, dtype=np.float32)
-                        for _ in range(n_states)
-                    ],
-                    "values": [0.5] * n_states,
-                }
-            )
-        return trajectories
+        spatial_dim = ENCODER_SPATIAL_CHANNELS * board_size * board_size
+        vector_dim = 64
+        policy_val = 1.0 / action_space_size
+        return [
+            {
+                "spatial": [[0.0] * spatial_dim],
+                "vector": [[0.0] * vector_dim],
+                "policies": [[policy_val] * action_space_size],
+                "rewards": [0.5],
+            }
+            for _ in range(1000)
+        ]
 
     storage = GCSTrajectoryStorage(config)
     all_trajectories = []
@@ -149,58 +218,108 @@ def load_trajectories(
     return all_trajectories
 
 
+# MicroCivEncoder.TOTAL_CHANNELS — input spatial feature planes from the encoder
+ENCODER_SPATIAL_CHANNELS: int = 13
+
+
 def create_model(
     board_size: int = 8,
     action_space_size: int = 376,
     num_res_blocks: int = 6,
     num_filters: int = 64,
+    spatial_channels: int = ENCODER_SPATIAL_CHANNELS,
 ) -> torch.nn.Module:
-    """Create model architecture."""
-    from alpha_zero.core.civ6_network import MicroCivNetwork
+    """Create model architecture.
 
-    return MicroCivNetwork(
-        board_size=board_size,
+    Args:
+        board_size: Board size = spatial_size input dimension (H=W).
+        action_space_size: Total number of actions.
+        num_res_blocks: Maps to TransformerConfig.num_layers.
+        num_filters: Maps to TransformerConfig.embed_dim.
+        spatial_channels: Input spatial channels (from encoder, default 13).
+    """
+    from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
+
+    model_config = TransformerConfig(
+        spatial_channels=spatial_channels,
+        spatial_size=board_size,
+        vector_dim=64,
         action_space_size=action_space_size,
-        num_res_blocks=num_res_blocks,
-        num_filters=num_filters,
+        num_layers=num_res_blocks,
+        embed_dim=num_filters,
     )
+    logger.info(
+        "Creating model: spatial=(%d, %d, %d), actions=%d, layers=%d, embed_dim=%d",
+        spatial_channels,
+        board_size,
+        board_size,
+        action_space_size,
+        num_res_blocks,
+        num_filters,
+    )
+    return Civ6TransformerNetwork(config=model_config)
 
 
-def prepare_dataset(trajectories: list[dict], action_space_size: int) -> TrajectoryDataset:
-    """Convert trajectories to PyTorch dataset."""
-    all_spatial = []
-    all_vector = []
-    all_mask = []
-    all_policy = []
-    all_value = []
+def prepare_dataset(
+    trajectories: list[dict],
+    vector_dim: int | None = None,
+) -> TensorDataset:
+    """Convert trajectories to PyTorch dataset.
+
+    Args:
+        trajectories: List of trajectory dictionaries.
+        vector_dim: Vector dimension for legacy format handling.
+            If None, uses default from TransformerConfig.
+
+    Returns:
+        TensorDataset with spatial, vector, policy, and value tensors.
+    """
+    from torch.utils.data import TensorDataset
+
+    # Get vector_dim from config if not specified
+    if vector_dim is None:
+        from alpha_zero.core.transformer_network import TransformerConfig
+
+        vector_dim = TransformerConfig().vector_dim
+
+    spatial_list = []
+    vector_list = []
+    policies = []
+    values = []
+
+    legacy_format_warned = False
 
     for traj in trajectories:
-        states = traj["states"]
-        policies = traj["policies"]
-        values = traj.get("values", traj.get("rewards", [0.0] * len(states)))
+        # Handle both old format (states) and new format (spatial + vector)
+        if "spatial" in traj:
+            for i, spatial in enumerate(traj["spatial"]):
+                spatial_list.append(spatial)
+                vector_list.append(traj["vector"][i])
+                policies.append(traj["policies"][i])
+                values.append(traj["rewards"][i])
+        else:
+            # Legacy format: split states into spatial and dummy vector
+            if not legacy_format_warned:
+                logger.warning(
+                    "Legacy trajectory format detected (missing 'spatial' key). "
+                    "Using zero-filled vector of dimension %d. "
+                    "Consider re-generating trajectories with updated selfplay worker.",
+                    vector_dim,
+                )
+                legacy_format_warned = True
+            for i, state in enumerate(traj["states"]):
+                spatial_list.append(state)
+                vector_list.append([0.0] * vector_dim)
+                policies.append(traj["policies"][i])
+                values.append(traj["rewards"][i])
 
-        for i, state in enumerate(states):
-            all_spatial.append(state["spatial"])
-            all_vector.append(state["vector"])
-            all_mask.append(state["action_mask"])
+    # Convert to tensors
+    spatial_tensor = torch.tensor(spatial_list, dtype=torch.float32)
+    vector_tensor = torch.tensor(vector_list, dtype=torch.float32)
+    policies_tensor = torch.tensor(policies, dtype=torch.float32)
+    values_tensor = torch.tensor(values, dtype=torch.float32)
 
-            # Ensure policy has correct size
-            policy = policies[i]
-            if len(policy) < action_space_size:
-                padded = np.zeros(action_space_size, dtype=np.float32)
-                padded[: len(policy)] = policy
-                policy = padded
-            all_policy.append(policy[:action_space_size])
-
-            all_value.append(float(values[i]))
-
-    return TrajectoryDataset(
-        spatial=torch.tensor(np.array(all_spatial), dtype=torch.float32),
-        vector=torch.tensor(np.array(all_vector), dtype=torch.float32),
-        action_mask=torch.tensor(np.array(all_mask), dtype=torch.float32),
-        policy=torch.tensor(np.array(all_policy), dtype=torch.float32),
-        value=torch.tensor(all_value, dtype=torch.float32),
-    )
+    return TensorDataset(spatial_tensor, vector_tensor, policies_tensor, values_tensor)
 
 
 def train_epoch(
@@ -209,7 +328,10 @@ def train_epoch(
     optimizer: torch.optim.Optimizer,
     device: torch.device,
     global_step: int = 0,
-    wandb_logger: object | None = None,
+    wandb_logger: WandbLogger | None = None,
+    spatial_channels: int = 13,
+    spatial_size: int = 8,
+    wandb_log_interval: int = 10,
 ) -> tuple[float, float, float, int]:
     """Train for one epoch.
 
@@ -222,22 +344,34 @@ def train_epoch(
     total_value_loss = 0.0
     num_batches = 0
 
-    for spatial, vector, action_mask, target_policy, target_value in dataloader:
+    for spatial, vector, target_policies, target_values in dataloader:
         spatial = spatial.to(device)
         vector = vector.to(device)
-        action_mask = action_mask.to(device)
-        target_policy = target_policy.to(device)
-        target_value = target_value.to(device)
+        target_policies = target_policies.to(device)
+        target_values = target_values.to(device)
 
-        # Forward pass with proper 3-input API
-        policy_logits, value = model(spatial, vector, action_mask)
+        # Forward pass
+        # Reshape spatial for transformer input and validate
+        batch_size = spatial.shape[0]
+        expected_flat = spatial_channels * spatial_size * spatial_size
+        if spatial.shape[1] != expected_flat:
+            raise ValueError(
+                f"Spatial tensor flat dim {spatial.shape[1]} != "
+                f"expected {spatial_channels}x{spatial_size}x{spatial_size}={expected_flat}. "
+                f"Ensure encoder channels and board_size match between selfplay and training."
+            )
+        spatial = spatial.view(
+            batch_size, spatial_channels, spatial_size, spatial_size
+        )  # B, C, H, W
 
-        # Policy loss (cross-entropy with target distribution)
+        policy_logits, value = model(spatial, vector)
+
+        # Policy loss (cross-entropy)
         policy_log_probs = torch.log_softmax(policy_logits, dim=-1)
-        policy_loss = -torch.sum(target_policy * policy_log_probs, dim=-1).mean()
+        policy_loss = -torch.sum(target_policies * policy_log_probs, dim=-1).mean()
 
         # Value loss (MSE)
-        value_loss = torch.nn.functional.mse_loss(value, target_value)
+        value_loss = torch.nn.functional.mse_loss(value, target_values)
 
         # Combined loss
         loss = policy_loss + value_loss
@@ -259,7 +393,7 @@ def train_epoch(
             and hasattr(wandb_logger, "is_enabled")
             and wandb_logger.is_enabled
         ):
-            if num_batches % 10 == 0:
+            if num_batches % wandb_log_interval == 0:
                 lr = optimizer.param_groups[0]["lr"]
                 wandb_logger.log_training_step(
                     step=global_step + num_batches,
@@ -325,12 +459,27 @@ def save_final_model(
     except Exception:
         new_version = 1
 
+    # Extract model config for architecture reconstruction
+    model_config_dict = None
+    if hasattr(model, "config"):
+        import dataclasses
+        from enum import Enum
+
+        model_config_dict = dataclasses.asdict(model.config)
+        # Convert enums to string values for JSON serialization
+        for key, value in model_config_dict.items():
+            if isinstance(value, Enum):
+                model_config_dict[key] = value.value
+
     uri = storage.save_model(
         model=model,
         version=new_version,
         metadata={"iteration": iteration},
+        model_config=model_config_dict,
     )
-    logger.info("Saved model v%d to %s", new_version, uri)
+    logger.info(
+        "Saved model v%d to %s (with config: %s)", new_version, uri, model_config_dict is not None
+    )
     return uri, new_version
 
 
@@ -371,15 +520,33 @@ def main() -> int:
     except ImportError:
         logger.debug("W&B not available")
 
+    # DDP setup
+    rank, local_rank, world_size = setup_ddp()
+    is_main_process = rank == 0
+
     try:
         config = GCPConfig()
-        if not args.dry_run:
+        if args.agent_id:
+            config.paths.agent_id = args.agent_id
+            if is_main_process:
+                logger.info("Using Agent ID: %s", args.agent_id)
+
+        if not args.dry_run and is_main_process:
             config.validate()
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        logger.info("Using device: %s", device)
+        if torch.cuda.is_available():
+            device = torch.device(f"cuda:{local_rank}")
+        else:
+            device = torch.device("cpu")
 
-        # Load trajectories
+        if is_main_process:
+            logger.info("Using device: %s (World size: %d)", device, world_size)
+
+        # Load trajectories (only on main process or cached?)
+        # For simplicity, all processes load data. In data-parallel, this is fine for small datasets.
+        # For huge datasets, we'd want to shard reading.
+        # GCS storage might be slow if 8 GPUs hit it at once.
+        # But for now assuming each node caches it independently or it's fast enough.
         trajectories = load_trajectories(
             config,
             trajectory_iterations,
@@ -388,17 +555,41 @@ def main() -> int:
             dry_run=args.dry_run,
         )
 
+        # Validate we have data to train on
+        if not trajectories:
+            logger.error(
+                "No trajectories found for iterations %s. "
+                "You must run self-play first to generate training data:\n"
+                "  python -m alpha_zero.cloud.gcp.cli selfplay --iteration %d --wait",
+                trajectory_iterations,
+                args.iteration,
+            )
+            return 1
+
         # Prepare dataset
-        dataset = prepare_dataset(trajectories, args.action_space_size)
+        dataset = prepare_dataset(trajectories)
+
+        if len(dataset) == 0:
+            logger.error(
+                "Dataset is empty after processing trajectories. "
+                "This may indicate corrupted trajectory data."
+            )
+            return 1
+
+        # Distributed sampler
+        sampler: DistributedSampler | None = DistributedSampler(dataset) if world_size > 1 else None
         dataloader = DataLoader(
             dataset,
             batch_size=args.batch_size,
-            shuffle=True,
+            shuffle=(sampler is None),
+            sampler=sampler,
             # num_workers=0 avoids multiprocessing issues inside containers
             num_workers=0,
             pin_memory=device.type == "cuda",
         )
-        logger.info("Dataset size: %d examples, %d batches", len(dataset), len(dataloader))
+
+        if is_main_process:
+            logger.info("Dataset size: %d examples, %d batches", len(dataset), len(dataloader))
 
         # Create model
         model = create_model(
@@ -408,6 +599,10 @@ def main() -> int:
             num_filters=args.num_filters,
         )
         model = model.to(device)
+
+        # Wrap DDP
+        if world_size > 1:
+            model = DDP(model, device_ids=[local_rank])
 
         # Create optimizer
         optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
@@ -436,15 +631,23 @@ def main() -> int:
                 optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
                 global_step = checkpoint.get("step", 0)
                 start_epoch = checkpoint.get("epoch", 0)
-                logger.info(
-                    "Resumed from checkpoint at step %d, epoch %d", global_step, start_epoch
-                )
+                if is_main_process:
+                    logger.info(
+                        "Resumed from checkpoint at step %d, epoch %d", global_step, start_epoch
+                    )
 
         # Training loop
         start_time = time.time()
 
         for epoch in range(start_epoch, args.epochs):
+            if sampler is not None:
+                sampler.set_epoch(epoch)
+
             epoch_start = time.time()
+
+            # Spatial dims must match encoder output, NOT model embed_dim
+            spatial_channels = ENCODER_SPATIAL_CHANNELS
+            spatial_size = args.board_size
 
             loss, policy_loss, value_loss, num_batches = train_epoch(
                 model,
@@ -453,41 +656,61 @@ def main() -> int:
                 device,
                 global_step=global_step,
                 wandb_logger=wandb_logger,
+                spatial_channels=spatial_channels,
+                spatial_size=spatial_size,
+                wandb_log_interval=args.wandb_log_interval,
             )
 
             epoch_time = time.time() - epoch_start
             prev_step = global_step
             global_step += num_batches
 
-            logger.info(
-                "Epoch %d/%d - Loss: %.4f (P: %.4f, V: %.4f) - %.1fs - Steps: %d->%d",
-                epoch + 1,
-                args.epochs,
-                loss,
-                policy_loss,
-                value_loss,
-                epoch_time,
-                prev_step,
-                global_step,
-            )
+            if is_main_process:
+                logger.info(
+                    "Epoch %d/%d completed: loss=%.4f (policy=%.4f, value=%.4f), "
+                    "time=%.2fs, steps %d-%d",
+                    epoch + 1,
+                    args.epochs,
+                    loss,
+                    policy_loss,
+                    value_loss,
+                    epoch_time,
+                    prev_step + 1,
+                    global_step,
+                )
+
+                # Report to Vizier
+                report_tuning_metric(
+                    {
+                        "loss": loss,
+                        "policy_loss": policy_loss,
+                        "value_loss": value_loss,
+                    },
+                    step=global_step,
+                )
 
             # Checkpoint if we crossed an interval boundary
-            if (global_step // args.checkpoint_interval) > (prev_step // args.checkpoint_interval):
+            if is_main_process and (global_step // args.checkpoint_interval) > (
+                prev_step // args.checkpoint_interval
+            ):
                 save_checkpoint(config, model, optimizer, global_step, epoch + 1, args.dry_run)
 
         # Save final model
         total_time = time.time() - start_time
-        logger.info("Training complete in %.1f seconds", total_time)
+        if is_main_process:
+            logger.info("Training complete in %.1f seconds", total_time)
 
-        uri, version = save_final_model(config, model, args.iteration, args.dry_run)
-        logger.info("Saved final model version %d", version)
+            # Unwrap model if DDP
+            model_to_save: torch.nn.Module = model.module if world_size > 1 else model  # type: ignore[attr-defined]
+            uri, version = save_final_model(config, model_to_save, args.iteration, args.dry_run)
+            logger.info("Saved final model version %d to %s", version, uri)
 
-        # Cleanup old checkpoints
-        if not args.dry_run:
-            checkpoint_storage = GCSCheckpointStorage(config)
-            deleted = checkpoint_storage.cleanup_old_checkpoints(keep_last=3)
-            if deleted:
-                logger.info("Cleaned up %d old checkpoints", deleted)
+            # Cleanup old checkpoints
+            if not args.dry_run:
+                checkpoint_storage = GCSCheckpointStorage(config)
+                deleted = checkpoint_storage.cleanup_old_checkpoints(keep_last=CHECKPOINT_RETENTION)
+                if deleted:
+                    logger.info("Cleaned up %d old checkpoints", deleted)
 
         return 0
 
@@ -498,6 +721,7 @@ def main() -> int:
         logger.exception("Training failed: %s", e)
         return 1
     finally:
+        cleanup_ddp()
         if (
             wandb_logger is not None
             and hasattr(wandb_logger, "is_enabled")

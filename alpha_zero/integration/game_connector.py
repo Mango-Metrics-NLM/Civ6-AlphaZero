@@ -124,7 +124,7 @@ class RetryConfig:
             self.base_delay * (self.exponential_base**attempt),
             self.max_delay,
         )
-        jitter = delay * self.jitter * random.uniform(-1, 1)
+        jitter = delay * self.jitter * random.uniform(-1, 1)  # noqa: S311
         return max(0, delay + jitter)
 
 
@@ -282,7 +282,7 @@ class GameConnectionError(Exception):
         message: str,
         severity: ErrorSeverity = ErrorSeverity.RECOVERABLE,
         original_error: Exception | None = None,
-    ):
+    ) -> None:
         super().__init__(message)
         self.severity = severity
         self.original_error = original_error
@@ -291,7 +291,7 @@ class GameConnectionError(Exception):
 class ConnectionTimeoutError(GameConnectionError):
     """Connection timeout error."""
 
-    def __init__(self, message: str = "Connection timed out"):
+    def __init__(self, message: str = "Connection timed out") -> None:
         super().__init__(message, ErrorSeverity.RECOVERABLE)
 
 
@@ -303,7 +303,7 @@ class ActionExecutionError(GameConnectionError):
         message: str,
         action: Any = None,
         original_error: Exception | None = None,
-    ):
+    ) -> None:
         super().__init__(message, ErrorSeverity.RECOVERABLE, original_error)
         self.action = action
 
@@ -311,14 +311,14 @@ class ActionExecutionError(GameConnectionError):
 class StateRetrievalError(GameConnectionError):
     """Error retrieving game state."""
 
-    def __init__(self, message: str, original_error: Exception | None = None):
+    def __init__(self, message: str, original_error: Exception | None = None) -> None:
         super().__init__(message, ErrorSeverity.RECOVERABLE, original_error)
 
 
 class InvalidStateError(GameConnectionError):
     """Invalid game state error."""
 
-    def __init__(self, message: str):
+    def __init__(self, message: str) -> None:
         super().__init__(message, ErrorSeverity.CRITICAL)
 
 
@@ -330,7 +330,7 @@ class InvalidStateError(GameConnectionError):
 class LatencyTracker:
     """Tracks connection latency for monitoring and compensation."""
 
-    def __init__(self, config: LatencyConfig):
+    def __init__(self, config: LatencyConfig) -> None:
         """Initialize latency tracker.
 
         Args:
@@ -475,7 +475,7 @@ class ConnectionMetrics:
 class CheckpointManager:
     """Manages game state checkpoints for recovery."""
 
-    def __init__(self, config: RecoveryConfig):
+    def __init__(self, config: RecoveryConfig) -> None:
         """Initialize checkpoint manager.
 
         Args:
@@ -684,7 +684,7 @@ class GameBackend(ABC):
 class MicroCivBackend(GameBackend):
     """Backend for MicroCiv environment."""
 
-    def __init__(self, **env_kwargs: Any):
+    def __init__(self, **env_kwargs: Any) -> None:
         """Initialize MicroCiv backend.
 
         Args:
@@ -757,7 +757,7 @@ class MicroCivBackend(GameBackend):
 class UncivBackend(GameBackend):
     """Backend for Unciv interface."""
 
-    def __init__(self, interface: Any | None = None, **kwargs: Any):
+    def __init__(self, interface: Any | None = None, **kwargs: Any) -> None:
         """Initialize Unciv backend.
 
         Args:
@@ -860,7 +860,7 @@ class GameConnector:
         game_type: GameType = GameType.MICROCIV,
         backend: GameBackend | None = None,
         **backend_kwargs: Any,
-    ):
+    ) -> None:
         """Initialize game connector.
 
         Args:

@@ -765,7 +765,7 @@ class TestMockCivRealmEnv:
         mock_env.reset()
 
         for _ in range(100):
-            obs, reward, done, info = mock_env.step({"type": "end_turn"})
+            _obs, _reward, done, _info = mock_env.step({"type": "end_turn"})
 
         assert done is True
 
@@ -827,7 +827,7 @@ class TestCivRealmWrapper:
 
     def test_wrapper_reset(self, wrapper):
         """Test wrapper reset returns valid observation."""
-        obs, info = wrapper.reset()
+        obs, _info = wrapper.reset()
 
         assert "spatial" in obs
         assert "vector" in obs
@@ -839,7 +839,7 @@ class TestCivRealmWrapper:
 
     def test_wrapper_step(self, wrapper):
         """Test wrapper step execution."""
-        obs, info = wrapper.reset()
+        obs, _info = wrapper.reset()
 
         # Take action 0 (or end_turn)
         obs, reward, terminated, truncated, info = wrapper.step(0)
@@ -855,7 +855,7 @@ class TestCivRealmWrapper:
         wrapper.reset()
 
         action = np.array(0)
-        obs, reward, terminated, truncated, info = wrapper.step(action)
+        obs, _reward, _terminated, _truncated, _info = wrapper.step(action)
 
         assert "spatial" in obs
 
@@ -895,7 +895,7 @@ class TestCivRealmWrapper:
 
         # Run until truncation
         for _ in range(100):
-            obs, reward, terminated, truncated, info = wrapper.step(49)  # end_turn
+            _obs, _reward, terminated, truncated, _info = wrapper.step(49)  # end_turn
             if terminated or truncated:
                 break
 
@@ -907,7 +907,7 @@ class TestCivRealmWrapper:
         curriculum = CivRealmCurriculum()
         wrapper = CivRealmWrapper(config, curriculum)
 
-        obs, info = wrapper.reset()
+        _obs, info = wrapper.reset()
 
         assert wrapper.curriculum is not None
         assert "task" in info
@@ -935,7 +935,7 @@ class TestCivRealmWrapper:
         assert "turn" in info
         assert "task" in info
 
-        obs, reward, terminated, truncated, info = wrapper.step(0)
+        _obs, _reward, _terminated, _truncated, info = wrapper.step(0)
 
         assert "turn" in info
 
@@ -1031,7 +1031,7 @@ class TestIntegration:
         )
         env = CivRealmWrapper(config)
 
-        obs, info = env.reset()
+        obs, _info = env.reset()
         total_reward = 0.0
         steps = 0
 
@@ -1040,7 +1040,7 @@ class TestIntegration:
             valid_actions = np.where(mask > 0)[0]
             action = np.random.choice(valid_actions)
 
-            obs, reward, terminated, truncated, info = env.step(action)
+            _obs, reward, terminated, truncated, info = env.step(action)
             total_reward += reward
             steps += 1
 
@@ -1058,13 +1058,13 @@ class TestIntegration:
 
         # Play several episodes
         for _ in range(3):
-            obs, info = env.reset()
+            obs, _info = env.reset()
 
             # Quick game
             for _ in range(5):
                 mask = env.get_valid_actions()
                 action = np.argmax(mask)  # Just pick first valid
-                obs, reward, terminated, truncated, info = env.step(action)
+                _obs, _reward, terminated, truncated, info = env.step(action)
                 if terminated or truncated:
                     break
 
@@ -1106,7 +1106,7 @@ class TestEdgeCases:
         env.step(0)  # Should end episode
 
         # Step again - should handle gracefully
-        obs, reward, terminated, truncated, info = env.step(0)
+        _obs, reward, terminated, truncated, _info = env.step(0)
 
         assert terminated or truncated
         assert reward == 0.0

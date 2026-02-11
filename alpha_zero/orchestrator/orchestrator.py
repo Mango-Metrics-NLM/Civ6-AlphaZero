@@ -30,13 +30,41 @@ from typing import Any
 
 import numpy as np
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 
 from alpha_zero.orchestrator.checkpointer import CheckpointManager
 from alpha_zero.orchestrator.config import OrchestratorConfig
 from alpha_zero.orchestrator.rag_integration import RAGIntegration
 from alpha_zero.orchestrator.scheduler import HyperparameterScheduler
+
+# Reflection system imports (optional, graceful degradation if not available)
+try:
+    from alpha_zero.core.reflection_generator import (
+        ReflectionGenerator,
+        ReflectionGeneratorConfig,
+    )
+    from alpha_zero.core.reflection_memory import ReflectionConfig, ReflectionMemory
+
+    REFLECTION_AVAILABLE = True
+except ImportError:
+    REFLECTION_AVAILABLE = False
+    ReflectionMemory = None  # type: ignore
+    ReflectionGenerator = None  # type: ignore
 from alpha_zero.orchestrator.strategy_advisor import StrategyAdvisor
+
+# Hierarchical system imports (optional, graceful degradation if not available)
+try:
+    from alpha_zero.hierarchical.config import HierarchicalConfig as HierarchicalSystemConfig
+    from alpha_zero.hierarchical.training_integration import (
+        HierarchicalTrainingConfig,
+        HierarchicalTrainingIntegration,
+    )
+
+    HIERARCHICAL_AVAILABLE = True
+except ImportError:
+    HIERARCHICAL_AVAILABLE = False
+    HierarchicalTrainingIntegration = None  # type: ignore
+    HierarchicalTrainingConfig = None  # type: ignore
 from alpha_zero.utils.factories import (
     create_curriculum_manager,
     create_environment,
@@ -47,6 +75,23 @@ from alpha_zero.utils.factories import (
     create_reward_shaper,
     create_wandb_logger,
 )
+
+# Training safeguards (optional, graceful degradation)
+try:
+    import alpha_zero.training.training_safeguards  # noqa: F401
+
+    SAFEGUARDS_AVAILABLE = True
+except ImportError:
+    SAFEGUARDS_AVAILABLE = False
+
+# MuZero integration (optional, graceful degradation)
+try:
+    from alpha_zero.training.muzero_integration import MuZeroTrainingBridge
+
+    MUZERO_AVAILABLE = True
+except ImportError:
+    MUZERO_AVAILABLE = False
+    MuZeroTrainingBridge = None  # type: ignore[assignment, misc]
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +134,7 @@ class PaddedEnvironmentWrapper:
         env: Any,
         expected_board_size: int,
         expected_action_size: int,
-    ):
+    ) -> None:
         """Initialize wrapper.
 
         Args:
@@ -163,7 +208,7 @@ class PaddedEnvironmentWrapper:
         mask = self._env.get_valid_actions()
         return self._pad_actions(mask)
 
-    def reset(self, **kwargs) -> tuple[Any, dict]:
+    def reset(self, **kwargs: Any) -> tuple[Any, dict]:
         """Reset environment and return padded observation.
 
         Returns:
@@ -226,7 +271,7 @@ class TrainingOrchestrator:
         state: Current training state.
     """
 
-    def __init__(self, config: OrchestratorConfig):
+    def __init__(self, config: OrchestratorConfig) -> None:
         """Initialize training orchestrator.
 
         Args:
@@ -250,6 +295,20 @@ class TrainingOrchestrator:
         self._strategy_advisor: StrategyAdvisor | None = None
         self._wandb_logger: Any = None
         self._device = "cpu"
+
+        # Reflection system (LATS-style learning from failures)
+        self._reflection_memory: Any = None
+        self._reflection_generator: Any = None
+
+        # Hierarchical decision-making system
+        self._hierarchical_integration: Any = None
+
+        # Training safeguards (Phase 8)
+        self._training_safeguard: Any = None
+
+        # MuZero integration (Phase 9)
+        self._muzero_bridge: Any = None
+        self._training_mode: str = "alphazero"
 
         # Signal handling
         self._shutdown_requested = False
@@ -279,10 +338,42 @@ class TrainingOrchestrator:
             )
             logging.getLogger().addHandler(file_handler)
 
-    def _handle_shutdown(self, signum, frame) -> None:
+    def _handle_shutdown(self, signum: int, frame: object | None) -> None:
         """Handle shutdown signals gracefully."""
         logger.info("Shutdown signal received, finishing current iteration...")
         self._shutdown_requested = True
+
+    def set_training_safeguard(self, safeguard: Any) -> None:
+        """Set optional training safeguard for health monitoring.
+
+        Args:
+            safeguard: A :class:`TrainingSafeguard` instance, or *None*
+                to disable safeguards.
+        """
+        self._training_safeguard = safeguard
+
+    def set_muzero_bridge(
+        self,
+        bridge: Any,
+        *,
+        training_mode: str = "muzero",
+    ) -> None:
+        """Set optional MuZero training bridge.
+
+        When set with ``training_mode="muzero"``, self-play and training
+        will use MuZero components (learned dynamics model, MuZeroMCTS)
+        instead of standard AlphaZero MCTS.
+
+        Args:
+            bridge: A :class:`MuZeroTrainingBridge` instance, or *None*
+                to disable MuZero mode.
+            training_mode: Training mode to use — ``"alphazero"`` (default)
+                or ``"muzero"``.
+        """
+        self._muzero_bridge = bridge
+        self._training_mode = training_mode
+        if bridge is not None:
+            logger.info("MuZero bridge set, training_mode=%s", training_mode)
 
     def initialize(self) -> bool:
         """Initialize all training components.
@@ -327,11 +418,12 @@ class TrainingOrchestrator:
                 weight_decay=self.config.training.weight_decay,
             )
 
-            # Initialize MCTS
+            # Initialize MCTS (reflection_memory will be set after reflection system init)
             self._mcts = create_mcts(
                 self.config.mcts,
                 self._network,
                 device=self._device,
+                reflection_memory=None,  # Will be updated after reflection init
             )
 
             # Initialize replay buffer
@@ -386,6 +478,80 @@ class TrainingOrchestrator:
                     self.config.wandb,
                     experiment_name=self.config.experiment_name,
                 )
+
+            # Initialize reflection system (LATS-style learning from failures)
+            if self.config.reflection.enabled and REFLECTION_AVAILABLE:
+                try:
+                    # Create reflection config from orchestrator config
+                    ref_config = ReflectionConfig(
+                        storage_backend=self.config.reflection.storage_backend,
+                        collection_name=self.config.reflection.collection_name,
+                        embedding_dimension=self.config.reflection.embedding_dimension,
+                        similarity_threshold=self.config.reflection.similarity_threshold,
+                        max_retrievals=self.config.reflection.max_retrievals,
+                        warning_penalty=self.config.reflection.warning_penalty,
+                        max_entries=self.config.reflection.max_entries,
+                    )
+                    self._reflection_memory = ReflectionMemory(ref_config)
+
+                    # Initialize reflection memory asynchronously
+                    import asyncio
+
+                    success = asyncio.run(self._reflection_memory.initialize())
+                    if success:
+                        logger.info("ReflectionMemory initialized successfully")
+                    else:
+                        logger.warning("ReflectionMemory initialization failed, continuing without")
+                        self._reflection_memory = None
+
+                    # Create reflection generator if critiques are enabled
+                    if self.config.reflection.generate_critiques and self._reflection_memory:
+                        gen_config = ReflectionGeneratorConfig(
+                            temperature=self.config.reflection.llm_temperature,
+                            max_tokens=self.config.reflection.llm_max_tokens,
+                            cache_critiques=self.config.reflection.cache_critiques,
+                            use_fallback_on_failure=self.config.reflection.use_fallback_on_failure,
+                        )
+                        self._reflection_generator = ReflectionGenerator(gen_config)
+                        logger.info("ReflectionGenerator initialized")
+
+                except Exception as e:
+                    logger.warning(f"Failed to initialize reflection system: {e}")
+                    self._reflection_memory = None
+                    self._reflection_generator = None
+            elif self.config.reflection.enabled and not REFLECTION_AVAILABLE:
+                logger.warning("Reflection enabled but reflection module not available")
+
+            # Update MCTS with reflection memory if available
+            if self._reflection_memory is not None and hasattr(self._mcts, "_reflection_memory"):
+                self._mcts._reflection_memory = self._reflection_memory
+                logger.info("MCTS updated with reflection memory")
+
+            # Initialize hierarchical decision-making system
+            if self.config.hierarchical.enabled and HIERARCHICAL_AVAILABLE:
+                try:
+                    # Create hierarchical config from orchestrator config
+                    h_config = HierarchicalSystemConfig.default()
+                    h_config = h_config.apply_env_overrides()
+
+                    training_config = HierarchicalTrainingConfig(
+                        enabled=True,
+                        hierarchical_config=h_config,
+                        train_hierarchical_networks=True,
+                        use_goal_shaped_rewards=True,
+                    )
+
+                    self._hierarchical_integration = HierarchicalTrainingIntegration(
+                        config=training_config,
+                        orchestrator=self,
+                        llm_advisor=self._strategy_advisor,
+                    )
+                    logger.info("Hierarchical decision-making system initialized")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize hierarchical system: {e}")
+                    self._hierarchical_integration = None
+            elif self.config.hierarchical.enabled and not HIERARCHICAL_AVAILABLE:
+                logger.warning("Hierarchical enabled but hierarchical module not available")
 
             # Resume from checkpoint if available
             if self.config.training.resume and self._checkpointer.has_checkpoint():
@@ -526,6 +692,10 @@ class TrainingOrchestrator:
     ) -> list[GameResult]:
         """Run self-play games to generate training data.
 
+        When ``training_mode == "muzero"`` and a :class:`MuZeroTrainingBridge`
+        is set, self-play uses :meth:`MuZeroTrainingBridge.selfplay_step`
+        (MuZeroMCTS, no environment cloning) instead of standard MCTS.
+
         Args:
             num_games: Number of games to play.
             env_params: Optional environment parameter overrides.
@@ -534,6 +704,10 @@ class TrainingOrchestrator:
             List of game results.
         """
         assert self._network is not None
+
+        # MuZero self-play path
+        if self._training_mode == "muzero" and self._muzero_bridge is not None:
+            return self._run_muzero_self_play(num_games, env_params)
 
         results = []
         self._network.eval()
@@ -548,6 +722,105 @@ class TrainingOrchestrator:
                 f"Game {game_idx + 1}/{num_games}: "
                 f"turns={result.turns}, winner={result.winner}, "
                 f"reward={result.total_reward:.2f}, time={game_time:.1f}s",
+            )
+
+            # Process game result for reflection (on losses)
+            if self._reflection_memory is not None:
+                self._process_game_result(result)
+
+        return results
+
+    def _run_muzero_self_play(
+        self,
+        num_games: int,
+        env_params: dict[str, Any] | None = None,
+    ) -> list[GameResult]:
+        """Run MuZero self-play games using the MuZero training bridge.
+
+        MuZero MCTS searches over the learned dynamics model rather than
+        cloning the environment, which is faster for complex environments.
+
+        Args:
+            num_games: Number of games to play.
+            env_params: Optional environment parameter overrides.
+
+        Returns:
+            List of game results.
+        """
+        assert self._network is not None
+        assert self._muzero_bridge is not None
+
+        results = []
+        self._network.eval()
+
+        # Create MuZero MCTS instance on the orchestrator's device
+        mcts = self._muzero_bridge.create_mcts(self._network, device=self._device)
+
+        logger.info("Starting MuZero self-play: %d games", num_games)
+        for game_idx in range(num_games):
+            game_start = time.time()
+
+            # Create fresh environment
+            if env_params:
+                base_env = create_environment(self.config.environment, env_params)
+            else:
+                base_env = create_environment(self.config.environment)
+
+            env = PaddedEnvironmentWrapper(
+                base_env,
+                self._expected_board_size,
+                self._expected_action_size,
+            )
+
+            # Run self-play via bridge (MuZeroMCTS, no env cloning)
+            trajectory = self._muzero_bridge.selfplay_step(
+                network=self._network,
+                env=env,
+                mcts=mcts,
+                max_moves=self.config.environment.max_turns,
+            )
+
+            # Convert MuZero trajectory to GameResult
+            total_reward = sum(trajectory.rewards) if trajectory.rewards else 0.0
+            winner = 1 if total_reward > 0 else (-1 if total_reward < 0 else 0)
+
+            result = GameResult(
+                trajectory=[],  # Raw trajectory stored separately
+                winner=winner,
+                total_reward=total_reward,
+                turns=len(trajectory.actions),
+                metrics={"muzero_mode": 1.0},
+            )
+
+            # Store trajectory data in replay buffer
+            if self._replay_buffer is not None:
+                for i, obs in enumerate(trajectory.observations):
+                    if isinstance(obs, dict):
+                        self._replay_buffer.add(
+                            {
+                                "spatial": obs.get("spatial", obs.get("observation")),
+                                "vector": obs.get(
+                                    "vector", np.zeros(self.config.network.vector_dim)
+                                ),
+                                "action_mask": obs.get(
+                                    "action_mask",
+                                    np.ones(self._expected_action_size),
+                                ),
+                                "policy": trajectory.policies[i],
+                                "value": trajectory.values[i],
+                            }
+                        )
+
+            game_time = time.time() - game_start
+            results.append(result)
+            logger.info(
+                "MuZero game %d/%d: turns=%d, winner=%d, reward=%.2f, time=%.1fs",
+                game_idx + 1,
+                num_games,
+                result.turns,
+                result.winner,
+                result.total_reward,
+                game_time,
             )
 
         return results
@@ -589,24 +862,46 @@ class TrainingOrchestrator:
 
         temperature = self._scheduler.get_temperature()
 
-        while not done:
-            # Get action probabilities from MCTS
-            mcts_start = time.time()
-            mcts_policy, _ = self._mcts.search(env)
-            mcts_time = time.time() - mcts_start
+        # Check if hierarchical mode is enabled
+        use_hierarchical = (
+            self._hierarchical_integration is not None and self.config.hierarchical.enabled
+        )
 
-            # Select action with temperature
-            temp = temperature if turn < self.config.mcts.temperature_threshold else 0.1
-            action = self._mcts.select_action(mcts_policy, temp)
+        # Notify hierarchical integration of game start
+        if use_hierarchical:
+            self._hierarchical_integration.on_game_start()
+
+        while not done:
+            if use_hierarchical:
+                # Use hierarchical decision-making
+                game_state = self._build_game_state_dict(state, env, turn)
+                valid_actions = env.get_valid_actions()
+                action, _hierarchical_info = self._hierarchical_integration.select_action(
+                    game_state, valid_actions
+                )
+                # Create a uniform policy for training (hierarchical provides action directly)
+                mcts_policy = np.zeros(self._expected_action_size, dtype=np.float32)
+                mcts_policy[action] = 1.0
+                mcts_time = 0.0  # No MCTS time in hierarchical mode
+            else:
+                # Get action probabilities from MCTS
+                mcts_start = time.time()
+                mcts_policy, _ = self._mcts.search(env)
+                mcts_time = time.time() - mcts_start
+
+                # Select action with temperature
+                temp = temperature if turn < self.config.mcts.temperature_threshold else 0.1
+                action = self._mcts.select_action(mcts_policy, temp)
 
             # Log every 50 steps to track progress
             if turn % 50 == 0:
                 # Get turn info from wrapped env if available, otherwise from env directly
-                base_env = getattr(env, "_env", env)
-                env_turn = getattr(base_env, "turn", "?")
-                env_max = getattr(base_env, "max_turns", "?")
+                base_env_ref = getattr(env, "_env", env)
+                env_turn = getattr(base_env_ref, "turn", "?")
+                env_max = getattr(base_env_ref, "max_turns", "?")
+                mode_str = "hierarchical" if use_hierarchical else "mcts"
                 logger.info(
-                    f"Step {turn}: env_turn={env_turn}/{env_max}, mcts_time={mcts_time:.2f}s"
+                    f"Step {turn}: env_turn={env_turn}/{env_max}, mode={mode_str}, time={mcts_time:.2f}s"
                 )
 
             # Store transition (pad to expected sizes for network compatibility)
@@ -628,8 +923,14 @@ class TrainingOrchestrator:
             next_state, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
 
-            # Apply reward shaping
-            if self._reward_shaper:
+            # Apply reward shaping (hierarchical or standard)
+            if use_hierarchical:
+                game_state = self._build_game_state_dict(state, env, turn)
+                next_game_state = self._build_game_state_dict(next_state, env, turn + 1)
+                reward = self._hierarchical_integration.compute_shaped_reward(
+                    game_state, action, reward, next_game_state, done
+                )
+            elif self._reward_shaper:
                 reward = self._reward_shaper.shape_reward(
                     next_state,
                     reward,
@@ -644,6 +945,10 @@ class TrainingOrchestrator:
         # Determine winner and assign values
         winner = info.get("winner", 0)
         self._assign_values(trajectory, winner, total_reward)
+
+        # Notify hierarchical integration of game end
+        if use_hierarchical:
+            self._hierarchical_integration.on_game_end(winner, total_reward)
 
         return GameResult(
             trajectory=trajectory,
@@ -696,6 +1001,47 @@ class TrainingOrchestrator:
 
         return spatial, vector
 
+    def _build_game_state_dict(
+        self,
+        state: Any,
+        env: Any,
+        turn: int,
+    ) -> dict[str, Any]:
+        """Build a game state dictionary for hierarchical controller.
+
+        Args:
+            state: Current game state from environment.
+            env: Environment instance.
+            turn: Current turn number.
+
+        Returns:
+            Dictionary with game state information for hierarchical decisions.
+        """
+        spatial, vector = self._encode_state(state)
+
+        game_state = {
+            "turn": turn,
+            "spatial": spatial,
+            "vector": vector,
+        }
+
+        # Extract additional info from environment if available
+        base_env = getattr(env, "_env", env)
+
+        if hasattr(base_env, "get_game_info"):
+            game_state.update(base_env.get_game_info())
+
+        # Add basic metrics from vector features if available
+        if len(vector) >= 10:
+            game_state["turn_progress"] = float(vector[0])
+            game_state["resources"] = float(vector[1]) if len(vector) > 1 else 0.0
+            game_state["own_units"] = float(vector[2]) if len(vector) > 2 else 0.0
+            game_state["enemy_units"] = float(vector[3]) if len(vector) > 3 else 0.0
+            game_state["own_cities"] = float(vector[4]) if len(vector) > 4 else 0.0
+            game_state["enemy_cities"] = float(vector[5]) if len(vector) > 5 else 0.0
+
+        return game_state
+
     def _pad_action_array(self, arr: np.ndarray) -> np.ndarray:
         """Pad action array to network's expected action space size.
 
@@ -738,6 +1084,76 @@ class TrainingOrchestrator:
             # Alternate perspective for player 2
             step["value"] = value if i % 2 == 0 else -value
 
+    async def _process_game_result_async(
+        self,
+        result: GameResult,
+    ) -> None:
+        """Process completed game, adding reflection for losses.
+
+        This method generates verbal self-critiques for lost games and stores
+        them in the reflection memory for future MCTS guidance.
+
+        Args:
+            result: The completed game result.
+        """
+        # Only reflect on losses (winner != 1 means we lost)
+        if result.winner == 1:
+            return  # We won, no reflection needed
+
+        if not self._reflection_memory or not self._reflection_generator:
+            return  # Reflection system not available
+
+        try:
+            # Create a simplified trajectory for critique generation
+            from alpha_zero.distributed.shared_storage import GameTrajectory, TrainingExample
+
+            examples = []
+            for step in result.trajectory:
+                examples.append(
+                    TrainingExample(
+                        spatial=step["spatial"],
+                        vector=step["vector"],
+                        action_mask=step["action_mask"],
+                        policy=step["policy"],
+                        value=step.get("value", 0.0),
+                    )
+                )
+
+            trajectory = GameTrajectory(
+                examples=examples,
+                game_id=self.state.total_games,
+                game_length=result.turns,
+                winner=result.winner,
+            )
+
+            # Generate critique
+            critique = await self._reflection_generator.generate_critique(trajectory)
+
+            # Add to reflection memory
+            await self._reflection_memory.add_failed_game(
+                trajectory,
+                critique=critique.full_critique,
+                action_taken=critique.mistake_action,
+            )
+
+            logger.debug(f"Reflection added: {critique.summary[:50]}...")
+
+        except Exception as e:
+            logger.warning(f"Failed to generate reflection: {e}")
+
+    def _process_game_result(self, result: GameResult) -> None:
+        """Synchronous wrapper for processing game results.
+
+        Args:
+            result: The completed game result.
+        """
+        import asyncio
+
+        try:
+            asyncio.run(self._process_game_result_async(result))
+        except Exception as e:
+            logger.warning(f"Error in game result processing: {e}")
+
     def _add_to_buffer(self, result: GameResult) -> None:
         """Add game result to replay buffer.
 
@@ -758,6 +1174,10 @@ class TrainingOrchestrator:
     def _train_epochs(self, num_epochs: int) -> dict[str, float]:
         """Train network for specified epochs.
 
+        When ``training_mode == "muzero"`` and a MuZero training bridge is
+        set, training uses :meth:`MuZeroTrainingBridge.training_step`
+        instead of the standard AlphaZero loss computation.
+
         Args:
             num_epochs: Number of training epochs.
 
@@ -767,6 +1187,10 @@ class TrainingOrchestrator:
         assert self._network is not None
         assert self._optimizer is not None
         assert self._scheduler is not None
+
+        # MuZero training path
+        if self._training_mode == "muzero" and self._muzero_bridge is not None:
+            return self._train_muzero_epochs(num_epochs)
 
         self._network.train()
         total_policy_loss = 0.0
@@ -833,6 +1257,29 @@ class TrainingOrchestrator:
             total_loss += loss.item()
             num_batches += 1
 
+            # Training safeguard check (Phase 8)
+            if self._training_safeguard is not None:
+                grad_norm = (
+                    sum(
+                        p.grad.data.norm(2).item() ** 2
+                        for p in self._network.parameters()
+                        if p.grad is not None
+                    )
+                    ** 0.5
+                )
+                report = self._training_safeguard.check_step(
+                    loss=loss.item(),
+                    grad_norm=grad_norm,
+                    step=self.state.total_steps + num_batches,
+                    device=self._device,
+                )
+                if report.intervention is not None:
+                    logger.warning(
+                        "Safeguard intervention: %s (reason: %s)",
+                        report.intervention.action.value,
+                        report.intervention.reason,
+                    )
+
         if num_batches > 0:
             avg_policy = total_policy_loss / num_batches
             avg_value = total_value_loss / num_batches
@@ -847,6 +1294,74 @@ class TrainingOrchestrator:
                 "value_loss": avg_value,
                 "total_loss": avg_total,
             }
+
+        return {}
+
+    def _train_muzero_epochs(self, num_epochs: int) -> dict[str, float]:
+        """Train using MuZero trainer for the specified number of epochs.
+
+        Delegates batch preparation and training to the MuZero bridge,
+        which uses unrolled dynamics loss (policy + value + reward +
+        consistency).
+
+        Args:
+            num_epochs: Number of training epochs.
+
+        Returns:
+            Training metrics dictionary.
+        """
+        assert self._network is not None
+        assert self._muzero_bridge is not None
+        assert self._scheduler is not None
+
+        self._network.train()
+
+        # Create or reuse MuZero trainer
+        trainer = self._muzero_bridge.create_trainer(self._network, device=self._device)
+
+        batch_size = self._scheduler.get_batch_size()
+        total_loss = 0.0
+        num_batches = 0
+
+        for _epoch_idx in range(num_epochs):
+            batch = self._replay_buffer.sample(batch_size)
+            if not batch:
+                continue
+
+            # Training step via bridge
+            metrics = self._muzero_bridge.training_step(
+                trainer=trainer,
+                batch=batch,
+                step=self.state.total_steps + num_batches,
+            )
+
+            step_loss = metrics.get("total_loss", 0.0)
+            total_loss += step_loss
+            num_batches += 1
+
+            # Training safeguard check
+            if self._training_safeguard is not None:
+                grad_norm = metrics.get("grad_norm", 0.0)
+                report = self._training_safeguard.check_step(
+                    loss=step_loss,
+                    grad_norm=grad_norm,
+                    step=self.state.total_steps + num_batches,
+                    device=self._device,
+                )
+                if report.intervention is not None:
+                    logger.warning(
+                        "Safeguard intervention (MuZero): %s (reason: %s)",
+                        report.intervention.action.value,
+                        report.intervention.reason,
+                    )
+
+        if num_batches > 0:
+            avg_loss = total_loss / num_batches
+            self.state.recent_losses.append(avg_loss)
+            if len(self.state.recent_losses) > 100:
+                self.state.recent_losses.pop(0)
+
+            return {"total_loss": avg_loss, "training_mode": 1.0}
 
         return {}
 
@@ -926,7 +1441,9 @@ class TrainingOrchestrator:
             iteration=self.state.iteration,
             metrics={
                 "win_rate": self.state.current_win_rate,
-                "loss": np.mean(self.state.recent_losses) if self.state.recent_losses else 0.0,
+                "loss": float(np.mean(self.state.recent_losses))
+                if self.state.recent_losses
+                else 0.0,
             },
         )
 

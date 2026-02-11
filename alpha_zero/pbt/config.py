@@ -26,7 +26,7 @@ import math
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -104,7 +104,7 @@ class HyperparameterRange:
             value = rng.uniform(self.min_value, self.max_value)
 
         if self.discrete:
-            value = int(round(value))
+            value = round(value)
 
         return value
 
@@ -150,7 +150,7 @@ class HyperparameterRange:
             new_value = np.clip(value + perturbation, self.min_value, self.max_value)
 
         if self.discrete:
-            new_value = int(round(new_value))
+            new_value = round(new_value)
 
         return new_value
 
@@ -170,7 +170,7 @@ class HyperparameterRange:
 
         clipped = np.clip(value, self.min_value, self.max_value)
         if self.discrete:
-            clipped = int(round(clipped))
+            clipped = round(clipped)
         return clipped
 
     def to_dict(self) -> dict[str, Any]:
@@ -207,6 +207,9 @@ class HyperparameterSpace:
         c_puct: MCTS exploration constant range
         dirichlet_alpha: Dirichlet noise alpha range
         temperature: MCTS temperature range
+        temperature_initial: Initial temperature for schedule
+        temperature_final: Final temperature for schedule
+        temperature_decay_steps: Steps over which temperature decays
         batch_size: Training batch size range
         num_simulations: MCTS simulations per move range
         replay_buffer_size: Replay buffer size range
@@ -253,6 +256,32 @@ class HyperparameterSpace:
             scale="linear",
         )
     )
+    # Temperature schedule parameters
+    temperature_initial: HyperparameterRange = field(
+        default_factory=lambda: HyperparameterRange(
+            name="temperature_initial",
+            min_value=1.0,
+            max_value=2.5,
+            scale="linear",
+        )
+    )
+    temperature_final: HyperparameterRange = field(
+        default_factory=lambda: HyperparameterRange(
+            name="temperature_final",
+            min_value=0.1,
+            max_value=1.0,
+            scale="linear",
+        )
+    )
+    temperature_decay_steps: HyperparameterRange = field(
+        default_factory=lambda: HyperparameterRange(
+            name="temperature_decay_steps",
+            min_value=10,
+            max_value=50,
+            scale="linear",
+            discrete=True,
+        )
+    )
     batch_size: HyperparameterRange = field(
         default_factory=lambda: HyperparameterRange(
             name="batch_size",
@@ -294,6 +323,9 @@ class HyperparameterSpace:
             "c_puct": self.c_puct,
             "dirichlet_alpha": self.dirichlet_alpha,
             "temperature": self.temperature,
+            "temperature_initial": self.temperature_initial,
+            "temperature_final": self.temperature_final,
+            "temperature_decay_steps": self.temperature_decay_steps,
             "batch_size": self.batch_size,
             "num_simulations": self.num_simulations,
             "replay_buffer_size": self.replay_buffer_size,
@@ -350,6 +382,9 @@ class HyperparameterSpace:
             "c_puct": self.c_puct.to_dict(),
             "dirichlet_alpha": self.dirichlet_alpha.to_dict(),
             "temperature": self.temperature.to_dict(),
+            "temperature_initial": self.temperature_initial.to_dict(),
+            "temperature_final": self.temperature_final.to_dict(),
+            "temperature_decay_steps": self.temperature_decay_steps.to_dict(),
             "batch_size": self.batch_size.to_dict(),
             "num_simulations": self.num_simulations.to_dict(),
             "replay_buffer_size": self.replay_buffer_size.to_dict(),
@@ -380,6 +415,17 @@ class HyperparameterSpace:
             temperature=HyperparameterRange.from_dict(data.get("temperature", {}))
             if "temperature" in data
             else HyperparameterRange("temperature", 0.5, 2.0),
+            temperature_initial=HyperparameterRange.from_dict(data.get("temperature_initial", {}))
+            if "temperature_initial" in data
+            else HyperparameterRange("temperature_initial", 1.0, 2.5),
+            temperature_final=HyperparameterRange.from_dict(data.get("temperature_final", {}))
+            if "temperature_final" in data
+            else HyperparameterRange("temperature_final", 0.1, 1.0),
+            temperature_decay_steps=HyperparameterRange.from_dict(
+                data.get("temperature_decay_steps", {})
+            )
+            if "temperature_decay_steps" in data
+            else HyperparameterRange("temperature_decay_steps", 10, 50, discrete=True),
             batch_size=HyperparameterRange.from_dict(data.get("batch_size", {}))
             if "batch_size" in data
             else HyperparameterRange("batch_size", 32, 512, discrete=True),
@@ -407,6 +453,7 @@ class AgentState:
         generation: Generation number (increments on exploitation)
         parent_id: ID of parent agent (if created via exploitation)
         model_path: Path to saved model weights
+        elo_rating: ELO rating for tournament-based fitness evaluation
         created_at: Timestamp of agent creation
         last_updated: Timestamp of last update
     """
@@ -420,8 +467,9 @@ class AgentState:
     generation: int = 0
     parent_id: str | None = None
     model_path: str | None = None
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    last_updated: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    elo_rating: float = 1200.0
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    last_updated: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def update_fitness(self, new_fitness: float, max_history: int = 100) -> None:
         """Update fitness score and history.
@@ -434,7 +482,7 @@ class AgentState:
         self.fitness_history.append(new_fitness)
         if len(self.fitness_history) > max_history:
             self.fitness_history = self.fitness_history[-max_history:]
-        self.last_updated = datetime.utcnow().isoformat()
+        self.last_updated = datetime.now(UTC).isoformat()
 
     def get_smoothed_fitness(self, window: int = 10) -> float:
         """Get smoothed fitness score using recent history.
@@ -493,6 +541,7 @@ class AgentState:
             "generation": self.generation,
             "parent_id": self.parent_id,
             "model_path": self.model_path,
+            "elo_rating": self.elo_rating,
             "created_at": self.created_at,
             "last_updated": self.last_updated,
         }
@@ -510,8 +559,9 @@ class AgentState:
             generation=data.get("generation", 0),
             parent_id=data.get("parent_id"),
             model_path=data.get("model_path"),
-            created_at=data.get("created_at", datetime.utcnow().isoformat()),
-            last_updated=data.get("last_updated", datetime.utcnow().isoformat()),
+            elo_rating=data.get("elo_rating", 1200.0),
+            created_at=data.get("created_at", datetime.now(UTC).isoformat()),
+            last_updated=data.get("last_updated", datetime.now(UTC).isoformat()),
         )
 
     def save(self, path: str | Path) -> None:
@@ -609,6 +659,25 @@ class PBTConfig:
     convergence_threshold: float = 0.01
     convergence_window: int = 50
 
+    # Runtime
+    num_generations: int = 50
+
+    # Cross-agent evaluation settings
+    evaluation_strategy: str = "round_robin"  # "round_robin" or "top_k_vs_best"
+    evaluation_games_per_match: int = 10
+    elo_initial_rating: float = 1200.0
+    elo_k_factor: float = 32.0
+
+    # Baseline benchmarking
+    baseline_interval: int = 5  # Run baselines every N generations (0=never)
+    baseline_agents: list[str] = field(default_factory=lambda: ["random", "heuristic"])
+
+    # Checkpoint retention
+    checkpoint_retention_generations: int = 5  # Keep last N gens (0=unlimited)
+
+    # Dynamic strategy switching
+    evaluation_strategy_switch_gen: int = 0  # Switch to top_k_vs_best at gen N (0=never)
+
     ENV_PREFIX: str = field(default="CIV6AZ_PBT_", repr=False)
 
     def __post_init__(self) -> None:
@@ -624,6 +693,24 @@ class PBTConfig:
             raise ValueError("mutation_probability must be between 0 and 1")
         if not 0 < self.mutation_strength <= 1:
             raise ValueError("mutation_strength must be between 0 and 1")
+        _valid_strategies = ("round_robin", "top_k_vs_best")
+        if self.evaluation_strategy not in _valid_strategies:
+            raise ValueError(
+                f"evaluation_strategy must be one of {sorted(_valid_strategies)}, "
+                f"got '{self.evaluation_strategy}'"
+            )
+        if self.evaluation_games_per_match < 1:
+            raise ValueError("evaluation_games_per_match must be >= 1")
+        if self.elo_initial_rating <= 0:
+            raise ValueError("elo_initial_rating must be > 0")
+        if self.elo_k_factor <= 0:
+            raise ValueError("elo_k_factor must be > 0")
+        if self.baseline_interval < 0:
+            raise ValueError("baseline_interval must be >= 0")
+        if self.checkpoint_retention_generations < 0:
+            raise ValueError("checkpoint_retention_generations must be >= 0")
+        if self.evaluation_strategy_switch_gen < 0:
+            raise ValueError("evaluation_strategy_switch_gen must be >= 0")
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> PBTConfig:
@@ -669,6 +756,7 @@ class PBTConfig:
             current_value = getattr(config, param_name)
 
             try:
+                typed_value: Any
                 if isinstance(current_value, bool):
                     typed_value = value.lower() in ("true", "1", "yes")
                 elif isinstance(current_value, int):
@@ -684,6 +772,8 @@ class PBTConfig:
             except (ValueError, yaml.YAMLError):
                 pass
 
+        # Re-validate after overrides
+        config.__post_init__()
         return config
 
     @classmethod
@@ -729,6 +819,14 @@ class PBTConfig:
             "wandb_tags": self.wandb_tags,
             "convergence_threshold": self.convergence_threshold,
             "convergence_window": self.convergence_window,
+            "evaluation_strategy": self.evaluation_strategy,
+            "evaluation_games_per_match": self.evaluation_games_per_match,
+            "elo_initial_rating": self.elo_initial_rating,
+            "elo_k_factor": self.elo_k_factor,
+            "baseline_interval": self.baseline_interval,
+            "baseline_agents": self.baseline_agents,
+            "checkpoint_retention_generations": self.checkpoint_retention_generations,
+            "evaluation_strategy_switch_gen": self.evaluation_strategy_switch_gen,
         }
 
     def save(self, path: str | Path) -> None:

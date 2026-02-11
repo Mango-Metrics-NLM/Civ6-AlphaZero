@@ -1,0 +1,57 @@
+# Tournament Configuration
+# ─────────────────────────────────────────────────────────
+# Configuration for tournament-based evaluation of trained agents.
+# Used by TournamentOrchestrator and integrated with PBT.
+
+tournament:
+  format: round_robin              # round_robin | single_elimination | double_elimination | swiss
+  games_per_match: 10              # Number of games per match (best-of-N)
+  max_concurrent_matches: 4        # Parallel match execution limit
+
+  # Swiss format specific
+  swiss_rounds: 5                  # Number of rounds for Swiss format
+  swiss_avoid_rematches: true      # Avoid repeat matchups in Swiss
+
+  # Scheduling
+  tournament_interval: 3           # Run tournament every N PBT generations
+  include_baselines: true          # Include baseline agents in tournament
+
+elo:
+  initial_rating: 1500.0
+  k_factor: 32.0                   # ELO K-factor (higher = more volatile)
+  min_games_for_ranking: 3         # Minimum games before ELO is considered stable
+
+matchmaking:
+  method: elo_proximity             # elo_proximity | random | round_robin
+  elo_range: 200.0                 # Max ELO difference for matched opponents
+  avoid_recent_opponents: true     # Try to avoid recently-played opponents
+
+league:
+  enabled: false
+  tiers: 3                        # Number of league tiers
+  promotion_threshold: 0.6        # Win rate to promote
+  demotion_threshold: 0.35        # Win rate to demote
+  season_length: 20               # Games per season
+
+analysis:
+  head_to_head_enabled: true
+  trend_window: 20                 # Window size for player trend analysis
+  upset_threshold: 100.0           # ELO difference to classify as upset
+  meta_analysis_top_k: 5           # Number of top players for meta-analysis
+  export_format: json              # json | markdown
+
+# W&B visualization
+wandb:
+  enabled: false
+  log_individual_matches: true
+  log_round_summaries: true
+  log_elo_leaderboard: true
+  log_head_to_head: true
+  log_elo_history: true
+
+# Baseline agents for comparison
+baselines:
+  - name: random
+    type: random_policy
+  - name: greedy
+    type: greedy_policy

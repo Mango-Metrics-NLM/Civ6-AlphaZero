@@ -6,13 +6,13 @@ game interface implementations.
 
 from __future__ import annotations
 
+import json
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional, TypeVar, Generic
-import json
-import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +166,7 @@ class City:
     defense: int = 20
     districts: list[str] = field(default_factory=list)
     buildings: list[str] = field(default_factory=list)
-    producing: Optional[str] = None
+    producing: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -221,10 +221,10 @@ class Tile:
     position: Position
     terrain: str = "plains"
     features: list[str] = field(default_factory=list)
-    resource: Optional[str] = None
-    improvement: Optional[str] = None
+    resource: str | None = None
+    improvement: str | None = None
     yields: dict[str, int] = field(default_factory=dict)
-    owner: Optional[int] = None
+    owner: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -262,7 +262,7 @@ class GameState:
     military_strength: int = 0
     victory_progress: dict[str, float] = field(default_factory=dict)
     game_over: bool = False
-    winner: Optional[int] = None
+    winner: int | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     def to_encoder_dict(self) -> dict[str, Any]:
@@ -292,14 +292,14 @@ class GameState:
             **self.extra,
         }
 
-    def get_unit_by_id(self, unit_id: str) -> Optional[Unit]:
+    def get_unit_by_id(self, unit_id: str) -> Unit | None:
         """Get a unit by its ID."""
         for unit in self.units:
             if unit.id == unit_id:
                 return unit
         return None
 
-    def get_city_by_id(self, city_id: str) -> Optional[City]:
+    def get_city_by_id(self, city_id: str) -> City | None:
         """Get a city by its ID."""
         for city in self.cities:
             if city.id == city_id:
@@ -310,7 +310,7 @@ class GameState:
         """Get all units at a position."""
         return [u for u in self.units if u.position == position]
 
-    def get_city_at(self, position: Position) -> Optional[City]:
+    def get_city_at(self, position: Position) -> City | None:
         """Get city at a position."""
         for city in self.cities:
             if city.position == position:
@@ -330,11 +330,11 @@ class GameState:
 class GameAction:
     """Represents an action to be taken in the game."""
     action_type: ActionType
-    unit_id: Optional[str] = None
-    city_id: Optional[str] = None
-    target_position: Optional[Position] = None
-    target_id: Optional[str] = None
-    production_type: Optional[str] = None
+    unit_id: str | None = None
+    city_id: str | None = None
+    target_position: Position | None = None
+    target_id: str | None = None
+    production_type: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -428,10 +428,10 @@ class GameAction:
 class InterfaceConfig:
     """Configuration for game interfaces."""
     # File paths
-    state_dir: Optional[Path] = None
-    action_dir: Optional[Path] = None
-    log_dir: Optional[Path] = None
-    save_path: Optional[Path] = None
+    state_dir: Path | None = None
+    action_dir: Path | None = None
+    log_dir: Path | None = None
+    save_path: Path | None = None
 
     # Timing
     poll_interval_ms: int = 100
@@ -485,7 +485,7 @@ class GameInterface(ABC):
     to different game implementations (Civ6, Unciv, etc.).
     """
 
-    def __init__(self, config: Optional[InterfaceConfig] = None):
+    def __init__(self, config: InterfaceConfig | None = None) -> None:
         """Initialize the interface.
 
         Args:
@@ -554,8 +554,8 @@ class GameInterface(ABC):
 
     def wait_for_state_change(
         self,
-        timeout_seconds: Optional[float] = None,
-    ) -> Optional[GameState]:
+        timeout_seconds: float | None = None,
+    ) -> GameState | None:
         """Wait for game state to change.
 
         Args:

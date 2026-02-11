@@ -1,0 +1,64 @@
+{
+    "name": "Civ6 AlphaZero Monitoring",
+    "description": "Unified dashboard for training metrics, evaluation ELO, and system health.",
+    "panels": [
+        {
+            "type": "section",
+            "title": "Training Metrics"
+        },
+        {
+            "type": "line-plot",
+            "title": "Total Loss",
+            "x": "step",
+            "y": [
+                "loss"
+            ],
+            "group": "run"
+        },
+        {
+            "type": "line-plot",
+            "title": "Policy vs Value Loss",
+            "x": "step",
+            "y": [
+                "policy_loss",
+                "value_loss"
+            ],
+            "group": "run"
+        },
+        {
+            "type": "section",
+            "title": "Evaluation"
+        },
+        {
+            "type": "line-plot",
+            "title": "Win Rate vs Baseline",
+            "x": "iteration",
+            "y": [
+                "win_rate"
+            ],
+            "group": "run"
+        },
+        {
+            "type": "section",
+            "title": "System Resources"
+        },
+        {
+            "type": "line-plot",
+            "title": "GPU Utilization",
+            "x": "time",
+            "y": [
+                "system.gpu.0.gpu"
+            ],
+            "group": "run"
+        },
+        {
+            "type": "line-plot",
+            "title": "System Memory",
+            "x": "time",
+            "y": [
+                "system.memory"
+            ],
+            "group": "run"
+        }
+    ]
+}

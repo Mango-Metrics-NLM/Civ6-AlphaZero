@@ -1,0 +1,108 @@
+# Cloud Training Configuration for Civ6 AlphaZero
+# Phase 3.1: Single-Node Cloud Training
+#
+# All values can be overridden via environment variables with CIV6AZ_ prefix.
+# Example: CIV6AZ_GCS_BUCKET=my-bucket
+
+cloud:
+  # Cloud provider: gcp, aws, azure, local
+  provider: "gcp"
+
+  # Environment: development, staging, production, test
+  environment: "development"
+
+  # GCP Settings (from environment variables)
+  project_id: "${CIV6AZ_GCP_PROJECT_ID}"
+  region: "us-central1"
+  zone: "us-central1-a"
+
+  # GCS Storage Configuration
+  gcs:
+    bucket_name: "${CIV6AZ_GCS_BUCKET}"
+    checkpoint_prefix: "checkpoints/phase3"
+    artifact_prefix: "artifacts/phase3"
+    logs_prefix: "logs/phase3"
+    enable_compression: true
+    max_checkpoints: 10
+
+  # Vertex AI Job Configuration
+  vertex:
+    machine_type: "n1-standard-8"
+    accelerator_type: "NVIDIA_TESLA_T4"
+    accelerator_count: 1
+    boot_disk_size_gb: 100
+    container_uri: "gcr.io/cloud-aiplatform/training/pytorch-gpu.1-13:latest"
+    service_account: "${CIV6AZ_VERTEX_SERVICE_ACCOUNT}"
+    network: ""
+    max_run_duration_seconds: 172800  # 48 hours
+    enable_web_access: false
+
+  # Preemption Handling (for spot instances)
+  preemption:
+    enabled: true
+    check_interval_seconds: 5.0
+    warning_seconds: 30.0
+    checkpoint_on_preemption: true
+    max_retry_count: 3
+    backoff_multiplier: 2.0
+
+  # Cloud Logging Configuration
+  logging:
+    enabled: true
+    log_name: "civ6-alphazero-training"
+    structured: true
+    buffer_size: 100
+    flush_interval_seconds: 30.0
+
+  # Cloud Monitoring Configuration
+  monitoring:
+    enabled: true
+    metric_prefix: "custom.googleapis.com/alphazero"
+    export_interval_seconds: 60.0
+    export_metrics:
+      - loss
+      - policy_loss
+      - value_loss
+      - entropy
+      - learning_rate
+      - games_played
+      - training_step
+
+  # Resource Labels
+  labels:
+    project: "civ6-alphazero"
+    phase: "phase3"
+    environment: "development"
+
+# Training Configuration
+training:
+  # Phase 3.1 Target: 256 batch size
+  batch_size: 256
+  learning_rate: 0.001
+
+  # Self-play: 100 games per iteration
+  games_per_iteration: 100
+  num_iterations: 1000
+
+  # Checkpointing
+  checkpoint_interval: 100
+  eval_interval: 500
+
+# Network Architecture
+network:
+  num_res_blocks: 8
+  num_filters: 128
+
+# MCTS Configuration
+mcts:
+  num_simulations: 100
+  c_puct: 1.5
+  dirichlet_alpha: 0.3
+  dirichlet_epsilon: 0.25
+  temperature: 1.0
+  temperature_threshold: 30
+
+# Environment Configuration
+environment:
+  board_size: 16
+  max_turns: 200

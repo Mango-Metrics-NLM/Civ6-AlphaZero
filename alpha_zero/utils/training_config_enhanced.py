@@ -511,7 +511,7 @@ class EnhancedTrainingConfig:
 class ResourceManager:
     """Manages compute resources during training."""
 
-    def __init__(self, config: ResourceConfig):
+    def __init__(self, config: ResourceConfig) -> None:
         """Initialize resource manager.
 
         Args:

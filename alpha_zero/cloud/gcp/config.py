@@ -54,7 +54,7 @@ def get_gpu_costs() -> dict[str, float]:
 class VertexTier(str, Enum):
     """Vertex AI pricing tier."""
 
-    BUDGET = "budget"  # T4 self-play + L4 training
+    BUDGET = "budget"  # T4 for both self-play and training
     ON_DEMAND = "ondemand"  # A100 for both
 
 
@@ -122,14 +122,16 @@ class TrainingWorkerConfig:
     spot: bool = False
     checkpoint_interval: int = 1000
     epochs_per_iteration: int = 10
+    replica_count: int = 1
 
     @classmethod
     def budget_preset(cls) -> TrainingWorkerConfig:
-        """Create budget tier configuration (T4 GPU)."""
+        """Create budget tier configuration (T4 GPU for better quota availability)."""
         return cls(
             machine_type="n1-standard-8",
             accelerator_type="NVIDIA_TESLA_T4",
             accelerator_count=1,
+            replica_count=1,
             spot=False,
         )
 
@@ -140,6 +142,7 @@ class TrainingWorkerConfig:
             machine_type="a2-highgpu-8g",
             accelerator_type="NVIDIA_TESLA_A100",
             accelerator_count=8,
+            replica_count=1,
             spot=False,
         )
 
@@ -155,26 +158,95 @@ class GCSPathConfig:
     trajectories_prefix: str = "trajectories/civ6az"
     checkpoints_prefix: str = "checkpoints/civ6az"
     logs_prefix: str = "logs/civ6az"
+    agent_id: str | None = None
+
+    def _resolve_prefix(self, base_prefix: str) -> str:
+        """Return agent-scoped prefix when agent_id is set, otherwise base."""
+        if self.agent_id:
+            return f"{base_prefix}/{self.agent_id}"
+        return base_prefix
 
     def model_path(self, version: int) -> str:
         """Get path for a model version."""
-        return f"{self.models_prefix}/v{version:03d}/model.pt"
+        return f"{self._resolve_prefix(self.models_prefix)}/v{version:03d}/model.pt"
 
     def metadata_path(self, version: int) -> str:
         """Get path for model metadata."""
-        return f"{self.models_prefix}/v{version:03d}/metadata.json"
+        return f"{self._resolve_prefix(self.models_prefix)}/v{version:03d}/metadata.json"
 
     def trajectory_path(self, iteration: int, worker_id: int) -> str:
         """Get path for trajectory shard."""
-        return f"{self.trajectories_prefix}/iter_{iteration:03d}/shard_worker_{worker_id}.pt"
+        return f"{self._resolve_prefix(self.trajectories_prefix)}/iter_{iteration:03d}/shard_worker_{worker_id}.pt"
 
     def checkpoint_path(self, step: int) -> str:
         """Get path for training checkpoint."""
-        return f"{self.checkpoints_prefix}/training_step_{step}.pt"
+        return f"{self._resolve_prefix(self.checkpoints_prefix)}/training_step_{step}.pt"
 
     def latest_checkpoint_path(self) -> str:
         """Get path for latest checkpoint marker."""
-        return f"{self.checkpoints_prefix}/latest.pt"
+        return f"{self._resolve_prefix(self.checkpoints_prefix)}/latest.pt"
+
+
+@dataclass
+class NetworkArchitectureConfig:
+    """Network architecture defaults for the Civ6 Transformer model.
+
+    Provides a single source of truth for architecture parameters used by
+    selfplay, training, and evaluation workers. Defaults match the current
+    Civ6TransformerNetwork / MicroCivEncoder architecture.
+
+    All values can be overridden via environment variables prefixed with CIV6AZ_.
+
+    Attributes:
+        board_size: Board size (spatial_size H=W).
+        action_space_size: Total discrete actions (1 + 20*8 + 20*8 + 20 + 20 + 5*3 = 376).
+        spatial_channels: Input spatial feature planes from MicroCivEncoder.
+        vector_dim: Dimension of the vector (non-spatial) observation.
+        num_layers: Number of transformer layers (maps to TransformerConfig.num_layers).
+        embed_dim: Transformer embedding dimension (maps to TransformerConfig.embed_dim).
+    """
+
+    board_size: int = 8
+    action_space_size: int = 376
+    spatial_channels: int = 13
+    vector_dim: int = 64
+    num_layers: int = 6
+    embed_dim: int = 64
+
+    @classmethod
+    def from_env(cls) -> NetworkArchitectureConfig:
+        """Create from environment variables.
+
+        Environment Variables:
+            CIV6AZ_BOARD_SIZE: Board size (default: 8)
+            CIV6AZ_ACTION_SPACE_SIZE: Action space size (default: 376)
+            CIV6AZ_SPATIAL_CHANNELS: Spatial channels (default: 13)
+            CIV6AZ_VECTOR_DIM: Vector dimension (default: 64)
+            CIV6AZ_NUM_LAYERS: Transformer layers (default: 6)
+            CIV6AZ_EMBED_DIM: Embedding dimension (default: 64)
+
+        Returns:
+            NetworkArchitectureConfig instance.
+        """
+        return cls(
+            board_size=int(os.environ.get("CIV6AZ_BOARD_SIZE", "8")),
+            action_space_size=int(os.environ.get("CIV6AZ_ACTION_SPACE_SIZE", "376")),
+            spatial_channels=int(os.environ.get("CIV6AZ_SPATIAL_CHANNELS", "13")),
+            vector_dim=int(os.environ.get("CIV6AZ_VECTOR_DIM", "64")),
+            num_layers=int(os.environ.get("CIV6AZ_NUM_LAYERS", "6")),
+            embed_dim=int(os.environ.get("CIV6AZ_EMBED_DIM", "64")),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to dictionary."""
+        return {
+            "board_size": self.board_size,
+            "action_space_size": self.action_space_size,
+            "spatial_channels": self.spatial_channels,
+            "vector_dim": self.vector_dim,
+            "num_layers": self.num_layers,
+            "embed_dim": self.embed_dim,
+        }
 
 
 @dataclass
@@ -210,6 +282,9 @@ class GCPConfig:
 
     # Path configuration
     paths: GCSPathConfig = field(default_factory=GCSPathConfig)
+
+    # Network architecture
+    network: NetworkArchitectureConfig = field(default_factory=NetworkArchitectureConfig)
 
     # Tier selection
     tier: VertexTier = VertexTier.BUDGET
@@ -276,6 +351,7 @@ class GCPConfig:
         self_play_data = data.pop("self_play", {})
         training_data = data.pop("training", {})
         paths_data = data.pop("paths", {})
+        network_data = data.pop("network", {})
 
         self_play = (
             SelfPlayWorkerConfig(**self_play_data) if self_play_data else SelfPlayWorkerConfig()
@@ -284,6 +360,11 @@ class GCPConfig:
             TrainingWorkerConfig(**training_data) if training_data else TrainingWorkerConfig()
         )
         paths = GCSPathConfig(**paths_data) if paths_data else GCSPathConfig()
+        network = (
+            NetworkArchitectureConfig(**network_data)
+            if network_data
+            else NetworkArchitectureConfig()
+        )
 
         tier_str = data.pop("tier", "budget")
         tier = VertexTier(tier_str) if isinstance(tier_str, str) else tier_str
@@ -292,6 +373,7 @@ class GCPConfig:
             self_play=self_play,
             training=training,
             paths=paths,
+            network=network,
             tier=tier,
             **data,
         )
@@ -382,6 +464,7 @@ class GCPConfig:
                 "checkpoints_prefix": self.paths.checkpoints_prefix,
                 "logs_prefix": self.paths.logs_prefix,
             },
+            "network": self.network.to_dict(),
         }
 
     def __repr__(self) -> str:

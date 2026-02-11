@@ -12,6 +12,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +164,7 @@ def setup_logging(verbose: int, quiet: bool) -> None:
     )
 
 
-def load_config(args: argparse.Namespace):
+def load_config(args: argparse.Namespace) -> Any:
     """Load configuration from args.
 
     Args:

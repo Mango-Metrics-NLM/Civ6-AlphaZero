@@ -20,19 +20,20 @@ from typing import Any
 try:
     import torch
     import torch.nn as nn
-    import torch.nn.functional as F
+    import torch.nn.functional as F  # noqa: N812
 
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
 
     # Create dummy classes for type hints
-    class nn:
+    class nn:  # noqa: N801
         class Module:
             pass
 
 
 from alpha_zero.hierarchical.config import HierarchyLevel
+from alpha_zero.utils.constants import NETWORK
 
 logger = logging.getLogger(__name__)
 
@@ -341,14 +342,15 @@ if TORCH_AVAILABLE:
 
             # Apply action mask
             if action_mask is not None:
-                # Handle edge case: all actions masked (prevent NaN from softmax)
-                if action_mask.sum() == 0:
+                # Handle edge case: all actions masked per sample (prevent NaN from softmax)
+                all_masked = action_mask.sum(dim=-1) == 0  # Check per batch item
+                if all_masked.any():
                     action_mask = action_mask.clone()
-                    action_mask[..., 0] = 1.0  # Enable fallback action
-                # Use large finite value instead of -inf to prevent NaN in softmax
+                    action_mask[all_masked, 0] = 1.0  # Enable fallback action for affected samples
+                # Mask invalid actions with INVALID_ACTION_LOGIT constant (avoid -inf to prevent NaN)
                 policy_logits = policy_logits.masked_fill(
                     action_mask == 0,
-                    -1e9,
+                    NETWORK.INVALID_ACTION_LOGIT,
                 )
 
             # Goal-conditioned value

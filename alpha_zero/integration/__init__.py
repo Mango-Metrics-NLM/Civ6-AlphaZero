@@ -6,6 +6,15 @@ with error recovery, retry logic, and latency compensation.
 
 from __future__ import annotations
 
+import warnings
+
+warnings.warn(
+    "alpha_zero.integration is deprecated and not used by the training pipeline. "
+    "It will be activated in a future phase for CivRealm integration.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 from .game_connector import (
     CheckpointManager,
     ConnectionConfig,
@@ -30,28 +39,28 @@ from .game_connector import (
 )
 
 __all__ = [
+    "CheckpointManager",
+    # Configuration
+    "ConnectionConfig",
+    # Monitoring
+    "ConnectionMetrics",
+    "ConnectionStatus",
+    "ConnectionTimeoutError",
+    "ErrorSeverity",
+    # Backends
+    "GameBackend",
+    # Errors
+    "GameConnectionError",
     # Main connector
     "GameConnector",
     "GameType",
-    "ConnectionStatus",
-    # Configuration
-    "ConnectionConfig",
+    "LatencyConfig",
+    "LatencyTracker",
+    "MicroCivBackend",
+    "RecoveryConfig",
     "RetryConfig",
     "TimeoutConfig",
-    "LatencyConfig",
-    "RecoveryConfig",
-    # Backends
-    "GameBackend",
-    "MicroCivBackend",
     "UncivBackend",
-    # Monitoring
-    "ConnectionMetrics",
-    "LatencyTracker",
-    "CheckpointManager",
-    # Errors
-    "GameConnectionError",
-    "ConnectionTimeoutError",
-    "ErrorSeverity",
     # Factory functions
     "create_game_connector",
     "create_microciv_connector",

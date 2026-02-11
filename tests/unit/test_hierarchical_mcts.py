@@ -754,7 +754,7 @@ class TestMCTSIntegration:
         def state_predictor(s: dict, opt: Option) -> dict:
             return {**s, "option_applied": opt.id}
 
-        result, stats = mcts.search_with_options(
+        result, _stats = mcts.search_with_options(
             state=state,
             goals=[goal],
             state_predictor=state_predictor,

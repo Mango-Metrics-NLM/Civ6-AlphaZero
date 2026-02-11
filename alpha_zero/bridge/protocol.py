@@ -57,7 +57,7 @@ class ProtocolValidationError(ValueError):
         field_name: str | None = None,
         expected: str | None = None,
         actual: Any = None,
-    ):
+    ) -> None:
         self.field_name = field_name
         self.expected = expected
         self.actual = actual
@@ -620,13 +620,18 @@ class UnitData:
 
         Raises:
             ProtocolValidationError: If data is not a dictionary.
+
+        Field priority (backward compatibility with Lua mod protocol versions):
+            unit_type: "unit_type" (current) > "type" (legacy v1) > "type_name" (legacy v0)
         """
         _validate_type(data, dict, "data", context="UnitData.from_dict")
 
         # Parse required and optional fields with validation
         unit_id = _validate_int(data.get("id"), "id", context="UnitData", default=0)
+        # Field priority: unit_type (current) > type (legacy v1) > type_name (legacy v0)
+        raw_unit_type = data.get("unit_type") or data.get("type") or data.get("type_name")
         unit_type = _validate_string(
-            data.get("type", data.get("type_name")),
+            raw_unit_type,
             "unit_type",
             context="UnitData",
             default="UNIT_WARRIOR",
@@ -892,6 +897,9 @@ class LegalAction:
 
         Raises:
             ProtocolValidationError: If data is not a dictionary.
+
+        Field priority (backward compatibility with Lua mod protocol versions):
+            action_type: "action_type" (current) > "action" (legacy v1) > "type" (legacy v0)
         """
         _validate_type(data, dict, "data", context="LegalAction.from_dict")
 
@@ -946,8 +954,10 @@ class LegalAction:
         if city_id is not None:
             city_id = _validate_int(city_id, "city_id", context="LegalAction")
 
+        # Field priority: action_type (current) > action (legacy v1) > type (legacy v0)
+        raw_action_type = data.get("action_type") or data.get("action") or data.get("type")
         action_type = _validate_string(
-            data.get("action", data.get("type")),
+            raw_action_type,
             "action_type",
             context="LegalAction",
             default="end_turn",
