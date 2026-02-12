@@ -739,23 +739,33 @@ def main() -> int:
             except Exception as e:
                 logger.debug("Failed to enable W&B model watching: %s", e)
 
+        # Determine effective base LR: use lr_initial when a schedule is active,
+        # otherwise fall back to --learning_rate. This prevents an abrupt LR jump
+        # on the first scheduler step when lr_initial != learning_rate.
+        lr_schedule_type = getattr(args, "lr_schedule_type", "constant")
+        base_lr = (
+            getattr(args, "lr_initial", args.learning_rate)
+            if lr_schedule_type != "constant"
+            else args.learning_rate
+        )
+
         # Create optimizer with per-head learning rate multipliers
         param_groups = [
             {
                 "params": list(raw_model.encoder.parameters()),
-                "lr": args.learning_rate,
+                "lr": base_lr,
                 "base_lr_ratio": 1.0,
                 "name": "encoder",
             },
             {
                 "params": list(raw_model.policy_head.parameters()),
-                "lr": args.learning_rate * args.policy_lr_multiplier,
+                "lr": base_lr * args.policy_lr_multiplier,
                 "base_lr_ratio": args.policy_lr_multiplier,
                 "name": "policy_head",
             },
             {
                 "params": list(raw_model.value_head.parameters()),
-                "lr": args.learning_rate * args.value_lr_multiplier,
+                "lr": base_lr * args.value_lr_multiplier,
                 "base_lr_ratio": args.value_lr_multiplier,
                 "name": "value_head",
             },
