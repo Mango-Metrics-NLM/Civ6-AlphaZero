@@ -64,6 +64,15 @@ def base_args() -> argparse.Namespace:
         curriculum_stages=3,
         reward_shaping=False,
         reward_scale=1.0,
+        # Training hyperparameters
+        lr_schedule_type="constant",
+        lr_initial=0.001,
+        lr_final=0.0001,
+        lr_warmup_steps=1000,
+        lr_decay_steps=100000,
+        weight_decay=0.01,
+        value_lr_multiplier=1.0,
+        policy_lr_multiplier=1.0,
         dry_run=True,
     )
 

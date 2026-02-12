@@ -5,6 +5,108 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] — 2026-02-12
+
+### Added — Phase 15: Scaled Training & Value Head Stabilization
+
+#### Separate Policy/Value Head Learning Rates (`training_worker.py`)
+
+- **Per-head LR multipliers**: `--value_lr_multiplier` and `--policy_lr_multiplier` CLI args (default 1.0)
+  - Optimizer split into 3 parameter groups: encoder, policy_head, value_head
+  - Each group has independent learning rate scaled by its multiplier
+  - `base_lr_ratio` stored per group so LR scheduler preserves ratios during warmup/cosine decay
+- **Per-head W&B logging**: `train/learning_rate_encoder`, `train/learning_rate_policy_head`, `train/learning_rate_value_head`
+- **Orchestrator pass-through**: `vertex_orchestrator.py` accepts and forwards multiplier args to training worker (only when non-default, backwards-compatible via `getattr`)
+
+#### Test Suite (8 new tests)
+
+- `tests/unit/test_phase15_value_head_lr.py` — 8 tests:
+  - `test_param_groups_created` — 3 param groups with correct names, LRs, and full param coverage
+  - `test_default_multipliers_equivalent` — Both=1.0 produces uniform LRs
+  - `test_scheduler_preserves_ratios` — After scheduler step, value head LR stays 0.1x encoder LR
+  - `test_train_epoch_separate_lrs` — Mini training loop completes with separate per-head LRs
+  - `test_parse_args_multiplier_flags` — CLI args parse correctly with explicit values
+  - `test_parse_args_multiplier_defaults` — Multiplier defaults are 1.0
+  - `test_orchestrator_passes_multiplier_args` — `build_training_extra_args` includes multipliers only when non-default
+  - `test_orchestrator_skips_default_multipliers` — Omits multipliers when both are 1.0
+
+### Changed
+
+- Version: `0.11.0` → `0.12.0`
+- Docker image: v0.11.0 → v0.12.0 (`gcr.io/hrmtrain/civ6az-training:v0.12.0`)
+- Smoke test: soft-music-538 (1-iter, $0.12, passed)
+- Live run: golden-dream-542 (50-iter, value_lr=0.1x, eval=25 games, trajectory_window=5, warmup_cosine)
+
+---
+
+## [0.11.0] — 2026-02-11
+
+### Added — Phase 14: Learning Signal Validation & Training Diagnostics
+
+#### Training Diagnostics (`alpha_zero/training/diagnostics.py`) — NEW
+
+- **TrainingDiagnostics**: Real-time training health monitoring
+  - `compute_policy_entropy(logits)` — Policy entropy for exploration quality tracking
+  - `compute_value_accuracy(predicted, target)` — Value head accuracy (sign accuracy, correlation, MAE)
+  - `compute_gradient_stats(model)` — Per-layer gradient norms and overall statistics
+  - `detect_training_stall(losses, window)` — Loss plateau detection via coefficient of variation
+  - Configurable `window_size` for rolling statistics
+
+#### LR Scheduling in Training Worker (`training_worker.py`)
+
+- 6 LR schedule types: constant, linear, cosine, warmup_cosine, exponential, step
+- CLI args: `--lr_schedule_type`, `--lr_initial`, `--lr_final`, `--lr_warmup_steps`, `--lr_decay_steps`
+- Integrates with `HyperparameterScheduler` from `alpha_zero.orchestrator.scheduler`
+- `--weight_decay` and `--diagnostic_window` CLI args
+
+#### Training Worker Enhancements (`training_worker.py`)
+
+- **TrainingDiagnostics integration**: Per-step policy entropy, value accuracy, gradient stats
+- **TrainingReport integration**: Periodic training reports with loss/grad/throughput summaries
+- **PerformanceProfiler integration**: Timing sections for forward_pass and backward_pass
+- **Spatial dimension validation**: Raises `ValueError` on spatial tensor shape mismatch
+- **W&B per-step metrics**: diagnostics logged via `wandb_logger.log_training_step(**diagnostic_kwargs)`
+
+#### Self-Play Temperature (`selfplay_worker.py`)
+
+- Wired temperature to `select_action()` call (was hardcoded to 1.0)
+- MCTS config override filtering by variant — prevents passing c_puct/dirichlet_* to GumbelMCTS
+
+#### Orchestrator Stall Detection (`vertex_orchestrator.py`)
+
+- **`detect_stall()`**: Checks if recent eval win rates show improvement
+- **`compute_win_rate_trend()`**: Linear regression on win rate history
+- CLI args: `--stall_lookback`, `--stall_threshold`
+- W&B alerts on stall detection
+
+#### TransformerConfig Defaults Aligned
+
+- `TransformerConfig` defaults now match `NetworkArchitectureConfig`: spatial_size=8, action_space_size=376, embed_dim=64, num_layers=6
+- Prevents silent architecture mismatch when creating models without explicit config
+
+#### Test Suite (83 new tests)
+
+- `tests/unit/test_phase14_diagnostics.py` — 35 tests (entropy, value accuracy, gradient stats, stall detection)
+- `tests/unit/test_phase14_selfplay.py` — 20 tests (temperature wiring, MCTS config filtering)
+- `tests/unit/test_phase14_training_worker.py` — 13 tests (train_epoch, parse_args, prepare_dataset, edge cases)
+- `tests/unit/test_phase14_orchestrator.py` — 14 tests (stall detection, win rate trend, build_training_extra_args)
+- `tests/unit/test_phase14_config_defaults.py` — 1 test (TransformerConfig matches NetworkArchitectureConfig)
+
+### Changed
+
+- Version: `0.10.2` → `0.11.0`
+- Docker image: v0.10.2 → v0.11.0
+
+#### Live Training Validation (sunny-fog-469)
+
+- **20/20 iterations**, 377.5 min, **$2.44 total cost**
+- **Promotions**: v6→v19 (iter 10, 70% WR), v19→v26 (iter 17, 60% WR)
+- **Tournament**: 23 models, 253 matchups, 1518 games — v28 #1 (1529.7 ELO)
+- **Policy loss**: steadily decreasing (1.21→0.63) — strongest learning signal
+- **Value head**: unstable (correlation 0.07-0.91) — addressed in Phase 15 via separate LR
+
+---
+
 ## [0.10.2] — 2026-02-10
 
 ### Fixed — Live Training Bug Fixes

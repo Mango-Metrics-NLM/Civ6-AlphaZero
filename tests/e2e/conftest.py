@@ -152,12 +152,17 @@ def cleanup_gcs_artifacts(
 
     # Cleanup: Delete test artifacts from GCS
     try:
-        from alpha_zero.cloud.gcp import GCS_AVAILABLE, GCSCheckpointManager
+        try:
+            from google.cloud import storage as gcs_sdk
+            GCS_AVAILABLE = True
+        except ImportError:
+            GCS_AVAILABLE = False
 
         if not GCS_AVAILABLE:
             return
 
-        manager = GCSCheckpointManager(e2e_cloud_config)
+        from alpha_zero.cloud.gcp import GCSCheckpointStorage
+        manager = GCSCheckpointStorage(e2e_cloud_config)
         checkpoints = manager.list_checkpoints(prefix=test_artifact_path)
 
         deleted_count = 0

@@ -22,8 +22,10 @@
 | Phase 11 | Code Quality & Tech Debt Reduction | ✅ Complete |
 | Phase 12-Prep | Docker & Vertex AI Smoke Test | ✅ Complete |
 | Phase 13 | Multi-Iteration Training & Post-Run Evaluation | ✅ Complete |
+| Phase 14 | Learning Signal Validation (20-iteration run) | ✅ Complete |
+| Phase 15 | Scaled Training & Value Head Stabilization | ✅ Complete |
 
-**Codebase Statistics:** ~55,000 LOC core, 3,544+ tests, Docker v0.10.2
+**Codebase Statistics:** ~55,000 LOC core, 3,678+ tests, Docker v0.12.0
 
 ---
 
@@ -412,6 +414,49 @@ C4Component
 
 ---
 
+## Level 3: Component Diagram - Training Diagnostics & Value Head Stabilization (Phases 14-15)
+
+```mermaid
+C4Component
+    title Component Diagram - Training Diagnostics & Value Head LR (Phases 14-15)
+
+    Container_Boundary(diag, "Training Diagnostics (Phase 14)") {
+        Component(diagnostics, "TrainingDiagnostics", "Python", "Real-time training health monitoring")
+        Component(gradnorms, "Gradient Norms", "Python", "Per-layer gradient magnitude tracking")
+        Component(lossdecomp, "Loss Decomposition", "Python", "Policy/value loss trends and ratios")
+        Component(valuecorr, "Value Correlation", "Python", "Predicted vs actual value correlation")
+        Component(policystats, "Policy Statistics", "Python", "Entropy, top-k confidence, diversity")
+        Component(stalldtect, "Stall Detection", "Python", "Loss plateau and learning stall alerts")
+    }
+
+    Container_Boundary(vlr, "Value Head LR Stabilization (Phase 15)") {
+        Component(paramgroups, "Optimizer Param Groups", "PyTorch", "3 groups: encoder, policy_head, value_head")
+        Component(lrmult, "LR Multipliers", "Python", "Per-head LR scaling (value=0.1x, policy=1.0x)")
+        Component(baselrratio, "base_lr_ratio", "Python", "Ratio metadata preserved through scheduler")
+        Component(perheadlog, "Per-Head LR Logging", "W&B", "learning_rate_encoder, _policy_head, _value_head")
+    }
+
+    Component(scheduler, "LR Scheduler", "Python", "warmup_cosine / constant / step_decay")
+    Component(wandb, "W&B Logger", "Python", "train/* metrics namespace")
+    Component(trainworker, "Training Worker", "Python", "train_epoch() loop")
+
+    Rel(trainworker, diagnostics, "Computes per-batch diagnostics")
+    Rel(diagnostics, gradnorms, "Measures")
+    Rel(diagnostics, lossdecomp, "Decomposes")
+    Rel(diagnostics, valuecorr, "Correlates")
+    Rel(diagnostics, policystats, "Analyzes")
+    Rel(diagnostics, stalldtect, "Monitors")
+    Rel(diagnostics, wandb, "Logs diagnostic metrics")
+
+    Rel(trainworker, paramgroups, "Creates optimizer with 3 groups")
+    Rel(paramgroups, lrmult, "Applies multipliers")
+    Rel(lrmult, baselrratio, "Stores ratio")
+    Rel(scheduler, baselrratio, "Reads ratio to scale LR")
+    Rel(perheadlog, wandb, "Logs per-head LRs")
+```
+
+---
+
 ## Deployment Diagram
 
 ```mermaid
@@ -524,12 +569,12 @@ sequenceDiagram
 | **Training** | PBT | Python | Hyperparameter evolution |
 | **Cloud** | Compute | Vertex AI | Distributed training |
 | **Cloud** | Storage | GCS | Artifacts, checkpoints |
-| **Cloud** | Container | Docker + GCR | Containerized workers (v0.10.2) |
+| **Cloud** | Container | Docker + GCR | Containerized workers (v0.12.0) |
 | **Cloud** | Optimization | Python | Cost/quota management |
 | **Knowledge** | RAG | ChromaDB/FAISS | Vector search |
 | **Knowledge** | LLM | OpenAI/Anthropic | Strategy advisor |
 | **Logging** | Metrics | W&B, TensorBoard | Experiment tracking |
-| **Testing** | Framework | pytest | 3,544+ tests, >80% coverage |
+| **Testing** | Framework | pytest | 3,678+ tests, >80% coverage |
 | **Linting** | Quality | ruff, mypy | Static analysis |
 
 ---
@@ -548,3 +593,6 @@ sequenceDiagram
 | **NetworkArchitectureConfig** | Single source of truth for model dimensions | Must stay in sync with TransformerConfig |
 | **Post-run tournament local** | Avoids extra Vertex AI job cost for evaluation | Limited by local CPU speed |
 | **model_config persistence** | Enables legacy model loading with correct architecture | Enum→string conversion needed |
+| **Per-head LR multipliers** | Value head trains at lower LR to reduce instability | Requires optimizer param groups |
+| **base_lr_ratio in param groups** | LR scheduler preserves per-head ratios automatically | Extra metadata in optimizer state |
+| **Training diagnostics** | Real-time gradient health, loss trends, value correlation | Minimal overhead per batch |

@@ -159,6 +159,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr_warmup_steps", type=int, default=0, help="LR warmup steps")
     parser.add_argument("--lr_decay_steps", type=int, default=0, help="LR decay steps (0=auto)")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="AdamW weight decay")
+    parser.add_argument(
+        "--value_lr_multiplier", type=float, default=1.0, help="LR multiplier for value head"
+    )
+    parser.add_argument(
+        "--policy_lr_multiplier", type=float, default=1.0, help="LR multiplier for policy head"
+    )
 
     # Stall detection
     parser.add_argument(
@@ -237,6 +243,10 @@ def build_training_extra_args(args: argparse.Namespace) -> list[str]:
         )
     if args.weight_decay != 0.01:
         extra.append(f"--weight_decay={args.weight_decay}")
+    if getattr(args, "value_lr_multiplier", 1.0) != 1.0:
+        extra.append(f"--value_lr_multiplier={args.value_lr_multiplier}")
+    if getattr(args, "policy_lr_multiplier", 1.0) != 1.0:
+        extra.append(f"--policy_lr_multiplier={args.policy_lr_multiplier}")
     return extra
 
 

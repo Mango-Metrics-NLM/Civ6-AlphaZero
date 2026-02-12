@@ -167,6 +167,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--weight_decay", type=float, default=0.01, help="AdamW weight decay")
     parser.add_argument(
+        "--value_lr_multiplier", type=float, default=1.0, help="LR multiplier for value head"
+    )
+    parser.add_argument(
+        "--policy_lr_multiplier", type=float, default=1.0, help="LR multiplier for policy head"
+    )
+    parser.add_argument(
         "--diagnostic_window", type=int, default=100, help="Diagnostics rolling window size"
     )
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
@@ -390,12 +396,13 @@ def train_epoch(
         target_policies = target_policies.to(device)
         target_values = target_values.to(device)
 
-        # Update learning rate from scheduler if available
+        # Update learning rate from scheduler if available (preserving per-group ratios)
         current_step = global_step + num_batches
         if lr_scheduler is not None:
             scheduled_lr = lr_scheduler.get_learning_rate(current_step)
             for param_group in optimizer.param_groups:
-                param_group["lr"] = scheduled_lr
+                ratio = param_group.get("base_lr_ratio", 1.0)
+                param_group["lr"] = scheduled_lr * ratio
 
         # Forward pass
         # Reshape spatial for transformer input and validate
@@ -492,6 +499,11 @@ def train_epoch(
         ):
             if num_batches % wandb_log_interval == 0:
                 lr = optimizer.param_groups[0]["lr"]
+                # Log per-head learning rates
+                for pg in optimizer.param_groups:
+                    name = pg.get("name", "")
+                    if name:
+                        diagnostic_kwargs[f"learning_rate_{name}"] = pg["lr"]
                 wandb_logger.log_training_step(
                     step=global_step + num_batches,
                     loss=loss.item(),
@@ -709,6 +721,7 @@ def main() -> int:
             num_filters=args.num_filters,
         )
         model = model.to(device)
+        raw_model = model  # Keep reference before DDP for param group construction
 
         # Wrap DDP
         if world_size > 1:
@@ -726,12 +739,28 @@ def main() -> int:
             except Exception as e:
                 logger.debug("Failed to enable W&B model watching: %s", e)
 
-        # Create optimizer with explicit weight_decay
-        optimizer = torch.optim.AdamW(
-            model.parameters(),
-            lr=args.learning_rate,
-            weight_decay=args.weight_decay,
-        )
+        # Create optimizer with per-head learning rate multipliers
+        param_groups = [
+            {
+                "params": list(raw_model.encoder.parameters()),
+                "lr": args.learning_rate,
+                "base_lr_ratio": 1.0,
+                "name": "encoder",
+            },
+            {
+                "params": list(raw_model.policy_head.parameters()),
+                "lr": args.learning_rate * args.policy_lr_multiplier,
+                "base_lr_ratio": args.policy_lr_multiplier,
+                "name": "policy_head",
+            },
+            {
+                "params": list(raw_model.value_head.parameters()),
+                "lr": args.learning_rate * args.value_lr_multiplier,
+                "base_lr_ratio": args.value_lr_multiplier,
+                "name": "value_head",
+            },
+        ]
+        optimizer = torch.optim.AdamW(param_groups, weight_decay=args.weight_decay)
 
         # Create LR scheduler (backwards-compatible: constant=no change)
         lr_scheduler = None

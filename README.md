@@ -24,12 +24,16 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 11 | Code Quality & Tech Debt Reduction | ✅ Complete |
 | Phase 12-Prep | Docker v0.9.0, Container Smoke Tests, Vertex AI Smoke Test | ✅ Complete |
 | Phase 13 | Multi-Iteration Training & Post-Run Evaluation | ✅ Complete |
+| Phase 14 | Learning Signal Validation (20-iteration run) | ✅ Complete |
+| Phase 15 | Scaled Training & Value Head Stabilization | ✅ Complete |
 
 **Codebase Statistics:**
 
 - ~55,000 lines of core implementation
-- 3,544+ tests with >80% coverage on core modules
-- Docker v0.10.2 on GCR, 7 model versions (v0-v6) in GCS
+- 3,678+ tests with >80% coverage on core modules
+- Docker v0.12.0 on GCR, 30 model versions (v0-v29) in GCS
+- 2 successful model promotions (v6→v19→v26) in 20-iteration run
+- Post-run tournament: 23 models, 253 matchups, ELO spread 66 points
 - 11 game mechanics modules (deprecated, future Civ6 integration)
 - 13 remaining xfail tests (12 DDP + 1 hierarchical — deferred)
 
@@ -65,6 +69,9 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - **Arena Module**: Shared arena logic for evaluation and tournament play
 - **Orchestrator W&B Logging**: Iteration metrics, cost tracking, phase timing, and final summaries
 - **Docker Container Pipeline**: PyTorch 2.5 + CUDA 12.4 container with healthcheck, deployed to GCR
+- **Training Diagnostics**: Real-time gradient norms, loss decomposition, value correlation, policy entropy, stall detection
+- **Per-Head Learning Rates**: Separate LR multipliers for encoder, policy head, and value head to stabilize training
+- **LR Schedule Types**: Warmup-cosine, constant, and step-decay schedules with per-head ratio preservation
 
 ## Architecture (C4 Model)
 
@@ -814,6 +821,16 @@ python -m alpha_zero.cloud.gcp.vertex_orchestrator \
     --mcts_type=gumbel --mcts_simulations=8 --board_size=8 \
     --epochs=3 --max_turns=15 --evaluation_games=4 \
     --post_run_tournament --tournament_games=4 --tournament_mcts_sims=8
+
+# 50-iteration scaled run with value head stabilization (Phase 15)
+python -m alpha_zero.cloud.gcp.vertex_orchestrator \
+    --iterations=50 --workers=2 --games_per_worker=50 \
+    --mcts_type=gumbel --mcts_simulations=16 --board_size=8 \
+    --epochs=10 --max_turns=20 --evaluation_games=25 \
+    --trajectory_window=5 \
+    --lr_schedule_type=warmup_cosine --lr_initial=0.001 --lr_final=0.0001 \
+    --value_lr_multiplier=0.1 \
+    --post_run_tournament --tournament_games=10 --tournament_mcts_sims=16
 ```
 
 | MCTS Variant | Speed | Simulations | Best For |
@@ -1077,7 +1094,7 @@ Civ6-AlphaZero/
 │   │       ├── vertex_jobs.py        # Vertex AI job wrappers
 │   │       ├── vertex_orchestrator.py # Multi-iteration pipeline + W&B + tournament
 │   │       ├── selfplay_worker.py    # Self-play container worker
-│   │       ├── training_worker.py    # Training container worker (saves model_config)
+│   │       ├── training_worker.py    # Training worker (per-head LRs, diagnostics)
 │   │       ├── evaluation_worker.py  # Model arena (Civ6TransformerNetwork)
 │   │       ├── arena.py              # Shared arena logic (Phase 13)
 │   │       ├── entrypoint.py         # Container mode router
@@ -1109,6 +1126,7 @@ Civ6-AlphaZero/
 │   │   ├── muzero_integration.py   # MuZeroTrainingBridge (Phase 9)
 │   │   ├── training_safeguards.py  # TrainingSafeguard (Phase 8)
 │   │   ├── training_report.py      # TrainingReport (Phase 8)
+│   │   ├── diagnostics.py          # TrainingDiagnostics (Phase 14)
 │   │   ├── convergence_monitor.py  # ConvergenceMonitor
 │   │   ├── training_profiler.py    # TrainingProfiler
 │   │   └── elo_plateau_detector.py # EloPlateauDetector
@@ -1157,7 +1175,7 @@ Civ6-AlphaZero/
 │           ├── ActionExecutor.lua # Command execution
 │           ├── FileIO.lua    # File operations
 │           └── JsonEncoder.lua # Pure Lua JSON
-├── tests/                    # Test suite (4,000+ tests)
+├── tests/                    # Test suite (3,678+ tests)
 │   ├── unit/                 # Unit tests
 │   ├── integration/          # Integration tests (PBT, distributed, preemption)
 │   ├── e2e/                  # End-to-end tests (training smoke, GCS, Vertex)
@@ -1202,26 +1220,39 @@ Civ6-AlphaZero/
 - ✅ **MuZero Integration** — MuZeroTrainingBridge connecting network/trainer/MCTS to orchestrators and PBT
 - ✅ **Tournament System** — Bracket orchestration (round-robin, elimination, Swiss), analysis, W&B dashboards
 - ✅ **Code Quality & Tech Debt** (Phase 11) — Removed 14,600 LOC dead code, fixed 16 xfailed tests, consolidated logging, CI hardening, mypy strictness, 16 new edge case tests
+- ✅ **Learning Signal Validation** (Phase 14) — 20-iteration training run ($2.44), 2 model promotions (v6→v19→v26), policy loss 1.21→0.63, training diagnostics, warmup-cosine LR, stall detection
+- ✅ **Value Head Stabilization** (Phase 15) — Separate per-head LR multipliers (value=0.1x), optimizer param groups, base_lr_ratio preservation through scheduler, per-head W&B logging
+
+### Training Results (Phase 14: sunny-fog-469)
+
+| Metric | Result |
+|--------|--------|
+| Iterations | 20/20 |
+| Duration | 377.5 min |
+| Cost | $2.44 |
+| Promotions | v6→v19 (70% WR), v19→v26 (60% WR) |
+| Policy Loss | 1.21 → 0.63 (steady decrease) |
+| Value Correlation | 0.07–0.91 (unstable, addressed in Phase 15) |
+| Tournament | 23 models, 253 matchups, ELO spread 66 points |
 
 ### Next Steps
 
 | Priority | Feature | Description |
 |----------|---------|-------------|
-| P0 | Inference Optimization & Vectorized Self-Play (Phase 12) | Batch MCTS inference, vectorized environments for 10x+ throughput |
-| P1 | Extended Training Run | Run 50+ generation PBT on Vertex AI to validate convergence |
-| P2 | Training Validation | Achieve >50% win rate vs random baseline |
-| P3 | MuZero Training Run | Run MuZero PBT with `configs/muzero_pbt.yaml` to validate learned dynamics |
-| P4 | DDP Test Rewrites (Phase 14) | Fix remaining 12 DDP xfailed tests, full mypy strict mode |
-| P5 | Human vs AI Interface | Web-based UI for human gameplay |
-| P6 | Full Civ 6 Integration | Direct game interface via modding API |
+| P0 | 50-Iteration Scaled Run | Validate value head stabilization with wider training window and more iterations |
+| P1 | Inference Optimization & Vectorized Self-Play | Batch MCTS inference, vectorized environments for 10x+ throughput |
+| P2 | MuZero Training Run | Run MuZero PBT with `configs/muzero_pbt.yaml` to validate learned dynamics |
+| P3 | DDP Test Rewrites | Fix remaining 12 DDP xfailed tests, full mypy strict mode |
+| P4 | Human vs AI Interface | Web-based UI for human gameplay |
+| P5 | Full Civ 6 Integration | Direct game interface via modding API |
 
 ### Current Priorities
 
-1. **Launch PBT training** — Run `configs/pbt_prod.yaml` on Vertex AI with population_size=8
-2. **Monitor W&B dashboards** — Track `pbt/elo_*`, `pbt/fitness_*`, and `tournament/*` metrics
-3. **Baseline benchmarking** — Verify win rate improvements against random/heuristic agents at every 5th generation
-4. **MuZero experiments** — Compare AlphaZero vs MuZero training modes using `configs/muzero_pbt.yaml`
-5. **Vectorized self-play** — Implement batch MCTS inference for Phase 12
+1. **Monitor 50-iteration run** — Track value correlation stabilization (target: >0.5 for 10+ consecutive iterations)
+2. **W&B dashboards** — Verify `train/learning_rate_value_head` is 10x lower than encoder, same schedule shape
+3. **ELO spread target** — Post-run tournament should show >100 point ELO spread (was 66 in Phase 14)
+4. **Model promotion target** — Expect 3+ promotions over 50 iterations (was 2 in 20 iterations)
+5. **Vectorized self-play** — Implement batch MCTS inference for 10x+ throughput improvement
 
 ## Contributing
 
