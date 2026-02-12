@@ -1,0 +1,11 @@
+backbone_type: "resnet"
+num_residual_blocks: 6
+num_filters: 64
+fc_hidden_dim: 256
+value_head_hidden_dim: 64
+policy_head_hidden_dim: 64
+use_attention: false
+attention_heads: 4
+dropout_rate: 0.0
+weight_init: "kaiming"
+compile_model: false
