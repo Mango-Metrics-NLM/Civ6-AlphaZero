@@ -21,17 +21,28 @@ from __future__ import annotations
 import argparse
 import gc
 import logging
+import math
 import sys
 import time
 from typing import Any
 
-import psutil
 import torch
+
+try:
+    import psutil
+
+    _PSUTIL_AVAILABLE = True
+except ImportError:
+    psutil = None  # type: ignore[assignment]
+    _PSUTIL_AVAILABLE = False
 
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.storage import GCSModelStorage, GCSTrajectoryStorage
 
 logger = logging.getLogger(__name__)
+
+# Memory threshold for triggering garbage collection (in MB)
+MEMORY_THRESHOLD_MB: int = 6000
 
 
 def setup_logging(worker_id: int) -> None:
@@ -77,18 +88,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--temperature_threshold", type=int, default=30, help="Turn for temperature=0"
     )
+    parser.add_argument(
+        "--temperature_schedule",
+        type=str,
+        default="threshold",
+        choices=["threshold", "linear", "cosine"],
+        help="Temperature decay schedule (threshold=step at threshold, linear/cosine=smooth decay)",
+    )
 
     # Additional hyperparameters
     parser.add_argument(
         "--gumbel_num_actions", type=int, default=16, help="Gumbel MCTS sampled actions"
     )
     parser.add_argument(
-        "--action_space_size", type=int, default=381, help="Size of the action space"
+        "--action_space_size", type=int, default=376, help="Size of the action space"
     )
     parser.add_argument(
-        "--num_res_blocks", type=int, default=8, help="Number of transformer layers"
+        "--num_res_blocks", type=int, default=6, help="Number of transformer layers"
     )
-    parser.add_argument("--num_filters", type=int, default=256, help="Model embedding dimension")
+    parser.add_argument("--num_filters", type=int, default=64, help="Model embedding dimension")
     parser.add_argument("--reward_shaping", action="store_true", help="Enable reward shaping")
     parser.add_argument("--reward_scale", type=float, default=1.0, help="Reward scaling factor")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
@@ -154,16 +172,36 @@ def load_model(config: GCPConfig, version: int, dry_run: bool = False) -> torch.
         try:
             transformer_config = TransformerConfig(**config_copy)
         except TypeError as e:
-            logger.warning("Failed to parse model config, using defaults: %s", e)
-            transformer_config = TransformerConfig()
+            net_cfg = config.network
+            logger.warning("Failed to parse model config (%s), using pipeline defaults", e)
+            transformer_config = TransformerConfig(
+                spatial_channels=net_cfg.spatial_channels,
+                spatial_size=net_cfg.board_size,
+                vector_dim=net_cfg.vector_dim,
+                action_space_size=net_cfg.action_space_size,
+                num_layers=net_cfg.num_layers,
+                embed_dim=net_cfg.embed_dim,
+            )
     else:
-        # Legacy model without config - use defaults and warn
+        # Legacy model without config - use NetworkArchitectureConfig as fallback
+        net_cfg = config.network
         logger.warning(
-            "Model v%d has no saved config, using defaults. "
-            "This may cause shape mismatches if model was trained with different architecture.",
+            "Model v%d has no saved config. Using pipeline architecture defaults: "
+            "spatial_size=%d, action_space=%d, embed_dim=%d, num_layers=%d",
             version,
+            net_cfg.board_size,
+            net_cfg.action_space_size,
+            net_cfg.embed_dim,
+            net_cfg.num_layers,
         )
-        transformer_config = TransformerConfig()
+        transformer_config = TransformerConfig(
+            spatial_channels=net_cfg.spatial_channels,
+            spatial_size=net_cfg.board_size,
+            vector_dim=net_cfg.vector_dim,
+            action_space_size=net_cfg.action_space_size,
+            num_layers=net_cfg.num_layers,
+            embed_dim=net_cfg.embed_dim,
+        )
 
     # Create model and load state dict
     try:
@@ -189,6 +227,39 @@ def load_model(config: GCPConfig, version: int, dry_run: bool = False) -> torch.
     return model
 
 
+def compute_temperature(
+    turn: int,
+    max_turns: int,
+    temperature: float,
+    temperature_threshold: int,
+    schedule: str = "threshold",
+) -> float:
+    """Compute action selection temperature for a given turn.
+
+    Args:
+        turn: Current turn number (0-indexed).
+        max_turns: Maximum turns in the game.
+        temperature: Base temperature value.
+        temperature_threshold: Turn at which threshold schedule drops to 0.
+        schedule: Schedule type ("threshold", "linear", "cosine").
+
+    Returns:
+        Temperature value for this turn.
+    """
+    if schedule == "threshold":
+        return temperature if turn < temperature_threshold else 0.0
+    elif schedule == "linear":
+        # Linear decay from temperature to 0 over max_turns
+        progress = min(turn / max(max_turns, 1), 1.0)
+        return temperature * (1.0 - progress)
+    elif schedule == "cosine":
+        # Cosine annealing from temperature to 0
+        progress = min(turn / max(max_turns, 1), 1.0)
+        return temperature * 0.5 * (1.0 + math.cos(math.pi * progress))
+    else:
+        return temperature
+
+
 def run_selfplay(
     model: torch.nn.Module,
     num_games: int,
@@ -200,6 +271,7 @@ def run_selfplay(
     mcts_config_override: dict[str, Any] | None = None,
     dry_run: bool = False,
     device: str = "cpu",
+    temperature_schedule: str = "threshold",
 ) -> list[dict]:
     """Run self-play games and collect trajectories.
 
@@ -242,6 +314,24 @@ def run_selfplay(
             dummy_trajectories.append(dummy_traj)
         return dummy_trajectories
 
+    # Extract temperature params from override before the game loop
+    # These are action selection params, not MCTS config fields
+    # Shallow copy to avoid mutating the caller-provided dict
+    sel_temperature = 1.0
+    sel_threshold = max_turns
+    if mcts_config_override:
+        mcts_config_override = dict(mcts_config_override)
+        sel_temperature = mcts_config_override.pop("temperature", 1.0)
+        sel_threshold = mcts_config_override.pop("temperature_threshold", max_turns)
+
+    logger.info(
+        "Temperature schedule: %s (temp=%.2f, threshold=%d, max_turns=%d)",
+        temperature_schedule,
+        sel_temperature,
+        sel_threshold,
+        max_turns,
+    )
+
     trajectories: list[dict[str, Any]] = []
     failed_games = 0
 
@@ -261,8 +351,6 @@ def run_selfplay(
 
         mcts_kwargs: dict[str, Any] = {
             "num_simulations": mcts_sims,
-            "temperature": 1.0,
-            "temperature_threshold": 30,
         }
 
         if mcts_type in puct_variants:
@@ -279,8 +367,21 @@ def run_selfplay(
                 gumbel_num_actions,
             )
 
+        # Apply remaining MCTS config overrides (temperature already extracted)
+        # Filter to only keys valid for the current MCTS variant to avoid
+        # passing e.g. c_puct/dirichlet_* to GumbelMCTS
+        civ6_only_keys = {"c_puct", "dirichlet_alpha", "dirichlet_epsilon"}
+        gumbel_only_keys = {"num_sampled_actions", "c_visit", "c_scale"}
         if mcts_config_override:
-            mcts_kwargs.update({k: v for k, v in mcts_config_override.items() if v is not None})
+            for k, v in mcts_config_override.items():
+                if v is None:
+                    continue
+                # Skip keys that belong to a different MCTS variant
+                if mcts_type in gumbel_variants and k in civ6_only_keys:
+                    continue
+                if mcts_type in puct_variants and k in gumbel_only_keys:
+                    continue
+                mcts_kwargs[k] = v
 
         mcts = create_mcts(
             variant=mcts_type,
@@ -307,7 +408,15 @@ def run_selfplay(
             try:
                 # Pass env directly since MicroCivEnv implements MCTSEnvironment protocol
                 policy, _ = mcts.search(env)  # type: ignore[arg-type]
-                action = mcts.select_action(policy)
+                turn = len(trajectory["spatial"])
+                temp = compute_temperature(
+                    turn=turn,
+                    max_turns=max_turns,
+                    temperature=sel_temperature,
+                    temperature_threshold=sel_threshold,
+                    schedule=temperature_schedule,
+                )
+                action = mcts.select_action(policy, temperature=temp)
             except Exception as e:
                 logger.error(
                     "MCTS search failed at step %d: %s",
@@ -356,7 +465,7 @@ def run_selfplay(
 
         # Log progress and memory usage periodically
         if (game_idx + 1) % 10 == 0:
-            mem_mb = psutil.Process().memory_info().rss / 1024 / 1024
+            mem_mb = psutil.Process().memory_info().rss / 1024 / 1024 if _PSUTIL_AVAILABLE else 0.0
             logger.info(
                 "Progress: %d/%d games, Memory: %.0f MB",
                 game_idx + 1,
@@ -364,7 +473,7 @@ def run_selfplay(
                 mem_mb,
             )
             # Force garbage collection if memory is getting high
-            if mem_mb > 6000:  # 6GB threshold for 8GB container
+            if mem_mb > MEMORY_THRESHOLD_MB:
                 logger.warning("High memory usage (%.0f MB), forcing GC", mem_mb)
                 gc.collect()
                 if device != "cpu":
@@ -491,6 +600,7 @@ def main() -> int:
             mcts_config_override=mcts_override,
             dry_run=args.dry_run,
             device=str(device),
+            temperature_schedule=args.temperature_schedule,
         )
         elapsed = time.time() - start_time
 

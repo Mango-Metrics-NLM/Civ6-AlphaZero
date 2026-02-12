@@ -12,10 +12,9 @@ from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.evaluation_worker import (
     load_model,
     parse_args,
-    run_arena,
     save_results,
 )
-from alpha_zero.core.civ6_network import MicroCivNetwork
+from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
 # =============================================================================
 # Fixtures
@@ -34,14 +33,17 @@ def gcp_config() -> GCPConfig:
 
 
 @pytest.fixture
-def small_model() -> MicroCivNetwork:
+def small_model() -> Civ6TransformerNetwork:
     """Create a small model for testing."""
-    return MicroCivNetwork(
-        board_size=8,
+    config = TransformerConfig(
+        spatial_size=8,
+        spatial_channels=13,
+        vector_dim=64,
         action_space_size=376,
-        num_res_blocks=2,
-        num_filters=16,
+        num_layers=2,
+        embed_dim=64,
     )
+    return Civ6TransformerNetwork(config=config)
 
 
 # =============================================================================
@@ -85,6 +87,7 @@ class TestParseArgs:
             assert args.mcts_type == "civ6"
             assert args.board_size == 8
             assert args.max_turns == 30
+            assert args.action_space_size == 376
             assert args.dry_run is False
 
     def test_custom_values(self) -> None:
@@ -117,128 +120,174 @@ class TestParseArgs:
 class TestLoadModel:
     """Tests for model loading."""
 
-    def test_dry_run_returns_fresh_model(self, gcp_config: GCPConfig) -> None:
-        """Dry run creates a fresh model without GCS access."""
+    def test_dry_run_returns_transformer_model(self, gcp_config: GCPConfig) -> None:
+        """Dry run creates a fresh transformer model without GCS access."""
         model = load_model(
             gcp_config,
             version=1,
-            board_size=8,
-            action_space_size=376,
-            num_res_blocks=2,
-            num_filters=16,
             dry_run=True,
         )
 
-        assert isinstance(model, MicroCivNetwork)
+        assert isinstance(model, Civ6TransformerNetwork)
 
-    def test_dry_run_model_is_functional(self, gcp_config: GCPConfig) -> None:
-        """Dry-run model can run forward pass."""
+    def test_dry_run_model_forward_pass(self, gcp_config: GCPConfig) -> None:
+        """Dry-run model can run forward pass with correct shapes."""
         model = load_model(
             gcp_config,
             version=1,
-            board_size=8,
-            action_space_size=376,
-            num_res_blocks=2,
-            num_filters=16,
             dry_run=True,
         )
 
-        spatial = torch.randn(1, 13, 8, 8)
-        vector = torch.randn(1, 64)
-        action_mask = torch.ones(1, 376)
+        # Use TransformerConfig defaults: spatial_size=16, action_space_size=381
+        default_cfg = TransformerConfig()
+        spatial = torch.randn(1, default_cfg.spatial_channels, default_cfg.spatial_size, default_cfg.spatial_size)
+        vector = torch.randn(1, default_cfg.vector_dim)
+        action_mask = torch.ones(1, default_cfg.action_space_size)
 
         policy, value = model(spatial, vector, action_mask)
-        assert policy.shape == (1, 376)
+        assert policy.shape == (1, default_cfg.action_space_size)
         assert value.shape == (1,)
 
+    def test_load_model_with_config(self, gcp_config: GCPConfig) -> None:
+        """Load model with model_config dict from GCS."""
+        mock_storage = MagicMock()
 
-# =============================================================================
-# run_arena Tests
-# =============================================================================
+        # Create state dict with explicit config
+        config = TransformerConfig(embed_dim=64, num_layers=2, spatial_size=8, action_space_size=376)
+        model = Civ6TransformerNetwork(config=config)
+        state_dict = model.state_dict()
 
+        # Model config dict matching the saved model
+        model_config_dict = {
+            "spatial_size": 8,
+            "spatial_channels": 13,
+            "vector_dim": 64,
+            "action_space_size": 376,
+            "embed_dim": 64,
+            "num_layers": 2,
+        }
 
-class TestRunArena:
-    """Tests for the arena evaluation logic."""
+        mock_storage.load_model.return_value = (state_dict, {"iteration": 5}, model_config_dict)
 
-    @pytest.mark.slow
-    def test_returns_valid_results(self, small_model: MicroCivNetwork) -> None:
-        """Arena returns results with correct structure."""
-        results = run_arena(
-            model_new=small_model,
-            model_old=small_model,
-            num_games=2,
-            mcts_type="gumbel",
-            mcts_sims=4,
-            gumbel_num_actions=8,
-            board_size=8,
-            max_turns=5,
-            device=torch.device("cpu"),
+        with patch("alpha_zero.cloud.gcp.evaluation_worker.GCSModelStorage", return_value=mock_storage):
+            loaded_model = load_model(gcp_config, version=5, dry_run=False)
+
+        assert isinstance(loaded_model, Civ6TransformerNetwork)
+        assert loaded_model.config.embed_dim == 64
+        assert loaded_model.config.action_space_size == 376
+        mock_storage.load_model.assert_called_once_with(5)
+
+    def test_load_model_legacy_no_config(self, gcp_config: GCPConfig) -> None:
+        """Load legacy model without model_config (falls back to pipeline defaults)."""
+        mock_storage = MagicMock()
+
+        # Create state dict matching pipeline architecture (NetworkArchitectureConfig defaults)
+        pipeline_config = TransformerConfig(
+            spatial_channels=13, spatial_size=8, vector_dim=64,
+            action_space_size=376, num_layers=6, embed_dim=64,
         )
+        model = Civ6TransformerNetwork(config=pipeline_config)
+        state_dict = model.state_dict()
 
-        assert "win_rate" in results
-        assert "draw_rate" in results
-        assert "loss_rate" in results
-        assert "wins" in results
-        assert "draws" in results
-        assert "losses" in results
-        assert "total_games" in results
+        # Legacy models return None for model_config
+        mock_storage.load_model.return_value = (state_dict, {"iteration": 1}, None)
 
-    @pytest.mark.slow
-    def test_rates_sum_to_one(self, small_model: MicroCivNetwork) -> None:
-        """Win, draw, and loss rates sum to 1.0."""
-        results = run_arena(
-            model_new=small_model,
-            model_old=small_model,
-            num_games=2,
-            mcts_type="gumbel",
-            mcts_sims=4,
-            gumbel_num_actions=8,
-            board_size=8,
-            max_turns=5,
-            device=torch.device("cpu"),
+        with patch("alpha_zero.cloud.gcp.evaluation_worker.GCSModelStorage", return_value=mock_storage):
+            loaded_model = load_model(gcp_config, version=1, dry_run=False)
+
+        assert isinstance(loaded_model, Civ6TransformerNetwork)
+        # Should use pipeline architecture defaults (from NetworkArchitectureConfig)
+        assert loaded_model.config.embed_dim == 64
+        assert loaded_model.config.action_space_size == 376
+
+    def test_load_model_handles_enum_strings(self, gcp_config: GCPConfig) -> None:
+        """Load model with enum values as strings (converts correctly)."""
+        from alpha_zero.core.transformer_network import AttentionType, NormType
+
+        mock_storage = MagicMock()
+
+        config = TransformerConfig()
+        model = Civ6TransformerNetwork(config=config)
+        state_dict = model.state_dict()
+
+        # Model config with enum values as strings (matching default TransformerConfig)
+        model_config_dict = {
+            "spatial_channels": config.spatial_channels,
+            "spatial_size": config.spatial_size,
+            "vector_dim": config.vector_dim,
+            "action_space_size": config.action_space_size,
+            "embed_dim": config.embed_dim,
+            "num_layers": config.num_layers,
+            "norm_type": "layer_norm",  # String instead of NormType enum
+            "attention_type": "standard",  # String instead of AttentionType enum
+        }
+
+        mock_storage.load_model.return_value = (state_dict, {}, model_config_dict)
+
+        with patch("alpha_zero.cloud.gcp.evaluation_worker.GCSModelStorage", return_value=mock_storage):
+            loaded_model = load_model(gcp_config, version=1, dry_run=False)
+
+        assert isinstance(loaded_model, Civ6TransformerNetwork)
+        # Verify enums were converted
+        assert isinstance(loaded_model.config.norm_type, NormType)
+        assert isinstance(loaded_model.config.attention_type, AttentionType)
+
+    def test_load_model_removes_computed_fields(self, gcp_config: GCPConfig) -> None:
+        """Load model with computed fields in config (removes them)."""
+        mock_storage = MagicMock()
+
+        config = TransformerConfig()
+        model = Civ6TransformerNetwork(config=config)
+        state_dict = model.state_dict()
+
+        # Model config with computed fields that should be removed
+        model_config_dict = {
+            "spatial_channels": config.spatial_channels,
+            "spatial_size": config.spatial_size,
+            "vector_dim": config.vector_dim,
+            "action_space_size": config.action_space_size,
+            "embed_dim": config.embed_dim,
+            "num_layers": config.num_layers,
+            "_num_patches": 64,  # Computed field — should be removed
+            "_head_dim": 16,     # Computed field — should be removed
+        }
+
+        mock_storage.load_model.return_value = (state_dict, {}, model_config_dict)
+
+        with patch("alpha_zero.cloud.gcp.evaluation_worker.GCSModelStorage", return_value=mock_storage):
+            loaded_model = load_model(gcp_config, version=1, dry_run=False)
+
+        assert isinstance(loaded_model, Civ6TransformerNetwork)
+        # Should succeed despite computed fields being present
+
+    def test_load_model_bad_config_falls_back(self, gcp_config: GCPConfig) -> None:
+        """Load model with invalid config keys (falls back to pipeline defaults)."""
+        mock_storage = MagicMock()
+
+        # Create state dict matching pipeline architecture (what fallback will use)
+        pipeline_config = TransformerConfig(
+            spatial_channels=13, spatial_size=8, vector_dim=64,
+            action_space_size=376, num_layers=6, embed_dim=64,
         )
+        model = Civ6TransformerNetwork(config=pipeline_config)
+        state_dict = model.state_dict()
 
-        total_rate = results["win_rate"] + results["draw_rate"] + results["loss_rate"]
-        assert abs(total_rate - 1.0) < 1e-6
+        # Model config with invalid keys — will trigger TypeError fallback
+        model_config_dict = {
+            "board_size": 8,
+            "invalid_key": "invalid_value",
+            "another_bad_key": 42,
+        }
 
-    @pytest.mark.slow
-    def test_counts_match_total(self, small_model: MicroCivNetwork) -> None:
-        """Win + draw + loss counts match total_games."""
-        num_games = 4
-        results = run_arena(
-            model_new=small_model,
-            model_old=small_model,
-            num_games=num_games,
-            mcts_type="gumbel",
-            mcts_sims=4,
-            gumbel_num_actions=8,
-            board_size=8,
-            max_turns=5,
-            device=torch.device("cpu"),
-        )
+        mock_storage.load_model.return_value = (state_dict, {}, model_config_dict)
 
-        assert results["wins"] + results["draws"] + results["losses"] == num_games
-        assert results["total_games"] == num_games
+        with patch("alpha_zero.cloud.gcp.evaluation_worker.GCSModelStorage", return_value=mock_storage):
+            loaded_model = load_model(gcp_config, version=1, dry_run=False)
 
-    @pytest.mark.slow
-    def test_same_model_gets_reasonable_results(self, small_model: MicroCivNetwork) -> None:
-        """Same model vs itself should give roughly balanced results."""
-        results = run_arena(
-            model_new=small_model,
-            model_old=small_model,
-            num_games=4,
-            mcts_type="gumbel",
-            mcts_sims=4,
-            gumbel_num_actions=8,
-            board_size=8,
-            max_turns=5,
-            device=torch.device("cpu"),
-        )
-
-        # Not strictly deterministic, but rates should be valid numbers
-        assert 0.0 <= results["win_rate"] <= 1.0
-        assert 0.0 <= results["draw_rate"] <= 1.0
-        assert 0.0 <= results["loss_rate"] <= 1.0
+        assert isinstance(loaded_model, Civ6TransformerNetwork)
+        # Should fall back to pipeline defaults due to TypeError
+        assert loaded_model.config.embed_dim == 64
+        assert loaded_model.config.action_space_size == 376
 
 
 # =============================================================================

@@ -7,6 +7,7 @@ as part of the CI/CD pipeline to ensure the auth setup process works correctly.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -16,6 +17,10 @@ import pytest
 # Get the scripts directory
 SCRIPTS_DIR = Path(__file__).parent.parent.parent.parent / "scripts"
 SETUP_SCRIPT = SCRIPTS_DIR / "setup_gcp_auth.ps1"
+
+# Check if PowerShell is available
+POWERSHELL_AVAILABLE = shutil.which("powershell") is not None or shutil.which("pwsh") is not None
+POWERSHELL_CMD = "pwsh" if shutil.which("pwsh") else "powershell"
 
 
 class TestGCPAuthScript:
@@ -83,15 +88,15 @@ class TestGCPAuthScript:
             "Script should handle ADC configuration"
 
     @pytest.mark.skipif(
-        sys.platform != "win32",
-        reason="PowerShell script tests only run on Windows"
+        sys.platform != "win32" or not POWERSHELL_AVAILABLE,
+        reason="PowerShell script tests require PowerShell on Windows"
     )
     def test_script_syntax_validation(self) -> None:
         """Verify script has valid PowerShell syntax."""
         # Use PowerShell to parse the script without executing
         result = subprocess.run(
             [
-                "powershell", "-NoProfile", "-Command",
+                POWERSHELL_CMD, "-NoProfile", "-Command",
                 f"$null = [System.Management.Automation.Language.Parser]::ParseFile('{SETUP_SCRIPT}', [ref]$null, [ref]$errors); $errors.Count"
             ],
             capture_output=True,
@@ -103,15 +108,15 @@ class TestGCPAuthScript:
         assert error_count == "0", f"Script has syntax errors: {result.stderr}"
 
     @pytest.mark.skipif(
-        sys.platform != "win32",
-        reason="PowerShell script tests only run on Windows"
+        sys.platform != "win32" or not POWERSHELL_AVAILABLE,
+        reason="PowerShell script tests require PowerShell on Windows"
     )
     def test_script_validate_only_mode(self) -> None:
         """Test that -ValidateOnly flag works without making changes."""
         # Run script with -ValidateOnly
         result = subprocess.run(
             [
-                "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                POWERSHELL_CMD, "-NoProfile", "-ExecutionPolicy", "Bypass",
                 "-File", str(SETUP_SCRIPT), "-ValidateOnly"
             ],
             capture_output=True,

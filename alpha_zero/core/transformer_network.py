@@ -84,16 +84,16 @@ class TransformerConfig:
         pool_type: Pooling type for features ('cls', 'mean', 'max').
     """
 
-    # Input dimensions
+    # Input dimensions (match NetworkArchitectureConfig defaults)
     spatial_channels: int = 13
-    spatial_size: int = 16
+    spatial_size: int = 8
     vector_dim: int = 64
-    action_space_size: int = 381
+    action_space_size: int = 376
 
-    # Architecture
+    # Architecture (match NetworkArchitectureConfig defaults)
     patch_size: int = 4
-    embed_dim: int = 256
-    num_layers: int = 8
+    embed_dim: int = 64
+    num_layers: int = 6
     num_heads: int = 8
     mlp_ratio: float = 4.0
 
@@ -109,9 +109,9 @@ class TransformerConfig:
     use_rope: bool = True
     use_qkv_bias: bool = False
 
-    # Head configuration
-    value_head_dim: int = 128
-    policy_hidden_dim: int = 256
+    # Head configuration (independent configurable dimensions)
+    value_head_dim: int = 64
+    policy_hidden_dim: int = 128
     num_policy_heads: int = 1
 
     # MoE configuration
@@ -128,13 +128,24 @@ class TransformerConfig:
     _head_dim: int = field(init=False, default=0)
 
     def __post_init__(self) -> None:
-        """Compute derived properties."""
+        """Compute derived properties and validate configuration."""
         self._num_patches = (self.spatial_size // self.patch_size) ** 2
         self._head_dim = self.embed_dim // self.num_heads
 
-        assert self.embed_dim % self.num_heads == 0, (
-            f"embed_dim ({self.embed_dim}) must be divisible by num_heads ({self.num_heads})"
-        )
+        assert (
+            self.embed_dim % self.num_heads == 0
+        ), f"embed_dim ({self.embed_dim}) must be divisible by num_heads ({self.num_heads})"
+
+        # Warn about known incorrect defaults that may indicate stale config
+        if self.action_space_size == 381:
+            import warnings
+
+            warnings.warn(
+                "TransformerConfig.action_space_size=381 is a known incorrect "
+                "value. MicroCivEnv uses 376. Update your config or pass "
+                "action_space_size=376 explicitly.",
+                stacklevel=2,
+            )
 
     @property
     def num_patches(self) -> int:

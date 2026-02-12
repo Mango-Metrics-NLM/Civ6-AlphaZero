@@ -5,6 +5,201 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] — 2026-02-12
+
+### Added — Phase 15: Scaled Training & Value Head Stabilization
+
+#### Separate Policy/Value Head Learning Rates (`training_worker.py`)
+
+- **Per-head LR multipliers**: `--value_lr_multiplier` and `--policy_lr_multiplier` CLI args (default 1.0)
+  - Optimizer split into 3 parameter groups: encoder, policy_head, value_head
+  - Each group has independent learning rate scaled by its multiplier
+  - `base_lr_ratio` stored per group so LR scheduler preserves ratios during warmup/cosine decay
+- **Per-head W&B logging**: `train/learning_rate_encoder`, `train/learning_rate_policy_head`, `train/learning_rate_value_head`
+- **Orchestrator pass-through**: `vertex_orchestrator.py` accepts and forwards multiplier args to training worker (only when non-default, backwards-compatible via `getattr`)
+
+#### Test Suite (8 new tests)
+
+- `tests/unit/test_phase15_value_head_lr.py` — 8 tests:
+  - `test_param_groups_created` — 3 param groups with correct names, LRs, and full param coverage
+  - `test_default_multipliers_equivalent` — Both=1.0 produces uniform LRs
+  - `test_scheduler_preserves_ratios` — After scheduler step, value head LR stays 0.1x encoder LR
+  - `test_train_epoch_separate_lrs` — Mini training loop completes with separate per-head LRs
+  - `test_parse_args_multiplier_flags` — CLI args parse correctly with explicit values
+  - `test_parse_args_multiplier_defaults` — Multiplier defaults are 1.0
+  - `test_orchestrator_passes_multiplier_args` — `build_training_extra_args` includes multipliers only when non-default
+  - `test_orchestrator_skips_default_multipliers` — Omits multipliers when both are 1.0
+
+### Changed
+
+- Version: `0.11.0` → `0.12.0`
+- Docker image: v0.11.0 → v0.12.0 (`gcr.io/hrmtrain/civ6az-training:v0.12.0`)
+- Smoke test: soft-music-538 (1-iter, $0.12, passed)
+- Live run: golden-dream-542 (50-iter, value_lr=0.1x, eval=25 games, trajectory_window=5, warmup_cosine)
+
+---
+
+## [0.11.0] — 2026-02-11
+
+### Added — Phase 14: Learning Signal Validation & Training Diagnostics
+
+#### Training Diagnostics (`alpha_zero/training/diagnostics.py`) — NEW
+
+- **TrainingDiagnostics**: Real-time training health monitoring
+  - `compute_policy_entropy(logits)` — Policy entropy for exploration quality tracking
+  - `compute_value_accuracy(predicted, target)` — Value head accuracy (sign accuracy, correlation, MAE)
+  - `compute_gradient_stats(model)` — Per-layer gradient norms and overall statistics
+  - `detect_training_stall(losses, window)` — Loss plateau detection via coefficient of variation
+  - Configurable `window_size` for rolling statistics
+
+#### LR Scheduling in Training Worker (`training_worker.py`)
+
+- 6 LR schedule types: constant, linear, cosine, warmup_cosine, exponential, step
+- CLI args: `--lr_schedule_type`, `--lr_initial`, `--lr_final`, `--lr_warmup_steps`, `--lr_decay_steps`
+- Integrates with `HyperparameterScheduler` from `alpha_zero.orchestrator.scheduler`
+- `--weight_decay` and `--diagnostic_window` CLI args
+
+#### Training Worker Enhancements (`training_worker.py`)
+
+- **TrainingDiagnostics integration**: Per-step policy entropy, value accuracy, gradient stats
+- **TrainingReport integration**: Periodic training reports with loss/grad/throughput summaries
+- **PerformanceProfiler integration**: Timing sections for forward_pass and backward_pass
+- **Spatial dimension validation**: Raises `ValueError` on spatial tensor shape mismatch
+- **W&B per-step metrics**: diagnostics logged via `wandb_logger.log_training_step(**diagnostic_kwargs)`
+
+#### Self-Play Temperature (`selfplay_worker.py`)
+
+- Wired temperature to `select_action()` call (was hardcoded to 1.0)
+- MCTS config override filtering by variant — prevents passing c_puct/dirichlet_* to GumbelMCTS
+
+#### Orchestrator Stall Detection (`vertex_orchestrator.py`)
+
+- **`detect_stall()`**: Checks if recent eval win rates show improvement
+- **`compute_win_rate_trend()`**: Linear regression on win rate history
+- CLI args: `--stall_lookback`, `--stall_threshold`
+- W&B alerts on stall detection
+
+#### TransformerConfig Defaults Aligned
+
+- `TransformerConfig` defaults now match `NetworkArchitectureConfig`: spatial_size=8, action_space_size=376, embed_dim=64, num_layers=6
+- Prevents silent architecture mismatch when creating models without explicit config
+
+#### Test Suite (83 new tests)
+
+- `tests/unit/test_phase14_diagnostics.py` — 35 tests (entropy, value accuracy, gradient stats, stall detection)
+- `tests/unit/test_phase14_selfplay.py` — 20 tests (temperature wiring, MCTS config filtering)
+- `tests/unit/test_phase14_training_worker.py` — 13 tests (train_epoch, parse_args, prepare_dataset, edge cases)
+- `tests/unit/test_phase14_orchestrator.py` — 14 tests (stall detection, win rate trend, build_training_extra_args)
+- `tests/unit/test_phase14_config_defaults.py` — 1 test (TransformerConfig matches NetworkArchitectureConfig)
+
+### Changed
+
+- Version: `0.10.2` → `0.11.0`
+- Docker image: v0.10.2 → v0.11.0
+
+#### Live Training Validation (sunny-fog-469)
+
+- **20/20 iterations**, 377.5 min, **$2.44 total cost**
+- **Promotions**: v6→v19 (iter 10, 70% WR), v19→v26 (iter 17, 60% WR)
+- **Tournament**: 23 models, 253 matchups, 1518 games — v28 #1 (1529.7 ELO)
+- **Policy loss**: steadily decreasing (1.21→0.63) — strongest learning signal
+- **Value head**: unstable (correlation 0.07-0.91) — addressed in Phase 15 via separate LR
+
+---
+
+## [0.10.2] — 2026-02-10
+
+### Fixed — Live Training Bug Fixes
+
+- **Legacy model config fallback**: Models v0-v2 (saved before Phase 13) had no `model_config`. The fallback was using `TransformerConfig()` defaults (embed_dim=256, spatial_size=16) causing size mismatch errors. Fixed to use `NetworkArchitectureConfig` pipeline defaults (embed_dim=64, board_size=8) in both `selfplay_worker.py` and `evaluation_worker.py`
+- **Training worker model_config persistence**: Training worker now saves `model_config` dict (via `dataclasses.asdict()` + Enum→value conversion) alongside model weights to GCS, enabling future models to load with correct architecture
+- **Post-run tournament version range**: Fixed bug where `get_initial_model_version()` was called after the training loop (returning latest=5) instead of saving initial version before the loop. Tournament `range(5, 3)` was empty. Fixed to use `range(initial_model_version, latest_version + 1)`
+- **Test fixes**: Updated `test_load_model_legacy_no_config`, `test_load_model_bad_config_falls_back`, and `test_load_model_legacy_format` to create state dicts matching pipeline architecture (embed_dim=64) instead of TransformerConfig defaults (embed_dim=256)
+
+### Changed
+
+- Docker image: v0.10.1 → v0.10.2 (`gcr.io/hrmtrain/civ6az-training:v0.10.2`)
+- Validated with live Vertex AI run: trim-night-121 (1-iter + tournament, $0.06)
+
+---
+
+## [0.10.0] — 2026-02-09
+
+### Added — Phase 13: Multi-Iteration Training & Post-Run Evaluation
+
+#### NetworkArchitectureConfig (`alpha_zero/cloud/gcp/config.py`)
+
+- **NetworkArchitectureConfig** dataclass: Single source of truth for architecture defaults
+  - `board_size=8`, `action_space_size=376`, `spatial_channels=13`, `vector_dim=64`, `num_layers=6`, `embed_dim=64`
+  - `from_env()` class method for environment variable overrides (`CIV6AZ_BOARD_SIZE`, etc.)
+- Added `network: NetworkArchitectureConfig` field to `GCPConfig`
+
+#### Shared Arena Module (`alpha_zero/cloud/gcp/arena.py`) — NEW
+
+- **`run_arena()`**: Extracted from `evaluation_worker.py` into reusable module
+  - Plays N games between two models with alternating sides
+  - Returns `ArenaResult` dataclass (wins, losses, draws, win_rate)
+  - Used by both evaluation_worker and post-run tournament
+- **`ArenaResult`**: Dataclass with `to_dict()` serialization
+
+#### Orchestrator W&B Logging (`vertex_orchestrator.py`)
+
+- Orchestrator-level W&B initialization (opt-in via `WANDB_ENABLED` env var)
+- Per-iteration metrics: `orchestrator/iteration`, `orchestrator/model_version`, `orchestrator/phase_*_duration`
+- Cost tracking: `orchestrator/iteration_cost`, `orchestrator/cumulative_cost`
+- Evaluation metrics: `orchestrator/eval_win_rate`, `orchestrator/eval_accepted`
+- Final summary: total iterations, success/fail counts, total cost, total duration
+
+#### Post-Run Tournament (`vertex_orchestrator.py`)
+
+- **`run_post_run_evaluation()`**: Round-robin tournament across all model versions
+  - Loads models from GCS, runs arena games locally on orchestrator machine
+  - Computes ELO ratings (K=32, starting 1500.0)
+  - Logs to W&B (`tournament/elo_*`, `tournament/best_model`, `tournament/best_elo`)
+  - Saves results JSON to GCS (`tournament/post_run_results.json`)
+- CLI flags: `--post_run_tournament`, `--tournament_games`, `--tournament_mcts_sims`
+
+#### Evaluation Worker Migration
+
+- Migrated from `MicroCivNetwork` (legacy, 381 actions) to `Civ6TransformerNetwork`
+- Loads `model_config` from GCS for correct architecture reconstruction
+- Handles enum string conversion (`norm_type`, `attention_type`)
+- Handles legacy models without config (falls back to `NetworkArchitectureConfig` defaults)
+
+### Fixed — 6 Critical Bugs
+
+| # | File | Bug | Fix |
+|---|------|-----|-----|
+| 1 | `selfplay_worker.py` | `action_space_size` default `381` | Changed to `376` |
+| 2 | `selfplay_worker.py` | `num_res_blocks=8`, `num_filters=256` | Changed to `6`, `64` |
+| 3 | `training_worker.py` | `board_size=16`, `action_space_size=381`, etc. | Changed to `8`, `376`, `6`, `64` |
+| 4 | `training_worker.py` | `prepare_dataset(trajectories, args.action_space_size)` | Pass `None` (uses TransformerConfig default) |
+| 5 | `evaluation_worker.py` | Uses `MicroCivNetwork` (legacy) | Migrated to `Civ6TransformerNetwork` |
+| 6 | `vertex_orchestrator.py` | `if new_version is not None` always True | Removed dead branch |
+
+### Changed
+
+- Docker image: v0.9.0 → v0.10.0 (`gcr.io/hrmtrain/civ6az-training:v0.10.0`)
+- Version: `0.9.0` → `0.10.0`
+- `container_healthcheck.py`: Added `arena` module to import check
+
+#### Test Suite (Phase 13)
+
+- `tests/cloud/unit/test_arena.py` — Arena module unit tests
+- `tests/cloud/unit/test_config_network.py` — NetworkArchitectureConfig tests
+- `tests/cloud/unit/test_orchestrator_wandb.py` — Orchestrator W&B logging tests
+- `tests/cloud/unit/test_post_run_evaluation.py` — Post-run tournament tests
+- Updated `test_evaluation_worker.py` — Migrated to Civ6TransformerNetwork
+- Updated `test_selfplay_worker.py` — Updated legacy format test
+
+#### Live Validation
+
+- **wandering-yogurt-88**: 3-iteration run, 54.5 min, $0.32 — all phases succeeded
+- **trim-night-121**: 1-iteration + post-run tournament, $0.06 — tournament produced ELO rankings, saved to GCS
+- GCS models: v0 through v6
+
+---
+
 ## [0.9.0] — 2026-02-10
 
 ### Changed — Phase 11: Code Quality, Tech Debt Reduction & Production Hardening

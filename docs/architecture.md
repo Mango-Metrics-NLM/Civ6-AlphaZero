@@ -14,9 +14,18 @@
 | Phase 5a | RAG-LLM Integration | ✅ Complete |
 | Phase 5b | GCP/Vertex AI Cloud Infrastructure | ✅ Complete |
 | Phase 5c | Cost Optimization & Resource Management | ✅ Complete |
-| Phase 6 | Agentic Framework & Search Optimizations | ✅ Complete |
+| Phase 6 | ~~Agentic Framework~~ (removed in Phase 11) | ❌ Removed |
+| Phase 7 | Production PBT Scaling & Validation | ✅ Complete |
+| Phase 8 | Training Safeguards & Automated Intervention | ✅ Complete |
+| Phase 9 | MuZero Integration Bridge | ✅ Complete |
+| Phase 10 | Tournament & Matchmaking System | ✅ Complete |
+| Phase 11 | Code Quality & Tech Debt Reduction | ✅ Complete |
+| Phase 12-Prep | Docker & Vertex AI Smoke Test | ✅ Complete |
+| Phase 13 | Multi-Iteration Training & Post-Run Evaluation | ✅ Complete |
+| Phase 14 | Learning Signal Validation (20-iteration run) | ✅ Complete |
+| Phase 15 | Scaled Training & Value Head Stabilization | ✅ Complete |
 
-**Codebase Statistics:** ~66,400 LOC total (51,800 core + 14,600 agentic), 350+ tests
+**Codebase Statistics:** ~55,000 LOC core, 3,678+ tests, Docker v0.12.0
 
 ---
 
@@ -125,8 +134,10 @@ sequenceDiagram
     participant GCS as Google Cloud Storage
     participant TR as Training Worker
     participant EV as Evaluation Worker
+    participant WB as Weights & Biases
 
     U->>O: python -m vertex_orchestrator --iterations=K
+    O->>WB: Init orchestrator W&B run
     loop For each iteration
         O->>SP: Launch N self-play jobs (Vertex AI)
         SP->>SP: MCTS self-play games
@@ -136,7 +147,7 @@ sequenceDiagram
         O->>TR: Launch training job (Vertex AI)
         TR->>GCS: Load trajectories
         TR->>TR: Train neural network
-        TR->>GCS: Save new model (v_new)
+        TR->>GCS: Save new model (v_new) + model_config
         TR-->>O: Job complete
 
         O->>EV: Launch evaluation job (Vertex AI)
@@ -146,7 +157,18 @@ sequenceDiagram
         EV-->>O: Job complete
 
         O->>O: Accept/reject model (win_rate > threshold?)
+        O->>WB: Log iteration metrics + cost
     end
+
+    opt Post-Run Tournament (--post_run_tournament)
+        O->>GCS: Load all model versions
+        O->>O: Round-robin arena (local CPU)
+        O->>O: Compute ELO ratings
+        O->>GCS: Save tournament results JSON
+        O->>WB: Log ELO rankings + match results
+    end
+
+    O->>WB: Log final summary
     O-->>U: Pipeline complete
 ```
 
@@ -229,14 +251,19 @@ C4Component
         Component(gcpconfig, "GCPConfig", "Python dataclass", "Environment-based configuration")
         Component(vertexclient, "VertexAIClient", "Python/aiplatform", "Job submission abstraction")
         Component(vertexjobs, "VertexJobs", "Python", "SelfPlay and Training job wrappers")
-        
+
         Component(gcsstorage, "GCSStorage", "Python/GCS", "Model, trajectory, checkpoint backends")
         Component(modelstorage, "GCSModelStorage", "Python", "Versioned model weights with latest.json")
         Component(trajstorage, "GCSTrajectoryStorage", "Python", "Sharded, LZMA-compressed trajectories")
-        
+
         Component(selfplayworker, "SelfPlayWorker", "Python", "Stateless parallel game generation")
         Component(trainingworker, "TrainingWorker", "Python", "Centralized learner with checkpointing")
-        
+        Component(evalworker, "EvaluationWorker", "Python", "Model arena with Civ6TransformerNetwork")
+
+        Component(arena, "Arena", "Python", "Shared arena logic for eval + tournament")
+        Component(netconfig, "NetworkArchitectureConfig", "Python dataclass", "Single source of truth for architecture")
+        Component(orchestrator, "VertexOrchestrator", "Python", "Multi-iteration pipeline + W&B + post-run tournament")
+
         Component(costmonitor, "CostMonitor", "Python", "Budget tracking via Billing API")
         Component(gpuscheduler, "GPUScheduler", "Python", "Dynamic T4/L4/A100 selection")
         Component(idlemanager, "IdleManager", "Python", "Inactive worker termination")
@@ -251,12 +278,18 @@ C4Component
     Rel(vertexclient, vertexai, "CustomJob submission")
     Rel(gcsstorage, gcs, "Blob operations")
     Rel(costmonitor, billing, "Budget queries")
-    
+
+    Rel(orchestrator, vertexjobs, "Launches worker jobs")
+    Rel(orchestrator, arena, "Post-run tournament")
     Rel(vertexjobs, selfplayworker, "Launches")
     Rel(vertexjobs, trainingworker, "Launches")
+    Rel(evalworker, arena, "Arena games")
     Rel(selfplayworker, trajstorage, "Pushes shards")
     Rel(trainingworker, modelstorage, "Promotes versions")
-    
+    Rel(netconfig, selfplayworker, "Architecture defaults")
+    Rel(netconfig, trainingworker, "Architecture defaults")
+    Rel(netconfig, evalworker, "Architecture defaults")
+
     Rel(gpuscheduler, vertexjobs, "GPU tier selection")
     Rel(idlemanager, vertexjobs, "Terminates idle")
     Rel(preemption, gcsstorage, "Recovery from manifests")
@@ -375,34 +408,51 @@ C4Component
 
 ---
 
-## Level 3: Component Diagram - Agentic Framework
+## Level 3: Component Diagram - Agentic Framework (Removed)
+
+> The agentic framework (~14,600 LOC) was removed in Phase 11 as dead code. See CHANGELOG.md for details.
+
+---
+
+## Level 3: Component Diagram - Training Diagnostics & Value Head Stabilization (Phases 14-15)
 
 ```mermaid
 C4Component
-    title Component Diagram - Agentic Framework (Phase 6)
+    title Component Diagram - Training Diagnostics & Value Head LR (Phases 14-15)
 
-    Container_Boundary(agent, "Agentic Framework (~14,600 LOC)") {
-        Component(agentorch, "AgenticOrchestrator", "Python", "Multi-agent workflow coordination")
-        Component(constraints, "ConstraintManager", "Python", "Hard/soft constraint validation")
-        Component(permissions, "PermissionManager", "Python", "Scope and autonomy control")
-        Component(memory, "SessionMemory", "Python", "CLAUDE.md persistence")
-        
-        Component(planning, "PlanningAgent", "Python", "Analysis and planning workflows")
-        Component(implementation, "ImplementationAgent", "Python", "Code writing with rollback")
-        Component(testing, "TestingAgent", "Python", "Pytest execution, coverage")
-        Component(verification, "VerificationAgent", "Python", "Lint, type check, verify")
-        Component(documentation, "DocumentationAgent", "Python", "Docstrings, README updates")
+    Container_Boundary(diag, "Training Diagnostics (Phase 14)") {
+        Component(diagnostics, "TrainingDiagnostics", "Python", "Real-time training health monitoring")
+        Component(gradnorms, "Gradient Norms", "Python", "Per-layer gradient magnitude tracking")
+        Component(lossdecomp, "Loss Decomposition", "Python", "Policy/value loss trends and ratios")
+        Component(valuecorr, "Value Correlation", "Python", "Predicted vs actual value correlation")
+        Component(policystats, "Policy Statistics", "Python", "Entropy, top-k confidence, diversity")
+        Component(stalldtect, "Stall Detection", "Python", "Loss plateau and learning stall alerts")
     }
 
-    Rel(agentorch, constraints, "Validates actions")
-    Rel(agentorch, permissions, "Checks scope")
-    Rel(agentorch, memory, "Persists context")
-    
-    Rel(agentorch, planning, "Phase 1")
-    Rel(agentorch, implementation, "Phase 2")
-    Rel(agentorch, testing, "Phase 3")
-    Rel(agentorch, verification, "Phase 4")
-    Rel(verification, implementation, "Auto-fix on failure")
+    Container_Boundary(vlr, "Value Head LR Stabilization (Phase 15)") {
+        Component(paramgroups, "Optimizer Param Groups", "PyTorch", "3 groups: encoder, policy_head, value_head")
+        Component(lrmult, "LR Multipliers", "Python", "Per-head LR scaling (value=0.1x, policy=1.0x)")
+        Component(baselrratio, "base_lr_ratio", "Python", "Ratio metadata preserved through scheduler")
+        Component(perheadlog, "Per-Head LR Logging", "W&B", "learning_rate_encoder, _policy_head, _value_head")
+    }
+
+    Component(scheduler, "LR Scheduler", "Python", "warmup_cosine / constant / step_decay")
+    Component(wandb, "W&B Logger", "Python", "train/* metrics namespace")
+    Component(trainworker, "Training Worker", "Python", "train_epoch() loop")
+
+    Rel(trainworker, diagnostics, "Computes per-batch diagnostics")
+    Rel(diagnostics, gradnorms, "Measures")
+    Rel(diagnostics, lossdecomp, "Decomposes")
+    Rel(diagnostics, valuecorr, "Correlates")
+    Rel(diagnostics, policystats, "Analyzes")
+    Rel(diagnostics, stalldtect, "Monitors")
+    Rel(diagnostics, wandb, "Logs diagnostic metrics")
+
+    Rel(trainworker, paramgroups, "Creates optimizer with 3 groups")
+    Rel(paramgroups, lrmult, "Applies multipliers")
+    Rel(lrmult, baselrratio, "Stores ratio")
+    Rel(scheduler, baselrratio, "Reads ratio to scale LR")
+    Rel(perheadlog, wandb, "Logs per-head LRs")
 ```
 
 ---
@@ -519,13 +569,13 @@ sequenceDiagram
 | **Training** | PBT | Python | Hyperparameter evolution |
 | **Cloud** | Compute | Vertex AI | Distributed training |
 | **Cloud** | Storage | GCS | Artifacts, checkpoints |
+| **Cloud** | Container | Docker + GCR | Containerized workers (v0.12.0) |
 | **Cloud** | Optimization | Python | Cost/quota management |
 | **Knowledge** | RAG | ChromaDB/FAISS | Vector search |
 | **Knowledge** | LLM | OpenAI/Anthropic | Strategy advisor |
 | **Logging** | Metrics | W&B, TensorBoard | Experiment tracking |
-| **Testing** | Framework | pytest | 350+ tests, >80% coverage |
+| **Testing** | Framework | pytest | 3,678+ tests, >80% coverage |
 | **Linting** | Quality | ruff, mypy | Static analysis |
-| **Agentic** | Framework | Python | Claude Code workflows |
 
 ---
 
@@ -540,4 +590,9 @@ sequenceDiagram
 | **Protocol-driven cloud** | Backend-agnostic design for testability | Abstraction layers |
 | **LZMA trajectory compression** | Minimizes GCS egress costs | CPU overhead |
 | **RAG integration** | Knowledge-enhanced decisions | Query latency |
-| **Agentic framework** | Reproducible development workflows | Framework maintenance |
+| **NetworkArchitectureConfig** | Single source of truth for model dimensions | Must stay in sync with TransformerConfig |
+| **Post-run tournament local** | Avoids extra Vertex AI job cost for evaluation | Limited by local CPU speed |
+| **model_config persistence** | Enables legacy model loading with correct architecture | Enum→string conversion needed |
+| **Per-head LR multipliers** | Value head trains at lower LR to reduce instability | Requires optimizer param groups |
+| **base_lr_ratio in param groups** | LR scheduler preserves per-head ratios automatically | Extra metadata in optimizer state |
+| **Training diagnostics** | Real-time gradient health, loss trends, value correlation | Minimal overhead per batch |

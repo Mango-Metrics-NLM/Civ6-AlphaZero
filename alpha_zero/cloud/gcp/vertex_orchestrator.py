@@ -127,6 +127,59 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward_shaping", action="store_true", help="Enable reward shaping")
     parser.add_argument("--reward_scale", type=float, default=1.0, help="Reward shaping scale")
 
+    # Post-run tournament (disabled by default)
+    parser.add_argument(
+        "--post_run_tournament",
+        action="store_true",
+        help="Run round-robin tournament of all model versions after training",
+    )
+    parser.add_argument(
+        "--tournament_games",
+        type=int,
+        default=10,
+        help="Games per matchup in post-run tournament",
+    )
+    parser.add_argument(
+        "--tournament_mcts_sims",
+        type=int,
+        default=25,
+        help="MCTS simulations per move in tournament games",
+    )
+
+    # Learning rate schedule (passed through to training worker)
+    parser.add_argument(
+        "--lr_schedule_type",
+        type=str,
+        default="constant",
+        choices=["constant", "linear", "cosine", "warmup_cosine", "exponential", "step"],
+        help="LR schedule type for training worker",
+    )
+    parser.add_argument("--lr_initial", type=float, default=0.001, help="Initial learning rate")
+    parser.add_argument("--lr_final", type=float, default=0.0001, help="Final learning rate")
+    parser.add_argument("--lr_warmup_steps", type=int, default=0, help="LR warmup steps")
+    parser.add_argument("--lr_decay_steps", type=int, default=0, help="LR decay steps (0=auto)")
+    parser.add_argument("--weight_decay", type=float, default=0.01, help="AdamW weight decay")
+    parser.add_argument(
+        "--value_lr_multiplier", type=float, default=1.0, help="LR multiplier for value head"
+    )
+    parser.add_argument(
+        "--policy_lr_multiplier", type=float, default=1.0, help="LR multiplier for policy head"
+    )
+
+    # Stall detection
+    parser.add_argument(
+        "--stall_lookback",
+        type=int,
+        default=5,
+        help="Iterations to check for improvement (stall detection)",
+    )
+    parser.add_argument(
+        "--stall_threshold",
+        type=float,
+        default=0.02,
+        help="Minimum win rate improvement to not be stalled",
+    )
+
     # Dry run
     parser.add_argument(
         "--dry_run", action="store_true", help="Validate without launching cloud jobs"
@@ -171,12 +224,30 @@ def build_selfplay_extra_args(args: argparse.Namespace) -> list[str]:
 
 def build_training_extra_args(args: argparse.Namespace) -> list[str]:
     """Build extra args list for training container."""
-    return [
+    extra = [
         f"--board_size={args.board_size}",
         f"--action_space_size={args.action_space_size}",
         f"--num_res_blocks={args.num_res_blocks}",
         f"--num_filters={args.num_filters}",
     ]
+    # Pass through LR schedule args (only if non-default to keep backwards compat)
+    if args.lr_schedule_type != "constant":
+        extra.extend(
+            [
+                f"--lr_schedule_type={args.lr_schedule_type}",
+                f"--lr_initial={args.lr_initial}",
+                f"--lr_final={args.lr_final}",
+                f"--lr_warmup_steps={args.lr_warmup_steps}",
+                f"--lr_decay_steps={args.lr_decay_steps}",
+            ]
+        )
+    if args.weight_decay != 0.01:
+        extra.append(f"--weight_decay={args.weight_decay}")
+    if getattr(args, "value_lr_multiplier", 1.0) != 1.0:
+        extra.append(f"--value_lr_multiplier={args.value_lr_multiplier}")
+    if getattr(args, "policy_lr_multiplier", 1.0) != 1.0:
+        extra.append(f"--policy_lr_multiplier={args.policy_lr_multiplier}")
+    return extra
 
 
 def build_evaluation_extra_args(args: argparse.Namespace) -> list[str]:
@@ -399,10 +470,200 @@ def run_evaluation_phase(
         return False, 0.0
 
 
+def run_post_run_evaluation(
+    config: GCPConfig,
+    model_versions: list[int],
+    args: argparse.Namespace,
+    wandb_logger: object | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Run post-run tournament across all model versions.
+
+    Plays a round-robin tournament between all model versions produced during
+    the training run, computing ELO ratings and head-to-head results.
+
+    Args:
+        config: GCP configuration.
+        model_versions: List of model versions to include in tournament.
+        args: Parsed CLI arguments (tournament_games, mcts_type, etc.).
+        wandb_logger: Optional WandbLogger for metrics logging.
+        dry_run: If True, simulate tournament without loading real models.
+
+    Returns:
+        Dict with tournament results including ELO ratings and match results.
+    """
+    import json
+    from typing import Any
+
+    import torch
+
+    from alpha_zero.cloud.gcp.arena import run_arena
+
+    if len(model_versions) < 2:
+        logger.info(
+            "Post-run tournament skipped: need >= 2 model versions (have %d)", len(model_versions)
+        )
+        return {}
+
+    logger.info("=" * 60)
+    logger.info("Post-Run Tournament: %d model versions", len(model_versions))
+    logger.info("=" * 60)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Load all models
+    models: dict[str, torch.nn.Module] = {}
+    for version in model_versions:
+        player_id = f"v{version:03d}"
+        if dry_run:
+            from alpha_zero.core.transformer_network import (
+                Civ6TransformerNetwork,
+                TransformerConfig,
+            )
+
+            models[player_id] = Civ6TransformerNetwork(
+                config=TransformerConfig(
+                    spatial_size=args.board_size,
+                    action_space_size=config.network.action_space_size,
+                )
+            )
+        else:
+            from alpha_zero.cloud.gcp.evaluation_worker import load_model
+
+            model = load_model(config, version)
+            model = model.to(device)
+            models[player_id] = model
+
+    logger.info("Loaded %d models for tournament", len(models))
+
+    # Run round-robin: every pair plays tournament_games
+    player_ids = sorted(models.keys())
+    match_results: list[dict[str, Any]] = []
+    elo_ratings: dict[str, float] = dict.fromkeys(player_ids, 1500.0)
+
+    # ELO update constants
+    k_factor = 32.0
+
+    for i, player_a in enumerate(player_ids):
+        for player_b in player_ids[i + 1 :]:
+            logger.info(
+                "Match: %s vs %s (%d games)",
+                player_a,
+                player_b,
+                args.tournament_games,
+            )
+
+            result = run_arena(
+                model_a=models[player_a],
+                model_b=models[player_b],
+                num_games=args.tournament_games,
+                mcts_type=args.mcts_type,
+                mcts_sims=args.tournament_mcts_sims,
+                gumbel_num_actions=args.gumbel_num_actions,
+                board_size=args.board_size,
+                max_turns=args.max_turns,
+                device=device,
+            )
+
+            logger.info(
+                "Result: %s vs %s -> W:%d D:%d L:%d (win_rate=%.2f%%)",
+                player_a,
+                player_b,
+                result.wins,
+                result.draws,
+                result.losses,
+                result.win_rate * 100,
+            )
+
+            match_results.append(
+                {
+                    "player_a": player_a,
+                    "player_b": player_b,
+                    **result.to_dict(),
+                }
+            )
+
+            # Update ELO ratings
+            expected_a = 1.0 / (
+                1.0 + 10.0 ** ((elo_ratings[player_b] - elo_ratings[player_a]) / 400.0)
+            )
+            score_a = (result.wins + 0.5 * result.draws) / max(result.total_games, 1)
+            elo_ratings[player_a] += k_factor * (score_a - expected_a)
+            elo_ratings[player_b] += k_factor * ((1.0 - score_a) - (1.0 - expected_a))
+
+    # Build results summary
+    elo_ranking = sorted(elo_ratings.items(), key=lambda x: x[1], reverse=True)
+
+    logger.info("=" * 60)
+    logger.info("Tournament Results - ELO Rankings:")
+    for rank, (player_id, elo) in enumerate(elo_ranking, 1):
+        logger.info("  %d. %s: %.1f ELO", rank, player_id, elo)
+    logger.info("=" * 60)
+
+    tournament_results: dict[str, Any] = {
+        "model_versions": model_versions,
+        "elo_ratings": dict(elo_ranking),
+        "matches": match_results,
+        "best_model": elo_ranking[0][0] if elo_ranking else None,
+        "best_elo": elo_ranking[0][1] if elo_ranking else 0.0,
+    }
+
+    # Log to W&B
+    if wandb_logger is not None and hasattr(wandb_logger, "is_enabled") and wandb_logger.is_enabled:
+        for player_id, elo in elo_ratings.items():
+            wandb_logger.log({f"tournament/elo_{player_id}": elo})  # type: ignore[attr-defined]
+        wandb_logger.log(
+            {  # type: ignore[attr-defined]
+                "tournament/best_model": elo_ranking[0][0] if elo_ranking else "",
+                "tournament/best_elo": elo_ranking[0][1] if elo_ranking else 0.0,
+                "tournament/num_models": len(model_versions),
+                "tournament/total_matches": len(match_results),
+            }
+        )
+
+    # Save results to GCS
+    if not dry_run:
+        try:
+            from alpha_zero.cloud.gcp.storage import GCSBackend
+
+            backend = GCSBackend(config.project_id)
+            data = json.dumps(tournament_results, indent=2).encode("utf-8")
+            uri = backend.upload_blob(config.bucket, "tournament/post_run_results.json", data)
+            logger.info("Saved tournament results to %s", uri)
+        except Exception as e:
+            logger.warning("Failed to save tournament results to GCS: %s", e)
+
+    return tournament_results
+
+
 def main() -> int:
     """Main entry point."""
     args = parse_args()
     setup_logging()
+
+    # Initialize W&B for orchestrator (opt-in via WANDB_ENABLED env var)
+    wandb_logger = None
+    try:
+        from alpha_zero.utils.wandb_logger import WandbLogger
+
+        wandb_logger = WandbLogger.from_env()
+        if wandb_logger.is_enabled:
+            wandb_logger.init(
+                config_dict={
+                    "iterations": args.iterations,
+                    "workers": args.workers,
+                    "games_per_worker": args.games_per_worker,
+                    "mcts_type": args.mcts_type,
+                    "mcts_simulations": args.mcts_simulations,
+                    "board_size": args.board_size,
+                    "evaluation_games": args.evaluation_games,
+                    "epochs": args.epochs,
+                    "mode": "orchestrator",
+                }
+            )
+            logger.info("W&B logging enabled for orchestrator")
+    except ImportError:
+        logger.debug("W&B not available")
 
     logger.info("Civ6 AlphaZero Vertex AI Orchestrator")
     logger.info(
@@ -440,8 +701,9 @@ def main() -> int:
             service_account=config.service_account,
         )
 
-        # Get starting model version
+        # Get starting model version (save for post-run tournament)
         model_version = get_initial_model_version(config, args.dry_run)
+        initial_model_version = model_version
 
         # Initialize cost estimator
         from alpha_zero.cloud.gcp.cost import CostEstimator
@@ -452,6 +714,7 @@ def main() -> int:
         total_start = time.time()
         successful_iterations = 0
         failed_iterations = 0
+        win_rate_history: list[float] = []
 
         for i in range(args.iterations):
             iteration_start = time.time()
@@ -559,6 +822,10 @@ def main() -> int:
                 except Exception:
                     new_version = model_version + 1
 
+            # Initialize metrics for logging
+            win_rate = 0.0
+            eval_cost = 0.0
+
             # Phase 3: Evaluation (optional)
             if args.evaluation_games > 0 and model_version > 0:
                 eval_start = time.time()
@@ -607,6 +874,66 @@ def main() -> int:
                     )
 
             iteration_duration = (time.time() - iteration_start) / 60.0  # minutes
+
+            # Stall detection (only when evaluation is enabled)
+            stall_detected = False
+            win_rate_trend = 0.0
+            if args.evaluation_games > 0 and model_version > 0:
+                win_rate_history.append(win_rate)
+
+                try:
+                    from alpha_zero.training.diagnostics import TrainingDiagnostics
+
+                    _stall_diag = TrainingDiagnostics(stall_threshold=args.stall_threshold)
+                    stall_detected = _stall_diag.detect_learning_stall(
+                        win_rate_history,
+                        lookback=args.stall_lookback,
+                        threshold=args.stall_threshold,
+                    )
+                    win_rate_trend = _stall_diag.compute_win_rate_trend(
+                        win_rate_history,
+                        lookback=args.stall_lookback,
+                    )
+
+                    if stall_detected:
+                        logger.warning(
+                            "Learning stall detected at iteration %d: "
+                            "win rate trend=%.4f over last %d iterations",
+                            iteration,
+                            win_rate_trend,
+                            args.stall_lookback,
+                        )
+                        if wandb_logger is not None and wandb_logger.is_enabled:
+                            wandb_logger.alert(
+                                title="Learning Stall Detected",
+                                text=(
+                                    f"Win rate hasn't improved >{args.stall_threshold:.0%} "
+                                    f"in {args.stall_lookback} iterations. "
+                                    f"Current: {win_rate:.1%}, "
+                                    f"Trend: {win_rate_trend:+.4f}/iter"
+                                ),
+                                level="WARN",
+                            )
+                except ImportError:
+                    logger.debug("TrainingDiagnostics not available for stall detection")
+
+            # Log iteration metrics to W&B
+            if wandb_logger is not None and wandb_logger.is_enabled:
+                iteration_metrics = {
+                    "orchestrator/iteration": iteration,
+                    "orchestrator/model_version": new_version,
+                    "orchestrator/iteration_duration_min": iteration_duration,
+                    "orchestrator/selfplay_cost": sp_cost,
+                    "orchestrator/training_cost": train_cost,
+                    "orchestrator/cumulative_cost": total_estimated_cost,
+                    "orchestrator/stall_detected": int(stall_detected),
+                    "orchestrator/win_rate_trend": win_rate_trend,
+                }
+                if args.evaluation_games > 0 and model_version > 0:
+                    iteration_metrics["orchestrator/eval_win_rate"] = win_rate
+                    iteration_metrics["orchestrator/eval_cost"] = eval_cost
+                wandb_logger.log(iteration_metrics, step=iteration)
+
             logger.info(
                 "Iteration %d complete in %.1f minutes. Model: v%d",
                 iteration,
@@ -614,9 +941,8 @@ def main() -> int:
                 new_version,
             )
 
-            if new_version is not None:
-                model_version = new_version
-                successful_iterations += 1
+            model_version = new_version
+            successful_iterations += 1
 
         total_elapsed = time.time() - total_start
         logger.info("=" * 60)
@@ -631,13 +957,45 @@ def main() -> int:
         logger.info("Total Estimated Cost: $%.2f", total_estimated_cost)
         logger.info("=" * 60)
 
+        # Phase 4: Post-run tournament (optional)
+        if args.post_run_tournament and successful_iterations > 0:
+            # Collect all model versions: initial + all produced during training
+            latest_version = get_initial_model_version(config, args.dry_run)
+            all_versions = list(range(initial_model_version, latest_version + 1))
+            if len(all_versions) >= 2:
+                run_post_run_evaluation(
+                    config=config,
+                    model_versions=all_versions,
+                    args=args,
+                    wandb_logger=wandb_logger,
+                    dry_run=args.dry_run,
+                )
+
+        # Log final summary to W&B
+        if wandb_logger is not None and wandb_logger.is_enabled:
+            wandb_logger.log(
+                {
+                    "orchestrator/total_iterations": args.iterations,
+                    "orchestrator/successful_iterations": successful_iterations,
+                    "orchestrator/failed_iterations": failed_iterations,
+                    "orchestrator/total_cost": total_estimated_cost,
+                    "orchestrator/total_duration_min": total_elapsed / 60,
+                    "orchestrator/final_model_version": model_version,
+                }
+            )
+            wandb_logger.finish()
+
         return 0 if failed_iterations == 0 else 1
 
     except KeyboardInterrupt:
         logger.warning("Orchestrator interrupted by user")
+        if wandb_logger is not None and wandb_logger.is_enabled:
+            wandb_logger.finish(exit_code=130)
         return 130
     except Exception as e:
         logger.exception("Orchestrator failed: %s", e)
+        if wandb_logger is not None and wandb_logger.is_enabled:
+            wandb_logger.finish(exit_code=1)
         return 1
 
 

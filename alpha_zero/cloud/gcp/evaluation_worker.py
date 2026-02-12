@@ -22,6 +22,7 @@ import time
 
 import torch
 
+from alpha_zero.cloud.gcp.arena import run_arena
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.storage import GCSModelStorage
 
@@ -77,133 +78,101 @@ def parse_args() -> argparse.Namespace:
 def load_model(
     config: GCPConfig,
     version: int,
-    board_size: int,
-    action_space_size: int,
-    num_res_blocks: int,
-    num_filters: int,
     dry_run: bool = False,
+    *,
+    spatial_size: int | None = None,
+    action_space_size: int | None = None,
 ) -> torch.nn.Module:
-    """Load model from GCS or create fresh for dry run."""
-    from alpha_zero.core.civ6_network import MicroCivNetwork
+    """Load model from GCS or create fresh for dry run.
 
-    model = MicroCivNetwork(
-        board_size=board_size,
-        action_space_size=action_space_size,
-        num_res_blocks=num_res_blocks,
-        num_filters=num_filters,
-    )
+    Args:
+        config: GCP configuration.
+        version: Model version to load.
+        dry_run: If True, create dummy model without GCS access.
+        spatial_size: Override spatial_size for dry-run model (keyword-only).
+        action_space_size: Override action_space_size for dry-run model (keyword-only).
+
+    Returns:
+        Loaded neural network model.
+    """
+    from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
     if dry_run:
         logger.info("Dry run: using fresh model v%d (no GCS load)", version)
-        return model
+        cfg_kwargs: dict[str, int] = {}
+        if spatial_size is not None:
+            cfg_kwargs["spatial_size"] = spatial_size
+        if action_space_size is not None:
+            cfg_kwargs["action_space_size"] = action_space_size
+        return Civ6TransformerNetwork(config=TransformerConfig(**cfg_kwargs))
 
     storage = GCSModelStorage(config)
-    state_dict, _metadata, _ = storage.load_model(version)
-    model.load_state_dict(state_dict)
-    model.eval()
+    state_dict, _metadata, model_config_dict = storage.load_model(version)
 
+    # Build TransformerConfig from saved config or use defaults
+    if model_config_dict is not None:
+        logger.info("Using model config from checkpoint for v%d", version)
+        config_copy = model_config_dict.copy()
+
+        # Convert string enums to actual enum values
+        if "norm_type" in config_copy and isinstance(config_copy["norm_type"], str):
+            from alpha_zero.core.transformer_network import NormType
+
+            config_copy["norm_type"] = NormType(config_copy["norm_type"])
+        if "attention_type" in config_copy and isinstance(config_copy["attention_type"], str):
+            from alpha_zero.core.transformer_network import AttentionType
+
+            config_copy["attention_type"] = AttentionType(config_copy["attention_type"])
+
+        # Remove computed fields that shouldn't be passed to constructor
+        config_copy.pop("_num_patches", None)
+        config_copy.pop("_head_dim", None)
+
+        try:
+            transformer_config = TransformerConfig(**config_copy)
+        except TypeError as e:
+            net_cfg = config.network
+            logger.warning("Failed to parse model config (%s), using pipeline defaults", e)
+            transformer_config = TransformerConfig(
+                spatial_channels=net_cfg.spatial_channels,
+                spatial_size=net_cfg.board_size,
+                vector_dim=net_cfg.vector_dim,
+                action_space_size=net_cfg.action_space_size,
+                num_layers=net_cfg.num_layers,
+                embed_dim=net_cfg.embed_dim,
+            )
+    else:
+        # Legacy model without config - use NetworkArchitectureConfig as fallback
+        net_cfg = config.network
+        logger.warning(
+            "Model v%d has no saved config. Using pipeline architecture defaults: "
+            "spatial_size=%d, action_space=%d, embed_dim=%d, num_layers=%d",
+            version,
+            net_cfg.board_size,
+            net_cfg.action_space_size,
+            net_cfg.embed_dim,
+            net_cfg.num_layers,
+        )
+        transformer_config = TransformerConfig(
+            spatial_channels=net_cfg.spatial_channels,
+            spatial_size=net_cfg.board_size,
+            vector_dim=net_cfg.vector_dim,
+            action_space_size=net_cfg.action_space_size,
+            num_layers=net_cfg.num_layers,
+            embed_dim=net_cfg.embed_dim,
+        )
+
+    model = Civ6TransformerNetwork(config=transformer_config)
+    incompatible = model.load_state_dict(state_dict, strict=False)
+
+    if incompatible.missing_keys:
+        logger.warning("Missing keys in state_dict: %s", incompatible.missing_keys[:5])
+    if incompatible.unexpected_keys:
+        logger.warning("Unexpected keys in state_dict: %s", incompatible.unexpected_keys[:5])
+
+    model.eval()
     logger.info("Loaded model v%d from GCS", version)
     return model
-
-
-def run_arena(
-    model_new: torch.nn.Module,
-    model_old: torch.nn.Module,
-    num_games: int,
-    mcts_type: str,
-    mcts_sims: int,
-    gumbel_num_actions: int,
-    board_size: int,
-    max_turns: int,
-    device: torch.device,
-) -> dict[str, float]:
-    """Play new model vs. old model in an arena.
-
-    Alternates starting player each game for fairness.
-
-    Returns:
-        Dict with win_rate, draw_rate, loss_rate (from new model's perspective).
-    """
-    from alpha_zero.core.mcts_factory import create_mcts
-    from alpha_zero.envs.microciv import MicroCivEnv
-
-    wins = 0
-    losses = 0
-    draws = 0
-
-    for game_idx in range(num_games):
-        start_time = time.time()
-
-        # Alternate which player the new model controls
-        new_is_player_0 = game_idx % 2 == 0
-
-        env = MicroCivEnv(board_size=board_size, max_turns=max_turns)
-        mcts_new = create_mcts(
-            variant=mcts_type,
-            network=model_new,
-            device=str(device),
-            num_simulations=mcts_sims,
-            num_sampled_actions=gumbel_num_actions,
-        )
-        mcts_old = create_mcts(
-            variant=mcts_type,
-            network=model_old,
-            device=str(device),
-            num_simulations=mcts_sims,
-            num_sampled_actions=gumbel_num_actions,
-        )
-
-        _obs, _info = env.reset()
-        done = False
-        move_count = 0
-
-        while not done:
-            current_is_new = (env.current_player == 0 and new_is_player_0) or (
-                env.current_player == 1 and not new_is_player_0
-            )
-            mcts = mcts_new if current_is_new else mcts_old
-
-            # Greedy play for evaluation (temperature=0)
-            action_probs, _ = mcts.search(env, add_noise=False)
-            action = mcts.select_action(action_probs, temperature=0.0)
-
-            _obs, _reward, terminated, truncated, _ = env.step(action)
-            done = terminated or truncated
-            move_count += 1
-
-        # Determine result from new model's perspective
-        if env.winner is None:
-            draws += 1
-            result = "draw"
-        elif (env.winner == 0 and new_is_player_0) or (env.winner == 1 and not new_is_player_0):
-            wins += 1
-            result = "win"
-        else:
-            losses += 1
-            result = "loss"
-
-        elapsed = time.time() - start_time
-        player_str = "P0" if new_is_player_0 else "P1"
-        logger.info(
-            "Game %d/%d: new_model=%s, result=%s, moves=%d (%.1fs)",
-            game_idx + 1,
-            num_games,
-            player_str,
-            result,
-            move_count,
-            elapsed,
-        )
-
-    total = max(num_games, 1)
-    return {
-        "win_rate": wins / total,
-        "draw_rate": draws / total,
-        "loss_rate": losses / total,
-        "wins": wins,
-        "draws": draws,
-        "losses": losses,
-        "total_games": num_games,
-    }
 
 
 def save_results(
@@ -275,23 +244,28 @@ def main() -> int:
         logger.info("Using device: %s", device)
 
         # Load both models
-        model_kwargs = {
-            "board_size": args.board_size,
-            "action_space_size": args.action_space_size,
-            "num_res_blocks": args.num_res_blocks,
-            "num_filters": args.num_filters,
-            "dry_run": args.dry_run,
-        }
-        model_new = load_model(config, args.model_version_new, **model_kwargs)
-        model_old = load_model(config, args.model_version_old, **model_kwargs)
+        model_new = load_model(
+            config,
+            args.model_version_new,
+            dry_run=args.dry_run,
+            spatial_size=args.board_size,
+            action_space_size=args.action_space_size,
+        )
+        model_old = load_model(
+            config,
+            args.model_version_old,
+            dry_run=args.dry_run,
+            spatial_size=args.board_size,
+            action_space_size=args.action_space_size,
+        )
         model_new = model_new.to(device)
         model_old = model_old.to(device)
 
         # Run arena
         start_time = time.time()
         results = run_arena(
-            model_new=model_new,
-            model_old=model_old,
+            model_a=model_new,
+            model_b=model_old,
             num_games=args.games,
             mcts_type=args.mcts_type,
             mcts_sims=args.mcts_simulations,
@@ -305,15 +279,15 @@ def main() -> int:
         logger.info(
             "Arena complete in %.1fs: win_rate=%.2f, draw_rate=%.2f, loss_rate=%.2f",
             elapsed,
-            results["win_rate"],
-            results["draw_rate"],
-            results["loss_rate"],
+            results.win_rate,
+            results.draw_rate,
+            results.loss_rate,
         )
 
         # Save results
         save_results(
             config=config,
-            results=results,
+            results=results.to_dict(),
             iteration=args.iteration,
             model_version_new=args.model_version_new,
             model_version_old=args.model_version_old,
