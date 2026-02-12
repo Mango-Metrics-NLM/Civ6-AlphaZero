@@ -342,6 +342,34 @@ class TestSelfPlayCollectorPlayGame:
 
         assert traj.outcome == GameOutcome.win
 
+    def test_play_game_loss_outcome(self) -> None:
+        """When env terminates with reward < 0, outcome should be loss."""
+
+        class LossEnv(MockEnv):
+            """Mock env that terminates with negative reward."""
+
+            def step(
+                self, action: int
+            ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict]:
+                self._step_count += 1
+                if self._step_count >= 5:
+                    self._terminal = True
+                reward = -1.0 if self._terminal else 0.0
+                return self.get_observation(), reward, self._terminal, False, {}
+
+        collector = SelfPlayCollector(
+            eval_fn=_dummy_eval_fn,
+            mcts_config=MCTSConfig(num_simulations=2),
+            max_steps=50,
+        )
+        env = LossEnv()
+        traj = collector.play_game(env, add_noise=False, seed=0)
+
+        assert traj.outcome == GameOutcome.loss
+        # Value backfill: loss => final_value = -1.0
+        # Last example should have value -1.0 (loser's perspective)
+        assert traj.examples[-1].value == pytest.approx(-1.0)
+
     def test_play_game_values_are_filled_in(self) -> None:
         collector = SelfPlayCollector(
             eval_fn=_dummy_eval_fn,

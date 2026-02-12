@@ -180,6 +180,24 @@ class TestTrainingOrchestrator:
         metrics = orch.run(dry_run=True)
         assert metrics[0].curriculum_stage == "easy"
 
+    def test_training_skipped_when_buffer_undersized(self, env_factory, tmp_path) -> None:
+        """Training phase is skipped when buffer has fewer samples than batch_size."""
+        config = SDKConfig(
+            training=TrainingConfig(
+                batch_size=9999,
+                max_iterations=1,
+                games_per_iteration=1,
+                replay_buffer_size=200,
+                eval_interval=999,
+                max_steps_per_game=10,
+            ),
+            output_dir=str(tmp_path),
+        )
+        orch = TrainingOrchestrator(config=config, env_factory=env_factory)
+        metrics = orch.run(dry_run=True)
+        # Training loss should be 0 because buffer < batch_size
+        assert metrics[0].training_loss == pytest.approx(0.0)
+
     def test_checkpoint_saved(self, sdk_config, env_factory, tmp_path) -> None:
         """Checkpoint is saved at configured interval."""
         config = sdk_config.model_copy(

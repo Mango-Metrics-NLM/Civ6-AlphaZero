@@ -988,3 +988,46 @@ class TestMCTSEngine:
 
         assert probs.shape == (4,)
         assert isinstance(value, float)
+
+
+class TestMCTSEngineNoValidActions:
+    """Tests for MCTS when leaf node has no valid actions."""
+
+    def test_search_no_valid_actions_at_leaf_does_not_expand(self) -> None:
+        """When leaf has all-zero action mask, node is not expanded."""
+
+        class NoValidActionsEnv(MockEnv):
+            """Env where get_valid_actions always returns all-False."""
+
+            def get_valid_actions(self) -> np.ndarray:
+                return np.zeros(self.action_space_size, dtype=np.bool_)
+
+        config = MCTSConfig(num_simulations=5, c_puct=1.5)
+        env = NoValidActionsEnv(action_space_size=4, terminal_after=10)
+        engine = MCTSEngine(config, mock_eval_fn)
+        probs, _value = engine.search(env, num_simulations=5)
+
+        # Should return valid output without crashing
+        assert probs.shape == (4,)
+        assert not np.isnan(probs).any()
+
+    def test_select_action_empty_mask_returns_zero(self) -> None:
+        """select_action with all-zero mask and zero probs returns 0."""
+        probs = np.zeros(5, dtype=np.float32)
+        mask = np.zeros(5, dtype=np.bool_)
+        action = select_action(probs, temperature=1.0, action_mask=mask)
+        assert action == 0
+
+    def test_select_action_zero_probs_no_mask_returns_argmax(self) -> None:
+        """select_action with zero probs and no mask falls through to argmax."""
+        probs = np.zeros(5, dtype=np.float32)
+        action = select_action(probs, temperature=1.0)
+        # argmax of all zeros returns 0
+        assert action == 0
+
+    def test_get_action_probabilities_zero_visits(self) -> None:
+        """get_action_probabilities with zero visits returns zero array."""
+        node = MCTSNode()
+        probs = get_action_probabilities(node, action_space_size=5)
+        assert probs.shape == (5,)
+        assert probs.sum() == 0.0

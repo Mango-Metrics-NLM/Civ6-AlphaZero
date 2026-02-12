@@ -221,6 +221,49 @@ class TestMiniResourceSymmetries:
         np.testing.assert_array_equal(sym_policy, policy)
 
 
+class TestMiniResourceErrorGuards:
+    """Tests for error handling in step()."""
+
+    def test_step_after_termination_raises(self) -> None:
+        """Stepping a terminated environment raises RuntimeError."""
+        env = MiniResourceEnv(board_size=4, max_steps=2, num_resources=1, seed=0)
+        env.reset()
+        env.step(4)  # step 1 (stay)
+        env.step(4)  # step 2 -> truncated
+        assert env.is_terminal()
+        with pytest.raises(RuntimeError, match="Cannot step a terminated environment"):
+            env.step(4)
+
+    def test_step_after_truncation_raises(self) -> None:
+        """Stepping a truncated environment also raises RuntimeError."""
+        env = MiniResourceEnv(board_size=4, max_steps=1, num_resources=1, seed=0)
+        env.reset()
+        env.step(0)  # single step -> truncated
+        with pytest.raises(RuntimeError, match="Cannot step a terminated environment"):
+            env.step(0)
+
+    def test_invalid_action_negative_raises(self) -> None:
+        """Negative action index raises ValueError."""
+        env = MiniResourceEnv(board_size=4, max_steps=10, seed=0)
+        env.reset()
+        with pytest.raises(ValueError, match="Invalid action"):
+            env.step(-1)
+
+    def test_invalid_action_too_large_raises(self) -> None:
+        """Action index >= _NUM_ACTIONS raises ValueError."""
+        env = MiniResourceEnv(board_size=4, max_steps=10, seed=0)
+        env.reset()
+        with pytest.raises(ValueError, match="Invalid action"):
+            env.step(5)
+
+    def test_invalid_action_way_out_of_range_raises(self) -> None:
+        """Very large action index raises ValueError."""
+        env = MiniResourceEnv(board_size=4, max_steps=10, seed=0)
+        env.reset()
+        with pytest.raises(ValueError, match="Invalid action"):
+            env.step(999)
+
+
 class TestMiniResourceProtocol:
     """Tests that MiniResourceEnv satisfies the StrategicEnvironment protocol."""
 

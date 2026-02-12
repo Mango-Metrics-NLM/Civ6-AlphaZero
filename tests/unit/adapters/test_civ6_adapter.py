@@ -1,9 +1,11 @@
-"""Comprehensive tests for MicroCivAdapter in stub mode.
+"""Comprehensive tests for MicroCivAdapter in stub and non-stub modes.
 
-All tests use stub mode (use_stub=True) because alpha_zero.envs.microciv
-is not importable in this environment (gymnasium is missing).
+Stub-mode tests use use_stub=True. Non-stub tests mock alpha_zero.envs.microciv
+because gymnasium is not importable in this environment.
 """
 from __future__ import annotations
+
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -12,6 +14,8 @@ from src.adapters.civ6 import MicroCivAdapter
 from src.core.constants import (
     DEFAULT_BOARD_SIZE,
     DEFAULT_MAX_STEPS,
+    MICROCIV_SPATIAL_CHANNELS,
+    MICROCIV_VECTOR_DIM,
     STUB_SPATIAL_CHANNELS,
     STUB_VECTOR_DIM,
 )
@@ -762,3 +766,147 @@ class TestFullEpisode:
             adapter.step(0)
         later_mask = adapter.get_valid_actions()
         np.testing.assert_array_equal(initial_mask, later_mask)
+
+
+# ---------------------------------------------------------------------------
+# Non-stub mode tests (mock MicroCivEnv)
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_microciv(board_size: int = 16, action_n: int = 356) -> MagicMock:
+    """Create a mock that looks like alpha_zero.envs.microciv.MicroCivEnv."""
+    mock_env = MagicMock()
+    mock_action_space = MagicMock()
+    mock_action_space.n = action_n
+    mock_env.action_space = mock_action_space
+    mock_env.reset.return_value = (
+        {"spatial": np.zeros((13, board_size, board_size), dtype=np.float32)},
+        {},
+    )
+    mock_env.get_observation.return_value = {
+        "spatial": np.ones((13, board_size, board_size), dtype=np.float32)
+    }
+    mock_env.get_valid_actions.return_value = np.ones(action_n, dtype=np.bool_)
+    mock_env.step.return_value = (
+        {"spatial": np.zeros((13, board_size, board_size), dtype=np.float32)},
+        0.5,
+        False,
+        False,
+        {"info_key": "info_val"},
+    )
+    return mock_env
+
+
+class TestNonStubModeConstruction:
+    """Tests for MicroCivAdapter using mocked real MicroCivEnv."""
+
+    def test_non_stub_uses_real_env(self) -> None:
+        """When MicroCivEnv is importable, adapter uses it (not stub)."""
+        mock_env = _make_mock_microciv()
+        mock_module = MagicMock()
+        mock_module.MicroCivEnv.return_value = mock_env
+
+        with patch.dict("sys.modules", {"alpha_zero.envs.microciv": mock_module}):
+            adapter = MicroCivAdapter(use_stub=False)
+
+        assert adapter._use_stub is False
+        assert adapter._env is mock_env
+
+    def test_non_stub_action_space_from_env(self) -> None:
+        """Non-stub adapter reads action_space.n from the real env."""
+        mock_env = _make_mock_microciv(action_n=500)
+        mock_module = MagicMock()
+        mock_module.MicroCivEnv.return_value = mock_env
+
+        with patch.dict("sys.modules", {"alpha_zero.envs.microciv": mock_module}):
+            adapter = MicroCivAdapter(use_stub=False)
+
+        assert adapter.action_space_size == 500
+
+    def test_non_stub_observation_spec_uses_microciv_channels(self) -> None:
+        """Non-stub adapter uses MICROCIV_SPATIAL_CHANNELS, not STUB values."""
+        mock_env = _make_mock_microciv(board_size=16)
+        mock_module = MagicMock()
+        mock_module.MicroCivEnv.return_value = mock_env
+
+        with patch.dict("sys.modules", {"alpha_zero.envs.microciv": mock_module}):
+            adapter = MicroCivAdapter(board_size=16, use_stub=False)
+
+        spec = adapter.observation_spec
+        assert spec.spatial_shape == (MICROCIV_SPATIAL_CHANNELS, 16, 16)
+        assert spec.vector_dim == MICROCIV_VECTOR_DIM
+
+
+class TestNonStubModeOperations:
+    """Tests for non-stub adapter operations."""
+
+    @pytest.fixture()
+    def non_stub_adapter(self) -> MicroCivAdapter:
+        """Create a non-stub adapter with mocked MicroCivEnv."""
+        mock_env = _make_mock_microciv(board_size=8)
+        mock_module = MagicMock()
+        mock_module.MicroCivEnv.return_value = mock_env
+        with patch.dict("sys.modules", {"alpha_zero.envs.microciv": mock_module}):
+            adapter = MicroCivAdapter(board_size=8, use_stub=False)
+        return adapter
+
+    def test_reset_delegates_to_env(self, non_stub_adapter: MicroCivAdapter) -> None:
+        """Reset calls _env.reset and returns translated observation."""
+        obs = non_stub_adapter.reset(seed=42)
+        non_stub_adapter._env.reset.assert_called_once_with(seed=42)
+        assert "spatial" in obs
+        assert "vector" in obs
+
+    def test_step_delegates_to_env(self, non_stub_adapter: MicroCivAdapter) -> None:
+        """Step calls _env.step and propagates return values."""
+        obs, _reward, _terminated, _truncated, _info = non_stub_adapter.step(7)
+        non_stub_adapter._env.step.assert_called_once_with(7)
+        assert "spatial" in obs
+        assert "vector" in obs
+
+    def test_step_clamps_reward(self, non_stub_adapter: MicroCivAdapter) -> None:
+        """Reward is clamped to [-1, 1]."""
+        non_stub_adapter._env.step.return_value = (
+            {"spatial": np.zeros((13, 8, 8), dtype=np.float32)},
+            5.0,  # out of range
+            False,
+            False,
+            {},
+        )
+        _obs, reward, _t, _tr, _info = non_stub_adapter.step(0)
+        assert reward == 1.0
+
+        non_stub_adapter._env.step.return_value = (
+            {"spatial": np.zeros((13, 8, 8), dtype=np.float32)},
+            -10.0,
+            False,
+            False,
+            {},
+        )
+        _obs, reward, _t, _tr, _info = non_stub_adapter.step(0)
+        assert reward == -1.0
+
+    def test_get_valid_actions_delegates(self, non_stub_adapter: MicroCivAdapter) -> None:
+        """get_valid_actions returns mask from real env as bool array."""
+        mask = non_stub_adapter.get_valid_actions()
+        non_stub_adapter._env.get_valid_actions.assert_called_once()
+        assert mask.dtype == np.bool_
+
+    def test_get_observation_delegates(self, non_stub_adapter: MicroCivAdapter) -> None:
+        """get_observation returns translated obs from real env."""
+        obs = non_stub_adapter.get_observation()
+        non_stub_adapter._env.get_observation.assert_called_once()
+        assert "spatial" in obs
+        assert "vector" in obs
+
+    def test_is_terminal_delegates(self, non_stub_adapter: MicroCivAdapter) -> None:
+        """is_terminal checks terminated/truncated flags from step()."""
+        non_stub_adapter._env.step.return_value = (
+            {"spatial": np.zeros((13, 8, 8), dtype=np.float32)},
+            0.0,
+            True,
+            False,
+            {},
+        )
+        non_stub_adapter.step(0)
+        assert non_stub_adapter.is_terminal() is True

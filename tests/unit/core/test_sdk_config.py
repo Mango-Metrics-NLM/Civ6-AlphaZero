@@ -286,6 +286,14 @@ class TestCoerceValue:
 
     # -- plain str ----------------------------------------------------------
 
+    def test_non_str_non_numeric_passthrough(self) -> None:
+        """When current is not bool/int/float/str, raw is returned unchanged."""
+        result = _coerce_value(None, "anything")
+        assert result == "anything"
+
+        result = _coerce_value([1, 2], "list_value")
+        assert result == "list_value"
+
     def test_plain_str_passthrough(self) -> None:
         """When current is a plain str, raw is returned unchanged."""
         result = _coerce_value("hello", "world")
