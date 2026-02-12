@@ -21,12 +21,20 @@ from __future__ import annotations
 import argparse
 import gc
 import logging
+import math
 import sys
 import time
 from typing import Any
 
-import psutil
 import torch
+
+try:
+    import psutil
+
+    _PSUTIL_AVAILABLE = True
+except ImportError:
+    psutil = None  # type: ignore[assignment]
+    _PSUTIL_AVAILABLE = False
 
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.storage import GCSModelStorage, GCSTrajectoryStorage
@@ -246,8 +254,6 @@ def compute_temperature(
         return temperature * (1.0 - progress)
     elif schedule == "cosine":
         # Cosine annealing from temperature to 0
-        import math
-
         progress = min(turn / max(max_turns, 1), 1.0)
         return temperature * 0.5 * (1.0 + math.cos(math.pi * progress))
     else:
@@ -310,9 +316,11 @@ def run_selfplay(
 
     # Extract temperature params from override before the game loop
     # These are action selection params, not MCTS config fields
+    # Shallow copy to avoid mutating the caller-provided dict
     sel_temperature = 1.0
     sel_threshold = max_turns
     if mcts_config_override:
+        mcts_config_override = dict(mcts_config_override)
         sel_temperature = mcts_config_override.pop("temperature", 1.0)
         sel_threshold = mcts_config_override.pop("temperature_threshold", max_turns)
 
@@ -457,7 +465,7 @@ def run_selfplay(
 
         # Log progress and memory usage periodically
         if (game_idx + 1) % 10 == 0:
-            mem_mb = psutil.Process().memory_info().rss / 1024 / 1024
+            mem_mb = psutil.Process().memory_info().rss / 1024 / 1024 if _PSUTIL_AVAILABLE else 0.0
             logger.info(
                 "Progress: %d/%d games, Memory: %.0f MB",
                 game_idx + 1,

@@ -27,13 +27,13 @@ logger = logging.getLogger(__name__)
 
 # SDK availability check
 try:
-    from google.cloud import storage as gcs_sdk
+    from google.cloud import storage as _gcs_sdk  # noqa: F401
     GCS_AVAILABLE = True
 except ImportError:
     GCS_AVAILABLE = False
 
 try:
-    from google.cloud import aiplatform
+    from google.cloud import aiplatform as _aiplatform  # noqa: F401
     VERTEX_AVAILABLE = True
 except ImportError:
     VERTEX_AVAILABLE = False

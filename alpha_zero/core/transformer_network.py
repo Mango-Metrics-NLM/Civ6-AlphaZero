@@ -109,7 +109,7 @@ class TransformerConfig:
     use_rope: bool = True
     use_qkv_bias: bool = False
 
-    # Head configuration (scaled relative to embed_dim)
+    # Head configuration (independent configurable dimensions)
     value_head_dim: int = 64
     policy_hidden_dim: int = 128
     num_policy_heads: int = 1
@@ -132,9 +132,9 @@ class TransformerConfig:
         self._num_patches = (self.spatial_size // self.patch_size) ** 2
         self._head_dim = self.embed_dim // self.num_heads
 
-        assert self.embed_dim % self.num_heads == 0, (
-            f"embed_dim ({self.embed_dim}) must be divisible by num_heads ({self.num_heads})"
-        )
+        assert (
+            self.embed_dim % self.num_heads == 0
+        ), f"embed_dim ({self.embed_dim}) must be divisible by num_heads ({self.num_heads})"
 
         # Warn about known incorrect defaults that may indicate stale config
         if self.action_space_size == 381:

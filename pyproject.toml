@@ -27,6 +27,7 @@ dev = [
     "types-tqdm>=4.65.0",
     "bandit>=1.7.0",
     "types-PyYAML>=6.0.0",
+    "psutil>=5.9.0",
 ]
 gcp = [
     "google-cloud-aiplatform>=1.40.0",
