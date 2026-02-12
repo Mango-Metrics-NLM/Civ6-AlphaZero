@@ -521,12 +521,18 @@ def run_post_run_evaluation(
                 TransformerConfig,
             )
 
-            models[player_id] = Civ6TransformerNetwork(
+            model = Civ6TransformerNetwork(
                 config=TransformerConfig(
                     spatial_size=args.board_size,
-                    action_space_size=config.network.action_space_size,
+                    action_space_size=getattr(
+                        args,
+                        "action_space_size",
+                        config.network.action_space_size,
+                    ),
                 )
             )
+            model = model.to(device)
+            models[player_id] = model
         else:
             from alpha_zero.cloud.gcp.evaluation_worker import load_model
 

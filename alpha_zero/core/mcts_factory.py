@@ -187,14 +187,14 @@ def create_mcts(
     }
 
     mcts_cls = mcts_classes[class_name]
+    config_cls = config_classes[config_class_name]
+    valid_fields = {f.name for f in dataclasses.fields(config_cls)}
 
     if config is None:
-        config_cls = config_classes[config_class_name]
         # Build config with overrides
         config_kwargs = {"num_simulations": num_simulations}
 
         # Filter kwargs to only include fields that the config class accepts
-        valid_fields = {f.name for f in dataclasses.fields(config_cls)}
         for key, value in list(kwargs.items()):
             if key in valid_fields:
                 config_kwargs[key] = value
