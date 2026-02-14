@@ -1,0 +1,26 @@
+<div class="move-history">
+    <h3>Move History</h3>
+    <div class="history-list">
+        {% if history %}
+        {% for turn in history|reverse %}
+        <div class="history-entry {% if turn.is_human %}human-move{% else %}ai-move{% endif %}">
+            <span class="move-num">#{{ loop.revindex }}</span>
+            <span class="move-player player-{{ turn.player }}">
+                {% if turn.is_human %}You{% else %}AI{% endif %}
+            </span>
+            <span class="move-action">{{ turn.action_label }}</span>
+            {% if turn.thinking_time and not turn.is_human %}
+            <span class="move-time">{{ "%.1f"|format(turn.thinking_time) }}s</span>
+            {% endif %}
+            {% if turn.ai_evaluation is defined and turn.ai_evaluation is not none %}
+            <span class="move-eval" title="AI evaluation">
+                {{ "%.2f"|format(turn.ai_evaluation) }}
+            </span>
+            {% endif %}
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="history-empty">No moves yet</div>
+        {% endif %}
+    </div>
+</div>

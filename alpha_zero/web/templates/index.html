@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Civ6 AlphaZero - New Game{% endblock %}
+
+{% block content %}
+<div class="lobby">
+    <h1>Play MicroCiv vs AI</h1>
+
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+
+    <form action="/game/new" method="post" class="new-game-form">
+        <div class="form-group">
+            <label for="opponent_type">Opponent</label>
+            <select name="opponent_type" id="opponent_type">
+                <option value="random">Random (Easy)</option>
+                <option value="heuristic">Heuristic (Medium)</option>
+                <option value="neural">Neural Network (Hard)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="board_size">Board Size</label>
+            <select name="board_size" id="board_size">
+                <option value="8">8x8 (Quick)</option>
+                <option value="12">12x12 (Medium)</option>
+                <option value="16" selected>16x16 (Standard)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="human_player">Play as</label>
+            <select name="human_player" id="human_player">
+                <option value="0">Player 1 (Blue)</option>
+                <option value="1">Player 2 (Red)</option>
+            </select>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Start Game</button>
+    </form>
+
+    {% if sessions and sessions|length > 0 %}
+    <div class="active-sessions">
+        <h2>Active Games ({{ active_count }})</h2>
+        <ul>
+            {% for session in sessions %}
+            <li>
+                <a href="/game/{{ session.session_id }}">
+                    Game {{ session.session_id[:8] }}
+                    &mdash; Turn {{ session.turn_number }}
+                    ({{ session.phase }})
+                </a>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

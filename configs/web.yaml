@@ -1,0 +1,40 @@
+# Web interface configuration for Civ6 AlphaZero
+# Usage: python -m alpha_zero.web --config configs/web.yaml
+
+web:
+  # Server settings
+  host: "0.0.0.0"
+  port: 8080
+  debug: false
+  log_level: "info"
+  workers: 1
+
+  # Game defaults
+  board_size: 16
+  max_turns: 200
+  default_thinking_time: 5.0
+  max_concurrent_sessions: 10
+  session_timeout_seconds: 3600
+
+  # AI settings
+  # checkpoint_path: "checkpoints/latest.pt"  # Uncomment when model is available
+  use_mcts: true
+  mcts_simulations: 50
+  ai_temperature: 0.0
+  device: "cpu"
+  default_opponent: "random"
+
+  # Display settings
+  board_theme: "classic"
+  show_ai_evaluation: true
+  show_move_probabilities: true
+  show_mcts_stats: true
+
+  # Replay/save settings
+  enable_replay: true
+  replay_dir: "replays"
+  save_dir: "saves/web_games"
+
+  # Security
+  cors_origins:
+    - "*"

@@ -1,0 +1,47 @@
+<div class="board" style="--board-size: {{ board.board_size }}">
+    {% for row in board.grid %}
+    {% for cell in row %}
+    <div class="cell cell-{{ cell.terrain }}"
+         data-x="{{ cell.x }}" data-y="{{ cell.y }}"
+         {% if cell.has_own_unit %}data-own-unit="true"{% endif %}
+         {% if cell.has_enemy_unit %}data-enemy-unit="true"{% endif %}>
+
+        {# Terrain indicator #}
+        {% if cell.terrain == "mountain" %}
+        <span class="terrain-icon">^</span>
+        {% elif cell.terrain == "hills" %}
+        <span class="terrain-icon">~</span>
+        {% endif %}
+
+        {# City #}
+        {% if cell.city %}
+        <span class="city player-{{ cell.city.player }}"
+              title="{{ cell.city.name }} (P{{ cell.city.player }}, Pop: {{ cell.city.population }})">
+            C
+        </span>
+        {% endif %}
+
+        {# Units #}
+        {% for unit in cell.units %}
+        <span class="unit unit-{{ unit.type }} player-{{ unit.player }}"
+              title="{{ unit.type|title }} (P{{ unit.player }}, HP: {{ unit.health }})">
+            {% if unit.type == "warrior" %}W
+            {% elif unit.type == "settler" %}S
+            {% elif unit.type == "archer" %}A
+            {% endif %}
+        </span>
+        {% endfor %}
+
+        {# Health bar for damaged units #}
+        {% for unit in cell.units %}
+        {% if unit.health < 100 %}
+        <div class="health-bar">
+            <div class="health-fill player-{{ unit.player }}"
+                 style="width: {{ unit.health }}%"></div>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+    {% endfor %}
+    {% endfor %}
+</div>
