@@ -38,6 +38,12 @@ from alpha_zero.envs.civ6_encoder import Civ6StateEncoder, EncoderConfig
 
 logger = logging.getLogger(__name__)
 
+# Named constants for victory progress normalization.
+# Base game has ~67 techs; use 70 as a round estimate.
+_ESTIMATED_TOTAL_TECHS = 70
+# High score estimate for normalizing score-based victory progress.
+_ESTIMATED_MAX_SCORE = 2000
+
 
 @dataclass
 class TerrainMapping:
@@ -765,19 +771,32 @@ class StateConverter:
     def _extract_civics(self, state: GameStateData) -> list[str]:
         """Extract researched civics for the current player.
 
-        Civics may be included in a civics_researched field or similar.
-        Since the current protocol doesn't define this explicitly,
-        we return an empty list until the Lua mod is extended.
-
         Args:
             state: Game state data.
 
         Returns:
             List of civic names that have been researched.
         """
-        # Future: Extract from state when Lua mod provides civics data
-        # For now, return empty list as civics aren't in the protocol yet
+        for player in state.players:
+            if player.id == state.player_id:
+                civics = getattr(player, "civics_researched", [])
+                return [self._normalize_civic_name(civic) for civic in civics]
         return []
+
+    def _normalize_civic_name(self, civic: str) -> str:
+        """Normalize Civ6 civic name to internal format.
+
+        Args:
+            civic: Civ6 civic name (e.g., "CIVIC_CODE_OF_LAWS").
+
+        Returns:
+            Normalized name (e.g., "code_of_laws").
+        """
+        name = civic.lower()
+        for prefix in ("civic_",):
+            if name.startswith(prefix):
+                name = name[len(prefix):]
+        return name
 
     def _extract_victory_progress(self, state: GameStateData) -> dict[str, float]:
         """Extract victory progress indicators.
@@ -797,8 +816,7 @@ class StateConverter:
 
         # Science progress (rough estimate based on techs)
         techs = self._extract_technologies(state)
-        # Rough estimate: ~70 techs in the full game
-        progress["science"] = min(1.0, len(techs) / 70.0)
+        progress["science"] = min(1.0, len(techs) / _ESTIMATED_TOTAL_TECHS)
 
         # Domination progress (count our cities vs total cities)
         total_cities = len(state.cities)
@@ -811,8 +829,7 @@ class StateConverter:
         # Score progress (normalized by max reasonable score)
         for player in state.players:
             if player.id == state.player_id:
-                # Rough estimate: ~2000 is a high score
-                progress["score"] = min(1.0, player.score / 2000.0)
+                progress["score"] = min(1.0, player.score / _ESTIMATED_MAX_SCORE)
                 break
         else:
             progress["score"] = 0.0
@@ -841,8 +858,8 @@ class StateConverter:
         if self._map_config is None:
             return (x, y)
 
-        orig_x = int(x / self._scale_x)
-        orig_y = int(y / self._scale_y)
+        orig_x = round(x / self._scale_x)
+        orig_y = round(y / self._scale_y)
 
         # Clamp to original map bounds
         orig_x = max(0, min(self._map_config.width - 1, orig_x))

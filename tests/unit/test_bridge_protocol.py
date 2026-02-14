@@ -242,7 +242,6 @@ class TestTileData:
         assert tile.terrain == "hills"
         assert "forest" in tile.features
 
-    @pytest.mark.skip(reason="TileData.to_dict() not implemented")
     def test_to_dict(self) -> None:
         """Test TileData.to_dict."""
         tile = TileData(
@@ -252,6 +251,8 @@ class TestTileData:
         )
         data = tile.to_dict()
         assert data["terrain"] == "mountain"
+        assert data["x"] == 5
+        assert data["y"] == 5
 
 
 class TestUnitData:
@@ -288,7 +289,6 @@ class TestUnitData:
         assert unit.id == 42
         assert unit.unit_type == "settler"
 
-    @pytest.mark.skip(reason="UnitData.to_dict() not implemented")
     def test_to_dict(self) -> None:
         """Test UnitData.to_dict."""
         unit = UnitData(
@@ -303,6 +303,8 @@ class TestUnitData:
         data = unit.to_dict()
         assert data["unit_type"] == "archer"
         assert data["health"] == 75
+        assert data["id"] == 1
+        assert data["moves_remaining"] == 1.5
 
 
 class TestCityData:
@@ -335,7 +337,6 @@ class TestCityData:
         assert city.id == 100
         assert city.name == "Capital"
 
-    @pytest.mark.skip(reason="CityData.to_dict() not implemented")
     def test_to_dict(self) -> None:
         """Test CityData.to_dict."""
         city = CityData(
@@ -348,6 +349,8 @@ class TestCityData:
         )
         data = city.to_dict()
         assert data["name"] == "City"
+        assert data["id"] == 1
+        assert data["population"] == 1
 
 
 class TestPlayerData:
@@ -376,7 +379,6 @@ class TestPlayerData:
         assert player.id == 1
         assert player.civilization == "Greece"
 
-    @pytest.mark.skip(reason="PlayerData.to_dict() not implemented")
     def test_to_dict(self) -> None:
         """Test PlayerData.to_dict."""
         player = PlayerData(
@@ -386,6 +388,37 @@ class TestPlayerData:
         )
         data = player.to_dict()
         assert data["civilization"] == "Egypt"
+        assert data["id"] == 0
+        assert data["is_human"] is True
+
+    def test_civics_fields(self) -> None:
+        """Test PlayerData civics_researched and current_civic fields."""
+        player = PlayerData(
+            id=0,
+            civilization="Rome",
+            civics_researched=["CIVIC_CODE_OF_LAWS", "CIVIC_FOREIGN_TRADE"],
+            current_civic="CIVIC_EARLY_EMPIRE",
+        )
+        assert player.civics_researched == ["CIVIC_CODE_OF_LAWS", "CIVIC_FOREIGN_TRADE"]
+        assert player.current_civic == "CIVIC_EARLY_EMPIRE"
+
+    def test_civics_from_dict(self) -> None:
+        """Test PlayerData.from_dict with civics fields."""
+        data = {
+            "id": 0,
+            "civilization": "Rome",
+            "civics_researched": ["CIVIC_CODE_OF_LAWS"],
+            "current_civic": "CIVIC_FOREIGN_TRADE",
+        }
+        player = PlayerData.from_dict(data)
+        assert player.civics_researched == ["CIVIC_CODE_OF_LAWS"]
+        assert player.current_civic == "CIVIC_FOREIGN_TRADE"
+
+    def test_civics_defaults(self) -> None:
+        """Test PlayerData civics fields default to empty."""
+        player = PlayerData(id=0, civilization="Rome")
+        assert player.civics_researched == []
+        assert player.current_civic is None
 
 
 class TestLegalAction:
@@ -410,7 +443,6 @@ class TestLegalAction:
         action = LegalAction.from_dict(data)
         assert action.action_type == "unit_attack"
 
-    @pytest.mark.skip(reason="LegalAction.to_dict() not implemented")
     def test_to_dict(self) -> None:
         """Test LegalAction.to_dict."""
         action = LegalAction(
@@ -418,6 +450,19 @@ class TestLegalAction:
         )
         data = action.to_dict()
         assert data["action_type"] == "end_turn"
+
+    def test_to_dict_with_targets(self) -> None:
+        """Test LegalAction.to_dict with targets."""
+        action = LegalAction(
+            action_type="move",
+            unit_id=5,
+            targets=[(1, 2), (3, 4)],
+        )
+        data = action.to_dict()
+        assert data["action_type"] == "move"
+        assert data["unit_id"] == 5
+        assert len(data["targets"]) == 2
+        assert data["targets"][0] == {"x": 1, "y": 2}
 
 
 class TestStateMessage:
@@ -527,7 +572,6 @@ class TestCommandMessage:
         assert cmd.msg_id == 5
         assert len(cmd.commands) == 1
 
-    @pytest.mark.skip(reason="CommandMessage.create_single() not implemented")
     def test_single_command(self) -> None:
         """Test single command message."""
         cmd = CommandMessage.create_single(
@@ -540,6 +584,7 @@ class TestCommandMessage:
         )
         assert len(cmd.commands) == 1
         assert cmd.commands[0].unit_id == 10
+        assert cmd.msg_id == 1
 
 
 class TestAckMessage:
@@ -643,7 +688,6 @@ class TestSerializationRoundTrip:
         restored = Position.from_dict(original.to_dict())
         assert original == restored
 
-    @pytest.mark.skip(reason="UnitData.to_dict() not implemented")
     def test_unit_data_round_trip(self) -> None:
         """Test UnitData serialization round-trip."""
         original = UnitData(
@@ -659,6 +703,81 @@ class TestSerializationRoundTrip:
         restored = UnitData.from_dict(data)
         assert restored.id == original.id
         assert restored.unit_type == original.unit_type
+        assert restored.health == original.health
+        assert restored.moves_remaining == original.moves_remaining
+
+    def test_tile_data_round_trip(self) -> None:
+        """Test TileData serialization round-trip."""
+        original = TileData(
+            x=3,
+            y=7,
+            terrain="TERRAIN_PLAINS",
+            features=["FEATURE_FOREST"],
+            resource="RESOURCE_IRON",
+            owner_id=1,
+        )
+        data = original.to_dict()
+        restored = TileData.from_dict(data)
+        assert restored.x == original.x
+        assert restored.y == original.y
+        assert restored.terrain == original.terrain
+        assert restored.resource == original.resource
+
+    def test_city_data_round_trip(self) -> None:
+        """Test CityData serialization round-trip."""
+        original = CityData(
+            id=5,
+            name="TestCity",
+            owner_id=0,
+            x=10,
+            y=12,
+            population=7,
+            is_capital=True,
+            buildings=["BUILDING_MONUMENT"],
+        )
+        data = original.to_dict()
+        restored = CityData.from_dict(data)
+        assert restored.id == original.id
+        assert restored.name == original.name
+        assert restored.population == original.population
+        assert restored.is_capital == original.is_capital
+
+    def test_player_data_round_trip(self) -> None:
+        """Test PlayerData serialization round-trip."""
+        original = PlayerData(
+            id=0,
+            civilization="CIVILIZATION_ROME",
+            gold=250.5,
+            science_per_turn=42.0,
+            techs_researched=["TECH_POTTERY", "TECH_MINING"],
+            civics_researched=["CIVIC_CODE_OF_LAWS"],
+            current_civic="CIVIC_FOREIGN_TRADE",
+        )
+        data = original.to_dict()
+        restored = PlayerData.from_dict(data)
+        assert restored.id == original.id
+        assert restored.civilization == original.civilization
+        assert restored.gold == original.gold
+        assert restored.techs_researched == original.techs_researched
+        assert restored.civics_researched == original.civics_researched
+        assert restored.current_civic == original.current_civic
+
+    def test_legal_action_round_trip(self) -> None:
+        """Test LegalAction serialization round-trip."""
+        original = LegalAction(
+            action_type="move",
+            unit_id=42,
+            targets=[(5, 6), (7, 8)],
+            items=[1, 2, 3],
+            item_type="unit",
+        )
+        data = original.to_dict()
+        restored = LegalAction.from_dict(data)
+        assert restored.action_type == original.action_type
+        assert restored.unit_id == original.unit_id
+        assert restored.targets == original.targets
+        assert restored.items == original.items
+        assert restored.item_type == original.item_type
 
     def test_command_message_round_trip(self) -> None:
         """Test CommandMessage serialization round-trip."""

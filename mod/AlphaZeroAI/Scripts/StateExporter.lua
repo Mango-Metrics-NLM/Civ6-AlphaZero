@@ -2,6 +2,7 @@
 -- StateExporter.lua - Game state serialization for AlphaZero AI Bridge
 -- ============================================================================
 -- Exports the current game state to JSON format for the Python agent.
+-- Fixes: nil guards, hex-grid neighbors, production items, civics export.
 -- ============================================================================
 
 AlphaZeroStateExporter = AlphaZeroStateExporter or {}
@@ -117,6 +118,63 @@ local function getImprovementTypeName(improvementTypeId)
     return nil
 end
 
+-- Get civic type name from index
+local function getCivicTypeName(civicId)
+    if GameInfo and GameInfo.Civics then
+        for row in GameInfo.Civics() do
+            if row.Index == civicId then
+                return row.CivicType
+            end
+        end
+    end
+    return "CIVIC_UNKNOWN_" .. tostring(civicId)
+end
+
+-- Get hex grid neighbors (Civ6 uses offset coordinates)
+-- Neighbor offsets depend on whether the row (y) is even or odd
+local function getHexNeighbors(x, y)
+    local neighbors = {}
+    local offsets
+    if y % 2 == 0 then
+        -- Even row
+        offsets = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}}
+    else
+        -- Odd row
+        offsets = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, -1}, {-1, -1}}
+    end
+    for _, offset in ipairs(offsets) do
+        table.insert(neighbors, {x + offset[1], y + offset[2]})
+    end
+    return neighbors
+end
+
+-- Get all hex tiles within a given range (for ranged attacks)
+local function getHexTilesInRange(cx, cy, range)
+    local tiles = {}
+    local seen = {}
+    -- BFS from center
+    local queue = {{cx, cy, 0}}
+    seen[cx .. "," .. cy] = true
+    while #queue > 0 do
+        local current = table.remove(queue, 1)
+        local qx, qy, dist = current[1], current[2], current[3]
+        if dist > 0 then
+            table.insert(tiles, {qx, qy})
+        end
+        if dist < range then
+            local neighbors = getHexNeighbors(qx, qy)
+            for _, n in ipairs(neighbors) do
+                local key = n[1] .. "," .. n[2]
+                if not seen[key] then
+                    seen[key] = true
+                    table.insert(queue, {n[1], n[2], dist + 1})
+                end
+            end
+        end
+    end
+    return tiles
+end
+
 -- ----------------------------------------------------------------------------
 -- State Export Functions
 -- ----------------------------------------------------------------------------
@@ -138,13 +196,13 @@ local function exportMap(playerId)
     mapData.width = w
     mapData.height = h
 
-    local maxTiles = AlphaZeroConfig.Get("MAX_TILES_PER_STATE") or 10000
+    local maxTiles = (AlphaZeroConfig and AlphaZeroConfig.Get("MAX_TILES_PER_STATE")) or 10000
     local tileCount = 0
-    local includeFog = AlphaZeroConfig.Get("INCLUDE_FOG_OF_WAR")
+    local includeFog = AlphaZeroConfig and AlphaZeroConfig.Get("INCLUDE_FOG_OF_WAR")
 
-    local visibilityPlayer = Players[playerId]
+    local visibilityPlayer = Players and Players[playerId]
     local playerVisibility = nil
-    if visibilityPlayer then
+    if visibilityPlayer and PlayersVisibility then
         playerVisibility = PlayersVisibility[playerId]
     end
 
@@ -197,15 +255,15 @@ local function exportMap(playerId)
                         table.insert(tile.features, "FEATURE_MOUNTAIN")
                     end
 
-                    -- Add yields if visible
-                    if isVisible then
+                    -- Add yields if visible (with nil guard on YieldTypes)
+                    if isVisible and YieldTypes then
                         tile.yields = {
-                            food = plot:GetYield(YieldTypes.YIELD_FOOD) or 0,
-                            production = plot:GetYield(YieldTypes.YIELD_PRODUCTION) or 0,
-                            gold = plot:GetYield(YieldTypes.YIELD_GOLD) or 0,
-                            science = plot:GetYield(YieldTypes.YIELD_SCIENCE) or 0,
-                            culture = plot:GetYield(YieldTypes.YIELD_CULTURE) or 0,
-                            faith = plot:GetYield(YieldTypes.YIELD_FAITH) or 0,
+                            food = plot:GetYield(YieldTypes.YIELD_FOOD or 0) or 0,
+                            production = plot:GetYield(YieldTypes.YIELD_PRODUCTION or 0) or 0,
+                            gold = plot:GetYield(YieldTypes.YIELD_GOLD or 0) or 0,
+                            science = plot:GetYield(YieldTypes.YIELD_SCIENCE or 0) or 0,
+                            culture = plot:GetYield(YieldTypes.YIELD_CULTURE or 0) or 0,
+                            faith = plot:GetYield(YieldTypes.YIELD_FAITH or 0) or 0,
                         }
                     end
 
@@ -228,12 +286,12 @@ local function exportUnits(playerId)
         return units
     end
 
-    local observeAll = AlphaZeroConfig.Get("OBSERVE_ALL_PLAYERS")
+    local observeAll = AlphaZeroConfig and AlphaZeroConfig.Get("OBSERVE_ALL_PLAYERS")
     local playerVisibility = PlayersVisibility and PlayersVisibility[playerId]
 
-    -- Get all players to iterate
+    -- Get all players to iterate (with nil guard on PlayerManager)
     local playerIds = {playerId}
-    if observeAll then
+    if observeAll and PlayerManager and PlayerManager.GetWasEverAliveCount then
         for i = 0, PlayerManager.GetWasEverAliveCount() - 1 do
             if i ~= playerId then
                 table.insert(playerIds, i)
@@ -273,7 +331,7 @@ local function exportUnits(playerId)
                             ranged_strength = unit:GetRangedCombat() or 0,
                             range = unit:GetRange() or 0,
                             is_civilian = typeInfo.is_civilian,
-                            can_attack = unit:GetAttacksRemaining() > 0,
+                            can_attack = (unit:GetAttacksRemaining() or 0) > 0,
                             promotions = {},
                         }
 
@@ -305,11 +363,12 @@ local function exportCities(playerId)
         return cities
     end
 
-    local observeAll = AlphaZeroConfig.Get("OBSERVE_ALL_PLAYERS")
+    local observeAll = AlphaZeroConfig and AlphaZeroConfig.Get("OBSERVE_ALL_PLAYERS")
     local playerVisibility = PlayersVisibility and PlayersVisibility[playerId]
 
+    -- Nil guard on PlayerManager
     local playerIds = {playerId}
-    if observeAll then
+    if observeAll and PlayerManager and PlayerManager.GetWasEverAliveCount then
         for i = 0, PlayerManager.GetWasEverAliveCount() - 1 do
             if i ~= playerId then
                 table.insert(playerIds, i)
@@ -358,10 +417,6 @@ local function exportCities(playerId)
                                 end
                                 cityData.production_progress = buildQueue:GetTurnsLeft() or 0
                             end
-
-                            -- Get available production
-                            -- Note: This is expensive, so we limit it
-                            -- cityData.available_production = getAvailableProduction(city)
                         end
 
                         table.insert(cities, cityData)
@@ -375,7 +430,7 @@ local function exportCities(playerId)
     return cities
 end
 
--- Export player data
+-- Export player data (including civics)
 local function exportPlayer(playerId)
     local playerData = {
         id = playerId,
@@ -389,9 +444,11 @@ local function exportPlayer(playerId)
         is_human = false,
         techs_researched = {},
         current_research = nil,
+        civics_researched = {},
+        current_civic = nil,
     }
 
-    local player = Players[playerId]
+    local player = Players and Players[playerId]
     if not player then
         return playerData
     end
@@ -400,9 +457,11 @@ local function exportPlayer(playerId)
     playerData.is_human = player:IsHuman()
 
     -- Get civilization
-    local config = PlayerConfigurations[playerId]
-    if config then
-        playerData.civilization = config:GetCivilizationTypeName() or "UNKNOWN"
+    if PlayerConfigurations then
+        local config = PlayerConfigurations[playerId]
+        if config then
+            playerData.civilization = config:GetCivilizationTypeName() or "UNKNOWN"
+        end
     end
 
     -- Treasury
@@ -416,12 +475,32 @@ local function exportPlayer(playerId)
     local playerCulture = player:GetCulture()
     if playerCulture then
         playerData.culture_per_turn = playerCulture:GetCultureYield() or 0
+
+        -- Export current civic
+        if playerCulture.GetProgressingCivic then
+            local currentCivic = playerCulture:GetProgressingCivic()
+            if currentCivic and currentCivic >= 0 then
+                playerData.current_civic = getCivicTypeName(currentCivic)
+            end
+        end
+
+        -- Export researched civics
+        if playerCulture.GetResearchedCivics then
+            local civics = playerCulture:GetResearchedCivics()
+            if civics then
+                for _, civicId in ipairs(civics) do
+                    table.insert(playerData.civics_researched, getCivicTypeName(civicId))
+                end
+            end
+        end
     end
 
     local playerTech = player:GetTechs()
     if playerTech then
         playerData.science_per_turn = playerTech:GetScienceYield() or 0
-        playerData.current_research = playerTech:GetResearchingTech()
+        if playerTech.GetResearchingTech then
+            playerData.current_research = playerTech:GetResearchingTech()
+        end
     end
 
     -- Religion
@@ -436,14 +515,14 @@ local function exportPlayer(playerId)
     return playerData
 end
 
--- Export legal actions
+-- Export legal actions (with hex-grid neighbors and actual production items)
 local function exportLegalActions(playerId)
     local actions = {}
 
     -- End turn is always available
     table.insert(actions, { action = "end_turn" })
 
-    local player = Players[playerId]
+    local player = Players and Players[playerId]
     if not player then
         return actions
     end
@@ -456,18 +535,13 @@ local function exportLegalActions(playerId)
             local movesRemaining = unit:GetMovementMovesRemaining() or 0
 
             if movesRemaining > 0 then
-                -- Get valid move targets
+                -- Get valid move targets using hex-grid neighbors
                 local targets = {}
                 local ux, uy = unit:GetX(), unit:GetY()
+                local neighbors = getHexNeighbors(ux, uy)
 
-                -- Simple adjacent tile check (actual pathfinding is complex)
-                local directions = {
-                    {-1, 0}, {1, 0}, {0, -1}, {0, 1},
-                    {-1, -1}, {-1, 1}, {1, -1}, {1, 1},
-                }
-
-                for _, dir in ipairs(directions) do
-                    local tx, ty = ux + dir[1], uy + dir[2]
+                for _, neighbor in ipairs(neighbors) do
+                    local tx, ty = neighbor[1], neighbor[2]
                     if tx >= 0 and ty >= 0 then
                         local plot = Map and Map.GetPlot(tx, ty)
                         if plot and not plot:IsImpassable() then
@@ -483,32 +557,135 @@ local function exportLegalActions(playerId)
                         targets = targets,
                     })
                 end
+
+                -- Fortify action (available if unit has movement)
+                if not unit:IsCivilian() then
+                    table.insert(actions, {
+                        action = "fortify",
+                        unit_id = unitId,
+                    })
+                end
+
+                -- Skip action (always available if has movement)
+                table.insert(actions, {
+                    action = "skip",
+                    unit_id = unitId,
+                })
+
+                -- Found city (if settler)
+                local typeInfo = getUnitTypeInfo(unit:GetUnitType())
+                if typeInfo.type_name == "UNIT_SETTLER" or
+                   (typeInfo.is_civilian and string.find(typeInfo.type_name, "SETTLER")) then
+                    table.insert(actions, {
+                        action = "found_city",
+                        unit_id = unitId,
+                    })
+                end
             end
 
-            -- Attack actions
-            if unit:GetAttacksRemaining() > 0 then
-                -- Get valid attack targets (simplified)
+            -- Attack actions (check for enemy units in range)
+            if (unit:GetAttacksRemaining() or 0) > 0 then
                 local ux, uy = unit:GetX(), unit:GetY()
                 local range = unit:GetRange() or 1
+                local attackTargets = {}
 
-                -- Would need to check for enemy units in range
-                -- This is a placeholder
+                -- Get tiles in attack range
+                local tilesInRange
+                if range <= 1 then
+                    tilesInRange = getHexNeighbors(ux, uy)
+                else
+                    tilesInRange = getHexTilesInRange(ux, uy, range)
+                end
+
+                for _, tilePos in ipairs(tilesInRange) do
+                    local tx, ty = tilePos[1], tilePos[2]
+                    if tx >= 0 and ty >= 0 then
+                        local plot = Map and Map.GetPlot(tx, ty)
+                        if plot then
+                            -- Check for enemy units on this tile
+                            local plotUnits = Units and Units.GetUnitsInPlot(plot)
+                            if plotUnits then
+                                for _, enemyUnit in plotUnits:Members() do
+                                    if enemyUnit:GetOwner() ~= playerId then
+                                        table.insert(attackTargets, {tx, ty})
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+
+                if #attackTargets > 0 then
+                    local attackAction = range > 1 and "ranged_attack" or "attack"
+                    table.insert(actions, {
+                        action = attackAction,
+                        unit_id = unitId,
+                        targets = attackTargets,
+                    })
+                end
             end
         end
     end
 
-    -- City production actions
+    -- City production actions (with actual available items)
     local playerCities = player:GetCities()
     if playerCities then
         for _, city in playerCities:Members() do
             local buildQueue = city:GetBuildQueue()
-            if buildQueue and not buildQueue:CurrentlyBuilding() then
-                -- City needs production order
-                table.insert(actions, {
-                    action = "produce",
-                    city_id = city:GetID(),
-                    items = {},  -- Would list available items
-                })
+            if buildQueue then
+                local needsProduction = not buildQueue:CurrentlyBuilding()
+                -- Always export available production for each city
+                local items = {}
+                local itemTypes = {}
+
+                -- Check available units
+                if GameInfo and GameInfo.Units and buildQueue.CanProduce then
+                    for row in GameInfo.Units() do
+                        local ok, canProd = pcall(function()
+                            return buildQueue:CanProduce(row.Index, true)
+                        end)
+                        if ok and canProd then
+                            table.insert(items, row.UnitType or row.Index)
+                            itemTypes[row.UnitType or row.Index] = "unit"
+                        end
+                    end
+                end
+
+                -- Check available buildings
+                if GameInfo and GameInfo.Buildings and buildQueue.CanProduce then
+                    for row in GameInfo.Buildings() do
+                        local ok, canProd = pcall(function()
+                            return buildQueue:CanProduce(row.Index, true)
+                        end)
+                        if ok and canProd then
+                            table.insert(items, row.BuildingType or row.Index)
+                            itemTypes[row.BuildingType or row.Index] = "building"
+                        end
+                    end
+                end
+
+                -- Check available districts
+                if GameInfo and GameInfo.Districts and buildQueue.CanProduce then
+                    for row in GameInfo.Districts() do
+                        local ok, canProd = pcall(function()
+                            return buildQueue:CanProduce(row.Index, true)
+                        end)
+                        if ok and canProd then
+                            table.insert(items, row.DistrictType or row.Index)
+                            itemTypes[row.DistrictType or row.Index] = "district"
+                        end
+                    end
+                end
+
+                if #items > 0 or needsProduction then
+                    table.insert(actions, {
+                        action = "produce",
+                        city_id = city:GetID(),
+                        items = items,
+                        item_types = itemTypes,
+                    })
+                end
             end
         end
     end
@@ -551,13 +728,18 @@ function AlphaZeroStateExporter.ExportState(playerId)
     -- Get turn info
     if Game then
         state.turn_id = Game.GetCurrentGameTurn() or 0
-        state.era = Game.GetEras():GetCurrentEra() or 0
+        local eras = Game.GetEras and Game.GetEras()
+        if eras and eras.GetCurrentEra then
+            state.era = eras:GetCurrentEra() or 0
+        end
     end
 
     -- Get current player civilization name
-    local config = PlayerConfigurations[playerId]
-    if config then
-        state.current_player = config:GetCivilizationTypeName() or ""
+    if PlayerConfigurations then
+        local config = PlayerConfigurations[playerId]
+        if config then
+            state.current_player = config:GetCivilizationTypeName() or ""
+        end
     end
 
     -- Export components
@@ -567,7 +749,7 @@ function AlphaZeroStateExporter.ExportState(playerId)
     state.player = exportPlayer(playerId)
     state.players = { state.player }  -- Include at least current player
 
-    if AlphaZeroConfig.IsEnabled("LEGAL_ACTIONS") then
+    if AlphaZeroConfig and AlphaZeroConfig.IsEnabled("LEGAL_ACTIONS") then
         state.legal_actions = exportLegalActions(playerId)
     end
 

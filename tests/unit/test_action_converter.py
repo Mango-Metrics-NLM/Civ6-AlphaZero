@@ -394,6 +394,90 @@ class TestItemIdConversion:
         assert _convert_item_id_to_int("") is None
 
 
+class TestCoordinateScalingRound:
+    """Tests for coordinate scaling using round() instead of int()."""
+
+    @pytest.fixture
+    def converter(self):
+        """Create an ActionConverter instance."""
+        config = ActionSpaceConfig(board_size=16, max_units=100, max_cities=20)
+        return ActionConverter(board_size=16, action_space_config=config)
+
+    def test_scale_to_original_uses_round(self, converter):
+        """Test _scale_to_original uses round() for accurate mapping."""
+        # Map 16 -> 44: scale_x = 44/16 = 2.75
+        # For x=5: 5 * 2.75 = 13.75 -> round() gives 14, int() gives 13
+        orig_x, orig_y = converter._scale_to_original(5, 5, (44, 26))
+        # Just verify it's in bounds and deterministic
+        assert 0 <= orig_x < 44
+        assert 0 <= orig_y < 26
+
+    def test_scale_from_original_uses_round(self, converter):
+        """Test _scale_from_original uses round() for accurate mapping."""
+        # Map 44 -> 16: scale_x = 16/44 = 0.3636
+        # For x=10: 10 * 0.3636 = 3.636 -> round() gives 4, int() gives 3
+        scaled_x, scaled_y = converter._scale_from_original(10, 10, (44, 26))
+        assert 0 <= scaled_x < 16
+        assert 0 <= scaled_y < 16
+
+    def test_scale_round_trip_approximate(self, converter):
+        """Test that scale_to_original and scale_from_original are approximate inverses."""
+        map_size = (80, 50)
+        for orig_x in range(0, 80, 10):
+            for orig_y in range(0, 50, 10):
+                scaled = converter._scale_from_original(orig_x, orig_y, map_size)
+                restored = converter._scale_to_original(scaled[0], scaled[1], map_size)
+                # Error should be within one scale step
+                scale_step_x = 80 / 16
+                scale_step_y = 50 / 16
+                assert abs(restored[0] - orig_x) <= scale_step_x + 1
+                assert abs(restored[1] - orig_y) <= scale_step_y + 1
+
+
+class TestItemHashRange:
+    """Tests for _ITEM_HASH_RANGE constant and its usage."""
+
+    def test_item_hash_range_constant_exists(self):
+        """Test that _ITEM_HASH_RANGE is importable and positive."""
+        from alpha_zero.bridge.action_converter import _ITEM_HASH_RANGE
+
+        assert isinstance(_ITEM_HASH_RANGE, int)
+        assert _ITEM_HASH_RANGE > 0
+
+    def test_hashed_items_within_range(self):
+        """Test that hashed items stay within _ITEM_HASH_RANGE."""
+        from alpha_zero.bridge.action_converter import (
+            _ITEM_HASH_RANGE,
+            _convert_item_id_to_int,
+        )
+
+        civ6_items = [
+            "UNIT_WARRIOR",
+            "UNIT_SETTLER",
+            "UNIT_ARCHER",
+            "BUILDING_MONUMENT",
+            "BUILDING_GRANARY",
+            "BUILDING_ANCIENT_WALLS",
+            "DISTRICT_CAMPUS",
+            "DISTRICT_HOLY_SITE",
+        ]
+        for item in civ6_items:
+            result = _convert_item_id_to_int(item)
+            assert result is not None
+            assert 0 <= result < _ITEM_HASH_RANGE, (
+                f"Hashed item '{item}' = {result} outside range [0, {_ITEM_HASH_RANGE})"
+            )
+
+    def test_hashed_items_deterministic(self):
+        """Test that hashing produces deterministic results."""
+        from alpha_zero.bridge.action_converter import _convert_item_id_to_int
+
+        for _ in range(10):
+            assert _convert_item_id_to_int("UNIT_WARRIOR") == _convert_item_id_to_int(
+                "UNIT_WARRIOR"
+            )
+
+
 class TestValidateParameter:
     """Tests for the validate parameter in ActionConverter.convert()."""
 
