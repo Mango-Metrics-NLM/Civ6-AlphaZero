@@ -5,6 +5,65 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] — 2026-02-14
+
+### Added — Standalone Tournament Worker & Civ6 Lua Integration
+
+#### Standalone Tournament Worker (`alpha_zero/cloud/gcp/tournament_worker.py`) — NEW
+
+- **CLI-based tournament runner**: Runs ELO-rated round-robin tournaments across GCS model versions independently of the training pipeline
+  - `--model_stride`: Evaluate every Nth model (default: 1) for faster tournaments across many versions
+  - `--games_per_matchup`: Games per model pair (default: 6) with alternating sides
+  - `--mcts_type`, `--mcts_simulations`: MCTS configuration for tournament play
+  - `--output_path`: Save tournament results JSON locally
+  - Reuses `arena.run_arena()` for fair game play with alternating starting player
+- **VertexTournamentJob**: Vertex AI job wrapper for cloud-based tournament execution
+- **Model loading head dimension inference**: Older models (v0-v29) missing `policy_hidden_dim`/`value_head_dim` in saved configs are now inferred from `state_dict` tensor shapes, enabling mixed-architecture tournaments
+
+#### Civ6 Lua Integration & Python Bridge Fixes (PR #46)
+
+##### Python Bridge Fixes
+- `action_converter.py`: `int()` → `round()` for coordinate scaling (fixes off-by-one at grid boundaries); extracted `_ITEM_HASH_RANGE` constant
+- `config.py`: Added `typing.Any` import; typed `kwargs` dict
+- `file_bridge.py`: Extracted `_MAX_RETRY_BACKOFF_SECONDS` constant; explicit float/bool casts for robustness
+- `protocol.py`: Added `to_dict()` methods on TileData, UnitData, CityData, PlayerData, LegalAction; added `CommandMessage.create_single()` factory; added `civics_researched`/`current_civic` fields to PlayerData
+- `state_converter.py`: Extracted `_ESTIMATED_TOTAL_TECHS`/`_ESTIMATED_MAX_SCORE` constants; implemented `_extract_civics()` with `_normalize_civic_name()`; `int()` → `round()` in `inverse_scale_coords`
+
+##### Lua Mod Fixes
+- `ActionExecutor.lua`: `UnitManager.MoveUnit` → `RequestOperation` (correct Civ6 API); `safeGetUnit`/`safeGetCity` helpers; new handlers (sleep, promote, delete, buy, citizen, diplomacy stubs)
+- `Main.lua`: Remove duplicate event registrations; re-entrance guard; fix polling handle leak; graceful shutdown
+- `StateExporter.lua`: Nil guards throughout; hex-grid 6-neighbor offsets (was square 8-dir); CanProduce items; civics export; enemy unit detection
+- `FileIO.lua`: `shellEscape()` for injection prevention; content-hash change detection for efficient polling
+- `Config.lua`: Cross-platform PATH_SEP; path traversal prevention; JSON config loading
+- `Logger.lua`: Log rotation at 5MB file size
+
+#### Test Suite
+
+- `tests/cloud/unit/test_tournament_worker.py` — 42 tests (model discovery, matchup generation, ELO computation, CLI args, GCS integration, error handling)
+- `tests/unit/test_action_converter.py` — +448 lines (unit/city/tech action conversion, legality checking, find_unit/city_idx, valid action fallback)
+- `tests/unit/test_bridge.py` — +200 lines (retry delays, heartbeat, poll_ack, errors, send_command_with_retry, config validation)
+- `tests/unit/test_bridge_protocol.py` — +126 lines (unskipped 7 tests: to_dict, create_single, round-trip serialization)
+- `tests/unit/test_state_converter.py` — +113 lines (coordinate scaling round-trip, civics extraction, constant values)
+
+### Changed
+
+- Version: `0.12.0` → `0.13.0`
+- Total tests: 3,678 → 4,893+ (33% increase)
+- GCS models: 30 (v0-v29) → 80 (v0-v79) from 50-iteration training run
+- `.gitignore`: Added tournament worker artifacts, Lua mod IPC communication files
+- `evaluation_worker.py`: Head dimension inference from state_dict for older model compatibility
+- `vertex_orchestrator.py`: 6 new CLI args for tournament control, refactored `run_post_run_evaluation()`
+- `config.py`: Added H100 GPU pricing to `DEFAULT_GPU_COSTS`
+
+#### Live Training Run (Phase 15: golden-dream-542)
+
+- **50/50 iterations** on Vertex AI with value_lr=0.1x, warmup_cosine LR schedule
+- **80 model versions** (v0-v79) saved to GCS
+- **Standalone tournament** running (17 models, stride=5, 136 matchups, ~17h estimated)
+- **Cost**: ~$4.63 total (50 iterations, 2 workers, 50 games/worker)
+
+---
+
 ## [0.12.0] — 2026-02-12
 
 ### Added — Phase 15: Scaled Training & Value Head Stabilization

@@ -26,14 +26,16 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 13 | Multi-Iteration Training & Post-Run Evaluation | ✅ Complete |
 | Phase 14 | Learning Signal Validation (20-iteration run) | ✅ Complete |
 | Phase 15 | Scaled Training & Value Head Stabilization | ✅ Complete |
+| Phase 15+ | Standalone Tournament Worker & Lua Integration | ✅ Complete |
 
 **Codebase Statistics:**
 
-- ~55,000 lines of core implementation
-- 3,678+ tests with >80% coverage on core modules
-- Docker v0.12.0 on GCR, 30 model versions (v0-v29) in GCS
-- 2 successful model promotions (v6→v19→v26) in 20-iteration run
-- Post-run tournament: 23 models, 253 matchups, ELO spread 66 points
+- ~58,000 lines of core implementation
+- 4,893+ tests with >80% coverage on core modules
+- Docker v0.12.0 on GCR, 80 model versions (v0-v79) in GCS
+- 50-iteration training run completed (golden-dream-542, ~$4.63)
+- Standalone tournament: 17 models (stride=5), 136 matchups, 1,360 games
+- Civ6 Lua mod fully integrated with Python bridge (245 bridge tests, 50 integration tests)
 - 11 game mechanics modules (deprecated, future Civ6 integration)
 - 13 remaining xfail tests (12 DDP + 1 hierarchical — deferred)
 
@@ -72,6 +74,9 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - **Training Diagnostics**: Real-time gradient norms, loss decomposition, value correlation, policy entropy, stall detection
 - **Per-Head Learning Rates**: Separate LR multipliers for encoder, policy head, and value head to stabilize training
 - **LR Schedule Types**: Warmup-cosine, constant, and step-decay schedules with per-head ratio preservation
+- **Standalone Tournament Worker**: CLI-based ELO round-robin tournament across GCS model versions with stride support
+- **Mixed-Architecture Tournaments**: Automatic head dimension inference from state_dict for cross-architecture model comparison
+- **Lua Mod Hardening**: Shell injection prevention, content-hash change detection, hex-grid neighbors, log rotation, graceful shutdown
 
 ## Architecture (C4 Model)
 
@@ -570,6 +575,77 @@ graph TB
     style Mypy fill:#438dd5,stroke:#2e6295,color:#ffffff
     style Bandit fill:#438dd5,stroke:#2e6295,color:#ffffff
     style DeprecatedLog fill:#999999,stroke:#666666,color:#ffffff
+```
+
+### Level 3: Component Diagram - GCP Cloud Training Pipeline
+
+Internal structure of the Vertex AI training pipeline with standalone tournament worker.
+
+```mermaid
+graph TB
+    subgraph "GCP Vertex AI Pipeline"
+        subgraph "Orchestration"
+            VertexOrch["VertexOrchestrator<br/><i>Multi-iteration pipeline</i>"]
+            CLI["CLI Entry Point<br/><i>vertex_orchestrator.py</i>"]
+            StallDetect["Stall Detection<br/><i>Win rate trend analysis</i>"]
+        end
+
+        subgraph "Worker Jobs (Vertex AI Custom Jobs)"
+            SelfPlayJob["VertexSelfPlayJob<br/><i>GumbelMCTS self-play</i>"]
+            TrainingJob["VertexTrainingJob<br/><i>Per-head LRs, diagnostics</i>"]
+            EvalJob["VertexEvaluationJob<br/><i>Model arena gating</i>"]
+            TournJob["VertexTournamentJob<br/><i>Standalone tournament</i>"]
+        end
+
+        subgraph "Workers"
+            SelfPlayW["selfplay_worker.py<br/><i>Generate trajectories</i>"]
+            TrainingW["training_worker.py<br/><i>Train network</i>"]
+            EvalW["evaluation_worker.py<br/><i>Compare models</i>"]
+            TournW["tournament_worker.py<br/><i>ELO round-robin</i>"]
+        end
+
+        subgraph "Shared Infrastructure"
+            Arena["arena.py<br/><i>Fair game play</i>"]
+            NetConfig["NetworkArchitectureConfig<br/><i>Architecture defaults</i>"]
+            GCS["Google Cloud Storage<br/><i>Models, trajectories, results</i>"]
+        end
+
+        subgraph "Civ6 Bridge"
+            Bridge["FileBridge<br/><i>Async IPC</i>"]
+            StateConv["StateConverter<br/><i>Lua JSON → tensor</i>"]
+            ActionConv["ActionConverter<br/><i>Action → Lua command</i>"]
+            LuaMod["Civ6 Lua Mod<br/><i>Game state export</i>"]
+        end
+    end
+
+    CLI --> VertexOrch
+    VertexOrch -->|"Phase 1"| SelfPlayJob --> SelfPlayW
+    VertexOrch -->|"Phase 2"| TrainingJob --> TrainingW
+    VertexOrch -->|"Phase 3"| EvalJob --> EvalW
+    VertexOrch -->|"Post-run"| TournJob --> TournW
+    VertexOrch --> StallDetect
+
+    EvalW --> Arena
+    TournW --> Arena
+    SelfPlayW --> GCS
+    TrainingW --> GCS
+    EvalW --> GCS
+    TournW --> GCS
+
+    EvalW --> NetConfig
+    TournW --> NetConfig
+
+    Bridge --> StateConv
+    Bridge --> ActionConv
+    LuaMod -->|"state.json"| Bridge
+    Bridge -->|"commands.json"| LuaMod
+
+    style VertexOrch fill:#1168bd,stroke:#0b4884,color:#ffffff
+    style TournW fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style Arena fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style GCS fill:#85bbf0,stroke:#5d82a8,color:#000000
+    style LuaMod fill:#85bbf0,stroke:#5d82a8,color:#000000
+    style Bridge fill:#438dd5,stroke:#2e6295,color:#ffffff
 ```
 
 ### Level 3: Component Diagram - Hierarchical RL
@@ -1096,6 +1172,7 @@ Civ6-AlphaZero/
 │   │       ├── selfplay_worker.py    # Self-play container worker
 │   │       ├── training_worker.py    # Training worker (per-head LRs, diagnostics)
 │   │       ├── evaluation_worker.py  # Model arena (Civ6TransformerNetwork)
+│   │       ├── tournament_worker.py  # Standalone ELO tournament (Phase 15+)
 │   │       ├── arena.py              # Shared arena logic (Phase 13)
 │   │       ├── entrypoint.py         # Container mode router
 │   │       ├── container_healthcheck.py # Container import validation
@@ -1170,12 +1247,14 @@ Civ6-AlphaZero/
 │   └── AlphaZeroAI/          # Mod package
 │       ├── AlphaZeroAI.modinfo # Mod definition
 │       └── Scripts/          # Lua scripts
-│           ├── Main.lua      # Entry point & events
-│           ├── StateExporter.lua # Game state serialization
-│           ├── ActionExecutor.lua # Command execution
-│           ├── FileIO.lua    # File operations
+│           ├── Main.lua      # Entry point & events (re-entrance guard, graceful shutdown)
+│           ├── StateExporter.lua # Game state serialization (hex-grid, civics, enemy units)
+│           ├── ActionExecutor.lua # Command execution (RequestOperation API, 10+ handlers)
+│           ├── FileIO.lua    # File operations (shell escape, content-hash change detection)
+│           ├── Config.lua    # Configuration (cross-platform, path traversal prevention)
+│           ├── Logger.lua    # Logging (log rotation at 5MB)
 │           └── JsonEncoder.lua # Pure Lua JSON
-├── tests/                    # Test suite (3,678+ tests)
+├── tests/                    # Test suite (4,893+ tests)
 │   ├── unit/                 # Unit tests
 │   ├── integration/          # Integration tests (PBT, distributed, preemption)
 │   ├── e2e/                  # End-to-end tests (training smoke, GCS, Vertex)
@@ -1222,8 +1301,23 @@ Civ6-AlphaZero/
 - ✅ **Code Quality & Tech Debt** (Phase 11) — Removed 14,600 LOC dead code, fixed 16 xfailed tests, consolidated logging, CI hardening, mypy strictness, 16 new edge case tests
 - ✅ **Learning Signal Validation** (Phase 14) — 20-iteration training run ($2.44), 2 model promotions (v6→v19→v26), policy loss 1.21→0.63, training diagnostics, warmup-cosine LR, stall detection
 - ✅ **Value Head Stabilization** (Phase 15) — Separate per-head LR multipliers (value=0.1x), optimizer param groups, base_lr_ratio preservation through scheduler, per-head W&B logging
+- ✅ **Standalone Tournament Worker** (Phase 15+) — CLI-based ELO tournament across GCS model versions, model stride, VertexTournamentJob, head dimension inference for mixed-architecture tournaments
+- ✅ **Civ6 Lua Integration** (Phase 15+) — Fixed Lua mod API calls (RequestOperation), hex-grid neighbors, injection prevention, log rotation, civics support; Python bridge coordinate fixes, to_dict/create_single protocol methods
 
-### Training Results (Phase 14: sunny-fog-469)
+### Training Results
+
+#### Phase 15: golden-dream-542 (50-iteration scaled run)
+
+| Metric | Result |
+|--------|--------|
+| Iterations | 50/50 |
+| Cost | ~$4.63 |
+| Model Versions | 80 (v0-v79) |
+| Architecture | v0-v29: embed=256/layers=8; v30-v79: embed=64/layers=6 |
+| LR Schedule | warmup_cosine (value_lr=0.1x encoder) |
+| Standalone Tournament | 17 models (stride=5), 136 matchups, 1,360 games (in progress) |
+
+#### Phase 14: sunny-fog-469 (20-iteration validation)
 
 | Metric | Result |
 |--------|--------|
@@ -1239,20 +1333,20 @@ Civ6-AlphaZero/
 
 | Priority | Feature | Description |
 |----------|---------|-------------|
-| P0 | 50-Iteration Scaled Run | Validate value head stabilization with wider training window and more iterations |
-| P1 | Inference Optimization & Vectorized Self-Play | Batch MCTS inference, vectorized environments for 10x+ throughput |
-| P2 | MuZero Training Run | Run MuZero PBT with `configs/muzero_pbt.yaml` to validate learned dynamics |
-| P3 | DDP Test Rewrites | Fix remaining 12 DDP xfailed tests, full mypy strict mode |
-| P4 | Human vs AI Interface | Web-based UI for human gameplay |
-| P5 | Full Civ 6 Integration | Direct game interface via modding API |
+| P0 | Analyze Tournament Results | Process standalone tournament ELO rankings across 80 model versions; quantify learning signal |
+| P1 | Real Civ6 Game Testing | Test Python bridge ↔ Lua mod end-to-end with actual Civilization VI game |
+| P2 | Inference Optimization & Vectorized Self-Play | Batch MCTS inference, vectorized environments for 10x+ throughput |
+| P3 | MuZero Training Run | Run MuZero PBT with `configs/muzero_pbt.yaml` to validate learned dynamics |
+| P4 | DDP Test Rewrites | Fix remaining 12 DDP xfailed tests, full mypy strict mode |
+| P5 | Human vs AI Interface | Web-based UI for human gameplay |
 
 ### Current Priorities
 
-1. **Monitor 50-iteration run** — Track value correlation stabilization (target: >0.5 for 10+ consecutive iterations)
-2. **W&B dashboards** — Verify `train/learning_rate_value_head` is 10x lower than encoder, same schedule shape
-3. **ELO spread target** — Post-run tournament should show >100 point ELO spread (was 66 in Phase 14)
-4. **Model promotion target** — Expect 3+ promotions over 50 iterations (was 2 in 20 iterations)
-5. **Vectorized self-play** — Implement batch MCTS inference for 10x+ throughput improvement
+1. **Analyze tournament results** — Once standalone tournament completes (~17h), analyze ELO spread, identify strongest model generation, compare big vs small architecture performance
+2. **Real Civ6 testing** — With Lua mod fixes landed (PR #46), test actual game integration: state export, action execution, full game loop
+3. **Value head analysis** — Compare value correlation stability between Phase 14 (20-iter) and Phase 15 (50-iter) runs
+4. **Vectorized self-play** — Implement batch MCTS inference for 10x+ throughput improvement
+5. **Model architecture decision** — Based on tournament data, decide whether to continue with embed_dim=64/layers=6 or scale up
 
 ## Contributing
 
