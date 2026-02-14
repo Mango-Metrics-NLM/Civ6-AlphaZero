@@ -66,6 +66,7 @@ ignore = [
 "agentic_framework/tests/*" = ["S101", "ANN"]  # Allow asserts and skip annotations in framework tests
 "alpha_zero/cloud/preemption.py" = ["S310"]  # GCE metadata URL is intentional
 "run_*.py" = ["ANN"]  # Skip annotations in run scripts
+"src/*" = ["ANN401"]  # Allow Any for duck typing with optional torch
 
 [tool.mypy]
 python_version = "3.11"
@@ -89,6 +90,11 @@ ignore_missing_imports = true
 module = "alpha_zero.cloud.*"
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
+
+[[tool.mypy.overrides]]
+module = "src.*"
+ignore_missing_imports = true
+warn_unused_ignores = false
 
 [[tool.mypy.overrides]]
 module = "tests.*"
@@ -118,7 +124,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["alpha_zero"]
+source = ["alpha_zero", "src"]
 branch = true
 omit = [
     "*/tests/*",

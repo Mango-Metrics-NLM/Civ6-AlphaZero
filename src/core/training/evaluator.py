@@ -7,6 +7,8 @@ Layer 3 -- depends on types, config, logging.
 """
 from __future__ import annotations
 
+__all__ = ["EloRating", "EvalResult", "Evaluator", "random_eval_fn"]
+
 import logging
 import math
 import random as stdlib_random

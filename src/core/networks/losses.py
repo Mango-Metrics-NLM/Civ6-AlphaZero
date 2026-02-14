@@ -1,6 +1,8 @@
 """Loss functions for AlphaZero-style training."""
 from __future__ import annotations
 
+__all__ = ["compute_combined_loss", "compute_policy_loss", "compute_value_loss"]
+
 import torch
 import torch.nn.functional as f
 

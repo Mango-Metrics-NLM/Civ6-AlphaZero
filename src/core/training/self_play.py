@@ -1,6 +1,8 @@
 """Self-play data collection for generating training examples."""
 from __future__ import annotations
 
+__all__ = ["EvalFn", "SelfPlayCollector"]
+
 import logging
 from collections.abc import Callable
 

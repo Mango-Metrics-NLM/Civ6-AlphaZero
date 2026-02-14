@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+__all__ = ["PUCTPolicy"]
+
 import numpy as np
 from numpy.typing import NDArray
 

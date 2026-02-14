@@ -1,6 +1,8 @@
 """Complete dual-head network combining all components."""
 from __future__ import annotations
 
+__all__ = ["DualHeadNetwork", "build_network"]
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as f

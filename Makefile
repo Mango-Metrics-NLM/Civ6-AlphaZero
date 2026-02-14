@@ -122,6 +122,36 @@ test-storage:
 	pytest tests/unit/test_storage_backend.py tests/unit/test_replay_buffer.py -v
 
 # ============================================================================
+# SDK Development (src/ directory)
+# ============================================================================
+
+.PHONY: lint-sdk
+lint-sdk:
+	ruff check src/ tests/unit/core/ tests/unit/environments/ tests/unit/adapters/
+	ruff format --check src/
+
+.PHONY: lint-sdk-fix
+lint-sdk-fix:
+	ruff check src/ tests/unit/core/ tests/unit/environments/ tests/unit/adapters/ --fix
+	ruff format src/
+
+.PHONY: typecheck-sdk
+typecheck-sdk:
+	mypy src/ --ignore-missing-imports --disable-error-code=import-untyped --no-warn-unused-ignores
+
+.PHONY: test-sdk
+test-sdk:
+	pytest tests/unit/core/ tests/unit/environments/ tests/unit/adapters/ tests/unit/test_cli.py tests/smoke/ -v --tb=short
+
+.PHONY: test-sdk-cov
+test-sdk-cov:
+	pytest tests/unit/core/ tests/unit/environments/ tests/unit/adapters/ tests/unit/test_cli.py tests/smoke/ --cov=src --cov-report=term-missing --cov-fail-under=80
+
+.PHONY: check-sdk
+check-sdk: lint-sdk typecheck-sdk test-sdk-cov
+	@echo "SDK checks passed"
+
+# ============================================================================
 # Docker Build
 # ============================================================================
 

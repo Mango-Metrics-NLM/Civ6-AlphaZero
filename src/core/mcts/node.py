@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+__all__ = ["MCTSNode"]
+
 from dataclasses import dataclass, field
 
 import numpy as np

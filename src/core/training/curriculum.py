@@ -7,6 +7,8 @@ Layer 3 -- depends on config, types, logging.
 """
 from __future__ import annotations
 
+__all__ = ["CurriculumScheduler", "StageStats"]
+
 import logging
 from dataclasses import dataclass, field
 

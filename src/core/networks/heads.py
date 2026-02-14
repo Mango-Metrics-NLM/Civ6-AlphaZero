@@ -1,6 +1,8 @@
 """Policy and value head implementations for dual-head networks."""
 from __future__ import annotations
 
+__all__ = ["PolicyHead", "ValueHead"]
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as f

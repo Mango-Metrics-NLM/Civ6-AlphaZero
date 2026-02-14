@@ -6,7 +6,10 @@ precision.  All torch usage is guarded behind HAS_TORCH.
 
 Layer 3 -- depends on networks (optional torch), config, types, logging.
 """
+
 from __future__ import annotations
+
+__all__ = ["Learner"]
 
 import logging
 from collections.abc import Callable

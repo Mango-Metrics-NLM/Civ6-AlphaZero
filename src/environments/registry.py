@@ -1,6 +1,8 @@
 """Environment registry for discovering and instantiating environments."""
 from __future__ import annotations
 
+__all__ = ["EnvironmentRegistry"]
+
 import logging
 from collections.abc import Callable
 from typing import Any

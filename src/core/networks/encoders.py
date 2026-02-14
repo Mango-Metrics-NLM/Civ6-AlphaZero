@@ -1,6 +1,8 @@
 """Spatial and vector feature encoders."""
 from __future__ import annotations
 
+__all__ = ["SpatialEncoder", "VectorEncoder"]
+
 import torch
 import torch.nn as nn
 

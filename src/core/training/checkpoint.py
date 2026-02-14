@@ -8,6 +8,8 @@ Layer 3 -- depends on config, types, logging.
 """
 from __future__ import annotations
 
+__all__ = ["CheckpointManager", "CheckpointMetadata"]
+
 import json
 import logging
 import shutil
