@@ -40,9 +40,9 @@ logger = logging.getLogger(__name__)
 
 # Named constants for victory progress normalization.
 # Base game has ~67 techs; use 70 as a round estimate.
-_ESTIMATED_TOTAL_TECHS = 70
+_ESTIMATED_TOTAL_TECHS: int = 70
 # High score estimate for normalizing score-based victory progress.
-_ESTIMATED_MAX_SCORE = 2000
+_ESTIMATED_MAX_SCORE: int = 2000
 
 
 @dataclass
@@ -749,8 +749,7 @@ class StateConverter:
         """
         for player in state.players:
             if player.id == state.player_id:
-                techs = getattr(player, "techs_researched", [])
-                return [self._normalize_tech_name(tech) for tech in techs]
+                return [self._normalize_tech_name(tech) for tech in player.techs_researched]
         return []
 
     def _normalize_tech_name(self, tech: str) -> str:
@@ -779,8 +778,7 @@ class StateConverter:
         """
         for player in state.players:
             if player.id == state.player_id:
-                civics = getattr(player, "civics_researched", [])
-                return [self._normalize_civic_name(civic) for civic in civics]
+                return [self._normalize_civic_name(civic) for civic in player.civics_researched]
         return []
 
     def _normalize_civic_name(self, civic: str) -> str:

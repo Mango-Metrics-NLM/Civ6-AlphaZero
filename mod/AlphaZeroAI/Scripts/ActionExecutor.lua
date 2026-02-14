@@ -301,11 +301,28 @@ local function executeUnitBuild(playerId, command)
     return false, ERROR_CODES.EXECUTION_FAILED, "Build execution failed"
 end
 
+-- Item type dispatch tables for production commands.
+-- Maps item_type -> CityOperationTypes param key (for CityManager API)
+local PRODUCTION_PARAM_KEYS = {
+    unit = "PARAM_UNIT_TYPE",
+    building = "PARAM_BUILDING_TYPE",
+    wonder = "PARAM_BUILDING_TYPE",  -- Wonders use building param
+    district = "PARAM_DISTRICT_TYPE",
+}
+
+-- Maps item_type -> buildQueue method name (for fallback API)
+local PRODUCTION_QUEUE_METHODS = {
+    unit = "AddUnitType",
+    building = "AddBuildingType",
+    wonder = "AddWonderType",
+    district = "AddDistrictType",
+}
+
 -- Set city production using CityManager.RequestOperation (correct Civ6 API)
 local function executeCityProduce(playerId, command)
     local cityId = command.city_id
     local itemId = command.item_id
-    local itemType = command.item_type  -- "unit", "building", "wonder", "district"
+    local itemType = command.item_type or "unit"  -- default to unit
 
     if not cityId or not itemId then
         return false, ERROR_CODES.INVALID_COMMAND, "Missing city_id or item_id"
@@ -320,14 +337,9 @@ local function executeCityProduce(playerId, command)
 
     -- Primary method: CityManager.RequestOperation (correct Civ6 API)
     if CityManager and CityManager.RequestOperation and CityOperationTypes then
+        local paramKey = PRODUCTION_PARAM_KEYS[itemType] or PRODUCTION_PARAM_KEYS["unit"]
         local params = {}
-        if itemType == "unit" or not itemType then
-            params[CityOperationTypes.PARAM_UNIT_TYPE] = itemId
-        elseif itemType == "building" or itemType == "wonder" then
-            params[CityOperationTypes.PARAM_BUILDING_TYPE] = itemId
-        elseif itemType == "district" then
-            params[CityOperationTypes.PARAM_DISTRICT_TYPE] = itemId
-        end
+        params[CityOperationTypes[paramKey]] = itemId
         CityManager.RequestOperation(city, CityOperationTypes.BUILD, params)
         return true, nil, string.format("City %d producing %s (%s)", cityId, tostring(itemId), tostring(itemType))
     end
@@ -335,33 +347,13 @@ local function executeCityProduce(playerId, command)
     -- Fallback: buildQueue methods (for different Civ6 mod contexts)
     local buildQueue = city:GetBuildQueue()
     if buildQueue then
-        local success = false
-        local ok, result
-
-        if itemType == "unit" or not itemType then
-            if buildQueue.AddUnitType then
-                ok, result = pcall(function() return buildQueue:AddUnitType(itemId) end)
-                success = ok and result
+        local methodName = PRODUCTION_QUEUE_METHODS[itemType] or PRODUCTION_QUEUE_METHODS["unit"]
+        local method = buildQueue[methodName]
+        if method then
+            local ok, result = pcall(function() return method(buildQueue, itemId) end)
+            if ok and result then
+                return true, nil, string.format("City %d producing %s (fallback)", cityId, tostring(itemId))
             end
-        elseif itemType == "building" then
-            if buildQueue.AddBuildingType then
-                ok, result = pcall(function() return buildQueue:AddBuildingType(itemId) end)
-                success = ok and result
-            end
-        elseif itemType == "district" then
-            if buildQueue.AddDistrictType then
-                ok, result = pcall(function() return buildQueue:AddDistrictType(itemId) end)
-                success = ok and result
-            end
-        elseif itemType == "wonder" then
-            if buildQueue.AddWonderType then
-                ok, result = pcall(function() return buildQueue:AddWonderType(itemId) end)
-                success = ok and result
-            end
-        end
-
-        if success then
-            return true, nil, string.format("City %d producing %s (fallback)", cityId, tostring(itemId))
         end
     end
 

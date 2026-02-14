@@ -13,6 +13,14 @@ local Log = nil  -- Will be set after Logger loads
 local unitTypeCache = {}
 local buildingTypeCache = {}
 
+-- Sentinel value for invalid Civ6 type IDs (features, resources, improvements)
+local INVALID_TYPE_ID = -1
+
+-- Hex-grid neighbor offsets (Civ6 uses offset coordinates).
+-- Neighbor positions differ based on whether the row (y) is even or odd.
+local HEX_EVEN_ROW_OFFSETS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}}
+local HEX_ODD_ROW_OFFSETS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, -1}, {-1, -1}}
+
 -- ----------------------------------------------------------------------------
 -- Helper Functions
 -- ----------------------------------------------------------------------------
@@ -78,7 +86,7 @@ end
 
 -- Get feature type name
 local function getFeatureTypeName(featureTypeId)
-    if featureTypeId == -1 then return nil end
+    if featureTypeId == INVALID_TYPE_ID then return nil end
 
     if GameInfo and GameInfo.Features then
         for row in GameInfo.Features() do
@@ -92,7 +100,7 @@ end
 
 -- Get resource type name
 local function getResourceTypeName(resourceTypeId)
-    if resourceTypeId == -1 then return nil end
+    if resourceTypeId == INVALID_TYPE_ID then return nil end
 
     if GameInfo and GameInfo.Resources then
         for row in GameInfo.Resources() do
@@ -106,7 +114,7 @@ end
 
 -- Get improvement type name
 local function getImprovementTypeName(improvementTypeId)
-    if improvementTypeId == -1 then return nil end
+    if improvementTypeId == INVALID_TYPE_ID then return nil end
 
     if GameInfo and GameInfo.Improvements then
         for row in GameInfo.Improvements() do
@@ -131,17 +139,9 @@ local function getCivicTypeName(civicId)
 end
 
 -- Get hex grid neighbors (Civ6 uses offset coordinates)
--- Neighbor offsets depend on whether the row (y) is even or odd
 local function getHexNeighbors(x, y)
     local neighbors = {}
-    local offsets
-    if y % 2 == 0 then
-        -- Even row
-        offsets = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}}
-    else
-        -- Odd row
-        offsets = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, -1}, {-1, -1}}
-    end
+    local offsets = (y % 2 == 0) and HEX_EVEN_ROW_OFFSETS or HEX_ODD_ROW_OFFSETS
     for _, offset in ipairs(offsets) do
         table.insert(neighbors, {x + offset[1], y + offset[2]})
     end
@@ -173,6 +173,38 @@ local function getHexTilesInRange(cx, cy, range)
         end
     end
     return tiles
+end
+
+-- Get observable player IDs (own player + optionally all others)
+local function getObservablePlayerIds(playerId)
+    local playerIds = {playerId}
+    local observeAll = AlphaZeroConfig and AlphaZeroConfig.Get("OBSERVE_ALL_PLAYERS")
+    if observeAll and PlayerManager and PlayerManager.GetWasEverAliveCount then
+        for i = 0, PlayerManager.GetWasEverAliveCount() - 1 do
+            if i ~= playerId then
+                table.insert(playerIds, i)
+            end
+        end
+    end
+    return playerIds
+end
+
+-- Get producible items from a GameInfo table (Units, Buildings, or Districts)
+-- Returns items appended to the provided items/itemTypes tables
+local function collectProducibleItems(buildQueue, gameInfoTable, typeField, itemCategory, items, itemTypes)
+    if not gameInfoTable or not buildQueue or not buildQueue.CanProduce then
+        return
+    end
+    for row in gameInfoTable() do
+        local ok, canProd = pcall(function()
+            return buildQueue:CanProduce(row.Index, true)
+        end)
+        if ok and canProd then
+            local key = row[typeField] or row.Index
+            table.insert(items, key)
+            itemTypes[key] = itemCategory
+        end
+    end
 end
 
 -- ----------------------------------------------------------------------------
@@ -286,18 +318,8 @@ local function exportUnits(playerId)
         return units
     end
 
-    local observeAll = AlphaZeroConfig and AlphaZeroConfig.Get("OBSERVE_ALL_PLAYERS")
     local playerVisibility = PlayersVisibility and PlayersVisibility[playerId]
-
-    -- Get all players to iterate (with nil guard on PlayerManager)
-    local playerIds = {playerId}
-    if observeAll and PlayerManager and PlayerManager.GetWasEverAliveCount then
-        for i = 0, PlayerManager.GetWasEverAliveCount() - 1 do
-            if i ~= playerId then
-                table.insert(playerIds, i)
-            end
-        end
-    end
+    local playerIds = getObservablePlayerIds(playerId)
 
     for _, pid in ipairs(playerIds) do
         local player = Players[pid]
@@ -363,18 +385,8 @@ local function exportCities(playerId)
         return cities
     end
 
-    local observeAll = AlphaZeroConfig and AlphaZeroConfig.Get("OBSERVE_ALL_PLAYERS")
     local playerVisibility = PlayersVisibility and PlayersVisibility[playerId]
-
-    -- Nil guard on PlayerManager
-    local playerIds = {playerId}
-    if observeAll and PlayerManager and PlayerManager.GetWasEverAliveCount then
-        for i = 0, PlayerManager.GetWasEverAliveCount() - 1 do
-            if i ~= playerId then
-                table.insert(playerIds, i)
-            end
-        end
-    end
+    local playerIds = getObservablePlayerIds(playerId)
 
     for _, pid in ipairs(playerIds) do
         local player = Players[pid]
@@ -639,43 +651,10 @@ local function exportLegalActions(playerId)
                 local items = {}
                 local itemTypes = {}
 
-                -- Check available units
-                if GameInfo and GameInfo.Units and buildQueue.CanProduce then
-                    for row in GameInfo.Units() do
-                        local ok, canProd = pcall(function()
-                            return buildQueue:CanProduce(row.Index, true)
-                        end)
-                        if ok and canProd then
-                            table.insert(items, row.UnitType or row.Index)
-                            itemTypes[row.UnitType or row.Index] = "unit"
-                        end
-                    end
-                end
-
-                -- Check available buildings
-                if GameInfo and GameInfo.Buildings and buildQueue.CanProduce then
-                    for row in GameInfo.Buildings() do
-                        local ok, canProd = pcall(function()
-                            return buildQueue:CanProduce(row.Index, true)
-                        end)
-                        if ok and canProd then
-                            table.insert(items, row.BuildingType or row.Index)
-                            itemTypes[row.BuildingType or row.Index] = "building"
-                        end
-                    end
-                end
-
-                -- Check available districts
-                if GameInfo and GameInfo.Districts and buildQueue.CanProduce then
-                    for row in GameInfo.Districts() do
-                        local ok, canProd = pcall(function()
-                            return buildQueue:CanProduce(row.Index, true)
-                        end)
-                        if ok and canProd then
-                            table.insert(items, row.DistrictType or row.Index)
-                            itemTypes[row.DistrictType or row.Index] = "district"
-                        end
-                    end
+                if GameInfo then
+                    collectProducibleItems(buildQueue, GameInfo.Units, "UnitType", "unit", items, itemTypes)
+                    collectProducibleItems(buildQueue, GameInfo.Buildings, "BuildingType", "building", items, itemTypes)
+                    collectProducibleItems(buildQueue, GameInfo.Districts, "DistrictType", "district", items, itemTypes)
                 end
 
                 if #items > 0 or needsProduction then

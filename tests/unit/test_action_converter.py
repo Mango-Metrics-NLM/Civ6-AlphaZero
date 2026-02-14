@@ -517,13 +517,6 @@ class TestValidateParameter:
         legal_actions = [LegalAction(action_type="end_turn")]
 
         # Try to convert a unit move action (which is not in legal_actions)
-        # First, find a unit action index
-        from alpha_zero.core.civ6_actions import (
-            ActionCategory,
-            HierarchicalAction,
-            UnitActionType,
-        )
-
         unit_action = HierarchicalAction(
             category=ActionCategory.UNIT_ACTION,
             selector=0,
@@ -541,12 +534,6 @@ class TestValidateParameter:
     def test_validate_false_allows_illegal_action(self, converter, state_with_unit):
         """Test that validate=False allows illegal actions to be converted."""
         legal_actions = [LegalAction(action_type="end_turn")]
-
-        from alpha_zero.core.civ6_actions import (
-            ActionCategory,
-            HierarchicalAction,
-            UnitActionType,
-        )
 
         unit_action = HierarchicalAction(
             category=ActionCategory.UNIT_ACTION,
@@ -592,6 +579,7 @@ class TestUnitActionConversion:
         }
 
     def _encode_unit_action(self, converter, unit_idx, action_type, target=None):
+        """Encode a unit action to a flat action index for converter.convert()."""
         action = HierarchicalAction(
             category=ActionCategory.UNIT_ACTION,
             selector=unit_idx,
@@ -626,6 +614,7 @@ class TestUnitActionConversion:
         idx = self._encode_unit_action(converter, 0, UnitActionType.SKIP)
         cmd = converter.convert(idx, state, validate=False)
         assert cmd.action_type == ActionType.UNIT_SKIP
+        assert cmd.unit_id == 1
 
     def test_convert_unit_found_city(self, converter, state):
         """Test FOUND_CITY unit action conversion."""
@@ -666,6 +655,7 @@ class TestCityActionConversion:
         }
 
     def _encode_city_action(self, converter, city_idx, action_type, item_id=0):
+        """Encode a city action to a flat action index for converter.convert()."""
         action = HierarchicalAction(
             category=ActionCategory.CITY_ACTION,
             selector=city_idx,

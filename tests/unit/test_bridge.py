@@ -720,8 +720,10 @@ class TestFileBridge:
             ack_data = {"msg_id": 55, "success": True}
             bridge.config.ack_file.write_text(json.dumps(ack_data))
 
-        asyncio.create_task(write_ack())
-        ack = await bridge.send_and_wait(cmd, timeout=1.0)
+        ack, _ = await asyncio.gather(
+            bridge.send_and_wait(cmd, timeout=1.0),
+            write_ack(),
+        )
         assert ack.msg_id == 55
         assert ack.success is True
 
@@ -936,10 +938,10 @@ class TestFileBridgeRetry:
         assert delay <= _MAX_RETRY_BACKOFF_SECONDS
 
     def test_next_msg_id_increments(self, bridge):
-        """Test _next_msg_id generates increasing IDs."""
+        """Test _next_msg_id generates sequential IDs."""
         id1 = bridge._next_msg_id()
         id2 = bridge._next_msg_id()
-        assert id2 > id1
+        assert id2 == id1 + 1
 
     @pytest.mark.asyncio
     async def test_send_command_with_retry_success(self, bridge):
@@ -965,7 +967,7 @@ class TestFileBridgeRetry:
         ]
         bridge.config.errors_file.write_text(json.dumps(error_data))
         errors = bridge.read_errors()
-        assert len(errors) >= 1
+        assert len(errors) == 1
 
     def test_read_errors_invalid_json(self, bridge):
         """Test read_errors handles invalid JSON gracefully."""

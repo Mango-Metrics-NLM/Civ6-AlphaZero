@@ -49,6 +49,12 @@ local function isPathSafe(path)
     return true, nil
 end
 
+-- Escape a path string for safe use in shell commands
+local function shellEscape(s)
+    -- Replace double quotes with escaped double quotes
+    return s:gsub('"', '\\"')
+end
+
 -- Ensure directory exists (cross-platform)
 local function ensureDirectory(path)
     local safe, err = isPathSafe(path)
@@ -57,12 +63,13 @@ local function ensureDirectory(path)
         return
     end
 
+    local safePath = shellEscape(path)
     if PATH_SEP == "/" then
         -- Unix/macOS
-        os.execute('mkdir -p "' .. path .. '" 2>/dev/null')
+        os.execute('mkdir -p "' .. safePath .. '" 2>/dev/null')
     else
         -- Windows
-        os.execute('mkdir "' .. path .. '" 2>nul')
+        os.execute('mkdir "' .. safePath .. '" 2>nul')
     end
 end
 

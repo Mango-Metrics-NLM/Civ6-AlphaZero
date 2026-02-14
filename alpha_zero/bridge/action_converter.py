@@ -136,7 +136,7 @@ class CityItemTypes:
 
 # Maximum range for hashed item IDs. Must match ActionSpaceConfig max production
 # items. Civ6 base game has ~170 distinct producible items across all categories.
-_ITEM_HASH_RANGE = 200
+_ITEM_HASH_RANGE: int = 200
 
 
 def _convert_item_id_to_int(item_id: Any) -> int | None:
