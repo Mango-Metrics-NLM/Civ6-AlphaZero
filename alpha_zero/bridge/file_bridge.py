@@ -51,6 +51,9 @@ from alpha_zero.bridge.protocol import (
 
 logger = logging.getLogger(__name__)
 
+# Maximum backoff delay (seconds) for exponential retry. Prevents unbounded waits.
+_MAX_RETRY_BACKOFF_SECONDS = 60.0
+
 
 @dataclass
 class BridgeStats:
@@ -459,9 +462,9 @@ class FileBridge:
             Delay in seconds for this attempt.
         """
         base_delay = self.config.retry_delay_s
-        # Exponential backoff with cap at 60 seconds
+        # Exponential backoff capped at _MAX_RETRY_BACKOFF_SECONDS
         delay = base_delay * (2**attempt)
-        return min(delay, 60.0)
+        return min(delay, _MAX_RETRY_BACKOFF_SECONDS)
 
     async def send_and_wait(
         self,

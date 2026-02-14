@@ -893,6 +893,202 @@ class TestMockFileBridge:
 
 
 # ==============================================================================
+# FileBridge Retry and Error Tests
+# ==============================================================================
+
+
+class TestFileBridgeRetry:
+    """Tests for retry logic and error handling."""
+
+    @pytest.fixture
+    def temp_comm_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            yield Path(tmp)
+
+    @pytest.fixture
+    def config(self, temp_comm_dir):
+        return BridgeConfig(
+            comm_dir=temp_comm_dir,
+            poll_interval_ms=5,
+            command_timeout_ms=500,
+            heartbeat_timeout_s=1.0,
+            max_retries=3,
+            retry_delay_s=0.01,
+        )
+
+    @pytest.fixture
+    def bridge(self, config):
+        return FileBridge(config)
+
+    def test_retry_delay_exponential(self, bridge):
+        """Test _get_retry_delay uses exponential backoff."""
+        d0 = bridge._get_retry_delay(0)
+        d1 = bridge._get_retry_delay(1)
+        d2 = bridge._get_retry_delay(2)
+        assert d1 > d0
+        assert d2 > d1
+
+    def test_retry_delay_capped(self, bridge):
+        """Test _get_retry_delay is capped at max backoff."""
+        from alpha_zero.bridge.file_bridge import _MAX_RETRY_BACKOFF_SECONDS
+
+        delay = bridge._get_retry_delay(100)  # Very high attempt
+        assert delay <= _MAX_RETRY_BACKOFF_SECONDS
+
+    def test_next_msg_id_increments(self, bridge):
+        """Test _next_msg_id generates increasing IDs."""
+        id1 = bridge._next_msg_id()
+        id2 = bridge._next_msg_id()
+        assert id2 > id1
+
+    @pytest.mark.asyncio
+    async def test_send_command_with_retry_success(self, bridge):
+        """Test send_command_with_retry succeeds on first try."""
+        await bridge.start()
+        cmd = CommandMessage(
+            msg_id=1,
+            commands=[LuaCommand(action_type=ActionType.END_TURN)],
+        )
+        result = await bridge.send_command_with_retry(cmd)
+        assert result is True
+
+    def test_read_errors_no_file(self, bridge):
+        """Test read_errors returns empty when no file."""
+        errors = bridge.read_errors()
+        assert errors == []
+
+    def test_read_errors_json_array(self, bridge):
+        """Test read_errors parses JSON array format."""
+        bridge.config.ensure_comm_dir()
+        error_data = [
+            {"type": "error", "code": "E001", "message": "Test error", "timestamp": 0.0}
+        ]
+        bridge.config.errors_file.write_text(json.dumps(error_data))
+        errors = bridge.read_errors()
+        assert len(errors) >= 1
+
+    def test_read_errors_invalid_json(self, bridge):
+        """Test read_errors handles invalid JSON gracefully."""
+        bridge.config.ensure_comm_dir()
+        bridge.config.errors_file.write_text("not valid json at all")
+        errors = bridge.read_errors()
+        # Should not raise, returns empty or partial
+        assert isinstance(errors, list)
+
+    def test_is_connected_when_not_running(self, bridge):
+        """Test is_connected returns False when not running."""
+        assert not bridge.is_connected
+
+    @pytest.mark.asyncio
+    async def test_poll_state_unchanged_file(self, bridge):
+        """Test poll_state returns None for unchanged file."""
+        await bridge.start()
+        state_data = {
+            "turn_id": 1,
+            "map": {"width": 44, "height": 26},
+            "units": [],
+            "cities": [],
+            "legal_actions": [],
+        }
+        bridge.config.state_file.write_text(json.dumps(state_data))
+
+        # First read
+        state = await bridge.poll_state()
+        assert state is not None
+
+        # Second read without modification - should return None
+        state2 = await bridge.poll_state()
+        assert state2 is None
+
+    @pytest.mark.asyncio
+    async def test_poll_ack_wrong_msg_id(self, bridge):
+        """Test _poll_ack returns None for wrong msg_id."""
+        await bridge.start()
+        ack_data = {"msg_id": 999, "success": True}
+        bridge.config.ack_file.write_text(json.dumps(ack_data))
+
+        result = await bridge._poll_ack(42)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_poll_ack_invalid_json(self, bridge):
+        """Test _poll_ack handles invalid JSON."""
+        await bridge.start()
+        bridge.config.ack_file.write_text("not json")
+
+        result = await bridge._poll_ack(1)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_clear_files_no_files(self, bridge):
+        """Test clear_files is safe when no files exist."""
+        await bridge.start()
+        bridge.clear_files()  # Should not raise
+
+    def test_check_heartbeat_invalid_json(self, bridge):
+        """Test heartbeat check with invalid JSON."""
+        bridge.config.ensure_comm_dir()
+        bridge.config.heartbeat_file.write_text("not json")
+        assert not bridge.check_heartbeat()
+
+
+class TestBridgeConfigAdditional:
+    """Additional tests for BridgeConfig validation and edge cases."""
+
+    def test_string_comm_dir_converted(self):
+        """Test that string comm_dir is converted to Path."""
+        with tempfile.TemporaryDirectory() as tmp:
+            config = BridgeConfig(comm_dir=tmp)
+            assert isinstance(config.comm_dir, Path)
+
+    def test_heartbeat_timeout_validation(self):
+        """Test heartbeat_timeout_s validation."""
+        with pytest.raises(ValueError, match="heartbeat_timeout_s"):
+            BridgeConfig(heartbeat_timeout_s=0.1)
+
+    def test_max_retries_validation(self):
+        """Test max_retries validation."""
+        with pytest.raises(ValueError, match="max_retries"):
+            BridgeConfig(max_retries=0)
+
+    def test_from_env_comm_dir(self):
+        """Test from_env loads comm_dir."""
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict("os.environ", {"CIV6_BRIDGE_COMM_DIR": tmp}):
+                config = BridgeConfig.from_env()
+                assert config.comm_dir == Path(tmp)
+
+    def test_from_env_all_numeric_fields(self):
+        """Test from_env loads all numeric fields."""
+        with patch.dict(
+            "os.environ",
+            {
+                "CIV6_BRIDGE_COMMAND_TIMEOUT_MS": "3000",
+                "CIV6_BRIDGE_HEARTBEAT_TIMEOUT_S": "5.0",
+                "CIV6_BRIDGE_MAX_RETRIES": "10",
+                "CIV6_BRIDGE_RETRY_DELAY_S": "2.5",
+            },
+        ):
+            config = BridgeConfig.from_env()
+            assert config.command_timeout_ms == 3000
+            assert config.heartbeat_timeout_s == 5.0
+            assert config.max_retries == 10
+            assert config.retry_delay_s == 2.5
+
+    def test_from_env_debug_false(self):
+        """Test from_env with debug mode explicitly false."""
+        with patch.dict("os.environ", {"CIV6_DEBUG_MODE": "false"}):
+            config = BridgeConfig.from_env()
+            assert config.debug_mode is False
+
+    def test_from_env_debug_invalid(self):
+        """Test from_env with invalid debug mode value defaults."""
+        with patch.dict("os.environ", {"CIV6_DEBUG_MODE": "maybe"}):
+            config = BridgeConfig.from_env()
+            assert config.debug_mode is False
+
+
+# ==============================================================================
 # Run tests
 # ==============================================================================
 
