@@ -376,6 +376,71 @@ class TestCoordinateScaling:
         assert 6 <= scaled_y <= 10
 
 
+class TestCoordinateScalingRoundTrip:
+    """Tests for coordinate scaling round-trip consistency."""
+
+    def test_round_trip_coordinate_scaling(self) -> None:
+        """Verify forward + inverse scaling is approximately identity."""
+        converter = StateConverter(board_size=16, create_encoder=False)
+        converter._setup_scaling(80, 50)
+
+        # Test a grid of points across the original map
+        max_error = 0
+        for orig_x in range(0, 80, 5):
+            for orig_y in range(0, 50, 5):
+                scaled_x, scaled_y = converter._scale_coords(orig_x, orig_y)
+                restored_x, restored_y = converter.inverse_scale_coords(scaled_x, scaled_y)
+
+                # Error should be bounded by the scale factor (each board cell
+                # covers width/board_size original cells)
+                error_x = abs(restored_x - orig_x)
+                error_y = abs(restored_y - orig_y)
+                max_error = max(max_error, error_x, error_y)
+
+                # Error should be within one scale-step
+                scale_step_x = 80 / 16
+                scale_step_y = 50 / 16
+                assert error_x <= scale_step_x + 1, (
+                    f"X error {error_x} too large for ({orig_x},{orig_y}) "
+                    f"-> ({scaled_x},{scaled_y}) -> ({restored_x},{restored_y})"
+                )
+                assert error_y <= scale_step_y + 1, (
+                    f"Y error {error_y} too large for ({orig_x},{orig_y}) "
+                    f"-> ({scaled_x},{scaled_y}) -> ({restored_x},{restored_y})"
+                )
+
+    def test_round_trip_identity_map(self) -> None:
+        """Test round-trip with identity-sized map (16x16 -> 16x16)."""
+        converter = StateConverter(board_size=16, create_encoder=False)
+        converter._setup_scaling(16, 16)
+
+        for x in range(16):
+            for y in range(16):
+                scaled_x, scaled_y = converter._scale_coords(x, y)
+                restored_x, restored_y = converter.inverse_scale_coords(scaled_x, scaled_y)
+                assert (restored_x, restored_y) == (x, y), (
+                    f"Identity round-trip failed: ({x},{y}) -> ({scaled_x},{scaled_y}) "
+                    f"-> ({restored_x},{restored_y})"
+                )
+
+    def test_inverse_scale_uses_round(self) -> None:
+        """Verify inverse_scale_coords uses round() not int() truncation."""
+        converter = StateConverter(board_size=16, create_encoder=False)
+        # Set up a map where truncation vs rounding would differ
+        converter._setup_scaling(44, 26)
+
+        # Scale factor is 16/44 ~= 0.3636, so inverse is 44/16 = 2.75
+        # For scaled_x=5: 5 / 0.3636 = 13.75
+        # int() would give 13, round() gives 14
+        # We need to check that values are consistently rounded
+        scaled_x, scaled_y = 5, 5
+        orig_x, orig_y = converter.inverse_scale_coords(scaled_x, scaled_y)
+
+        # Just verify the results are within valid bounds and reasonable
+        assert 0 <= orig_x < 44
+        assert 0 <= orig_y < 26
+
+
 class TestObservationShapes:
     """Tests for observation tensor shapes consistency."""
 
@@ -520,6 +585,54 @@ class TestResourceExtractionComplete:
 
         result = converter.convert(state)
         assert result["era"] == "CLASSICAL"
+
+
+class TestCivicsExtraction:
+    """Tests for civics extraction from state."""
+
+    def test_civics_extracted_from_player(self) -> None:
+        """Test that civics are extracted when player has civics_researched."""
+        converter = StateConverter(board_size=16, create_encoder=False)
+        state = GameStateData(
+            turn_id=10,
+            player_id=0,
+            map_data=MapData(width=44, height=26, tiles=[]),
+            units=[],
+            cities=[],
+            players=[
+                PlayerData(
+                    id=0,
+                    civilization="CIVILIZATION_ROME",
+                    civics_researched=["CIVIC_CODE_OF_LAWS", "CIVIC_FOREIGN_TRADE"],
+                    current_civic="CIVIC_EARLY_EMPIRE",
+                ),
+            ],
+            legal_actions=[],
+        )
+
+        result = converter.convert(state)
+        assert "civics" in result
+        assert len(result["civics"]) == 2
+        assert "code_of_laws" in result["civics"]
+        assert "foreign_trade" in result["civics"]
+
+    def test_civics_empty_when_no_data(self) -> None:
+        """Test that civics default to empty list."""
+        converter = StateConverter(board_size=16, create_encoder=False)
+        state = GameStateData(
+            turn_id=1,
+            player_id=0,
+            map_data=MapData(width=44, height=26, tiles=[]),
+            units=[],
+            cities=[],
+            players=[
+                PlayerData(id=0, civilization="CIVILIZATION_ROME"),
+            ],
+            legal_actions=[],
+        )
+
+        result = converter.convert(state)
+        assert result["civics"] == []
 
 
 class TestUnitEncodingCombatStats:

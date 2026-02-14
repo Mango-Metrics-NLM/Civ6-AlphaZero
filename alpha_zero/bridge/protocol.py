@@ -538,6 +538,31 @@ class TileData:
     is_revealed: bool = True
     yields: dict[str, int] = field(default_factory=dict)
 
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization.
+
+        Returns:
+            Dictionary representation of tile data.
+        """
+        result: dict[str, Any] = {
+            "x": self.x,
+            "y": self.y,
+            "terrain": self.terrain,
+            "is_visible": self.is_visible,
+            "is_revealed": self.is_revealed,
+        }
+        if self.features:
+            result["features"] = self.features
+        if self.resource is not None:
+            result["resource"] = self.resource
+        if self.improvement is not None:
+            result["improvement"] = self.improvement
+        if self.owner_id is not None:
+            result["owner_id"] = self.owner_id
+        if self.yields:
+            result["yields"] = self.yields
+        return result
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TileData:
         """Create from dictionary.
@@ -607,6 +632,33 @@ class UnitData:
     is_civilian: bool = False
     can_attack: bool = True
     promotions: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization.
+
+        Returns:
+            Dictionary representation of unit data.
+        """
+        result: dict[str, Any] = {
+            "id": self.id,
+            "unit_type": self.unit_type,
+            "owner_id": self.owner_id,
+            "x": self.x,
+            "y": self.y,
+            "health": self.health,
+            "max_health": self.max_health,
+            "damage": self.damage,
+            "moves_remaining": self.moves_remaining,
+            "max_moves": self.max_moves,
+            "combat_strength": self.combat_strength,
+            "ranged_strength": self.ranged_strength,
+            "range": self.range,
+            "is_civilian": self.is_civilian,
+            "can_attack": self.can_attack,
+        }
+        if self.promotions:
+            result["promotions"] = self.promotions
+        return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> UnitData:
@@ -725,6 +777,33 @@ class CityData:
     production_progress: int = 0
     available_production: list[int] = field(default_factory=list)
 
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization.
+
+        Returns:
+            Dictionary representation of city data.
+        """
+        result: dict[str, Any] = {
+            "id": self.id,
+            "name": self.name,
+            "owner_id": self.owner_id,
+            "x": self.x,
+            "y": self.y,
+            "population": self.population,
+            "is_capital": self.is_capital,
+            "defense_strength": self.defense_strength,
+            "production_progress": self.production_progress,
+        }
+        if self.buildings:
+            result["buildings"] = self.buildings
+        if self.districts:
+            result["districts"] = self.districts
+        if self.current_production is not None:
+            result["current_production"] = self.current_production
+        if self.available_production:
+            result["available_production"] = self.available_production
+        return result
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CityData:
         """Create from dictionary.
@@ -808,6 +887,35 @@ class PlayerData:
     is_human: bool = True
     techs_researched: list[str] = field(default_factory=list)
     current_research: str | None = None
+    civics_researched: list[str] = field(default_factory=list)
+    current_civic: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization.
+
+        Returns:
+            Dictionary representation of player data.
+        """
+        result: dict[str, Any] = {
+            "id": self.id,
+            "civilization": self.civilization,
+            "gold": self.gold,
+            "science_per_turn": self.science_per_turn,
+            "culture_per_turn": self.culture_per_turn,
+            "faith": self.faith,
+            "score": self.score,
+            "is_alive": self.is_alive,
+            "is_human": self.is_human,
+        }
+        if self.techs_researched:
+            result["techs_researched"] = self.techs_researched
+        if self.current_research is not None:
+            result["current_research"] = self.current_research
+        if self.civics_researched:
+            result["civics_researched"] = self.civics_researched
+        if self.current_civic is not None:
+            result["current_civic"] = self.current_civic
+        return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> PlayerData:
@@ -849,6 +957,9 @@ class PlayerData:
         techs_researched = _validate_list(
             data.get("techs_researched"), "techs_researched", context="PlayerData"
         )
+        civics_researched = _validate_list(
+            data.get("civics_researched"), "civics_researched", context="PlayerData"
+        )
 
         return cls(
             id=player_id,
@@ -862,6 +973,8 @@ class PlayerData:
             is_human=bool(data.get("is_human", True)),
             techs_researched=techs_researched,
             current_research=data.get("current_research"),
+            civics_researched=civics_researched,
+            current_civic=data.get("current_civic"),
         )
 
 
@@ -884,6 +997,25 @@ class LegalAction:
     targets: list[tuple[int, int]] = field(default_factory=list)
     items: list[int | str] = field(default_factory=list)
     item_type: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization.
+
+        Returns:
+            Dictionary representation of legal action.
+        """
+        result: dict[str, Any] = {"action_type": self.action_type}
+        if self.unit_id is not None:
+            result["unit_id"] = self.unit_id
+        if self.city_id is not None:
+            result["city_id"] = self.city_id
+        if self.targets:
+            result["targets"] = [{"x": t[0], "y": t[1]} for t in self.targets]
+        if self.items:
+            result["items"] = self.items
+        if self.item_type is not None:
+            result["item_type"] = self.item_type
+        return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LegalAction:
@@ -1260,6 +1392,21 @@ class CommandMessage:
     msg_id: int
     commands: list[LuaCommand]
     timestamp: float = field(default_factory=time.time)
+
+    @classmethod
+    def create_single(cls, msg_id: int, command: LuaCommand) -> CommandMessage:
+        """Create a command message with a single command.
+
+        Convenience method for the common case of sending one command.
+
+        Args:
+            msg_id: Message ID for acknowledgment tracking.
+            command: The single command to send.
+
+        Returns:
+            CommandMessage containing the single command.
+        """
+        return cls(msg_id=msg_id, commands=[command])
 
     def to_json(self) -> str:
         """Serialize to JSON string."""

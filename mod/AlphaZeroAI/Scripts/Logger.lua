@@ -2,6 +2,7 @@
 -- Logger.lua - Logging system for AlphaZero AI Bridge
 -- ============================================================================
 -- Provides consistent logging with levels, timestamps, and optional file output.
+-- Fixes: cross-platform path separators, simple log rotation.
 -- ============================================================================
 
 AlphaZeroLogger = AlphaZeroLogger or {}
@@ -20,6 +21,13 @@ local minLogLevel = LOG_LEVELS.INFO
 -- Log buffer for deferred writes
 local logBuffer = {}
 local MAX_BUFFER_SIZE = 100
+
+-- Cross-platform path separator
+local PATH_SEP = package.config and package.config:sub(1, 1) or "/"
+
+-- Log rotation settings
+local MAX_LOG_SIZE = 5 * 1024 * 1024  -- 5MB
+local rotationChecked = false
 
 -- ----------------------------------------------------------------------------
 -- Helper Functions
@@ -46,6 +54,23 @@ local function writeToConsole(formatted)
     print(formatted)
 end
 
+-- Check and perform log rotation if needed
+local function checkLogRotation(logPath)
+    if rotationChecked then return end
+    rotationChecked = true  -- Only check once per session
+
+    local f = io.open(logPath, "rb")
+    if f then
+        local size = f:seek("end")
+        f:close()
+        if size and size > MAX_LOG_SIZE then
+            -- Rotate: remove old backup, rename current to .old
+            os.remove(logPath .. ".old")
+            os.rename(logPath, logPath .. ".old")
+        end
+    end
+end
+
 -- Write to log file (if enabled)
 local function writeToFile(formatted)
     if not AlphaZeroConfig or not AlphaZeroConfig.IsEnabled("LOGGING") then
@@ -55,7 +80,10 @@ local function writeToFile(formatted)
     local logPath = AlphaZeroConfig.Get("COMM_DIR")
     if not logPath then return end
 
-    logPath = logPath .. "\\alphazero.log"
+    logPath = logPath .. PATH_SEP .. "alphazero.log"
+
+    -- Check rotation on first write
+    checkLogRotation(logPath)
 
     local file = io.open(logPath, "a")
     if file then
@@ -74,6 +102,8 @@ function AlphaZeroLogger.Init()
         local levelName = AlphaZeroConfig.Get("LOG_LEVEL") or "INFO"
         minLogLevel = LOG_LEVELS[levelName] or LOG_LEVELS.INFO
     end
+    -- Reset rotation check for new session
+    rotationChecked = false
 end
 
 -- Set minimum log level
@@ -157,7 +187,7 @@ function AlphaZeroLogger.Flush()
     local logPath = AlphaZeroConfig.Get("COMM_DIR")
     if not logPath then return end
 
-    logPath = logPath .. "\\alphazero.log"
+    logPath = logPath .. PATH_SEP .. "alphazero.log"
 
     local file = io.open(logPath, "a")
     if file then

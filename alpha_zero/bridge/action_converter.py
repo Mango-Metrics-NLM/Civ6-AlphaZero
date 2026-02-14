@@ -134,6 +134,11 @@ class CityItemTypes:
     DISTRICT = "district"
 
 
+# Maximum range for hashed item IDs. Must match ActionSpaceConfig max production
+# items. Civ6 base game has ~170 distinct producible items across all categories.
+_ITEM_HASH_RANGE: int = 200
+
+
 def _convert_item_id_to_int(item_id: Any) -> int | None:
     """Convert an item ID to integer, handling various input formats.
 
@@ -165,9 +170,7 @@ def _convert_item_id_to_int(item_id: Any) -> int | None:
         # Handle Civ6 type name strings by hashing to consistent int
         # Use modulo to keep in reasonable range for action space
         if item_id:
-            # Use hash with modulo to get consistent positive int in range [0, 199]
-            # This matches typical production item counts in Civ6
-            return abs(hash(item_id)) % 200
+            return abs(hash(item_id)) % _ITEM_HASH_RANGE
 
     # Log unexpected types at debug level
     logger.debug(f"Could not convert item_id '{item_id}' (type: {type(item_id).__name__}) to int")
@@ -605,8 +608,8 @@ class ActionConverter:
         scale_x = width / self.board_size
         scale_y = height / self.board_size
 
-        orig_x = int(x * scale_x)
-        orig_y = int(y * scale_y)
+        orig_x = round(x * scale_x)
+        orig_y = round(y * scale_y)
 
         # Clamp to bounds
         orig_x = max(0, min(width - 1, orig_x))
@@ -979,8 +982,8 @@ class ActionConverter:
         scale_x = self.board_size / width
         scale_y = self.board_size / height
 
-        scaled_x = int(x * scale_x)
-        scaled_y = int(y * scale_y)
+        scaled_x = round(x * scale_x)
+        scaled_y = round(y * scale_y)
 
         # Clamp to bounds
         scaled_x = max(0, min(self.board_size - 1, scaled_x))

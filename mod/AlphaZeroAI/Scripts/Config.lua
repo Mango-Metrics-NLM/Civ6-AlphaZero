@@ -2,15 +2,19 @@
 -- Config.lua - Configuration management for AlphaZero AI Bridge
 -- ============================================================================
 -- Provides centralized configuration with sensible defaults and dynamic
--- overrides via environment or file-based configuration.
+-- overrides via JSON file-based configuration (safe, no code execution).
+-- Fixes: cross-platform paths, JSON config loading instead of load().
 -- ============================================================================
 
 AlphaZeroConfig = AlphaZeroConfig or {}
 
+-- Cross-platform path separator
+local PATH_SEP = package.config and package.config:sub(1, 1) or "/"
+
 -- ----------------------------------------------------------------------------
 -- Default Configuration Values
 -- ----------------------------------------------------------------------------
--- These can be overridden by placing an alphazero_config.lua file in the
+-- These can be overridden by placing an alphazero_config.json file in the
 -- communication directory.
 
 local DEFAULT_CONFIG = {
@@ -50,10 +54,11 @@ local DEFAULT_CONFIG = {
     -- Safety settings
     MAX_ACTIONS_PER_TURN = 1000,   -- Prevent infinite action loops
     VALIDATE_COMMANDS = true,
+    MAX_FILE_READ_BYTES = 10 * 1024 * 1024,  -- 10MB max file read
 
     -- Version
-    VERSION = "1.0.0",
-    PROTOCOL_VERSION = 1,
+    VERSION = "1.1.0",
+    PROTOCOL_VERSION = 2,
 }
 
 -- Current configuration (merged defaults + overrides)
@@ -90,14 +95,17 @@ local function mergeTables(a, b)
     return result
 end
 
--- Get the base path for Civ6 documents
+-- Get the base path for Civ6 documents (cross-platform)
 local function getDocumentsPath()
     -- Try to get from environment or use standard path
-    local userProfile = os.getenv("USERPROFILE")
-    if userProfile then
-        return userProfile .. "\\Documents\\My Games\\Sid Meier's Civilization VI"
+    if PATH_SEP == "\\" then
+        -- Windows
+        local userProfile = os.getenv("USERPROFILE")
+        if userProfile then
+            return userProfile .. "\\Documents\\My Games\\Sid Meier's Civilization VI"
+        end
     end
-    -- Fallback for non-Windows
+    -- Unix/macOS fallback
     local home = os.getenv("HOME")
     if home then
         return home .. "/Documents/My Games/Sid Meier's Civilization VI"
@@ -114,14 +122,14 @@ function AlphaZeroConfig.Init()
     -- Start with defaults
     currentConfig = deepCopy(DEFAULT_CONFIG)
 
-    -- Set derived paths
+    -- Set derived paths using detected path separator
     local basePath = getDocumentsPath()
-    currentConfig.COMM_DIR = basePath .. "\\" .. currentConfig.COMM_DIR_NAME
-    currentConfig.STATE_PATH = currentConfig.COMM_DIR .. "\\" .. currentConfig.STATE_FILE
-    currentConfig.COMMANDS_PATH = currentConfig.COMM_DIR .. "\\" .. currentConfig.COMMANDS_FILE
-    currentConfig.ACK_PATH = currentConfig.COMM_DIR .. "\\" .. currentConfig.ACK_FILE
-    currentConfig.HEARTBEAT_PATH = currentConfig.COMM_DIR .. "\\" .. currentConfig.HEARTBEAT_FILE
-    currentConfig.ERROR_PATH = currentConfig.COMM_DIR .. "\\" .. currentConfig.ERROR_FILE
+    currentConfig.COMM_DIR = basePath .. PATH_SEP .. currentConfig.COMM_DIR_NAME
+    currentConfig.STATE_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.STATE_FILE
+    currentConfig.COMMANDS_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.COMMANDS_FILE
+    currentConfig.ACK_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ACK_FILE
+    currentConfig.HEARTBEAT_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.HEARTBEAT_FILE
+    currentConfig.ERROR_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ERROR_FILE
 
     -- Try to load override configuration
     AlphaZeroConfig.LoadOverrides()
@@ -129,25 +137,34 @@ function AlphaZeroConfig.Init()
     return currentConfig
 end
 
--- Load configuration overrides from file
+-- Load configuration overrides from JSON file (safe, no code execution)
 function AlphaZeroConfig.LoadOverrides()
     if not currentConfig then
         AlphaZeroConfig.Init()
         return
     end
 
-    local configPath = currentConfig.COMM_DIR .. "\\alphazero_config.lua"
+    local configPath = currentConfig.COMM_DIR .. PATH_SEP .. "alphazero_config.json"
     local file = io.open(configPath, "r")
     if file then
         local content = file:read("*all")
         file:close()
 
-        -- Try to load as Lua table
-        local chunk, err = load("return " .. content)
-        if chunk then
-            local ok, overrides = pcall(chunk)
-            if ok and type(overrides) == 'table' then
+        -- Use JSON decoder (safe, no code execution)
+        if AlphaZeroJson and content and #content > 0 then
+            local overrides, err = AlphaZeroJson.Decode(content)
+            if overrides and type(overrides) == 'table' then
                 currentConfig = mergeTables(currentConfig, overrides)
+                -- Recalculate derived paths if COMM_DIR changed
+                if overrides.COMM_DIR then
+                    currentConfig.STATE_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.STATE_FILE
+                    currentConfig.COMMANDS_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.COMMANDS_FILE
+                    currentConfig.ACK_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ACK_FILE
+                    currentConfig.HEARTBEAT_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.HEARTBEAT_FILE
+                    currentConfig.ERROR_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ERROR_FILE
+                end
+            elseif err then
+                print("[AlphaZero] Config override parse error: " .. tostring(err))
             end
         end
     end
@@ -194,6 +211,10 @@ end
 function AlphaZeroConfig.Validate()
     local errors = {}
 
+    if not currentConfig then
+        AlphaZeroConfig.Init()
+    end
+
     if not currentConfig.COMM_DIR then
         table.insert(errors, "COMM_DIR not set")
     end
@@ -207,6 +228,11 @@ function AlphaZeroConfig.Validate()
     end
 
     return #errors == 0, errors
+end
+
+-- Get path separator (for reuse by other modules)
+function AlphaZeroConfig.GetPathSep()
+    return PATH_SEP
 end
 
 -- Initialize on load

@@ -2,49 +2,75 @@
 -- FileIO.lua - File I/O operations for AlphaZero AI Bridge
 -- ============================================================================
 -- Handles reading and writing JSON files for communication with Python.
+-- Fixes: cross-platform mkdir, path traversal prevention, file size limits,
+--        content-hash-based change detection.
 -- ============================================================================
 
 AlphaZeroFileIO = AlphaZeroFileIO or {}
 
 local Log = nil  -- Will be set after Logger loads
 
--- Track file modification times to detect changes
-local fileModTimes = {}
+-- Cross-platform path separator
+local PATH_SEP = package.config and package.config:sub(1, 1) or "/"
+
+-- Track file content hashes for change detection
+local fileContentHashes = {}
+
+-- Configurable max read size (default 10MB)
+local MAX_READ_BYTES = 10 * 1024 * 1024
 
 -- ----------------------------------------------------------------------------
 -- Helper Functions
 -- ----------------------------------------------------------------------------
 
--- Ensure directory exists
+-- Simple content hash for change detection
+local function simpleHash(content)
+    local hash = 0
+    for i = 1, #content do
+        hash = (hash * 31 + string.byte(content, i)) % 2147483647
+    end
+    return hash
+end
+
+-- Validate path for security (prevent traversal and injection)
+local function isPathSafe(path)
+    if not path or type(path) ~= "string" then
+        return false, "Invalid path"
+    end
+    -- Block path traversal
+    if path:match('%.%.') then
+        return false, "Path traversal blocked"
+    end
+    -- Allow alphanumeric, underscore, hyphen, dot, spaces, colons (drive letters),
+    -- and path separators
+    if path:match('[^%w%._/\\%- :]') then
+        return false, "Invalid characters in path"
+    end
+    return true, nil
+end
+
+-- Escape a path string for safe use in shell commands
+local function shellEscape(s)
+    -- Replace double quotes with escaped double quotes
+    return s:gsub('"', '\\"')
+end
+
+-- Ensure directory exists (cross-platform)
 local function ensureDirectory(path)
-    -- Validate path to prevent command injection
-    -- Only allow alphanumeric, underscore, hyphen, dot, and path separators
-    if path:match('[^%w%._/\\-]') then
-        if Log then Log.Error("Security warning: Invalid characters in path: %s", path) end
+    local safe, err = isPathSafe(path)
+    if not safe then
+        if Log then Log.Error("Security warning: %s: %s", err, path) end
         return
     end
 
-    -- Try to create directory (may fail silently if exists)
-    local cmd = 'mkdir "' .. path .. '" 2>nul'
-    os.execute(cmd)
-end
-
--- Get file modification time (returns 0 if file doesn't exist)
-local function getFileModTime(path)
-    local file = io.open(path, "r")
-    if not file then
-        return 0
+    local safePath = shellEscape(path)
+    if PATH_SEP == "/" then
+        -- Unix/macOS
+        os.execute('mkdir -p "' .. safePath .. '" 2>/dev/null')
+    else
+        -- Windows
+        os.execute('mkdir "' .. safePath .. '" 2>nul')
     end
-    file:close()
-
-    -- In Civ6 Lua, we can't get actual mod time, so we use file size as proxy
-    local f = io.open(path, "rb")
-    if f then
-        local size = f:seek("end")
-        f:close()
-        return size or 0
-    end
-    return 0
 end
 
 -- Check if file exists
@@ -67,15 +93,20 @@ function AlphaZeroFileIO.Init()
         Log = AlphaZeroLogger.CreateLogger("FileIO")
     end
 
+    -- Load configurable max read size
+    if AlphaZeroConfig then
+        MAX_READ_BYTES = AlphaZeroConfig.Get("MAX_FILE_READ_BYTES") or MAX_READ_BYTES
+    end
+
     -- Ensure communication directory exists
-    local commDir = AlphaZeroConfig.Get("COMM_DIR")
+    local commDir = AlphaZeroConfig and AlphaZeroConfig.Get("COMM_DIR")
     if commDir then
         ensureDirectory(commDir)
         if Log then Log.Info("Comm directory: %s", commDir) end
     end
 end
 
--- Read a file and return contents
+-- Read a file and return contents (with size limit)
 function AlphaZeroFileIO.Read(path)
     local file, err = io.open(path, "r")
     if not file then
@@ -83,10 +114,18 @@ function AlphaZeroFileIO.Read(path)
         return nil, "Could not open file: " .. tostring(err)
     end
 
-    local content = file:read("*all")
+    local content = file:read(MAX_READ_BYTES)
+    local remaining = file:read(1)
     file:close()
 
-    if Log then Log.Debug("Read %d bytes from %s", #content, path) end
+    if remaining then
+        if Log then Log.Warn("File %s exceeds max read size (%d bytes), truncated", path, MAX_READ_BYTES) end
+    end
+
+    if content and Log then
+        Log.Debug("Read %d bytes from %s", #content, path)
+    end
+
     return content, nil
 end
 
@@ -143,13 +182,18 @@ function AlphaZeroFileIO.Exists(path)
     return fileExists(path)
 end
 
--- Check if file has changed since last read
+-- Check if file has changed since last read (content-hash based)
 function AlphaZeroFileIO.HasChanged(path)
-    local currentModTime = getFileModTime(path)
-    local lastModTime = fileModTimes[path] or 0
+    local content, err = AlphaZeroFileIO.Read(path)
+    if not content then
+        return false
+    end
 
-    if currentModTime ~= lastModTime and currentModTime > 0 then
-        fileModTimes[path] = currentModTime
+    local hash = simpleHash(content)
+    local lastHash = fileContentHashes[path]
+
+    if hash ~= lastHash then
+        fileContentHashes[path] = hash
         return true
     end
     return false
@@ -157,7 +201,7 @@ end
 
 -- Reset change tracking for a file
 function AlphaZeroFileIO.ResetChangeTracking(path)
-    fileModTimes[path] = nil
+    fileContentHashes[path] = nil
 end
 
 -- Read JSON file and parse
@@ -165,6 +209,10 @@ function AlphaZeroFileIO.ReadJson(path)
     local content, readErr = AlphaZeroFileIO.Read(path)
     if not content then
         return nil, readErr
+    end
+
+    if not AlphaZeroJson then
+        return nil, "JSON encoder not available"
     end
 
     local data, parseErr = AlphaZeroJson.Decode(content)
@@ -178,6 +226,10 @@ end
 
 -- Write data as JSON to file
 function AlphaZeroFileIO.WriteJson(path, data, pretty)
+    if not AlphaZeroJson then
+        return false, "JSON encoder not available"
+    end
+
     local json, encodeErr = AlphaZeroJson.Encode(data, pretty)
     if not json then
         if Log then Log.Error("JSON encode error: %s", encodeErr) end
@@ -189,7 +241,7 @@ end
 
 -- Write state to state file
 function AlphaZeroFileIO.WriteState(state)
-    local path = AlphaZeroConfig.Get("STATE_PATH")
+    local path = AlphaZeroConfig and AlphaZeroConfig.Get("STATE_PATH")
     if not path then
         return false, "STATE_PATH not configured"
     end
@@ -206,7 +258,7 @@ end
 
 -- Read commands from commands file
 function AlphaZeroFileIO.ReadCommands()
-    local path = AlphaZeroConfig.Get("COMMANDS_PATH")
+    local path = AlphaZeroConfig and AlphaZeroConfig.Get("COMMANDS_PATH")
     if not path then
         return nil, "COMMANDS_PATH not configured"
     end
@@ -232,7 +284,7 @@ end
 
 -- Write acknowledgment
 function AlphaZeroFileIO.WriteAck(msgId, success, errorCode, errorMessage, executed)
-    local path = AlphaZeroConfig.Get("ACK_PATH")
+    local path = AlphaZeroConfig and AlphaZeroConfig.Get("ACK_PATH")
     if not path then
         return false, "ACK_PATH not configured"
     end
@@ -255,7 +307,7 @@ end
 
 -- Write heartbeat
 function AlphaZeroFileIO.WriteHeartbeat()
-    local path = AlphaZeroConfig.Get("HEARTBEAT_PATH")
+    local path = AlphaZeroConfig and AlphaZeroConfig.Get("HEARTBEAT_PATH")
     if not path then
         return false, "HEARTBEAT_PATH not configured"
     end
@@ -275,7 +327,7 @@ end
 
 -- Write error to error file
 function AlphaZeroFileIO.WriteError(code, message, context)
-    local path = AlphaZeroConfig.Get("ERROR_PATH")
+    local path = AlphaZeroConfig and AlphaZeroConfig.Get("ERROR_PATH")
     if not path then
         return false, "ERROR_PATH not configured"
     end
@@ -291,6 +343,10 @@ function AlphaZeroFileIO.WriteError(code, message, context)
         errorData.turn = Game.GetCurrentGameTurn() or 0
     end
 
+    if not AlphaZeroJson then
+        return false, "JSON encoder not available"
+    end
+
     -- Append to error file
     local json, encodeErr = AlphaZeroJson.Encode(errorData, false)
     if not json then
@@ -303,10 +359,10 @@ end
 -- Clear all communication files
 function AlphaZeroFileIO.ClearAll()
     local files = {
-        AlphaZeroConfig.Get("STATE_PATH"),
-        AlphaZeroConfig.Get("COMMANDS_PATH"),
-        AlphaZeroConfig.Get("ACK_PATH"),
-        AlphaZeroConfig.Get("ERROR_PATH"),
+        AlphaZeroConfig and AlphaZeroConfig.Get("STATE_PATH"),
+        AlphaZeroConfig and AlphaZeroConfig.Get("COMMANDS_PATH"),
+        AlphaZeroConfig and AlphaZeroConfig.Get("ACK_PATH"),
+        AlphaZeroConfig and AlphaZeroConfig.Get("ERROR_PATH"),
     }
 
     for _, path in ipairs(files) do
@@ -317,6 +373,11 @@ function AlphaZeroFileIO.ClearAll()
     end
 
     if Log then Log.Info("Cleared all communication files") end
+end
+
+-- Get path separator (for reuse by other modules)
+function AlphaZeroFileIO.GetPathSep()
+    return PATH_SEP
 end
 
 -- Initialize on load
