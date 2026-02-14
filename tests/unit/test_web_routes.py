@@ -357,7 +357,9 @@ class TestWebSocketEndpoint:
             assert data["type"] == "pong"
 
     def test_websocket_invalid_session(self, client):
-        with pytest.raises(Exception):
+        with pytest.raises(  # noqa: B017
+            Exception
+        ):
             with client.websocket_connect("/ws/game/nonexistent"):
                 pass
 
@@ -396,3 +398,157 @@ class TestWebSocketEndpoint:
             ws.send_json({"type": "unknown_type"})
             data = ws.receive_json()
             assert data["type"] == "error"
+
+
+class TestWebSocketMoveErrors:
+    """Tests for WebSocket move error paths."""
+
+    def _create_and_connect(self, client):
+        """Helper to create a game and return session_id + initial state."""
+        resp = client.post("/api/game/new", json={"human_player": 0})
+        data = resp.json()
+        return data["session_id"], data["state"]
+
+    def test_move_missing_action_field(self, client):
+        session_id, _ = self._create_and_connect(client)
+        with client.websocket_connect(f"/ws/game/{session_id}") as ws:
+            ws.receive_json()  # initial state
+            ws.send_json({"type": "move"})  # no 'action' key
+            data = ws.receive_json()
+            assert data["type"] == "error"
+            assert "action" in data["message"].lower()
+
+    def test_move_invalid_action_index(self, client):
+        session_id, state = self._create_and_connect(client)
+        if state["phase"] == "human_turn":
+            with client.websocket_connect(f"/ws/game/{session_id}") as ws:
+                ws.receive_json()  # initial state
+                ws.send_json({"type": "move", "action": 999999})
+                data = ws.receive_json()
+                assert data["type"] == "error"
+                assert "invalid" in data["message"].lower() or "Invalid" in data["message"]
+
+
+class TestWebSocketUndoResign:
+    """Tests for WebSocket undo and resign messages."""
+
+    def test_undo_via_websocket(self, client):
+        resp = client.post("/api/game/new", json={"human_player": 0})
+        session_id = resp.json()["session_id"]
+        state = resp.json()["state"]
+
+        with client.websocket_connect(f"/ws/game/{session_id}") as ws:
+            ws.receive_json()  # initial state
+
+            # Play a move first if possible
+            if state["phase"] == "human_turn" and state["valid_actions"]:
+                action = state["valid_actions"][0]["index"]
+                ws.send_json({"type": "move", "action": action})
+                # Drain all messages until we get the final 'state' update
+                for _ in range(10):
+                    msg = ws.receive_json()
+                    if msg["type"] == "state":
+                        break
+                    if msg["type"] == "game_over":
+                        break
+
+            ws.send_json({"type": "undo"})
+            data = ws.receive_json()
+            assert data["type"] == "state"
+            assert "data" in data
+
+    def test_resign_via_websocket(self, client):
+        resp = client.post("/api/game/new", json={"human_player": 0})
+        session_id = resp.json()["session_id"]
+
+        with client.websocket_connect(f"/ws/game/{session_id}") as ws:
+            ws.receive_json()  # initial state
+            ws.send_json({"type": "resign"})
+
+            # Should get exactly move_result + game_over (2 messages)
+            msg1 = ws.receive_json()
+            msg2 = ws.receive_json()
+            types = [msg1["type"], msg2["type"]]
+            assert "move_result" in types
+            assert "game_over" in types
+
+
+class TestHTMXMoveEndpoint:
+    """Tests for HTMX form-based move handler."""
+
+    def test_htmx_move_valid(self, client):
+        resp = client.post("/api/game/new", json={"human_player": 0})
+        session_id = resp.json()["session_id"]
+        state = resp.json()["state"]
+
+        if state["phase"] == "human_turn" and state["valid_actions"]:
+            action = state["valid_actions"][0]["index"]
+            response = client.post(
+                f"/htmx/game/{session_id}/move",
+                data={"action": action},
+            )
+            assert response.status_code == 200
+            assert "text/html" in response.headers["content-type"]
+
+    def test_htmx_move_session_not_found(self, client):
+        response = client.post(
+            "/htmx/game/nonexistent/move",
+            data={"action": 0},
+        )
+        assert response.status_code == 404
+
+
+class TestHTMXUndoEndpoint:
+    """Tests for HTMX undo handler."""
+
+    def test_htmx_undo(self, client):
+        resp = client.post("/api/game/new", json={"human_player": 0})
+        session_id = resp.json()["session_id"]
+
+        response = client.post(f"/htmx/game/{session_id}/undo")
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+
+    def test_htmx_undo_not_found(self, client):
+        response = client.post("/htmx/game/nonexistent/undo")
+        assert response.status_code == 404
+
+
+class TestHTMXResignEndpoint:
+    """Tests for HTMX resign handler."""
+
+    def test_htmx_resign(self, client):
+        resp = client.post("/api/game/new", json={"human_player": 0})
+        session_id = resp.json()["session_id"]
+
+        response = client.post(f"/htmx/game/{session_id}/resign")
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+
+    def test_htmx_resign_not_found(self, client):
+        response = client.post("/htmx/game/nonexistent/resign")
+        assert response.status_code == 404
+
+
+class TestGameCreateFormEndpoint:
+    """Tests for the HTML form-based game creation."""
+
+    def test_create_game_form(self, client):
+        response = client.post(
+            "/game/new",
+            data={"human_player": 0, "opponent_type": "random", "board_size": 8},
+            follow_redirects=False,
+        )
+        # Should redirect to game page
+        assert response.status_code == 303
+        assert "/game/" in response.headers["location"]
+
+    def test_create_game_form_invalid_opponent(self, client):
+        response = client.post(
+            "/game/new",
+            data={"human_player": 0, "opponent_type": "invalid", "board_size": 8},
+        )
+        # Should return 400 with error in HTML
+        assert response.status_code == 400
+
+

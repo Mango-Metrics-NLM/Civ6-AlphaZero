@@ -21,7 +21,6 @@ from alpha_zero.web.adapter import (
     MicroCivGameAdapter,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -373,7 +372,7 @@ class TestMicroCivGameAdapterMultipleSteps:
             if not valid:
                 break
             action = rng.choice(valid)
-            obs, reward, terminated, truncated, info = adapter.step(action)
+            obs, _reward, terminated, truncated, _info = adapter.step(action)
             assert isinstance(obs, dict)
             if terminated or truncated:
                 break
@@ -382,7 +381,7 @@ class TestMicroCivGameAdapterMultipleSteps:
         self, adapter: MicroCivGameAdapter
     ) -> None:
         adapter.reset(seed=42)
-        data_before = adapter.get_board_data()
+        adapter.get_board_data()  # capture state before step
         valid = adapter.get_valid_actions()
         if valid:
             adapter.step(valid[0])
@@ -1054,7 +1053,7 @@ class TestBaselineAgentAdapterMultipleSteps:
             if not valid:
                 break
             result = adapter.select_action(obs, valid_actions=valid)
-            obs, reward, terminated, truncated, info = game.step(
+            obs, _reward, terminated, truncated, _info = game.step(
                 result["action"]
             )
             if terminated or truncated:
@@ -1087,7 +1086,7 @@ class TestAdapterIntegration:
         result = agent.select_action(obs, valid_actions=valid)
         assert result["action"] in valid or len(valid) == 0
         if valid:
-            obs, reward, terminated, truncated, info = game.step(
+            obs, _reward, _terminated, _truncated, _info = game.step(
                 result["action"]
             )
             assert isinstance(obs, dict)
@@ -1106,7 +1105,7 @@ class TestAdapterIntegration:
             if not valid:
                 break
             result = agent.select_action(obs, valid_actions=valid)
-            obs, reward, terminated, truncated, info = game.step(
+            obs, _reward, terminated, truncated, _info = game.step(
                 result["action"]
             )
             if terminated or truncated:

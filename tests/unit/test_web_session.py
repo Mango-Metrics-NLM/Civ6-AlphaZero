@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
 
 import pytest
 
 from alpha_zero.web.config import WebConfig
-from alpha_zero.web.session import GameSession, GameSessionManager
+from alpha_zero.web.session import GameSessionManager
 
 
 @pytest.fixture
@@ -255,3 +254,96 @@ class TestGameSessionGameplay:
         session = session_manager.create_session(board_size=8)
         assert session.action_space is not None
         assert session.action_space.total_size > 0
+
+
+class TestCreateAIAgent:
+    """Tests for _create_ai_agent routing and neural agent error paths."""
+
+    def test_unknown_opponent_type_raises(self, session_manager):
+        with pytest.raises(ValueError, match="Invalid opponent_type"):
+            session_manager.create_session(opponent_type="unknown_type")
+
+    def test_neural_no_checkpoint_raises(self, session_manager):
+        # Config has no checkpoint_path by default
+        with pytest.raises(RuntimeError, match="No checkpoint_path configured"):
+            session_manager.create_session(opponent_type="neural")
+
+    def test_neural_checkpoint_missing_file_raises(self, web_config):
+        """Neural opponent with non-existent checkpoint path."""
+        config = WebConfig(
+            **{**web_config.to_dict(), "checkpoint_path": "/tmp/nonexistent_checkpoint.pt"}  # noqa: S108
+        )
+        manager = GameSessionManager(config)
+        with pytest.raises((RuntimeError, FileNotFoundError, OSError)):
+            manager.create_session(opponent_type="neural")
+
+    def test_random_agent_creates_successfully(self, session_manager):
+        session = session_manager.create_session(opponent_type="random")
+        assert session.ai_agent is not None
+        assert session.opponent_type == "random"
+
+    def test_heuristic_agent_creates_successfully(self, session_manager):
+        session = session_manager.create_session(opponent_type="heuristic")
+        assert session.ai_agent is not None
+        assert session.opponent_type == "heuristic"
+
+
+class TestGetSharedNetwork:
+    """Tests for network caching in _get_shared_network."""
+
+    def test_shared_network_cached(self, web_config):
+        """Calling _get_shared_network twice returns same object."""
+        from unittest.mock import MagicMock
+        from unittest.mock import patch as mock_patch
+
+        config = WebConfig(
+            **{**web_config.to_dict(), "checkpoint_path": "/tmp/fake_checkpoint.pt"}  # noqa: S108
+        )
+        manager = GameSessionManager(config)
+
+        mock_network = MagicMock()
+        mock_network.eval.return_value = None
+        mock_network.to.return_value = None
+
+        mock_state_dict = {"model_state_dict": {}}
+        with mock_patch(
+            "alpha_zero.utils.checkpoint.safe_load_checkpoint",
+            return_value=mock_state_dict,
+        ), mock_patch(
+            "alpha_zero.core.civ6_network.MicroCivNetwork",
+            return_value=mock_network,
+        ):
+            net1 = manager._get_shared_network()
+            net2 = manager._get_shared_network()
+            assert net1 is net2
+
+    def test_shared_network_loads_state_dict(self, web_config):
+        """Network loads weights from checkpoint dict."""
+        from unittest.mock import MagicMock
+        from unittest.mock import patch as mock_patch
+
+        config = WebConfig(
+            **{**web_config.to_dict(), "checkpoint_path": "/tmp/fake_checkpoint.pt"}  # noqa: S108
+        )
+        manager = GameSessionManager(config)
+
+        mock_network = MagicMock()
+        mock_state_dict = {"layer.weight": [1, 2, 3]}
+
+        with mock_patch(
+            "alpha_zero.utils.checkpoint.safe_load_checkpoint",
+            return_value=mock_state_dict,
+        ), mock_patch(
+            "alpha_zero.core.civ6_network.MicroCivNetwork",
+            return_value=mock_network,
+        ):
+            manager._get_shared_network()
+            mock_network.load_state_dict.assert_called_once_with(mock_state_dict)
+            mock_network.eval.assert_called_once()
+            mock_network.to.assert_called_once()
+
+    def test_shared_network_no_checkpoint_raises(self, web_config):
+        """_get_shared_network raises when checkpoint_path is None."""
+        manager = GameSessionManager(web_config)
+        with pytest.raises(RuntimeError, match="No checkpoint"):
+            manager._get_shared_network()
