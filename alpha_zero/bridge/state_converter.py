@@ -793,7 +793,7 @@ class StateConverter:
         name = civic.lower()
         for prefix in ("civic_",):
             if name.startswith(prefix):
-                name = name[len(prefix):]
+                name = name[len(prefix) :]
         return name
 
     def _extract_victory_progress(self, state: GameStateData) -> dict[str, float]:

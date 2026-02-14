@@ -54,6 +54,9 @@ from alpha_zero.cloud.gcp.lifecycle import (
     get_lifecycle_manager,
 )
 
+# Model version selection utilities
+from alpha_zero.cloud.gcp.model_selection import subsample_model_versions
+
 # Phase 6: Pipeline Caching
 from alpha_zero.cloud.gcp.pipeline_cache import (
     CacheEntry,
@@ -184,4 +187,5 @@ __all__ = [
     "get_pipeline_cache",
     "get_spot_tracker",
     "get_worker_autoscaler",
+    "subsample_model_versions",
 ]

@@ -511,7 +511,8 @@ def _apply_model_subsampling(
 ) -> list[int]:
     """Apply stride and range filters to model versions.
 
-    Always preserves first and last model in the subsampled set.
+    Delegates to :func:`~alpha_zero.cloud.gcp.model_selection.subsample_model_versions`
+    after extracting stride/range from CLI ``args`` (backwards-compatible via ``getattr``).
 
     Args:
         model_versions: Full list of model versions.
@@ -520,32 +521,11 @@ def _apply_model_subsampling(
     Returns:
         Filtered and sorted list of model versions.
     """
-    versions = sorted(model_versions)
+    from alpha_zero.cloud.gcp.model_selection import subsample_model_versions
 
-    # Apply range filter
-    model_range = getattr(args, "tournament_model_range", None)
-    if model_range:
-        parts = model_range.split(":")
-        if len(parts) == 2:
-            range_start = int(parts[0])
-            range_end = int(parts[1])
-            versions = [v for v in versions if range_start <= v <= range_end]
-
-    if not versions:
-        return []
-
-    # Apply stride
-    stride = getattr(args, "tournament_model_stride", 1) or 1
-    if stride > 1:
-        first, last = versions[0], versions[-1]
-        sampled = [v for i, v in enumerate(versions) if i % stride == 0]
-        if first not in sampled:
-            sampled.insert(0, first)
-        if last not in sampled:
-            sampled.append(last)
-        return sorted(set(sampled))
-
-    return versions
+    stride = getattr(args, "tournament_model_stride", 1)
+    version_range = getattr(args, "tournament_model_range", None)
+    return subsample_model_versions(model_versions, stride=stride, version_range=version_range)
 
 
 def _log_tournament_to_wandb(

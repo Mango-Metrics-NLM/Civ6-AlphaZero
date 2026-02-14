@@ -148,30 +148,12 @@ def resolve_model_versions(
     if not all_versions:
         return []
 
-    # Mode 2/3: Apply range filter
-    model_range = getattr(args, "model_range", None)
-    if model_range:
-        parts = model_range.split(":")
-        if len(parts) == 2:
-            range_start = int(parts[0])
-            range_end = int(parts[1])
-            all_versions = [v for v in all_versions if range_start <= v <= range_end]
+    # Mode 2/3: Apply stride and range filters via shared utility
+    from alpha_zero.cloud.gcp.model_selection import subsample_model_versions
 
-    if not all_versions:
-        return []
-
-    # Apply stride
-    stride = getattr(args, "model_stride", 1) or 1
-    if stride > 1:
-        first, last = all_versions[0], all_versions[-1]
-        sampled = [v for i, v in enumerate(all_versions) if i % stride == 0]
-        if first not in sampled:
-            sampled.insert(0, first)
-        if last not in sampled:
-            sampled.append(last)
-        return sorted(set(sampled))
-
-    return all_versions
+    stride = getattr(args, "model_stride", 1)
+    version_range = getattr(args, "model_range", None)
+    return subsample_model_versions(all_versions, stride=stride, version_range=version_range)
 
 
 def run_tournament(
@@ -227,7 +209,13 @@ def run_tournament(
         num_matchups,
         total_games,
     )
-    logger.info("Device: %s | MCTS: %s (%d sims) | Games/matchup: %d", device, mcts_type, mcts_sims, tournament_games)
+    logger.info(
+        "Device: %s | MCTS: %s (%d sims) | Games/matchup: %d",
+        device,
+        mcts_type,
+        mcts_sims,
+        tournament_games,
+    )
     logger.info("=" * 60)
 
     tournament_start = time.time()
@@ -266,7 +254,7 @@ def run_tournament(
     completed_matchups = 0
 
     for i, player_a in enumerate(player_ids):
-        for player_b in player_ids[i + 1:]:
+        for player_b in player_ids[i + 1 :]:
             completed_matchups += 1
             logger.info(
                 "Match %d/%d: %s vs %s (%d games)",
@@ -395,7 +383,9 @@ def main() -> int:
     # Resolve model versions
     model_versions = resolve_model_versions(args, config, dry_run=args.dry_run)
     if len(model_versions) < 2:
-        logger.error("Need at least 2 model versions for tournament (found %d)", len(model_versions))
+        logger.error(
+            "Need at least 2 model versions for tournament (found %d)", len(model_versions)
+        )
         return 1
 
     logger.info("Tournament models: %s", model_versions)
