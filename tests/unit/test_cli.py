@@ -182,12 +182,10 @@ class TestCmdTrain:
 
     @patch("src.core.training.TrainingOrchestrator")
     @patch("src.core.training.Learner")
-    @patch("src.core.config.load_config")
     @patch("src.core.config.SDKConfig")
     def test_train_custom_overrides(
         self,
         mock_sdk: MagicMock,
-        mock_load: MagicMock,
         mock_learner_cls: MagicMock,
         mock_orch_cls: MagicMock,
         capsys,
@@ -195,8 +193,9 @@ class TestCmdTrain:
         mock_config = MagicMock()
         mock_config.training.max_iterations = 5
         mock_config.apply_env_overrides.return_value = mock_config
+        mock_config.model_dump.return_value = {"training": {}}
         mock_sdk.return_value = mock_config
-        mock_load.return_value = mock_config
+        mock_sdk.model_validate.return_value = mock_config
 
         mock_instance = MagicMock()
         mock_instance.run.return_value = [_FakeIterationMetrics()]
@@ -206,8 +205,8 @@ class TestCmdTrain:
         result = cmd_train(self._make_args(iterations=5, games=10, batch_size=32))
 
         assert result == 0
-        # load_config should be called with overrides dict
-        mock_load.assert_called()
+        # SDKConfig.model_validate should be called to merge overrides
+        mock_sdk.model_validate.assert_called_once()
         out = capsys.readouterr().out
         assert "Training complete" in out
 
@@ -443,6 +442,21 @@ class TestMainIntegration:
     def test_main_train_dry_run(self, capsys) -> None:
         """main(['train', '--dry-run']) should complete successfully."""
         result = main(["train", "--dry-run"])
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Training complete" in out
+
+    def test_main_train_with_overrides(self, capsys) -> None:
+        """main(['train', '--iterations', '1', '--games', '1', '--dry-run'])
+        should merge overrides into default config, not discard it.
+
+        Regression test: CLI overrides previously discarded the loaded config
+        by calling load_config(overrides=overrides) which started from defaults.
+        """
+        result = main([
+            "train", "--iterations", "1", "--games", "1",
+            "--batch-size", "4", "--dry-run",
+        ])
         assert result == 0
         out = capsys.readouterr().out
         assert "Training complete" in out

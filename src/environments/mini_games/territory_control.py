@@ -117,15 +117,18 @@ class TerritoryControlEnv:
         row = action // self._board_size
         col = action % self._board_size
 
+        # Capture who is acting before the player switch
+        acting_player = self._current_player
+
         # Check if cell is valid (unclaimed)
         if self._board[row, col] != 0:
             # Invalid move: current player loses the turn
             reward = -0.1
         else:
             # Claim the cell
-            player_marker = self._current_player + 1  # 1 or 2
+            player_marker = acting_player + 1  # 1 or 2
             self._board[row, col] = player_marker
-            self._scores[self._current_player] += 1
+            self._scores[acting_player] += 1
             reward = 0.0
 
         # Switch player
@@ -141,10 +144,15 @@ class TerritoryControlEnv:
             score_p1 = self._compute_territory_score(1)
             score_p2 = self._compute_territory_score(2)
 
-            # Reward from player 0's perspective
-            if score_p1 > score_p2:
+            # Reward from acting player's perspective (consistent with
+            # MiniResourceEnv and TacticalCombatEnv conventions)
+            acting_marker = acting_player + 1
+            acting_score = score_p1 if acting_marker == 1 else score_p2
+            opponent_score = score_p2 if acting_marker == 1 else score_p1
+
+            if acting_score > opponent_score:
                 reward = 1.0
-            elif score_p2 > score_p1:
+            elif opponent_score > acting_score:
                 reward = -1.0
             else:
                 reward = 0.0

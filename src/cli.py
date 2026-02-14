@@ -61,7 +61,7 @@ def _make_env_factory(
 
 def cmd_train(args: argparse.Namespace) -> int:
     """Run training loop."""
-    from src.core.config import SDKConfig, load_config
+    from src.core.config import SDKConfig, _deep_merge, load_config
     from src.core.training import Learner, TrainingOrchestrator
 
     # Load config
@@ -80,7 +80,11 @@ def cmd_train(args: argparse.Namespace) -> int:
         overrides.setdefault("training", {})["batch_size"] = args.batch_size
 
     if overrides:
-        config = load_config(overrides=overrides)
+        # Deep-merge overrides into the already-loaded config
+        merged_data = _deep_merge(
+            config.model_dump(mode="json"), overrides,
+        )
+        config = SDKConfig.model_validate(merged_data)
 
     config = config.apply_env_overrides()
 

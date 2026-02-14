@@ -552,3 +552,74 @@ class TestTerritoryControlObservationShapes:
             obs = e.get_observation()
             assert obs["spatial"].shape == (5, bs, bs)
             assert obs["vector"].shape == (4,)
+
+
+# ===================================================================
+# Coverage gap tests — terminal reward paths
+# ===================================================================
+
+
+class TestTerminalRewardPaths:
+    """Test win/loss reward at game end (territory score comparison)."""
+
+    def test_p1_wins_positive_reward(self) -> None:
+        """When p1 has higher territory score, final reward is 1.0."""
+        env = TerritoryControlEnv(board_size=3, seed=SEED)
+        env.reset()
+        # Give player 1 (marker=1) almost all territory, leave one empty
+        env._board[:] = 1
+        env._board[0, 0] = 0  # one unclaimed cell for the final action
+        # Advance step count to near end so next step triggers termination
+        env._step_count = env._max_steps - 1
+        _obs, reward, terminated, _truncated, _info = env.step(0)
+        assert terminated or _truncated
+        # p1 owns 8 cells + the action cell, p2 owns 0 => reward = +1.0
+        assert reward == pytest.approx(1.0)
+
+    def test_p2_wins_negative_reward(self) -> None:
+        """When p2 has higher territory score, final reward is -1.0."""
+        env = TerritoryControlEnv(board_size=3, seed=SEED)
+        env.reset()
+        # Give player 2 (marker=2) almost all territory, leave one empty
+        env._board[:] = 2
+        env._board[0, 0] = 0  # one unclaimed cell for the final action
+        # Advance step count to near end
+        env._step_count = env._max_steps - 1
+        _obs, reward, terminated, _truncated, _info = env.step(0)
+        assert terminated or _truncated
+        # p2 owns 8 cells, p0's action claims 1 => p2 still dominates
+        assert reward == pytest.approx(-1.0)
+
+    def test_reward_perspective_when_player1_acts_and_wins(self) -> None:
+        """When player 1 is the acting player and wins, reward should be +1.0.
+
+        Validates the acting-player-perspective reward convention (consistent
+        with MiniResourceEnv and TacticalCombatEnv).
+        """
+        env = TerritoryControlEnv(board_size=3, seed=SEED)
+        env.reset()
+        # Set up: player 1 (marker=2) owns most territory
+        env._board[:] = 2
+        env._board[0, 0] = 0  # one unclaimed cell
+        # Make player 1 the acting player
+        env._current_player = 1
+        env._step_count = env._max_steps - 1
+        _obs, reward, terminated, _truncated, _info = env.step(0)
+        assert terminated or _truncated
+        # Player 1 is acting and has more territory → reward = +1.0
+        assert reward == pytest.approx(1.0)
+
+    def test_reward_perspective_when_player1_acts_and_loses(self) -> None:
+        """When player 1 is the acting player and loses, reward should be -1.0."""
+        env = TerritoryControlEnv(board_size=3, seed=SEED)
+        env.reset()
+        # Set up: player 0 (marker=1) owns most territory
+        env._board[:] = 1
+        env._board[0, 0] = 0  # one unclaimed cell
+        # Make player 1 the acting player
+        env._current_player = 1
+        env._step_count = env._max_steps - 1
+        _obs, reward, terminated, _truncated, _info = env.step(0)
+        assert terminated or _truncated
+        # Player 1 is acting but player 0 has more territory → reward = -1.0
+        assert reward == pytest.approx(-1.0)

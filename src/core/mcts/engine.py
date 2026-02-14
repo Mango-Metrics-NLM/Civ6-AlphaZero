@@ -95,20 +95,20 @@ class MCTSEngine:
             # Track terminal state
             terminated = False
             truncated = False
+            terminal_reward = 0.0
 
             # SELECTION: traverse tree using selection policy
             while node.is_expanded:
                 action, node = self._select_child(node)
                 search_path.append(node)
-                _, _, terminated, truncated, _ = sim_env.step(action)
+                _, terminal_reward, terminated, truncated, _ = sim_env.step(action)
                 if terminated or truncated:
                     break
 
             # EVALUATION
             if terminated or truncated:
-                # Terminal node - use actual game result
-                # Convention: value from perspective of player who just moved
-                leaf_value = 0.0  # draw by default
+                # Terminal node — use actual game reward
+                leaf_value = float(terminal_reward)
             else:
                 # Leaf node - evaluate with neural network
                 leaf_obs = sim_env.get_observation()

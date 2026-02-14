@@ -457,6 +457,13 @@ class SDKConfig(BaseModel):
                     sub = data[section]
                     field_name = "_".join(field_parts)
 
+                    # Handle Pydantic aliased fields: model_dump(by_alias=False)
+                    # produces the Python name (e.g. "format_") while env vars
+                    # use the alias (e.g. SPSDK_LOGGING_FORMAT -> "format").
+                    # Fall back to the Python name with trailing underscore.
+                    if field_name not in sub and field_name + "_" in sub:
+                        field_name = field_name + "_"
+
                     if field_name in sub:
                         current_value = sub[field_name]
                         try:

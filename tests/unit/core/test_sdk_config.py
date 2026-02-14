@@ -1044,6 +1044,21 @@ class TestApplyEnvOverrides:
         with pytest.raises(ConfigValidationError, match=r"Validation failed after applying env overrides"):
             cfg.apply_env_overrides()
 
+    def test_aliased_field_logging_format(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """SPSDK_LOGGING_FORMAT=json overrides the aliased format_ field.
+
+        Regression test: model_dump(by_alias=False) produces key 'format_'
+        but env var parsing produces 'format', so lookups failed silently.
+        """
+        monkeypatch.setenv("SPSDK_LOGGING_FORMAT", "json")
+        cfg = SDKConfig()
+        new_cfg = cfg.apply_env_overrides()
+        assert new_cfg.logging.format_ == "json"
+        # Original is not mutated
+        assert cfg.logging.format_ == "pretty"
+
 
 # ============================================================================
 # 13. Tests: load_config

@@ -219,3 +219,55 @@ class TestTrainingOrchestrator:
         orch.run(max_iterations=1)
         ckpt_dir = tmp_path / "checkpoints"
         assert ckpt_dir.exists()
+
+    def test_constructor_with_explicit_curriculum(
+        self, sdk_config, env_factory, tmp_path
+    ) -> None:
+        """Orchestrator accepts an externally constructed curriculum."""
+        from src.core.training.curriculum import CurriculumScheduler
+
+        config = sdk_config.model_copy(
+            update={
+                "output_dir": str(tmp_path),
+                "curriculum": CurriculumConfig(
+                    stages=[
+                        CurriculumStage(name="s1", environment="mini_resource"),
+                        CurriculumStage(name="s2", environment="territory_control"),
+                    ],
+                    promotion_elo_threshold=9999.0,
+                    promotion_window=3,
+                ),
+            }
+        )
+        ext_curriculum = CurriculumScheduler(config.curriculum)
+        orch = TrainingOrchestrator(
+            config=config,
+            env_factory=env_factory,
+            curriculum=ext_curriculum,
+        )
+        assert orch._curriculum is ext_curriculum
+        metrics = orch.run(dry_run=True)
+        assert metrics[0].curriculum_stage == "s1"
+
+    def test_get_summary_includes_curriculum(
+        self, sdk_config, env_factory, tmp_path
+    ) -> None:
+        """get_summary includes curriculum key when curriculum is active."""
+        config = sdk_config.model_copy(
+            update={
+                "output_dir": str(tmp_path),
+                "curriculum": CurriculumConfig(
+                    stages=[
+                        CurriculumStage(name="easy", environment="mini_resource"),
+                        CurriculumStage(name="hard", environment="territory_control"),
+                    ],
+                    promotion_elo_threshold=9999.0,
+                    promotion_window=3,
+                ),
+            }
+        )
+        orch = TrainingOrchestrator(config=config, env_factory=env_factory)
+        orch.run(dry_run=True)
+        summary = orch.get_summary()
+        assert "curriculum" in summary
+        assert summary["curriculum"]["current_stage"] == "easy"

@@ -406,6 +406,39 @@ class TestSelfPlayCollectorPlayGames:
             assert len(traj.examples) > 0
 
 
+    def test_seed_offset_zero_produces_deterministic_seeds(self) -> None:
+        """seed_offset=0 should seed games with 0, 1, 2, ... not None.
+
+        Regression test: seed_offset=0 was previously treated as falsy,
+        passing seed=None (random) to each game.
+        """
+        seeds_seen: list[int | None] = []
+        original_play_game = SelfPlayCollector.play_game
+
+        def tracking_play_game(self, env, add_noise=True, seed=None):
+            seeds_seen.append(seed)
+            return original_play_game(self, env, add_noise=add_noise, seed=seed)
+
+        collector = SelfPlayCollector(
+            eval_fn=_dummy_eval_fn,
+            mcts_config=MCTSConfig(num_simulations=2),
+            max_steps=10,
+        )
+
+        import unittest.mock
+        with unittest.mock.patch.object(
+            SelfPlayCollector, "play_game", tracking_play_game
+        ):
+            collector.play_games(
+                env_factory=MockEnv,
+                num_games=3,
+                seed_offset=0,
+            )
+
+        # With seed_offset=0, seeds should be [0, 1, 2], not [None, None, None]
+        assert seeds_seen == [0, 1, 2]
+
+
 class TestSelfPlayCollectorUpdateEvalFn:
     """Tests for the update_eval_fn public method."""
 

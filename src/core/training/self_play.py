@@ -186,7 +186,7 @@ class SelfPlayCollector:
         for i in range(num_games):
             env = env_factory()
             trajectory = self.play_game(
-                env, seed=seed_offset + i if seed_offset else None
+                env, seed=seed_offset + i if seed_offset is not None else None
             )
             trajectories.append(trajectory)
         return trajectories
