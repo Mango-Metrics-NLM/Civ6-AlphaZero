@@ -97,6 +97,7 @@ from alpha_zero.cloud.gcp.vertex_jobs import (
     JobState,
     VertexAIClient,
     VertexSelfPlayJob,
+    VertexTournamentJob,
     VertexTrainingJob,
 )
 
@@ -173,6 +174,7 @@ __all__ = [
     "VertexJobError",
     "VertexSelfPlayJob",
     "VertexTier",
+    "VertexTournamentJob",
     "VertexTrainingJob",
     "WorkerAutoscaler",
     "WorkerAutoscalerConfig",
