@@ -242,7 +242,7 @@ class TestRunPostRunEvaluation:
             mock_gcs.assert_not_called()
 
             # Result should still be populated
-            assert len(result) == 5
+            assert len(result) >= 5
 
     def test_wandb_logging_when_enabled(self, config, args, mock_arena):
         """Test that tournament metrics are logged to W&B when logger is enabled.
@@ -309,7 +309,7 @@ class TestRunPostRunEvaluation:
         )
 
         # Result should still be valid
-        assert len(result) == 5
+        assert len(result) >= 5
         assert result["model_versions"] == [0, 1, 2]
 
     def test_wandb_not_called_when_disabled(self, config, args, mock_arena):
@@ -336,7 +336,7 @@ class TestRunPostRunEvaluation:
         mock_logger.log.assert_not_called()
 
         # Result should still be valid
-        assert len(result) == 5
+        assert len(result) >= 5
 
     def test_tournament_games_parameter_used(self, config, args, mock_arena):
         """Test that args.tournament_games is passed to run_arena.

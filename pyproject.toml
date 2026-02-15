@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alpha_zero"
-version = "0.12.0"
+version = "0.13.0"
 description = "AlphaZero-based AI for Civilization VI"
 requires-python = ">=3.11"
 dependencies = [
@@ -28,6 +28,7 @@ dev = [
     "bandit>=1.7.0",
     "types-PyYAML>=6.0.0",
     "psutil>=5.9.0",
+    "httpx>=0.25.0",
 ]
 gcp = [
     "google-cloud-aiplatform>=1.40.0",
@@ -45,11 +46,19 @@ llm = [
     "openai>=1.0.0",
     "anthropic>=0.18.0",
 ]
+web = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "websockets>=12.0",
+    "jinja2>=3.1.0",
+    "python-multipart>=0.0.6",
+]
 all = [
     "alpha_zero[dev]",
     "alpha_zero[gcp]",
     "alpha_zero[distributed]",
     "alpha_zero[llm]",
+    "alpha_zero[web]",
 ]
 
 [tool.ruff]
@@ -120,6 +129,15 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 
 [[tool.mypy.overrides]]
+module = "alpha_zero.web.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[[tool.mypy.overrides]]
+module = ["fastapi.*", "uvicorn.*", "starlette.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
 
@@ -149,6 +167,7 @@ markers = [
     "requires_cloud_env: marks tests requiring full cloud environment",
     "e2e: marks tests as end-to-end tests",
     "benchmark: marks tests as benchmarks (deselect with '-m \"not benchmark\"')",
+    "web: marks web interface tests",
 ]
 
 [tool.coverage.run]

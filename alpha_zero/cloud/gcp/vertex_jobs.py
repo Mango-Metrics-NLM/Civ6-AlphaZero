@@ -935,3 +935,130 @@ class VertexEvaluationJob:
         if self._current_job:
             self.client.cancel_job(self._current_job)
             self._current_job = None
+
+
+class VertexTournamentJob:
+    """Manages tournament jobs on Vertex AI.
+
+    Runs a round-robin tournament across model versions using the standalone
+    tournament_worker module. Unlike VertexEvaluationJob, supports configurable
+    machine types and GPU accelerators.
+    """
+
+    def __init__(self, config: GCPConfig, client: VertexAIClient) -> None:
+        self.config = config
+        self.client = client
+        self._current_job: str | None = None
+
+    def launch(
+        self,
+        model_versions: list[int],
+        tournament_games: int = 10,
+        mcts_type: str = "gumbel",
+        mcts_sims: int = 25,
+        gumbel_num_actions: int = 16,
+        board_size: int = 8,
+        action_space_size: int = 376,
+        max_turns: int = 30,
+        machine_type: str = "n1-standard-8",
+        accelerator_type: str = "NVIDIA_TESLA_T4",
+        accelerator_count: int = 1,
+        extra_args: list[str] | None = None,
+    ) -> str:
+        """Launch a tournament job.
+
+        Args:
+            model_versions: Model versions to include in the tournament.
+            tournament_games: Games per matchup.
+            mcts_type: MCTS algorithm variant.
+            mcts_sims: MCTS simulations per move.
+            gumbel_num_actions: Gumbel sampled actions.
+            board_size: Board size.
+            action_space_size: Action space size.
+            max_turns: Max turns per game.
+            machine_type: GCE machine type.
+            accelerator_type: GPU type (empty string for CPU-only).
+            accelerator_count: Number of GPUs (0 for CPU-only).
+            extra_args: Additional container arguments.
+
+        Returns:
+            Job resource name.
+        """
+        container = self.config.container_image_uri
+        if not container:
+            raise VertexJobError("container_image_uri not configured")
+
+        versions_str = ",".join(str(v) for v in model_versions)
+
+        args = [
+            "python",
+            "-m",
+            "alpha_zero.cloud.gcp.tournament_worker",
+            f"--model_versions={versions_str}",
+            f"--tournament_games={tournament_games}",
+            f"--mcts_type={mcts_type}",
+            f"--tournament_mcts_sims={mcts_sims}",
+            f"--gumbel_num_actions={gumbel_num_actions}",
+            f"--board_size={board_size}",
+            f"--action_space_size={action_space_size}",
+            f"--max_turns={max_turns}",
+        ]
+        if extra_args:
+            args.extend(extra_args)
+
+        env_vars = {
+            "CIV6AZ_GCS_BUCKET": self.config.bucket,
+            "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
+            "CIV6AZ_VERTEX_REGION": self.config.region,
+        }
+        env_vars.update(_wandb_env_vars())
+        env_vars = {k: v for k, v in env_vars.items() if v}
+
+        spec = JobSpec(
+            display_name=f"civ6az-tournament-{len(model_versions)}models",
+            container_uri=container,
+            args=args,
+            env_vars=env_vars,
+            machine_type=machine_type,
+            accelerator_type=accelerator_type,
+            accelerator_count=accelerator_count,
+            replica_count=1,
+            spot=False,
+            service_account=self.config.service_account,
+            timeout_seconds=86400,  # 24 hours
+        )
+
+        job_name = self.client.submit_custom_job(
+            spec,
+            staging_bucket=f"gs://{self.config.bucket}",
+        )
+        self._current_job = job_name
+
+        num_matchups = len(model_versions) * (len(model_versions) - 1) // 2
+        logger.info(
+            "Launched tournament job: %d models, %d matchups, %d total games",
+            len(model_versions),
+            num_matchups,
+            num_matchups * tournament_games,
+        )
+        return job_name
+
+    def wait_for_completion(
+        self,
+        job_name: str | None = None,
+        timeout_seconds: int = 86400,
+    ) -> JobResult:
+        """Wait for tournament job to complete."""
+        job = job_name or self._current_job
+        if not job:
+            raise VertexJobError("No tournament job to wait for")
+
+        result = self.client.wait_for_completion(job, timeout_seconds)
+        self._current_job = None
+        return result
+
+    def cancel(self) -> None:
+        """Cancel the current tournament job."""
+        if self._current_job:
+            self.client.cancel_job(self._current_job)
+            self._current_job = None

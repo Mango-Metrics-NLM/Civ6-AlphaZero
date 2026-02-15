@@ -1,0 +1,44 @@
+<div class="confidence-panel">
+    <h3>AI Analysis</h3>
+
+    {% if confidence and confidence.has_evaluation %}
+    <div class="eval-section">
+        <div class="eval-label">Win Probability</div>
+        <div class="eval-bar-container">
+            <div class="eval-bar eval-human"
+                 style="width: {{ confidence.win_pct }}%"
+                 title="Human: {{ confidence.win_pct }}%">
+            </div>
+            <div class="eval-bar eval-ai"
+                 style="width: {{ 100 - confidence.win_pct }}%"
+                 title="AI: {{ (100 - confidence.win_pct)|round(1) }}%">
+            </div>
+        </div>
+        <div class="eval-text">
+            You: {{ confidence.win_pct }}% &mdash;
+            AI: {{ (100 - confidence.win_pct)|round(1) }}%
+        </div>
+    </div>
+    {% endif %}
+
+    {% if confidence and confidence.top_moves %}
+    <div class="top-moves-section">
+        <div class="top-moves-label">Top AI Moves</div>
+        {% for move in confidence.top_moves %}
+        <div class="top-move">
+            <span class="top-move-label">{{ move.label }}</span>
+            <div class="top-move-bar-container">
+                <div class="top-move-bar" style="width: {{ move.pct }}%"></div>
+            </div>
+            <span class="top-move-pct">{{ move.pct }}%</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if confidence %}
+    <div class="thinking-time">
+        Thinking time: {{ confidence.thinking_time }}s
+    </div>
+    {% endif %}
+</div>

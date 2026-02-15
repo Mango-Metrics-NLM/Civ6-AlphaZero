@@ -5,89 +5,62 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.13.0] — 2026-02-15
+## [0.13.0] — 2026-02-14
 
-### Added — Phase 16: Batch Inference, Vectorized Self-Play & Cloud Orchestrator
+### Added — Standalone Tournament Worker & Civ6 Lua Integration
 
-#### BatchGumbelMCTS (`alpha_zero/core/batch_mcts.py`) — NEW
+#### Standalone Tournament Worker (`alpha_zero/cloud/gcp/tournament_worker.py`) — NEW
 
-- **BatchGumbelMCTS**: Batched leaf evaluations from N parallel MCTS trees
-  - `batch_search(envs, add_noise=False)` — Runs MCTS across N environments, batching all neural network evaluations into single GPU forward passes
-  - `batch_simple_search()` — Standard batched search collecting all pending evaluations before a single `_batch_evaluate` call
-  - `batch_sequential_halving()` — Gumbel sequential halving with batched evaluation (refactored to collect all pending evals across envs/actions/simulations, then batch-evaluate in one call)
-  - `select_action(action_probs, temperature)` — Temperature-scaled action selection with named constants (`_PROBABILITY_SUM_EPSILON`, `_GREEDY_THRESHOLD`)
-- **BatchMCTSConfig**: Configurable batch size, simulation count, and search mode
+- **CLI-based tournament runner**: Runs ELO-rated round-robin tournaments across GCS model versions independently of the training pipeline
+  - `--model_stride`: Evaluate every Nth model (default: 1) for faster tournaments across many versions
+  - `--games_per_matchup`: Games per model pair (default: 6) with alternating sides
+  - `--mcts_type`, `--mcts_simulations`: MCTS configuration for tournament play
+  - `--output_path`: Save tournament results JSON locally
+  - Reuses `arena.run_arena()` for fair game play with alternating starting player
+- **VertexTournamentJob**: Vertex AI job wrapper for cloud-based tournament execution
+- **Model loading head dimension inference**: Older models (v0-v29) missing `policy_hidden_dim`/`value_head_dim` in saved configs are now inferred from `state_dict` tensor shapes, enabling mixed-architecture tournaments
 
-#### VectorizedMicroCivEnv (`alpha_zero/envs/vectorized_env.py`) — NEW
+#### Civ6 Lua Integration & Python Bridge Fixes (PR #46)
 
-- **VectorizedMicroCivEnv**: Manages N MicroCivEnv instances with pre-allocated numpy observation buffers
-  - `reset_all()` — Resets all environments and returns stacked observations
-  - `step_all(actions)` — Steps all environments, returns `(rewards, terminated, truncated, infos)`
-  - `get_env(i)` — Direct access to individual environment for MCTS cloning
-  - `get_observations()` — Stacked spatial + vector observations as numpy arrays
-  - `clone_env(i)` — Deep copy of environment state for MCTS simulation
-- **VectorizedEnvConfig**: Configurable num_envs, board_size, max_turns
+##### Python Bridge Fixes
+- `action_converter.py`: `int()` → `round()` for coordinate scaling (fixes off-by-one at grid boundaries); extracted `_ITEM_HASH_RANGE` constant
+- `config.py`: Added `typing.Any` import; typed `kwargs` dict
+- `file_bridge.py`: Extracted `_MAX_RETRY_BACKOFF_SECONDS` constant; explicit float/bool casts for robustness
+- `protocol.py`: Added `to_dict()` methods on TileData, UnitData, CityData, PlayerData, LegalAction; added `CommandMessage.create_single()` factory; added `civics_researched`/`current_civic` fields to PlayerData
+- `state_converter.py`: Extracted `_ESTIMATED_TOTAL_TECHS`/`_ESTIMATED_MAX_SCORE` constants; implemented `_extract_civics()` with `_normalize_civic_name()`; `int()` → `round()` in `inverse_scale_coords`
 
-#### CUDAGraphCache (`alpha_zero/optimizations/cuda_graph_cache.py`) — NEW
+##### Lua Mod Fixes
+- `ActionExecutor.lua`: `UnitManager.MoveUnit` → `RequestOperation` (correct Civ6 API); `safeGetUnit`/`safeGetCity` helpers; new handlers (sleep, promote, delete, buy, citizen, diplomacy stubs)
+- `Main.lua`: Remove duplicate event registrations; re-entrance guard; fix polling handle leak; graceful shutdown
+- `StateExporter.lua`: Nil guards throughout; hex-grid 6-neighbor offsets (was square 8-dir); CanProduce items; civics export; enemy unit detection
+- `FileIO.lua`: `shellEscape()` for injection prevention; content-hash change detection for efficient polling
+- `Config.lua`: Cross-platform PATH_SEP; path traversal prevention; JSON config loading
+- `Logger.lua`: Log rotation at 5MB file size
 
-- **CUDAGraphCache**: Optional CUDA execution graph caching for fixed batch sizes
-  - Captures and replays GPU execution graphs to eliminate kernel launch overhead
-  - Graceful degradation on CPU (no-op passthrough)
-- **CUDAGraphConfig**: Configurable enabled flag, max cached graphs, warmup iterations
+#### Test Suite
 
-#### InferenceBenchmark (`alpha_zero/optimizations/inference_benchmark.py`) — NEW
-
-- **InferenceBenchmark**: Measures batch vs single inference throughput
-  - `benchmark_single_inference()` — Baseline single-sample throughput
-  - `benchmark_batch_inference()` — Batched throughput at various batch sizes
-  - `benchmark_mcts_search()` — End-to-end MCTS search throughput
-  - `benchmark_vectorized_selfplay()` — Full vectorized self-play pipeline
-- **InferenceMetrics**: Dataclass with samples_per_second, latency_ms, speedup_vs_single
-
-#### MCTS Factory Extension (`alpha_zero/core/mcts_factory.py`)
-
-- Added `BATCH_GUMBEL = "batch_gumbel"` to `MCTSVariant` enum
-- Registered `BatchGumbelMCTS` in `_MCTS_REGISTRY`
-
-#### Cloud Orchestrator Mode (`alpha_zero/cloud/gcp/entrypoint.py`)
-
-- Added `--mode=orchestrator` routing to `vertex_orchestrator.main()` for cloud-only runs
-- Enables running the full training pipeline directly on a Compute Engine VM
-
-#### Batch Self-Play in Cloud Workers (`alpha_zero/cloud/gcp/selfplay_worker.py`)
-
-- `--num_parallel_games` and `--max_batch_size` CLI flags (opt-in, default=1)
-- `run_batch_selfplay()` — Vectorized self-play using BatchGumbelMCTS + VectorizedMicroCivEnv
-- W&B batch metrics logging with graceful wandb degradation
-
-#### Arena Batch Support (`alpha_zero/cloud/gcp/arena.py`)
-
-- Added `num_parallel_games` parameter to arena functions
-- W&B metrics logging for arena evaluation results
-
-#### Test Suite (101 new tests)
-
-- `tests/unit/test_batch_mcts.py` — 35 tests (batch search, sequential halving, action selection, config)
-- `tests/unit/test_vectorized_env.py` — ~36 tests (reset, step, clone, observations, edge cases)
-- `tests/unit/test_cuda_graph_cache.py` — ~14 tests (caching, CPU fallback, config)
-- `tests/unit/test_inference_benchmark.py` — 16 tests (single/batch/mcts/vectorized benchmarks)
-
-### Fixed
-
-- **`_batch_sequential_halving` performance bug**: Was calling `_batch_evaluate` per-leaf (batch-size-1) inside inner loop, defeating batching purpose. Refactored to collect all pending evaluations across envs/actions/simulations, then batch-evaluate in one call
-- **Silent `except ImportError: pass`**: Changed to `logger.debug()` messages in `arena.py` and `selfplay_worker.py` for wandb import failures
-- **Potential undefined `rewards`**: Initialized `rewards = np.zeros(...)` before the while loop in `selfplay_worker.py`
-- **Unused variables**: Cleaned up `infos`, `obs`, `reward`, `info` variables in `selfplay_worker.py` and `inference_benchmark.py`
-- **Hardcoded magic numbers**: Replaced `1e-8` and `0.99` with named constants `_PROBABILITY_SUM_EPSILON` and `_GREEDY_THRESHOLD` in `batch_mcts.py`
-- **Missing stack trace**: Added `exc_info=True` to broad exception handler in `selfplay_worker.py` batch search
+- `tests/cloud/unit/test_tournament_worker.py` — 42 tests (model discovery, matchup generation, ELO computation, CLI args, GCS integration, error handling)
+- `tests/unit/test_action_converter.py` — +448 lines (unit/city/tech action conversion, legality checking, find_unit/city_idx, valid action fallback)
+- `tests/unit/test_bridge.py` — +200 lines (retry delays, heartbeat, poll_ack, errors, send_command_with_retry, config validation)
+- `tests/unit/test_bridge_protocol.py` — +126 lines (unskipped 7 tests: to_dict, create_single, round-trip serialization)
+- `tests/unit/test_state_converter.py` — +113 lines (coordinate scaling round-trip, civics extraction, constant values)
 
 ### Changed
 
 - Version: `0.12.0` → `0.13.0`
-- Docker image: v0.12.0 → v0.13.0 (`gcr.io/hrmtrain/civ6az-training:v0.13.0`)
-- GCS models: v0-v079 (80 model versions total)
-- CI: 4,880+ tests, lint clean
-- Live run: indulgent-date-703 (50-iter, v079 champion, gumbel, value_lr=0.1x, warmup_cosine, 25 eval games, cloud VM orchestrator)
+- Total tests: 3,678 → 4,893+ (33% increase)
+- GCS models: 30 (v0-v29) → 80 (v0-v79) from 50-iteration training run
+- `.gitignore`: Added tournament worker artifacts, Lua mod IPC communication files
+- `evaluation_worker.py`: Head dimension inference from state_dict for older model compatibility
+- `vertex_orchestrator.py`: 6 new CLI args for tournament control, refactored `run_post_run_evaluation()`
+- `config.py`: Added H100 GPU pricing to `DEFAULT_GPU_COSTS`
+
+#### Live Training Run (Phase 15: golden-dream-542)
+
+- **50/50 iterations** on Vertex AI with value_lr=0.1x, warmup_cosine LR schedule
+- **80 model versions** (v0-v79) saved to GCS
+- **Standalone tournament** running (17 models, stride=5, 136 matchups, ~17h estimated)
+- **Cost**: ~$4.63 total (50 iterations, 2 workers, 50 games/worker)
 
 ---
 

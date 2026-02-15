@@ -1,0 +1,26 @@
+<div class="game-over-overlay">
+    <div class="game-over-card">
+        {% set winner = None %}
+        {% if history and history|length > 0 %}
+            {% set last = history[-1] %}
+            {% if last.game_over is defined and last.game_over %}
+                {% set winner = last.winner %}
+            {% endif %}
+        {% endif %}
+
+        {% if winner is not none and winner == human_player %}
+        <h2 class="result-win">Victory!</h2>
+        <p>You defeated the AI in {{ turn_number }} turns.</p>
+        {% elif winner is not none %}
+        <h2 class="result-loss">Defeat</h2>
+        <p>The AI won after {{ turn_number }} turns.</p>
+        {% else %}
+        <h2 class="result-draw">Game Over</h2>
+        <p>The game ended after {{ turn_number }} turns.</p>
+        {% endif %}
+
+        <div class="game-over-actions">
+            <a href="/" class="btn btn-primary">New Game</a>
+        </div>
+    </div>
+</div>

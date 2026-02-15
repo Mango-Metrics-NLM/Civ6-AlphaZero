@@ -1,0 +1,23 @@
+<div class="valid-actions">
+    <h3>Available Actions</h3>
+    <div class="actions-list">
+        {% for action in valid_actions[:20] %}
+        <form action="/htmx/game/{{ session_id }}/move" method="post"
+              hx-post="/htmx/game/{{ session_id }}/move"
+              hx-target="#game-container"
+              hx-swap="outerHTML"
+              class="action-form">
+            <input type="hidden" name="action" value="{{ action.index }}">
+            <button type="submit" class="btn btn-action"
+                    title="Action {{ action.index }}">
+                {{ action.label }}
+            </button>
+        </form>
+        {% endfor %}
+        {% if valid_actions|length > 20 %}
+        <div class="actions-overflow">
+            +{{ valid_actions|length - 20 }} more actions
+        </div>
+        {% endif %}
+    </div>
+</div>

@@ -128,6 +128,17 @@ def load_model(
         config_copy.pop("_num_patches", None)
         config_copy.pop("_head_dim", None)
 
+        # Infer head dimensions from state_dict if not in saved config
+        # (older models saved config without policy_hidden_dim/value_head_dim)
+        if "policy_hidden_dim" not in config_copy and "policy_head.mlp.0.weight" in state_dict:
+            inferred = state_dict["policy_head.mlp.0.weight"].shape[0]
+            config_copy["policy_hidden_dim"] = inferred
+            logger.info("Inferred policy_hidden_dim=%d from state_dict", inferred)
+        if "value_head_dim" not in config_copy and "value_head.mlp.0.weight" in state_dict:
+            inferred = state_dict["value_head.mlp.0.weight"].shape[0]
+            config_copy["value_head_dim"] = inferred
+            logger.info("Inferred value_head_dim=%d from state_dict", inferred)
+
         try:
             transformer_config = TransformerConfig(**config_copy)
         except TypeError as e:

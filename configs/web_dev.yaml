@@ -1,0 +1,18 @@
+# Development preset for web interface
+# Usage: python -m alpha_zero.web --config configs/web_dev.yaml
+
+web:
+  host: "127.0.0.1"
+  port: 8080
+  debug: true
+  log_level: "debug"
+
+  board_size: 8
+  max_turns: 50
+  default_thinking_time: 1.0
+  max_concurrent_sessions: 3
+  session_timeout_seconds: 600
+
+  use_mcts: false
+  mcts_simulations: 10
+  default_opponent: "random"

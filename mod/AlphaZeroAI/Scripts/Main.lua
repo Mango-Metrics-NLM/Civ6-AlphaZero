@@ -2,6 +2,7 @@
 -- Main.lua - Entry point for AlphaZero AI Bridge
 -- ============================================================================
 -- Coordinates all modules and handles game events to provide AI control.
+-- Fixes: deduplicated events, proper polling handle, graceful shutdown, timeout.
 -- ============================================================================
 
 AlphaZeroBridge = AlphaZeroBridge or {}
@@ -17,10 +18,15 @@ local bridgeState = {
     lastHeartbeatTime = 0,
     actionsThisTurn = 0,
     lastError = nil,
+    turnStartTime = 0,
 }
 
--- Polling timer handle
-local pollTimerHandle = nil
+-- Polling state (use explicit callback reference for reliable removal)
+local isPolling = false
+local pollCallback = nil  -- Will be set to AlphaZeroBridge.PollCommands after definition
+
+-- Track registered events for graceful shutdown
+local registeredEvents = {}
 
 -- ----------------------------------------------------------------------------
 -- Initialization
@@ -28,15 +34,15 @@ local pollTimerHandle = nil
 
 -- Find the AI player (first human player we'll control)
 local function findAIPlayer()
-    local configuredId = AlphaZeroConfig.Get("AI_PLAYER_ID")
+    local configuredId = AlphaZeroConfig and AlphaZeroConfig.Get("AI_PLAYER_ID")
     if configuredId then
         return configuredId
     end
 
     -- Find first human player
-    if PlayerManager then
+    if PlayerManager and PlayerManager.GetWasEverAliveCount then
         for i = 0, PlayerManager.GetWasEverAliveCount() - 1 do
-            local player = Players[i]
+            local player = Players and Players[i]
             if player and player:IsHuman() and player:IsAlive() then
                 return i
             end
@@ -79,14 +85,16 @@ function AlphaZeroBridge.Initialize()
     end
 
     -- Validate configuration
-    local valid, errors = AlphaZeroConfig.Validate()
-    if not valid then
-        if Log then
-            for _, err in ipairs(errors) do
-                Log.Error("Config error: %s", err)
+    if AlphaZeroConfig and AlphaZeroConfig.Validate then
+        local valid, errors = AlphaZeroConfig.Validate()
+        if not valid then
+            if Log then
+                for _, err in ipairs(errors) do
+                    Log.Error("Config error: %s", err)
+                end
             end
+            return false
         end
-        return false
     end
 
     -- Find AI player
@@ -94,10 +102,10 @@ function AlphaZeroBridge.Initialize()
     if Log then Log.Info("AI Player ID: %d", bridgeState.aiPlayerId) end
 
     -- Clear old files
-    AlphaZeroFileIO.ClearAll()
-
-    -- Write initial heartbeat
-    AlphaZeroFileIO.WriteHeartbeat()
+    if AlphaZeroFileIO then
+        AlphaZeroFileIO.ClearAll()
+        AlphaZeroFileIO.WriteHeartbeat()
+    end
 
     bridgeState.initialized = true
     if Log then Log.Info("AlphaZero Bridge initialized successfully") end
@@ -115,11 +123,17 @@ function AlphaZeroBridge.OnTurnStart(playerId)
         return
     end
 
+    -- Re-entrance guard: prevent double-firing from multiple event sources
+    if bridgeState.isMyTurn then
+        return
+    end
+
     if Log then Log.Info("Turn started for player %d", playerId) end
 
     bridgeState.isMyTurn = true
     bridgeState.actionsThisTurn = 0
     bridgeState.waitingForCommand = true
+    bridgeState.turnStartTime = os.time()
 
     -- Export and write current state
     local success, err = AlphaZeroStateExporter.ExportAndWrite(playerId)
@@ -153,28 +167,28 @@ end
 
 -- Start polling for commands
 function AlphaZeroBridge.StartPolling()
-    if pollTimerHandle then
+    if isPolling then
         return  -- Already polling
     end
 
-    local interval = AlphaZeroConfig.Get("COMMAND_POLL_INTERVAL") or 0.01
-
     if Events and Events.GameCoreEventPublishComplete then
-        -- Use game events for timing
-        Events.GameCoreEventPublishComplete.Add(AlphaZeroBridge.PollCommands)
-        pollTimerHandle = true
+        -- Ensure pollCallback is set
+        if not pollCallback then
+            pollCallback = AlphaZeroBridge.PollCommands
+        end
+        Events.GameCoreEventPublishComplete.Add(pollCallback)
+        isPolling = true
     else
-        -- Fallback: would need timer implementation
-        if Log then Log.Warn("No timer mechanism available") end
+        if Log then Log.Warn("No timer mechanism available for polling") end
     end
 end
 
 -- Stop polling
 function AlphaZeroBridge.StopPolling()
-    if pollTimerHandle and Events then
-        Events.GameCoreEventPublishComplete.Remove(AlphaZeroBridge.PollCommands)
+    if isPolling and Events and Events.GameCoreEventPublishComplete and pollCallback then
+        Events.GameCoreEventPublishComplete.Remove(pollCallback)
     end
-    pollTimerHandle = nil
+    isPolling = false
 end
 
 -- Poll for and process commands
@@ -183,10 +197,21 @@ function AlphaZeroBridge.PollCommands()
         return
     end
 
+    -- Command timeout check
+    local timeout = (AlphaZeroConfig and AlphaZeroConfig.Get("COMMAND_TIMEOUT")) or 30.0
+    local elapsed = os.time() - bridgeState.turnStartTime
+    if elapsed > timeout then
+        if Log then Log.Warn("Command timeout after %ds, stopping poll", elapsed) end
+        bridgeState.waitingForCommand = false
+        return
+    end
+
     -- Write heartbeat periodically
     local now = os.time()
     if now - bridgeState.lastHeartbeatTime >= 1 then
-        AlphaZeroFileIO.WriteHeartbeat()
+        if AlphaZeroFileIO then
+            AlphaZeroFileIO.WriteHeartbeat()
+        end
         bridgeState.lastHeartbeatTime = now
     end
 
@@ -271,55 +296,74 @@ local function onLoadGameViewStateDone()
     AlphaZeroBridge.Initialize()
 end
 
--- Local player turn begin
+-- Local player turn begin (single-player fallback)
 local function onLocalPlayerTurnBegin()
+    if not Game then return end
     local localPlayer = Game.GetLocalPlayer()
     if localPlayer == bridgeState.aiPlayerId then
         AlphaZeroBridge.OnTurnStart(localPlayer)
     end
 end
 
--- Local player turn end
+-- Local player turn end (single-player fallback)
 local function onLocalPlayerTurnEnd()
+    if not Game then return end
     local localPlayer = Game.GetLocalPlayer()
     if localPlayer == bridgeState.aiPlayerId then
         AlphaZeroBridge.OnTurnEnd(localPlayer)
     end
 end
 
--- Register event handlers
+-- Register event handlers (deduplicated: no GameEvents duplicates)
 local function registerEvents()
+    -- Clear any previous tracking
+    registeredEvents = {}
+
     if Events then
+        -- Primary turn events (UI context)
         if Events.PlayerTurnActivated then
             Events.PlayerTurnActivated.Add(onPlayerTurnActivated)
+            table.insert(registeredEvents, {event = Events.PlayerTurnActivated, handler = onPlayerTurnActivated})
         end
 
         if Events.PlayerTurnDeactivated then
             Events.PlayerTurnDeactivated.Add(onPlayerTurnDeactivated)
+            table.insert(registeredEvents, {event = Events.PlayerTurnDeactivated, handler = onPlayerTurnDeactivated})
         end
 
         if Events.LoadGameViewStateDone then
             Events.LoadGameViewStateDone.Add(onLoadGameViewStateDone)
+            table.insert(registeredEvents, {event = Events.LoadGameViewStateDone, handler = onLoadGameViewStateDone})
         end
 
+        -- Single-player fallback events
         if Events.LocalPlayerTurnBegin then
             Events.LocalPlayerTurnBegin.Add(onLocalPlayerTurnBegin)
+            table.insert(registeredEvents, {event = Events.LocalPlayerTurnBegin, handler = onLocalPlayerTurnBegin})
         end
 
         if Events.LocalPlayerTurnEnd then
             Events.LocalPlayerTurnEnd.Add(onLocalPlayerTurnEnd)
+            table.insert(registeredEvents, {event = Events.LocalPlayerTurnEnd, handler = onLocalPlayerTurnEnd})
         end
     end
 
-    if GameEvents then
-        if GameEvents.PlayerTurnStarted then
-            GameEvents.PlayerTurnStarted.Add(onPlayerTurnActivated)
-        end
+    -- REMOVED: GameEvents.PlayerTurnStarted and GameEvents.PlayerTurnStartComplete
+    -- These fire in gameplay context alongside the UI events above, causing triple-fire.
+    -- The re-entrance guard in OnTurnStart provides additional safety.
+end
 
-        if GameEvents.PlayerTurnStartComplete then
-            GameEvents.PlayerTurnStartComplete.Add(onPlayerTurnActivated)
+-- Unregister all event listeners (for graceful shutdown)
+local function unregisterEvents()
+    for _, entry in ipairs(registeredEvents) do
+        if entry.event and entry.handler then
+            local ok = pcall(function() entry.event.Remove(entry.handler) end)
+            if not ok and Log then
+                Log.Debug("Could not remove event handler during shutdown")
+            end
         end
     end
+    registeredEvents = {}
 end
 
 -- ----------------------------------------------------------------------------
@@ -334,6 +378,7 @@ function AlphaZeroBridge.GetStatus()
         isMyTurn = bridgeState.isMyTurn,
         waitingForCommand = bridgeState.waitingForCommand,
         actionsThisTurn = bridgeState.actionsThisTurn,
+        isPolling = isPolling,
         lastError = bridgeState.lastError,
     }
 end
@@ -351,16 +396,25 @@ function AlphaZeroBridge.ManualPoll()
     AlphaZeroBridge.PollCommands()
 end
 
--- Reset bridge state
+-- Reset bridge state (graceful shutdown)
 function AlphaZeroBridge.Reset()
+    -- Unregister all event listeners
+    unregisterEvents()
+
+    -- Stop polling
+    AlphaZeroBridge.StopPolling()
+
+    -- Reset state
     bridgeState.initialized = false
     bridgeState.aiPlayerId = nil
     bridgeState.isMyTurn = false
     bridgeState.waitingForCommand = false
     bridgeState.actionsThisTurn = 0
+    bridgeState.turnStartTime = 0
 
-    AlphaZeroBridge.StopPolling()
-    AlphaZeroFileIO.ClearAll()
+    if AlphaZeroFileIO then
+        AlphaZeroFileIO.ClearAll()
+    end
 
     if Log then Log.Info("Bridge reset") end
 end
@@ -368,6 +422,9 @@ end
 -- ----------------------------------------------------------------------------
 -- Entry Point
 -- ----------------------------------------------------------------------------
+
+-- Set up pollCallback reference
+pollCallback = AlphaZeroBridge.PollCommands
 
 -- Register events on load
 registerEvents()

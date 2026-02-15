@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 
 def _get_default_comm_dir() -> Path:
@@ -128,7 +129,7 @@ class BridgeConfig:
                 return False
             return default
 
-        kwargs = {}
+        kwargs: dict[str, Any] = {}
 
         if comm_dir := os.environ.get("CIV6_BRIDGE_COMM_DIR"):
             kwargs["comm_dir"] = Path(comm_dir)
