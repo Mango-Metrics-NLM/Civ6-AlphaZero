@@ -121,6 +121,15 @@ class TestGameSessionManager:
     def test_get_session_nonexistent(self, session_manager):
         assert session_manager.get_session("nonexistent") is None
 
+    def test_get_session_or_error_found(self, session_manager):
+        session = session_manager.create_session()
+        found = session_manager.get_session_or_error(session.session_id)
+        assert found.session_id == session.session_id
+
+    def test_get_session_or_error_missing(self, session_manager):
+        with pytest.raises(KeyError, match="Session not found"):
+            session_manager.get_session_or_error("nonexistent")
+
     def test_remove_session(self, session_manager):
         session = session_manager.create_session()
         sid = session.session_id

@@ -23,6 +23,21 @@ Usage:
 
 from __future__ import annotations
 
+# Module version (single source of truth)
+__version__ = "0.1.0"
+
+# Session ID generation length (hex characters from uuid4)
+SESSION_ID_LENGTH = 12
+
+# Checkpoint dict key for model state
+CHECKPOINT_MODEL_KEY = "model_state_dict"
+
+# Default number of top moves to show in UI
+DEFAULT_TOP_MOVES = 5
+
+# Session cleanup interval in seconds
+DEFAULT_CLEANUP_INTERVAL = 60.0
+
 
 def __getattr__(name: str) -> object:
     """Lazy imports to avoid loading FastAPI when not needed."""

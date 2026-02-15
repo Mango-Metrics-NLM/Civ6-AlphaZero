@@ -398,6 +398,3 @@ class WebConfig:
         filtered = {k: v for k, v in data.items() if k in valid_fields}
         return cls(**filtered)
 
-    def _to_raw_dict(self) -> dict[str, Any]:
-        """Convert to dict without validation (for env override base)."""
-        return self.to_dict()

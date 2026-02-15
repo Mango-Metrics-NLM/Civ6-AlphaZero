@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Form, HTTPException, Request
@@ -23,9 +22,6 @@ from alpha_zero.web.serializers import (
 
 logger = logging.getLogger(__name__)
 
-# Template directory path (relative to this file)
-TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
-
 
 def create_pages_router(session_manager: Any, templates: Any) -> APIRouter:
     """Create the HTML pages router.
@@ -38,6 +34,13 @@ def create_pages_router(session_manager: Any, templates: Any) -> APIRouter:
         FastAPI APIRouter with page routes.
     """
     router = APIRouter(tags=["pages"])
+
+    def _require_session(session_id: str) -> Any:
+        """Look up session or raise 404."""
+        try:
+            return session_manager.get_session_or_error(session_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Session not found") from exc
 
     @router.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:
@@ -79,6 +82,7 @@ def create_pages_router(session_manager: Any, templates: Any) -> APIRouter:
                 status_code=400,
             )
 
+        logger.info("Game created via form: %s", session.session_id)
         return RedirectResponse(
             url=f"/game/{session.session_id}",
             status_code=303,
@@ -87,9 +91,7 @@ def create_pages_router(session_manager: Any, templates: Any) -> APIRouter:
     @router.get("/game/{session_id}", response_class=HTMLResponse)
     async def game_page(request: Request, session_id: str) -> HTMLResponse:
         """Render the main game page."""
-        session = session_manager.get_session(session_id)
-        if session is None:
-            raise HTTPException(status_code=404, detail="Session not found")
+        session = _require_session(session_id)
 
         state = session.controller.current_state
         board = serialize_board_for_template(
@@ -142,10 +144,7 @@ def create_pages_router(session_manager: Any, templates: Any) -> APIRouter:
 
         Returns updated board + info partials for HTMX swap.
         """
-        session = session_manager.get_session(session_id)
-        if session is None:
-            raise HTTPException(status_code=404, detail="Session not found")
-
+        session = _require_session(session_id)
         controller = session.controller
 
         if not controller.is_human_turn:
@@ -169,9 +168,7 @@ def create_pages_router(session_manager: Any, templates: Any) -> APIRouter:
     @router.post("/htmx/game/{session_id}/undo", response_class=HTMLResponse)
     async def htmx_undo(request: Request, session_id: str) -> HTMLResponse:
         """Handle undo via HTMX."""
-        session = session_manager.get_session(session_id)
-        if session is None:
-            raise HTTPException(status_code=404, detail="Session not found")
+        session = _require_session(session_id)
 
         controller = session.controller
         controller.undo_move()
@@ -183,9 +180,7 @@ def create_pages_router(session_manager: Any, templates: Any) -> APIRouter:
     @router.post("/htmx/game/{session_id}/resign", response_class=HTMLResponse)
     async def htmx_resign(request: Request, session_id: str) -> HTMLResponse:
         """Handle resign via HTMX."""
-        session = session_manager.get_session(session_id)
-        if session is None:
-            raise HTTPException(status_code=404, detail="Session not found")
+        session = _require_session(session_id)
 
         try:
             session.controller.resign()

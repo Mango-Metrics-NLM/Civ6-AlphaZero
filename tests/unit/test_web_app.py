@@ -163,9 +163,11 @@ class TestCreateApp:
         response = client.get("/api/health")
         assert response.status_code == 200
         data = response.json()
+        from alpha_zero.web import __version__
+
         assert data["status"] == "ok"
         assert data["active_sessions"] == 0
-        assert "version" in data
+        assert data["version"] == __version__
 
     def test_create_app_with_none_config_uses_env(self) -> None:
         """When config is None, create_app should use WebConfig.from_env()."""

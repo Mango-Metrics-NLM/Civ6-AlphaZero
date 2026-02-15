@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from alpha_zero.core.civ6_actions import MicroCivActionSpace
+from alpha_zero.web import DEFAULT_TOP_MOVES
 
 if TYPE_CHECKING:
     from alpha_zero.human_interface.game_controller import GameState, TurnResult
@@ -162,7 +163,7 @@ def serialize_turn_result(
 
     if result.move_probabilities is not None:
         data["top_moves"] = _extract_top_moves(
-            result.move_probabilities, action_space, top_n=5
+            result.move_probabilities, action_space, top_n=DEFAULT_TOP_MOVES
         )
 
     return data
@@ -213,7 +214,7 @@ def serialize_confidence(
 
     if result.move_probabilities is not None:
         data["top_moves"] = _extract_top_moves(
-            result.move_probabilities, action_space, top_n=5
+            result.move_probabilities, action_space, top_n=DEFAULT_TOP_MOVES
         )
 
     return data
@@ -302,7 +303,7 @@ def serialize_board_for_template(
 def _extract_top_moves(
     probabilities: np.ndarray,
     action_space: MicroCivActionSpace,
-    top_n: int = 5,
+    top_n: int = DEFAULT_TOP_MOVES,
 ) -> list[dict[str, Any]]:
     """Extract top-N moves from probability distribution.
 

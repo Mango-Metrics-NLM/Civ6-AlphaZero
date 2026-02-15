@@ -15,6 +15,7 @@ from typing import Any
 
 from alpha_zero.core.civ6_actions import MicroCivActionSpace
 from alpha_zero.human_interface.game_controller import GameController
+from alpha_zero.web import CHECKPOINT_MODEL_KEY, SESSION_ID_LENGTH
 from alpha_zero.web.adapter import BaselineAgentAdapter, MCTSAIAgent, MicroCivGameAdapter
 from alpha_zero.web.config import VALID_OPPONENT_TYPES, WebConfig
 
@@ -82,7 +83,6 @@ class GameSessionManager:
         self._sessions: dict[str, GameSession] = {}
         self._lock = threading.Lock()
         self._shared_network: Any | None = None
-        self._network_loaded = False
         logger.info(
             "GameSessionManager initialized (max_sessions=%d, timeout=%ds)",
             config.max_concurrent_sessions,
@@ -163,7 +163,7 @@ class GameSessionManager:
             ai_agent.set_env(env)
 
         # Generate session ID
-        session_id = uuid.uuid4().hex[:12]
+        session_id = uuid.uuid4().hex[:SESSION_ID_LENGTH]
         now = datetime.now(UTC)
 
         session = GameSession(
@@ -207,6 +207,27 @@ class GameSessionManager:
             session = self._sessions.get(session_id)
         if session is not None:
             session.touch()
+        return session
+
+    def get_session_or_error(self, session_id: str) -> GameSession:
+        """Get a session by ID, raising if not found.
+
+        Reusable lookup that avoids repeating the get+check pattern
+        across all route handlers.
+
+        Args:
+            session_id: Session identifier.
+
+        Returns:
+            GameSession instance.
+
+        Raises:
+            KeyError: If session not found.
+        """
+        session = self.get_session(session_id)
+        if session is None:
+            msg = f"Session not found: {session_id}"
+            raise KeyError(msg)
         return session
 
     def remove_session(self, session_id: str) -> bool:
@@ -277,6 +298,7 @@ class GameSessionManager:
         """
         from alpha_zero.envs.microciv import MicroCivEnv
 
+        logger.debug("Creating MicroCivEnv (board_size=%d, max_turns=%d)", board_size, self._config.max_turns)
         return MicroCivEnv(
             board_size=board_size,
             max_turns=self._config.max_turns,
@@ -296,6 +318,7 @@ class GameSessionManager:
         Returns:
             AI agent adapter.
         """
+        logger.debug("Creating AI agent (type=%s)", opponent_type)
         if opponent_type == "random":
             return self._create_baseline_agent("random", env)
 
@@ -372,6 +395,7 @@ class GameSessionManager:
             Loaded neural network.
         """
         if self._shared_network is not None:
+            logger.debug("Returning cached shared network")
             return self._shared_network
 
         from alpha_zero.core.civ6_network import MicroCivNetwork
@@ -397,8 +421,8 @@ class GameSessionManager:
         )
 
         # Load weights
-        if isinstance(state_dict, dict) and "model_state_dict" in state_dict:
-            network.load_state_dict(state_dict["model_state_dict"])
+        if isinstance(state_dict, dict) and CHECKPOINT_MODEL_KEY in state_dict:
+            network.load_state_dict(state_dict[CHECKPOINT_MODEL_KEY])
         elif isinstance(state_dict, dict):
             network.load_state_dict(state_dict)
 
@@ -406,6 +430,5 @@ class GameSessionManager:
         network.to(self._config.device)
 
         self._shared_network = network
-        self._network_loaded = True
         logger.info("Neural network loaded successfully")
         return network

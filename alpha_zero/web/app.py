@@ -25,6 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from alpha_zero.web import DEFAULT_CLEANUP_INTERVAL, __version__
 from alpha_zero.web.config import WebConfig
 from alpha_zero.web.session import GameSessionManager
 
@@ -80,7 +81,7 @@ def create_app(config: WebConfig | None = None) -> FastAPI:
     app = FastAPI(
         title="Civ6 AlphaZero - Human vs AI",
         description="Web interface for playing MicroCiv against trained AI agents",
-        version="0.1.0",
+        version=__version__,
         lifespan=lifespan,
     )
 
@@ -118,7 +119,7 @@ def create_app(config: WebConfig | None = None) -> FastAPI:
         return {
             "status": "ok",
             "active_sessions": session_manager.active_count,
-            "version": "0.1.0",
+            "version": __version__,
         }
 
     # Store config and manager on app for test access
@@ -158,7 +159,7 @@ def _create_replay_manager(config: WebConfig) -> Any | None:
 
 async def _session_cleanup_loop(
     session_manager: GameSessionManager,
-    interval_seconds: float = 60.0,
+    interval_seconds: float = DEFAULT_CLEANUP_INTERVAL,
 ) -> None:
     """Background task that periodically cleans up expired sessions.
 

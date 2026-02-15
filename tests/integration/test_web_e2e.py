@@ -60,7 +60,7 @@ class TestFullGameViaREST:
         session_id = resp.json()["session_id"]
 
         # Play moves
-        for move_num in range(200):
+        for _move_num in range(200):
             # Get current state
             state_resp = client.get(f"/api/game/{session_id}")
             state = state_resp.json()["state"]

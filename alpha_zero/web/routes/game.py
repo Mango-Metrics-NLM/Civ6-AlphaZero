@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from alpha_zero.web.serializers import (
+    decode_action_readable,
     serialize_confidence,
     serialize_game_state,
     serialize_turn_result,
@@ -48,6 +49,51 @@ def create_game_router(session_manager: Any) -> APIRouter:
     """
     router = APIRouter(tags=["game"])
 
+    def _require_session(session_id: str) -> Any:
+        """Look up session or raise 404.
+
+        Centralizes the repeated get+check pattern.
+        """
+        try:
+            return session_manager.get_session_or_error(session_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Session not found") from exc
+
+    def _serialize_state(session: Any) -> dict[str, Any]:
+        """Serialize current game state for a session.
+
+        Centralizes the repeated serialize_game_state call.
+        """
+        return serialize_game_state(
+            session.session_id,
+            session.controller.current_state,
+            session.adapter,
+            session.action_space,
+        )
+
+    async def _play_ai_if_needed(
+        session: Any,
+        response: dict[str, Any],
+    ) -> None:
+        """Auto-play AI move if it's the AI's turn and game isn't over.
+
+        Centralizes the repeated AI move execution pattern.
+        """
+        controller = session.controller
+        if controller.is_game_over or controller.is_human_turn:
+            return
+
+        # Update env reference for MCTS
+        if hasattr(session.ai_agent, "set_env"):
+            session.ai_agent.set_env(session.adapter.env)
+
+        # Run AI move in thread pool to avoid blocking
+        logger.debug("Session %s: AI thinking...", session.session_id)
+        ai_result = await asyncio.to_thread(controller.play_ai_move)
+        response["ai_move"] = serialize_turn_result(ai_result, session.action_space)
+        response["confidence"] = serialize_confidence(ai_result, session.action_space)
+        logger.debug("Session %s: AI move completed (action=%d)", session.session_id, ai_result.action)
+
     @router.post("/new")
     async def create_game(request: NewGameRequest) -> dict[str, Any]:
         """Create a new game session.
@@ -66,12 +112,7 @@ def create_game_router(session_manager: Any) -> APIRouter:
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
-        state = serialize_game_state(
-            session.session_id,
-            session.controller.current_state,
-            session.adapter,
-            session.action_space,
-        )
+        state = _serialize_state(session)
 
         logger.info("Game created: %s", session.session_id)
         return {"session_id": session.session_id, "state": state}
@@ -79,17 +120,8 @@ def create_game_router(session_manager: Any) -> APIRouter:
     @router.get("/{session_id}")
     async def get_game_state(session_id: str) -> dict[str, Any]:
         """Get current game state for a session."""
-        session = session_manager.get_session(session_id)
-        if session is None:
-            raise HTTPException(status_code=404, detail="Session not found")
-
-        state = serialize_game_state(
-            session.session_id,
-            session.controller.current_state,
-            session.adapter,
-            session.action_space,
-        )
-        return {"state": state}
+        session = _require_session(session_id)
+        return {"state": _serialize_state(session)}
 
     @router.post("/{session_id}/move")
     async def submit_move(session_id: str, request: MoveRequest) -> dict[str, Any]:
@@ -98,10 +130,7 @@ def create_game_router(session_manager: Any) -> APIRouter:
         If it becomes the AI's turn after the human move, the AI move
         is computed and included in the response.
         """
-        session = session_manager.get_session(session_id)
-        if session is None:
-            raise HTTPException(status_code=404, detail="Session not found")
-
+        session = _require_session(session_id)
         controller = session.controller
 
         if not controller.is_human_turn:
@@ -124,32 +153,17 @@ def create_game_router(session_manager: Any) -> APIRouter:
         }
 
         # Auto-play AI move if it's AI's turn and game not over
-        if not controller.is_game_over and not controller.is_human_turn:
-            # Update env reference for MCTS
-            if hasattr(session.ai_agent, "set_env"):
-                session.ai_agent.set_env(session.adapter.env)
-
-            # Run AI move in thread pool to avoid blocking
-            ai_result = await asyncio.to_thread(controller.play_ai_move)
-            response["ai_move"] = serialize_turn_result(ai_result, session.action_space)
-            response["confidence"] = serialize_confidence(ai_result, session.action_space)
+        await _play_ai_if_needed(session, response)
 
         # Include updated state
-        response["state"] = serialize_game_state(
-            session.session_id,
-            controller.current_state,
-            session.adapter,
-            session.action_space,
-        )
+        response["state"] = _serialize_state(session)
 
         return response
 
     @router.post("/{session_id}/undo")
     async def undo_move(session_id: str) -> dict[str, Any]:
         """Undo the last move (or last two if AI moved after human)."""
-        session = session_manager.get_session(session_id)
-        if session is None:
-            raise HTTPException(status_code=404, detail="Session not found")
+        session = _require_session(session_id)
 
         controller = session.controller
         success = controller.undo_move()
@@ -158,81 +172,41 @@ def create_game_router(session_manager: Any) -> APIRouter:
         if success and not controller.is_human_turn:
             controller.undo_move()
 
-        state = serialize_game_state(
-            session.session_id,
-            controller.current_state,
-            session.adapter,
-            session.action_space,
-        )
-
-        return {"success": success, "state": state}
+        return {"success": success, "state": _serialize_state(session)}
 
     @router.post("/{session_id}/resign")
     async def resign_game(session_id: str) -> dict[str, Any]:
         """Resign the current game."""
-        session = session_manager.get_session(session_id)
-        if session is None:
-            raise HTTPException(status_code=404, detail="Session not found")
+        session = _require_session(session_id)
 
         try:
             result = session.controller.resign()
         except RuntimeError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
-        state = serialize_game_state(
-            session.session_id,
-            session.controller.current_state,
-            session.adapter,
-            session.action_space,
-        )
-
         return {
             "result": serialize_turn_result(result, session.action_space),
-            "state": state,
+            "state": _serialize_state(session),
         }
 
     @router.post("/{session_id}/pause")
     async def pause_game(session_id: str) -> dict[str, Any]:
         """Pause the current game."""
-        session = session_manager.get_session(session_id)
-        if session is None:
-            raise HTTPException(status_code=404, detail="Session not found")
-
+        session = _require_session(session_id)
         session.controller.pause_game()
-
-        state = serialize_game_state(
-            session.session_id,
-            session.controller.current_state,
-            session.adapter,
-            session.action_space,
-        )
-        return {"state": state}
+        return {"state": _serialize_state(session)}
 
     @router.post("/{session_id}/resume")
     async def resume_game(session_id: str) -> dict[str, Any]:
         """Resume a paused game."""
-        session = session_manager.get_session(session_id)
-        if session is None:
-            raise HTTPException(status_code=404, detail="Session not found")
-
+        session = _require_session(session_id)
         session.controller.resume_game()
-
-        state = serialize_game_state(
-            session.session_id,
-            session.controller.current_state,
-            session.adapter,
-            session.action_space,
-        )
-        return {"state": state}
+        return {"state": _serialize_state(session)}
 
     @router.get("/{session_id}/valid-actions")
     async def get_valid_actions(session_id: str) -> dict[str, Any]:
         """Get decoded list of valid actions."""
-        session = session_manager.get_session(session_id)
-        if session is None:
-            raise HTTPException(status_code=404, detail="Session not found")
-
-        from alpha_zero.web.serializers import decode_action_readable
+        session = _require_session(session_id)
 
         actions = [
             {
@@ -247,9 +221,7 @@ def create_game_router(session_manager: Any) -> APIRouter:
     @router.get("/{session_id}/summary")
     async def get_game_summary(session_id: str) -> dict[str, Any]:
         """Get game summary statistics."""
-        session = session_manager.get_session(session_id)
-        if session is None:
-            raise HTTPException(status_code=404, detail="Session not found")
+        session = _require_session(session_id)
 
         controller = session.controller
         state = controller.current_state
