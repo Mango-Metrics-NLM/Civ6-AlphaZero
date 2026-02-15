@@ -45,11 +45,17 @@ llm = [
     "openai>=1.0.0",
     "anthropic>=0.18.0",
 ]
+strategic = [
+    "torch>=2.0.0",
+    "numpy>=1.23.0",
+    "pyyaml>=6.0",
+]
 all = [
     "alpha_zero[dev]",
     "alpha_zero[gcp]",
     "alpha_zero[distributed]",
     "alpha_zero[llm]",
+    "alpha_zero[strategic]",
 ]
 
 [tool.ruff]
@@ -116,6 +122,11 @@ disallow_incomplete_defs = true
 
 [[tool.mypy.overrides]]
 module = "alpha_zero.pbt.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[[tool.mypy.overrides]]
+module = "alpha_zero.strategic.*"
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 
