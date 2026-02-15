@@ -72,7 +72,7 @@ def parse_args() -> argparse.Namespace:
         "--mcts_type",
         type=str,
         default="civ6",
-        choices=["civ6", "gumbel"],
+        choices=["civ6", "gumbel", "batch_gumbel"],
         help="MCTS variant to use",
     )
     parser.add_argument("--board_size", type=int, default=8, help="Size of the hex board")
@@ -110,6 +110,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward_shaping", action="store_true", help="Enable reward shaping")
     parser.add_argument("--reward_scale", type=float, default=1.0, help="Reward scaling factor")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
+
+    # Batch inference configuration
+    parser.add_argument(
+        "--num_parallel_games",
+        type=int,
+        default=1,
+        help="Number of parallel games (>1 enables batch MCTS)",
+    )
+    parser.add_argument(
+        "--max_batch_size",
+        type=int,
+        default=64,
+        help="Maximum batch size for batched network inference",
+    )
 
     return parser.parse_args()
 
@@ -490,6 +504,219 @@ def run_selfplay(
     return trajectories
 
 
+def run_batch_selfplay(
+    model: torch.nn.Module,
+    num_games: int,
+    mcts_sims: int,
+    board_size: int = 8,
+    max_turns: int = 30,
+    num_parallel_games: int = 8,
+    max_batch_size: int = 64,
+    gumbel_num_actions: int = 16,
+    device: str = "cpu",
+    temperature_schedule: str = "threshold",
+    temperature: float = 1.0,
+    temperature_threshold: int = 30,
+) -> list[dict]:
+    """Run batch self-play games using BatchGumbelMCTS and vectorized environments.
+
+    Uses BatchGumbelMCTS with VectorizedMicroCivEnv to play multiple games
+    simultaneously, batching network evaluations for higher GPU utilization.
+
+    Args:
+        model: Neural network model for MCTS evaluation.
+        num_games: Total number of self-play games to run.
+        mcts_sims: Number of MCTS simulations per move.
+        board_size: Size of the game board.
+        max_turns: Maximum turns per game.
+        num_parallel_games: Number of games to run in parallel.
+        max_batch_size: Maximum batch size for network inference.
+        gumbel_num_actions: Number of sampled actions for Gumbel MCTS.
+        device: Device for neural network inference (e.g., "cuda" or "cpu").
+        temperature_schedule: Temperature decay schedule type.
+        temperature: Base temperature for action selection.
+        temperature_threshold: Turn for temperature=0 (threshold schedule).
+
+    Returns:
+        List of trajectory dictionaries (same format as run_selfplay).
+    """
+    import numpy as np
+
+    from alpha_zero.core.batch_mcts import BatchGumbelMCTS, BatchMCTSConfig
+    from alpha_zero.envs.vectorized_env import VectorizedEnvConfig, VectorizedMicroCivEnv
+
+    logger.info(
+        "Starting batch self-play: %d games, %d parallel, %d sims, device=%s",
+        num_games,
+        num_parallel_games,
+        mcts_sims,
+        device,
+    )
+
+    # Create vectorized environment
+    env_config = VectorizedEnvConfig(
+        num_envs=num_parallel_games,
+        board_size=board_size,
+        max_turns=max_turns,
+    )
+    vec_env = VectorizedMicroCivEnv(config=env_config)
+
+    # Create batch MCTS
+    mcts_config = BatchMCTSConfig(
+        num_simulations=mcts_sims,
+        num_sampled_actions=gumbel_num_actions,
+        max_batch_size=max_batch_size,
+        num_parallel_envs=num_parallel_games,
+    )
+    batch_mcts = BatchGumbelMCTS(
+        network=model,
+        config=mcts_config,
+        device=device,
+    )
+
+    trajectories: list[dict[str, Any]] = []
+    games_completed = 0
+    batch_num = 0
+    start_time = time.time()
+
+    while games_completed < num_games:
+        batch_start = time.time()
+        batch_num += 1
+
+        # Determine how many games to run in this batch
+        remaining = num_games - games_completed
+        batch_size = min(remaining, num_parallel_games)
+
+        # Reset environments
+        vec_env.reset_all()
+
+        # Initialize per-env trajectory storage
+        batch_trajectories: list[dict[str, Any]] = [
+            {"spatial": [], "vector": [], "policies": [], "actions": []}
+            for _ in range(batch_size)
+        ]
+
+        # Track which envs are still active
+        active = [True] * batch_size + [False] * (num_parallel_games - batch_size)
+        turn = 0
+
+        while any(active) and turn < max_turns:
+            # Get active environment indices
+            active_indices = [i for i in range(num_parallel_games) if active[i]]
+            if not active_indices:
+                break
+
+            # Collect observations for active envs before search
+            for i in active_indices:
+                obs = vec_env.get_env(i).get_observation()
+                spatial_flat = obs["spatial"].flatten().tolist()
+                vector_flat = obs["vector"].flatten().tolist()
+                batch_trajectories[i]["spatial"].append(spatial_flat)
+                batch_trajectories[i]["vector"].append(vector_flat)
+
+            # Get environments for batch search
+            envs = [vec_env.get_env(i) for i in active_indices]
+
+            # Batch MCTS search
+            try:
+                results = batch_mcts.batch_search(envs, add_noise=False)
+            except Exception as e:
+                logger.error("Batch search failed at turn %d: %s", turn, e)
+                if device != "cpu":
+                    torch.cuda.empty_cache()
+                break
+
+            # Build actions array and store policies
+            actions = np.zeros(num_parallel_games, dtype=np.int32)
+            for idx, env_idx in enumerate(active_indices):
+                action_probs, _ = results[idx]
+
+                # Compute temperature for this turn
+                temp = compute_temperature(
+                    turn=turn,
+                    max_turns=max_turns,
+                    temperature=temperature,
+                    temperature_threshold=temperature_threshold,
+                    schedule=temperature_schedule,
+                )
+                action = batch_mcts.select_action(action_probs, temperature=temp)
+                actions[env_idx] = action
+
+                # Store policy and action
+                batch_trajectories[env_idx]["policies"].append(
+                    action_probs.tolist() if hasattr(action_probs, "tolist") else action_probs
+                )
+                batch_trajectories[env_idx]["actions"].append(int(action))
+
+            # Step all environments
+            rewards, terminated, truncated, infos = vec_env.step_all(actions)
+
+            # Update active mask
+            for i in active_indices:
+                if terminated[i] or truncated[i]:
+                    active[i] = False
+
+            turn += 1
+
+        # Finalize trajectories for completed games
+        batch_games = 0
+        for i in range(batch_size):
+            traj = batch_trajectories[i]
+            if traj["spatial"]:
+                # Get final reward from last step
+                # For games that ended, use the actual reward
+                # For truncated games, use 0.0
+                final_reward = float(rewards[i]) if not active[i] else 0.0
+                num_steps = len(traj["spatial"])
+                traj["rewards"] = [final_reward] * num_steps
+                trajectories.append(traj)
+                batch_games += 1
+
+        games_completed += batch_games
+        batch_elapsed = time.time() - batch_start
+
+        logger.info(
+            "Batch %d: %d games in %.1fs (%.1f games/min), total %d/%d",
+            batch_num,
+            batch_games,
+            batch_elapsed,
+            batch_games / max(batch_elapsed / 60, 0.001),
+            games_completed,
+            num_games,
+        )
+
+        # Log batch metrics to W&B
+        try:
+            from alpha_zero.utils.wandb_logger import WANDB_AVAILABLE, log_metrics
+
+            if WANDB_AVAILABLE:
+                log_metrics({
+                    "selfplay/batch_games_completed": batch_games,
+                    "selfplay/batch_time_seconds": batch_elapsed,
+                    "selfplay/parallel_envs": num_parallel_games,
+                    "selfplay/total_games_completed": games_completed,
+                })
+        except ImportError:
+            pass
+
+        # Memory cleanup between batches
+        if device != "cpu":
+            torch.cuda.empty_cache()
+        gc.collect()
+
+    total_elapsed = time.time() - start_time
+    total_states = sum(len(t["spatial"]) for t in trajectories)
+    logger.info(
+        "Batch self-play complete: %d games, %d states in %.1fs (%.1f games/min)",
+        len(trajectories),
+        total_states,
+        total_elapsed,
+        len(trajectories) / max(total_elapsed / 60, 0.001),
+    )
+
+    return trajectories
+
+
 def save_trajectories(
     config: GCPConfig,
     trajectories: list[dict],
@@ -550,6 +777,8 @@ def main() -> int:
                     "board_size": args.board_size,
                     "max_turns": args.max_turns,
                     "games": args.games,
+                    "num_parallel_games": args.num_parallel_games,
+                    "max_batch_size": args.max_batch_size,
                     "mode": "selfplay",
                 }
             )
@@ -587,21 +816,48 @@ def main() -> int:
             "temperature_threshold": args.temperature_threshold,
         }
 
-        # Run self-play
+        # Run self-play (batch or sequential based on configuration)
         start_time = time.time()
-        trajectories = run_selfplay(
-            model=model,
-            num_games=args.games,
-            mcts_sims=args.mcts_simulations,
-            mcts_type=args.mcts_type,
-            board_size=args.board_size,
-            max_turns=args.max_turns,
-            gumbel_num_actions=args.gumbel_num_actions,
-            mcts_config_override=mcts_override,
-            dry_run=args.dry_run,
-            device=str(device),
-            temperature_schedule=args.temperature_schedule,
+        use_batch = (
+            args.num_parallel_games > 1
+            and args.mcts_type == "batch_gumbel"
+            and not args.dry_run
         )
+
+        if use_batch:
+            logger.info(
+                "Using batch self-play: %d parallel games, max_batch=%d",
+                args.num_parallel_games,
+                args.max_batch_size,
+            )
+            trajectories = run_batch_selfplay(
+                model=model,
+                num_games=args.games,
+                mcts_sims=args.mcts_simulations,
+                board_size=args.board_size,
+                max_turns=args.max_turns,
+                num_parallel_games=args.num_parallel_games,
+                max_batch_size=args.max_batch_size,
+                gumbel_num_actions=args.gumbel_num_actions,
+                device=str(device),
+                temperature_schedule=args.temperature_schedule,
+                temperature=args.temperature,
+                temperature_threshold=args.temperature_threshold,
+            )
+        else:
+            trajectories = run_selfplay(
+                model=model,
+                num_games=args.games,
+                mcts_sims=args.mcts_simulations,
+                mcts_type=args.mcts_type,
+                board_size=args.board_size,
+                max_turns=args.max_turns,
+                gumbel_num_actions=args.gumbel_num_actions,
+                mcts_config_override=mcts_override,
+                dry_run=args.dry_run,
+                device=str(device),
+                temperature_schedule=args.temperature_schedule,
+            )
         elapsed = time.time() - start_time
 
         # Calculate total states generated (using spatial list length)
@@ -625,6 +881,19 @@ def main() -> int:
                 buffer_size=total_states,
                 samples_generated=total_states,
             )
+
+            # Log batch-specific metrics
+            if use_batch:
+                from alpha_zero.utils.wandb_logger import log_metrics
+
+                log_metrics({
+                    "selfplay/games_per_minute": len(trajectories) / max(elapsed / 60, 0.001),
+                    "selfplay/avg_batch_size": args.num_parallel_games,
+                    "selfplay/parallel_envs": args.num_parallel_games,
+                    "selfplay/batch_utilization_pct": (
+                        args.num_parallel_games / args.max_batch_size * 100
+                    ),
+                })
 
         # Save trajectories
         save_trajectories(

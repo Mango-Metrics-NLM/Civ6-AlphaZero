@@ -71,6 +71,7 @@ def run_arena(
     board_size: int = 8,
     max_turns: int = 30,
     device: torch.device | None = None,
+    num_parallel_games: int = 1,
 ) -> ArenaResult:
     """Play model_a vs. model_b in an arena.
 
@@ -87,6 +88,8 @@ def run_arena(
         board_size: Size of game board.
         max_turns: Maximum game turns before truncation.
         device: PyTorch device to use. If None, defaults to CPU.
+        num_parallel_games: Number of parallel games (accepted for API consistency
+            with selfplay_worker; arena currently runs games sequentially).
 
     Returns:
         ArenaResult with wins/losses/draws from model_a's perspective.
@@ -97,12 +100,20 @@ def run_arena(
     if device is None:
         device = torch.device("cpu")
 
+    if num_parallel_games > 1:
+        logger.info(
+            "Arena: num_parallel_games=%d accepted for API consistency "
+            "(arena runs games sequentially for player alternation)",
+            num_parallel_games,
+        )
+
+    start_time = time.time()
     wins = 0
     losses = 0
     draws = 0
 
     for game_idx in range(num_games):
-        start_time = time.time()
+        game_start_time = time.time()
 
         # Alternate which player model_a controls
         a_is_player_0 = game_idx % 2 == 0
@@ -152,7 +163,7 @@ def run_arena(
             losses += 1
             result = "loss"
 
-        elapsed = time.time() - start_time
+        elapsed = time.time() - game_start_time
         player_str = "P0" if a_is_player_0 else "P1"
         logger.info(
             "Game %d/%d: model_a=%s, result=%s, moves=%d (%.1fs)",
@@ -163,6 +174,25 @@ def run_arena(
             move_count,
             elapsed,
         )
+
+    # Log arena metrics to W&B
+    total_elapsed = time.time() - start_time
+    try:
+        from alpha_zero.utils.wandb_logger import WANDB_AVAILABLE, log_metrics
+
+        if WANDB_AVAILABLE:
+            log_metrics(
+                {
+                    "arena/total_games": num_games,
+                    "arena/wins": wins,
+                    "arena/losses": losses,
+                    "arena/draws": draws,
+                    "arena/win_rate": wins / max(num_games, 1),
+                    "arena/games_per_minute": num_games / max(total_elapsed / 60, 0.001),
+                }
+            )
+    except ImportError:
+        pass
 
     return ArenaResult(
         wins=wins,
