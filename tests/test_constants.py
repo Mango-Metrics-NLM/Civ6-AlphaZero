@@ -14,22 +14,24 @@ Usage:
 
 from __future__ import annotations
 
+from src.core import constants as sdk_constants
+
 
 class TestDefaults:
     """Default values for test configurations.
 
-    These values are derived from the actual encoder and environment
-    implementations to ensure test consistency.
+    Values that correspond to SDK constants reference them directly to
+    prevent drift between tests and source.
     """
 
-    # Board/Map sizes
-    BOARD_SIZE: int = 16  # Default MicroCiv board size
+    # Board/Map sizes — derived from SDK constants
+    BOARD_SIZE: int = sdk_constants.DEFAULT_BOARD_SIZE
     SMALL_BOARD_SIZE: int = 8  # For faster unit tests
     FULL_MAP_WIDTH: int = 84  # Full Civ6 map dimensions
     FULL_MAP_HEIGHT: int = 54
 
-    # Encoder channel counts (from civ6_encoder.py)
-    MICROCIV_CHANNELS: int = 13  # MicroCivEncoder.TOTAL_CHANNELS
+    # Encoder channel counts — derived from SDK constants
+    MICROCIV_CHANNELS: int = sdk_constants.MICROCIV_SPATIAL_CHANNELS
     CIV6_CHANNELS: int = 84  # Civ6StateEncoder.TOTAL_CHANNELS
     CIVREALM_CHANNELS: int = 51  # CivRealmEncoder.TOTAL_CHANNELS
 
@@ -49,14 +51,14 @@ class TestDefaults:
     # Network configuration
     NUM_RES_BLOCKS: int = 2  # Minimal for fast tests
     NUM_FILTERS: int = 32  # Smaller for fast tests
-    VECTOR_DIM: int = 64  # MicroCiv vector dimension
+    VECTOR_DIM: int = sdk_constants.MICROCIV_VECTOR_DIM
 
     # DDP/Distributed configuration
     WORLD_SIZE: int = 4
     MASTER_PORT: str = "29500"
 
-    # Action space
-    ACTION_SPACE_SIZE: int = 356  # MicroCiv default
+    # Action space — derived from SDK constants
+    ACTION_SPACE_SIZE: int = sdk_constants.MICROCIV_ACTION_SPACE
     NUM_DIRECTIONS: int = 8
     NUM_UNIT_ACTIONS: int = 6
 
@@ -68,7 +70,7 @@ class EncoderChannels:
     specific encoder configurations.
     """
 
-    MICROCIV: int = 13
+    MICROCIV: int = sdk_constants.MICROCIV_SPATIAL_CHANNELS
     CIV6_FULL: int = 84
     CIVREALM: int = 51
 

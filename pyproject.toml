@@ -40,7 +40,6 @@ distributed = [
     "grpcio>=1.50.0",
     "grpcio-tools>=1.50.0",
 ]
-
 llm = [
     "openai>=1.0.0",
     "anthropic>=0.18.0",
@@ -50,12 +49,33 @@ strategic = [
     "numpy>=1.23.0",
     "pyyaml>=6.0",
 ]
+rag = [
+    "chromadb>=0.4.0",
+    "faiss-cpu>=1.7.0",
+    "openai>=1.0.0",
+    "sentence-transformers>=2.2.0",
+]
+rag-full = [
+    "chromadb>=0.4.0",
+    "faiss-cpu>=1.7.0",
+    "openai>=1.0.0",
+    "sentence-transformers>=2.2.0",
+    "pinecone-client>=2.0.0",
+]
+sdk = [
+    "pydantic>=2.0.0",
+    "structlog>=23.0.0",
+    "pyyaml>=6.0",
+    "numpy>=1.23.0",
+]
 all = [
     "alpha_zero[dev]",
     "alpha_zero[gcp]",
     "alpha_zero[distributed]",
     "alpha_zero[llm]",
     "alpha_zero[strategic]",
+    "alpha_zero[rag]",
+    "alpha_zero[sdk]",
 ]
 
 [tool.ruff]
@@ -77,10 +97,11 @@ ignore = [
 "**/tests/*" = ["S101", "ANN"]  # Allow asserts and skip annotations in all test directories
 "alpha_zero/cloud/preemption.py" = ["S310"]  # GCE metadata URL is intentional
 "run_*.py" = ["ANN"]  # Skip annotations in run scripts
-"alpha_zero/utils/reward_shaping.py" = ["RUF002"]  # Greek math symbols (γ, Φ) in formulas
+"alpha_zero/utils/reward_shaping.py" = ["RUF002"]  # Greek math symbols in formulas
 "alpha_zero/mechanics/__init__.py" = ["E402"]  # Imports after deprecation warning
 "alpha_zero/human_interface/__init__.py" = ["E402"]  # Imports after deprecation warning
 "alpha_zero/integration/__init__.py" = ["E402"]  # Imports after deprecation warning
+"src/*" = ["ANN401"]  # Allow Any for duck typing with optional torch
 
 [tool.mypy]
 python_version = "3.11"
@@ -131,6 +152,11 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 
 [[tool.mypy.overrides]]
+module = "src.*"
+ignore_missing_imports = true
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
 
@@ -163,7 +189,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["alpha_zero"]
+source = ["alpha_zero", "src"]
 branch = true
 omit = [
     "*/tests/*",

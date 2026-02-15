@@ -42,14 +42,22 @@ PIP ?= pip3
 help:
 	@echo "Civ6 AlphaZero - Vertex AI Deployment"
 	@echo ""
-	@echo "Development:"
+	@echo "Development (alpha_zero):"
 	@echo "  make install           Install Python dependencies"
 	@echo "  make install-dev       Install development dependencies"
-	@echo "  make lint              Run linting (ruff)"
-	@echo "  make typecheck         Run type checking (mypy)"
-	@echo "  make test-unit         Run unit tests"
-	@echo "  make test-integration  Run integration tests"
-	@echo "  make test-all          Run all tests with coverage"
+	@echo "  make lint              Run linting (ruff) on alpha_zero"
+	@echo "  make typecheck         Run type checking (mypy) on alpha_zero"
+	@echo "  make test-unit         Run alpha_zero unit tests"
+	@echo "  make test-integration  Run alpha_zero integration tests"
+	@echo "  make test-all          Run all alpha_zero tests with coverage"
+	@echo ""
+	@echo "Development (SDK src/):"
+	@echo "  make lint-sdk          Run ruff on SDK source and tests"
+	@echo "  make lint-sdk-fix      Auto-fix SDK lint issues"
+	@echo "  make typecheck-sdk     Run mypy on SDK source"
+	@echo "  make test-sdk          Run SDK unit and smoke tests"
+	@echo "  make test-sdk-cov      Run SDK tests with coverage (>=80%)"
+	@echo "  make check-sdk         Full SDK check (lint + types + tests)"
 	@echo ""
 	@echo "Docker:"
 	@echo "  make build-base        Build base image"
@@ -120,6 +128,36 @@ test-all:
 .PHONY: test-storage
 test-storage:
 	pytest tests/unit/test_storage_backend.py tests/unit/test_replay_buffer.py -v
+
+# ============================================================================
+# SDK Development (src/ directory)
+# ============================================================================
+
+.PHONY: lint-sdk
+lint-sdk:
+	ruff check src/ tests/unit/core/ tests/unit/environments/ tests/unit/adapters/
+	ruff format --check src/
+
+.PHONY: lint-sdk-fix
+lint-sdk-fix:
+	ruff check src/ tests/unit/core/ tests/unit/environments/ tests/unit/adapters/ --fix
+	ruff format src/
+
+.PHONY: typecheck-sdk
+typecheck-sdk:
+	mypy src/ --ignore-missing-imports --disable-error-code=import-untyped --no-warn-unused-ignores
+
+.PHONY: test-sdk
+test-sdk:
+	pytest tests/unit/core/ tests/unit/environments/ tests/unit/adapters/ tests/unit/test_cli.py tests/integration/test_sdk_integration.py tests/smoke/ -v --tb=short
+
+.PHONY: test-sdk-cov
+test-sdk-cov:
+	pytest tests/unit/core/ tests/unit/environments/ tests/unit/adapters/ tests/unit/test_cli.py tests/integration/test_sdk_integration.py tests/smoke/ --cov=src --cov-report=term-missing --cov-fail-under=80
+
+.PHONY: check-sdk
+check-sdk: lint-sdk typecheck-sdk test-sdk-cov
+	@echo "SDK checks passed"
 
 # ============================================================================
 # Docker Build

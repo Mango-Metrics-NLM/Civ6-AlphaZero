@@ -1,0 +1,11 @@
+backbone_type: "transformer"
+num_residual_blocks: 6
+num_filters: 128
+fc_hidden_dim: 512
+value_head_hidden_dim: 128
+policy_head_hidden_dim: 128
+use_attention: true
+attention_heads: 8
+dropout_rate: 0.1
+weight_init: "xavier"
+compile_model: false

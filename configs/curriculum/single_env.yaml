@@ -1,0 +1,5 @@
+stages: []
+promotion_elo_threshold: 100.0
+promotion_window: 50
+demotion_enabled: false
+demotion_elo_threshold: -100.0

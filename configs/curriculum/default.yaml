@@ -1,0 +1,20 @@
+stages:
+  - name: "mini_resource"
+    environment: "mini_resource"
+    min_iterations: 0
+    max_iterations: 500
+    baseline_type: "random"
+  - name: "mini_combat"
+    environment: "mini_combat"
+    min_iterations: 100
+    max_iterations: 500
+    baseline_type: "random"
+  - name: "mini_exploration"
+    environment: "mini_exploration"
+    min_iterations: 100
+    max_iterations: 500
+    baseline_type: "random"
+promotion_elo_threshold: 100.0
+promotion_window: 50
+demotion_enabled: false
+demotion_elo_threshold: -100.0

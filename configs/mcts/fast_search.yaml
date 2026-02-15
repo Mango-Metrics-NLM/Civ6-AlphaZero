@@ -1,0 +1,9 @@
+num_simulations: 8
+c_puct: 1.5
+dirichlet_alpha: 0.3
+dirichlet_epsilon: 0.25
+temperature_schedule:
+  0: 1.0
+virtual_loss: 0.0
+progressive_widening_alpha: 0.5
+selection_policy: "puct"

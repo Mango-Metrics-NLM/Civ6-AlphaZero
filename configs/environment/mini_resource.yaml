@@ -1,0 +1,16 @@
+name: "mini_resource"
+description: "Resource allocation mini-game for curriculum training"
+observation:
+  spatial_channels: 8
+  spatial_height: 8
+  spatial_width: 8
+  vector_dim: 32
+  temporal_depth: 1
+action_space:
+  type: "flat"
+  total_actions: 64
+game:
+  max_players: 2
+  max_steps: 100
+  reward_range: [-1.0, 1.0]
+  symmetries: "none"
