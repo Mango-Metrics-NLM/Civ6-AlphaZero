@@ -192,7 +192,7 @@ def run_arena(
                 }
             )
     except ImportError:
-        pass
+        logger.warning("wandb not installed, skipping metrics logging.")
 
     return ArenaResult(
         wins=wins,
