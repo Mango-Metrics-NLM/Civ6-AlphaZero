@@ -1,0 +1,65 @@
+# Strategic Planning SDK - Default Configuration
+# ================================================
+# Override any value via environment variables with STRATEGIC_SDK_ prefix.
+# Example: STRATEGIC_SDK_PLANNING_NUM_SIMULATIONS=200
+#
+# Presets available: fast, balanced, thorough
+# Load with: StrategicConfig.from_yaml("configs/strategic_sdk.yaml")
+
+mode: plan
+experiment_name: default_planning
+random_seed: null
+checkpoint_dir: checkpoints/strategic
+log_dir: logs/strategic
+
+# MCTS Planning parameters
+planning:
+  num_simulations: 100
+  c_puct: 1.5
+  dirichlet_alpha: 0.3
+  dirichlet_epsilon: 0.25
+  temperature: 1.0
+  temperature_threshold: 30
+  num_planning_iterations: 10
+  strategies_per_iteration: 5
+
+# Multi-objective optimization
+objective:
+  scalarization_method: weighted_sum  # weighted_sum, chebyshev, epsilon_constraint
+  objective_weights: []  # Empty = equal weights; list must match num_objectives
+  constraint_penalty: 10.0
+
+# Scenario-based uncertainty analysis
+scenario:
+  enabled: false
+  num_scenarios: 5
+  robustness_weight: 0.3
+
+# Strategic neural network
+network:
+  spatial_channels: 0   # 0 = vector-only mode (no spatial features)
+  spatial_size: 0
+  vector_dim: 64
+  num_objectives: 1
+  num_res_blocks: 4
+  num_filters: 64
+  value_head_hidden: 128
+  policy_head_hidden: 128
+  dropout: 0.0
+  use_attention: false
+
+# Decision trace and explainability
+explainability:
+  enabled: true
+  record_alternatives: true
+  max_alternatives: 5
+  generate_explanations: false  # Requires LLM integration
+  export_format: json  # json or yaml
+
+# Logging and metrics
+logging:
+  level: INFO
+  log_to_file: false
+  log_file: logs/strategic/sdk.log
+  tensorboard: false
+  metrics_interval: 10

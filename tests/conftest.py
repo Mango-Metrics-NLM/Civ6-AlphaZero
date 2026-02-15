@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
+
 import torch
 import torch.nn as nn
 
