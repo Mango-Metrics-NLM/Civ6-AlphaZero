@@ -447,7 +447,7 @@ class TestCmdPlan:
         captured = capsys.readouterr().out
         assert "Dry run" in captured
 
-    @patch("alpha_zero.strategic.planner.StrategicPlanner")
+    @patch("alpha_zero.strategic.__main__.StrategicPlanner")
     @patch("alpha_zero.strategic.registry.EnvironmentRegistry.list_environments")
     @patch("alpha_zero.strategic.registry.EnvironmentRegistry.is_registered")
     @patch("alpha_zero.strategic.config.StrategicConfig.from_preset")
@@ -485,7 +485,7 @@ class TestCmdPlan:
         assert "Error" in captured
         assert "nonexistent_env" in captured
 
-    @patch("alpha_zero.strategic.planner.StrategicPlanner")
+    @patch("alpha_zero.strategic.__main__.StrategicPlanner")
     @patch("alpha_zero.strategic.registry.EnvironmentRegistry.create")
     @patch("alpha_zero.strategic.registry.EnvironmentRegistry.is_registered")
     @patch("alpha_zero.strategic.config.StrategicConfig.from_preset")
@@ -530,7 +530,7 @@ class TestCmdPlan:
         captured = capsys.readouterr().out
         assert "Fake planning summary" in captured
 
-    @patch("alpha_zero.strategic.planner.StrategicPlanner")
+    @patch("alpha_zero.strategic.__main__.StrategicPlanner")
     @patch("alpha_zero.strategic.registry.EnvironmentRegistry.create")
     @patch("alpha_zero.strategic.registry.EnvironmentRegistry.is_registered")
     @patch("alpha_zero.strategic.config.StrategicConfig.from_preset")
