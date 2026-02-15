@@ -129,38 +129,44 @@ class MicroCivGameAdapter:
             row: list[dict[str, Any]] = []
             for x in range(board_size):
                 tile = game_state["terrain"].get((x, y), {})
-                row.append({
-                    "x": x,
-                    "y": y,
-                    "terrain": tile.get("terrain_type", "plains"),
-                })
+                row.append(
+                    {
+                        "x": x,
+                        "y": y,
+                        "terrain": tile.get("terrain_type", "plains"),
+                    }
+                )
             terrain_grid.append(row)
 
         # Units with positions
         units = []
         for u in game_state["units"]:
-            units.append({
-                "id": u["id"],
-                "player": u["player"],
-                "type": u["type"],
-                "x": u["position"][0],
-                "y": u["position"][1],
-                "health": u["health"],
-                "moves": u.get("moves_remaining", 0),
-            })
+            units.append(
+                {
+                    "id": u["id"],
+                    "player": u["player"],
+                    "type": u["type"],
+                    "x": u["position"][0],
+                    "y": u["position"][1],
+                    "health": u["health"],
+                    "moves": u.get("moves_remaining", 0),
+                }
+            )
 
         # Cities with positions
         cities = []
         for c in game_state["cities"]:
-            cities.append({
-                "id": c["id"],
-                "player": c["player"],
-                "name": c["name"],
-                "x": c["position"][0],
-                "y": c["position"][1],
-                "population": c.get("population", 1),
-                "producing": c.get("producing"),
-            })
+            cities.append(
+                {
+                    "id": c["id"],
+                    "player": c["player"],
+                    "name": c["name"],
+                    "x": c["position"][0],
+                    "y": c["position"][1],
+                    "population": c.get("population", 1),
+                    "producing": c.get("producing"),
+                }
+            )
 
         return {
             "terrain_grid": terrain_grid,
@@ -283,9 +289,7 @@ class MCTSAIAgent:
         if self._use_mcts and self._mcts is not None and self._env is not None:
             return self._select_with_mcts(action_mask, start_time)
 
-        return self._select_with_policy(
-            spatial, vector, action_mask, valid_actions, start_time
-        )
+        return self._select_with_policy(spatial, vector, action_mask, valid_actions, start_time)
 
     def _select_with_mcts(
         self,
@@ -348,7 +352,8 @@ class MCTSAIAgent:
 
             if hasattr(self._network, "predict_single"):
                 policy, value = self._network.predict_single(
-                    spatial_t.squeeze(0), vector_t.squeeze(0) if vector_t is not None else None,
+                    spatial_t.squeeze(0),
+                    vector_t.squeeze(0) if vector_t is not None else None,
                     mask_t.squeeze(0) if mask_t is not None else None,
                 )
                 if isinstance(policy, torch.Tensor):

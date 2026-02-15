@@ -388,7 +388,9 @@ class WebConfig:
             if isinstance(value, dict):
                 result.update(WebConfig._flatten_dict(value, prefix=f"{key}_"))
             else:
-                result[f"{prefix}{key}" if prefix and key not in WebConfig._field_names() else key] = value
+                result[
+                    f"{prefix}{key}" if prefix and key not in WebConfig._field_names() else key
+                ] = value
         return result
 
     @classmethod
@@ -397,4 +399,3 @@ class WebConfig:
         valid_fields = cls._field_names()
         filtered = {k: v for k, v in data.items() if k in valid_fields}
         return cls(**filtered)
-
