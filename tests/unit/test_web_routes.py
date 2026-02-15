@@ -530,6 +530,164 @@ class TestHTMXResignEndpoint:
         assert response.status_code == 404
 
 
+class TestGameCreateRuntimeError:
+    """Tests for create game RuntimeError path (game.py line 111)."""
+
+    def test_create_game_runtime_error_returns_503(self, client):
+        """Creating a game that triggers RuntimeError returns 503."""
+        # Fill up all sessions to trigger RuntimeError (max_concurrent_sessions=5)
+        for _ in range(5):
+            client.post("/api/game/new", json={})
+
+        # 6th session should fail with 503
+        response = client.post("/api/game/new", json={})
+        assert response.status_code == 503
+        assert "Maximum concurrent sessions" in response.json()["detail"]
+
+
+class TestGameMoveRuntimeError:
+    """Tests for move endpoint error paths (game.py lines 148-149)."""
+
+    def _create_game(self, client, human_player=0):
+        resp = client.post("/api/game/new", json={"human_player": human_player})
+        data = resp.json()
+        return data["session_id"], data["state"]
+
+    def test_submit_move_runtime_error(self, client):
+        """play_human_move raising RuntimeError returns 400 (game.py lines 148-149)."""
+        from unittest.mock import patch
+
+        session_id, state = self._create_game(client)
+
+        if state["phase"] == "human_turn" and state["valid_actions"]:
+            action = state["valid_actions"][0]["index"]
+            with patch(
+                "alpha_zero.human_interface.game_controller.GameController.play_human_move",
+                side_effect=RuntimeError("Game state corrupted"),
+            ):
+                response = client.post(
+                    f"/api/game/{session_id}/move",
+                    json={"action": action},
+                )
+                assert response.status_code == 400
+                assert "Game state corrupted" in response.json()["detail"]
+
+
+class TestGameResignRuntimeError:
+    """Tests for resign RuntimeError path (game.py lines 184-185)."""
+
+    def test_resign_runtime_error_returns_400(self, client):
+        """resign() raising RuntimeError returns 400."""
+        from unittest.mock import patch
+
+        resp = client.post("/api/game/new", json={"human_player": 0})
+        session_id = resp.json()["session_id"]
+
+        with patch(
+            "alpha_zero.human_interface.game_controller.GameController.resign",
+            side_effect=RuntimeError("Already game over"),
+        ):
+            response = client.post(f"/api/game/{session_id}/resign")
+            assert response.status_code == 400
+            assert "Already game over" in response.json()["detail"]
+
+
+class TestGameUndoNoMoves:
+    """Test undo when no moves exist."""
+
+    def test_undo_no_moves_returns_success_false(self, client):
+        """Undo with no prior moves returns success=False and still has state."""
+        resp = client.post("/api/game/new", json={"human_player": 0})
+        session_id = resp.json()["session_id"]
+
+        response = client.post(f"/api/game/{session_id}/undo")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is False
+        assert "state" in data
+
+
+class TestHTMXMoveErrors:
+    """Tests for HTMX move error paths (pages.py lines 151, 154)."""
+
+    def _create_game_and_resign(self, client):
+        """Create a game, resign it, and return session_id."""
+        resp = client.post("/api/game/new", json={"human_player": 0})
+        session_id = resp.json()["session_id"]
+        # Resign to make game over (no longer human's turn)
+        client.post(f"/api/game/{session_id}/resign")
+        return session_id
+
+    def test_htmx_move_not_human_turn_returns_409(self, client):
+        """HTMX move when it's not human's turn returns 409 (pages.py line 151)."""
+        session_id = self._create_game_and_resign(client)
+        response = client.post(
+            f"/htmx/game/{session_id}/move",
+            data={"action": 0},
+        )
+        assert response.status_code == 409
+
+    def test_htmx_move_invalid_action_returns_400(self, client):
+        """HTMX move with invalid action returns 400 (pages.py line 154)."""
+        resp = client.post("/api/game/new", json={"human_player": 0})
+        session_id = resp.json()["session_id"]
+        state = resp.json()["state"]
+
+        if state["phase"] == "human_turn":
+            # Use an action index that's definitely not valid
+            response = client.post(
+                f"/htmx/game/{session_id}/move",
+                data={"action": 999999},
+            )
+            assert response.status_code == 400
+
+
+class TestHTMXUndoDoubleUndo:
+    """Test HTMX undo that undoes both human and AI moves (pages.py line 176)."""
+
+    def test_htmx_undo_after_human_and_ai_moves(self, client):
+        """HTMX undo after human+AI moves should undo both (pages.py line 175-176)."""
+        resp = client.post("/api/game/new", json={"human_player": 0})
+        session_id = resp.json()["session_id"]
+        state = resp.json()["state"]
+
+        if state["phase"] == "human_turn" and state["valid_actions"]:
+            # Play a human move (AI will auto-play afterward via the API)
+            action = state["valid_actions"][0]["index"]
+            move_resp = client.post(
+                f"/api/game/{session_id}/move",
+                json={"action": action},
+            )
+            move_data = move_resp.json()
+
+            # If game isn't over, we now have human + AI moves in history
+            if not move_data["state"]["game_over"]:
+                # HTMX undo should undo both
+                undo_resp = client.post(f"/htmx/game/{session_id}/undo")
+                assert undo_resp.status_code == 200
+                assert "text/html" in undo_resp.headers["content-type"]
+
+
+class TestHTMXResignRuntimeError:
+    """Test HTMX resign when controller.resign() raises RuntimeError (pages.py lines 187-188)."""
+
+    def test_htmx_resign_runtime_error_still_renders(self, client):
+        """HTMX resign catches RuntimeError and still renders page (pages.py lines 187-188)."""
+        from unittest.mock import patch
+
+        resp = client.post("/api/game/new", json={"human_player": 0})
+        session_id = resp.json()["session_id"]
+
+        with patch(
+            "alpha_zero.human_interface.game_controller.GameController.resign",
+            side_effect=RuntimeError("Already game over"),
+        ):
+            response = client.post(f"/htmx/game/{session_id}/resign")
+            # Should still return 200 because the HTMX handler catches RuntimeError
+            assert response.status_code == 200
+            assert "text/html" in response.headers["content-type"]
+
+
 class TestGameCreateFormEndpoint:
     """Tests for the HTML form-based game creation."""
 
@@ -550,5 +708,179 @@ class TestGameCreateFormEndpoint:
         )
         # Should return 400 with error in HTML
         assert response.status_code == 400
+
+
+class TestWebSocketUncoveredPaths:
+    """Tests for uncovered WebSocket handler paths.
+
+    Covers:
+    - Lines 138-142: 'Not human's turn' error in _handle_move
+    - Lines 154-159: play_human_move raises ValueError/RuntimeError
+    - Lines 171-172: Game over immediately after a human move
+    - Lines 235-236: resign when controller.resign() raises RuntimeError
+    """
+
+    def test_move_when_not_human_turn(self, client):
+        """Send a move when it is the AI's turn (human_player=1, AI goes first).
+
+        Covers lines 138-142 of websocket.py.
+        """
+        resp = client.post("/api/game/new", json={"human_player": 1})
+        data = resp.json()
+        session_id = data["session_id"]
+        state = data["state"]
+
+        # With human_player=1, player 0 (AI) goes first so phase should be ai_turn
+        assert state["phase"] == "ai_turn"
+
+        with client.websocket_connect(f"/ws/game/{session_id}") as ws:
+            ws.receive_json()  # initial state
+            ws.send_json({"type": "move", "action": 0})
+            msg = ws.receive_json()
+            assert msg["type"] == "error"
+            assert "Not human" in msg["message"]
+
+    def test_move_play_human_move_raises_value_error(self, client):
+        """play_human_move raises ValueError during execution.
+
+        Covers lines 154-159 of websocket.py (ValueError branch).
+        """
+        from unittest.mock import patch
+
+        resp = client.post("/api/game/new", json={"human_player": 0})
+        data = resp.json()
+        session_id = data["session_id"]
+        state = data["state"]
+
+        if state["phase"] != "human_turn" or not state["valid_actions"]:
+            pytest.skip("No valid human moves available")
+
+        action = state["valid_actions"][0]["index"]
+
+        # Get the session's controller so we can patch play_human_move
+        session = client.app.state.session_manager.get_session(session_id)
+
+        with patch.object(
+            session.controller,
+            "play_human_move",
+            side_effect=ValueError("Simulated invalid move"),
+        ):
+            with client.websocket_connect(f"/ws/game/{session_id}") as ws:
+                ws.receive_json()  # initial state
+                ws.send_json({"type": "move", "action": action})
+                msg = ws.receive_json()
+                assert msg["type"] == "error"
+                assert "Simulated invalid move" in msg["message"]
+
+    def test_move_play_human_move_raises_runtime_error(self, client):
+        """play_human_move raises RuntimeError during execution.
+
+        Covers lines 154-159 of websocket.py (RuntimeError branch).
+        """
+        from unittest.mock import patch
+
+        resp = client.post("/api/game/new", json={"human_player": 0})
+        data = resp.json()
+        session_id = data["session_id"]
+        state = data["state"]
+
+        if state["phase"] != "human_turn" or not state["valid_actions"]:
+            pytest.skip("No valid human moves available")
+
+        action = state["valid_actions"][0]["index"]
+
+        session = client.app.state.session_manager.get_session(session_id)
+
+        with patch.object(
+            session.controller,
+            "play_human_move",
+            side_effect=RuntimeError("Controller state corrupted"),
+        ):
+            with client.websocket_connect(f"/ws/game/{session_id}") as ws:
+                ws.receive_json()  # initial state
+                ws.send_json({"type": "move", "action": action})
+                msg = ws.receive_json()
+                assert msg["type"] == "error"
+                assert "Controller state corrupted" in msg["message"]
+
+    def test_game_over_after_human_move(self, client):
+        """Game ends immediately from a human move (no AI turn needed).
+
+        Covers lines 171-172 of websocket.py.
+        """
+        from unittest.mock import PropertyMock, patch
+
+        from alpha_zero.human_interface.game_controller import TurnResult
+
+        resp = client.post("/api/game/new", json={"human_player": 0})
+        data = resp.json()
+        session_id = data["session_id"]
+        state = data["state"]
+
+        if state["phase"] != "human_turn" or not state["valid_actions"]:
+            pytest.skip("No valid human moves available")
+
+        action = state["valid_actions"][0]["index"]
+
+        session = client.app.state.session_manager.get_session(session_id)
+        controller = session.controller
+
+        # Create a TurnResult that signals game over
+        game_over_result = TurnResult(
+            action=action,
+            player=0,
+            is_human=True,
+            reward=1.0,
+            game_over=True,
+            winner=0,
+        )
+
+        with (
+            patch.object(
+                controller,
+                "play_human_move",
+                return_value=game_over_result,
+            ),
+            patch.object(
+                type(controller),
+                "is_game_over",
+                new_callable=PropertyMock,
+                return_value=True,
+            ),
+        ):
+            with client.websocket_connect(f"/ws/game/{session_id}") as ws:
+                ws.receive_json()  # initial state
+                ws.send_json({"type": "move", "action": action})
+
+                # Should get move_result followed by game_over
+                msg1 = ws.receive_json()
+                assert msg1["type"] == "move_result"
+
+                msg2 = ws.receive_json()
+                assert msg2["type"] == "game_over"
+
+    def test_resign_raises_runtime_error(self, client):
+        """controller.resign() raises RuntimeError.
+
+        Covers lines 235-236 of websocket.py.
+        """
+        from unittest.mock import patch
+
+        resp = client.post("/api/game/new", json={"human_player": 0})
+        session_id = resp.json()["session_id"]
+
+        session = client.app.state.session_manager.get_session(session_id)
+
+        with patch.object(
+            session.controller,
+            "resign",
+            side_effect=RuntimeError("Game already over"),
+        ):
+            with client.websocket_connect(f"/ws/game/{session_id}") as ws:
+                ws.receive_json()  # initial state
+                ws.send_json({"type": "resign"})
+                msg = ws.receive_json()
+                assert msg["type"] == "error"
+                assert "Game already over" in msg["message"]
 
 

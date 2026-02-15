@@ -297,6 +297,30 @@ class TestCreateAIAgent:
         assert session.opponent_type == "heuristic"
 
 
+class TestNeuralAgentCreation:
+    """Tests for neural agent creation and internal method error paths."""
+
+    def test_create_neural_agent_no_checkpoint(self, web_config):
+        """Session manager with no checkpoint_path raises RuntimeError for neural opponent."""
+        # Default config has checkpoint_path=None
+        manager = GameSessionManager(web_config)
+        env = manager._create_environment(web_config.board_size)
+        with pytest.raises(RuntimeError, match="No checkpoint_path configured"):
+            manager._create_neural_agent(env)
+
+    def test_create_ai_agent_unknown_type(self, session_manager):
+        """Calling _create_ai_agent with unknown type raises ValueError (lines 331-332)."""
+        env = session_manager._create_environment(8)
+        with pytest.raises(ValueError, match="Unknown opponent type"):
+            session_manager._create_ai_agent("alien", env)
+
+    def test_create_baseline_unknown_type(self, session_manager):
+        """Calling _create_baseline_agent with unknown type raises ValueError (lines 353-354)."""
+        env = session_manager._create_environment(8)
+        with pytest.raises(ValueError, match="Unknown baseline type"):
+            session_manager._create_baseline_agent("turbo", env)
+
+
 class TestGetSharedNetwork:
     """Tests for network caching in _get_shared_network."""
 

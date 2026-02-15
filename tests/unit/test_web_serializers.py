@@ -398,6 +398,125 @@ class TestSerializeTurnResultEdgeCases:
         assert type(data["reward"]) is float
 
 
+class TestSanitizeNumpySpecific:
+    """Targeted tests for _sanitize_numpy with specific numpy types."""
+
+    def test_sanitize_numpy_with_ndarray(self):
+        """np.ndarray converts to list."""
+        from alpha_zero.web.serializers import _sanitize_numpy
+
+        arr = np.array([10, 20, 30])
+        result = _sanitize_numpy(arr)
+        assert isinstance(result, list)
+        assert result == [10, 20, 30]
+
+    def test_sanitize_numpy_with_bool(self):
+        """np.bool_ converts to Python bool."""
+        from alpha_zero.web.serializers import _sanitize_numpy
+
+        result_true = _sanitize_numpy(np.bool_(True))
+        result_false = _sanitize_numpy(np.bool_(False))
+        assert result_true is True
+        assert type(result_true) is bool
+        assert result_false is False
+        assert type(result_false) is bool
+
+
+class TestSerializeBoardEnemyCity:
+    """Test board serialization with enemy city present."""
+
+    def test_serialize_board_has_enemy_city(self):
+        """Board cell with enemy city has has_enemy_city=True (lines 264-265, 286-288)."""
+        from unittest.mock import MagicMock
+
+        from alpha_zero.core.civ6_actions import MicroCivActionSpace
+        from alpha_zero.web.serializers import serialize_board_for_template
+
+        # Create a mock adapter with board_data containing an enemy city
+        adapter = MagicMock()
+        adapter.get_board_data.return_value = {
+            "terrain_grid": [
+                [{"x": 0, "y": 0, "terrain": "plains"}, {"x": 1, "y": 0, "terrain": "hills"}],
+                [{"x": 0, "y": 1, "terrain": "plains"}, {"x": 1, "y": 1, "terrain": "plains"}],
+            ],
+            "units": [],
+            "cities": [
+                {"id": 0, "player": 1, "name": "Enemy Capital", "x": 1, "y": 0, "population": 2, "producing": None},
+            ],
+            "board_size": 2,
+            "current_player": 0,
+            "turn": 1,
+        }
+        action_space = MicroCivActionSpace(board_size=2)
+
+        data = serialize_board_for_template(adapter, [], action_space, human_player=0)
+
+        # Cell (1,0) should have enemy city
+        cell_1_0 = data["grid"][0][1]
+        assert cell_1_0["has_enemy_city"] is True
+        assert cell_1_0["has_own_city"] is False
+
+        # Cell (0,0) should have no city
+        cell_0_0 = data["grid"][0][0]
+        assert cell_0_0["has_enemy_city"] is False
+        assert cell_0_0["has_own_city"] is False
+
+
+class TestExtractTopMovesEdgeCases:
+    """Tests for _extract_top_moves edge cases (lines 319, 323)."""
+
+    def test_extract_top_moves_none_probabilities(self):
+        """probabilities=None returns empty list (line 319)."""
+        from alpha_zero.web.serializers import _extract_top_moves
+
+        action_space = MicroCivActionSpace(board_size=8)
+        result = _extract_top_moves(None, action_space, top_n=5)
+        assert result == []
+
+    def test_extract_top_moves_all_zero_probabilities(self):
+        """All-zero probabilities returns empty list (line 323)."""
+        from alpha_zero.web.serializers import _extract_top_moves
+
+        action_space = MicroCivActionSpace(board_size=8)
+        probs = np.zeros(action_space.total_size)
+        result = _extract_top_moves(probs, action_space, top_n=5)
+        assert result == []
+
+
+class TestSerializeBoardInvalidActionDecode:
+    """Test board serialization when decode_action raises (lines 264-265)."""
+
+    def test_board_with_invalid_action_index(self):
+        """Invalid action indices are silently skipped during board serialization."""
+        from unittest.mock import MagicMock
+
+        from alpha_zero.core.civ6_actions import MicroCivActionSpace
+        from alpha_zero.web.serializers import serialize_board_for_template
+
+        adapter = MagicMock()
+        adapter.get_board_data.return_value = {
+            "terrain_grid": [
+                [{"x": 0, "y": 0, "terrain": "plains"}],
+            ],
+            "units": [],
+            "cities": [],
+            "board_size": 1,
+            "current_player": 0,
+            "turn": 1,
+        }
+
+        # Use a mock action_space whose decode_action raises for certain indices
+        action_space = MagicMock(spec=MicroCivActionSpace)
+        action_space.decode_action.side_effect = IndexError("out of range")
+
+        # Pass action index that will cause decode_action to raise
+        data = serialize_board_for_template(adapter, [99999], action_space, human_player=0)
+
+        # Should still return valid data; the invalid action is skipped
+        assert "grid" in data
+        assert data["board_size"] == 1
+
+
 class TestDecodeActionEdgeCases:
     """Additional edge cases for decode_action_readable."""
 
