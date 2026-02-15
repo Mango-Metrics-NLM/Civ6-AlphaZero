@@ -132,12 +132,14 @@ class MemoryGuardConfig:
         default_factory=lambda: float(os.environ.get("CIV6AZ_MEMORY_BATCH_REDUCTION", "0.5"))
     )
     enable_gradient_checkpointing: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_MEMORY_GRADIENT_CHECKPOINT", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_MEMORY_GRADIENT_CHECKPOINT", "true").lower() == "true"
+        )
     )
     gc_on_warning: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_MEMORY_GC_ON_WARNING", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_MEMORY_GC_ON_WARNING", "true").lower() == "true"
+        )
     )
     monitor_interval_seconds: float = field(
         default_factory=lambda: float(os.environ.get("CIV6AZ_MEMORY_MONITOR_INTERVAL", "10.0"))
@@ -146,8 +148,9 @@ class MemoryGuardConfig:
         default_factory=lambda: float(os.environ.get("CIV6AZ_MEMORY_RESERVE_MB", "512.0"))
     )
     enable_cuda_memory_management: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_MEMORY_CUDA_MANAGEMENT", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_MEMORY_CUDA_MANAGEMENT", "true").lower() == "true"
+        )
     )
 
     def __post_init__(self) -> None:

@@ -120,10 +120,7 @@ class GameSessionManager:
         opponent_type = opponent_type or self._config.default_opponent
 
         if opponent_type not in VALID_OPPONENT_TYPES:
-            msg = (
-                f"Invalid opponent_type: {opponent_type}. "
-                f"Must be one of {VALID_OPPONENT_TYPES}"
-            )
+            msg = f"Invalid opponent_type: {opponent_type}. Must be one of {VALID_OPPONENT_TYPES}"
             raise ValueError(msg)
 
         if human_player not in (0, 1):
@@ -279,9 +276,7 @@ class GameSessionManager:
 
     def _cleanup_expired_locked(self) -> int:
         """Remove expired sessions (must hold lock)."""
-        expired = [
-            sid for sid, session in self._sessions.items() if session.is_expired
-        ]
+        expired = [sid for sid, session in self._sessions.items() if session.is_expired]
         for sid in expired:
             del self._sessions[sid]
             logger.info("Session %s expired and removed", sid)
@@ -298,7 +293,9 @@ class GameSessionManager:
         """
         from alpha_zero.envs.microciv import MicroCivEnv
 
-        logger.debug("Creating MicroCivEnv (board_size=%d, max_turns=%d)", board_size, self._config.max_turns)
+        logger.debug(
+            "Creating MicroCivEnv (board_size=%d, max_turns=%d)", board_size, self._config.max_turns
+        )
         return MicroCivEnv(
             board_size=board_size,
             max_turns=self._config.max_turns,
@@ -415,9 +412,7 @@ class GameSessionManager:
         # Create network
         network = MicroCivNetwork(
             board_size=self._config.board_size,
-            action_space_size=MicroCivActionSpace(
-                board_size=self._config.board_size
-            ).total_size,
+            action_space_size=MicroCivActionSpace(board_size=self._config.board_size).total_size,
         )
 
         # Load weights

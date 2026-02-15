@@ -459,7 +459,7 @@ class VertexJobLauncher:
             env_vars=all_env_vars,
             service_account=config.vertex.service_account or None,
             network=config.vertex.network or None,
-            labels=config.labels,
+            labels=config.custom_labels,
         )
 
     def get_job_status(self, job_id: str) -> JobInfo:

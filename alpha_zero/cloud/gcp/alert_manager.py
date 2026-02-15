@@ -103,8 +103,9 @@ class SlackConfig:
     """Slack alert configuration."""
 
     enabled: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_ALERT_SLACK_ENABLED", "false").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_ALERT_SLACK_ENABLED", "false").lower() == "true"
+        )
     )
     webhook_url: str = field(
         default_factory=lambda: os.environ.get("CIV6AZ_ALERT_SLACK_WEBHOOK", "")
@@ -131,8 +132,9 @@ class EmailConfig:
     """Email alert configuration."""
 
     enabled: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_ALERT_EMAIL_ENABLED", "false").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_ALERT_EMAIL_ENABLED", "false").lower() == "true"
+        )
     )
     smtp_host: str = field(
         default_factory=lambda: os.environ.get("CIV6AZ_ALERT_SMTP_HOST", "smtp.gmail.com")
@@ -164,8 +166,9 @@ class AlertManagerConfig:
 
     # W&B integration
     wandb_enabled: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_ALERT_WANDB_ENABLED", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_ALERT_WANDB_ENABLED", "true").lower() == "true"
+        )
     )
 
     # Console logging

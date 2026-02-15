@@ -92,7 +92,9 @@ def create_game_router(session_manager: Any) -> APIRouter:
         ai_result = await asyncio.to_thread(controller.play_ai_move)
         response["ai_move"] = serialize_turn_result(ai_result, session.action_space)
         response["confidence"] = serialize_confidence(ai_result, session.action_space)
-        logger.debug("Session %s: AI move completed (action=%d)", session.session_id, ai_result.action)
+        logger.debug(
+            "Session %s: AI move completed (action=%d)", session.session_id, ai_result.action
+        )
 
     @router.post("/new")
     async def create_game(request: NewGameRequest) -> dict[str, Any]:
@@ -242,7 +244,9 @@ def create_game_router(session_manager: Any) -> APIRouter:
             "game_over": controller.is_game_over,
             "phase": state.phase.value,
             "turn_number": state.turn_number,
-            "winner": state.history[-1].winner if state.history and state.history[-1].game_over else None,
+            "winner": state.history[-1].winner
+            if state.history and state.history[-1].game_over
+            else None,
             "age_seconds": round(session.age_seconds, 1),
         }
 

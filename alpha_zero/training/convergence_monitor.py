@@ -186,14 +186,14 @@ class ConvergenceMonitorConfig:
         default_factory=lambda: float(os.environ.get("CIV6AZ_CONVERGENCE_EXPLORATION_BOOST", "1.5"))
     )
     enable_pbt_recommendations: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_CONVERGENCE_PBT_ENABLED", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_CONVERGENCE_PBT_ENABLED", "true").lower() == "true"
+        )
     )
     enable_curriculum_recommendations: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_CONVERGENCE_CURRICULUM_ENABLED", "true"
-        ).lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_CONVERGENCE_CURRICULUM_ENABLED", "true").lower() == "true"
+        )
     )
 
     def __post_init__(self) -> None:

@@ -114,10 +114,12 @@ def serialize_game_state(
     valid_actions = []
     for action_idx in game_state.valid_actions:
         idx = int(action_idx)
-        valid_actions.append({
-            "index": idx,
-            "label": decode_action_readable(idx, action_space),
-        })
+        valid_actions.append(
+            {
+                "index": idx,
+                "label": decode_action_readable(idx, action_space),
+            }
+        )
 
     return {
         "session_id": session_id,
@@ -274,12 +276,8 @@ def serialize_board_for_template(
             pos = (x, y)
             cell["units"] = unit_map.get(pos, [])
             cell["city"] = city_map.get(pos)
-            cell["has_own_unit"] = any(
-                u["player"] == human_player for u in cell["units"]
-            )
-            cell["has_enemy_unit"] = any(
-                u["player"] != human_player for u in cell["units"]
-            )
+            cell["has_own_unit"] = any(u["player"] == human_player for u in cell["units"])
+            cell["has_enemy_unit"] = any(u["player"] != human_player for u in cell["units"])
             cell["has_own_city"] = (
                 cell["city"] is not None and cell["city"]["player"] == human_player
             )
@@ -289,14 +287,16 @@ def serialize_board_for_template(
             row.append(cell)
         enriched_grid.append(row)
 
-    result: dict[str, Any] = _sanitize_numpy({
-        "grid": enriched_grid,
-        "board_size": board_size,
-        "current_player": board_data["current_player"],
-        "turn": board_data["turn"],
-        "human_player": human_player,
-        "valid_action_indices": valid_actions,
-    })
+    result: dict[str, Any] = _sanitize_numpy(
+        {
+            "grid": enriched_grid,
+            "board_size": board_size,
+            "current_player": board_data["current_player"],
+            "turn": board_data["turn"],
+            "human_player": human_player,
+            "valid_action_indices": valid_actions,
+        }
+    )
     return result
 
 
@@ -330,12 +330,14 @@ def _extract_top_moves(
         prob = float(probs[idx])
         if prob <= 0:
             continue
-        moves.append({
-            "index": int(idx),
-            "label": decode_action_readable(int(idx), action_space),
-            "probability": round(prob, 4),
-            "pct": round(prob * 100, 1),
-        })
+        moves.append(
+            {
+                "index": int(idx),
+                "label": decode_action_readable(int(idx), action_space),
+                "probability": round(prob, 4),
+                "pct": round(prob * 100, 1),
+            }
+        )
 
     return moves
 

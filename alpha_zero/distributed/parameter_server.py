@@ -538,7 +538,7 @@ class DistributedParameterServer(ParameterServer):
 
         # Connected clients
         self._clients: dict[str, dict[str, Any]] = {}
-        self._client_lock = threading.Lock()
+        self._client_lock = threading.RLock()
 
         # Last heartbeat times
         self._heartbeats: dict[str, float] = {}

@@ -113,28 +113,26 @@ class PreemptionHandlerConfig:
 
     # Signal handling
     handle_sigterm: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_PREEMPTION_HANDLE_SIGTERM", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_PREEMPTION_HANDLE_SIGTERM", "true").lower() == "true"
+        )
     )
     checkpoint_on_signal: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_PREEMPTION_CHECKPOINT_ON_SIGNAL", "true"
-        ).lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_PREEMPTION_CHECKPOINT_ON_SIGNAL", "true").lower() == "true"
+        )
     )
 
     # State preservation options
     preserve_optimizer_state: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_PREEMPTION_PRESERVE_OPTIMIZER", "true"
-        ).lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_PREEMPTION_PRESERVE_OPTIMIZER", "true").lower() == "true"
+        )
     )
     preserve_scheduler_state: bool = field(
-        default_factory=lambda: os.environ.get(
-            "CIV6AZ_PREEMPTION_PRESERVE_SCHEDULER", "true"
-        ).lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_PREEMPTION_PRESERVE_SCHEDULER", "true").lower() == "true"
+        )
     )
 
     # GCS paths for preemption state

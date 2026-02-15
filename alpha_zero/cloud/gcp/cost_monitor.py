@@ -130,8 +130,9 @@ class CostMonitorConfig:
         default_factory=lambda: int(os.environ.get("CIV6AZ_COST_CHECK_INTERVAL_S", "300"))
     )
     billing_api_enabled: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_COST_BILLING_API_ENABLED", "false").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_COST_BILLING_API_ENABLED", "false").lower() == "true"
+        )
     )
 
     # GPU pricing estimates (hourly USD) - used when Billing API unavailable

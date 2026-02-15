@@ -182,8 +182,9 @@ class LifecycleConfig:
         default_factory=lambda: os.environ.get("CIV6AZ_LIFECYCLE_ENABLED", "true").lower() == "true"
     )
     dry_run: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_LIFECYCLE_DRY_RUN", "false").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_LIFECYCLE_DRY_RUN", "false").lower() == "true"
+        )
     )
 
     # Trajectory retention: Keep last N iterations in STANDARD, archive older
@@ -242,8 +243,9 @@ class LifecycleConfig:
     )
 
     apply_gcs_lifecycle_rules: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_APPLY_GCS_LIFECYCLE", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_APPLY_GCS_LIFECYCLE", "true").lower() == "true"
+        )
     )
 
     iteration_cleanup_interval: int = field(
