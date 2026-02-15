@@ -28,7 +28,7 @@ import copy
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -352,7 +352,7 @@ class SDKConfig(BaseModel):
         with open(filepath) as fh:
             raw = yaml.safe_load(fh) or {}
         try:
-            return cls.model_validate(raw)
+            return cast(SDKConfig, cls.model_validate(raw))
         except ValidationError as exc:
             raise ConfigValidationError(
                 f"Validation failed for {filepath}: {exc}"
@@ -395,7 +395,7 @@ class SDKConfig(BaseModel):
 
         merged = _deep_merge(base_raw, override_raw)
         try:
-            return cls.model_validate(merged)
+            return cast(SDKConfig, cls.model_validate(merged))
         except ValidationError as exc:
             raise ConfigValidationError(
                 f"Validation failed after merging {base_file} + "
@@ -513,7 +513,7 @@ class SDKConfig(BaseModel):
                         )
 
         try:
-            return SDKConfig.model_validate(data)
+            return cast(SDKConfig, SDKConfig.model_validate(data))
         except ValidationError as exc:
             raise ConfigValidationError(
                 f"Validation failed after applying env overrides: {exc}"
@@ -570,7 +570,7 @@ def load_config(
 
     # Step 3: validate and construct
     try:
-        config = SDKConfig.model_validate(raw)
+        config = cast(SDKConfig, SDKConfig.model_validate(raw))
     except ValidationError as exc:
         raise ConfigValidationError(
             f"Configuration validation failed: {exc}"

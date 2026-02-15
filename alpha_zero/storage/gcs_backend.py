@@ -49,9 +49,9 @@ try:
     HAS_GCS = True
 except ImportError:
     HAS_GCS = False
-    gcs = None  # type: ignore[assignment]
-    gcs_exceptions = None  # type: ignore[assignment]
-    gcs_retry = None  # type: ignore[assignment]
+    gcs = None
+    gcs_exceptions = None
+    gcs_retry = None
 
 
 class GCSStorageBackend(StorageBackend):
@@ -484,7 +484,7 @@ class GCSStorageBackend(StorageBackend):
                 metadata_list.extend(self.list_trajectories(iteration=iteration))
 
         if shuffle:
-            np.random.shuffle(metadata_list)  # type: ignore[arg-type]
+            np.random.shuffle(metadata_list)
 
         for meta in metadata_list:
             try:

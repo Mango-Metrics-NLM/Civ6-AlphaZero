@@ -808,7 +808,7 @@ class MicroCivEnv(gym.Env):
             f"P1: {len(self._get_player_units(1))} units, {len(self._get_player_cities(1))} cities"
         )
 
-        return "\n".join(lines)  # type: ignore[return-value]
+        return "\n".join(lines)
 
     def clone(self) -> MicroCivEnv:
         """Create a deep copy of the environment.

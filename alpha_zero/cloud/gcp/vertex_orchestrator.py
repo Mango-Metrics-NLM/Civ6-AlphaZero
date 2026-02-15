@@ -545,7 +545,7 @@ def _log_tournament_to_wandb(
     for player_id, elo in elo_ratings.items():
         wandb_logger.log({f"tournament/elo_{player_id}": elo})  # type: ignore[attr-defined]
     wandb_logger.log(
-        {  # type: ignore[attr-defined]
+        {
             "tournament/best_model": tournament_results.get("best_model", ""),
             "tournament/best_elo": tournament_results.get("best_elo", 0.0),
             "tournament/num_models": len(tournament_results.get("model_versions", [])),

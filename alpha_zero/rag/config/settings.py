@@ -54,7 +54,7 @@ def _get_env(key: str, default: T, type_: type[T] = str) -> T:  # type: ignore[a
         return default
     if type_ is bool:
         return value.lower() in ("true", "1", "yes")  # type: ignore[return-value]
-    return type_(value)  # type: ignore[return-value, call-arg]
+    return type_(value)
 
 
 @dataclass

@@ -95,11 +95,11 @@ class JobSpec:
             "image_uri": self.container_uri,
         }
         if self.command:
-            container_spec["command"] = self.command  # type: ignore[assignment]
+            container_spec["command"] = self.command
         if self.args:
-            container_spec["args"] = self.args  # type: ignore[assignment]
+            container_spec["args"] = self.args
         if self.env_vars:
-            container_spec["env"] = [{"name": k, "value": v} for k, v in self.env_vars.items()]  # type: ignore[assignment]
+            container_spec["env"] = [{"name": k, "value": v} for k, v in self.env_vars.items()]
 
         machine_spec: dict[str, Any] = {"machine_type": self.machine_type}
         if self.accelerator_type and self.accelerator_count > 0:

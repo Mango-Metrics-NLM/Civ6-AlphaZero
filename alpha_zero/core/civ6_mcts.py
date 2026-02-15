@@ -505,7 +505,7 @@ class Civ6MCTS:
         self.network.eval()
         with torch.no_grad():
             mask_tensor = torch.from_numpy(action_mask).float().to(self.device)
-            policy_probs, value = self.network.predict(  # type: ignore[operator]
+            policy_probs, value = self.network.predict(
                 spatial.unsqueeze(0),
                 vector.unsqueeze(0),
                 mask_tensor.unsqueeze(0),
@@ -1316,7 +1316,7 @@ class GumbelMCTS:
         self.network.eval()
         with torch.no_grad():
             mask_tensor = torch.from_numpy(action_mask).float().to(self.device)
-            policy_probs, value_tensor = self.network.predict(  # type: ignore[operator]
+            policy_probs, value_tensor = self.network.predict(
                 spatial.unsqueeze(0),
                 vector.unsqueeze(0),
                 mask_tensor.unsqueeze(0),
@@ -1680,7 +1680,7 @@ class MuZeroMCTS:
         # Initial inference: observation -> hidden_state, policy, value
         self.network.eval()
         with torch.no_grad():
-            output = self.network.initial_inference(  # type: ignore[operator]
+            output = self.network.initial_inference(
                 spatial.unsqueeze(0),
                 vector.unsqueeze(0),
                 mask_tensor.unsqueeze(0),
@@ -1978,7 +1978,7 @@ class MuZeroMCTS:
             action_tensor = torch.tensor([action], device=self.device)
             mask_tensor = torch.from_numpy(action_mask).float().to(self.device)
 
-            next_hidden, reward, _policy_logits, _value = self.network.recurrent_inference(  # type: ignore[operator]
+            next_hidden, reward, _policy_logits, _value = self.network.recurrent_inference(
                 parent_hidden,
                 action_tensor,
                 mask_tensor.unsqueeze(0),
@@ -2004,7 +2004,7 @@ class MuZeroMCTS:
         self.network.eval()
         with torch.no_grad():
             mask_tensor = torch.from_numpy(action_mask).float().to(self.device)
-            policy_logits, _ = self.network.prediction_function(  # type: ignore[operator]
+            policy_logits, _ = self.network.prediction_function(
                 node.hidden_state,
                 mask_tensor.unsqueeze(0),
             )
@@ -2036,7 +2036,7 @@ class MuZeroMCTS:
             action_tensor = torch.tensor([action], device=self.device)
             mask_tensor = torch.from_numpy(action_mask).float().to(self.device)
 
-            next_hidden, reward, policy_logits, _value = self.network.recurrent_inference(  # type: ignore[operator]
+            next_hidden, reward, policy_logits, _value = self.network.recurrent_inference(
                 parent_hidden,
                 action_tensor,
                 mask_tensor.unsqueeze(0),
@@ -2069,7 +2069,7 @@ class MuZeroMCTS:
         self.network.eval()
         with torch.no_grad():
             mask_tensor = torch.from_numpy(action_mask).float().to(self.device)
-            _, value = self.network.prediction_function(  # type: ignore[operator]
+            _, value = self.network.prediction_function(
                 node.hidden_state,
                 mask_tensor.unsqueeze(0),
             )

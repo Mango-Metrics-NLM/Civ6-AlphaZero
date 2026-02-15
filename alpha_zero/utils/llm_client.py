@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 # Optional imports - gracefully handle missing dependencies
 # Use TYPE_CHECKING to avoid mypy issues with conditional imports
 if TYPE_CHECKING:
-    from anthropic import Anthropic, AsyncAnthropic  # type: ignore[import]
+    from anthropic import Anthropic, AsyncAnthropic
     from openai import AsyncOpenAI, OpenAI
 
 try:
@@ -41,17 +41,17 @@ try:
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
-    AsyncOpenAI = None  # type: ignore[misc,assignment]
-    OpenAI = None  # type: ignore[misc,assignment]
+    AsyncOpenAI = None
+    OpenAI = None
 
 try:
-    from anthropic import Anthropic, AsyncAnthropic  # type: ignore[import, no-redef]
+    from anthropic import Anthropic, AsyncAnthropic
 
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
-    AsyncAnthropic = None  # type: ignore[misc,assignment]
-    Anthropic = None  # type: ignore[misc,assignment]
+    AsyncAnthropic = None
+    Anthropic = None
 
 # Load environment variables from .env file if available
 try:
@@ -609,7 +609,7 @@ class LLMClient:
                     messages,
                     **kwargs,
                 )
-                async for chunk in stream:  # type: ignore[attr-defined]
+                async for chunk in stream:
                     yield chunk
                 return
             except Exception as e:

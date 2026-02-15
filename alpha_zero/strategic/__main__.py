@@ -379,7 +379,7 @@ def cmd_evaluate(args: argparse.Namespace) -> None:
     )
 
     # Display results
-    print(f"\nEvaluation Results:")
+    print("\nEvaluation Results:")
     print(f"  Robustness score: {result.robustness_score:.4f}")
     print(f"  Expected outcomes: {result.expected_outcomes.tolist()}")
     for scenario_name, outcomes in result.outcomes_by_scenario.items():

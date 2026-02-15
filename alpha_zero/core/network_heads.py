@@ -210,7 +210,7 @@ class MLPHead(nn.Module):
         Returns:
             Output of shape (B, output_dim).
         """
-        return self.mlp(x)  # type: ignore[no-any-return]
+        return self.mlp(x)
 
 
 @dataclass
@@ -336,7 +336,7 @@ class FeatureCombiner(nn.Module):
         """
         combined = torch.cat([spatial, vector], dim=1)
         if self.projection is not None:
-            combined = self.projection(combined)  # type: ignore[misc]
+            combined = self.projection(combined)
         return combined
 
 
@@ -539,4 +539,4 @@ class _CNNHead(nn.Module):
         """
         spatial = self.spatial_preprocessor(spatial_features)
         combined = self.combiner(spatial, vector_features)
-        return self.mlp(combined)  # type: ignore[no-any-return]
+        return self.mlp(combined)

@@ -23,7 +23,7 @@ except ImportError:
     torch = None
     TORCH_AVAILABLE = False
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 logger = logging.getLogger(__name__)
 

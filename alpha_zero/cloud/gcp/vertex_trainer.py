@@ -56,8 +56,8 @@ try:
     VERTEX_AVAILABLE = True
 except ImportError:
     VERTEX_AVAILABLE = False
-    aiplatform = None  # type: ignore
-    CustomJob = None  # type: ignore
+    aiplatform = None
+    CustomJob = None
 
 
 class VertexTrainer:
@@ -433,7 +433,7 @@ class VertexTrainer:
 # Protocol compliance check
 def _check_protocol_compliance() -> None:
     """Verify VertexTrainer implements CloudTrainerProtocol."""
-    trainer: CloudTrainerProtocol = VertexTrainer(  # type: ignore
+    trainer: CloudTrainerProtocol = VertexTrainer(
         GCPConfig(), allow_fallback=True
     )
     assert isinstance(trainer, CloudTrainerProtocol)

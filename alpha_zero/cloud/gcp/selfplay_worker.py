@@ -33,7 +33,7 @@ try:
 
     _PSUTIL_AVAILABLE = True
 except ImportError:
-    psutil = None  # type: ignore[assignment]
+    psutil = None
     _PSUTIL_AVAILABLE = False
 
 from alpha_zero.cloud.gcp.config import GCPConfig
@@ -407,7 +407,7 @@ def run_selfplay(
             # Run MCTS with error handling
             try:
                 # Pass env directly since MicroCivEnv implements MCTSEnvironment protocol
-                policy, _ = mcts.search(env)  # type: ignore[arg-type]
+                policy, _ = mcts.search(env)
                 turn = len(trajectory["spatial"])
                 temp = compute_temperature(
                     turn=turn,
