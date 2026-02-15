@@ -37,4 +37,13 @@ web:
 
   # Security
   cors_origins:
-    - "*"
+    # List of allowed origins for CORS.
+    # WARNING: Do not use "*" in production, as it allows any website to call this API.
+    # Example production origins:
+    #   - "https://your-domain.example.com"
+    #   - "https://app.your-domain.example.com"
+    #
+    # For local development, you can temporarily allow localhost origins, e.g.:
+    #   - "http://localhost:8080"
+    #   - "http://127.0.0.1:8080"
+    []
