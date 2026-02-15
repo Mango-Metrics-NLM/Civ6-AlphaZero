@@ -412,7 +412,99 @@ class ScenarioEngine:
         return cls(scenarios=scenarios)
 
 
+class RobustnessEvaluator:
+    """Evaluates strategy robustness across multiple scenarios.
+
+    Wraps a ``ScenarioEngine`` to provide higher-level robustness
+    analysis: per-scenario ranking, identification of vulnerable and
+    strong scenarios, and aggregate robustness metrics.
+
+    Args:
+        engine: The ScenarioEngine containing the scenario set.
+    """
+
+    def __init__(self, engine: ScenarioEngine) -> None:
+        self._engine = engine
+
+    @property
+    def engine(self) -> ScenarioEngine:
+        """Get the underlying scenario engine."""
+        return self._engine
+
+    def evaluate(
+        self,
+        values_by_scenario: dict[str, np.ndarray],
+    ) -> dict[str, Any]:
+        """Run a full robustness evaluation on a strategy's outcomes.
+
+        Args:
+            values_by_scenario: Mapping from scenario name to objective
+                value vector for a single strategy.
+
+        Returns:
+            Dictionary containing:
+                - ``robustness_score``: Overall robustness in [0, 1].
+                - ``expected_outcomes``: Probability-weighted expected values.
+                - ``worst_scenario``: Name of the worst-performing scenario.
+                - ``best_scenario``: Name of the best-performing scenario.
+                - ``scenario_rankings``: Scenarios ranked by total scalarised value.
+                - ``vulnerability_threshold``: Scenarios scoring below 50 %
+                    of the best.
+        """
+        robustness = self._engine.robustness_score(values_by_scenario)
+        expected = self._engine.expected_value(values_by_scenario)
+
+        # Rank scenarios by scalarized total
+        scored: list[tuple[str, float]] = []
+        for scenario in self._engine.scenarios:
+            if scenario.name in values_by_scenario:
+                total = float(
+                    np.asarray(values_by_scenario[scenario.name]).sum()
+                )
+                scored.append((scenario.name, total))
+
+        scored.sort(key=lambda x: x[1], reverse=True)
+
+        best_name = scored[0][0] if scored else ""
+        worst_name = scored[-1][0] if scored else ""
+        best_val = scored[0][1] if scored else 0.0
+
+        # Identify vulnerable scenarios (below 50% of best)
+        threshold = best_val * 0.5 if best_val > 0 else 0.0
+        vulnerable = [name for name, val in scored if val < threshold]
+
+        return {
+            "robustness_score": robustness,
+            "expected_outcomes": expected,
+            "worst_scenario": worst_name,
+            "best_scenario": best_name,
+            "scenario_rankings": [name for name, _ in scored],
+            "vulnerability_threshold": vulnerable,
+        }
+
+    def rank_strategies(
+        self,
+        strategies: dict[str, dict[str, np.ndarray]],
+    ) -> list[tuple[str, float]]:
+        """Rank multiple strategies by their robustness scores.
+
+        Args:
+            strategies: Mapping from strategy name to its per-scenario
+                outcomes (each is a dict[scenario_name, values]).
+
+        Returns:
+            List of (strategy_name, robustness_score) sorted descending.
+        """
+        rankings: list[tuple[str, float]] = []
+        for strategy_name, values_by_scenario in strategies.items():
+            score = self._engine.robustness_score(values_by_scenario)
+            rankings.append((strategy_name, score))
+        rankings.sort(key=lambda x: x[1], reverse=True)
+        return rankings
+
+
 __all__ = [
+    "RobustnessEvaluator",
     "Scenario",
     "ScenarioEngine",
 ]

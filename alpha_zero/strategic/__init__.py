@@ -65,7 +65,7 @@ from alpha_zero.strategic.protocols import (
     StrategicEnvironment,
 )
 from alpha_zero.strategic.registry import EnvironmentRegistry
-from alpha_zero.strategic.scenarios import ScenarioEngine
+from alpha_zero.strategic.scenarios import RobustnessEvaluator, ScenarioEngine
 from alpha_zero.strategic.trace.decision_trace import DecisionPoint, DecisionTrace
 from alpha_zero.strategic.trace.explainability import (
     ComparisonExplainer,
@@ -88,6 +88,7 @@ __all__ = [
     "ParetoFrontier",
     "PlanningConfig",
     "PlanningResult",
+    "RobustnessEvaluator",
     "ScenarioConfig",
     "ScenarioEngine",
     "ScenarioProtocol",

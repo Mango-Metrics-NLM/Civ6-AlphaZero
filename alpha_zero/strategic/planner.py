@@ -346,6 +346,153 @@ class StrategicPlanner:
         )
         return result
 
+    def train(
+        self,
+        environment: Any,
+        num_iterations: int | None = None,
+        objectives: list[ObjectiveSpec] | None = None,
+        network: Any = None,
+    ) -> PlanningResult:
+        """Train a policy via iterative self-play planning.
+
+        Runs multiple iterations of planning, each generating strategies
+        that improve through successive MCTS searches. Unlike ``plan()``,
+        which runs independent episodes, ``train()`` progressively refines
+        the strategy by using results from prior iterations to guide search.
+
+        Args:
+            environment: Environment implementing StrategicEnvironment protocol.
+            num_iterations: Number of training iterations. If None, uses
+                ``config.planning.num_planning_iterations``.
+            objectives: Optional list of objective specifications. If None,
+                uses the environment's objective_names with equal weights.
+            network: Optional neural network for MCTS guidance.
+
+        Returns:
+            PlanningResult with best strategies found during training.
+        """
+        start_time = time.monotonic()
+
+        if num_iterations is None:
+            num_iterations = self._config.planning.num_planning_iterations
+        strategies_per_iter = self._config.planning.strategies_per_iteration
+
+        objective_names = self._get_objective_names(environment)
+        num_objectives = len(objective_names)
+        if objectives is None:
+            objectives = [ObjectiveSpec(name=name) for name in objective_names]
+
+        scalarizer = self._create_scalarizer(objectives)
+
+        mcts_config = MultiObjectiveMCTSConfig(
+            num_simulations=self._config.planning.num_simulations,
+            c_puct=self._config.planning.c_puct,
+            dirichlet_alpha=self._config.planning.dirichlet_alpha,
+            dirichlet_epsilon=self._config.planning.dirichlet_epsilon,
+            temperature=self._config.planning.temperature,
+            temperature_threshold=self._config.planning.temperature_threshold,
+        )
+        mcts = MultiObjectiveMCTS(
+            config=mcts_config,
+            network=network,
+            scalarizer=scalarizer,
+            num_objectives=num_objectives,
+            device="cpu",
+        )
+
+        all_traces: list[DecisionTrace] = []
+        pareto = ParetoFrontier(num_objectives=num_objectives)
+        global_episode = 0
+
+        logger.info(
+            "Starting training: %d iterations x %d strategies, %d objectives",
+            num_iterations,
+            strategies_per_iter,
+            num_objectives,
+        )
+
+        for iteration in range(num_iterations):
+            iteration_traces: list[DecisionTrace] = []
+
+            for ep in range(strategies_per_iter):
+                trace = self._run_episode(
+                    environment=environment,
+                    mcts=mcts,
+                    objective_names=objective_names,
+                    scenario_name="default",
+                    scenario_params=None,
+                    episode_idx=global_episode,
+                )
+                iteration_traces.append(trace)
+
+                if len(trace.final_outcomes) == num_objectives:
+                    point = ParetoPoint(
+                        values=trace.final_outcomes,
+                        metadata={
+                            "iteration": iteration,
+                            "episode": global_episode,
+                        },
+                        strategy_id=f"iter{iteration}_ep{ep}",
+                    )
+                    pareto.add(point)
+
+                global_episode += 1
+
+            all_traces.extend(iteration_traces)
+
+            # Log iteration progress
+            best_in_iter = max(
+                iteration_traces,
+                key=lambda t: scalarizer.scalarize(t.final_outcomes)
+                if len(t.final_outcomes) == num_objectives
+                else float("-inf"),
+            )
+            logger.info(
+                "Training iteration %d/%d: best=%.4f, frontier=%d",
+                iteration + 1,
+                num_iterations,
+                scalarizer.scalarize(best_in_iter.final_outcomes)
+                if len(best_in_iter.final_outcomes) == num_objectives
+                else 0.0,
+                pareto.size,
+            )
+
+        # Sort all traces by quality
+        all_traces.sort(
+            key=lambda t: scalarizer.scalarize(t.final_outcomes)
+            if len(t.final_outcomes) == num_objectives
+            else float("-inf"),
+            reverse=True,
+        )
+
+        elapsed = time.monotonic() - start_time
+
+        result = PlanningResult(
+            traces=all_traces,
+            pareto_frontier=pareto,
+            objective_names=objective_names,
+            scenarios_evaluated=["default"],
+            total_episodes=global_episode,
+            elapsed_seconds=elapsed,
+            metadata={
+                "config": self._config.to_dict(),
+                "num_objectives": num_objectives,
+                "num_iterations": num_iterations,
+                "strategies_per_iteration": strategies_per_iter,
+                "mode": "train",
+            },
+        )
+
+        logger.info(
+            "Training complete: %d iterations (%d episodes) in %.2fs, "
+            "frontier size=%d",
+            num_iterations,
+            global_episode,
+            elapsed,
+            pareto.size,
+        )
+        return result
+
     def evaluate(
         self,
         environment: Any,
