@@ -697,7 +697,7 @@ def run_batch_selfplay(
                     "selfplay/total_games_completed": games_completed,
                 })
         except ImportError:
-            pass
+            logger.warning("wandb not installed, skipping batch metrics logging.")
 
         # Memory cleanup between batches
         if device != "cpu":
