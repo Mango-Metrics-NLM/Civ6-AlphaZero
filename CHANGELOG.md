@@ -5,6 +5,92 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] — 2026-02-15
+
+### Added — Phase 16: Batch Inference, Vectorized Self-Play & Cloud Orchestrator
+
+#### BatchGumbelMCTS (`alpha_zero/core/batch_mcts.py`) — NEW
+
+- **BatchGumbelMCTS**: Batched leaf evaluations from N parallel MCTS trees
+  - `batch_search(envs, add_noise=False)` — Runs MCTS across N environments, batching all neural network evaluations into single GPU forward passes
+  - `batch_simple_search()` — Standard batched search collecting all pending evaluations before a single `_batch_evaluate` call
+  - `batch_sequential_halving()` — Gumbel sequential halving with batched evaluation (refactored to collect all pending evals across envs/actions/simulations, then batch-evaluate in one call)
+  - `select_action(action_probs, temperature)` — Temperature-scaled action selection with named constants (`_PROBABILITY_SUM_EPSILON`, `_GREEDY_THRESHOLD`)
+- **BatchMCTSConfig**: Configurable batch size, simulation count, and search mode
+
+#### VectorizedMicroCivEnv (`alpha_zero/envs/vectorized_env.py`) — NEW
+
+- **VectorizedMicroCivEnv**: Manages N MicroCivEnv instances with pre-allocated numpy observation buffers
+  - `reset_all()` — Resets all environments and returns stacked observations
+  - `step_all(actions)` — Steps all environments, returns `(rewards, terminated, truncated, infos)`
+  - `get_env(i)` — Direct access to individual environment for MCTS cloning
+  - `get_observations()` — Stacked spatial + vector observations as numpy arrays
+  - `clone_env(i)` — Deep copy of environment state for MCTS simulation
+- **VectorizedEnvConfig**: Configurable num_envs, board_size, max_turns
+
+#### CUDAGraphCache (`alpha_zero/optimizations/cuda_graph_cache.py`) — NEW
+
+- **CUDAGraphCache**: Optional CUDA execution graph caching for fixed batch sizes
+  - Captures and replays GPU execution graphs to eliminate kernel launch overhead
+  - Graceful degradation on CPU (no-op passthrough)
+- **CUDAGraphConfig**: Configurable enabled flag, max cached graphs, warmup iterations
+
+#### InferenceBenchmark (`alpha_zero/optimizations/inference_benchmark.py`) — NEW
+
+- **InferenceBenchmark**: Measures batch vs single inference throughput
+  - `benchmark_single_inference()` — Baseline single-sample throughput
+  - `benchmark_batch_inference()` — Batched throughput at various batch sizes
+  - `benchmark_mcts_search()` — End-to-end MCTS search throughput
+  - `benchmark_vectorized_selfplay()` — Full vectorized self-play pipeline
+- **InferenceMetrics**: Dataclass with samples_per_second, latency_ms, speedup_vs_single
+
+#### MCTS Factory Extension (`alpha_zero/core/mcts_factory.py`)
+
+- Added `BATCH_GUMBEL = "batch_gumbel"` to `MCTSVariant` enum
+- Registered `BatchGumbelMCTS` in `_MCTS_REGISTRY`
+
+#### Cloud Orchestrator Mode (`alpha_zero/cloud/gcp/entrypoint.py`)
+
+- Added `--mode=orchestrator` routing to `vertex_orchestrator.main()` for cloud-only runs
+- Enables running the full training pipeline directly on a Compute Engine VM
+
+#### Batch Self-Play in Cloud Workers (`alpha_zero/cloud/gcp/selfplay_worker.py`)
+
+- `--num_parallel_games` and `--max_batch_size` CLI flags (opt-in, default=1)
+- `run_batch_selfplay()` — Vectorized self-play using BatchGumbelMCTS + VectorizedMicroCivEnv
+- W&B batch metrics logging with graceful wandb degradation
+
+#### Arena Batch Support (`alpha_zero/cloud/gcp/arena.py`)
+
+- Added `num_parallel_games` parameter to arena functions
+- W&B metrics logging for arena evaluation results
+
+#### Test Suite (101 new tests)
+
+- `tests/unit/test_batch_mcts.py` — 35 tests (batch search, sequential halving, action selection, config)
+- `tests/unit/test_vectorized_env.py` — ~36 tests (reset, step, clone, observations, edge cases)
+- `tests/unit/test_cuda_graph_cache.py` — ~14 tests (caching, CPU fallback, config)
+- `tests/unit/test_inference_benchmark.py` — 16 tests (single/batch/mcts/vectorized benchmarks)
+
+### Fixed
+
+- **`_batch_sequential_halving` performance bug**: Was calling `_batch_evaluate` per-leaf (batch-size-1) inside inner loop, defeating batching purpose. Refactored to collect all pending evaluations across envs/actions/simulations, then batch-evaluate in one call
+- **Silent `except ImportError: pass`**: Changed to `logger.debug()` messages in `arena.py` and `selfplay_worker.py` for wandb import failures
+- **Potential undefined `rewards`**: Initialized `rewards = np.zeros(...)` before the while loop in `selfplay_worker.py`
+- **Unused variables**: Cleaned up `infos`, `obs`, `reward`, `info` variables in `selfplay_worker.py` and `inference_benchmark.py`
+- **Hardcoded magic numbers**: Replaced `1e-8` and `0.99` with named constants `_PROBABILITY_SUM_EPSILON` and `_GREEDY_THRESHOLD` in `batch_mcts.py`
+- **Missing stack trace**: Added `exc_info=True` to broad exception handler in `selfplay_worker.py` batch search
+
+### Changed
+
+- Version: `0.12.0` → `0.13.0`
+- Docker image: v0.12.0 → v0.13.0 (`gcr.io/hrmtrain/civ6az-training:v0.13.0`)
+- GCS models: v0-v079 (80 model versions total)
+- CI: 4,880+ tests, lint clean
+- Live run: indulgent-date-703 (50-iter, v079 champion, gumbel, value_lr=0.1x, warmup_cosine, 25 eval games, cloud VM orchestrator)
+
+---
+
 ## [0.12.0] — 2026-02-12
 
 ### Added — Phase 15: Scaled Training & Value Head Stabilization

@@ -40,7 +40,11 @@ class MockNetwork:
         action_size = mask.shape[-1]
 
         # Create valid policy (masked and normalized)
-        policy = torch.ones(batch_size, action_size, device=spatial.device, dtype=spatial.dtype) / action_size * mask
+        policy = (
+            torch.ones(batch_size, action_size, device=spatial.device, dtype=spatial.dtype)
+            / action_size
+            * mask
+        )
         policy = policy / (policy.sum(dim=-1, keepdim=True) + 1e-8)
 
         # Create value tensor

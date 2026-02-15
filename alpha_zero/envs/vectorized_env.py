@@ -90,8 +90,7 @@ class VectorizedMicroCivEnv:
         expected_spatial_channels = MicroCivEncoder.TOTAL_CHANNELS
         if spatial_shape[0] != expected_spatial_channels:
             raise ValueError(
-                f"Expected {expected_spatial_channels} spatial channels, "
-                f"got {spatial_shape[0]}"
+                f"Expected {expected_spatial_channels} spatial channels, " f"got {spatial_shape[0]}"
             )
 
         # Pre-allocate observation buffers
@@ -192,9 +191,7 @@ class VectorizedMicroCivEnv:
                 - infos: List of info dicts for each environment
         """
         if len(actions) != self.config.num_envs:
-            raise ValueError(
-                f"Expected {self.config.num_envs} actions, got {len(actions)}"
-            )
+            raise ValueError(f"Expected {self.config.num_envs} actions, got {len(actions)}")
 
         start_time = time.perf_counter()
 
@@ -242,10 +239,12 @@ class VectorizedMicroCivEnv:
         )
 
         # Log metrics
-        log_metrics({
-            "vectorized_env/active_envs": int(active_envs),
-            "vectorized_env/step_time_ms": elapsed_ms,
-        })
+        log_metrics(
+            {
+                "vectorized_env/active_envs": int(active_envs),
+                "vectorized_env/step_time_ms": elapsed_ms,
+            }
+        )
 
         return rewards, terminated, truncated, infos
 
@@ -289,9 +288,7 @@ class VectorizedMicroCivEnv:
             IndexError: If idx is out of bounds.
         """
         if idx < 0 or idx >= self.config.num_envs:
-            raise IndexError(
-                f"Environment index {idx} out of bounds [0, {self.config.num_envs})"
-            )
+            raise IndexError(f"Environment index {idx} out of bounds [0, {self.config.num_envs})")
         return self._envs[idx]
 
     def clone_env(self, idx: int) -> MicroCivEnv:

@@ -145,19 +145,23 @@ class CUDAGraphCache:
             policy, value = self._replay_graph(cached, spatial, vector, action_mask)
             replay_time_ms = (time.perf_counter() - start_time) * 1000
 
-            log_metrics({
-                "cuda_graph/cache_hit": 1,
-                "cuda_graph/cached_sizes": len(self._graphs),
-                "cuda_graph/replay_time_ms": replay_time_ms,
-            })
+            log_metrics(
+                {
+                    "cuda_graph/cache_hit": 1,
+                    "cuda_graph/cached_sizes": len(self._graphs),
+                    "cuda_graph/replay_time_ms": replay_time_ms,
+                }
+            )
 
             return policy, value
 
         # Slow path: cache miss
-        log_metrics({
-            "cuda_graph/cache_hit": 0,
-            "cuda_graph/cached_sizes": len(self._graphs),
-        })
+        log_metrics(
+            {
+                "cuda_graph/cache_hit": 0,
+                "cuda_graph/cached_sizes": len(self._graphs),
+            }
+        )
 
         # Try to capture new graph if we have space
         if len(self._graphs) < self.config.max_cached_sizes:
@@ -172,9 +176,11 @@ class CUDAGraphCache:
                     batch_size,
                     capture_time_ms,
                 )
-                log_metrics({
-                    "cuda_graph/capture_time_ms": capture_time_ms,
-                })
+                log_metrics(
+                    {
+                        "cuda_graph/capture_time_ms": capture_time_ms,
+                    }
+                )
 
                 # Use the newly captured graph
                 return self._replay_graph(cached, spatial, vector, action_mask)

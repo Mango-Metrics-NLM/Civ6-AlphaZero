@@ -290,7 +290,9 @@ class TestBatchGumbelMCTS:
         mcts = BatchGumbelMCTS(mock_network, config=config)
 
         # Empty list causes max() on empty iterable in sequential halving
-        with pytest.raises(ValueError, match="max\\(\\) (arg is an empty sequence|iterable argument is empty)"):
+        with pytest.raises(
+            ValueError, match="max\\(\\) (arg is an empty sequence|iterable argument is empty)"
+        ):
             mcts.batch_search([])
 
     def test_batch_search_single_env(self, mock_network, test_env):

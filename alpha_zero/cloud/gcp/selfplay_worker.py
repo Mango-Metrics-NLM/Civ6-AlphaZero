@@ -592,13 +592,14 @@ def run_batch_selfplay(
 
         # Initialize per-env trajectory storage
         batch_trajectories: list[dict[str, Any]] = [
-            {"spatial": [], "vector": [], "policies": [], "actions": []}
-            for _ in range(batch_size)
+            {"spatial": [], "vector": [], "policies": [], "actions": []} for _ in range(batch_size)
         ]
 
         # Track which envs are still active
         active = [True] * batch_size + [False] * (num_parallel_games - batch_size)
         turn = 0
+        # Initialize rewards before the loop to avoid potential NameError
+        rewards = np.zeros(num_parallel_games, dtype=np.float32)
 
         while any(active) and turn < max_turns:
             # Get active environment indices
@@ -621,7 +622,7 @@ def run_batch_selfplay(
             try:
                 results = batch_mcts.batch_search(envs, add_noise=False)
             except Exception as e:
-                logger.error("Batch search failed at turn %d: %s", turn, e)
+                logger.error("Batch search failed at turn %d: %s", turn, e, exc_info=True)
                 if device != "cpu":
                     torch.cuda.empty_cache()
                 break
@@ -649,7 +650,7 @@ def run_batch_selfplay(
                 batch_trajectories[env_idx]["actions"].append(int(action))
 
             # Step all environments
-            rewards, terminated, truncated, infos = vec_env.step_all(actions)
+            rewards, terminated, truncated, _ = vec_env.step_all(actions)
 
             # Update active mask
             for i in active_indices:
@@ -690,14 +691,16 @@ def run_batch_selfplay(
             from alpha_zero.utils.wandb_logger import WANDB_AVAILABLE, log_metrics
 
             if WANDB_AVAILABLE:
-                log_metrics({
-                    "selfplay/batch_games_completed": batch_games,
-                    "selfplay/batch_time_seconds": batch_elapsed,
-                    "selfplay/parallel_envs": num_parallel_games,
-                    "selfplay/total_games_completed": games_completed,
-                })
+                log_metrics(
+                    {
+                        "selfplay/batch_games_completed": batch_games,
+                        "selfplay/batch_time_seconds": batch_elapsed,
+                        "selfplay/parallel_envs": num_parallel_games,
+                        "selfplay/total_games_completed": games_completed,
+                    }
+                )
         except ImportError:
-            logger.warning("wandb not installed, skipping batch metrics logging.")
+            logger.debug("wandb not installed, skipping batch metrics logging")
 
         # Memory cleanup between batches
         if device != "cpu":
@@ -819,9 +822,7 @@ def main() -> int:
         # Run self-play (batch or sequential based on configuration)
         start_time = time.time()
         use_batch = (
-            args.num_parallel_games > 1
-            and args.mcts_type == "batch_gumbel"
-            and not args.dry_run
+            args.num_parallel_games > 1 and args.mcts_type == "batch_gumbel" and not args.dry_run
         )
 
         if use_batch:
@@ -886,14 +887,16 @@ def main() -> int:
             if use_batch:
                 from alpha_zero.utils.wandb_logger import log_metrics
 
-                log_metrics({
-                    "selfplay/games_per_minute": len(trajectories) / max(elapsed / 60, 0.001),
-                    "selfplay/avg_batch_size": args.num_parallel_games,
-                    "selfplay/parallel_envs": args.num_parallel_games,
-                    "selfplay/batch_utilization_pct": (
-                        args.num_parallel_games / args.max_batch_size * 100
-                    ),
-                })
+                log_metrics(
+                    {
+                        "selfplay/games_per_minute": len(trajectories) / max(elapsed / 60, 0.001),
+                        "selfplay/avg_batch_size": args.num_parallel_games,
+                        "selfplay/parallel_envs": args.num_parallel_games,
+                        "selfplay/batch_utilization_pct": (
+                            args.num_parallel_games / args.max_batch_size * 100
+                        ),
+                    }
+                )
 
         # Save trajectories
         save_trajectories(

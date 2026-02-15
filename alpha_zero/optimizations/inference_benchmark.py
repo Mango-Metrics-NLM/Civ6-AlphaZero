@@ -190,9 +190,7 @@ class InferenceBenchmark:
             move_count, game_time = self._play_single_game(mcts, env)
             total_moves += move_count
             total_game_time += game_time
-            logger.debug(
-                f"Game {i + 1}/{num_games}: {move_count} moves in {game_time:.2f}s"
-            )
+            logger.debug(f"Game {i + 1}/{num_games}: {move_count} moves in {game_time:.2f}s")
 
         total_time = time.perf_counter() - start_time
 
@@ -286,9 +284,7 @@ class InferenceBenchmark:
         warmup_completed = 0
         while warmup_completed < self.warmup_games:
             games_needed = self.warmup_games - warmup_completed
-            logger.debug(
-                f"Warmup: {warmup_completed}/{self.warmup_games} games completed"
-            )
+            logger.debug(f"Warmup: {warmup_completed}/{self.warmup_games} games completed")
             _, _, completed = self._play_batch_games(
                 batch_mcts, vec_env, min(games_needed, num_parallel)
             )
@@ -304,9 +300,7 @@ class InferenceBenchmark:
             games_needed = num_games - games_completed
             batch_games = min(games_needed, num_parallel)
 
-            moves, game_time, completed = self._play_batch_games(
-                batch_mcts, vec_env, batch_games
-            )
+            moves, game_time, completed = self._play_batch_games(batch_mcts, vec_env, batch_games)
             total_moves += moves
             total_game_time += game_time
             games_completed += completed
@@ -418,15 +412,17 @@ class InferenceBenchmark:
             from alpha_zero.utils.wandb_logger import WANDB_AVAILABLE, log_metrics
 
             if WANDB_AVAILABLE:
-                log_metrics({
-                    "benchmark/single_games_per_minute": single_metrics.games_per_minute,
-                    "benchmark/batch_games_per_minute": batch_metrics.games_per_minute,
-                    "benchmark/speedup": speedup,
-                    "benchmark/speedup_moves": speedup_moves,
-                    "benchmark/parallel_envs": num_parallel,
-                    "benchmark/single_moves_per_second": single_metrics.moves_per_second,
-                    "benchmark/batch_moves_per_second": batch_metrics.moves_per_second,
-                })
+                log_metrics(
+                    {
+                        "benchmark/single_games_per_minute": single_metrics.games_per_minute,
+                        "benchmark/batch_games_per_minute": batch_metrics.games_per_minute,
+                        "benchmark/speedup": speedup,
+                        "benchmark/speedup_moves": speedup_moves,
+                        "benchmark/parallel_envs": num_parallel,
+                        "benchmark/single_moves_per_second": single_metrics.moves_per_second,
+                        "benchmark/batch_moves_per_second": batch_metrics.moves_per_second,
+                    }
+                )
 
                 # Log comparison table
                 self._log_comparison_table(single_metrics, batch_metrics, speedup)
@@ -462,7 +458,7 @@ class InferenceBenchmark:
         while not done and move_count < self.max_turns:
             action_probs, _ = mcts.search(env, add_noise=False)
             action = mcts.select_action(action_probs, temperature=0.0)
-            obs, reward, terminated, truncated, info = env.step(action)
+            _, _, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
             move_count += 1
 
@@ -513,7 +509,7 @@ class InferenceBenchmark:
                 actions[env_idx] = batch_mcts.select_action(action_probs, temperature=0.0)
 
             # Step all environments
-            rewards, terminated, truncated, infos = vec_env.step_all(actions)
+            _, terminated, truncated, _ = vec_env.step_all(actions)
 
             # Update active mask and count moves
             for i in active_indices:

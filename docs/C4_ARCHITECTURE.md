@@ -22,8 +22,11 @@
 | Phase 11 | Code Quality & Tech Debt Reduction | ✅ Complete |
 | Phase 12-Prep | Docker & Vertex AI Smoke Test | ✅ Complete |
 | Phase 13 | Multi-Iteration Training & Post-Run Evaluation | ✅ Complete |
+| Phase 14 | Learning Signal Validation & Training Diagnostics | ✅ Complete |
+| Phase 15 | Scaled Training & Value Head Stabilization | ✅ Complete |
+| Phase 16 | Batch Inference & Vectorized Self-Play | ✅ Complete |
 
-**Codebase Statistics:** ~55,000 LOC core, 3,544+ tests, Docker v0.10.2
+**Codebase Statistics:** ~59,000 LOC core, 4,880+ tests, Docker v0.13.0, 80 models (v0-v079)
 
 ---
 
@@ -1681,6 +1684,71 @@ Generation N:
 
 ---
 
+## Level 3: Component Diagram - Batch Inference & Vectorized Self-Play (Phase 16)
+
+Batch inference optimization and vectorized self-play for throughput scaling.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              BATCH INFERENCE & VECTORIZED SELF-PLAY (Phase 16)               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                        BATCH MCTS ENGINE                               │  │
+│  │                                                                        │  │
+│  │  ┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐  │  │
+│  │  │ BatchGumbelMCTS   │   │  BatchMCTSConfig │   │  MCTSVariant     │  │  │
+│  │  │ - batch_search()  │◄──│  - batch_size    │   │  .BATCH_GUMBEL   │  │  │
+│  │  │ - batch_evaluate()│   │  - simulations   │   │  (mcts_factory)  │  │  │
+│  │  │ - select_action() │   │  - search_mode   │   └──────────────────┘  │  │
+│  │  └────────┬─────────┘   └──────────────────┘                          │  │
+│  │           │                                                            │  │
+│  │           ├───── batch_simple_search()      ← Collect all pending     │  │
+│  │           │                                     leaf evaluations,      │  │
+│  │           │                                     single _batch_evaluate │  │
+│  │           │                                                            │  │
+│  │           └───── batch_sequential_halving() ← Gumbel sampling with    │  │
+│  │                                                batched evaluation      │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                    VECTORIZED ENVIRONMENTS                              │  │
+│  │                                                                        │  │
+│  │  ┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐  │  │
+│  │  │VectorizedMicroCiv│   │VectorizedEnvConf │   │  Pre-allocated   │  │  │
+│  │  │ - reset_all()    │◄──│ - num_envs       │   │  Numpy Buffers   │  │  │
+│  │  │ - step_all()     │   │ - board_size     │   │ - spatial obs    │  │  │
+│  │  │ - clone_env(i)   │   │ - max_turns      │   │ - vector obs     │  │  │
+│  │  │ - get_env(i)     │   └──────────────────┘   │ - rewards        │  │  │
+│  │  └──────────────────┘                           └──────────────────┘  │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                      GPU OPTIMIZATIONS                                  │  │
+│  │                                                                        │  │
+│  │  ┌──────────────────┐   ┌──────────────────┐                          │  │
+│  │  │ CUDAGraphCache   │   │InferenceBenchmark│                          │  │
+│  │  │ - capture graph  │   │ - single vs batch│                          │  │
+│  │  │ - replay graph   │   │ - MCTS search    │                          │  │
+│  │  │ - CPU fallback   │   │ - vectorized     │                          │  │
+│  │  └──────────────────┘   │   self-play      │                          │  │
+│  │                          └──────────────────┘                          │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                      CLOUD INTEGRATION                                  │  │
+│  │                                                                        │  │
+│  │  entrypoint.py ──→ --mode=orchestrator ──→ vertex_orchestrator.main()  │  │
+│  │                                                                        │  │
+│  │  selfplay_worker.py ──→ --num_parallel_games=N --max_batch_size=M     │  │
+│  │                    ──→ run_batch_selfplay()                             │  │
+│  │                    ──→ BatchGumbelMCTS + VectorizedMicroCivEnv          │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Roadmap
 
 ### Completed Phases
@@ -1699,20 +1767,23 @@ Generation N:
 12. **Phase 11**: Code Quality — Deleted 14.6k LOC, fixed xfails, CI hardened, mypy strict ✅
 13. **Phase 12-Prep**: Docker v0.9.0 → GCR, container smoke tests, Vertex AI smoke test ($0.04) ✅
 14. **Phase 13**: Multi-Iteration Training — NetworkArchitectureConfig, arena module, post-run tournament, W&B orchestrator logging, 6 bug fixes, Docker v0.10.2 ✅
+15. **Phase 14**: Learning Signal Validation — 20-iter run ($2.44), 2 promotions (v6→v19→v26), training diagnostics, warmup-cosine LR, stall detection ✅
+16. **Phase 15**: Value Head Stabilization — Per-head LR multipliers (value=0.1x), optimizer param groups, base_lr_ratio preservation ✅
+17. **Phase 16**: Batch Inference & Vectorized Self-Play — BatchGumbelMCTS, VectorizedMicroCivEnv, CUDAGraphCache, InferenceBenchmark, cloud orchestrator mode, 101 new tests, Docker v0.13.0 ✅
 
 ### Next Steps
 
-See [NEXT_STEPS.md](../NEXT_STEPS.md) for the full post-Phase 13 roadmap.
+See [NEXT_STEPS.md](../NEXT_STEPS.md) for the full post-Phase 16 roadmap.
 
 | Priority | Feature | Description |
 |----------|---------|-------------|
-| P0 | Extended Training (Phase 14) | Run 20-50 iterations, verify learning signal propagates |
-| P1 | PBT on Vertex AI (Phase 15) | Population-based training with auto hyperparameter tuning |
-| P2 | Inference Optimization (Phase 16) | Batch MCTS, vectorized envs for 10x+ throughput |
-| P3 | MuZero Training Run (Phase 17) | Validate learned dynamics model on MicroCiv |
-| P4 | DDP Test Rewrites (Phase 18) | Fix 12 remaining DDP xfails, full mypy strict |
-| P5 | Human vs AI Interface (Phase 19) | Web-based UI for playing against trained agent |
-| P6 | Full Civ6 Integration (Phase 20) | Direct game interface via Lua mod bridge |
+| P0 | Monitor 50-Iteration Run | Track indulgent-date-703: value correlation, ELO spread, promotions |
+| P1 | Batch Self-Play Cloud Integration (Phase 17) | Enable `--num_parallel_games` in cloud for 5-10x throughput |
+| P2 | MuZero Training Run (Phase 18) | Validate learned dynamics model on MicroCiv |
+| P3 | PBT on Vertex AI (Phase 19) | Population-based training with auto hyperparameter tuning |
+| P4 | DDP Test Rewrites (Phase 20) | Fix 12 remaining DDP xfails, full mypy strict |
+| P5 | Human vs AI Interface (Phase 21) | Web-based UI for playing against trained agent |
+| P6 | Full Civ6 Integration (Phase 22) | Direct game interface via Lua mod bridge |
 
 ---
 

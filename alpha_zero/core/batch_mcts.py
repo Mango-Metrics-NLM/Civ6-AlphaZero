@@ -54,6 +54,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Threshold below which action probability sums are treated as zero
+_PROBABILITY_SUM_EPSILON = 1e-8
+# Threshold above which the max action probability triggers greedy selection
+_GREEDY_THRESHOLD = 0.99
+
 
 @dataclass(slots=True)
 class BatchMCTSConfig:
@@ -324,6 +329,9 @@ class BatchGumbelMCTS:
 
         # Run halving rounds
         for _round_idx in range(num_rounds):
+            # Collect all pending evaluations for this round
+            pending_evals: list[_PendingEvaluation] = []
+
             # Allocate simulations for each env
             for env_idx in range(num_envs):
                 actions = active_actions_list[env_idx]
@@ -339,15 +347,24 @@ class BatchGumbelMCTS:
                             env_idx, envs[env_idx], roots[env_idx], np.array([action])
                         )
 
-                        # If we hit a leaf, evaluate it immediately
+                        # Collect pending evaluations
                         if pending is not None:
-                            policy, value = self._batch_evaluate(
-                                [pending.spatial],
-                                [pending.vector],
-                                [torch.from_numpy(pending.action_mask).float().to(self.device)],
-                            )[0]
-                            pending.node.expand(policy, pending.action_mask)
-                            self._backpropagate(pending.search_path, value)
+                            pending_evals.append(pending)
+
+            # Batch evaluate all pending leaves from this round
+            if pending_evals:
+                spatial_list = [p.spatial for p in pending_evals]
+                vector_list = [p.vector for p in pending_evals]
+                mask_list = [
+                    torch.from_numpy(p.action_mask).float().to(self.device) for p in pending_evals
+                ]
+
+                results = self._batch_evaluate(spatial_list, vector_list, mask_list)
+
+                # Expand and backpropagate
+                for pending, (policy, value) in zip(pending_evals, results, strict=True):
+                    pending.node.expand(policy, pending.action_mask)
+                    self._backpropagate(pending.search_path, value)
 
             # After round, compute completed Q-values and halve actions
             for env_idx in range(num_envs):
@@ -616,7 +633,7 @@ class BatchGumbelMCTS:
         # Apply mask if provided
         if action_mask is not None:
             action_probs = action_probs * action_mask
-            if action_probs.sum() < 1e-8:
+            if action_probs.sum() < _PROBABILITY_SUM_EPSILON:
                 # Fallback: select first valid action
                 valid_actions = np.where(action_mask > 0)[0]
                 if len(valid_actions) == 0:
@@ -625,7 +642,7 @@ class BatchGumbelMCTS:
             # Renormalize after masking
             action_probs = action_probs / action_probs.sum()
 
-        if temperature == 0 or action_probs.max() > 0.99:
+        if temperature == 0 or action_probs.max() > _GREEDY_THRESHOLD:
             # Greedy selection (usual case for Gumbel MCTS)
             return int(np.argmax(action_probs))
 

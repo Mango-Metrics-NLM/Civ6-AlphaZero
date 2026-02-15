@@ -323,16 +323,12 @@ class TestVectorizedMicroCivEnv:
 
     def test_deterministic_seeds(self) -> None:
         """Verify same seed_offset produces same initial states."""
-        config1 = VectorizedEnvConfig(
-            num_envs=4, board_size=8, max_turns=10, seed_offset=42
-        )
+        config1 = VectorizedEnvConfig(num_envs=4, board_size=8, max_turns=10, seed_offset=42)
         vec_env1 = VectorizedMicroCivEnv(config1)
         vec_env1.reset_all()
         spatial1, vector1, mask1 = vec_env1.get_observations()
 
-        config2 = VectorizedEnvConfig(
-            num_envs=4, board_size=8, max_turns=10, seed_offset=42
-        )
+        config2 = VectorizedEnvConfig(num_envs=4, board_size=8, max_turns=10, seed_offset=42)
         vec_env2 = VectorizedMicroCivEnv(config2)
         vec_env2.reset_all()
         spatial2, vector2, mask2 = vec_env2.get_observations()
@@ -344,16 +340,12 @@ class TestVectorizedMicroCivEnv:
 
     def test_deterministic_seeds_different_offset(self) -> None:
         """Verify different seed_offset produces different initial states."""
-        config1 = VectorizedEnvConfig(
-            num_envs=4, board_size=8, max_turns=10, seed_offset=42
-        )
+        config1 = VectorizedEnvConfig(num_envs=4, board_size=8, max_turns=10, seed_offset=42)
         vec_env1 = VectorizedMicroCivEnv(config1)
         vec_env1.reset_all()
         spatial1, vector1, mask1 = vec_env1.get_observations()
 
-        config2 = VectorizedEnvConfig(
-            num_envs=4, board_size=8, max_turns=10, seed_offset=99
-        )
+        config2 = VectorizedEnvConfig(num_envs=4, board_size=8, max_turns=10, seed_offset=99)
         vec_env2 = VectorizedMicroCivEnv(config2)
         vec_env2.reset_all()
         spatial2, vector2, mask2 = vec_env2.get_observations()
@@ -363,9 +355,7 @@ class TestVectorizedMicroCivEnv:
         spatial_differs = not np.array_equal(spatial1, spatial2)
         vector_differs = not np.array_equal(vector1, vector2)
 
-        assert (
-            spatial_differs or vector_differs
-        ), "Different seeds should produce different states"
+        assert spatial_differs or vector_differs, "Different seeds should produce different states"
 
     def test_reset_done(self) -> None:
         """Verify reset_done only resets environments marked as done."""

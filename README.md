@@ -26,15 +26,16 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 13 | Multi-Iteration Training & Post-Run Evaluation | ✅ Complete |
 | Phase 14 | Learning Signal Validation (20-iteration run) | ✅ Complete |
 | Phase 15 | Scaled Training & Value Head Stabilization | ✅ Complete |
+| Phase 16 | Batch Inference & Vectorized Self-Play | ✅ Complete |
 
 **Codebase Statistics:**
 
-- ~55,000 lines of core implementation
-- 3,678+ tests with >80% coverage on core modules
-- Docker v0.12.0 on GCR, 30 model versions (v0-v29) in GCS
+- ~59,000 lines of core implementation
+- 4,880+ tests with >80% coverage on core modules
+- Docker v0.13.0 on GCR, 80 model versions (v0-v079) in GCS
 - 2 successful model promotions (v6→v19→v26) in 20-iteration run
 - Post-run tournament: 23 models, 253 matchups, ELO spread 66 points
-- 11 game mechanics modules (deprecated, future Civ6 integration)
+- Active 50-iteration run (indulgent-date-703) with cloud VM orchestrator
 - 13 remaining xfail tests (12 DDP + 1 hierarchical — deferred)
 
 ## Key Features
@@ -72,6 +73,11 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - **Training Diagnostics**: Real-time gradient norms, loss decomposition, value correlation, policy entropy, stall detection
 - **Per-Head Learning Rates**: Separate LR multipliers for encoder, policy head, and value head to stabilize training
 - **LR Schedule Types**: Warmup-cosine, constant, and step-decay schedules with per-head ratio preservation
+- **BatchGumbelMCTS**: Batched leaf evaluations from N parallel MCTS trees for single GPU forward passes
+- **VectorizedMicroCivEnv**: N simultaneous games with pre-allocated numpy observation buffers
+- **CUDA Graph Caching**: Optional GPU execution graph caching for fixed batch sizes to eliminate kernel launch overhead
+- **Inference Benchmarking**: Automated batch vs single inference throughput measurement
+- **Cloud Orchestrator Mode**: `--mode=orchestrator` for running the full training pipeline on a Compute Engine VM
 
 ## Architecture (C4 Model)
 
@@ -572,6 +578,74 @@ graph TB
     style DeprecatedLog fill:#999999,stroke:#666666,color:#ffffff
 ```
 
+### Level 3: Component Diagram - Batch Inference & Vectorized Self-Play (Phase 16)
+
+Internal structure of the batch inference optimization and vectorized self-play system.
+
+```mermaid
+graph TB
+    subgraph "Batch Inference & Vectorized Self-Play (Phase 16)"
+        subgraph "Batch MCTS"
+            BatchMCTS["BatchGumbelMCTS<br/><i>N parallel MCTS trees</i>"]
+            BatchConfig["BatchMCTSConfig<br/><i>batch_size, simulations</i>"]
+            BatchEval["_batch_evaluate()<br/><i>Single GPU forward pass</i>"]
+            SeqHalving["Sequential Halving<br/><i>Batched Gumbel sampling</i>"]
+            SimpleSearch["Simple Search<br/><i>Batched leaf collection</i>"]
+        end
+
+        subgraph "Vectorized Environments"
+            VecEnv["VectorizedMicroCivEnv<br/><i>N games, numpy buffers</i>"]
+            VecConfig["VectorizedEnvConfig<br/><i>num_envs, board_size</i>"]
+            ResetAll["reset_all()<br/><i>Stacked observations</i>"]
+            StepAll["step_all(actions)<br/><i>Parallel env stepping</i>"]
+            CloneEnv["clone_env(i)<br/><i>Deep copy for MCTS</i>"]
+        end
+
+        subgraph "GPU Optimizations"
+            CUDACache["CUDAGraphCache<br/><i>Execution graph caching</i>"]
+            CUDAConfig["CUDAGraphConfig<br/><i>max_graphs, warmup</i>"]
+            InfBench["InferenceBenchmark<br/><i>Throughput measurement</i>"]
+        end
+
+        subgraph "Cloud Integration"
+            EntryOrch["entrypoint.py<br/><i>--mode=orchestrator</i>"]
+            BatchSelfPlay["run_batch_selfplay()<br/><i>Cloud worker function</i>"]
+            CLIFlags["CLI Flags<br/><i>--num_parallel_games<br/>--max_batch_size</i>"]
+        end
+
+        subgraph "Factory"
+            MCTSFactory["MCTSVariant.BATCH_GUMBEL<br/><i>mcts_factory.py</i>"]
+        end
+    end
+
+    BatchConfig --> BatchMCTS
+    BatchMCTS --> BatchEval
+    BatchMCTS --> SeqHalving
+    BatchMCTS --> SimpleSearch
+    SeqHalving --> BatchEval
+    SimpleSearch --> BatchEval
+
+    VecConfig --> VecEnv
+    VecEnv --> ResetAll
+    VecEnv --> StepAll
+    VecEnv --> CloneEnv
+
+    CUDAConfig --> CUDACache
+    CUDACache --> BatchEval
+
+    BatchSelfPlay --> BatchMCTS
+    BatchSelfPlay --> VecEnv
+    CLIFlags --> BatchSelfPlay
+    EntryOrch --> BatchSelfPlay
+    MCTSFactory --> BatchMCTS
+
+    style BatchMCTS fill:#1168bd,stroke:#0b4884,color:#ffffff
+    style VecEnv fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style CUDACache fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style BatchEval fill:#85bbf0,stroke:#5d82a8,color:#000000
+    style EntryOrch fill:#85bbf0,stroke:#5d82a8,color:#000000
+```
+
 ### Level 3: Component Diagram - Hierarchical RL
 
 Internal structure of the multi-level decision hierarchy.
@@ -1044,7 +1118,8 @@ Civ6-AlphaZero/
 │   ├── core/                 # Core AlphaZero components
 │   │   ├── civ6_network.py   # Neural network architecture
 │   │   ├── civ6_mcts.py      # MCTS (Civ6MCTS, GumbelMCTS, MuZeroMCTS)
-│   │   ├── mcts_factory.py   # MCTS factory: create_mcts("civ6"|"gumbel"|"muzero")
+│   │   ├── mcts_factory.py   # MCTS factory: create_mcts("civ6"|"gumbel"|"batch_gumbel"|"muzero")
+│   │   ├── batch_mcts.py     # BatchGumbelMCTS (Phase 16)
 │   │   ├── civ6_actions.py   # Action space handling
 │   │   ├── transformer_network.py # Transformer/ViT architecture
 │   │   └── action_pruning.py # Strategic action pruning
@@ -1081,6 +1156,7 @@ Civ6-AlphaZero/
 │   │   └── action_converter.py # Action → Lua command
 │   ├── envs/                 # Game environments
 │   │   ├── microciv.py       # MicroCiv environment
+│   │   ├── vectorized_env.py # VectorizedMicroCivEnv (Phase 16)
 │   │   ├── civ6_encoder.py   # State encoding
 │   │   └── real_civ6_env.py  # Real Civ6 Gymnasium env
 │   ├── interfaces/           # Game interfaces
@@ -1097,7 +1173,7 @@ Civ6-AlphaZero/
 │   │       ├── training_worker.py    # Training worker (per-head LRs, diagnostics)
 │   │       ├── evaluation_worker.py  # Model arena (Civ6TransformerNetwork)
 │   │       ├── arena.py              # Shared arena logic (Phase 13)
-│   │       ├── entrypoint.py         # Container mode router
+│   │       ├── entrypoint.py         # Container mode router (incl. orchestrator mode)
 │   │       ├── container_healthcheck.py # Container import validation
 │   │       ├── pbt_orchestrator.py    # Production PBT loop
 │   │       ├── cost_monitor.py       # Budget enforcement
@@ -1175,7 +1251,7 @@ Civ6-AlphaZero/
 │           ├── ActionExecutor.lua # Command execution
 │           ├── FileIO.lua    # File operations
 │           └── JsonEncoder.lua # Pure Lua JSON
-├── tests/                    # Test suite (3,678+ tests)
+├── tests/                    # Test suite (4,880+ tests)
 │   ├── unit/                 # Unit tests
 │   ├── integration/          # Integration tests (PBT, distributed, preemption)
 │   ├── e2e/                  # End-to-end tests (training smoke, GCS, Vertex)
@@ -1222,6 +1298,7 @@ Civ6-AlphaZero/
 - ✅ **Code Quality & Tech Debt** (Phase 11) — Removed 14,600 LOC dead code, fixed 16 xfailed tests, consolidated logging, CI hardening, mypy strictness, 16 new edge case tests
 - ✅ **Learning Signal Validation** (Phase 14) — 20-iteration training run ($2.44), 2 model promotions (v6→v19→v26), policy loss 1.21→0.63, training diagnostics, warmup-cosine LR, stall detection
 - ✅ **Value Head Stabilization** (Phase 15) — Separate per-head LR multipliers (value=0.1x), optimizer param groups, base_lr_ratio preservation through scheduler, per-head W&B logging
+- ✅ **Batch Inference & Vectorized Self-Play** (Phase 16) — BatchGumbelMCTS (batched leaf evaluations from N parallel trees), VectorizedMicroCivEnv (N games with numpy buffers), CUDAGraphCache, InferenceBenchmark, cloud orchestrator mode, 101 new tests
 
 ### Training Results (Phase 14: sunny-fog-469)
 
@@ -1239,20 +1316,21 @@ Civ6-AlphaZero/
 
 | Priority | Feature | Description |
 |----------|---------|-------------|
-| P0 | 50-Iteration Scaled Run | Validate value head stabilization with wider training window and more iterations |
-| P1 | Inference Optimization & Vectorized Self-Play | Batch MCTS inference, vectorized environments for 10x+ throughput |
+| P0 | Monitor 50-Iteration Run | Track indulgent-date-703: value correlation, ELO spread, promotions |
+| P1 | Batch Self-Play Cloud Integration | Enable `--num_parallel_games` in cloud training for 5-10x throughput |
 | P2 | MuZero Training Run | Run MuZero PBT with `configs/muzero_pbt.yaml` to validate learned dynamics |
-| P3 | DDP Test Rewrites | Fix remaining 12 DDP xfailed tests, full mypy strict mode |
-| P4 | Human vs AI Interface | Web-based UI for human gameplay |
-| P5 | Full Civ 6 Integration | Direct game interface via modding API |
+| P3 | Population-Based Training | PBT with population_size=8 for automatic hyperparameter tuning |
+| P4 | DDP Test Rewrites | Fix remaining 12 DDP xfailed tests, full mypy strict mode |
+| P5 | Human vs AI Interface | Web-based UI for human gameplay |
+| P6 | Full Civ 6 Integration | Direct game interface via modding API |
 
 ### Current Priorities
 
-1. **Monitor 50-iteration run** — Track value correlation stabilization (target: >0.5 for 10+ consecutive iterations)
+1. **Monitor 50-iteration run** (`indulgent-date-703`) — Track value correlation stabilization (target: >0.5 for 10+ consecutive iterations)
 2. **W&B dashboards** — Verify `train/learning_rate_value_head` is 10x lower than encoder, same schedule shape
 3. **ELO spread target** — Post-run tournament should show >100 point ELO spread (was 66 in Phase 14)
 4. **Model promotion target** — Expect 3+ promotions over 50 iterations (was 2 in 20 iterations)
-5. **Vectorized self-play** — Implement batch MCTS inference for 10x+ throughput improvement
+5. **Batch cloud integration** — Benchmark `--num_parallel_games=4 --max_batch_size=8` on T4 GPU
 
 ## Contributing
 
