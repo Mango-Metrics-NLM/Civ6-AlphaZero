@@ -28,6 +28,13 @@ from alpha_zero.strategic.__main__ import (
     main,
 )
 
+# Patch targets: __main__.py uses module-level imports so we patch
+# where the names are looked up (i.e. in the __main__ module namespace).
+_MAIN = "alpha_zero.strategic.__main__"
+_REGISTRY = f"{_MAIN}.EnvironmentRegistry"
+_CONFIG = f"{_MAIN}.StrategicConfig"
+_PLANNER = f"{_MAIN}.StrategicPlanner"
+
 
 # ---------------------------------------------------------------------------
 # Helpers / Stubs
@@ -197,14 +204,14 @@ class TestCreateParser:
 class TestCmdListEnvs:
     """Tests for the ``list-envs`` subcommand handler."""
 
-    @patch("alpha_zero.strategic.registry.EnvironmentRegistry.get_info")
+    @patch(_REGISTRY)
     def test_lists_environments(
         self,
-        mock_get_info: MagicMock,
+        mock_registry: MagicMock,
         capsys: pytest.CaptureFixture,
     ) -> None:
         """cmd_list_envs prints each environment from the registry."""
-        mock_get_info.return_value = {
+        mock_registry.get_info.return_value = {
             "resource_allocation": "Allocate resources across regions.",
             "climate_negotiation": "Climate policy negotiation.",
         }
@@ -219,14 +226,14 @@ class TestCmdListEnvs:
         assert "Climate policy negotiation." in captured
         assert "Total: 2 environments" in captured
 
-    @patch("alpha_zero.strategic.registry.EnvironmentRegistry.get_info")
+    @patch(_REGISTRY)
     def test_empty_registry(
         self,
-        mock_get_info: MagicMock,
+        mock_registry: MagicMock,
         capsys: pytest.CaptureFixture,
     ) -> None:
         """cmd_list_envs handles an empty registry gracefully."""
-        mock_get_info.return_value = {}
+        mock_registry.get_info.return_value = {}
 
         cmd_list_envs()
 
@@ -242,21 +249,17 @@ class TestCmdListEnvs:
 class TestCmdInfo:
     """Tests for the ``info`` subcommand handler."""
 
-    @patch("alpha_zero.strategic.registry.EnvironmentRegistry.create")
-    @patch("alpha_zero.strategic.registry.EnvironmentRegistry.get_description")
-    @patch("alpha_zero.strategic.registry.EnvironmentRegistry.is_registered")
+    @patch(_REGISTRY)
     def test_info_valid_environment(
         self,
-        mock_is_registered: MagicMock,
-        mock_get_description: MagicMock,
-        mock_create: MagicMock,
+        mock_registry: MagicMock,
         capsys: pytest.CaptureFixture,
     ) -> None:
         """cmd_info prints detailed information for a known environment."""
         fake_env = _FakeEnv()
-        mock_is_registered.return_value = True
-        mock_create.return_value = fake_env
-        mock_get_description.return_value = "A test environment."
+        mock_registry.is_registered.return_value = True
+        mock_registry.create.return_value = fake_env
+        mock_registry.get_description.return_value = "A test environment."
 
         cmd_info("test_env")
 
@@ -271,23 +274,19 @@ class TestCmdInfo:
         assert "Vector dim: 32" in captured
         assert "60 actions" in captured
 
-    @patch("alpha_zero.strategic.registry.EnvironmentRegistry.create")
-    @patch("alpha_zero.strategic.registry.EnvironmentRegistry.get_description")
-    @patch("alpha_zero.strategic.registry.EnvironmentRegistry.is_registered")
+    @patch(_REGISTRY)
     def test_info_with_spatial(
         self,
-        mock_is_registered: MagicMock,
-        mock_get_description: MagicMock,
-        mock_create: MagicMock,
+        mock_registry: MagicMock,
         capsys: pytest.CaptureFixture,
     ) -> None:
         """cmd_info prints spatial shape when the environment has spatial input."""
         fake_env = _FakeEnv(
             state_spec=_FakeStateSpec(has_spatial=True, spatial_shape=(13, 16, 16)),
         )
-        mock_is_registered.return_value = True
-        mock_create.return_value = fake_env
-        mock_get_description.return_value = "Spatial env."
+        mock_registry.is_registered.return_value = True
+        mock_registry.create.return_value = fake_env
+        mock_registry.get_description.return_value = "Spatial env."
 
         cmd_info("spatial_env")
 
@@ -295,17 +294,18 @@ class TestCmdInfo:
         assert "Spatial:" in captured
         assert "(13, 16, 16)" in captured
 
-    @patch("alpha_zero.strategic.registry.EnvironmentRegistry.list_environments")
-    @patch("alpha_zero.strategic.registry.EnvironmentRegistry.is_registered")
+    @patch(_REGISTRY)
     def test_info_unknown_environment_exits(
         self,
-        mock_is_registered: MagicMock,
-        mock_list_environments: MagicMock,
+        mock_registry: MagicMock,
         capsys: pytest.CaptureFixture,
     ) -> None:
         """cmd_info exits with code 1 for an unknown environment."""
-        mock_is_registered.return_value = False
-        mock_list_environments.return_value = ["resource_allocation", "climate_negotiation"]
+        mock_registry.is_registered.return_value = False
+        mock_registry.list_environments.return_value = [
+            "resource_allocation",
+            "climate_negotiation",
+        ]
 
         with pytest.raises(SystemExit) as exc_info:
             cmd_info("nonexistent_env")
@@ -326,10 +326,10 @@ class TestCmdInfo:
 class TestCmdPlan:
     """Tests for the ``plan`` subcommand handler."""
 
-    @patch("alpha_zero.strategic.config.StrategicConfig.from_preset")
+    @patch(_CONFIG)
     def test_dry_run_from_preset(
         self,
-        mock_from_preset: MagicMock,
+        mock_config_class: MagicMock,
         capsys: pytest.CaptureFixture,
     ) -> None:
         """cmd_plan with --dry_run validates config and prints summary without planning."""
@@ -338,7 +338,7 @@ class TestCmdPlan:
         mock_config.planning.num_simulations = 10
         mock_config.planning.num_planning_iterations = 2
         mock_config.validate.return_value = []
-        mock_from_preset.return_value = mock_config
+        mock_config_class.from_preset.return_value = mock_config
 
         args = SimpleNamespace(
             preset="fast",
@@ -358,13 +358,13 @@ class TestCmdPlan:
         assert "fast" in captured
         assert "resource_allocation" in captured
 
-        mock_from_preset.assert_called_once_with("fast")
+        mock_config_class.from_preset.assert_called_once_with("fast")
         mock_config.validate.assert_called_once()
 
-    @patch("alpha_zero.strategic.config.StrategicConfig.from_yaml")
+    @patch(_CONFIG)
     def test_dry_run_from_yaml(
         self,
-        mock_from_yaml: MagicMock,
+        mock_config_class: MagicMock,
         capsys: pytest.CaptureFixture,
     ) -> None:
         """cmd_plan with --config loads from YAML file instead of preset."""
@@ -373,7 +373,7 @@ class TestCmdPlan:
         mock_config.planning.num_simulations = 200
         mock_config.planning.num_planning_iterations = 10
         mock_config.validate.return_value = []
-        mock_from_yaml.return_value = mock_config
+        mock_config_class.from_yaml.return_value = mock_config
 
         args = SimpleNamespace(
             preset="fast",
@@ -387,12 +387,13 @@ class TestCmdPlan:
 
         cmd_plan(args)
 
-        mock_from_yaml.assert_called_once_with("/tmp/custom.yaml")
+        mock_config_class.from_yaml.assert_called_once_with("/tmp/custom.yaml")
+        mock_config_class.from_preset.assert_not_called()
 
-    @patch("alpha_zero.strategic.config.StrategicConfig.from_preset")
+    @patch(_CONFIG)
     def test_dry_run_sets_seed(
         self,
-        mock_from_preset: MagicMock,
+        mock_config_class: MagicMock,
         capsys: pytest.CaptureFixture,
     ) -> None:
         """cmd_plan sets random_seed on the config when --seed is provided."""
@@ -401,7 +402,7 @@ class TestCmdPlan:
         mock_config.planning.num_simulations = 10
         mock_config.planning.num_planning_iterations = 2
         mock_config.validate.return_value = []
-        mock_from_preset.return_value = mock_config
+        mock_config_class.from_preset.return_value = mock_config
 
         args = SimpleNamespace(
             preset="fast",
@@ -417,10 +418,10 @@ class TestCmdPlan:
 
         assert mock_config.random_seed == 42
 
-    @patch("alpha_zero.strategic.config.StrategicConfig.from_preset")
+    @patch(_CONFIG)
     def test_dry_run_reports_validation_warnings(
         self,
-        mock_from_preset: MagicMock,
+        mock_config_class: MagicMock,
         capsys: pytest.CaptureFixture,
     ) -> None:
         """cmd_plan logs validation warnings from config.validate()."""
@@ -429,7 +430,7 @@ class TestCmdPlan:
         mock_config.planning.num_simulations = 10
         mock_config.planning.num_planning_iterations = 2
         mock_config.validate.return_value = ["Warning: something looks odd"]
-        mock_from_preset.return_value = mock_config
+        mock_config_class.from_preset.return_value = mock_config
 
         args = SimpleNamespace(
             preset="fast",
@@ -447,25 +448,23 @@ class TestCmdPlan:
         captured = capsys.readouterr().out
         assert "Dry run" in captured
 
-    @patch("alpha_zero.strategic.__main__.StrategicPlanner")
-    @patch("alpha_zero.strategic.registry.EnvironmentRegistry.list_environments")
-    @patch("alpha_zero.strategic.registry.EnvironmentRegistry.is_registered")
-    @patch("alpha_zero.strategic.config.StrategicConfig.from_preset")
+    @patch(_PLANNER)
+    @patch(_REGISTRY)
+    @patch(_CONFIG)
     def test_plan_unknown_env_exits(
         self,
-        mock_from_preset: MagicMock,
-        mock_is_registered: MagicMock,
-        mock_list_environments: MagicMock,
+        mock_config_class: MagicMock,
+        mock_registry: MagicMock,
         mock_planner_class: MagicMock,
         capsys: pytest.CaptureFixture,
     ) -> None:
         """cmd_plan exits with code 1 when the environment is not registered."""
         mock_config = MagicMock()
         mock_config.validate.return_value = []
-        mock_from_preset.return_value = mock_config
+        mock_config_class.from_preset.return_value = mock_config
 
-        mock_is_registered.return_value = False
-        mock_list_environments.return_value = ["resource_allocation"]
+        mock_registry.is_registered.return_value = False
+        mock_registry.list_environments.return_value = ["resource_allocation"]
 
         args = SimpleNamespace(
             preset="fast",
@@ -485,26 +484,24 @@ class TestCmdPlan:
         assert "Error" in captured
         assert "nonexistent_env" in captured
 
-    @patch("alpha_zero.strategic.__main__.StrategicPlanner")
-    @patch("alpha_zero.strategic.registry.EnvironmentRegistry.create")
-    @patch("alpha_zero.strategic.registry.EnvironmentRegistry.is_registered")
-    @patch("alpha_zero.strategic.config.StrategicConfig.from_preset")
+    @patch(_PLANNER)
+    @patch(_REGISTRY)
+    @patch(_CONFIG)
     def test_plan_runs_and_prints_summary(
         self,
-        mock_from_preset: MagicMock,
-        mock_is_registered: MagicMock,
-        mock_create: MagicMock,
+        mock_config_class: MagicMock,
+        mock_registry: MagicMock,
         mock_planner_class: MagicMock,
         capsys: pytest.CaptureFixture,
     ) -> None:
         """cmd_plan creates a planner, runs planning, and prints the result summary."""
         mock_config = MagicMock()
         mock_config.validate.return_value = []
-        mock_from_preset.return_value = mock_config
+        mock_config_class.from_preset.return_value = mock_config
 
         fake_env = _FakeEnv()
-        mock_is_registered.return_value = True
-        mock_create.return_value = fake_env
+        mock_registry.is_registered.return_value = True
+        mock_registry.create.return_value = fake_env
 
         fake_result = _FakePlanningResult()
         mock_planner_instance = MagicMock()
@@ -530,15 +527,13 @@ class TestCmdPlan:
         captured = capsys.readouterr().out
         assert "Fake planning summary" in captured
 
-    @patch("alpha_zero.strategic.__main__.StrategicPlanner")
-    @patch("alpha_zero.strategic.registry.EnvironmentRegistry.create")
-    @patch("alpha_zero.strategic.registry.EnvironmentRegistry.is_registered")
-    @patch("alpha_zero.strategic.config.StrategicConfig.from_preset")
+    @patch(_PLANNER)
+    @patch(_REGISTRY)
+    @patch(_CONFIG)
     def test_plan_saves_output_json(
         self,
-        mock_from_preset: MagicMock,
-        mock_is_registered: MagicMock,
-        mock_create: MagicMock,
+        mock_config_class: MagicMock,
+        mock_registry: MagicMock,
         mock_planner_class: MagicMock,
         tmp_path: pytest.TempPathFactory,
         capsys: pytest.CaptureFixture,
@@ -546,11 +541,11 @@ class TestCmdPlan:
         """cmd_plan saves results to a JSON file when --output is provided."""
         mock_config = MagicMock()
         mock_config.validate.return_value = []
-        mock_from_preset.return_value = mock_config
+        mock_config_class.from_preset.return_value = mock_config
 
         fake_env = _FakeEnv()
-        mock_is_registered.return_value = True
-        mock_create.return_value = fake_env
+        mock_registry.is_registered.return_value = True
+        mock_registry.create.return_value = fake_env
 
         fake_result = _FakePlanningResult()
         mock_planner_instance = MagicMock()
@@ -593,7 +588,7 @@ class TestCmdPlan:
 class TestMain:
     """Tests for the ``main()`` dispatch function."""
 
-    @patch("alpha_zero.strategic.__main__.cmd_list_envs")
+    @patch(f"{_MAIN}.cmd_list_envs")
     def test_dispatch_list_envs(self, mock_cmd: MagicMock) -> None:
         """main() dispatches to cmd_list_envs for 'list-envs' command."""
         with patch.object(sys, "argv", ["prog", "list-envs"]):
@@ -601,7 +596,7 @@ class TestMain:
 
         mock_cmd.assert_called_once()
 
-    @patch("alpha_zero.strategic.__main__.cmd_info")
+    @patch(f"{_MAIN}.cmd_info")
     def test_dispatch_info(self, mock_cmd: MagicMock) -> None:
         """main() dispatches to cmd_info for 'info' command."""
         with patch.object(sys, "argv", ["prog", "info", "resource_allocation"]):
@@ -609,7 +604,7 @@ class TestMain:
 
         mock_cmd.assert_called_once_with("resource_allocation")
 
-    @patch("alpha_zero.strategic.__main__.cmd_plan")
+    @patch(f"{_MAIN}.cmd_plan")
     def test_dispatch_plan(self, mock_cmd: MagicMock) -> None:
         """main() dispatches to cmd_plan for 'plan' command."""
         with patch.object(sys, "argv", ["prog", "plan", "--dry_run"]):
@@ -637,11 +632,11 @@ class TestMain:
         # argparse help contains the prog name or usage
         assert "strategic" in captured.lower() or "usage" in captured.lower()
 
-    @patch("alpha_zero.strategic.__main__.cmd_plan")
+    @patch(f"{_MAIN}.cmd_plan")
     def test_verbose_flag_sets_debug_logging(self, mock_cmd: MagicMock) -> None:
         """main() with -v configures DEBUG-level logging."""
         with patch.object(sys, "argv", ["prog", "-v", "plan", "--dry_run"]):
-            with patch("alpha_zero.strategic.__main__.logging") as mock_logging:
+            with patch(f"{_MAIN}.logging") as mock_logging:
                 mock_logging.DEBUG = 10
                 mock_logging.INFO = 20
                 main()
@@ -650,7 +645,7 @@ class TestMain:
                 call_kwargs = mock_logging.basicConfig.call_args
                 assert call_kwargs[1]["level"] == 10 or call_kwargs.kwargs["level"] == 10
 
-    @patch("alpha_zero.strategic.__main__.cmd_plan")
+    @patch(f"{_MAIN}.cmd_plan")
     def test_plan_passes_env_and_preset(self, mock_cmd: MagicMock) -> None:
         """main() forwards --env and --preset to the plan subcommand args."""
         with patch.object(sys, "argv", [
@@ -664,7 +659,7 @@ class TestMain:
         assert dispatched_args.env == "climate_negotiation"
         assert dispatched_args.preset == "balanced"
 
-    @patch("alpha_zero.strategic.__main__.cmd_plan")
+    @patch(f"{_MAIN}.cmd_plan")
     def test_plan_passes_episodes_and_seed(self, mock_cmd: MagicMock) -> None:
         """main() forwards --episodes and --seed to the plan subcommand args."""
         with patch.object(sys, "argv", [
