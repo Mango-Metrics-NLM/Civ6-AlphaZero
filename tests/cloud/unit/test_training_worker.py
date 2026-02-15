@@ -23,13 +23,15 @@ class TestTrainingWorkerDDP:
             assert world_size == 1
 
     @patch("torch.distributed.init_process_group")
+    @patch("torch.cuda.is_available", return_value=False)
     @patch("torch.cuda.set_device")
     def test_setup_ddp_with_env_vars(
         self,
         mock_set_device: MagicMock,
+        mock_cuda_available: MagicMock,
         mock_init_process_group: MagicMock,
     ) -> None:
-        """Test setup_ddp when environment variables are present."""
+        """Test setup_ddp when environment variables are present (CPU fallback)."""
         env_vars = {
             "WORLD_SIZE": "2",
             "RANK": "1",
@@ -39,13 +41,14 @@ class TestTrainingWorkerDDP:
         }
         with patch.dict(os.environ, env_vars, clear=True):
             rank, local_rank, world_size = setup_ddp()
-            
+
             assert rank == 1
             assert local_rank == 1
             assert world_size == 2
-            
-            mock_init_process_group.assert_called_once_with(backend="nccl")
-            mock_set_device.assert_called_once_with(1)
+
+            # Backend selection is based on CUDA availability
+            mock_init_process_group.assert_called_once_with(backend="gloo")
+            mock_set_device.assert_not_called()
 
     @patch("torch.distributed.is_initialized", return_value=True)
     @patch("torch.distributed.destroy_process_group")

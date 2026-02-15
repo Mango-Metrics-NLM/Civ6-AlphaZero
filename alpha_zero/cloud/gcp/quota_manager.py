@@ -161,8 +161,9 @@ class QuotaManagerConfig:
         default_factory=lambda: float(os.environ.get("CIV6AZ_QUOTA_CACHE_TTL", "300.0"))
     )
     enable_fallback: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_QUOTA_ENABLE_FALLBACK", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_QUOTA_ENABLE_FALLBACK", "true").lower() == "true"
+        )
     )
     preferred_regions: list[str] = field(
         default_factory=lambda: os.environ.get(
@@ -176,8 +177,9 @@ class QuotaManagerConfig:
         ).split(",")
     )
     enable_spot_fallback: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_QUOTA_SPOT_FALLBACK", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_QUOTA_SPOT_FALLBACK", "true").lower() == "true"
+        )
     )
     max_fallback_attempts: int = field(
         default_factory=lambda: int(os.environ.get("CIV6AZ_QUOTA_MAX_FALLBACK", "5"))

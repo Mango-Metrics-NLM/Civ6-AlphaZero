@@ -160,8 +160,9 @@ class CostOptimizationConfig:
         default_factory=lambda: os.environ.get("CIV6AZ_ENABLE_SPOT_VMS", "true").lower() == "true"
     )
     fallback_to_on_demand: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_FALLBACK_ON_DEMAND", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_FALLBACK_ON_DEMAND", "true").lower() == "true"
+        )
     )
 
     @classmethod

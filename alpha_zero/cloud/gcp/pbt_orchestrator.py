@@ -613,10 +613,8 @@ class PBTOrchestrator:
         eval_kwargs: dict[str, Any] = {"generation": gen}
         if self.evaluator.arena_runner is None:
             logger.info("No arena_runner configured; falling back to local runner")
-            eval_kwargs["arena_runner"] = (
-                lambda agent_new, agent_old, num_games: _local_arena_runner(
-                    agent_new, agent_old, num_games, gcp_config=self.gcp_config
-                )
+            eval_kwargs["arena_runner"] = lambda agent_new, agent_old, num_games: (
+                _local_arena_runner(agent_new, agent_old, num_games, gcp_config=self.gcp_config)
             )
 
         report = self.evaluator.evaluate_population(agents, **eval_kwargs)

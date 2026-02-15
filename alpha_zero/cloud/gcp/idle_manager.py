@@ -138,8 +138,9 @@ class IdleInstanceConfig:
         default_factory=lambda: int(os.environ.get("CIV6AZ_IDLE_CHECK_INTERVAL_S", "60"))
     )
     auto_stop_enabled: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_IDLE_AUTO_STOP_ENABLED", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_IDLE_AUTO_STOP_ENABLED", "true").lower() == "true"
+        )
     )
     grace_period_seconds: int = field(
         default_factory=lambda: int(os.environ.get("CIV6AZ_IDLE_GRACE_PERIOD_S", "300"))
@@ -147,8 +148,9 @@ class IdleInstanceConfig:
 
     # Checkpoint before stop
     checkpoint_before_stop: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_IDLE_CHECKPOINT_BEFORE_STOP", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_IDLE_CHECKPOINT_BEFORE_STOP", "true").lower() == "true"
+        )
     )
 
     # Minimum instances to keep

@@ -118,8 +118,9 @@ class EloPlateauDetectorConfig:
         default_factory=lambda: int(os.environ.get("CIV6AZ_ELO_MIN_ITERATIONS", "3"))
     )
     alert_on_plateau: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_ELO_ALERT_ON_PLATEAU", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_ELO_ALERT_ON_PLATEAU", "true").lower() == "true"
+        )
     )
 
     def __post_init__(self) -> None:

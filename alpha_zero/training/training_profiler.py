@@ -143,8 +143,9 @@ class TrainingProfilerConfig:
         default_factory=lambda: float(os.environ.get("CIV6AZ_PROFILE_COST_PER_STEP", "0.001"))
     )
     early_stop_enabled: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_PROFILE_EARLY_STOP_ENABLED", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_PROFILE_EARLY_STOP_ENABLED", "true").lower() == "true"
+        )
     )
 
     # Recommended steps configuration

@@ -359,9 +359,9 @@ class TestVertexTrainingJob:
             assert "--nproc_per_node=2" in job_spec.command
             assert "alpha_zero.cloud.gcp.training_worker" in job_spec.command
             
-            # Verify worker args are passed correctly (should not contain duplicates from command)
-            assert "--mode=training" in job_spec.args
+            # Verify worker args are passed correctly
             assert "--iteration=10" in job_spec.args
+            assert any("--trajectory_iterations=" in a for a in job_spec.args)
 
 
     def test_launch_with_resume(

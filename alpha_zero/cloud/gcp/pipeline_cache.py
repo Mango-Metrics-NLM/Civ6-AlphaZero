@@ -175,8 +175,9 @@ class PipelineCacheConfig:
         default_factory=lambda: os.environ.get("CIV6AZ_CACHE_GCS_PREFIX", "cache/pipeline")
     )
     include_code_hash: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_CACHE_INCLUDE_CODE_HASH", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_CACHE_INCLUDE_CODE_HASH", "true").lower() == "true"
+        )
     )
     max_entries: int = field(
         default_factory=lambda: int(os.environ.get("CIV6AZ_CACHE_MAX_ENTRIES", "1000"))

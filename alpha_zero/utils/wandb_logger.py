@@ -898,11 +898,15 @@ class WandbLogger:
         Args:
             exit_code: Optional exit code for the run.
         """
-        if not self._initialized or self._run is None:
+        if not self._initialized or self._run is None or wandb is None:
             return
 
         try:
             wandb.finish(exit_code=exit_code)
+            logger.info("W&B run finished")
+        except TypeError:
+            # Fallback if wandb version doesn't support exit_code parameter
+            wandb.finish()
             logger.info("W&B run finished")
         except Exception as e:
             logger.warning(f"Error finishing W&B run: {e}")

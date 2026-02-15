@@ -96,8 +96,9 @@ class GPUSchedulerConfig:
         default_factory=lambda: os.environ.get("CIV6AZ_GPU_PREFER_SPOT", "true").lower() == "true"
     )
     upgrade_enabled: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_GPU_UPGRADE_ENABLED", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_GPU_UPGRADE_ENABLED", "true").lower() == "true"
+        )
     )
 
     # Phase thresholds (percentage of total iterations)
@@ -140,8 +141,9 @@ class GPUSchedulerConfig:
         default_factory=lambda: os.environ.get("CIV6AZ_GPU_SPOT_SELFPLAY", "true").lower() == "true"
     )
     spot_for_training: bool = field(
-        default_factory=lambda: os.environ.get("CIV6AZ_GPU_SPOT_TRAINING", "false").lower()
-        == "true"
+        default_factory=lambda: (
+            os.environ.get("CIV6AZ_GPU_SPOT_TRAINING", "false").lower() == "true"
+        )
     )
 
     def __post_init__(self) -> None:

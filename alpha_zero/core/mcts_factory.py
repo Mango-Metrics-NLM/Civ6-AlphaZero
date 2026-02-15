@@ -11,6 +11,7 @@ All MCTS variants share a common interface:
 Supported variants:
 - "puct": Standard AlphaZero PUCT-based MCTS (Civ6MCTS)
 - "gumbel": Gumbel MuZero MCTS for efficient inference
+- "batch_gumbel": Batched Gumbel MCTS for parallel multi-env inference
 - "simple": Random rollout MCTS for bootstrapping/testing
 - "muzero": MuZero MCTS with learned dynamics
 
@@ -47,6 +48,7 @@ class MCTSVariant(Enum):
     CIV6 = "civ6"
     PUCT = "puct"
     GUMBEL = "gumbel"
+    BATCH_GUMBEL = "batch_gumbel"
     SIMPLE = "simple"
     MUZERO = "muzero"
 
@@ -99,6 +101,7 @@ _MCTS_REGISTRY: dict[str, tuple[str, str, int]] = {
     "civ6": ("Civ6MCTS", "MCTSConfig", 200),
     "puct": ("Civ6MCTS", "MCTSConfig", 200),
     "gumbel": ("GumbelMCTS", "GumbelMCTSConfig", 16),
+    "batch_gumbel": ("BatchGumbelMCTS", "BatchMCTSConfig", 16),
     "muzero": ("MuZeroMCTS", "MuZeroMCTSConfig", 50),
     "simple": ("SimpleMCTS", "None", 20),
 }
@@ -121,6 +124,7 @@ def create_mcts(
         variant: MCTS variant to create. One of:
             - "puct": Standard AlphaZero PUCT-based MCTS
             - "gumbel": Gumbel MuZero for efficient inference
+            - "batch_gumbel": Batched Gumbel MCTS for parallel multi-env inference
             - "simple": Random rollout MCTS (no network needed)
             - "muzero": MuZero with learned dynamics
         network: Neural network for evaluation (required for puct, gumbel, muzero).
@@ -155,6 +159,7 @@ def create_mcts(
     num_simulations = kwargs.pop("num_simulations", default_sims)
 
     # Lazy import to avoid circular dependencies
+    from alpha_zero.core.batch_mcts import BatchGumbelMCTS, BatchMCTSConfig
     from alpha_zero.core.civ6_mcts import (
         Civ6MCTS,
         GumbelMCTS,
@@ -178,11 +183,13 @@ def create_mcts(
     mcts_classes = {
         "Civ6MCTS": Civ6MCTS,
         "GumbelMCTS": GumbelMCTS,
+        "BatchGumbelMCTS": BatchGumbelMCTS,
         "MuZeroMCTS": MuZeroMCTS,
     }
     config_classes = {
         "MCTSConfig": MCTSConfig,
         "GumbelMCTSConfig": GumbelMCTSConfig,
+        "BatchMCTSConfig": BatchMCTSConfig,
         "MuZeroMCTSConfig": MuZeroMCTSConfig,
     }
 
@@ -240,16 +247,18 @@ def get_default_config(variant: str | MCTSVariant) -> Any:
         return None  # SimpleMCTS doesn't use a config object
 
     # Lazy import
+    from alpha_zero.core.batch_mcts import BatchMCTSConfig
     from alpha_zero.core.civ6_mcts import (
         GumbelMCTSConfig,
         MCTSConfig,
         MuZeroMCTSConfig,
     )
 
-    config_classes = {
+    config_classes: dict[str, type] = {
         "civ6": MCTSConfig,
         "puct": MCTSConfig,
         "gumbel": GumbelMCTSConfig,
+        "batch_gumbel": BatchMCTSConfig,
         "muzero": MuZeroMCTSConfig,
     }
 
