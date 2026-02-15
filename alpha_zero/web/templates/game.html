@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Civ6 AlphaZero - Game {{ session_id[:8] }}{% endblock %}
+
+{% block content %}
+<div id="game-container" class="game-layout theme-{{ config.board_theme }}">
+
+    {# Game info bar #}
+    {% include "partials/game_info.html" %}
+
+    <div class="game-main">
+        {# Board #}
+        <div class="board-panel">
+            {% include "partials/board.html" %}
+        </div>
+
+        {# Sidebar #}
+        <div class="sidebar">
+            {# Valid actions (only during human turn) #}
+            {% if is_human_turn and not is_game_over %}
+            {% include "partials/valid_actions.html" %}
+            {% endif %}
+
+            {# AI Confidence display #}
+            {% if confidence and config.show_ai_evaluation %}
+            {% include "partials/confidence.html" %}
+            {% endif %}
+
+            {# Move history #}
+            {% include "partials/move_history.html" %}
+        </div>
+    </div>
+
+    {# Game over overlay #}
+    {% if is_game_over %}
+    {% include "partials/game_over.html" %}
+    {% endif %}
+
+    {# Game controls #}
+    <div class="game-controls">
+        {% if not is_game_over %}
+        <form action="/htmx/game/{{ session_id }}/undo" method="post"
+              hx-post="/htmx/game/{{ session_id }}/undo"
+              hx-target="#game-container"
+              hx-swap="outerHTML">
+            <button type="submit" class="btn btn-secondary">Undo</button>
+        </form>
+        <form action="/htmx/game/{{ session_id }}/resign" method="post"
+              hx-post="/htmx/game/{{ session_id }}/resign"
+              hx-target="#game-container"
+              hx-swap="outerHTML">
+            <button type="submit" class="btn btn-danger"
+                    onclick="return confirm('Are you sure you want to resign?')">
+                Resign
+            </button>
+        </form>
+        {% endif %}
+        <a href="/" class="btn btn-secondary">New Game</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/game.js"></script>
+<script>
+    if (typeof GameClient !== 'undefined') {
+        const wsUrl = 'ws://' + window.location.host + '/ws/game/{{ session_id }}';
+        window.gameClient = new GameClient(wsUrl);
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,26 @@
+<div class="game-info-bar">
+    <div class="info-item">
+        <span class="info-label">Turn</span>
+        <span class="info-value">{{ turn_number }}</span>
+    </div>
+    <div class="info-item">
+        <span class="info-label">Player</span>
+        <span class="info-value player-{{ current_player }}">
+            Player {{ current_player + 1 }}
+            {% if current_player == human_player %}(You){% else %}(AI){% endif %}
+        </span>
+    </div>
+    <div class="info-item">
+        <span class="info-label">Status</span>
+        <span class="info-value phase-{{ phase }}">
+            {% if is_game_over %}Game Over
+            {% elif is_human_turn %}Your Turn
+            {% else %}AI Thinking...
+            {% endif %}
+        </span>
+    </div>
+    <div class="info-item">
+        <span class="info-label">Opponent</span>
+        <span class="info-value">{{ opponent_type|title }}</span>
+    </div>
+</div>

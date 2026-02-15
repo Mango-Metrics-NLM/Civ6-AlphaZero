@@ -11,14 +11,8 @@ Components:
 - replay: Game save/load and replay functionality
 """
 
-import warnings
-
-warnings.warn(
-    "alpha_zero.human_interface is deprecated and not used by the training pipeline. "
-    "It will be activated in a future phase for Human vs AI gameplay.",
-    DeprecationWarning,
-    stacklevel=2,
-)
+# Activated in Phase 19: Web-based Human vs AI interface
+# See alpha_zero.web for the web UI layer that uses these components.
 
 from alpha_zero.human_interface.config import (
     HumanInterfaceConfig,
