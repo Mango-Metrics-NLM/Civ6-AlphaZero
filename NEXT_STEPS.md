@@ -1,85 +1,65 @@
-# Civ6 AlphaZero — Next Steps (Post-Phase 13)
+# Civ6 AlphaZero — Next Steps (Post-Phase 16)
 
-All infrastructure phases (1-13) are complete. The system can run multi-iteration training on Vertex AI with selfplay, training, evaluation, and post-run tournament. Docker v0.10.2 is deployed on GCR. 7 model versions (v0-v6) exist in GCS.
+All infrastructure and optimization phases (1-16) are complete. The system runs multi-iteration training on Vertex AI with selfplay, training, evaluation, post-run tournament, batch inference, and vectorized self-play. Docker v0.13.0 is deployed on GCR. 80 model versions (v0-v079) exist in GCS.
 
-**Current state**: Models train but don't yet show meaningful improvement over random play (~25% win rate in evaluation). The priority is now making the agent actually learn.
+**Current state**: A 50-iteration training run (`indulgent-date-703`) is active on a Compute Engine VM orchestrator with value head stabilization (0.1x LR), warmup-cosine scheduling, and 25 evaluation games per iteration.
 
 ---
 
-## Phase 14: Extended Training & Learning Signal Validation
+## Completed Phases (Summary)
 
-**Goal**: Run 20-50 iterations and verify that later model versions beat earlier ones.
+| Phase | Description | Version | Key Result |
+|-------|-------------|---------|------------|
+| 1-7 | Core AlphaZero through Production PBT | v0.8.0 | Full cloud training pipeline |
+| 8-10 | Safeguards, MuZero, Tournaments | v0.8.0 | Automated interventions + tournament system |
+| 11 | Code Quality & Tech Debt | v0.9.0 | -14,600 LOC dead code, 16 xfail fixes |
+| 13 | Multi-Iteration Training | v0.10.0 | 3-phase cloud pipeline validated |
+| 14 | Learning Signal Validation | v0.11.0 | 20-iter run, $2.44, 2 promotions, policy loss 1.21→0.63 |
+| 15 | Value Head Stabilization | v0.12.0 | Per-head LR multipliers (value=0.1x) |
+| 16 | Batch Inference & Vectorized Self-Play | v0.13.0 | BatchGumbelMCTS, VectorizedMicroCivEnv, cloud orchestrator mode |
 
-**Why this matters**: The pipeline works end-to-end, but 3-iteration runs are too short to observe learning. We need to confirm the training signal propagates correctly through the selfplay → training → evaluation loop.
+---
 
-### Tasks
+## Active: Monitor 50-Iteration Run (indulgent-date-703)
 
-1. **Long training run** (20-50 iterations)
-   ```bash
-   python -m alpha_zero.cloud.gcp.vertex_orchestrator \
-       --iterations=20 --workers=2 --games_per_worker=25 \
-       --mcts_type=gumbel --mcts_simulations=16 --board_size=8 \
-       --epochs=5 --max_turns=20 --evaluation_games=10 \
-       --post_run_tournament --tournament_games=6 --tournament_mcts_sims=16
-   ```
-   Estimated cost: ~$2-4 (20 iterations x ~$0.10-0.20/iteration)
+**Goal**: Validate value head stabilization and scaled training with Phase 16 infrastructure.
 
-2. **Monitor W&B metrics**
-   - `orchestrator/eval_win_rate` — should trend upward over iterations
-   - `training/loss` — should decrease
-   - `tournament/elo_*` — later versions should have higher ELO
+### Metrics to Watch
 
-3. **Diagnose if learning stalls**
-   - Check policy entropy (too high = random, too low = collapsed)
-   - Check value accuracy (predicted vs actual game outcomes)
-   - Verify trajectory quality (are selfplay games diverse?)
-   - Consider increasing games_per_worker or epochs
-
-4. **Hyperparameter tuning** based on W&B data
-   - Learning rate (currently default from TransformerConfig)
-   - MCTS simulations (8-32 range)
-   - Training epochs per iteration (3-10)
-   - Temperature schedule for selfplay exploration
+- `orchestrator/eval_win_rate` — should trend upward, target 3+ promotions
+- `train/learning_rate_value_head` — confirm 10x lower than encoder, same schedule shape
+- `train/value_correlation` — target >0.5 for 10+ consecutive iterations (was 0.07-0.91 in Phase 14)
+- `tournament/elo_*` — post-run ELO spread target >100 points (was 66 in Phase 14)
 
 ### Success Criteria
-- Evaluation win rate > 55% for at least 3 consecutive iterations
-- Post-run tournament shows monotonic ELO increase for later versions
-- Training loss decreases over iterations
+
+- 3+ model promotions over 50 iterations
+- Value correlation stabilization >0.5
+- Post-run tournament ELO spread >100 points
+- Total cost <$15
 
 ---
 
-## Phase 15: Population-Based Training on Vertex AI
+## Phase 17: Batch Self-Play Cloud Integration
 
-**Goal**: Run PBT with population_size=8 to automatically tune hyperparameters.
+**Goal**: Enable `--num_parallel_games` and `--max_batch_size` in cloud training for 5-10x throughput.
 
-**Prerequisite**: Phase 14 shows that single-agent training works (models improve).
+**Prerequisite**: Phase 16 code is merged (PR #50) and 50-iteration run validates stability.
 
 ### Tasks
 
-1. Launch PBT with `configs/pbt_prod.yaml`
-2. Monitor W&B `pbt/elo_*`, `pbt/fitness_*`, `pbt/mutation_*` metrics
-3. Validate baseline benchmarks at every 5th generation
-4. Use dynamic evaluation strategy switch after generation 11
+1. **Rebuild container** with batch self-play enabled by default
+2. **Benchmark cloud throughput**: Compare `--num_parallel_games=4 --max_batch_size=8` vs baseline
+3. **Tune batch parameters**: Find optimal num_parallel_games for T4 GPU memory
+4. **Run 50-iteration batch training run**: Measure wall-clock speedup and cost reduction
 
 ### Estimated Cost
-- 8 agents x 10 generations x ~$0.20/iteration = ~$16
+
+- Similar per-iteration but ~3-5x fewer wall-clock minutes = faster feedback loops
 
 ---
 
-## Phase 16: Inference Optimization & Vectorized Self-Play
-
-**Goal**: 10x+ self-play throughput via batch MCTS inference and vectorized environments.
-
-### Tasks
-
-1. **Batch MCTS inference**: Accumulate leaf nodes from multiple MCTS trees and evaluate in a single GPU batch
-2. **Vectorized environments**: Run N games simultaneously using vectorized MicroCivEnv
-3. **CUDA graph optimization**: Capture and replay GPU execution graphs for fixed-size batches
-4. **Benchmark**: Target ~50 games/min vs current ~4.4 games/min (GumbelMCTS, 8 sims)
-
----
-
-## Phase 17: MuZero Training Run
+## Phase 18: MuZero Training Run
 
 **Goal**: Validate learned dynamics model on MicroCiv.
 
@@ -89,9 +69,32 @@ All infrastructure phases (1-13) are complete. The system can run multi-iteratio
 2. Compare AlphaZero vs MuZero training modes on identical hyperparameters
 3. Measure MuZero's advantage in search efficiency (no env cloning needed)
 
+### Estimated Cost
+
+- 6 agents x 10 generations x ~$0.20/iteration = ~$12
+
 ---
 
-## Phase 18: DDP Test Rewrites & Full Type Safety
+## Phase 19: Population-Based Training on Vertex AI
+
+**Goal**: Run PBT with population_size=8 to automatically tune hyperparameters.
+
+**Prerequisite**: 50-iteration run shows meaningful model improvement.
+
+### Tasks
+
+1. Launch PBT with `configs/pbt_prod.yaml`
+2. Monitor W&B `pbt/elo_*`, `pbt/fitness_*`, `pbt/mutation_*` metrics
+3. Validate baseline benchmarks at every 5th generation
+4. Use dynamic evaluation strategy switch after generation 11
+
+### Estimated Cost
+
+- 8 agents x 10 generations x ~$0.20/iteration = ~$16
+
+---
+
+## Phase 20: DDP Test Rewrites & Full Type Safety
 
 **Goal**: Fix remaining 12 DDP xfailed tests and achieve full mypy strict mode.
 
@@ -103,7 +106,7 @@ All infrastructure phases (1-13) are complete. The system can run multi-iteratio
 
 ---
 
-## Phase 19: Human vs AI Interface
+## Phase 21: Human vs AI Interface
 
 **Goal**: Web-based UI for playing against the trained agent.
 
@@ -116,7 +119,7 @@ All infrastructure phases (1-13) are complete. The system can run multi-iteratio
 
 ---
 
-## Phase 20: Full Civ6 Integration
+## Phase 22: Full Civ6 Integration
 
 **Goal**: Play against the real Civilization VI game.
 
@@ -132,8 +135,8 @@ All infrastructure phases (1-13) are complete. The system can run multi-iteratio
 ## Priority Order
 
 ```
-Phase 14 (Learn!) ──→ Phase 15 (PBT) ──→ Phase 16 (Speed) ──→ Phase 17 (MuZero)
-                                      ╰──→ Phase 18 (DDP/Types) ──→ Phase 19 (UI) ──→ Phase 20 (Civ6)
+Monitor 50-iter ──→ Phase 17 (Batch Cloud) ──→ Phase 18 (MuZero) ──→ Phase 19 (PBT)
+                                             ╰──→ Phase 20 (DDP/Types) ──→ Phase 21 (UI) ──→ Phase 22 (Civ6)
 ```
 
-**Immediate focus**: Phase 14 — make the agent learn. Everything else depends on this.
+**Immediate focus**: Monitor `indulgent-date-703` and prepare batch self-play cloud integration.

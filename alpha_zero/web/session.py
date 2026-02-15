@@ -120,7 +120,9 @@ class GameSessionManager:
         opponent_type = opponent_type or self._config.default_opponent
 
         if opponent_type not in VALID_OPPONENT_TYPES:
-            msg = f"Invalid opponent_type: {opponent_type}. Must be one of {VALID_OPPONENT_TYPES}"
+            msg = (
+                f"Invalid opponent_type: {opponent_type}. " f"Must be one of {VALID_OPPONENT_TYPES}"
+            )
             raise ValueError(msg)
 
         if human_player not in (0, 1):

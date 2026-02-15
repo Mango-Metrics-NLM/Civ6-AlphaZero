@@ -187,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     except ImportError as e:
         print(
-            f"Missing dependency: {e}\nInstall web dependencies: pip install -e '.[web]'",
+            f"Missing dependency: {e}\n" "Install web dependencies: pip install -e '.[web]'",
             file=sys.stderr,
         )
         return 1

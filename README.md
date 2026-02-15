@@ -1120,7 +1120,8 @@ Civ6-AlphaZero/
 │   ├── core/                 # Core AlphaZero components
 │   │   ├── civ6_network.py   # Neural network architecture
 │   │   ├── civ6_mcts.py      # MCTS (Civ6MCTS, GumbelMCTS, MuZeroMCTS)
-│   │   ├── mcts_factory.py   # MCTS factory: create_mcts("civ6"|"gumbel"|"muzero")
+│   │   ├── mcts_factory.py   # MCTS factory: create_mcts("civ6"|"gumbel"|"batch_gumbel"|"muzero")
+│   │   ├── batch_mcts.py     # BatchGumbelMCTS (Phase 16)
 │   │   ├── civ6_actions.py   # Action space handling
 │   │   ├── transformer_network.py # Transformer/ViT architecture
 │   │   └── action_pruning.py # Strategic action pruning
@@ -1157,6 +1158,7 @@ Civ6-AlphaZero/
 │   │   └── action_converter.py # Action → Lua command
 │   ├── envs/                 # Game environments
 │   │   ├── microciv.py       # MicroCiv environment
+│   │   ├── vectorized_env.py # VectorizedMicroCivEnv (Phase 16)
 │   │   ├── civ6_encoder.py   # State encoding
 │   │   └── real_civ6_env.py  # Real Civ6 Gymnasium env
 │   ├── interfaces/           # Game interfaces
@@ -1174,7 +1176,7 @@ Civ6-AlphaZero/
 │   │       ├── evaluation_worker.py  # Model arena (Civ6TransformerNetwork)
 │   │       ├── tournament_worker.py  # Standalone ELO tournament (Phase 15+)
 │   │       ├── arena.py              # Shared arena logic (Phase 13)
-│   │       ├── entrypoint.py         # Container mode router
+│   │       ├── entrypoint.py         # Container mode router (incl. orchestrator mode)
 │   │       ├── container_healthcheck.py # Container import validation
 │   │       ├── pbt_orchestrator.py    # Production PBT loop
 │   │       ├── cost_monitor.py       # Budget enforcement
