@@ -793,7 +793,15 @@ def main() -> int:
         if getattr(args, "tournament_only", False):
             explicit = getattr(args, "tournament_model_versions", None)
             if explicit:
-                versions = sorted(int(v.strip()) for v in explicit.split(",") if v.strip())
+                raw_versions = [int(v.strip()) for v in explicit.split(",") if v.strip()]
+                versions = sorted(set(raw_versions))
+                if len(versions) < len(raw_versions):
+                    logger.warning(
+                        "Duplicate model versions in --tournament_model_versions; "
+                        "using %d unique versions: %s",
+                        len(versions),
+                        versions,
+                    )
             else:
                 from alpha_zero.cloud.gcp.storage import GCSModelStorage
 
