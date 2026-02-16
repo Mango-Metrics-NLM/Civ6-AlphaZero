@@ -33,6 +33,10 @@ def main() -> int:
         from alpha_zero.cloud.gcp.evaluation_worker import main as worker_main
 
         return worker_main()
+    elif mode == "tournament":
+        from alpha_zero.cloud.gcp.tournament_worker import main as worker_main
+
+        return worker_main()
     elif mode == "orchestrator":
         from alpha_zero.cloud.gcp.vertex_orchestrator import main as orch_main
 
@@ -40,7 +44,7 @@ def main() -> int:
     else:
         print(
             f"Unknown mode: {mode}. "
-            "Use 'selfplay', 'training', 'evaluation', or 'orchestrator'.",
+            "Use 'selfplay', 'training', 'evaluation', 'tournament', or 'orchestrator'.",
             file=sys.stderr,
         )
         return 1

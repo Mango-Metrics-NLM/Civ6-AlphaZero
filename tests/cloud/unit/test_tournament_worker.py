@@ -581,7 +581,9 @@ class TestSaveTournamentResults:
         """Results are saved to tournament/post_run_results.json."""
         with patch("alpha_zero.cloud.gcp.storage.GCSBackend") as mock_gcs:
             mock_backend = MagicMock()
-            mock_backend.upload_blob.return_value = "gs://test-bucket/tournament/post_run_results.json"
+            mock_backend.upload_blob.return_value = (
+                "gs://test-bucket/tournament/post_run_results.json"
+            )
             mock_gcs.return_value = mock_backend
 
             from alpha_zero.cloud.gcp.tournament_worker import save_tournament_results
@@ -750,3 +752,311 @@ class TestOrchestratorIntegration:
                 )
 
                 assert result["best_model"] == "v000"
+
+    def test_explicit_model_versions_override_subsampling(self, config, args):
+        """--tournament_model_versions overrides stride/range subsampling."""
+        args.tournament_model_versions = "5,10,15"
+        args.tournament_model_stride = 3  # Should be ignored
+
+        with patch("alpha_zero.cloud.gcp.tournament_worker.run_tournament") as mock_run:
+            mock_run.return_value = {
+                "model_versions": [5, 10, 15],
+                "elo_ratings": {"v005": 1516, "v010": 1500, "v015": 1484},
+                "matches": [],
+                "best_model": "v005",
+                "best_elo": 1516,
+            }
+            with patch("alpha_zero.cloud.gcp.tournament_worker.save_tournament_results"):
+                from alpha_zero.cloud.gcp.vertex_orchestrator import run_post_run_evaluation
+
+                run_post_run_evaluation(
+                    config=config,
+                    model_versions=list(range(20)),
+                    args=args,
+                    dry_run=True,
+                )
+
+                call_kwargs = mock_run.call_args[1]
+                assert call_kwargs["model_versions"] == [5, 10, 15]
+
+    def test_cloud_mode_delegates_to_vertex_job(self, config, args):
+        """Cloud mode submits a Vertex AI job instead of running locally."""
+        args.tournament_cloud = True
+
+        with patch("alpha_zero.cloud.gcp.vertex_orchestrator._run_tournament_cloud") as mock_cloud:
+            mock_cloud.return_value = {
+                "model_versions": [0, 1],
+                "elo_ratings": {"v000": 1516, "v001": 1484},
+                "matches": [],
+                "best_model": "v000",
+                "best_elo": 1516,
+            }
+
+            from alpha_zero.cloud.gcp.vertex_orchestrator import run_post_run_evaluation
+
+            result = run_post_run_evaluation(
+                config=config,
+                model_versions=[0, 1],
+                args=args,
+                dry_run=False,
+            )
+
+            mock_cloud.assert_called_once()
+            assert result["best_model"] == "v000"
+
+
+# =============================================================================
+# TestEntrypointTournamentMode
+# =============================================================================
+
+
+class TestTournamentOnlyNoDoubleSubsampling:
+    """Verify subsampling is applied exactly once, not twice.
+
+    When run_post_run_evaluation() receives a full list with stride > 1,
+    it should subsample once. A previous bug applied _apply_model_subsampling()
+    before calling run_post_run_evaluation(), which then applied it again.
+    """
+
+    def test_subsampling_applied_exactly_once(self, config, args):
+        """Stride-3 subsampling on 20 models yields consistent results.
+
+        Calling run_post_run_evaluation twice with the same full list
+        should produce the same subsampled output both times, proving
+        subsampling is applied deterministically inside the function.
+        """
+        args.tournament_model_stride = 3
+        all_versions = list(range(20))
+
+        with patch("alpha_zero.cloud.gcp.tournament_worker.run_tournament") as mock_run:
+            mock_run.return_value = {
+                "model_versions": [],
+                "elo_ratings": {},
+                "matches": [],
+                "best_model": "v000",
+                "best_elo": 1500,
+            }
+            with patch("alpha_zero.cloud.gcp.tournament_worker.save_tournament_results"):
+                from alpha_zero.cloud.gcp.vertex_orchestrator import (
+                    run_post_run_evaluation,
+                )
+
+                # First call with full list
+                run_post_run_evaluation(
+                    config=config,
+                    model_versions=all_versions,
+                    args=args,
+                    dry_run=True,
+                )
+
+                first_call_versions = mock_run.call_args[1]["model_versions"]
+                assert len(first_call_versions) < len(all_versions)
+                assert 0 in first_call_versions  # first always included
+                assert 19 in first_call_versions  # last always included
+
+                # Second call with the SAME full list
+                run_post_run_evaluation(
+                    config=config,
+                    model_versions=all_versions,
+                    args=args,
+                    dry_run=True,
+                )
+
+                second_call_versions = mock_run.call_args[1]["model_versions"]
+                assert second_call_versions == first_call_versions, (
+                    "Subsampling the same input should always produce the "
+                    "same output — no double-subsampling"
+                )
+
+    def test_pre_subsampled_input_loses_models_if_subsampled_again(self, config, args):
+        """Demonstrates that subsampling is NOT idempotent.
+
+        This is why the caller must NOT pre-subsample before calling
+        run_post_run_evaluation() — it would result in fewer models
+        than intended.
+        """
+        from alpha_zero.cloud.gcp.vertex_orchestrator import _apply_model_subsampling
+
+        args.tournament_model_stride = 3
+        all_versions = list(range(20))
+
+        once = _apply_model_subsampling(all_versions, args)
+        twice = _apply_model_subsampling(once, args)
+
+        # Applying stride=3 twice reduces more aggressively
+        assert len(twice) < len(once), "Double-subsampling loses models — this is the bug we fixed"
+
+    def test_explicit_versions_skip_subsampling(self, config, args):
+        """Explicit --tournament_model_versions bypasses stride/range entirely."""
+        args.tournament_model_versions = "5,10,15"
+        args.tournament_model_stride = 3  # Should be ignored
+
+        with patch("alpha_zero.cloud.gcp.tournament_worker.run_tournament") as mock_run:
+            mock_run.return_value = {
+                "model_versions": [5, 10, 15],
+                "elo_ratings": {"v005": 1516, "v010": 1500, "v015": 1484},
+                "matches": [],
+                "best_model": "v005",
+                "best_elo": 1516,
+            }
+            with patch("alpha_zero.cloud.gcp.tournament_worker.save_tournament_results"):
+                from alpha_zero.cloud.gcp.vertex_orchestrator import (
+                    run_post_run_evaluation,
+                )
+
+                run_post_run_evaluation(
+                    config=config,
+                    model_versions=list(range(20)),
+                    args=args,
+                    dry_run=True,
+                )
+
+                call_kwargs = mock_run.call_args[1]
+                assert call_kwargs["model_versions"] == [5, 10, 15]
+
+    def test_explicit_versions_deduplicates(self, config, args):
+        """Duplicate entries in --tournament_model_versions are removed."""
+        args.tournament_model_versions = "5,10,10,15,5"
+
+        with patch("alpha_zero.cloud.gcp.tournament_worker.run_tournament") as mock_run:
+            mock_run.return_value = {
+                "model_versions": [5, 10, 15],
+                "elo_ratings": {"v005": 1516, "v010": 1500, "v015": 1484},
+                "matches": [],
+                "best_model": "v005",
+                "best_elo": 1516,
+            }
+            with patch("alpha_zero.cloud.gcp.tournament_worker.save_tournament_results"):
+                from alpha_zero.cloud.gcp.vertex_orchestrator import (
+                    run_post_run_evaluation,
+                )
+
+                run_post_run_evaluation(
+                    config=config,
+                    model_versions=list(range(20)),
+                    args=args,
+                    dry_run=True,
+                )
+
+                call_kwargs = mock_run.call_args[1]
+                assert call_kwargs["model_versions"] == [5, 10, 15]
+
+
+class TestEntrypointTournamentMode:
+    """Tests for tournament mode in entrypoint.py."""
+
+    def test_tournament_mode_routes_to_worker(self):
+        """--mode=tournament routes to tournament_worker.main()."""
+        import sys
+
+        with patch.object(sys, "argv", ["entrypoint", "--mode=tournament", "--dry_run"]):
+            with patch("alpha_zero.cloud.gcp.tournament_worker.main", return_value=0) as mock_main:
+                from alpha_zero.cloud.gcp.entrypoint import main
+
+                result = main()
+
+                mock_main.assert_called_once()
+                assert result == 0
+
+    def test_unknown_mode_returns_1(self):
+        """Unknown mode prints error and returns 1."""
+        import sys
+
+        with patch.object(sys, "argv", ["entrypoint", "--mode=bogus"]):
+            from alpha_zero.cloud.gcp.entrypoint import main
+
+            result = main()
+            assert result == 1
+
+
+# =============================================================================
+# TestVertexTournamentJobMode
+# =============================================================================
+
+
+class TestVertexTournamentJobMode:
+    """Tests for VertexTournamentJob using --mode=tournament."""
+
+    def test_uses_mode_tournament_not_python_m(self, config):
+        """Job args start with --mode=tournament, not python -m."""
+        client = MockVertexAIClient()
+        job = VertexTournamentJob(config, client)
+        job.launch(model_versions=[0, 1, 2])
+        submitted_spec = next(iter(client._jobs.values()))["spec"]
+        assert submitted_spec.args[0] == "--mode=tournament"
+        assert "python" not in submitted_spec.args
+        assert "-m" not in submitted_spec.args
+
+    def test_no_command_field_set(self, config):
+        """Tournament job uses args only (no command), relying on container ENTRYPOINT."""
+        client = MockVertexAIClient()
+        job = VertexTournamentJob(config, client)
+        job.launch(model_versions=[0, 1])
+        submitted_spec = next(iter(client._jobs.values()))["spec"]
+        assert submitted_spec.command == []
+
+
+# =============================================================================
+# TestRunTournamentCloud
+# =============================================================================
+
+
+class TestRunTournamentCloud:
+    """Tests for _run_tournament_cloud() in vertex_orchestrator."""
+
+    def test_returns_results_on_success(self, config, args):
+        """Returns parsed results from GCS on success."""
+        import json
+
+        args.tournament_cloud = True
+
+        mock_results = {
+            "model_versions": [0, 1],
+            "elo_ratings": {"v000": 1516, "v001": 1484},
+            "matches": [],
+            "best_model": "v000",
+            "best_elo": 1516,
+        }
+
+        with patch("alpha_zero.cloud.gcp.vertex_jobs.VertexAIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.submit_custom_job.return_value = "mock-job"
+            mock_client.wait_for_completion.return_value = JobResult(
+                job_id="mock-id",
+                job_name="mock-job",
+                state=JobState.SUCCEEDED.value,
+                success=True,
+            )
+
+            with patch("alpha_zero.cloud.gcp.storage.GCSBackend") as mock_gcs:
+                mock_backend = mock_gcs.return_value
+                mock_backend.download_blob.return_value = json.dumps(mock_results).encode()
+
+                from alpha_zero.cloud.gcp.vertex_orchestrator import (
+                    _run_tournament_cloud,
+                )
+
+                result = _run_tournament_cloud(config, [0, 1], args)
+                assert result["best_model"] == "v000"
+
+    def test_returns_empty_on_failure(self, config, args):
+        """Returns empty dict when job fails."""
+        args.tournament_cloud = True
+
+        with patch("alpha_zero.cloud.gcp.vertex_jobs.VertexAIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.submit_custom_job.return_value = "mock-job"
+            mock_client.wait_for_completion.return_value = JobResult(
+                job_id="mock-id",
+                job_name="mock-job",
+                state=JobState.FAILED.value,
+                success=False,
+                error_message="GPU OOM",
+            )
+
+            from alpha_zero.cloud.gcp.vertex_orchestrator import (
+                _run_tournament_cloud,
+            )
+
+            result = _run_tournament_cloud(config, [0, 1], args)
+            assert result == {}

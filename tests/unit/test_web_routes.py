@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from alpha_zero.web.config import WebConfig
+pytest.importorskip("fastapi", reason="fastapi not installed")
+
+from alpha_zero.web.config import WebConfig  # noqa: E402
 
 
 @pytest.fixture
@@ -882,5 +884,3 @@ class TestWebSocketUncoveredPaths:
                 msg = ws.receive_json()
                 assert msg["type"] == "error"
                 assert "Game already over" in msg["message"]
-
-
