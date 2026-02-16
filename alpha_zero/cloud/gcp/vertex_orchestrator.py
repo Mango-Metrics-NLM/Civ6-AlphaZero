@@ -790,7 +790,8 @@ def main() -> int:
 
                 storage = GCSModelStorage(config)
                 versions = sorted(storage.list_versions())
-                versions = _apply_model_subsampling(versions, args)
+                # Note: subsampling is applied inside run_post_run_evaluation()
+                # to avoid double-subsampling when tournament_model_versions is unset.
 
             logger.info("Tournament-only mode: %d models", len(versions))
             results = run_post_run_evaluation(
