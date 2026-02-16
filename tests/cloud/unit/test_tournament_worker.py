@@ -914,6 +914,33 @@ class TestTournamentOnlyNoDoubleSubsampling:
                 call_kwargs = mock_run.call_args[1]
                 assert call_kwargs["model_versions"] == [5, 10, 15]
 
+    def test_explicit_versions_deduplicates(self, config, args):
+        """Duplicate entries in --tournament_model_versions are removed."""
+        args.tournament_model_versions = "5,10,10,15,5"
+
+        with patch("alpha_zero.cloud.gcp.tournament_worker.run_tournament") as mock_run:
+            mock_run.return_value = {
+                "model_versions": [5, 10, 15],
+                "elo_ratings": {"v005": 1516, "v010": 1500, "v015": 1484},
+                "matches": [],
+                "best_model": "v005",
+                "best_elo": 1516,
+            }
+            with patch("alpha_zero.cloud.gcp.tournament_worker.save_tournament_results"):
+                from alpha_zero.cloud.gcp.vertex_orchestrator import (
+                    run_post_run_evaluation,
+                )
+
+                run_post_run_evaluation(
+                    config=config,
+                    model_versions=list(range(20)),
+                    args=args,
+                    dry_run=True,
+                )
+
+                call_kwargs = mock_run.call_args[1]
+                assert call_kwargs["model_versions"] == [5, 10, 15]
+
 
 class TestEntrypointTournamentMode:
     """Tests for tournament mode in entrypoint.py."""

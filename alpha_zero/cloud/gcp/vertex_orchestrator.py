@@ -666,8 +666,17 @@ def run_post_run_evaluation(
     # Explicit model versions override subsampling
     explicit = getattr(args, "tournament_model_versions", None)
     if explicit:
-        versions = sorted(int(v.strip()) for v in explicit.split(",") if v.strip())
-        logger.info("Using explicit tournament model versions: %s", versions)
+        raw_versions = [int(v.strip()) for v in explicit.split(",") if v.strip()]
+        versions = sorted(set(raw_versions))
+        if len(versions) < len(raw_versions):
+            logger.warning(
+                "Duplicate entries in --tournament_model_versions removed; "
+                "using %d unique versions: %s",
+                len(versions),
+                versions,
+            )
+        else:
+            logger.info("Using explicit tournament model versions: %s", versions)
     else:
         # Apply subsampling
         versions = _apply_model_subsampling(model_versions, args)
