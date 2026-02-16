@@ -36,13 +36,19 @@ except ImportError:
     psutil = None  # type: ignore[assignment]
     _PSUTIL_AVAILABLE = False
 
-from alpha_zero.cloud.gcp.config import GCPConfig
+from alpha_zero.cloud.gcp.config import GCPConfig, NetworkArchitectureConfig
 from alpha_zero.cloud.gcp.storage import GCSModelStorage, GCSTrajectoryStorage
 
 logger = logging.getLogger(__name__)
 
 # Memory threshold for triggering garbage collection (in MB)
 MEMORY_THRESHOLD_MB: int = 6000
+
+# Default network constants (from NetworkArchitectureConfig defaults)
+_DEFAULT_NET_CONFIG = NetworkArchitectureConfig()
+_SPATIAL_CHANNELS: int = _DEFAULT_NET_CONFIG.spatial_channels
+_VECTOR_DIM: int = _DEFAULT_NET_CONFIG.vector_dim
+_ACTION_SPACE_SIZE: int = _DEFAULT_NET_CONFIG.action_space_size
 
 
 def setup_logging(worker_id: int) -> None:
@@ -277,9 +283,9 @@ def load_muzero_model(
     from alpha_zero.core.muzero_network import MuZeroConfig, MuZeroNetwork
 
     muzero_config = MuZeroConfig(
-        spatial_channels=13,  # MicroCivEncoder.TOTAL_CHANNELS
+        spatial_channels=_SPATIAL_CHANNELS,
         spatial_size=board_size,
-        vector_dim=64,
+        vector_dim=_VECTOR_DIM,
         action_space_size=action_space_size,
         num_res_blocks=num_res_blocks,
         hidden_state_channels=num_filters,
@@ -633,19 +639,16 @@ def run_muzero_selfplay(
     """
     if dry_run:
         logger.info("Dry run: creating dummy MuZero trajectories")
-        spatial_channels = 13
-        vector_dim = 64
-        action_space_size = 100
         dummy_trajectories: list[dict[str, Any]] = []
         for _ in range(num_games):
             num_steps = 5
             dummy_traj: dict[str, Any] = {
                 "spatial": [
-                    [0.0] * (spatial_channels * board_size * board_size) for _ in range(num_steps)
+                    [0.0] * (_SPATIAL_CHANNELS * board_size * board_size) for _ in range(num_steps)
                 ],
-                "vector": [[0.0] * vector_dim for _ in range(num_steps)],
+                "vector": [[0.0] * _VECTOR_DIM for _ in range(num_steps)],
                 "policies": [
-                    [1.0 / action_space_size] * action_space_size for _ in range(num_steps)
+                    [1.0 / _ACTION_SPACE_SIZE] * _ACTION_SPACE_SIZE for _ in range(num_steps)
                 ],
                 "actions": [0] * num_steps,
                 "rewards": [0.5] * num_steps,
@@ -714,7 +717,6 @@ def run_muzero_selfplay(
 
         env.reset()
         done = False
-        step_rewards: list[float] = []
 
         while not done:
             obs = env.get_observation()
@@ -751,14 +753,14 @@ def run_muzero_selfplay(
             trajectory["actions"].append(int(action))
 
             # Store value estimate from MCTS root for training targets
-            val_est = float(value_estimate) if value_estimate is not None else 0.0
-            trajectory["value_targets"].append(val_est)
+            trajectory["value_targets"].append(
+                float(value_estimate) if value_estimate is not None else 0.0
+            )
 
             # Take action
             step_result = env.step(action)
             reward = float(step_result[1])
             done = bool(step_result[2]) or bool(step_result[3])
-            step_rewards.append(reward)
             trajectory["reward_targets"].append(reward)
 
         # Handle completed game
@@ -1105,15 +1107,6 @@ def main() -> int:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info("Using device: %s", device)
 
-        # Load model
-        model = load_model(
-            config,
-            args.model_version,
-            dry_run=args.dry_run,
-        )
-        model = model.to(device)
-        model.eval()
-
         # Build MCTS override dict from CLI args
         mcts_override = {
             "c_puct": args.c_puct,
@@ -1133,7 +1126,7 @@ def main() -> int:
         if use_muzero:
             # MuZero self-play: load MuZero model and use dynamics-based MCTS
             logger.info("Using MuZero self-play (dynamics-based MCTS, no env cloning)")
-            muzero_model = load_muzero_model(
+            model = load_muzero_model(
                 config,
                 args.model_version,
                 board_size=args.board_size,
@@ -1142,10 +1135,10 @@ def main() -> int:
                 num_filters=args.num_filters,
                 dry_run=args.dry_run,
             )
-            muzero_model = muzero_model.to(device)
-            muzero_model.eval()
+            model = model.to(device)
+            model.eval()
             trajectories = run_muzero_selfplay(
-                model=muzero_model,
+                model=model,
                 num_games=args.games,
                 mcts_sims=args.mcts_simulations,
                 board_size=args.board_size,
@@ -1154,41 +1147,51 @@ def main() -> int:
                 dry_run=args.dry_run,
                 device=str(device),
                 temperature_schedule=args.temperature_schedule,
-            )
-        elif use_batch:
-            logger.info(
-                "Using batch self-play: %d parallel games, max_batch=%d",
-                args.num_parallel_games,
-                args.max_batch_size,
-            )
-            trajectories = run_batch_selfplay(
-                model=model,
-                num_games=args.games,
-                mcts_sims=args.mcts_simulations,
-                board_size=args.board_size,
-                max_turns=args.max_turns,
-                num_parallel_games=args.num_parallel_games,
-                max_batch_size=args.max_batch_size,
-                gumbel_num_actions=args.gumbel_num_actions,
-                device=str(device),
-                temperature_schedule=args.temperature_schedule,
-                temperature=args.temperature,
-                temperature_threshold=args.temperature_threshold,
             )
         else:
-            trajectories = run_selfplay(
-                model=model,
-                num_games=args.games,
-                mcts_sims=args.mcts_simulations,
-                mcts_type=args.mcts_type,
-                board_size=args.board_size,
-                max_turns=args.max_turns,
-                gumbel_num_actions=args.gumbel_num_actions,
-                mcts_config_override=mcts_override,
+            # AlphaZero/Gumbel: load standard model
+            model = load_model(
+                config,
+                args.model_version,
                 dry_run=args.dry_run,
-                device=str(device),
-                temperature_schedule=args.temperature_schedule,
             )
+            model = model.to(device)
+            model.eval()
+
+            if use_batch:
+                logger.info(
+                    "Using batch self-play: %d parallel games, max_batch=%d",
+                    args.num_parallel_games,
+                    args.max_batch_size,
+                )
+                trajectories = run_batch_selfplay(
+                    model=model,
+                    num_games=args.games,
+                    mcts_sims=args.mcts_simulations,
+                    board_size=args.board_size,
+                    max_turns=args.max_turns,
+                    num_parallel_games=args.num_parallel_games,
+                    max_batch_size=args.max_batch_size,
+                    gumbel_num_actions=args.gumbel_num_actions,
+                    device=str(device),
+                    temperature_schedule=args.temperature_schedule,
+                    temperature=args.temperature,
+                    temperature_threshold=args.temperature_threshold,
+                )
+            else:
+                trajectories = run_selfplay(
+                    model=model,
+                    num_games=args.games,
+                    mcts_sims=args.mcts_simulations,
+                    mcts_type=args.mcts_type,
+                    board_size=args.board_size,
+                    max_turns=args.max_turns,
+                    gumbel_num_actions=args.gumbel_num_actions,
+                    mcts_config_override=mcts_override,
+                    dry_run=args.dry_run,
+                    device=str(device),
+                    temperature_schedule=args.temperature_schedule,
+                )
         elapsed = time.time() - start_time
 
         # Calculate total states generated (using spatial list length)

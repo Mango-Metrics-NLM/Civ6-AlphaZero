@@ -37,6 +37,7 @@ from alpha_zero.cloud.gcp.storage import (
     GCSModelStorage,
     GCSTrajectoryStorage,
 )
+from alpha_zero.core.losses import LossConfig, compute_reward_loss
 from alpha_zero.utils.wandb_logger import WandbLogger
 
 logger = logging.getLogger(__name__)
@@ -280,6 +281,8 @@ def load_trajectories(
 
 # MicroCivEncoder.TOTAL_CHANNELS — input spatial feature planes from the encoder
 ENCODER_SPATIAL_CHANNELS: int = 13
+# MicroCivEnv default vector observation dimension
+VECTOR_DIM: int = 64
 
 
 def create_model(
@@ -309,7 +312,7 @@ def create_model(
     model_config = TransformerConfig(
         spatial_channels=spatial_channels,
         spatial_size=board_size,
-        vector_dim=64,
+        vector_dim=VECTOR_DIM,
         action_space_size=action_space_size,
         num_layers=num_res_blocks,
         embed_dim=num_filters,
@@ -351,7 +354,7 @@ def create_muzero_model(
     muzero_config = MuZeroConfig(
         spatial_channels=spatial_channels,
         spatial_size=board_size,
-        vector_dim=64,
+        vector_dim=VECTOR_DIM,
         action_space_size=action_space_size,
         num_res_blocks=num_res_blocks,
         hidden_state_channels=num_filters,
@@ -452,6 +455,16 @@ def train_muzero_epoch(
         # Reward loss (accumulated from dynamics predictions in unroll loop)
         reward_loss = torch.tensor(0.0, device=device)
 
+        # Detect categorical reward config from model for proper loss computation
+        use_categorical_reward = getattr(
+            getattr(model, "config", None), "use_categorical_reward", False
+        )
+        reward_support_size = getattr(getattr(model, "config", None), "reward_support_size", 601)
+        reward_loss_config = LossConfig(
+            use_categorical=use_categorical_reward,
+            support_size=reward_support_size,
+        )
+
         # Dynamics unrolling for multi-step losses (if model supports it)
         if hasattr(model, "dynamics_function") and unroll_steps > 0:
             unroll_policy_loss = torch.tensor(0.0, device=device)
@@ -477,11 +490,13 @@ def train_muzero_epoch(
                         torch.nn.functional.mse_loss(step_value.squeeze(), target_values)
                     )
 
-                    # Reward prediction loss
+                    # Reward prediction loss (handles both categorical and scalar)
                     reward_pred = dynamics_out.reward
                     if reward_pred is not None:
-                        reward_loss = reward_loss + torch.nn.functional.mse_loss(
-                            reward_pred.squeeze(), target_rewards
+                        reward_loss = reward_loss + compute_reward_loss(
+                            pred=reward_pred,
+                            target=target_rewards,
+                            config=reward_loss_config,
                         )
 
                 # Add unrolled losses (weighted down)
