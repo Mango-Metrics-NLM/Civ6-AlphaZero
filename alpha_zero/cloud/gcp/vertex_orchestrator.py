@@ -789,28 +789,27 @@ def main() -> int:
             service_account=config.service_account,
         )
 
-        # Tournament-only mode: skip training, just run tournament
+        # Tournament-only mode: skip training, just run tournament.
+        # Version parsing (explicit or subsampled) is centralised inside
+        # run_post_run_evaluation() — we only need to supply the full
+        # candidate list from GCS when no explicit versions are given.
         if getattr(args, "tournament_only", False):
             explicit = getattr(args, "tournament_model_versions", None)
             if explicit:
-                raw_versions = [int(v.strip()) for v in explicit.split(",") if v.strip()]
-                versions = sorted(set(raw_versions))
-                if len(versions) < len(raw_versions):
-                    logger.warning(
-                        "Duplicate model versions in --tournament_model_versions; "
-                        "using %d unique versions: %s",
-                        len(versions),
-                        versions,
-                    )
+                # run_post_run_evaluation() will parse, dedup & sort the
+                # explicit string; pass an empty list as placeholder since
+                # it will be overridden by the explicit arg.
+                versions: list[int] = []
             else:
                 from alpha_zero.cloud.gcp.storage import GCSModelStorage
 
                 storage = GCSModelStorage(config)
                 versions = sorted(storage.list_versions())
-                # Note: subsampling is applied inside run_post_run_evaluation()
-                # to avoid double-subsampling when tournament_model_versions is unset.
 
-            logger.info("Tournament-only mode: %d models", len(versions))
+            logger.info(
+                "Tournament-only mode%s",
+                f": {explicit}" if explicit else f": {len(versions)} models from GCS",
+            )
             results = run_post_run_evaluation(
                 config=config,
                 model_versions=versions,
