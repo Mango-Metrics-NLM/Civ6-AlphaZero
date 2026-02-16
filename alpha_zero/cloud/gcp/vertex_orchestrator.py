@@ -602,7 +602,7 @@ def _run_tournament_cloud(
 
     from alpha_zero.cloud.gcp.vertex_jobs import VertexAIClient, VertexTournamentJob
 
-    client = VertexAIClient(config)
+    client = VertexAIClient(project=config.project_id, region=config.region)
     tournament_job = VertexTournamentJob(config, client)
 
     job_name = tournament_job.launch(
