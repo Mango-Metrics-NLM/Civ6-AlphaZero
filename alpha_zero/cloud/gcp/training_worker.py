@@ -428,7 +428,6 @@ def train_muzero_epoch(
         # Forward pass: initial inference via representation + prediction
         batch_size = spatial.shape[0]
         spatial_channels = ENCODER_SPATIAL_CHANNELS
-        spatial_size = int(spatial.shape[1] / spatial_channels) ** 0  # Compute from flat
         # Reshape to (B, C, H, W)
         expected_flat = spatial.shape[1]
         hw = int((expected_flat / spatial_channels) ** 0.5)
@@ -448,10 +447,8 @@ def train_muzero_epoch(
         # Value loss (MSE)
         value_loss = torch.nn.functional.mse_loss(value.squeeze(), target_values)
 
-        # Reward loss (from dynamics predictions vs actual rewards)
-        reward_loss = torch.nn.functional.mse_loss(
-            torch.zeros_like(target_rewards), target_rewards
-        )
+        # Reward loss (accumulated from dynamics predictions in unroll loop)
+        reward_loss = torch.tensor(0.0, device=device)
 
         # Dynamics unrolling for multi-step losses (if model supports it)
         if hasattr(model, 'dynamics_function') and unroll_steps > 0:
@@ -461,7 +458,7 @@ def train_muzero_epoch(
 
             # Only unroll if we have valid hidden states
             if current_hidden is not None:
-                for k in range(min(unroll_steps, 1)):  # Start with 1-step unroll
+                for k in range(unroll_steps):
                     dynamics_out = model.dynamics_function(current_hidden, target_actions)
                     current_hidden = dynamics_out.next_hidden_state
 
@@ -1210,7 +1207,6 @@ def main() -> int:
                     report=report,
                     profiler=profiler,
                 )
-                reward_loss = 0.0  # Not applicable for AlphaZero
 
             epoch_time = time.time() - epoch_start
 
