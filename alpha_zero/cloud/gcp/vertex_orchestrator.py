@@ -180,6 +180,17 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Model version range for tournament as 'start:end' (e.g., '30:60')",
     )
+    parser.add_argument(
+        "--tournament_model_versions",
+        type=str,
+        default=None,
+        help="Explicit comma-separated model versions for tournament (e.g., '79,88,95,110,129')",
+    )
+    parser.add_argument(
+        "--tournament_only",
+        action="store_true",
+        help="Run tournament only (skip training loop). Use with --tournament_model_versions or auto-detect from GCS.",
+    )
 
     # Learning rate schedule (passed through to training worker)
     parser.add_argument(
@@ -215,9 +226,17 @@ def parse_args() -> argparse.Namespace:
         help="Minimum win rate improvement to not be stalled",
     )
 
-    # Dry run
     parser.add_argument(
         "--dry_run", action="store_true", help="Validate without launching cloud jobs"
+    )
+
+    # Algorithm selection (MuZero support)
+    parser.add_argument(
+        "--algorithm",
+        type=str,
+        default="alphazero",
+        choices=["alphazero", "muzero"],
+        help="Algorithm to use: alphazero (default) or muzero",
     )
 
     return parser.parse_args()
@@ -254,6 +273,12 @@ def build_selfplay_extra_args(args: argparse.Namespace) -> list[str]:
     if args.reward_shaping:
         extra.append("--reward_shaping")
         extra.append(f"--reward_scale={args.reward_scale}")
+    # MuZero: override mcts_type to muzero when algorithm=muzero
+    algorithm = getattr(args, "algorithm", "alphazero")
+    if algorithm == "muzero":
+        # Replace mcts_type in extra args
+        extra = [a for a in extra if not a.startswith("--mcts_type=")]
+        extra.append("--mcts_type=muzero")
     return extra
 
 
@@ -282,6 +307,10 @@ def build_training_extra_args(args: argparse.Namespace) -> list[str]:
         extra.append(f"--value_lr_multiplier={args.value_lr_multiplier}")
     if getattr(args, "policy_lr_multiplier", 1.0) != 1.0:
         extra.append(f"--policy_lr_multiplier={args.policy_lr_multiplier}")
+    # Pass algorithm flag for MuZero training
+    algorithm = getattr(args, "algorithm", "alphazero")
+    if algorithm == "muzero":
+        extra.append("--algorithm=muzero")
     return extra
 
 
@@ -573,7 +602,7 @@ def _run_tournament_cloud(
 
     from alpha_zero.cloud.gcp.vertex_jobs import VertexAIClient, VertexTournamentJob
 
-    client = VertexAIClient(config)
+    client = VertexAIClient(project=config.project_id, region=config.region)
     tournament_job = VertexTournamentJob(config, client)
 
     job_name = tournament_job.launch(
@@ -592,7 +621,7 @@ def _run_tournament_cloud(
 
     result = tournament_job.wait_for_completion(job_name)
 
-    if result.state.value != "JOB_STATE_SUCCEEDED":
+    if not result.success:
         logger.error("Cloud tournament job failed: %s", result.error_message)
         return {}
 
@@ -634,8 +663,23 @@ def run_post_run_evaluation(
     """
     from alpha_zero.cloud.gcp.tournament_worker import run_tournament, save_tournament_results
 
-    # Apply subsampling
-    versions = _apply_model_subsampling(model_versions, args)
+    # Explicit model versions override subsampling
+    explicit = getattr(args, "tournament_model_versions", None)
+    if explicit:
+        raw_versions = [int(v.strip()) for v in explicit.split(",") if v.strip()]
+        versions = sorted(set(raw_versions))
+        if len(versions) < len(raw_versions):
+            logger.warning(
+                "Duplicate entries in --tournament_model_versions removed; "
+                "using %d unique versions: %s",
+                len(versions),
+                versions,
+            )
+        else:
+            logger.info("Using explicit tournament model versions: %s", versions)
+    else:
+        # Apply subsampling
+        versions = _apply_model_subsampling(model_versions, args)
 
     if len(versions) < 2:
         logger.info(
@@ -744,6 +788,38 @@ def main() -> int:
             region=config.region,
             service_account=config.service_account,
         )
+
+        # Tournament-only mode: skip training, just run tournament.
+        # Version parsing (explicit or subsampled) is centralised inside
+        # run_post_run_evaluation() — we only need to supply the full
+        # candidate list from GCS when no explicit versions are given.
+        if getattr(args, "tournament_only", False):
+            explicit = getattr(args, "tournament_model_versions", None)
+            if explicit:
+                # run_post_run_evaluation() will parse, dedup & sort the
+                # explicit string; pass an empty list as placeholder since
+                # it will be overridden by the explicit arg.
+                versions: list[int] = []
+            else:
+                from alpha_zero.cloud.gcp.storage import GCSModelStorage
+
+                storage = GCSModelStorage(config)
+                versions = sorted(storage.list_versions())
+
+            logger.info(
+                "Tournament-only mode%s",
+                f": {explicit}" if explicit else f": {len(versions)} models from GCS",
+            )
+            results = run_post_run_evaluation(
+                config=config,
+                model_versions=versions,
+                args=args,
+                wandb_logger=wandb_logger,
+                dry_run=args.dry_run,
+            )
+            if wandb_logger is not None and wandb_logger.is_enabled:
+                wandb_logger.finish()
+            return 0 if results else 1
 
         # Get starting model version (save for post-run tournament)
         model_version = get_initial_model_version(config, args.dry_run)

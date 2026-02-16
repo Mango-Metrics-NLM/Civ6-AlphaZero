@@ -991,9 +991,7 @@ class VertexTournamentJob:
         versions_str = ",".join(str(v) for v in model_versions)
 
         args = [
-            "python",
-            "-m",
-            "alpha_zero.cloud.gcp.tournament_worker",
+            "--mode=tournament",
             f"--model_versions={versions_str}",
             f"--tournament_games={tournament_games}",
             f"--mcts_type={mcts_type}",
