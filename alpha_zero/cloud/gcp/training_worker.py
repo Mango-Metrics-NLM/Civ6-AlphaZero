@@ -413,8 +413,10 @@ def train_muzero_epoch(
 
         # MuZero-specific targets (if available in the dataset)
         target_rewards = batch[4].to(device) if len(batch) > 4 else torch.zeros_like(target_values)
-        target_actions = batch[5].to(device).long() if len(batch) > 5 else torch.zeros(
-            spatial.shape[0], dtype=torch.long, device=device
+        target_actions = (
+            batch[5].to(device).long()
+            if len(batch) > 5
+            else torch.zeros(spatial.shape[0], dtype=torch.long, device=device)
         )
 
         # Update learning rate from scheduler
@@ -434,7 +436,7 @@ def train_muzero_epoch(
         spatial_4d = spatial.view(batch_size, spatial_channels, hw, hw)
 
         # MuZero initial inference
-        if hasattr(model, 'representation'):
+        if hasattr(model, "representation"):
             hidden_state = model.representation(spatial_4d, vector)
             policy_logits, value = model.prediction_function(hidden_state)
         else:
@@ -451,7 +453,7 @@ def train_muzero_epoch(
         reward_loss = torch.tensor(0.0, device=device)
 
         # Dynamics unrolling for multi-step losses (if model supports it)
-        if hasattr(model, 'dynamics_function') and unroll_steps > 0:
+        if hasattr(model, "dynamics_function") and unroll_steps > 0:
             unroll_policy_loss = torch.tensor(0.0, device=device)
             unroll_value_loss = torch.tensor(0.0, device=device)
             current_hidden = hidden_state.detach() if hidden_state is not None else None
@@ -463,15 +465,11 @@ def train_muzero_epoch(
                     current_hidden = dynamics_out.next_hidden_state
 
                     # Prediction from unrolled state
-                    step_policy_logits, step_value = model.prediction_function(
-                        current_hidden
-                    )
+                    step_policy_logits, step_value = model.prediction_function(current_hidden)
 
                     # Accumulate losses with discount
                     discount_factor = discount ** (k + 1)
-                    step_policy_log_probs = torch.log_softmax(
-                        step_policy_logits, dim=-1
-                    )
+                    step_policy_log_probs = torch.log_softmax(step_policy_logits, dim=-1)
                     unroll_policy_loss = unroll_policy_loss + discount_factor * (
                         -torch.sum(target_policies * step_policy_log_probs, dim=-1).mean()
                     )
@@ -1177,19 +1175,17 @@ def main() -> int:
             spatial_size = args.board_size
 
             if is_muzero:
-                loss, policy_loss, value_loss, reward_loss, num_batches = (
-                    train_muzero_epoch(
-                        model,
-                        dataloader,
-                        optimizer,
-                        device,
-                        unroll_steps=getattr(args, "muzero_unroll_steps", 5),
-                        discount=getattr(args, "muzero_discount", 0.997),
-                        global_step=global_step,
-                        wandb_logger=wandb_logger,
-                        wandb_log_interval=args.wandb_log_interval,
-                        lr_scheduler=lr_scheduler,
-                    )
+                loss, policy_loss, value_loss, reward_loss, num_batches = train_muzero_epoch(
+                    model,
+                    dataloader,
+                    optimizer,
+                    device,
+                    unroll_steps=getattr(args, "muzero_unroll_steps", 5),
+                    discount=getattr(args, "muzero_discount", 0.997),
+                    global_step=global_step,
+                    wandb_logger=wandb_logger,
+                    wandb_log_interval=args.wandb_log_interval,
+                    lr_scheduler=lr_scheduler,
                 )
             else:
                 loss, policy_loss, value_loss, num_batches = train_epoch(

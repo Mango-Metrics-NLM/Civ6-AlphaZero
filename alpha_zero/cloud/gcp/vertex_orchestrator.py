@@ -793,6 +793,16 @@ def main() -> int:
     args = parse_args()
     setup_logging()
 
+    # Apply architecture preset BEFORE W&B init so logged config is accurate
+    if getattr(args, "architecture_preset", None):
+        preset_config = NetworkArchitectureConfig.from_preset(args.architecture_preset)
+        # Sync CLI args with preset values for build_*_extra_args and W&B
+        args.num_res_blocks = preset_config.num_layers
+        args.num_filters = preset_config.embed_dim
+        args.num_heads = preset_config.num_heads
+        args.policy_hidden_dim = preset_config.policy_hidden_dim
+        args.value_head_dim = preset_config.value_head_dim
+
     # Initialize W&B for orchestrator (opt-in via WANDB_ENABLED env var)
     wandb_logger = None
     try:
@@ -854,15 +864,9 @@ def main() -> int:
     try:
         config = GCPConfig()
 
-        # Apply architecture preset (overrides individual arch args)
+        # Apply architecture preset to config (args already synced above)
         if getattr(args, "architecture_preset", None):
             config.network = NetworkArchitectureConfig.from_preset(args.architecture_preset)
-            # Sync CLI args with preset values for build_*_extra_args
-            args.num_res_blocks = config.network.num_layers
-            args.num_filters = config.network.embed_dim
-            args.num_heads = config.network.num_heads
-            args.policy_hidden_dim = config.network.policy_hidden_dim
-            args.value_head_dim = config.network.value_head_dim
             logger.info(
                 "Architecture preset '%s': embed=%d, layers=%d, heads=%d",
                 args.architecture_preset,

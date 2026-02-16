@@ -186,9 +186,7 @@ class TestBuildExtraArgsArchitecture:
         extra = build_evaluation_extra_args(base_args)
         assert "--num_heads=" not in " ".join(extra)
 
-    def test_evaluation_medium_includes_arch_fields(
-        self, medium_args: argparse.Namespace
-    ) -> None:
+    def test_evaluation_medium_includes_arch_fields(self, medium_args: argparse.Namespace) -> None:
         """Medium preset values should be passed through."""
         extra = build_evaluation_extra_args(medium_args)
         assert "--policy_hidden_dim=256" in extra

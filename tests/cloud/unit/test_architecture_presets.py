@@ -24,9 +24,17 @@ class TestArchitecturePresets:
 
     def test_presets_have_required_keys(self) -> None:
         """Every preset must define the core architecture fields."""
-        required_keys = {"embed_dim", "num_layers", "num_heads", "policy_hidden_dim", "value_head_dim"}
+        required_keys = {
+            "embed_dim",
+            "num_layers",
+            "num_heads",
+            "policy_hidden_dim",
+            "value_head_dim",
+        }
         for name, preset in ARCHITECTURE_PRESETS.items():
-            assert required_keys <= set(preset.keys()), f"Preset '{name}' missing: {required_keys - set(preset.keys())}"
+            assert required_keys <= set(
+                preset.keys()
+            ), f"Preset '{name}' missing: {required_keys - set(preset.keys())}"
 
     def test_presets_values_positive(self) -> None:
         """All preset values must be positive integers."""
@@ -37,9 +45,9 @@ class TestArchitecturePresets:
     def test_presets_embed_dim_divisible_by_heads(self) -> None:
         """embed_dim must be divisible by num_heads for attention."""
         for name, preset in ARCHITECTURE_PRESETS.items():
-            assert preset["embed_dim"] % preset["num_heads"] == 0, (
-                f"Preset '{name}': embed_dim={preset['embed_dim']} not divisible by num_heads={preset['num_heads']}"
-            )
+            assert (
+                preset["embed_dim"] % preset["num_heads"] == 0
+            ), f"Preset '{name}': embed_dim={preset['embed_dim']} not divisible by num_heads={preset['num_heads']}"
 
 
 class TestNetworkArchitectureConfigFromPreset:

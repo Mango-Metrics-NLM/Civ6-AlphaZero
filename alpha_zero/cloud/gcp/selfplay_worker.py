@@ -307,9 +307,7 @@ def load_muzero_model(
         try:
             muzero_config = MuZeroConfig(**config_copy)
         except TypeError as e:
-            logger.warning(
-                "Failed to parse saved MuZero config (%s), using CLI defaults", e
-            )
+            logger.warning("Failed to parse saved MuZero config (%s), using CLI defaults", e)
 
     # Create model and load state dict
     try:
@@ -317,9 +315,7 @@ def load_muzero_model(
         incompatible = model.load_state_dict(state_dict, strict=False)
 
         if incompatible.missing_keys:
-            logger.warning(
-                "Missing keys in MuZero state_dict: %s", incompatible.missing_keys[:5]
-            )
+            logger.warning("Missing keys in MuZero state_dict: %s", incompatible.missing_keys[:5])
         if incompatible.unexpected_keys:
             logger.warning(
                 "Unexpected keys in MuZero state_dict: %s",
@@ -328,8 +324,7 @@ def load_muzero_model(
     except RuntimeError as e:
         if "size mismatch" in str(e):
             logger.error(
-                "MuZero architecture mismatch for v%d. Ensure config is saved "
-                "with checkpoints.",
+                "MuZero architecture mismatch for v%d. Ensure config is saved " "with checkpoints.",
                 version,
             )
         raise RuntimeError(f"Failed to load MuZero state_dict v{version}: {e}") from e
@@ -646,13 +641,11 @@ def run_muzero_selfplay(
             num_steps = 5
             dummy_traj: dict[str, Any] = {
                 "spatial": [
-                    [0.0] * (spatial_channels * board_size * board_size)
-                    for _ in range(num_steps)
+                    [0.0] * (spatial_channels * board_size * board_size) for _ in range(num_steps)
                 ],
                 "vector": [[0.0] * vector_dim for _ in range(num_steps)],
                 "policies": [
-                    [1.0 / action_space_size] * action_space_size
-                    for _ in range(num_steps)
+                    [1.0 / action_space_size] * action_space_size for _ in range(num_steps)
                 ],
                 "actions": [0] * num_steps,
                 "rewards": [0.5] * num_steps,
@@ -754,9 +747,7 @@ def run_muzero_selfplay(
             vector_flat = obs["vector"].flatten().tolist()
             trajectory["spatial"].append(spatial_flat)
             trajectory["vector"].append(vector_flat)
-            trajectory["policies"].append(
-                policy.tolist() if hasattr(policy, "tolist") else policy
-            )
+            trajectory["policies"].append(policy.tolist() if hasattr(policy, "tolist") else policy)
             trajectory["actions"].append(int(action))
 
             # Store value estimate from MCTS root for training targets
@@ -782,9 +773,7 @@ def run_muzero_selfplay(
 
         elapsed = time.time() - start_time
         if not game_failed:
-            logger.debug(
-                "MuZero game %d/%d completed in %.1fs", game_idx + 1, num_games, elapsed
-            )
+            logger.debug("MuZero game %d/%d completed in %.1fs", game_idx + 1, num_games, elapsed)
 
         # Cleanup
         del trajectory
@@ -795,11 +784,7 @@ def run_muzero_selfplay(
 
         # Log progress periodically
         if (game_idx + 1) % 10 == 0:
-            mem_mb = (
-                psutil.Process().memory_info().rss / 1024 / 1024
-                if _PSUTIL_AVAILABLE
-                else 0.0
-            )
+            mem_mb = psutil.Process().memory_info().rss / 1024 / 1024 if _PSUTIL_AVAILABLE else 0.0
             logger.info(
                 "MuZero progress: %d/%d games, Memory: %.0f MB",
                 game_idx + 1,
@@ -813,9 +798,7 @@ def run_muzero_selfplay(
                     torch.cuda.empty_cache()
 
     if failed_games > 0:
-        logger.warning(
-            "MuZero self-play: %d/%d games failed", failed_games, num_games
-        )
+        logger.warning("MuZero self-play: %d/%d games failed", failed_games, num_games)
 
     return trajectories
 
