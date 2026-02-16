@@ -225,7 +225,7 @@ class TestGumbelMCTSConfig:
         """Default config has reasonable values."""
         config = GumbelMCTSConfig()
 
-        assert config.num_simulations == 16
+        assert config.num_simulations == 64
         assert config.num_sampled_actions == 16
         assert config.c_visit > 0
         assert config.c_scale > 0

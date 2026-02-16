@@ -189,13 +189,42 @@ class GCSPathConfig:
         return f"{self._resolve_prefix(self.checkpoints_prefix)}/latest.pt"
 
 
+# Architecture presets for different training scales.
+# "small" matches current defaults (backwards compatible).
+# "medium" matches v000's proven architecture (embed=256, layers=8).
+# "large" is for future scaling experiments.
+ARCHITECTURE_PRESETS: dict[str, dict[str, int]] = {
+    "small": {
+        "embed_dim": 64,
+        "num_layers": 6,
+        "num_heads": 8,
+        "policy_hidden_dim": 128,
+        "value_head_dim": 64,
+    },
+    "medium": {
+        "embed_dim": 256,
+        "num_layers": 8,
+        "num_heads": 8,
+        "policy_hidden_dim": 256,
+        "value_head_dim": 128,
+    },
+    "large": {
+        "embed_dim": 512,
+        "num_layers": 12,
+        "num_heads": 16,
+        "policy_hidden_dim": 512,
+        "value_head_dim": 256,
+    },
+}
+
+
 @dataclass
 class NetworkArchitectureConfig:
     """Network architecture defaults for the Civ6 Transformer model.
 
     Provides a single source of truth for architecture parameters used by
     selfplay, training, and evaluation workers. Defaults match the current
-    Civ6TransformerNetwork / MicroCivEncoder architecture.
+    Civ6TransformerNetwork / MicroCivEncoder architecture ("small" preset).
 
     All values can be overridden via environment variables prefixed with CIV6AZ_.
 
@@ -206,6 +235,9 @@ class NetworkArchitectureConfig:
         vector_dim: Dimension of the vector (non-spatial) observation.
         num_layers: Number of transformer layers (maps to TransformerConfig.num_layers).
         embed_dim: Transformer embedding dimension (maps to TransformerConfig.embed_dim).
+        num_heads: Number of attention heads (maps to TransformerConfig.num_heads).
+        policy_hidden_dim: Hidden dimension for policy head.
+        value_head_dim: Hidden dimension for value head.
     """
 
     board_size: int = 8
@@ -214,6 +246,34 @@ class NetworkArchitectureConfig:
     vector_dim: int = 64
     num_layers: int = 6
     embed_dim: int = 64
+    num_heads: int = 8
+    policy_hidden_dim: int = 128
+    value_head_dim: int = 64
+
+    @classmethod
+    def from_preset(cls, preset: str) -> NetworkArchitectureConfig:
+        """Create from a named architecture preset.
+
+        Available presets:
+        - "small": embed=64, layers=6 (current default, backwards compatible)
+        - "medium": embed=256, layers=8 (proven in v000 tournament results)
+        - "large": embed=512, layers=12 (future scaling experiments)
+
+        Args:
+            preset: Preset name ('small', 'medium', 'large').
+
+        Returns:
+            NetworkArchitectureConfig instance.
+
+        Raises:
+            ConfigurationError: If preset name is not recognized.
+        """
+        if preset not in ARCHITECTURE_PRESETS:
+            valid = ", ".join(sorted(ARCHITECTURE_PRESETS.keys()))
+            raise ConfigurationError(
+                f"Unknown architecture preset '{preset}'. Valid presets: {valid}"
+            )
+        return cls(**ARCHITECTURE_PRESETS[preset])
 
     @classmethod
     def from_env(cls) -> NetworkArchitectureConfig:
@@ -226,6 +286,9 @@ class NetworkArchitectureConfig:
             CIV6AZ_VECTOR_DIM: Vector dimension (default: 64)
             CIV6AZ_NUM_LAYERS: Transformer layers (default: 6)
             CIV6AZ_EMBED_DIM: Embedding dimension (default: 64)
+            CIV6AZ_NUM_HEADS: Attention heads (default: 8)
+            CIV6AZ_POLICY_HIDDEN_DIM: Policy head hidden dim (default: 128)
+            CIV6AZ_VALUE_HEAD_DIM: Value head hidden dim (default: 64)
 
         Returns:
             NetworkArchitectureConfig instance.
@@ -237,6 +300,9 @@ class NetworkArchitectureConfig:
             vector_dim=int(os.environ.get("CIV6AZ_VECTOR_DIM", "64")),
             num_layers=int(os.environ.get("CIV6AZ_NUM_LAYERS", "6")),
             embed_dim=int(os.environ.get("CIV6AZ_EMBED_DIM", "64")),
+            num_heads=int(os.environ.get("CIV6AZ_NUM_HEADS", "8")),
+            policy_hidden_dim=int(os.environ.get("CIV6AZ_POLICY_HIDDEN_DIM", "128")),
+            value_head_dim=int(os.environ.get("CIV6AZ_VALUE_HEAD_DIM", "64")),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -248,6 +314,9 @@ class NetworkArchitectureConfig:
             "vector_dim": self.vector_dim,
             "num_layers": self.num_layers,
             "embed_dim": self.embed_dim,
+            "num_heads": self.num_heads,
+            "policy_hidden_dim": self.policy_hidden_dim,
+            "value_head_dim": self.value_head_dim,
         }
 
 

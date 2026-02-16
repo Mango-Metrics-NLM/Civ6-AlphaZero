@@ -127,6 +127,34 @@ class TransformerConfig:
     _num_patches: int = field(init=False, default=0)
     _head_dim: int = field(init=False, default=0)
 
+    @classmethod
+    def from_network_config(cls, net_config: Any) -> TransformerConfig:
+        """Create TransformerConfig from a NetworkArchitectureConfig.
+
+        Bridges the cloud config (NetworkArchitectureConfig) to the core
+        network config (TransformerConfig). Uses getattr with defaults for
+        backwards compatibility with older NetworkArchitectureConfig instances
+        that may lack newer fields.
+
+        Args:
+            net_config: A NetworkArchitectureConfig instance (or any object
+                with matching attribute names).
+
+        Returns:
+            TransformerConfig with architecture fields mapped from net_config.
+        """
+        return cls(
+            spatial_channels=getattr(net_config, "spatial_channels", 13),
+            spatial_size=getattr(net_config, "board_size", 8),
+            vector_dim=getattr(net_config, "vector_dim", 64),
+            action_space_size=getattr(net_config, "action_space_size", 376),
+            embed_dim=getattr(net_config, "embed_dim", 64),
+            num_layers=getattr(net_config, "num_layers", 6),
+            num_heads=getattr(net_config, "num_heads", 8),
+            policy_hidden_dim=getattr(net_config, "policy_hidden_dim", 128),
+            value_head_dim=getattr(net_config, "value_head_dim", 64),
+        )
+
     def __post_init__(self) -> None:
         """Compute derived properties and validate configuration."""
         self._num_patches = (self.spatial_size // self.patch_size) ** 2

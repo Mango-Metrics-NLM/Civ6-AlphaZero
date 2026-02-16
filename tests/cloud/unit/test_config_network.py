@@ -136,6 +136,9 @@ class TestNetworkArchitectureConfigSerialization(unittest.TestCase):
             "vector_dim",
             "num_layers",
             "embed_dim",
+            "num_heads",
+            "policy_hidden_dim",
+            "value_head_dim",
         }
         self.assertEqual(set(result.keys()), expected_keys)
 
