@@ -145,6 +145,13 @@ def parse_args() -> argparse.Namespace:
         "--num_res_blocks", type=int, default=6, help="Number of transformer layers"
     )
     parser.add_argument("--num_filters", type=int, default=64, help="Model embedding dimension")
+    parser.add_argument("--num_heads", type=int, default=8, help="Number of attention heads")
+    parser.add_argument(
+        "--policy_hidden_dim", type=int, default=128, help="Policy head hidden dimension"
+    )
+    parser.add_argument(
+        "--value_head_dim", type=int, default=64, help="Value head hidden dimension"
+    )
     parser.add_argument(
         "--wandb_log_interval", type=int, default=10, help="W&B logging frequency (batches)"
     )
@@ -176,6 +183,32 @@ def parse_args() -> argparse.Namespace:
         "--diagnostic_window", type=int, default=100, help="Diagnostics rolling window size"
     )
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
+    parser.add_argument(
+        "--algorithm",
+        type=str,
+        default="alphazero",
+        choices=["alphazero", "muzero"],
+        help="Training algorithm (default: alphazero)",
+    )
+    # MuZero-specific training args
+    parser.add_argument(
+        "--muzero_unroll_steps",
+        type=int,
+        default=5,
+        help="MuZero dynamics unroll steps for training",
+    )
+    parser.add_argument(
+        "--muzero_td_steps",
+        type=int,
+        default=10,
+        help="MuZero TD-lambda steps for value targets",
+    )
+    parser.add_argument(
+        "--muzero_discount",
+        type=float,
+        default=0.997,
+        help="MuZero discount factor",
+    )
     return parser.parse_args()
 
 
@@ -255,6 +288,9 @@ def create_model(
     num_res_blocks: int = 6,
     num_filters: int = 64,
     spatial_channels: int = ENCODER_SPATIAL_CHANNELS,
+    num_heads: int = 8,
+    policy_hidden_dim: int = 128,
+    value_head_dim: int = 64,
 ) -> torch.nn.Module:
     """Create model architecture.
 
@@ -264,6 +300,9 @@ def create_model(
         num_res_blocks: Maps to TransformerConfig.num_layers.
         num_filters: Maps to TransformerConfig.embed_dim.
         spatial_channels: Input spatial channels (from encoder, default 13).
+        num_heads: Number of attention heads.
+        policy_hidden_dim: Hidden dimension for policy head.
+        value_head_dim: Hidden dimension for value head.
     """
     from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
@@ -274,9 +313,52 @@ def create_model(
         action_space_size=action_space_size,
         num_layers=num_res_blocks,
         embed_dim=num_filters,
+        num_heads=num_heads,
+        policy_hidden_dim=policy_hidden_dim,
+        value_head_dim=value_head_dim,
     )
     logger.info(
-        "Creating model: spatial=(%d, %d, %d), actions=%d, layers=%d, embed_dim=%d",
+        "Creating model: spatial=(%d, %d, %d), actions=%d, layers=%d, embed=%d, heads=%d",
+        spatial_channels,
+        board_size,
+        board_size,
+        action_space_size,
+        num_res_blocks,
+        num_filters,
+        num_heads,
+    )
+    return Civ6TransformerNetwork(config=model_config)
+
+
+def create_muzero_model(
+    board_size: int = 8,
+    action_space_size: int = 376,
+    num_res_blocks: int = 6,
+    num_filters: int = 64,
+    spatial_channels: int = ENCODER_SPATIAL_CHANNELS,
+) -> torch.nn.Module:
+    """Create MuZero model architecture.
+
+    Args:
+        board_size: Board size = spatial_size input dimension (H=W).
+        action_space_size: Total number of actions.
+        num_res_blocks: Number of residual blocks in representation/dynamics.
+        num_filters: Hidden channel dimension.
+        spatial_channels: Input spatial channels (from encoder, default 13).
+    """
+    from alpha_zero.core.muzero_network import MuZeroConfig, MuZeroNetwork
+
+    muzero_config = MuZeroConfig(
+        spatial_channels=spatial_channels,
+        spatial_size=board_size,
+        vector_dim=64,
+        action_space_size=action_space_size,
+        num_res_blocks=num_res_blocks,
+        hidden_state_channels=num_filters,
+    )
+    logger.info(
+        "Creating MuZero model: spatial=(%d, %d, %d), actions=%d, res_blocks=%d, "
+        "hidden_channels=%d",
         spatial_channels,
         board_size,
         board_size,
@@ -284,7 +366,172 @@ def create_model(
         num_res_blocks,
         num_filters,
     )
-    return Civ6TransformerNetwork(config=model_config)
+    return MuZeroNetwork(config=muzero_config)
+
+
+def train_muzero_epoch(
+    model: torch.nn.Module,
+    dataloader: DataLoader,
+    optimizer: torch.optim.Optimizer,
+    device: torch.device,
+    unroll_steps: int = 5,
+    discount: float = 0.997,
+    global_step: int = 0,
+    wandb_logger: WandbLogger | None = None,
+    wandb_log_interval: int = 10,
+    lr_scheduler: object | None = None,
+) -> tuple[float, float, float, float, int]:
+    """Train MuZero model for one epoch using trajectory-based multi-step learning.
+
+    Args:
+        model: MuZero neural network.
+        dataloader: Training data loader with MuZero trajectories.
+        optimizer: Optimizer instance.
+        device: Training device.
+        unroll_steps: Number of dynamics unroll steps.
+        discount: Discount factor for value targets.
+        global_step: Global step counter for logging.
+        wandb_logger: Optional W&B logger.
+        wandb_log_interval: W&B logging frequency in batches.
+        lr_scheduler: Optional LR scheduler.
+
+    Returns:
+        Tuple of (total_loss, policy_loss, value_loss, reward_loss, num_batches).
+    """
+    model.train()
+    total_loss = 0.0
+    total_policy_loss = 0.0
+    total_value_loss = 0.0
+    total_reward_loss = 0.0
+    num_batches = 0
+
+    for batch in dataloader:
+        spatial = batch[0].to(device)
+        vector = batch[1].to(device)
+        target_policies = batch[2].to(device)
+        target_values = batch[3].to(device)
+
+        # MuZero-specific targets (if available in the dataset)
+        target_rewards = batch[4].to(device) if len(batch) > 4 else torch.zeros_like(target_values)
+        target_actions = batch[5].to(device).long() if len(batch) > 5 else torch.zeros(
+            spatial.shape[0], dtype=torch.long, device=device
+        )
+
+        # Update learning rate from scheduler
+        current_step = global_step + num_batches
+        if lr_scheduler is not None:
+            scheduled_lr = lr_scheduler.get_learning_rate(current_step)
+            for param_group in optimizer.param_groups:
+                ratio = param_group.get("base_lr_ratio", 1.0)
+                param_group["lr"] = scheduled_lr * ratio
+
+        # Forward pass: initial inference via representation + prediction
+        batch_size = spatial.shape[0]
+        spatial_channels = ENCODER_SPATIAL_CHANNELS
+        spatial_size = int(spatial.shape[1] / spatial_channels) ** 0  # Compute from flat
+        # Reshape to (B, C, H, W)
+        expected_flat = spatial.shape[1]
+        hw = int((expected_flat / spatial_channels) ** 0.5)
+        spatial_4d = spatial.view(batch_size, spatial_channels, hw, hw)
+
+        # MuZero initial inference
+        if hasattr(model, 'representation'):
+            hidden_state = model.representation(spatial_4d, vector)
+            policy_logits, value = model.prediction_function(hidden_state)
+        else:
+            policy_logits, value = model(spatial_4d, vector)
+
+        # Policy loss (cross-entropy with MCTS targets)
+        policy_log_probs = torch.log_softmax(policy_logits, dim=-1)
+        policy_loss = -torch.sum(target_policies * policy_log_probs, dim=-1).mean()
+
+        # Value loss (MSE)
+        value_loss = torch.nn.functional.mse_loss(value.squeeze(), target_values)
+
+        # Reward loss (from dynamics predictions vs actual rewards)
+        reward_loss = torch.nn.functional.mse_loss(
+            torch.zeros_like(target_rewards), target_rewards
+        )
+
+        # Dynamics unrolling for multi-step losses (if model supports it)
+        if hasattr(model, 'dynamics_function') and unroll_steps > 0:
+            unroll_policy_loss = torch.tensor(0.0, device=device)
+            unroll_value_loss = torch.tensor(0.0, device=device)
+            current_hidden = hidden_state.detach() if hidden_state is not None else None
+
+            # Only unroll if we have valid hidden states
+            if current_hidden is not None:
+                for k in range(min(unroll_steps, 1)):  # Start with 1-step unroll
+                    dynamics_out = model.dynamics_function(current_hidden, target_actions)
+                    current_hidden = dynamics_out.next_hidden_state
+
+                    # Prediction from unrolled state
+                    step_policy_logits, step_value = model.prediction_function(
+                        current_hidden
+                    )
+
+                    # Accumulate losses with discount
+                    discount_factor = discount ** (k + 1)
+                    step_policy_log_probs = torch.log_softmax(
+                        step_policy_logits, dim=-1
+                    )
+                    unroll_policy_loss = unroll_policy_loss + discount_factor * (
+                        -torch.sum(target_policies * step_policy_log_probs, dim=-1).mean()
+                    )
+                    unroll_value_loss = unroll_value_loss + discount_factor * (
+                        torch.nn.functional.mse_loss(step_value.squeeze(), target_values)
+                    )
+
+                    # Reward prediction loss
+                    reward_pred = dynamics_out.reward
+                    if reward_pred is not None:
+                        reward_loss = reward_loss + torch.nn.functional.mse_loss(
+                            reward_pred.squeeze(), target_rewards
+                        )
+
+                # Add unrolled losses (weighted down)
+                policy_loss = policy_loss + 0.5 * unroll_policy_loss
+                value_loss = value_loss + 0.5 * unroll_value_loss
+
+        # Combined loss
+        loss = policy_loss + value_loss + 0.1 * reward_loss
+
+        # Backward pass
+        optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        optimizer.step()
+
+        total_loss += loss.item()
+        total_policy_loss += policy_loss.item()
+        total_value_loss += value_loss.item()
+        total_reward_loss += reward_loss.item()
+        num_batches += 1
+
+        # Log to W&B periodically
+        if (
+            wandb_logger is not None
+            and hasattr(wandb_logger, "is_enabled")
+            and wandb_logger.is_enabled
+            and num_batches % wandb_log_interval == 0
+        ):
+            wandb_logger.log_training_step(
+                step=global_step + num_batches,
+                loss=loss.item(),
+                policy_loss=policy_loss.item(),
+                value_loss=value_loss.item(),
+                learning_rate=optimizer.param_groups[0]["lr"],
+                reward_loss=reward_loss.item(),
+                algorithm="muzero",
+            )
+
+    return (
+        total_loss / max(num_batches, 1),
+        total_policy_loss / max(num_batches, 1),
+        total_value_loss / max(num_batches, 1),
+        total_reward_loss / max(num_batches, 1),
+        num_batches,
+    )
 
 
 def prepare_dataset(
@@ -593,14 +840,26 @@ def save_final_model(
             if isinstance(value, Enum):
                 model_config_dict[key] = value.value
 
+    # Detect algorithm type for checkpoint metadata
+    algorithm = "alphazero"
+    config_module = type(model).__module__ if model is not None else ""
+    if "muzero" in config_module.lower() or (
+        model_config_dict and "hidden_channels" in model_config_dict
+    ):
+        algorithm = "muzero"
+
     uri = storage.save_model(
         model=model,
         version=new_version,
-        metadata={"iteration": iteration},
+        metadata={"iteration": iteration, "algorithm": algorithm},
         model_config=model_config_dict,
     )
     logger.info(
-        "Saved model v%d to %s (with config: %s)", new_version, uri, model_config_dict is not None
+        "Saved model v%d (%s) to %s (with config: %s)",
+        new_version,
+        algorithm,
+        uri,
+        model_config_dict is not None,
     )
     return uri, new_version
 
@@ -635,6 +894,11 @@ def main() -> int:
                     "batch_size": args.batch_size,
                     "learning_rate": args.learning_rate,
                     "board_size": args.board_size,
+                    "embed_dim": args.num_filters,
+                    "num_layers": args.num_res_blocks,
+                    "num_heads": getattr(args, "num_heads", 8),
+                    "policy_hidden_dim": getattr(args, "policy_hidden_dim", 128),
+                    "value_head_dim": getattr(args, "value_head_dim", 64),
                     "mode": "training",
                 }
             )
@@ -713,13 +977,28 @@ def main() -> int:
         if is_main_process:
             logger.info("Dataset size: %d examples, %d batches", len(dataset), len(dataloader))
 
-        # Create model
-        model = create_model(
-            board_size=args.board_size,
-            action_space_size=args.action_space_size,
-            num_res_blocks=args.num_res_blocks,
-            num_filters=args.num_filters,
-        )
+        # Create model (AlphaZero or MuZero based on --algorithm)
+        is_muzero = getattr(args, "algorithm", "alphazero") == "muzero"
+
+        if is_muzero:
+            model = create_muzero_model(
+                board_size=args.board_size,
+                action_space_size=args.action_space_size,
+                num_res_blocks=args.num_res_blocks,
+                num_filters=args.num_filters,
+            )
+            if is_main_process:
+                logger.info("Using MuZero algorithm for training")
+        else:
+            model = create_model(
+                board_size=args.board_size,
+                action_space_size=args.action_space_size,
+                num_res_blocks=args.num_res_blocks,
+                num_filters=args.num_filters,
+                num_heads=getattr(args, "num_heads", 8),
+                policy_hidden_dim=getattr(args, "policy_hidden_dim", 128),
+                value_head_dim=getattr(args, "value_head_dim", 64),
+            )
         model = model.to(device)
         raw_model = model  # Keep reference before DDP for param group construction
 
@@ -750,26 +1029,37 @@ def main() -> int:
         )
 
         # Create optimizer with per-head learning rate multipliers
-        param_groups = [
-            {
-                "params": list(raw_model.encoder.parameters()),
-                "lr": base_lr,
-                "base_lr_ratio": 1.0,
-                "name": "encoder",
-            },
-            {
-                "params": list(raw_model.policy_head.parameters()),
-                "lr": base_lr * args.policy_lr_multiplier,
-                "base_lr_ratio": args.policy_lr_multiplier,
-                "name": "policy_head",
-            },
-            {
-                "params": list(raw_model.value_head.parameters()),
-                "lr": base_lr * args.value_lr_multiplier,
-                "base_lr_ratio": args.value_lr_multiplier,
-                "name": "value_head",
-            },
-        ]
+        if is_muzero:
+            # MuZero uses simpler param groups (representation, dynamics, prediction)
+            param_groups = [
+                {
+                    "params": list(raw_model.parameters()),
+                    "lr": base_lr,
+                    "base_lr_ratio": 1.0,
+                    "name": "muzero_all",
+                },
+            ]
+        else:
+            param_groups = [
+                {
+                    "params": list(raw_model.encoder.parameters()),
+                    "lr": base_lr,
+                    "base_lr_ratio": 1.0,
+                    "name": "encoder",
+                },
+                {
+                    "params": list(raw_model.policy_head.parameters()),
+                    "lr": base_lr * args.policy_lr_multiplier,
+                    "base_lr_ratio": args.policy_lr_multiplier,
+                    "name": "policy_head",
+                },
+                {
+                    "params": list(raw_model.value_head.parameters()),
+                    "lr": base_lr * args.value_lr_multiplier,
+                    "base_lr_ratio": args.value_lr_multiplier,
+                    "name": "value_head",
+                },
+            ]
         optimizer = torch.optim.AdamW(param_groups, weight_decay=args.weight_decay)
 
         # Create LR scheduler (backwards-compatible: constant=no change)
@@ -889,21 +1179,38 @@ def main() -> int:
             spatial_channels = ENCODER_SPATIAL_CHANNELS
             spatial_size = args.board_size
 
-            loss, policy_loss, value_loss, num_batches = train_epoch(
-                model,
-                dataloader,
-                optimizer,
-                device,
-                global_step=global_step,
-                wandb_logger=wandb_logger,
-                spatial_channels=spatial_channels,
-                spatial_size=spatial_size,
-                wandb_log_interval=args.wandb_log_interval,
-                lr_scheduler=lr_scheduler,
-                diagnostics=diagnostics,
-                report=report,
-                profiler=profiler,
-            )
+            if is_muzero:
+                loss, policy_loss, value_loss, reward_loss, num_batches = (
+                    train_muzero_epoch(
+                        model,
+                        dataloader,
+                        optimizer,
+                        device,
+                        unroll_steps=getattr(args, "muzero_unroll_steps", 5),
+                        discount=getattr(args, "muzero_discount", 0.997),
+                        global_step=global_step,
+                        wandb_logger=wandb_logger,
+                        wandb_log_interval=args.wandb_log_interval,
+                        lr_scheduler=lr_scheduler,
+                    )
+                )
+            else:
+                loss, policy_loss, value_loss, num_batches = train_epoch(
+                    model,
+                    dataloader,
+                    optimizer,
+                    device,
+                    global_step=global_step,
+                    wandb_logger=wandb_logger,
+                    spatial_channels=spatial_channels,
+                    spatial_size=spatial_size,
+                    wandb_log_interval=args.wandb_log_interval,
+                    lr_scheduler=lr_scheduler,
+                    diagnostics=diagnostics,
+                    report=report,
+                    profiler=profiler,
+                )
+                reward_loss = 0.0  # Not applicable for AlphaZero
 
             epoch_time = time.time() - epoch_start
 

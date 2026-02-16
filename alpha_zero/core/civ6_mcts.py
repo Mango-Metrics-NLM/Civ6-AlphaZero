@@ -186,11 +186,12 @@ class MCTSConfig:
 class GumbelMCTSConfig:
     """Configuration for Gumbel MuZero MCTS.
 
-    Gumbel MuZero achieves strong performance with very few simulations (4-32)
-    by using Gumbel sampling and sequential halving for efficient exploration.
+    Gumbel MuZero achieves strong performance with fewer simulations than
+    classic MCTS by using Gumbel sampling and sequential halving for efficient
+    exploration. Default 64 sims balances quality and speed.
 
     Attributes:
-        num_simulations: Total simulation budget (default 16, can be as low as 4).
+        num_simulations: Total simulation budget (default 64, can be as low as 4).
         num_sampled_actions: Number of actions to sample at root (top-k).
         max_considered_actions: Maximum actions to consider before Gumbel sampling.
         c_visit: Controls value vs visit count trade-off in completed Q.
@@ -201,7 +202,7 @@ class GumbelMCTSConfig:
         temperature_threshold: Turn after which to use temperature=0.
     """
 
-    num_simulations: int = 16
+    num_simulations: int = 64
     num_sampled_actions: int = 16
     max_considered_actions: int = 32
     c_visit: float = DEFAULT_C_VISIT

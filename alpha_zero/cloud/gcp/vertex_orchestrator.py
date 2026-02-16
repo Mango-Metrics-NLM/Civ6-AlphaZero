@@ -33,7 +33,7 @@ import logging
 import sys
 import time
 
-from alpha_zero.cloud.gcp.config import GCPConfig
+from alpha_zero.cloud.gcp.config import GCPConfig, NetworkArchitectureConfig
 from alpha_zero.cloud.gcp.exceptions import GCSStorageError, PreemptionError, VertexJobError
 from alpha_zero.cloud.gcp.storage import GCSModelStorage
 from alpha_zero.cloud.gcp.vertex_jobs import (
@@ -64,13 +64,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--start_iteration", type=int, default=0, help="Starting iteration number")
     parser.add_argument("--workers", type=int, default=2, help="Number of self-play workers")
     parser.add_argument(
-        "--games_per_worker", type=int, default=50, help="Games per self-play worker"
+        "--games_per_worker", type=int, default=100, help="Games per self-play worker"
     )
     parser.add_argument("--epochs", type=int, default=10, help="Training epochs per iteration")
     parser.add_argument(
         "--trajectory_window",
         type=int,
-        default=3,
+        default=5,
         help="Number of recent iterations to use for training data",
     )
     parser.add_argument("--max_retries", type=int, default=2, help="Max retries per failed job")
@@ -80,6 +80,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--action_space_size", type=int, default=376, help="Action space size")
     parser.add_argument("--num_res_blocks", type=int, default=6, help="Residual blocks in network")
     parser.add_argument("--num_filters", type=int, default=64, help="Conv filters in network")
+    parser.add_argument("--num_heads", type=int, default=8, help="Number of attention heads")
+    parser.add_argument(
+        "--policy_hidden_dim", type=int, default=128, help="Policy head hidden dimension"
+    )
+    parser.add_argument(
+        "--value_head_dim", type=int, default=64, help="Value head hidden dimension"
+    )
+    parser.add_argument(
+        "--architecture_preset",
+        type=str,
+        default=None,
+        choices=["small", "medium", "large"],
+        help="Architecture preset (overrides --num_res_blocks/--num_filters/--num_heads)",
+    )
 
     # MCTS configuration
     parser.add_argument(
@@ -90,7 +104,7 @@ def parse_args() -> argparse.Namespace:
         help="MCTS algorithm variant",
     )
     parser.add_argument(
-        "--mcts_simulations", type=int, default=400, help="MCTS simulations per move"
+        "--mcts_simulations", type=int, default=64, help="MCTS simulations per move"
     )
     parser.add_argument(
         "--gumbel_num_actions",
@@ -99,12 +113,26 @@ def parse_args() -> argparse.Namespace:
         help="Number of sampled actions for Gumbel MCTS",
     )
     parser.add_argument(
-        "--max_turns", type=int, default=30, help="Max game turns before truncation"
+        "--max_turns", type=int, default=50, help="Max game turns before truncation"
+    )
+
+    # Vectorized self-play (opt-in, requires batch_gumbel MCTS)
+    parser.add_argument(
+        "--num_parallel_games",
+        type=int,
+        default=1,
+        help="Number of parallel games per worker (1=sequential, >1=vectorized)",
+    )
+    parser.add_argument(
+        "--max_batch_size",
+        type=int,
+        default=64,
+        help="Max batch size for vectorized inference",
     )
 
     # Evaluation (disabled by default)
     parser.add_argument(
-        "--evaluation_games", type=int, default=0, help="Games for model evaluation (0=skip)"
+        "--evaluation_games", type=int, default=20, help="Games for model evaluation (0=skip)"
     )
     parser.add_argument(
         "--evaluation_win_threshold",
@@ -251,6 +279,21 @@ def build_selfplay_extra_args(args: argparse.Namespace) -> list[str]:
         f"--num_res_blocks={args.num_res_blocks}",
         f"--num_filters={args.num_filters}",
     ]
+    # Architecture fields (new, backwards-compatible with getattr)
+    num_heads = getattr(args, "num_heads", 8)
+    if num_heads != 8:
+        extra.append(f"--num_heads={num_heads}")
+    policy_hidden_dim = getattr(args, "policy_hidden_dim", 128)
+    if policy_hidden_dim != 128:
+        extra.append(f"--policy_hidden_dim={policy_hidden_dim}")
+    value_head_dim = getattr(args, "value_head_dim", 64)
+    if value_head_dim != 64:
+        extra.append(f"--value_head_dim={value_head_dim}")
+    # Vectorized self-play args
+    num_parallel = getattr(args, "num_parallel_games", 1)
+    if num_parallel > 1:
+        extra.append(f"--num_parallel_games={num_parallel}")
+        extra.append(f"--max_batch_size={getattr(args, 'max_batch_size', 64)}")
     if args.reward_shaping:
         extra.append("--reward_shaping")
         extra.append(f"--reward_scale={args.reward_scale}")
@@ -265,6 +308,16 @@ def build_training_extra_args(args: argparse.Namespace) -> list[str]:
         f"--num_res_blocks={args.num_res_blocks}",
         f"--num_filters={args.num_filters}",
     ]
+    # Architecture fields (new, backwards-compatible with getattr)
+    num_heads = getattr(args, "num_heads", 8)
+    if num_heads != 8:
+        extra.append(f"--num_heads={num_heads}")
+    policy_hidden_dim = getattr(args, "policy_hidden_dim", 128)
+    if policy_hidden_dim != 128:
+        extra.append(f"--policy_hidden_dim={policy_hidden_dim}")
+    value_head_dim = getattr(args, "value_head_dim", 64)
+    if value_head_dim != 64:
+        extra.append(f"--value_head_dim={value_head_dim}")
     # Pass through LR schedule args (only if non-default to keep backwards compat)
     if args.lr_schedule_type != "constant":
         extra.extend(
@@ -287,7 +340,7 @@ def build_training_extra_args(args: argparse.Namespace) -> list[str]:
 
 def build_evaluation_extra_args(args: argparse.Namespace) -> list[str]:
     """Build extra args list for evaluation container."""
-    return [
+    extra = [
         f"--mcts_type={args.mcts_type}",
         f"--mcts_simulations={args.mcts_simulations}",
         f"--gumbel_num_actions={args.gumbel_num_actions}",
@@ -297,6 +350,17 @@ def build_evaluation_extra_args(args: argparse.Namespace) -> list[str]:
         f"--num_res_blocks={args.num_res_blocks}",
         f"--num_filters={args.num_filters}",
     ]
+    # Architecture fields (new, backwards-compatible with getattr)
+    num_heads = getattr(args, "num_heads", 8)
+    if num_heads != 8:
+        extra.append(f"--num_heads={num_heads}")
+    policy_hidden_dim = getattr(args, "policy_hidden_dim", 128)
+    if policy_hidden_dim != 128:
+        extra.append(f"--policy_hidden_dim={policy_hidden_dim}")
+    value_head_dim = getattr(args, "value_head_dim", 64)
+    if value_head_dim != 64:
+        extra.append(f"--value_head_dim={value_head_dim}")
+    return extra
 
 
 def run_selfplay_phase(
@@ -702,6 +766,15 @@ def main() -> int:
                     "board_size": args.board_size,
                     "evaluation_games": args.evaluation_games,
                     "epochs": args.epochs,
+                    "max_turns": args.max_turns,
+                    "trajectory_window": args.trajectory_window,
+                    "architecture_preset": getattr(args, "architecture_preset", None),
+                    "embed_dim": args.num_filters,
+                    "num_layers": args.num_res_blocks,
+                    "num_heads": getattr(args, "num_heads", 8),
+                    "policy_hidden_dim": getattr(args, "policy_hidden_dim", 128),
+                    "value_head_dim": getattr(args, "value_head_dim", 64),
+                    "num_parallel_games": getattr(args, "num_parallel_games", 1),
                     "mode": "orchestrator",
                 }
             )
@@ -736,6 +809,24 @@ def main() -> int:
 
     try:
         config = GCPConfig()
+
+        # Apply architecture preset (overrides individual arch args)
+        if getattr(args, "architecture_preset", None):
+            config.network = NetworkArchitectureConfig.from_preset(args.architecture_preset)
+            # Sync CLI args with preset values for build_*_extra_args
+            args.num_res_blocks = config.network.num_layers
+            args.num_filters = config.network.embed_dim
+            args.num_heads = config.network.num_heads
+            args.policy_hidden_dim = config.network.policy_hidden_dim
+            args.value_head_dim = config.network.value_head_dim
+            logger.info(
+                "Architecture preset '%s': embed=%d, layers=%d, heads=%d",
+                args.architecture_preset,
+                config.network.embed_dim,
+                config.network.num_layers,
+                config.network.num_heads,
+            )
+
         if not args.dry_run:
             config.validate()
 
