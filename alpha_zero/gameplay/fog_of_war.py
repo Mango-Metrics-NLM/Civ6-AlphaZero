@@ -156,7 +156,7 @@ class FogOfWarSystem:
         # Step 2 -- reveal from each friendly unit --------------------------
         own_units = [u for u in units if u.get("player") == player]
         for unit in own_units:
-            pos: tuple[int, int] = tuple(unit["position"])  # type: ignore[arg-type]
+            pos: tuple[int, int] = (int(unit["position"][0]), int(unit["position"][1]))
             unit_type: str = unit.get("type", "")
             sight = self.config.sight_range.get(unit_type, self.config.default_sight_range)
             visible_tiles = self._get_visible_tiles(pos, sight, terrain)
@@ -166,7 +166,7 @@ class FogOfWarSystem:
         # Step 3 -- reveal from each friendly city --------------------------
         own_cities = [c for c in cities if c.get("player") == player]
         for city in own_cities:
-            pos = tuple(city["position"])  # type: ignore[arg-type]
+            pos = (int(city["position"][0]), int(city["position"][1]))
             sight = self.config.sight_range.get("city", self.config.default_sight_range)
             visible_tiles = self._get_visible_tiles(pos, sight, terrain)
             for tx, ty in visible_tiles:
@@ -304,10 +304,10 @@ class FogOfWarSystem:
         # Attribute access (e.g. Tile dataclass)
         terrain_type = getattr(tile, "terrain_type", None)
         if terrain_type is not None:
-            return terrain_type == "mountain"
+            return bool(terrain_type == "mountain")
         # Dict access
         if isinstance(tile, dict):
-            return tile.get("type") == "mountain"
+            return bool(tile.get("type") == "mountain")
         return False
 
     # ------------------------------------------------------------------
@@ -381,7 +381,7 @@ class FogOfWarSystem:
         result = [
             u
             for u in all_units
-            if self.is_visible(player, tuple(u["position"]))  # type: ignore[arg-type]
+            if self.is_visible(player, (int(u["position"][0]), int(u["position"][1])))
         ]
         logger.debug(
             "get_visible_units: player %d sees %d / %d units",
@@ -408,7 +408,7 @@ class FogOfWarSystem:
         result = [
             c
             for c in all_cities
-            if self.is_visible(player, tuple(c["position"]))  # type: ignore[arg-type]
+            if self.is_visible(player, (int(c["position"][0]), int(c["position"][1])))
         ]
         logger.debug(
             "get_visible_cities: player %d sees %d / %d cities",

@@ -42,15 +42,11 @@ from alpha_zero.gameplay.victory import (
 )
 
 __all__ = [
-    # System configs
     "CityGrowthConfig",
-    # Master config aliases (from config.py — avoid name collisions with subsystem configs)
     "CityGrowthMasterConfig",
-    # Systems
     "CityGrowthSystem",
     "CombatConfig",
     "CombatMasterConfig",
-    # Data types
     "CombatResult",
     "CombatSystem",
     "EconomyConfig",
@@ -59,7 +55,6 @@ __all__ = [
     "FogOfWarConfig",
     "FogOfWarDetailConfig",
     "FogOfWarSystem",
-    # Master config
     "GameplayConfig",
     "TerrainConfig",
     "TerrainMasterConfig",

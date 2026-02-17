@@ -27,6 +27,8 @@ class EconomyConfig:
     purchase_cost_multiplier: float = 4.0
     bankruptcy_penalty: float = -0.5  # reward penalty per turn when bankrupt
     gold_reward_scaling: float = 0.001  # small reward for gold income
+    gold_normalization_max: float = 500.0  # divisor for gold in encode_for_vector
+    income_normalization_max: float = 50.0  # divisor for income in encode_for_vector
 
 
 class EconomySystem:
@@ -44,8 +46,10 @@ class EconomySystem:
     ) -> None:
         self.config = config or EconomyConfig()
         self._num_players = num_players
-        self.gold: dict[int, int] = {p: self.config.starting_gold for p in range(num_players)}
-        self.gold_per_turn: dict[int, int] = {p: 0 for p in range(num_players)}
+        self.gold: dict[int, int] = dict.fromkeys(
+            range(num_players), self.config.starting_gold
+        )
+        self.gold_per_turn: dict[int, int] = dict.fromkeys(range(num_players), 0)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -59,8 +63,10 @@ class EconomySystem:
         """
         if num_players is not None:
             self._num_players = num_players
-        self.gold = {p: self.config.starting_gold for p in range(self._num_players)}
-        self.gold_per_turn = {p: 0 for p in range(self._num_players)}
+        self.gold = dict.fromkeys(
+            range(self._num_players), self.config.starting_gold
+        )
+        self.gold_per_turn = dict.fromkeys(range(self._num_players), 0)
 
     # ------------------------------------------------------------------
     # Income helpers
@@ -195,13 +201,13 @@ class EconomySystem:
         """Return normalized values suitable for neural network input.
 
         Keys:
-            gold_normalized: gold / 500.0
-            income_normalized: gold_per_turn / 50.0
+            gold_normalized: gold / gold_normalization_max
+            income_normalized: gold_per_turn / income_normalization_max
             is_bankrupt: 0.0 or 1.0
         """
         return {
-            "gold_normalized": self.get_gold(player) / 500.0,
-            "income_normalized": self.gold_per_turn.get(player, 0) / 50.0,
+            "gold_normalized": self.get_gold(player) / self.config.gold_normalization_max,
+            "income_normalized": self.gold_per_turn.get(player, 0) / self.config.income_normalization_max,
             "is_bankrupt": 1.0 if self.is_bankrupt(player) else 0.0,
         }
 
@@ -224,6 +230,8 @@ class EconomySystem:
                 "purchase_cost_multiplier": self.config.purchase_cost_multiplier,
                 "bankruptcy_penalty": self.config.bankruptcy_penalty,
                 "gold_reward_scaling": self.config.gold_reward_scaling,
+                "gold_normalization_max": self.config.gold_normalization_max,
+                "income_normalization_max": self.config.income_normalization_max,
             },
         }
 
@@ -243,6 +251,8 @@ class EconomySystem:
             purchase_cost_multiplier=cfg_data.get("purchase_cost_multiplier", 4.0),
             bankruptcy_penalty=cfg_data.get("bankruptcy_penalty", -0.5),
             gold_reward_scaling=cfg_data.get("gold_reward_scaling", 0.001),
+            gold_normalization_max=cfg_data.get("gold_normalization_max", 500.0),
+            income_normalization_max=cfg_data.get("income_normalization_max", 50.0),
         )
 
         num_players = data.get("num_players", 2)
