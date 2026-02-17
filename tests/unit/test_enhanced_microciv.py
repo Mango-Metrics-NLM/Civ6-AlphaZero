@@ -281,7 +281,7 @@ class TestEnhancedMicroCivFogOfWar:
         # With fog active, not all tiles should have the same value.
         unique_values = np.unique(visibility_channel)
         # There should be at least two distinct values (visible / not visible)
-        assert len(unique_values) >= 1  # At minimum, all zeros or ones exist
+        assert len(unique_values) >= 2, "Visibility channel should have both visible and non-visible tiles"
 
     def test_render_shows_fog_markers(self):
         """ANSI rendering should include '?' for unexplored tiles."""

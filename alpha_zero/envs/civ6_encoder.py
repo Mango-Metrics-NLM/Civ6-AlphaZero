@@ -444,11 +444,11 @@ class MicroCivEncoder:
         if enemy_units:
             vector[7] = sum(u.get("health", 0) for u in enemy_units) / (len(enemy_units) * 100.0)
 
-        # Economy data (indices 8-10, backward compat: default to 0)
+        # Economy data (indices 8-9, backward compat: default to 0)
         vector[8] = game_state.get("gold", 0) / 500.0
         vector[9] = game_state.get("gold_per_turn", 0) / 50.0
 
-        # Population data (indices 10-11)
+        # Population data (index 10)
         total_own_pop = sum(c.get("population", 1) for c in own_cities) if own_cities else 0
         vector[10] = total_own_pop / 30.0
 
