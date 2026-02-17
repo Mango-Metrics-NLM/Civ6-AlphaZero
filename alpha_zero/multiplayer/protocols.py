@@ -112,7 +112,9 @@ class MultiplayerNetwork(Protocol):
         Returns:
             Tuple of (policy_probs, player_values).
             policy_probs shape: (B, A)
-            player_values shape: (B, N) where N = num_players
+            player_values shape: (B, N) where N = num_players, or (B,)
+                for legacy 2-player networks (interpreted as player 0's value;
+                player 1's value is the negation).
         """
         ...
 

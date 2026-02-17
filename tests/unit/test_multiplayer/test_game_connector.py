@@ -196,8 +196,8 @@ class TestUncivMultiplayerConnector:
         state = connector.read_game_state()
         assert state is None
 
-    def test_submit_action(self, connector, save_dir):
-        """Can submit action by modifying save file."""
+    def test_submit_action_raises_not_implemented(self, connector, save_dir):
+        """submit_action raises NotImplementedError (action decoder not yet integrated)."""
         save_data = {
             "turns": 1,
             "currentPlayer": "Rome",
@@ -209,8 +209,8 @@ class TestUncivMultiplayerConnector:
 
         connector.connect()
         state = connector.read_game_state()
-        result = connector.submit_action(state, action=0)
-        assert result is True
+        with pytest.raises(NotImplementedError, match="action decoder"):
+            connector.submit_action(state, action=0)
 
     def test_disconnect(self, connector):
         connector.connect()

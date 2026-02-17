@@ -355,9 +355,8 @@ class UncivMultiplayerConnector(GameConnector):
     ) -> dict[str, Any]:
         """Apply an action to the raw game state.
 
-        This is a stub - actual implementation requires the action
-        decoder to translate action indices to Unciv-compatible
-        modifications (unit movements, city production, etc.).
+        Requires an action decoder to translate action indices to
+        Unciv-compatible modifications (unit movements, city production, etc.).
 
         Args:
             raw_state: Raw Unciv save JSON.
@@ -365,10 +364,15 @@ class UncivMultiplayerConnector(GameConnector):
 
         Returns:
             Modified raw state.
+
+        Raises:
+            NotImplementedError: Action decoding requires Unciv action decoder
+                integration (planned for Phase 3+).
         """
-        # TODO: Integrate with action decoder for full implementation
-        logger.debug("Applying action %d to Unciv state (stub)", action)
-        return raw_state
+        raise NotImplementedError(
+            f"Action application for action={action} requires Unciv action "
+            "decoder integration. See CLAUDE.md Section 13 for implementation plan."
+        )
 
 
 class MockGameConnector(GameConnector):

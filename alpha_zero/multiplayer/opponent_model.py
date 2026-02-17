@@ -19,7 +19,7 @@ Example:
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any
 
 import numpy as np
@@ -253,8 +253,6 @@ class OpponentModel:
         # Most common recent actions
         top_actions: list[tuple[int, int]] = []
         if recent:
-            from collections import Counter
-
             counter = Counter(recent)
             top_actions = counter.most_common(5)
 
