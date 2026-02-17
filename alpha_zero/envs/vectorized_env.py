@@ -14,6 +14,7 @@ from typing import Any
 import numpy as np
 
 from alpha_zero.envs.civ6_encoder import MicroCivEncoder
+from alpha_zero.envs.env_factory import create_game_env
 from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.utils.wandb_logger import log_metrics
 
@@ -35,6 +36,7 @@ class VectorizedEnvConfig:
     board_size: int = 8
     max_turns: int = 30
     seed_offset: int = 0
+    gameplay_preset: str = "default"
 
     def __post_init__(self) -> None:
         """Validate configuration parameters."""
@@ -44,6 +46,13 @@ class VectorizedEnvConfig:
             raise ValueError(f"board_size must be >= 1, got {self.board_size}")
         if self.max_turns < 1:
             raise ValueError(f"max_turns must be >= 1, got {self.max_turns}")
+        from alpha_zero.envs.env_factory import GAMEPLAY_PRESETS
+
+        if self.gameplay_preset not in GAMEPLAY_PRESETS:
+            raise ValueError(
+                f"Unknown gameplay_preset {self.gameplay_preset!r}. "
+                f"Valid presets: {GAMEPLAY_PRESETS}"
+            )
 
 
 class VectorizedMicroCivEnv:
@@ -69,13 +78,14 @@ class VectorizedMicroCivEnv:
         """
         self.config = config or VectorizedEnvConfig()
 
-        # Create individual environments
+        # Create individual environments via centralized factory
         self._envs: list[MicroCivEnv] = []
         for i in range(self.config.num_envs):
             seed = None if self.config.seed_offset == 0 else self.config.seed_offset + i
-            env = MicroCivEnv(
+            env = create_game_env(
                 board_size=self.config.board_size,
                 max_turns=self.config.max_turns,
+                gameplay_preset=self.config.gameplay_preset,
                 seed=seed,
             )
             self._envs.append(env)

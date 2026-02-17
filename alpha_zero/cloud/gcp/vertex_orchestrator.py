@@ -267,6 +267,15 @@ def parse_args() -> argparse.Namespace:
         help="Algorithm to use: alphazero (default) or muzero",
     )
 
+    # Gameplay environment preset
+    parser.add_argument(
+        "--gameplay_preset",
+        type=str,
+        default="default",
+        choices=["default", "enhanced"],
+        help="Gameplay preset: 'default' (MicroCivEnv) or 'enhanced' (all gameplay systems)",
+    )
+
     return parser.parse_args()
 
 
@@ -322,6 +331,10 @@ def build_selfplay_extra_args(args: argparse.Namespace) -> list[str]:
         # Replace mcts_type in extra args
         extra = [a for a in extra if not a.startswith("--mcts_type=")]
         extra.append("--mcts_type=muzero")
+    # Gameplay preset (only propagate non-default to keep backward compat)
+    gameplay_preset = getattr(args, "gameplay_preset", "default")
+    if gameplay_preset != "default":
+        extra.append(f"--gameplay_preset={gameplay_preset}")
     return extra
 
 
@@ -389,6 +402,10 @@ def build_evaluation_extra_args(args: argparse.Namespace) -> list[str]:
     value_head_dim = getattr(args, "value_head_dim", 64)
     if value_head_dim != 64:
         extra.append(f"--value_head_dim={value_head_dim}")
+    # Gameplay preset (only propagate non-default to keep backward compat)
+    gameplay_preset = getattr(args, "gameplay_preset", "default")
+    if gameplay_preset != "default":
+        extra.append(f"--gameplay_preset={gameplay_preset}")
     return extra
 
 
@@ -780,6 +797,7 @@ def run_post_run_evaluation(
         max_turns=getattr(args, "max_turns", 30),
         dry_run=dry_run,
         action_space_size=getattr(args, "action_space_size", config.network.action_space_size),
+        gameplay_preset=getattr(args, "gameplay_preset", "default"),
     )
 
     _log_tournament_to_wandb(wandb_logger, tournament_results)
@@ -829,6 +847,7 @@ def main() -> int:
                     "policy_hidden_dim": getattr(args, "policy_hidden_dim", 128),
                     "value_head_dim": getattr(args, "value_head_dim", 64),
                     "num_parallel_games": getattr(args, "num_parallel_games", 1),
+                    "gameplay_preset": getattr(args, "gameplay_preset", "default"),
                     "mode": "orchestrator",
                 }
             )

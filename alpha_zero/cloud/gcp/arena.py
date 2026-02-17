@@ -72,6 +72,7 @@ def run_arena(
     max_turns: int = 30,
     device: torch.device | None = None,
     num_parallel_games: int = 1,
+    gameplay_preset: str = "default",
 ) -> ArenaResult:
     """Play model_a vs. model_b in an arena.
 
@@ -90,12 +91,13 @@ def run_arena(
         device: PyTorch device to use. If None, defaults to CPU.
         num_parallel_games: Number of parallel games (accepted for API consistency
             with selfplay_worker; arena currently runs games sequentially).
+        gameplay_preset: Environment preset ("default" or "enhanced").
 
     Returns:
         ArenaResult with wins/losses/draws from model_a's perspective.
     """
     from alpha_zero.core.mcts_factory import create_mcts
-    from alpha_zero.envs.microciv import MicroCivEnv
+    from alpha_zero.envs.env_factory import create_game_env
 
     if device is None:
         device = torch.device("cpu")
@@ -118,7 +120,11 @@ def run_arena(
         # Alternate which player model_a controls
         a_is_player_0 = game_idx % 2 == 0
 
-        env = MicroCivEnv(board_size=board_size, max_turns=max_turns)
+        env = create_game_env(
+            board_size=board_size,
+            max_turns=max_turns,
+            gameplay_preset=gameplay_preset,
+        )
         mcts_a = create_mcts(
             variant=mcts_type,
             network=model_a,

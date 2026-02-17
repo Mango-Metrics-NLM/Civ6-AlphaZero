@@ -124,6 +124,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward_scale", type=float, default=1.0, help="Reward scaling factor")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
 
+    # Gameplay environment preset
+    parser.add_argument(
+        "--gameplay_preset",
+        type=str,
+        default="default",
+        choices=["default", "enhanced"],
+        help="Gameplay preset: 'default' (MicroCivEnv) or 'enhanced' (all gameplay systems)",
+    )
+
     # Batch inference configuration
     parser.add_argument(
         "--num_parallel_games",
@@ -385,6 +394,7 @@ def run_selfplay(
     dry_run: bool = False,
     device: str = "cpu",
     temperature_schedule: str = "threshold",
+    gameplay_preset: str = "default",
 ) -> list[dict]:
     """Run self-play games and collect trajectories.
 
@@ -454,9 +464,13 @@ def run_selfplay(
 
         # Create environment and MCTS
         from alpha_zero.core.mcts_factory import create_mcts
-        from alpha_zero.envs.microciv import MicroCivEnv
+        from alpha_zero.envs.env_factory import create_game_env
 
-        env = MicroCivEnv(board_size=board_size, max_turns=max_turns)
+        env = create_game_env(
+            board_size=board_size,
+            max_turns=max_turns,
+            gameplay_preset=gameplay_preset,
+        )
 
         # Build variant-aware MCTS kwargs to avoid passing invalid params
         puct_variants = {"puct", "civ6"}
@@ -613,6 +627,7 @@ def run_muzero_selfplay(
     dry_run: bool = False,
     device: str = "cpu",
     temperature_schedule: str = "threshold",
+    gameplay_preset: str = "default",
 ) -> list[dict]:
     """Run MuZero self-play games using learned dynamics model.
 
@@ -684,9 +699,13 @@ def run_muzero_selfplay(
 
         # Create environment and MuZero MCTS
         from alpha_zero.core.mcts_factory import create_mcts
-        from alpha_zero.envs.microciv import MicroCivEnv
+        from alpha_zero.envs.env_factory import create_game_env
 
-        env = MicroCivEnv(board_size=board_size, max_turns=max_turns)
+        env = create_game_env(
+            board_size=board_size,
+            max_turns=max_turns,
+            gameplay_preset=gameplay_preset,
+        )
 
         # MuZero MCTS uses the dynamics model for tree search
         mcts_kwargs: dict[str, Any] = {
@@ -818,6 +837,7 @@ def run_batch_selfplay(
     temperature_schedule: str = "threshold",
     temperature: float = 1.0,
     temperature_threshold: int = 30,
+    gameplay_preset: str = "default",
 ) -> list[dict]:
     """Run batch self-play games using BatchGumbelMCTS and vectorized environments.
 
@@ -859,6 +879,7 @@ def run_batch_selfplay(
         num_envs=num_parallel_games,
         board_size=board_size,
         max_turns=max_turns,
+        gameplay_preset=gameplay_preset,
     )
     vec_env = VectorizedMicroCivEnv(config=env_config)
 
@@ -1088,6 +1109,7 @@ def main() -> int:
                     "num_heads": getattr(args, "num_heads", 8),
                     "policy_hidden_dim": getattr(args, "policy_hidden_dim", 128),
                     "value_head_dim": getattr(args, "value_head_dim", 64),
+                    "gameplay_preset": getattr(args, "gameplay_preset", "default"),
                     "mode": "selfplay",
                 }
             )
@@ -1147,6 +1169,7 @@ def main() -> int:
                 dry_run=args.dry_run,
                 device=str(device),
                 temperature_schedule=args.temperature_schedule,
+                gameplay_preset=getattr(args, "gameplay_preset", "default"),
             )
         else:
             # AlphaZero/Gumbel: load standard model
@@ -1177,6 +1200,7 @@ def main() -> int:
                     temperature_schedule=args.temperature_schedule,
                     temperature=args.temperature,
                     temperature_threshold=args.temperature_threshold,
+                    gameplay_preset=getattr(args, "gameplay_preset", "default"),
                 )
             else:
                 trajectories = run_selfplay(
@@ -1191,6 +1215,7 @@ def main() -> int:
                     dry_run=args.dry_run,
                     device=str(device),
                     temperature_schedule=args.temperature_schedule,
+                    gameplay_preset=getattr(args, "gameplay_preset", "default"),
                 )
         elapsed = time.time() - start_time
 

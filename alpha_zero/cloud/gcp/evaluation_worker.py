@@ -72,6 +72,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--mode", type=str, default="evaluation", help="Worker mode")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
+
+    # Gameplay environment preset
+    parser.add_argument(
+        "--gameplay_preset",
+        type=str,
+        default="default",
+        choices=["default", "enhanced"],
+        help="Gameplay preset: 'default' (MicroCivEnv) or 'enhanced' (all gameplay systems)",
+    )
+
     return parser.parse_args()
 
 
@@ -284,6 +294,7 @@ def main() -> int:
             board_size=args.board_size,
             max_turns=args.max_turns,
             device=device,
+            gameplay_preset=getattr(args, "gameplay_preset", "default"),
         )
         elapsed = time.time() - start_time
 
