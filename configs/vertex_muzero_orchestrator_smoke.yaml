@@ -1,0 +1,36 @@
+# Vertex AI MuZero Orchestrator Smoke Test Configuration
+#
+# ISOLATED from running AlphaZero training via:
+#   - --algorithm=muzero             (uses MuZero throughout pipeline)
+#   - CIV6AZ_AGENT_ID=muzero-smoke  (scopes all GCS paths)
+#   - 1 iteration, 1 worker, 2 games  (minimal resource usage)
+#
+# Usage:
+#   python -m alpha_zero.cloud.gcp.vertex_orchestrator \
+#       --algorithm=muzero \
+#       --iterations=1 \
+#       --workers=1 \
+#       --games_per_worker=2 \
+#       --epochs=2 \
+#       --mcts_simulations=8 \
+#       --num_res_blocks=2 \
+#       --num_filters=32 \
+#       --dry_run
+#
+# For real cloud run: remove --dry_run and ensure env vars are set.
+
+workerPoolSpecs:
+  - machineSpec:
+      machineType: n1-standard-4
+    replicaCount: 1
+    containerSpec:
+      imageUri: us-central1-docker.pkg.dev/hrmtrain/vertex-ai-training/hrm-training:v11-smoke
+      args:
+        - "--algorithm=muzero"
+        - "--iterations=1"
+        - "--workers=1"
+        - "--games_per_worker=2"
+        - "--epochs=2"
+        - "--mcts_simulations=8"
+        - "--num_res_blocks=2"
+        - "--num_filters=32"

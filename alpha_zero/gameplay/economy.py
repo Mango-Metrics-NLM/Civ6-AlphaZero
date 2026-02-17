@@ -46,9 +46,7 @@ class EconomySystem:
     ) -> None:
         self.config = config or EconomyConfig()
         self._num_players = num_players
-        self.gold: dict[int, int] = dict.fromkeys(
-            range(num_players), self.config.starting_gold
-        )
+        self.gold: dict[int, int] = dict.fromkeys(range(num_players), self.config.starting_gold)
         self.gold_per_turn: dict[int, int] = dict.fromkeys(range(num_players), 0)
 
     # ------------------------------------------------------------------
@@ -63,9 +61,7 @@ class EconomySystem:
         """
         if num_players is not None:
             self._num_players = num_players
-        self.gold = dict.fromkeys(
-            range(self._num_players), self.config.starting_gold
-        )
+        self.gold = dict.fromkeys(range(self._num_players), self.config.starting_gold)
         self.gold_per_turn = dict.fromkeys(range(self._num_players), 0)
 
     # ------------------------------------------------------------------
@@ -207,7 +203,8 @@ class EconomySystem:
         """
         return {
             "gold_normalized": self.get_gold(player) / self.config.gold_normalization_max,
-            "income_normalized": self.gold_per_turn.get(player, 0) / self.config.income_normalization_max,
+            "income_normalized": self.gold_per_turn.get(player, 0)
+            / self.config.income_normalization_max,
             "is_bankrupt": 1.0 if self.is_bankrupt(player) else 0.0,
         }
 

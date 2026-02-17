@@ -494,8 +494,7 @@ class PBTOrchestrator:
             if self.muzero_config is not None:
                 extra_args.append("--mcts_type=muzero")
                 logger.debug(
-                    "MuZero config active for agent %s self-play: "
-                    "passing --mcts_type=muzero",
+                    "MuZero config active for agent %s self-play: " "passing --mcts_type=muzero",
                     agent.agent_id,
                 )
 
@@ -535,8 +534,7 @@ class PBTOrchestrator:
             if self.muzero_config is not None:
                 extra_args.append("--algorithm=muzero")
                 logger.debug(
-                    "MuZero config active for agent %s training: "
-                    "passing --algorithm=muzero",
+                    "MuZero config active for agent %s training: " "passing --algorithm=muzero",
                     agent.agent_id,
                 )
 
