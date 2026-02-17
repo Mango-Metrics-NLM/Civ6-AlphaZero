@@ -21,6 +21,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
+from alpha_zero.multiplayer.config import TurnManagerConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -59,7 +61,7 @@ class TurnManager:
 
     def __init__(
         self,
-        config: Any,
+        config: TurnManagerConfig,
         num_players: int,
     ) -> None:
         """Initialize turn manager.
@@ -71,7 +73,7 @@ class TurnManager:
         self._config = config
         self._num_players = num_players
         self._turn_number = 0
-        self._current_mode = config.mode
+        self._current_mode: str = config.mode
         self._current_player_idx = 0
         self._active_players: list[int] = list(range(num_players))
         self._eliminated: set[int] = set()
@@ -125,7 +127,7 @@ class TurnManager:
         state = TurnState(
             turn_number=self._turn_number,
             active_players=active,
-            actions_submitted={p: None for p in active},
+            actions_submitted=dict.fromkeys(active),
             start_time=time.monotonic(),
         )
         self._turn_state = state
@@ -219,7 +221,7 @@ class TurnManager:
         if timeout <= 0 or self._turn_state is None:
             return False
         elapsed = time.monotonic() - self._turn_state.start_time
-        return elapsed > timeout
+        return bool(elapsed > timeout)
 
     def eliminate_player(self, player_id: int) -> None:
         """Mark a player as eliminated.

@@ -76,7 +76,7 @@ class NPlayerMCTSNode:
             Dict mapping player_id -> mean value.
         """
         if self.visit_count == 0:
-            return {p: 0.0 for p in range(self.num_players)}
+            return dict.fromkeys(range(self.num_players), 0.0)
         return {
             p: self.value_sums.get(p, 0.0) / self.visit_count
             for p in range(self.num_players)

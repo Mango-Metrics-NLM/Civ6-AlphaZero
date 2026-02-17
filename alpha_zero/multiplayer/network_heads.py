@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
 
 import torch
 import torch.nn as nn
@@ -178,10 +177,17 @@ class NPlayerNetworkAdapter(nn.Module):
             spatial_size = config.spatial_size
             vector_dim = getattr(config, "fc_hidden_dim", 256)
         else:
-            # Fallback defaults
+            # Fallback defaults — base_network has no config attribute
             spatial_filters = 64
             spatial_size = 16
             vector_dim = 256
+            logger.warning(
+                "Base network has no config attribute; using fallback defaults "
+                "(spatial_filters=%d, spatial_size=%d, vector_dim=%d)",
+                spatial_filters,
+                spatial_size,
+                vector_dim,
+            )
 
         # Create new N-player value head
         self.nplayer_value_head = NPlayerValueHead(
@@ -242,11 +248,11 @@ class NPlayerNetworkAdapter(nn.Module):
         else:
             # Fallback: run full forward and extract features
             policy_logits, _ = self.base_network(spatial, vector, action_mask)
-            # Can't get intermediate features, return base value
-            value = self.nplayer_value_head(
-                spatial.mean(dim=1, keepdim=True).expand(-1, 1, -1, -1),
-                vector,
+            # Can't get intermediate features, use mean-pooled spatial as proxy
+            spatial_proxy = spatial.mean(dim=1, keepdim=True).expand(
+                -1, self.nplayer_value_head.conv.in_channels, -1, -1
             )
+            value = self.nplayer_value_head(spatial_proxy, vector)
             return policy_logits, value
 
         # Policy from base network's policy head

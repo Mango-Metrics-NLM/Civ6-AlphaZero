@@ -18,7 +18,6 @@ Example:
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import numpy as np
 import torch
@@ -103,7 +102,7 @@ class NPlayerMCTS:
 
         # Get initial evaluation
         obs = env.get_observation()
-        policy, player_values = self._evaluate(obs)
+        policy, _player_values = self._evaluate(obs)
         action_mask = obs.get("action_mask", env.get_valid_actions())
 
         # Determine next player after root acts
@@ -118,7 +117,7 @@ class NPlayerMCTS:
 
         # Run simulations
         strategy = self.config.strategy
-        for sim_idx in range(self.config.num_simulations):
+        for _sim_idx in range(self.config.num_simulations):
             sim_env = env.clone()
             self._run_simulation(sim_env, root, root_player, strategy)
 
@@ -169,7 +168,7 @@ class NPlayerMCTS:
             search_path.append(node)
 
             # Step environment
-            obs, reward, terminated, truncated, info = env.step(action)
+            obs, _reward, terminated, truncated, info = env.step(action)
 
             if terminated or truncated:
                 # Terminal state: extract game values
@@ -309,6 +308,14 @@ class NPlayerMCTS:
             player_values = {
                 i: float(values_np[i]) for i in range(min(len(values_np), self.num_players))
             }
+
+        logger.debug(
+            "Network evaluation completed",
+            extra={
+                "policy_shape": policy.shape,
+                "player_values": player_values,
+            },
+        )
 
         return policy, player_values
 

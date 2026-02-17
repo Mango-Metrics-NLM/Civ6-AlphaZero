@@ -116,7 +116,7 @@ def compute_rankings(
         return rankings
 
     # Draw: everyone shares rank 0
-    return {p: 0 for p in player_ids}
+    return dict.fromkeys(player_ids, 0)
 
 
 def compute_player_values(
@@ -153,7 +153,7 @@ def compute_player_values(
 
     # Check if it's a draw (all players share rank 0)
     if all(r == 0 for r in rankings.values()):
-        return {p: draw_value for p in rankings}
+        return dict.fromkeys(rankings, draw_value)
 
     if method == ScoringMethod.LINEAR_RANKING:
         return _linear_ranking_values(rankings, num_players, elimination_penalty)

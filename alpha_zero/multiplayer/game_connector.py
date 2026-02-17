@@ -23,14 +23,11 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -435,7 +432,7 @@ class MockGameConnector(GameConnector):
         return None
 
     def is_game_over(self) -> bool:
-        return self._state.get("game_over", False)
+        return bool(self._state.get("game_over", False))
 
 
 def create_game_connector(config: GameConnectorConfig) -> GameConnector:

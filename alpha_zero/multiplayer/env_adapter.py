@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import copy
 import logging
-from typing import Any, SupportsFloat
+from typing import Any
 
 import numpy as np
 
@@ -61,7 +61,7 @@ class NPlayerEnvAdapter:
         self.env = env
         self._num_players = num_players
         self._track_scores = track_scores
-        self._player_scores: dict[int, float] = {i: 0.0 for i in range(num_players)}
+        self._player_scores: dict[int, float] = dict.fromkeys(range(num_players), 0.0)
         self._eliminated: set[int] = set()
         self._turn_count = 0
         self._move_history: list[dict[str, Any]] = []
@@ -84,7 +84,7 @@ class NPlayerEnvAdapter:
     @property
     def current_player(self) -> int:
         """Currently active player ID."""
-        return self.env.current_player
+        return int(self.env.current_player)
 
     def reset(self, seed: int | None = None) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
         """Reset the environment.
@@ -95,7 +95,7 @@ class NPlayerEnvAdapter:
         Returns:
             Tuple of (observation, info).
         """
-        self._player_scores = {i: 0.0 for i in range(self._num_players)}
+        self._player_scores = dict.fromkeys(range(self._num_players), 0.0)
         self._eliminated = set()
         self._turn_count = 0
         self._move_history = []
@@ -171,7 +171,7 @@ class NPlayerEnvAdapter:
 
     def get_observation(self) -> dict[str, np.ndarray]:
         """Get current observation."""
-        return self.env.get_observation()
+        return dict(self.env.get_observation())
 
     def get_info(self) -> dict[str, Any]:
         """Get current environment info, enriched with multiplayer data."""
@@ -224,7 +224,7 @@ class NPlayerEnvAdapter:
             # Winner first, then others sorted by score
             others = [p for p in players if p != winner]
             others.sort(key=lambda p: self._player_scores.get(p, 0), reverse=True)
-            return [winner] + others
+            return [winner, *others]
 
         # No winner: sort by score
         players.sort(key=lambda p: self._player_scores.get(p, 0), reverse=True)

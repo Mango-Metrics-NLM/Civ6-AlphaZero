@@ -28,6 +28,10 @@ from alpha_zero.multiplayer.config import OpponentModelConfig
 
 logger = logging.getLogger(__name__)
 
+# Numerical stability threshold for division and comparison to zero.
+# Used across prediction, entropy, and blending computations.
+_EPSILON = 1e-8
+
 
 class OpponentModel:
     """Frequency-based opponent action modeling.
@@ -123,6 +127,15 @@ class OpponentModel:
         # Track total observations
         self._observation_counts[player_id] += 1
 
+        logger.debug(
+            "Opponent model updated",
+            extra={
+                "player_id": player_id,
+                "action": action,
+                "total_observations": self._observation_counts[player_id],
+            },
+        )
+
         # Maintain recent action window
         recent = self._recent_actions[player_id]
         recent.append(action)
@@ -160,7 +173,7 @@ class OpponentModel:
         counts = counts * valid_actions
 
         total = counts.sum()
-        if total < 1e-8:
+        if total < _EPSILON:
             return self._uniform_distribution(valid_actions)
 
         # Blend with uniform prior (smoothing)
@@ -177,7 +190,7 @@ class OpponentModel:
 
         # Renormalize
         blend_sum = blended.sum()
-        if blend_sum > 1e-8:
+        if blend_sum > _EPSILON:
             blended = blended / blend_sum
 
         return blended
@@ -217,11 +230,11 @@ class OpponentModel:
 
         counts = self._action_counts[player_id]
         total = counts.sum()
-        if total < 1e-8:
+        if total < _EPSILON:
             return float(np.log(self.action_space_size))
 
         probs = counts / total
-        probs = probs[probs > 1e-8]  # Filter zeros
+        probs = probs[probs > _EPSILON]  # Filter zeros
         return float(-np.sum(probs * np.log(probs)))
 
     def get_player_summary(self, player_id: int) -> dict[str, Any]:
