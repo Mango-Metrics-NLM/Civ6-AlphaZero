@@ -17,7 +17,6 @@ from __future__ import annotations
 import logging
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -85,9 +84,7 @@ class TerrainSystem:
     # Movement
     # ------------------------------------------------------------------
 
-    def get_movement_cost(
-        self, terrain_type: str, features: list[str] | None = None
-    ) -> int:
+    def get_movement_cost(self, terrain_type: str, features: list[str] | None = None) -> int:
         """Return the movement cost for *terrain_type* with optional *features*.
 
         If the base terrain is impassable (cost ``-1``), the result is
@@ -139,9 +136,7 @@ class TerrainSystem:
     # Yields
     # ------------------------------------------------------------------
 
-    def get_yields(
-        self, terrain_type: str, features: list[str] | None = None
-    ) -> dict[str, int]:
+    def get_yields(self, terrain_type: str, features: list[str] | None = None) -> dict[str, int]:
         """Return the resource yields for *terrain_type* with *features*.
 
         Base yields come from ``terrain_yields``.  Each feature in
@@ -176,9 +171,7 @@ class TerrainSystem:
     # Defense
     # ------------------------------------------------------------------
 
-    def get_defense_bonus(
-        self, terrain_type: str, features: list[str] | None = None
-    ) -> float:
+    def get_defense_bonus(self, terrain_type: str, features: list[str] | None = None) -> float:
         """Return the combined defense bonus for a tile.
 
         Defense bonuses from the base terrain and each feature are

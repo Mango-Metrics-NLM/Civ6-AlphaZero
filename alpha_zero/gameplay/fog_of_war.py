@@ -158,9 +158,7 @@ class FogOfWarSystem:
         for unit in own_units:
             pos: tuple[int, int] = tuple(unit["position"])  # type: ignore[arg-type]
             unit_type: str = unit.get("type", "")
-            sight = self.config.sight_range.get(
-                unit_type, self.config.default_sight_range
-            )
+            sight = self.config.sight_range.get(unit_type, self.config.default_sight_range)
             visible_tiles = self._get_visible_tiles(pos, sight, terrain)
             for tx, ty in visible_tiles:
                 grid[ty, tx] = VISIBLE
@@ -169,9 +167,7 @@ class FogOfWarSystem:
         own_cities = [c for c in cities if c.get("player") == player]
         for city in own_cities:
             pos = tuple(city["position"])  # type: ignore[arg-type]
-            sight = self.config.sight_range.get(
-                "city", self.config.default_sight_range
-            )
+            sight = self.config.sight_range.get("city", self.config.default_sight_range)
             visible_tiles = self._get_visible_tiles(pos, sight, terrain)
             for tx, ty in visible_tiles:
                 grid[ty, tx] = VISIBLE
@@ -179,8 +175,7 @@ class FogOfWarSystem:
         total_visible = int(np.sum(grid == VISIBLE))
         total_seen = int(np.sum(grid == SEEN))
         logger.debug(
-            "Player %d visibility updated: %d visible, %d seen, "
-            "%d units, %d cities",
+            "Player %d visibility updated: %d visible, %d seen, " "%d units, %d cities",
             player,
             total_visible,
             total_seen,
@@ -325,7 +320,9 @@ class FogOfWarSystem:
         if not (0 <= x < self.board_size and 0 <= y < self.board_size):
             logger.debug(
                 "is_visible: position (%d, %d) out of bounds for player %d",
-                x, y, player,
+                x,
+                y,
+                player,
             )
             return False
         return bool(self._visibility[player, y, x] == VISIBLE)
@@ -336,7 +333,9 @@ class FogOfWarSystem:
         if not (0 <= x < self.board_size and 0 <= y < self.board_size):
             logger.debug(
                 "is_explored: position (%d, %d) out of bounds for player %d",
-                x, y, player,
+                x,
+                y,
+                player,
             )
             return False
         return bool(self._visibility[player, y, x] >= SEEN)
@@ -380,7 +379,8 @@ class FogOfWarSystem:
             Filtered list of unit dicts.
         """
         result = [
-            u for u in all_units
+            u
+            for u in all_units
             if self.is_visible(player, tuple(u["position"]))  # type: ignore[arg-type]
         ]
         logger.debug(
@@ -406,7 +406,8 @@ class FogOfWarSystem:
             Filtered list of city dicts.
         """
         result = [
-            c for c in all_cities
+            c
+            for c in all_cities
             if self.is_visible(player, tuple(c["position"]))  # type: ignore[arg-type]
         ]
         logger.debug(
@@ -433,16 +434,13 @@ class FogOfWarSystem:
             - Channel 2: UNEXPLORED tiles (1.0 / 0.0).
         """
         grid = self._visibility[player]
-        encoding = np.zeros(
-            (3, self.board_size, self.board_size), dtype=np.float32
-        )
+        encoding = np.zeros((3, self.board_size, self.board_size), dtype=np.float32)
         encoding[0] = (grid == VISIBLE).astype(np.float32)
         encoding[1] = (grid == SEEN).astype(np.float32)
         encoding[2] = (grid == UNEXPLORED).astype(np.float32)
 
         logger.debug(
-            "encode_for_spatial: player %d -- visible=%d, seen=%d, "
-            "unexplored=%d",
+            "encode_for_spatial: player %d -- visible=%d, seen=%d, " "unexplored=%d",
             player,
             int(encoding[0].sum()),
             int(encoding[1].sum()),
@@ -489,8 +487,7 @@ class FogOfWarSystem:
         stored_board_size = data.get("board_size", board_size)
         if stored_board_size != board_size:
             logger.warning(
-                "from_dict: stored board_size %d differs from requested %d; "
-                "using stored value",
+                "from_dict: stored board_size %d differs from requested %d; " "using stored value",
                 stored_board_size,
                 board_size,
             )
@@ -501,9 +498,7 @@ class FogOfWarSystem:
         defaults = FogOfWarConfig()
         config = FogOfWarConfig(
             sight_range=config_data.get("sight_range", defaults.sight_range),
-            remember_seen=config_data.get(
-                "remember_seen", defaults.remember_seen
-            ),
+            remember_seen=config_data.get("remember_seen", defaults.remember_seen),
             default_sight_range=config_data.get(
                 "default_sight_range", defaults.default_sight_range
             ),

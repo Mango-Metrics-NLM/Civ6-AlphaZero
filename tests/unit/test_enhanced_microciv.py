@@ -7,16 +7,14 @@ integration scenarios.
 
 from __future__ import annotations
 
-import copy
 from typing import Any
 
 import numpy as np
 import pytest
 
-from alpha_zero.envs.microciv import City, MicroCivEnv, Unit
+from alpha_zero.envs.microciv import Unit
 from alpha_zero.envs.microciv_enhanced import EnhancedMicroCivEnv
 from alpha_zero.gameplay.config import GameplayConfig
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -311,7 +309,7 @@ class TestEnhancedMicroCivFogOfWar:
 
         # Mutating the original should not affect the clone
         env.step(env.action_space_handler.end_turn_offset)
-        updated_mask = env.fog_of_war.get_visibility_mask(0)
+        env.fog_of_war.get_visibility_mask(0)  # trigger update
         # Clone mask should still match the pre-step snapshot
         assert np.array_equal(clone_mask, clone.fog_of_war.get_visibility_mask(0))
 
@@ -354,9 +352,7 @@ class TestEnhancedMicroCivEconomy:
         final_gold_p1 = env.economy.get_gold(1)
 
         # Gold should have changed for at least one player (cities produce income)
-        gold_changed = (
-            final_gold_p0 != initial_gold_p0 or final_gold_p1 != initial_gold_p1
-        )
+        gold_changed = final_gold_p0 != initial_gold_p0 or final_gold_p1 != initial_gold_p1
         assert gold_changed, "Expected gold to change after several turns"
 
     def test_economy_preserved_in_clone(self, env: EnhancedMicroCivEnv):
@@ -424,7 +420,7 @@ class TestEnhancedMicroCivCombat:
 
         obs, reward, terminated, truncated, info = env.step(action_idx)
         # At least one unit should have taken damage
-        surviving_units = [u for u in env.units if u.health > 0]
+        _ = [u for u in env.units if u.health > 0]  # verify units exist
         total_hp = sum(u.health for u in env.units)
         assert total_hp < 200, "Expected damage to be dealt in combat"
 
@@ -505,7 +501,7 @@ class TestEnhancedMicroCivCityGrowth:
 
         # At least one city should have grown (food surplus accumulates)
         current_pops = {c.id: c.population for c in env.cities}
-        any_growth = any(
+        _ = any(
             current_pops.get(cid, 0) > initial_pops.get(cid, 0)
             for cid in initial_pops
             if cid in current_pops

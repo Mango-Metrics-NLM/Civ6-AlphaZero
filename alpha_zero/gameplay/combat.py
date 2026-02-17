@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -88,7 +88,7 @@ class CombatSystem:
     # Default mapping from unit type to attack range category.
     # "ranged" types use the configured ranged_attack_range; everything
     # else defaults to melee (range 1).
-    _RANGED_UNIT_TYPES: set[str] = {"archer"}
+    _RANGED_UNIT_TYPES: ClassVar[set[str]] = {"archer"}
 
     def __init__(self, config: CombatConfig | None = None) -> None:
         self.config = config if config is not None else CombatConfig()
@@ -396,9 +396,7 @@ class CombatSystem:
         return unit.get("unit_type", "") in self._RANGED_UNIT_TYPES
 
     @staticmethod
-    def _chebyshev_distance(
-        pos_a: tuple[int, int], pos_b: tuple[int, int]
-    ) -> int:
+    def _chebyshev_distance(pos_a: tuple[int, int], pos_b: tuple[int, int]) -> int:
         """Compute the Chebyshev (chessboard) distance between two positions."""
 
         return max(abs(pos_a[0] - pos_b[0]), abs(pos_a[1] - pos_b[1]))

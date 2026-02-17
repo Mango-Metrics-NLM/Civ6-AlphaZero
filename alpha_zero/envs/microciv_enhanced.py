@@ -36,14 +36,14 @@ from typing import Any, SupportsFloat
 import numpy as np
 from gymnasium.core import RenderFrame
 
-from alpha_zero.envs.microciv import City, MicroCivEnv, Tile, Unit
+from alpha_zero.envs.microciv import MicroCivEnv, Tile, Unit
 from alpha_zero.gameplay.city_growth import CityGrowthConfig, CityGrowthSystem
 from alpha_zero.gameplay.combat import CombatConfig, CombatResult, CombatSystem
 from alpha_zero.gameplay.config import GameplayConfig
 from alpha_zero.gameplay.economy import EconomyConfig, EconomySystem
 from alpha_zero.gameplay.fog_of_war import FogOfWarConfig, FogOfWarSystem
-from alpha_zero.gameplay.terrain import TerrainConfig, TerrainSystem
-from alpha_zero.gameplay.victory import VictoryCondition, VictorySystem, VictoryType
+from alpha_zero.gameplay.terrain import TerrainSystem
+from alpha_zero.gameplay.victory import VictoryCondition, VictorySystem
 
 logger = logging.getLogger(__name__)
 
@@ -84,8 +84,7 @@ class EnhancedMicroCivEnv(MicroCivEnv):
         self._init_gameplay_systems()
 
         logger.info(
-            "EnhancedMicroCivEnv created: fog=%s, combat=%s, economy=%s, "
-            "growth=%s, terrain=%s",
+            "EnhancedMicroCivEnv created: fog=%s, combat=%s, economy=%s, " "growth=%s, terrain=%s",
             self.gameplay_config.enable_fog_of_war,
             self.gameplay_config.enable_enhanced_combat,
             self.gameplay_config.enable_economy,
@@ -379,8 +378,7 @@ class EnhancedMicroCivEnv(MicroCivEnv):
             )
 
             has_defender = any(
-                u.position == target_pos and u.player != unit.player
-                for u in self.units
+                u.position == target_pos and u.player != unit.player for u in self.units
             )
             if not has_defender:
                 return 0.0, False, f"No enemy at {target_pos}"
@@ -404,9 +402,7 @@ class EnhancedMicroCivEnv(MicroCivEnv):
 
             # Enhanced: add production bonus from city growth system
             if self._city_growth is not None:
-                production_rate += self._city_growth.get_production_bonus(
-                    city.population
-                )
+                production_rate += self._city_growth.get_production_bonus(city.population)
 
             if city.production_queue:
                 city.production += production_rate
@@ -419,9 +415,7 @@ class EnhancedMicroCivEnv(MicroCivEnv):
                             player=city.player,
                             unit_type=city.production_queue,
                             position=spawn_pos,
-                            strength=self.UNIT_STRENGTH.get(
-                                city.production_queue, 20
-                            ),
+                            strength=self.UNIT_STRENGTH.get(city.production_queue, 20),
                             moves_remaining=0,
                         ),
                     )
@@ -442,12 +436,8 @@ class EnhancedMicroCivEnv(MicroCivEnv):
             # Process economy for both players
             if self._economy is not None:
                 for player in range(self.gameplay_config.num_players):
-                    own_cities = [
-                        c.to_dict() for c in self._get_player_cities(player)
-                    ]
-                    own_units = [
-                        u.to_dict() for u in self._get_player_units(player)
-                    ]
+                    own_cities = [c.to_dict() for c in self._get_player_cities(player)]
+                    own_units = [u.to_dict() for u in self._get_player_units(player)]
                     self._economy.process_turn(player, own_cities, own_units)
                     logger.debug(
                         "Economy P%d: gold=%d, gpt=%d",
@@ -470,9 +460,7 @@ class EnhancedMicroCivEnv(MicroCivEnv):
                             city.id, city.population, surplus
                         )
                         if result["population_change"] != 0:
-                            city.population = max(
-                                1, city.population + result["population_change"]
-                            )
+                            city.population = max(1, city.population + result["population_change"])
                             logger.debug(
                                 "City '%s' pop %d->%d (surplus=%d)",
                                 city.name,
@@ -585,9 +573,7 @@ class EnhancedMicroCivEnv(MicroCivEnv):
             visibility = {}
             for y in range(self.board_size):
                 for x in range(self.board_size):
-                    state = self._fog.get_visibility_state(
-                        self.current_player, (x, y)
-                    )
+                    state = self._fog.get_visibility_state(self.current_player, (x, y))
                     if state == 2:  # VISIBLE
                         visibility[(x, y)] = "visible"
                     elif state == 1:  # SEEN
@@ -599,9 +585,7 @@ class EnhancedMicroCivEnv(MicroCivEnv):
         # Add economy data to game state
         if self._economy is not None:
             game_state["gold"] = self._economy.get_gold(self.current_player)
-            game_state["gold_per_turn"] = self._economy.gold_per_turn.get(
-                self.current_player, 0
-            )
+            game_state["gold_per_turn"] = self._economy.gold_per_turn.get(self.current_player, 0)
 
         spatial, vector = self.encoder.encode(game_state)
         action_mask = self.action_space_handler.get_valid_mask(game_state)
@@ -619,8 +603,7 @@ class EnhancedMicroCivEnv(MicroCivEnv):
         # Add economy info
         if self._economy is not None:
             info["gold"] = {
-                p: self._economy.get_gold(p)
-                for p in range(self.gameplay_config.num_players)
+                p: self._economy.get_gold(p) for p in range(self.gameplay_config.num_players)
             }
             info["gold_per_turn"] = {
                 p: self._economy.gold_per_turn.get(p, 0)
@@ -679,18 +662,14 @@ class EnhancedMicroCivEnv(MicroCivEnv):
         # Mark cities (only if visible)
         for city in self.cities:
             x, y = city.position
-            if self._fog is not None and not self._fog.is_visible(
-                self.current_player, (x, y)
-            ):
+            if self._fog is not None and not self._fog.is_visible(self.current_player, (x, y)):
                 continue
             grid[y][x] = "C" if city.player == 0 else "c"
 
         # Mark units (only if visible)
         for unit in self.units:
             x, y = unit.position
-            if self._fog is not None and not self._fog.is_visible(
-                self.current_player, (x, y)
-            ):
+            if self._fog is not None and not self._fog.is_visible(self.current_player, (x, y)):
                 continue
             if unit.unit_type == "warrior":
                 grid[y][x] = "W" if unit.player == 0 else "w"
@@ -724,10 +703,7 @@ class EnhancedMicroCivEnv(MicroCivEnv):
             mask = self._fog.get_visibility_mask(self.current_player)
             visible = int((mask == 2).sum())
             total = self.board_size * self.board_size
-            lines.append(
-                f"Visibility: {visible}/{total} tiles "
-                f"({visible * 100 // total}%)"
-            )
+            lines.append(f"Visibility: {visible}/{total} tiles " f"({visible * 100 // total}%)")
 
         return "\n".join(lines)  # type: ignore[return-value]
 
@@ -756,15 +732,11 @@ class EnhancedMicroCivEnv(MicroCivEnv):
 
         # Deep copy subsystems
         if self._fog is not None:
-            new_env._fog = FogOfWarSystem.from_dict(
-                self._fog.to_dict(), self.board_size
-            )
+            new_env._fog = FogOfWarSystem.from_dict(self._fog.to_dict(), self.board_size)
         if self._economy is not None:
             new_env._economy = EconomySystem.from_dict(self._economy.to_dict())
         if self._city_growth is not None:
-            new_env._city_growth = CityGrowthSystem.from_dict(
-                self._city_growth.to_dict()
-            )
+            new_env._city_growth = CityGrowthSystem.from_dict(self._city_growth.to_dict())
 
         return new_env
 

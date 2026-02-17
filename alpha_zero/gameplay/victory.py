@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 # Enums & Config
 # ======================================================================
 
+
 class VictoryType(Enum):
     """Types of victory that can end a game."""
 
@@ -49,9 +50,7 @@ class VictoryConfig:
             only when they have lost **all** cities **and** all units.
     """
 
-    enabled_victories: list[str] = field(
-        default_factory=lambda: ["elimination", "score"]
-    )
+    enabled_victories: list[str] = field(default_factory=lambda: ["elimination", "score"])
     score_weights: dict[str, float] = field(
         default_factory=lambda: {
             "unit": 1.0,
@@ -68,6 +67,7 @@ class VictoryConfig:
 # ======================================================================
 # Result dataclass
 # ======================================================================
+
 
 @dataclass
 class VictoryCondition:
@@ -90,6 +90,7 @@ class VictoryCondition:
 # Victory System
 # ======================================================================
 
+
 class VictorySystem:
     """Composable victory system driven by :class:`VictoryConfig`.
 
@@ -110,9 +111,7 @@ class VictorySystem:
     Each city dict should contain at least ``{"population": int}``.
     """
 
-    def __init__(
-        self, num_players: int = 2, config: VictoryConfig | None = None
-    ) -> None:
+    def __init__(self, num_players: int = 2, config: VictoryConfig | None = None) -> None:
         self.num_players = num_players
         self.config = config or VictoryConfig()
         self._enabled: set[str] = set(self.config.enabled_victories)
@@ -164,9 +163,7 @@ class VictorySystem:
     # Elimination
     # ------------------------------------------------------------------
 
-    def check_elimination(
-        self, game_state: dict[str, Any]
-    ) -> VictoryCondition | None:
+    def check_elimination(self, game_state: dict[str, Any]) -> VictoryCondition | None:
         """Check whether any player has been eliminated.
 
         A player is eliminated when they have zero cities **and** zero
@@ -221,9 +218,7 @@ class VictorySystem:
     # Domination
     # ------------------------------------------------------------------
 
-    def check_domination(
-        self, game_state: dict[str, Any]
-    ) -> VictoryCondition | None:
+    def check_domination(self, game_state: dict[str, Any]) -> VictoryCondition | None:
         """Check whether any player controls enough cities to dominate.
 
         A player wins domination when they own at least
@@ -239,9 +234,7 @@ class VictorySystem:
         players: dict[int, dict[str, Any]] = game_state.get("players", {})
         total_cities = game_state.get("total_cities")
         if total_cities is None:
-            total_cities = sum(
-                len(p.get("cities", [])) for p in players.values()
-            )
+            total_cities = sum(len(p.get("cities", [])) for p in players.values())
 
         if total_cities == 0:
             return None
@@ -274,9 +267,7 @@ class VictorySystem:
     # Score
     # ------------------------------------------------------------------
 
-    def calculate_scores(
-        self, game_state: dict[str, Any]
-    ) -> dict[int, float]:
+    def calculate_scores(self, game_state: dict[str, Any]) -> dict[int, float]:
         """Calculate the score for every player.
 
         Score = sum(weight * count) for each category in
@@ -304,9 +295,7 @@ class VictorySystem:
             score += weights.get("unit", 0.0) * len(pdata.get("units", []))
             score += weights.get("city", 0.0) * len(pdata.get("cities", []))
 
-            total_pop = sum(
-                c.get("population", 1) for c in pdata.get("cities", [])
-            )
+            total_pop = sum(c.get("population", 1) for c in pdata.get("cities", []))
             score += weights.get("population", 0.0) * total_pop
             score += weights.get("gold", 0.0) * pdata.get("gold", 0)
             score += weights.get("territory", 0.0) * pdata.get("territory", 0)
@@ -315,9 +304,7 @@ class VictorySystem:
 
         return scores
 
-    def check_score_victory(
-        self, game_state: dict[str, Any]
-    ) -> VictoryCondition | None:
+    def check_score_victory(self, game_state: dict[str, Any]) -> VictoryCondition | None:
         """Return the winner based on highest score.
 
         Intended for use when the turn limit has been reached.
@@ -334,9 +321,7 @@ class VictorySystem:
             return None
 
         winner = max(scores, key=lambda pid: scores[pid])
-        logger.info(
-            "Score victory for player %d (score %.1f)", winner, scores[winner]
-        )
+        logger.info("Score victory for player %d (score %.1f)", winner, scores[winner])
         return VictoryCondition(
             victory_type=VictoryType.SCORE,
             winner=winner,
@@ -348,9 +333,7 @@ class VictorySystem:
     # Progress & encoding
     # ------------------------------------------------------------------
 
-    def get_victory_progress(
-        self, player: int, game_state: dict[str, Any]
-    ) -> dict[str, float]:
+    def get_victory_progress(self, player: int, game_state: dict[str, Any]) -> dict[str, float]:
         """Return normalised progress toward each victory type.
 
         Values are in ``[0.0, 1.0]`` (clamped).  A value of ``1.0``
@@ -374,9 +357,7 @@ class VictorySystem:
         # -- domination --
         total_cities = game_state.get("total_cities")
         if total_cities is None:
-            total_cities = sum(
-                len(p.get("cities", [])) for p in players.values()
-            )
+            total_cities = sum(len(p.get("cities", [])) for p in players.values())
         own_cities = len(players.get(player, {}).get("cities", []))
         dom_target = max(total_cities * self.config.domination_threshold, 1.0)
         progress["domination"] = min(1.0, own_cities / dom_target)
@@ -413,9 +394,7 @@ class VictorySystem:
 
         return progress
 
-    def encode_for_vector(
-        self, player: int, game_state: dict[str, Any]
-    ) -> dict[str, float]:
+    def encode_for_vector(self, player: int, game_state: dict[str, Any]) -> dict[str, float]:
         """Return victory progress normalised for neural network input.
 
         Identical to :meth:`get_victory_progress` but guaranteed to
@@ -464,16 +443,12 @@ class VictorySystem:
         """
         config_data = data.get("config", {})
         config = VictoryConfig(
-            enabled_victories=config_data.get(
-                "enabled_victories", ["elimination", "score"]
-            ),
+            enabled_victories=config_data.get("enabled_victories", ["elimination", "score"]),
             score_weights=config_data.get(
                 "score_weights",
                 {"unit": 1.0, "city": 5.0, "population": 2.0, "gold": 0.02, "territory": 0.5},
             ),
             domination_threshold=config_data.get("domination_threshold", 0.66),
-            elimination_requires_all=config_data.get(
-                "elimination_requires_all", True
-            ),
+            elimination_requires_all=config_data.get("elimination_requires_all", True),
         )
         return cls(num_players=data.get("num_players", 2), config=config)

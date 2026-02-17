@@ -23,8 +23,8 @@ Typical usage:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field, fields, asdict
-from typing import Any, Dict
+from dataclasses import asdict, dataclass, field, fields
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +149,7 @@ class CityGrowthConfig:
     production_per_population: int = 1
 
 
-def _default_terrain_yields() -> Dict[str, Dict[str, int]]:
+def _default_terrain_yields() -> dict[str, dict[str, int]]:
     """Return default terrain yield mapping.
 
     Each terrain type maps to a dictionary of resource yields (food,
@@ -193,7 +193,7 @@ class TerrainConfig:
     movement_cost_hills: int = 2
     movement_cost_forest: int = 2
     movement_cost_mountain: int = -1
-    yields: Dict[str, Dict[str, int]] = field(default_factory=_default_terrain_yields)
+    yields: dict[str, dict[str, int]] = field(default_factory=_default_terrain_yields)
 
 
 @dataclass(frozen=True)
@@ -304,7 +304,7 @@ class GameplayConfig:
         )
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> GameplayConfig:
+    def from_dict(cls, data: dict[str, Any]) -> GameplayConfig:
         """Create a GameplayConfig from a dictionary.
 
         Nested dictionaries are automatically converted to their
@@ -320,7 +320,7 @@ class GameplayConfig:
         """
         logger.debug("Creating GameplayConfig from dict with %d keys", len(data))
 
-        nested_mapping: Dict[str, type] = {
+        nested_mapping: dict[str, type] = {
             "fog_of_war": FogOfWarConfig,
             "combat": CombatConfig,
             "economy": EconomyConfig,
@@ -332,7 +332,7 @@ class GameplayConfig:
         # Collect valid top-level field names
         valid_top_level = {f.name for f in fields(cls)}
 
-        kwargs: Dict[str, Any] = {}
+        kwargs: dict[str, Any] = {}
         for key, value in data.items():
             if key not in valid_top_level:
                 logger.warning("Unknown GameplayConfig key ignored: %s", key)
@@ -355,7 +355,7 @@ class GameplayConfig:
 
         return cls(**kwargs)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize this configuration to a plain dictionary.
 
         All nested dataclasses are converted to dictionaries

@@ -23,7 +23,7 @@ Typical usage:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -111,9 +111,7 @@ class CityGrowthSystem:
             + (current_population - 1) * self.config.growth_threshold_scaling
         )
 
-    def calculate_food_surplus(
-        self, city: dict, tile_yields: list[dict[str, int]]
-    ) -> int:
+    def calculate_food_surplus(self, city: dict, tile_yields: list[dict[str, int]]) -> int:
         """Calculate the per-turn food surplus for a city.
 
         Total food is the sum of the ``"food"`` key from every worked

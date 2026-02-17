@@ -13,25 +13,23 @@ Tests cover the full public API of every gameplay subsystem:
 import numpy as np
 import pytest
 
+from alpha_zero.gameplay.city_growth import CityGrowthConfig, CityGrowthSystem
+from alpha_zero.gameplay.combat import CombatConfig, CombatResult, CombatSystem
 from alpha_zero.gameplay.config import GameplayConfig
+from alpha_zero.gameplay.economy import EconomyConfig, EconomySystem
 from alpha_zero.gameplay.fog_of_war import (
-    FogOfWarSystem,
-    FogOfWarConfig,
-    VISIBLE,
     SEEN,
     UNEXPLORED,
+    VISIBLE,
+    FogOfWarConfig,
+    FogOfWarSystem,
 )
-from alpha_zero.gameplay.combat import CombatSystem, CombatConfig, CombatResult
-from alpha_zero.gameplay.economy import EconomySystem, EconomyConfig
-from alpha_zero.gameplay.city_growth import CityGrowthSystem, CityGrowthConfig
-from alpha_zero.gameplay.terrain import TerrainSystem, TerrainConfig
+from alpha_zero.gameplay.terrain import TerrainConfig, TerrainSystem
 from alpha_zero.gameplay.victory import (
-    VictorySystem,
     VictoryConfig,
+    VictorySystem,
     VictoryType,
-    VictoryCondition,
 )
-
 
 # ======================================================================
 # 1. GameplayConfig
@@ -427,8 +425,8 @@ class TestCombatSystem:
         attacker = {"strength": 30, "health": 100, "unit_type": "warrior", "position": (3, 4)}
         defender = {"strength": 30, "health": 100, "unit_type": "warrior", "position": (3, 5)}
 
-        result_plains = combat.resolve_combat(attacker, defender, terrain_type="plains")
-        result_hills = combat.resolve_combat(attacker, defender, terrain_type="hills")
+        combat.resolve_combat(attacker, defender, terrain_type="plains")
+        combat.resolve_combat(attacker, defender, terrain_type="hills")
 
         # On hills, the defender is stronger so the attacker deals less damage on average.
         # Due to random variance we compare the terrain modifier directly.
@@ -478,16 +476,16 @@ class TestCombatSystem:
         """Melee unit can attack adjacent (Chebyshev distance 1) targets only."""
         warrior = {"unit_type": "warrior", "position": (3, 4)}
 
-        assert combat.can_attack(warrior, (3, 5)) is True   # distance 1
-        assert combat.can_attack(warrior, (4, 5)) is True   # diagonal, distance 1
+        assert combat.can_attack(warrior, (3, 5)) is True  # distance 1
+        assert combat.can_attack(warrior, (4, 5)) is True  # diagonal, distance 1
         assert combat.can_attack(warrior, (5, 6)) is False  # distance 2
 
     def test_can_attack_ranged_range(self, combat):
         """Ranged unit can attack within configured ranged_attack_range."""
         archer = {"unit_type": "archer", "position": (3, 4)}
 
-        assert combat.can_attack(archer, (3, 6)) is True   # distance 2
-        assert combat.can_attack(archer, (3, 5)) is True   # distance 1
+        assert combat.can_attack(archer, (3, 6)) is True  # distance 2
+        assert combat.can_attack(archer, (3, 5)) is True  # distance 1
         assert combat.can_attack(archer, (3, 7)) is False  # distance 3
 
     def test_combat_result_reward(self, combat):
@@ -978,7 +976,7 @@ class TestVictorySystem:
     def test_score_calculation(self, victory):
         """calculate_scores should correctly combine weighted categories."""
         state = self._make_game_state(
-            p0_units=["u1", "u2"],     # 2 units
+            p0_units=["u1", "u2"],  # 2 units
             p0_cities=[{"population": 3}],  # 1 city, pop=3
             p0_gold=100,
             p0_territory=10,
@@ -1023,9 +1021,5 @@ class TestVictorySystem:
         assert restored.config.domination_threshold == pytest.approx(
             victory.config.domination_threshold
         )
-        assert set(restored.config.enabled_victories) == set(
-            victory.config.enabled_victories
-        )
-        assert restored.config.elimination_requires_all == (
-            victory.config.elimination_requires_all
-        )
+        assert set(restored.config.enabled_victories) == set(victory.config.enabled_victories)
+        assert restored.config.elimination_requires_all == (victory.config.elimination_requires_all)

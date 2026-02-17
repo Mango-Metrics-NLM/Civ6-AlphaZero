@@ -44,9 +44,7 @@ class EconomySystem:
     ) -> None:
         self.config = config or EconomyConfig()
         self._num_players = num_players
-        self.gold: dict[int, int] = {
-            p: self.config.starting_gold for p in range(num_players)
-        }
+        self.gold: dict[int, int] = {p: self.config.starting_gold for p in range(num_players)}
         self.gold_per_turn: dict[int, int] = {p: 0 for p in range(num_players)}
 
     # ------------------------------------------------------------------
@@ -61,9 +59,7 @@ class EconomySystem:
         """
         if num_players is not None:
             self._num_players = num_players
-        self.gold = {
-            p: self.config.starting_gold for p in range(self._num_players)
-        }
+        self.gold = {p: self.config.starting_gold for p in range(self._num_players)}
         self.gold_per_turn = {p: 0 for p in range(self._num_players)}
 
     # ------------------------------------------------------------------
@@ -97,9 +93,7 @@ class EconomySystem:
         )
 
         maintenance = sum(
-            cfg.unit_maintenance.get(
-                unit.get("type", ""), cfg.default_unit_maintenance
-            )
+            cfg.unit_maintenance.get(unit.get("type", ""), cfg.default_unit_maintenance)
             for unit in units
         )
 

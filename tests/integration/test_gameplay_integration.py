@@ -9,14 +9,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from alpha_zero.envs.civ6_encoder import MicroCivEncoder
 from alpha_zero.envs.microciv_enhanced import EnhancedMicroCivEnv
 from alpha_zero.gameplay.config import GameplayConfig
-from alpha_zero.envs.civ6_encoder import MicroCivEncoder
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_env(
     *,
@@ -117,9 +117,9 @@ class TestGameplaySystemInteractions:
         # The combat system should be initialized with terrain defense bonuses
         assert env.combat_system is not None
         combat_cfg = env.combat_system.config
-        assert combat_cfg.terrain_defense_bonuses.get("hills", 0) > 0, (
-            "Expected a positive defense bonus for hills terrain"
-        )
+        assert (
+            combat_cfg.terrain_defense_bonuses.get("hills", 0) > 0
+        ), "Expected a positive defense bonus for hills terrain"
 
     def test_city_growth_affects_production(self) -> None:
         """Higher city population produces more via the city growth system."""
@@ -133,9 +133,9 @@ class TestGameplaySystemInteractions:
         # A city with population 1 should have less production bonus than pop 5
         bonus_pop1 = env.city_growth.get_production_bonus(1)
         bonus_pop5 = env.city_growth.get_production_bonus(5)
-        assert bonus_pop5 > bonus_pop1, (
-            f"Expected pop-5 production bonus ({bonus_pop5}) > pop-1 ({bonus_pop1})"
-        )
+        assert (
+            bonus_pop5 > bonus_pop1
+        ), f"Expected pop-5 production bonus ({bonus_pop5}) > pop-1 ({bonus_pop1})"
 
     def test_economy_and_city_growth_interact(self) -> None:
         """Gold from cities and maintenance from units both tracked over time."""
@@ -254,9 +254,9 @@ class TestEncoderWithGameplaySystems:
         spatial, vector = encoder.encode(game_state)
 
         # Channel 11 should be all 1.0 (backward compat: all tiles visible)
-        assert np.all(spatial[11].numpy() == 1.0), (
-            "Without visibility data, all tiles should be marked as visible"
-        )
+        assert np.all(
+            spatial[11].numpy() == 1.0
+        ), "Without visibility data, all tiles should be marked as visible"
 
         # Gold defaults to 0
         assert vector[8].item() == pytest.approx(0.0)
@@ -321,9 +321,7 @@ class TestGameSimulation:
             f"(turn={env.turn}, max_turns={env.max_turns})"
         )
         # Winner should be set (0, 1, or None for a draw)
-        assert env.winner is None or env.winner in (0, 1), (
-            f"Unexpected winner value: {env.winner}"
-        )
+        assert env.winner is None or env.winner in (0, 1), f"Unexpected winner value: {env.winner}"
 
     def test_deterministic_with_seed(self) -> None:
         """Two games with the same seed and same actions produce identical results.
@@ -360,11 +358,9 @@ class TestGameSimulation:
             obs, _r, _t, _tr, _i = env2.step(action)
             obs_list2.append(obs)
 
-        assert len(obs_list1) == len(obs_list2), (
-            "Runs produced different numbers of observations"
-        )
+        assert len(obs_list1) == len(obs_list2), "Runs produced different numbers of observations"
 
-        for i, (o1, o2) in enumerate(zip(obs_list1, obs_list2)):
+        for i, (o1, o2) in enumerate(zip(obs_list1, obs_list2, strict=False)):
             np.testing.assert_array_equal(
                 o1["spatial"],
                 o2["spatial"],
@@ -428,16 +424,12 @@ class TestGameSimulation:
         obs_after_orig = env.get_observation()
         obs_after_clone = cloned.get_observation()
 
-        spatial_same = np.array_equal(
-            obs_after_orig["spatial"], obs_after_clone["spatial"]
-        )
-        vector_same = np.array_equal(
-            obs_after_orig["vector"], obs_after_clone["vector"]
-        )
+        spatial_same = np.array_equal(obs_after_orig["spatial"], obs_after_clone["spatial"])
+        vector_same = np.array_equal(obs_after_orig["vector"], obs_after_clone["vector"])
 
         # It is extremely unlikely that both spatial and vector remain identical
         # after 10 steps with different random seeds.  If the clone was truly
         # independent, the observations should have diverged.
-        assert not (spatial_same and vector_same), (
-            "After divergent play, cloned environments should not remain identical"
-        )
+        assert not (
+            spatial_same and vector_same
+        ), "After divergent play, cloned environments should not remain identical"
