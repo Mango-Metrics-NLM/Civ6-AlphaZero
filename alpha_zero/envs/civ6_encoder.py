@@ -392,8 +392,20 @@ class MicroCivEncoder:
             else:
                 spatial[10, y, x] = 1.0
 
-        # Fog of war (all visible for MicroCiv)
-        spatial[11, :, :] = 1.0
+        # Fog of war -- use per-tile visibility if available, else all visible
+        visibility = game_state.get("visibility")
+        if visibility is not None:
+            for y in range(size):
+                for x in range(size):
+                    vis_state = visibility.get((x, y), "unexplored")
+                    if vis_state == "visible":
+                        spatial[11, y, x] = 1.0
+                    elif vis_state == "seen":
+                        spatial[11, y, x] = 0.5
+                    # unexplored remains 0.0
+        else:
+            # Backward compat: all visible when no visibility data
+            spatial[11, :, :] = 1.0
 
         # Constant
         spatial[12, :, :] = 1.0
@@ -431,6 +443,23 @@ class MicroCivEncoder:
             vector[6] = sum(u.get("health", 0) for u in own_units) / (len(own_units) * 100.0)
         if enemy_units:
             vector[7] = sum(u.get("health", 0) for u in enemy_units) / (len(enemy_units) * 100.0)
+
+        # Economy data (indices 8-9, backward compat: default to 0)
+        vector[8] = game_state.get("gold", 0) / 500.0
+        vector[9] = game_state.get("gold_per_turn", 0) / 50.0
+
+        # Population data (index 10)
+        total_own_pop = sum(c.get("population", 1) for c in own_cities) if own_cities else 0
+        vector[10] = total_own_pop / 30.0
+
+        # Visibility coverage (index 11, backward compat: 1.0 if no fog)
+        visibility = game_state.get("visibility")
+        if visibility is not None:
+            visible_count = sum(1 for v in visibility.values() if v == "visible")
+            total_tiles = max(self.board_size * self.board_size, 1)
+            vector[11] = visible_count / total_tiles
+        else:
+            vector[11] = 1.0  # all visible (backward compat)
 
         return vector
 

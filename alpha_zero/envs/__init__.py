@@ -11,6 +11,7 @@ server is not running.
 from typing import Any
 
 from alpha_zero.envs.microciv import MicroCivEnv
+from alpha_zero.envs.microciv_enhanced import EnhancedMicroCivEnv
 
 
 def __getattr__(name: str) -> Any:
@@ -43,6 +44,7 @@ __all__ = [
     "CivRealmEncoder",
     "CivRealmWrapper",
     # MicroCiv
+    "EnhancedMicroCivEnv",
     "MicroCivEnv",
     "MiniGameTask",
     "create_civrealm_env",
