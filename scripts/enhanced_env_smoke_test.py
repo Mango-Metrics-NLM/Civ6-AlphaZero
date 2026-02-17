@@ -287,14 +287,15 @@ def test_container_validation(container_image: str | None) -> SmokeResult:
                 "Docker not found in PATH",
             )
 
-        # Test 1: gameplay modules importable
+        # Test 1: gameplay modules importable (override entrypoint to use python)
         result = subprocess.run(  # noqa: S603
             [
                 docker_bin,
                 "run",
                 "--rm",
-                image,
+                "--entrypoint",
                 "python",
+                image,
                 "-c",
                 "from alpha_zero.envs.env_factory import GAMEPLAY_PRESETS; "
                 "print(f'PRESETS={GAMEPLAY_PRESETS}')",
