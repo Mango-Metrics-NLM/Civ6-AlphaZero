@@ -1,0 +1,791 @@
+<mxfile host="app.diagrams.net" modified="2026-02-17T00:00:00.000Z" agent="Civ6-AlphaZero C4 Generator" version="24.0.0" type="device">
+  <diagram id="tab1" name="C4 Level 1 - System Context">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="t1_title" value="&lt;font style=&quot;font-size:20px&quot;&gt;&lt;b&gt;System Context Diagram&lt;/b&gt;&lt;/font&gt;&lt;br/&gt;&lt;font style=&quot;font-size:12px&quot;&gt;Civ6-AlphaZero — AlphaZero-style RL for Civilization VI&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=5;" parent="1" vertex="1">
+          <mxGeometry x="20" y="10" width="500" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_person" value="&lt;b&gt;AI Researcher / Developer&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Person]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Trains, evaluates, and monitors&lt;br/&gt;AlphaZero agents for Civ6&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#08427B;fontColor=#ffffff;strokeColor=#052E56;arcSize=50;fontSize=13;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="580" y="40" width="240" height="160" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_system" value="&lt;b&gt;Civ6-AlphaZero System&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Python / PyTorch]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Self-play reinforcement learning system&lt;br/&gt;using MCTS and deep neural networks&lt;br/&gt;to learn Civilization VI strategy&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1168BD;fontColor=#ffffff;strokeColor=#0B4884;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="500" y="340" width="400" height="200" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_microciv" value="&lt;b&gt;MicroCiv&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Python Environment]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Simplified 4X game for&lt;br/&gt;fast Phase 1 training&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="50" y="280" width="240" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_unciv" value="&lt;b&gt;Unciv / CivRealm&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[External Game Engine]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Open-source Civ V clone&lt;br/&gt;with JSON save interface&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="50" y="460" width="240" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_openai" value="&lt;b&gt;OpenAI API&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[External Service]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;LLM for strategy analysis,&lt;br/&gt;RAG queries, embeddings&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="1100" y="180" width="240" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_anthropic" value="&lt;b&gt;Anthropic API&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[External Service]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Alternative LLM provider&lt;br/&gt;with automatic failover&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="1100" y="360" width="240" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_wandb" value="&lt;b&gt;Weights &amp;amp; Biases&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[External Service]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Experiment tracking,&lt;br/&gt;training metrics, dashboards&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="1100" y="540" width="240" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_vertex" value="&lt;b&gt;Google Vertex AI&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Cloud Platform]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Distributed training jobs,&lt;br/&gt;Spot VM orchestration&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="330" y="680" width="240" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_gcs" value="&lt;b&gt;Google Cloud Storage&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Cloud Storage]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Model checkpoints, game&lt;br/&gt;trajectories, metadata&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="640" y="680" width="240" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_chromadb" value="&lt;b&gt;ChromaDB / FAISS&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Vector Database]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;RAG knowledge base for&lt;br/&gt;strategy documents&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="950" y="720" width="240" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_e1" value="Configures training,&lt;br/&gt;monitors progress,&lt;br/&gt;plays against AI" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t1_person" target="t1_system">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_e2" value="Runs self-play&lt;br/&gt;training games" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t1_system" target="t1_microciv">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_e3" value="Interfaces via&lt;br/&gt;JSON state files" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t1_system" target="t1_unciv">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_e4" value="Strategy analysis,&lt;br/&gt;embeddings [HTTPS]" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;dashed=1;dashPattern=5 5;" parent="1" edge="1" source="t1_system" target="t1_openai">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_e5" value="Fallback LLM&lt;br/&gt;provider [HTTPS]" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;dashed=1;dashPattern=5 5;" parent="1" edge="1" source="t1_system" target="t1_anthropic">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_e6" value="Logs metrics,&lt;br/&gt;ELO ratings [HTTPS]" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;dashed=1;dashPattern=5 5;" parent="1" edge="1" source="t1_system" target="t1_wandb">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_e7" value="Submits training&lt;br/&gt;jobs [gRPC]" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t1_system" target="t1_vertex">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_e8" value="Reads/writes checkpoints&lt;br/&gt;&amp;amp; trajectories" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t1_system" target="t1_gcs">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_e9" value="Stores &amp;amp; queries&lt;br/&gt;strategy knowledge" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;dashed=1;dashPattern=5 5;" parent="1" edge="1" source="t1_system" target="t1_chromadb">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_leg1" value="&lt;font style=&quot;font-size:12px&quot;&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=5;" parent="1" vertex="1">
+          <mxGeometry x="20" y="850" width="100" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_leg2" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#08427B;fontColor=#ffffff;strokeColor=#052E56;arcSize=50;fontSize=13;fontStyle=1;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="20" y="880" width="30" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_leg2t" value="Person" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="60" y="880" width="100" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_leg3" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1168BD;fontColor=#ffffff;strokeColor=#0B4884;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="20" y="910" width="30" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_leg3t" value="Internal System" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="60" y="910" width="120" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_leg4" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="20" y="940" width="30" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="t1_leg4t" value="External System" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" parent="1" vertex="1">
+          <mxGeometry x="60" y="940" width="120" height="20" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="tab2" name="C4 Level 2 - Containers">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="t2_title" value="&lt;font style=&quot;font-size:20px&quot;&gt;&lt;b&gt;Container Diagram&lt;/b&gt;&lt;/font&gt;&lt;br/&gt;&lt;font style=&quot;font-size:12px&quot;&gt;Civ6-AlphaZero — Internal containers / subsystems&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=5;" parent="1" vertex="1">
+          <mxGeometry x="20" y="10" width="500" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_boundary" value="Civ6-AlphaZero System" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#1168BD;strokeWidth=2;dashed=1;arcSize=5;fontSize=16;fontStyle=1;fontColor=#1168BD;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="30" y="70" width="1150" height="1080" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_web" value="&lt;b&gt;Web Interface&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[FastAPI / WebSocket]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Human vs AI gameplay,&lt;br/&gt;game replay viewer&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;fontColor=#ffffff;strokeColor=#3C7FC0;arcSize=10;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="60" y="120" width="220" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_orch" value="&lt;b&gt;Training Orchestrator&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Python CLI]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Unified entry point for all&lt;br/&gt;training modes with dynamic&lt;br/&gt;hyperparameter scheduling&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;fontColor=#ffffff;strokeColor=#3C7FC0;arcSize=10;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="320" y="120" width="260" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_cli" value="&lt;b&gt;Cloud Orchestrator&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Vertex AI Client]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Submits &amp;amp; monitors&lt;br/&gt;distributed cloud jobs&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;fontColor=#ffffff;strokeColor=#3C7FC0;arcSize=10;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="620" y="120" width="240" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_core" value="&lt;b&gt;Core Algorithms&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[PyTorch]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Neural networks (ResNet,&lt;br/&gt;Transformer, MuZero),&lt;br/&gt;MCTS, action space&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;fontColor=#ffffff;strokeColor=#3C7FC0;arcSize=10;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="60" y="310" width="220" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_envs" value="&lt;b&gt;Game Environments&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Gymnasium]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;MicroCiv (simplified),&lt;br/&gt;Unciv bridge, CivRealm&lt;br/&gt;Docker, vectorized envs&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;fontColor=#ffffff;strokeColor=#3C7FC0;arcSize=10;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="320" y="310" width="220" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_eval" value="&lt;b&gt;Evaluation Pipeline&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Python]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Agent matchups, baseline&lt;br/&gt;comparison, sequential&lt;br/&gt;significance testing&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;fontColor=#ffffff;strokeColor=#3C7FC0;arcSize=10;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="580" y="310" width="220" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_hier" value="&lt;b&gt;Hierarchical Decision&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Python]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Strategic / Tactical /&lt;br/&gt;Operational multi-level&lt;br/&gt;controller with goals&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;fontColor=#ffffff;strokeColor=#3C7FC0;arcSize=10;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="840" y="310" width="220" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_dist" value="&lt;b&gt;Distributed Training&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Python Multiprocessing]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Self-play actors, central&lt;br/&gt;learner, DDP multi-GPU,&lt;br/&gt;parameter server&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;fontColor=#ffffff;strokeColor=#3C7FC0;arcSize=10;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="60" y="520" width="240" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_replay" value="&lt;b&gt;Replay Buffer&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Shared Memory / GCS]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Game trajectories with&lt;br/&gt;prioritized sampling&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#438DD5;fontColor=#ffffff;strokeColor=#3C7FC0;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="340" y="530" width="200" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_storage" value="&lt;b&gt;Storage Backend&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Local FS / GCS]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Abstract storage for&lt;br/&gt;checkpoints, trajectories,&lt;br/&gt;evaluation results&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#438DD5;fontColor=#ffffff;strokeColor=#3C7FC0;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="580" y="530" width="200" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_cloud" value="&lt;b&gt;Cloud Workers&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Docker / Vertex AI]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Containerized self-play,&lt;br/&gt;training, evaluation&lt;br/&gt;with preemption handling&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;fontColor=#ffffff;strokeColor=#3C7FC0;arcSize=10;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="820" y="520" width="240" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_rag" value="&lt;b&gt;RAG System&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[ChromaDB / FAISS]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Knowledge base ingestion,&lt;br/&gt;vector search, context&lt;br/&gt;building for strategy&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;fontColor=#ffffff;strokeColor=#3C7FC0;arcSize=10;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="60" y="730" width="220" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_tourney" value="&lt;b&gt;Tournament System&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Python]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Round-robin / Swiss brackets,&lt;br/&gt;ELO ratings, matchmaking,&lt;br/&gt;league seasons&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;fontColor=#ffffff;strokeColor=#3C7FC0;arcSize=10;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="320" y="730" width="220" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_pbt" value="&lt;b&gt;Population-Based Training&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Python]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Population of agents,&lt;br/&gt;exploit/explore mutations,&lt;br/&gt;adaptive hyperparams&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;fontColor=#ffffff;strokeColor=#3C7FC0;arcSize=10;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="580" y="730" width="240" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_utils" value="&lt;b&gt;Utilities&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Python]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Config management, LLM&lt;br/&gt;client, logging, factories,&lt;br/&gt;test runner, agent tools&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;fontColor=#ffffff;strokeColor=#3C7FC0;arcSize=10;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="860" y="730" width="200" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_config" value="&lt;b&gt;Configuration&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[YAML + Env Overrides]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Presets (fast/balanced/production),&lt;br/&gt;schedule configs, machine profiles&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#438DD5;fontColor=#ffffff;strokeColor=#3C7FC0;arcSize=10;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="60" y="940" width="300" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_kb" value="&lt;b&gt;Knowledge Base&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Markdown / JSONL]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Session state, ledger,&lt;br/&gt;handoffs, summaries&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#438DD5;fontColor=#ffffff;strokeColor=#3C7FC0;fontSize=12;" parent="1" vertex="1">
+          <mxGeometry x="400" y="945" width="200" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_ext_llm" value="&lt;b&gt;LLM APIs&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[OpenAI / Anthropic]&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="1250" y="120" width="200" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_ext_vertex" value="&lt;b&gt;Google Vertex AI&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Cloud Platform]&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="1250" y="240" width="200" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_ext_gcs" value="&lt;b&gt;Google Cloud Storage&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Object Storage]&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="1250" y="360" width="200" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_ext_wandb" value="&lt;b&gt;Weights &amp;amp; Biases&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Experiment Tracking]&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="1250" y="480" width="200" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_ext_games" value="&lt;b&gt;Game Engines&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[MicroCiv / Unciv]&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="1250" y="600" width="200" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_ext_vectordb" value="&lt;b&gt;Vector Database&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[ChromaDB / FAISS]&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="1250" y="720" width="200" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_e01" value="Uses networks &amp;amp; MCTS" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t2_orch" target="t2_core">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_e02" value="Launches actors &amp;amp; learner" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t2_orch" target="t2_dist">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_e03" value="Triggers evaluation" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t2_orch" target="t2_eval">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_e04" value="Queries strategy context" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t2_orch" target="t2_rag">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_e05" value="Interacts with game env" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t2_core" target="t2_envs">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_e06" value="Writes trajectories" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t2_dist" target="t2_replay">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_e07" value="Uses network for self-play" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t2_dist" target="t2_core">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_e08" value="Persists to storage" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t2_replay" target="t2_storage">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_e09" value="Reads/writes GCS" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t2_cloud" target="t2_storage">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_e10" value="Deploys worker jobs" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t2_cli" target="t2_cloud">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_e11" value="Feeds match results" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t2_eval" target="t2_tourney">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_e12" value="Manages agent population" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t2_pbt" target="t2_dist">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_e13" value="Loads trained models" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t2_web" target="t2_core">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_e14" value="Runs game sessions" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t2_web" target="t2_envs">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_e15" value="Multi-level network heads" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t2_hier" target="t2_core">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_x01" value="LLM queries" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;dashed=1;dashPattern=5 5;" parent="1" edge="1" source="t2_rag" target="t2_ext_llm">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_x02" value="Submit jobs" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;dashed=1;dashPattern=5 5;" parent="1" edge="1" source="t2_cli" target="t2_ext_vertex">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_x03" value="Object I/O" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;dashed=1;dashPattern=5 5;" parent="1" edge="1" source="t2_storage" target="t2_ext_gcs">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_x04" value="Log metrics" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;dashed=1;dashPattern=5 5;" parent="1" edge="1" source="t2_orch" target="t2_ext_wandb">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_x05" value="Game simulation" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;dashed=1;dashPattern=5 5;" parent="1" edge="1" source="t2_envs" target="t2_ext_games">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_x06" value="Vector search" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;dashed=1;dashPattern=5 5;" parent="1" edge="1" source="t2_rag" target="t2_ext_vectordb">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2_x07" value="LLM client calls" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;dashed=1;dashPattern=5 5;" parent="1" edge="1" source="t2_utils" target="t2_ext_llm">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="tab3" name="C4 Level 3 - Core Algorithms">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="t3_title" value="&lt;font style=&quot;font-size:20px&quot;&gt;&lt;b&gt;Component Diagram: Core Algorithms&lt;/b&gt;&lt;/font&gt;&lt;br/&gt;&lt;font style=&quot;font-size:12px&quot;&gt;alpha_zero.core — Neural networks, MCTS, and action space&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=5;" parent="1" vertex="1">
+          <mxGeometry x="20" y="10" width="600" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_bound" value="alpha_zero.core" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#1168BD;strokeWidth=2;dashed=1;arcSize=5;fontSize=16;fontStyle=1;fontColor=#1168BD;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="30" y="70" width="1100" height="850" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_nn_bound" value="Neural Networks (civ6_network.py)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#438DD5;strokeWidth=1;dashed=1;arcSize=5;fontSize=13;fontStyle=1;fontColor=#438DD5;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="60" y="110" width="520" height="370" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_microciv_net" value="&lt;b&gt;MicroCivNetwork&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[nn.Module]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;13-ch spatial input, 6 ResBlocks,&lt;br/&gt;64 filters, policy + value heads&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="80" y="160" width="230" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_civ6_net" value="&lt;b&gt;Civ6Network&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[nn.Module]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;84-ch spatial, multi-head attention,&lt;br/&gt;12 ResBlocks, 128 filters&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="330" y="160" width="230" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_transformer" value="&lt;b&gt;TransformerNetwork&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[nn.Module]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Transformer-based variant&lt;br/&gt;with positional encoding&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="80" y="300" width="220" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_muzero" value="&lt;b&gt;MuZeroNetwork&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[nn.Module]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Dynamics + representation&lt;br/&gt;+ prediction networks&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="330" y="300" width="220" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_heads" value="&lt;b&gt;Network Heads&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[PolicyHead / ValueHead]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Separate output heads&lt;br/&gt;with auxiliary losses&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="80" y="410" width="220" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_losses" value="&lt;b&gt;Loss Functions&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[losses.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Policy CE, value MSE,&lt;br/&gt;consistency, reward loss&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="330" y="410" width="220" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_mcts_bound" value="MCTS Search (civ6_mcts.py)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#438DD5;strokeWidth=1;dashed=1;arcSize=5;fontSize=13;fontStyle=1;fontColor=#438DD5;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="60" y="510" width="520" height="270" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_civ6mcts" value="&lt;b&gt;Civ6MCTS&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[PUCT Search]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Neural network-guided MCTS&lt;br/&gt;with Dirichlet noise, temperature&lt;br/&gt;scheduling, action masking&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="80" y="560" width="230" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_gumbel" value="&lt;b&gt;GumbelMCTS&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Gumbel-Max Variant]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Policy improvement via&lt;br/&gt;sequential halving (MuZero)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="330" y="560" width="230" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_simple" value="&lt;b&gt;SimpleMCTS&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Random Rollout]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Baseline MCTS with&lt;br/&gt;random rollout policy&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="80" y="690" width="220" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_batch" value="&lt;b&gt;BatchMCTS&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Parallel Search]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Batched neural network&lt;br/&gt;evaluation for speed&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="330" y="690" width="220" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_act_bound" value="Action Space (civ6_actions.py)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#438DD5;strokeWidth=1;dashed=1;arcSize=5;fontSize=13;fontStyle=1;fontColor=#438DD5;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="620" y="110" width="480" height="370" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_action_space" value="&lt;b&gt;Civ6ActionSpace&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Hierarchical Actions]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;9 categories: EndTurn, UnitAction,&lt;br/&gt;CityAction, Research, Diplomacy,&lt;br/&gt;Espionage, Government, GreatPerson&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="640" y="160" width="250" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_action_enc" value="&lt;b&gt;Action Encoder/Decoder&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Int ↔ Structured Action]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Flat index to hierarchical&lt;br/&gt;action conversion (376 total)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="640" y="310" width="230" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_pruning" value="&lt;b&gt;Action Pruning&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[action_pruning.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Invalid action masking&lt;br/&gt;based on game state&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="640" y="420" width="220" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_action_cat" value="&lt;font style=&quot;font-size:9px&quot;&gt;&lt;b&gt;Action Categories:&lt;/b&gt;&lt;br/&gt;0: END_TURN&lt;br/&gt;1: UNIT_ACTION (select → type → target)&lt;br/&gt;2: CITY_ACTION (select → type → target)&lt;br/&gt;3: RESEARCH_TECH&lt;br/&gt;4: RESEARCH_CIVIC&lt;br/&gt;5: DIPLOMACY&lt;br/&gt;6: ESPIONAGE&lt;br/&gt;7: GOVERNMENT&lt;br/&gt;8: GREAT_PERSON&lt;/font&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=left;spacingLeft=5;spacingRight=5;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="910" y="160" width="170" height="200" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_reflect_bound" value="Self-Reflection" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#438DD5;strokeWidth=1;dashed=1;arcSize=5;fontSize=13;fontStyle=1;fontColor=#438DD5;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="620" y="510" width="480" height="270" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_reflect_gen" value="&lt;b&gt;ReflectionGenerator&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[reflection_generator.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Generates training insights&lt;br/&gt;from game analysis&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="640" y="560" width="220" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_reflect_mem" value="&lt;b&gt;ReflectionMemory&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[reflection_memory.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Long-term storage for&lt;br/&gt;training reflections&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="640" y="680" width="220" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_e01" value="Evaluates positions" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t3_civ6mcts" target="t3_microciv_net">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_e02" value="Gets valid actions" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t3_civ6mcts" target="t3_action_space">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_e03" value="Uses dynamics model" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t3_gumbel" target="t3_muzero">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_e04" value="Parallelizes search" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t3_batch" target="t3_civ6mcts">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_e05" value="Masks invalid actions" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t3_pruning" target="t3_action_space">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_e06" value="Computes gradients" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t3_losses" target="t3_heads">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_e07" value="Stores insights" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t3_reflect_gen" target="t3_reflect_mem">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t3_note" value="&lt;font style=&quot;font-size:10px&quot;&gt;&lt;b&gt;Data Flow:&lt;/b&gt;&lt;br/&gt;State (13/84 ch) → Network → (policy, value)&lt;br/&gt;Policy → MCTS → action distribution&lt;br/&gt;MCTS visits → training target policy&lt;br/&gt;Game outcome → training target value&lt;/font&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=left;spacingLeft=5;spacingRight=5;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="910" y="520" width="190" height="110" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="tab4" name="C4 Level 3 - Training Pipeline">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="t4_title" value="&lt;font style=&quot;font-size:20px&quot;&gt;&lt;b&gt;Component Diagram: Training Pipeline&lt;/b&gt;&lt;/font&gt;&lt;br/&gt;&lt;font style=&quot;font-size:12px&quot;&gt;alpha_zero.distributed + alpha_zero.orchestrator&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=5;" parent="1" vertex="1">
+          <mxGeometry x="20" y="10" width="600" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_dist_bound" value="alpha_zero.distributed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#1168BD;strokeWidth=2;dashed=1;arcSize=5;fontSize=16;fontStyle=1;fontColor=#1168BD;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="30" y="70" width="700" height="530" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_actor" value="&lt;b&gt;Actor / ActorPool&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[actor.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Self-play workers running&lt;br/&gt;MCTS games in parallel&lt;br/&gt;(multiprocessing)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="60" y="130" width="240" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_learner" value="&lt;b&gt;Learner&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[learner.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Central gradient descent,&lt;br/&gt;samples replay buffer,&lt;br/&gt;publishes updated weights&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="340" y="130" width="240" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_ddp" value="&lt;b&gt;DDP Learner&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[ddp_learner.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Multi-GPU distributed&lt;br/&gt;data-parallel training&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="340" y="260" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_shared" value="&lt;b&gt;SharedStorage&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[shared_storage.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Thread-safe model weight&lt;br/&gt;container (latest weights)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="60" y="270" width="220" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_replay_dist" value="&lt;b&gt;DistributedReplayBuffer&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[shared_storage.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Multiprocessing queue-based,&lt;br/&gt;stores GameTrajectory objects&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="60" y="390" width="240" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_coord" value="&lt;b&gt;Coordinator&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[coordinator.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Orchestrates actors/learner/&lt;br/&gt;checkpointing training loop&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="340" y="380" width="240" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_param_server" value="&lt;b&gt;ParameterServer&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[parameter_server.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Alternative weight distribution&lt;br/&gt;for large models&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="340" y="510" width="220" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_cloud_coord" value="&lt;b&gt;CloudCoordinator&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[cloud_coordinator.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Cloud-specific coordination&lt;br/&gt;(GCS, Vertex AI)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="60" y="510" width="220" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_orch_bound" value="alpha_zero.orchestrator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#1168BD;strokeWidth=2;dashed=1;arcSize=5;fontSize=16;fontStyle=1;fontColor=#1168BD;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="30" y="640" width="700" height="480" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_training_orch" value="&lt;b&gt;TrainingOrchestrator&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[orchestrator.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Unified training loop: self-play →&lt;br/&gt;training → evaluation cycle&lt;br/&gt;with dynamic configuration&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="60" y="700" width="280" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_orch_config" value="&lt;b&gt;OrchestratorConfig&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[config.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Hierarchical config with presets&lt;br/&gt;(fast/balanced/production),&lt;br/&gt;env overrides, schedules&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="380" y="700" width="250" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_scheduler" value="&lt;b&gt;HyperparameterScheduler&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[scheduler.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;LR warmup_cosine, step decay,&lt;br/&gt;exponential, batch size scaling&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="60" y="840" width="250" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_checkpoint" value="&lt;b&gt;CheckpointManager&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[checkpointer.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Save/load model versions,&lt;br/&gt;best-model tracking&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="350" y="840" width="230" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_rag_int" value="&lt;b&gt;RAGIntegration&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[rag_integration.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Queries strategy knowledge&lt;br/&gt;base during training&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="60" y="960" width="230" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_strategy" value="&lt;b&gt;StrategyAdvisor&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[strategy_advisor.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;LLM-based game analysis&lt;br/&gt;&amp;amp; improvement suggestions&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="330" y="960" width="230" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_main" value="&lt;b&gt;__main__.py&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[CLI Entry Point]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;argparse CLI: --preset, --config,&lt;br/&gt;--dry_run, --iterations, etc.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="60" y="1060" width="220" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_ds_bound" value="Key Data Structures" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#438DD5;strokeWidth=1;dashed=1;arcSize=5;fontSize=13;fontStyle=1;fontColor=#438DD5;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="780" y="70" width="380" height="540" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_ds_example" value="&lt;font style=&quot;font-size:10px&quot;&gt;&lt;b&gt;TrainingExample&lt;/b&gt;&lt;br/&gt;─────────────────&lt;br/&gt;spatial: ndarray (C, H, W)&lt;br/&gt;vector: ndarray (D,)&lt;br/&gt;action_mask: ndarray (A,)&lt;br/&gt;policy: ndarray (A,) [MCTS visits]&lt;br/&gt;value: float [-1, 1] [game outcome]&lt;/font&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=left;spacingLeft=5;spacingRight=5;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="800" y="120" width="220" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_ds_traj" value="&lt;font style=&quot;font-size:10px&quot;&gt;&lt;b&gt;GameTrajectory&lt;/b&gt;&lt;br/&gt;─────────────────&lt;br/&gt;examples: list[TrainingExample]&lt;br/&gt;game_id: int&lt;br/&gt;actor_id: int&lt;br/&gt;game_length: int&lt;br/&gt;winner: int | None&lt;/font&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=left;spacingLeft=5;spacingRight=5;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="800" y="280" width="220" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_ds_config" value="&lt;font style=&quot;font-size:10px&quot;&gt;&lt;b&gt;OrchestratorConfig&lt;/b&gt;&lt;br/&gt;─────────────────&lt;br/&gt;EnvironmentConfig&lt;br/&gt;NetworkConfig&lt;br/&gt;MCTSConfig&lt;br/&gt;TrainingConfig (+ schedules)&lt;br/&gt;EvaluationConfig&lt;br/&gt;RAGConfig&lt;br/&gt;LoggingConfig&lt;/font&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=left;spacingLeft=5;spacingRight=5;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="800" y="430" width="220" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_flow_bound" value="Training Loop Flow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#438DD5;strokeWidth=1;dashed=1;arcSize=5;fontSize=13;fontStyle=1;fontColor=#438DD5;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="780" y="640" width="380" height="480" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_flow1" value="&lt;b&gt;1. Self-Play&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Actors run MCTS games&lt;br/&gt;→ produce trajectories&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="810" y="690" width="180" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_flow2" value="&lt;b&gt;2. Buffer&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Trajectories stored in&lt;br/&gt;replay buffer&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="810" y="790" width="180" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_flow3" value="&lt;b&gt;3. Training&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Learner samples batches,&lt;br/&gt;computes loss, updates weights&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="810" y="880" width="180" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_flow4" value="&lt;b&gt;4. Evaluation&lt;/b&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;New model vs champion,&lt;br/&gt;promote if win_rate &amp;gt; 55%&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="810" y="980" width="180" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_fe1" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t4_flow1" target="t4_flow2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_fe2" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t4_flow2" target="t4_flow3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_fe3" value="" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t4_flow3" target="t4_flow4">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_fe4" value="Next iteration" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;dashed=1;dashPattern=5 5;" parent="1" edge="1" source="t4_flow4" target="t4_flow1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_e01" value="Gets latest weights" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t4_actor" target="t4_shared">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_e02" value="Writes trajectories" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t4_actor" target="t4_replay_dist">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_e03" value="Samples batches" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t4_learner" target="t4_replay_dist">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_e04" value="Publishes new weights" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t4_learner" target="t4_shared">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_e05" value="Manages lifecycle" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t4_coord" target="t4_actor">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_e06" value="Controls training" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t4_coord" target="t4_learner">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_e07" value="Delegates distributed work" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t4_training_orch" target="t4_coord">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_e08" value="Gets LR / batch size" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t4_training_orch" target="t4_scheduler">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_e09" value="Save/load models" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t4_training_orch" target="t4_checkpoint">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_e10" value="Queries strategies" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t4_training_orch" target="t4_rag_int">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_e11" value="Gets advisor suggestions" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t4_rag_int" target="t4_strategy">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_e12" value="Creates &amp;amp; runs" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t4_main" target="t4_training_orch">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t4_e13" value="Extends" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t4_ddp" target="t4_learner">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="tab5" name="C4 Level 3 - Cloud &amp;amp; Storage">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="t5_title" value="&lt;font style=&quot;font-size:20px&quot;&gt;&lt;b&gt;Component Diagram: Cloud &amp;amp; Storage&lt;/b&gt;&lt;/font&gt;&lt;br/&gt;&lt;font style=&quot;font-size:12px&quot;&gt;alpha_zero.cloud + alpha_zero.storage — Vertex AI deployment and persistence&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=5;" parent="1" vertex="1">
+          <mxGeometry x="20" y="10" width="700" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_store_bound" value="alpha_zero.storage" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#1168BD;strokeWidth=2;dashed=1;arcSize=5;fontSize=16;fontStyle=1;fontColor=#1168BD;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="30" y="70" width="520" height="520" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_backend_abc" value="&lt;b&gt;StorageBackend&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[ABC / Interface]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;save_model, load_model,&lt;br/&gt;save_trajectory, load_trajectory,&lt;br/&gt;save_evaluation, load_evaluation&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="60" y="130" width="240" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_local" value="&lt;b&gt;LocalBackend&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[local_backend.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Filesystem storage for&lt;br/&gt;local development &amp;amp; testing&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="60" y="280" width="220" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_gcs" value="&lt;b&gt;GCSBackend&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[gcs_backend.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Google Cloud Storage with&lt;br/&gt;streaming IterableDataset&lt;br/&gt;for memory-efficient loading&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="300" y="280" width="220" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_factory" value="&lt;b&gt;create_storage_backend&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[factory.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Instantiates Local or GCS&lt;br/&gt;based on StorageConfig&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="60" y="400" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_store_config" value="&lt;b&gt;StorageConfig&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[config.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;backend_type, bucket, prefix,&lt;br/&gt;for_local(), for_gcs()&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="300" y="400" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_models" value="&lt;b&gt;Metadata Models&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[models.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;ModelMetadata, CheckpointMetadata,&lt;br/&gt;TrajectoryMetadata, EvaluationResult&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="60" y="500" width="260" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_stream_replay" value="&lt;b&gt;Streaming ReplayBuffer&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[replay_buffer.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;GCS-backed IterableDataset&lt;br/&gt;for cloud training&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="340" y="500" width="190" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_cloud_bound" value="alpha_zero.cloud" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#1168BD;strokeWidth=2;dashed=1;arcSize=5;fontSize=16;fontStyle=1;fontColor=#1168BD;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="30" y="630" width="1100" height="530" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_cloud_config" value="&lt;b&gt;CloudConfig / GCPConfig&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[config.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Project, region, bucket,&lt;br/&gt;machine profiles&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="60" y="700" width="230" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_machine" value="&lt;font style=&quot;font-size:9px&quot;&gt;&lt;b&gt;Machine Profiles&lt;/b&gt;&lt;br/&gt;─────────────&lt;br/&gt;selfplay_t4_spot: $0.11/hr&lt;br/&gt;selfplay_l4_spot: $0.24/hr&lt;br/&gt;train_l4_single: $0.80/hr&lt;br/&gt;train_l4_ondemand: $2.68/hr&lt;br/&gt;train_a100_burst: $3.67/hr&lt;br/&gt;eval_l4_spot: $0.24/hr&lt;/font&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=left;spacingLeft=5;spacingRight=5;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="60" y="810" width="180" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_workers_bound" value="Cloud Workers (Containerized)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#438DD5;strokeWidth=1;dashed=1;arcSize=5;fontSize=13;fontStyle=1;fontColor=#438DD5;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="310" y="680" width="500" height="200" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_selfplay_w" value="&lt;b&gt;SelfPlayWorker&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[selfplay_worker.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Runs N games with MCTS,&lt;br/&gt;saves trajectories to GCS&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="330" y="730" width="220" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_trainer_w" value="&lt;b&gt;TrainingWorker&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[training_worker.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Loads trajectories, trains&lt;br/&gt;for N steps, saves model&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="570" y="730" width="220" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_eval_w" value="&lt;b&gt;EvaluationWorker&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[evaluation_worker.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Model vs champion,&lt;br/&gt;reports win rate&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="440" y="840" width="220" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_vertex_bound" value="Vertex AI Integration (cloud.gcp)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#438DD5;strokeWidth=1;dashed=1;arcSize=5;fontSize=13;fontStyle=1;fontColor=#438DD5;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="310" y="910" width="500" height="230" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_vertex_client" value="&lt;b&gt;VertexAIClient&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[vertex.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Job submission &amp;amp; monitoring&lt;br/&gt;via Vertex AI SDK&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="330" y="960" width="220" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_vertex_mgr" value="&lt;b&gt;VertexAIManager&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[vertex.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Multi-job orchestration,&lt;br/&gt;wait-for-completion&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="570" y="960" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_vertex_jobs" value="&lt;b&gt;VertexJobs&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[vertex_jobs.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;SelfPlay / Training / Eval&lt;br/&gt;job spec wrappers&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="330" y="1070" width="220" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_vertex_orch" value="&lt;b&gt;VertexOrchestrator&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[vertex_orchestrator.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Full iteration loop:&lt;br/&gt;selfplay → train → eval&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="570" y="1060" width="220" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_resil_bound" value="Resilience" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#438DD5;strokeWidth=1;dashed=1;arcSize=5;fontSize=13;fontStyle=1;fontColor=#438DD5;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="840" y="680" width="270" height="270" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_preempt" value="&lt;b&gt;PreemptionHandler&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[preemption.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;SIGTERM handler for Spot VMs,&lt;br/&gt;flushes state in 30s grace&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="860" y="730" width="230" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_health" value="&lt;b&gt;HealthCheck&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[container_healthcheck.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Liveness &amp;amp; readiness probes&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="860" y="840" width="220" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_idle" value="&lt;b&gt;IdleManager&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[idle_manager.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Idle resource cleanup&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="860" y="910" width="200" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_monitor_bound" value="Monitoring &amp;amp; Cost" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#438DD5;strokeWidth=1;dashed=1;arcSize=5;fontSize=13;fontStyle=1;fontColor=#438DD5;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="840" y="970" width="270" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_monitor" value="&lt;b&gt;CloudMonitoring&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[monitoring.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Structured logging, metrics&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="860" y="1010" width="220" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_cost" value="&lt;b&gt;CostMonitor&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[cost_monitor.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Budget tracking, alerts&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="860" y="1090" width="220" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_ext_gcs" value="&lt;b&gt;Google Cloud Storage&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[External]&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="600" y="70" width="200" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_ext_vertex" value="&lt;b&gt;Vertex AI Platform&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[External]&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="840" y="70" width="200" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_docker" value="&lt;font style=&quot;font-size:10px&quot;&gt;&lt;b&gt;Docker Images&lt;/b&gt;&lt;br/&gt;─────────────&lt;br/&gt;Dockerfile.base (PyTorch)&lt;br/&gt;Dockerfile.selfplay&lt;br/&gt;Dockerfile.trainer&lt;br/&gt;Dockerfile.evaluator&lt;br/&gt;&lt;br/&gt;Pushed to GCP Artifact Registry&lt;/font&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=left;spacingLeft=5;spacingRight=5;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="1140" y="700" width="170" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_e01" value="Creates" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t5_factory" target="t5_local">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_e02" value="Creates" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t5_factory" target="t5_gcs">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_e03" value="Implements" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t5_local" target="t5_backend_abc">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_e04" value="Implements" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t5_gcs" target="t5_backend_abc">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_e05" value="Object I/O" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;dashed=1;dashPattern=5 5;" parent="1" edge="1" source="t5_gcs" target="t5_ext_gcs">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_e06" value="Writes trajectories" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t5_selfplay_w" target="t5_backend_abc">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_e07" value="Reads trajectories,&lt;br/&gt;writes models" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t5_trainer_w" target="t5_backend_abc">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_e08" value="Submits jobs" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;dashed=1;dashPattern=5 5;" parent="1" edge="1" source="t5_vertex_client" target="t5_ext_vertex">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_e09" value="Uses for job control" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t5_vertex_orch" target="t5_vertex_client">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_e10" value="Creates job specs" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t5_vertex_orch" target="t5_vertex_jobs">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_e11" value="Graceful shutdown" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t5_preempt" target="t5_selfplay_w">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t5_e12" value="Streams from GCS" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t5_stream_replay" target="t5_gcs">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="tab6" name="C4 Level 3 - Intelligence &amp;amp; Tuning">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="t6_title" value="&lt;font style=&quot;font-size:20px&quot;&gt;&lt;b&gt;Component Diagram: Intelligence &amp;amp; Tuning&lt;/b&gt;&lt;/font&gt;&lt;br/&gt;&lt;font style=&quot;font-size:12px&quot;&gt;RAG System, Tournament, PBT, and Hierarchical Decision Making&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=5;" parent="1" vertex="1">
+          <mxGeometry x="20" y="10" width="700" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_rag_bound" value="alpha_zero.rag" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#1168BD;strokeWidth=2;dashed=1;arcSize=5;fontSize=16;fontStyle=1;fontColor=#1168BD;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="30" y="70" width="560" height="500" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_pipeline" value="&lt;b&gt;RAGPipeline&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[pipeline.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Main orchestrator: ingest&lt;br/&gt;documents, query with context,&lt;br/&gt;async interface&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="60" y="130" width="240" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_rag_config" value="&lt;b&gt;RAGConfig&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[config/settings.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Vector store type, embedding&lt;br/&gt;model, chunk size, top_k&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="330" y="130" width="230" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_vs_bound" value="Vector Stores" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#438DD5;strokeWidth=1;dashed=1;arcSize=5;fontSize=13;fontStyle=1;fontColor=#438DD5;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="50" y="260" width="260" height="200" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_vs_mem" value="&lt;b&gt;MemoryStore&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[In-memory]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Dev/test, no persistence&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="65" y="300" width="120" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_vs_chroma" value="&lt;b&gt;ChromaStore&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[ChromaDB]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Persistent vector DB&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="65" y="370" width="120" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_vs_faiss" value="&lt;b&gt;FAISSStore&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[FAISS]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;High-perf search&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="190" y="370" width="110" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_proc_bound" value="Processors" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#438DD5;strokeWidth=1;dashed=1;arcSize=5;fontSize=13;fontStyle=1;fontColor=#438DD5;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="330" y="240" width="240" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_text_proc" value="&lt;b&gt;TextProcessor&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Chunking &amp;amp; cleanup]&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="345" y="280" width="100" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_embed" value="&lt;b&gt;EmbeddingGenerator&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[OpenAI / local]&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="455" y="280" width="100" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_proc_base" value="&lt;b&gt;BaseProcessor&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Interface]&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="380" y="350" width="120" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_agent_bound" value="Agents / Workflow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#438DD5;strokeWidth=1;dashed=1;arcSize=5;fontSize=13;fontStyle=1;fontColor=#438DD5;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="50" y="480" width="520" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_query_enh" value="&lt;b&gt;QueryEnhancer&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="65" y="495" width="130" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_ctx_build" value="&lt;b&gt;ContextBuilder&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="210" y="495" width="130" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_workflow" value="&lt;b&gt;RAGWorkflow&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Multi-step]&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="360" y="495" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_tourney_bound" value="alpha_zero.tournament" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#1168BD;strokeWidth=2;dashed=1;arcSize=5;fontSize=16;fontStyle=1;fontColor=#1168BD;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="620" y="70" width="520" height="290" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_tourney_orch" value="&lt;b&gt;TournamentOrchestrator&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[orchestrator.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Bracket generation, matchmaking,&lt;br/&gt;result aggregation&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="640" y="130" width="240" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_elo" value="&lt;b&gt;ELORatingSystem&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[elo.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Rating calculations,&lt;br/&gt;history tracking&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="900" y="130" width="200" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_matchmaker" value="&lt;b&gt;MatchMaker&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[matchmaking.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Opponent selection&lt;br/&gt;strategies&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="640" y="240" width="180" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_league" value="&lt;b&gt;LeagueManager&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[league.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Multi-season league&lt;br/&gt;coordination&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="840" y="240" width="180" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_tourney_analysis" value="&lt;b&gt;TournamentAnalysis&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[analysis.py]&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="1040" y="250" width="80" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_format_note" value="&lt;font style=&quot;font-size:9px&quot;&gt;&lt;b&gt;Tournament Formats&lt;/b&gt;&lt;br/&gt;• Round-Robin&lt;br/&gt;• Single Elimination&lt;br/&gt;• Swiss System&lt;/font&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#FFF2CC;strokeColor=#D6B656;fontSize=11;align=left;spacingLeft=5;spacingRight=5;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="1040" y="130" width="90" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_pbt_bound" value="alpha_zero.pbt" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#1168BD;strokeWidth=2;dashed=1;arcSize=5;fontSize=16;fontStyle=1;fontColor=#1168BD;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="620" y="390" width="520" height="280" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_pbt_coord" value="&lt;b&gt;PBTCoordinator&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[coordinator.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Population-based training&lt;br/&gt;loop: train → evaluate →&lt;br/&gt;exploit → explore&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="640" y="450" width="240" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_population" value="&lt;b&gt;PopulationManager&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[population.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Agent lifecycle,&lt;br/&gt;fitness tracking&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="900" y="440" width="200" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_mutations" value="&lt;b&gt;MutationOperator&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[mutations.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Hyperparameter perturbation&lt;br/&gt;(LR, temp, exploration)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="640" y="570" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_pbt_sched" value="&lt;b&gt;PBTScheduler&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[scheduler.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;When to exploit/explore&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="900" y="540" width="180" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_pbt_eval" value="&lt;b&gt;PBTEvaluator&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[evaluator.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Fitness evaluation&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="900" y="620" width="170" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_hier_bound" value="alpha_zero.hierarchical" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#1168BD;strokeWidth=2;dashed=1;arcSize=5;fontSize=16;fontStyle=1;fontColor=#1168BD;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="30" y="600" width="560" height="400" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_hier_ctrl" value="&lt;b&gt;HierarchicalController&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[controller.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Coordinates strategic, tactical,&lt;br/&gt;&amp;amp; operational decision levels&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#5BA0E0;fontColor=#ffffff;strokeColor=#4A8AC8;arcSize=10;fontSize=11;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="60" y="660" width="260" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_strategic" value="&lt;b&gt;StrategicController&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Level: 50+ turn horizon]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;High-level goals:&lt;br/&gt;expansion, tech, military&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="60" y="780" width="160" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_tactical" value="&lt;b&gt;TacticalController&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Level: 10-20 turns]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Medium-term tactics:&lt;br/&gt;army positioning, builds&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="240" y="780" width="160" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_operational" value="&lt;b&gt;OperationalController&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Level: 1-5 turns]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Immediate actions:&lt;br/&gt;unit moves, production&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="420" y="780" width="150" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_goals_bound" value="Goal System" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#438DD5;strokeWidth=1;dashed=1;arcSize=5;fontSize=13;fontStyle=1;fontColor=#438DD5;verticalAlign=top;align=left;spacingLeft=10;spacingTop=5;" parent="1" vertex="1">
+          <mxGeometry x="50" y="890" width="280" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_goal_hier" value="&lt;b&gt;GoalHierarchy&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Goal tree]&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="60" y="915" width="120" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_goal_eval" value="&lt;b&gt;GoalEvaluator&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Achievement]&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="195" y="915" width="120" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_hier_net" value="&lt;b&gt;HierarchicalNetwork&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Multi-head NN]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Shared backbone +&lt;br/&gt;level-specific heads&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="360" y="660" width="200" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_training_int" value="&lt;b&gt;TrainingIntegration&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[training_integration.py]&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Hierarchical training pipeline&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#85BBF0;fontColor=#000000;strokeColor=#78A8D8;arcSize=10;fontSize=11;" parent="1" vertex="1">
+          <mxGeometry x="360" y="910" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_ext_llm" value="&lt;b&gt;LLM APIs&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[OpenAI / Anthropic]&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="220" y="20" width="180" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_ext_wandb" value="&lt;b&gt;W&amp;amp;B&lt;/b&gt;&lt;br/&gt;&lt;i&gt;[Metrics]&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#999999;fontColor=#ffffff;strokeColor=#6B6B6B;arcSize=10;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="1000" y="20" width="120" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_e01" value="Stores vectors" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t6_pipeline" target="t6_vs_chroma">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_e02" value="Processes docs" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t6_pipeline" target="t6_text_proc">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_e03" value="Generates embeddings" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t6_text_proc" target="t6_embed">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_e04" value="Enhances queries" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t6_pipeline" target="t6_query_enh">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_e05" value="Builds context" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t6_query_enh" target="t6_ctx_build">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_e06" value="Embedding API" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;dashed=1;dashPattern=5 5;" parent="1" edge="1" source="t6_embed" target="t6_ext_llm">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_e07" value="Updates ratings" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t6_tourney_orch" target="t6_elo">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_e08" value="Gets matchups" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t6_tourney_orch" target="t6_matchmaker">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_e09" value="Manages agents" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t6_pbt_coord" target="t6_population">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_e10" value="Mutates hyperparams" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t6_pbt_coord" target="t6_mutations">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_e11" value="Delegates" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t6_hier_ctrl" target="t6_strategic">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_e12" value="Delegates" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t6_hier_ctrl" target="t6_tactical">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_e13" value="Delegates" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t6_hier_ctrl" target="t6_operational">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_e14" value="Uses" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;" parent="1" edge="1" source="t6_hier_ctrl" target="t6_hier_net">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="t6_e15" value="Logs ELO" style="endArrow=blockThin;endFill=1;html=1;strokeColor=#666666;fontColor=#333333;fontSize=10;dashed=1;dashPattern=5 5;" parent="1" edge="1" source="t6_tourney_orch" target="t6_ext_wandb">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
