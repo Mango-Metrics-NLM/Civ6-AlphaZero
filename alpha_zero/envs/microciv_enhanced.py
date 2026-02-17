@@ -333,16 +333,18 @@ class EnhancedMicroCivEnv(MicroCivEnv):
             flanking,
         )
 
+        # Use the fully-shaped reward from CombatSystem (includes damage
+        # scaling, kill/death bonuses, and city-capture reward) so the env
+        # stays consistent with CombatConfig tuning.
+        reward = float(result.reward)
+
         # Remove dead units
-        reward = 0.0
         if defender.health <= 0:
             self.units.remove(defender)
-            reward += self._combat.config.kill_reward
             logger.debug("Defender %s killed", defender.unit_type)
 
         if attacker.health <= 0:
             self.units.remove(attacker)
-            reward -= self._combat.config.death_penalty
             logger.debug("Attacker %s killed", attacker.unit_type)
 
         return reward

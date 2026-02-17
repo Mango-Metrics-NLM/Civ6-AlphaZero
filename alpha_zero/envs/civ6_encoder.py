@@ -397,7 +397,7 @@ class MicroCivEncoder:
         if visibility is not None:
             for y in range(size):
                 for x in range(size):
-                    vis_state = visibility.get((x, y), "visible")
+                    vis_state = visibility.get((x, y), "unexplored")
                     if vis_state == "visible":
                         spatial[11, y, x] = 1.0
                     elif vis_state == "seen":
