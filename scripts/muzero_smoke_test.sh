@@ -73,52 +73,8 @@ python -m alpha_zero.cloud.gcp.vertex_orchestrator \
     --dry_run
 
 echo ""
-echo "[3/4] Verify GCS path isolation..."
-python -c "
-from alpha_zero.cloud.gcp.config import GCSPathConfig
-
-paths = GCSPathConfig(agent_id='${AGENT_ID}')
-prod  = GCSPathConfig()
-
-model  = paths.model_path(1)
-traj   = paths.trajectory_path(1, 0)
-ckpt   = paths.checkpoint_path(100)
-
-print(f'Smoke model:      {model}')
-print(f'Smoke trajectory: {traj}')
-print(f'Smoke checkpoint: {ckpt}')
-print(f'Prod model:       {prod.model_path(1)}')
-
-assert '${AGENT_ID}' in model,  f'Model not isolated: {model}'
-assert '${AGENT_ID}' in traj,   f'Trajectory not isolated: {traj}'
-assert '${AGENT_ID}' in ckpt,   f'Checkpoint not isolated: {ckpt}'
-assert prod.model_path(1) != model, 'DANGER: paths collide with production!'
-
-print('Path isolation verified.')
-"
-
-echo ""
-echo "[4/4] MuZero network creation test..."
-python -c "
-from alpha_zero.core.muzero_network import MuZeroNetwork, MuZeroConfig
-import torch
-
-config = MuZeroConfig(
-    spatial_channels=13, spatial_size=6, vector_dim=64,
-    action_space_size=376, num_res_blocks=2, hidden_state_channels=32,
-)
-model = MuZeroNetwork(config=config)
-model.eval()
-
-spatial = torch.randn(1, 13, 6, 6)
-vector  = torch.randn(1, 64)
-with torch.no_grad():
-    policy, value = model(spatial, vector)
-
-params = sum(p.numel() for p in model.parameters())
-print(f'MuZeroNetwork: {params:,} params | policy={policy.shape} value={value.shape}')
-print('MuZero network smoke test passed.')
-"
+echo "[3/4] Verify GCS path isolation + [4/4] MuZero network creation..."
+python scripts/muzero_dryrun_test.py
 
 if [[ "${MODE}" == "--dry-run" ]]; then
     echo ""

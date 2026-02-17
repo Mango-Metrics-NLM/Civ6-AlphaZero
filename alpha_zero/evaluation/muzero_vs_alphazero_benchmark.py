@@ -54,6 +54,11 @@ class BenchmarkConfig:
     dirichlet_alpha: float = 0.3
     dirichlet_epsilon: float = 0.25
     device: str = "cpu"
+    # Reward classification thresholds — tune to match your environment's
+    # reward distribution.  MicroCivEnv returns +1 / -1 for win/loss, so the
+    # defaults (>0.5 → win, <-0.5 → loss) are appropriate.
+    win_reward_threshold: float = 0.5
+    loss_reward_threshold: float = -0.5
     # Output configuration
     output_dir: str = "benchmark_results"
     wandb_project: str = "civ6-alphazero-benchmark"
@@ -90,14 +95,23 @@ class BenchmarkResult:
     game_lengths: list[int] = field(default_factory=list)
     game_rewards: list[float] = field(default_factory=list)
 
-    def compute_derived_metrics(self) -> None:
-        """Compute derived metrics from raw game data."""
+    def compute_derived_metrics(
+        self,
+        win_threshold: float = 0.5,
+        loss_threshold: float = -0.5,
+    ) -> None:
+        """Compute derived metrics from raw game data.
+
+        Args:
+            win_threshold: Reward above this value counts as a win.
+            loss_threshold: Reward below this value counts as a loss.
+        """
         if self.game_lengths:
             self.avg_game_length = sum(self.game_lengths) / len(self.game_lengths)
         if self.game_rewards:
             self.avg_reward = sum(self.game_rewards) / len(self.game_rewards)
-            self.wins = sum(1 for r in self.game_rewards if r > 0.5)
-            self.losses = sum(1 for r in self.game_rewards if r < -0.5)
+            self.wins = sum(1 for r in self.game_rewards if r > win_threshold)
+            self.losses = sum(1 for r in self.game_rewards if r < loss_threshold)
             self.draws = self.num_games - self.wins - self.losses
             self.win_rate = self.wins / max(self.num_games, 1)
         if self.total_time_seconds > 0:
@@ -273,7 +287,10 @@ class AlphaZeroVsMuZeroBenchmark:
             )
 
         result.search_metrics = search_metrics
-        result.compute_derived_metrics()
+        result.compute_derived_metrics(
+            win_threshold=self.config.win_reward_threshold,
+            loss_threshold=self.config.loss_reward_threshold,
+        )
 
         logger.info(
             "[%s] Results: win_rate=%.2f, avg_length=%.1f, %.1f games/min",
@@ -476,10 +493,8 @@ class AlphaZeroVsMuZeroBenchmark:
             "",
             "| Metric | AlphaZero | MuZero |",
             "|--------|----------|--------|",
-            f"| Env Clones | {az.search_metrics.total_env_clones:,} | "
-            f"{mz.search_metrics.total_env_clones:,} |",
-            f"| Dynamics Calls | {az.search_metrics.total_dynamics_calls:,} | "
-            f"{mz.search_metrics.total_dynamics_calls:,} |",
+            f"| Env Clones | {az.search_metrics.total_env_clones:,} | N/A |",
+            f"| Dynamics Calls | N/A | {mz.search_metrics.total_dynamics_calls:,} |",
             f"| Network Evals | {az.search_metrics.total_network_evals:,} | "
             f"{mz.search_metrics.total_network_evals:,} |",
             f"| Avg Search Time (ms) | {az.search_metrics.avg_search_time_ms:.1f} | "
