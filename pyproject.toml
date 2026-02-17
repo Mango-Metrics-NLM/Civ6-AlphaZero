@@ -168,6 +168,7 @@ markers = [
     "e2e: marks tests as end-to-end tests",
     "benchmark: marks tests as benchmarks (deselect with '-m \"not benchmark\"')",
     "web: marks web interface tests",
+    "smoke: marks smoke tests for quick validation (select with '-m smoke')",
 ]
 
 [tool.coverage.run]
