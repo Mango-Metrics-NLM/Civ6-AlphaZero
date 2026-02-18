@@ -186,9 +186,7 @@ class TestVertexJobLauncher:
         assert info.is_terminal()
         assert info.status == JobStatus.SUCCEEDED
 
-    def test_wait_for_completion_timeout(
-        self, launcher: VertexJobLauncher
-    ) -> None:
+    def test_wait_for_completion_timeout(self, launcher: VertexJobLauncher) -> None:
         """Test timeout when waiting for completion."""
         job_id = launcher.submit_job(
             display_name="test-training",

@@ -26,70 +26,94 @@ logger = logging.getLogger(__name__)
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # Directories to skip during scanning
-_SKIP_DIRS: frozenset[str] = frozenset({
-    ".git",
-    "__pycache__",
-    ".mypy_cache",
-    ".ruff_cache",
-    ".pytest_cache",
-    "node_modules",
-    ".venv",
-    "venv",
-    "htmlcov",
-    ".tox",
-    ".agent",
-    ".gemini",
-    "wandb",
-})
+_SKIP_DIRS: frozenset[str] = frozenset(
+    {
+        ".git",
+        "__pycache__",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+        "node_modules",
+        ".venv",
+        "venv",
+        "htmlcov",
+        ".tox",
+        ".agent",
+        ".gemini",
+        "wandb",
+    }
+)
 
 # Extensions to scan
-_SCAN_EXTENSIONS: frozenset[str] = frozenset({
-    ".py", ".yaml", ".yml", ".toml", ".cfg", ".ini", ".json", ".sh", ".ps1",
-})
+_SCAN_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".py",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".cfg",
+        ".ini",
+        ".json",
+        ".sh",
+        ".ps1",
+    }
+)
 
 # Known placeholder values that are safe to commit
-_SAFE_PLACEHOLDERS: frozenset[str] = frozenset({
-    "YOUR_WANDB_API_KEY_HERE",
-    "YOUR_API_KEY_HERE",
-    "test-key",
-    "placeholder",
-    "changeme",
-    "REPLACE_ME",
-})
+_SAFE_PLACEHOLDERS: frozenset[str] = frozenset(
+    {
+        "YOUR_WANDB_API_KEY_HERE",
+        "YOUR_API_KEY_HERE",
+        "test-key",
+        "placeholder",
+        "changeme",
+        "REPLACE_ME",
+    }
+)
 
 # Sensitive environment variable names to scan for real values
-_SENSITIVE_ENV_NAMES: frozenset[str] = frozenset({
-    "WANDB_API_KEY",
-    "API_KEY",
-    "SECRET_KEY",
-    "DB_PASSWORD",
-    "AWS_SECRET_ACCESS_KEY",
-    "GCP_SERVICE_ACCOUNT_KEY",
-    "PRIVATE_KEY",
-    "AUTH_TOKEN",
-})
+_SENSITIVE_ENV_NAMES: frozenset[str] = frozenset(
+    {
+        "WANDB_API_KEY",
+        "API_KEY",
+        "SECRET_KEY",
+        "DB_PASSWORD",
+        "AWS_SECRET_ACCESS_KEY",
+        "GCP_SERVICE_ACCOUNT_KEY",
+        "PRIVATE_KEY",
+        "AUTH_TOKEN",
+    }
+)
 
 # Patterns that indicate potential hardcoded secrets
 _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("AWS Access Key", re.compile(r"AKIA[0-9A-Z]{16}", re.ASCII)),
     ("GCP Service Account Key", re.compile(r'"type"\s*:\s*"service_account"')),
     ("Private Key Block", re.compile(r"-----BEGIN (?:RSA |EC )?PRIVATE KEY-----")),
-    ("Generic API Key Assignment", re.compile(
-        r"""(?:api[_-]?key|secret[_-]?key|password|token)\s*[=:]\s*["'][A-Za-z0-9+/=]{16,}["']""",
-        re.IGNORECASE,
-    )),
-    ("YAML Env Secret Value", re.compile(
-        r"""value:\s*["'][A-Za-z0-9+/=]{20,}["']""",
-        re.IGNORECASE,
-    )),
+    (
+        "Generic API Key Assignment",
+        re.compile(
+            r"""(?:api[_-]?key|secret[_-]?key|password|token)\s*[=:]\s*["'][A-Za-z0-9+/=]{16,}["']""",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "YAML Env Secret Value",
+        re.compile(
+            r"""value:\s*["'][A-Za-z0-9+/=]{20,}["']""",
+            re.IGNORECASE,
+        ),
+    ),
 ]
 
 # Files that are exempt from scanning (templates, test fixtures, etc.)
-_EXEMPT_PATTERNS: frozenset[str] = frozenset({
-    ".env.template",
-    ".env.example",
-    "test_security_sanity.py",  # This file itself contains patterns
-})
+_EXEMPT_PATTERNS: frozenset[str] = frozenset(
+    {
+        ".env.template",
+        ".env.example",
+        "test_security_sanity.py",  # This file itself contains patterns
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -108,9 +132,7 @@ def _iter_source_files(
     """
     for dirpath, dirnames, filenames in os.walk(root):
         # Prune skipped directories in-place (modifies os.walk behavior)
-        dirnames[:] = [
-            d for d in dirnames if d not in skip_dirs
-        ]
+        dirnames[:] = [d for d in dirnames if d not in skip_dirs]
         for filename in filenames:
             if any(filename.endswith(ext) for ext in extensions):
                 yield Path(dirpath) / filename
@@ -146,14 +168,10 @@ class TestSecuritySanity:
                 matches = pattern.findall(content)
                 if matches:
                     rel_path = filepath.relative_to(_PROJECT_ROOT)
-                    violations.append(
-                        f"{rel_path}: {pattern_name} ({len(matches)} match(es))"
-                    )
+                    violations.append(f"{rel_path}: {pattern_name} ({len(matches)} match(es))")
 
         if violations:
-            msg = "Potential hardcoded secrets found:\n" + "\n".join(
-                f"  - {v}" for v in violations
-            )
+            msg = "Potential hardcoded secrets found:\n" + "\n".join(f"  - {v}" for v in violations)
             pytest.fail(msg)
         else:
             logger.info("No hardcoded secrets detected in %s", _PROJECT_ROOT)
@@ -166,16 +184,13 @@ class TestSecuritySanity:
 
         content = gitignore_path.read_text(encoding="utf-8")
         # Check for .env pattern (not .env.template or .env.example)
-        assert re.search(
-            r"^\.env$", content, re.MULTILINE
-        ), ".env must be listed in .gitignore"
+        assert re.search(r"^\.env$", content, re.MULTILINE), ".env must be listed in .gitignore"
 
     def test_env_template_exists(self) -> None:
         """Verify that a .env.template or .env.example exists."""
-        has_template = (
-            (_PROJECT_ROOT / ".env.template").exists()
-            or (_PROJECT_ROOT / ".env.example").exists()
-        )
+        has_template = (_PROJECT_ROOT / ".env.template").exists() or (
+            _PROJECT_ROOT / ".env.example"
+        ).exists()
         assert has_template, "Project should have .env.template or .env.example"
 
     def test_service_account_json_gitignored(self) -> None:
@@ -194,9 +209,7 @@ class TestSecuritySanity:
         dangerous_names = {"credentials.json", "service_account.json"}
         found: list[str] = []
 
-        for filepath in _iter_source_files(
-            _PROJECT_ROOT, frozenset({".json"}), _SKIP_DIRS
-        ):
+        for filepath in _iter_source_files(_PROJECT_ROOT, frozenset({".json"}), _SKIP_DIRS):
             if filepath.name in dangerous_names:
                 rel_path = filepath.relative_to(_PROJECT_ROOT)
                 found.append(str(rel_path))
@@ -216,9 +229,7 @@ class TestSecuritySanity:
         """Check that DEBUG=True or similar flags aren't hardcoded in source."""
         violations: list[str] = []
 
-        for filepath in _iter_source_files(
-            _PROJECT_ROOT, frozenset({".py"}), _SKIP_DIRS
-        ):
+        for filepath in _iter_source_files(_PROJECT_ROOT, frozenset({".py"}), _SKIP_DIRS):
             if "test" in filepath.name.lower():
                 continue  # Skip test files
 
@@ -236,9 +247,7 @@ class TestSecuritySanity:
                     rel_path = filepath.relative_to(_PROJECT_ROOT)
                     violations.append(f"{rel_path}:{line_num}")
 
-        assert not violations, (
-            f"Hardcoded DEBUG=True found: {violations}"
-        )
+        assert not violations, f"Hardcoded DEBUG=True found: {violations}"
 
     def test_yaml_configs_no_real_secrets(self) -> None:
         """Scan YAML config files for non-placeholder secret values.
@@ -266,16 +275,16 @@ class TestSecuritySanity:
                 for doc in docs:
                     if doc is not None:
                         self._scan_yaml_node(
-                            doc, filepath.relative_to(_PROJECT_ROOT),
+                            doc,
+                            filepath.relative_to(_PROJECT_ROOT),
                             violations,
                         )
             except (OSError, yaml.YAMLError):
                 continue
 
         if violations:
-            msg = (
-                "Potential real secrets in YAML configs:\n"
-                + "\n".join(f"  - {v}" for v in violations)
+            msg = "Potential real secrets in YAML configs:\n" + "\n".join(
+                f"  - {v}" for v in violations
             )
             pytest.fail(msg)
         else:
@@ -301,15 +310,19 @@ class TestSecuritySanity:
                 and value not in _SAFE_PLACEHOLDERS
                 and len(value) > 8  # noqa: PLR2004
             ):
-                violations.append(
-                    f"{filepath}: {name} has non-placeholder value"
-                )
+                violations.append(f"{filepath}: {name} has non-placeholder value")
             for key, child in node.items():
                 TestSecuritySanity._scan_yaml_node(
-                    child, filepath, violations, parent_key=str(key),
+                    child,
+                    filepath,
+                    violations,
+                    parent_key=str(key),
                 )
         elif isinstance(node, list):
             for item in node:
                 TestSecuritySanity._scan_yaml_node(
-                    item, filepath, violations, parent_key=parent_key,
+                    item,
+                    filepath,
+                    violations,
+                    parent_key=parent_key,
                 )

@@ -447,7 +447,9 @@ class TestGCSCheckpointStorage:
         assert mock_backend.blob_exists("test-bucket", "checkpoints/civ6az/training_step_1000.pt")
         assert mock_backend.blob_exists("test-bucket", "checkpoints/civ6az/training_step_900.pt")
         assert mock_backend.blob_exists("test-bucket", "checkpoints/civ6az/training_step_800.pt")
-        assert not mock_backend.blob_exists("test-bucket", "checkpoints/civ6az/training_step_100.pt")
+        assert not mock_backend.blob_exists(
+            "test-bucket", "checkpoints/civ6az/training_step_100.pt"
+        )
 
     def test_load_nonexistent_returns_none(
         self,

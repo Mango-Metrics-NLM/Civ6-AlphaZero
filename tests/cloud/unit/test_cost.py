@@ -1,11 +1,10 @@
-
 import pytest
 from unittest.mock import MagicMock, patch
 from alpha_zero.cloud.gcp.cost import CostEstimator
 from alpha_zero.cloud.gcp.config import GCPConfig
 
+
 class TestCostEstimator:
-    
     @pytest.fixture
     def estimator(self):
         # Mock config to avoid env var needs
@@ -19,7 +18,7 @@ class TestCostEstimator:
             accelerator_type="NVIDIA_TESLA_T4",
             accelerator_count=1,
             duration_hours=1.0,
-            is_spot=False
+            is_spot=False,
         )
         assert cost == pytest.approx(0.73, 0.01)
 
@@ -31,14 +30,14 @@ class TestCostEstimator:
             accelerator_type="NVIDIA_TESLA_T4",
             accelerator_count=1,
             duration_hours=1.0,
-            is_spot=True
+            is_spot=True,
         )
         assert cost == pytest.approx(0.224, 0.01)
 
     def test_estimate_ondemand_a100(self, estimator):
         # a2-highgpu-1g ($3.67) + 1x A100 ($3.67)
-        # Note: a2 instances usually include GPU cost in machine type, 
-        # but our simplistic model sums them. 
+        # Note: a2 instances usually include GPU cost in machine type,
+        # but our simplistic model sums them.
         # Let's adjust expectation based on implementation:
         # Machine: 3.67 + GPU: 3.67 = 7.34
         cost = estimator.estimate_job_cost(
@@ -46,7 +45,7 @@ class TestCostEstimator:
             accelerator_type="NVIDIA_TESLA_A100",
             accelerator_count=1,
             duration_hours=1.0,
-            is_spot=False
+            is_spot=False,
         )
         assert cost == pytest.approx(7.34, 0.01)
 
@@ -57,6 +56,6 @@ class TestCostEstimator:
             accelerator_type="NVIDIA_TESLA_T4",
             accelerator_count=1,
             duration_hours=10.0,
-            is_spot=False
+            is_spot=False,
         )
         assert cost == pytest.approx(7.30, 0.1)

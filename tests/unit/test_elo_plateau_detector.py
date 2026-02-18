@@ -1,4 +1,5 @@
 """Unit tests for elo_plateau_detector module."""
+
 from __future__ import annotations
 
 import os
@@ -18,6 +19,7 @@ class TestEloStatus:
         assert EloStatus.STABLE.value == "stable"
         assert EloStatus.PLATEAU.value == "plateau"
         assert EloStatus.REGRESSING.value == "regressing"
+
 
 class TestEloSnapshot:
     def test_creation(self) -> None:
@@ -52,6 +54,7 @@ class TestEloSnapshot:
         assert snapshot.iteration == 75
         assert snapshot.elo_rating == 1600.0
 
+
 class TestEloPlateauDetectorConfig:
     def test_default_values(self) -> None:
         config = EloPlateauDetectorConfig()
@@ -70,6 +73,7 @@ class TestEloPlateauDetectorConfig:
         finally:
             del os.environ["CIV6AZ_ELO_PLATEAU_THRESHOLD"]
             del os.environ["CIV6AZ_ELO_IMPROVEMENT_THRESHOLD"]
+
 
 class TestEloPlateauDetector:
     def test_init(self) -> None:
@@ -171,8 +175,10 @@ class TestEloPlateauDetector:
         )
         detector = EloPlateauDetector(config)
         callback_called = []
+
         def callback(snapshot):
             callback_called.append(snapshot)
+
         detector.register_plateau_callback(callback)
         # Trigger plateau
         detector.record_evaluation(1, 1500.0, 0.50, 100)
@@ -188,6 +194,7 @@ class TestEloPlateauDetector:
         detector.reset()
         assert detector._best_elo is None
         assert len(detector._history) == 0
+
 
 class TestGetEloDetector:
     def test_returns_detector(self) -> None:

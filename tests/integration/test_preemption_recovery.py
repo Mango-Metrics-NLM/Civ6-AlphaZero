@@ -122,9 +122,7 @@ class TestPreemptionRecovery:
                 "timestamp": time.time(),
             }
             path = f"checkpoints/iter_{version * 10}.json"
-            mock_checkpoint_storage.upload_blob(
-                bucket, path, json.dumps(state).encode()
-            )
+            mock_checkpoint_storage.upload_blob(bucket, path, json.dumps(state).encode())
 
         # All 3 versions should exist
         for version in range(1, 4):
@@ -138,7 +136,7 @@ class TestPreemptionRecovery:
 
         delays: list[float] = []
         for attempt in range(max_retries):
-            delay = base_delay * (2 ** attempt)
+            delay = base_delay * (2**attempt)
             delays.append(delay)
 
         # Verify exponential growth
@@ -167,9 +165,7 @@ class TestPreemptionRecovery:
         mock_signal_handler()
 
         assert shutdown_triggered.is_set()
-        assert mock_checkpoint_storage.blob_exists(
-            bucket, "checkpoints/graceful_shutdown.json"
-        )
+        assert mock_checkpoint_storage.blob_exists(bucket, "checkpoints/graceful_shutdown.json")
 
     def test_partial_checkpoint_detection(
         self,
@@ -194,15 +190,11 @@ class TestPreemptionRecovery:
         )
 
         # Load and validate
-        valid_raw = mock_checkpoint_storage.download_blob(
-            bucket, "checkpoints/iter_10.json"
-        )
+        valid_raw = mock_checkpoint_storage.download_blob(bucket, "checkpoints/iter_10.json")
         valid = json.loads(valid_raw)
         assert valid["complete"] is True
 
-        corrupt_raw = mock_checkpoint_storage.download_blob(
-            bucket, "checkpoints/iter_20.json"
-        )
+        corrupt_raw = mock_checkpoint_storage.download_blob(bucket, "checkpoints/iter_20.json")
         with pytest.raises(json.JSONDecodeError):
             json.loads(corrupt_raw)
 

@@ -25,8 +25,9 @@
 | Phase 14 | Learning Signal Validation & Training Diagnostics | ✅ Complete |
 | Phase 15 | Scaled Training & Value Head Stabilization | ✅ Complete |
 | Phase 16 | Batch Inference & Vectorized Self-Play | ✅ Complete |
+| Phase 17 | Hex Crystalline Encoder & A/B Comparison | 🔄 Active |
 
-**Codebase Statistics:** ~59,000 LOC core, 4,880+ tests, Docker v0.13.0, 80 models (v0-v079)
+**Codebase Statistics:** ~62,000 LOC core, 5,100+ tests, Docker v0.14.1, 158+ models in GCS
 
 ---
 
@@ -188,6 +189,16 @@ Legend:
 │  │                    │ - create_from_config()│                            │  │
 │  │                    │ - load_checkpoint()   │                            │  │
 │  │                    └───────────────────────┘                            │  │
+│  │                                                                         │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐   │  │
+│  │  │                    SPATIAL ENCODERS (Phase 17)                   │   │  │
+│  │  │  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐          │   │  │
+│  │  │  │  PatchEmbed   │ │HexSpatialEnc  │ │EncoderRegistry│          │   │  │
+│  │  │  │ (Grid-based)  │ │(Hex-topology) │ │ (Factory)     │          │   │  │
+│  │  │  │  Baseline     │ │ Crystalline   │ │ patch_embed / │          │   │  │
+│  │  │  │  encoder      │ │ attention     │ │ hex_crystalln │          │   │  │
+│  │  │  └───────────────┘ └───────────────┘ └───────────────┘          │   │  │
+│  │  └─────────────────────────────────────────────────────────────────┘   │  │
 │  └────────────────────────────────────────────────────────────────────────┘  │
 │                                                                               │
 │  ┌────────────────────────────────────────────────────────────────────────┐  │
@@ -1770,22 +1781,23 @@ Batch inference optimization and vectorized self-play for throughput scaling.
 15. **Phase 14**: Learning Signal Validation — 20-iter run ($2.44), 2 promotions (v6→v19→v26), training diagnostics, warmup-cosine LR, stall detection ✅
 16. **Phase 15**: Value Head Stabilization — Per-head LR multipliers (value=0.1x), optimizer param groups, base_lr_ratio preservation ✅
 17. **Phase 16**: Batch Inference & Vectorized Self-Play — BatchGumbelMCTS, VectorizedMicroCivEnv, CUDAGraphCache, InferenceBenchmark, cloud orchestrator mode, 101 new tests, Docker v0.13.0 ✅
+18. **Phase 17**: Hex Crystalline Encoder & A/B Comparison — HexSpatialEncoder, CrystallineAttention, HexConv2d, EncoderRegistry, cloud pipeline encoder propagation, Python 3.10 compat shim, gameplay systems (terrain, fog, tech, combat), A/B training runs on VM, Docker v0.14.1 🔄
 
 ### Next Steps
 
-See [NEXT_STEPS.md](../NEXT_STEPS.md) for the full post-Phase 16 roadmap.
+See [NEXT_STEPS.md](../NEXT_STEPS.md) for the full post-Phase 17 roadmap.
 
 | Priority | Feature | Description |
 |----------|---------|-------------|
-| P0 | Monitor 50-Iteration Run | Track indulgent-date-703: value correlation, ELO spread, promotions |
-| P1 | Batch Self-Play Cloud Integration (Phase 17) | Enable `--num_parallel_games` in cloud for 5-10x throughput |
-| P2 | MuZero Training Run (Phase 18) | Validate learned dynamics model on MicroCiv |
-| P3 | PBT on Vertex AI (Phase 19) | Population-based training with auto hyperparameter tuning |
-| P4 | DDP Test Rewrites (Phase 20) | Fix 12 remaining DDP xfails, full mypy strict |
-| P5 | Human vs AI Interface (Phase 21) | Web-based UI for playing against trained agent |
-| P6 | Full Civ6 Integration (Phase 22) | Direct game interface via Lua mod bridge |
+| P0 | A/B Comparison Analysis | Analyze Run A vs Run B: loss curves, win rates, ELO, throughput |
+| P1 | Batch Self-Play Cloud Integration (Phase 18) | Enable `--num_parallel_games` in cloud for 5-10x throughput |
+| P2 | MuZero Training Run (Phase 19) | Validate learned dynamics model on MicroCiv |
+| P3 | PBT on Vertex AI (Phase 20) | Population-based training with auto hyperparameter tuning |
+| P4 | DDP Test Rewrites (Phase 21) | Fix 12 remaining DDP xfails, full mypy strict |
+| P5 | Human vs AI Interface (Phase 22) | Web-based UI for playing against trained agent |
+| P6 | Full Civ6 Integration (Phase 23) | Direct game interface via Lua mod bridge |
 
 ---
 
-*Last updated: 2026-02-08*
-*Architecture version: 4.0*
+*Last updated: 2026-02-18*
+*Architecture version: 5.0*

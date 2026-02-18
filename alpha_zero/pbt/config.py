@@ -26,13 +26,15 @@ import math
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import yaml
+
+from alpha_zero.utils.compat import UTC
 
 
 class SelectionMethod(str, Enum):

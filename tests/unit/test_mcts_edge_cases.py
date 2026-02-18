@@ -1,4 +1,5 @@
 """Edge case tests for MCTS variants."""
+
 import numpy as np
 import pytest
 import torch
@@ -15,7 +16,9 @@ class TestMCTSEdgeCases:
     def test_single_valid_action_deterministic(self):
         """When only one action is valid, network output should be deterministic after masking."""
         action_space_size = 376  # MicroCiv default
-        network = MicroCivNetwork(board_size=8, num_res_blocks=1, num_filters=8, action_space_size=action_space_size)
+        network = MicroCivNetwork(
+            board_size=8, num_res_blocks=1, num_filters=8, action_space_size=action_space_size
+        )
         network.eval()
 
         # Create input
@@ -32,14 +35,18 @@ class TestMCTSEdgeCases:
             policy_probs = torch.softmax(policy_logits, dim=1)
 
         # The single valid action should have probability ~1.0
-        assert policy_probs[0, 0].item() > 0.99, f"Single valid action should dominate: {policy_probs[0, 0].item()}"
+        assert (
+            policy_probs[0, 0].item() > 0.99
+        ), f"Single valid action should dominate: {policy_probs[0, 0].item()}"
         # All other actions should have near-zero probability
         assert policy_probs[0, 1:].sum().item() < 0.01
 
     def test_extreme_value_network_outputs(self):
         """Network should handle normally even with extreme inputs."""
         action_space_size = 376  # MicroCiv default
-        network = MicroCivNetwork(board_size=8, num_res_blocks=1, num_filters=8, action_space_size=action_space_size)
+        network = MicroCivNetwork(
+            board_size=8, num_res_blocks=1, num_filters=8, action_space_size=action_space_size
+        )
         network.eval()
 
         # Large magnitude inputs
@@ -57,7 +64,9 @@ class TestMCTSEdgeCases:
     def test_zero_input_does_not_crash(self):
         """Zero spatial/vector input should not crash the network."""
         action_space_size = 376  # MicroCiv default
-        network = MicroCivNetwork(board_size=8, num_res_blocks=1, num_filters=8, action_space_size=action_space_size)
+        network = MicroCivNetwork(
+            board_size=8, num_res_blocks=1, num_filters=8, action_space_size=action_space_size
+        )
         network.eval()
 
         spatial = torch.zeros(1, ENCODER.MICROCIV_CHANNELS, 8, 8)
@@ -73,7 +82,9 @@ class TestMCTSEdgeCases:
     def test_batch_size_one_forward(self):
         """Single-sample batch should work correctly."""
         action_space_size = 376  # MicroCiv default
-        network = MicroCivNetwork(board_size=8, num_res_blocks=1, num_filters=8, action_space_size=action_space_size)
+        network = MicroCivNetwork(
+            board_size=8, num_res_blocks=1, num_filters=8, action_space_size=action_space_size
+        )
         network.eval()
 
         spatial = torch.randn(1, ENCODER.MICROCIV_CHANNELS, 8, 8)

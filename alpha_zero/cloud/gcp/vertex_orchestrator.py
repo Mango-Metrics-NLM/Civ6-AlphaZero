@@ -276,6 +276,23 @@ def parse_args() -> argparse.Namespace:
         help="Gameplay preset: 'default' (MicroCivEnv) or 'enhanced' (all gameplay systems)",
     )
 
+    # Spatial encoder type
+    parser.add_argument(
+        "--encoder_type",
+        type=str,
+        default="patch_embed",
+        choices=["patch_embed", "hex_crystalline"],
+        help="Spatial encoder type: 'patch_embed' (default Conv2d) or 'hex_crystalline' (hex-aware)",
+    )
+
+    # Agent ID for GCS path namespacing (A/B experiment isolation)
+    parser.add_argument(
+        "--agent_id",
+        type=str,
+        default=None,
+        help="Agent ID for GCS path namespacing (isolates models/trajectories between runs)",
+    )
+
     return parser.parse_args()
 
 
@@ -335,6 +352,10 @@ def build_selfplay_extra_args(args: argparse.Namespace) -> list[str]:
     gameplay_preset = getattr(args, "gameplay_preset", "default")
     if gameplay_preset != "default":
         extra.append(f"--gameplay_preset={gameplay_preset}")
+    # Encoder type (only propagate non-default to keep backward compat)
+    encoder_type = getattr(args, "encoder_type", "patch_embed")
+    if encoder_type != "patch_embed":
+        extra.append(f"--encoder_type={encoder_type}")
     return extra
 
 
@@ -377,6 +398,10 @@ def build_training_extra_args(args: argparse.Namespace) -> list[str]:
     algorithm = getattr(args, "algorithm", "alphazero")
     if algorithm == "muzero":
         extra.append("--algorithm=muzero")
+    # Encoder type (only propagate non-default to keep backward compat)
+    encoder_type = getattr(args, "encoder_type", "patch_embed")
+    if encoder_type != "patch_embed":
+        extra.append(f"--encoder_type={encoder_type}")
     return extra
 
 
@@ -406,6 +431,10 @@ def build_evaluation_extra_args(args: argparse.Namespace) -> list[str]:
     gameplay_preset = getattr(args, "gameplay_preset", "default")
     if gameplay_preset != "default":
         extra.append(f"--gameplay_preset={gameplay_preset}")
+    # Encoder type (only propagate non-default to keep backward compat)
+    encoder_type = getattr(args, "encoder_type", "patch_embed")
+    if encoder_type != "patch_embed":
+        extra.append(f"--encoder_type={encoder_type}")
     return extra
 
 
@@ -848,6 +877,8 @@ def main() -> int:
                     "value_head_dim": getattr(args, "value_head_dim", 64),
                     "num_parallel_games": getattr(args, "num_parallel_games", 1),
                     "gameplay_preset": getattr(args, "gameplay_preset", "default"),
+                    "encoder_type": getattr(args, "encoder_type", "patch_embed"),
+                    "agent_id": getattr(args, "agent_id", None),
                     "mode": "orchestrator",
                 }
             )
@@ -857,13 +888,14 @@ def main() -> int:
 
     logger.info("Civ6 AlphaZero Vertex AI Orchestrator")
     logger.info(
-        "Config: %d iterations, %d workers, %d games/worker, %dx%d board, %s MCTS",
+        "Config: %d iterations, %d workers, %d games/worker, %dx%d board, %s MCTS, encoder=%s",
         args.iterations,
         args.workers,
         args.games_per_worker,
         args.board_size,
         args.board_size,
         args.mcts_type,
+        getattr(args, "encoder_type", "patch_embed"),
     )
 
     if args.dry_run:
@@ -882,6 +914,18 @@ def main() -> int:
 
     try:
         config = GCPConfig()
+
+        # Apply agent_id for GCS path namespacing (A/B experiment isolation)
+        agent_id = getattr(args, "agent_id", None)
+        if agent_id:
+            config.paths.agent_id = agent_id
+            logger.info("GCS path namespace: agent_id=%s", agent_id)
+
+        # Apply encoder_type to network config
+        encoder_type = getattr(args, "encoder_type", "patch_embed")
+        if encoder_type != "patch_embed":
+            config.network.encoder_type = encoder_type
+            logger.info("Spatial encoder type: %s", encoder_type)
 
         # Apply architecture preset to config (args already synced above)
         if getattr(args, "architecture_preset", None):

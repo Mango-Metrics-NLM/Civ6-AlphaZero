@@ -291,8 +291,12 @@ class TestLoadModel:
 
         # Create a model matching pipeline architecture (NetworkArchitectureConfig defaults)
         config = TransformerConfig(
-            spatial_channels=13, spatial_size=8, vector_dim=64,
-            action_space_size=376, num_layers=6, embed_dim=64,
+            spatial_channels=13,
+            spatial_size=8,
+            vector_dim=64,
+            action_space_size=376,
+            num_layers=6,
+            embed_dim=64,
         )
         real_model = Civ6TransformerNetwork(config=config)
 
@@ -379,7 +383,6 @@ class TestRunSelfplay:
             # policies should be list
             assert isinstance(traj["policies"][0], list)
 
-
     def test_mcts_config_override(self, mock_model: MockModel) -> None:
         """Test that MCTS config override is applied."""
         from alpha_zero.cloud.gcp.selfplay_worker import run_selfplay
@@ -447,7 +450,7 @@ class TestRunSelfplay:
         """Test that Gumbel MCTS defaults to sims if num_actions not provided (legacy behavior)."""
         from alpha_zero.cloud.gcp.selfplay_worker import run_selfplay
 
-         # Mock environment
+        # Mock environment
         mock_env = mock_env_cls.return_value
         mock_env.get_observation.return_value = {
             "spatial": MagicMock(flatten=lambda: MagicMock(tolist=lambda: [])),

@@ -21,7 +21,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from alpha_zero.cloud.gcp.exceptions import ConfigurationError, GCSStorageError
+from alpha_zero.utils.compat import UTC
 
 if TYPE_CHECKING:
     from google.cloud import storage as gcs_lib

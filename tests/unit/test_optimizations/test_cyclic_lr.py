@@ -232,7 +232,13 @@ class TestCyclicLRScheduler:
 
     def test_lr_bounds(self):
         """Test LR stays within configured bounds."""
-        for schedule in ["triangular", "triangular2", "exp_range", "cosine_annealing", "warm_restarts"]:
+        for schedule in [
+            "triangular",
+            "triangular2",
+            "exp_range",
+            "cosine_annealing",
+            "warm_restarts",
+        ]:
             config = CyclicLRConfig(
                 schedule_type=schedule,
                 base_lr=1e-5,

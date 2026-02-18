@@ -81,9 +81,7 @@ class TestOrchestratorEvalPhase:
         for agent in agents:
             assert agent.elo_rating in report.elo_ratings.values()
 
-    def test_population_manager_integration(
-        self, pbt_config: PBTConfig
-    ) -> None:
+    def test_population_manager_integration(self, pbt_config: PBTConfig) -> None:
         """Test full flow: PopulationManager → PBTEvaluator → updated agents."""
         manager = PopulationManager(pbt_config)
         manager.initialize()
@@ -102,9 +100,7 @@ class TestOrchestratorEvalPhase:
         total_fitness = sum(report.fitness_scores.values())
         assert total_fitness > 0
 
-    def test_multiple_generations(
-        self, pbt_config: PBTConfig, agents: list[AgentState]
-    ) -> None:
+    def test_multiple_generations(self, pbt_config: PBTConfig, agents: list[AgentState]) -> None:
         """Running multiple generations should accumulate ELO changes."""
         evaluator = PBTEvaluator(pbt_config, arena_runner=_balanced_runner)
 
@@ -115,9 +111,7 @@ class TestOrchestratorEvalPhase:
         elo_g2 = dict(report_g2.elo_ratings)
 
         # Ratings should continue to evolve
-        assert elo_g2 != elo_g1 or all(
-            v == pytest.approx(1200.0) for v in elo_g1.values()
-        )
+        assert elo_g2 != elo_g1 or all(v == pytest.approx(1200.0) for v in elo_g1.values())
 
     def test_top_k_strategy(self, agents: list[AgentState]) -> None:
         """top_k_vs_best strategy should produce N-1 matchups."""
@@ -137,9 +131,7 @@ class TestOrchestratorEvalPhase:
 class TestEvaluationReportStructure:
     """Tests for EvaluationReport correctness."""
 
-    def test_report_has_all_fields(
-        self, pbt_config: PBTConfig, agents: list[AgentState]
-    ) -> None:
+    def test_report_has_all_fields(self, pbt_config: PBTConfig, agents: list[AgentState]) -> None:
         evaluator = PBTEvaluator(pbt_config, arena_runner=_balanced_runner)
         report = evaluator.evaluate_population(agents, generation=5)
 
@@ -149,9 +141,7 @@ class TestEvaluationReportStructure:
         assert isinstance(report.fitness_scores, dict)
         assert all(isinstance(m, MatchResult) for m in report.matchups)
 
-    def test_fitness_scores_in_range(
-        self, pbt_config: PBTConfig, agents: list[AgentState]
-    ) -> None:
+    def test_fitness_scores_in_range(self, pbt_config: PBTConfig, agents: list[AgentState]) -> None:
         evaluator = PBTEvaluator(pbt_config, arena_runner=_balanced_runner)
         report = evaluator.evaluate_population(agents, generation=1)
 
@@ -167,21 +157,22 @@ class TestOrchestratorWiring:
         from alpha_zero.cloud.gcp.pbt_orchestrator import PBTOrchestrator
 
         # Mock GCP dependencies
-        with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"):
-
+        with (
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"),
+        ):
             orchestrator = PBTOrchestrator(pbt_config)
             orchestrator.manager.initialize()
 
             # Define mock report first
             mock_report = EvaluationReport(
-                generation=1,
-                elo_ratings={"agent_0": 1300.0},
-                fitness_scores={"agent_0": 0.8}
+                generation=1, elo_ratings={"agent_0": 1300.0}, fitness_scores={"agent_0": 0.8}
             )
 
             # Mock the evaluator's evaluate_population method using patch.object to satisfy Mypy
-            with patch.object(orchestrator.evaluator, "evaluate_population", return_value=mock_report):
+            with patch.object(
+                orchestrator.evaluator, "evaluate_population", return_value=mock_report
+            ):
                 report = orchestrator._run_evaluation_phase(gen=1)
 
                 assert report == mock_report
@@ -190,14 +181,16 @@ class TestOrchestratorWiring:
         """Verify that run(num_generations=0) does not enter the loop."""
         from alpha_zero.cloud.gcp.pbt_orchestrator import PBTOrchestrator
 
-        with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"):
-
+        with (
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"),
+        ):
             orchestrator = PBTOrchestrator(pbt_config)
-            with patch.object(orchestrator, "load_state"), \
-                 patch.object(orchestrator, "save_state"), \
-                 patch.object(orchestrator, "_run_selfplay_phase") as mock_selfplay:
-
+            with (
+                patch.object(orchestrator, "load_state"),
+                patch.object(orchestrator, "save_state"),
+                patch.object(orchestrator, "_run_selfplay_phase") as mock_selfplay,
+            ):
                 # Should not call phases if total generations is effectively 0
                 orchestrator.run(num_generations=0)
 

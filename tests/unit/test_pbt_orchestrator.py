@@ -1,4 +1,3 @@
-
 import unittest
 from unittest.mock import MagicMock, patch
 from alpha_zero.cloud.gcp.pbt_orchestrator import PBTOrchestrator
@@ -21,11 +20,7 @@ def _mock_arena_runner(agent_new, agent_old, num_games):
 
 class TestPBTOrchestrator(unittest.TestCase):
     def setUp(self):
-        self.pbt_config = PBTConfig(
-            population_size=4,
-            num_generations=2,
-            evaluation_games=10
-        )
+        self.pbt_config = PBTConfig(population_size=4, num_generations=2, evaluation_games=10)
         self.gcp_config = MagicMock(spec=GCPConfig)
         self.gcp_config.project_id = "test-project"
         self.gcp_config.region = "us-central1"
@@ -40,7 +35,9 @@ class TestPBTOrchestrator(unittest.TestCase):
     @patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob")
     @patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend")
     @patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage")
-    def test_run_orchestrator(self, MockStorage, MockBackend, MockSelfPlay, MockTraining, MockClient):
+    def test_run_orchestrator(
+        self, MockStorage, MockBackend, MockSelfPlay, MockTraining, MockClient
+    ):
         # Setup Mocks
         orchestrator = PBTOrchestrator(self.pbt_config, self.gcp_config)
 
@@ -71,9 +68,13 @@ class TestPBTOrchestrator(unittest.TestCase):
 
         # Generation 1 & 2
         # Self Play
-        self.assertEqual(orchestrator.selfplay_job_manager.launch.call_count, 8)  # 4 agents * 2 gens
+        self.assertEqual(
+            orchestrator.selfplay_job_manager.launch.call_count, 8
+        )  # 4 agents * 2 gens
         # Training
-        self.assertEqual(orchestrator.training_job_manager.launch.call_count, 8)  # 4 agents * 2 gens
+        self.assertEqual(
+            orchestrator.training_job_manager.launch.call_count, 8
+        )  # 4 agents * 2 gens
 
         # State Saved
         self.assertTrue(mock_backend_instance.upload_blob.called)

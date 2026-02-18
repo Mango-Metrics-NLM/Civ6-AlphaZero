@@ -347,7 +347,10 @@ class TestBaselineBenchmarking:
         config = PBTConfig(population_size=4, baseline_interval=5)
         runner = _make_arena_runner()
         evaluator = PBTEvaluator(
-            config, arena_runner=runner, baseline_agents=[], baseline_interval=5,
+            config,
+            arena_runner=runner,
+            baseline_agents=[],
+            baseline_interval=5,
         )
         agents = [AgentState(agent_id="a1")]
         results = evaluator.run_baseline_benchmarks(agents, generation=5)
@@ -358,7 +361,10 @@ class TestBaselineBenchmarking:
         config = PBTConfig(population_size=4, baseline_interval=0)
         runner = _make_arena_runner()
         evaluator = PBTEvaluator(
-            config, arena_runner=runner, baseline_agents=baselines, baseline_interval=0,
+            config,
+            arena_runner=runner,
+            baseline_agents=baselines,
+            baseline_interval=0,
         )
         agents = [AgentState(agent_id="a1")]
         results = evaluator.run_baseline_benchmarks(agents, generation=5)
@@ -369,7 +375,10 @@ class TestBaselineBenchmarking:
         config = PBTConfig(population_size=4, baseline_interval=1)
         runner = _make_arena_runner(win_rate=1.0, draw_rate=0.0, loss_rate=0.0)
         evaluator = PBTEvaluator(
-            config, arena_runner=runner, baseline_agents=baselines, baseline_interval=1,
+            config,
+            arena_runner=runner,
+            baseline_agents=baselines,
+            baseline_interval=1,
         )
 
         agents = [
@@ -385,11 +394,16 @@ class TestBaselineBenchmarking:
     def test_evaluate_population_includes_baseline_results(self) -> None:
         baselines = [AgentState(agent_id="baseline_random")]
         config = PBTConfig(
-            population_size=4, baseline_interval=1, evaluation_games_per_match=10,
+            population_size=4,
+            baseline_interval=1,
+            evaluation_games_per_match=10,
         )
         runner = _make_arena_runner()
         evaluator = PBTEvaluator(
-            config, arena_runner=runner, baseline_agents=baselines, baseline_interval=1,
+            config,
+            arena_runner=runner,
+            baseline_agents=baselines,
+            baseline_interval=1,
         )
 
         agents = [

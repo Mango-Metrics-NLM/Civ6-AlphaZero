@@ -78,10 +78,13 @@ class TestResourceExtraction:
             TileData(x=0, y=0, terrain="TERRAIN_PLAINS", resource="RESOURCE_IRON", owner_id=0),
             TileData(x=1, y=0, terrain="TERRAIN_GRASSLAND", resource="RESOURCE_IRON", owner_id=0),
             TileData(x=2, y=0, terrain="TERRAIN_HILLS", resource="RESOURCE_HORSES", owner_id=0),
-            TileData(x=3, y=0, terrain="TERRAIN_PLAINS", resource="RESOURCE_WHEAT", owner_id=1),  # Enemy owned
+            TileData(
+                x=3, y=0, terrain="TERRAIN_PLAINS", resource="RESOURCE_WHEAT", owner_id=1
+            ),  # Enemy owned
         ]
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.map_data.tiles = tiles
@@ -100,6 +103,7 @@ class TestResourceExtraction:
         converter = StateConverter()
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.map_data.tiles = []
@@ -118,10 +122,13 @@ class TestResourceExtraction:
 
         tiles = [
             TileData(x=0, y=0, terrain="TERRAIN_PLAINS", resource="RESOURCE_IRON", owner_id=None),
-            TileData(x=1, y=0, terrain="TERRAIN_GRASSLAND", resource="RESOURCE_HORSES", owner_id=None),
+            TileData(
+                x=1, y=0, terrain="TERRAIN_GRASSLAND", resource="RESOURCE_HORSES", owner_id=None
+            ),
         ]
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.map_data.tiles = tiles
@@ -149,6 +156,7 @@ class TestTechnologyExtraction:
         )
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = [player]
@@ -171,6 +179,7 @@ class TestTechnologyExtraction:
         player = PlayerData(id=0, civilization="ROME", techs_researched=[])
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = [player]
@@ -186,6 +195,7 @@ class TestTechnologyExtraction:
         converter = StateConverter()
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = []
@@ -206,6 +216,7 @@ class TestCivicExtraction:
         converter = StateConverter()
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = []
@@ -225,6 +236,7 @@ class TestCivicExtraction:
         player = PlayerData(id=0, civilization="ROME")
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = [player]
@@ -248,6 +260,7 @@ class TestVictoryProgressExtraction:
         player = PlayerData(id=0, civilization="ROME", score=100)
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = [player]
@@ -289,6 +302,7 @@ class TestVictoryProgressExtraction:
         ]
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = [player, enemy]
@@ -300,7 +314,7 @@ class TestVictoryProgressExtraction:
 
         # Domination progress = our cities / total cities = 2/3 ≈ 0.667
         assert "domination" in victory
-        assert abs(victory["domination"] - 2/3) < 0.01
+        assert abs(victory["domination"] - 2 / 3) < 0.01
 
     def test_extract_science_progress(self):
         """Test science victory progress calculation."""
@@ -313,10 +327,17 @@ class TestVictoryProgressExtraction:
             id=0,
             civilization="ROME",
             score=100,
-            techs_researched=["TECH_POTTERY", "TECH_MINING", "TECH_WRITING", "TECH_SAILING", "TECH_ASTROLOGY"],
+            techs_researched=[
+                "TECH_POTTERY",
+                "TECH_MINING",
+                "TECH_WRITING",
+                "TECH_SAILING",
+                "TECH_ASTROLOGY",
+            ],
         )
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = [player]
@@ -340,6 +361,7 @@ class TestVictoryProgressExtraction:
         player = PlayerData(id=0, civilization="ROME", score=500)
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = [player]
@@ -362,6 +384,7 @@ class TestVictoryProgressExtraction:
         player = PlayerData(id=0, civilization="ROME", score=100)
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = [player]
@@ -452,6 +475,7 @@ class TestStateExtractionEdgeCases:
         converter = StateConverter()
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = []
@@ -486,6 +510,7 @@ class TestStateExtractionEdgeCases:
         tile = TileData(x=0, y=0, terrain="TERRAIN_PLAINS", resource="RESOURCE_IRON", owner_id=1)
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0  # Looking for ID 0
         state.players = [player]

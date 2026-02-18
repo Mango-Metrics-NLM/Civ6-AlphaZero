@@ -5,6 +5,79 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.1] — 2026-02-18
+
+### Added — Hex Crystalline Encoder & A/B Training Comparison
+
+#### Crystalline Hex Spatial Encoder (`alpha_zero/core/hex_encoder.py`) — NEW
+
+- **HexSpatialEncoder**: Hex-topology-aware spatial encoder as drop-in replacement for `PatchEmbed`
+  - Axial coordinate embedding for native hexagonal grid representation
+  - Crystalline attention layers with hex-neighbor masking (6-neighbor connectivity)
+  - Multi-scale hex convolutions capturing local and regional spatial patterns
+  - Ring-distance positional encoding (vs. Cartesian grid in PatchEmbed)
+- **HexConv2d** (`hex_conv.py`): Hex-neighbor convolution with configurable ring radius
+- **CrystallineAttention** (`crystalline_layers.py`): Attention restricted to hex-topology neighborhoods
+- **EncoderRegistry** (`encoder_registry.py`): Factory for creating encoders by name (`patch_embed`, `hex_crystalline`)
+- Fully integrated into `Civ6TransformerNetwork` via `TransformerConfig.encoder_type` field
+
+#### Cloud Pipeline Encoder Propagation (5 files modified)
+
+- **`vertex_orchestrator.py`**: Added `--encoder_type` and `--agent_id` CLI args with propagation to all worker types
+- **`training_worker.py`**: `--encoder_type` arg passed to `create_model()` → `TransformerConfig`
+- **`selfplay_worker.py`**: `--encoder_type` arg for fallback model loading when `model_config_dict` is absent
+- **`evaluation_worker.py`**: `--encoder_type` arg for consistency (models auto-load via saved config)
+- **`vertex_jobs.py`**: `CIV6AZ_ENCODER_TYPE` env var passed to all Vertex AI containers
+
+#### A/B Comparison Infrastructure
+
+- **`scripts/compare_training_runs.py`**: W&B-based comparison script pulling metrics for two runs
+  - Loss curves (policy/value/total), win rate, ELO comparison, summary table
+  - Generates markdown report and PNG plots via matplotlib
+- **`scripts/launch_ab_run.py`**: Local A/B run launcher with `.env` loading and dry-run mode
+- **`scripts/vm_ssh.py`**: SSH helper for orchestrator VM via IAP tunnel
+- **`scripts/vm_deploy_ab.sh`**: VM deployment script for Run A (patch_embed baseline)
+- **`scripts/vm_launch_run_b.sh`**: Auto-launcher for Run B after Run A completes (hex_crystalline)
+
+#### Python 3.10 Compatibility Shim
+
+- **`alpha_zero/utils/compat.py`**: Version-aware `UTC` re-export for Python 3.10 containers
+  - `datetime.UTC` was added in Python 3.11; container base image uses 3.10
+  - 40 files updated to use `from alpha_zero.utils.compat import UTC`
+
+#### Gameplay Systems (MicroCiv Enhancements)
+
+- **Terrain system** (`envs/micro_civ_terrain.py`): 8 terrain types with hex-grid movement costs, visibility, and defense bonuses
+- **Fog of war** (`envs/micro_civ_fog.py`): Per-player visibility with sight-range mechanics and exploration state
+- **Tech tree** (`envs/micro_civ_tech.py`): 15-tech tree with prerequisites, era progression, and unlock effects
+- **Combat system** (`envs/micro_civ_combat.py`): Terrain-aware combat with flanking, fortification, and ranged attacks
+
+#### Test Suite
+
+- `tests/cloud/unit/test_encoder_pipeline_plumbing.py` — 22 tests for encoder_type CLI propagation
+- `tests/unit/test_hex_encoder.py` — Hex encoder unit tests (spatial encoding, attention, registry)
+- `tests/unit/test_hex_conv.py` — Hex convolution tests
+- `tests/unit/test_crystalline_layers.py` — Crystalline attention tests
+- `tests/unit/test_terrain_coverage.py` — Terrain system coverage tests
+- 211 hex encoder tests + 792 cloud tests passing
+
+### Changed
+
+- Version: `0.13.0` → `0.14.1`
+- Docker image: v0.13.0 → v0.14.1 (`gcr.io/hrmtrain/civ6az-training:v0.14.1`)
+- Container base: Python 3.10 compatibility via `alpha_zero.utils.compat.UTC` shim (40 files)
+- `.gitignore`: Added A/B comparison artifacts, inference benchmarks
+- Total tests: 4,893+ → 5,100+ (hex encoder, cloud pipeline, gameplay systems)
+
+#### A/B Training Comparison (Active)
+
+- **Run A**: `vibrant-snowball-1038` (cbgz7tco) — patch_embed baseline, 20 iterations, agent_id=ab_patch_embed
+- **Run B**: Auto-launches after Run A — hex_crystalline, 20 iterations, agent_id=ab_hex_crystalline
+- **VM**: civ6az-orchestrator (e2-small, us-central1-a), Docker v0.14.1
+- **Estimated cost**: ~$5.00 total for both runs
+
+---
+
 ## [0.13.0] — 2026-02-14
 
 ### Added — Standalone Tournament Worker & Civ6 Lua Integration

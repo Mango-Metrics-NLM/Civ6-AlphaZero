@@ -136,14 +136,14 @@ class TestBuildTrainingExtraArgs:
             "--lr_decay_steps",
         ]
         for key in lr_arg_keys:
-            assert not any(key in arg for arg in extra_args), (
-                f"{key} should not be in extra_args for constant schedule"
-            )
+            assert not any(
+                key in arg for arg in extra_args
+            ), f"{key} should not be in extra_args for constant schedule"
 
         # Weight decay should NOT be present if default (0.01)
-        assert not any("--weight_decay" in arg for arg in extra_args), (
-            "Default weight_decay should not be in extra_args"
-        )
+        assert not any(
+            "--weight_decay" in arg for arg in extra_args
+        ), "Default weight_decay should not be in extra_args"
 
     def test_build_training_extra_args_warmup_cosine(self) -> None:
         """Non-default lr_schedule_type should include LR args in output."""
@@ -209,9 +209,9 @@ class TestBuildTrainingExtraArgs:
             "--lr_decay_steps",
         ]
         for key in lr_arg_keys:
-            assert not any(key in arg for arg in extra_args), (
-                f"{key} should not be in extra_args for constant schedule"
-            )
+            assert not any(
+                key in arg for arg in extra_args
+            ), f"{key} should not be in extra_args for constant schedule"
 
 
 class TestBuildTrainingExtraArgsEdgeCases:
@@ -238,15 +238,15 @@ class TestBuildTrainingExtraArgsEdgeCases:
             extra_args = build_training_extra_args(args)
 
             # All non-constant schedules should include LR args
-            assert f"--lr_schedule_type={schedule_type}" in extra_args, (
-                f"Schedule type {schedule_type} should be in extra_args"
-            )
-            assert any("--lr_initial" in arg for arg in extra_args), (
-                f"Schedule {schedule_type} should include --lr_initial"
-            )
-            assert any("--lr_final" in arg for arg in extra_args), (
-                f"Schedule {schedule_type} should include --lr_final"
-            )
+            assert (
+                f"--lr_schedule_type={schedule_type}" in extra_args
+            ), f"Schedule type {schedule_type} should be in extra_args"
+            assert any(
+                "--lr_initial" in arg for arg in extra_args
+            ), f"Schedule {schedule_type} should include --lr_initial"
+            assert any(
+                "--lr_final" in arg for arg in extra_args
+            ), f"Schedule {schedule_type} should include --lr_final"
 
     def test_build_training_extra_args_zero_weight_decay(self) -> None:
         """weight_decay=0.0 (non-default) should be in output."""

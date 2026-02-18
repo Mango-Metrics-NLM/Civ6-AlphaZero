@@ -210,6 +210,14 @@ def parse_args() -> argparse.Namespace:
         default=0.997,
         help="MuZero discount factor",
     )
+    # Spatial encoder type
+    parser.add_argument(
+        "--encoder_type",
+        type=str,
+        default="patch_embed",
+        choices=["patch_embed", "hex_crystalline"],
+        help="Spatial encoder type (default: patch_embed)",
+    )
     return parser.parse_args()
 
 
@@ -294,6 +302,7 @@ def create_model(
     num_heads: int = 8,
     policy_hidden_dim: int = 128,
     value_head_dim: int = 64,
+    encoder_type: str = "patch_embed",
 ) -> torch.nn.Module:
     """Create model architecture.
 
@@ -306,6 +315,7 @@ def create_model(
         num_heads: Number of attention heads.
         policy_hidden_dim: Hidden dimension for policy head.
         value_head_dim: Hidden dimension for value head.
+        encoder_type: Spatial encoder type ('patch_embed' or 'hex_crystalline').
     """
     from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
@@ -319,9 +329,11 @@ def create_model(
         num_heads=num_heads,
         policy_hidden_dim=policy_hidden_dim,
         value_head_dim=value_head_dim,
+        encoder_type=encoder_type,
     )
     logger.info(
-        "Creating model: spatial=(%d, %d, %d), actions=%d, layers=%d, embed=%d, heads=%d",
+        "Creating model: spatial=(%d, %d, %d), actions=%d, layers=%d, embed=%d, heads=%d, "
+        "encoder=%s",
         spatial_channels,
         board_size,
         board_size,
@@ -329,6 +341,7 @@ def create_model(
         num_res_blocks,
         num_filters,
         num_heads,
+        encoder_type,
     )
     return Civ6TransformerNetwork(config=model_config)
 
@@ -1008,6 +1021,7 @@ def main() -> int:
                 num_heads=getattr(args, "num_heads", 8),
                 policy_hidden_dim=getattr(args, "policy_hidden_dim", 128),
                 value_head_dim=getattr(args, "value_head_dim", 64),
+                encoder_type=getattr(args, "encoder_type", "patch_embed"),
             )
         model = model.to(device)
         raw_model = model  # Keep reference before DDP for param group construction

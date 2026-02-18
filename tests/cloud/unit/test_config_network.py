@@ -139,6 +139,7 @@ class TestNetworkArchitectureConfigSerialization(unittest.TestCase):
             "num_heads",
             "policy_hidden_dim",
             "value_head_dim",
+            "encoder_type",
         }
         self.assertEqual(set(result.keys()), expected_keys)
 

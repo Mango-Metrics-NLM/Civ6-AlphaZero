@@ -28,12 +28,14 @@ logger = logging.getLogger(__name__)
 # SDK availability check
 try:
     from google.cloud import storage as _gcs_sdk  # noqa: F401
+
     GCS_AVAILABLE = True
 except ImportError:
     GCS_AVAILABLE = False
 
 try:
     from google.cloud import aiplatform as _aiplatform  # noqa: F401
+
     VERTEX_AVAILABLE = True
 except ImportError:
     VERTEX_AVAILABLE = False
@@ -42,9 +44,7 @@ except ImportError:
 # are provided by tests/e2e/conftest.py
 
 # Skip markers for SDK availability
-requires_gcs = pytest.mark.skipif(
-    not GCS_AVAILABLE, reason="google-cloud-storage not installed"
-)
+requires_gcs = pytest.mark.skipif(not GCS_AVAILABLE, reason="google-cloud-storage not installed")
 requires_vertex = pytest.mark.skipif(
     not VERTEX_AVAILABLE, reason="google-cloud-aiplatform not installed"
 )

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 import pytest
 
+from alpha_zero.utils.compat import UTC
 from alpha_zero.web.config import WebConfig
 from alpha_zero.web.session import GameSessionManager
 
@@ -339,12 +340,15 @@ class TestGetSharedNetwork:
         mock_network.to.return_value = None
 
         mock_state_dict = {"model_state_dict": {}}
-        with mock_patch(
-            "alpha_zero.utils.checkpoint.safe_load_checkpoint",
-            return_value=mock_state_dict,
-        ), mock_patch(
-            "alpha_zero.core.civ6_network.MicroCivNetwork",
-            return_value=mock_network,
+        with (
+            mock_patch(
+                "alpha_zero.utils.checkpoint.safe_load_checkpoint",
+                return_value=mock_state_dict,
+            ),
+            mock_patch(
+                "alpha_zero.core.civ6_network.MicroCivNetwork",
+                return_value=mock_network,
+            ),
         ):
             net1 = manager._get_shared_network()
             net2 = manager._get_shared_network()
@@ -363,12 +367,15 @@ class TestGetSharedNetwork:
         mock_network = MagicMock()
         mock_state_dict = {"layer.weight": [1, 2, 3]}
 
-        with mock_patch(
-            "alpha_zero.utils.checkpoint.safe_load_checkpoint",
-            return_value=mock_state_dict,
-        ), mock_patch(
-            "alpha_zero.core.civ6_network.MicroCivNetwork",
-            return_value=mock_network,
+        with (
+            mock_patch(
+                "alpha_zero.utils.checkpoint.safe_load_checkpoint",
+                return_value=mock_state_dict,
+            ),
+            mock_patch(
+                "alpha_zero.core.civ6_network.MicroCivNetwork",
+                return_value=mock_network,
+            ),
         ):
             manager._get_shared_network()
             mock_network.load_state_dict.assert_called_once_with(mock_state_dict)

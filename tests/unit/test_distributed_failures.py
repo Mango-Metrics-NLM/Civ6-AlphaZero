@@ -65,6 +65,7 @@ def replay_buffer():
 def small_network():
     """Create a small network for testing."""
     import torch
+
     model = torch.nn.Linear(10, 10)
     return model
 

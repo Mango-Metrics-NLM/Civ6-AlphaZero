@@ -104,9 +104,7 @@ class TestPBTLifecycle:
             mutation_probability=1.0,
         )
 
-        changed = any(
-            original[k] != mutated[k] for k in original if k in mutated
-        )
+        changed = any(original[k] != mutated[k] for k in original if k in mutated)
         assert changed, "Mutation should change at least one hyperparameter"
 
         for name, value in mutated.items():
@@ -132,9 +130,7 @@ class TestPBTLifecycle:
         assert restored.agent_id == agent.agent_id
         assert restored.fitness_score == pytest.approx(agent.fitness_score)
         for k in agent.hyperparameters:
-            assert restored.hyperparameters[k] == pytest.approx(
-                agent.hyperparameters[k], rel=1e-6
-            )
+            assert restored.hyperparameters[k] == pytest.approx(agent.hyperparameters[k], rel=1e-6)
 
     def test_population_stats(self, rng: np.random.Generator) -> None:
         """Population stats compute correctly."""

@@ -103,9 +103,7 @@ class TestGCSLive:
         assert _bucket is not None
         sub_prefix = f"{_TEST_PREFIX}/list-test"
         for i in range(3):
-            gcs_backend.upload_blob(
-                _bucket, f"{sub_prefix}/item-{i}.bin", f"data-{i}".encode()
-            )
+            gcs_backend.upload_blob(_bucket, f"{sub_prefix}/item-{i}.bin", f"data-{i}".encode())
 
         blobs = gcs_backend.list_blobs(_bucket, sub_prefix)
         assert len(blobs) >= 3

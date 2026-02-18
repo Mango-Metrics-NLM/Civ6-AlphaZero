@@ -26,7 +26,7 @@ import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from email.mime.text import MIMEText
 from enum import Enum
 from pathlib import Path
@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from alpha_zero.cloud.gcp.exceptions import ConfigurationError
+from alpha_zero.utils.compat import UTC
 
 if TYPE_CHECKING:
     from alpha_zero.utils.wandb_logger import WandbLogger

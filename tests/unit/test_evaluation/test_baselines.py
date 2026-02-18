@@ -128,9 +128,7 @@ class TestHeuristicPlayer:
 
         mock_env = MagicMock()
         mock_env.action_space_handler = MagicMock()
-        mock_env.action_space_handler.decode_action = MagicMock(
-            return_value={"type": "move"}
-        )
+        mock_env.action_space_handler.decode_action = MagicMock(return_value={"type": "move"})
 
         observation = {
             "spatial": np.zeros((13, 16, 16)),
@@ -193,8 +191,7 @@ class TestHeuristicPlayer:
         # Attack should be preferred with high aggression
         # Run multiple times to see if attack is generally preferred
         attack_count = sum(
-            1 for _ in range(100)
-            if player.select_action(mock_env, observation) == 0
+            1 for _ in range(100) if player.select_action(mock_env, observation) == 0
         )
         # Attack should be selected more often than not
         assert attack_count > 30  # At least 30% of the time

@@ -13,7 +13,7 @@ import lzma
 import pickle
 import threading
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -28,6 +28,7 @@ from alpha_zero.storage.models import (
     ModelMetadata,
     TrajectoryMetadata,
 )
+from alpha_zero.utils.compat import UTC
 
 if TYPE_CHECKING:
     from alpha_zero.distributed.shared_storage import GameTrajectory

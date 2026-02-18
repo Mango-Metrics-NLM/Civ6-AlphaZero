@@ -93,11 +93,7 @@ def create_source_archive(project_root: Path) -> bytes:
                 # Directory - walk and add files
                 for root, dirs, files in os.walk(path):
                     # Filter out excluded directories
-                    dirs[:] = [
-                        d
-                        for d in dirs
-                        if not any(excl in d for excl in exclude_patterns)
-                    ]
+                    dirs[:] = [d for d in dirs if not any(excl in d for excl in exclude_patterns)]
 
                     for file in files:
                         # Skip excluded file patterns
@@ -246,6 +242,7 @@ def main() -> None:
     env_file = Path(__file__).parent.parent / ".env"
     if env_file.exists():
         from dotenv import load_dotenv
+
         load_dotenv(env_file)
 
     # Get project and bucket from environment with validation

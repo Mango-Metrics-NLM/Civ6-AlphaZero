@@ -77,30 +77,34 @@ class TestGCPAuthScript:
         """Verify script checks for gcloud CLI."""
         content = SETUP_SCRIPT.read_text()
 
-        assert "Test-GcloudInstalled" in content or "Get-Command gcloud" in content, \
-            "Script should check for gcloud installation"
+        assert (
+            "Test-GcloudInstalled" in content or "Get-Command gcloud" in content
+        ), "Script should check for gcloud installation"
 
     def test_script_handles_adc_configuration(self) -> None:
         """Verify script handles Application Default Credentials."""
         content = SETUP_SCRIPT.read_text()
 
-        assert "application-default" in content.lower() or "adc" in content.lower(), \
-            "Script should handle ADC configuration"
+        assert (
+            "application-default" in content.lower() or "adc" in content.lower()
+        ), "Script should handle ADC configuration"
 
     @pytest.mark.skipif(
         sys.platform != "win32" or not POWERSHELL_AVAILABLE,
-        reason="PowerShell script tests require PowerShell on Windows"
+        reason="PowerShell script tests require PowerShell on Windows",
     )
     def test_script_syntax_validation(self) -> None:
         """Verify script has valid PowerShell syntax."""
         # Use PowerShell to parse the script without executing
         result = subprocess.run(
             [
-                POWERSHELL_CMD, "-NoProfile", "-Command",
-                f"$null = [System.Management.Automation.Language.Parser]::ParseFile('{SETUP_SCRIPT}', [ref]$null, [ref]$errors); $errors.Count"
+                POWERSHELL_CMD,
+                "-NoProfile",
+                "-Command",
+                f"$null = [System.Management.Automation.Language.Parser]::ParseFile('{SETUP_SCRIPT}', [ref]$null, [ref]$errors); $errors.Count",
             ],
             capture_output=True,
-            text=True
+            text=True,
         )
 
         # If errors.Count is 0, syntax is valid
@@ -109,19 +113,24 @@ class TestGCPAuthScript:
 
     @pytest.mark.skipif(
         sys.platform != "win32" or not POWERSHELL_AVAILABLE,
-        reason="PowerShell script tests require PowerShell on Windows"
+        reason="PowerShell script tests require PowerShell on Windows",
     )
     def test_script_validate_only_mode(self) -> None:
         """Test that -ValidateOnly flag works without making changes."""
         # Run script with -ValidateOnly
         result = subprocess.run(
             [
-                POWERSHELL_CMD, "-NoProfile", "-ExecutionPolicy", "Bypass",
-                "-File", str(SETUP_SCRIPT), "-ValidateOnly"
+                POWERSHELL_CMD,
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(SETUP_SCRIPT),
+                "-ValidateOnly",
             ],
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=30,
         )
 
         # Script should run and produce output (exit code may be 1 if env vars not set)
@@ -195,13 +204,13 @@ class TestScriptModularity:
         ]
 
         for pattern in hardcoded_patterns:
-            assert pattern.lower() not in content.lower(), \
-                f"Script should not contain hardcoded value: {pattern}"
+            assert (
+                pattern.lower() not in content.lower()
+            ), f"Script should not contain hardcoded value: {pattern}"
 
     def test_script_has_main_function(self) -> None:
         """Verify script uses Main function pattern."""
         content = SETUP_SCRIPT.read_text()
 
         assert "function Main" in content, "Script should have Main function"
-        assert "exit (Main)" in content or "Main" in content, \
-            "Script should call Main function"
+        assert "exit (Main)" in content or "Main" in content, "Script should call Main function"

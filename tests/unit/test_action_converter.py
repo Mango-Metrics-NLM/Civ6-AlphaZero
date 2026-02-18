@@ -470,9 +470,9 @@ class TestItemHashRange:
         for item in civ6_items:
             result = _convert_item_id_to_int(item)
             assert result is not None
-            assert 0 <= result < _ITEM_HASH_RANGE, (
-                f"Hashed item '{item}' = {result} outside range [0, {_ITEM_HASH_RANGE})"
-            )
+            assert (
+                0 <= result < _ITEM_HASH_RANGE
+            ), f"Hashed item '{item}' = {result} outside range [0, {_ITEM_HASH_RANGE})"
 
     def test_hashed_items_deterministic(self):
         """Test that hashing produces deterministic results."""
@@ -734,9 +734,7 @@ class TestTechCivicConversion:
 
     def test_convert_tech_action(self, converter, state):
         """Test technology research action conversion."""
-        action = HierarchicalAction(
-            category=ActionCategory.RESEARCH_TECH, selector=5
-        )
+        action = HierarchicalAction(category=ActionCategory.RESEARCH_TECH, selector=5)
         idx = converter.action_space.encode(action)
         cmd = converter.convert(idx, state, validate=False)
         assert cmd.action_type == ActionType.RESEARCH_TECH
@@ -744,9 +742,7 @@ class TestTechCivicConversion:
 
     def test_convert_civic_action(self, converter, state):
         """Test civic research action conversion."""
-        action = HierarchicalAction(
-            category=ActionCategory.RESEARCH_CIVIC, selector=3
-        )
+        action = HierarchicalAction(category=ActionCategory.RESEARCH_CIVIC, selector=3)
         idx = converter.action_space.encode(action)
         cmd = converter.convert(idx, state, validate=False)
         assert cmd.action_type == ActionType.RESEARCH_CIVIC

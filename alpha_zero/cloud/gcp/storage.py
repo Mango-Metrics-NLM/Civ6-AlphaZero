@@ -18,10 +18,11 @@ import io
 import json
 import logging
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from alpha_zero.cloud.gcp.exceptions import GCSStorageError
+from alpha_zero.utils.compat import UTC
 
 if TYPE_CHECKING:
     from google.cloud import storage as gcs

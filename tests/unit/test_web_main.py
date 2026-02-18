@@ -15,6 +15,7 @@ from alpha_zero.web.__main__ import build_config, main, parse_args
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_namespace(**kwargs: Any) -> argparse.Namespace:
     """Build an argparse.Namespace with sensible defaults, overridden by *kwargs*."""
     defaults: dict[str, Any] = {
@@ -119,12 +120,18 @@ class TestParseArgsAllOptions:
 
     def test_all_options_parsed(self) -> None:
         argv = [
-            "--config", "my.yaml",
-            "--host", "10.0.0.1",
-            "--port", "9090",
-            "--checkpoint", "/models/best.pt",
-            "--opponent", "neural",
-            "--board-size", "12",
+            "--config",
+            "my.yaml",
+            "--host",
+            "10.0.0.1",
+            "--port",
+            "9090",
+            "--checkpoint",
+            "/models/best.pt",
+            "--opponent",
+            "neural",
+            "--board-size",
+            "12",
             "--debug",
             "--dry-run",
         ]
@@ -209,8 +216,10 @@ class TestBuildConfigPrecedence:
     def test_preset_wins_over_config(self) -> None:
         mock_config = _make_mock_config()
         args = _make_namespace(preset="dev", config="ignored.yaml")
-        with patch("alpha_zero.web.config.WebConfig.from_preset", return_value=mock_config) as mp, \
-             patch("alpha_zero.web.config.WebConfig.from_yaml") as my:
+        with (
+            patch("alpha_zero.web.config.WebConfig.from_preset", return_value=mock_config) as mp,
+            patch("alpha_zero.web.config.WebConfig.from_yaml") as my,
+        ):
             build_config(args)
         mp.assert_called_once_with("dev")
         my.assert_not_called()
@@ -229,9 +238,7 @@ class TestBuildConfigCLIOverrides:
             ("board_size", 24, "board_size"),
         ],
     )
-    def test_single_override_applied(
-        self, flag: str, value: object, config_key: str
-    ) -> None:
+    def test_single_override_applied(self, flag: str, value: object, config_key: str) -> None:
         base_dict: dict[str, Any] = {
             "host": "0.0.0.0",  # noqa: S104
             "port": 8080,
@@ -243,8 +250,10 @@ class TestBuildConfigCLIOverrides:
 
         args = _make_namespace(**{flag: value})
 
-        with patch("alpha_zero.web.config.WebConfig.from_env", return_value=mock_config), \
-             patch("alpha_zero.web.config.WebConfig") as web_config_cls:
+        with (
+            patch("alpha_zero.web.config.WebConfig.from_env", return_value=mock_config),
+            patch("alpha_zero.web.config.WebConfig") as web_config_cls,
+        ):
             web_config_cls.from_env = MagicMock(return_value=mock_config)
             # The actual constructor call is what we want to inspect
             build_config(args)
@@ -267,8 +276,10 @@ class TestBuildConfigCLIOverrides:
 
         args = _make_namespace(debug=True)
 
-        with patch("alpha_zero.web.config.WebConfig.from_env", return_value=mock_config), \
-             patch("alpha_zero.web.config.WebConfig") as web_config_cls:
+        with (
+            patch("alpha_zero.web.config.WebConfig.from_env", return_value=mock_config),
+            patch("alpha_zero.web.config.WebConfig") as web_config_cls,
+        ):
             web_config_cls.from_env = MagicMock(return_value=mock_config)
             build_config(args)
 
@@ -300,8 +311,10 @@ class TestBuildConfigCLIOverrides:
 
         args = _make_namespace(host="10.0.0.1", port=9090, board_size=8)
 
-        with patch("alpha_zero.web.config.WebConfig.from_env", return_value=mock_config), \
-             patch("alpha_zero.web.config.WebConfig") as web_config_cls:
+        with (
+            patch("alpha_zero.web.config.WebConfig.from_env", return_value=mock_config),
+            patch("alpha_zero.web.config.WebConfig") as web_config_cls,
+        ):
             web_config_cls.from_env = MagicMock(return_value=mock_config)
             build_config(args)
 
@@ -323,8 +336,10 @@ class TestMainDryRun:
 
     def test_dry_run_returns_zero(self, capsys: pytest.CaptureFixture[str]) -> None:
         mock_config = _make_mock_config()
-        with patch("alpha_zero.web.__main__.build_config", return_value=mock_config), \
-             patch("alpha_zero.web.__main__.parse_args") as mock_parse:
+        with (
+            patch("alpha_zero.web.__main__.build_config", return_value=mock_config),
+            patch("alpha_zero.web.__main__.parse_args") as mock_parse,
+        ):
             mock_parse.return_value = _make_namespace(dry_run=True)
             # patch isinstance check inside main
             with patch("alpha_zero.web.config.WebConfig", new=type(mock_config)):
@@ -335,8 +350,10 @@ class TestMainDryRun:
         config_dict = {"host": "0.0.0.0", "port": 8080}  # noqa: S104
         mock_config = _make_mock_config()
         mock_config.to_dict.return_value = config_dict
-        with patch("alpha_zero.web.__main__.build_config", return_value=mock_config), \
-             patch("alpha_zero.web.__main__.parse_args") as mock_parse:
+        with (
+            patch("alpha_zero.web.__main__.build_config", return_value=mock_config),
+            patch("alpha_zero.web.__main__.parse_args") as mock_parse,
+        ):
             mock_parse.return_value = _make_namespace(dry_run=True)
             with patch("alpha_zero.web.config.WebConfig", new=type(mock_config)):
                 main([])
@@ -376,14 +393,17 @@ class TestMainImportError:
 
     def test_import_error_returns_one(self, capsys: pytest.CaptureFixture[str]) -> None:
         mock_config = _make_mock_config()
-        with patch("alpha_zero.web.__main__.build_config", return_value=mock_config), \
-             patch("alpha_zero.web.__main__.parse_args") as mock_parse:
+        with (
+            patch("alpha_zero.web.__main__.build_config", return_value=mock_config),
+            patch("alpha_zero.web.__main__.parse_args") as mock_parse,
+        ):
             mock_parse.return_value = _make_namespace(dry_run=False)
             # Simulate ImportError when importing uvicorn
             with patch.dict("sys.modules", {"uvicorn": None}):
                 # We need to make the import actually fail inside main()
                 # Use a side_effect on the create_app import path
                 import builtins
+
                 real_import = builtins.__import__
 
                 def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
@@ -402,18 +422,19 @@ class TestMainImportError:
 class TestMainKeyboardInterrupt:
     """Tests for main() when user interrupts with Ctrl-C."""
 
-    def test_keyboard_interrupt_returns_zero(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_keyboard_interrupt_returns_zero(self, capsys: pytest.CaptureFixture[str]) -> None:
         mock_config = _make_mock_config()
         mock_app = MagicMock()
         mock_uvicorn = MagicMock()
         mock_uvicorn.run.side_effect = KeyboardInterrupt
 
-        with patch("alpha_zero.web.__main__.build_config", return_value=mock_config), \
-             patch("alpha_zero.web.__main__.parse_args") as mock_parse:
+        with (
+            patch("alpha_zero.web.__main__.build_config", return_value=mock_config),
+            patch("alpha_zero.web.__main__.parse_args") as mock_parse,
+        ):
             mock_parse.return_value = _make_namespace(dry_run=False)
             import builtins
+
             real_import = builtins.__import__
 
             def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
@@ -440,10 +461,13 @@ class TestMainGeneralException:
         mock_uvicorn = MagicMock()
         mock_uvicorn.run.side_effect = RuntimeError("something broke")
 
-        with patch("alpha_zero.web.__main__.build_config", return_value=mock_config), \
-             patch("alpha_zero.web.__main__.parse_args") as mock_parse:
+        with (
+            patch("alpha_zero.web.__main__.build_config", return_value=mock_config),
+            patch("alpha_zero.web.__main__.parse_args") as mock_parse,
+        ):
             mock_parse.return_value = _make_namespace(dry_run=False)
             import builtins
+
             real_import = builtins.__import__
 
             def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
@@ -464,16 +488,17 @@ class TestMainNormalRun:
     """Tests for main() in the normal (non-dry-run) path."""
 
     def test_normal_run_calls_uvicorn_and_returns_zero(self) -> None:
-        mock_config = _make_mock_config(
-            host="127.0.0.1", port=3000, log_level="info", debug=False
-        )
+        mock_config = _make_mock_config(host="127.0.0.1", port=3000, log_level="info", debug=False)
         mock_app = MagicMock()
         mock_uvicorn = MagicMock()
 
-        with patch("alpha_zero.web.__main__.build_config", return_value=mock_config), \
-             patch("alpha_zero.web.__main__.parse_args") as mock_parse:
+        with (
+            patch("alpha_zero.web.__main__.build_config", return_value=mock_config),
+            patch("alpha_zero.web.__main__.parse_args") as mock_parse,
+        ):
             mock_parse.return_value = _make_namespace(dry_run=False)
             import builtins
+
             real_import = builtins.__import__
 
             def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
@@ -499,15 +524,21 @@ class TestMainNormalRun:
 
     def test_normal_run_passes_debug_reload_flag(self) -> None:
         mock_config = _make_mock_config(
-            host="0.0.0.0", port=8080, log_level="debug", debug=True  # noqa: S104
+            host="0.0.0.0",
+            port=8080,
+            log_level="debug",
+            debug=True,  # noqa: S104
         )
         mock_app = MagicMock()
         mock_uvicorn = MagicMock()
 
-        with patch("alpha_zero.web.__main__.build_config", return_value=mock_config), \
-             patch("alpha_zero.web.__main__.parse_args") as mock_parse:
+        with (
+            patch("alpha_zero.web.__main__.build_config", return_value=mock_config),
+            patch("alpha_zero.web.__main__.parse_args") as mock_parse,
+        ):
             mock_parse.return_value = _make_namespace(dry_run=False)
             import builtins
+
             real_import = builtins.__import__
 
             def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
@@ -542,11 +573,14 @@ class TestMainLoggingSetup:
         mock_config = _make_mock_config(log_level=level_str)
         mock_uvicorn = MagicMock()
 
-        with patch("alpha_zero.web.__main__.build_config", return_value=mock_config), \
-             patch("alpha_zero.web.__main__.parse_args") as mock_parse, \
-             patch("logging.basicConfig") as mock_basic:
+        with (
+            patch("alpha_zero.web.__main__.build_config", return_value=mock_config),
+            patch("alpha_zero.web.__main__.parse_args") as mock_parse,
+            patch("logging.basicConfig") as mock_basic,
+        ):
             mock_parse.return_value = _make_namespace(dry_run=False)
             import builtins
+
             real_import = builtins.__import__
 
             def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
@@ -573,8 +607,10 @@ class TestMainIntegrationWithRealParseArgs:
     def test_dry_run_end_to_end(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Run main with --dry-run and a real parse, mocking only build_config."""
         mock_config = _make_mock_config()
-        with patch("alpha_zero.web.__main__.build_config", return_value=mock_config), \
-             patch("alpha_zero.web.config.WebConfig", new=type(mock_config)):
+        with (
+            patch("alpha_zero.web.__main__.build_config", return_value=mock_config),
+            patch("alpha_zero.web.config.WebConfig", new=type(mock_config)),
+        ):
             exit_code = main(["--dry-run"])
         assert exit_code == 0
         captured = capsys.readouterr()

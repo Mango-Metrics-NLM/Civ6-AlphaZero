@@ -471,7 +471,9 @@ class TestRunPostRunEvaluation:
 
             with patch("alpha_zero.cloud.gcp.storage.GCSBackend") as mock_gcs:
                 mock_backend = MagicMock()
-                mock_backend.upload_blob.return_value = "gs://test-bucket/tournament/post_run_results.json"
+                mock_backend.upload_blob.return_value = (
+                    "gs://test-bucket/tournament/post_run_results.json"
+                )
                 mock_gcs.return_value = mock_backend
 
                 from alpha_zero.cloud.gcp.vertex_orchestrator import run_post_run_evaluation

@@ -28,11 +28,13 @@ import logging
 import lzma
 import tempfile
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any, BinaryIO, Protocol
 
 import torch
+
+from alpha_zero.utils.compat import UTC
 
 logger = logging.getLogger(__name__)
 

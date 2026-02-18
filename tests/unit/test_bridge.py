@@ -962,9 +962,7 @@ class TestFileBridgeRetry:
     def test_read_errors_json_array(self, bridge):
         """Test read_errors parses JSON array format."""
         bridge.config.ensure_comm_dir()
-        error_data = [
-            {"type": "error", "code": "E001", "message": "Test error", "timestamp": 0.0}
-        ]
+        error_data = [{"type": "error", "code": "E001", "message": "Test error", "timestamp": 0.0}]
         bridge.config.errors_file.write_text(json.dumps(error_data))
         errors = bridge.read_errors()
         assert len(errors) == 1

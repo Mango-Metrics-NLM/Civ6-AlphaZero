@@ -460,6 +460,7 @@ class VertexTuningJob:
                 "CIV6AZ_GCS_BUCKET": self.config.bucket,
                 "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
                 "CIV6AZ_VERTEX_REGION": self.config.region,
+                "CIV6AZ_ENCODER_TYPE": getattr(self.config.network, "encoder_type", "patch_embed"),
                 **_wandb_env_vars(),
             },
             machine_type="n1-standard-4",  # Tuning trials usually smaller
@@ -779,6 +780,7 @@ class VertexTrainingJob:
                 "CIV6AZ_GCS_BUCKET": self.config.bucket,
                 "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
                 "CIV6AZ_VERTEX_REGION": self.config.region,
+                "CIV6AZ_ENCODER_TYPE": getattr(self.config.network, "encoder_type", "patch_embed"),
                 **_wandb_env_vars(),
             },
             machine_type=training_config.machine_type,
@@ -891,6 +893,7 @@ class VertexEvaluationJob:
                 "CIV6AZ_GCS_BUCKET": self.config.bucket,
                 "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
                 "CIV6AZ_VERTEX_REGION": self.config.region,
+                "CIV6AZ_ENCODER_TYPE": getattr(self.config.network, "encoder_type", "patch_embed"),
             },
             # CPU-only: evaluation doesn't need GPU
             machine_type="n1-standard-4",
@@ -1008,6 +1011,7 @@ class VertexTournamentJob:
             "CIV6AZ_GCS_BUCKET": self.config.bucket,
             "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
             "CIV6AZ_VERTEX_REGION": self.config.region,
+            "CIV6AZ_ENCODER_TYPE": getattr(self.config.network, "encoder_type", "patch_embed"),
         }
         env_vars.update(_wandb_env_vars())
         env_vars = {k: v for k, v in env_vars.items() if v}

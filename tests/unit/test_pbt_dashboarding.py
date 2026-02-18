@@ -114,7 +114,7 @@ class TestWandbLoggerPopulationStats(unittest.TestCase):
             max_elo=1550.0,
             min_elo=1350.0,
             population_size=6,
-            **{"pbt/already_prefixed": 99}
+            **{"pbt/already_prefixed": 99},
         )
 
         mock_wandb.log.assert_called_once()

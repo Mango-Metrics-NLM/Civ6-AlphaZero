@@ -82,6 +82,15 @@ def parse_args() -> argparse.Namespace:
         help="Gameplay preset: 'default' (MicroCivEnv) or 'enhanced' (all gameplay systems)",
     )
 
+    # Spatial encoder type
+    parser.add_argument(
+        "--encoder_type",
+        type=str,
+        default="patch_embed",
+        choices=["patch_embed", "hex_crystalline"],
+        help="Spatial encoder type (default: patch_embed)",
+    )
+
     return parser.parse_args()
 
 

@@ -147,6 +147,15 @@ def parse_args() -> argparse.Namespace:
         help="Maximum batch size for batched network inference",
     )
 
+    # Spatial encoder type
+    parser.add_argument(
+        "--encoder_type",
+        type=str,
+        default="patch_embed",
+        choices=["patch_embed", "hex_crystalline"],
+        help="Spatial encoder type (default: patch_embed)",
+    )
+
     return parser.parse_args()
 
 
@@ -223,12 +232,13 @@ def load_model(config: GCPConfig, version: int, dry_run: bool = False) -> torch.
         net_cfg = config.network
         logger.warning(
             "Model v%d has no saved config. Using pipeline architecture defaults: "
-            "spatial_size=%d, action_space=%d, embed_dim=%d, num_layers=%d",
+            "spatial_size=%d, action_space=%d, embed_dim=%d, num_layers=%d, encoder=%s",
             version,
             net_cfg.board_size,
             net_cfg.action_space_size,
             net_cfg.embed_dim,
             net_cfg.num_layers,
+            net_cfg.encoder_type,
         )
         transformer_config = TransformerConfig(
             spatial_channels=net_cfg.spatial_channels,
@@ -237,6 +247,7 @@ def load_model(config: GCPConfig, version: int, dry_run: bool = False) -> torch.
             action_space_size=net_cfg.action_space_size,
             num_layers=net_cfg.num_layers,
             embed_dim=net_cfg.embed_dim,
+            encoder_type=net_cfg.encoder_type,
         )
 
     # Create model and load state dict

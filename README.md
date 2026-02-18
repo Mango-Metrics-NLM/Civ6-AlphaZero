@@ -27,16 +27,19 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 14 | Learning Signal Validation (20-iteration run) | ✅ Complete |
 | Phase 15 | Scaled Training & Value Head Stabilization | ✅ Complete |
 | Phase 15+ | Standalone Tournament Worker & Lua Integration | ✅ Complete |
+| Phase 16 | Batch Inference & Vectorized Self-Play | ✅ Complete |
+| Phase 17 | Hex Crystalline Encoder & A/B Comparison | 🔄 Active |
 
 **Codebase Statistics:**
 
-- ~58,000 lines of core implementation
-- 4,893+ tests with >80% coverage on core modules
-- Docker v0.12.0 on GCR, 80 model versions (v0-v79) in GCS
-- 50-iteration training run completed (golden-dream-542, ~$4.63)
-- Standalone tournament: 17 models (stride=5), 136 matchups, 1,360 games
+- ~62,000 lines of core implementation
+- 5,100+ tests with >80% coverage on core modules
+- Docker v0.14.1 on GCR, 158+ model versions in GCS
+- A/B training comparison active: patch_embed vs hex_crystalline (20 iterations each)
+- Hex-topology-aware spatial encoder with crystalline attention and hex convolutions
+- Python 3.10 compatibility shim for cloud containers (40 files)
+- Gameplay systems: terrain, fog of war, tech tree, combat
 - Civ6 Lua mod fully integrated with Python bridge (245 bridge tests, 50 integration tests)
-- 11 game mechanics modules (deprecated, future Civ6 integration)
 - 13 remaining xfail tests (12 DDP + 1 hierarchical — deferred)
 
 ## Key Features
@@ -77,6 +80,10 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - **Standalone Tournament Worker**: CLI-based ELO round-robin tournament across GCS model versions with stride support
 - **Mixed-Architecture Tournaments**: Automatic head dimension inference from state_dict for cross-architecture model comparison
 - **Lua Mod Hardening**: Shell injection prevention, content-hash change detection, hex-grid neighbors, log rotation, graceful shutdown
+- **Hex Crystalline Encoder**: Hex-topology-aware spatial encoder with crystalline attention and hex convolutions
+- **Encoder Registry**: Factory pattern for pluggable spatial encoders (`patch_embed`, `hex_crystalline`)
+- **A/B Comparison Pipeline**: Cloud-based encoder comparison with W&B metrics and automated analysis
+- **Gameplay Systems**: Terrain types, fog of war, tech tree, and terrain-aware combat for MicroCiv
 
 ## Architecture (C4 Model)
 
@@ -1335,20 +1342,20 @@ Civ6-AlphaZero/
 
 | Priority | Feature | Description |
 |----------|---------|-------------|
-| P0 | Analyze Tournament Results | Process standalone tournament ELO rankings across 80 model versions; quantify learning signal |
-| P1 | Real Civ6 Game Testing | Test Python bridge ↔ Lua mod end-to-end with actual Civilization VI game |
-| P2 | Inference Optimization & Vectorized Self-Play | Batch MCTS inference, vectorized environments for 10x+ throughput |
+| P0 | A/B Comparison Analysis | Analyze Run A (patch_embed) vs Run B (hex_crystalline): loss curves, win rates, ELO, throughput |
+| P1 | Batch Self-Play Cloud Integration | Enable `--num_parallel_games` in cloud for 5-10x throughput |
+| P2 | Real Civ6 Game Testing | Test Python bridge ↔ Lua mod end-to-end with actual Civilization VI game |
 | P3 | MuZero Training Run | Run MuZero PBT with `configs/muzero_pbt.yaml` to validate learned dynamics |
-| P4 | DDP Test Rewrites | Fix remaining 12 DDP xfailed tests, full mypy strict mode |
+| P4 | PBT on Vertex AI | Population-based training with auto hyperparameter tuning |
 | P5 | Human vs AI Interface | Web-based UI for human gameplay |
 
 ### Current Priorities
 
-1. **Analyze tournament results** — Once standalone tournament completes (~17h), analyze ELO spread, identify strongest model generation, compare big vs small architecture performance
-2. **Real Civ6 testing** — With Lua mod fixes landed (PR #46), test actual game integration: state export, action execution, full game loop
-3. **Value head analysis** — Compare value correlation stability between Phase 14 (20-iter) and Phase 15 (50-iter) runs
-4. **Vectorized self-play** — Implement batch MCTS inference for 10x+ throughput improvement
-5. **Model architecture decision** — Based on tournament data, decide whether to continue with embed_dim=64/layers=6 or scale up
+1. **A/B encoder comparison** — Run A (patch_embed, vibrant-snowball-1038) active on VM; Run B (hex_crystalline) auto-launches after completion. Use `scripts/compare_training_runs.py` for analysis
+2. **Encoder decision** — Based on A/B results, select encoder for production training (policy loss convergence, value accuracy, ELO spread, computational overhead)
+3. **Gameplay system integration** — Wire terrain, fog of war, tech tree, and combat systems into MicroCiv training loop
+4. **Batch self-play in cloud** — Enable vectorized self-play with `--num_parallel_games` for 5-10x throughput
+5. **Scale to longer training** — After encoder selection, run 100+ iteration training with optimal encoder
 
 ## Contributing
 

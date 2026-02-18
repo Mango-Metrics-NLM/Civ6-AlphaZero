@@ -272,21 +272,25 @@ class MockCloudLogger:
         severity: str = "INFO",
     ) -> None:
         """Log structured data."""
-        self.entries.append({
-            "type": "struct",
-            "severity": severity,
-            "payload": info,
-            "timestamp": datetime.now().isoformat(),
-        })
+        self.entries.append(
+            {
+                "type": "struct",
+                "severity": severity,
+                "payload": info,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
     def log_text(self, text: str, severity: str = "INFO") -> None:
         """Log text message."""
-        self.entries.append({
-            "type": "text",
-            "severity": severity,
-            "message": text,
-            "timestamp": datetime.now().isoformat(),
-        })
+        self.entries.append(
+            {
+                "type": "text",
+                "severity": severity,
+                "message": text,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
 
 class MockCloudMonitoringClient:

@@ -232,9 +232,9 @@ class TestSparseValidActions:
             assert (policy_probs[:, idx] > 1e-10).all(), f"Valid action {idx} has zero probability"
 
         # Check probabilities sum to 1
-        assert torch.allclose(policy_probs.sum(dim=-1), torch.ones(BATCH_SIZE), atol=1e-5), (
-            "Probabilities don't sum to 1"
-        )
+        assert torch.allclose(
+            policy_probs.sum(dim=-1), torch.ones(BATCH_SIZE), atol=1e-5
+        ), "Probabilities don't sum to 1"
 
 
 class TestBatchSizeOne:

@@ -9,7 +9,7 @@ This module provides the unified interface for RAG operations:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +31,7 @@ from alpha_zero.rag.stores.factory import create_vector_store
 from alpha_zero.rag.utils.cache import TTLCache, cache_key
 from alpha_zero.rag.utils.logging import RAGLogger, get_logger, set_correlation_id
 from alpha_zero.rag.utils.metrics import MetricsCollector
+from alpha_zero.utils.compat import UTC
 
 
 @dataclass

@@ -254,9 +254,7 @@ training:
         assert config.region == "asia-east1"
         assert config.gcs.bucket_name == "env-bucket"
 
-    def test_apply_env_overrides(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_apply_env_overrides(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that env vars override YAML values."""
         yaml_content = """
 cloud:
