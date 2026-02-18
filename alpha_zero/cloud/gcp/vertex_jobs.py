@@ -888,6 +888,7 @@ class VertexEvaluationJob:
         spec = JobSpec(
             display_name=f"civ6az-eval-iter{iteration:03d}",
             container_uri=container,
+            command=["python", "-m", "alpha_zero.cloud.gcp.entrypoint"],
             args=args,
             env_vars={
                 "CIV6AZ_GCS_BUCKET": self.config.bucket,
@@ -1019,6 +1020,7 @@ class VertexTournamentJob:
         spec = JobSpec(
             display_name=f"civ6az-tournament-{len(model_versions)}models",
             container_uri=container,
+            command=["python", "-m", "alpha_zero.cloud.gcp.entrypoint"],
             args=args,
             env_vars=env_vars,
             machine_type=machine_type,
