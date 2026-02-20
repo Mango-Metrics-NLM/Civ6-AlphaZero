@@ -2,7 +2,6 @@
 """Analyze training run logs."""
 
 import re
-import sys
 
 
 def main():

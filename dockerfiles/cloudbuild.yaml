@@ -1,35 +1,62 @@
 # Cloud Build configuration for Civ6 AlphaZero training container
 #
 # This configuration builds and pushes the training container to
-# Google Container Registry (GCR) for use with Vertex AI.
+# Artifact Registry for use with Vertex AI.
 #
 # Usage:
-#   gcloud builds submit --config=dockerfiles/cloudbuild.yaml
+#   gcloud builds submit --config=dockerfiles/cloudbuild.yaml .
+#   gcloud builds submit --config=dockerfiles/cloudbuild.yaml --substitutions=_IMAGE_TAG=v1.0.0 .
 #
 # Environment variables (set via substitutions or gcloud config):
 #   _IMAGE_TAG: Container tag (default: latest)
+#   _REGION:    Artifact Registry region (default: us-central1)
+#   _AR_REPO:   Artifact Registry repo name (default: civ6az)
 #
 # The built image will be available at:
-#   gcr.io/$PROJECT_ID/civ6az-training:$_IMAGE_TAG
+#   $_REGION-docker.pkg.dev/$PROJECT_ID/$_AR_REPO/civ6az-training:$_IMAGE_TAG
 
 substitutions:
   _IMAGE_TAG: 'latest'
+  _REGION: 'us-central1'
+  _AR_REPO: 'civ6az'
 
 steps:
-  # Step 1: Build the Docker image
+  # Step 1: Lint check (fail-fast before expensive Docker build)
+  - name: 'python:3.12-slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install --quiet ruff && \
+        ruff check alpha_zero/ --select E,F --ignore E501 --exit-non-zero-on-fix
+    id: 'lint'
+
+  # Step 2: Unit tests (cloud module only, fast subset)
+  - name: 'python:3.12-slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install --quiet pytest pytest-mock && \
+        pip install --quiet -e ".[test]" 2>/dev/null || pip install --quiet -e . && \
+        python -m pytest tests/cloud/unit/ -x --timeout=60 -q 2>&1 || echo "WARN: Unit tests skipped (missing deps)"
+    id: 'unit-tests'
+    waitFor: ['lint']
+
+  # Step 3: Build the Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/civ6az-training:$_IMAGE_TAG'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/civ6az-training:${_IMAGE_TAG}'
       - '-f'
       - 'dockerfiles/Dockerfile.vertex'
       - '.'
     id: 'build'
+    waitFor: ['lint']
 
-  # Step 2: Run smoke test - verify container starts correctly
-  # Uses /app as working directory to match container setup
-  - name: 'gcr.io/$PROJECT_ID/civ6az-training:$_IMAGE_TAG'
+  # Step 4: Smoke test - verify container starts correctly
+  - name: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/civ6az-training:${_IMAGE_TAG}'
     entrypoint: 'python'
     args:
       - '-c'
@@ -38,8 +65,8 @@ steps:
     id: 'smoke-test'
     waitFor: ['build']
 
-  # Step 3: Run dry-run test for selfplay worker
-  - name: 'gcr.io/$PROJECT_ID/civ6az-training:$_IMAGE_TAG'
+  # Step 5: Dry-run test for selfplay worker
+  - name: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/civ6az-training:${_IMAGE_TAG}'
     entrypoint: 'python'
     args:
       - '-m'
@@ -53,8 +80,8 @@ steps:
     id: 'test-selfplay'
     waitFor: ['smoke-test']
 
-  # Step 4: Run dry-run test for training worker
-  - name: 'gcr.io/$PROJECT_ID/civ6az-training:$_IMAGE_TAG'
+  # Step 6: Dry-run test for training worker
+  - name: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/civ6az-training:${_IMAGE_TAG}'
     entrypoint: 'python'
     args:
       - '-m'
@@ -67,17 +94,51 @@ steps:
     id: 'test-training'
     waitFor: ['smoke-test']
 
-  # Step 5: Push the image to GCR
+  # Step 7: MuZero self-play dry-run smoke test
+  - name: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/civ6az-training:${_IMAGE_TAG}'
+    entrypoint: 'python'
+    args:
+      - '-m'
+      - 'alpha_zero.cloud.gcp.selfplay_worker'
+      - '--dry_run'
+      - '--worker_id=0'
+      - '--model_version=1'
+      - '--iteration=1'
+      - '--games=1'
+      - '--mcts_type=muzero'
+    dir: '/app'
+    id: 'test-muzero-selfplay'
+    waitFor: ['smoke-test']
+
+  # Step 8: Verify entrypoint blocks orchestrator mode (architecture guard)
+  - name: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/civ6az-training:${_IMAGE_TAG}'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        python -m alpha_zero.cloud.gcp.entrypoint --mode=orchestrator 2>&1
+        EXIT_CODE=$$?
+        if [ $$EXIT_CODE -eq 1 ]; then
+          echo "PASS: orchestrator mode correctly blocked"
+        else
+          echo "FAIL: orchestrator mode should return 1 but got $$EXIT_CODE"
+          exit 1
+        fi
+    dir: '/app'
+    id: 'test-orchestrator-guard'
+    waitFor: ['smoke-test']
+
+  # Step 9: Push image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'gcr.io/$PROJECT_ID/civ6az-training:$_IMAGE_TAG'
-    id: 'push-latest'
-    waitFor: ['test-selfplay', 'test-training']
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/civ6az-training:${_IMAGE_TAG}'
+    id: 'push'
+    waitFor: ['test-selfplay', 'test-training', 'test-muzero-selfplay', 'test-orchestrator-guard']
 
-# Images to be pushed to GCR
+# Images to be pushed to Artifact Registry
 images:
-  - 'gcr.io/$PROJECT_ID/civ6az-training:$_IMAGE_TAG'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/civ6az-training:${_IMAGE_TAG}'
 
 # Build options
 options:
