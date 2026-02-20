@@ -3,7 +3,7 @@ workerPoolSpecs:
       machineType: n1-standard-4
     replicaCount: 1
     containerSpec:
-      imageUri: us-central1-docker.pkg.dev/hrmtrain/muzero-world-model/muzero-training:v13-compat
+      imageUri: us-central1-docker.pkg.dev/hrmtrain/muzero-world-model/muzero-training:v14-muzero
       command:
         - python
         - -m
@@ -24,7 +24,7 @@ workerPoolSpecs:
         - name: CIV6AZ_GCS_BUCKET
           value: "civ6az-training"
         - name: CIV6AZ_CONTAINER_IMAGE_URI
-          value: "us-central1-docker.pkg.dev/hrmtrain/muzero-world-model/muzero-training:v13-compat"
+          value: "us-central1-docker.pkg.dev/hrmtrain/muzero-world-model/muzero-training:v14-muzero"
         - name: CIV6AZ_AGENT_ID
           value: "muzero"
         - name: WANDB_PROJECT

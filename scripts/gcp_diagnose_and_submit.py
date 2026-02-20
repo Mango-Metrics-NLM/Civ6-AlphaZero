@@ -75,7 +75,7 @@ def _load_config() -> dict[str, str]:
         "gcs_bucket": os.environ.get("CIV6AZ_GCS_BUCKET", "civ6az-training"),
         "container_image": os.environ.get(
             "CIV6AZ_CONTAINER_IMAGE_URI",
-            f"{region}-docker.pkg.dev/{project}/muzero-world-model/muzero-training:v13-compat",
+            f"{region}-docker.pkg.dev/{project}/muzero-world-model/muzero-training:v14-muzero",
         ),
         "service_account": os.environ.get(
             "CIV6AZ_VERTEX_SERVICE_ACCOUNT",
