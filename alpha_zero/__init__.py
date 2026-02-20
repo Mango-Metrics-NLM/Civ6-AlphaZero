@@ -25,6 +25,9 @@ Usage:
 
 __version__ = "0.8.0"
 
+# Python <3.11 compatibility: patch datetime.UTC before anything imports it
+import alpha_zero._compat  # noqa: F401  # isort: skip
+
 # Core components
 from alpha_zero.core import (
     ActionSpace,

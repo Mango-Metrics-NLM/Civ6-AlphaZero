@@ -1,0 +1,35 @@
+workerPoolSpecs:
+  - machineSpec:
+      machineType: n1-standard-4
+    replicaCount: 1
+    containerSpec:
+      imageUri: us-central1-docker.pkg.dev/hrmtrain/muzero-world-model/muzero-training:v13-compat
+      command:
+        - python
+        - -m
+        - alpha_zero.cloud.gcp.vertex_orchestrator
+      args:
+        - "--algorithm=muzero"
+        - "--iterations=50"
+        - "--mcts_simulations=400"
+        - "--mcts_type=gumbel"
+        - "--workers=2"
+        - "--games_per_worker=10"
+        - "--epochs=10"
+      env:
+        - name: CIV6AZ_VERTEX_PROJECT
+          value: "hrmtrain"
+        - name: CIV6AZ_VERTEX_REGION
+          value: "us-central1"
+        - name: CIV6AZ_GCS_BUCKET
+          value: "civ6az-training"
+        - name: CIV6AZ_CONTAINER_IMAGE_URI
+          value: "us-central1-docker.pkg.dev/hrmtrain/muzero-world-model/muzero-training:v13-compat"
+        - name: CIV6AZ_AGENT_ID
+          value: "muzero"
+        - name: WANDB_PROJECT
+          value: "civ6-alphazero"
+        - name: WANDB_RUN_GROUP
+          value: "muzero"
+        - name: WANDB_ENABLED
+          value: "true"
