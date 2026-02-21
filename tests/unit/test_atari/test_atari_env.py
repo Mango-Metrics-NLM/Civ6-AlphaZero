@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from unittest import mock
-
 import numpy as np
 import pytest
 
-from demos.atari.atari_env import AtariEnv, AtariEnvConfig, _preprocess_frame, _resize_nearest
+from demos.atari.atari_env import AtariEnv, _preprocess_frame, _resize_nearest
 from demos.atari.config import AtariEnvConfig as EnvConfig
-
 
 # ============================================================================
 # Preprocessing helpers
@@ -116,7 +113,7 @@ class TestAtariEnv:
 
     def test_reset_returns_observation(self, mock_env):
         env = AtariEnv(mock_env)
-        obs, info = env.reset()
+        obs, _info = env.reset()
         assert "spatial" in obs
         assert "vector" in obs
         assert "action_mask" in obs

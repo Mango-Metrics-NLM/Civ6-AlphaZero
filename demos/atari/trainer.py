@@ -198,6 +198,13 @@ def run_episode(
     rewards: list[float] = []
     step = 0
 
+    logger.debug(
+        "run_episode: starting (spatial=%s, actions=%d, game=%s)",
+        obs["spatial"].shape,
+        len(env.get_valid_actions()),
+        game_name or "unknown",
+    )
+
     while True:
         # MCTS search
         action_probs, _ = mcts.search(env)
@@ -230,11 +237,10 @@ def run_episode(
             }
         )
 
-        # Action selection with temperature
-        temperature = config.temperature if hasattr(config, "temperature") else 1.0
-        temp_threshold = (
-            config.temperature_threshold if hasattr(config, "temperature_threshold") else 500
-        )
+        # Action selection with temperature (sourced from MCTS config
+        # which is forwarded here via the training config's sibling)
+        temperature = getattr(config, "temperature", 1.0)
+        temp_threshold = getattr(config, "temperature_threshold", 500)
         if step >= temp_threshold:
             temperature = 0.0
 
@@ -260,6 +266,18 @@ def run_episode(
 
         if terminated or truncated:
             break
+
+    total_reward = sum(rewards)
+    logger.debug(
+        "run_episode: finished after %d steps (total_reward=%.2f, "
+        "policy_entropy_mean=%.3f)",
+        step,
+        total_reward,
+        float(-np.mean([
+            np.sum(h["policy"] * np.log(h["policy"] + 1e-10))
+            for h in episode_history
+        ])) if episode_history else 0.0,
+    )
 
     # Compute discounted returns as value targets
     values = _discount_returns(rewards, config.discount_factor)
@@ -309,6 +327,8 @@ def train_epoch(
     value_loss = 0.0
     num_batches = 0
 
+    logger.debug("train_epoch: %d batches, device=%s", len(dataloader), device)
+
     for batch in dataloader:
         spatial = batch["spatial"].to(device)
         vector = batch["vector"].to(device)
@@ -331,6 +351,17 @@ def train_epoch(
         policy_loss += p_loss.item()
         value_loss += v_loss.item()
         num_batches += 1
+
+    if num_batches > 0:
+        grad_norm = sum(
+            p.grad.norm().item() for p in network.parameters() if p.grad is not None
+        )
+        logger.debug(
+            "train_epoch: %d batches, avg_loss=%.4f, grad_norm=%.4f",
+            num_batches,
+            total_loss / num_batches,
+            grad_norm,
+        )
 
     denom = max(num_batches, 1)
     return {
@@ -510,22 +541,23 @@ class AtariTrainer:
             all_examples: list[TrainingExample] = []
             for _ep in range(episodes_per):
                 ep_env = AtariEnv(cfg.environment)
-                examples, trajectory = run_episode(
-                    ep_env, network, mcts_inst, t_cfg, hierarchical,
-                    rag_advisor=rag_advisor,
-                    game_name=cfg.environment.game_name,
-                )
-                all_examples.extend(examples)
+                try:
+                    examples, trajectory = run_episode(
+                        ep_env, network, mcts_inst, t_cfg, hierarchical,
+                        rag_advisor=rag_advisor,
+                        game_name=cfg.environment.game_name,
+                    )
+                    all_examples.extend(examples)
 
-                # Store failed episodes in reflection memory
-                if reflection is not None and trajectory:
-                    episode_reward = sum(s["reward"] for s in trajectory)
-                    if episode_reward < 0:
-                        reflection.add_failed_episode(
-                            trajectory, episode_reward, cfg.environment.game_name,
-                        )
-
-                ep_env.close()
+                    # Store failed episodes in reflection memory
+                    if reflection is not None and trajectory:
+                        episode_reward = sum(s["reward"] for s in trajectory)
+                        if episode_reward < 0:
+                            reflection.add_failed_episode(
+                                trajectory, episode_reward, cfg.environment.game_name,
+                            )
+                finally:
+                    ep_env.close()
 
             replay.add_episode(all_examples)
             sp_time = time.time() - sp_start
@@ -545,7 +577,7 @@ class AtariTrainer:
             # --- Training ---
             if replay.is_ready() or dry_run:
                 tr_start = time.time()
-                sample_size = min(len(replay), t_cfg.batch_size * 50)
+                sample_size = min(len(replay), t_cfg.batch_size * t_cfg.training_sample_multiplier)
                 train_examples = replay.sample(sample_size)
 
                 dataset = ReplayDataset(train_examples)

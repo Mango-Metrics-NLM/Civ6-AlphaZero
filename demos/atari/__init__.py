@@ -25,28 +25,15 @@ from __future__ import annotations
 
 from demos.atari.atari_env import AtariEnv
 from demos.atari.atari_network import AtariNetwork
-from demos.atari.config import (
-    AtariConfig,
-    AtariEnvConfig,
-    AtariNetworkConfig,
-    AtariTrainingConfig,
-)
-from demos.atari.novel_features import (
-    AtariRAGAdvisor,
-    AtariReflectionMemory,
-    NovelFeaturesConfig,
-)
+from demos.atari.config import AtariConfig
+from demos.atari.novel_features import AtariRAGAdvisor, AtariReflectionMemory
 from demos.atari.trainer import AtariTrainer
 
 __all__ = [
     "AtariConfig",
     "AtariEnv",
-    "AtariEnvConfig",
     "AtariNetwork",
-    "AtariNetworkConfig",
     "AtariRAGAdvisor",
     "AtariReflectionMemory",
     "AtariTrainer",
-    "AtariTrainingConfig",
-    "NovelFeaturesConfig",
 ]

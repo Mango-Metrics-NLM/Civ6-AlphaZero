@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import tempfile
-
-import numpy as np
 import pytest
 import torch
 
-from demos.atari.atari_network import AtariNetwork, AtariNetworkConfig
+from demos.atari.atari_network import AtariNetwork
 from demos.atari.config import AtariNetworkConfig as NetConfig
 
 
@@ -53,7 +50,7 @@ class TestAtariNetwork:
     def test_predict_returns_probs(self, small_network):
         spatial = torch.randn(1, 4, 84, 84)
         vector = torch.randn(1, 32)
-        probs, value = small_network.predict(spatial, vector)
+        probs, _value = small_network.predict(spatial, vector)
         assert probs.shape == (1, 6)
         assert torch.isclose(probs.sum(), torch.tensor(1.0), atol=1e-5)
         assert (probs >= 0).all()
@@ -61,7 +58,7 @@ class TestAtariNetwork:
     def test_predict_no_mask(self, small_network):
         spatial = torch.randn(2, 4, 84, 84)
         vector = torch.randn(2, 32)
-        probs, value = small_network.predict(spatial, vector, action_mask=None)
+        probs, _value = small_network.predict(spatial, vector, action_mask=None)
         assert probs.shape == (2, 6)
 
     def test_different_spatial_sizes(self):
@@ -76,7 +73,7 @@ class TestAtariNetwork:
             )
             spatial = torch.randn(1, 4, size[0], size[1])
             vector = torch.randn(1, 16)
-            logits, value = net(spatial, vector)
+            logits, _value = net(spatial, vector)
             assert logits.shape == (1, 4)
 
     def test_different_action_spaces(self):
@@ -127,7 +124,7 @@ class TestAtariNetwork:
         spatial = torch.randn(1, 4, 84, 84)
         vector = torch.randn(1, 32)
         with torch.no_grad():
-            logits, value = small_network(spatial, vector)
+            logits, _value = small_network(spatial, vector)
         assert logits.shape == (1, 6)
 
     def test_parameter_count(self, small_network):

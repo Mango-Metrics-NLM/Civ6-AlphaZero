@@ -31,21 +31,25 @@ def _preprocess_frame(
     height: int,
     width: int,
     grayscale: bool,
+    grayscale_weights: tuple[float, float, float] = (0.2989, 0.5870, 0.1140),
 ) -> np.ndarray:
     """Preprocess a raw Atari frame.
+
+    Pipeline: grayscale conversion -> resize -> float32 normalisation [0, 1].
 
     Args:
         frame: Raw RGB frame from the emulator (H, W, 3).
         height: Target height after resize.
         width: Target width after resize.
         grayscale: Whether to convert to grayscale.
+        grayscale_weights: (R, G, B) luminance weights for grayscale conversion.
 
     Returns:
         Preprocessed frame as float32 in [0, 1], shape (H, W) or (H, W, 3).
     """
-    # Grayscale conversion (luminance weights)
+    # Grayscale conversion (configurable luminance weights)
     if grayscale and frame.ndim == 3 and frame.shape[2] == 3:
-        frame = np.dot(frame[..., :3], [0.2989, 0.5870, 0.1140]).astype(np.uint8)
+        frame = np.dot(frame[..., :3], list(grayscale_weights)).astype(np.uint8)
 
     # Resize via simple nearest-neighbour interpolation (avoids cv2 dependency)
     if frame.shape[0] != height or frame.shape[1] != width:
@@ -304,6 +308,7 @@ class AtariEnv:
             height=self.config.frame_height,
             width=self.config.frame_width,
             grayscale=self.config.grayscale,
+            grayscale_weights=self.config.grayscale_weights,
         )
 
     def close(self) -> None:

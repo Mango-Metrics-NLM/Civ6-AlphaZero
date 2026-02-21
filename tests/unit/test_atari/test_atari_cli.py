@@ -2,51 +2,16 @@
 
 Tests argument parsing, config construction, and all CLI override paths.
 Uses mocking to avoid actually launching training.
+
+Note: ``FakeAtariGym`` and ``mock_gymnasium`` are provided by conftest.py.
 """
 
 from __future__ import annotations
 
 from unittest import mock
 
-import gymnasium as gym
-import numpy as np
-import pytest
-
 from demos.atari.__main__ import _build_parser, main
 from demos.atari.config import AtariConfig
-
-
-# ============================================================================
-# Fake env for CLI tests (avoids ROM dependency)
-# ============================================================================
-
-
-class _FakeAtariGym:
-    class _Space:
-        n = 4
-
-    action_space = _Space()
-    observation_space = None
-    _step_count = 0
-
-    def reset(self, seed=None):
-        self._step_count = 0
-        return np.random.randint(0, 256, (210, 160, 3), dtype=np.uint8), {"lives": 3}
-
-    def step(self, action):
-        self._step_count += 1
-        obs = np.random.randint(0, 256, (210, 160, 3), dtype=np.uint8)
-        terminated = self._step_count >= 5
-        return obs, 1.0, terminated, False, {"lives": 3}
-
-    def close(self):
-        pass
-
-
-@pytest.fixture(autouse=True)
-def mock_gymnasium(monkeypatch):
-    monkeypatch.setattr(gym, "make", lambda *a, **kw: _FakeAtariGym())
-
 
 # ============================================================================
 # Parser tests
@@ -88,7 +53,7 @@ class TestBuildParser:
             "--num-filters", "32",
             "--discount-factor", "0.95",
             "--device", "cpu",
-            "--checkpoint-dir", "/tmp/ckpt",
+            "--checkpoint-dir", "test_ckpt",
         ])
         assert args.iterations == 50
         assert args.episodes_per_iter == 5
@@ -99,7 +64,7 @@ class TestBuildParser:
         assert args.num_filters == 32
         assert args.discount_factor == 0.95
         assert args.device == "cpu"
-        assert args.checkpoint_dir == "/tmp/ckpt"
+        assert args.checkpoint_dir == "test_ckpt"
 
     def test_parser_boolean_flags(self):
         parser = _build_parser()

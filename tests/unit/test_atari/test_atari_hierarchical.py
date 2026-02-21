@@ -102,12 +102,12 @@ class TestAtariHierarchicalAdapter:
     def test_strategic_update_timing(self, enabled_config, dummy_obs):
         adapter = AtariHierarchicalAdapter(enabled_config, num_actions=6)
         # First call should trigger strategic update (step 1, last_update=0)
-        result = adapter.decide(dummy_obs)
+        adapter.decide(dummy_obs)
         # After 1 step, should not have updated yet (need 10 steps)
         assert adapter._strategic.last_update_step == 0  # not enough steps yet
 
         # Advance to trigger threshold
-        for i in range(enabled_config.strategic_update_freq):
+        for _i in range(enabled_config.strategic_update_freq):
             adapter.decide(dummy_obs)
             adapter.update(0.0, False)
 

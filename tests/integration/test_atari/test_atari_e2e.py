@@ -2,15 +2,14 @@
 
 These tests verify the full training loop works with mocked Atari
 environments (no ROM needed).
+
+Note: ``FakeAtariGym``, ``mock_gymnasium``, and ``fast_config`` are
+provided by conftest.py.
 """
 
 from __future__ import annotations
 
-from unittest import mock
-
-import gymnasium as gym
 import numpy as np
-import pytest
 import torch
 
 from demos.atari.atari_env import AtariEnv
@@ -26,81 +25,10 @@ from demos.atari.hierarchical import AtariHierarchicalAdapter
 from demos.atari.novel_features import NovelFeaturesConfig
 from demos.atari.trainer import (
     AtariTrainer,
-    ReplayBuffer,
     TrainingExample,
     run_episode,
     train_epoch,
 )
-
-
-# ============================================================================
-# Fake environment for integration tests
-# ============================================================================
-
-
-class _FakeAtariGym:
-    """Minimal Atari-like env that terminates after a few steps."""
-
-    class _Space:
-        n = 4
-
-    action_space = _Space()
-    observation_space = None
-    _step_count = 0
-    _max_steps = 10
-
-    def reset(self, seed=None):
-        self._step_count = 0
-        return np.random.randint(0, 256, (210, 160, 3), dtype=np.uint8), {"lives": 3}
-
-    def step(self, action):
-        self._step_count += 1
-        obs = np.random.randint(0, 256, (210, 160, 3), dtype=np.uint8)
-        reward = float(np.random.choice([-1, 0, 1]))
-        terminated = self._step_count >= self._max_steps
-        return obs, reward, terminated, False, {"lives": 3}
-
-    def close(self):
-        pass
-
-
-@pytest.fixture(autouse=True)
-def mock_gymnasium(monkeypatch):
-    """Globally mock gymnasium.make for all integration tests."""
-    monkeypatch.setattr(gym, "make", lambda *a, **kw: _FakeAtariGym())
-
-
-@pytest.fixture
-def fast_config():
-    """Create a minimal configuration for fast integration tests."""
-    return AtariConfig(
-        environment=AtariEnvConfig(
-            game_name="FakeGame",
-            frame_height=42,
-            frame_width=42,
-            frame_stack=2,
-            vector_dim=8,
-        ),
-        network=AtariNetworkConfig(
-            num_res_blocks=1,
-            num_filters=8,
-            fc_hidden_dim=16,
-            value_head_hidden=8,
-        ),
-        training=AtariTrainingConfig(
-            num_iterations=2,
-            episodes_per_iteration=1,
-            batch_size=4,
-            num_epochs=1,
-            replay_buffer_size=200,
-            min_replay_size=5,
-            save_interval=1,
-            eval_episodes=1,
-            eval_interval=1,
-            device="cpu",
-        ),
-    )
-
 
 # ============================================================================
 # MCTSEnvironment protocol integration
@@ -216,8 +144,9 @@ class TestTrainEpoch:
         optimizer = torch.optim.Adam(net.parameters(), lr=0.01)
 
         # Create synthetic data
-        from demos.atari.trainer import ReplayDataset
         from torch.utils.data import DataLoader
+
+        from demos.atari.trainer import ReplayDataset
 
         examples = []
         for _ in range(20):

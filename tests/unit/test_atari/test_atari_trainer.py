@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from unittest import mock
-
 import numpy as np
 import pytest
 import torch
 
-from demos.atari.config import AtariTrainingConfig
 from demos.atari.trainer import (
     ReplayBuffer,
     ReplayDataset,
@@ -16,7 +13,6 @@ from demos.atari.trainer import (
     _discount_returns,
     compute_atari_loss,
 )
-
 
 # ============================================================================
 # TrainingExample
@@ -126,7 +122,7 @@ class TestComputeAtariLoss:
         target_policy = torch.softmax(torch.randn(2, 6), dim=-1)
         target_value = torch.randn(2)
         mask = torch.tensor([[1, 0, 1, 0, 1, 0], [0, 1, 0, 1, 0, 1]], dtype=torch.float32)
-        total, p_loss, v_loss = compute_atari_loss(
+        total, _p_loss, _v_loss = compute_atari_loss(
             logits, value, target_policy, target_value, action_mask=mask
         )
         assert total.item() > 0
@@ -136,7 +132,7 @@ class TestComputeAtariLoss:
         logits = torch.tensor([[-100.0, 100.0, -100.0, -100.0, -100.0, -100.0]])
         target_value = torch.tensor([0.5])
         value = torch.tensor([0.5])
-        total, p_loss, v_loss = compute_atari_loss(logits, value, target_policy, target_value)
+        _total, p_loss, v_loss = compute_atari_loss(logits, value, target_policy, target_value)
         assert p_loss.item() < 0.01
         assert v_loss.item() < 0.01
 

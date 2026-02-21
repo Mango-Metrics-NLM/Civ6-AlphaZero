@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import os
-import tempfile
-from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -17,7 +15,6 @@ from demos.atari.config import (
     AtariNetworkConfig,
     AtariTrainingConfig,
 )
-
 
 # ============================================================================
 # AtariEnvConfig

@@ -2,11 +2,12 @@
 
 These tests fill coverage gaps in atari_env.py, config.py, hierarchical.py,
 and trainer.py identified by the coverage report.
+
+Note: ``FakeAtariGym`` and ``mock_gymnasium`` are provided by conftest.py.
 """
 
 from __future__ import annotations
 
-import os
 from unittest import mock
 
 import gymnasium as gym
@@ -22,40 +23,7 @@ from demos.atari.config import (
     AtariTrainingConfig,
     _env_override,
 )
-
-
-# ============================================================================
-# Fake env fixture
-# ============================================================================
-
-
-class _FakeAtariGym:
-    class _Space:
-        n = 4
-
-    action_space = _Space()
-    observation_space = None
-    _step_count = 0
-    _max_steps = 10
-
-    def reset(self, seed=None):
-        self._step_count = 0
-        return np.random.randint(0, 256, (210, 160, 3), dtype=np.uint8), {"lives": 3}
-
-    def step(self, action):
-        self._step_count += 1
-        obs = np.random.randint(0, 256, (210, 160, 3), dtype=np.uint8)
-        terminated = self._step_count >= self._max_steps
-        return obs, 1.0, terminated, False, {"lives": 3}
-
-    def close(self):
-        pass
-
-
-@pytest.fixture(autouse=True)
-def mock_gymnasium(monkeypatch):
-    monkeypatch.setattr(gym, "make", lambda *a, **kw: _FakeAtariGym())
-
+from tests.unit.test_atari.conftest import FakeAtariGym
 
 # ============================================================================
 # _env_override edge cases
@@ -289,14 +257,13 @@ class TestAtariEnvBranches:
         from demos.atari.atari_env import AtariEnv
 
         call_count = [0]
-        original_make = gym.make
 
         def fake_make(*args, **kwargs):
             call_count[0] += 1
             env_id = args[0] if args else kwargs.get("id", "")
             if "ALE/" in str(env_id):
                 raise gym.error.NameNotFound(env_id)
-            return _FakeAtariGym()
+            return FakeAtariGym()
 
         monkeypatch.setattr(gym, "make", fake_make)
 
@@ -356,7 +323,6 @@ class TestHierarchicalBranches:
     def test_defensive_play_strategy(self):
         """Test DEFENSIVE_PLAY triggered by negative reward."""
         from demos.atari.hierarchical import (
-            AtariGoal,
             AtariHierarchicalAdapter,
             AtariStrategicGoal,
         )
@@ -466,7 +432,6 @@ class TestEvaluateFunction:
     def test_evaluate_with_simple_mcts(self):
         """Evaluate works with SimpleMCTS (no add_noise support)."""
         from alpha_zero.core.civ6_mcts import SimpleMCTS
-
         from demos.atari.atari_env import AtariEnv
         from demos.atari.atari_network import AtariNetwork
         from demos.atari.trainer import evaluate
@@ -494,7 +459,6 @@ class TestEvaluateFunction:
     def test_evaluate_with_civ6_mcts(self):
         """Evaluate works with Civ6MCTS (supports add_noise)."""
         from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig
-
         from demos.atari.atari_env import AtariEnv
         from demos.atari.atari_network import AtariNetwork
         from demos.atari.trainer import evaluate

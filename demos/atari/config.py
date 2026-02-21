@@ -86,12 +86,14 @@ class AtariEnvConfig:
     frame_stack: int = 4
     frame_skip: int = 4
     grayscale: bool = True
+    grayscale_weights: tuple[float, float, float] = (0.2989, 0.5870, 0.1140)
     max_episode_steps: int = 0
     noop_max: int = 30
     terminal_on_life_loss: bool = True
     clip_rewards: bool = True
     sticky_actions: float = 0.0
     vector_dim: int = 32
+    gymnasium_version: str = "v5"
 
     # Computed helpers -------------------------------------------------------
 
@@ -109,7 +111,7 @@ class AtariEnvConfig:
     @property
     def gymnasium_id(self) -> str:
         """Full Gymnasium environment ID."""
-        return f"ALE/{self.game_name}-v5"
+        return f"ALE/{self.game_name}-{self.gymnasium_version}"
 
     def apply_env_overrides(self) -> AtariEnvConfig:
         """Apply ``ATARI_DEMO_*`` environment-variable overrides in-place."""
@@ -215,6 +217,8 @@ class AtariTrainingConfig:
     eval_episodes: int = 5
     eval_interval: int = 10
     device: str = ""
+    training_sample_multiplier: int = 50
+    return_norm_epsilon: float = 1e-8
 
     def __post_init__(self) -> None:
         if not self.device:
@@ -265,6 +269,8 @@ class AtariHierarchicalConfig:
     operational_horizon: int = 20
     goal_reward_shaping_weight: float = 0.1
     max_active_goals_per_level: int = 3
+    tactical_progress_increment: float = 0.05
+    strategic_progress_increment: float = 0.01
 
     def apply_env_overrides(self) -> AtariHierarchicalConfig:
         """Apply environment-variable overrides."""
@@ -299,7 +305,7 @@ class AtariConfig:
     mcts: AtariMCTSConfig = field(default_factory=AtariMCTSConfig)
     training: AtariTrainingConfig = field(default_factory=AtariTrainingConfig)
     hierarchical: AtariHierarchicalConfig = field(default_factory=AtariHierarchicalConfig)
-    novel_features: Any = field(default_factory=lambda: None)  # NovelFeaturesConfig (lazy import)
+    novel_features: Any = field(default=None)  # Optional[NovelFeaturesConfig]
 
     # Pre-defined game presets ------------------------------------------------
 

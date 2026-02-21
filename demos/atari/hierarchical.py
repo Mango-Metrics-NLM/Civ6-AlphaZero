@@ -355,13 +355,16 @@ class AtariHierarchicalAdapter:
 
     def _update_goal_progress(self, reward: float) -> None:
         """Heuristically update goal progress based on reward signals."""
+        tactical_increment = self.config.tactical_progress_increment
+        strategic_increment = self.config.strategic_progress_increment
+
         for goal in self._tactical.active_goals:
             if not goal.active:
                 continue
 
-            # Positive reward ⇒ we're making progress on most goals
+            # Positive reward -> we're making progress on most goals
             if reward > 0:
-                goal.progress = min(1.0, goal.progress + 0.05)
+                goal.progress = min(1.0, goal.progress + tactical_increment)
 
             # Mark completed goals
             if goal.progress >= 1.0:
@@ -371,4 +374,4 @@ class AtariHierarchicalAdapter:
             if not goal.active:
                 continue
             if reward > 0:
-                goal.progress = min(1.0, goal.progress + 0.01)
+                goal.progress = min(1.0, goal.progress + strategic_increment)
