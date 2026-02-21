@@ -10,7 +10,7 @@ Architecture::
          ▼                                ▼
     Conv2d stem (C → F)           Linear encoder (V → H)
          │                                │
-    ResBlock × N  (F filters)             │
+    ResBlock x N  (F filters)             │
          │                                │
          ├────────── concat ──────────────┘
          │
@@ -34,16 +34,13 @@ Example:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
 
-from demos.atari.config import AtariNetworkConfig
-
-# Reuse the battle-tested ResidualBlock from the core project.
 from alpha_zero.core.civ6_network import ResidualBlock
+from demos.atari.config import AtariNetworkConfig
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +139,7 @@ class AtariNetwork(nn.Module):
         self.num_actions = num_actions
         self.spatial_h, self.spatial_w = spatial_size
 
-        # Convolutional stem — reduces 84×84 to a manageable feature-map size
+        # Convolutional stem -- reduces 84x84 to a manageable feature-map size
         # before the residual tower.  Stride-2 convolutions halve dimensions
         # twice: 84 → 42 → 21.
         self.stem = nn.Sequential(
@@ -154,7 +151,7 @@ class AtariNetwork(nn.Module):
             nn.ReLU(inplace=True),
         )
 
-        # After stem the spatial dims are ceil(H/4) × ceil(W/4)
+        # After stem the spatial dims are ceil(H/4) x ceil(W/4)
         self._feat_h = (self.spatial_h + 3) // 4
         self._feat_w = (self.spatial_w + 3) // 4
 
@@ -310,7 +307,7 @@ class AtariNetwork(nn.Module):
         model = cls(
             config=config,
             num_actions=checkpoint["num_actions"],
-            spatial_size=tuple(checkpoint["spatial_size"]),  # type: ignore[arg-type]
+            spatial_size=tuple(checkpoint["spatial_size"]),
             spatial_channels=spatial_channels,
             vector_dim=vector_dim,
         )

@@ -84,7 +84,7 @@ class AtariGoal:
     Attributes:
         level: One of ``"strategic"``, ``"tactical"``, ``"operational"``.
         goal_type: The enum member for this goal.
-        progress: Estimated progress toward completion (0–1).
+        progress: Estimated progress toward completion (0-1).
         active: Whether the goal is currently being pursued.
         created_step: Environment step when the goal was created.
         metadata: Optional extra information.

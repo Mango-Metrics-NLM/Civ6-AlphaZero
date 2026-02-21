@@ -120,7 +120,7 @@ class AtariStateEncoder:
     def __init__(self, embedding_dim: int = 128) -> None:
         self.embedding_dim = embedding_dim
         # Fixed random projection matrix (reproducible via seed)
-        rng = np.random.RandomState(42)  # noqa: NPY002 — fixed seed for reproducibility
+        rng = np.random.RandomState(42)  # fixed seed for reproducibility
         self._proj: np.ndarray | None = None
         self._rng = rng
 
@@ -162,7 +162,7 @@ class AtariStateEncoder:
             Hex digest string.
         """
         data = obs.get("spatial", np.zeros(1)).tobytes()
-        return hashlib.md5(data, usedforsecurity=False).hexdigest()  # noqa: S324
+        return hashlib.md5(data, usedforsecurity=False).hexdigest()
 
 
 # ============================================================================
@@ -590,7 +590,7 @@ class AtariRAGAdvisor:
         dim = self.config.embedding_dimension
         h = hashlib.sha256(text.encode()).digest()
         seed = int.from_bytes(h[:4], "big")
-        rng = np.random.RandomState(seed)  # noqa: NPY002
+        rng = np.random.RandomState(seed)  # deterministic per-text seed
         emb = rng.randn(dim).astype(np.float32)
         emb /= np.linalg.norm(emb) + 1e-8
         return emb

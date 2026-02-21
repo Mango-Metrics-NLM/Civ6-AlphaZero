@@ -165,7 +165,7 @@ def _discount_returns(
     arr = np.array(returns, dtype=np.float32)
     max_abs = max(np.abs(arr).max(), 1e-8)
     arr = arr / max_abs
-    return arr.tolist()
+    return list(arr.tolist())
 
 
 def run_episode(
@@ -265,7 +265,7 @@ def run_episode(
     values = _discount_returns(rewards, config.discount_factor)
 
     examples: list[TrainingExample] = []
-    for hist, val in zip(episode_history, values):
+    for hist, val in zip(episode_history, values, strict=True):
         examples.append(
             TrainingExample(
                 spatial=hist["spatial"],
@@ -365,13 +365,16 @@ def evaluate(
     total_rewards: list[float] = []
 
     for _ in range(num_episodes):
-        obs, _info = env.reset()
+        _obs, _info = env.reset()
         episode_reward = 0.0
 
         while True:
-            action_probs, _ = mcts.search(env, add_noise=False)
+            try:
+                action_probs, _ = mcts.search(env, add_noise=False)
+            except TypeError:
+                action_probs, _ = mcts.search(env)
             action = mcts.select_action(action_probs, temperature=0.0)
-            obs, reward, terminated, truncated, _info = env.step(action)
+            _obs, reward, terminated, truncated, _info = env.step(action)
             episode_reward += float(reward)
             if terminated or truncated:
                 break
@@ -505,7 +508,7 @@ class AtariTrainer:
 
             sp_start = time.time()
             all_examples: list[TrainingExample] = []
-            for ep in range(episodes_per):
+            for _ep in range(episodes_per):
                 ep_env = AtariEnv(cfg.environment)
                 examples, trajectory = run_episode(
                     ep_env, network, mcts_inst, t_cfg, hierarchical,

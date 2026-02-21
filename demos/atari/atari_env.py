@@ -16,7 +16,7 @@ from __future__ import annotations
 import copy
 import logging
 from collections import deque
-from typing import Any, SupportsFloat
+from typing import Any
 
 import gymnasium as gym
 import numpy as np
@@ -136,11 +136,11 @@ class AtariEnv:
             logger.warning("Env %s not found, trying %s", env_id, fallback_id)
             self._env = gym.make(fallback_id)
 
-        self.action_space = self._env.action_space  # type: ignore[assignment]
+        self.action_space = self._env.action_space
 
         if self.config.max_episode_steps > 0:
             self._env = gym.wrappers.TimeLimit(
-                self._env,  # type: ignore[arg-type]
+                self._env,
                 max_episode_steps=self.config.max_episode_steps,
             )
 
@@ -233,7 +233,7 @@ class AtariEnv:
             self._last_raw_frame.copy() if self._last_raw_frame is not None else None
         )
         cloned.current_player = self.current_player
-        cloned.action_space = cloned._env.action_space  # type: ignore[assignment]
+        cloned.action_space = cloned._env.action_space
         return cloned
 
     def get_observation(self) -> dict[str, np.ndarray]:

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import sys
 
 from demos.atari.config import AtariConfig
 from demos.atari.trainer import AtariTrainer
