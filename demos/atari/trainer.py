@@ -237,10 +237,14 @@ def run_episode(
             }
         )
 
-        # Action selection with temperature (sourced from MCTS config
-        # which is forwarded here via the training config's sibling)
-        temperature = getattr(config, "temperature", 1.0)
-        temp_threshold = getattr(config, "temperature_threshold", 500)
+        # Action selection with temperature from MCTS config if available
+        mcts_config = getattr(mcts, "config", None)
+        if mcts_config is not None:
+            temperature = getattr(mcts_config, "temperature", 1.0)
+            temp_threshold = getattr(mcts_config, "temperature_threshold", 500)
+        else:
+            temperature = 1.0
+            temp_threshold = 500
         if step >= temp_threshold:
             temperature = 0.0
 
