@@ -21,52 +21,7 @@ from alpha_zero.cloud.gcp.storage import (
     GCSTrajectoryStorage,
     ModelMetadata,
 )
-
-# =============================================================================
-# Mock Backend
-# =============================================================================
-
-
-class MockStorageBackend:
-    """In-memory storage backend for testing."""
-
-    def __init__(self) -> None:
-        self._storage: dict[str, bytes] = {}
-
-    def upload_blob(self, bucket: str, blob_path: str, data: bytes) -> str:
-        key = f"{bucket}/{blob_path}"
-        self._storage[key] = data
-        return f"gs://{key}"
-
-    def download_blob(self, bucket: str, blob_path: str) -> bytes:
-        key = f"{bucket}/{blob_path}"
-        if key not in self._storage:
-            raise GCSStorageError(
-                f"Blob not found: {blob_path}",
-                bucket=bucket,
-                blob_path=blob_path,
-                operation="download",
-            )
-        return self._storage[key]
-
-    def blob_exists(self, bucket: str, blob_path: str) -> bool:
-        key = f"{bucket}/{blob_path}"
-        return key in self._storage
-
-    def list_blobs(self, bucket: str, prefix: str) -> list[str]:
-        results = []
-        prefix_key = f"{bucket}/{prefix}"
-        for key in self._storage:
-            if key.startswith(prefix_key):
-                # Return just the blob path (without bucket)
-                results.append(key.split("/", 1)[1])
-        return results
-
-    def delete_blob(self, bucket: str, blob_path: str) -> None:
-        key = f"{bucket}/{blob_path}"
-        if key in self._storage:
-            del self._storage[key]
-
+from tests.mocks.cloud_mocks import MockStorageBackend
 
 # =============================================================================
 # Fixtures

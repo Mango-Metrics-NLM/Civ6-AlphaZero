@@ -25,9 +25,10 @@
 | Phase 14 | Learning Signal Validation & Training Diagnostics | ✅ Complete |
 | Phase 15 | Scaled Training & Value Head Stabilization | ✅ Complete |
 | Phase 16 | Batch Inference & Vectorized Self-Play | ✅ Complete |
-| Phase 17 | Hex Crystalline Encoder & A/B Comparison | 🔄 Active |
+| Phase 17a | Hex Crystalline Encoder & A/B Comparison | ✅ Complete |
+| Phase 17b | Training Readiness — action_mask, W&B groups, gumbel default, eval retry | ✅ Complete |
 
-**Codebase Statistics:** ~62,000 LOC core, 5,100+ tests, Docker v0.14.1, 158+ models in GCS
+**Codebase Statistics:** ~62,000 LOC core, 4,880+ tests, Docker v1.2.0 (Artifact Registry), 218+ models in GCS
 
 ---
 
@@ -191,7 +192,7 @@ Legend:
 │  │                    └───────────────────────┘                            │  │
 │  │                                                                         │  │
 │  │  ┌─────────────────────────────────────────────────────────────────┐   │  │
-│  │  │                    SPATIAL ENCODERS (Phase 17)                   │   │  │
+│  │  │             SPATIAL ENCODERS (Phase 17a — Hex Crystalline)        │   │  │
 │  │  │  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐          │   │  │
 │  │  │  │  PatchEmbed   │ │HexSpatialEnc  │ │EncoderRegistry│          │   │  │
 │  │  │  │ (Grid-based)  │ │(Hex-topology) │ │ (Factory)     │          │   │  │
@@ -658,12 +659,12 @@ Legend:
 | Training | PBT | Python | Hyperparameter evolution |
 | Cloud | Compute | Vertex AI | Distributed training |
 | Cloud | Storage | GCS | Artifacts, checkpoints |
-| Cloud | Container | Docker + GCR | Containerized workers (v0.10.2) |
+| Cloud | Container | Docker + Artifact Registry | Containerized workers (v1.2.0) |
 | Cloud | Optimization | Python | Cost/quota management |
 | Knowledge | RAG | ChromaDB/FAISS | Vector search |
 | Knowledge | LLM | OpenAI/Anthropic | Strategy advisor |
 | Logging | Metrics | W&B, TensorBoard | Experiment tracking |
-| Testing | Framework | pytest | 3,544+ tests, >80% coverage |
+| Testing | Framework | pytest | 4,880+ tests, >80% coverage |
 | Linting | Quality | ruff, mypy, bandit | Static analysis, security |
 
 ---
@@ -1781,7 +1782,8 @@ Batch inference optimization and vectorized self-play for throughput scaling.
 15. **Phase 14**: Learning Signal Validation — 20-iter run ($2.44), 2 promotions (v6→v19→v26), training diagnostics, warmup-cosine LR, stall detection ✅
 16. **Phase 15**: Value Head Stabilization — Per-head LR multipliers (value=0.1x), optimizer param groups, base_lr_ratio preservation ✅
 17. **Phase 16**: Batch Inference & Vectorized Self-Play — BatchGumbelMCTS, VectorizedMicroCivEnv, CUDAGraphCache, InferenceBenchmark, cloud orchestrator mode, 101 new tests, Docker v0.13.0 ✅
-18. **Phase 17**: Hex Crystalline Encoder & A/B Comparison — HexSpatialEncoder, CrystallineAttention, HexConv2d, EncoderRegistry, cloud pipeline encoder propagation, Python 3.10 compat shim, gameplay systems (terrain, fog, tech, combat), A/B training runs on VM, Docker v0.14.1 🔄
+18. **Phase 17a**: Hex Crystalline Encoder & A/B Comparison — HexSpatialEncoder, CrystallineAttention, HexConv2d, EncoderRegistry, cloud pipeline encoder propagation, Python 3.10 compat shim, gameplay systems (terrain, fog, tech, combat), A/B training runs on VM, Docker v0.14.1 ✅
+19. **Phase 17b**: Training Readiness (v1.2.0) — action_mask in 5-tensor TensorDataset + masked cross-entropy, W&B Group coordination (WANDB_GROUP/WANDB_RUN_NAME per phase), eval worker W&B logging, evaluation retry with backoff (max_retries=2), LR forwarding, GumbelMCTS as default, MockStorageBackend centralized, GCS trajectory cleanup script, pytest-timeout=120, Cloud Build c72f98e9 (8 steps), Docker v1.2.0 on Artifact Registry, 50-iteration production run active ✅
 
 ### Next Steps
 
@@ -1789,7 +1791,7 @@ See [NEXT_STEPS.md](../NEXT_STEPS.md) for the full post-Phase 17 roadmap.
 
 | Priority | Feature | Description |
 |----------|---------|-------------|
-| P0 | A/B Comparison Analysis | Analyze Run A vs Run B: loss curves, win rates, ELO, throughput |
+| P0 | Monitor Production Run (`dashing-firebrand-1393`) | 50 iters, 4×50 games, GumbelMCTS 16 sims — active on `civ6az-orchestrator` VM |
 | P1 | Batch Self-Play Cloud Integration (Phase 18) | Enable `--num_parallel_games` in cloud for 5-10x throughput |
 | P2 | MuZero Training Run (Phase 19) | Validate learned dynamics model on MicroCiv |
 | P3 | PBT on Vertex AI (Phase 20) | Population-based training with auto hyperparameter tuning |
@@ -1799,5 +1801,5 @@ See [NEXT_STEPS.md](../NEXT_STEPS.md) for the full post-Phase 17 roadmap.
 
 ---
 
-*Last updated: 2026-02-18*
-*Architecture version: 5.0*
+*Last updated: 2026-02-21*
+*Architecture version: 6.0*

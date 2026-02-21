@@ -23,8 +23,9 @@ import time
 import torch
 
 from alpha_zero.cloud.gcp.arena import run_arena
-from alpha_zero.cloud.gcp.config import GCPConfig
+from alpha_zero.cloud.gcp.config import DEFAULT_MCTS_TYPE, VALID_MCTS_TYPES, GCPConfig
 from alpha_zero.cloud.gcp.storage import GCSModelStorage
+from alpha_zero.utils.wandb_logger import WandbLogger
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +54,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mcts_type",
         type=str,
-        default="civ6",
-        choices=["civ6", "gumbel"],
+        default=DEFAULT_MCTS_TYPE,
+        choices=VALID_MCTS_TYPES,
         help="MCTS algorithm variant",
     )
     parser.add_argument(
@@ -80,15 +81,6 @@ def parse_args() -> argparse.Namespace:
         default="default",
         choices=["default", "enhanced"],
         help="Gameplay preset: 'default' (MicroCivEnv) or 'enhanced' (all gameplay systems)",
-    )
-
-    # Spatial encoder type
-    parser.add_argument(
-        "--encoder_type",
-        type=str,
-        default="patch_embed",
-        choices=["patch_embed", "hex_crystalline"],
-        help="Spatial encoder type (default: patch_embed)",
     )
 
     return parser.parse_args()
@@ -256,6 +248,30 @@ def main() -> int:
     args = parse_args()
     setup_logging()
 
+    # Initialize W&B for evaluation worker (opt-in via WANDB_ENABLED env var)
+    wandb_logger: WandbLogger | None = None
+    try:
+        wandb_logger = WandbLogger.from_env()
+        if wandb_logger.is_enabled:
+            wandb_logger.init(
+                config_dict={
+                    "mode": "evaluation",
+                    "model_version_new": args.model_version_new,
+                    "model_version_old": args.model_version_old,
+                    "iteration": args.iteration,
+                    "games": args.games,
+                    "mcts_type": args.mcts_type,
+                    "mcts_simulations": args.mcts_simulations,
+                    "board_size": args.board_size,
+                    "action_space_size": args.action_space_size,
+                    "max_turns": args.max_turns,
+                }
+            )
+            logger.info("W&B logging enabled for evaluation worker")
+    except Exception as _e:
+        logger.debug("W&B initialization failed (non-fatal): %s", _e)
+        wandb_logger = None
+
     logger.info(
         "Starting evaluation: v%d vs v%d, %d games, %s MCTS (%d sims)",
         args.model_version_new,
@@ -315,6 +331,21 @@ def main() -> int:
             results.loss_rate,
         )
 
+        # Log evaluation metrics to W&B
+        if wandb_logger is not None and wandb_logger.is_enabled:
+            games_per_min = results.total_games / (elapsed / 60.0) if elapsed > 0 else 0.0
+            wandb_logger.log(
+                {
+                    "eval/win_rate": results.win_rate,
+                    "eval/draw_rate": results.draw_rate,
+                    "eval/loss_rate": results.loss_rate,
+                    "eval/total_games": results.total_games,
+                    "eval/games_per_minute": games_per_min,
+                    "eval/elapsed_seconds": elapsed,
+                },
+                step=args.iteration,
+            )
+
         # Save results
         save_results(
             config=config,
@@ -325,6 +356,15 @@ def main() -> int:
             dry_run=args.dry_run,
         )
 
+        # Log final summary to W&B
+        if wandb_logger is not None and wandb_logger.is_enabled:
+            wandb_logger.log(
+                {
+                    "eval/model_version_new": args.model_version_new,
+                    "eval/model_version_old": args.model_version_old,
+                }
+            )
+
         return 0
 
     except KeyboardInterrupt:
@@ -333,6 +373,9 @@ def main() -> int:
     except Exception as e:
         logger.exception("Evaluation failed: %s", e)
         return 1
+    finally:
+        if wandb_logger is not None:
+            wandb_logger.finish()
 
 
 if __name__ == "__main__":

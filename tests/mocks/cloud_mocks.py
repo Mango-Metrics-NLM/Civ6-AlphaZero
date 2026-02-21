@@ -293,6 +293,58 @@ class MockCloudLogger:
         )
 
 
+class MockStorageBackend:
+    """In-memory storage backend for testing GCS operations.
+
+    Stores blobs keyed by ``"{bucket}/{blob_path}"`` so multiple buckets
+    are supported in a single instance.  All five methods match the
+    interface expected by GCSModelStorage, GCSTrajectoryStorage, and
+    GCSCheckpointStorage.
+    """
+
+    def __init__(self) -> None:
+        """Initialize empty in-memory store."""
+        self._storage: dict[str, bytes] = {}
+
+    def upload_blob(self, bucket: str, blob_path: str, data: bytes) -> str:
+        """Store *data* and return a ``gs://`` URI."""
+        key = f"{bucket}/{blob_path}"
+        self._storage[key] = data
+        return f"gs://{key}"
+
+    def download_blob(self, bucket: str, blob_path: str) -> bytes:
+        """Return stored bytes or raise GCSStorageError if missing."""
+        from alpha_zero.cloud.gcp.exceptions import GCSStorageError
+
+        key = f"{bucket}/{blob_path}"
+        if key not in self._storage:
+            raise GCSStorageError(
+                f"Blob not found: {blob_path}",
+                bucket=bucket,
+                blob_path=blob_path,
+                operation="download",
+            )
+        return self._storage[key]
+
+    def blob_exists(self, bucket: str, blob_path: str) -> bool:
+        """Return True if the blob is present."""
+        return f"{bucket}/{blob_path}" in self._storage
+
+    def list_blobs(self, bucket: str, prefix: str) -> list[str]:
+        """List blob paths (without bucket prefix) that match *prefix*."""
+        results = []
+        prefix_key = f"{bucket}/{prefix}"
+        for key in self._storage:
+            if key.startswith(prefix_key):
+                # Strip the leading "bucket/" segment
+                results.append(key.split("/", 1)[1])
+        return results
+
+    def delete_blob(self, bucket: str, blob_path: str) -> None:
+        """Delete blob if present (no-op if missing)."""
+        self._storage.pop(f"{bucket}/{blob_path}", None)
+
+
 class MockCloudMonitoringClient:
     """Mock Cloud Monitoring client for testing."""
 

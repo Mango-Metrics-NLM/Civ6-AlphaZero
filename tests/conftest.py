@@ -379,7 +379,7 @@ def sample_trajectory_data() -> list[dict]:
                 np.float32
             ),  # MicroCivEncoder.TOTAL_CHANNELS
             "action": np.array([5, 8]),
-            "policy": np.random.dirichlet(np.ones(100)).astype(np.float32),
+            "policy": np.random.dirichlet(np.ones(376)).astype(np.float32),
             "reward": 0.0,
             "done": False,
             "turn": 1,
@@ -389,7 +389,7 @@ def sample_trajectory_data() -> list[dict]:
                 np.float32
             ),  # MicroCivEncoder.TOTAL_CHANNELS
             "action": np.array([6, 8]),
-            "policy": np.random.dirichlet(np.ones(100)).astype(np.float32),
+            "policy": np.random.dirichlet(np.ones(376)).astype(np.float32),
             "reward": 0.1,
             "done": False,
             "turn": 2,
@@ -399,7 +399,7 @@ def sample_trajectory_data() -> list[dict]:
                 np.float32
             ),  # MicroCivEncoder.TOTAL_CHANNELS
             "action": np.array([6, 9]),
-            "policy": np.random.dirichlet(np.ones(100)).astype(np.float32),
+            "policy": np.random.dirichlet(np.ones(376)).astype(np.float32),
             "reward": 1.0,
             "done": True,
             "turn": 3,

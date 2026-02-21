@@ -335,27 +335,16 @@ class TestSelfplayWorkerParseArgs:
 
 
 class TestEvaluationWorkerParseArgs:
-    """Tests for evaluation_worker parse_args recognizing encoder_type."""
+    """Tests for evaluation_worker parse_args.
 
-    def test_parse_args_recognizes_encoder_type(self) -> None:
-        """Evaluation worker parse_args accepts --encoder_type flag."""
-        from alpha_zero.cloud.gcp.evaluation_worker import parse_args
+    Note: --encoder_type was removed from evaluation_worker.parse_args() in Step 8d
+    because the model config loaded from GCS already determines the encoder type.
+    The orchestrator's build_evaluation_extra_args still gates on encoder_type for
+    selfplay/training, but evaluation uses the saved model config directly.
+    """
 
-        test_args = [
-            "--model_version_new=2",
-            "--model_version_old=1",
-            "--iteration=1",
-            "--encoder_type=hex_crystalline",
-        ]
-
-        with patch("sys.argv", ["evaluation_worker.py", *test_args]):
-            args = parse_args()
-
-        assert hasattr(args, "encoder_type")
-        assert args.encoder_type == "hex_crystalline"
-
-    def test_parse_args_encoder_type_default(self) -> None:
-        """Evaluation worker encoder_type defaults to patch_embed."""
+    def test_parse_args_required_fields(self) -> None:
+        """Evaluation worker parse_args requires model version and iteration."""
         from alpha_zero.cloud.gcp.evaluation_worker import parse_args
 
         test_args = [
@@ -367,7 +356,10 @@ class TestEvaluationWorkerParseArgs:
         with patch("sys.argv", ["evaluation_worker.py", *test_args]):
             args = parse_args()
 
-        assert args.encoder_type == "patch_embed"
+        assert args.model_version_new == 2
+        assert args.model_version_old == 1
+        assert args.iteration == 1
+        assert not hasattr(args, "encoder_type")
 
 
 # =============================================================================

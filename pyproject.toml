@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alpha_zero"
-version = "0.14.0"
+version = "1.2.0"
 description = "AlphaZero-based AI for Civilization VI"
 requires-python = ">=3.11"
 dependencies = [
@@ -21,6 +21,7 @@ dev = [
     "pytest-cov>=4.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-xdist>=3.0.0",
+    "pytest-timeout>=2.2.0",
     "mypy>=1.0.0",
     "ruff>=0.1.0",
     "tqdm>=4.65.0",
@@ -151,7 +152,7 @@ reportUnknownMemberType = false
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --timeout=120"
 asyncio_mode = "auto"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",

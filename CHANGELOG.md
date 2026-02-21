@@ -5,6 +5,84 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-02-21
+
+### Added — Phase 17: Training Readiness & Production Launch
+
+#### Action Mask in Training Pipeline
+
+- **5-tensor TensorDataset**: Selfplay workers now store `trajectory["action_masks"]` alongside spatial/vector/policies/values
+- **Masked cross-entropy loss**: Training worker applies `target *= mask; target /= target.sum(-1, keepdim=True).clamp(1e-8)` so the network learns only over legal actions
+- **Smoke-tested**: Phase 17 container validates action_mask flow from selfplay → trajectory → training_worker
+
+#### W&B Group Coordination
+
+- **`WANDB_GROUP` / `WANDB_RUN_NAME`** env vars added to `_wandb_env_vars()` in `vertex_jobs.py`
+- **Orchestrator group propagation**: `vertex_orchestrator.py` sets `os.environ["WANDB_GROUP"] = run_name` after W&B init; each phase sets `WANDB_RUN_NAME=f"{phase}-iter{N:03d}"` with `finally` cleanup
+- **Eval worker W&B**: Full `WandbLogger` init/log/finish added to `evaluation_worker.py`; logs `eval/win_rate`, `eval/draw_rate`, `eval/games_per_minute` at `step=iteration`
+
+#### Evaluation Retry & Circuit Breaker
+
+- **`run_evaluation_phase()` max_retries=2**: Evaluation now retries with `compute_retry_delay()` exponential backoff before counting toward `consecutive_failures`
+- **Circuit breaker**: Eval failures after max_retries now increment `consecutive_failures`; `max_consecutive_failures=3` halts the entire run
+- **`_EVAL_MACHINE_TYPE`**: Constant replaces hard-coded `"n1-standard-4"` string in evaluation job creation
+
+#### Learning Rate Forwarding
+
+- **`--learning_rate` arg**: Added to `vertex_orchestrator.py` CLI; `build_training_extra_args()` always emits `--learning_rate=N` to training workers
+- **Backwards compatibility**: Uses `getattr(args, 'field', default)` pattern for all new args
+
+#### MockStorageBackend Centralization
+
+- **`tests/mocks/cloud_mocks.py`**: `MockStorageBackend` and `MockGCSStorage` moved from 3 test files to centralized mocks module
+- Reduces test code duplication and ensures consistent mock behavior across all cloud unit tests
+
+#### GCS Trajectory Cleanup
+
+- **`scripts/cleanup_trajectories.py`**: CLI tool to list/dry-run/delete old trajectory batches from GCS
+- **`GCSTrajectoryStorage.list_iteration_stats()`** and **`delete_iterations()`**: New storage methods for programmatic trajectory management
+
+#### Container v1.2.0 (Cloud Build c72f98e9)
+
+- **Artifact Registry**: `us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v1.2.0`
+- **`cloudbuild.yaml` substitutions**: `_TAG_NAME` / `_IMAGE` substitution block; use `--substitutions=_TAG_NAME=vX.Y.Z` to override at submit time; all hard-coded version strings replaced with `${_IMAGE}:${_TAG_NAME}`
+- **`dockerfiles/Dockerfile.vertex`**: Changed `requirements-runtime.txt` → `requirements-container.txt` (runtime file was deleted in cleanup)
+- **All 8 Cloud Build steps green**: lint → build → smoke-test → test-selfplay → test-training → test-muzero-selfplay → test-orchestrator-guard → test-evaluation → push
+
+### Changed
+
+- **`DEFAULT_MCTS_TYPE`**: `"civ6"` → `"gumbel"` in `config.py`; GumbelMCTS is now the default for all new runs
+- **`torch>=2.0.0`**: Updated from `>=1.13.0` in `requirements-container.txt`
+- **`pytest-timeout=120`**: Added to `pyproject.toml` addopts + dev deps; prevents indefinite hangs on Windows
+- **`conftest` fixture fix**: `np.ones(100)` → `np.ones(376)` in `sample_trajectory_data` (action_space_size alignment)
+- **Version**: `0.14.1` → `1.2.0` (major bump for production readiness milestone)
+- **Stale tests fixed**: All `test_default_mcts_type_is_civ6` → `_is_gumbel` across 3 test files
+- **`alpha_zero.utils.compat.UTC`**: Python 3.10 compatibility shim already in place; container runs Python 3.10.12
+
+### Removed
+
+- **`TrajectoryDataset`**: Dead class removed from `training_worker.py`
+- **`tests/stress/`**: Empty stress test directory deleted
+- **`tests/cloud/integration/`**: Empty cloud integration test directory deleted
+- **`scripts/validate_phase1.py`**: Obsolete phase-specific validation script deleted
+- **`requirements-runtime.txt`**: Merged into `requirements-container.txt`; deleted
+- **`--encoder_type` arg**: Dead arg removed from `vertex_orchestrator.py` (encoder is now saved in model_config)
+
+### Production Run v1.2.0 (2026-02-21 — ACTIVE)
+
+| Parameter | Value |
+|-----------|-------|
+| Container | `civ6az-prod-v120` on `civ6az-orchestrator` VM |
+| Iterations | 50 |
+| Workers | 4 × 50 games = 200 games/iter |
+| MCTS | GumbelMCTS 16 sims, max_turns=30 |
+| LR | warmup_cosine, 0.001→0.0001, value_lr_mult=0.1 |
+| Start model | v218 (auto-detected from GCS) |
+| W&B run | `dashing-firebrand-1393` |
+| W&B URL | https://wandb.ai/ianshank-none/civ6-alphazero/runs/ukxjr0uz |
+
+---
+
 ## [0.14.1] — 2026-02-18
 
 ### Added — Hex Crystalline Encoder & A/B Training Comparison

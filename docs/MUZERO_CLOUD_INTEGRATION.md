@@ -87,10 +87,8 @@ config = BenchmarkConfig(
 )
 
 benchmark = AlphaZeroVsMuZeroBenchmark(config)
-report = benchmark.run()
-
-report.save_json("benchmark_results.json")
-report.save_markdown("benchmark_results.md")
+report = benchmark.run_comparison()
+benchmark.generate_report(report, output_dir="benchmark_results")
 ```
 
 ### Tracked Metrics
@@ -100,6 +98,22 @@ report.save_markdown("benchmark_results.md")
 - Game length distribution
 - Network evaluations per move
 - Training speed (games/minute)
+
+## Search Efficiency Report
+
+Generate standalone search efficiency comparison reports:
+
+```bash
+# From benchmark output files
+python scripts/search_efficiency_report.py \
+    --benchmark_results benchmark_results/benchmark_report.json \
+    --output_dir reports/search_efficiency
+
+# From W&B runs
+python scripts/search_efficiency_report.py \
+    --wandb_run <run_id> \
+    --output_dir reports/search_efficiency
+```
 
 ## Quick Start
 
@@ -120,7 +134,11 @@ python -m alpha_zero.evaluation.muzero_vs_alphazero_benchmark \
 
 | Test File | Tests | Covers |
 |-----------|-------|--------|
-| `test_selfplay_worker_muzero.py` | 9 | MuZero self-play paths |
-| `test_training_worker_muzero.py` | 8 | MuZero training paths |
+| `test_selfplay_worker_muzero.py` | 12 | MuZero self-play model loading and selfplay |
+| `test_training_worker_muzero.py` | 8 | MuZero training model creation and training |
 | `test_vertex_orchestrator_muzero.py` | 10 | Algorithm flag propagation |
 | `test_benchmark_framework.py` | 14 | Benchmark config, results, reports |
+| `test_orchestrator_algorithm_routing.py` | 15 | Routing regression guards |
+| `test_selfplay_muzero_dispatch.py` | 5 | main() dispatch to MuZero/AZ functions |
+| `test_training_muzero_dispatch.py` | 5 | main() dispatch to MuZero/AZ model creation |
+| `test_search_efficiency_report.py` | 10 | Search efficiency report generation |

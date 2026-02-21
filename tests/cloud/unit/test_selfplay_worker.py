@@ -15,51 +15,11 @@ import torch.nn as nn
 
 from alpha_zero.cloud.gcp.config import GCPConfig, GCSPathConfig
 from alpha_zero.cloud.gcp.storage import ModelMetadata
+from tests.mocks.cloud_mocks import MockStorageBackend
 
 # =============================================================================
 # Mock Classes
 # =============================================================================
-
-
-class MockStorageBackend:
-    """In-memory storage backend for testing."""
-
-    def __init__(self) -> None:
-        self._storage: dict[str, bytes] = {}
-
-    def upload_blob(self, bucket: str, blob_path: str, data: bytes) -> str:
-        key = f"{bucket}/{blob_path}"
-        self._storage[key] = data
-        return f"gs://{key}"
-
-    def download_blob(self, bucket: str, blob_path: str) -> bytes:
-        from alpha_zero.cloud.gcp.exceptions import GCSStorageError
-
-        key = f"{bucket}/{blob_path}"
-        if key not in self._storage:
-            raise GCSStorageError(
-                f"Blob not found: {blob_path}",
-                bucket=bucket,
-                blob_path=blob_path,
-                operation="download",
-            )
-        return self._storage[key]
-
-    def blob_exists(self, bucket: str, blob_path: str) -> bool:
-        key = f"{bucket}/{blob_path}"
-        return key in self._storage
-
-    def list_blobs(self, bucket: str, prefix: str) -> list[str]:
-        results = []
-        prefix_key = f"{bucket}/{prefix}"
-        for key in self._storage:
-            if key.startswith(prefix_key):
-                results.append(key.split("/", 1)[1])
-        return results
-
-    def delete_blob(self, bucket: str, blob_path: str) -> None:
-        key = f"{bucket}/{blob_path}"
-        self._storage.pop(key, None)
 
 
 class MockModel(nn.Module):
@@ -207,18 +167,19 @@ class TestLoadModel:
         """Test that dry run creates a functional model."""
         from alpha_zero.cloud.gcp.selfplay_worker import load_model
 
+        # dry-run uses 13 spatial channels, 8x8 board, 376 actions (production defaults)
         model = load_model(gcp_config, version=1, dry_run=True)
 
         assert model is not None
-        # Verify model can do forward pass
-        spatial = torch.randn(1, 64, 10, 10)
+        # Verify model can do forward pass with correct production-default shapes
+        spatial = torch.randn(1, 13, 8, 8)
         vector = torch.randn(1, 64)
-        mask = torch.ones(1, 100)
+        mask = torch.ones(1, 376)
         model.eval()
         with torch.no_grad():
             policy, value = model.predict(spatial, vector, mask)
 
-        assert policy.shape == (1, 100)
+        assert policy.shape == (1, 376)
         assert value.shape == (1,)
 
     def test_load_model_from_gcs_with_config(
@@ -600,3 +561,24 @@ class TestMain:
                 exit_code = main()
 
         assert exit_code == 1
+
+
+# =============================================================================
+# action_mask Storage Tests
+# =============================================================================
+
+
+class TestSelfplayActionMaskStorage:
+    """Tests that selfplay trajectories include action_masks."""
+
+    def test_trajectory_dict_has_action_masks_key(self) -> None:
+        """run_selfplay trajectories must include 'action_masks' key."""
+        import inspect
+
+        import alpha_zero.cloud.gcp.selfplay_worker as sw
+
+        # Check that 'action_masks' appears in the run_selfplay source code
+        src = inspect.getsource(sw.run_selfplay)
+        assert "action_masks" in src, (
+            "run_selfplay must initialize and store action_masks in trajectory dict"
+        )

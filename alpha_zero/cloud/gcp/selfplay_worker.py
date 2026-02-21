@@ -36,7 +36,12 @@ except ImportError:
     psutil = None  # type: ignore[assignment]
     _PSUTIL_AVAILABLE = False
 
-from alpha_zero.cloud.gcp.config import GCPConfig, NetworkArchitectureConfig
+from alpha_zero.cloud.gcp.config import (
+    DEFAULT_MCTS_TYPE,
+    VALID_MCTS_TYPES,
+    GCPConfig,
+    NetworkArchitectureConfig,
+)
 from alpha_zero.cloud.gcp.storage import GCSModelStorage, GCSTrajectoryStorage
 
 logger = logging.getLogger(__name__)
@@ -77,8 +82,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mcts_type",
         type=str,
-        default="civ6",
-        choices=["civ6", "gumbel", "batch_gumbel", "muzero"],
+        default=DEFAULT_MCTS_TYPE,
+        choices=VALID_MCTS_TYPES,
         help="MCTS variant to use",
     )
     parser.add_argument("--board_size", type=int, default=8, help="Size of the hex board")
@@ -159,13 +164,22 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_model(config: GCPConfig, version: int, dry_run: bool = False) -> torch.nn.Module:
+def load_model(
+    config: GCPConfig,
+    version: int,
+    dry_run: bool = False,
+    *,
+    spatial_size: int = 8,
+    action_space_size: int = 376,
+) -> torch.nn.Module:
     """Load model from GCS or create dummy for dry run.
 
     Args:
         config: GCP configuration.
         version: Model version to load.
         dry_run: If True, create dummy model without GCS access.
+        spatial_size: Board spatial size for the dry-run dummy model (keyword-only).
+        action_space_size: Action space size for the dry-run dummy model (keyword-only).
 
     Returns:
         Loaded neural network model.
@@ -177,12 +191,12 @@ def load_model(config: GCPConfig, version: int, dry_run: bool = False) -> torch.
 
     if dry_run:
         logger.info("Dry run: creating dummy model")
-        # Create a minimal dummy model for testing
+        # Create a minimal dummy model for testing using CLI-specified dimensions
         dummy_config = TransformerConfig(
-            spatial_channels=64,
-            spatial_size=10,
+            spatial_channels=13,
+            spatial_size=spatial_size,
             vector_dim=64,
-            action_space_size=100,
+            action_space_size=action_space_size,
         )
         return Civ6TransformerNetwork(config=dummy_config)
 
@@ -531,6 +545,7 @@ def run_selfplay(
         trajectory: dict[str, Any] = {
             "spatial": [],
             "vector": [],
+            "action_masks": [],
             "policies": [],
             "actions": [],
         }
@@ -569,8 +584,10 @@ def run_selfplay(
             # Store experience - flatten spatial and vector for storage
             spatial_flat = obs["spatial"].flatten().tolist()
             vector_flat = obs["vector"].flatten().tolist()
+            action_mask_flat = obs["action_mask"].flatten().tolist()
             trajectory["spatial"].append(spatial_flat)
             trajectory["vector"].append(vector_flat)
+            trajectory["action_masks"].append(action_mask_flat)
             trajectory["policies"].append(policy.tolist() if hasattr(policy, "tolist") else policy)
             trajectory["actions"].append(int(action))
 
@@ -738,6 +755,7 @@ def run_muzero_selfplay(
         trajectory: dict[str, Any] = {
             "spatial": [],
             "vector": [],
+            "action_masks": [],
             "policies": [],
             "actions": [],
             "reward_targets": [],
@@ -753,7 +771,8 @@ def run_muzero_selfplay(
 
             try:
                 # MuZeroMCTS.search uses the dynamics model internally
-                policy, value_estimate = mcts.search(env)  # type: ignore[arg-type]
+                # Pass observation dict and action_mask explicitly (MuZeroMCTS signature)
+                policy, value_estimate = mcts.search(obs, action_mask=obs["action_mask"])
                 turn = len(trajectory["spatial"])
                 temp = compute_temperature(
                     turn=turn,
@@ -777,8 +796,10 @@ def run_muzero_selfplay(
             # Store experience
             spatial_flat = obs["spatial"].flatten().tolist()
             vector_flat = obs["vector"].flatten().tolist()
+            action_mask_flat = obs["action_mask"].flatten().tolist()
             trajectory["spatial"].append(spatial_flat)
             trajectory["vector"].append(vector_flat)
+            trajectory["action_masks"].append(action_mask_flat)
             trajectory["policies"].append(policy.tolist() if hasattr(policy, "tolist") else policy)
             trajectory["actions"].append(int(action))
 
@@ -1188,6 +1209,8 @@ def main() -> int:
                 config,
                 args.model_version,
                 dry_run=args.dry_run,
+                spatial_size=args.board_size,
+                action_space_size=args.action_space_size,
             )
             model = model.to(device)
             model.eval()

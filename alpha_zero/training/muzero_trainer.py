@@ -26,9 +26,9 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np  # type: ignore[import-untyped]
-import torch  # type: ignore[import-untyped]
-import torch.nn as nn  # type: ignore[import-untyped]
-import torch.optim as optim  # type: ignore[import-untyped]
+import torch
+import torch.nn as nn
+import torch.optim as optim
 
 from alpha_zero.core.losses import (
     LossConfig,

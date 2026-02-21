@@ -84,7 +84,7 @@ class TestParseArgs:
             args = parse_args()
             assert args.games == 20
             assert args.mcts_simulations == 25
-            assert args.mcts_type == "civ6"
+            assert args.mcts_type == "gumbel"
             assert args.board_size == 8
             assert args.max_turns == 30
             assert args.action_space_size == 376

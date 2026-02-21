@@ -38,6 +38,14 @@ DEFAULT_GPU_COSTS: dict[str, float] = {
     "NVIDIA_H100_80GB_SPOT": 3.48,
 }
 
+# Canonical MCTS type choices for argparse across all cloud workers.
+# Source of truth: aligned with alpha_zero.core.mcts_factory._MCTS_REGISTRY.
+# Uses tuple (immutable) so callers can safely pass to argparse choices.
+VALID_MCTS_TYPES: tuple[str, ...] = ("civ6", "gumbel", "batch_gumbel", "muzero")
+
+# Default MCTS type when none is specified.
+DEFAULT_MCTS_TYPE: str = "gumbel"
+
 
 def get_gpu_costs() -> dict[str, float]:
     """Get GPU costs, allowing env-var overrides.

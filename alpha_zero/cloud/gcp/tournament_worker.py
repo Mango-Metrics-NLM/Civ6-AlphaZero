@@ -31,6 +31,8 @@ from typing import Any
 
 import torch
 
+from alpha_zero.cloud.gcp.config import VALID_MCTS_TYPES, GCPConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -77,7 +79,7 @@ def parse_args() -> argparse.Namespace:
         "--mcts_type",
         type=str,
         default="gumbel",
-        choices=["civ6", "gumbel"],
+        choices=VALID_MCTS_TYPES,
         help="MCTS algorithm variant (default: gumbel)",
     )
     parser.add_argument(
@@ -388,8 +390,6 @@ def main() -> int:
     logger.info("Dry run: %s", args.dry_run)
 
     # Load GCP config
-    from alpha_zero.cloud.gcp.config import GCPConfig
-
     config = GCPConfig()
 
     # Resolve model versions

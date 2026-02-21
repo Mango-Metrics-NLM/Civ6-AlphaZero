@@ -32,6 +32,8 @@ def _wandb_env_vars() -> dict[str, str]:
         "WANDB_PROJECT": os.environ.get("WANDB_PROJECT", "civ6-alphazero"),
         "WANDB_ENTITY": os.environ.get("WANDB_ENTITY", ""),
         "WANDB_MODE": os.environ.get("WANDB_MODE", "online"),
+        "WANDB_GROUP": os.environ.get("WANDB_GROUP", ""),
+        "WANDB_RUN_NAME": os.environ.get("WANDB_RUN_NAME", ""),
     }
     return {k: v for k, v in candidates.items() if v}
 
@@ -895,6 +897,7 @@ class VertexEvaluationJob:
                 "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
                 "CIV6AZ_VERTEX_REGION": self.config.region,
                 "CIV6AZ_ENCODER_TYPE": getattr(self.config.network, "encoder_type", "patch_embed"),
+                **_wandb_env_vars(),
             },
             # CPU-only: evaluation doesn't need GPU
             machine_type="n1-standard-4",

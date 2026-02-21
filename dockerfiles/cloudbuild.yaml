@@ -142,7 +142,7 @@ images:
 
 # Build options
 options:
-  logging: CLOUD_LOGGING_ONLY
+  logging: GCS_ONLY
   machineType: 'E2_HIGHCPU_8'
 
 # Build timeout (30 minutes should be sufficient)

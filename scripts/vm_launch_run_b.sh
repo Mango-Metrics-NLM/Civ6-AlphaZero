@@ -20,11 +20,11 @@ docker run -d \
   -e CIV6AZ_VERTEX_PROJECT=hrmtrain \
   -e CIV6AZ_VERTEX_REGION=us-central1 \
   -e CIV6AZ_GCS_BUCKET=civ6az-training \
-  -e CIV6AZ_CONTAINER_IMAGE_URI=gcr.io/hrmtrain/civ6az-training:v0.14.1 \
+  -e CIV6AZ_CONTAINER_IMAGE_URI=gcr.io/hrmtrain/civ6az-training:v0.14.2 \
   -e WANDB_API_KEY="${WANDB_API_KEY}" \
   -e WANDB_PROJECT=civ6-alphazero \
   -e WANDB_ENABLED=true \
-  gcr.io/hrmtrain/civ6az-training:v0.14.1 \
+  gcr.io/hrmtrain/civ6az-training:v0.14.2 \
   python -u -m alpha_zero.cloud.gcp.entrypoint \
     --mode=orchestrator \
     --iterations=20 \

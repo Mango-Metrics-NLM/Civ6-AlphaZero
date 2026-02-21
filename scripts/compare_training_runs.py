@@ -50,6 +50,9 @@ class RunMetrics:
     iteration_duration_min: list[float]
     model_versions: list[int]
 
+    # Tournament ELO data (model_id -> elo_rating)
+    tournament_elos: dict[str, float] = dataclasses.field(default_factory=dict)
+
     # Summary stats
     total_iterations: int = 0
     successful_iterations: int = 0
@@ -83,7 +86,7 @@ def setup_logging() -> None:
     )
 
 
-def fetch_wandb_metrics(run_id: str, project: str = "hrmtrain/civ6az") -> RunMetrics:
+def fetch_wandb_metrics(run_id: str, project: str = "ianshank-none/civ6-alphazero") -> RunMetrics:
     """Fetch metrics from W&B API.
 
     Args:
@@ -102,32 +105,45 @@ def fetch_wandb_metrics(run_id: str, project: str = "hrmtrain/civ6az") -> RunMet
     api = wandb.Api()
     run = api.run(f"{project}/{run_id}")
 
-    # Fetch history (metrics over time)
-    history = run.history(
-        keys=[
-            "train/policy_loss",
-            "train/value_loss",
-            "train/total_loss",
-            "orchestrator/eval_win_rate",
-            "orchestrator/cumulative_cost",
-            "orchestrator/iteration_duration_min",
-            "orchestrator/model_version",
-        ],
-        pandas=True,
-    )
+    # Fetch all history columns (no keys filter — avoids returning 0 rows
+    # when expected column names don't exist in this run)
+    history = run.history(pandas=True)
 
-    # Extract metrics
+    import pandas as pd  # guaranteed available since wandb depends on it
+
+    def _get_col(col: str, default: float = 0.0) -> "pd.Series":
+        """Return history[col] as a Series, or a zero-filled Series if missing."""
+        if col in history.columns:
+            return history[col].fillna(default)
+        return pd.Series([default] * len(history))
+
+    # Extract metrics — orchestrator logs orchestrator/* keys per iteration.
+    # train/* loss keys are not logged by the orchestrator; fill with zeros.
     iterations = list(range(len(history)))
-    policy_loss = history.get("train/policy_loss", []).fillna(0).tolist()
-    value_loss = history.get("train/value_loss", []).fillna(0).tolist()
-    total_loss = history.get("train/total_loss", []).fillna(0).tolist()
-    eval_win_rate = history.get("orchestrator/eval_win_rate", []).fillna(0).tolist()
-    cumulative_cost = history.get("orchestrator/cumulative_cost", []).fillna(0).tolist()
-    iteration_duration = history.get("orchestrator/iteration_duration_min", []).fillna(0).tolist()
-    model_versions = history.get("orchestrator/model_version", []).fillna(0).tolist()
+    policy_loss = _get_col("train/policy_loss").tolist()
+    value_loss = _get_col("train/value_loss").tolist()
+    # Try both total-loss column names
+    if "train/loss" in history.columns:
+        total_loss = _get_col("train/loss").tolist()
+    elif "train/total_loss" in history.columns:
+        total_loss = _get_col("train/total_loss").tolist()
+    else:
+        total_loss = [0.0] * len(history)
+    eval_win_rate = _get_col("orchestrator/eval_win_rate").tolist()
+    cumulative_cost = _get_col("orchestrator/cumulative_cost").tolist()
+    iteration_duration = _get_col("orchestrator/iteration_duration_min").tolist()
+    model_versions = _get_col("orchestrator/model_version").tolist()
 
-    # Summary stats
+    # Fetch tournament ELO data from summary or final logged metrics
+    tournament_elos: dict[str, float] = {}
     config = run.config
+    summary = run.summary
+
+    # Tournament ELO metrics are logged as tournament/elo_{player_id}
+    for key, value in summary.items():
+        if key.startswith("tournament/elo_") and isinstance(value, (int, float)):
+            model_id = key.replace("tournament/elo_", "")
+            tournament_elos[model_id] = float(value)
 
     metrics = RunMetrics(
         iterations=iterations,
@@ -138,6 +154,7 @@ def fetch_wandb_metrics(run_id: str, project: str = "hrmtrain/civ6az") -> RunMet
         cumulative_cost=cumulative_cost,
         iteration_duration_min=iteration_duration,
         model_versions=model_versions,
+        tournament_elos=tournament_elos,
         total_iterations=len(iterations),
         successful_iterations=len([v for v in total_loss if v > 0]),
         promotions=len(
@@ -451,6 +468,162 @@ def plot_cost_comparison(summary: RunSummary, output_path: Path, labels: tuple[s
     logging.info(f"Saved cost comparison to {output_path}")
 
 
+def plot_iteration_duration(
+    summary: RunSummary, output_path: Path, labels: tuple[str, str]
+) -> None:
+    """Generate iteration duration comparison plot.
+
+    Shows per-iteration timing to measure computational overhead of different encoders.
+
+    Args:
+        summary: RunSummary with both runs' metrics
+        output_path: Path to save plot
+        labels: Tuple of (label_a, label_b) for legend
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    metrics_a = summary.run_a_metrics
+    metrics_b = summary.run_b_metrics
+    label_a, label_b = labels
+
+    # Per-iteration duration
+    axes[0].plot(
+        metrics_a.iterations,
+        metrics_a.iteration_duration_min,
+        label=label_a,
+        marker="o",
+        alpha=0.7,
+        linewidth=2,
+    )
+    axes[0].plot(
+        metrics_b.iterations,
+        metrics_b.iteration_duration_min,
+        label=label_b,
+        marker="s",
+        alpha=0.7,
+        linewidth=2,
+    )
+    axes[0].set_xlabel("Iteration")
+    axes[0].set_ylabel("Duration (minutes)")
+    axes[0].set_title("Per-Iteration Duration")
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
+
+    # Bar chart of average duration
+    avg_a = sum(metrics_a.iteration_duration_min) / max(len(metrics_a.iteration_duration_min), 1)
+    avg_b = sum(metrics_b.iteration_duration_min) / max(len(metrics_b.iteration_duration_min), 1)
+    bars = axes[1].bar([label_a, label_b], [avg_a, avg_b], color=["#1f77b4", "#ff7f0e"], alpha=0.8)
+    axes[1].set_ylabel("Avg Duration (minutes)")
+    axes[1].set_title("Average Iteration Duration")
+    axes[1].grid(True, alpha=0.3, axis="y")
+
+    # Add value labels on bars
+    for bar, val in zip(bars, [avg_a, avg_b], strict=False):
+        axes[1].text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.2,
+            f"{val:.1f}m",
+            ha="center",
+            va="bottom",
+            fontweight="bold",
+        )
+
+    # Overhead annotation
+    if avg_b > 0:
+        overhead = (avg_a - avg_b) / avg_b * 100
+        if abs(overhead) > 1:
+            sign = "+" if overhead > 0 else ""
+            axes[1].set_xlabel(f"Overhead: {sign}{overhead:.1f}%")
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close()
+
+    logging.info(f"Saved iteration duration to {output_path}")
+
+
+def plot_elo_comparison(summary: RunSummary, output_path: Path, labels: tuple[str, str]) -> bool:
+    """Generate tournament ELO comparison plot.
+
+    Shows ELO distributions from post-run tournaments for both runs.
+    Returns False if no tournament data is available.
+
+    Args:
+        summary: RunSummary with both runs' metrics
+        output_path: Path to save plot
+        labels: Tuple of (label_a, label_b) for legend
+
+    Returns:
+        True if plot was generated, False if no tournament data
+    """
+    metrics_a = summary.run_a_metrics
+    metrics_b = summary.run_b_metrics
+    label_a, label_b = labels
+
+    has_a = bool(metrics_a.tournament_elos)
+    has_b = bool(metrics_b.tournament_elos)
+
+    if not has_a and not has_b:
+        logging.warning("No tournament ELO data available for either run — skipping ELO plot")
+        return False
+
+    ncols = 2 if (has_a and has_b) else 1
+    fig, axes = plt.subplots(1, ncols, figsize=(7 * ncols, 6))
+    if ncols == 1:
+        axes = [axes]
+
+    plot_idx = 0
+
+    for has_data, elos, label, color in [
+        (has_a, metrics_a.tournament_elos, label_a, "#1f77b4"),
+        (has_b, metrics_b.tournament_elos, label_b, "#ff7f0e"),
+    ]:
+        if not has_data:
+            continue
+        ax = axes[plot_idx] if (has_a and has_b) else axes[0]
+        plot_idx += 1
+
+        # Sort models by version number for plotting
+        sorted_models = sorted(elos.items(), key=lambda x: _extract_version(x[0]))
+        model_ids = [m[0] for m in sorted_models]
+        elo_values = [m[1] for m in sorted_models]
+
+        bars = ax.barh(model_ids, elo_values, color=color, alpha=0.7)
+        ax.set_xlabel("ELO Rating")
+        ax.set_title(f"{label} Tournament ELO")
+        ax.grid(True, alpha=0.3, axis="x")
+
+        # Highlight best model
+        if elo_values:
+            best_idx = elo_values.index(max(elo_values))
+            bars[best_idx].set_color("green")
+            bars[best_idx].set_alpha(1.0)
+
+        # Add value labels
+        for bar, val in zip(bars, elo_values, strict=False):
+            ax.text(
+                bar.get_width() + 1,
+                bar.get_y() + bar.get_height() / 2,
+                f"{val:.0f}",
+                ha="left",
+                va="center",
+                fontsize=8,
+            )
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close()
+
+    logging.info(f"Saved ELO comparison to {output_path}")
+    return True
+
+
+def _extract_version(model_id: str) -> int:
+    """Extract numeric version from model ID string like 'v167' or 'model_167'."""
+    match = re.search(r"(\d+)", model_id)
+    return int(match.group(1)) if match else 0
+
+
 def generate_summary_table(summary: RunSummary, output_path: Path, labels: tuple[str, str]) -> None:
     """Generate markdown summary table.
 
@@ -500,7 +673,9 @@ def generate_summary_table(summary: RunSummary, output_path: Path, labels: tuple
         f"| Total duration (min) | {metrics_a.total_duration_min:.1f} | {metrics_b.total_duration_min:.1f} | {metrics_a.total_duration_min - metrics_b.total_duration_min:+.1f} |",
         f"| Final model version | v{metrics_a.final_model_version} | v{metrics_b.final_model_version} | {metrics_a.final_model_version - metrics_b.final_model_version:+d} |",
         f"| Encoder type | {metrics_a.encoder_type} | {metrics_b.encoder_type} | - |",
-        f"| Param count | {metrics_a.param_count:,} | {metrics_b.param_count:,} | {metrics_a.param_count - metrics_b.param_count:+,} |",
+        f"| Param count | {metrics_a.param_count:,} | {metrics_b.param_count:,} | {metrics_a.param_count - metrics_b.param_count:+,} |"
+        if (metrics_a.param_count > 0 or metrics_b.param_count > 0)
+        else "| Param count | N/A | N/A | - |",
         "",
     ]
 
@@ -520,15 +695,25 @@ def generate_report(summary: RunSummary, output_path: Path, labels: tuple[str, s
     metrics_b = summary.run_b_metrics
     label_a, label_b = labels
 
-    # Calculate key insights
-    policy_improvement = (
-        (metrics_b.final_policy_loss - metrics_a.final_policy_loss)
-        / metrics_b.final_policy_loss
-        * 100
-    )
-    value_improvement = (
-        (metrics_b.final_value_loss - metrics_a.final_value_loss) / metrics_b.final_value_loss * 100
-    )
+    # Calculate key insights (with division-by-zero protection)
+    if metrics_b.final_policy_loss > 0:
+        policy_improvement = (
+            (metrics_b.final_policy_loss - metrics_a.final_policy_loss)
+            / metrics_b.final_policy_loss
+            * 100
+        )
+    else:
+        policy_improvement = 0.0
+
+    if metrics_b.final_value_loss > 0:
+        value_improvement = (
+            (metrics_b.final_value_loss - metrics_a.final_value_loss)
+            / metrics_b.final_value_loss
+            * 100
+        )
+    else:
+        value_improvement = 0.0
+
     cost_efficiency = metrics_a.total_cost / max(metrics_b.total_cost, 0.01)
     time_efficiency = metrics_a.total_duration_min / max(metrics_b.total_duration_min, 0.01)
 
@@ -582,15 +767,47 @@ def generate_report(summary: RunSummary, output_path: Path, labels: tuple[str, s
         f"- **{label_a}**: {metrics_a.encoder_type} encoder, {metrics_a.param_count:,} parameters",
         f"- **{label_b}**: {metrics_b.encoder_type} encoder, {metrics_b.param_count:,} parameters",
         "",
-        "## Visualizations",
-        "",
-        "- `loss_curves.png` - Policy, value, and total loss comparison",
-        "- `win_rates.png` - Evaluation win rate over iterations",
-        "- `cost_comparison.png` - Cumulative cost over iterations",
-        "",
-        "## Recommendations",
+        "### Tournament Results",
         "",
     ]
+
+    # Add tournament ELO summary if available
+    if metrics_a.tournament_elos:
+        elos_a = sorted(metrics_a.tournament_elos.values())
+        report_lines.append(
+            f"- **{label_a}**: {len(elos_a)} models, "
+            f"ELO range {elos_a[0]:.0f}-{elos_a[-1]:.0f} "
+            f"(spread: {elos_a[-1] - elos_a[0]:.0f})"
+        )
+    else:
+        report_lines.append(f"- **{label_a}**: No tournament data available")
+
+    if metrics_b.tournament_elos:
+        elos_b = sorted(metrics_b.tournament_elos.values())
+        report_lines.append(
+            f"- **{label_b}**: {len(elos_b)} models, "
+            f"ELO range {elos_b[0]:.0f}-{elos_b[-1]:.0f} "
+            f"(spread: {elos_b[-1] - elos_b[0]:.0f})"
+        )
+    else:
+        report_lines.append(f"- **{label_b}**: No tournament data available")
+
+    report_lines.extend(
+        [
+            "",
+            "## Visualizations",
+            "",
+            "- `loss_curves.png` - Policy, value, and total loss comparison",
+            "- `win_rates.png` - Evaluation win rate over iterations",
+            "- `cost_comparison.png` - Cumulative cost over iterations",
+            "- `iteration_duration.png` - Per-iteration timing and overhead comparison",
+            "- `elo_comparison.png` - Tournament ELO distributions (if available)",
+            "",
+            "## Recommendations",
+        ]
+    )
+
+    report_lines.append("")
 
     # Add recommendations based on metrics
     if policy_improvement < -5:  # >5% improvement
@@ -662,8 +879,8 @@ def main() -> None:
     parser.add_argument(
         "--project",
         type=str,
-        default="hrmtrain/civ6az",
-        help="W&B project path (default: hrmtrain/civ6az)",
+        default="ianshank-none/civ6-alphazero",
+        help="W&B project path (default: hrmtrain/civ6-alphazero)",
     )
 
     # Log-file mode
@@ -755,6 +972,8 @@ def main() -> None:
         plot_loss_curves(summary, args.output_dir / "loss_curves.png", labels)
         plot_win_rates(summary, args.output_dir / "win_rates.png", labels)
         plot_cost_comparison(summary, args.output_dir / "cost_comparison.png", labels)
+        plot_iteration_duration(summary, args.output_dir / "iteration_duration.png", labels)
+        has_elo = plot_elo_comparison(summary, args.output_dir / "elo_comparison.png", labels)
         generate_summary_table(summary, args.output_dir / "summary_table.md", labels)
         generate_report(summary, args.output_dir / "report.md", labels)
     except Exception as e:
@@ -765,6 +984,9 @@ def main() -> None:
     logger.info("  - loss_curves.png")
     logger.info("  - win_rates.png")
     logger.info("  - cost_comparison.png")
+    logger.info("  - iteration_duration.png")
+    if has_elo:
+        logger.info("  - elo_comparison.png")
     logger.info("  - summary_table.md")
     logger.info("  - report.md")
 

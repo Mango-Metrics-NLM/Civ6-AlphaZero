@@ -28,15 +28,16 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 15 | Scaled Training & Value Head Stabilization | ✅ Complete |
 | Phase 15+ | Standalone Tournament Worker & Lua Integration | ✅ Complete |
 | Phase 16 | Batch Inference & Vectorized Self-Play | ✅ Complete |
-| Phase 17 | Hex Crystalline Encoder & A/B Comparison | 🔄 Active |
+| Phase 17 | Training Readiness — action_mask, W&B groups, gumbel default | ✅ Complete |
 
 **Codebase Statistics:**
 
 - ~62,000 lines of core implementation
-- 5,100+ tests with >80% coverage on core modules
-- Docker v0.14.1 on GCR, 158+ model versions in GCS
-- A/B training comparison active: patch_embed vs hex_crystalline (20 iterations each)
-- Hex-topology-aware spatial encoder with crystalline attention and hex convolutions
+- 5,100+ tests, all passing (canonical Windows deselect list)
+- Docker v1.2.0 on Artifact Registry (`us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v1.2.0`)
+- 218+ model versions in GCS (v0-v218+), production run active
+- GumbelMCTS default: 13× faster than Civ6MCTS — 50-iter production run active (4 workers × 50 games/iter)
+- Action-masked cross-entropy training, W&B group coordination, eval retry with backoff
 - Python 3.10 compatibility shim for cloud containers (40 files)
 - Gameplay systems: terrain, fog of war, tech tree, combat
 - Civ6 Lua mod fully integrated with Python bridge (245 bridge tests, 50 integration tests)
@@ -1338,24 +1339,34 @@ Civ6-AlphaZero/
 | Value Correlation | 0.07–0.91 (unstable, addressed in Phase 15) |
 | Tournament | 23 models, 253 matchups, ELO spread 66 points |
 
+### Training Results — Phase 17: dashing-firebrand-1393 (50-iteration production run, ACTIVE)
+
+| Parameter | Value |
+|-----------|-------|
+| Container | `civ6az-prod-v120` on `civ6az-orchestrator` VM |
+| Config | 50 iters, 4 workers × 50 games, GumbelMCTS 16 sims, max_turns=30 |
+| LR | warmup_cosine 0.001→0.0001, value_lr_multiplier=0.1 |
+| Start model | v218 (auto-detected from GCS) |
+| W&B | [dashing-firebrand-1393](https://wandb.ai/ianshank-none/civ6-alphazero/runs/ukxjr0uz) |
+
 ### Next Steps
 
 | Priority | Feature | Description |
 |----------|---------|-------------|
-| P0 | A/B Comparison Analysis | Analyze Run A (patch_embed) vs Run B (hex_crystalline): loss curves, win rates, ELO, throughput |
-| P1 | Batch Self-Play Cloud Integration | Enable `--num_parallel_games` in cloud for 5-10x throughput |
-| P2 | Real Civ6 Game Testing | Test Python bridge ↔ Lua mod end-to-end with actual Civilization VI game |
+| P0 | Monitor 50-iter production run | Track win rates, value correlation, ELO spread via W&B |
+| P1 | Analyse 50-iter results | Policy loss trend, value head stability, post-run tournament ELO spread |
+| P2 | Batch self-play cloud integration | Enable `--num_parallel_games` in cloud for 5-10x throughput |
 | P3 | MuZero Training Run | Run MuZero PBT with `configs/muzero_pbt.yaml` to validate learned dynamics |
-| P4 | PBT on Vertex AI | Population-based training with auto hyperparameter tuning |
-| P5 | Human vs AI Interface | Web-based UI for human gameplay |
+| P4 | Real Civ6 Game Testing | Test Python bridge ↔ Lua mod end-to-end with actual Civilization VI |
+| P5 | PBT on Vertex AI | Population-based training with auto hyperparameter tuning |
 
 ### Current Priorities
 
-1. **A/B encoder comparison** — Run A (patch_embed, vibrant-snowball-1038) active on VM; Run B (hex_crystalline) auto-launches after completion. Use `scripts/compare_training_runs.py` for analysis
-2. **Encoder decision** — Based on A/B results, select encoder for production training (policy loss convergence, value accuracy, ELO spread, computational overhead)
-3. **Gameplay system integration** — Wire terrain, fog of war, tech tree, and combat systems into MicroCiv training loop
-4. **Batch self-play in cloud** — Enable vectorized self-play with `--num_parallel_games` for 5-10x throughput
-5. **Scale to longer training** — After encoder selection, run 100+ iteration training with optimal encoder
+1. **Production run monitoring** — `docker logs -f civ6az-prod-v120` on orchestrator VM; W&B at [dashing-firebrand-1393](https://wandb.ai/ianshank-none/civ6-alphazero/runs/ukxjr0uz)
+2. **Value head stability** — target `value_correlation > 0.5` for 10+ consecutive iterations (was 0.07-0.91 in Phase 14)
+3. **Model promotion** — target 3+ promotions over 50 iterations; 30-game eval with `win_threshold=0.55`
+4. **Post-run tournament** — automated round-robin of all 50 models, 25 MCTS sims, ELO spread target >100 pts
+5. **Batch self-play** — after run completes, enable `--num_parallel_games` for 3-5x throughput
 
 ## Contributing
 

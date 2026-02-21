@@ -30,10 +30,19 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
+import random
 import sys
 import time
+from typing import Final
 
-from alpha_zero.cloud.gcp.config import GCPConfig, NetworkArchitectureConfig
+from alpha_zero.cloud.gcp.config import (
+    DEFAULT_MCTS_TYPE,
+    VALID_MCTS_TYPES,
+    GCPConfig,
+    NetworkArchitectureConfig,
+)
+from alpha_zero.cloud.gcp.container_validator import validate_container_image
 from alpha_zero.cloud.gcp.exceptions import GCSStorageError, PreemptionError, VertexJobError
 from alpha_zero.cloud.gcp.storage import GCSModelStorage
 from alpha_zero.cloud.gcp.vertex_jobs import (
@@ -44,6 +53,46 @@ from alpha_zero.cloud.gcp.vertex_jobs import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Retry / backoff constants (overridable via CLI)
+# ---------------------------------------------------------------------------
+_INITIAL_RETRY_DELAY_S: Final[float] = 30.0
+_MAX_RETRY_DELAY_S: Final[float] = 300.0
+_BACKOFF_MULTIPLIER: Final[float] = 2.0
+_JITTER_FRACTION: Final[float] = 0.25
+
+# Machine type used by VertexEvaluationJob — kept in sync with VertexEvaluationJob.launch()
+# to ensure cost estimates match actual spending.
+_EVAL_MACHINE_TYPE: Final[str] = "n1-standard-4"
+
+
+def compute_retry_delay(
+    attempt: int,
+    *,
+    base: float = _INITIAL_RETRY_DELAY_S,
+    maximum: float = _MAX_RETRY_DELAY_S,
+    multiplier: float = _BACKOFF_MULTIPLIER,
+    jitter: float = _JITTER_FRACTION,
+) -> float:
+    """Compute retry delay with exponential backoff and jitter.
+
+    Formula: min(base * multiplier^attempt, maximum) * (1 + uniform(-jitter, jitter))
+
+    Args:
+        attempt: Zero-based retry attempt number.
+        base: Initial delay in seconds.
+        maximum: Cap on delay in seconds.
+        multiplier: Exponential growth factor.
+        jitter: Fraction of delay to add/subtract randomly (0 = deterministic).
+
+    Returns:
+        Delay in seconds (always >= 0).
+    """
+    raw = min(base * (multiplier ** attempt), maximum)
+    if jitter > 0:
+        raw *= 1.0 + random.uniform(-jitter, jitter)  # noqa: S311
+    return max(raw, 0.0)
 
 
 def setup_logging() -> None:
@@ -99,8 +148,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mcts_type",
         type=str,
-        default="civ6",
-        choices=["civ6", "gumbel"],
+        default=DEFAULT_MCTS_TYPE,
+        choices=VALID_MCTS_TYPES,
         help="MCTS algorithm variant",
     )
     parser.add_argument(
@@ -222,6 +271,12 @@ def parse_args() -> argparse.Namespace:
 
     # Learning rate schedule (passed through to training worker)
     parser.add_argument(
+        "--learning_rate",
+        type=float,
+        default=0.001,
+        help="Base learning rate (forwarded to training worker; applies to constant schedule)",
+    )
+    parser.add_argument(
         "--lr_schedule_type",
         type=str,
         default="constant",
@@ -254,8 +309,35 @@ def parse_args() -> argparse.Namespace:
         help="Minimum win rate improvement to not be stalled",
     )
 
+    # Circuit breaker: halt after N consecutive failures to prevent cost burn
+    parser.add_argument(
+        "--max_consecutive_failures",
+        type=int,
+        default=3,
+        help="Halt training after this many consecutive iteration failures (0=disabled)",
+    )
+
+    # Retry / backoff configuration
+    parser.add_argument(
+        "--initial_retry_delay",
+        type=float,
+        default=_INITIAL_RETRY_DELAY_S,
+        help="Initial retry delay in seconds (exponential backoff base)",
+    )
+    parser.add_argument(
+        "--max_retry_delay",
+        type=float,
+        default=_MAX_RETRY_DELAY_S,
+        help="Maximum retry delay in seconds (backoff cap)",
+    )
+
     parser.add_argument(
         "--dry_run", action="store_true", help="Validate without launching cloud jobs"
+    )
+    parser.add_argument(
+        "--skip_image_validation",
+        action="store_true",
+        help="Skip container image pre-flight validation check",
     )
 
     # Algorithm selection (MuZero support)
@@ -402,6 +484,9 @@ def build_training_extra_args(args: argparse.Namespace) -> list[str]:
     encoder_type = getattr(args, "encoder_type", "patch_embed")
     if encoder_type != "patch_embed":
         extra.append(f"--encoder_type={encoder_type}")
+    # Always forward learning rate (training worker default is 0.001)
+    learning_rate = getattr(args, "learning_rate", 0.001)
+    extra.append(f"--learning_rate={learning_rate}")
     return extra
 
 
@@ -471,6 +556,7 @@ def run_selfplay_phase(
 
     for attempt in range(max_retries + 1):
         try:
+            os.environ["WANDB_RUN_NAME"] = f"selfplay-iter{iteration:03d}"
             job_names = selfplay_manager.launch(
                 num_workers=num_workers,
                 model_version=model_version,
@@ -506,9 +592,20 @@ def run_selfplay_phase(
         except VertexJobError as e:
             logger.error("Self-play failed: %s", e)
             if attempt < max_retries:
-                time.sleep(30)
+                delay = compute_retry_delay(
+                    attempt,
+                    base=getattr(args, "initial_retry_delay", _INITIAL_RETRY_DELAY_S),
+                    maximum=getattr(args, "max_retry_delay", _MAX_RETRY_DELAY_S),
+                )
+                logger.info(
+                    "Retrying self-play in %.1fs (attempt %d/%d, backoff)",
+                    delay, attempt + 1, max_retries,
+                )
+                time.sleep(delay)
                 continue
             return False
+        finally:
+            os.environ.pop("WANDB_RUN_NAME", None)
 
     return False
 
@@ -542,6 +639,7 @@ def run_training_phase(
 
     for attempt in range(max_retries + 1):
         try:
+            os.environ["WANDB_RUN_NAME"] = f"training-iter{iteration:03d}"
             job_name = training_manager.launch(
                 iteration=iteration,
                 trajectory_iterations=trajectory_iterations,
@@ -557,8 +655,16 @@ def run_training_phase(
 
             logger.error("Training failed: %s", result.error_message)
             if attempt < max_retries:
-                logger.info("Retrying training phase...")
-                time.sleep(30)
+                delay = compute_retry_delay(
+                    attempt,
+                    base=getattr(args, "initial_retry_delay", _INITIAL_RETRY_DELAY_S),
+                    maximum=getattr(args, "max_retry_delay", _MAX_RETRY_DELAY_S),
+                )
+                logger.info(
+                    "Retrying training in %.1fs (attempt %d/%d, backoff)",
+                    delay, attempt + 1, max_retries,
+                )
+                time.sleep(delay)
                 continue
             return False
 
@@ -570,9 +676,20 @@ def run_training_phase(
         except VertexJobError as e:
             logger.error("Training job error: %s", e)
             if attempt < max_retries:
-                time.sleep(30)
+                delay = compute_retry_delay(
+                    attempt,
+                    base=getattr(args, "initial_retry_delay", _INITIAL_RETRY_DELAY_S),
+                    maximum=getattr(args, "max_retry_delay", _MAX_RETRY_DELAY_S),
+                )
+                logger.info(
+                    "Retrying training in %.1fs (attempt %d/%d, backoff)",
+                    delay, attempt + 1, max_retries,
+                )
+                time.sleep(delay)
                 continue
             return False
+        finally:
+            os.environ.pop("WANDB_RUN_NAME", None)
 
     return False
 
@@ -585,8 +702,19 @@ def run_evaluation_phase(
     model_version_old: int,
     args: argparse.Namespace,
     dry_run: bool = False,
+    max_retries: int = 2,
 ) -> tuple[bool, float]:
     """Run model evaluation phase.
+
+    Args:
+        config: GCP configuration.
+        client: Vertex AI client.
+        iteration: Current training iteration.
+        model_version_new: New model version to evaluate.
+        model_version_old: Baseline model version.
+        args: Parsed CLI arguments.
+        dry_run: If True, simulate without launching cloud jobs.
+        max_retries: Maximum number of retry attempts on failure.
 
     Returns:
         Tuple of (success, win_rate). win_rate is 0.0 on failure.
@@ -606,42 +734,77 @@ def run_evaluation_phase(
     extra_args = build_evaluation_extra_args(args)
     eval_manager = VertexEvaluationJob(config, client)
 
-    try:
-        job_name = eval_manager.launch(
-            model_version_new=model_version_new,
-            model_version_old=model_version_old,
-            iteration=iteration,
-            num_games=args.evaluation_games,
-            extra_args=extra_args,
-        )
-        logger.info("Launched evaluation job: v%d vs v%d", model_version_new, model_version_old)
-
-        result = eval_manager.wait_for_completion(job_name)
-
-        if not result.success:
-            logger.error("Evaluation job failed: %s", result.error_message)
-            return False, 0.0
-
-        # Load results from GCS
-        from alpha_zero.cloud.gcp.evaluation_worker import load_results
-
-        eval_results = load_results(config, iteration)
-        if eval_results:
-            win_rate = eval_results.get("win_rate", 0.0)
-            logger.info(
-                "Evaluation: v%d win_rate=%.2f%% vs v%d",
-                model_version_new,
-                win_rate * 100,
-                model_version_old,
+    for attempt in range(max_retries + 1):
+        try:
+            if attempt > 0:
+                delay = compute_retry_delay(
+                    attempt - 1,
+                    base=getattr(args, "initial_retry_delay", _INITIAL_RETRY_DELAY_S),
+                    maximum=getattr(args, "max_retry_delay", _MAX_RETRY_DELAY_S),
+                )
+                logger.info(
+                    "Evaluation retry %d/%d in %.0fs...", attempt, max_retries, delay
+                )
+                time.sleep(delay)
+            os.environ["WANDB_RUN_NAME"] = f"eval-iter{iteration:03d}"
+            job_name = eval_manager.launch(
+                model_version_new=model_version_new,
+                model_version_old=model_version_old,
+                iteration=iteration,
+                num_games=args.evaluation_games,
+                extra_args=extra_args,
             )
-            return True, win_rate
+            logger.info(
+                "Launched evaluation job: v%d vs v%d (attempt %d/%d)",
+                model_version_new,
+                model_version_old,
+                attempt + 1,
+                max_retries + 1,
+            )
 
-        logger.warning("Could not load evaluation results from GCS")
-        return True, 0.0
+            result = eval_manager.wait_for_completion(job_name)
 
-    except (VertexJobError, PreemptionError) as e:
-        logger.error("Evaluation failed: %s", e)
-        return False, 0.0
+            if not result.success:
+                logger.error(
+                    "Evaluation job failed (attempt %d/%d): %s",
+                    attempt + 1,
+                    max_retries + 1,
+                    result.error_message,
+                )
+                if attempt == max_retries:
+                    return False, 0.0
+                continue
+
+            # Load results from GCS
+            from alpha_zero.cloud.gcp.evaluation_worker import load_results
+
+            eval_results = load_results(config, iteration)
+            if eval_results:
+                win_rate = eval_results.get("win_rate", 0.0)
+                logger.info(
+                    "Evaluation: v%d win_rate=%.2f%% vs v%d",
+                    model_version_new,
+                    win_rate * 100,
+                    model_version_old,
+                )
+                return True, win_rate
+
+            logger.warning("Could not load evaluation results from GCS")
+            return True, 0.0
+
+        except (VertexJobError, PreemptionError) as e:
+            logger.error(
+                "Evaluation failed (attempt %d/%d): %s",
+                attempt + 1,
+                max_retries + 1,
+                e,
+            )
+            if attempt == max_retries:
+                return False, 0.0
+        finally:
+            os.environ.pop("WANDB_RUN_NAME", None)
+
+    return False, 0.0
 
 
 def _apply_model_subsampling(
@@ -836,9 +999,30 @@ def run_post_run_evaluation(
 
 
 def main() -> int:
-    """Main entry point."""
+    """Main entry point.
+
+    .. note:: This orchestrator is designed to run **locally** (or on a small
+       GCE VM with appropriate IAM permissions).  It dispatches self-play,
+       training, and evaluation jobs to Vertex AI Custom Jobs.  Running it
+       inside a Vertex AI container would create a recursive loop.
+    """
     args = parse_args()
     setup_logging()
+
+    # ARCHITECTURE GUARD: Detect if we're inside a Vertex AI container.
+    # Vertex AI sets CLOUD_ML_JOB_ID for all custom jobs.  The orchestrator
+    # should never run inside a container — it dispatches workers TO containers.
+    cloud_job_id = os.environ.get("CLOUD_ML_JOB_ID")
+    if cloud_job_id and not getattr(args, "dry_run", False):
+        logger.error(
+            "ARCHITECTURE ERROR: The orchestrator is running inside Vertex AI "
+            "container (job=%s). The orchestrator must run LOCALLY and dispatch "
+            "worker jobs to Vertex AI.  Running it in a container creates a "
+            "recursive loop. Use selfplay_worker.py or training_worker.py as "
+            "container entrypoints instead.",
+            cloud_job_id,
+        )
+        return 1
 
     # Apply architecture preset BEFORE W&B init so logged config is accurate
     if getattr(args, "architecture_preset", None):
@@ -882,6 +1066,17 @@ def main() -> int:
                     "mode": "orchestrator",
                 }
             )
+            # Propagate run name as W&B group for all worker containers
+            # so selfplay/training/evaluation runs appear grouped in the UI
+            try:
+                run_obj = getattr(wandb_logger, "run", None)
+                if run_obj is not None:
+                    group_name = getattr(run_obj, "name", None) or getattr(run_obj, "id", None)
+                    if group_name:
+                        os.environ["WANDB_GROUP"] = group_name
+                        logger.info("W&B group set to: %s", group_name)
+            except Exception as _e:
+                logger.debug("Could not set WANDB_GROUP: %s", _e)
             logger.info("W&B logging enabled for orchestrator")
     except ImportError:
         logger.debug("W&B not available")
@@ -941,6 +1136,22 @@ def main() -> int:
         if not args.dry_run:
             config.validate()
 
+        # --- Container image pre-flight validation ---
+        if not args.dry_run and not getattr(args, "skip_image_validation", False):
+            image_uri = config.container_image_uri
+            logger.info("Validating container image: %s", image_uri)
+            val_result = validate_container_image(image_uri)
+            if not val_result.exists:
+                logger.error(
+                    "Container image not found: %s (error: %s). "
+                    "Build and push the image first, or use --skip_image_validation.",
+                    image_uri,
+                    val_result.error,
+                )
+                return 1
+            if val_result.digest:
+                logger.info("Container digest: %s", val_result.digest)
+
         client = VertexAIClient(
             project=config.project_id,
             region=config.region,
@@ -992,6 +1203,8 @@ def main() -> int:
         total_start = time.time()
         successful_iterations = 0
         failed_iterations = 0
+        consecutive_failures = 0
+        max_consec = getattr(args, "max_consecutive_failures", 3)
         win_rate_history: list[float] = []
 
         for i in range(args.iterations):
@@ -1053,6 +1266,24 @@ def main() -> int:
             if not selfplay_ok:
                 logger.error("Self-play phase failed for iteration %d", iteration)
                 failed_iterations += 1
+                consecutive_failures += 1
+                if max_consec > 0 and consecutive_failures >= max_consec:
+                    logger.critical(
+                        "CIRCUIT BREAKER: %d consecutive failures reached "
+                        "(threshold=%d). Halting to prevent cost burn.",
+                        consecutive_failures,
+                        max_consec,
+                    )
+                    if wandb_logger is not None and wandb_logger.is_enabled:
+                        wandb_logger.alert(
+                            title="Circuit Breaker Triggered",
+                            text=(
+                                f"{consecutive_failures} consecutive iteration "
+                                f"failures. Training halted at iteration {iteration}."
+                            ),
+                            level="ERROR",
+                        )
+                    break
                 continue
 
             # Phase 2: Training
@@ -1088,6 +1319,24 @@ def main() -> int:
             if not training_ok:
                 logger.error("Training phase failed for iteration %d", iteration)
                 failed_iterations += 1
+                consecutive_failures += 1
+                if max_consec > 0 and consecutive_failures >= max_consec:
+                    logger.critical(
+                        "CIRCUIT BREAKER: %d consecutive failures reached "
+                        "(threshold=%d). Halting to prevent cost burn.",
+                        consecutive_failures,
+                        max_consec,
+                    )
+                    if wandb_logger is not None and wandb_logger.is_enabled:
+                        wandb_logger.alert(
+                            title="Circuit Breaker Triggered",
+                            text=(
+                                f"{consecutive_failures} consecutive iteration "
+                                f"failures. Training halted at iteration {iteration}."
+                            ),
+                            level="ERROR",
+                        )
+                    break
                 continue
 
             # Get new model version
@@ -1121,13 +1370,14 @@ def main() -> int:
                     model_version_old=model_version,
                     args=args,
                     dry_run=args.dry_run,
+                    max_retries=args.max_retries,
                 )
                 eval_duration = (time.time() - eval_start) / 3600.0
 
                 # Estimate eval cost using the actual VertexEvaluationJob spec:
-                # CPU-only worker on n1-standard-4 with no accelerators.
+                # CPU-only worker on _EVAL_MACHINE_TYPE with no accelerators.
                 eval_cost = cost_estimator.estimate_job_cost(
-                    machine_type="n1-standard-4",
+                    machine_type=_EVAL_MACHINE_TYPE,
                     accelerator_type="",
                     accelerator_count=0,
                     duration_hours=eval_duration,
@@ -1135,6 +1385,31 @@ def main() -> int:
                 )
                 total_estimated_cost += eval_cost
                 logger.info("Evaluation phase cost (est): $%.2f", eval_cost)
+
+                if not eval_ok:
+                    logger.error(
+                        "Evaluation phase failed for iteration %d after retries", iteration
+                    )
+                    failed_iterations += 1
+                    consecutive_failures += 1
+                    if max_consec > 0 and consecutive_failures >= max_consec:
+                        logger.critical(
+                            "CIRCUIT BREAKER: %d consecutive failures (eval) reached "
+                            "(threshold=%d). Halting to prevent cost burn.",
+                            consecutive_failures,
+                            max_consec,
+                        )
+                        if wandb_logger is not None and wandb_logger.is_enabled:
+                            wandb_logger.alert(
+                                title="Circuit Breaker Triggered",
+                                text=(
+                                    f"{consecutive_failures} consecutive failures "
+                                    f"(incl. eval). Training halted at iteration {iteration}."
+                                ),
+                                level="ERROR",
+                            )
+                        break
+                    continue
 
                 if eval_ok and win_rate < args.evaluation_win_threshold:
                     logger.warning(
@@ -1221,6 +1496,7 @@ def main() -> int:
 
             model_version = new_version
             successful_iterations += 1
+            consecutive_failures = 0  # Reset circuit breaker on success
 
         total_elapsed = time.time() - total_start
         logger.info("=" * 60)

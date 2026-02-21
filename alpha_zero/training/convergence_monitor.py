@@ -39,7 +39,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-import yaml  # type: ignore[import]
+import yaml
 
 logger = logging.getLogger(__name__)
 
