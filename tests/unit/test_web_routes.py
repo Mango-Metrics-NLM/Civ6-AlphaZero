@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from alpha_zero.web.config import WebConfig
+pytest.importorskip("fastapi", reason="fastapi not installed")
+
+from alpha_zero.web.config import WebConfig  # noqa: E402
 
 
 @pytest.fixture
@@ -357,9 +359,7 @@ class TestWebSocketEndpoint:
             assert data["type"] == "pong"
 
     def test_websocket_invalid_session(self, client):
-        with pytest.raises(  # noqa: B017
-            Exception
-        ):
+        with pytest.raises(Exception):
             with client.websocket_connect("/ws/game/nonexistent"):
                 pass
 
@@ -882,5 +882,3 @@ class TestWebSocketUncoveredPaths:
                 msg = ws.receive_json()
                 assert msg["type"] == "error"
                 assert "Game already over" in msg["message"]
-
-

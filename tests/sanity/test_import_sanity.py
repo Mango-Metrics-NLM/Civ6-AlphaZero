@@ -10,7 +10,7 @@ from __future__ import annotations
 import importlib
 import logging
 import pkgutil
-from typing import Generator
+from collections.abc import Generator
 
 import pytest
 
@@ -23,15 +23,17 @@ logger = logging.getLogger(__name__)
 _TOP_LEVEL_PACKAGE = "alpha_zero"
 
 # Modules that may fail due to optional dependencies (e.g., real game env)
-_OPTIONAL_MODULES: frozenset[str] = frozenset({
-    "alpha_zero.envs.real_civ6_env",
-    "alpha_zero.bridge.civ6_bridge",
-    "alpha_zero.bridge.lua_ipc",
-    "alpha_zero.rag.embeddings.openai_embeddings",
-    "alpha_zero.rag.embeddings.sentence_transformer_embeddings",
-    "alpha_zero.rag.vector_stores.chroma_store",
-    "alpha_zero.rag.vector_stores.faiss_store",
-})
+_OPTIONAL_MODULES: frozenset[str] = frozenset(
+    {
+        "alpha_zero.envs.real_civ6_env",
+        "alpha_zero.bridge.civ6_bridge",
+        "alpha_zero.bridge.lua_ipc",
+        "alpha_zero.rag.embeddings.openai_embeddings",
+        "alpha_zero.rag.embeddings.sentence_transformer_embeddings",
+        "alpha_zero.rag.vector_stores.chroma_store",
+        "alpha_zero.rag.vector_stores.faiss_store",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -85,23 +87,23 @@ class TestImportSanity:
             from packaging.version import Version
 
             ver = Version(alpha_zero.__version__)
-            assert ver.release is not None, (
-                f"Version '{alpha_zero.__version__}' has no release segment"
-            )
-            assert len(ver.release) >= 3, (  # noqa: PLR2004
+            assert (
+                ver.release is not None
+            ), f"Version '{alpha_zero.__version__}' has no release segment"
+            assert len(ver.release) >= 3, (
                 f"Version '{alpha_zero.__version__}' should have at least "
                 f"3 release segments (X.Y.Z), got {len(ver.release)}"
             )
             logger.info(
                 "Version %s parsed: release=%s, pre=%s",
-                alpha_zero.__version__, ver.release, ver.pre,
+                alpha_zero.__version__,
+                ver.release,
+                ver.pre,
             )
         except ImportError:
             # Fallback: basic check if packaging is not installed
             parts = alpha_zero.__version__.split(".")
-            assert len(parts) >= 3, (  # noqa: PLR2004
-                f"Version '{alpha_zero.__version__}' should be semver X.Y.Z"
-            )
+            assert len(parts) >= 3, f"Version '{alpha_zero.__version__}' should be semver X.Y.Z"
 
     def test_public_api_exports(self) -> None:
         """``__all__`` is defined and non-empty."""
@@ -148,6 +150,5 @@ class TestImportSanity:
                 logger.info("Optional module %s skipped (not installed)", mod_name)
             except Exception as exc:
                 pytest.fail(
-                    f"Optional module {mod_name} raised unexpected "
-                    f"{type(exc).__name__}: {exc}"
+                    f"Optional module {mod_name} raised unexpected " f"{type(exc).__name__}: {exc}"
                 )

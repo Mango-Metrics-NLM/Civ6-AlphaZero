@@ -84,7 +84,7 @@ class TestParseArgs:
             args = parse_args()
             assert args.games == 20
             assert args.mcts_simulations == 25
-            assert args.mcts_type == "civ6"
+            assert args.mcts_type == "gumbel"
             assert args.board_size == 8
             assert args.max_turns == 30
             assert args.action_space_size == 376
@@ -140,7 +140,9 @@ class TestLoadModel:
 
         # Use TransformerConfig defaults: spatial_size=16, action_space_size=381
         default_cfg = TransformerConfig()
-        spatial = torch.randn(1, default_cfg.spatial_channels, default_cfg.spatial_size, default_cfg.spatial_size)
+        spatial = torch.randn(
+            1, default_cfg.spatial_channels, default_cfg.spatial_size, default_cfg.spatial_size
+        )
         vector = torch.randn(1, default_cfg.vector_dim)
         action_mask = torch.ones(1, default_cfg.action_space_size)
 
@@ -153,7 +155,9 @@ class TestLoadModel:
         mock_storage = MagicMock()
 
         # Create state dict with explicit config
-        config = TransformerConfig(embed_dim=64, num_layers=2, spatial_size=8, action_space_size=376)
+        config = TransformerConfig(
+            embed_dim=64, num_layers=2, spatial_size=8, action_space_size=376
+        )
         model = Civ6TransformerNetwork(config=config)
         state_dict = model.state_dict()
 
@@ -169,7 +173,9 @@ class TestLoadModel:
 
         mock_storage.load_model.return_value = (state_dict, {"iteration": 5}, model_config_dict)
 
-        with patch("alpha_zero.cloud.gcp.evaluation_worker.GCSModelStorage", return_value=mock_storage):
+        with patch(
+            "alpha_zero.cloud.gcp.evaluation_worker.GCSModelStorage", return_value=mock_storage
+        ):
             loaded_model = load_model(gcp_config, version=5, dry_run=False)
 
         assert isinstance(loaded_model, Civ6TransformerNetwork)
@@ -183,8 +189,12 @@ class TestLoadModel:
 
         # Create state dict matching pipeline architecture (NetworkArchitectureConfig defaults)
         pipeline_config = TransformerConfig(
-            spatial_channels=13, spatial_size=8, vector_dim=64,
-            action_space_size=376, num_layers=6, embed_dim=64,
+            spatial_channels=13,
+            spatial_size=8,
+            vector_dim=64,
+            action_space_size=376,
+            num_layers=6,
+            embed_dim=64,
         )
         model = Civ6TransformerNetwork(config=pipeline_config)
         state_dict = model.state_dict()
@@ -192,7 +202,9 @@ class TestLoadModel:
         # Legacy models return None for model_config
         mock_storage.load_model.return_value = (state_dict, {"iteration": 1}, None)
 
-        with patch("alpha_zero.cloud.gcp.evaluation_worker.GCSModelStorage", return_value=mock_storage):
+        with patch(
+            "alpha_zero.cloud.gcp.evaluation_worker.GCSModelStorage", return_value=mock_storage
+        ):
             loaded_model = load_model(gcp_config, version=1, dry_run=False)
 
         assert isinstance(loaded_model, Civ6TransformerNetwork)
@@ -224,7 +236,9 @@ class TestLoadModel:
 
         mock_storage.load_model.return_value = (state_dict, {}, model_config_dict)
 
-        with patch("alpha_zero.cloud.gcp.evaluation_worker.GCSModelStorage", return_value=mock_storage):
+        with patch(
+            "alpha_zero.cloud.gcp.evaluation_worker.GCSModelStorage", return_value=mock_storage
+        ):
             loaded_model = load_model(gcp_config, version=1, dry_run=False)
 
         assert isinstance(loaded_model, Civ6TransformerNetwork)
@@ -249,12 +263,14 @@ class TestLoadModel:
             "embed_dim": config.embed_dim,
             "num_layers": config.num_layers,
             "_num_patches": 64,  # Computed field — should be removed
-            "_head_dim": 16,     # Computed field — should be removed
+            "_head_dim": 16,  # Computed field — should be removed
         }
 
         mock_storage.load_model.return_value = (state_dict, {}, model_config_dict)
 
-        with patch("alpha_zero.cloud.gcp.evaluation_worker.GCSModelStorage", return_value=mock_storage):
+        with patch(
+            "alpha_zero.cloud.gcp.evaluation_worker.GCSModelStorage", return_value=mock_storage
+        ):
             loaded_model = load_model(gcp_config, version=1, dry_run=False)
 
         assert isinstance(loaded_model, Civ6TransformerNetwork)
@@ -266,8 +282,12 @@ class TestLoadModel:
 
         # Create state dict matching pipeline architecture (what fallback will use)
         pipeline_config = TransformerConfig(
-            spatial_channels=13, spatial_size=8, vector_dim=64,
-            action_space_size=376, num_layers=6, embed_dim=64,
+            spatial_channels=13,
+            spatial_size=8,
+            vector_dim=64,
+            action_space_size=376,
+            num_layers=6,
+            embed_dim=64,
         )
         model = Civ6TransformerNetwork(config=pipeline_config)
         state_dict = model.state_dict()
@@ -281,7 +301,9 @@ class TestLoadModel:
 
         mock_storage.load_model.return_value = (state_dict, {}, model_config_dict)
 
-        with patch("alpha_zero.cloud.gcp.evaluation_worker.GCSModelStorage", return_value=mock_storage):
+        with patch(
+            "alpha_zero.cloud.gcp.evaluation_worker.GCSModelStorage", return_value=mock_storage
+        ):
             loaded_model = load_model(gcp_config, version=1, dry_run=False)
 
         assert isinstance(loaded_model, Civ6TransformerNetwork)

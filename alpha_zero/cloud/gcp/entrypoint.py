@@ -33,14 +33,30 @@ def main() -> int:
         from alpha_zero.cloud.gcp.evaluation_worker import main as worker_main
 
         return worker_main()
-    elif mode == "orchestrator":
-        from alpha_zero.cloud.gcp.vertex_orchestrator import main as orch_main
+    elif mode == "tournament":
+        from alpha_zero.cloud.gcp.tournament_worker import main as worker_main
 
-        return orch_main()
+        return worker_main()
+    elif mode == "orchestrator":
+        # ARCHITECTURE GUARD: The orchestrator is designed to run LOCALLY and
+        # dispatch worker jobs to Vertex AI.  Running it inside a container
+        # creates a recursive loop (it would try to submit MORE Vertex AI jobs
+        # from within the container, which likely lacks credentials and is
+        # architecturally incorrect).
+        print(
+            "ERROR: The orchestrator must NOT run inside a Vertex AI container.\n"
+            "It is designed to run locally (or on a small GCE VM) and dispatch\n"
+            "worker jobs to Vertex AI.\n\n"
+            "Usage (from your local machine):\n"
+            "  python -m alpha_zero.cloud.gcp.vertex_orchestrator --algorithm=muzero ...\n\n"
+            "Valid container modes: selfplay, training, evaluation, tournament",
+            file=sys.stderr,
+        )
+        return 1
     else:
         print(
             f"Unknown mode: {mode}. "
-            "Use 'selfplay', 'training', 'evaluation', or 'orchestrator'.",
+            "Use 'selfplay', 'training', 'evaluation', 'tournament', or 'orchestrator'.",
             file=sys.stderr,
         )
         return 1

@@ -225,6 +225,10 @@ class TestNetworkArchitectureConfigDefaults:
             "vector_dim",
             "num_layers",
             "embed_dim",
+            "num_heads",
+            "policy_hidden_dim",
+            "value_head_dim",
+            "encoder_type",
         }
 
         # Values match

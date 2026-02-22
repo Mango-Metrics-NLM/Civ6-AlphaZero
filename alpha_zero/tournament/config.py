@@ -12,12 +12,14 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from alpha_zero.utils.compat import UTC
 
 
 class MatchOutcome(str, Enum):

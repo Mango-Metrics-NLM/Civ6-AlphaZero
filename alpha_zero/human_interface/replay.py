@@ -25,7 +25,7 @@ import logging
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +33,7 @@ import numpy as np
 
 from alpha_zero.human_interface.config import HumanInterfaceConfig
 from alpha_zero.human_interface.game_controller import TurnResult
+from alpha_zero.utils.compat import UTC
 
 logger = logging.getLogger(__name__)
 

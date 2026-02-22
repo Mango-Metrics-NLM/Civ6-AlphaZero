@@ -95,13 +95,15 @@ class TestSafeguardIntegration(unittest.TestCase):
         safeguard_config = TrainingSafeguardConfig()
         safeguard = TrainingSafeguard(safeguard_config)
 
-        mock_check_step = MagicMock(return_value=SafeguardReport(
-            step=0,
-            loss=0.5,
-            grad_norm=1.0,
-            nan_detected=False,
-            loss_exploding=False,
-        ))
+        mock_check_step = MagicMock(
+            return_value=SafeguardReport(
+                step=0,
+                loss=0.5,
+                grad_norm=1.0,
+                nan_detected=False,
+                loss_exploding=False,
+            )
+        )
         safeguard.check_step = mock_check_step
 
         assert hasattr(safeguard, "check_step")

@@ -10,7 +10,9 @@ server is not running.
 
 from typing import Any
 
+from alpha_zero.envs.env_factory import GAMEPLAY_PRESETS, create_game_env
 from alpha_zero.envs.microciv import MicroCivEnv
+from alpha_zero.envs.microciv_enhanced import EnhancedMicroCivEnv
 
 
 def __getattr__(name: str) -> Any:
@@ -36,6 +38,8 @@ def __getattr__(name: str) -> Any:
 
 __all__ = [
     "CIVREALM_AVAILABLE",
+    # Environment factory
+    "GAMEPLAY_PRESETS",
     "CivRealmActionHandler",
     # CivRealm (lazy loaded)
     "CivRealmConfig",
@@ -43,7 +47,9 @@ __all__ = [
     "CivRealmEncoder",
     "CivRealmWrapper",
     # MicroCiv
+    "EnhancedMicroCivEnv",
     "MicroCivEnv",
     "MiniGameTask",
     "create_civrealm_env",
+    "create_game_env",
 ]

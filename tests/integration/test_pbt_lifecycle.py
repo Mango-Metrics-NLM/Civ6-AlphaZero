@@ -7,7 +7,6 @@ Validates the full PBT cycle using the actual PopulationManager API:
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import numpy as np
 import pytest
@@ -65,7 +64,7 @@ class TestPBTLifecycle:
 
         ids = mgr.get_agent_ids()
         scores = [1.0, 0.8, 0.3, 0.1]
-        for agent_id, score in zip(ids, scores):
+        for agent_id, score in zip(ids, scores, strict=False):
             mgr.update_fitness(agent_id, score)
 
         ranking = mgr.get_fitness_ranking()
@@ -82,7 +81,7 @@ class TestPBTLifecycle:
 
         ids = mgr.get_agent_ids()
         scores = [1.0, 0.8, 0.3, 0.1]
-        for agent_id, score in zip(ids, scores):
+        for agent_id, score in zip(ids, scores, strict=False):
             mgr.update_fitness(agent_id, score)
 
         replacements = mgr.exploit_and_explore()
@@ -104,9 +103,7 @@ class TestPBTLifecycle:
             mutation_probability=1.0,
         )
 
-        changed = any(
-            original[k] != mutated[k] for k in original if k in mutated
-        )
+        changed = any(original[k] != mutated[k] for k in original if k in mutated)
         assert changed, "Mutation should change at least one hyperparameter"
 
         for name, value in mutated.items():
@@ -132,9 +129,7 @@ class TestPBTLifecycle:
         assert restored.agent_id == agent.agent_id
         assert restored.fitness_score == pytest.approx(agent.fitness_score)
         for k in agent.hyperparameters:
-            assert restored.hyperparameters[k] == pytest.approx(
-                agent.hyperparameters[k], rel=1e-6
-            )
+            assert restored.hyperparameters[k] == pytest.approx(agent.hyperparameters[k], rel=1e-6)
 
     def test_population_stats(self, rng: np.random.Generator) -> None:
         """Population stats compute correctly."""

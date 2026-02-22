@@ -42,9 +42,9 @@ class TestGameLength:
 
         # Count how many games ended at turn 1 or less
         early_terminations = sum(1 for t in game_lengths if t <= 1)
-        assert early_terminations == 0, (
-            f"{early_terminations} games ended at turn 1 or less. Game lengths: {game_lengths}"
-        )
+        assert (
+            early_terminations == 0
+        ), f"{early_terminations} games ended at turn 1 or less. Game lengths: {game_lengths}"
 
     def test_no_immediate_victory(self):
         """Game should not immediately end due to victory conditions."""
@@ -150,9 +150,9 @@ class TestSelfPlayIntegration:
             )
 
             # Verify action is valid
-            assert obs["action_mask"][action] > 0, (
-                f"Invalid action {action} selected at step {steps}"
-            )
+            assert (
+                obs["action_mask"][action] > 0
+            ), f"Invalid action {action} selected at step {steps}"
 
             obs, _reward, terminated, truncated, _info = env.step(action)
             steps += 1
@@ -206,9 +206,9 @@ class TestTerminationConditions:
             _obs, _, terminated, truncated, _info = env.step(0)  # End turn
 
             if terminated or truncated:
-                assert env.turn >= 5 or env.done, (
-                    f"Terminated at turn {env.turn} before max_turns=5"
-                )
+                assert (
+                    env.turn >= 5 or env.done
+                ), f"Terminated at turn {env.turn} before max_turns=5"
                 break
 
     def test_initial_state_not_terminated(self):

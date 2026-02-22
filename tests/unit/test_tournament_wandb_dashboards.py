@@ -91,9 +91,7 @@ class TestTournamentWandbLogger:
         assert "tournament/match/is_upset" in logged_data
         assert logged_data["tournament/match/is_upset"] == 1  # Lower rated player won
 
-    def test_log_match_result_not_initialized(
-        self, mock_wandb_logger, sample_match
-    ):
+    def test_log_match_result_not_initialized(self, mock_wandb_logger, sample_match):
         """Test match logging when W&B not initialized."""
         mock_wandb_logger.is_initialized = False
         logger = TournamentWandbLogger(mock_wandb_logger)
@@ -153,8 +151,9 @@ class TestTournamentWandbLogger:
         from alpha_zero.tournament.orchestrator import PlayerStanding
 
         # Create mock tournament result using TournamentResult field names
-        result = MagicMock(spec=["winner", "total_games", "total_rounds",
-                                  "duration_seconds", "final_standings"])
+        result = MagicMock(
+            spec=["winner", "total_games", "total_rounds", "duration_seconds", "final_standings"]
+        )
         result.winner = "champion"
         result.total_games = 100
         result.total_rounds = 5
@@ -233,9 +232,7 @@ class TestTournamentWandbLogger:
         assert table_call[1]["columns"] == ["Player", "player_a", "player_b", "player_c"]
         assert len(table_call[1]["data"]) == 3
 
-    def test_log_head_to_head_matrix_mismatch(
-        self, tournament_logger, mock_wandb_logger
-    ):
+    def test_log_head_to_head_matrix_mismatch(self, tournament_logger, mock_wandb_logger):
         """Test matrix size mismatch handling."""
         matrix = np.array([[0.5, 0.6], [0.4, 0.5]])
         players = ["player_a", "player_b", "player_c"]  # 3 players but 2x2 matrix

@@ -299,7 +299,7 @@ LESSON: Early military investment prevents mid-game collapse
 
         generator = ReflectionGenerator(config, llm_client=mock_client)
 
-        with pytest.raises(Exception):  # noqa: B017
+        with pytest.raises(Exception):
             await generator.generate_critique(sample_trajectory)
 
     def test_clear_cache(self, config, mock_llm_client):

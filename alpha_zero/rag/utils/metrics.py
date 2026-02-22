@@ -12,8 +12,10 @@ from __future__ import annotations
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
+
+from alpha_zero.utils.compat import UTC
 
 
 @dataclass

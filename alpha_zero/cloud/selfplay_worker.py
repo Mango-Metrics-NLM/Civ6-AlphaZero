@@ -27,7 +27,7 @@ import os
 import sys
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -35,6 +35,7 @@ import torch
 
 from alpha_zero.cloud.preemption import PreemptionHandler, register_preemption_handler
 from alpha_zero.storage import StorageConfig, create_storage_backend
+from alpha_zero.utils.compat import UTC
 
 if TYPE_CHECKING:
     from alpha_zero.core.civ6_network import MicroCivNetwork

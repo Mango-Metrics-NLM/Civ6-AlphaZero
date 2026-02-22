@@ -450,7 +450,7 @@ class InferenceBenchmark:
         Returns:
             Tuple of (move_count, game_time_seconds).
         """
-        obs, _ = env.reset()
+        _obs, _ = env.reset()
         done = False
         move_count = 0
         start_time = time.perf_counter()

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Build and push the training container to GCR using Cloud Build.
+"""Build and push the training container to Artifact Registry using Cloud Build.
 
 This script triggers a Cloud Build job to build and push the container image.
 It creates a tar archive of the source code and uploads it to Cloud Build.
 
 Usage:
     python scripts/build_and_push.py [--tag TAG]
+    python scripts/build_and_push.py --tag v1.0.0 --region us-central1
 """
 
 from __future__ import annotations
@@ -93,11 +94,7 @@ def create_source_archive(project_root: Path) -> bytes:
                 # Directory - walk and add files
                 for root, dirs, files in os.walk(path):
                     # Filter out excluded directories
-                    dirs[:] = [
-                        d
-                        for d in dirs
-                        if not any(excl in d for excl in exclude_patterns)
-                    ]
+                    dirs[:] = [d for d in dirs if not any(excl in d for excl in exclude_patterns)]
 
                     for file in files:
                         # Skip excluded file patterns
@@ -116,6 +113,8 @@ def trigger_cloud_build(
     project_id: str,
     bucket_name: str,
     tag: str = "latest",
+    region: str = "us-central1",
+    ar_repo: str = "civ6az",
 ) -> str:
     """Trigger Cloud Build and wait for completion."""
     print(f"Building container with tag: {tag}")
@@ -156,7 +155,7 @@ def trigger_cloud_build(
                 args=[
                     "build",
                     "-t",
-                    f"gcr.io/{project_id}/civ6az-training:{tag}",
+                    f"{region}-docker.pkg.dev/{project_id}/{ar_repo}/civ6az-training:{tag}",
                     "-f",
                     "dockerfiles/Dockerfile.vertex",
                     ".",
@@ -165,7 +164,7 @@ def trigger_cloud_build(
             ),
             # Smoke test
             cloudbuild_v1.BuildStep(
-                name=f"gcr.io/{project_id}/civ6az-training:{tag}",
+                name=f"{region}-docker.pkg.dev/{project_id}/{ar_repo}/civ6az-training:{tag}",
                 entrypoint="python",
                 args=[
                     "-c",
@@ -177,7 +176,7 @@ def trigger_cloud_build(
             ),
             # Test selfplay worker
             cloudbuild_v1.BuildStep(
-                name=f"gcr.io/{project_id}/civ6az-training:{tag}",
+                name=f"{region}-docker.pkg.dev/{project_id}/{ar_repo}/civ6az-training:{tag}",
                 entrypoint="python",
                 args=[
                     "-m",
@@ -197,13 +196,13 @@ def trigger_cloud_build(
                 name="gcr.io/cloud-builders/docker",
                 args=[
                     "push",
-                    f"gcr.io/{project_id}/civ6az-training:{tag}",
+                    f"{region}-docker.pkg.dev/{project_id}/{ar_repo}/civ6az-training:{tag}",
                 ],
                 id="push",
                 wait_for=["test-selfplay"],
             ),
         ],
-        images=[f"gcr.io/{project_id}/civ6az-training:{tag}"],
+        images=[f"{region}-docker.pkg.dev/{project_id}/{ar_repo}/civ6az-training:{tag}"],
         options=cloudbuild_v1.BuildOptions(
             logging=cloudbuild_v1.BuildOptions.LoggingMode.CLOUD_LOGGING_ONLY,
             machine_type=cloudbuild_v1.BuildOptions.MachineType.E2_HIGHCPU_8,
@@ -227,10 +226,11 @@ def trigger_cloud_build(
     print("Waiting for build to complete (this may take 10-15 minutes)...")
     result = operation.result()
 
+    image_uri = f"{region}-docker.pkg.dev/{project_id}/{ar_repo}/civ6az-training:{tag}"
     if result.status == cloudbuild_v1.Build.Status.SUCCESS:
         print("\nBuild completed successfully!")
-        print(f"Image: gcr.io/{project_id}/civ6az-training:{tag}")
-        return f"gcr.io/{project_id}/civ6az-training:{tag}"
+        print(f"Image: {image_uri}")
+        return image_uri
     else:
         print(f"\nBuild failed with status: {result.status.name}")
         raise RuntimeError(f"Build failed: {result.status.name}")
@@ -240,12 +240,15 @@ def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Build and push training container")
     parser.add_argument("--tag", default="latest", help="Container image tag")
+    parser.add_argument("--region", default="us-central1", help="Artifact Registry region")
+    parser.add_argument("--repo", default="civ6az", help="Artifact Registry repo name")
     args = parser.parse_args()
 
     # Load .env file if it exists
     env_file = Path(__file__).parent.parent / ".env"
     if env_file.exists():
         from dotenv import load_dotenv
+
         load_dotenv(env_file)
 
     # Get project and bucket from environment with validation
@@ -276,7 +279,7 @@ def main() -> None:
     print(f"Bucket: {bucket_name}")
 
     try:
-        image_uri = trigger_cloud_build(project_id, bucket_name, args.tag)
+        image_uri = trigger_cloud_build(project_id, bucket_name, args.tag, args.region, args.repo)
         print(f"\nDone! Set CIV6AZ_CONTAINER_IMAGE_URI={image_uri}")
     except Exception as e:
         print(f"Error: {e}")

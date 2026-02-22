@@ -47,8 +47,10 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, Protocol
+
+from alpha_zero.utils.compat import UTC
 
 logger = logging.getLogger(__name__)
 

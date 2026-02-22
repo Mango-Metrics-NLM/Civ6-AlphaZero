@@ -20,7 +20,7 @@ import logging
 import os
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -28,6 +28,7 @@ from typing import Any
 import yaml
 
 from alpha_zero.cloud.gcp.exceptions import ConfigurationError
+from alpha_zero.utils.compat import UTC
 
 logger = logging.getLogger(__name__)
 

@@ -488,12 +488,13 @@ class PBTOrchestrator:
                 f"--agent_id={agent.agent_id}",
             ]
 
-            # NOTE: MuZero config is picked up by workers via
-            # CIV6AZ_MUZERO_* environment variables, not CLI flags.
+            # Pass MuZero CLI flags when MuZero config is active.
+            # Workers also read CIV6AZ_MUZERO_* environment variables
+            # for detailed settings.
             if self.muzero_config is not None:
+                extra_args.append("--mcts_type=muzero")
                 logger.debug(
-                    "MuZero config detected for agent %s self-play — "
-                    "workers read CIV6AZ_MUZERO_* env vars.",
+                    "MuZero config active for agent %s self-play: " "passing --mcts_type=muzero",
                     agent.agent_id,
                 )
 
@@ -528,14 +529,12 @@ class PBTOrchestrator:
                 f"--agent_id={agent.agent_id}",
             ]
 
-            # NOTE: MuZero and safeguard configs are passed via environment
-            # variables (CIV6AZ_MUZERO_* / CIV6AZ_SAFEGUARD_*) rather than
-            # CLI flags, because the Vertex training workers do not define
-            # these arguments in their argparse parsers.
+            # Pass MuZero and safeguard CLI flags when configs are active.
+            # Workers also read environment variables for detailed settings.
             if self.muzero_config is not None:
+                extra_args.append("--algorithm=muzero")
                 logger.debug(
-                    "MuZero config detected for agent %s — workers will "
-                    "pick up settings via CIV6AZ_MUZERO_* env vars.",
+                    "MuZero config active for agent %s training: " "passing --algorithm=muzero",
                     agent.agent_id,
                 )
 

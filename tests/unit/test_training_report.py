@@ -243,9 +243,15 @@ class TestTrainingReport(unittest.TestCase):
         config = TrainingReportConfig(report_interval=3)
         report = TrainingReport(config)
 
-        report.record_step(step=0, loss=0.5, grad_norm=1.0, lr=0.001, policy_loss=0.3, value_loss=0.2)
-        report.record_step(step=1, loss=0.5, grad_norm=1.0, lr=0.001, policy_loss=0.4, value_loss=0.3)
-        report.record_step(step=2, loss=0.5, grad_norm=1.0, lr=0.001, policy_loss=0.5, value_loss=0.4)
+        report.record_step(
+            step=0, loss=0.5, grad_norm=1.0, lr=0.001, policy_loss=0.3, value_loss=0.2
+        )
+        report.record_step(
+            step=1, loss=0.5, grad_norm=1.0, lr=0.001, policy_loss=0.4, value_loss=0.3
+        )
+        report.record_step(
+            step=2, loss=0.5, grad_norm=1.0, lr=0.001, policy_loss=0.5, value_loss=0.4
+        )
 
         report_data = report.generate_report(step=2)
 

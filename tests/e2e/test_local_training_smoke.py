@@ -32,10 +32,8 @@ def _torch_load_compat(
         return torch.load(path, map_location=map_location, weights_only=weights_only)
     except TypeError:
         # Fallback for older PyTorch without weights_only parameter
-        logger.warning(
-            "torch.load weights_only not supported; falling back to default load"
-        )
-        return torch.load(path, map_location=map_location)  # noqa: S614
+        logger.warning("torch.load weights_only not supported; falling back to default load")
+        return torch.load(path, map_location=map_location)
 
 
 # ---------------------------------------------------------------------------
@@ -165,9 +163,7 @@ class TestLocalTrainingSmoke:
 
         logger.info("Model save/load roundtrip OK: %s", checkpoint_path)
 
-    def test_environment_episode_completes(
-        self, smoke_config: dict[str, Any]
-    ) -> None:
+    def test_environment_episode_completes(self, smoke_config: dict[str, Any]) -> None:
         """MicroCivEnv runs a full episode without errors."""
         from alpha_zero.envs.microciv import MicroCivEnv
 
@@ -196,9 +192,7 @@ class TestLocalTrainingSmoke:
         value = torch.randn(bs, 1)
         target_value = torch.randn(bs, 1)
 
-        policy_loss = -(
-            target_policy * torch.log_softmax(policy_logits, dim=-1)
-        ).sum(dim=-1).mean()
+        policy_loss = -(target_policy * torch.log_softmax(policy_logits, dim=-1)).sum(dim=-1).mean()
         value_loss = torch.nn.functional.mse_loss(value, target_value)
 
         total_loss = policy_loss + value_loss

@@ -12,7 +12,7 @@ Test Coverage:
 """
 
 import unittest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, call, patch
 
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.pbt_orchestrator import PBTOrchestrator
@@ -114,7 +114,7 @@ class TestWandbLoggerPopulationStats(unittest.TestCase):
             max_elo=1550.0,
             min_elo=1350.0,
             population_size=6,
-            **{"pbt/already_prefixed": 99}
+            **{"pbt/already_prefixed": 99},
         )
 
         mock_wandb.log.assert_called_once()

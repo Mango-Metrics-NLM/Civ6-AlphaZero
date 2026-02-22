@@ -1,4 +1,5 @@
 """Unit tests for spot_availability module."""
+
 from __future__ import annotations
 
 import os
@@ -19,6 +20,7 @@ class TestAvailabilityLevel:
         assert AvailabilityLevel.HIGH.value == "high"
         assert AvailabilityLevel.MEDIUM.value == "medium"
         assert AvailabilityLevel.LOW.value == "low"
+
 
 class TestSpotPattern:
     def test_creation(self) -> None:
@@ -45,6 +47,7 @@ class TestSpotPattern:
         dt = datetime(2024, 1, 1, 10, 0)  # Monday
         assert pattern.matches(dt) is True
 
+
 class TestPreemptionEvent:
     def test_creation(self) -> None:
         event = PreemptionEvent(
@@ -67,6 +70,7 @@ class TestPreemptionEvent:
         assert data["region"] == "us-west1"
         assert data["gpu_type"] == "NVIDIA_L4"
 
+
 class TestSpotAvailabilityConfig:
     def test_default_values(self) -> None:
         config = SpotAvailabilityConfig()
@@ -81,6 +85,7 @@ class TestSpotAvailabilityConfig:
             assert config.history_hours == 72
         finally:
             del os.environ["CIV6AZ_SPOT_HISTORY_HOURS"]
+
 
 class TestSpotAvailabilityTracker:
     def test_init(self) -> None:
@@ -118,6 +123,7 @@ class TestSpotAvailabilityTracker:
         stats = tracker.get_statistics()
         assert "current_availability" in stats
         assert "total_preemptions_tracked" in stats
+
 
 class TestGetSpotTracker:
     def test_returns_tracker(self) -> None:

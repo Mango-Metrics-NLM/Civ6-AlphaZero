@@ -9,10 +9,11 @@ from __future__ import annotations
 import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from alpha_zero.rag.stores.base import Document, DocumentMetadata
+from alpha_zero.utils.compat import UTC
 
 
 @dataclass

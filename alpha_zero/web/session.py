@@ -10,11 +10,12 @@ import logging
 import threading
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from alpha_zero.core.civ6_actions import MicroCivActionSpace
 from alpha_zero.human_interface.game_controller import GameController
+from alpha_zero.utils.compat import UTC
 from alpha_zero.web import CHECKPOINT_MODEL_KEY, SESSION_ID_LENGTH
 from alpha_zero.web.adapter import BaselineAgentAdapter, MCTSAIAgent, MicroCivGameAdapter
 from alpha_zero.web.config import VALID_OPPONENT_TYPES, WebConfig

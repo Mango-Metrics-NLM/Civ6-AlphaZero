@@ -1,4 +1,5 @@
 """Unit tests for pipeline_cache module."""
+
 from __future__ import annotations
 
 import os
@@ -18,6 +19,7 @@ class TestComponentType:
         assert ComponentType.SELF_PLAY.value == "self_play"
         assert ComponentType.TRAINING.value == "training"
         assert ComponentType.EVALUATION.value == "evaluation"
+
 
 class TestComponentSignature:
     def test_creation(self) -> None:
@@ -52,6 +54,7 @@ class TestComponentSignature:
         assert data["component_type"] == "evaluation"
         assert data["model_version"] == 10
 
+
 class TestCacheEntry:
     def test_creation(self) -> None:
         sig = ComponentSignature(
@@ -81,6 +84,7 @@ class TestCacheEntry:
         )
         assert entry.is_expired() is False
 
+
 class TestPipelineCacheConfig:
     def test_default_values(self) -> None:
         config = PipelineCacheConfig()
@@ -98,6 +102,7 @@ class TestPipelineCacheConfig:
         finally:
             del os.environ["CIV6AZ_CACHE_ENABLED"]
             del os.environ["CIV6AZ_CACHE_TTL_HOURS"]
+
 
 class TestPipelineCache:
     def test_init(self) -> None:
@@ -124,6 +129,7 @@ class TestPipelineCache:
         stats = cache.get_statistics()
         assert "enabled" in stats
         assert "ttl_hours" in stats
+
 
 class TestGetPipelineCache:
     def test_returns_cache(self) -> None:

@@ -1,4 +1,5 @@
 """Unit tests for worker_autoscaler module."""
+
 from __future__ import annotations
 
 import os

@@ -85,9 +85,7 @@ class TestPreemptionHandlerConfig:
             }
         }
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump(yaml_content, f)
             f.flush()
 
@@ -208,9 +206,7 @@ class TestPreemptionHandler:
         return checkpoint_dir
 
     @pytest.fixture
-    def handler(
-        self, config: PreemptionHandlerConfig, temp_dir: Path
-    ) -> PreemptionHandler:
+    def handler(self, config: PreemptionHandlerConfig, temp_dir: Path) -> PreemptionHandler:
         """Create test handler."""
         return PreemptionHandler(config, checkpoint_dir=temp_dir)
 
@@ -224,9 +220,7 @@ class TestPreemptionHandler:
         handler = PreemptionHandler(checkpoint_dir=temp_dir)
         assert handler.config.checkpoint_interval_seconds == 300
 
-    def test_init_custom_config(
-        self, config: PreemptionHandlerConfig, temp_dir: Path
-    ) -> None:
+    def test_init_custom_config(self, config: PreemptionHandlerConfig, temp_dir: Path) -> None:
         """Test initialization with custom config."""
         handler = PreemptionHandler(config, checkpoint_dir=temp_dir)
         assert handler.config.checkpoint_interval_seconds == 60
@@ -257,9 +251,7 @@ class TestCheckpointCreation:
         return checkpoint_dir
 
     @pytest.fixture
-    def handler(
-        self, config: PreemptionHandlerConfig, temp_dir: Path
-    ) -> PreemptionHandler:
+    def handler(self, config: PreemptionHandlerConfig, temp_dir: Path) -> PreemptionHandler:
         """Create test handler."""
         return PreemptionHandler(config, checkpoint_dir=temp_dir)
 
@@ -268,9 +260,7 @@ class TestCheckpointCreation:
         """Create test model."""
         return SimpleModel()
 
-    def test_checkpoint_now(
-        self, handler: PreemptionHandler, model: SimpleModel
-    ) -> None:
+    def test_checkpoint_now(self, handler: PreemptionHandler, model: SimpleModel) -> None:
         """Test creating checkpoint."""
         path = handler.checkpoint_now(model, iteration=100, reason="test")
 
@@ -299,9 +289,7 @@ class TestCheckpointCreation:
         assert checkpoint["extra"]["win_rate"] == 0.75
         assert checkpoint["extra"]["total_games"] == 1000
 
-    def test_checkpoint_content(
-        self, handler: PreemptionHandler, model: SimpleModel
-    ) -> None:
+    def test_checkpoint_content(self, handler: PreemptionHandler, model: SimpleModel) -> None:
         """Test checkpoint contains expected data."""
         path = handler.checkpoint_now(model, iteration=150, reason="periodic")
 
@@ -352,9 +340,7 @@ class TestRetryLogic:
         return checkpoint_dir
 
     @pytest.fixture
-    def handler(
-        self, config: PreemptionHandlerConfig, temp_dir: Path
-    ) -> PreemptionHandler:
+    def handler(self, config: PreemptionHandlerConfig, temp_dir: Path) -> PreemptionHandler:
         """Create test handler."""
         return PreemptionHandler(config, checkpoint_dir=temp_dir)
 
@@ -378,9 +364,7 @@ class TestRetryLogic:
         delay = handler.get_retry_delay("new-job")
         assert delay == 10.0  # Base delay
 
-    def test_get_retry_delay_exponential_backoff(
-        self, handler: PreemptionHandler
-    ) -> None:
+    def test_get_retry_delay_exponential_backoff(self, handler: PreemptionHandler) -> None:
         """Test exponential backoff for subsequent retries."""
         handler._retry_counts["test-job"] = 1
         delay = handler.get_retry_delay("test-job")
@@ -413,9 +397,7 @@ class TestPreemptionStateManagement:
         return checkpoint_dir
 
     @pytest.fixture
-    def handler(
-        self, config: PreemptionHandlerConfig, temp_dir: Path
-    ) -> PreemptionHandler:
+    def handler(self, config: PreemptionHandlerConfig, temp_dir: Path) -> PreemptionHandler:
         """Create test handler."""
         return PreemptionHandler(config, checkpoint_dir=temp_dir)
 
@@ -487,9 +469,7 @@ class TestSignalHandling:
         return checkpoint_dir
 
     @pytest.fixture
-    def handler(
-        self, config: PreemptionHandlerConfig, temp_dir: Path
-    ) -> PreemptionHandler:
+    def handler(self, config: PreemptionHandlerConfig, temp_dir: Path) -> PreemptionHandler:
         """Create test handler."""
         return PreemptionHandler(config, checkpoint_dir=temp_dir)
 
@@ -534,9 +514,7 @@ class TestTimerManagement:
         return checkpoint_dir
 
     @pytest.fixture
-    def handler(
-        self, config: PreemptionHandlerConfig, temp_dir: Path
-    ) -> PreemptionHandler:
+    def handler(self, config: PreemptionHandlerConfig, temp_dir: Path) -> PreemptionHandler:
         """Create test handler."""
         return PreemptionHandler(config, checkpoint_dir=temp_dir)
 
@@ -545,9 +523,7 @@ class TestTimerManagement:
         """Create test model."""
         return SimpleModel()
 
-    def test_start_checkpoint_timer(
-        self, handler: PreemptionHandler, model: SimpleModel
-    ) -> None:
+    def test_start_checkpoint_timer(self, handler: PreemptionHandler, model: SimpleModel) -> None:
         """Test starting checkpoint timer."""
         handler.start_checkpoint_timer(model)
 
@@ -557,18 +533,14 @@ class TestTimerManagement:
 
         handler.stop_checkpoint_timer()
 
-    def test_stop_checkpoint_timer(
-        self, handler: PreemptionHandler, model: SimpleModel
-    ) -> None:
+    def test_stop_checkpoint_timer(self, handler: PreemptionHandler, model: SimpleModel) -> None:
         """Test stopping checkpoint timer."""
         handler.start_checkpoint_timer(model)
         handler.stop_checkpoint_timer()
 
         assert handler._timer_running is False
 
-    def test_double_start_warning(
-        self, handler: PreemptionHandler, model: SimpleModel
-    ) -> None:
+    def test_double_start_warning(self, handler: PreemptionHandler, model: SimpleModel) -> None:
         """Test warning on double start."""
         handler.start_checkpoint_timer(model)
         handler.start_checkpoint_timer(model)  # Should log warning
@@ -598,9 +570,7 @@ class TestHandlePreemption:
         return checkpoint_dir
 
     @pytest.fixture
-    def handler(
-        self, config: PreemptionHandlerConfig, temp_dir: Path
-    ) -> PreemptionHandler:
+    def handler(self, config: PreemptionHandlerConfig, temp_dir: Path) -> PreemptionHandler:
         """Create test handler."""
         return PreemptionHandler(config, checkpoint_dir=temp_dir)
 
@@ -648,9 +618,7 @@ class TestStatisticsAndCleanup:
         return checkpoint_dir
 
     @pytest.fixture
-    def handler(
-        self, config: PreemptionHandlerConfig, temp_dir: Path
-    ) -> PreemptionHandler:
+    def handler(self, config: PreemptionHandlerConfig, temp_dir: Path) -> PreemptionHandler:
         """Create test handler."""
         return PreemptionHandler(config, checkpoint_dir=temp_dir)
 

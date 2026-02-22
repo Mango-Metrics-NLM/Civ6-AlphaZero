@@ -10,9 +10,8 @@ import json
 import logging
 import threading
 import time
-import uuid
 from typing import Any, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -91,12 +90,14 @@ class TestDistributedCoordination:
         """Workers register themselves via storage backend."""
         bucket = "test-bucket"
         for cfg in worker_configs:
-            manifest = json.dumps({
-                "worker_id": cfg["worker_id"],
-                "role": cfg["role"],
-                "status": "registered",
-                "timestamp": time.time(),
-            }).encode()
+            manifest = json.dumps(
+                {
+                    "worker_id": cfg["worker_id"],
+                    "role": cfg["role"],
+                    "status": "registered",
+                    "timestamp": time.time(),
+                }
+            ).encode()
             mock_storage_backend.upload_blob(
                 bucket,
                 f"coordination/workers/{cfg['worker_id']}/manifest.json",
@@ -107,9 +108,7 @@ class TestDistributedCoordination:
         blobs = mock_storage_backend.list_blobs(bucket, "coordination/workers/")
         assert len(blobs) == _DEFAULT_NUM_WORKERS
 
-    def test_trajectory_manifest_merging(
-        self, mock_storage_backend: MagicMock
-    ) -> None:
+    def test_trajectory_manifest_merging(self, mock_storage_backend: MagicMock) -> None:
         """Multiple workers' trajectory shards merge into a single manifest."""
         bucket = "test-bucket"
         num_workers = 3
@@ -143,19 +142,19 @@ class TestDistributedCoordination:
         assert merged["total_examples"] == num_workers * examples_per_worker
         assert merged["num_shards"] == num_workers
 
-    def test_model_version_synchronization(
-        self, mock_storage_backend: MagicMock
-    ) -> None:
+    def test_model_version_synchronization(self, mock_storage_backend: MagicMock) -> None:
         """Workers converge on the latest model version."""
         bucket = "test-bucket"
 
         # Upload model version metadata
         for version in range(1, 4):
-            metadata = json.dumps({
-                "version": version,
-                "iteration": version * 10,
-                "elo": 1000 + version * 50,
-            }).encode()
+            metadata = json.dumps(
+                {
+                    "version": version,
+                    "iteration": version * 10,
+                    "elo": 1000 + version * 50,
+                }
+            ).encode()
             mock_storage_backend.upload_blob(
                 bucket,
                 f"models/v{version}/metadata.json",
@@ -175,9 +174,7 @@ class TestDistributedCoordination:
         assert latest == 3
         logger.info("Latest model version: %d", latest)
 
-    def test_concurrent_uploads(
-        self, mock_storage_backend: MagicMock
-    ) -> None:
+    def test_concurrent_uploads(self, mock_storage_backend: MagicMock) -> None:
         """Multiple threads can upload simultaneously without data loss."""
         bucket = "test-bucket"
         num_threads = _DEFAULT_NUM_WORKERS
@@ -195,10 +192,7 @@ class TestDistributedCoordination:
             except Exception:
                 results.append(False)
 
-        threads = [
-            threading.Thread(target=worker_upload, args=(w,))
-            for w in range(num_threads)
-        ]
+        threads = [threading.Thread(target=worker_upload, args=(w,)) for w in range(num_threads)]
         for t in threads:
             t.start()
         for t in threads:
@@ -207,19 +201,17 @@ class TestDistributedCoordination:
         assert all(results), "All concurrent uploads should succeed"
         assert len(results) == num_threads
 
-    def test_heartbeat_protocol(
-        self, mock_storage_backend: MagicMock
-    ) -> None:
+    def test_heartbeat_protocol(self, mock_storage_backend: MagicMock) -> None:
         """Workers send heartbeats and stale workers are detectable."""
         bucket = "test-bucket"
         now = time.time()
         stale_threshold_sec = 60.0
 
         heartbeats = [
-            {"worker_id": 0, "timestamp": now, "status": "active"},          # Fresh
-            {"worker_id": 1, "timestamp": now - 30, "status": "active"},     # OK
-            {"worker_id": 2, "timestamp": now - 120, "status": "active"},    # Stale
-            {"worker_id": 3, "timestamp": now - 300, "status": "active"},    # Very stale
+            {"worker_id": 0, "timestamp": now, "status": "active"},  # Fresh
+            {"worker_id": 1, "timestamp": now - 30, "status": "active"},  # OK
+            {"worker_id": 2, "timestamp": now - 120, "status": "active"},  # Stale
+            {"worker_id": 3, "timestamp": now - 300, "status": "active"},  # Very stale
         ]
 
         for hb in heartbeats:

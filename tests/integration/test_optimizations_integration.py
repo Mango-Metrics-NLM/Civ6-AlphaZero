@@ -231,7 +231,7 @@ class TestPolicyPruningIntegration:
         pruned = pruner.prune(policy)
 
         # Verify top-k preserved
-        top_k_original = np.argsort(policy)[-pruning_config.preserve_top_k:]
+        top_k_original = np.argsort(policy)[-pruning_config.preserve_top_k :]
         for idx in top_k_original:
             assert pruned[idx] > 0
 
@@ -313,9 +313,7 @@ class TestAllOptimizationsTogether:
         """Test simulated training step with all optimizations."""
         # Initialize all components
         rng = np.random.default_rng(42)
-        playout_randomizer = PlayoutCapRandomizer(
-            full_config.playout_cap, rng=rng
-        )
+        playout_randomizer = PlayoutCapRandomizer(full_config.playout_cap, rng=rng)
         policy_pruner = PolicyTargetPruner(full_config.policy_pruning)
         lr_scheduler = CyclicLRScheduler(full_config.cyclic_lr)
         aux_generator = AuxiliaryTargetGenerator(full_config.auxiliary_targets)
@@ -325,7 +323,11 @@ class TestAllOptimizationsTogether:
         for step in range(num_steps):
             # 1. Get playout cap for MCTS
             playout_cap = playout_randomizer.sample_playout_cap()
-            assert full_config.playout_cap.min_playouts <= playout_cap <= full_config.playout_cap.max_playouts
+            assert (
+                full_config.playout_cap.min_playouts
+                <= playout_cap
+                <= full_config.playout_cap.max_playouts
+            )
 
             # 2. Get learning rate
             lr = lr_scheduler.get_lr(step)
@@ -449,7 +451,11 @@ class TestPBTWithOptimizations:
             rng,
             strength=0.2,
         )
-        assert space.temperature_initial.min_value <= temp_result <= space.temperature_initial.max_value
+        assert (
+            space.temperature_initial.min_value
+            <= temp_result
+            <= space.temperature_initial.max_value
+        )
 
     def test_mutation_operator_crossover_strategy(self):
         """Test MutationOperator with crossover strategy."""

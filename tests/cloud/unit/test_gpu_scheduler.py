@@ -71,9 +71,7 @@ class TestGPUSchedulerConfig:
             }
         }
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump(yaml_content, f)
             f.flush()
 
@@ -248,9 +246,7 @@ class TestShouldUpgrade:
         assert scheduler.should_upgrade(950, 1000) is True
         assert scheduler.should_upgrade(1000, 1000) is True
 
-    def test_should_upgrade_false_before_threshold(
-        self, scheduler: DynamicGPUScheduler
-    ) -> None:
+    def test_should_upgrade_false_before_threshold(self, scheduler: DynamicGPUScheduler) -> None:
         """Test upgrade returns False before threshold."""
         assert scheduler.should_upgrade(0, 1000) is False
         assert scheduler.should_upgrade(500, 1000) is False
@@ -263,9 +259,7 @@ class TestShouldUpgrade:
 
         assert scheduler.should_upgrade(950, 1000) is False
 
-    def test_should_upgrade_zero_total(
-        self, scheduler: DynamicGPUScheduler
-    ) -> None:
+    def test_should_upgrade_zero_total(self, scheduler: DynamicGPUScheduler) -> None:
         """Test upgrade returns False with zero total iterations."""
         assert scheduler.should_upgrade(0, 0) is False
 
@@ -289,9 +283,7 @@ class TestGPUSelectionLogic:
         """Create test scheduler."""
         return DynamicGPUScheduler(config)
 
-    def test_select_gpu_early_phase(
-        self, scheduler: DynamicGPUScheduler
-    ) -> None:
+    def test_select_gpu_early_phase(self, scheduler: DynamicGPUScheduler) -> None:
         """Test GPU selection in early phase."""
         selection = scheduler.select_gpu(
             job_type="training",
@@ -302,9 +294,7 @@ class TestGPUSelectionLogic:
         assert selection.gpu_type == "NVIDIA_TESLA_T4"
         assert TrainingPhase.EARLY.value in selection.reason.lower()
 
-    def test_select_gpu_final_phase_upgrade(
-        self, scheduler: DynamicGPUScheduler
-    ) -> None:
+    def test_select_gpu_final_phase_upgrade(self, scheduler: DynamicGPUScheduler) -> None:
         """Test GPU upgrade in final phase."""
         selection = scheduler.select_gpu(
             job_type="training",
@@ -315,9 +305,7 @@ class TestGPUSelectionLogic:
         assert selection.gpu_type == "NVIDIA_TESLA_V100"
         assert "final" in selection.reason.lower()
 
-    def test_select_gpu_selfplay_spot(
-        self, scheduler: DynamicGPUScheduler
-    ) -> None:
+    def test_select_gpu_selfplay_spot(self, scheduler: DynamicGPUScheduler) -> None:
         """Test spot instance selection for self-play."""
         selection = scheduler.select_gpu(
             job_type="selfplay",
@@ -327,9 +315,7 @@ class TestGPUSelectionLogic:
 
         assert selection.use_spot is True
 
-    def test_select_gpu_training_no_spot(
-        self, scheduler: DynamicGPUScheduler
-    ) -> None:
+    def test_select_gpu_training_no_spot(self, scheduler: DynamicGPUScheduler) -> None:
         """Test no spot for training jobs."""
         selection = scheduler.select_gpu(
             job_type="training",
@@ -339,9 +325,7 @@ class TestGPUSelectionLogic:
 
         assert selection.use_spot is False
 
-    def test_select_gpu_final_phase_no_spot(
-        self, scheduler: DynamicGPUScheduler
-    ) -> None:
+    def test_select_gpu_final_phase_no_spot(self, scheduler: DynamicGPUScheduler) -> None:
         """Test spot disabled for final training phase."""
         # Enable spot for training to test override
         config = GPUSchedulerConfig(
@@ -359,9 +343,7 @@ class TestGPUSelectionLogic:
         assert selection.use_spot is False
         assert "spot disabled" in selection.reason.lower()
 
-    def test_select_gpu_machine_type(
-        self, scheduler: DynamicGPUScheduler
-    ) -> None:
+    def test_select_gpu_machine_type(self, scheduler: DynamicGPUScheduler) -> None:
         """Test correct machine type is selected."""
         selection = scheduler.select_gpu(
             job_type="training",
@@ -372,9 +354,7 @@ class TestGPUSelectionLogic:
         # T4 should use n1-standard-8
         assert selection.machine_type == "n1-standard-8"
 
-    def test_select_gpu_cost_estimate(
-        self, scheduler: DynamicGPUScheduler
-    ) -> None:
+    def test_select_gpu_cost_estimate(self, scheduler: DynamicGPUScheduler) -> None:
         """Test cost estimate is included."""
         selection = scheduler.select_gpu(
             job_type="training",
@@ -414,9 +394,7 @@ class TestBudgetAwareSelection:
         """Create test scheduler."""
         return DynamicGPUScheduler(config)
 
-    def test_downgrade_when_budget_low(
-        self, scheduler: DynamicGPUScheduler
-    ) -> None:
+    def test_downgrade_when_budget_low(self, scheduler: DynamicGPUScheduler) -> None:
         """Test GPU downgrade when budget is low."""
         selection = scheduler.select_gpu(
             job_type="training",
@@ -428,9 +406,7 @@ class TestBudgetAwareSelection:
         assert selection.gpu_type == "NVIDIA_TESLA_T4"
         assert "budget" in selection.reason.lower()
 
-    def test_no_downgrade_when_budget_ok(
-        self, scheduler: DynamicGPUScheduler
-    ) -> None:
+    def test_no_downgrade_when_budget_ok(self, scheduler: DynamicGPUScheduler) -> None:
         """Test no downgrade when budget is sufficient."""
         selection = scheduler.select_gpu(
             job_type="training",

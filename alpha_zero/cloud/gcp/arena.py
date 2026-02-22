@@ -72,6 +72,7 @@ def run_arena(
     max_turns: int = 30,
     device: torch.device | None = None,
     num_parallel_games: int = 1,
+    gameplay_preset: str = "default",
 ) -> ArenaResult:
     """Play model_a vs. model_b in an arena.
 
@@ -82,7 +83,7 @@ def run_arena(
         model_a: First model (results are from this model's perspective).
         model_b: Second model (opponent).
         num_games: Number of games to play.
-        mcts_type: MCTS algorithm variant ("civ6" or "gumbel").
+        mcts_type: MCTS algorithm variant ("civ6", "gumbel", or "muzero").
         mcts_sims: Number of MCTS simulations per move.
         gumbel_num_actions: Number of sampled actions for Gumbel MCTS.
         board_size: Size of game board.
@@ -90,12 +91,13 @@ def run_arena(
         device: PyTorch device to use. If None, defaults to CPU.
         num_parallel_games: Number of parallel games (accepted for API consistency
             with selfplay_worker; arena currently runs games sequentially).
+        gameplay_preset: Environment preset ("default" or "enhanced").
 
     Returns:
         ArenaResult with wins/losses/draws from model_a's perspective.
     """
     from alpha_zero.core.mcts_factory import create_mcts
-    from alpha_zero.envs.microciv import MicroCivEnv
+    from alpha_zero.envs.env_factory import create_game_env
 
     if device is None:
         device = torch.device("cpu")
@@ -106,6 +108,11 @@ def run_arena(
             "(arena runs games sequentially for player alternation)",
             num_parallel_games,
         )
+
+    # MuZero has a different search API: (observation, action_mask) vs (env)
+    is_muzero = mcts_type == "muzero"
+    if is_muzero:
+        logger.debug("Arena: using MuZero search path (observation + action_mask)")
 
     start_time = time.time()
     wins = 0
@@ -118,7 +125,11 @@ def run_arena(
         # Alternate which player model_a controls
         a_is_player_0 = game_idx % 2 == 0
 
-        env = MicroCivEnv(board_size=board_size, max_turns=max_turns)
+        env = create_game_env(
+            board_size=board_size,
+            max_turns=max_turns,
+            gameplay_preset=gameplay_preset,
+        )
         mcts_a = create_mcts(
             variant=mcts_type,
             network=model_a,
@@ -145,7 +156,14 @@ def run_arena(
             mcts = mcts_a if current_is_a else mcts_b
 
             # Greedy play for evaluation (temperature=0, no noise)
-            action_probs, _ = mcts.search(env, add_noise=False)
+            if is_muzero:
+                # MuZeroMCTS.search() uses learned dynamics model internally;
+                # it requires observation dict + action_mask, not env.
+                obs = env.get_observation()
+                action_probs, _ = mcts.search(obs, action_mask=obs["action_mask"], add_noise=False)
+            else:
+                # Standard MCTS variants (civ6/gumbel) traverse the env directly
+                action_probs, _ = mcts.search(env, add_noise=False)
             action = mcts.select_action(action_probs, temperature=0.0)
 
             _obs, _reward, terminated, truncated, _ = env.step(action)

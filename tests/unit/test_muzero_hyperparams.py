@@ -444,7 +444,5 @@ class TestMuZeroHyperparameterSpaceIntegration:
         samples2 = space.sample_all(rng2)
 
         # Should differ in at least some values
-        differences = sum(
-            1 for key in samples1 if samples1[key] != samples2[key]
-        )
+        differences = sum(1 for key in samples1 if samples1[key] != samples2[key])
         assert differences > 0

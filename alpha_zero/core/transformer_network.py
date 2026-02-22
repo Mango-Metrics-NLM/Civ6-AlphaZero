@@ -123,18 +123,50 @@ class TransformerConfig:
     cls_token: bool = True
     pool_type: str = "cls"
 
+    # Encoder type: "patch_embed" (default ViT patches) or "hex_crystalline" (hex-aware)
+    encoder_type: str = "patch_embed"
+
     # Derived properties (computed from other fields)
     _num_patches: int = field(init=False, default=0)
     _head_dim: int = field(init=False, default=0)
+
+    @classmethod
+    def from_network_config(cls, net_config: Any) -> TransformerConfig:
+        """Create TransformerConfig from a NetworkArchitectureConfig.
+
+        Bridges the cloud config (NetworkArchitectureConfig) to the core
+        network config (TransformerConfig). Uses getattr with defaults for
+        backwards compatibility with older NetworkArchitectureConfig instances
+        that may lack newer fields.
+
+        Args:
+            net_config: A NetworkArchitectureConfig instance (or any object
+                with matching attribute names).
+
+        Returns:
+            TransformerConfig with architecture fields mapped from net_config.
+        """
+        return cls(
+            spatial_channels=getattr(net_config, "spatial_channels", 13),
+            spatial_size=getattr(net_config, "board_size", 8),
+            vector_dim=getattr(net_config, "vector_dim", 64),
+            action_space_size=getattr(net_config, "action_space_size", 376),
+            embed_dim=getattr(net_config, "embed_dim", 64),
+            num_layers=getattr(net_config, "num_layers", 6),
+            num_heads=getattr(net_config, "num_heads", 8),
+            policy_hidden_dim=getattr(net_config, "policy_hidden_dim", 128),
+            value_head_dim=getattr(net_config, "value_head_dim", 64),
+            encoder_type=getattr(net_config, "encoder_type", "patch_embed"),
+        )
 
     def __post_init__(self) -> None:
         """Compute derived properties and validate configuration."""
         self._num_patches = (self.spatial_size // self.patch_size) ** 2
         self._head_dim = self.embed_dim // self.num_heads
 
-        assert self.embed_dim % self.num_heads == 0, (
-            f"embed_dim ({self.embed_dim}) must be divisible by num_heads ({self.num_heads})"
-        )
+        assert (
+            self.embed_dim % self.num_heads == 0
+        ), f"embed_dim ({self.embed_dim}) must be divisible by num_heads ({self.num_heads})"
 
         # Warn about known incorrect defaults that may indicate stale config
         if self.action_space_size == 381:
@@ -788,8 +820,11 @@ class TransformerEncoder(nn.Module):
         super().__init__()
         self.config = config
 
-        # Patch embedding
-        self.patch_embed = PatchEmbed(
+        # Spatial encoder (patch_embed attribute name preserved for state_dict compat)
+        from alpha_zero.core.encoder_registry import create_spatial_encoder
+
+        self.patch_embed = create_spatial_encoder(
+            encoder_type=config.encoder_type,
             in_channels=config.spatial_channels,
             embed_dim=config.embed_dim,
             patch_size=config.patch_size,

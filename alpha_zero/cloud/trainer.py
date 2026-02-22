@@ -25,7 +25,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import torch
@@ -36,6 +36,7 @@ from torch.cuda.amp import GradScaler, autocast
 from alpha_zero.storage import StorageConfig, create_storage_backend
 from alpha_zero.storage.models import ModelMetadata
 from alpha_zero.storage.replay_buffer import ReplayBufferConfig, StorageReplayBuffer
+from alpha_zero.utils.compat import UTC
 
 if TYPE_CHECKING:
     from alpha_zero.core.civ6_network import MicroCivNetwork

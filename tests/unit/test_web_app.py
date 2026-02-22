@@ -15,11 +15,14 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
-from alpha_zero.web.config import WebConfig
-from alpha_zero.web.routes.replay import create_replay_router
+pytest.importorskip("fastapi", reason="fastapi not installed")
+
+from fastapi import FastAPI  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+from alpha_zero.web.config import WebConfig  # noqa: E402
+from alpha_zero.web.routes.replay import create_replay_router  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -329,8 +332,9 @@ class TestSessionCleanupLoop:
         except asyncio.CancelledError:
             pass
 
-        assert any("3" in record.message and "expired" in record.message
-                    for record in caplog.records)
+        assert any(
+            "3" in record.message and "expired" in record.message for record in caplog.records
+        )
 
     async def test_cleanup_loop_survives_exception(self) -> None:
         """The loop should continue running after a non-cancellation exception."""
@@ -384,7 +388,8 @@ class TestSessionCleanupLoop:
             pass
 
         cleanup_log_messages = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if "expired session" in r.message.lower() or "Cleaned up" in r.message
         ]
         assert len(cleanup_log_messages) == 0

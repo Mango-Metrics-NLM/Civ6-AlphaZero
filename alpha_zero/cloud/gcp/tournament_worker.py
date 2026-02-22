@@ -31,6 +31,8 @@ from typing import Any
 
 import torch
 
+from alpha_zero.cloud.gcp.config import VALID_MCTS_TYPES, GCPConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -77,7 +79,7 @@ def parse_args() -> argparse.Namespace:
         "--mcts_type",
         type=str,
         default="gumbel",
-        choices=["civ6", "gumbel"],
+        choices=VALID_MCTS_TYPES,
         help="MCTS algorithm variant (default: gumbel)",
     )
     parser.add_argument(
@@ -103,6 +105,15 @@ def parse_args() -> argparse.Namespace:
     # Execution
     parser.add_argument(
         "--dry_run", action="store_true", help="Simulate tournament with dummy models"
+    )
+
+    # Gameplay environment preset
+    parser.add_argument(
+        "--gameplay_preset",
+        type=str,
+        default="default",
+        choices=["default", "enhanced"],
+        help="Gameplay preset: 'default' (MicroCivEnv) or 'enhanced' (all gameplay systems)",
     )
 
     return parser.parse_args()
@@ -168,6 +179,7 @@ def run_tournament(
     device: torch.device | None = None,
     dry_run: bool = False,
     action_space_size: int = 376,
+    gameplay_preset: str = "default",
 ) -> dict[str, Any]:
     """Run round-robin tournament across model versions.
 
@@ -185,6 +197,7 @@ def run_tournament(
         device: PyTorch device (default: auto-detect).
         dry_run: If True, use dummy models.
         action_space_size: Action space size for dummy models.
+        gameplay_preset: Environment preset ("default" or "enhanced").
 
     Returns:
         Dict with keys: model_versions, elo_ratings, matches,
@@ -275,6 +288,7 @@ def run_tournament(
                 board_size=board_size,
                 max_turns=max_turns,
                 device=device,
+                gameplay_preset=gameplay_preset,
             )
 
             logger.info(
@@ -376,8 +390,6 @@ def main() -> int:
     logger.info("Dry run: %s", args.dry_run)
 
     # Load GCP config
-    from alpha_zero.cloud.gcp.config import GCPConfig
-
     config = GCPConfig()
 
     # Resolve model versions
@@ -407,6 +419,7 @@ def main() -> int:
         device=device,
         dry_run=args.dry_run,
         action_space_size=args.action_space_size,
+        gameplay_preset=getattr(args, "gameplay_preset", "default"),
     )
 
     if not results:

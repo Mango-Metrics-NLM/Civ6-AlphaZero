@@ -177,6 +177,7 @@ class TestEvaluationPipelineIntegration:
             outcome = MatchOutcome.DRAW
 
         from alpha_zero.tournament.config import TournamentConfig
+
         tournament_config = TournamentConfig()
 
         update1, _update2 = evaluator.elo_system.process_game_result(
@@ -444,6 +445,7 @@ class TestEvaluatorWithELOIntegration:
         baseline_stats = evaluator._get_baseline_stats("random")
 
         from alpha_zero.tournament.config import MatchOutcome, TournamentConfig
+
         tournament_config = TournamentConfig()
 
         # Play many games

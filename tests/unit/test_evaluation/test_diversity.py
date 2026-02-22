@@ -164,8 +164,8 @@ class TestDiversityTracker:
         tracker.record_game(game, victory_type="loss")
 
         metrics = tracker.compute_metrics()
-        assert metrics.victory_type_distribution["win"] == pytest.approx(2/3)
-        assert metrics.victory_type_distribution["loss"] == pytest.approx(1/3)
+        assert metrics.victory_type_distribution["win"] == pytest.approx(2 / 3)
+        assert metrics.victory_type_distribution["loss"] == pytest.approx(1 / 3)
 
     def test_computes_opening_entropy(self, tracker):
         """Test entropy calculation for openings."""
@@ -268,9 +268,9 @@ class TestDiversityTracker:
     def test_filters_model_actions_only(self, tracker):
         """Test that only model actions are tracked for openings."""
         game = [
-            (1, {"turn": 0, "is_model": True}),   # Model action
+            (1, {"turn": 0, "is_model": True}),  # Model action
             (2, {"turn": 1, "is_model": False}),  # Opponent action
-            (3, {"turn": 2, "is_model": True}),   # Model action
+            (3, {"turn": 2, "is_model": True}),  # Model action
         ]
         tracker.record_game(game)
 
