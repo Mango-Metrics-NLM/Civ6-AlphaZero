@@ -72,10 +72,7 @@ class DiagnosticReport:
         self.checks.append(result)
         if result.status == CheckStatus.FAIL:
             self.overall_status = CheckStatus.FAIL
-        elif (
-            result.status == CheckStatus.WARN
-            and self.overall_status != CheckStatus.FAIL
-        ):
+        elif result.status == CheckStatus.WARN and self.overall_status != CheckStatus.FAIL:
             self.overall_status = CheckStatus.WARN
 
     def to_dict(self) -> dict[str, Any]:
@@ -103,7 +100,7 @@ def check_network_connectivity() -> CheckResult:
     for url in _NETWORK_TEST_URLS:
         try:
             req = urllib.request.Request(url, method="HEAD")
-            urllib.request.urlopen(req, timeout=5)  # noqa: S310
+            urllib.request.urlopen(req, timeout=5)
             reachable.append(url)
         except Exception:
             # HTTP error responses (400, 404) still prove reachability
@@ -134,11 +131,7 @@ def check_gcloud_executable() -> CheckResult:
             text=True,
             timeout=5,
         )
-        paths = [
-            p.strip()
-            for p in result.stdout.strip().splitlines()
-            if p.strip()
-        ]
+        paths = [p.strip() for p in result.stdout.strip().splitlines() if p.strip()]
         if paths:
             return CheckResult(
                 name="gcloud_executable",
@@ -211,10 +204,7 @@ def check_python_auth() -> CheckResult:
         return CheckResult(
             name="python_adc",
             status=CheckStatus.OK,
-            message=(
-                f"ADC available (project: {project}, "
-                f"type: {type(credentials).__name__})"
-            ),
+            message=(f"ADC available (project: {project}, " f"type: {type(credentials).__name__})"),
             details={
                 "project": project,
                 "credential_type": type(credentials).__name__,
@@ -278,10 +268,7 @@ def check_update_check_setting() -> CheckResult:
     return CheckResult(
         name="update_check_disabled",
         status=CheckStatus.WARN,
-        message=(
-            f"{_GCLOUD_UPDATE_CHECK_ENV} is not set — "
-            "gcloud may hang on update checks"
-        ),
+        message=(f"{_GCLOUD_UPDATE_CHECK_ENV} is not set — " "gcloud may hang on update checks"),
         details={
             "recommendation": f"Set {_GCLOUD_UPDATE_CHECK_ENV}=1",
         },
@@ -313,10 +300,7 @@ def check_vertex_api() -> CheckResult:
         return CheckResult(
             name="vertex_api",
             status=CheckStatus.OK,
-            message=(
-                f"Vertex AI API accessible "
-                f"({len(jobs)} jobs, {elapsed:.1f}s)"
-            ),
+            message=(f"Vertex AI API accessible " f"({len(jobs)} jobs, {elapsed:.1f}s)"),
             details={
                 "project": project,
                 "region": region,
@@ -358,10 +342,7 @@ def check_gcs_connectivity() -> CheckResult:
         return CheckResult(
             name="gcs_connectivity",
             status=CheckStatus.OK if exists else CheckStatus.FAIL,
-            message=(
-                f"Bucket '{bucket_name}' "
-                f"{'exists' if exists else 'NOT found'}"
-            ),
+            message=(f"Bucket '{bucket_name}' " f"{'exists' if exists else 'NOT found'}"),
             details={"bucket": bucket_name, "exists": exists},
         )
     except ImportError:
@@ -388,22 +369,15 @@ def apply_fixes(report: DiagnosticReport) -> list[str]:
     fixes_applied: list[str] = []
 
     for check in report.checks:
-        if (
-            check.name == "update_check_disabled"
-            and check.status != CheckStatus.OK
-        ):
+        if check.name == "update_check_disabled" and check.status != CheckStatus.OK:
             os.environ[_GCLOUD_UPDATE_CHECK_ENV] = "1"
-            fixes_applied.append(
-                f"Set {_GCLOUD_UPDATE_CHECK_ENV}=1 in current process"
-            )
+            fixes_applied.append(f"Set {_GCLOUD_UPDATE_CHECK_ENV}=1 in current process")
 
         if check.name == "gcloud_auth" and check.status == CheckStatus.FAIL:
             report.recommendations.append("Run: gcloud auth login")
 
         if check.name == "python_adc" and check.status == CheckStatus.FAIL:
-            report.recommendations.append(
-                "Run: gcloud auth application-default login"
-            )
+            report.recommendations.append("Run: gcloud auth application-default login")
 
     return fixes_applied
 
@@ -497,10 +471,7 @@ def print_report(
             print(f"    -> {rec}")
 
     overall_icon = status_icons.get(report.overall_status, "?")
-    print(
-        f"\n  Overall: {overall_icon} "
-        f"{report.overall_status.value.upper()}"
-    )
+    print(f"\n  Overall: {overall_icon} " f"{report.overall_status.value.upper()}")
     print("=" * 60 + "\n")
 
 

@@ -12,7 +12,7 @@ Test Coverage:
 """
 
 import unittest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, call, patch
 
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.pbt_orchestrator import PBTOrchestrator

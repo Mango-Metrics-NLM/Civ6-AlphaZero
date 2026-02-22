@@ -36,7 +36,7 @@ def _make_namespace(**kwargs: Any) -> argparse.Namespace:
 def _make_mock_config(**overrides: Any) -> MagicMock:
     """Return a MagicMock that behaves like a WebConfig instance."""
     defaults: dict[str, Any] = {
-        "host": "0.0.0.0",  # noqa: S104
+        "host": "0.0.0.0",
         "port": 8080,
         "debug": False,
         "log_level": "info",
@@ -240,7 +240,7 @@ class TestBuildConfigCLIOverrides:
     )
     def test_single_override_applied(self, flag: str, value: object, config_key: str) -> None:
         base_dict: dict[str, Any] = {
-            "host": "0.0.0.0",  # noqa: S104
+            "host": "0.0.0.0",
             "port": 8080,
             "debug": False,
             "log_level": "info",
@@ -266,7 +266,7 @@ class TestBuildConfigCLIOverrides:
 
     def test_debug_flag_sets_debug_and_log_level(self) -> None:
         base_dict: dict[str, Any] = {
-            "host": "0.0.0.0",  # noqa: S104
+            "host": "0.0.0.0",
             "port": 8080,
             "debug": False,
             "log_level": "info",
@@ -301,7 +301,7 @@ class TestBuildConfigCLIOverrides:
 
     def test_multiple_overrides_applied_together(self) -> None:
         base_dict: dict[str, Any] = {
-            "host": "0.0.0.0",  # noqa: S104
+            "host": "0.0.0.0",
             "port": 8080,
             "debug": False,
             "log_level": "info",
@@ -347,7 +347,7 @@ class TestMainDryRun:
         assert exit_code == 0
 
     def test_dry_run_prints_config_keys(self, capsys: pytest.CaptureFixture[str]) -> None:
-        config_dict = {"host": "0.0.0.0", "port": 8080}  # noqa: S104
+        config_dict = {"host": "0.0.0.0", "port": 8080}
         mock_config = _make_mock_config()
         mock_config.to_dict.return_value = config_dict
         with (
@@ -527,7 +527,7 @@ class TestMainNormalRun:
             host="0.0.0.0",
             port=8080,
             log_level="debug",
-            debug=True,  # noqa: S104
+            debug=True,
         )
         mock_app = MagicMock()
         mock_uvicorn = MagicMock()
@@ -556,7 +556,7 @@ class TestMainNormalRun:
         assert exit_code == 0
         mock_uvicorn.run.assert_called_once_with(
             mock_app,
-            host="0.0.0.0",  # noqa: S104
+            host="0.0.0.0",
             port=8080,
             log_level="debug",
             reload=True,

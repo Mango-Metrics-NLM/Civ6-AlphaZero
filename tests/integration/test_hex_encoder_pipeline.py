@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 import torch
-import torch.nn.functional as F  # noqa: N812
+import torch.nn.functional as F
 
 from alpha_zero.core.transformer_network import (
     Civ6TransformerNetwork,

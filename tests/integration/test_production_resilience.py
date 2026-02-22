@@ -19,7 +19,6 @@ from alpha_zero.pbt.config import AgentState, PBTConfig
 from alpha_zero.pbt.evaluator import EvaluationReport, MatchResult, PBTEvaluator
 from alpha_zero.utils.wandb_logger import WandbLogger
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -123,8 +122,8 @@ class TestCheckpointRotation:
             mock_backend.blob_exists.return_value = True
             mock_backend.download_blob.return_value = manifest_json
             mock_backend.list_blobs.return_value = [
-                f"checkpoints/gen_10/agent_0.pt",
-                f"checkpoints/gen_10/agent_1.pt",
+                "checkpoints/gen_10/agent_0.pt",
+                "checkpoints/gen_10/agent_1.pt",
             ]
 
             orchestrator = PBTOrchestrator(pbt_config, gcp_config, checkpoint_retention=3)

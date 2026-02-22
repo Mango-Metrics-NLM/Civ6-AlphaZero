@@ -68,7 +68,16 @@ class TestMainMuZeroDispatch:
         mock_model = MagicMock()
         mock_model.to.return_value = mock_model
         mock_load_muzero.return_value = mock_model
-        mock_run_muzero.return_value = [{"spatial": [], "vector": [], "policies": [], "actions": [], "rewards": [], "algorithm": "muzero"}]
+        mock_run_muzero.return_value = [
+            {
+                "spatial": [],
+                "vector": [],
+                "policies": [],
+                "actions": [],
+                "rewards": [],
+                "algorithm": "muzero",
+            }
+        ]
         mock_config_cls.return_value = MagicMock()
 
         from alpha_zero.cloud.gcp.selfplay_worker import main
@@ -106,7 +115,9 @@ class TestMainMuZeroDispatch:
         mock_model = MagicMock()
         mock_model.to.return_value = mock_model
         mock_load_model.return_value = mock_model
-        mock_run_selfplay.return_value = [{"spatial": [], "vector": [], "policies": [], "actions": [], "rewards": []}]
+        mock_run_selfplay.return_value = [
+            {"spatial": [], "vector": [], "policies": [], "actions": [], "rewards": []}
+        ]
         mock_config_cls.return_value = MagicMock()
 
         from alpha_zero.cloud.gcp.selfplay_worker import main

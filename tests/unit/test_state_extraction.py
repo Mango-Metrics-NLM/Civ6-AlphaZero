@@ -68,8 +68,8 @@ class TestResourceExtraction:
 
     def test_extract_resources_from_tiles(self):
         """Test extraction of map tile resources (iron, horses, etc.)."""
-        from alpha_zero.bridge.state_converter import StateConverter
         from alpha_zero.bridge.protocol import TileData
+        from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
@@ -115,8 +115,8 @@ class TestResourceExtraction:
 
     def test_extract_resources_no_ownership(self):
         """Test resource extraction when no tiles are owned."""
-        from alpha_zero.bridge.state_converter import StateConverter
         from alpha_zero.bridge.protocol import TileData
+        from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
@@ -144,8 +144,8 @@ class TestTechnologyExtraction:
 
     def test_extract_researched_techs(self):
         """Test extraction of researched technologies."""
-        from alpha_zero.bridge.state_converter import StateConverter
         from alpha_zero.bridge.protocol import PlayerData
+        from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
@@ -171,8 +171,8 @@ class TestTechnologyExtraction:
 
     def test_extract_techs_empty(self):
         """Test technology extraction with no researched techs."""
-        from alpha_zero.bridge.state_converter import StateConverter
         from alpha_zero.bridge.protocol import PlayerData
+        from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
@@ -228,8 +228,8 @@ class TestCivicExtraction:
 
     def test_extract_civics_with_player(self):
         """Test civic extraction with player data."""
-        from alpha_zero.bridge.state_converter import StateConverter
         from alpha_zero.bridge.protocol import PlayerData
+        from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
@@ -252,8 +252,8 @@ class TestVictoryProgressExtraction:
 
     def test_extract_victory_progress_default(self):
         """Test default victory progress values."""
+        from alpha_zero.bridge.protocol import PlayerData
         from alpha_zero.bridge.state_converter import StateConverter
-        from alpha_zero.bridge.protocol import PlayerData, CityData
 
         converter = StateConverter()
 
@@ -286,8 +286,8 @@ class TestVictoryProgressExtraction:
 
     def test_extract_domination_progress(self):
         """Test domination victory progress calculation."""
+        from alpha_zero.bridge.protocol import CityData, PlayerData
         from alpha_zero.bridge.state_converter import StateConverter
-        from alpha_zero.bridge.protocol import PlayerData, CityData
 
         converter = StateConverter()
 
@@ -318,8 +318,8 @@ class TestVictoryProgressExtraction:
 
     def test_extract_science_progress(self):
         """Test science victory progress calculation."""
-        from alpha_zero.bridge.state_converter import StateConverter
         from alpha_zero.bridge.protocol import PlayerData
+        from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
@@ -353,8 +353,8 @@ class TestVictoryProgressExtraction:
 
     def test_extract_game_over_victory(self):
         """Test victory progress when game is over and player wins."""
-        from alpha_zero.bridge.state_converter import StateConverter
         from alpha_zero.bridge.protocol import PlayerData
+        from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
@@ -376,8 +376,8 @@ class TestVictoryProgressExtraction:
 
     def test_extract_game_over_defeat(self):
         """Test victory progress when game is over and player loses."""
-        from alpha_zero.bridge.state_converter import StateConverter
         from alpha_zero.bridge.protocol import PlayerData
+        from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
@@ -499,8 +499,8 @@ class TestStateExtractionEdgeCases:
 
     def test_wrong_player_id(self):
         """Test extraction when player_id doesn't match any player."""
-        from alpha_zero.bridge.state_converter import StateConverter
         from alpha_zero.bridge.protocol import PlayerData, TileData
+        from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 

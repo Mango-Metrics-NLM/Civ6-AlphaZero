@@ -573,7 +573,7 @@ class TestGameConnector:
         connector.on_error(on_error)
         connector.connect()
 
-        with pytest.raises(Exception):  # noqa: B017 - testing generic exception
+        with pytest.raises(Exception):
             connector.apply_action(0)
 
         assert callback_data["error"] is not None

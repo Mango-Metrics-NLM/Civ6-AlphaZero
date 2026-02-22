@@ -359,9 +359,7 @@ class TestWebSocketEndpoint:
             assert data["type"] == "pong"
 
     def test_websocket_invalid_session(self, client):
-        with pytest.raises(  # noqa: B017
-            Exception
-        ):
+        with pytest.raises(Exception):
             with client.websocket_connect("/ws/game/nonexistent"):
                 pass
 

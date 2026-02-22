@@ -89,7 +89,7 @@ def compute_retry_delay(
     Returns:
         Delay in seconds (always >= 0).
     """
-    raw = min(base * (multiplier ** attempt), maximum)
+    raw = min(base * (multiplier**attempt), maximum)
     if jitter > 0:
         raw *= 1.0 + random.uniform(-jitter, jitter)  # noqa: S311
     return max(raw, 0.0)
@@ -599,7 +599,9 @@ def run_selfplay_phase(
                 )
                 logger.info(
                     "Retrying self-play in %.1fs (attempt %d/%d, backoff)",
-                    delay, attempt + 1, max_retries,
+                    delay,
+                    attempt + 1,
+                    max_retries,
                 )
                 time.sleep(delay)
                 continue
@@ -662,7 +664,9 @@ def run_training_phase(
                 )
                 logger.info(
                     "Retrying training in %.1fs (attempt %d/%d, backoff)",
-                    delay, attempt + 1, max_retries,
+                    delay,
+                    attempt + 1,
+                    max_retries,
                 )
                 time.sleep(delay)
                 continue
@@ -683,7 +687,9 @@ def run_training_phase(
                 )
                 logger.info(
                     "Retrying training in %.1fs (attempt %d/%d, backoff)",
-                    delay, attempt + 1, max_retries,
+                    delay,
+                    attempt + 1,
+                    max_retries,
                 )
                 time.sleep(delay)
                 continue
@@ -742,9 +748,7 @@ def run_evaluation_phase(
                     base=getattr(args, "initial_retry_delay", _INITIAL_RETRY_DELAY_S),
                     maximum=getattr(args, "max_retry_delay", _MAX_RETRY_DELAY_S),
                 )
-                logger.info(
-                    "Evaluation retry %d/%d in %.0fs...", attempt, max_retries, delay
-                )
+                logger.info("Evaluation retry %d/%d in %.0fs...", attempt, max_retries, delay)
                 time.sleep(delay)
             os.environ["WANDB_RUN_NAME"] = f"eval-iter{iteration:03d}"
             job_name = eval_manager.launch(

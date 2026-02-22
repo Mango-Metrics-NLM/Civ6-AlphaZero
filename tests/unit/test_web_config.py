@@ -17,7 +17,7 @@ class TestWebConfigDefaults:
         config = WebConfig()
 
         # Server defaults
-        assert config.host == "0.0.0.0"  # noqa: S104
+        assert config.host == "0.0.0.0"
         assert config.port == 8080
         assert config.debug is False
         assert config.log_level == "info"
@@ -358,7 +358,7 @@ class TestWebConfigFromYaml:
         """Test loading from YAML with 'web' section wrapper."""
         yaml_data = {
             "web": {
-                "host": "0.0.0.0",  # noqa: S104
+                "host": "0.0.0.0",
                 "port": 9090,
                 "debug": False,
                 "board_size": 12,
@@ -506,7 +506,7 @@ class TestWebConfigFromEnv:
         config = WebConfig.from_env()
 
         assert config.port == 8080
-        assert config.host == "0.0.0.0"  # noqa: S104
+        assert config.host == "0.0.0.0"
         assert config.board_size == 16
 
     def test_from_env_port_override(self, monkeypatch):
@@ -768,7 +768,7 @@ class TestWebConfigFromPreset:
         """Test production preset has expected values."""
         config = WebConfig.from_preset("production")
 
-        assert config.host == "0.0.0.0"  # noqa: S104
+        assert config.host == "0.0.0.0"
         assert config.port == 8080
         assert config.debug is False
         assert config.log_level == "info"

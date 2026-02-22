@@ -6,13 +6,7 @@ the Python-side env var loading and validation it depends upon.
 
 from __future__ import annotations
 
-import os
-import subprocess
-import sys
 from pathlib import Path
-from unittest import mock
-
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = ROOT / "scripts"

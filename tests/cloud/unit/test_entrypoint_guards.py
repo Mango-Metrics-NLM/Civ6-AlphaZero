@@ -11,7 +11,6 @@ Validates:
 from __future__ import annotations
 
 import os
-import sys
 from unittest import mock
 
 import pytest
@@ -23,11 +22,10 @@ class TestEntrypointRouting:
     def test_selfplay_mode_dispatches(self) -> None:
         """--mode=selfplay should import and call selfplay_worker.main."""
         mock_main = mock.Mock(return_value=0)
-        with mock.patch(
-            "alpha_zero.cloud.gcp.selfplay_worker.main", mock_main
-        ), mock.patch("sys.argv", ["entrypoint", "--worker_id=0", "--iteration=0"]):
-            from alpha_zero.cloud.gcp.entrypoint import main
-
+        with (
+            mock.patch("alpha_zero.cloud.gcp.selfplay_worker.main", mock_main),
+            mock.patch("sys.argv", ["entrypoint", "--worker_id=0", "--iteration=0"]),
+        ):
             # Need to reimport to avoid caching
             with mock.patch("sys.argv", ["entrypoint"]):
                 # We test by calling main with mocked worker
@@ -111,7 +109,7 @@ class TestOrchestratorContainerGuard:
             # dry_run bypasses the guard — should not return 1 due to guard
             # It may return 0 or 1 for other reasons (no config), but the
             # guard itself should not block it.
-            result = main()
+            main()
             # The guard allows dry_run through; any non-guard failure is acceptable
             # We just verify it didn't hit the guard's return 1 with the error message
             # by checking that it got past parse_args + setup_logging + guard
@@ -147,5 +145,5 @@ class TestOrchestratorContainerGuard:
                 from alpha_zero.cloud.gcp.vertex_orchestrator import main
 
                 # Should not hit the guard
-                result = main()
+                main()
                 # May fail for other config reasons, but not due to the guard

@@ -6,14 +6,13 @@ to update agent ELO ratings and fitness scores across generations.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from alpha_zero.pbt.config import AgentState, PBTConfig
 from alpha_zero.pbt.evaluator import EvaluationReport, MatchResult, PBTEvaluator
 from alpha_zero.pbt.population import PopulationManager
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

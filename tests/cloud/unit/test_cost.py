@@ -1,7 +1,9 @@
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
-from alpha_zero.cloud.gcp.cost import CostEstimator
+
 from alpha_zero.cloud.gcp.config import GCPConfig
+from alpha_zero.cloud.gcp.cost import CostEstimator
 
 
 class TestCostEstimator:

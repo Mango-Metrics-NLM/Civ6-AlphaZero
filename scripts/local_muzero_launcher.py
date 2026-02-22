@@ -20,9 +20,9 @@ import subprocess
 import sys
 from dataclasses import asdict
 
-from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.storage import GCSModelStorage
+from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
 # Configure logging
 logging.basicConfig(
@@ -81,7 +81,7 @@ def main() -> None:
     # Initialize v0 model if needed
     config = GCPConfig(bucket=args.bucket, project_id=args.project)
     storage = GCSModelStorage(config)
-    
+
     try:
         latest = storage.get_latest_version()
         logger.info("Found existing model version %d", latest)
@@ -99,10 +99,7 @@ def main() -> None:
         )
         model = Civ6TransformerNetwork(config=model_config)
         storage.save_model(
-            model, 
-            0, 
-            metadata={"iteration": -1, "elo": 1000.0},
-            model_config=asdict(model_config)
+            model, 0, metadata={"iteration": -1, "elo": 1000.0}, model_config=asdict(model_config)
         )
         logger.info("Initialized model v0")
 
@@ -116,7 +113,7 @@ def main() -> None:
         # Phase 1: Self-Play (Parallel)
         # ---------------------------------------------------------
         logger.info("Phase 1: Self-Play")
-        
+
         selfplay_procs = []
         for i in range(args.num_selfplay_workers):
             cmd = [
@@ -131,22 +128,18 @@ def main() -> None:
                 f"--mcts_simulations={args.mcts_simulations}",
                 # "--storage_backend=local",  # REMOVED: Managed via env var
             ]
-            
+
             # Map algorithm to mcts_type expected by worker
             # The worker expects 'civ6', 'gumbel', or 'muzero'
             # If args.algorithm is 'alphazero', we use 'civ6' (default)
             # If args.algorithm is 'muzero', we use 'muzero'
             if args.algorithm == "alphazero":
-                 cmd[3] = "--mcts_type=civ6"
-            
+                cmd[3] = "--mcts_type=civ6"
+
             logger.info("Launching worker %d...", i)
-            # On Windows, we need to use shell=True for some path resolution, 
+            # On Windows, we need to use shell=True for some path resolution,
             # but we use Popen to run in parallel
-            proc = subprocess.Popen(
-                cmd, 
-                env=env,
-                shell=True if os.name == "nt" else False
-            )
+            proc = subprocess.Popen(cmd, env=env, shell=True if os.name == "nt" else False)
             selfplay_procs.append(proc)
 
         # Wait for all workers
@@ -155,14 +148,14 @@ def main() -> None:
             if exit_code != 0:
                 logger.error("Self-play worker %d failed with code %d", i, exit_code)
                 sys.exit(1)
-        
+
         logger.info("All self-play workers completed.")
 
         # ---------------------------------------------------------
         # Phase 2: Training
         # ---------------------------------------------------------
         logger.info("Phase 2: Training")
-        
+
         cmd = [
             python_cmd,
             "-m",
@@ -171,13 +164,14 @@ def main() -> None:
             f"--iteration={iteration}",
             f"--trajectory_iterations={iteration}",
             # f"--storage_backend=local", # REMOVED: Managed via env var
-             # Ensure we point to the same local bucket path
-            "--epochs=1", # Keep it fast for validation
+            # Ensure we point to the same local bucket path
+            "--epochs=1",  # Keep it fast for validation
             "--batch_size=32",
         ]
-        
+
         run_command(cmd, env=env)
         logger.info("Training completed for iteration %d", iteration)
+
 
 if __name__ == "__main__":
     main()

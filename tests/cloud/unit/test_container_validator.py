@@ -20,7 +20,6 @@ from alpha_zero.cloud.gcp.container_validator import (
     validate_container_image,
 )
 
-
 # =============================================================================
 # extract_image_tag
 # =============================================================================
@@ -36,10 +35,7 @@ class TestExtractImageTag:
     def test_artifact_registry_uri_with_tag(self) -> None:
         """Extracts tag from Artifact Registry URI."""
         assert (
-            extract_image_tag(
-                "us-central1-docker.pkg.dev/hrmtrain/civ6az/training:v2.1"
-            )
-            == "v2.1"
+            extract_image_tag("us-central1-docker.pkg.dev/hrmtrain/civ6az/training:v2.1") == "v2.1"
         )
 
     def test_uri_without_tag_returns_latest(self) -> None:
@@ -96,9 +92,7 @@ class TestBuildDescribeCommand:
 
     def test_artifact_registry_command(self) -> None:
         """Artifact Registry URIs use 'gcloud artifacts docker images describe'."""
-        cmd = _build_describe_command(
-            "us-central1-docker.pkg.dev/hrmtrain/civ6az/training:v2"
-        )
+        cmd = _build_describe_command("us-central1-docker.pkg.dev/hrmtrain/civ6az/training:v2")
         assert cmd[:4] == ["gcloud", "artifacts", "docker", "images"]
 
 
@@ -168,9 +162,7 @@ class TestValidateContainerImage:
 
     @patch("alpha_zero.cloud.gcp.container_validator.shutil.which", return_value="/usr/bin/gcloud")
     @patch("alpha_zero.cloud.gcp.container_validator.subprocess.run")
-    def test_timeout_graceful_fallback(
-        self, mock_run: MagicMock, mock_which: MagicMock
-    ) -> None:
+    def test_timeout_graceful_fallback(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
         """gcloud timeout → exists=True (don't block)."""
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="gcloud", timeout=5)
         result = validate_container_image("gcr.io/proj/img:v1")
@@ -179,9 +171,7 @@ class TestValidateContainerImage:
 
     @patch("alpha_zero.cloud.gcp.container_validator.shutil.which", return_value="/usr/bin/gcloud")
     @patch("alpha_zero.cloud.gcp.container_validator.subprocess.run")
-    def test_os_error_graceful_fallback(
-        self, mock_run: MagicMock, mock_which: MagicMock
-    ) -> None:
+    def test_os_error_graceful_fallback(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
         """OS error during gcloud execution → exists=True."""
         mock_run.side_effect = OSError("Permission denied")
         result = validate_container_image("gcr.io/proj/img:v1")

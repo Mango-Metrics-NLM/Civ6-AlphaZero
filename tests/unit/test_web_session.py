@@ -281,7 +281,7 @@ class TestCreateAIAgent:
     def test_neural_checkpoint_missing_file_raises(self, web_config):
         """Neural opponent with non-existent checkpoint path."""
         config = WebConfig(
-            **{**web_config.to_dict(), "checkpoint_path": "/tmp/nonexistent_checkpoint.pt"}  # noqa: S108
+            **{**web_config.to_dict(), "checkpoint_path": "/tmp/nonexistent_checkpoint.pt"}
         )
         manager = GameSessionManager(config)
         with pytest.raises((RuntimeError, FileNotFoundError, OSError)):
@@ -330,9 +330,7 @@ class TestGetSharedNetwork:
         from unittest.mock import MagicMock
         from unittest.mock import patch as mock_patch
 
-        config = WebConfig(
-            **{**web_config.to_dict(), "checkpoint_path": "/tmp/fake_checkpoint.pt"}  # noqa: S108
-        )
+        config = WebConfig(**{**web_config.to_dict(), "checkpoint_path": "/tmp/fake_checkpoint.pt"})
         manager = GameSessionManager(config)
 
         mock_network = MagicMock()
@@ -359,9 +357,7 @@ class TestGetSharedNetwork:
         from unittest.mock import MagicMock
         from unittest.mock import patch as mock_patch
 
-        config = WebConfig(
-            **{**web_config.to_dict(), "checkpoint_path": "/tmp/fake_checkpoint.pt"}  # noqa: S108
-        )
+        config = WebConfig(**{**web_config.to_dict(), "checkpoint_path": "/tmp/fake_checkpoint.pt"})
         manager = GameSessionManager(config)
 
         mock_network = MagicMock()

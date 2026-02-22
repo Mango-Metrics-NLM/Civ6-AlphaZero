@@ -4,8 +4,14 @@
     Use ``scripts/monitor_build.py`` instead, which supports polling,
     step verification, and structured CLI arguments.
 """
+
+import json
 import sys
+import urllib.request
 import warnings
+
+import google.auth
+import google.auth.transport.requests
 
 warnings.warn(
     "check_build.py is deprecated — use monitor_build.py for polling and "
@@ -13,10 +19,6 @@ warnings.warn(
     DeprecationWarning,
     stacklevel=1,
 )
-import json
-import google.auth
-import google.auth.transport.requests
-import urllib.request
 
 BUILD_ID = sys.argv[1] if len(sys.argv) > 1 else "283ca181-47bb-4029-b1c0-5a81690b8756"
 PROJECT = sys.argv[2] if len(sys.argv) > 2 else "hrmtrain"
@@ -24,7 +26,7 @@ PROJECT = sys.argv[2] if len(sys.argv) > 2 else "hrmtrain"
 creds, _ = google.auth.default()
 creds.refresh(google.auth.transport.requests.Request())
 
-url = "https://cloudbuild.googleapis.com/v1/projects/{}/builds/{}".format(PROJECT, BUILD_ID)
+url = f"https://cloudbuild.googleapis.com/v1/projects/{PROJECT}/builds/{BUILD_ID}"
 req = urllib.request.Request(url, headers={"Authorization": "Bearer " + creds.token})
 
 try:
@@ -44,7 +46,7 @@ steps = data.get("steps", [])
 for i, s in enumerate(steps):
     step_id = s.get("id", "unknown")
     step_status = s.get("status", "unknown")
-    print("  Step {}: {} -> {}".format(i, step_id, step_status))
+    print(f"  Step {i}: {step_id} -> {step_status}")
 
 # Show failure info
 print()
@@ -56,16 +58,18 @@ if "failureInfo" in data:
 # Try to read the log from GCS
 logs_bucket = data.get("logsBucket", "")
 if logs_bucket:
-    log_url = "{}/log-{}.txt".format(logs_bucket, BUILD_ID)
+    log_url = f"{logs_bucket}/log-{BUILD_ID}.txt"
     # Convert gs:// to https://
     if log_url.startswith("gs://"):
         https_url = log_url.replace("gs://", "https://storage.googleapis.com/", 1)
     else:
         https_url = log_url
-    
+
     print("\nFetching build log from:", https_url)
     try:
-        log_req = urllib.request.Request(https_url, headers={"Authorization": "Bearer " + creds.token})
+        log_req = urllib.request.Request(
+            https_url, headers={"Authorization": "Bearer " + creds.token}
+        )
         log_resp = urllib.request.urlopen(log_req, timeout=30)
         log_text = log_resp.read().decode("utf-8", errors="replace")
         # Show last 100 lines

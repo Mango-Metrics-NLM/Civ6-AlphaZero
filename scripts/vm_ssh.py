@@ -26,7 +26,7 @@ def ssh_command(command: str, timeout: int = 120) -> tuple[str, str, int]:
     Returns:
         Tuple of (stdout, stderr, return_code).
     """
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(
         [
             GCLOUD,
             "compute",

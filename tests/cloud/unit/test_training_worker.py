@@ -3,10 +3,7 @@ Unit tests for training worker.
 """
 
 import os
-import sys
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from alpha_zero.cloud.gcp.training_worker import cleanup_ddp, setup_ddp
 
@@ -103,9 +100,9 @@ class TestPrepareDatasetActionMask:
 
         traj = self._make_trajectory(include_mask=True)
         dataset = prepare_dataset([traj])
-        assert len(dataset.tensors) == 5, (
-            "Expected 5 tensors: spatial, vector, action_mask, policy, value"
-        )
+        assert (
+            len(dataset.tensors) == 5
+        ), "Expected 5 tensors: spatial, vector, action_mask, policy, value"
 
     def test_returns_five_tensors_without_mask_legacy(self) -> None:
         """Legacy trajectories without action_masks get all-ones mask."""
@@ -139,7 +136,6 @@ class TestPrepareDatasetActionMask:
 
     def test_tensor_order_is_spatial_vector_mask_policy_value(self) -> None:
         """Verify tensor order matches train_epoch unpacking."""
-        import torch
 
         from alpha_zero.cloud.gcp.training_worker import prepare_dataset
 
@@ -163,6 +159,6 @@ class TestTrajectoryDatasetRemoved:
         """TrajectoryDataset was dead code and should be removed."""
         import alpha_zero.cloud.gcp.training_worker as tw
 
-        assert not hasattr(tw, "TrajectoryDataset"), (
-            "TrajectoryDataset class should have been removed as dead code"
-        )
+        assert not hasattr(
+            tw, "TrajectoryDataset"
+        ), "TrajectoryDataset class should have been removed as dead code"

@@ -89,7 +89,13 @@ class TestMainMuZeroTrainingDispatch:
         # Setup mocks
         mock_config_cls.return_value = MagicMock()
         mock_load_traj.return_value = [
-            {"spatial": [[0.0] * 832], "vector": [[0.0] * 64], "policies": [[0.01] * 376], "actions": [0], "rewards": [1.0]}
+            {
+                "spatial": [[0.0] * 832],
+                "vector": [[0.0] * 64],
+                "policies": [[0.01] * 376],
+                "actions": [0],
+                "rewards": [1.0],
+            }
         ]
 
         # Create minimal dataset
@@ -140,7 +146,13 @@ class TestMainMuZeroTrainingDispatch:
 
         mock_config_cls.return_value = MagicMock()
         mock_load_traj.return_value = [
-            {"spatial": [[0.0] * 832], "vector": [[0.0] * 64], "policies": [[0.01] * 376], "actions": [0], "rewards": [1.0]}
+            {
+                "spatial": [[0.0] * 832],
+                "vector": [[0.0] * 64],
+                "policies": [[0.01] * 376],
+                "actions": [0],
+                "rewards": [1.0],
+            }
         ]
         mock_dataset = MagicMock()
         mock_dataset.__len__ = MagicMock(return_value=10)

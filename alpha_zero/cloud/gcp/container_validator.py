@@ -27,9 +27,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 _SUBPROCESS_TIMEOUT_S: Final[int] = 5
-_GCR_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"^(gcr\.io|[a-z]+-docker\.pkg\.dev)/"
-)
+_GCR_PATTERN: Final[re.Pattern[str]] = re.compile(r"^(gcr\.io|[a-z]+-docker\.pkg\.dev)/")
 
 
 # ---------------------------------------------------------------------------
@@ -103,9 +101,7 @@ def validate_container_image(uri: str) -> ValidationResult:
     """
     # Check gcloud is available
     if not shutil.which("gcloud"):
-        logger.warning(
-            "gcloud CLI not found; skipping container validation for %s", uri
-        )
+        logger.warning("gcloud CLI not found; skipping container validation for %s", uri)
         return ValidationResult(exists=True, error="gcloud not found")
 
     # Build the describe command depending on registry type
@@ -122,9 +118,7 @@ def validate_container_image(uri: str) -> ValidationResult:
 
         if result.returncode == 0:
             digest = _parse_digest(result.stdout)
-            logger.info(
-                "Container image validated: %s (digest=%s)", uri, digest or "n/a"
-            )
+            logger.info("Container image validated: %s (digest=%s)", uri, digest or "n/a")
             return ValidationResult(exists=True, digest=digest)
 
         # Non-zero exit → image not found or permissions issue
@@ -141,9 +135,7 @@ def validate_container_image(uri: str) -> ValidationResult:
         return ValidationResult(exists=True, error="gcloud timeout")
 
     except OSError as exc:
-        logger.warning(
-            "gcloud execution error for %s: %s; assuming image exists", uri, exc
-        )
+        logger.warning("gcloud execution error for %s: %s; assuming image exists", uri, exc)
         return ValidationResult(exists=True, error=str(exc))
 
 
@@ -160,7 +152,14 @@ def _build_describe_command(uri: str) -> list[str]:
     """
     if "docker.pkg.dev" in uri:
         return ["gcloud", "artifacts", "docker", "images", "describe", uri]
-    return ["gcloud", "container", "images", "describe", uri, "--format=value(image_summary.digest)"]
+    return [
+        "gcloud",
+        "container",
+        "images",
+        "describe",
+        uri,
+        "--format=value(image_summary.digest)",
+    ]
 
 
 def _parse_digest(stdout: str) -> str | None:

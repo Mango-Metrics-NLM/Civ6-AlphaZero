@@ -1,13 +1,13 @@
 """Edge case tests for replay buffer."""
 
 import threading
+
 import numpy as np
-import pytest
 
 from alpha_zero.distributed.shared_storage import (
     DistributedReplayBuffer,
-    ReplayBufferConfig,
     GameTrajectory,
+    ReplayBufferConfig,
     TrainingExample,
 )
 from alpha_zero.utils.constants import ENCODER

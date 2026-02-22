@@ -33,7 +33,7 @@ def _torch_load_compat(
     except TypeError:
         # Fallback for older PyTorch without weights_only parameter
         logger.warning("torch.load weights_only not supported; falling back to default load")
-        return torch.load(path, map_location=map_location)  # noqa: S614
+        return torch.load(path, map_location=map_location)
 
 
 # ---------------------------------------------------------------------------

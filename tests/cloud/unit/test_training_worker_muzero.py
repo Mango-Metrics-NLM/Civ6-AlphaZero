@@ -176,18 +176,22 @@ class TestTrainMuZeroEpoch:
 
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-        # Create minimal batch as tuple (spatial_flat, vector, policy, value, rewards, actions)
+        # Create minimal batch as tuple matching Phase 17 dataset layout:
+        # (spatial_flat, vector, action_mask, policy, value, rewards, actions)
         batch_size = 4
+        action_space_size = 376
         spatial_flat = torch.randn(batch_size, ENCODER_SPATIAL_CHANNELS * 8 * 8)
         vector = torch.randn(batch_size, 64)
-        target_policy = torch.softmax(torch.randn(batch_size, 376), dim=-1)
+        action_mask = torch.ones(batch_size, action_space_size)
+        target_policy = torch.softmax(torch.randn(batch_size, action_space_size), dim=-1)
         target_value = torch.randn(batch_size)
         target_rewards = torch.zeros(batch_size)
-        target_actions = torch.randint(0, 376, (batch_size,))
+        target_actions = torch.randint(0, action_space_size, (batch_size,))
 
         mock_batch = (
             spatial_flat,
             vector,
+            action_mask,
             target_policy,
             target_value,
             target_rewards,

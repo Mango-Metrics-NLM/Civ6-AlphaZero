@@ -288,7 +288,7 @@ def test_container_validation(container_image: str | None) -> SmokeResult:
             )
 
         # Test 1: gameplay modules importable (override entrypoint to use python)
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(
             [
                 docker_bin,
                 "run",
@@ -313,7 +313,7 @@ def test_container_validation(container_image: str | None) -> SmokeResult:
             )
 
         # Test 2: entrypoint accepts --gameplay_preset
-        result2 = subprocess.run(  # noqa: S603
+        result2 = subprocess.run(
             [
                 docker_bin,
                 "run",

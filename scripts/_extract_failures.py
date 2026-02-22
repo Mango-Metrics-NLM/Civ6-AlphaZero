@@ -3,7 +3,7 @@
 Uses the already-known job data from the earlier query to fetch
 individual jobs by resource name instead of listing all 1,441.
 """
-import json
+
 import sys
 
 from google.cloud import aiplatform
@@ -51,7 +51,7 @@ for j in recent:
     try:
         raw = j.to_dict()
         specs = raw.get("jobSpec", {}).get("workerPoolSpecs", [])
-        for i, spec in enumerate(specs):
+        for _i, spec in enumerate(specs):
             container = spec.get("containerSpec", {})
             img = container.get("imageUri", "N/A")
             args_list = container.get("args", [])

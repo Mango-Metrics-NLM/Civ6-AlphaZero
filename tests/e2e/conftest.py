@@ -152,12 +152,9 @@ def cleanup_gcs_artifacts(
 
     # Cleanup: Delete test artifacts from GCS
     try:
-        try:
-            from google.cloud import storage as gcs_sdk
+        import importlib.util
 
-            GCS_AVAILABLE = True
-        except ImportError:
-            GCS_AVAILABLE = False
+        GCS_AVAILABLE = importlib.util.find_spec("google.cloud.storage") is not None
 
         if not GCS_AVAILABLE:
             return

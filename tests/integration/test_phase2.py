@@ -1,6 +1,5 @@
 import tempfile
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pytest
@@ -384,7 +383,7 @@ class TestActionSpaceCompatibility:
     )
     def test_hierarchical_action_space_exists(self) -> None:
         """Test hierarchical action space class exists."""
-        from alpha_zero.core.civ6_actions import HierarchicalActionSpace, ActionSpaceConfig
+        from alpha_zero.core.civ6_actions import ActionSpaceConfig, HierarchicalActionSpace
 
         action_space = HierarchicalActionSpace(
             config=ActionSpaceConfig(

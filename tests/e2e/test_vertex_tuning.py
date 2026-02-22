@@ -8,7 +8,6 @@ import pytest
 
 from alpha_zero.cloud.gcp.config import GCPConfig, GCSPathConfig
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

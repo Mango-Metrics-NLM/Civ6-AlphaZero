@@ -9,13 +9,13 @@ Run with:  pytest tests/e2e/test_gcs_live.py -m "requires_env"
 
 from __future__ import annotations
 
-import io
 import json
 import logging
 import os
 import time
 import uuid
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 
@@ -157,8 +157,9 @@ class TestGCSLive:
         assert _bucket is not None
 
         try:
-            import torch
             from unittest.mock import MagicMock
+
+            import torch
 
             from alpha_zero.cloud.gcp.config import GCPConfig, GCSPathConfig
             from alpha_zero.cloud.gcp.storage import GCSModelStorage

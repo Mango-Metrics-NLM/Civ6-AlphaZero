@@ -291,5 +291,8 @@ class TestBuildTrainingExtraArgsEdgeCases:
         assert "--num_res_blocks=8" in extra_args
         assert "--num_filters=128" in extra_args
 
-        # No LR or weight_decay args for defaults
-        assert len(extra_args) == 4, f"Expected 4 args (architecture only), got {len(extra_args)}"
+        # learning_rate is always forwarded (Phase 17); LR schedule + weight_decay omitted for defaults
+        assert "--learning_rate=0.001" in extra_args
+        assert (
+            len(extra_args) == 5
+        ), f"Expected 5 args (4 arch + learning_rate), got {len(extra_args)}"

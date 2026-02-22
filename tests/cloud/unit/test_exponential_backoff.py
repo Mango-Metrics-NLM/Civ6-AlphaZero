@@ -9,8 +9,6 @@ from __future__ import annotations
 import sys
 from unittest.mock import patch
 
-import pytest
-
 from alpha_zero.cloud.gcp.vertex_orchestrator import (
     _BACKOFF_MULTIPLIER,
     _INITIAL_RETRY_DELAY_S,
@@ -18,7 +16,6 @@ from alpha_zero.cloud.gcp.vertex_orchestrator import (
     _MAX_RETRY_DELAY_S,
     compute_retry_delay,
 )
-
 
 # =============================================================================
 # compute_retry_delay — deterministic (jitter=0)
@@ -44,9 +41,7 @@ class TestComputeRetryDelayDeterministic:
 
     def test_capped_at_maximum(self) -> None:
         """Delay is capped at the maximum, even for high attempt numbers."""
-        delay = compute_retry_delay(
-            100, base=30.0, maximum=300.0, jitter=0.0, multiplier=2.0
-        )
+        delay = compute_retry_delay(100, base=30.0, maximum=300.0, jitter=0.0, multiplier=2.0)
         assert delay == 300.0
 
     def test_custom_multiplier(self) -> None:

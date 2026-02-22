@@ -12,8 +12,9 @@ from __future__ import annotations
 import logging
 import os
 import re
+from collections.abc import Generator
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
 
 import pytest
 
@@ -308,7 +309,7 @@ class TestSecuritySanity:
                 and isinstance(value, str)
                 and name.upper() in _SENSITIVE_ENV_NAMES
                 and value not in _SAFE_PLACEHOLDERS
-                and len(value) > 8  # noqa: PLR2004
+                and len(value) > 8
             ):
                 violations.append(f"{filepath}: {name} has non-placeholder value")
             for key, child in node.items():

@@ -111,7 +111,7 @@ def fetch_wandb_metrics(run_id: str, project: str = "ianshank-none/civ6-alphazer
 
     import pandas as pd  # guaranteed available since wandb depends on it
 
-    def _get_col(col: str, default: float = 0.0) -> "pd.Series":
+    def _get_col(col: str, default: float = 0.0) -> pd.Series:
         """Return history[col] as a Series, or a zero-filled Series if missing."""
         if col in history.columns:
             return history[col].fillna(default)

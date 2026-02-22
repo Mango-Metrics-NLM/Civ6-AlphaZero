@@ -279,9 +279,7 @@ def main() -> None:
     print(f"Bucket: {bucket_name}")
 
     try:
-        image_uri = trigger_cloud_build(
-            project_id, bucket_name, args.tag, args.region, args.repo
-        )
+        image_uri = trigger_cloud_build(project_id, bucket_name, args.tag, args.region, args.repo)
         print(f"\nDone! Set CIV6AZ_CONTAINER_IMAGE_URI={image_uri}")
     except Exception as e:
         print(f"Error: {e}")

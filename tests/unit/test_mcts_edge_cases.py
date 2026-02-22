@@ -1,12 +1,8 @@
 """Edge case tests for MCTS variants."""
 
-import numpy as np
-import pytest
 import torch
 
 from alpha_zero.core.civ6_network import MicroCivNetwork
-from alpha_zero.core.civ6_mcts import GumbelMCTS, GumbelMCTSConfig
-from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.utils.constants import ENCODER
 
 

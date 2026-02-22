@@ -343,7 +343,7 @@ class TestVertexTrainingJob:
         with patch.object(
             mock_client, "submit_custom_job", wraps=mock_client.submit_custom_job
         ) as mock_submit:
-            job_name = job.launch(
+            job.launch(
                 iteration=10,
                 trajectory_iterations=[10],
             )

@@ -160,9 +160,7 @@ def run_arena(
                 # MuZeroMCTS.search() uses learned dynamics model internally;
                 # it requires observation dict + action_mask, not env.
                 obs = env.get_observation()
-                action_probs, _ = mcts.search(
-                    obs, action_mask=obs["action_mask"], add_noise=False
-                )
+                action_probs, _ = mcts.search(obs, action_mask=obs["action_mask"], add_noise=False)
             else:
                 # Standard MCTS variants (civ6/gumbel) traverse the env directly
                 action_probs, _ = mcts.search(env, add_noise=False)

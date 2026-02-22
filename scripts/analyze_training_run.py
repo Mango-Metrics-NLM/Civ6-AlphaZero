@@ -5,7 +5,7 @@ import re
 
 
 def main():
-    with open("training_logs_full.txt", "r", encoding="utf-8") as f:
+    with open("training_logs_full.txt", encoding="utf-8") as f:
         lines = f.readlines()
 
     # 1. Cost per phase
@@ -77,7 +77,7 @@ def main():
 
     # 4. Rejection stats
     promotions = len(promotion_chain)
-    rejections = sum(1 for l in lines if "New model rejected" in l)
+    rejections = sum(1 for line_ in lines if "New model rejected" in line_)
     print(f"\n  Promotions: {promotions}")
     print(f"  Rejections: {rejections}")
     if promotions + rejections > 0:
@@ -94,7 +94,7 @@ def main():
         print(
             f"  Min: {min(win_rates):.0f}%, Max: {max(win_rates):.0f}%, Mean: {sum(win_rates) / len(win_rates):.1f}%"
         )
-        buckets = sorted(set(int(w) for w in win_rates))
+        buckets = sorted({int(w) for w in win_rates})
         for wr_bucket in buckets:
             count = sum(1 for w in win_rates if int(w) == wr_bucket)
             bar = "#" * count
@@ -145,14 +145,14 @@ def main():
 
     # Check for tournament completion
     tournament_complete = any(
-        "tournament" in l.lower()
+        "tournament" in line_.lower()
         and (
-            "result" in l.lower()
-            or "ranking" in l.lower()
-            or "elo" in l.lower()
-            or "complete" in l.lower()
+            "result" in line_.lower()
+            or "ranking" in line_.lower()
+            or "elo" in line_.lower()
+            or "complete" in line_.lower()
         )
-        for l in lines[-100:]
+        for line_ in lines[-100:]
     )
     if tournament_complete:
         print("  Status: COMPLETE")

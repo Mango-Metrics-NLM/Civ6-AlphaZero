@@ -10,7 +10,7 @@ from __future__ import annotations
 import importlib
 import logging
 import pkgutil
-from typing import Generator
+from collections.abc import Generator
 
 import pytest
 
@@ -90,7 +90,7 @@ class TestImportSanity:
             assert (
                 ver.release is not None
             ), f"Version '{alpha_zero.__version__}' has no release segment"
-            assert len(ver.release) >= 3, (  # noqa: PLR2004
+            assert len(ver.release) >= 3, (
                 f"Version '{alpha_zero.__version__}' should have at least "
                 f"3 release segments (X.Y.Z), got {len(ver.release)}"
             )
@@ -103,9 +103,7 @@ class TestImportSanity:
         except ImportError:
             # Fallback: basic check if packaging is not installed
             parts = alpha_zero.__version__.split(".")
-            assert len(parts) >= 3, (  # noqa: PLR2004
-                f"Version '{alpha_zero.__version__}' should be semver X.Y.Z"
-            )
+            assert len(parts) >= 3, f"Version '{alpha_zero.__version__}' should be semver X.Y.Z"
 
     def test_public_api_exports(self) -> None:
         """``__all__`` is defined and non-empty."""

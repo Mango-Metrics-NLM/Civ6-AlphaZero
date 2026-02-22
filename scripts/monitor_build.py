@@ -60,10 +60,8 @@ def fetch_build(build_id: str, project: str, token: str) -> dict:
         urllib.error.URLError: On network failure.
     """
     url = CLOUD_BUILD_API_URL.format(project=project, build_id=build_id)
-    req = urllib.request.Request(  # noqa: S310
-        url, headers={"Authorization": f"Bearer {token}"}
-    )
-    resp = urllib.request.urlopen(req, timeout=30)  # noqa: S310
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    resp = urllib.request.urlopen(req, timeout=30)
     return json.loads(resp.read())
 
 
@@ -110,10 +108,8 @@ def fetch_build_log_tail(
         log_url = log_url.replace("gs://", "https://storage.googleapis.com/", 1)
 
     try:
-        req = urllib.request.Request(  # noqa: S310
-            log_url, headers={"Authorization": f"Bearer {token}"}
-        )
-        resp = urllib.request.urlopen(req, timeout=30)  # noqa: S310
+        req = urllib.request.Request(log_url, headers={"Authorization": f"Bearer {token}"})
+        resp = urllib.request.urlopen(req, timeout=30)
         text = resp.read().decode("utf-8", errors="replace")
         tail = text.strip().split("\n")[-lines:]
         return "\n".join(tail)

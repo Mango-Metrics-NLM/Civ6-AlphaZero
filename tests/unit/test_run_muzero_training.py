@@ -186,7 +186,9 @@ class TestSelfPlayGame:
         """
         trajectory = self_play_game(small_env, small_mcts, small_config)
 
-        for i, (policy, done) in enumerate(zip(trajectory.policies, trajectory.dones)):
+        for i, (policy, done) in enumerate(
+            zip(trajectory.policies, trajectory.dones, strict=False)
+        ):
             policy_sum = policy.sum()
 
             # Terminal states (done=True) may have zero policy

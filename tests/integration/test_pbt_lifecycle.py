@@ -7,7 +7,6 @@ Validates the full PBT cycle using the actual PopulationManager API:
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import numpy as np
 import pytest
@@ -65,7 +64,7 @@ class TestPBTLifecycle:
 
         ids = mgr.get_agent_ids()
         scores = [1.0, 0.8, 0.3, 0.1]
-        for agent_id, score in zip(ids, scores):
+        for agent_id, score in zip(ids, scores, strict=False):
             mgr.update_fitness(agent_id, score)
 
         ranking = mgr.get_fitness_ranking()
@@ -82,7 +81,7 @@ class TestPBTLifecycle:
 
         ids = mgr.get_agent_ids()
         scores = [1.0, 0.8, 0.3, 0.1]
-        for agent_id, score in zip(ids, scores):
+        for agent_id, score in zip(ids, scores, strict=False):
             mgr.update_fitness(agent_id, score)
 
         replacements = mgr.exploit_and_explore()

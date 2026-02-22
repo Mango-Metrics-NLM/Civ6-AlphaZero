@@ -180,8 +180,15 @@ def generate_bar_chart(
     values = [az.total_env_clones, mz.total_dynamics_calls]
     bars = ax.bar(labels, values, color=colors, width=0.5, edgecolor="white", linewidth=1.2)
     for bar, val in zip(bars, values, strict=False):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(values) * 0.02,
-                f"{val:,}", ha="center", va="bottom", fontweight="bold", fontsize=11)
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + max(values) * 0.02,
+            f"{val:,}",
+            ha="center",
+            va="bottom",
+            fontweight="bold",
+            fontsize=11,
+        )
     ax.set_ylabel("Total Calls", fontsize=12)
     ax.set_title("Search Mechanism: Environment Clones vs Dynamics Model Calls", fontsize=13)
     ax.spines["top"].set_visible(False)
@@ -199,8 +206,15 @@ def generate_bar_chart(
     values = [az.games_per_minute, mz.games_per_minute]
     bars = ax.bar(labels, values, color=colors, width=0.5, edgecolor="white", linewidth=1.2)
     for bar, val in zip(bars, values, strict=False):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(values) * 0.02,
-                f"{val:.1f}", ha="center", va="bottom", fontweight="bold", fontsize=11)
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + max(values) * 0.02,
+            f"{val:.1f}",
+            ha="center",
+            va="bottom",
+            fontweight="bold",
+            fontsize=11,
+        )
     ax.set_ylabel("Games per Minute", fontsize=12)
     ax.set_title("Throughput: Games per Minute", fontsize=13)
     ax.spines["top"].set_visible(False)
@@ -217,8 +231,15 @@ def generate_bar_chart(
     values = [az.win_rate * 100, mz.win_rate * 100]
     bars = ax.bar(labels, values, color=colors, width=0.5, edgecolor="white", linewidth=1.2)
     for bar, val in zip(bars, values, strict=False):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1,
-                f"{val:.1f}%", ha="center", va="bottom", fontweight="bold", fontsize=11)
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 1,
+            f"{val:.1f}%",
+            ha="center",
+            va="bottom",
+            fontweight="bold",
+            fontsize=11,
+        )
     ax.set_ylabel("Win Rate (%)", fontsize=12)
     ax.set_title("Win Rate vs Random Baseline", fontsize=13)
     ax.set_ylim(0, 100)
@@ -273,8 +294,7 @@ def generate_markdown_report(
         f"{mz.games_per_minute:.1f} | {speed_ratio:.2f}x |",
         f"| Win Rate | {az.win_rate:.2%} | "
         f"{mz.win_rate:.2%} | {mz.win_rate - az.win_rate:+.2%} |",
-        f"| Avg Game Length | {az.avg_game_length:.1f} | "
-        f"{mz.avg_game_length:.1f} | - |",
+        f"| Avg Game Length | {az.avg_game_length:.1f} | " f"{mz.avg_game_length:.1f} | - |",
         "",
         "## Key Insight",
         "",

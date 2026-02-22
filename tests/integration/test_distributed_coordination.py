@@ -10,9 +10,8 @@ import json
 import logging
 import threading
 import time
-import uuid
 from typing import Any, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
