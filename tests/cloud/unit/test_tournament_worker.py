@@ -993,7 +993,7 @@ class TestVertexTournamentJobMode:
         job = VertexTournamentJob(config, client)
         job.launch(model_versions=[0, 1])
         submitted_spec = next(iter(client._jobs.values()))["spec"]
-        assert submitted_spec.command == []
+        assert submitted_spec.command == ["python", "-m", "alpha_zero.cloud.gcp.entrypoint"]
 
 
 # =============================================================================

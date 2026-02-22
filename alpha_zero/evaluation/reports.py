@@ -16,13 +16,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from alpha_zero.evaluation.config import EvaluationConfig
 from alpha_zero.evaluation.diversity import DiversityMetrics
 from alpha_zero.evaluation.evaluator import EvaluationResult
+from alpha_zero.utils.compat import UTC
 
 
 @dataclass

@@ -28,12 +28,14 @@ logger = logging.getLogger(__name__)
 # SDK availability check
 try:
     from google.cloud import storage as _gcs_sdk  # noqa: F401
+
     GCS_AVAILABLE = True
 except ImportError:
     GCS_AVAILABLE = False
 
 try:
     from google.cloud import aiplatform as _aiplatform  # noqa: F401
+
     VERTEX_AVAILABLE = True
 except ImportError:
     VERTEX_AVAILABLE = False
@@ -42,9 +44,7 @@ except ImportError:
 # are provided by tests/e2e/conftest.py
 
 # Skip markers for SDK availability
-requires_gcs = pytest.mark.skipif(
-    not GCS_AVAILABLE, reason="google-cloud-storage not installed"
-)
+requires_gcs = pytest.mark.skipif(not GCS_AVAILABLE, reason="google-cloud-storage not installed")
 requires_vertex = pytest.mark.skipif(
     not VERTEX_AVAILABLE, reason="google-cloud-aiplatform not installed"
 )
@@ -65,11 +65,11 @@ class TestGCSIntegration:
 
     def test_gcs_upload_download_small_file(
         self,
-        e2e_cloud_config: CloudConfig,
+        e2e_cloud_config: GCPConfig,
         cleanup_gcs_artifacts: str,
     ) -> None:
         """Test uploading and downloading a small file to GCS."""
-        manager = GCSCheckpointManager(e2e_cloud_config)
+        manager = GCSCheckpointStorage(e2e_cloud_config)
         test_path = cleanup_gcs_artifacts
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -98,11 +98,11 @@ class TestGCSIntegration:
 
     def test_gcs_list_checkpoints(
         self,
-        e2e_cloud_config: CloudConfig,
+        e2e_cloud_config: GCPConfig,
         cleanup_gcs_artifacts: str,
     ) -> None:
         """Test listing checkpoints in GCS bucket."""
-        manager = GCSCheckpointManager(e2e_cloud_config)
+        manager = GCSCheckpointStorage(e2e_cloud_config)
         test_path = cleanup_gcs_artifacts
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -122,11 +122,11 @@ class TestGCSIntegration:
 
     def test_gcs_get_latest_checkpoint(
         self,
-        e2e_cloud_config: CloudConfig,
+        e2e_cloud_config: GCPConfig,
         cleanup_gcs_artifacts: str,
     ) -> None:
         """Test getting the latest checkpoint by timestamp."""
-        manager = GCSCheckpointManager(e2e_cloud_config)
+        manager = GCSCheckpointStorage(e2e_cloud_config)
         test_path = cleanup_gcs_artifacts
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -152,7 +152,7 @@ class TestGCSIntegration:
 class TestVertexAIIntegration:
     """E2E tests for Vertex AI integration."""
 
-    def test_vertex_trainer_initialization(self, e2e_cloud_config: CloudConfig) -> None:
+    def test_vertex_trainer_initialization(self, e2e_cloud_config: GCPConfig) -> None:
         """Test that Vertex AI trainer initializes with real credentials."""
         from alpha_zero.cloud.gcp import VertexAITrainer
 
@@ -160,7 +160,7 @@ class TestVertexAIIntegration:
         assert trainer.is_mock is False
         logger.info(f"Vertex AI trainer initialized for project: {e2e_cloud_config.project_id}")
 
-    def test_vertex_job_spec_validation(self, e2e_cloud_config: CloudConfig) -> None:
+    def test_vertex_job_spec_validation(self, e2e_cloud_config: GCPConfig) -> None:
         """Test creating a valid Vertex AI job spec (without submission)."""
         from alpha_zero.cloud.gcp import VertexAITrainer
 
@@ -183,7 +183,7 @@ class TestVertexAIIntegration:
 class TestCloudLoggingIntegration:
     """E2E tests for Cloud Logging integration."""
 
-    def test_cloud_logger_initialization(self, e2e_cloud_config: CloudConfig) -> None:
+    def test_cloud_logger_initialization(self, e2e_cloud_config: GCPConfig) -> None:
         """Test that Cloud Logger initializes with real credentials."""
         from alpha_zero.cloud.gcp import CloudLogger
 
@@ -196,7 +196,7 @@ class TestCloudLoggingIntegration:
         assert logger_instance.is_mock is False
         logger.info("Cloud Logger initialized successfully")
 
-    def test_cloud_logger_write(self, e2e_cloud_config: CloudConfig) -> None:
+    def test_cloud_logger_write(self, e2e_cloud_config: GCPConfig) -> None:
         """Test writing a log entry to Cloud Logging."""
         from alpha_zero.cloud.gcp import CloudLogger
 
@@ -224,7 +224,7 @@ class TestFullCloudWorkflow:
 
     def test_coordinator_real_gcs(
         self,
-        e2e_cloud_config: CloudConfig,
+        e2e_cloud_config: GCPConfig,
         cleanup_gcs_artifacts: str,
     ) -> None:
         """Test CloudTrainingCoordinator with real GCS storage."""

@@ -31,9 +31,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 import numpy as np  # type: ignore[import-untyped]
-import torch  # type: ignore[import-untyped]
-import torch.optim as optim  # type: ignore[import-untyped]
-from torch.utils.data import DataLoader, Dataset  # type: ignore[import-untyped]
+import torch
+import torch.optim as optim
+from torch.utils.data import DataLoader, Dataset
 
 from alpha_zero.core.civ6_network import MicroCivNetwork, compute_loss
 from alpha_zero.distributed.shared_storage import GameTrajectory, TrainingExample

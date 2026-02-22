@@ -29,13 +29,15 @@ import time
 from collections import deque
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import Enum
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, ClassVar, TypeVar
 
 import numpy as np
+
+from alpha_zero.utils.compat import UTC
 
 # Default configuration from environment
 DEFAULT_LOG_LEVEL = os.environ.get("CIV6AZ_LOG_LEVEL", "INFO").upper()

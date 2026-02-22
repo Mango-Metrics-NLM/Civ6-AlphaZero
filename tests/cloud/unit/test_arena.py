@@ -92,9 +92,9 @@ class TestRunArena:
     """Tests for run_arena function using mocks."""
 
     @patch("alpha_zero.core.mcts_factory.create_mcts")
-    @patch("alpha_zero.envs.microciv.MicroCivEnv")
+    @patch("alpha_zero.envs.env_factory.create_game_env")
     def test_returns_arena_result_type(
-        self, mock_env_class: MagicMock, mock_create_mcts: MagicMock
+        self, mock_create_env: MagicMock, mock_create_mcts: MagicMock
     ) -> None:
         """Returns an ArenaResult instance."""
         # Setup mock environment
@@ -109,7 +109,7 @@ class TestRunArena:
             {},
         )
         mock_env.winner = 0
-        mock_env_class.return_value = mock_env
+        mock_create_env.return_value = mock_env
 
         # Setup mock MCTS
         mock_mcts = MagicMock()
@@ -126,9 +126,9 @@ class TestRunArena:
         assert isinstance(result, ArenaResult)
 
     @patch("alpha_zero.core.mcts_factory.create_mcts")
-    @patch("alpha_zero.envs.microciv.MicroCivEnv")
+    @patch("alpha_zero.envs.env_factory.create_game_env")
     def test_total_games_matches_input(
-        self, mock_env_class: MagicMock, mock_create_mcts: MagicMock
+        self, mock_create_env: MagicMock, mock_create_mcts: MagicMock
     ) -> None:
         """Result total_games matches num_games input."""
         # Setup mock environment
@@ -143,7 +143,7 @@ class TestRunArena:
             {},
         )
         mock_env.winner = 0
-        mock_env_class.return_value = mock_env
+        mock_create_env.return_value = mock_env
 
         # Setup mock MCTS
         mock_mcts = MagicMock()
@@ -159,9 +159,9 @@ class TestRunArena:
         assert result.total_games == 4
 
     @patch("alpha_zero.core.mcts_factory.create_mcts")
-    @patch("alpha_zero.envs.microciv.MicroCivEnv")
+    @patch("alpha_zero.envs.env_factory.create_game_env")
     def test_wins_draws_losses_sum_to_total(
-        self, mock_env_class: MagicMock, mock_create_mcts: MagicMock
+        self, mock_create_env: MagicMock, mock_create_mcts: MagicMock
     ) -> None:
         """Wins + draws + losses equals total_games."""
         # Setup mock environment with mixed results
@@ -195,7 +195,7 @@ class TestRunArena:
             return ({"spatial": None, "vector": None}, {})
 
         mock_env.reset.side_effect = reset_side_effect
-        mock_env_class.return_value = mock_env
+        mock_create_env.return_value = mock_env
 
         # Setup mock MCTS
         mock_mcts = MagicMock()
@@ -211,9 +211,9 @@ class TestRunArena:
         assert result.wins + result.draws + result.losses == result.total_games
 
     @patch("alpha_zero.core.mcts_factory.create_mcts")
-    @patch("alpha_zero.envs.microciv.MicroCivEnv")
+    @patch("alpha_zero.envs.env_factory.create_game_env")
     def test_alternates_starting_player(
-        self, mock_env_class: MagicMock, mock_create_mcts: MagicMock
+        self, mock_create_env: MagicMock, mock_create_mcts: MagicMock
     ) -> None:
         """Alternates which player model_a controls each game."""
         # Track env resets
@@ -235,7 +235,7 @@ class TestRunArena:
             {},
         )
         mock_env.winner = 0
-        mock_env_class.return_value = mock_env
+        mock_create_env.return_value = mock_env
 
         # Setup mock MCTS
         mock_mcts = MagicMock()
@@ -253,14 +253,14 @@ class TestRunArena:
         # (num_games calls to reset)
         assert reset_count[0] == num_games
 
-        # Verify alternating pattern by checking env creation
+        # Verify alternating pattern by checking factory calls
         # Environment should be created fresh each game
-        assert mock_env_class.call_count == num_games
+        assert mock_create_env.call_count == num_games
 
     @patch("alpha_zero.core.mcts_factory.create_mcts")
-    @patch("alpha_zero.envs.microciv.MicroCivEnv")
+    @patch("alpha_zero.envs.env_factory.create_game_env")
     def test_default_device_is_cpu(
-        self, mock_env_class: MagicMock, mock_create_mcts: MagicMock
+        self, mock_create_env: MagicMock, mock_create_mcts: MagicMock
     ) -> None:
         """When device=None, defaults to CPU device."""
         mock_env = MagicMock()
@@ -274,7 +274,7 @@ class TestRunArena:
             {},
         )
         mock_env.winner = 0
-        mock_env_class.return_value = mock_env
+        mock_create_env.return_value = mock_env
 
         mock_mcts = MagicMock()
         mock_mcts.search.return_value = ([0.9, 0.1], 0.5)
@@ -292,9 +292,9 @@ class TestRunArena:
             assert call_args[1]["device"] == "cpu"
 
     @patch("alpha_zero.core.mcts_factory.create_mcts")
-    @patch("alpha_zero.envs.microciv.MicroCivEnv")
+    @patch("alpha_zero.envs.env_factory.create_game_env")
     def test_mcts_search_called_with_no_noise(
-        self, mock_env_class: MagicMock, mock_create_mcts: MagicMock
+        self, mock_create_env: MagicMock, mock_create_mcts: MagicMock
     ) -> None:
         """MCTS search is called with add_noise=False for evaluation."""
         mock_env = MagicMock()
@@ -308,7 +308,7 @@ class TestRunArena:
             {},
         )
         mock_env.winner = 0
-        mock_env_class.return_value = mock_env
+        mock_create_env.return_value = mock_env
 
         mock_mcts = MagicMock()
         mock_mcts.search.return_value = ([0.9, 0.1], 0.5)
@@ -325,9 +325,9 @@ class TestRunArena:
             assert call_args[1]["add_noise"] is False
 
     @patch("alpha_zero.core.mcts_factory.create_mcts")
-    @patch("alpha_zero.envs.microciv.MicroCivEnv")
+    @patch("alpha_zero.envs.env_factory.create_game_env")
     def test_mcts_select_action_temperature_zero(
-        self, mock_env_class: MagicMock, mock_create_mcts: MagicMock
+        self, mock_create_env: MagicMock, mock_create_mcts: MagicMock
     ) -> None:
         """MCTS select_action is called with temperature=0.0 for greedy eval."""
         mock_env = MagicMock()
@@ -341,7 +341,7 @@ class TestRunArena:
             {},
         )
         mock_env.winner = 0
-        mock_env_class.return_value = mock_env
+        mock_create_env.return_value = mock_env
 
         mock_mcts = MagicMock()
         mock_mcts.search.return_value = ([0.9, 0.1], 0.5)
@@ -365,9 +365,9 @@ class TestRunArena:
                 assert kwargs.get("temperature") == 0.0
 
     @patch("alpha_zero.core.mcts_factory.create_mcts")
-    @patch("alpha_zero.envs.microciv.MicroCivEnv")
+    @patch("alpha_zero.envs.env_factory.create_game_env")
     def test_handles_draw_outcome(
-        self, mock_env_class: MagicMock, mock_create_mcts: MagicMock
+        self, mock_create_env: MagicMock, mock_create_mcts: MagicMock
     ) -> None:
         """Correctly counts draws when env.winner is None."""
         mock_env = MagicMock()
@@ -381,7 +381,7 @@ class TestRunArena:
             {},
         )
         mock_env.winner = None  # Draw
-        mock_env_class.return_value = mock_env
+        mock_create_env.return_value = mock_env
 
         mock_mcts = MagicMock()
         mock_mcts.search.return_value = ([0.9, 0.1], 0.5)
@@ -398,9 +398,9 @@ class TestRunArena:
         assert result.losses == 0
 
     @patch("alpha_zero.core.mcts_factory.create_mcts")
-    @patch("alpha_zero.envs.microciv.MicroCivEnv")
+    @patch("alpha_zero.envs.env_factory.create_game_env")
     def test_handles_all_wins(
-        self, mock_env_class: MagicMock, mock_create_mcts: MagicMock
+        self, mock_create_env: MagicMock, mock_create_mcts: MagicMock
     ) -> None:
         """Correctly counts wins when model_a wins all games."""
         mock_env = MagicMock()
@@ -423,11 +423,11 @@ class TestRunArena:
         def winner_side_effect():
             # Game 0, 2, 4: a_is_player_0 = True, winner should be 0
             # Game 1, 3, 5: a_is_player_0 = False, winner should be 1
-            current_game = mock_env_class.call_count - 1
+            current_game = mock_create_env.call_count - 1
             return 0 if current_game % 2 == 0 else 1
 
         type(mock_env).winner = property(lambda self: winner_side_effect())
-        mock_env_class.return_value = mock_env
+        mock_create_env.return_value = mock_env
 
         mock_mcts = MagicMock()
         mock_mcts.search.return_value = ([0.9, 0.1], 0.5)
@@ -444,9 +444,9 @@ class TestRunArena:
         assert result.losses == 0
 
     @patch("alpha_zero.core.mcts_factory.create_mcts")
-    @patch("alpha_zero.envs.microciv.MicroCivEnv")
+    @patch("alpha_zero.envs.env_factory.create_game_env")
     def test_uses_provided_mcts_parameters(
-        self, mock_env_class: MagicMock, mock_create_mcts: MagicMock
+        self, mock_create_env: MagicMock, mock_create_mcts: MagicMock
     ) -> None:
         """Passes all MCTS parameters correctly to create_mcts."""
         mock_env = MagicMock()
@@ -460,7 +460,7 @@ class TestRunArena:
             {},
         )
         mock_env.winner = 0
-        mock_env_class.return_value = mock_env
+        mock_create_env.return_value = mock_env
 
         mock_mcts = MagicMock()
         mock_mcts.search.return_value = ([0.9, 0.1], 0.5)
@@ -486,11 +486,11 @@ class TestRunArena:
         assert call_kwargs["num_sampled_actions"] == 32
 
     @patch("alpha_zero.core.mcts_factory.create_mcts")
-    @patch("alpha_zero.envs.microciv.MicroCivEnv")
+    @patch("alpha_zero.envs.env_factory.create_game_env")
     def test_uses_provided_env_parameters(
-        self, mock_env_class: MagicMock, mock_create_mcts: MagicMock
+        self, mock_create_env: MagicMock, mock_create_mcts: MagicMock
     ) -> None:
-        """Passes environment parameters correctly to MicroCivEnv."""
+        """Passes environment parameters correctly to create_game_env."""
         mock_env = MagicMock()
         mock_env.reset.return_value = ({"spatial": None, "vector": None}, {})
         mock_env.current_player = 0
@@ -502,7 +502,7 @@ class TestRunArena:
             {},
         )
         mock_env.winner = 0
-        mock_env_class.return_value = mock_env
+        mock_create_env.return_value = mock_env
 
         mock_mcts = MagicMock()
         mock_mcts.search.return_value = ([0.9, 0.1], 0.5)
@@ -520,7 +520,7 @@ class TestRunArena:
             max_turns=50,
         )
 
-        # Check environment creation
-        call_kwargs = mock_env_class.call_args[1]
+        # Check environment creation via factory
+        call_kwargs = mock_create_env.call_args[1]
         assert call_kwargs["board_size"] == 16
         assert call_kwargs["max_turns"] == 50

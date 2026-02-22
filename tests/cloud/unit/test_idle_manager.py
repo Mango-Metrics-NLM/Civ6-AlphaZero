@@ -70,9 +70,7 @@ class TestIdleInstanceConfig:
             }
         }
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump(yaml_content, f)
             f.flush()
 
@@ -303,9 +301,7 @@ class TestJobRegistration:
         assert "new-job" in manager._jobs
         assert manager._jobs["new-job"]["job_type"] == "selfplay"
 
-    def test_mark_active_unknown_job_no_type(
-        self, manager: IdleInstanceManager
-    ) -> None:
+    def test_mark_active_unknown_job_no_type(self, manager: IdleInstanceManager) -> None:
         """Test marking unknown job without type logs warning."""
         manager.mark_active("unknown-job")  # Should log warning
         assert "unknown-job" not in manager._jobs
@@ -350,9 +346,7 @@ class TestIdleDetection:
         assert status.is_idle is True
         assert "Idle for" in status.reason
 
-    def test_check_idle_by_gpu_utilization(
-        self, manager: IdleInstanceManager
-    ) -> None:
+    def test_check_idle_by_gpu_utilization(self, manager: IdleInstanceManager) -> None:
         """Test job becomes idle with low GPU utilization."""
         manager.register_job("job-123", job_type="training")
         manager.mark_active("job-123", gpu_utilization=0.05)  # Below threshold
@@ -416,9 +410,7 @@ class TestGracePeriod:
         assert "grace period started" in status.reason.lower()
         assert "job-123" in manager._grace_period_starts
 
-    def test_grace_period_resets_on_activity(
-        self, manager: IdleInstanceManager
-    ) -> None:
+    def test_grace_period_resets_on_activity(self, manager: IdleInstanceManager) -> None:
         """Test activity clears grace period."""
         manager.register_job("job-123", job_type="training")
         manager._jobs["job-123"]["last_activity"] = time.time() - 120
@@ -431,9 +423,7 @@ class TestGracePeriod:
         manager.mark_active("job-123")
         assert "job-123" not in manager._grace_period_starts
 
-    def test_should_stop_after_grace_period(
-        self, manager: IdleInstanceManager
-    ) -> None:
+    def test_should_stop_after_grace_period(self, manager: IdleInstanceManager) -> None:
         """Test should_stop is True after grace period expires."""
         manager.register_job("job-123", job_type="training")
         manager._jobs["job-123"]["last_activity"] = time.time() - 120
@@ -544,9 +534,7 @@ class TestCallbacks:
         assert args[0] == "job-123"
         assert isinstance(args[1], IdleStatus)
 
-    def test_warning_callback_not_called_for_active(
-        self, manager: IdleInstanceManager
-    ) -> None:
+    def test_warning_callback_not_called_for_active(self, manager: IdleInstanceManager) -> None:
         """Test warning callback not called for active jobs."""
         callback = MagicMock()
         manager.register_warning_callback(callback)

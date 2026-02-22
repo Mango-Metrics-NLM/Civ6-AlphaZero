@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from alpha_zero.tournament.config import (
@@ -33,6 +33,7 @@ from alpha_zero.tournament.config import (
     PlayerStats,
     TournamentConfig,
 )
+from alpha_zero.utils.compat import UTC
 
 logger = logging.getLogger(__name__)
 

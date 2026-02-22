@@ -17,11 +17,14 @@ from __future__ import annotations
 import io
 import json
 import logging
+import os
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from alpha_zero.cloud.gcp.exceptions import GCSStorageError
+from alpha_zero.utils.compat import UTC
 
 if TYPE_CHECKING:
     from google.cloud import storage as gcs
@@ -174,8 +177,87 @@ class TrajectoryMetadata:
 
 
 # =============================================================================
-# GCS Backend Implementation
+# Backend Implementations
 # =============================================================================
+
+
+class LocalBackend:
+    """Local filesystem backend for emulating GCS."""
+
+    def __init__(self, root_dir: str = "data/storage") -> None:
+        """Initialize local backend.
+
+        Args:
+            root_dir: Root directory for emulated storage.
+        """
+        self.root = Path(root_dir)
+        self.root.mkdir(parents=True, exist_ok=True)
+        logger.info("Initialized LocalBackend at %s", self.root.resolve())
+
+    def _get_path(self, bucket: str, blob_path: str) -> Path:
+        """Get local path for blob."""
+        path = self.root / bucket / blob_path
+        return path
+
+    def upload_blob(self, bucket: str, blob_path: str, data: bytes) -> str:
+        """Save data to local file."""
+        path = self._get_path(bucket, blob_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(data)
+        uri = f"file://{path.resolve()}"
+        logger.debug("Saved %d bytes to %s", len(data), uri)
+        return uri
+
+    def download_blob(self, bucket: str, blob_path: str) -> bytes:
+        """Read data from local file."""
+        path = self._get_path(bucket, blob_path)
+        if not path.exists():
+            raise GCSStorageError(
+                f"Blob not found: {blob_path}",
+                bucket=bucket,
+                blob_path=blob_path,
+                operation="download",
+            )
+        with open(path, "rb") as f:
+            data = f.read()
+        logger.debug("Read %d bytes from %s", len(data), path)
+        return data
+
+    def blob_exists(self, bucket: str, blob_path: str) -> bool:
+        """Check if local file exists."""
+        return self._get_path(bucket, blob_path).exists()
+
+    def list_blobs(self, bucket: str, prefix: str) -> list[str]:
+        """List local files."""
+        bucket_dir = self.root / bucket
+        if not bucket_dir.exists():
+            return []
+
+        # Walk directory to find files matching prefix
+        results = []
+        prefix_path = bucket_dir / prefix
+
+        # If prefix is a directory-like path
+        search_dir = prefix_path.parent if not prefix.endswith("/") else prefix_path
+        if not search_dir.exists():
+            # If prefix dir doesn't exist, maybe it's a partial filename
+            search_dir = bucket_dir
+
+        for path in search_dir.rglob("*"):
+            if path.is_file():
+                rel_path = path.relative_to(bucket_dir).as_posix()
+                if rel_path.startswith(prefix):
+                    results.append(rel_path)
+
+        return sorted(results)
+
+    def delete_blob(self, bucket: str, blob_path: str) -> None:
+        """Delete local file."""
+        path = self._get_path(bucket, blob_path)
+        if path.exists():
+            path.unlink()
+            logger.debug("Deleted %s", path)
 
 
 class GCSBackend:
@@ -330,6 +412,17 @@ class GCSBackend:
             ) from e
 
 
+def get_backend(project_id: str | None = None) -> StorageBackend:
+    """Get storage backend based on environment.
+
+    Returns GCSBackend unless CIV6AZ_STORAGE_BACKEND == "local".
+    """
+    backend_type = os.environ.get("CIV6AZ_STORAGE_BACKEND", "gcs")
+    if backend_type == "local":
+        return LocalBackend()
+    return GCSBackend(project_id)
+
+
 # =============================================================================
 # Storage Classes
 # =============================================================================
@@ -358,7 +451,7 @@ class GCSModelStorage:
             backend: Storage backend (uses GCSBackend if None).
         """
         self.config = config
-        self.backend = backend or GCSBackend(config.project_id)
+        self.backend = backend or get_backend(config.project_id)
         self._bucket = config.bucket
         self._paths = config.paths
 
@@ -557,7 +650,7 @@ class GCSTrajectoryStorage:
             compress: Whether to compress trajectories with LZMA.
         """
         self.config = config
-        self.backend = backend or GCSBackend(config.project_id)
+        self.backend = backend or get_backend(config.project_id)
         self._bucket = config.bucket
         self._paths = config.paths
         self._compress = compress
@@ -697,6 +790,99 @@ class GCSTrajectoryStorage:
                     continue
         return sorted(iterations)
 
+    def list_iteration_stats(
+        self,
+        iterations: list[int] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get statistics for trajectory iterations.
+
+        Args:
+            iterations: Specific iterations to inspect (None = all available).
+
+        Returns:
+            List of dicts with keys: iteration, blob_count, blob_paths.
+        """
+        if iterations is None:
+            iterations = self.get_available_iterations()
+
+        resolved_prefix = self._paths._resolve_prefix(self._paths.trajectories_prefix)
+        stats: list[dict[str, Any]] = []
+        for iteration in sorted(iterations):
+            prefix = f"{resolved_prefix}/iter_{iteration:03d}/"
+            blobs = self.backend.list_blobs(self._bucket, prefix)
+            stats.append(
+                {
+                    "iteration": iteration,
+                    "blob_count": len(blobs),
+                    "blob_paths": blobs,
+                }
+            )
+        return stats
+
+    def delete_iterations(
+        self,
+        iterations: list[int],
+        *,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Delete trajectory shards for specific iterations.
+
+        Args:
+            iterations: Iteration numbers to delete.
+            dry_run: If True, only list what would be deleted without acting.
+
+        Returns:
+            Statistics dict with keys: deleted_count, deleted_blobs,
+            skipped_iterations, errors, dry_run.
+        """
+        result: dict[str, Any] = {
+            "deleted_count": 0,
+            "deleted_blobs": [],
+            "skipped_iterations": [],
+            "errors": [],
+            "dry_run": dry_run,
+        }
+
+        resolved_prefix = self._paths._resolve_prefix(self._paths.trajectories_prefix)
+        for iteration in sorted(iterations):
+            prefix = f"{resolved_prefix}/iter_{iteration:03d}/"
+            blobs = self.backend.list_blobs(self._bucket, prefix)
+
+            if not blobs:
+                result["skipped_iterations"].append(iteration)
+                logger.info("Iteration %d: no blobs found, skipping", iteration)
+                continue
+
+            for blob_path in blobs:
+                if dry_run:
+                    logger.info(
+                        "[DRY RUN] Would delete: gs://%s/%s",
+                        self._bucket,
+                        blob_path,
+                    )
+                    result["deleted_blobs"].append(blob_path)
+                    result["deleted_count"] += 1
+                else:
+                    try:
+                        self.backend.delete_blob(self._bucket, blob_path)
+                        result["deleted_blobs"].append(blob_path)
+                        result["deleted_count"] += 1
+                        logger.debug("Deleted gs://%s/%s", self._bucket, blob_path)
+                    except Exception as exc:
+                        error_msg = f"Failed to delete {blob_path}: {exc}"
+                        result["errors"].append(error_msg)
+                        logger.error(error_msg)
+
+        logger.info(
+            "Cleanup %s: %d blobs across %d iterations (%d skipped, %d errors)",
+            "simulated" if dry_run else "completed",
+            result["deleted_count"],
+            len(iterations),
+            len(result["skipped_iterations"]),
+            len(result["errors"]),
+        )
+        return result
+
 
 class GCSCheckpointStorage:
     """GCS storage for training checkpoints.
@@ -720,7 +906,7 @@ class GCSCheckpointStorage:
             backend: Storage backend.
         """
         self.config = config
-        self.backend = backend or GCSBackend(config.project_id)
+        self.backend = backend or get_backend(config.project_id)
         self._bucket = config.bucket
         self._paths = config.paths
 

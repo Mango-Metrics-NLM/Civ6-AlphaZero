@@ -298,9 +298,7 @@ class TestTournamentOrchestrator:
         orchestrator = TournamentOrchestrator()
         players = ["p1", "p2", "p3", "p4"]
 
-        bracket = orchestrator.create_bracket(
-            players, format=TournamentFormat.ROUND_ROBIN
-        )
+        bracket = orchestrator.create_bracket(players, format=TournamentFormat.ROUND_ROBIN)
 
         assert bracket.format == TournamentFormat.ROUND_ROBIN
         assert len(bracket.players) == 4
@@ -314,9 +312,7 @@ class TestTournamentOrchestrator:
         orchestrator = TournamentOrchestrator()
         players = ["p1", "p2", "p3", "p4"]
 
-        bracket = orchestrator.create_bracket(
-            players, format=TournamentFormat.SINGLE_ELIMINATION
-        )
+        bracket = orchestrator.create_bracket(players, format=TournamentFormat.SINGLE_ELIMINATION)
 
         assert bracket.format == TournamentFormat.SINGLE_ELIMINATION
         # Power of 2 bracket: 4 players -> 2 rounds (semis + final)
@@ -356,9 +352,7 @@ class TestTournamentOrchestrator:
         # Use isolated temporary database
         db_path = tmp_path / "test_tournament.db"
         config = TournamentConfig(database_path=str(db_path))
-        orchestrator = TournamentOrchestrator(
-            config=config, arena_runner=arena_runner
-        )
+        orchestrator = TournamentOrchestrator(config=config, arena_runner=arena_runner)
 
         result = orchestrator.run_match("p1", "p2", num_games=10)
 
@@ -405,9 +399,7 @@ class TestTournamentOrchestrator:
         orchestrator = TournamentOrchestrator()
         players = ["p1", "p2", "p3", "p4"]
 
-        bracket = orchestrator.create_bracket(
-            players, format=TournamentFormat.ROUND_ROBIN
-        )
+        bracket = orchestrator.create_bracket(players, format=TournamentFormat.ROUND_ROBIN)
 
         # Collect all matchups
         all_pairs = set()
@@ -433,9 +425,7 @@ class TestTournamentOrchestrator:
         orchestrator = TournamentOrchestrator()
         players = ["p1", "p2", "p3"]
 
-        bracket = orchestrator.create_bracket(
-            players, format=TournamentFormat.ROUND_ROBIN
-        )
+        bracket = orchestrator.create_bracket(players, format=TournamentFormat.ROUND_ROBIN)
 
         # Should still work, some players get byes
         assert bracket.total_rounds == 3
@@ -445,9 +435,7 @@ class TestTournamentOrchestrator:
         orchestrator = TournamentOrchestrator()
         players = ["p1", "p2", "p3"]  # Not power of 2
 
-        bracket = orchestrator.create_bracket(
-            players, format=TournamentFormat.SINGLE_ELIMINATION
-        )
+        bracket = orchestrator.create_bracket(players, format=TournamentFormat.SINGLE_ELIMINATION)
 
         # Should pad to 4 with byes
         assert bracket.total_rounds == 2
@@ -479,9 +467,7 @@ class TestTournamentOrchestrator:
         """Test advancing single-elimination bracket."""
         orchestrator = TournamentOrchestrator()
         players = ["p1", "p2", "p3", "p4"]
-        bracket = orchestrator.create_bracket(
-            players, format=TournamentFormat.SINGLE_ELIMINATION
-        )
+        bracket = orchestrator.create_bracket(players, format=TournamentFormat.SINGLE_ELIMINATION)
 
         # Simulate first round results
         round_results = [
@@ -553,6 +539,7 @@ class TestTournamentEdgeCases:
 
     def test_tournament_with_two_players(self):
         """Minimal tournament with exactly 2 players."""
+
         def mock_runner(p1, p2, num_games):
             # p1 always wins
             return MatchResult(
@@ -582,7 +569,7 @@ class TestTournamentEdgeCases:
         low_elo_stats = orchestrator._get_or_create_player_stats("low")
 
         high_elo_stats.rating = 2800  # Very high
-        low_elo_stats.rating = 800   # Very low
+        low_elo_stats.rating = 800  # Very low
 
         def mock_runner(p1, p2, num_games):
             # High ELO player wins
@@ -597,9 +584,7 @@ class TestTournamentEdgeCases:
             )
 
         orchestrator.arena_runner = mock_runner
-        bracket = orchestrator.create_bracket(
-            ["high", "low"], format=TournamentFormat.ROUND_ROBIN
-        )
+        bracket = orchestrator.create_bracket(["high", "low"], format=TournamentFormat.ROUND_ROBIN)
 
         # Should not crash with extreme ratings
         result = orchestrator.run_tournament(bracket)
@@ -607,6 +592,7 @@ class TestTournamentEdgeCases:
 
     def test_all_draws_tournament(self):
         """Tournament where every match is a draw."""
+
         def mock_runner(p1, p2, num_games):
             # All draws
             return MatchResult(

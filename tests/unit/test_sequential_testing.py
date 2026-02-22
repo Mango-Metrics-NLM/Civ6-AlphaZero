@@ -1,4 +1,5 @@
 """Unit tests for sequential_testing module."""
+
 from __future__ import annotations
 
 import os
@@ -18,6 +19,7 @@ class TestEvaluationDecision:
         assert EvaluationDecision.ACCEPT.value == "accept"
         assert EvaluationDecision.REJECT.value == "reject"
 
+
 class TestGameResult:
     def test_creation(self) -> None:
         result = GameResult(game_id=1, winner=1, turns=150)
@@ -29,6 +31,7 @@ class TestGameResult:
         data = result.to_dict()
         assert data["game_id"] == 2
         assert data["winner"] == -1
+
 
 class TestSequentialTestingConfig:
     def test_default_values(self) -> None:
@@ -47,6 +50,7 @@ class TestSequentialTestingConfig:
         finally:
             del os.environ["CIV6AZ_EVAL_MIN_GAMES"]
             del os.environ["CIV6AZ_EVAL_MAX_GAMES"]
+
 
 class TestSequentialTester:
     def test_init(self) -> None:
@@ -75,7 +79,7 @@ class TestSequentialTester:
         for i in range(30):
             tester.record_game(game_id=i, winner=1, turns=100)
         for i in range(10):
-            tester.record_game(game_id=i+30, winner=-1, turns=100)
+            tester.record_game(game_id=i + 30, winner=-1, turns=100)
         decision = tester.get_decision()
         assert decision in [EvaluationDecision.ACCEPT, EvaluationDecision.CONTINUE]
 
@@ -94,6 +98,7 @@ class TestSequentialTester:
         tester.record_game(game_id=1, winner=1, turns=100)
         tester.reset()
         assert len(tester._games) == 0
+
 
 class TestGetSequentialTester:
     def test_returns_tester(self) -> None:

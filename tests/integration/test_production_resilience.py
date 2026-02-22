@@ -19,7 +19,6 @@ from alpha_zero.pbt.config import AgentState, PBTConfig
 from alpha_zero.pbt.evaluator import EvaluationReport, MatchResult, PBTEvaluator
 from alpha_zero.utils.wandb_logger import WandbLogger
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -78,9 +77,7 @@ def baseline_agents() -> list[AgentState]:
     ]
 
 
-def _mock_arena_runner(
-    agent_new: AgentState, agent_old: AgentState, num_games: int
-) -> MatchResult:
+def _mock_arena_runner(agent_new: AgentState, agent_old: AgentState, num_games: int) -> MatchResult:
     """Mock arena runner that returns balanced results."""
     return MatchResult(
         agent_id_new=agent_new.agent_id,
@@ -104,12 +101,13 @@ class TestCheckpointRotation:
         self, pbt_config: PBTConfig, gcp_config: GCPConfig
     ) -> None:
         """Checkpoint rotation should keep only the most recent N generations."""
-        with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend") as mock_backend_cls, \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"):
-
+        with (
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend") as mock_backend_cls,
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"),
+        ):
             mock_backend = MagicMock()
             mock_backend_cls.return_value = mock_backend
 
@@ -124,13 +122,11 @@ class TestCheckpointRotation:
             mock_backend.blob_exists.return_value = True
             mock_backend.download_blob.return_value = manifest_json
             mock_backend.list_blobs.return_value = [
-                f"checkpoints/gen_10/agent_0.pt",
-                f"checkpoints/gen_10/agent_1.pt",
+                "checkpoints/gen_10/agent_0.pt",
+                "checkpoints/gen_10/agent_1.pt",
             ]
 
-            orchestrator = PBTOrchestrator(
-                pbt_config, gcp_config, checkpoint_retention=3
-            )
+            orchestrator = PBTOrchestrator(pbt_config, gcp_config, checkpoint_retention=3)
 
             # Run rotation for generation 10
             orchestrator._rotate_checkpoints(gen=10)
@@ -153,18 +149,17 @@ class TestCheckpointRotation:
         self, pbt_config: PBTConfig, gcp_config: GCPConfig
     ) -> None:
         """When checkpoint_retention=0, no deletions should occur."""
-        with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend") as mock_backend_cls, \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"):
-
+        with (
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend") as mock_backend_cls,
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"),
+        ):
             mock_backend = MagicMock()
             mock_backend_cls.return_value = mock_backend
 
-            orchestrator = PBTOrchestrator(
-                pbt_config, gcp_config, checkpoint_retention=0
-            )
+            orchestrator = PBTOrchestrator(pbt_config, gcp_config, checkpoint_retention=0)
 
             # Run rotation
             orchestrator._rotate_checkpoints(gen=10)
@@ -177,12 +172,13 @@ class TestCheckpointRotation:
         self, pbt_config: PBTConfig, gcp_config: GCPConfig
     ) -> None:
         """Early generations should not trigger deletions."""
-        with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend") as mock_backend_cls, \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"):
-
+        with (
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend") as mock_backend_cls,
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"),
+        ):
             mock_backend = MagicMock()
             mock_backend_cls.return_value = mock_backend
 
@@ -197,9 +193,7 @@ class TestCheckpointRotation:
             mock_backend.download_blob.return_value = manifest_json
             mock_backend.list_blobs.return_value = ["checkpoints/gen_2/agent_0.pt"]
 
-            orchestrator = PBTOrchestrator(
-                pbt_config, gcp_config, checkpoint_retention=5
-            )
+            orchestrator = PBTOrchestrator(pbt_config, gcp_config, checkpoint_retention=5)
 
             # Run rotation for generation 2 (cutoff = 2 - 5 = -3, no deletions)
             orchestrator._rotate_checkpoints(gen=2)
@@ -211,21 +205,20 @@ class TestCheckpointRotation:
         self, pbt_config: PBTConfig, gcp_config: GCPConfig
     ) -> None:
         """Backend failures should be caught and logged, not crash the loop."""
-        with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend") as mock_backend_cls, \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"):
-
+        with (
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend") as mock_backend_cls,
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"),
+        ):
             mock_backend = MagicMock()
             mock_backend_cls.return_value = mock_backend
 
             # Simulate backend failure
             mock_backend.blob_exists.side_effect = Exception("GCS connection error")
 
-            orchestrator = PBTOrchestrator(
-                pbt_config, gcp_config, checkpoint_retention=3
-            )
+            orchestrator = PBTOrchestrator(pbt_config, gcp_config, checkpoint_retention=3)
 
             # Should not raise, just log warning
             orchestrator._rotate_checkpoints(gen=10)
@@ -246,12 +239,13 @@ class TestQuotaGuard:
         self, pbt_config: PBTConfig, gcp_config: GCPConfig
     ) -> None:
         """When no quota limit is set, should return True."""
-        with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"):
-
+        with (
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"),
+        ):
             orchestrator = PBTOrchestrator(pbt_config, gcp_config)
 
             # No environment variable set
@@ -272,14 +266,15 @@ class TestQuotaGuard:
         mock_aiplatform.init.return_value = None
         mock_aiplatform.CustomJob.list.return_value = [mock_job1, mock_job2]
 
-        with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"), \
-             patch.dict(os.environ, {"CIV6AZ_GPU_QUOTA_LIMIT": "10"}), \
-             patch.dict(sys.modules, {"google.cloud.aiplatform": mock_aiplatform}):
-
+        with (
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"),
+            patch.dict(os.environ, {"CIV6AZ_GPU_QUOTA_LIMIT": "10"}),
+            patch.dict(sys.modules, {"google.cloud.aiplatform": mock_aiplatform}),
+        ):
             orchestrator = PBTOrchestrator(pbt_config, gcp_config)
 
             # 2 + 3 = 5 GPUs active < 10 limit
@@ -296,44 +291,48 @@ class TestQuotaGuard:
         create a mock module object and insert it into sys.modules BEFORE
         the import statement executes.
         """
-        with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"), \
-             patch.dict(os.environ, {"CIV6AZ_GPU_QUOTA_LIMIT": "5"}):
+        with (
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"),
+            patch.dict(os.environ, {"CIV6AZ_GPU_QUOTA_LIMIT": "5"}),
+        ):
+            orchestrator = PBTOrchestrator(pbt_config, gcp_config)
 
-                orchestrator = PBTOrchestrator(pbt_config, gcp_config)
+            # Create mocks for the aiplatform module structure
+            # Mock 6 GPUs active (4 + 2 = 6 >= 5 limit)
+            mock_job1 = MagicMock()
+            mock_job1.gpu_count = 4
+            mock_job2 = MagicMock()
+            mock_job2.gpu_count = 2
 
-                # Create mocks for the aiplatform module structure
-                # Mock 6 GPUs active (4 + 2 = 6 >= 5 limit)
-                mock_job1 = MagicMock()
-                mock_job1.gpu_count = 4
-                mock_job2 = MagicMock()
-                mock_job2.gpu_count = 2
+            # Create a mock module that mimics google.cloud.aiplatform
+            mock_aiplatform = MagicMock()
+            mock_aiplatform.init = MagicMock(return_value=None)
+            mock_aiplatform.CustomJob = MagicMock()
+            mock_aiplatform.CustomJob.list = MagicMock(return_value=[mock_job1, mock_job2])
 
-                # Create a mock module that mimics google.cloud.aiplatform
-                mock_aiplatform = MagicMock()
-                mock_aiplatform.init = MagicMock(return_value=None)
-                mock_aiplatform.CustomJob = MagicMock()
-                mock_aiplatform.CustomJob.list = MagicMock(return_value=[mock_job1, mock_job2])
+            # Create parent modules for proper import chain
+            mock_google = MagicMock()
+            mock_google_cloud = MagicMock()
+            mock_google.cloud = mock_google_cloud
+            mock_google_cloud.aiplatform = mock_aiplatform
 
-                # Create parent modules for proper import chain
-                mock_google = MagicMock()
-                mock_google_cloud = MagicMock()
-                mock_google.cloud = mock_google_cloud
-                mock_google_cloud.aiplatform = mock_aiplatform
-
-                # Patch sys.modules with the complete chain
-                with patch.dict(sys.modules, {
+            # Patch sys.modules with the complete chain
+            with patch.dict(
+                sys.modules,
+                {
                     "google": mock_google,
                     "google.cloud": mock_google_cloud,
                     "google.cloud.aiplatform": mock_aiplatform,
-                }):
-                    # Now when _check_quota does "from google.cloud import aiplatform",
-                    # it will get our mock
-                    result = orchestrator._check_quota(gen=1)
-                    assert result is False
+                },
+            ):
+                # Now when _check_quota does "from google.cloud import aiplatform",
+                # it will get our mock
+                result = orchestrator._check_quota(gen=1)
+                assert result is False
 
     def test_quota_guard_optimistic_on_error(
         self, pbt_config: PBTConfig, gcp_config: GCPConfig
@@ -343,14 +342,15 @@ class TestQuotaGuard:
         mock_aiplatform = MagicMock()
         mock_aiplatform.init.side_effect = Exception("API connection error")
 
-        with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"), \
-             patch.dict(os.environ, {"CIV6AZ_GPU_QUOTA_LIMIT": "10"}), \
-             patch.dict(sys.modules, {"google.cloud.aiplatform": mock_aiplatform}):
-
+        with (
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"),
+            patch.dict(os.environ, {"CIV6AZ_GPU_QUOTA_LIMIT": "10"}),
+            patch.dict(sys.modules, {"google.cloud.aiplatform": mock_aiplatform}),
+        ):
             orchestrator = PBTOrchestrator(pbt_config, gcp_config)
 
             # Should return True on error (optimistic fallback)
@@ -370,15 +370,14 @@ class TestStrategySwitch:
         self, pbt_config: PBTConfig, gcp_config: GCPConfig
     ) -> None:
         """Strategy should switch from round_robin to top_k_vs_best at threshold."""
-        with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"):
-
-            orchestrator = PBTOrchestrator(
-                pbt_config, gcp_config, evaluation_strategy_switch_gen=3
-            )
+        with (
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"),
+        ):
+            orchestrator = PBTOrchestrator(pbt_config, gcp_config, evaluation_strategy_switch_gen=3)
 
             # Before threshold (gen=2)
             assert orchestrator.pbt_config.evaluation_strategy == "round_robin"
@@ -397,15 +396,14 @@ class TestStrategySwitch:
         self, pbt_config: PBTConfig, gcp_config: GCPConfig
     ) -> None:
         """When switch_gen=0, strategy should never switch."""
-        with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"):
-
-            orchestrator = PBTOrchestrator(
-                pbt_config, gcp_config, evaluation_strategy_switch_gen=0
-            )
+        with (
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"),
+        ):
+            orchestrator = PBTOrchestrator(pbt_config, gcp_config, evaluation_strategy_switch_gen=0)
 
             # Test across multiple generations
             for gen in range(1, 10):
@@ -418,15 +416,14 @@ class TestStrategySwitch:
         """If already on top_k_vs_best, should remain unchanged."""
         pbt_config.evaluation_strategy = "top_k_vs_best"
 
-        with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"), \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"):
-
-            orchestrator = PBTOrchestrator(
-                pbt_config, gcp_config, evaluation_strategy_switch_gen=3
-            )
+        with (
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend"),
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage"),
+        ):
+            orchestrator = PBTOrchestrator(pbt_config, gcp_config, evaluation_strategy_switch_gen=3)
 
             # Already switched, should do nothing
             orchestrator._maybe_switch_strategy(gen=3)
@@ -553,12 +550,13 @@ class TestFullGenerationLoop:
         self, pbt_config: PBTConfig, gcp_config: GCPConfig, baseline_agents: list[AgentState]
     ) -> None:
         """Full generation loop with W&B, rotation, quota, strategy switch."""
-        with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient") as mock_client_cls, \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob") as mock_training_cls, \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob") as mock_selfplay_cls, \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend") as mock_backend_cls, \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage") as mock_storage_cls:
-
+        with (
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient") as mock_client_cls,
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob") as mock_training_cls,
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob") as mock_selfplay_cls,
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend") as mock_backend_cls,
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage") as mock_storage_cls,
+        ):
             # Setup mocks
             mock_client = MagicMock()
             mock_client_cls.return_value = mock_client
@@ -624,12 +622,13 @@ class TestFullGenerationLoop:
         self, pbt_config: PBTConfig, gcp_config: GCPConfig
     ) -> None:
         """Orchestrator should handle phase failures without crashing."""
-        with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient") as mock_client_cls, \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob") as mock_training_cls, \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob") as mock_selfplay_cls, \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend") as mock_backend_cls, \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage") as mock_storage_cls:
-
+        with (
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient") as mock_client_cls,
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob") as mock_training_cls,
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob") as mock_selfplay_cls,
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend") as mock_backend_cls,
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage") as mock_storage_cls,
+        ):
             mock_client = MagicMock()
             mock_client_cls.return_value = mock_client
             mock_client.get_job_state.return_value = ("JOB_STATE_SUCCEEDED", None)
@@ -677,12 +676,13 @@ class TestFullGenerationLoop:
         self, pbt_config: PBTConfig, gcp_config: GCPConfig
     ) -> None:
         """Orchestrator should save state after each generation completes."""
-        with patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient") as mock_client_cls, \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob") as mock_training_cls, \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob") as mock_selfplay_cls, \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend") as mock_backend_cls, \
-             patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage") as mock_storage_cls:
-
+        with (
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexAIClient") as mock_client_cls,
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexTrainingJob") as mock_training_cls,
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.VertexSelfPlayJob") as mock_selfplay_cls,
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSBackend") as mock_backend_cls,
+            patch("alpha_zero.cloud.gcp.pbt_orchestrator.GCSModelStorage") as mock_storage_cls,
+        ):
             mock_client = MagicMock()
             mock_client_cls.return_value = mock_client
             mock_client.get_job_state.return_value = ("JOB_STATE_SUCCEEDED", None)
@@ -723,7 +723,8 @@ class TestFullGenerationLoop:
             # Should have saved state 3 times (once per generation)
             # Plus initial save when initializing population
             upload_calls = [
-                call for call in mock_backend.upload_blob.call_args_list
+                call
+                for call in mock_backend.upload_blob.call_args_list
                 if "pbt_state.json" in str(call)
             ]
             assert len(upload_calls) >= 3

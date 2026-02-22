@@ -31,7 +31,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -39,6 +39,7 @@ import numpy as np
 
 from alpha_zero.distributed.shared_storage import GameTrajectory
 from alpha_zero.rag.stores.base import Document, DocumentMetadata
+from alpha_zero.utils.compat import UTC
 
 if TYPE_CHECKING:
     from alpha_zero.rag.stores.base import VectorStore

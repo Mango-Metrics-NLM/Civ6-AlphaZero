@@ -1,4 +1,5 @@
 """Unit tests for alert_manager module."""
+
 from __future__ import annotations
 
 from alpha_zero.cloud.gcp.alert_manager import (
@@ -16,17 +17,20 @@ class TestAlertSeverity:
         assert AlertSeverity.WARNING.value == "warning"
         assert AlertSeverity.CRITICAL.value == "critical"
 
+
 class TestSlackConfig:
     def test_default_values(self) -> None:
         config = SlackConfig()
         assert config.enabled is False
         assert config.webhook_url == ""  # Empty string, not None
 
+
 class TestAlertManagerConfig:
     def test_default_values(self) -> None:
         config = AlertManagerConfig()
         assert isinstance(config.slack, SlackConfig)
         assert config.wandb_enabled is True
+
 
 class TestAlertManager:
     def test_init(self) -> None:
@@ -50,7 +54,9 @@ class TestAlertManager:
         config = AlertManagerConfig(console_enabled=True, rate_limit_seconds=0)
         manager = AlertManager(config)
         event = manager.budget_warning(
-            current_spend=500.0, budget=650.0, percentage=77.0,
+            current_spend=500.0,
+            budget=650.0,
+            percentage=77.0,
         )
         assert event is not None
 
@@ -60,6 +66,7 @@ class TestAlertManager:
         manager.send_alert(severity=AlertSeverity.INFO, title="Test", message="Test", source="test")
         stats = manager.get_statistics()
         assert "total_alerts" in stats
+
 
 class TestGetAlertManager:
     def test_returns_manager(self) -> None:

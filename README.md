@@ -27,16 +27,20 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 14 | Learning Signal Validation (20-iteration run) | ✅ Complete |
 | Phase 15 | Scaled Training & Value Head Stabilization | ✅ Complete |
 | Phase 15+ | Standalone Tournament Worker & Lua Integration | ✅ Complete |
+| Phase 16 | Batch Inference & Vectorized Self-Play | ✅ Complete |
+| Phase 17 | Training Readiness — action_mask, W&B groups, gumbel default | ✅ Complete |
 
 **Codebase Statistics:**
 
-- ~58,000 lines of core implementation
-- 4,893+ tests with >80% coverage on core modules
-- Docker v0.12.0 on GCR, 80 model versions (v0-v79) in GCS
-- 50-iteration training run completed (golden-dream-542, ~$4.63)
-- Standalone tournament: 17 models (stride=5), 136 matchups, 1,360 games
+- ~62,000 lines of core implementation
+- 5,100+ tests, all passing (canonical Windows deselect list)
+- Docker v1.2.0 on Artifact Registry (`us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v1.2.0`)
+- 218+ model versions in GCS (v0-v218+), production run active
+- GumbelMCTS default: 13× faster than Civ6MCTS — 50-iter production run active (4 workers × 50 games/iter)
+- Action-masked cross-entropy training, W&B group coordination, eval retry with backoff
+- Python 3.10 compatibility shim for cloud containers (40 files)
+- Gameplay systems: terrain, fog of war, tech tree, combat
 - Civ6 Lua mod fully integrated with Python bridge (245 bridge tests, 50 integration tests)
-- 11 game mechanics modules (deprecated, future Civ6 integration)
 - 13 remaining xfail tests (12 DDP + 1 hierarchical — deferred)
 
 ## Key Features
@@ -77,6 +81,10 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - **Standalone Tournament Worker**: CLI-based ELO round-robin tournament across GCS model versions with stride support
 - **Mixed-Architecture Tournaments**: Automatic head dimension inference from state_dict for cross-architecture model comparison
 - **Lua Mod Hardening**: Shell injection prevention, content-hash change detection, hex-grid neighbors, log rotation, graceful shutdown
+- **Hex Crystalline Encoder**: Hex-topology-aware spatial encoder with crystalline attention and hex convolutions
+- **Encoder Registry**: Factory pattern for pluggable spatial encoders (`patch_embed`, `hex_crystalline`)
+- **A/B Comparison Pipeline**: Cloud-based encoder comparison with W&B metrics and automated analysis
+- **Gameplay Systems**: Terrain types, fog of war, tech tree, and terrain-aware combat for MicroCiv
 
 ## Architecture (C4 Model)
 
@@ -1331,24 +1339,34 @@ Civ6-AlphaZero/
 | Value Correlation | 0.07–0.91 (unstable, addressed in Phase 15) |
 | Tournament | 23 models, 253 matchups, ELO spread 66 points |
 
+### Training Results — Phase 17: dashing-firebrand-1393 (50-iteration production run, ACTIVE)
+
+| Parameter | Value |
+|-----------|-------|
+| Container | `civ6az-prod-v120` on `civ6az-orchestrator` VM |
+| Config | 50 iters, 4 workers × 50 games, GumbelMCTS 16 sims, max_turns=30 |
+| LR | warmup_cosine 0.001→0.0001, value_lr_multiplier=0.1 |
+| Start model | v218 (auto-detected from GCS) |
+| W&B | [dashing-firebrand-1393](https://wandb.ai/ianshank-none/civ6-alphazero/runs/ukxjr0uz) |
+
 ### Next Steps
 
 | Priority | Feature | Description |
 |----------|---------|-------------|
-| P0 | Analyze Tournament Results | Process standalone tournament ELO rankings across 80 model versions; quantify learning signal |
-| P1 | Real Civ6 Game Testing | Test Python bridge ↔ Lua mod end-to-end with actual Civilization VI game |
-| P2 | Inference Optimization & Vectorized Self-Play | Batch MCTS inference, vectorized environments for 10x+ throughput |
+| P0 | Monitor 50-iter production run | Track win rates, value correlation, ELO spread via W&B |
+| P1 | Analyse 50-iter results | Policy loss trend, value head stability, post-run tournament ELO spread |
+| P2 | Batch self-play cloud integration | Enable `--num_parallel_games` in cloud for 5-10x throughput |
 | P3 | MuZero Training Run | Run MuZero PBT with `configs/muzero_pbt.yaml` to validate learned dynamics |
-| P4 | DDP Test Rewrites | Fix remaining 12 DDP xfailed tests, full mypy strict mode |
-| P5 | Human vs AI Interface | Web-based UI for human gameplay |
+| P4 | Real Civ6 Game Testing | Test Python bridge ↔ Lua mod end-to-end with actual Civilization VI |
+| P5 | PBT on Vertex AI | Population-based training with auto hyperparameter tuning |
 
 ### Current Priorities
 
-1. **Analyze tournament results** — Once standalone tournament completes (~17h), analyze ELO spread, identify strongest model generation, compare big vs small architecture performance
-2. **Real Civ6 testing** — With Lua mod fixes landed (PR #46), test actual game integration: state export, action execution, full game loop
-3. **Value head analysis** — Compare value correlation stability between Phase 14 (20-iter) and Phase 15 (50-iter) runs
-4. **Vectorized self-play** — Implement batch MCTS inference for 10x+ throughput improvement
-5. **Model architecture decision** — Based on tournament data, decide whether to continue with embed_dim=64/layers=6 or scale up
+1. **Production run monitoring** — `docker logs -f civ6az-prod-v120` on orchestrator VM; W&B at [dashing-firebrand-1393](https://wandb.ai/ianshank-none/civ6-alphazero/runs/ukxjr0uz)
+2. **Value head stability** — target `value_correlation > 0.5` for 10+ consecutive iterations (was 0.07-0.91 in Phase 14)
+3. **Model promotion** — target 3+ promotions over 50 iterations; 30-game eval with `win_threshold=0.55`
+4. **Post-run tournament** — automated round-robin of all 50 models, 25 MCTS sims, ELO spread target >100 pts
+5. **Batch self-play** — after run completes, enable `--num_parallel_games` for 3-5x throughput
 
 ## Contributing
 

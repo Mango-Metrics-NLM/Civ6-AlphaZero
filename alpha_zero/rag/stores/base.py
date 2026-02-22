@@ -9,10 +9,12 @@ from __future__ import annotations
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
 import numpy as np
+
+from alpha_zero.utils.compat import UTC
 
 
 @dataclass

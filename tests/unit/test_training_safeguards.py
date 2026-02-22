@@ -22,7 +22,6 @@ from alpha_zero.utils.memory_guard import MemoryStatus
 
 
 class TestTrainingSafeguardConfig(unittest.TestCase):
-
     def test_config_defaults(self):
         config = TrainingSafeguardConfig()
         self.assertTrue(config.nan_detection_enabled)
@@ -148,7 +147,6 @@ class TestTrainingSafeguardConfig(unittest.TestCase):
 
 
 class TestIntervention(unittest.TestCase):
-
     def test_intervention_creation(self):
         intervention = Intervention(
             action=InterventionAction.REDUCE_LR,
@@ -163,13 +161,9 @@ class TestIntervention(unittest.TestCase):
 
     def test_intervention_severity_validation(self):
         with self.assertRaises(ValueError):
-            Intervention(
-                action=InterventionAction.REDUCE_LR, reason="test", severity=0
-            )
+            Intervention(action=InterventionAction.REDUCE_LR, reason="test", severity=0)
         with self.assertRaises(ValueError):
-            Intervention(
-                action=InterventionAction.REDUCE_LR, reason="test", severity=6
-            )
+            Intervention(action=InterventionAction.REDUCE_LR, reason="test", severity=6)
 
     def test_intervention_to_dict(self):
         intervention = Intervention(
@@ -186,7 +180,6 @@ class TestIntervention(unittest.TestCase):
 
 
 class TestCheckpointValidation(unittest.TestCase):
-
     def test_checkpoint_validation_valid(self):
         validation = CheckpointValidation(
             valid=True,
@@ -229,7 +222,6 @@ class TestCheckpointValidation(unittest.TestCase):
 
 
 class TestSafeguardReport(unittest.TestCase):
-
     def test_safeguard_report_creation(self):
         report = SafeguardReport(
             step=100,
@@ -287,7 +279,6 @@ class TestSafeguardReport(unittest.TestCase):
 
 
 class TestTrainingSafeguardNanDetection(unittest.TestCase):
-
     def test_nan_detection_loss(self):
         safeguard = TrainingSafeguard()
         result = safeguard.check_nan(math.nan, 1.0)
@@ -344,7 +335,6 @@ class TestTrainingSafeguardNanDetection(unittest.TestCase):
 
 
 class TestTrainingSafeguardLossExplosion(unittest.TestCase):
-
     def test_loss_explosion_above_threshold(self):
         config = TrainingSafeguardConfig(loss_explosion_threshold=2.0)
         safeguard = TrainingSafeguard(config)
@@ -365,9 +355,7 @@ class TestTrainingSafeguardLossExplosion(unittest.TestCase):
         self.assertFalse(report.loss_exploding)
 
     def test_loss_explosion_rolling_baseline(self):
-        config = TrainingSafeguardConfig(
-            loss_explosion_window=10, loss_explosion_threshold=2.0
-        )
+        config = TrainingSafeguardConfig(loss_explosion_window=10, loss_explosion_threshold=2.0)
         safeguard = TrainingSafeguard(config)
 
         for i in range(20):
@@ -399,7 +387,6 @@ class TestTrainingSafeguardLossExplosion(unittest.TestCase):
 
 
 class TestTrainingSafeguardGradientHealth(unittest.TestCase):
-
     def test_gradient_normal(self):
         safeguard = TrainingSafeguard()
         status = safeguard.check_gradient_health(0.5)
@@ -424,7 +411,6 @@ class TestTrainingSafeguardGradientHealth(unittest.TestCase):
 
 
 class TestTrainingSafeguardMemoryCheck(unittest.TestCase):
-
     def test_memory_check_delegates(self):
         mock_guard = MagicMock()
         mock_guard.get_memory_status.return_value = MemoryStatus.NORMAL
@@ -449,7 +435,6 @@ class TestTrainingSafeguardMemoryCheck(unittest.TestCase):
 
 
 class TestTrainingSafeguardCheckpointValidation(unittest.TestCase):
-
     @patch("alpha_zero.training.training_safeguards.torch")
     def test_checkpoint_validation_valid(self, mock_torch):
         # Create a mock tensor class that passes isinstance checks
@@ -539,7 +524,6 @@ class TestTrainingSafeguardCheckpointValidation(unittest.TestCase):
 
 
 class TestTrainingSafeguardInterventions(unittest.TestCase):
-
     def test_intervention_reduce_lr_loss_explosion(self):
         config = TrainingSafeguardConfig(loss_explosion_threshold=2.0)
         safeguard = TrainingSafeguard(config)
@@ -637,7 +621,6 @@ class TestTrainingSafeguardInterventions(unittest.TestCase):
 
 
 class TestTrainingSafeguardIntegration(unittest.TestCase):
-
     def test_check_step_full_pipeline(self):
         mock_monitor = MagicMock()
         mock_monitor.get_status.return_value = ConvergenceStatus.IMPROVING

@@ -117,9 +117,7 @@ class TestOrchestratorWandbLogging:
         2. Not crash or fail
         3. Complete the training loop successfully
         """
-        with patch(
-            "alpha_zero.utils.wandb_logger.WandbLogger"
-        ) as mock_wandb:
+        with patch("alpha_zero.utils.wandb_logger.WandbLogger") as mock_wandb:
             # Simulate ImportError when trying to import WandbLogger
             mock_wandb.from_env.side_effect = ImportError("wandb not installed")
 
@@ -283,10 +281,7 @@ class TestOrchestratorWandbLogging:
             logged_metrics = [call[0][0] for call in mock_logger.log.call_args_list]
 
             # Find iteration metric calls (not the summary call)
-            iteration_calls = [
-                m for m in logged_metrics
-                if "orchestrator/iteration" in m
-            ]
+            iteration_calls = [m for m in logged_metrics if "orchestrator/iteration" in m]
 
             assert len(iteration_calls) >= 2
 
@@ -405,10 +400,7 @@ class TestOrchestratorWandbLogging:
             logged_metrics = [call[0][0] for call in mock_logger.log.call_args_list]
 
             # Find the iteration call with eval metrics
-            eval_calls = [
-                m for m in logged_metrics
-                if "orchestrator/eval_win_rate" in m
-            ]
+            eval_calls = [m for m in logged_metrics if "orchestrator/eval_win_rate" in m]
 
             assert len(eval_calls) >= 1
             eval_metrics = eval_calls[0]

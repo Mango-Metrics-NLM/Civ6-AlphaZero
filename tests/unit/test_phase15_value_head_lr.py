@@ -44,14 +44,17 @@ def training_setup(model_and_config):
     """Create model, optimizer with param groups, and dataloader."""
     model, _config = model_and_config
 
+    # Phase 17 dataset layout: (spatial, vector, action_mask, policies, values)
     batch_size = 2
     num_examples = 4
+    action_space_size = 376
     spatial = torch.randn(num_examples, 13 * 8 * 8)
     vector = torch.randn(num_examples, 64)
-    policies = torch.softmax(torch.randn(num_examples, 376), dim=-1)
+    action_mask = torch.ones(num_examples, action_space_size)
+    policies = torch.softmax(torch.randn(num_examples, action_space_size), dim=-1)
     values = torch.randn(num_examples)
 
-    dataset = TensorDataset(spatial, vector, policies, values)
+    dataset = TensorDataset(spatial, vector, action_mask, policies, values)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     device = torch.device("cpu")
 

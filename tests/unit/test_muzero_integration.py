@@ -217,9 +217,7 @@ class TestMuZeroIntegrationConfigYAML:
         """Test to_yaml creates a valid YAML file."""
         config = MuZeroIntegrationConfig(unroll_steps=4, td_steps=8)
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml_path = f.name
 
         try:
@@ -242,9 +240,7 @@ class TestMuZeroIntegrationConfigYAML:
             "discount": 0.995,
         }
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump(data, f)
             yaml_path = f.name
 
@@ -293,9 +289,7 @@ class TestMuZeroTrainingBridgeCreateNetwork:
         """Test create_network instantiates MuZeroNetwork."""
         bridge = MuZeroTrainingBridge()
 
-        with patch(
-            "alpha_zero.core.muzero_network.MuZeroNetwork"
-        ) as mock_network_cls:
+        with patch("alpha_zero.core.muzero_network.MuZeroNetwork") as mock_network_cls:
             mock_network = Mock()
             mock_network_cls.return_value = mock_network
 
@@ -318,9 +312,7 @@ class TestMuZeroTrainingBridgeCreateNetwork:
         """Test create_network forwards additional kwargs."""
         bridge = MuZeroTrainingBridge()
 
-        with patch(
-            "alpha_zero.core.muzero_network.MuZeroNetwork"
-        ) as mock_network_cls:
+        with patch("alpha_zero.core.muzero_network.MuZeroNetwork") as mock_network_cls:
             bridge.create_network(
                 spatial_channels=13,
                 vector_dim=64,
@@ -341,9 +333,7 @@ class TestMuZeroTrainingBridgeCreateTrainer:
         bridge = MuZeroTrainingBridge()
         mock_network = Mock()
 
-        with patch(
-            "alpha_zero.training.muzero_trainer.MuZeroTrainer"
-        ) as mock_trainer_cls:
+        with patch("alpha_zero.training.muzero_trainer.MuZeroTrainer") as mock_trainer_cls:
             mock_trainer = Mock()
             mock_trainer_cls.return_value = mock_trainer
 
@@ -368,9 +358,7 @@ class TestMuZeroTrainingBridgeCreateTrainer:
         bridge = MuZeroTrainingBridge(config=config)
         mock_network = Mock()
 
-        with patch(
-            "alpha_zero.training.muzero_trainer.MuZeroTrainer"
-        ) as mock_trainer_cls:
+        with patch("alpha_zero.training.muzero_trainer.MuZeroTrainer") as mock_trainer_cls:
             bridge.create_trainer(network=mock_network)
 
             # Get the config passed to trainer
@@ -406,9 +394,7 @@ class TestMuZeroTrainingBridgeCreateMCTS:
 
     @patch("alpha_zero.core.civ6_mcts.MuZeroMCTSConfig")
     @patch("alpha_zero.core.civ6_mcts.MuZeroMCTS")
-    def test_create_mcts_direct_instantiation(
-        self, mock_mcts_cls, mock_config_cls
-    ):
+    def test_create_mcts_direct_instantiation(self, mock_mcts_cls, mock_config_cls):
         """Test create_mcts creates MuZeroMCTS directly when no factory."""
         bridge = MuZeroTrainingBridge()
         mock_network = Mock()
@@ -470,9 +456,7 @@ class TestMuZeroTrainingBridgeToTrainingConfig:
         )
         bridge = MuZeroTrainingBridge(config=config)
 
-        with patch(
-            "alpha_zero.training.muzero_trainer.MuZeroTrainingConfig"
-        ) as mock_config_cls:
+        with patch("alpha_zero.training.muzero_trainer.MuZeroTrainingConfig") as mock_config_cls:
             bridge.to_training_config()
 
             mock_config_cls.assert_called_once()
@@ -488,9 +472,7 @@ class TestMuZeroTrainingBridgeToTrainingConfig:
         """Test to_training_config applies overrides."""
         bridge = MuZeroTrainingBridge()
 
-        with patch(
-            "alpha_zero.training.muzero_trainer.MuZeroTrainingConfig"
-        ) as mock_config_cls:
+        with patch("alpha_zero.training.muzero_trainer.MuZeroTrainingConfig") as mock_config_cls:
             bridge.to_training_config(
                 batch_size=128,
                 learning_rate=0.0005,
@@ -535,9 +517,7 @@ class TestMuZeroTrainingBridgeSelfplayStep:
         )
         mock_mcts.select_action.return_value = 0
 
-        with patch(
-            "alpha_zero.training.muzero_trainer.GameTrajectory"
-        ) as mock_trajectory_cls:
+        with patch("alpha_zero.training.muzero_trainer.GameTrajectory") as mock_trajectory_cls:
             mock_trajectory = Mock()
             mock_trajectory_cls.return_value = mock_trajectory
 
@@ -568,9 +548,7 @@ class TestMuZeroTrainingBridgeSelfplayStep:
         mock_mcts.search.return_value = (np.zeros(376), 0.5)
         mock_mcts.select_action.return_value = 0
 
-        with patch(
-            "alpha_zero.training.muzero_trainer.GameTrajectory"
-        ):
+        with patch("alpha_zero.training.muzero_trainer.GameTrajectory"):
             bridge.selfplay_step(
                 network=mock_network,
                 env=mock_env,
@@ -598,9 +576,7 @@ class TestMuZeroTrainingBridgeSelfplayStep:
         mock_mcts.search.return_value = (np.zeros(376), 0.5)
         mock_mcts.select_action.return_value = 0
 
-        with patch(
-            "alpha_zero.training.muzero_trainer.GameTrajectory"
-        ):
+        with patch("alpha_zero.training.muzero_trainer.GameTrajectory"):
             bridge.selfplay_step(
                 network=mock_network,
                 env=mock_env,

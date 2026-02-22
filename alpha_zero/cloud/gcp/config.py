@@ -38,6 +38,14 @@ DEFAULT_GPU_COSTS: dict[str, float] = {
     "NVIDIA_H100_80GB_SPOT": 3.48,
 }
 
+# Canonical MCTS type choices for argparse across all cloud workers.
+# Source of truth: aligned with alpha_zero.core.mcts_factory._MCTS_REGISTRY.
+# Uses tuple (immutable) so callers can safely pass to argparse choices.
+VALID_MCTS_TYPES: tuple[str, ...] = ("civ6", "gumbel", "batch_gumbel", "muzero")
+
+# Default MCTS type when none is specified.
+DEFAULT_MCTS_TYPE: str = "gumbel"
+
 
 def get_gpu_costs() -> dict[str, float]:
     """Get GPU costs, allowing env-var overrides.
@@ -193,7 +201,7 @@ class GCSPathConfig:
 # "small" matches current defaults (backwards compatible).
 # "medium" matches v000's proven architecture (embed=256, layers=8).
 # "large" is for future scaling experiments.
-ARCHITECTURE_PRESETS: dict[str, dict[str, int]] = {
+ARCHITECTURE_PRESETS: dict[str, dict[str, Any]] = {
     "small": {
         "embed_dim": 64,
         "num_layers": 6,
@@ -238,6 +246,7 @@ class NetworkArchitectureConfig:
         num_heads: Number of attention heads (maps to TransformerConfig.num_heads).
         policy_hidden_dim: Hidden dimension for policy head.
         value_head_dim: Hidden dimension for value head.
+        encoder_type: Spatial encoder type ("patch_embed" or "hex_crystalline").
     """
 
     board_size: int = 8
@@ -249,6 +258,7 @@ class NetworkArchitectureConfig:
     num_heads: int = 8
     policy_hidden_dim: int = 128
     value_head_dim: int = 64
+    encoder_type: str = "patch_embed"
 
     @classmethod
     def from_preset(cls, preset: str) -> NetworkArchitectureConfig:
@@ -289,6 +299,7 @@ class NetworkArchitectureConfig:
             CIV6AZ_NUM_HEADS: Attention heads (default: 8)
             CIV6AZ_POLICY_HIDDEN_DIM: Policy head hidden dim (default: 128)
             CIV6AZ_VALUE_HEAD_DIM: Value head hidden dim (default: 64)
+            CIV6AZ_ENCODER_TYPE: Spatial encoder type (default: "patch_embed")
 
         Returns:
             NetworkArchitectureConfig instance.
@@ -303,6 +314,7 @@ class NetworkArchitectureConfig:
             num_heads=int(os.environ.get("CIV6AZ_NUM_HEADS", "8")),
             policy_hidden_dim=int(os.environ.get("CIV6AZ_POLICY_HIDDEN_DIM", "128")),
             value_head_dim=int(os.environ.get("CIV6AZ_VALUE_HEAD_DIM", "64")),
+            encoder_type=os.environ.get("CIV6AZ_ENCODER_TYPE", "patch_embed"),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -317,6 +329,7 @@ class NetworkArchitectureConfig:
             "num_heads": self.num_heads,
             "policy_hidden_dim": self.policy_hidden_dim,
             "value_head_dim": self.value_head_dim,
+            "encoder_type": self.encoder_type,
         }
 
 

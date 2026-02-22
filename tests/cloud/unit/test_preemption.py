@@ -34,9 +34,7 @@ class TestPreemptionHandler:
         return PreemptionHandler(force_mock=True)
 
     @pytest.fixture
-    def handler_with_callback(
-        self, tmp_path
-    ) -> tuple[PreemptionHandler, list[int]]:
+    def handler_with_callback(self, tmp_path) -> tuple[PreemptionHandler, list[int]]:
         """Create handler with checkpoint callback."""
         saved_iterations: list[int] = []
 
@@ -75,9 +73,7 @@ class TestPreemptionHandler:
         assert state.current_iteration == 50
         assert state.preemption_requested is False
 
-    def test_trigger_checkpoint_without_callback(
-        self, handler: PreemptionHandler
-    ) -> None:
+    def test_trigger_checkpoint_without_callback(self, handler: PreemptionHandler) -> None:
         """Test triggering checkpoint without callback."""
         result = handler.trigger_checkpoint()
         assert result is None
@@ -119,9 +115,7 @@ class TestMockPreemptionHandler:
         return MockPreemptionHandler()
 
     @pytest.fixture
-    def mock_handler_with_callback(
-        self, tmp_path
-    ) -> tuple[MockPreemptionHandler, list[int]]:
+    def mock_handler_with_callback(self, tmp_path) -> tuple[MockPreemptionHandler, list[int]]:
         """Create mock handler with callback."""
         saved_iterations: list[int] = []
 
@@ -173,9 +167,7 @@ class TestMockPreemptionHandler:
         assert not mock_handler.is_preemption_pending()
         assert not mock_handler.should_stop()
 
-    def test_cleanup_callbacks(
-        self, mock_handler: MockPreemptionHandler
-    ) -> None:
+    def test_cleanup_callbacks(self, mock_handler: MockPreemptionHandler) -> None:
         """Test cleanup callbacks are called."""
         cleanup_called = []
 

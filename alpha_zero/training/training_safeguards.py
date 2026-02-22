@@ -53,14 +53,15 @@ import math
 import os
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 from alpha_zero.training.convergence_monitor import ConvergenceMonitor, ConvergenceStatus
+from alpha_zero.utils.compat import UTC
 from alpha_zero.utils.memory_guard import MemoryGuard, MemoryStatus
 
 try:

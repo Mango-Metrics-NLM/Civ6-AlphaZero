@@ -164,17 +164,13 @@ class TestMicroCivGameAdapterReset:
         assert "turn" in info
         assert "current_player" in info
 
-    def test_reset_deterministic_with_same_seed(
-        self, adapter: MicroCivGameAdapter
-    ) -> None:
+    def test_reset_deterministic_with_same_seed(self, adapter: MicroCivGameAdapter) -> None:
         obs1 = adapter.reset(seed=99)
         obs2 = adapter.reset(seed=99)
         np.testing.assert_array_equal(obs1["spatial"], obs2["spatial"])
         np.testing.assert_array_equal(obs1["vector"], obs2["vector"])
 
-    def test_current_player_and_turn_after_reset(
-        self, adapter: MicroCivGameAdapter
-    ) -> None:
+    def test_current_player_and_turn_after_reset(self, adapter: MicroCivGameAdapter) -> None:
         adapter.reset(seed=42)
         assert adapter.current_player == 0
         assert adapter.turn == 0
@@ -183,9 +179,7 @@ class TestMicroCivGameAdapterReset:
 class TestMicroCivGameAdapterStep:
     """Tests for MicroCivGameAdapter.step()."""
 
-    def test_step_returns_five_tuple(
-        self, reset_adapter: MicroCivGameAdapter
-    ) -> None:
+    def test_step_returns_five_tuple(self, reset_adapter: MicroCivGameAdapter) -> None:
         valid = reset_adapter.get_valid_actions()
         assert len(valid) > 0, "Expected at least one valid action after reset"
         result = reset_adapter.step(valid[0])
@@ -205,9 +199,7 @@ class TestMicroCivGameAdapterStep:
         _, reward, _, _, _ = reset_adapter.step(valid[0])
         assert isinstance(reward, float)
 
-    def test_step_terminated_truncated_are_bool(
-        self, reset_adapter: MicroCivGameAdapter
-    ) -> None:
+    def test_step_terminated_truncated_are_bool(self, reset_adapter: MicroCivGameAdapter) -> None:
         valid = reset_adapter.get_valid_actions()
         _, _, terminated, truncated, _ = reset_adapter.step(valid[0])
         assert isinstance(terminated, bool)
@@ -218,9 +210,7 @@ class TestMicroCivGameAdapterStep:
         _, _, _, _, info = reset_adapter.step(valid[0])
         assert isinstance(info, dict)
 
-    def test_step_updates_last_info(
-        self, reset_adapter: MicroCivGameAdapter
-    ) -> None:
+    def test_step_updates_last_info(self, reset_adapter: MicroCivGameAdapter) -> None:
         valid = reset_adapter.get_valid_actions()
         _, _, _, _, info = reset_adapter.step(valid[0])
         assert reset_adapter.get_last_info() is info
@@ -242,17 +232,13 @@ class TestMicroCivGameAdapterGetValidActions:
         valid = reset_adapter.get_valid_actions()
         assert len(valid) > 0
 
-    def test_indices_within_action_space(
-        self, reset_adapter: MicroCivGameAdapter
-    ) -> None:
+    def test_indices_within_action_space(self, reset_adapter: MicroCivGameAdapter) -> None:
         valid = reset_adapter.get_valid_actions()
         size = reset_adapter.action_space_size
         for a in valid:
             assert 0 <= a < size
 
-    def test_consistent_with_env_mask(
-        self, reset_adapter: MicroCivGameAdapter
-    ) -> None:
+    def test_consistent_with_env_mask(self, reset_adapter: MicroCivGameAdapter) -> None:
         """The adapter list should match the non-zero indices of the env mask."""
         valid_list = reset_adapter.get_valid_actions()
         env_mask = reset_adapter.env.get_valid_actions()
@@ -287,9 +273,7 @@ class TestMicroCivGameAdapterGetBoardData:
         for row in grid:
             assert len(row) == bs
 
-    def test_terrain_tile_structure(
-        self, reset_adapter: MicroCivGameAdapter
-    ) -> None:
+    def test_terrain_tile_structure(self, reset_adapter: MicroCivGameAdapter) -> None:
         data = reset_adapter.get_board_data()
         tile = data["terrain_grid"][0][0]
         assert "x" in tile
@@ -339,21 +323,15 @@ class TestMicroCivGameAdapterGetBoardData:
             assert "y" in city
             assert "population" in city
 
-    def test_board_size_matches_adapter(
-        self, reset_adapter: MicroCivGameAdapter
-    ) -> None:
+    def test_board_size_matches_adapter(self, reset_adapter: MicroCivGameAdapter) -> None:
         data = reset_adapter.get_board_data()
         assert data["board_size"] == reset_adapter.board_size
 
-    def test_current_player_matches_adapter(
-        self, reset_adapter: MicroCivGameAdapter
-    ) -> None:
+    def test_current_player_matches_adapter(self, reset_adapter: MicroCivGameAdapter) -> None:
         data = reset_adapter.get_board_data()
         assert data["current_player"] == reset_adapter.current_player
 
-    def test_turn_matches_adapter(
-        self, reset_adapter: MicroCivGameAdapter
-    ) -> None:
+    def test_turn_matches_adapter(self, reset_adapter: MicroCivGameAdapter) -> None:
         data = reset_adapter.get_board_data()
         assert data["turn"] == reset_adapter.turn
 
@@ -361,9 +339,7 @@ class TestMicroCivGameAdapterGetBoardData:
 class TestMicroCivGameAdapterMultipleSteps:
     """Integration-style tests exercising reset/step/valid_actions together."""
 
-    def test_play_several_random_steps(
-        self, adapter: MicroCivGameAdapter
-    ) -> None:
+    def test_play_several_random_steps(self, adapter: MicroCivGameAdapter) -> None:
         """Play 20 random steps without errors."""
         adapter.reset(seed=7)
         rng = np.random.default_rng(7)
@@ -377,9 +353,7 @@ class TestMicroCivGameAdapterMultipleSteps:
             if terminated or truncated:
                 break
 
-    def test_board_data_updates_after_step(
-        self, adapter: MicroCivGameAdapter
-    ) -> None:
+    def test_board_data_updates_after_step(self, adapter: MicroCivGameAdapter) -> None:
         adapter.reset(seed=42)
         adapter.get_board_data()  # capture state before step
         valid = adapter.get_valid_actions()
@@ -412,9 +386,7 @@ class TestMCTSAIAgentInit:
         assert agent._use_mcts is False
         assert agent._mcts is None
 
-    def test_init_mcts_mode_creates_mcts(
-        self, mock_network: MagicMock
-    ) -> None:
+    def test_init_mcts_mode_creates_mcts(self, mock_network: MagicMock) -> None:
         """When use_mcts=True and Civ6MCTS is importable, _mcts is set."""
         agent = MCTSAIAgent(
             network=mock_network,
@@ -478,9 +450,7 @@ class TestMCTSAIAgentPolicyOnly:
         assert "value" in result
         assert "policy" in result
 
-    def test_action_is_int(
-        self, mock_network: MagicMock, small_env: MicroCivEnv
-    ) -> None:
+    def test_action_is_int(self, mock_network: MagicMock, small_env: MicroCivEnv) -> None:
         agent = MCTSAIAgent(
             network=mock_network,
             use_mcts=False,
@@ -490,9 +460,7 @@ class TestMCTSAIAgentPolicyOnly:
         result = agent.select_action(obs)
         assert isinstance(result["action"], int)
 
-    def test_value_is_float_or_none(
-        self, mock_network: MagicMock, small_env: MicroCivEnv
-    ) -> None:
+    def test_value_is_float_or_none(self, mock_network: MagicMock, small_env: MicroCivEnv) -> None:
         agent = MCTSAIAgent(
             network=mock_network,
             use_mcts=False,
@@ -512,13 +480,9 @@ class TestMCTSAIAgentPolicyOnly:
         )
         obs, _ = small_env.reset(seed=42)
         result = agent.select_action(obs)
-        assert result["policy"] is None or isinstance(
-            result["policy"], np.ndarray
-        )
+        assert result["policy"] is None or isinstance(result["policy"], np.ndarray)
 
-    def test_predict_single_called(
-        self, mock_network: MagicMock, small_env: MicroCivEnv
-    ) -> None:
+    def test_predict_single_called(self, mock_network: MagicMock, small_env: MicroCivEnv) -> None:
         """With predict_single present, the agent should use it."""
         agent = MCTSAIAgent(
             network=mock_network,
@@ -554,9 +518,7 @@ class TestMCTSAIAgentPolicyOnly:
         result = agent.select_action(obs, valid_actions=valid)
         assert result["action"] in valid
 
-    def test_no_spatial_raises_value_error(
-        self, mock_network: MagicMock
-    ) -> None:
+    def test_no_spatial_raises_value_error(self, mock_network: MagicMock) -> None:
         agent = MCTSAIAgent(
             network=mock_network,
             use_mcts=False,
@@ -566,9 +528,7 @@ class TestMCTSAIAgentPolicyOnly:
         with pytest.raises(ValueError, match="No spatial observation"):
             agent.select_action(obs)
 
-    def test_greedy_selects_argmax(
-        self, mock_network: MagicMock, small_env: MicroCivEnv
-    ) -> None:
+    def test_greedy_selects_argmax(self, mock_network: MagicMock, small_env: MicroCivEnv) -> None:
         """With temperature=0, the action should be the argmax of masked policy."""
         agent = MCTSAIAgent(
             network=mock_network,
@@ -586,9 +546,7 @@ class TestMCTSAIAgentPolicyOnly:
         target_action = int(valid_indices[0])
         peaked[target_action] = 1.0
 
-        def _peaked_predict(
-            spatial: Any, vector: Any = None, mask: Any = None
-        ) -> tuple:
+        def _peaked_predict(spatial: Any, vector: Any = None, mask: Any = None) -> tuple:
             return torch.from_numpy(peaked), torch.tensor(0.5)
 
         mock_network.predict_single = MagicMock(side_effect=_peaked_predict)
@@ -615,18 +573,14 @@ class TestMCTSAIAgentPolicyOnly:
 class TestMCTSAIAgentGenericForward:
     """Tests for the generic forward-pass path (no predict_single)."""
 
-    def test_generic_forward_path(
-        self, small_env: MicroCivEnv
-    ) -> None:
+    def test_generic_forward_path(self, small_env: MicroCivEnv) -> None:
         """When the network lacks predict_single, the generic __call__ is used."""
         net = MagicMock(spec=[])  # no predict_single attribute
 
         obs, _ = small_env.reset(seed=42)
         size = obs["action_mask"].shape[0]
 
-        def _forward(
-            spatial: Any, vector: Any = None, mask: Any = None
-        ) -> tuple:
+        def _forward(spatial: Any, vector: Any = None, mask: Any = None) -> tuple:
             batch = spatial.shape[0]
             logits = torch.zeros(batch, size)
             value = torch.tensor([[0.2]] * batch)
@@ -645,18 +599,14 @@ class TestMCTSAIAgentGenericForward:
         assert isinstance(result["policy"], np.ndarray)
         assert result["value"] is not None or isinstance(result["value"], float)
 
-    def test_generic_forward_no_value(
-        self, small_env: MicroCivEnv
-    ) -> None:
+    def test_generic_forward_no_value(self, small_env: MicroCivEnv) -> None:
         """Network returns only logits (no value head)."""
         net = MagicMock(spec=[])
 
         obs, _ = small_env.reset(seed=42)
         size = obs["action_mask"].shape[0]
 
-        def _forward_no_value(
-            spatial: Any, vector: Any = None, mask: Any = None
-        ) -> torch.Tensor:
+        def _forward_no_value(spatial: Any, vector: Any = None, mask: Any = None) -> torch.Tensor:
             batch = spatial.shape[0]
             return torch.zeros(batch, size)
 
@@ -675,9 +625,7 @@ class TestMCTSAIAgentGenericForward:
 class TestMCTSAIAgentMCTSMode:
     """Tests for MCTSAIAgent with MCTS enabled (MCTS components mocked)."""
 
-    def test_select_with_mcts(
-        self, mock_network: MagicMock, small_env: MicroCivEnv
-    ) -> None:
+    def test_select_with_mcts(self, mock_network: MagicMock, small_env: MicroCivEnv) -> None:
         """When MCTS is available and env is set, MCTS search path is taken."""
         agent = MCTSAIAgent(
             network=mock_network,
@@ -820,9 +768,7 @@ class TestMCTSAIAgentMCTSMode:
 class TestMCTSAIAgentNonDictObservation:
     """Tests for the non-dict observation fallback path."""
 
-    def test_ndarray_observation_warns_and_proceeds(
-        self, mock_network: MagicMock
-    ) -> None:
+    def test_ndarray_observation_warns_and_proceeds(self, mock_network: MagicMock) -> None:
         """Passing a raw ndarray triggers the warning path."""
         agent = MCTSAIAgent(
             network=mock_network,
@@ -846,9 +792,7 @@ class TestMCTSAIAgentNonDictObservation:
 class TestMCTSAIAgentInitMCTSImportFallback:
     """Test that _init_mcts gracefully handles ImportError."""
 
-    def test_import_error_disables_mcts(
-        self, mock_network: MagicMock
-    ) -> None:
+    def test_import_error_disables_mcts(self, mock_network: MagicMock) -> None:
         """When Civ6MCTS import fails, agent falls back to policy-only."""
         with patch(
             "alpha_zero.core.civ6_mcts.Civ6MCTS",
@@ -905,9 +849,7 @@ class TestBaselineAgentAdapterSetEnv:
         adapter.set_env(small_env)
         assert adapter._env is small_env
 
-    def test_set_env_replaces_previous(
-        self, random_player: RandomPlayer
-    ) -> None:
+    def test_set_env_replaces_previous(self, random_player: RandomPlayer) -> None:
         env1 = MicroCivEnv(board_size=8, max_turns=50, seed=1)
         env2 = MicroCivEnv(board_size=8, max_turns=50, seed=2)
         adapter = BaselineAgentAdapter(random_player, env=env1)
@@ -924,9 +866,7 @@ class TestBaselineAgentAdapterSelectAction:
         with pytest.raises(RuntimeError, match="Environment not set"):
             adapter.select_action(obs)
 
-    def test_returns_dict(
-        self, random_player: RandomPlayer, small_env: MicroCivEnv
-    ) -> None:
+    def test_returns_dict(self, random_player: RandomPlayer, small_env: MicroCivEnv) -> None:
         small_env.reset(seed=42)
         adapter = BaselineAgentAdapter(random_player, env=small_env)
         obs = small_env.get_observation()
@@ -944,36 +884,28 @@ class TestBaselineAgentAdapterSelectAction:
         assert "value" in result
         assert "policy" in result
 
-    def test_action_is_int(
-        self, random_player: RandomPlayer, small_env: MicroCivEnv
-    ) -> None:
+    def test_action_is_int(self, random_player: RandomPlayer, small_env: MicroCivEnv) -> None:
         small_env.reset(seed=42)
         adapter = BaselineAgentAdapter(random_player, env=small_env)
         obs = small_env.get_observation()
         result = adapter.select_action(obs)
         assert isinstance(result["action"], int)
 
-    def test_value_is_none(
-        self, random_player: RandomPlayer, small_env: MicroCivEnv
-    ) -> None:
+    def test_value_is_none(self, random_player: RandomPlayer, small_env: MicroCivEnv) -> None:
         small_env.reset(seed=42)
         adapter = BaselineAgentAdapter(random_player, env=small_env)
         obs = small_env.get_observation()
         result = adapter.select_action(obs)
         assert result["value"] is None
 
-    def test_policy_is_none(
-        self, random_player: RandomPlayer, small_env: MicroCivEnv
-    ) -> None:
+    def test_policy_is_none(self, random_player: RandomPlayer, small_env: MicroCivEnv) -> None:
         small_env.reset(seed=42)
         adapter = BaselineAgentAdapter(random_player, env=small_env)
         obs = small_env.get_observation()
         result = adapter.select_action(obs)
         assert result["policy"] is None
 
-    def test_action_is_valid(
-        self, random_player: RandomPlayer, small_env: MicroCivEnv
-    ) -> None:
+    def test_action_is_valid(self, random_player: RandomPlayer, small_env: MicroCivEnv) -> None:
         small_env.reset(seed=42)
         adapter = BaselineAgentAdapter(random_player, env=small_env)
         obs = small_env.get_observation()
@@ -982,9 +914,7 @@ class TestBaselineAgentAdapterSelectAction:
         valid_actions = np.where(mask > 0)[0]
         assert result["action"] in valid_actions
 
-    def test_delegates_to_baseline_select_action(
-        self, small_env: MicroCivEnv
-    ) -> None:
+    def test_delegates_to_baseline_select_action(self, small_env: MicroCivEnv) -> None:
         baseline = MagicMock()
         baseline.name = "mock_baseline"
         baseline.select_action.return_value = 7
@@ -1026,9 +956,7 @@ class TestBaselineAgentAdapterReset:
         # Should not raise
         adapter.reset()
 
-    def test_reset_with_real_random_player(
-        self, random_player: RandomPlayer
-    ) -> None:
+    def test_reset_with_real_random_player(self, random_player: RandomPlayer) -> None:
         adapter = BaselineAgentAdapter(random_player)
         # RandomPlayer.reset increments games_played
         adapter.reset()
@@ -1040,9 +968,7 @@ class TestBaselineAgentAdapterReset:
 class TestBaselineAgentAdapterMultipleSteps:
     """Integration test using BaselineAgentAdapter with a real environment."""
 
-    def test_play_several_steps(
-        self, random_player: RandomPlayer
-    ) -> None:
+    def test_play_several_steps(self, random_player: RandomPlayer) -> None:
         env = MicroCivEnv(board_size=8, max_turns=50, seed=42)
         game = MicroCivGameAdapter(env)
         adapter = BaselineAgentAdapter(random_player, env=env)
@@ -1053,9 +979,7 @@ class TestBaselineAgentAdapterMultipleSteps:
             if not valid:
                 break
             result = adapter.select_action(obs, valid_actions=valid)
-            obs, _reward, terminated, truncated, _info = game.step(
-                result["action"]
-            )
+            obs, _reward, terminated, truncated, _info = game.step(result["action"])
             if terminated or truncated:
                 break
         # No exceptions means success
@@ -1069,9 +993,7 @@ class TestBaselineAgentAdapterMultipleSteps:
 class TestAdapterIntegration:
     """Integration tests combining multiple adapter classes."""
 
-    def test_game_adapter_with_mcts_agent(
-        self, mock_network: MagicMock
-    ) -> None:
+    def test_game_adapter_with_mcts_agent(self, mock_network: MagicMock) -> None:
         """MicroCivGameAdapter + MCTSAIAgent work together."""
         env = MicroCivEnv(board_size=8, max_turns=50, seed=42)
         game = MicroCivGameAdapter(env)
@@ -1086,14 +1008,10 @@ class TestAdapterIntegration:
         result = agent.select_action(obs, valid_actions=valid)
         assert result["action"] in valid or len(valid) == 0
         if valid:
-            obs, _reward, _terminated, _truncated, _info = game.step(
-                result["action"]
-            )
+            obs, _reward, _terminated, _truncated, _info = game.step(result["action"])
             assert isinstance(obs, dict)
 
-    def test_game_adapter_with_baseline_agent(
-        self, random_player: RandomPlayer
-    ) -> None:
+    def test_game_adapter_with_baseline_agent(self, random_player: RandomPlayer) -> None:
         """MicroCivGameAdapter + BaselineAgentAdapter work together."""
         env = MicroCivEnv(board_size=8, max_turns=50, seed=42)
         game = MicroCivGameAdapter(env)
@@ -1105,15 +1023,11 @@ class TestAdapterIntegration:
             if not valid:
                 break
             result = agent.select_action(obs, valid_actions=valid)
-            obs, _reward, terminated, truncated, _info = game.step(
-                result["action"]
-            )
+            obs, _reward, terminated, truncated, _info = game.step(result["action"])
             if terminated or truncated:
                 break
 
-    def test_set_env_via_game_adapter(
-        self, random_player: RandomPlayer
-    ) -> None:
+    def test_set_env_via_game_adapter(self, random_player: RandomPlayer) -> None:
         """BaselineAgentAdapter can receive env from game adapter."""
         env = MicroCivEnv(board_size=8, max_turns=50, seed=42)
         game = MicroCivGameAdapter(env)

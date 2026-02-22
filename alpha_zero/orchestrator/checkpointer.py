@@ -31,11 +31,13 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
 import torch
+
+from alpha_zero.utils.compat import UTC
 
 logger = logging.getLogger(__name__)
 

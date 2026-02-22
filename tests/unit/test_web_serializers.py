@@ -202,7 +202,10 @@ class TestSerializeBoardForTemplate:
         valid_actions = adapter.get_valid_actions()
 
         data = serialize_board_for_template(
-            adapter, valid_actions, action_space, human_player=0,
+            adapter,
+            valid_actions,
+            action_space,
+            human_player=0,
         )
         assert "grid" in data
         assert len(data["grid"]) == 8
@@ -220,7 +223,10 @@ class TestSerializeBoardForTemplate:
         action_space = MicroCivActionSpace(board_size=8)
 
         data = serialize_board_for_template(
-            adapter, [], action_space, human_player=0,
+            adapter,
+            [],
+            action_space,
+            human_player=0,
         )
         cell = data["grid"][0][0]
         assert "terrain" in cell
@@ -240,7 +246,10 @@ class TestSerializeBoardForTemplate:
         valid_actions = adapter.get_valid_actions()
 
         data = serialize_board_for_template(
-            adapter, valid_actions, action_space, human_player=0,
+            adapter,
+            valid_actions,
+            action_space,
+            human_player=0,
         )
 
         # Check that city ownership flags are booleans
@@ -261,7 +270,10 @@ class TestSerializeBoardForTemplate:
         valid_actions = adapter.get_valid_actions()[:5]
 
         data = serialize_board_for_template(
-            adapter, valid_actions, action_space, human_player=0,
+            adapter,
+            valid_actions,
+            action_space,
+            human_player=0,
         )
         assert data["valid_action_indices"] == valid_actions
 
@@ -276,7 +288,10 @@ class TestSerializeBoardForTemplate:
         action_space = MicroCivActionSpace(board_size=8)
 
         data = serialize_board_for_template(
-            adapter, [], action_space, human_player=0,
+            adapter,
+            [],
+            action_space,
+            human_player=0,
         )
 
         # board_size should be a native int, not numpy
@@ -289,29 +304,34 @@ class TestSanitizeNumpy:
 
     def test_numpy_int(self):
         from alpha_zero.web.serializers import _sanitize_numpy
+
         result = _sanitize_numpy(np.int64(42))
         assert result == 42
         assert type(result) is int
 
     def test_numpy_float(self):
         from alpha_zero.web.serializers import _sanitize_numpy
+
         result = _sanitize_numpy(np.float32(3.14))
         assert isinstance(result, float)
 
     def test_numpy_bool(self):
         from alpha_zero.web.serializers import _sanitize_numpy
+
         result = _sanitize_numpy(np.bool_(True))
         assert result is True
         assert type(result) is bool
 
     def test_numpy_array(self):
         from alpha_zero.web.serializers import _sanitize_numpy
+
         result = _sanitize_numpy(np.array([1, 2, 3]))
         assert result == [1, 2, 3]
         assert isinstance(result, list)
 
     def test_nested_dict(self):
         from alpha_zero.web.serializers import _sanitize_numpy
+
         data = {"a": np.int64(1), "b": {"c": np.float32(2.0)}}
         result = _sanitize_numpy(data)
         assert result == {"a": 1, "b": {"c": 2.0}}
@@ -319,12 +339,14 @@ class TestSanitizeNumpy:
 
     def test_nested_list(self):
         from alpha_zero.web.serializers import _sanitize_numpy
+
         data = [np.int64(1), [np.float32(2.0)]]
         result = _sanitize_numpy(data)
         assert result == [1, [2.0]]
 
     def test_passthrough_native_types(self):
         from alpha_zero.web.serializers import _sanitize_numpy
+
         assert _sanitize_numpy("hello") == "hello"
         assert _sanitize_numpy(42) == 42
         assert _sanitize_numpy(None) is None
@@ -339,6 +361,7 @@ class TestSerializeTurnResultEdgeCases:
 
     def _make_turn_result(self, **kwargs):
         from alpha_zero.human_interface.game_controller import TurnResult
+
         defaults = {
             "action": 0,
             "player": 0,
@@ -441,7 +464,15 @@ class TestSerializeBoardEnemyCity:
             ],
             "units": [],
             "cities": [
-                {"id": 0, "player": 1, "name": "Enemy Capital", "x": 1, "y": 0, "population": 2, "producing": None},
+                {
+                    "id": 0,
+                    "player": 1,
+                    "name": "Enemy Capital",
+                    "x": 1,
+                    "y": 0,
+                    "population": 2,
+                    "producing": None,
+                },
             ],
             "board_size": 2,
             "current_player": 0,
@@ -523,6 +554,7 @@ class TestDecodeActionEdgeCases:
     def test_index_error_fallback(self):
         """Mock action_space to raise IndexError for fallback path."""
         from unittest.mock import MagicMock
+
         mock_space = MagicMock()
         mock_space.decode_action.side_effect = IndexError("out of range")
         label = decode_action_readable(42, mock_space)
@@ -531,6 +563,7 @@ class TestDecodeActionEdgeCases:
     def test_value_error_fallback(self):
         """Mock action_space to raise ValueError for fallback path."""
         from unittest.mock import MagicMock
+
         mock_space = MagicMock()
         mock_space.decode_action.side_effect = ValueError("invalid")
         label = decode_action_readable(99, mock_space)
@@ -539,6 +572,7 @@ class TestDecodeActionEdgeCases:
     def test_unknown_action_type(self):
         """Unknown action type produces descriptive string."""
         from unittest.mock import MagicMock
+
         mock_space = MagicMock()
         mock_space.decode_action.return_value = {"type": "teleport"}
         label = decode_action_readable(5, mock_space)

@@ -330,6 +330,7 @@ class TestCircuitBreaker:
 
         # Wait for timeout
         import time
+
         time.sleep(0.15)
 
         # Check should transition to half-open
@@ -351,6 +352,7 @@ class TestCircuitBreaker:
         checker.record_failure("Error 2")
 
         import time
+
         time.sleep(0.02)
         checker.is_circuit_open()  # Triggers transition
 
@@ -375,6 +377,7 @@ class TestCircuitBreaker:
         checker.record_failure("Error 2")
 
         import time
+
         time.sleep(0.02)
         checker.is_circuit_open()  # Triggers transition
         assert checker.circuit_state == CircuitState.HALF_OPEN
@@ -562,6 +565,7 @@ class TestExecuteWithRetry:
 
         async def failing_operation() -> str:
             import time
+
             timestamps.append(time.time())
             raise RuntimeError("Error")
 
@@ -633,6 +637,7 @@ class TestCallbacks:
         checker.record_failure("Error")
 
         import time
+
         time.sleep(0.02)
         checker.is_circuit_open()  # Transition to half-open
 

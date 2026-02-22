@@ -13,13 +13,14 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import Enum
 from typing import Any, TypeVar
 
 from alpha_zero.rag.config.settings import RAGConfig
 from alpha_zero.rag.processors.embeddings import EmbeddingGenerator
 from alpha_zero.rag.stores.base import Document, SearchResult, VectorStore
+from alpha_zero.utils.compat import UTC
 
 
 class WorkflowState(str, Enum):

@@ -28,7 +28,7 @@ import time
 import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP  # noqa: N817
-from torch.utils.data import DataLoader, Dataset, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
 
 from alpha_zero.cloud.gcp.config import GCPConfig
@@ -210,37 +210,15 @@ def parse_args() -> argparse.Namespace:
         default=0.997,
         help="MuZero discount factor",
     )
+    # Spatial encoder type
+    parser.add_argument(
+        "--encoder_type",
+        type=str,
+        default="patch_embed",
+        choices=["patch_embed", "hex_crystalline"],
+        help="Spatial encoder type (default: patch_embed)",
+    )
     return parser.parse_args()
-
-
-class TrajectoryDataset(Dataset):
-    """Dataset that holds pre-extracted training examples from trajectories."""
-
-    def __init__(
-        self,
-        spatial: torch.Tensor,
-        vector: torch.Tensor,
-        action_mask: torch.Tensor,
-        policy: torch.Tensor,
-        value: torch.Tensor,
-    ) -> None:
-        self.spatial = spatial
-        self.vector = vector
-        self.action_mask = action_mask
-        self.policy = policy
-        self.value = value
-
-    def __len__(self) -> int:
-        return self.spatial.shape[0]
-
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, ...]:
-        return (
-            self.spatial[idx],
-            self.vector[idx],
-            self.action_mask[idx],
-            self.policy[idx],
-            self.value[idx],
-        )
 
 
 def load_trajectories(
@@ -294,6 +272,7 @@ def create_model(
     num_heads: int = 8,
     policy_hidden_dim: int = 128,
     value_head_dim: int = 64,
+    encoder_type: str = "patch_embed",
 ) -> torch.nn.Module:
     """Create model architecture.
 
@@ -306,6 +285,7 @@ def create_model(
         num_heads: Number of attention heads.
         policy_hidden_dim: Hidden dimension for policy head.
         value_head_dim: Hidden dimension for value head.
+        encoder_type: Spatial encoder type ('patch_embed' or 'hex_crystalline').
     """
     from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
@@ -319,9 +299,11 @@ def create_model(
         num_heads=num_heads,
         policy_hidden_dim=policy_hidden_dim,
         value_head_dim=value_head_dim,
+        encoder_type=encoder_type,
     )
     logger.info(
-        "Creating model: spatial=(%d, %d, %d), actions=%d, layers=%d, embed=%d, heads=%d",
+        "Creating model: spatial=(%d, %d, %d), actions=%d, layers=%d, embed=%d, heads=%d, "
+        "encoder=%s",
         spatial_channels,
         board_size,
         board_size,
@@ -329,6 +311,7 @@ def create_model(
         num_res_blocks,
         num_filters,
         num_heads,
+        encoder_type,
     )
     return Civ6TransformerNetwork(config=model_config)
 
@@ -411,14 +394,15 @@ def train_muzero_epoch(
     for batch in dataloader:
         spatial = batch[0].to(device)
         vector = batch[1].to(device)
-        target_policies = batch[2].to(device)
-        target_values = batch[3].to(device)
+        # batch[2] is action_mask (added in prepare_dataset); policies and values shift by 1
+        target_policies = batch[3].to(device)
+        target_values = batch[4].to(device)
 
         # MuZero-specific targets (if available in the dataset)
-        target_rewards = batch[4].to(device) if len(batch) > 4 else torch.zeros_like(target_values)
+        target_rewards = batch[5].to(device) if len(batch) > 5 else torch.zeros_like(target_values)
         target_actions = (
-            batch[5].to(device).long()
-            if len(batch) > 5
+            batch[6].to(device).long()
+            if len(batch) > 6
             else torch.zeros(spatial.shape[0], dtype=torch.long, device=device)
         )
 
@@ -547,6 +531,7 @@ def train_muzero_epoch(
 def prepare_dataset(
     trajectories: list[dict],
     vector_dim: int | None = None,
+    action_space_size: int | None = None,
 ) -> TensorDataset:
     """Convert trajectories to PyTorch dataset.
 
@@ -554,9 +539,12 @@ def prepare_dataset(
         trajectories: List of trajectory dictionaries.
         vector_dim: Vector dimension for legacy format handling.
             If None, uses default from TransformerConfig.
+        action_space_size: Action space size for legacy mask fallback.
+            If None, uses default from TransformerConfig.
 
     Returns:
-        TensorDataset with spatial, vector, policy, and value tensors.
+        TensorDataset with spatial, vector, action_mask, policy, and value tensors.
+        Order: (spatial, vector, action_mask, policies, values)
     """
     from torch.utils.data import TensorDataset
 
@@ -566,8 +554,15 @@ def prepare_dataset(
 
         vector_dim = TransformerConfig().vector_dim
 
+    # Get action_space_size from config if not specified
+    if action_space_size is None:
+        from alpha_zero.core.transformer_network import TransformerConfig
+
+        action_space_size = TransformerConfig().action_space_size
+
     spatial_list = []
     vector_list = []
+    action_masks_list = []
     policies = []
     values = []
 
@@ -579,6 +574,11 @@ def prepare_dataset(
             for i, spatial in enumerate(traj["spatial"]):
                 spatial_list.append(spatial)
                 vector_list.append(traj["vector"][i])
+                # Use stored mask if available; fall back to all-ones (legacy trajectories)
+                if "action_masks" in traj:
+                    action_masks_list.append(traj["action_masks"][i])
+                else:
+                    action_masks_list.append([1.0] * action_space_size)
                 policies.append(traj["policies"][i])
                 values.append(traj["rewards"][i])
         else:
@@ -594,16 +594,20 @@ def prepare_dataset(
             for i, state in enumerate(traj["states"]):
                 spatial_list.append(state)
                 vector_list.append([0.0] * vector_dim)
+                action_masks_list.append([1.0] * action_space_size)
                 policies.append(traj["policies"][i])
                 values.append(traj["rewards"][i])
 
     # Convert to tensors
     spatial_tensor = torch.tensor(spatial_list, dtype=torch.float32)
     vector_tensor = torch.tensor(vector_list, dtype=torch.float32)
+    action_masks_tensor = torch.tensor(action_masks_list, dtype=torch.float32)
     policies_tensor = torch.tensor(policies, dtype=torch.float32)
     values_tensor = torch.tensor(values, dtype=torch.float32)
 
-    return TensorDataset(spatial_tensor, vector_tensor, policies_tensor, values_tensor)
+    return TensorDataset(
+        spatial_tensor, vector_tensor, action_masks_tensor, policies_tensor, values_tensor
+    )
 
 
 def train_epoch(
@@ -647,9 +651,10 @@ def train_epoch(
     total_value_loss = 0.0
     num_batches = 0
 
-    for spatial, vector, target_policies, target_values in dataloader:
+    for spatial, vector, action_mask, target_policies, target_values in dataloader:
         spatial = spatial.to(device)
         vector = vector.to(device)
+        action_mask = action_mask.to(device)
         target_policies = target_policies.to(device)
         target_values = target_values.to(device)
 
@@ -678,11 +683,14 @@ def train_epoch(
         if profiler is not None:
             profiler.start("forward_pass")
 
-        policy_logits, value = model(spatial, vector)
+        policy_logits, value = model(spatial, vector, action_mask)
 
-        # Policy loss (cross-entropy)
+        # Policy loss: cross-entropy over legal actions only.
+        # Mask illegal actions from target policy, then renormalize.
+        masked_target = target_policies * action_mask
+        masked_target = masked_target / masked_target.sum(dim=-1, keepdim=True).clamp(min=1e-8)
         policy_log_probs = torch.log_softmax(policy_logits, dim=-1)
-        policy_loss = -torch.sum(target_policies * policy_log_probs, dim=-1).mean()
+        policy_loss = -torch.sum(masked_target * policy_log_probs, dim=-1).mean()
 
         # Value loss (MSE)
         value_loss = torch.nn.functional.mse_loss(value, target_values)
@@ -1008,6 +1016,7 @@ def main() -> int:
                 num_heads=getattr(args, "num_heads", 8),
                 policy_hidden_dim=getattr(args, "policy_hidden_dim", 128),
                 value_head_dim=getattr(args, "value_head_dim", 64),
+                encoder_type=getattr(args, "encoder_type", "patch_embed"),
             )
         model = model.to(device)
         raw_model = model  # Keep reference before DDP for param group construction
@@ -1023,7 +1032,7 @@ def main() -> int:
             and wandb_logger.is_enabled
         ):
             try:
-                wandb_logger.watch_model(model, log="gradients", log_freq=100)
+                wandb_logger.watch_model(raw_model, log="gradients", log_freq=100)
                 logger.info("W&B model gradient watching enabled")
             except Exception as e:
                 logger.debug("Failed to enable W&B model watching: %s", e)

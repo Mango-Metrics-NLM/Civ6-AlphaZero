@@ -32,6 +32,8 @@ def _wandb_env_vars() -> dict[str, str]:
         "WANDB_PROJECT": os.environ.get("WANDB_PROJECT", "civ6-alphazero"),
         "WANDB_ENTITY": os.environ.get("WANDB_ENTITY", ""),
         "WANDB_MODE": os.environ.get("WANDB_MODE", "online"),
+        "WANDB_GROUP": os.environ.get("WANDB_GROUP", ""),
+        "WANDB_RUN_NAME": os.environ.get("WANDB_RUN_NAME", ""),
     }
     return {k: v for k, v in candidates.items() if v}
 
@@ -460,6 +462,7 @@ class VertexTuningJob:
                 "CIV6AZ_GCS_BUCKET": self.config.bucket,
                 "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
                 "CIV6AZ_VERTEX_REGION": self.config.region,
+                "CIV6AZ_ENCODER_TYPE": getattr(self.config.network, "encoder_type", "patch_embed"),
                 **_wandb_env_vars(),
             },
             machine_type="n1-standard-4",  # Tuning trials usually smaller
@@ -779,6 +782,7 @@ class VertexTrainingJob:
                 "CIV6AZ_GCS_BUCKET": self.config.bucket,
                 "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
                 "CIV6AZ_VERTEX_REGION": self.config.region,
+                "CIV6AZ_ENCODER_TYPE": getattr(self.config.network, "encoder_type", "patch_embed"),
                 **_wandb_env_vars(),
             },
             machine_type=training_config.machine_type,
@@ -886,11 +890,14 @@ class VertexEvaluationJob:
         spec = JobSpec(
             display_name=f"civ6az-eval-iter{iteration:03d}",
             container_uri=container,
+            command=["python", "-m", "alpha_zero.cloud.gcp.entrypoint"],
             args=args,
             env_vars={
                 "CIV6AZ_GCS_BUCKET": self.config.bucket,
                 "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
                 "CIV6AZ_VERTEX_REGION": self.config.region,
+                "CIV6AZ_ENCODER_TYPE": getattr(self.config.network, "encoder_type", "patch_embed"),
+                **_wandb_env_vars(),
             },
             # CPU-only: evaluation doesn't need GPU
             machine_type="n1-standard-4",
@@ -1008,6 +1015,7 @@ class VertexTournamentJob:
             "CIV6AZ_GCS_BUCKET": self.config.bucket,
             "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
             "CIV6AZ_VERTEX_REGION": self.config.region,
+            "CIV6AZ_ENCODER_TYPE": getattr(self.config.network, "encoder_type", "patch_embed"),
         }
         env_vars.update(_wandb_env_vars())
         env_vars = {k: v for k, v in env_vars.items() if v}
@@ -1015,6 +1023,7 @@ class VertexTournamentJob:
         spec = JobSpec(
             display_name=f"civ6az-tournament-{len(model_versions)}models",
             container_uri=container,
+            command=["python", "-m", "alpha_zero.cloud.gcp.entrypoint"],
             args=args,
             env_vars=env_vars,
             machine_type=machine_type,

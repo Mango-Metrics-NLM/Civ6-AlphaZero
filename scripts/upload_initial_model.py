@@ -22,9 +22,11 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from datetime import UTC, datetime
+from datetime import datetime
 
 import torch
+
+from alpha_zero.utils.compat import UTC
 
 logging.basicConfig(
     level=logging.INFO,

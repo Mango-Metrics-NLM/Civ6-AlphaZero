@@ -36,7 +36,12 @@ except ImportError:
     psutil = None  # type: ignore[assignment]
     _PSUTIL_AVAILABLE = False
 
-from alpha_zero.cloud.gcp.config import GCPConfig, NetworkArchitectureConfig
+from alpha_zero.cloud.gcp.config import (
+    DEFAULT_MCTS_TYPE,
+    VALID_MCTS_TYPES,
+    GCPConfig,
+    NetworkArchitectureConfig,
+)
 from alpha_zero.cloud.gcp.storage import GCSModelStorage, GCSTrajectoryStorage
 
 logger = logging.getLogger(__name__)
@@ -77,8 +82,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mcts_type",
         type=str,
-        default="civ6",
-        choices=["civ6", "gumbel", "batch_gumbel", "muzero"],
+        default=DEFAULT_MCTS_TYPE,
+        choices=VALID_MCTS_TYPES,
         help="MCTS variant to use",
     )
     parser.add_argument("--board_size", type=int, default=8, help="Size of the hex board")
@@ -124,6 +129,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reward_scale", type=float, default=1.0, help="Reward scaling factor")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
 
+    # Gameplay environment preset
+    parser.add_argument(
+        "--gameplay_preset",
+        type=str,
+        default="default",
+        choices=["default", "enhanced"],
+        help="Gameplay preset: 'default' (MicroCivEnv) or 'enhanced' (all gameplay systems)",
+    )
+
     # Batch inference configuration
     parser.add_argument(
         "--num_parallel_games",
@@ -138,16 +152,34 @@ def parse_args() -> argparse.Namespace:
         help="Maximum batch size for batched network inference",
     )
 
+    # Spatial encoder type
+    parser.add_argument(
+        "--encoder_type",
+        type=str,
+        default="patch_embed",
+        choices=["patch_embed", "hex_crystalline"],
+        help="Spatial encoder type (default: patch_embed)",
+    )
+
     return parser.parse_args()
 
 
-def load_model(config: GCPConfig, version: int, dry_run: bool = False) -> torch.nn.Module:
+def load_model(
+    config: GCPConfig,
+    version: int,
+    dry_run: bool = False,
+    *,
+    spatial_size: int = 8,
+    action_space_size: int = 376,
+) -> torch.nn.Module:
     """Load model from GCS or create dummy for dry run.
 
     Args:
         config: GCP configuration.
         version: Model version to load.
         dry_run: If True, create dummy model without GCS access.
+        spatial_size: Board spatial size for the dry-run dummy model (keyword-only).
+        action_space_size: Action space size for the dry-run dummy model (keyword-only).
 
     Returns:
         Loaded neural network model.
@@ -159,12 +191,12 @@ def load_model(config: GCPConfig, version: int, dry_run: bool = False) -> torch.
 
     if dry_run:
         logger.info("Dry run: creating dummy model")
-        # Create a minimal dummy model for testing
+        # Create a minimal dummy model for testing using CLI-specified dimensions
         dummy_config = TransformerConfig(
-            spatial_channels=64,
-            spatial_size=10,
+            spatial_channels=13,
+            spatial_size=spatial_size,
             vector_dim=64,
-            action_space_size=100,
+            action_space_size=action_space_size,
         )
         return Civ6TransformerNetwork(config=dummy_config)
 
@@ -214,12 +246,13 @@ def load_model(config: GCPConfig, version: int, dry_run: bool = False) -> torch.
         net_cfg = config.network
         logger.warning(
             "Model v%d has no saved config. Using pipeline architecture defaults: "
-            "spatial_size=%d, action_space=%d, embed_dim=%d, num_layers=%d",
+            "spatial_size=%d, action_space=%d, embed_dim=%d, num_layers=%d, encoder=%s",
             version,
             net_cfg.board_size,
             net_cfg.action_space_size,
             net_cfg.embed_dim,
             net_cfg.num_layers,
+            net_cfg.encoder_type,
         )
         transformer_config = TransformerConfig(
             spatial_channels=net_cfg.spatial_channels,
@@ -228,6 +261,7 @@ def load_model(config: GCPConfig, version: int, dry_run: bool = False) -> torch.
             action_space_size=net_cfg.action_space_size,
             num_layers=net_cfg.num_layers,
             embed_dim=net_cfg.embed_dim,
+            encoder_type=net_cfg.encoder_type,
         )
 
     # Create model and load state dict
@@ -385,6 +419,7 @@ def run_selfplay(
     dry_run: bool = False,
     device: str = "cpu",
     temperature_schedule: str = "threshold",
+    gameplay_preset: str = "default",
 ) -> list[dict]:
     """Run self-play games and collect trajectories.
 
@@ -454,9 +489,13 @@ def run_selfplay(
 
         # Create environment and MCTS
         from alpha_zero.core.mcts_factory import create_mcts
-        from alpha_zero.envs.microciv import MicroCivEnv
+        from alpha_zero.envs.env_factory import create_game_env
 
-        env = MicroCivEnv(board_size=board_size, max_turns=max_turns)
+        env = create_game_env(
+            board_size=board_size,
+            max_turns=max_turns,
+            gameplay_preset=gameplay_preset,
+        )
 
         # Build variant-aware MCTS kwargs to avoid passing invalid params
         puct_variants = {"puct", "civ6"}
@@ -506,6 +545,7 @@ def run_selfplay(
         trajectory: dict[str, Any] = {
             "spatial": [],
             "vector": [],
+            "action_masks": [],
             "policies": [],
             "actions": [],
         }
@@ -544,8 +584,10 @@ def run_selfplay(
             # Store experience - flatten spatial and vector for storage
             spatial_flat = obs["spatial"].flatten().tolist()
             vector_flat = obs["vector"].flatten().tolist()
+            action_mask_flat = obs["action_mask"].flatten().tolist()
             trajectory["spatial"].append(spatial_flat)
             trajectory["vector"].append(vector_flat)
+            trajectory["action_masks"].append(action_mask_flat)
             trajectory["policies"].append(policy.tolist() if hasattr(policy, "tolist") else policy)
             trajectory["actions"].append(int(action))
 
@@ -613,6 +655,7 @@ def run_muzero_selfplay(
     dry_run: bool = False,
     device: str = "cpu",
     temperature_schedule: str = "threshold",
+    gameplay_preset: str = "default",
 ) -> list[dict]:
     """Run MuZero self-play games using learned dynamics model.
 
@@ -684,9 +727,13 @@ def run_muzero_selfplay(
 
         # Create environment and MuZero MCTS
         from alpha_zero.core.mcts_factory import create_mcts
-        from alpha_zero.envs.microciv import MicroCivEnv
+        from alpha_zero.envs.env_factory import create_game_env
 
-        env = MicroCivEnv(board_size=board_size, max_turns=max_turns)
+        env = create_game_env(
+            board_size=board_size,
+            max_turns=max_turns,
+            gameplay_preset=gameplay_preset,
+        )
 
         # MuZero MCTS uses the dynamics model for tree search
         mcts_kwargs: dict[str, Any] = {
@@ -708,6 +755,7 @@ def run_muzero_selfplay(
         trajectory: dict[str, Any] = {
             "spatial": [],
             "vector": [],
+            "action_masks": [],
             "policies": [],
             "actions": [],
             "reward_targets": [],
@@ -723,7 +771,8 @@ def run_muzero_selfplay(
 
             try:
                 # MuZeroMCTS.search uses the dynamics model internally
-                policy, value_estimate = mcts.search(env)  # type: ignore[arg-type]
+                # Pass observation dict and action_mask explicitly (MuZeroMCTS signature)
+                policy, value_estimate = mcts.search(obs, action_mask=obs["action_mask"])
                 turn = len(trajectory["spatial"])
                 temp = compute_temperature(
                     turn=turn,
@@ -747,8 +796,10 @@ def run_muzero_selfplay(
             # Store experience
             spatial_flat = obs["spatial"].flatten().tolist()
             vector_flat = obs["vector"].flatten().tolist()
+            action_mask_flat = obs["action_mask"].flatten().tolist()
             trajectory["spatial"].append(spatial_flat)
             trajectory["vector"].append(vector_flat)
+            trajectory["action_masks"].append(action_mask_flat)
             trajectory["policies"].append(policy.tolist() if hasattr(policy, "tolist") else policy)
             trajectory["actions"].append(int(action))
 
@@ -818,6 +869,7 @@ def run_batch_selfplay(
     temperature_schedule: str = "threshold",
     temperature: float = 1.0,
     temperature_threshold: int = 30,
+    gameplay_preset: str = "default",
 ) -> list[dict]:
     """Run batch self-play games using BatchGumbelMCTS and vectorized environments.
 
@@ -859,6 +911,7 @@ def run_batch_selfplay(
         num_envs=num_parallel_games,
         board_size=board_size,
         max_turns=max_turns,
+        gameplay_preset=gameplay_preset,
     )
     vec_env = VectorizedMicroCivEnv(config=env_config)
 
@@ -1088,6 +1141,7 @@ def main() -> int:
                     "num_heads": getattr(args, "num_heads", 8),
                     "policy_hidden_dim": getattr(args, "policy_hidden_dim", 128),
                     "value_head_dim": getattr(args, "value_head_dim", 64),
+                    "gameplay_preset": getattr(args, "gameplay_preset", "default"),
                     "mode": "selfplay",
                 }
             )
@@ -1147,6 +1201,7 @@ def main() -> int:
                 dry_run=args.dry_run,
                 device=str(device),
                 temperature_schedule=args.temperature_schedule,
+                gameplay_preset=getattr(args, "gameplay_preset", "default"),
             )
         else:
             # AlphaZero/Gumbel: load standard model
@@ -1154,6 +1209,8 @@ def main() -> int:
                 config,
                 args.model_version,
                 dry_run=args.dry_run,
+                spatial_size=args.board_size,
+                action_space_size=args.action_space_size,
             )
             model = model.to(device)
             model.eval()
@@ -1177,6 +1234,7 @@ def main() -> int:
                     temperature_schedule=args.temperature_schedule,
                     temperature=args.temperature,
                     temperature_threshold=args.temperature_threshold,
+                    gameplay_preset=getattr(args, "gameplay_preset", "default"),
                 )
             else:
                 trajectories = run_selfplay(
@@ -1191,6 +1249,7 @@ def main() -> int:
                     dry_run=args.dry_run,
                     device=str(device),
                     temperature_schedule=args.temperature_schedule,
+                    gameplay_preset=getattr(args, "gameplay_preset", "default"),
                 )
         elapsed = time.time() - start_time
 

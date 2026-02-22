@@ -8,7 +8,6 @@ import pytest
 
 from alpha_zero.cloud.gcp.config import GCPConfig, GCSPathConfig
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -52,9 +51,7 @@ def mock_aiplatform():  # type: ignore[misc]
 
     mock_aip = sys.modules["google.cloud.aiplatform"]
 
-    with patch(
-        "alpha_zero.cloud.gcp.vertex_jobs.VertexAIClient._ensure_initialized"
-    ):
+    with patch("alpha_zero.cloud.gcp.vertex_jobs.VertexAIClient._ensure_initialized"):
         mock_aip.reset_mock()
         yield mock_aip
 
@@ -64,9 +61,7 @@ def mock_aiplatform():  # type: ignore[misc]
 # ---------------------------------------------------------------------------
 
 
-def test_tuning_job_submission(
-    gcp_config: GCPConfig, mock_aiplatform: MagicMock
-) -> None:
+def test_tuning_job_submission(gcp_config: GCPConfig, mock_aiplatform: MagicMock) -> None:
     """Test submission of a hyperparameter tuning job."""
     from alpha_zero.cloud.gcp.vertex_jobs import VertexAIClient, VertexTuningJob
 
@@ -108,9 +103,7 @@ def test_tuning_job_submission(
     mock_aiplatform.HyperparameterTuningJob.return_value.submit.assert_called_once()
 
 
-def test_tuning_job_args(
-    gcp_config: GCPConfig, mock_aiplatform: MagicMock
-) -> None:
+def test_tuning_job_args(gcp_config: GCPConfig, mock_aiplatform: MagicMock) -> None:
     """Test that arguments are correctly passed to the tuning job."""
     from alpha_zero.cloud.gcp.vertex_jobs import VertexAIClient, VertexTuningJob
 

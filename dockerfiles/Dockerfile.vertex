@@ -35,12 +35,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy runtime requirements for the training container
-# Using requirements-runtime.txt (minimal deps) instead of requirements.txt (includes dev tools)
-COPY requirements-runtime.txt .
+# Copy container requirements (slim deps, no dev tools like mypy/ruff)
+COPY requirements-container.txt .
 
-# Install Python dependencies (runtime only - no dev tools like mypy/ruff)
-RUN pip install --no-cache-dir -r requirements-runtime.txt
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements-container.txt
 
 # Copy project source code
 COPY . .

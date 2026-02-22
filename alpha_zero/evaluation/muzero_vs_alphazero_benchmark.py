@@ -59,6 +59,8 @@ class BenchmarkConfig:
     # defaults (>0.5 → win, <-0.5 → loss) are appropriate.
     win_reward_threshold: float = 0.5
     loss_reward_threshold: float = -0.5
+    # Gameplay environment preset
+    gameplay_preset: str = "default"
     # Output configuration
     output_dir: str = "benchmark_results"
     wandb_project: str = "civ6-alphazero-benchmark"
@@ -355,11 +357,12 @@ class AlphaZeroVsMuZeroBenchmark:
             Dict with game metrics including length, reward, and search stats.
         """
         from alpha_zero.core.mcts_factory import create_mcts
-        from alpha_zero.envs.microciv import MicroCivEnv
+        from alpha_zero.envs.env_factory import create_game_env
 
-        env = MicroCivEnv(
+        env = create_game_env(
             board_size=self.config.board_size,
             max_turns=self.config.max_turns,
+            gameplay_preset=self.config.gameplay_preset,
         )
 
         # Select MCTS variant

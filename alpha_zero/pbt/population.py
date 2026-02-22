@@ -4,7 +4,7 @@ import json
 import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +15,7 @@ from alpha_zero.pbt.config import (
     PBTConfig,
     SelectionMethod,
 )
+from alpha_zero.utils.compat import UTC
 
 logger = logging.getLogger(__name__)
 

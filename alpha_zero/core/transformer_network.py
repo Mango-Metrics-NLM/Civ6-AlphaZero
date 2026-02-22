@@ -123,6 +123,9 @@ class TransformerConfig:
     cls_token: bool = True
     pool_type: str = "cls"
 
+    # Encoder type: "patch_embed" (default ViT patches) or "hex_crystalline" (hex-aware)
+    encoder_type: str = "patch_embed"
+
     # Derived properties (computed from other fields)
     _num_patches: int = field(init=False, default=0)
     _head_dim: int = field(init=False, default=0)
@@ -153,6 +156,7 @@ class TransformerConfig:
             num_heads=getattr(net_config, "num_heads", 8),
             policy_hidden_dim=getattr(net_config, "policy_hidden_dim", 128),
             value_head_dim=getattr(net_config, "value_head_dim", 64),
+            encoder_type=getattr(net_config, "encoder_type", "patch_embed"),
         )
 
     def __post_init__(self) -> None:
@@ -816,8 +820,11 @@ class TransformerEncoder(nn.Module):
         super().__init__()
         self.config = config
 
-        # Patch embedding
-        self.patch_embed = PatchEmbed(
+        # Spatial encoder (patch_embed attribute name preserved for state_dict compat)
+        from alpha_zero.core.encoder_registry import create_spatial_encoder
+
+        self.patch_embed = create_spatial_encoder(
+            encoder_type=config.encoder_type,
             in_channels=config.spatial_channels,
             embed_dim=config.embed_dim,
             patch_size=config.patch_size,

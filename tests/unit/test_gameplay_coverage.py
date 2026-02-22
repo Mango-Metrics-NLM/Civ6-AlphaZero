@@ -165,12 +165,10 @@ class TestCombatCoverage:
         # Run many trials to average out random variance
         n = 200
         damage_full = sum(
-            combat.resolve_city_attack(attacker, city_full).attacker_damage_dealt
-            for _ in range(n)
+            combat.resolve_city_attack(attacker, city_full).attacker_damage_dealt for _ in range(n)
         )
         damage_half = sum(
-            combat.resolve_city_attack(attacker, city_half).attacker_damage_dealt
-            for _ in range(n)
+            combat.resolve_city_attack(attacker, city_half).attacker_damage_dealt for _ in range(n)
         )
 
         # A half-health city has weaker effective defense, so attacker should
@@ -540,7 +538,13 @@ class TestVictoryCoverage:
     def test_check_score_victory_selects_highest(self):
         """Lines 332-345: check_score_victory picks the player with highest score."""
         config = VictoryConfig(
-            score_weights={"unit": 1.0, "city": 5.0, "population": 2.0, "gold": 0.02, "territory": 0.5},
+            score_weights={
+                "unit": 1.0,
+                "city": 5.0,
+                "population": 2.0,
+                "gold": 0.02,
+                "territory": 0.5,
+            },
         )
         victory = VictorySystem(num_players=2, config=config)
 

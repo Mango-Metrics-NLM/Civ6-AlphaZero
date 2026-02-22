@@ -68,8 +68,8 @@ class TestResourceExtraction:
 
     def test_extract_resources_from_tiles(self):
         """Test extraction of map tile resources (iron, horses, etc.)."""
-        from alpha_zero.bridge.state_converter import StateConverter
         from alpha_zero.bridge.protocol import TileData
+        from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
@@ -78,10 +78,13 @@ class TestResourceExtraction:
             TileData(x=0, y=0, terrain="TERRAIN_PLAINS", resource="RESOURCE_IRON", owner_id=0),
             TileData(x=1, y=0, terrain="TERRAIN_GRASSLAND", resource="RESOURCE_IRON", owner_id=0),
             TileData(x=2, y=0, terrain="TERRAIN_HILLS", resource="RESOURCE_HORSES", owner_id=0),
-            TileData(x=3, y=0, terrain="TERRAIN_PLAINS", resource="RESOURCE_WHEAT", owner_id=1),  # Enemy owned
+            TileData(
+                x=3, y=0, terrain="TERRAIN_PLAINS", resource="RESOURCE_WHEAT", owner_id=1
+            ),  # Enemy owned
         ]
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.map_data.tiles = tiles
@@ -100,6 +103,7 @@ class TestResourceExtraction:
         converter = StateConverter()
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.map_data.tiles = []
@@ -111,17 +115,20 @@ class TestResourceExtraction:
 
     def test_extract_resources_no_ownership(self):
         """Test resource extraction when no tiles are owned."""
-        from alpha_zero.bridge.state_converter import StateConverter
         from alpha_zero.bridge.protocol import TileData
+        from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
         tiles = [
             TileData(x=0, y=0, terrain="TERRAIN_PLAINS", resource="RESOURCE_IRON", owner_id=None),
-            TileData(x=1, y=0, terrain="TERRAIN_GRASSLAND", resource="RESOURCE_HORSES", owner_id=None),
+            TileData(
+                x=1, y=0, terrain="TERRAIN_GRASSLAND", resource="RESOURCE_HORSES", owner_id=None
+            ),
         ]
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.map_data.tiles = tiles
@@ -137,8 +144,8 @@ class TestTechnologyExtraction:
 
     def test_extract_researched_techs(self):
         """Test extraction of researched technologies."""
-        from alpha_zero.bridge.state_converter import StateConverter
         from alpha_zero.bridge.protocol import PlayerData
+        from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
@@ -149,6 +156,7 @@ class TestTechnologyExtraction:
         )
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = [player]
@@ -163,14 +171,15 @@ class TestTechnologyExtraction:
 
     def test_extract_techs_empty(self):
         """Test technology extraction with no researched techs."""
-        from alpha_zero.bridge.state_converter import StateConverter
         from alpha_zero.bridge.protocol import PlayerData
+        from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
         player = PlayerData(id=0, civilization="ROME", techs_researched=[])
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = [player]
@@ -186,6 +195,7 @@ class TestTechnologyExtraction:
         converter = StateConverter()
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = []
@@ -206,6 +216,7 @@ class TestCivicExtraction:
         converter = StateConverter()
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = []
@@ -217,14 +228,15 @@ class TestCivicExtraction:
 
     def test_extract_civics_with_player(self):
         """Test civic extraction with player data."""
-        from alpha_zero.bridge.state_converter import StateConverter
         from alpha_zero.bridge.protocol import PlayerData
+        from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
         player = PlayerData(id=0, civilization="ROME")
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = [player]
@@ -240,14 +252,15 @@ class TestVictoryProgressExtraction:
 
     def test_extract_victory_progress_default(self):
         """Test default victory progress values."""
+        from alpha_zero.bridge.protocol import PlayerData
         from alpha_zero.bridge.state_converter import StateConverter
-        from alpha_zero.bridge.protocol import PlayerData, CityData
 
         converter = StateConverter()
 
         player = PlayerData(id=0, civilization="ROME", score=100)
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = [player]
@@ -273,8 +286,8 @@ class TestVictoryProgressExtraction:
 
     def test_extract_domination_progress(self):
         """Test domination victory progress calculation."""
+        from alpha_zero.bridge.protocol import CityData, PlayerData
         from alpha_zero.bridge.state_converter import StateConverter
-        from alpha_zero.bridge.protocol import PlayerData, CityData
 
         converter = StateConverter()
 
@@ -289,6 +302,7 @@ class TestVictoryProgressExtraction:
         ]
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = [player, enemy]
@@ -300,12 +314,12 @@ class TestVictoryProgressExtraction:
 
         # Domination progress = our cities / total cities = 2/3 ≈ 0.667
         assert "domination" in victory
-        assert abs(victory["domination"] - 2/3) < 0.01
+        assert abs(victory["domination"] - 2 / 3) < 0.01
 
     def test_extract_science_progress(self):
         """Test science victory progress calculation."""
-        from alpha_zero.bridge.state_converter import StateConverter
         from alpha_zero.bridge.protocol import PlayerData
+        from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
@@ -313,10 +327,17 @@ class TestVictoryProgressExtraction:
             id=0,
             civilization="ROME",
             score=100,
-            techs_researched=["TECH_POTTERY", "TECH_MINING", "TECH_WRITING", "TECH_SAILING", "TECH_ASTROLOGY"],
+            techs_researched=[
+                "TECH_POTTERY",
+                "TECH_MINING",
+                "TECH_WRITING",
+                "TECH_SAILING",
+                "TECH_ASTROLOGY",
+            ],
         )
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = [player]
@@ -332,14 +353,15 @@ class TestVictoryProgressExtraction:
 
     def test_extract_game_over_victory(self):
         """Test victory progress when game is over and player wins."""
-        from alpha_zero.bridge.state_converter import StateConverter
         from alpha_zero.bridge.protocol import PlayerData
+        from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
         player = PlayerData(id=0, civilization="ROME", score=500)
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = [player]
@@ -354,14 +376,15 @@ class TestVictoryProgressExtraction:
 
     def test_extract_game_over_defeat(self):
         """Test victory progress when game is over and player loses."""
-        from alpha_zero.bridge.state_converter import StateConverter
         from alpha_zero.bridge.protocol import PlayerData
+        from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
         player = PlayerData(id=0, civilization="ROME", score=100)
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = [player]
@@ -452,6 +475,7 @@ class TestStateExtractionEdgeCases:
         converter = StateConverter()
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0
         state.players = []
@@ -475,8 +499,8 @@ class TestStateExtractionEdgeCases:
 
     def test_wrong_player_id(self):
         """Test extraction when player_id doesn't match any player."""
-        from alpha_zero.bridge.state_converter import StateConverter
         from alpha_zero.bridge.protocol import PlayerData, TileData
+        from alpha_zero.bridge.state_converter import StateConverter
 
         converter = StateConverter()
 
@@ -486,6 +510,7 @@ class TestStateExtractionEdgeCases:
         tile = TileData(x=0, y=0, terrain="TERRAIN_PLAINS", resource="RESOURCE_IRON", owner_id=1)
 
         from unittest.mock import MagicMock
+
         state = MagicMock()
         state.player_id = 0  # Looking for ID 0
         state.players = [player]

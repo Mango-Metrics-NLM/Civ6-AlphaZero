@@ -14,7 +14,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -22,6 +22,7 @@ import torch
 import yaml
 
 from alpha_zero.cloud.gcp.exceptions import ConfigurationError, PreemptionError
+from alpha_zero.utils.compat import UTC
 
 if TYPE_CHECKING:
     from alpha_zero.cloud.gcp.storage import GCSCheckpointStorage

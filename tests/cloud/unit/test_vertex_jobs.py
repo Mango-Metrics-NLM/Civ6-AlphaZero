@@ -337,32 +337,33 @@ class TestVertexTrainingJob:
         """Test launching a multi-GPU training job uses torchrun."""
         # Configure for multi-GPU
         gcp_config.training.accelerator_count = 2
-        
+
         job = VertexTrainingJob(gcp_config, client=mock_client)
 
-        with patch.object(mock_client, "submit_custom_job", wraps=mock_client.submit_custom_job) as mock_submit:
-            job_name = job.launch(
+        with patch.object(
+            mock_client, "submit_custom_job", wraps=mock_client.submit_custom_job
+        ) as mock_submit:
+            job.launch(
                 iteration=10,
                 trajectory_iterations=[10],
             )
-            
+
             # Verify submit_custom_job was called
             mock_submit.assert_called_once()
-            
+
             # Inspect the JobSpec passed to submit_custom_job
             call_args = mock_submit.call_args
             job_spec: JobSpec = call_args[0][0]
-            
+
             # Verify command uses torchrun
             assert job_spec.command is not None
             assert job_spec.command[0] == "torchrun"
             assert "--nproc_per_node=2" in job_spec.command
             assert "alpha_zero.cloud.gcp.training_worker" in job_spec.command
-            
+
             # Verify worker args are passed correctly
             assert "--iteration=10" in job_spec.args
             assert any("--trajectory_iterations=" in a for a in job_spec.args)
-
 
     def test_launch_with_resume(
         self,
