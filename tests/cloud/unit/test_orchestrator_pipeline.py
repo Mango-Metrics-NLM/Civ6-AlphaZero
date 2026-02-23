@@ -116,6 +116,16 @@ class TestBuildExtraArgs:
         assert any("--board_size=8" in a for a in extra)
         assert any("--action_space_size=376" in a for a in extra)
 
+    def test_training_extra_args_with_model_version(self, base_args: argparse.Namespace) -> None:
+        """Training args include --model_version when provided."""
+        extra = build_training_extra_args(base_args, model_version=42)
+        assert "--model_version=42" in extra
+
+    def test_training_extra_args_without_model_version(self, base_args: argparse.Namespace) -> None:
+        """Training args omit --model_version when None."""
+        extra = build_training_extra_args(base_args)
+        assert not any("--model_version" in a for a in extra)
+
     def test_evaluation_extra_args(self, base_args: argparse.Namespace) -> None:
         """Evaluation args include MCTS and board config."""
         extra = build_evaluation_extra_args(base_args)
@@ -206,6 +216,24 @@ class TestDryRunPhases:
             args=base_args,
             max_retries=1,
             dry_run=True,
+        )
+        assert result is True
+
+    def test_training_dry_run_with_model_version(
+        self,
+        gcp_config: GCPConfig,
+        base_args: argparse.Namespace,
+    ) -> None:
+        """Training dry run accepts model_version parameter."""
+        result = run_training_phase(
+            config=gcp_config,
+            client=None,
+            iteration=0,
+            trajectory_iterations=[0],
+            args=base_args,
+            max_retries=1,
+            dry_run=True,
+            model_version=218,
         )
         assert result is True
 

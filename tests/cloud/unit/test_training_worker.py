@@ -152,6 +152,32 @@ class TestPrepareDatasetActionMask:
         assert values.ndim == 1
 
 
+class TestModelVersionArg:
+    """Tests for --model_version CLI argument and base model loading."""
+
+    def test_model_version_arg_parsed(self) -> None:
+        """--model_version is parsed correctly."""
+        import sys
+
+        from alpha_zero.cloud.gcp.training_worker import parse_args
+
+        with patch.object(
+            sys, "argv", ["worker", "--iteration=0", "--trajectory_iterations=0", "--model_version=5"]
+        ):
+            args = parse_args()
+        assert args.model_version == 5
+
+    def test_model_version_default_none(self) -> None:
+        """--model_version defaults to None (train from scratch)."""
+        import sys
+
+        from alpha_zero.cloud.gcp.training_worker import parse_args
+
+        with patch.object(sys, "argv", ["worker", "--iteration=0", "--trajectory_iterations=0"]):
+            args = parse_args()
+        assert args.model_version is None
+
+
 class TestTrajectoryDatasetRemoved:
     """TrajectoryDataset class should be removed (was dead code)."""
 
