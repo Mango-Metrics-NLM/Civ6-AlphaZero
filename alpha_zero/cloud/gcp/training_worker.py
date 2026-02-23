@@ -139,6 +139,12 @@ def parse_args() -> argparse.Namespace:
         "--checkpoint_interval", type=int, default=1000, help="Steps between checkpoints"
     )
     parser.add_argument("--resume_from", type=str, default=None, help="Checkpoint to resume from")
+    parser.add_argument(
+        "--model_version",
+        type=int,
+        default=None,
+        help="Model version to load as base weights for fine-tuning (None=train from scratch)",
+    )
     # Network architecture args passed by the Vertex orchestrator
     parser.add_argument("--board_size", type=int, default=8, help="Board size (spatial_size)")
     parser.add_argument("--action_space_size", type=int, default=376, help="Action space size")
@@ -1019,6 +1025,15 @@ def main() -> int:
                 encoder_type=getattr(args, "encoder_type", "patch_embed"),
             )
         model = model.to(device)
+
+        # Load pre-trained weights for fine-tuning (if specified)
+        if args.model_version is not None and not args.dry_run:
+            storage = GCSModelStorage(config)
+            state_dict, _metadata, _model_config = storage.load_model(args.model_version)
+            model.load_state_dict(state_dict, strict=False)
+            if is_main_process:
+                logger.info("Loaded base model v%d for fine-tuning", args.model_version)
+
         raw_model = model  # Keep reference before DDP for param group construction
 
         # Wrap DDP

@@ -5,6 +5,33 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-02-23
+
+### Fixed — Training Worker Loads Base Model for Fine-Tuning
+
+#### Critical Bug Fix: Training From Scratch
+
+The training worker (`training_worker.py`) was creating a **fresh randomly-initialized model** each iteration instead of loading the current best model from GCS and fine-tuning it. This made it impossible for newly trained models to beat the incumbent champion in evaluation.
+
+- **Impact**: Production run v1.2.0 completed 50 iterations with **zero model promotions** — v218 remained champion for all 50 iterations (~$28.55 wasted)
+- **Root cause**: `training_worker.py` called `create_model()` without loading existing weights; no `--model_version` arg existed
+- **Fix**: Added `--model_version` CLI argument to `training_worker.py` that loads pre-trained weights from GCS before training begins
+
+#### Changes
+
+- **`training_worker.py`**: Added `--model_version` CLI arg; when set, loads `state_dict` from GCS via `GCSModelStorage.load_model()` before DDP wrapping
+- **`vertex_orchestrator.py`**: `build_training_extra_args()` now accepts `model_version` kwarg and emits `--model_version=N`; `run_training_phase()` passes `model_version` through to training job; main loop passes current `model_version` to training phase
+- **New tests**: 5 tests across `test_training_worker.py` and `test_orchestrator_pipeline.py` verifying arg parsing, weight loading flow, and orchestrator plumbing
+
+#### Verification
+
+After this fix, training iterations will:
+1. Start with low loss (pre-trained weights, not ~6.0 random init)
+2. Progressively improve policy quality across iterations
+3. Produce models that can beat the incumbent in evaluation (>55% win rate)
+
+---
+
 ## [1.2.0] — 2026-02-21
 
 ### Added — Phase 17: Training Readiness & Production Launch

@@ -441,7 +441,9 @@ def build_selfplay_extra_args(args: argparse.Namespace) -> list[str]:
     return extra
 
 
-def build_training_extra_args(args: argparse.Namespace) -> list[str]:
+def build_training_extra_args(
+    args: argparse.Namespace, *, model_version: int | None = None
+) -> list[str]:
     """Build extra args list for training container."""
     extra = [
         f"--board_size={args.board_size}",
@@ -487,6 +489,9 @@ def build_training_extra_args(args: argparse.Namespace) -> list[str]:
     # Always forward learning rate (training worker default is 0.001)
     learning_rate = getattr(args, "learning_rate", 0.001)
     extra.append(f"--learning_rate={learning_rate}")
+    # Base model for fine-tuning
+    if model_version is not None:
+        extra.append(f"--model_version={model_version}")
     return extra
 
 
@@ -620,6 +625,7 @@ def run_training_phase(
     args: argparse.Namespace,
     max_retries: int = 2,
     dry_run: bool = False,
+    model_version: int | None = None,
 ) -> bool:
     """Run the training phase of an iteration.
 
@@ -636,7 +642,7 @@ def run_training_phase(
     # Override epochs in config
     config.training.epochs_per_iteration = args.epochs
 
-    extra_args = build_training_extra_args(args)
+    extra_args = build_training_extra_args(args, model_version=model_version)
     training_manager = VertexTrainingJob(config, client)
 
     for attempt in range(max_retries + 1):
@@ -1306,6 +1312,7 @@ def main() -> int:
                 args=args,
                 max_retries=args.max_retries,
                 dry_run=args.dry_run,
+                model_version=model_version,
             )
             train_duration = (time.time() - train_start) / 3600.0
 
