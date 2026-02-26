@@ -72,11 +72,15 @@ __all__ = [
 ]
 
 
-# Lazy imports for optional GCS backend
+# Lazy imports for optional backends
 def __getattr__(name: str) -> Any:
     """Lazy import for optional dependencies."""
     if name == "GCSStorageBackend":
         from alpha_zero.storage.gcs_backend import GCSStorageBackend
 
         return GCSStorageBackend
+    if name == "SpacetimeDBStorageBackend":
+        from alpha_zero.storage.spacetimedb_backend import SpacetimeDBStorageBackend
+
+        return SpacetimeDBStorageBackend
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -54,12 +54,16 @@ web = [
     "jinja2>=3.1.0",
     "python-multipart>=0.0.6",
 ]
+spacetimedb = [
+    "spacetimedb-sdk>=0.7.0",
+]
 all = [
     "alpha_zero[dev]",
     "alpha_zero[gcp]",
     "alpha_zero[distributed]",
     "alpha_zero[llm]",
     "alpha_zero[web]",
+    "alpha_zero[spacetimedb]",
 ]
 
 [tool.ruff]
@@ -141,6 +145,10 @@ module = ["fastapi.*", "uvicorn.*", "starlette.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = "spacetimedb_sdk.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
 
@@ -172,6 +180,7 @@ markers = [
     "benchmark: marks tests as benchmarks (deselect with '-m \"not benchmark\"')",
     "web: marks web interface tests",
     "smoke: marks smoke tests for quick validation (select with '-m smoke')",
+    "requires_spacetimedb: marks tests requiring running SpacetimeDB instance",
 ]
 
 [tool.coverage.run]
