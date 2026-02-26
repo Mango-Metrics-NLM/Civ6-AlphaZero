@@ -1,0 +1,33 @@
+# SpacetimeDB Configuration Template
+# Copy and customize for your deployment
+#
+# Environment variable overrides (take priority over this file):
+#   CIV6_SPACETIMEDB_ENABLED=true
+#   CIV6_SPACETIMEDB_HOST=http://localhost:3000
+#   CIV6_SPACETIMEDB_MODULE=civ6-alphazero
+#   CIV6_SPACETIMEDB_AUTH_TOKEN=<your-token>
+#   CIV6_SPACETIMEDB_SSL=false
+
+# Enable SpacetimeDB integration
+enabled: false
+
+# SpacetimeDB server connection
+host: "http://localhost:3000"
+module_address: ""
+ssl_enabled: false
+
+# Connection resilience
+reconnect_interval: 5.0          # Seconds between reconnect attempts
+max_reconnect_attempts: 10       # Maximum reconnect attempts before giving up
+connection_timeout: 30.0         # Timeout for initial connection (seconds)
+subscription_timeout: 30.0       # Timeout for subscription operations (seconds)
+
+# Weight transfer
+compress_weights: true           # LZMA compress weights before storage
+max_weight_blob_mb: 500          # Safety limit for weight blob size (MB)
+
+# Subscription toggles
+# Actors subscribe to lightweight version info, not weight blobs
+subscribe_model_versions: true   # Subscribe to model version changes
+subscribe_training_state: true   # Subscribe to training state changes
+subscribe_metrics: false         # Subscribe to metrics (enable for dashboards)

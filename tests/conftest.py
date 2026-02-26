@@ -57,6 +57,16 @@ def _has_gcp_config() -> bool:
     return bool(os.environ.get("GCP_PROJECT_ID") and os.environ.get("GCS_BUCKET_NAME"))
 
 
+def _has_spacetimedb() -> bool:
+    """Check if SpacetimeDB SDK is installed and configured."""
+    try:
+        import spacetimedb_sdk  # noqa: F401
+
+        return bool(os.environ.get("CIV6_SPACETIMEDB_MODULE"))
+    except ImportError:
+        return False
+
+
 # Pytest markers for conditional execution
 def pytest_configure(config: pytest.Config) -> None:
     """Register custom markers."""
@@ -71,15 +81,22 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers", "requires_env: marks tests requiring external environment (Docker, etc.)"
     )
     config.addinivalue_line("markers", "slow: marks tests as slow-running")
+    config.addinivalue_line(
+        "markers",
+        "requires_spacetimedb: marks tests requiring running SpacetimeDB instance",
+    )
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Skip tests marked with requires_gcp if credentials unavailable."""
+    """Skip tests marked with requires_gcp/requires_spacetimedb if unavailable."""
     skip_gcp = pytest.mark.skip(
         reason="GCP credentials not available. Set GOOGLE_APPLICATION_CREDENTIALS or run 'gcloud auth application-default login'"
     )
     skip_config = pytest.mark.skip(
         reason="GCP configuration incomplete. Set GCP_PROJECT_ID and GCS_BUCKET_NAME"
+    )
+    skip_spacetimedb = pytest.mark.skip(
+        reason="SpacetimeDB not available. Install spacetimedb-sdk and set CIV6_SPACETIMEDB_MODULE"
     )
 
     for item in items:
@@ -88,6 +105,9 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
                 item.add_marker(skip_gcp)
             elif not _has_gcp_config():
                 item.add_marker(skip_config)
+        if "requires_spacetimedb" in item.keywords:
+            if not _has_spacetimedb():
+                item.add_marker(skip_spacetimedb)
 
 
 # Fixtures for cloud testing

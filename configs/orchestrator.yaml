@@ -255,6 +255,24 @@ autonomy:
   prohibit_checkpoint_deletion: true
 
 # =============================================================================
+# SpacetimeDB (optional - real-time distributed coordination)
+# =============================================================================
+# spacetimedb:
+#   enabled: false
+#   host: "http://localhost:3000"
+#   module_address: ""
+#   ssl_enabled: false
+#   reconnect_interval: 5.0
+#   max_reconnect_attempts: 10
+#   connection_timeout: 30.0
+#   subscription_timeout: 30.0
+#   compress_weights: true
+#   max_weight_blob_mb: 500
+#   subscribe_model_versions: true
+#   subscribe_training_state: true
+#   subscribe_metrics: false
+
+# =============================================================================
 # Paths
 # =============================================================================
 checkpoint_dir: checkpoints/orchestrator

@@ -81,3 +81,15 @@ class TestTimeouts:
     HEARTBEAT_TIMEOUT_S: float = 1.0
     RETRY_DELAY_S: float = 0.1
     MAX_RETRIES: int = 3
+
+
+class SpacetimeDBDefaults:
+    """Default values for SpacetimeDB test configurations."""
+
+    HOST: str = "http://localhost:3000"
+    MODULE_ADDRESS: str = "test-module"
+    RECONNECT_INTERVAL: float = 0.1  # Fast for tests
+    MAX_RECONNECT_ATTEMPTS: int = 2
+    CONNECTION_TIMEOUT: float = 1.0
+    SUBSCRIPTION_TIMEOUT: float = 1.0
+    MAX_WEIGHT_BLOB_MB: int = 10  # Small for tests
