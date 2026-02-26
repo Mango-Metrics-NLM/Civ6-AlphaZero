@@ -14,31 +14,23 @@ class TestSpacetimeDBConfig:
     """Tests for SpacetimeDBConfig dataclass."""
 
     def test_default_values(self):
-        """Config has sensible defaults."""
+        """Config has sensible defaults when created with no env vars."""
         with patch.dict(os.environ, {}, clear=True):
-            config = SpacetimeDBConfig.__new__(SpacetimeDBConfig)
-            config.enabled = False
-            config.host = "http://localhost:3000"
-            config.module_address = ""
-            config.auth_token = None
-            config.ssl_enabled = False
-            config.reconnect_interval = 5.0
-            config.max_reconnect_attempts = 10
-            config.connection_timeout = 30.0
-            config.subscription_timeout = 30.0
-            config.compress_weights = True
-            config.max_weight_blob_mb = 500
-            config.subscribe_model_versions = True
-            config.subscribe_training_state = True
-            config.subscribe_metrics = False
+            config = SpacetimeDBConfig()
 
         assert config.enabled is False
         assert config.host == "http://localhost:3000"
         assert config.module_address == ""
         assert config.auth_token is None
         assert config.ssl_enabled is False
+        assert config.reconnect_interval == 5.0
+        assert config.max_reconnect_attempts == 10
+        assert config.connection_timeout == 30.0
         assert config.compress_weights is True
         assert config.max_weight_blob_mb == 500
+        assert config.subscribe_model_versions is True
+        assert config.subscribe_training_state is True
+        assert config.subscribe_metrics is False
 
     def test_env_override_enabled(self):
         """CIV6_SPACETIMEDB_ENABLED overrides enabled flag."""

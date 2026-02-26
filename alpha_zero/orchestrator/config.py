@@ -34,9 +34,12 @@ import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
+
+if TYPE_CHECKING:
+    from alpha_zero.spacetimedb.config import SpacetimeDBConfig
 
 
 class ScheduleType(str, Enum):
@@ -732,7 +735,7 @@ class OrchestratorConfig:
     )
 
     # SpacetimeDB (optional real-time distributed coordination)
-    spacetimedb: Any = field(default=None)
+    spacetimedb: SpacetimeDBConfig | None = field(default=None)
 
     # Paths
     checkpoint_dir: str = "checkpoints/orchestrator"
@@ -806,7 +809,7 @@ class OrchestratorConfig:
         )
 
     @staticmethod
-    def _parse_spacetimedb_config(data: dict[str, Any] | None) -> Any:
+    def _parse_spacetimedb_config(data: dict[str, Any] | None) -> SpacetimeDBConfig | None:
         """Parse SpacetimeDB config from dict if present.
 
         Args:

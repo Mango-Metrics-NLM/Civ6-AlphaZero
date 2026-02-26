@@ -122,7 +122,7 @@ def create_storage_backend(
             ) from e
 
         stdb_config = getattr(config, "spacetimedb", None)
-        host = stdb_config.host if stdb_config else "localhost:3000"
+        host = stdb_config.host if stdb_config else "http://localhost:3000"
         module = stdb_config.module_address if stdb_config else ""
         logger.info("Creating SpacetimeDBStorageBackend (host=%s, module=%s)", host, module)
         return SpacetimeDBStorageBackend(config)

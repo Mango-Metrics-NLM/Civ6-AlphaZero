@@ -319,6 +319,63 @@ class SpacetimeDBClient:
         """Synchronous version of get_weights_by_version."""
         return self._run_sync(self.get_weights_by_version(version))
 
+    async def get_model_by_iteration(
+        self,
+        iteration: int,
+    ) -> tuple[bytes, dict[str, Any]] | None:
+        """Get model weights by training iteration.
+
+        Queries SpacetimeDB for model weights associated with a specific
+        training iteration. This supports cross-process model loading
+        where the loading process didn't perform the save.
+
+        Args:
+            iteration: Training iteration to retrieve.
+
+        Returns:
+            Tuple of (weights_bytes, metadata) or None if not found.
+
+        Raises:
+            SpacetimeDBConnectionError: If not connected.
+        """
+        self._check_connected()
+        sdk = self._connection.sdk_client
+        if hasattr(sdk, "get_model_by_iteration"):
+            return await self._call_async_or_sync(
+                sdk.get_model_by_iteration, iteration,
+            )
+        return None
+
+    def get_model_by_iteration_sync(
+        self,
+        iteration: int,
+    ) -> tuple[bytes, dict[str, Any]] | None:
+        """Synchronous version of get_model_by_iteration."""
+        return self._run_sync(self.get_model_by_iteration(iteration))
+
+    async def get_server_version(self) -> int:
+        """Query SpacetimeDB for the latest model version.
+
+        Unlike `current_version` (which tracks locally published versions),
+        this queries the server for the true latest version, enabling
+        cross-process version discovery.
+
+        Returns:
+            Latest model version from the server, or 0 if unavailable.
+        """
+        self._check_connected()
+        sdk = self._connection.sdk_client
+        if hasattr(sdk, "get_server_version"):
+            result = await self._call_async_or_sync(sdk.get_server_version)
+            if isinstance(result, int):
+                return result
+        # Fall back to local tracking if server query unsupported
+        return self._current_version
+
+    def get_server_version_sync(self) -> int:
+        """Synchronous version of get_server_version."""
+        return self._run_sync(self.get_server_version())
+
     # --- Trajectory operations ---
 
     async def submit_trajectory(
@@ -851,11 +908,11 @@ class SpacetimeDBClient:
                 sdk.call_reducer(reducer_name, *args)
                 return True
 
-            logger.debug(
-                "SDK does not support call_reducer, skipping %s",
+            raise SpacetimeDBReducerError(
                 reducer_name,
+                "SDK client does not support call_reducer; "
+                f"cannot invoke reducer {reducer_name!r}",
             )
-            return True
 
         except (SpacetimeDBConnectionError, SpacetimeDBReducerError):
             raise

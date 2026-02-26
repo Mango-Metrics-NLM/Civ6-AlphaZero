@@ -115,10 +115,17 @@ class SpacetimeDBWeightSynchronizer:
 
         self._last_check_time = now
 
-        # Check client's version against our version
-        client_version = self._client.current_version
-        if client_version > self._current_version:
-            self._latest_available_version = client_version
+        # Query the server for the true latest version. This works
+        # across processes — unlike client.current_version which only
+        # tracks locally published versions.
+        try:
+            server_version = self._client.get_server_version_sync()
+        except Exception:
+            logger.debug("Failed to query server version, using local")
+            server_version = self._client.current_version
+
+        if server_version > self._current_version:
+            self._latest_available_version = server_version
             self._pending_update = True
             return True
 

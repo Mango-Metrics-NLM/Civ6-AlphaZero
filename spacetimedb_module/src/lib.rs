@@ -47,6 +47,8 @@ pub fn init(ctx: &ReducerContext) {
 }
 
 /// Handle client disconnection by marking their worker heartbeat as disconnected.
+///
+/// Each identity maps to at most one worker, so we break after the first match.
 #[spacetimedb::reducer(client_disconnected)]
 pub fn on_client_disconnected(ctx: &ReducerContext) {
     let identity = ctx.sender;
@@ -59,6 +61,7 @@ pub fn on_client_disconnected(ctx: &ReducerContext) {
                 ..heartbeat
             });
             log::info!("Worker {} disconnected", heartbeat.worker_id);
+            break;
         }
     }
 }

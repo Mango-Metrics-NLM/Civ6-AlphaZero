@@ -152,17 +152,31 @@ class SpacetimeDBMetricsSink:
         with self._lock:
             return len(self._buffer)
 
+    @property
+    def pending_event_count(self) -> int:
+        """Number of pending (unbuffered) events."""
+        with self._lock:
+            return len(self._event_buffer)
+
     def should_flush(self) -> bool:
         """Check if buffer should be flushed based on time or size.
+
+        Considers both metrics and event buffers to prevent unbounded
+        growth of the event buffer when only events are being logged.
 
         Returns:
             True if a flush is recommended.
         """
         with self._lock:
+            total_pending = len(self._buffer) + len(self._event_buffer)
+            if total_pending == 0:
+                return False
             if len(self._buffer) >= self._batch_size:
                 return True
+            if len(self._event_buffer) >= self._batch_size:
+                return True
             elapsed = time.monotonic() - self._last_flush_time
-            return elapsed >= self._flush_interval and len(self._buffer) > 0
+            return elapsed >= self._flush_interval
 
     # --- Internal helpers ---
 

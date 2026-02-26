@@ -11,9 +11,15 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
-from alpha_zero.spacetimedb.events import CONNECTION_STATE_CHANGED, EventRegistry
+from alpha_zero.spacetimedb.events import (
+    CONNECTION_STATE_CHANGED,
+    MODEL_VERSION_CHANGED,
+    TRAINING_STATE_CHANGED,
+    EventRegistry,
+)
 from alpha_zero.spacetimedb.exceptions import (
     SpacetimeDBConnectionError,
+    SpacetimeDBError,
     SpacetimeDBTimeoutError,
     SpacetimeDBUnavailableError,
 )
@@ -29,6 +35,7 @@ class ConnectionManager:
 
     Handles:
     - Initial connection with configurable timeout
+    - Table subscription callbacks for real-time updates
     - Automatic reconnection with exponential backoff
     - Health monitoring
     - Graceful shutdown
@@ -46,9 +53,6 @@ class ConnectionManager:
         self._events = events or EventRegistry()
         self._sdk_client: Any = None
         self._connected = False
-        self._reconnect_task: asyncio.Task[None] | None = None
-        self._should_reconnect = True
-        self._reconnect_count = 0
         self._last_connected_at: float = 0.0
 
     @property
@@ -61,8 +65,83 @@ class ConnectionManager:
         """Check if connection is healthy."""
         return self._connected
 
+    def _build_table_callbacks(self) -> list[tuple[str, Any]]:
+        """Build table subscription callbacks based on config.
+
+        Returns:
+            List of (table_name, callback) tuples for SDK registration.
+        """
+        callbacks: list[tuple[str, Any]] = []
+
+        if self._config.subscribe_model_versions:
+            callbacks.append(
+                ("ModelVersionInfo", self._on_model_version_update),
+            )
+
+        if self._config.subscribe_training_state:
+            callbacks.append(
+                ("TrainingState", self._on_training_state_update),
+            )
+
+        return callbacks
+
+    def _on_model_version_update(
+        self, op: str, old: Any, new: Any, _reducer_event: Any = None,
+    ) -> None:
+        """Callback when ModelVersionInfo table changes.
+
+        Fires MODEL_VERSION_CHANGED event with the new version number.
+
+        Args:
+            op: Operation type ("insert", "update", "delete").
+            old: Previous row value (None for inserts).
+            new: New row value (None for deletes).
+            _reducer_event: Optional reducer event context.
+        """
+        if op in ("insert", "update") and new is not None:
+            # Support both dict-like and attribute access
+            if isinstance(new, dict):
+                new_version = new.get("current_version", 0)
+            else:
+                new_version = getattr(new, "current_version", 0)
+
+            if new_version:
+                self._events.fire(MODEL_VERSION_CHANGED, new_version)
+                logger.debug(
+                    "Model version updated to %d via subscription", new_version,
+                )
+
+    def _on_training_state_update(
+        self, op: str, old: Any, new: Any, _reducer_event: Any = None,
+    ) -> None:
+        """Callback when TrainingState table changes.
+
+        Fires TRAINING_STATE_CHANGED event with the new state.
+
+        Args:
+            op: Operation type ("insert", "update", "delete").
+            old: Previous row value (None for inserts).
+            new: New row value (None for deletes).
+            _reducer_event: Optional reducer event context.
+        """
+        if op in ("insert", "update") and new is not None:
+            if isinstance(new, dict):
+                state = new
+            else:
+                state = {
+                    "is_training": getattr(new, "is_training", False),
+                    "should_stop": getattr(new, "should_stop", False),
+                    "current_iteration": getattr(new, "current_iteration", 0),
+                }
+            self._events.fire(TRAINING_STATE_CHANGED, state)
+            logger.debug("Training state updated via subscription")
+
     async def connect(self) -> bool:
         """Establish connection to SpacetimeDB.
+
+        Registers table subscription callbacks based on config settings
+        so that push-based updates (model versions, training state) fire
+        events through the EventRegistry.
 
         Returns:
             True if connection successful.
@@ -103,6 +182,14 @@ class ConnectionManager:
                 self._config.module_address,
             )
 
+            # Build table callbacks from config
+            table_callbacks = self._build_table_callbacks()
+            logger.debug(
+                "Registering %d table callbacks: %s",
+                len(table_callbacks),
+                [name for name, _ in table_callbacks],
+            )
+
             # Attempt connection with timeout
             await asyncio.wait_for(
                 self._sdk_client.run(
@@ -110,7 +197,7 @@ class ConnectionManager:
                     self._config.host,
                     self._config.module_address,
                     self._on_connected,
-                    [],
+                    table_callbacks,
                 ),
                 timeout=self._config.connection_timeout,
             )
@@ -143,15 +230,6 @@ class ConnectionManager:
 
     async def disconnect(self) -> None:
         """Gracefully disconnect from SpacetimeDB."""
-        self._should_reconnect = False
-
-        if self._reconnect_task and not self._reconnect_task.done():
-            self._reconnect_task.cancel()
-            try:
-                await self._reconnect_task
-            except asyncio.CancelledError:
-                pass
-
         self._connected = False
         self._sdk_client = None
         self._events.fire(CONNECTION_STATE_CHANGED, connected=False)
@@ -159,18 +237,18 @@ class ConnectionManager:
 
     def disconnect_sync(self) -> None:
         """Synchronous disconnect."""
-        self._should_reconnect = False
         self._connected = False
         self._sdk_client = None
         self._events.fire(CONNECTION_STATE_CHANGED, connected=False)
 
-    async def _reconnect_loop(self) -> None:
-        """Attempt reconnection with exponential backoff."""
+    async def reconnect(self) -> bool:
+        """Attempt reconnection with exponential backoff.
+
+        Returns:
+            True if reconnection succeeded.
+        """
         attempt = 0
-        while (
-            self._should_reconnect
-            and attempt < self._config.max_reconnect_attempts
-        ):
+        while attempt < self._config.max_reconnect_attempts:
             delay = min(
                 self._config.reconnect_interval * (2 ** attempt),
                 60.0,  # Cap at 60 seconds
@@ -187,8 +265,7 @@ class ConnectionManager:
                 await self.connect()
                 if self._connected:
                     logger.info("Reconnected to SpacetimeDB")
-                    self._reconnect_count += 1
-                    return
+                    return True
             except SpacetimeDBError:
                 logger.warning("Reconnect attempt %d failed", attempt + 1)
 
@@ -198,6 +275,7 @@ class ConnectionManager:
             "Failed to reconnect after %d attempts",
             self._config.max_reconnect_attempts,
         )
+        return False
 
     def _on_connected(self) -> None:
         """Callback when SDK connection is established."""
@@ -211,8 +289,5 @@ class ConnectionManager:
         """Get the underlying SDK client (or mock)."""
         return self._sdk_client
 
-
-# Avoid circular import at module level
-from alpha_zero.spacetimedb.exceptions import SpacetimeDBError  # noqa: E402
 
 __all__ = ["ConnectionManager"]

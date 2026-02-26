@@ -120,7 +120,13 @@ class SpacetimeDBStorageBackend(StorageBackend):
         iteration: int,
         metadata: ModelMetadata | None = None,
     ) -> str:
-        """Save model weights to SpacetimeDB."""
+        """Save model weights to SpacetimeDB.
+
+        The version counter is local and should only be used by a single
+        trainer process. For multi-trainer setups, pass explicit metadata
+        with a server-generated version, or use the Rust reducer's
+        auto-increment logic.
+        """
         with self._lock:
             self._model_version_counter += 1
             version = self._model_version_counter
@@ -129,6 +135,14 @@ class SpacetimeDBStorageBackend(StorageBackend):
             metadata = ModelMetadata(
                 iteration=iteration,
                 version=version,
+            )
+        else:
+            # Ensure metadata version matches the published version
+            metadata = ModelMetadata(
+                iteration=metadata.iteration,
+                version=version,
+                **{k: v for k, v in metadata.to_dict().items()
+                   if k not in ("iteration", "version")},
             )
 
         compress = self._config.compress_weights
@@ -157,27 +171,45 @@ class SpacetimeDBStorageBackend(StorageBackend):
         iteration: int,
         map_location: str | torch.device = "cpu",
     ) -> tuple[dict[str, torch.Tensor], ModelMetadata]:
-        """Load model weights from SpacetimeDB."""
+        """Load model weights from SpacetimeDB.
+
+        First checks the in-memory cache, then queries SpacetimeDB
+        directly. This supports cross-process loading where the
+        loading process didn't perform the original save.
+        """
+        # Check local cache first
         with self._lock:
             metadata = self._model_metadata.get(iteration)
 
-        if metadata is None:
-            raise FileNotFoundError(
-                f"No model found for iteration {iteration}"
-            )
+        if metadata is not None:
+            result = self._client.get_weights_by_version_sync(metadata.version)
+            if result is not None:
+                weights_bytes, _meta_dict = result
+                compress = self._config.compress_weights
+                state_dict = deserialize_state_dict(
+                    weights_bytes, compressed=compress, map_location=map_location,
+                )
+                return state_dict, metadata
 
-        result = self._client.get_weights_by_version_sync(metadata.version)
-        if result is None:
-            raise FileNotFoundError(
-                f"Model weights not found for version {metadata.version}"
+        # Cache miss — query SpacetimeDB by iteration
+        result = self._client.get_model_by_iteration_sync(iteration)
+        if result is not None:
+            weights_bytes, meta_dict = result
+            compress = self._config.compress_weights
+            state_dict = deserialize_state_dict(
+                weights_bytes, compressed=compress, map_location=map_location,
             )
+            metadata = ModelMetadata.from_dict(meta_dict) if meta_dict else ModelMetadata(
+                iteration=iteration, version=0,
+            )
+            # Populate cache for future lookups
+            with self._lock:
+                self._model_metadata[iteration] = metadata
+            return state_dict, metadata
 
-        weights_bytes, _meta_dict = result
-        compress = self._config.compress_weights
-        state_dict = deserialize_state_dict(
-            weights_bytes, compressed=compress, map_location=map_location,
+        raise FileNotFoundError(
+            f"No model found for iteration {iteration}"
         )
-        return state_dict, metadata
 
     def load_model_by_version(
         self,

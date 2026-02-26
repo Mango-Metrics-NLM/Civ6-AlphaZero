@@ -197,6 +197,35 @@ class MockSpacetimeDBClient:
         with self._lock:
             return self._models.get(version)
 
+    async def get_model_by_iteration(
+        self,
+        iteration: int,
+    ) -> tuple[bytes, dict[str, Any]] | None:
+        """Get model weights by training iteration."""
+        return self.get_model_by_iteration_sync(iteration)
+
+    def get_model_by_iteration_sync(
+        self,
+        iteration: int,
+    ) -> tuple[bytes, dict[str, Any]] | None:
+        """Synchronous get model by iteration."""
+        self._track("get_model_by_iteration", iteration)
+        with self._lock:
+            for version, (weights, meta) in self._models.items():
+                if meta.get("iteration") == iteration:
+                    return weights, meta
+            return None
+
+    async def get_server_version(self) -> int:
+        """Get the latest model version (server-side query)."""
+        return self.get_server_version_sync()
+
+    def get_server_version_sync(self) -> int:
+        """Synchronous get server version."""
+        self._track("get_server_version")
+        with self._lock:
+            return self._current_version
+
     # --- Trajectory operations ---
 
     async def submit_trajectory(

@@ -126,10 +126,11 @@ class TestShouldUpdate:
 
     def test_polling_fallback(
         self, sync: SpacetimeDBWeightSynchronizer, client: SpacetimeDBClient,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
-        """When client version changes without subscription, polling detects it."""
-        # Directly set client version (simulating external update)
-        client._current_version = 5
+        """When server version changes without subscription, polling detects it."""
+        # Simulate a version published by another process on the server
+        mock_sdk._current_version = 5
         # Wait for interval to pass
         sync._last_check_time = 0.0
         assert sync.should_update()
