@@ -235,8 +235,15 @@ def torch_to_jax_params(
     updates: dict[str, jax.Array] = {}
     matched = 0
 
+    # Detect torch.Tensor type robustly (torch may not be installed)
+    try:
+        import torch as _torch
+        _torch_tensor_type: type | None = _torch.Tensor
+    except ImportError:
+        _torch_tensor_type = None
+
     for torch_key, torch_tensor in state_dict.items():
-        if hasattr(torch_tensor, "detach"):
+        if _torch_tensor_type is not None and isinstance(torch_tensor, _torch_tensor_type):
             np_val = torch_tensor.detach().cpu().numpy()
         else:
             np_val = np.asarray(torch_tensor)
@@ -291,9 +298,12 @@ def torch_to_jax_params(
         updated_model = _apply_updates("", template)
     except (TypeError, ValueError, AttributeError) as exc:
         logger.warning(
-            "tree_at update failed (%s: %s), returning template with partial updates",
+            "tree_at update failed (%s: %s). "
+            "Applied %d/%d parameter updates via fallback.",
             type(exc).__name__,
             exc,
+            len(updates),
+            len(template_params),
         )
         updated_model = template
 

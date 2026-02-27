@@ -124,6 +124,33 @@ class TestJaxToTorchConversion:
         assert jax_total > 0
 
 
+class TestCrossFrameworkRoundtrip:
+    """Tests for cross-framework parameter conversion integrity."""
+
+    def test_jax_state_dict_has_correct_properties(self, model):
+        """Verify converted state dict has correct types and dtypes."""
+        state_dict = jax_to_torch_state_dict(model)
+
+        for name, tensor in state_dict.items():
+            assert isinstance(tensor, torch.Tensor), f"{name} is not a torch.Tensor"
+            assert tensor.dtype == torch.float32, f"{name} has dtype {tensor.dtype}"
+            assert not tensor.requires_grad, f"{name} unexpectedly requires_grad"
+
+    def test_jax_state_dict_param_count_matches(self, model):
+        """Verify total parameter count is preserved across conversion."""
+        import equinox as eqx
+
+        state_dict = jax_to_torch_state_dict(model)
+        torch_total = sum(v.numel() for v in state_dict.values())
+
+        jax_leaves = jax.tree.leaves(eqx.filter(model, eqx.is_array))
+        jax_total = sum(leaf.size for leaf in jax_leaves)
+
+        assert torch_total == jax_total, (
+            f"Param count mismatch: PyTorch={torch_total}, JAX={jax_total}"
+        )
+
+
 class TestWrapperSaveLoad:
     """Tests for JaxNetworkWrapper save/load integration."""
 

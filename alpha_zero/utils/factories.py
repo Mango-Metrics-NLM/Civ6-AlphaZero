@@ -92,9 +92,10 @@ def create_network(
             # Fall through to PyTorch
 
     from alpha_zero.core.civ6_network import Civ6Network, MicroCivNetwork
+    from alpha_zero.core.framework import is_microciv_config
 
     # Use MicroCivNetwork for smaller boards (faster training)
-    if board_size <= 16 and config.spatial_channels <= 13:
+    if is_microciv_config(board_size, config.spatial_channels):
         logger.info(
             f"Creating MicroCivNetwork: board={board_size}, "
             f"actions={action_space_size}, filters={config.num_filters}",

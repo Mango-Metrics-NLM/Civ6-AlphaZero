@@ -12,9 +12,12 @@ from __future__ import annotations
 import os
 import tempfile
 from collections.abc import Generator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
+
+import numpy as np
 
 import pytest
 import torch
@@ -414,7 +417,6 @@ def sample_trajectory_data() -> list[dict]:
     Returns:
         List of trajectory step dictionaries.
     """
-    import numpy as np
 
     return [
         {
@@ -448,3 +450,46 @@ def sample_trajectory_data() -> list[dict]:
             "turn": 3,
         },
     ]
+
+
+# =============================================================================
+# Shared Training Example Fixtures (used by JAX and integration tests)
+# =============================================================================
+
+
+@dataclass
+class MockTrainingExample:
+    """Shared mock training example for JAX and training tests."""
+
+    spatial: np.ndarray
+    vector: np.ndarray
+    action_mask: np.ndarray
+    policy: np.ndarray
+    value: float
+
+
+def make_training_example(
+    board_size: int = 16,
+    action_size: int = 381,
+    rng: np.random.Generator | None = None,
+) -> MockTrainingExample:
+    """Create a random training example.
+
+    Args:
+        board_size: Board size for spatial input.
+        action_size: Action space size.
+        rng: Optional random generator for reproducibility.
+
+    Returns:
+        MockTrainingExample with random data.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+    policy = rng.dirichlet(np.ones(action_size)).astype(np.float32)
+    return MockTrainingExample(
+        spatial=rng.standard_normal((13, board_size, board_size)).astype(np.float32),
+        vector=rng.standard_normal((64,)).astype(np.float32),
+        action_mask=np.ones(action_size, dtype=np.float32),
+        policy=policy,
+        value=float(rng.uniform(-1, 1)),
+    )

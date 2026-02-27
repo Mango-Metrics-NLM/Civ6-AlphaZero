@@ -117,6 +117,11 @@ class JaxDebugLogger:
 
             leaves = jax.tree.leaves(params)
             total = sum(leaf.size for leaf in leaves if hasattr(leaf, "size"))
+            total_bytes = sum(
+                leaf.size * leaf.dtype.itemsize
+                for leaf in leaves
+                if hasattr(leaf, "size") and hasattr(leaf, "dtype")
+            )
             num_leaves = len(leaves)
             self._logger.log(
                 self._log_level,
@@ -124,7 +129,7 @@ class JaxDebugLogger:
                 label,
                 num_leaves,
                 total,
-                total * 4 / (1024 * 1024),  # Assumes float32
+                total_bytes / (1024 * 1024),
             )
         except Exception as e:
             self._logger.log(self._log_level, "Params '%s': failed to inspect: %s", label, e)

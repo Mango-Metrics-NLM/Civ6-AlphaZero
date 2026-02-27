@@ -25,6 +25,8 @@ from typing import Any
 
 import numpy as np
 
+from alpha_zero.core.framework import MASKED_LOGIT_VALUE
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -36,11 +38,6 @@ try:
     _JAX_AVAILABLE = True
 except ImportError:
     _JAX_AVAILABLE = False
-
-
-# Value used to mask invalid action logits (approximates -infinity for softmax).
-# Must match the value in jax_network._MASKED_LOGIT_VALUE.
-_MASKED_LOGIT_VALUE: float = -1e9
 
 
 def _require_jax() -> None:
@@ -196,7 +193,7 @@ def jax_compute_loss(
     )
 
     # Policy loss: cross-entropy with soft targets and action masking
-    masked_logits = jnp.where(action_mask > 0, policy_logits, _MASKED_LOGIT_VALUE)
+    masked_logits = jnp.where(action_mask > 0, policy_logits, MASKED_LOGIT_VALUE)
     log_probs = jax.nn.log_softmax(masked_logits)
     policy_loss = -jnp.sum(target_policy * log_probs)
 
@@ -357,6 +354,8 @@ class JaxDataLoader:
             shuffle: Whether to shuffle examples each epoch.
             seed: Random seed for shuffling.
         """
+        if batch_size < 1:
+            raise ValueError(f"batch_size must be >= 1, got {batch_size}")
         self._examples = examples
         self._batch_size = batch_size
         self._shuffle = shuffle

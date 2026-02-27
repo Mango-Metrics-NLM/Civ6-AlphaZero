@@ -33,6 +33,8 @@ from typing import Any
 
 import numpy as np
 
+from alpha_zero.core.framework import MASKED_LOGIT_VALUE, is_microciv_config
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -43,10 +45,6 @@ try:
     _JAX_AVAILABLE = True
 except ImportError:
     _JAX_AVAILABLE = False
-
-
-# Value used to mask invalid action logits (approximates -infinity for softmax)
-_MASKED_LOGIT_VALUE: float = -1e9
 
 
 def _require_jax() -> None:
@@ -149,6 +147,11 @@ if _JAX_AVAILABLE:
             num_groups: int = 8,
             eps: float = 1e-5,
         ) -> None:
+            if num_channels % num_groups != 0:
+                raise ValueError(
+                    f"num_channels ({num_channels}) must be divisible by "
+                    f"num_groups ({num_groups})"
+                )
             self.num_channels = num_channels
             self.num_groups = num_groups
             self.eps = eps
@@ -424,7 +427,7 @@ if _JAX_AVAILABLE:
 
             if action_mask is not None:
                 policy_logits = jnp.where(
-                    action_mask > 0, policy_logits, _MASKED_LOGIT_VALUE
+                    action_mask > 0, policy_logits, MASKED_LOGIT_VALUE
                 )
 
             return policy_logits, value
@@ -515,6 +518,11 @@ class JaxNetworkWrapper:
         return self._model
 
     @property
+    def config(self) -> JaxNetworkConfig:
+        """The network architecture configuration."""
+        return self._model.config
+
+    @property
     def param_count(self) -> int:
         """Total number of trainable parameters."""
         return int(self._param_count)
@@ -559,7 +567,18 @@ class JaxNetworkWrapper:
         """
         _require_jax()
 
+        if spatial.ndim not in (3, 4):
+            raise ValueError(
+                f"spatial must be 3D (C,H,W) or 4D (B,C,H,W), "
+                f"got {spatial.ndim}D shape {spatial.shape}"
+            )
+
         is_batched = spatial.ndim == 4
+        logger.debug(
+            "JaxNetworkWrapper.predict: %s input, spatial=%s",
+            "batched" if is_batched else "single",
+            spatial.shape,
+        )
 
         if is_batched:
             # Process batch by vmapping — pass model as explicit non-batched arg
@@ -724,7 +743,7 @@ def create_jax_network(
     key = jax.random.PRNGKey(seed)
 
     model: JaxCiv6Network
-    if board_size <= 16 and jax_config.spatial_channels <= 13:
+    if is_microciv_config(board_size, jax_config.spatial_channels):
         logger.info(
             "Creating JaxMicroCivNetwork: board=%d, actions=%d, filters=%d",
             board_size,

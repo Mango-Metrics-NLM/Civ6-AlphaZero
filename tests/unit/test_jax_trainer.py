@@ -1,7 +1,5 @@
 """Unit tests for JAX training utilities."""
 
-from dataclasses import dataclass
-
 import numpy as np
 import pytest
 
@@ -18,31 +16,14 @@ from alpha_zero.core.jax_trainer import (
     jax_compute_loss,
     jax_train_step,
 )
+from tests.conftest import MockTrainingExample, make_training_example
 
 pytestmark = pytest.mark.requires_jax
 
 
-@dataclass
-class MockTrainingExample:
-    """Minimal training example for testing."""
-
-    spatial: np.ndarray
-    vector: np.ndarray
-    action_mask: np.ndarray
-    policy: np.ndarray
-    value: float
-
-
 def make_example(board_size: int = 16, action_size: int = 381) -> MockTrainingExample:
-    """Create a random training example."""
-    policy = np.random.dirichlet(np.ones(action_size)).astype(np.float32)
-    return MockTrainingExample(
-        spatial=np.random.randn(13, board_size, board_size).astype(np.float32),
-        vector=np.random.randn(64).astype(np.float32),
-        action_mask=np.ones(action_size, dtype=np.float32),
-        policy=policy,
-        value=np.random.uniform(-1, 1),
-    )
+    """Create a random training example (delegates to shared fixture)."""
+    return make_training_example(board_size=board_size, action_size=action_size)
 
 
 @pytest.fixture

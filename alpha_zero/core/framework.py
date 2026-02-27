@@ -31,6 +31,45 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Shared constants used by both PyTorch and JAX backends
+# ---------------------------------------------------------------------------
+
+# Value used to mask invalid action logits (approximates -infinity for softmax).
+# Shared by jax_network.py and jax_trainer.py to ensure consistent masking.
+MASKED_LOGIT_VALUE: float = -1e9
+
+# Thresholds for selecting the MicroCiv (simplified) network variant.
+# MicroCiv is used for small boards with fewer input channels.
+MICROCIV_MAX_BOARD_SIZE: int = 16
+MICROCIV_MAX_CHANNELS: int = 13
+
+
+# ---------------------------------------------------------------------------
+# Network selection
+# ---------------------------------------------------------------------------
+
+
+def is_microciv_config(board_size: int, spatial_channels: int) -> bool:
+    """Determine if the MicroCiv (simplified) network variant should be used.
+
+    The MicroCiv network is a lighter-weight architecture suitable for small
+    boards with fewer input channels, enabling faster training in early phases.
+
+    Args:
+        board_size: Game board size.
+        spatial_channels: Number of spatial input channels.
+
+    Returns:
+        True if the simplified MicroCiv network should be used.
+    """
+    return board_size <= MICROCIV_MAX_BOARD_SIZE and spatial_channels <= MICROCIV_MAX_CHANNELS
+
+
+# ---------------------------------------------------------------------------
+# Framework detection
+# ---------------------------------------------------------------------------
+
 
 class FrameworkType(enum.Enum):
     """Supported ML frameworks."""

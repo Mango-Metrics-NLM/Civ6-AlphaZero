@@ -4,8 +4,6 @@ Tests end-to-end workflows: network creation via factory, MCTS integration,
 training loop, and cross-framework checkpoint conversion.
 """
 
-from dataclasses import dataclass
-
 import numpy as np
 import pytest
 import torch
@@ -25,28 +23,14 @@ from alpha_zero.core.jax_trainer import (
     create_train_state,
     jax_train_step,
 )
+from tests.conftest import make_training_example
 
 pytestmark = [pytest.mark.requires_jax, pytest.mark.integration]
 
 
-@dataclass
-class MockTrainingExample:
-    spatial: np.ndarray
-    vector: np.ndarray
-    action_mask: np.ndarray
-    policy: np.ndarray
-    value: float
-
-
 def make_example(board_size: int = 16, action_size: int = 381):
-    policy = np.random.dirichlet(np.ones(action_size)).astype(np.float32)
-    return MockTrainingExample(
-        spatial=np.random.randn(13, board_size, board_size).astype(np.float32),
-        vector=np.random.randn(64).astype(np.float32),
-        action_mask=np.ones(action_size, dtype=np.float32),
-        policy=policy,
-        value=np.random.uniform(-1, 1),
-    )
+    """Create a random training example (delegates to shared fixture)."""
+    return make_training_example(board_size=board_size, action_size=action_size)
 
 
 class TestFactoryJaxCreation:
