@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,10 @@ try:
     _JAX_AVAILABLE = True
 except ImportError:
     _JAX_AVAILABLE = False
+
+
+# Value used to mask invalid action logits (approximates -infinity for softmax)
+_MASKED_LOGIT_VALUE: float = -1e9
 
 
 def _require_jax() -> None:
@@ -277,7 +282,12 @@ if _JAX_AVAILABLE:
             flat_spatial_dim = 2 * spatial_size * spatial_size
             combined_dim = flat_spatial_dim + vector_dim
             self.fc1 = eqx.nn.Linear(combined_dim, hidden_dim, key=key2)
-            self.fc2 = eqx.nn.Linear(hidden_dim, action_space_size, key=key3)
+            # Suppress "JAX array being set as static" warning from Equinox internals.
+            # This is a known JAX/Equinox version compatibility issue — the Linear
+            # layer's weights are correctly dynamic pytree leaves.
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message="A JAX array is being set as static")
+                self.fc2 = eqx.nn.Linear(hidden_dim, action_space_size, key=key3)
 
         def __call__(
             self, spatial_features: jax.Array, vector_features: jax.Array
@@ -413,7 +423,9 @@ if _JAX_AVAILABLE:
             value = self.value_head(spatial_features, vector_features)
 
             if action_mask is not None:
-                policy_logits = jnp.where(action_mask > 0, policy_logits, -1e9)
+                policy_logits = jnp.where(
+                    action_mask > 0, policy_logits, _MASKED_LOGIT_VALUE
+                )
 
             return policy_logits, value
 
@@ -505,7 +517,7 @@ class JaxNetworkWrapper:
     @property
     def param_count(self) -> int:
         """Total number of trainable parameters."""
-        return self._param_count
+        return int(self._param_count)
 
     def _next_key(self) -> Any:
         """Split and return a new PRNG subkey."""
@@ -550,15 +562,17 @@ class JaxNetworkWrapper:
         is_batched = spatial.ndim == 4
 
         if is_batched:
-            # Process batch by vmapping
+            # Process batch by vmapping — pass model as explicit non-batched arg
+            # to avoid capturing it in a closure (which triggers JAX static array warnings)
             sp = jnp.array(spatial)
             vec = jnp.array(vector)
             mask = jnp.array(action_mask)
 
             batched_fn = jax.vmap(
-                lambda s, v, m: self._jit_forward(self._model, s, v, m)
+                self._forward_single,
+                in_axes=(None, 0, 0, 0),
             )
-            policy_probs, values = batched_fn(sp, vec, mask)
+            policy_probs, values = batched_fn(self._model, sp, vec, mask)
 
             return np.asarray(policy_probs), np.asarray(values)
         else:
@@ -618,13 +632,20 @@ class JaxNetworkWrapper:
 
         eqx.tree_serialise_leaves(model_path, self._model)
 
+        _reserved_keys = {"config", "param_count", "framework"}
         meta = {
             "config": self._model.config.to_dict(),
-            "param_count": self._param_count,
+            "param_count": int(self._param_count),
             "framework": "jax",
         }
         if metadata:
-            meta.update(metadata)
+            overwritten = set(metadata.keys()) & _reserved_keys
+            if overwritten:
+                logger.warning(
+                    "Metadata keys %s are reserved and will not be overwritten",
+                    overwritten,
+                )
+            meta.update({k: v for k, v in metadata.items() if k not in _reserved_keys})
 
         Path(meta_path).write_text(json.dumps(meta, indent=2))
 
@@ -702,6 +723,7 @@ def create_jax_network(
 
     key = jax.random.PRNGKey(seed)
 
+    model: JaxCiv6Network
     if board_size <= 16 and jax_config.spatial_channels <= 13:
         logger.info(
             "Creating JaxMicroCivNetwork: board=%d, actions=%d, filters=%d",

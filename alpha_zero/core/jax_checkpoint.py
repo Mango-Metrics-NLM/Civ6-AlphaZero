@@ -75,11 +75,18 @@ def save_jax_checkpoint(
 
     eqx.tree_serialise_leaves(model_path, model)
 
+    _reserved_keys = {"framework", "config"}
     meta: dict[str, Any] = {"framework": "jax"}
     if hasattr(model, "config") and hasattr(model.config, "to_dict"):
         meta["config"] = model.config.to_dict()
     if metadata:
-        meta.update(metadata)
+        overwritten = set(metadata.keys()) & _reserved_keys
+        if overwritten:
+            logger.warning(
+                "Metadata keys %s are reserved and will not be overwritten",
+                overwritten,
+            )
+        meta.update({k: v for k, v in metadata.items() if k not in _reserved_keys})
 
     Path(meta_path).write_text(json.dumps(meta, indent=2, default=str))
 
@@ -224,10 +231,6 @@ def torch_to_jax_params(
         for jax_name in template_params:
             torch_to_jax_name[jax_name] = jax_name
 
-    # Also try to match by stripping common prefixes
-    torch_keys = set(state_dict.keys())
-    jax_keys = set(template_params.keys())
-
     # Build the update dict
     updates: dict[str, jax.Array] = {}
     matched = 0
@@ -256,8 +259,8 @@ def torch_to_jax_params(
         "Converted PyTorch → JAX: %d/%d parameters matched (PyTorch: %d, JAX: %d)",
         matched,
         len(state_dict),
-        len(torch_keys),
-        len(jax_keys),
+        len(state_dict),
+        len(template_params),
     )
 
     # Apply updates to template
@@ -286,9 +289,12 @@ def torch_to_jax_params(
 
     try:
         updated_model = _apply_updates("", template)
-    except Exception:
-        # Fallback: use where to replace matching leaves
-        logger.warning("tree_at update failed, returning template with partial updates")
+    except (TypeError, ValueError, AttributeError) as exc:
+        logger.warning(
+            "tree_at update failed (%s: %s), returning template with partial updates",
+            type(exc).__name__,
+            exc,
+        )
         updated_model = template
 
     return updated_model

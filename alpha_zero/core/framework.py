@@ -130,11 +130,12 @@ def to_numpy(tensor: Any) -> np.ndarray:
     except ImportError:
         pass
 
-    # Check for JAX array
+    # Check for JAX array — use duck typing via jax.Array base class
+    # (jnp.ndarray isinstance check is fragile across JAX versions)
     try:
-        import jax.numpy as jnp
+        import jax
 
-        if isinstance(tensor, jnp.ndarray):
+        if isinstance(tensor, jax.Array):
             return np.asarray(tensor)
     except ImportError:
         pass

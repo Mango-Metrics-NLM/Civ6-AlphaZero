@@ -165,9 +165,9 @@ def jax_debug_mode() -> Generator[None, None, None]:
     """
     import jax
 
-    # Save current settings
-    old_disable_jit = jax.config.jax_disable_jit
-    old_debug_nans = jax.config.jax_debug_nans
+    # Save current settings (jax.config attributes are runtime-only, not typed)
+    old_disable_jit = jax.config.jax_disable_jit  # type: ignore[attr-defined]
+    old_debug_nans = jax.config.jax_debug_nans  # type: ignore[attr-defined]
 
     try:
         jax.config.update("jax_disable_jit", True)

@@ -38,6 +38,11 @@ except ImportError:
     _JAX_AVAILABLE = False
 
 
+# Value used to mask invalid action logits (approximates -infinity for softmax).
+# Must match the value in jax_network._MASKED_LOGIT_VALUE.
+_MASKED_LOGIT_VALUE: float = -1e9
+
+
 def _require_jax() -> None:
     if not _JAX_AVAILABLE:
         raise ImportError(
@@ -191,7 +196,7 @@ def jax_compute_loss(
     )
 
     # Policy loss: cross-entropy with soft targets and action masking
-    masked_logits = jnp.where(action_mask > 0, policy_logits, -1e9)
+    masked_logits = jnp.where(action_mask > 0, policy_logits, _MASKED_LOGIT_VALUE)
     log_probs = jax.nn.log_softmax(masked_logits)
     policy_loss = -jnp.sum(target_policy * log_probs)
 
@@ -231,13 +236,16 @@ def _batch_loss(
     """
     batch_size = batch["spatial"].shape[0]
 
-    # Generate per-sample keys if needed
+    # Generate per-sample keys — always provide valid PRNG key shapes for vmap.
+    # When key is None we still pass dummy keys (inference=True disables dropout).
     if key is not None:
         keys = jax.random.split(key, batch_size)
     else:
-        keys = [None] * batch_size
+        keys = jax.random.split(jax.random.PRNGKey(0), batch_size)
 
-    def single_loss(spatial: Any, vector: Any, mask: Any, policy: Any, value: Any, k: Any) -> tuple[Any, dict[str, Any]]:
+    def single_loss(
+        spatial: Any, vector: Any, mask: Any, policy: Any, value: Any, k: Any,
+    ) -> tuple[Any, dict[str, Any]]:
         return jax_compute_loss(
             model, spatial, vector, mask, policy, value,
             policy_loss_weight=policy_loss_weight,
@@ -252,7 +260,7 @@ def _batch_loss(
         batch["action_mask"],
         batch["policy"],
         batch["value"],
-        jnp.stack(keys) if key is not None else jnp.zeros((batch_size,)),
+        keys,
     )
 
     mean_loss = jnp.mean(losses)
