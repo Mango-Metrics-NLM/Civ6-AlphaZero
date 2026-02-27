@@ -25,6 +25,7 @@ Usage:
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING, Any
 
 import torch
@@ -49,21 +50,47 @@ def create_network(
     board_size: int,
     action_space_size: int,
     device: str = "cpu",
-) -> torch.nn.Module:
+    framework: str | None = None,
+) -> Any:
     """Create neural network from configuration.
 
     Automatically selects between MicroCivNetwork (for smaller boards)
     and Civ6Network (for larger boards or when attention is needed).
+    Supports both PyTorch and JAX backends via the framework parameter.
 
     Args:
         config: Network configuration.
         board_size: Game board size.
         action_space_size: Size of action space.
         device: Compute device ("cpu" or "cuda").
+        framework: ML framework ("pytorch" or "jax"). If None, reads from
+            CIV6AZ_FRAMEWORK env var, defaulting to "pytorch".
 
     Returns:
         Configured neural network on specified device.
     """
+    effective_framework = (
+        framework
+        or getattr(config, "framework", None)
+        or os.environ.get("CIV6AZ_FRAMEWORK", "pytorch")
+    ).lower().strip()
+
+    if effective_framework == "jax":
+        try:
+            from alpha_zero.core.jax_network import create_jax_network
+
+            logger.info("Creating JAX network via factory")
+            return create_jax_network(
+                config,
+                board_size=board_size,
+                action_space_size=action_space_size,
+            )
+        except ImportError as e:
+            logger.warning(
+                "JAX not available, falling back to PyTorch: %s", e,
+            )
+            # Fall through to PyTorch
+
     from alpha_zero.core.civ6_network import Civ6Network, MicroCivNetwork
 
     # Use MicroCivNetwork for smaller boards (faster training)

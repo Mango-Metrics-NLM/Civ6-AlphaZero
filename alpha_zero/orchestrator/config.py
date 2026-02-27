@@ -429,6 +429,7 @@ class NetworkConfig:
     num_heads: int = 4
     value_head_hidden: int = 256
     dropout: float = 0.0
+    framework: str = "pytorch"  # "pytorch" or "jax"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> NetworkConfig:
@@ -441,6 +442,7 @@ class NetworkConfig:
             num_heads=int(data.get("num_heads", 4)),
             value_head_hidden=int(data.get("value_head_hidden", 256)),
             dropout=float(data.get("dropout", 0.0)),
+            framework=str(data.get("framework", "pytorch")),
         )
 
 

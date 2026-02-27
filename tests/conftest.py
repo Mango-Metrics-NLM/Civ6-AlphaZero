@@ -67,6 +67,18 @@ def _has_spacetimedb() -> bool:
         return False
 
 
+def _has_jax() -> bool:
+    """Check if JAX and its dependencies are installed."""
+    try:
+        import jax  # noqa: F401
+        import equinox  # noqa: F401
+        import optax  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
 # Pytest markers for conditional execution
 def pytest_configure(config: pytest.Config) -> None:
     """Register custom markers."""
@@ -84,6 +96,10 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
         "requires_spacetimedb: marks tests requiring running SpacetimeDB instance",
+    )
+    config.addinivalue_line(
+        "markers",
+        "requires_jax: marks tests requiring JAX installation (pip install -e '.[jax]')",
     )
 
 
@@ -108,6 +124,13 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         if "requires_spacetimedb" in item.keywords:
             if not _has_spacetimedb():
                 item.add_marker(skip_spacetimedb)
+        if "requires_jax" in item.keywords:
+            if not _has_jax():
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason="JAX not installed. Install with: pip install -e '.[jax]'"
+                    )
+                )
 
 
 # Fixtures for cloud testing

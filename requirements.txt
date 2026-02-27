@@ -45,3 +45,9 @@ httpx>=0.25.0
 
 # SpacetimeDB (optional - for real-time distributed coordination)
 # spacetimedb-sdk>=0.7.0
+
+# JAX Backend (optional - install for JAX ML framework support)
+# jax>=0.4.20
+# jaxlib>=0.4.20
+# equinox>=0.11.0
+# optax>=0.2.0
