@@ -104,14 +104,13 @@ def mock_replay_buffer() -> MagicMock:
 # ============================================================================
 
 
-@pytest.mark.xfail(reason="Pre-existing DDPLearnerConfig test failures", strict=False)
 class TestDDPLearnerConfig:
     """Tests for DDPLearnerConfig."""
 
     def test_default_values(self) -> None:
         """Test default configuration values."""
         config = DDPLearnerConfig()
-        assert config.backend == "nccl"
+        assert config.backend == "auto"
         assert config.world_size == 1
         assert config.rank == 0
         assert config.init_method == "env://"
@@ -155,7 +154,6 @@ class TestDDPLearnerConfig:
 # ============================================================================
 
 
-@pytest.mark.xfail(reason="Pre-existing DDP initialization errors", strict=False)
 class TestDDPInitSingleProcess:
     """Tests for DDP initialization with world_size=1."""
 
@@ -188,7 +186,6 @@ class TestDDPInitSingleProcess:
         assert ddp_config.backend == "gloo"
 
 
-@pytest.mark.xfail(reason="Pre-existing DDP multi-process errors", strict=False)
 class TestDDPInitMultiProcessMocked:
     """Tests for DDP initialization with mocked multi-process."""
 
@@ -242,7 +239,6 @@ class TestDDPInitMultiProcessMocked:
 # ============================================================================
 
 
-@pytest.mark.xfail(reason="Pre-existing DDP device selection errors", strict=False)
 class TestDDPDeviceSelection:
     """Tests for device selection in DDP."""
 
@@ -366,7 +362,6 @@ class TestMockDDPWrapper:
 # ============================================================================
 
 
-@pytest.mark.xfail(reason="Pre-existing DDP integration errors", strict=False)
 class TestDDPIntegration:
     """Integration tests combining multiple DDP components."""
 

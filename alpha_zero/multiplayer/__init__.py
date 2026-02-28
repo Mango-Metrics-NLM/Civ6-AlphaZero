@@ -35,7 +35,17 @@ from alpha_zero.multiplayer.config import (
     TurnManagerConfig,
     TurnMode,
 )
+from alpha_zero.multiplayer.determinization import (
+    DeterminizationConfig,
+    DeterminizedMCTS,
+    WorldSampler,
+)
 from alpha_zero.multiplayer.env_adapter import NPlayerEnvAdapter
+from alpha_zero.multiplayer.fog_of_war import (
+    FogOfWarConfig,
+    FogOfWarManager,
+    VisibilityState,
+)
 from alpha_zero.multiplayer.game_connector import (
     GameConnector,
     GameConnectorConfig,
@@ -51,6 +61,10 @@ from alpha_zero.multiplayer.network_heads import (
     NPlayerValueHead,
     compute_nplayer_value_loss,
 )
+from alpha_zero.multiplayer.observation_model import (
+    ObservationModel,
+    ObservationModelConfig,
+)
 from alpha_zero.multiplayer.opponent_model import OpponentModel
 from alpha_zero.multiplayer.protocols import (
     MultiplayerEnvironment,
@@ -65,6 +79,10 @@ from alpha_zero.multiplayer.scoring import (
 from alpha_zero.multiplayer.turn_manager import TurnManager
 
 __all__ = [
+    "DeterminizationConfig",
+    "DeterminizedMCTS",
+    "FogOfWarConfig",
+    "FogOfWarManager",
     "GameConnector",
     "GameConnectorConfig",
     "MockGameConnector",
@@ -78,6 +96,8 @@ __all__ = [
     "NPlayerNetworkAdapter",
     "NPlayerNetworkConfig",
     "NPlayerValueHead",
+    "ObservationModel",
+    "ObservationModelConfig",
     "OpponentModel",
     "OpponentModelConfig",
     "ScoringConfig",
@@ -87,6 +107,8 @@ __all__ = [
     "TurnManagerConfig",
     "TurnMode",
     "UncivMultiplayerConnector",
+    "VisibilityState",
+    "WorldSampler",
     "compute_nplayer_value_loss",
     "compute_player_values",
     "compute_rankings",

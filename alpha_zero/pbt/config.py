@@ -680,6 +680,11 @@ class PBTConfig:
     # Dynamic strategy switching
     evaluation_strategy_switch_gen: int = 0  # Switch to top_k_vs_best at gen N (0=never)
 
+    # Multiplayer PBT settings
+    multiplayer_mode: bool = False
+    diversity_weight: float = 0.1
+    num_players: int = 2  # for multiplayer mode
+
     ENV_PREFIX: str = field(default="CIV6AZ_PBT_", repr=False)
 
     def __post_init__(self) -> None:
@@ -713,6 +718,10 @@ class PBTConfig:
             raise ValueError("checkpoint_retention_generations must be >= 0")
         if self.evaluation_strategy_switch_gen < 0:
             raise ValueError("evaluation_strategy_switch_gen must be >= 0")
+        if self.diversity_weight < 0:
+            raise ValueError("diversity_weight must be >= 0")
+        if self.num_players < 2:
+            raise ValueError("num_players must be >= 2")
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> PBTConfig:
@@ -829,6 +838,9 @@ class PBTConfig:
             "baseline_agents": self.baseline_agents,
             "checkpoint_retention_generations": self.checkpoint_retention_generations,
             "evaluation_strategy_switch_gen": self.evaluation_strategy_switch_gen,
+            "multiplayer_mode": self.multiplayer_mode,
+            "diversity_weight": self.diversity_weight,
+            "num_players": self.num_players,
         }
 
     def save(self, path: str | Path) -> None:

@@ -26,6 +26,13 @@ from alpha_zero.core.civ6_actions import MicroCivActionSpace
 from alpha_zero.envs.civ6_encoder import MicroCivEncoder
 from alpha_zero.utils.constants import GAME, REWARDS, UNITS
 
+try:
+    from alpha_zero.multiplayer.fog_of_war import FogOfWarConfig as _FogOfWarConfig
+    from alpha_zero.multiplayer.fog_of_war import FogOfWarManager as _FogOfWarManager
+except ImportError:  # pragma: no cover
+    _FogOfWarConfig = None  # type: ignore[assignment,misc]
+    _FogOfWarManager = None  # type: ignore[assignment,misc]
+
 logger = logging.getLogger(__name__)
 
 
@@ -152,6 +159,7 @@ class MicroCivEnv(gym.Env):
         render_mode: str | None = None,
         seed: int | None = None,
         num_players: int = 2,
+        fog_of_war: bool = False,
     ) -> None:
         """Initialize MicroCiv environment.
 
@@ -161,6 +169,8 @@ class MicroCivEnv(gym.Env):
             render_mode: Rendering mode ('ansi' or None).
             seed: Random seed for reproducibility.
             num_players: Number of players (2-8, default 2).
+            fog_of_war: Whether fog of war is enabled. When ``True``,
+                observations are masked per player visibility.
 
         Raises:
             ValueError: If num_players is not in range [2, MAX_PLAYERS].
@@ -187,7 +197,7 @@ class MicroCivEnv(gym.Env):
             max_units=20,
             max_cities=5,
         )
-        self.encoder = MicroCivEncoder(board_size=board_size)
+        self.encoder = MicroCivEncoder(board_size=board_size, num_players=num_players)
 
         # Gymnasium spaces
         self.action_space = spaces.Discrete(self.action_space_handler.total_size)
@@ -196,7 +206,7 @@ class MicroCivEnv(gym.Env):
                 "spatial": spaces.Box(
                     low=0.0,
                     high=1.0,
-                    shape=(MicroCivEncoder.TOTAL_CHANNELS, board_size, board_size),
+                    shape=(self.encoder.total_channels, board_size, board_size),
                     dtype=np.float32,
                 ),
                 "vector": spaces.Box(
@@ -226,6 +236,16 @@ class MicroCivEnv(gym.Env):
         self._next_city_id: int = 0
         self.visited: set[tuple[int, int]] = set()  # Track visited tiles
 
+        # Fog of war (optional)
+        self._fog_of_war_enabled = fog_of_war
+        self.fog_manager: _FogOfWarManager | None = None
+        if fog_of_war:
+            self.fog_manager = _FogOfWarManager(
+                _FogOfWarConfig(enabled=True),
+                board_size=board_size,
+                num_players=num_players,
+            )
+
     def reset(
         self,
         *,
@@ -252,6 +272,11 @@ class MicroCivEnv(gym.Env):
         self.done = False
         self.winner = None
 
+        # Reset and compute initial fog of war visibility.
+        if self.fog_manager is not None:
+            self.fog_manager.reset(self.num_players)
+            self._update_fog_visibility()
+
         obs = self.get_observation()
         info = self.get_info()
 
@@ -275,6 +300,10 @@ class MicroCivEnv(gym.Env):
         # Decode and execute action
         action_dict = self.action_space_handler.decode_action(action)
         reward, action_success, action_error = self._execute_action(action_dict)
+
+        # Update fog of war after state-changing actions.
+        if action_success:
+            self._update_fog_visibility()
 
         # Log failed actions for debugging
         if not action_success:
@@ -424,8 +453,8 @@ class MicroCivEnv(gym.Env):
         for _ in range(100):
             x = start_x + self._rng.integers(0, range_)
             y = start_y + self._rng.integers(0, range_)
-            x = min(max(x, 0), self.board_size - 1)
-            y = min(max(y, 0), self.board_size - 1)
+            x = int(min(max(x, 0), self.board_size - 1))
+            y = int(min(max(y, 0), self.board_size - 1))
             if self.terrain.get((x, y), Tile()).terrain_type != "mountain":
                 return (x, y)
         return (start_x, start_y)
@@ -770,10 +799,25 @@ class MicroCivEnv(gym.Env):
         }
 
     def get_observation(self) -> dict[str, np.ndarray]:
-        """Get observation for current player."""
+        """Get observation for current player.
+
+        When fog of war is enabled, the game state is masked so the
+        current player only sees units/cities within their visibility
+        range. The encoder receives visibility data for proper fog
+        channel encoding.
+        """
         game_state = self._get_game_state()
+
+        # Apply fog of war masking when enabled.
+        if self.fog_manager is not None:
+            game_state = self.fog_manager.mask_observation(
+                game_state, self.current_player
+            )
+
         spatial, vector = self.encoder.encode(game_state)
-        action_mask = self.action_space_handler.get_valid_mask(game_state)
+        action_mask = self.action_space_handler.get_valid_mask(
+            self._get_game_state()  # action mask uses full state
+        )
 
         return {
             "spatial": spatial.numpy(),
@@ -891,6 +935,15 @@ class MicroCivEnv(gym.Env):
 
         return "\n".join(lines)  # type: ignore[return-value]
 
+    def _update_fog_visibility(self) -> None:
+        """Recompute fog of war visibility from current units and cities."""
+        if self.fog_manager is None:
+            return
+
+        unit_dicts = [u.to_dict() for u in self.units]
+        city_dicts = [c.to_dict() for c in self.cities]
+        self.fog_manager.compute_visibility(unit_dicts, city_dicts)
+
     def clone(self) -> MicroCivEnv:
         """Create a deep copy of the environment.
 
@@ -904,6 +957,7 @@ class MicroCivEnv(gym.Env):
             max_turns=self.max_turns,
             render_mode=self.render_mode,
             num_players=self.num_players,
+            fog_of_war=self._fog_of_war_enabled,
         )
         new_env.terrain = copy.deepcopy(self.terrain)
         new_env.units = copy.deepcopy(self.units)
@@ -915,4 +969,6 @@ class MicroCivEnv(gym.Env):
         new_env._next_unit_id = self._next_unit_id
         new_env._next_city_id = self._next_city_id
         new_env.visited = copy.deepcopy(self.visited)
+        if self.fog_manager is not None:
+            new_env.fog_manager = copy.deepcopy(self.fog_manager)
         return new_env

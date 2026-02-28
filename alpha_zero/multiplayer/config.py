@@ -20,6 +20,9 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
+from alpha_zero.multiplayer.determinization import DeterminizationConfig
+from alpha_zero.multiplayer.fog_of_war import FogOfWarConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -197,6 +200,8 @@ class MultiplayerConfig:
         city_channels_per_player: City channels per player in encoding.
         base_terrain_channels: Fixed terrain channels in encoding.
         fog_of_war: Whether fog of war is enabled.
+        fog_of_war_config: Detailed fog of war settings.
+        determinization: Determinized MCTS settings for partial observability.
     """
 
     num_players: int = 2
@@ -208,11 +213,23 @@ class MultiplayerConfig:
     city_channels_per_player: int = 1
     base_terrain_channels: int = 3
     fog_of_war: bool = False
+    fog_of_war_config: FogOfWarConfig = field(default_factory=FogOfWarConfig)
+    determinization: DeterminizationConfig = field(default_factory=DeterminizationConfig)
 
     def __post_init__(self) -> None:
         if self.num_players < 2:
             msg = f"num_players must be >= 2, got {self.num_players}"
             raise ValueError(msg)
+        # Sync the convenience flag with the detailed config.
+        # If fog_of_war is True but fog_of_war_config.enabled is False
+        # (default), create a new config with enabled=True.
+        if self.fog_of_war and not self.fog_of_war_config.enabled:
+            self.fog_of_war_config = FogOfWarConfig(
+                enabled=True,
+                default_sight_range=self.fog_of_war_config.default_sight_range,
+                city_sight_range=self.fog_of_war_config.city_sight_range,
+                unit_sight_ranges=dict(self.fog_of_war_config.unit_sight_ranges),
+            )
 
     @property
     def total_spatial_channels(self) -> int:
@@ -241,6 +258,8 @@ class MultiplayerConfig:
             "CIV6AZ_MP_TURN_MODE": ("turn_manager.mode", str),
             "CIV6AZ_MP_SCORING_METHOD": ("scoring.method", str),
             "CIV6AZ_MP_FOG_OF_WAR": ("fog_of_war", bool),
+            "CIV6AZ_MP_DETERMINIZATION_WORLDS": ("determinization.num_worlds", int),
+            "CIV6AZ_MP_DETERMINIZATION_COMBINE": ("determinization.combine_method", str),
         }
 
         for env_var, (attr_path, attr_type) in env_map.items():
@@ -283,11 +302,15 @@ class MultiplayerConfig:
         scoring_data = data.pop("scoring", {})
         turn_data = data.pop("turn_manager", {})
         opp_data = data.pop("opponent_model", {})
+        fog_data = data.pop("fog_of_war_config", {})
+        det_data = data.pop("determinization", {})
 
         return cls(
             mcts=NPlayerMCTSConfig(**mcts_data),
             scoring=ScoringConfig(**scoring_data),
             turn_manager=TurnManagerConfig(**turn_data),
             opponent_model=OpponentModelConfig(**opp_data),
+            fog_of_war_config=FogOfWarConfig(**fog_data),
+            determinization=DeterminizationConfig(**det_data),
             **data,
         )
