@@ -12,10 +12,12 @@ from __future__ import annotations
 import os
 import tempfile
 from collections.abc import Generator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 import torch
 import torch.nn as nn
@@ -67,6 +69,18 @@ def _has_spacetimedb() -> bool:
         return False
 
 
+def _has_jax() -> bool:
+    """Check if JAX and its dependencies are installed."""
+    try:
+        import equinox  # noqa: F401
+        import jax  # noqa: F401
+        import optax  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
 # Pytest markers for conditional execution
 def pytest_configure(config: pytest.Config) -> None:
     """Register custom markers."""
@@ -84,6 +98,10 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
         "requires_spacetimedb: marks tests requiring running SpacetimeDB instance",
+    )
+    config.addinivalue_line(
+        "markers",
+        "requires_jax: marks tests requiring JAX installation (pip install -e '.[jax]')",
     )
 
 
@@ -108,6 +126,13 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         if "requires_spacetimedb" in item.keywords:
             if not _has_spacetimedb():
                 item.add_marker(skip_spacetimedb)
+        if "requires_jax" in item.keywords:
+            if not _has_jax():
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason="JAX not installed. Install with: pip install -e '.[jax]'"
+                    )
+                )
 
 
 # Fixtures for cloud testing
@@ -391,37 +416,81 @@ def sample_trajectory_data() -> list[dict]:
     Returns:
         List of trajectory step dictionaries.
     """
-    import numpy as np
+    rng = np.random.default_rng(42)
 
     return [
         {
-            "state": np.random.randn(13, 16, 16).astype(
-                np.float32
-            ),  # MicroCivEncoder.TOTAL_CHANNELS
+            "state": rng.standard_normal((13, 16, 16)).astype(np.float32),
             "action": np.array([5, 8]),
-            "policy": np.random.dirichlet(np.ones(376)).astype(np.float32),
+            "policy": rng.dirichlet(np.ones(376)).astype(np.float32),
             "reward": 0.0,
             "done": False,
             "turn": 1,
         },
         {
-            "state": np.random.randn(13, 16, 16).astype(
-                np.float32
-            ),  # MicroCivEncoder.TOTAL_CHANNELS
+            "state": rng.standard_normal((13, 16, 16)).astype(np.float32),
             "action": np.array([6, 8]),
-            "policy": np.random.dirichlet(np.ones(376)).astype(np.float32),
+            "policy": rng.dirichlet(np.ones(376)).astype(np.float32),
             "reward": 0.1,
             "done": False,
             "turn": 2,
         },
         {
-            "state": np.random.randn(13, 16, 16).astype(
-                np.float32
-            ),  # MicroCivEncoder.TOTAL_CHANNELS
+            "state": rng.standard_normal((13, 16, 16)).astype(np.float32),
             "action": np.array([6, 9]),
-            "policy": np.random.dirichlet(np.ones(376)).astype(np.float32),
+            "policy": rng.dirichlet(np.ones(376)).astype(np.float32),
             "reward": 1.0,
             "done": True,
             "turn": 3,
         },
     ]
+
+
+# =============================================================================
+# Shared Training Example Fixtures (used by JAX and integration tests)
+# =============================================================================
+
+
+@dataclass
+class MockTrainingExample:
+    """Shared mock training example for JAX and training tests."""
+
+    spatial: np.ndarray
+    vector: np.ndarray
+    action_mask: np.ndarray
+    policy: np.ndarray
+    value: float
+
+    def __post_init__(self) -> None:
+        if self.policy.shape[0] != self.action_mask.shape[0]:
+            raise ValueError(
+                f"policy size ({self.policy.shape[0]}) != "
+                f"action_mask size ({self.action_mask.shape[0]})"
+            )
+
+
+def make_training_example(
+    board_size: int = 16,
+    action_size: int = 381,
+    rng: np.random.Generator | None = None,
+) -> MockTrainingExample:
+    """Create a random training example.
+
+    Args:
+        board_size: Board size for spatial input.
+        action_size: Action space size.
+        rng: Optional random generator for reproducibility.
+
+    Returns:
+        MockTrainingExample with random data.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+    policy = rng.dirichlet(np.ones(action_size)).astype(np.float32)
+    return MockTrainingExample(
+        spatial=rng.standard_normal((13, board_size, board_size)).astype(np.float32),
+        vector=rng.standard_normal((64,)).astype(np.float32),
+        action_mask=np.ones(action_size, dtype=np.float32),
+        policy=policy,
+        value=float(rng.uniform(-1, 1)),
+    )
