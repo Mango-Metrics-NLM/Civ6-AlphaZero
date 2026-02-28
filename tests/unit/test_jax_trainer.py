@@ -218,6 +218,26 @@ class TestJaxDataLoader:
         loader = JaxDataLoader(examples, batch_size=8)
         assert len(loader) == 4  # 32 // 8
 
+    def test_len_empty(self):
+        """Empty examples should report 0 batches."""
+        loader = JaxDataLoader([], batch_size=8)
+        assert len(loader) == 0
+
+    def test_len_partial_batch(self):
+        """Non-divisible count should use ceiling division."""
+        examples = [make_example() for _ in range(10)]
+        loader = JaxDataLoader(examples, batch_size=8)
+        assert len(loader) == 2  # ceil(10/8) = 2
+
+    def test_partial_batch_shapes(self):
+        """Last batch may be smaller than batch_size."""
+        examples = [make_example() for _ in range(10)]
+        loader = JaxDataLoader(examples, batch_size=8, shuffle=False, seed=0)
+        batches = list(loader)
+        assert len(batches) == 2
+        assert batches[0]["spatial"].shape[0] == 8
+        assert batches[1]["spatial"].shape[0] == 2
+
     def test_invalid_batch_size_raises(self):
         """batch_size < 1 should raise ValueError."""
         with pytest.raises(ValueError, match="batch_size must be >= 1"):

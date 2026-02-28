@@ -215,3 +215,26 @@ class TestTorchToJaxConversion:
         # Should not raise — just skip non-tensor entries
         result = torch_to_jax_params(state_dict, template)
         assert result is not None
+
+    def test_bidirectional_roundtrip(self, model, key, test_input):
+        """JAX → torch state_dict → JAX should preserve numerical outputs."""
+        # Forward pass with original model
+        sp = jnp.array(test_input["spatial"])
+        vec = jnp.array(test_input["vector"])
+        mask = jnp.array(test_input["mask"])
+        orig_policy, orig_value = model(sp, vec, mask)
+
+        # Convert to PyTorch state_dict and back
+        state_dict = jax_to_torch_state_dict(model)
+        template = JaxMicroCivNetwork(
+            num_res_blocks=2, num_filters=32, num_groups=8,
+            key=jax.random.PRNGKey(99),  # Different key → different params
+        )
+        restored = torch_to_jax_params(state_dict, template)
+
+        # Forward pass with restored model should match
+        rest_policy, rest_value = restored(sp, vec, mask)
+        np.testing.assert_allclose(
+            np.asarray(orig_policy), np.asarray(rest_policy), atol=1e-5,
+        )
+        assert abs(float(orig_value) - float(rest_value)) < 1e-5

@@ -197,7 +197,6 @@ def jax_debug_mode() -> Generator[None, None, None]:
 def validate_jax_outputs(
     policy: Any,
     value: Any,
-    action_mask: Any | None = None,
     expected_action_size: int | None = None,
 ) -> None:
     """Validate JAX network outputs for shape and value correctness.
@@ -205,7 +204,6 @@ def validate_jax_outputs(
     Args:
         policy: Policy output array, shape (B, A) or (A,).
         value: Value output, shape (B,) or scalar.
-        action_mask: Optional action mask for checking masked actions.
         expected_action_size: Expected size of action dimension.
 
     Raises:

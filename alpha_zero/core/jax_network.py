@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import logging
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -65,9 +65,9 @@ def _require_jax() -> None:
 # ---------------------------------------------------------------------------
 
 
-@dataclass
+@dataclass(frozen=True)
 class JaxNetworkConfig:
-    """Configuration for JAX network architecture.
+    """Configuration for JAX network architecture (immutable for JAX JIT hashing).
 
     Mirrors NetworkConfig from civ6_network.py with JAX-specific additions.
     """
@@ -511,11 +511,14 @@ class JaxNetworkWrapper:
         self._key = jax.random.PRNGKey(seed)
         self._jit_enabled = jit_enabled
 
-        # Pre-compile forward pass for single sample
+        # Pre-compile forward pass for single sample and batched inference
+        _batched_fn = jax.vmap(self._forward_single, in_axes=(None, 0, 0, 0))
         if jit_enabled:
             self._jit_forward = eqx.filter_jit(self._forward_single)
+            self._jit_batched = eqx.filter_jit(_batched_fn)
         else:
             self._jit_forward = self._forward_single
+            self._jit_batched = _batched_fn
 
         # Count parameters and compute actual memory footprint
         leaves = jax.tree.leaves(eqx.filter(model, eqx.is_array))
@@ -547,11 +550,6 @@ class JaxNetworkWrapper:
     def param_count(self) -> int:
         """Total number of trainable parameters."""
         return self._param_count
-
-    def _next_key(self) -> Any:
-        """Split and return a new PRNG subkey."""
-        self._key, subkey = jax.random.split(self._key)
-        return subkey
 
     def _forward_single(
         self,
@@ -607,17 +605,12 @@ class JaxNetworkWrapper:
         )
 
         if is_batched:
-            # Process batch by vmapping — pass model as explicit non-batched arg
-            # to avoid capturing it in a closure (which triggers JAX static array warnings)
+            # Use pre-compiled batched function (vmap, optionally JIT)
             sp = jnp.array(spatial)
             vec = jnp.array(vector)
             mask = jnp.array(action_mask)
 
-            batched_fn = jax.vmap(
-                self._forward_single,
-                in_axes=(None, 0, 0, 0),
-            )
-            policy_probs, values = batched_fn(self._model, sp, vec, mask)
+            policy_probs, values = self._jit_batched(self._model, sp, vec, mask)
 
             return np.asarray(policy_probs), np.asarray(values)
         else:
@@ -761,9 +754,11 @@ def create_jax_network(
     """
     _require_jax()
 
-    jax_config = JaxNetworkConfig.from_network_config(config)
-    jax_config.spatial_size = board_size
-    jax_config.action_space_size = action_space_size
+    jax_config = replace(
+        JaxNetworkConfig.from_network_config(config),
+        spatial_size=board_size,
+        action_space_size=action_space_size,
+    )
 
     key = jax.random.PRNGKey(seed)
 

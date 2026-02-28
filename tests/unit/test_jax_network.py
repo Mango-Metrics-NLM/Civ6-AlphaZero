@@ -339,6 +339,50 @@ class TestJaxNetworkWrapperValidation:
             )
 
 
+class TestJaxNetworkWrapperJIT:
+    """Tests for JIT-compiled wrapper path (production default)."""
+
+    def test_jit_single_matches_nojit(self):
+        """JIT-compiled single predict should match non-JIT."""
+        model = JaxMicroCivNetwork(
+            board_size=16, action_space_size=381,
+            num_res_blocks=2, num_filters=32, num_groups=8,
+            key=jax.random.PRNGKey(42),
+        )
+        wrapper_nojit = JaxNetworkWrapper(model, seed=42, jit_enabled=False)
+        wrapper_jit = JaxNetworkWrapper(model, seed=42, jit_enabled=True)
+
+        spatial = np.zeros((13, 16, 16), dtype=np.float32)
+        vector = np.zeros(64, dtype=np.float32)
+        mask = np.ones(381, dtype=np.float32)
+
+        p1, v1 = wrapper_nojit.predict_single(spatial, vector, mask)
+        p2, v2 = wrapper_jit.predict_single(spatial, vector, mask)
+
+        np.testing.assert_allclose(p1, p2, atol=1e-6)
+        assert abs(v1 - v2) < 1e-6
+
+    def test_jit_batched_matches_nojit(self):
+        """JIT-compiled batched predict should match non-JIT."""
+        model = JaxMicroCivNetwork(
+            board_size=16, action_space_size=381,
+            num_res_blocks=2, num_filters=32, num_groups=8,
+            key=jax.random.PRNGKey(42),
+        )
+        wrapper_nojit = JaxNetworkWrapper(model, seed=42, jit_enabled=False)
+        wrapper_jit = JaxNetworkWrapper(model, seed=42, jit_enabled=True)
+
+        spatial = np.zeros((4, 13, 16, 16), dtype=np.float32)
+        vector = np.zeros((4, 64), dtype=np.float32)
+        mask = np.ones((4, 381), dtype=np.float32)
+
+        p1, v1 = wrapper_nojit.predict(spatial, vector, mask)
+        p2, v2 = wrapper_jit.predict(spatial, vector, mask)
+
+        np.testing.assert_allclose(p1, p2, atol=1e-5)
+        np.testing.assert_allclose(v1, v2, atol=1e-5)
+
+
 class TestCreateJaxNetwork:
     """Tests for factory function."""
 

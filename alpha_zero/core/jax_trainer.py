@@ -223,6 +223,7 @@ def _batch_loss(
     value_loss_weight: float = 1.0,
     *,
     key: Any = None,
+    inference: bool = True,
 ) -> tuple[Any, dict[str, Any]]:
     """Compute mean loss over a batch using vmap.
 
@@ -232,6 +233,7 @@ def _batch_loss(
         policy_loss_weight: Weight for policy loss.
         value_loss_weight: Weight for value loss.
         key: PRNG key.
+        inference: If True, disable dropout. Training callers should pass False.
 
     Returns:
         Tuple of (mean_total_loss, mean_metrics_dict).
@@ -252,7 +254,7 @@ def _batch_loss(
             model, spatial, vector, mask, policy, value,
             policy_loss_weight=policy_loss_weight,
             value_loss_weight=value_loss_weight,
-            key=k, inference=True,
+            key=k, inference=inference,
         )
 
     # vmap over the batch dimension
@@ -306,6 +308,7 @@ def jax_train_step(
             policy_loss_weight=policy_loss_weight,
             value_loss_weight=value_loss_weight,
             key=step_key,
+            inference=False,
         )
 
     # Compute loss and gradients (only differentiate array leaves)
@@ -370,8 +373,11 @@ class JaxDataLoader:
         self._rng = np.random.default_rng(seed)
 
     def __len__(self) -> int:
-        """Number of batches per epoch."""
-        return max(1, len(self._examples) // self._batch_size)
+        """Number of batches per epoch (ceiling division, 0 if empty)."""
+        n = len(self._examples)
+        if n == 0:
+            return 0
+        return -(-n // self._batch_size)
 
     def __iter__(self) -> JaxDataLoader:
         """Start iteration (optionally shuffle)."""

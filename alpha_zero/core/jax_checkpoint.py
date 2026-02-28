@@ -285,41 +285,50 @@ def torch_to_jax_params(
         len(template_params),
     )
 
-    # Apply updates to template
-    def _apply_updates(prefix: str, obj: Any) -> Any:
-        if eqx.is_array(obj):
-            if prefix in updates:
-                return updates[prefix]
-            return obj
-        elif isinstance(obj, list):
-            return [_apply_updates(f"{prefix}.{i}", item) for i, item in enumerate(obj)]
-        elif hasattr(obj, "__dict__") and not isinstance(obj, type):
-            new_fields = {}
-            for name, value in vars(obj).items():
-                if name.startswith("_"):
-                    new_fields[name] = value
-                    continue
-                child_prefix = f"{prefix}.{name}" if prefix else name
-                new_fields[name] = _apply_updates(child_prefix, value)
-            # Use eqx.tree_at or direct object manipulation
-            return eqx.tree_at(
-                lambda m: [getattr(m, n) for n in new_fields if not n.startswith("_")],
-                obj,
-                [new_fields[n] for n in new_fields if not n.startswith("_")],
-            )
-        return obj
+    # Apply updates to template — one parameter at a time for robustness
+    updated_model = template
+    applied = 0
 
-    try:
-        updated_model = _apply_updates("", template)
-    except (TypeError, ValueError, AttributeError) as exc:
+    for param_path, param_value in updates.items():
+        parts = param_path.split(".")
+        if not parts or parts == [""]:
+            continue
+
+        def _make_accessor(path_parts: list[str]) -> Any:
+            """Build a leaf-accessor closure for eqx.tree_at."""
+            def accessor(model: Any) -> Any:
+                obj = model
+                for part in path_parts:
+                    if part.isdigit():
+                        obj = obj[int(part)]
+                    else:
+                        obj = getattr(obj, part)
+                return obj
+            return accessor
+
+        try:
+            accessor_fn = _make_accessor(parts)
+            updated_model = eqx.tree_at(accessor_fn, updated_model, param_value)
+            applied += 1
+        except (AttributeError, IndexError, TypeError, ValueError) as exc:
+            logger.warning(
+                "Failed to set parameter '%s': %s: %s",
+                param_path,
+                type(exc).__name__,
+                exc,
+            )
+
+    if applied < matched:
         logger.warning(
-            "tree_at update failed (%s: %s). "
-            "Applied %d/%d parameter updates via fallback.",
-            type(exc).__name__,
-            exc,
-            len(updates),
-            len(template_params),
+            "Only applied %d/%d matched parameters to model",
+            applied,
+            matched,
         )
-        updated_model = template
+    else:
+        logger.info(
+            "Successfully applied %d/%d parameters to JAX model",
+            applied,
+            matched,
+        )
 
     return updated_model
