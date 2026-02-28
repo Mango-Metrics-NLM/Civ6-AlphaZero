@@ -14,8 +14,6 @@ from typing import ClassVar
 import numpy as np
 import torch
 
-from alpha_zero.utils.constants import ENCODER, GAME
-
 
 @dataclass
 class EncoderConfig:
@@ -174,21 +172,11 @@ class Civ6StateEncoder:
 
                 # Yields
                 yields = tile.get("yields", {})
-                spatial[self.YIELDS_START, y, x] = (
-                    yields.get("food", 0) / ENCODER.YIELD_NORMALIZATION
-                )
-                spatial[self.YIELDS_START + 1, y, x] = (
-                    yields.get("production", 0) / ENCODER.YIELD_NORMALIZATION
-                )
-                spatial[self.YIELDS_START + 2, y, x] = (
-                    yields.get("gold", 0) / ENCODER.YIELD_NORMALIZATION
-                )
-                spatial[self.YIELDS_START + 3, y, x] = (
-                    yields.get("science", 0) / ENCODER.YIELD_NORMALIZATION
-                )
-                spatial[self.YIELDS_START + 4, y, x] = (
-                    yields.get("culture", 0) / ENCODER.YIELD_NORMALIZATION
-                )
+                spatial[self.YIELDS_START, y, x] = yields.get("food", 0) / 10.0
+                spatial[self.YIELDS_START + 1, y, x] = yields.get("production", 0) / 10.0
+                spatial[self.YIELDS_START + 2, y, x] = yields.get("gold", 0) / 10.0
+                spatial[self.YIELDS_START + 3, y, x] = yields.get("science", 0) / 10.0
+                spatial[self.YIELDS_START + 4, y, x] = yields.get("culture", 0) / 10.0
 
         # Encode units
         for unit in units:
@@ -199,8 +187,8 @@ class Civ6StateEncoder:
 
             unit_type = unit.get("type", "melee")
             type_idx = self.UNIT_TYPES.get(unit_type, 0)
-            health = unit.get("health", 100) / ENCODER.HEALTH_NORMALIZATION
-            strength = unit.get("strength", 20) / ENCODER.STRENGTH_NORMALIZATION
+            health = unit.get("health", 100) / 100.0
+            strength = unit.get("strength", 20) / 100.0
             value = health * max(strength, 0.1)
 
             player = unit.get("player", 0)
@@ -226,15 +214,9 @@ class Civ6StateEncoder:
                 base = self.ENEMY_CITIES_START
 
             spatial[base, y, x] = 1.0  # Presence
-            spatial[base + 1, y, x] = (
-                city.get("population", 1) / ENCODER.POPULATION_NORMALIZATION
-            )
-            spatial[base + 2, y, x] = (
-                city.get("production", 0) / ENCODER.CITY_PRODUCTION_NORMALIZATION
-            )
-            spatial[base + 3, y, x] = (
-                city.get("defense", 0) / ENCODER.CITY_DEFENSE_NORMALIZATION
-            )
+            spatial[base + 1, y, x] = city.get("population", 1) / 30.0
+            spatial[base + 2, y, x] = city.get("production", 0) / 100.0
+            spatial[base + 3, y, x] = city.get("defense", 0) / 100.0
 
         # Fog of war
         for y in range(size):
@@ -265,7 +247,7 @@ class Civ6StateEncoder:
 
         # Turn/Phase (0-9)
         turn = game_state.get("turn", 0)
-        vector[0] = turn / ENCODER.TURN_NORMALIZATION
+        vector[0] = turn / 500.0
 
         # Era (10-17)
         era = game_state.get("era", 0)
@@ -276,7 +258,7 @@ class Civ6StateEncoder:
         resources = game_state.get("resources", {})
         for i, (_name, count) in enumerate(resources.items()):
             if 20 + i < 70:
-                vector[20 + i] = count / ENCODER.RESOURCE_NORMALIZATION
+                vector[20 + i] = count / 20.0
 
         # Technologies (70-169)
         techs = game_state.get("technologies", [])
@@ -295,27 +277,23 @@ class Civ6StateEncoder:
             # String civic IDs are not yet supported; skip gracefully
 
         # Economy (300-319)
-        vector[300] = game_state.get("gold", 0) / ENCODER.GOLD_NORMALIZATION
-        vector[301] = game_state.get("gold_per_turn", 0) / ENCODER.PER_TURN_NORMALIZATION
-        vector[302] = game_state.get("science_per_turn", 0) / ENCODER.PER_TURN_NORMALIZATION
-        vector[303] = game_state.get("culture_per_turn", 0) / ENCODER.PER_TURN_NORMALIZATION
-        vector[304] = game_state.get("faith_per_turn", 0) / ENCODER.PER_TURN_NORMALIZATION
+        vector[300] = game_state.get("gold", 0) / 1000.0
+        vector[301] = game_state.get("gold_per_turn", 0) / 100.0
+        vector[302] = game_state.get("science_per_turn", 0) / 100.0
+        vector[303] = game_state.get("culture_per_turn", 0) / 100.0
+        vector[304] = game_state.get("faith_per_turn", 0) / 100.0
 
         # Military (320-349)
-        vector[320] = game_state.get("military_strength", 0) / ENCODER.MILITARY_STRENGTH_NORMALIZATION
-        vector[321] = len(game_state.get("units", [])) / ENCODER.UNIT_COUNT_NORMALIZATION
+        vector[320] = game_state.get("military_strength", 0) / 500.0
+        vector[321] = len(game_state.get("units", [])) / 50.0
 
         # Cities (350-399)
         cities = game_state.get("cities", [])
         current_player = game_state.get("current_player", 0)
         own_cities = [c for c in cities if c.get("player") == current_player]
-        vector[350] = len(own_cities) / ENCODER.CITY_COUNT_NORMALIZATION
+        vector[350] = len(own_cities) / 20.0
         if own_cities:
-            vector[351] = (
-                sum(c.get("population", 0) for c in own_cities)
-                / len(own_cities)
-                / ENCODER.POPULATION_NORMALIZATION
-            )
+            vector[351] = sum(c.get("population", 0) for c in own_cities) / len(own_cities) / 30.0
 
         # Victory progress (500-511)
         victory = game_state.get("victory_progress", {})
@@ -331,25 +309,54 @@ class Civ6StateEncoder:
 class MicroCivEncoder:
     """Simplified encoder for MicroCiv training environment.
 
-    Uses fewer channels for faster training:
-    - Channels 0-2: Terrain (plains, hills, mountain)
-    - Channels 3-5: Own units (warrior, settler, archer)
-    - Channels 6-8: Enemy units
-    - Channel 9: Own cities
-    - Channel 10: Enemy cities
-    - Channel 11: Fog of war (visible)
-    - Channel 12: Constant (bias)
+    Channel layout is dynamic based on ``num_players``:
+      - Channels 0-2: Terrain (plains, hills, mountain)
+      - Next ``num_players * 3`` channels: per-player unit planes
+        (player-relative: own units first, then each opponent)
+      - Next ``num_players`` channels: per-player city presence
+      - 1 channel: visibility (fog of war)
+      - 1 channel: constant bias
+
+    Total channels = 3 + 4 * num_players + 2.
+
+    For the default ``num_players=2`` this gives 13 channels, preserving
+    backward compatibility with the original fixed layout.
     """
 
+    # Keep class-level constant for backward compatibility with code that
+    # references ``MicroCivEncoder.TOTAL_CHANNELS`` (always the 2-player
+    # default).
     TOTAL_CHANNELS = 13
 
-    def __init__(self, board_size: int = 16) -> None:
+    # Terrain types shared across all player counts
+    TERRAIN_MAP: ClassVar[dict[str, int]] = {"plains": 0, "hills": 1, "mountain": 2}
+    NUM_TERRAIN: ClassVar[int] = 3
+
+    # Unit types shared across all player counts
+    UNIT_MAP: ClassVar[dict[str, int]] = {"warrior": 0, "settler": 1, "archer": 2}
+    NUM_UNIT_TYPES: ClassVar[int] = 3
+
+    def __init__(self, board_size: int = 16, num_players: int = 2) -> None:
         """Initialize encoder.
 
         Args:
             board_size: Size of the game board.
+            num_players: Number of players in the game (>= 2).
         """
+        if num_players < 2:
+            raise ValueError(f"num_players must be >= 2, got {num_players}")
         self.board_size = board_size
+        self.num_players = num_players
+
+        # Dynamic channel count: 3 terrain + num_players*3 units
+        #                        + num_players cities + 1 visibility + 1 bias
+        self.total_channels = self.NUM_TERRAIN + self.num_players * self.NUM_UNIT_TYPES + self.num_players + 2
+
+        # Pre-compute channel offsets for encoding
+        self._unit_base = self.NUM_TERRAIN  # start of unit channels
+        self._city_base = self._unit_base + self.num_players * self.NUM_UNIT_TYPES
+        self._vis_channel = self._city_base + self.num_players
+        self._bias_channel = self._vis_channel + 1
 
     def encode(self, game_state: dict) -> tuple[torch.Tensor, torch.Tensor]:
         """Encode game state.
@@ -365,26 +372,29 @@ class MicroCivEncoder:
         return torch.from_numpy(spatial), torch.from_numpy(vector)
 
     def _encode_spatial(self, game_state: dict) -> np.ndarray:
-        """Encode spatial features."""
+        """Encode spatial features.
+
+        Channel layout is player-relative: the current player is always
+        assigned relative index 0, so "own" data occupies the same channels
+        regardless of the absolute player id.
+        """
         size = self.board_size
-        spatial = np.zeros((self.TOTAL_CHANNELS, size, size), dtype=np.float32)
+        spatial = np.zeros((self.total_channels, size, size), dtype=np.float32)
 
         current_player = game_state.get("current_player", 0)
         terrain = game_state.get("terrain", {})
         units = game_state.get("units", [])
         cities = game_state.get("cities", [])
 
-        # Terrain
-        terrain_map = {"plains": 0, "hills": 1, "mountain": 2}
+        # Terrain (channels 0 .. NUM_TERRAIN-1)
         for y in range(size):
             for x in range(size):
                 tile = terrain.get((x, y), {})
                 terrain_type = tile.get("type", "plains")
-                if terrain_type in terrain_map:
-                    spatial[terrain_map[terrain_type], y, x] = 1.0
+                if terrain_type in self.TERRAIN_MAP:
+                    spatial[self.TERRAIN_MAP[terrain_type], y, x] = 1.0
 
-        # Units
-        unit_map = {"warrior": 0, "settler": 1, "archer": 2}
+        # Units — player-relative indexing
         for unit in units:
             pos = unit.get("position", (0, 0))
             x, y = pos
@@ -392,16 +402,15 @@ class MicroCivEncoder:
                 continue
 
             unit_type = unit.get("type", "warrior")
-            type_idx = unit_map.get(unit_type, 0)
-            health = unit.get("health", 100) / ENCODER.HEALTH_NORMALIZATION
+            type_idx = self.UNIT_MAP.get(unit_type, 0)
+            health = unit.get("health", 100) / 100.0
 
             player = unit.get("player", 0)
-            if player == current_player:
-                spatial[3 + type_idx, y, x] = health
-            else:
-                spatial[6 + type_idx, y, x] = health
+            rel_player = (player - current_player) % self.num_players
+            channel = self._unit_base + rel_player * self.NUM_UNIT_TYPES + type_idx
+            spatial[channel, y, x] = health
 
-        # Cities
+        # Cities — player-relative indexing
         for city in cities:
             pos = city.get("position", (0, 0))
             x, y = pos
@@ -409,33 +418,54 @@ class MicroCivEncoder:
                 continue
 
             player = city.get("player", 0)
-            if player == current_player:
-                spatial[9, y, x] = 1.0
-            else:
-                spatial[10, y, x] = 1.0
+            rel_player = (player - current_player) % self.num_players
+            channel = self._city_base + rel_player
+            spatial[channel, y, x] = 1.0
 
-        # Fog of war -- use per-tile visibility if available, else all visible
+        # Fog of war — use per-tile visibility if available, else all visible
         visibility = game_state.get("visibility")
         if visibility is not None:
             for y in range(size):
                 for x in range(size):
                     vis_state = visibility.get((x, y), "unexplored")
                     if vis_state == "visible":
-                        spatial[11, y, x] = 1.0
+                        spatial[self._vis_channel, y, x] = 1.0
                     elif vis_state == "seen":
-                        spatial[11, y, x] = 0.5
+                        spatial[self._vis_channel, y, x] = 0.5
                     # unexplored remains 0.0
         else:
             # Backward compat: all visible when no visibility data
-            spatial[11, :, :] = 1.0
+            spatial[self._vis_channel, :, :] = 1.0
 
-        # Constant
-        spatial[12, :, :] = 1.0
+        # Constant bias
+        spatial[self._bias_channel, :, :] = 1.0
 
         return spatial
 
     def _encode_vector(self, game_state: dict) -> np.ndarray:
-        """Encode vector features."""
+        """Encode vector features.
+
+        Per-player stats use player-relative indexing (current player = 0).
+
+        Fixed layout (backward-compatible with 2-player):
+          [0]  turn / 200
+          [1]  current player id
+          [2]  own unit count / 20
+          [3]  opponent(s) total unit count / 20
+          [4]  own city count / 5
+          [5]  opponent(s) total city count / 5
+          [6]  own average health
+          [7]  opponent(s) average health
+          [8]  gold / 500
+          [9]  gold_per_turn / 50
+          [10] own population / 30
+          [11] visibility coverage
+
+        Extended per-player block (from index 12 onward, for N>2):
+          For each opponent rel_p in 1..num_players-1:
+            [12 + (rel_p-1)*2]     unit count / 20
+            [12 + (rel_p-1)*2 + 1] city count / 5
+        """
         vector = np.zeros(64, dtype=np.float32)
 
         current_player = game_state.get("current_player", 0)
@@ -443,42 +473,42 @@ class MicroCivEncoder:
         cities = game_state.get("cities", [])
 
         # Turn
-        vector[0] = game_state.get("turn", 0) / ENCODER.MICROCIV_TURN_NORMALIZATION
+        vector[0] = game_state.get("turn", 0) / 200.0
 
         # Current player
         vector[1] = current_player
 
-        # Unit counts
+        # Partition units and cities by player
         own_units = [u for u in units if u.get("player") == current_player]
         enemy_units = [u for u in units if u.get("player") != current_player]
-        vector[2] = len(own_units) / float(GAME.MAX_UNITS_PER_PLAYER)
-        vector[3] = len(enemy_units) / float(GAME.MAX_UNITS_PER_PLAYER)
-
-        # City counts
         own_cities = [c for c in cities if c.get("player") == current_player]
         enemy_cities = [c for c in cities if c.get("player") != current_player]
-        vector[4] = len(own_cities) / float(GAME.MAX_CITIES_PER_PLAYER)
-        vector[5] = len(enemy_cities) / float(GAME.MAX_CITIES_PER_PLAYER)
 
-        # Total health
+        # Aggregate own / enemy counts (backward-compat indices)
+        vector[2] = len(own_units) / 20.0
+        vector[3] = len(enemy_units) / 20.0
+        vector[4] = len(own_cities) / 5.0
+        vector[5] = len(enemy_cities) / 5.0
+
+        # Average health
         if own_units:
             vector[6] = sum(u.get("health", 0) for u in own_units) / (
-                len(own_units) * ENCODER.HEALTH_NORMALIZATION
+                len(own_units) * 100.0
             )
         if enemy_units:
             vector[7] = sum(u.get("health", 0) for u in enemy_units) / (
-                len(enemy_units) * ENCODER.HEALTH_NORMALIZATION
+                len(enemy_units) * 100.0
             )
 
-        # Economy data (indices 8-9, backward compat: default to 0)
-        vector[8] = game_state.get("gold", 0) / ENCODER.MICROCIV_GOLD_NORMALIZATION
-        vector[9] = game_state.get("gold_per_turn", 0) / ENCODER.MICROCIV_GOLD_PER_TURN_NORMALIZATION
+        # Economy
+        vector[8] = game_state.get("gold", 0) / 500.0
+        vector[9] = game_state.get("gold_per_turn", 0) / 50.0
 
-        # Population data (index 10)
+        # Population
         total_own_pop = sum(c.get("population", 1) for c in own_cities) if own_cities else 0
-        vector[10] = total_own_pop / ENCODER.POPULATION_NORMALIZATION
+        vector[10] = total_own_pop / 30.0
 
-        # Visibility coverage (index 11, backward compat: 1.0 if no fog)
+        # Visibility coverage
         visibility = game_state.get("visibility")
         if visibility is not None:
             visible_count = sum(1 for v in visibility.values() if v == "visible")
@@ -487,12 +517,23 @@ class MicroCivEncoder:
         else:
             vector[11] = 1.0  # all visible (backward compat)
 
+        # Extended per-opponent breakdown (indices 12+, only when >2 players)
+        if self.num_players > 2:
+            for rel_p in range(1, self.num_players):
+                abs_p = (current_player + rel_p) % self.num_players
+                p_units = [u for u in units if u.get("player") == abs_p]
+                p_cities = [c for c in cities if c.get("player") == abs_p]
+                idx = 12 + (rel_p - 1) * 2
+                if idx + 1 < 64:
+                    vector[idx] = len(p_units) / 20.0
+                    vector[idx + 1] = len(p_cities) / 5.0
+
         return vector
 
     @property
     def spatial_shape(self) -> tuple[int, int, int]:
         """Shape of spatial tensor."""
-        return (self.TOTAL_CHANNELS, self.board_size, self.board_size)
+        return (self.total_channels, self.board_size, self.board_size)
 
     @property
     def vector_dim(self) -> int:
