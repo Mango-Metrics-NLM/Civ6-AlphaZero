@@ -86,11 +86,15 @@ class JaxMCTSAdapter:
         # Run JAX inference
         policy_np, value_np = self._wrapper.predict(sp_np, vec_np, mask_np)
 
-        # Convert numpy → torch (copy to ensure writable arrays)
-        policy_tensor = torch.from_numpy(np.array(policy_np, copy=True)).float().to(self._device)
-        value_tensor = torch.from_numpy(
-            np.array(value_np, copy=True).reshape(-1)
-        ).float().to(self._device)
+        # Ensure writable arrays (JAX may return read-only views)
+        if not policy_np.flags.writeable:
+            policy_np = np.array(policy_np, copy=True)
+        if not value_np.flags.writeable:
+            value_np = np.array(value_np, copy=True)
+
+        # Convert numpy → torch
+        policy_tensor = torch.from_numpy(policy_np).float().to(self._device)
+        value_tensor = torch.from_numpy(value_np.reshape(-1)).float().to(self._device)
 
         return policy_tensor, value_tensor
 

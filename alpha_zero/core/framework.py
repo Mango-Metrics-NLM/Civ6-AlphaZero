@@ -144,7 +144,8 @@ def framework_available(framework: FrameworkType | str) -> bool:
         except ImportError:
             return False
 
-    return False  # pragma: no cover
+    msg = f"Unhandled framework type: {framework}"
+    raise AssertionError(msg)  # pragma: no cover
 
 
 def to_numpy(tensor: Any) -> np.ndarray:

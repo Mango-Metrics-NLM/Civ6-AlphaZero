@@ -293,6 +293,52 @@ class TestJaxNetworkConfig:
         assert jax_config.num_res_blocks == 10
 
 
+class TestJaxNetworkWrapperValidation:
+    """Tests for input validation error paths."""
+
+    @pytest.fixture
+    def wrapper(self):
+        model = JaxMicroCivNetwork(
+            board_size=16,
+            action_space_size=381,
+            num_res_blocks=2,
+            num_filters=32,
+            num_groups=8,
+            key=jax.random.PRNGKey(42),
+        )
+        return JaxNetworkWrapper(model, seed=42, jit_enabled=False)
+
+    def test_invalid_spatial_ndim_raises(self, wrapper):
+        """2D spatial input should be rejected."""
+        spatial = np.zeros((13, 16), dtype=np.float32)
+        vector = np.zeros(64, dtype=np.float32)
+        mask = np.ones(381, dtype=np.float32)
+
+        with pytest.raises(ValueError, match="spatial must be 3D"):
+            wrapper.predict(spatial, vector, mask)
+
+    def test_invalid_vector_ndim_raises(self, wrapper):
+        """3D vector input should be rejected."""
+        spatial = np.zeros((13, 16, 16), dtype=np.float32)
+        vector = np.zeros((1, 1, 64), dtype=np.float32)
+        mask = np.ones(381, dtype=np.float32)
+
+        with pytest.raises(ValueError, match="vector must be 1D"):
+            wrapper.predict(spatial, vector, mask)
+
+    def test_groupnorm_indivisible_raises(self):
+        """num_channels not divisible by num_groups should raise."""
+        with pytest.raises(ValueError, match="divisible"):
+            JaxGroupNorm(num_channels=7, num_groups=8)
+
+    def test_residual_block_indivisible_raises(self):
+        """num_filters not divisible by num_groups should raise."""
+        with pytest.raises(ValueError, match="divisible"):
+            JaxResidualBlock(
+                num_filters=7, num_groups=8, key=jax.random.PRNGKey(0)
+            )
+
+
 class TestCreateJaxNetwork:
     """Tests for factory function."""
 

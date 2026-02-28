@@ -13,6 +13,7 @@ from alpha_zero.core.jax_checkpoint import (
     jax_to_torch_state_dict,
     load_jax_checkpoint,
     save_jax_checkpoint,
+    torch_to_jax_params,
 )
 from alpha_zero.core.jax_network import (
     JaxMicroCivNetwork,
@@ -178,3 +179,39 @@ class TestWrapperSaveLoad:
 
         np.testing.assert_allclose(policy_before, policy_after, atol=1e-5)
         assert abs(value_before - value_after) < 1e-5
+
+
+class TestReservedCheckpointKeys:
+    """Tests for RESERVED_CHECKPOINT_KEYS protection in save_jax_checkpoint."""
+
+    def test_save_ignores_reserved_metadata_keys(self, model, tmp_path):
+        """Reserved keys like 'framework' should not be overwritten by user metadata."""
+        import json
+
+        path = str(tmp_path / "checkpoint")
+        save_jax_checkpoint(
+            model, path,
+            metadata={"framework": "pytorch", "custom_key": "value"},
+        )
+
+        meta = json.loads((tmp_path / "checkpoint.json").read_text())
+        assert meta["framework"] == "jax"  # Not overwritten
+        assert meta["custom_key"] == "value"  # Custom key preserved
+
+
+class TestTorchToJaxConversion:
+    """Tests for PyTorch → JAX conversion edge cases."""
+
+    def test_skips_non_tensor_entries(self, key):
+        """Non-tensor state_dict entries (dicts, strings, etc.) should be skipped."""
+        template = JaxMicroCivNetwork(
+            num_res_blocks=2, num_filters=32, num_groups=8, key=key,
+        )
+        state_dict = {
+            "metadata": {"version": 1},
+            "name": "test",
+            "count": 42,
+        }
+        # Should not raise — just skip non-tensor entries
+        result = torch_to_jax_params(state_dict, template)
+        assert result is not None

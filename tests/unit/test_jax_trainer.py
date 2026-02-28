@@ -217,3 +217,23 @@ class TestJaxDataLoader:
     def test_len(self, examples):
         loader = JaxDataLoader(examples, batch_size=8)
         assert len(loader) == 4  # 32 // 8
+
+    def test_invalid_batch_size_raises(self):
+        """batch_size < 1 should raise ValueError."""
+        with pytest.raises(ValueError, match="batch_size must be >= 1"):
+            JaxDataLoader([], batch_size=0)
+
+
+class TestMockTrainingExampleValidation:
+    """Tests for MockTrainingExample.__post_init__ validation."""
+
+    def test_mismatched_policy_action_mask_raises(self):
+        """policy and action_mask size mismatch should raise."""
+        with pytest.raises(ValueError, match="policy size"):
+            MockTrainingExample(
+                spatial=np.zeros((13, 16, 16), dtype=np.float32),
+                vector=np.zeros(64, dtype=np.float32),
+                action_mask=np.ones(100, dtype=np.float32),
+                policy=np.ones(200, dtype=np.float32) / 200,
+                value=0.5,
+            )

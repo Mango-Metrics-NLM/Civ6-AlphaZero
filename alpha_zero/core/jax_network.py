@@ -517,14 +517,19 @@ class JaxNetworkWrapper:
         else:
             self._jit_forward = self._forward_single
 
-        # Count parameters
+        # Count parameters and compute actual memory footprint
         leaves = jax.tree.leaves(eqx.filter(model, eqx.is_array))
         self._param_count = sum(leaf.size for leaf in leaves)
+        total_bytes = sum(
+            leaf.size * leaf.dtype.itemsize
+            for leaf in leaves
+            if hasattr(leaf, "dtype")
+        )
 
         logger.info(
             "JaxNetworkWrapper created: params=%d (%.2f MB), jit=%s",
             self._param_count,
-            self._param_count * 4 / (1024 * 1024),
+            total_bytes / (1024 * 1024),
             jit_enabled,
         )
 
@@ -541,7 +546,7 @@ class JaxNetworkWrapper:
     @property
     def param_count(self) -> int:
         """Total number of trainable parameters."""
-        return int(self._param_count)
+        return self._param_count
 
     def _next_key(self) -> Any:
         """Split and return a new PRNG subkey."""
