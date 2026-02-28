@@ -29,6 +29,17 @@ from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.utils.constants import DISTRIBUTED, GAME, REWARDS
 from alpha_zero.utils.reward_shaping import RewardShaper, RewardShapingConfig
 
+try:
+    from alpha_zero.multiplayer.scoring import (
+        compute_player_values as _compute_player_values,
+        compute_rankings as _compute_rankings,
+        extract_game_result as _extract_game_result,
+    )
+
+    _HAS_MULTIPLAYER_SCORING = True
+except ImportError:  # pragma: no cover
+    _HAS_MULTIPLAYER_SCORING = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,6 +53,7 @@ class ActorConfig:
     # Environment settings
     board_size: int = GAME.DEFAULT_BOARD_SIZE
     max_turns: int = GAME.DEFAULT_MAX_TURNS
+    num_players: int = 2
 
     # Network settings
     num_res_blocks: int = 6
@@ -115,6 +127,7 @@ class SelfPlayActor:
         self.env = MicroCivEnv(
             board_size=config.board_size,
             max_turns=config.max_turns,
+            num_players=config.num_players,
         )
         self.action_space_size = self.env.action_space.n
 
