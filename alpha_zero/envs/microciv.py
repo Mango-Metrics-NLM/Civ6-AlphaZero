@@ -22,6 +22,7 @@ from gymnasium.core import RenderFrame
 
 from alpha_zero.core.civ6_actions import MicroCivActionSpace
 from alpha_zero.envs.civ6_encoder import MicroCivEncoder
+from alpha_zero.utils.constants import GAME, REWARDS, UNITS
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +35,9 @@ class Unit:
     player: int
     unit_type: str
     position: tuple[int, int]
-    health: int = 100
-    moves_remaining: int = 2
-    strength: int = 20
+    health: int = GAME.DEFAULT_UNIT_HEALTH
+    moves_remaining: int = UNITS.WARRIOR_MOVES
+    strength: int = UNITS.WARRIOR_STRENGTH
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
@@ -62,7 +63,7 @@ class City:
     population: int = 1
     production: int = 0
     production_queue: str | None = None
-    defense: int = 20
+    defense: int = GAME.DEFAULT_CITY_DEFENSE
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
@@ -115,9 +116,21 @@ class MicroCivEnv(gym.Env):
     metadata: ClassVar[dict[str, list[str]]] = {"render_modes": ["ansi"]}
 
     # Unit production costs (turns)
-    UNIT_COSTS: ClassVar[dict[str, int]] = {"warrior": 3, "settler": 5, "archer": 4}
-    UNIT_STRENGTH: ClassVar[dict[str, int]] = {"warrior": 20, "settler": 0, "archer": 15}
-    UNIT_MOVES: ClassVar[dict[str, int]] = {"warrior": 2, "settler": 2, "archer": 2}
+    UNIT_COSTS: ClassVar[dict[str, int]] = {
+        "warrior": UNITS.WARRIOR_COST,
+        "settler": UNITS.SETTLER_COST,
+        "archer": UNITS.ARCHER_COST,
+    }
+    UNIT_STRENGTH: ClassVar[dict[str, int]] = {
+        "warrior": UNITS.WARRIOR_STRENGTH,
+        "settler": UNITS.SETTLER_STRENGTH,
+        "archer": UNITS.ARCHER_STRENGTH,
+    }
+    UNIT_MOVES: ClassVar[dict[str, int]] = {
+        "warrior": UNITS.WARRIOR_MOVES,
+        "settler": UNITS.SETTLER_MOVES,
+        "archer": UNITS.ARCHER_MOVES,
+    }
 
     # Explicit type hint for MCTS compatibility
     action_space: spaces.Discrete
@@ -268,9 +281,9 @@ class MicroCivEnv(gym.Env):
             self.done = True
             # Final reward based on winner
             if self.winner == self.current_player:
-                reward += 1.0
+                reward += REWARDS.WIN_REWARD
             elif self.winner is not None:
-                reward -= 1.0
+                reward -= REWARDS.WIN_REWARD
 
         obs = self.get_observation()
         info = self.get_info()
@@ -288,10 +301,10 @@ class MicroCivEnv(gym.Env):
             for x in range(self.board_size):
                 # Random terrain type
                 r = self._rng.random()
-                if r < 0.7:
+                if r < GAME.PLAINS_RATIO:
                     terrain_type = "plains"
                     yields = {"food": 2, "production": 1}
-                elif r < 0.9:
+                elif r < GAME.PLAINS_RATIO + GAME.HILLS_RATIO:
                     terrain_type = "hills"
                     yields = {"food": 1, "production": 2}
                 else:
@@ -325,8 +338,8 @@ class MicroCivEnv(gym.Env):
                     player=player,
                     unit_type="settler",
                     position=pos,
-                    strength=0,
-                    moves_remaining=2,
+                    strength=UNITS.SETTLER_STRENGTH,
+                    moves_remaining=UNITS.SETTLER_MOVES,
                 ),
             )
             self.visited.add(pos)  # Mark start pos as visited
@@ -340,8 +353,8 @@ class MicroCivEnv(gym.Env):
                     player=player,
                     unit_type="warrior",
                     position=warrior_pos,
-                    strength=20,
-                    moves_remaining=2,
+                    strength=UNITS.WARRIOR_STRENGTH,
+                    moves_remaining=UNITS.WARRIOR_MOVES,
                 ),
             )
             self.visited.add(warrior_pos)  # Mark warrior pos as visited
@@ -470,8 +483,8 @@ class MicroCivEnv(gym.Env):
 
             # Check for nearby cities
             has_nearby_city = any(
-                abs(c.position[0] - unit.position[0]) <= 3
-                and abs(c.position[1] - unit.position[1]) <= 3
+                abs(c.position[0] - unit.position[0]) <= GAME.MIN_CITY_DISTANCE
+                and abs(c.position[1] - unit.position[1]) <= GAME.MIN_CITY_DISTANCE
                 for c in self.cities
             )
             if has_nearby_city:
@@ -491,7 +504,7 @@ class MicroCivEnv(gym.Env):
             unit.moves_remaining = 0  # Action used
 
             # Reward for founding city
-            reward += 1.0
+            reward += GAME.CITY_FOUND_REWARD
 
             # Remove settler
             if unit in self.units:
@@ -512,7 +525,7 @@ class MicroCivEnv(gym.Env):
                 return 0.0, False, f"City {city_idx} already has production queued"
 
             city.production_queue = unit_type
-            reward += 0.01  # Small reward for starting production
+            reward += GAME.PRODUCTION_START_REWARD
             return reward, True, ""
 
         return 0.0, False, f"Unknown action type: {action_type}"
@@ -540,14 +553,20 @@ class MicroCivEnv(gym.Env):
             return 0.0
 
         # Simple combat resolution
-        attacker_str = attacker.strength * (attacker.health / 100.0)
-        defender_str = defender.strength * (defender.health / 100.0)
+        attacker_str = attacker.strength * (attacker.health / float(GAME.DEFAULT_UNIT_HEALTH))
+        defender_str = defender.strength * (defender.health / float(GAME.DEFAULT_UNIT_HEALTH))
 
         # Damage calculation
         if attacker_str + defender_str > 0:
-            attacker_ratio = attacker_str / (attacker_str + defender_str + 0.1)
-            damage_to_defender = int(30 * attacker_ratio + 10)
-            damage_to_attacker = int(30 * (1 - attacker_ratio) + 5)
+            attacker_ratio = attacker_str / (
+                attacker_str + defender_str + GAME.COMBAT_SMOOTHING_EPSILON
+            )
+            damage_to_defender = int(
+                GAME.COMBAT_BASE_DAMAGE * attacker_ratio + GAME.COMBAT_MIN_DAMAGE_DEFENDER
+            )
+            damage_to_attacker = int(
+                GAME.COMBAT_BASE_DAMAGE * (1 - attacker_ratio) + GAME.COMBAT_MIN_DAMAGE_ATTACKER
+            )
 
             defender.health -= damage_to_defender
             attacker.health -= damage_to_attacker
@@ -555,11 +574,11 @@ class MicroCivEnv(gym.Env):
             # Remove dead units
             if defender.health <= 0:
                 self.units.remove(defender)
-                reward += 0.1  # Reward for killing enemy unit
+                reward += REWARDS.MICROCIV_UNIT_KILL_REWARD
 
             if attacker.health <= 0:
                 self.units.remove(attacker)
-                reward -= 0.1  # Penalty for losing unit
+                reward += REWARDS.MICROCIV_UNIT_LOST_PENALTY
 
         return reward
 
@@ -568,8 +587,11 @@ class MicroCivEnv(gym.Env):
         # Process cities (production)
         for city in self._get_player_cities(self.current_player):
             if city.production_queue:
-                city.production += city.population + 2  # Base production
-                cost = self.UNIT_COSTS.get(city.production_queue, 5) * 10
+                city.production += city.population + GAME.CITY_BASE_PRODUCTION
+                cost = (
+                    self.UNIT_COSTS.get(city.production_queue, UNITS.SETTLER_COST)
+                    * GAME.PRODUCTION_COST_MULTIPLIER
+                )
                 if city.production >= cost:
                     # Spawn unit
                     spawn_pos = self._find_adjacent_valid(city.position)
@@ -579,7 +601,9 @@ class MicroCivEnv(gym.Env):
                             player=city.player,
                             unit_type=city.production_queue,
                             position=spawn_pos,
-                            strength=self.UNIT_STRENGTH.get(city.production_queue, 20),
+                            strength=self.UNIT_STRENGTH.get(
+                                city.production_queue, UNITS.WARRIOR_STRENGTH
+                            ),
                             moves_remaining=0,
                         ),
                     )
@@ -595,7 +619,9 @@ class MicroCivEnv(gym.Env):
             self.turn += 1
             # Reset all units' moves
             for unit in self.units:
-                unit.moves_remaining = self.UNIT_MOVES.get(unit.unit_type, 2)
+                unit.moves_remaining = self.UNIT_MOVES.get(
+                    unit.unit_type, UNITS.WARRIOR_MOVES
+                )
 
             # Check for settler -> city conversion
             self._process_settlers()
@@ -607,11 +633,11 @@ class MicroCivEnv(gym.Env):
             if unit.unit_type == "settler":
                 # Auto-found city if on good terrain and no city nearby
                 has_nearby_city = any(
-                    abs(c.position[0] - unit.position[0]) <= 3
-                    and abs(c.position[1] - unit.position[1]) <= 3
+                    abs(c.position[0] - unit.position[0]) <= GAME.MIN_CITY_DISTANCE
+                    and abs(c.position[1] - unit.position[1]) <= GAME.MIN_CITY_DISTANCE
                     for c in self.cities
                 )
-                if not has_nearby_city and self._rng.random() < 0.1:
+                if not has_nearby_city and self._rng.random() < GAME.SETTLER_AUTO_FOUND_PROBABILITY:
                     # Found city
                     city_name = f"City {self._next_city_id}"
                     self.cities.append(

@@ -30,6 +30,8 @@ from typing import TYPE_CHECKING, Any
 
 import torch
 
+from alpha_zero.utils.registry import default_registry
+
 if TYPE_CHECKING:
     from alpha_zero.orchestrator.config import (
         CurriculumConfig,
@@ -571,3 +573,27 @@ def create_replay_buffer(
 
     logger.info(f"Creating replay buffer: max_size={max_size}, min_size={min_size}")
     return ReplayBuffer(max_size)
+
+
+# =============================================================================
+# Registry registrations -- makes factory functions discoverable via the
+# default_registry.  These calls are append-only and do not alter the
+# existing public API.
+# =============================================================================
+
+def _register_factories() -> None:
+    """Register all factory functions with the default component registry."""
+    default_registry.register_factory("network", "default", create_network)
+    default_registry.register_factory("mcts", "default", create_mcts)
+    default_registry.register_factory("environment", "default", create_environment)
+    default_registry.register_factory("reward_shaper", "default", create_reward_shaper)
+    default_registry.register_factory("curriculum", "default", create_curriculum_manager)
+    default_registry.register_factory("rag", "default", create_rag_client)
+    default_registry.register_factory("knowledge_base", "default", create_knowledge_base)
+    default_registry.register_factory("llm", "default", create_llm_client)
+    default_registry.register_factory("strategy_advisor", "default", create_strategy_advisor)
+    default_registry.register_factory("wandb", "default", create_wandb_logger)
+    default_registry.register_factory("replay_buffer", "default", create_replay_buffer)
+
+
+_register_factories()

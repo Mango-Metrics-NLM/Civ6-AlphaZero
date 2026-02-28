@@ -14,6 +14,8 @@ from typing import ClassVar
 import numpy as np
 import torch
 
+from alpha_zero.utils.constants import ENCODER, GAME
+
 
 @dataclass
 class EncoderConfig:
@@ -172,11 +174,21 @@ class Civ6StateEncoder:
 
                 # Yields
                 yields = tile.get("yields", {})
-                spatial[self.YIELDS_START, y, x] = yields.get("food", 0) / 10.0
-                spatial[self.YIELDS_START + 1, y, x] = yields.get("production", 0) / 10.0
-                spatial[self.YIELDS_START + 2, y, x] = yields.get("gold", 0) / 10.0
-                spatial[self.YIELDS_START + 3, y, x] = yields.get("science", 0) / 10.0
-                spatial[self.YIELDS_START + 4, y, x] = yields.get("culture", 0) / 10.0
+                spatial[self.YIELDS_START, y, x] = (
+                    yields.get("food", 0) / ENCODER.YIELD_NORMALIZATION
+                )
+                spatial[self.YIELDS_START + 1, y, x] = (
+                    yields.get("production", 0) / ENCODER.YIELD_NORMALIZATION
+                )
+                spatial[self.YIELDS_START + 2, y, x] = (
+                    yields.get("gold", 0) / ENCODER.YIELD_NORMALIZATION
+                )
+                spatial[self.YIELDS_START + 3, y, x] = (
+                    yields.get("science", 0) / ENCODER.YIELD_NORMALIZATION
+                )
+                spatial[self.YIELDS_START + 4, y, x] = (
+                    yields.get("culture", 0) / ENCODER.YIELD_NORMALIZATION
+                )
 
         # Encode units
         for unit in units:
@@ -187,8 +199,8 @@ class Civ6StateEncoder:
 
             unit_type = unit.get("type", "melee")
             type_idx = self.UNIT_TYPES.get(unit_type, 0)
-            health = unit.get("health", 100) / 100.0
-            strength = unit.get("strength", 20) / 100.0
+            health = unit.get("health", 100) / ENCODER.HEALTH_NORMALIZATION
+            strength = unit.get("strength", 20) / ENCODER.STRENGTH_NORMALIZATION
             value = health * max(strength, 0.1)
 
             player = unit.get("player", 0)
@@ -214,9 +226,15 @@ class Civ6StateEncoder:
                 base = self.ENEMY_CITIES_START
 
             spatial[base, y, x] = 1.0  # Presence
-            spatial[base + 1, y, x] = city.get("population", 1) / 30.0
-            spatial[base + 2, y, x] = city.get("production", 0) / 100.0
-            spatial[base + 3, y, x] = city.get("defense", 0) / 100.0
+            spatial[base + 1, y, x] = (
+                city.get("population", 1) / ENCODER.POPULATION_NORMALIZATION
+            )
+            spatial[base + 2, y, x] = (
+                city.get("production", 0) / ENCODER.CITY_PRODUCTION_NORMALIZATION
+            )
+            spatial[base + 3, y, x] = (
+                city.get("defense", 0) / ENCODER.CITY_DEFENSE_NORMALIZATION
+            )
 
         # Fog of war
         for y in range(size):
@@ -247,7 +265,7 @@ class Civ6StateEncoder:
 
         # Turn/Phase (0-9)
         turn = game_state.get("turn", 0)
-        vector[0] = turn / 500.0
+        vector[0] = turn / ENCODER.TURN_NORMALIZATION
 
         # Era (10-17)
         era = game_state.get("era", 0)
@@ -258,7 +276,7 @@ class Civ6StateEncoder:
         resources = game_state.get("resources", {})
         for i, (_name, count) in enumerate(resources.items()):
             if 20 + i < 70:
-                vector[20 + i] = count / 20.0
+                vector[20 + i] = count / ENCODER.RESOURCE_NORMALIZATION
 
         # Technologies (70-169)
         techs = game_state.get("technologies", [])
@@ -277,23 +295,27 @@ class Civ6StateEncoder:
             # String civic IDs are not yet supported; skip gracefully
 
         # Economy (300-319)
-        vector[300] = game_state.get("gold", 0) / 1000.0
-        vector[301] = game_state.get("gold_per_turn", 0) / 100.0
-        vector[302] = game_state.get("science_per_turn", 0) / 100.0
-        vector[303] = game_state.get("culture_per_turn", 0) / 100.0
-        vector[304] = game_state.get("faith_per_turn", 0) / 100.0
+        vector[300] = game_state.get("gold", 0) / ENCODER.GOLD_NORMALIZATION
+        vector[301] = game_state.get("gold_per_turn", 0) / ENCODER.PER_TURN_NORMALIZATION
+        vector[302] = game_state.get("science_per_turn", 0) / ENCODER.PER_TURN_NORMALIZATION
+        vector[303] = game_state.get("culture_per_turn", 0) / ENCODER.PER_TURN_NORMALIZATION
+        vector[304] = game_state.get("faith_per_turn", 0) / ENCODER.PER_TURN_NORMALIZATION
 
         # Military (320-349)
-        vector[320] = game_state.get("military_strength", 0) / 500.0
-        vector[321] = len(game_state.get("units", [])) / 50.0
+        vector[320] = game_state.get("military_strength", 0) / ENCODER.MILITARY_STRENGTH_NORMALIZATION
+        vector[321] = len(game_state.get("units", [])) / ENCODER.UNIT_COUNT_NORMALIZATION
 
         # Cities (350-399)
         cities = game_state.get("cities", [])
         current_player = game_state.get("current_player", 0)
         own_cities = [c for c in cities if c.get("player") == current_player]
-        vector[350] = len(own_cities) / 20.0
+        vector[350] = len(own_cities) / ENCODER.CITY_COUNT_NORMALIZATION
         if own_cities:
-            vector[351] = sum(c.get("population", 0) for c in own_cities) / len(own_cities) / 30.0
+            vector[351] = (
+                sum(c.get("population", 0) for c in own_cities)
+                / len(own_cities)
+                / ENCODER.POPULATION_NORMALIZATION
+            )
 
         # Victory progress (500-511)
         victory = game_state.get("victory_progress", {})
@@ -371,7 +393,7 @@ class MicroCivEncoder:
 
             unit_type = unit.get("type", "warrior")
             type_idx = unit_map.get(unit_type, 0)
-            health = unit.get("health", 100) / 100.0
+            health = unit.get("health", 100) / ENCODER.HEALTH_NORMALIZATION
 
             player = unit.get("player", 0)
             if player == current_player:
@@ -421,7 +443,7 @@ class MicroCivEncoder:
         cities = game_state.get("cities", [])
 
         # Turn
-        vector[0] = game_state.get("turn", 0) / 200.0
+        vector[0] = game_state.get("turn", 0) / ENCODER.MICROCIV_TURN_NORMALIZATION
 
         # Current player
         vector[1] = current_player
@@ -429,28 +451,32 @@ class MicroCivEncoder:
         # Unit counts
         own_units = [u for u in units if u.get("player") == current_player]
         enemy_units = [u for u in units if u.get("player") != current_player]
-        vector[2] = len(own_units) / 20.0
-        vector[3] = len(enemy_units) / 20.0
+        vector[2] = len(own_units) / float(GAME.MAX_UNITS_PER_PLAYER)
+        vector[3] = len(enemy_units) / float(GAME.MAX_UNITS_PER_PLAYER)
 
         # City counts
         own_cities = [c for c in cities if c.get("player") == current_player]
         enemy_cities = [c for c in cities if c.get("player") != current_player]
-        vector[4] = len(own_cities) / 5.0
-        vector[5] = len(enemy_cities) / 5.0
+        vector[4] = len(own_cities) / float(GAME.MAX_CITIES_PER_PLAYER)
+        vector[5] = len(enemy_cities) / float(GAME.MAX_CITIES_PER_PLAYER)
 
         # Total health
         if own_units:
-            vector[6] = sum(u.get("health", 0) for u in own_units) / (len(own_units) * 100.0)
+            vector[6] = sum(u.get("health", 0) for u in own_units) / (
+                len(own_units) * ENCODER.HEALTH_NORMALIZATION
+            )
         if enemy_units:
-            vector[7] = sum(u.get("health", 0) for u in enemy_units) / (len(enemy_units) * 100.0)
+            vector[7] = sum(u.get("health", 0) for u in enemy_units) / (
+                len(enemy_units) * ENCODER.HEALTH_NORMALIZATION
+            )
 
         # Economy data (indices 8-9, backward compat: default to 0)
-        vector[8] = game_state.get("gold", 0) / 500.0
-        vector[9] = game_state.get("gold_per_turn", 0) / 50.0
+        vector[8] = game_state.get("gold", 0) / ENCODER.MICROCIV_GOLD_NORMALIZATION
+        vector[9] = game_state.get("gold_per_turn", 0) / ENCODER.MICROCIV_GOLD_PER_TURN_NORMALIZATION
 
         # Population data (index 10)
         total_own_pop = sum(c.get("population", 1) for c in own_cities) if own_cities else 0
-        vector[10] = total_own_pop / 30.0
+        vector[10] = total_own_pop / ENCODER.POPULATION_NORMALIZATION
 
         # Visibility coverage (index 11, backward compat: 1.0 if no fog)
         visibility = game_state.get("visibility")

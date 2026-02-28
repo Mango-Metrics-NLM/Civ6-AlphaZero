@@ -26,7 +26,7 @@ from alpha_zero.distributed.shared_storage import (
     WeightSynchronizer,
 )
 from alpha_zero.envs.microciv import MicroCivEnv
-from alpha_zero.utils.constants import DISTRIBUTED, GAME
+from alpha_zero.utils.constants import DISTRIBUTED, GAME, REWARDS
 from alpha_zero.utils.reward_shaping import RewardShaper, RewardShapingConfig
 
 logger = logging.getLogger(__name__)
@@ -228,7 +228,7 @@ class SelfPlayActor:
         if self.config.use_reward_shaping:
             shaping_config = RewardShapingConfig(
                 enabled=True,
-                gamma=0.99,
+                gamma=REWARDS.GAMMA,
             )
             reward_shaper = RewardShaper(shaping_config, self.config.board_size)
 
@@ -304,7 +304,7 @@ class SelfPlayActor:
         """
         examples = []
         _n_steps = len(game_history)  # Reserved for future n-step return
-        gamma = 0.99
+        gamma = REWARDS.GAMMA
 
         for i, hist in enumerate(game_history):
             # Base value from game outcome
