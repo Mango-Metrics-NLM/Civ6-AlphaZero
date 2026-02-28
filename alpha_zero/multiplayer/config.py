@@ -22,6 +22,7 @@ from typing import Any
 
 from alpha_zero.multiplayer.determinization import DeterminizationConfig
 from alpha_zero.multiplayer.fog_of_war import FogOfWarConfig
+from alpha_zero.multiplayer.simultaneous_mcts import SimultaneousMCTSConfig
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +197,7 @@ class MultiplayerConfig:
         scoring: Game outcome scoring configuration.
         turn_manager: Turn management configuration.
         opponent_model: Opponent modeling configuration.
+        simultaneous_mcts: Simultaneous-move MCTS (DUCT) configuration.
         spatial_channels_per_player: Channels allocated per player in state encoding.
         city_channels_per_player: City channels per player in encoding.
         base_terrain_channels: Fixed terrain channels in encoding.
@@ -209,6 +211,9 @@ class MultiplayerConfig:
     scoring: ScoringConfig = field(default_factory=ScoringConfig)
     turn_manager: TurnManagerConfig = field(default_factory=TurnManagerConfig)
     opponent_model: OpponentModelConfig = field(default_factory=OpponentModelConfig)
+    simultaneous_mcts: SimultaneousMCTSConfig = field(
+        default_factory=SimultaneousMCTSConfig
+    )
     spatial_channels_per_player: int = 3
     city_channels_per_player: int = 1
     base_terrain_channels: int = 3
@@ -260,6 +265,8 @@ class MultiplayerConfig:
             "CIV6AZ_MP_FOG_OF_WAR": ("fog_of_war", bool),
             "CIV6AZ_MP_DETERMINIZATION_WORLDS": ("determinization.num_worlds", int),
             "CIV6AZ_MP_DETERMINIZATION_COMBINE": ("determinization.combine_method", str),
+            "CIV6AZ_MP_SIMULTANEOUS_SIMS": ("simultaneous_mcts.num_simulations", int),
+            "CIV6AZ_MP_ACTION_RESOLUTION": ("simultaneous_mcts.action_resolution", str),
         }
 
         for env_var, (attr_path, attr_type) in env_map.items():
@@ -302,6 +309,7 @@ class MultiplayerConfig:
         scoring_data = data.pop("scoring", {})
         turn_data = data.pop("turn_manager", {})
         opp_data = data.pop("opponent_model", {})
+        sim_data = data.pop("simultaneous_mcts", {})
         fog_data = data.pop("fog_of_war_config", {})
         det_data = data.pop("determinization", {})
 
@@ -310,6 +318,7 @@ class MultiplayerConfig:
             scoring=ScoringConfig(**scoring_data),
             turn_manager=TurnManagerConfig(**turn_data),
             opponent_model=OpponentModelConfig(**opp_data),
+            simultaneous_mcts=SimultaneousMCTSConfig(**sim_data),
             fog_of_war_config=FogOfWarConfig(**fog_data),
             determinization=DeterminizationConfig(**det_data),
             **data,

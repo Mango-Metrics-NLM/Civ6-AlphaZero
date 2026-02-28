@@ -586,6 +586,41 @@ def create_replay_buffer(
     return ReplayBuffer(max_size)
 
 
+def create_simultaneous_mcts(
+    config: Any = None,
+    num_players: int = 2,
+    action_space_size: int = 356,
+) -> Any:
+    """Create Decoupled UCT (DUCT) for simultaneous-move games.
+
+    Args:
+        config: SimultaneousMCTSConfig instance. If None, uses defaults.
+        num_players: Number of players in the game.
+        action_space_size: Size of the action space.
+
+    Returns:
+        Configured DecoupledUCT instance.
+    """
+    from alpha_zero.multiplayer.simultaneous_mcts import (
+        DecoupledUCT,
+        SimultaneousMCTSConfig,
+    )
+
+    if config is None:
+        config = SimultaneousMCTSConfig()
+
+    logger.info(
+        f"Creating DecoupledUCT: num_players={num_players}, "
+        f"action_space={action_space_size}, "
+        f"simulations={config.num_simulations}",
+    )
+    return DecoupledUCT(
+        config=config,
+        num_players=num_players,
+        action_space_size=action_space_size,
+    )
+
+
 # =============================================================================
 # Registry registrations -- makes factory functions discoverable via the
 # default_registry.  These calls are append-only and do not alter the
@@ -605,6 +640,7 @@ def _register_factories() -> None:
     default_registry.register_factory("strategy_advisor", "default", create_strategy_advisor)
     default_registry.register_factory("wandb", "default", create_wandb_logger)
     default_registry.register_factory("replay_buffer", "default", create_replay_buffer)
+    default_registry.register_factory("mcts", "duct", create_simultaneous_mcts)
 
 
 _register_factories()

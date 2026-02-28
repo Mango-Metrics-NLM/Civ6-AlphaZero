@@ -26,6 +26,11 @@ Example:
     >>> mcts = NPlayerMCTS(network, config.mcts)
 """
 
+from alpha_zero.multiplayer.action_resolution import (
+    ActionResolutionConfig,
+    ActionResolutionStrategy,
+    ActionResolver,
+)
 from alpha_zero.multiplayer.config import (
     MultiplayerConfig,
     NPlayerMCTSConfig,
@@ -76,9 +81,18 @@ from alpha_zero.multiplayer.scoring import (
     compute_rankings,
     extract_game_result,
 )
+from alpha_zero.multiplayer.simultaneous_mcts import (
+    DecoupledUCT,
+    SimultaneousMCTSConfig,
+    SimultaneousNode,
+)
 from alpha_zero.multiplayer.turn_manager import TurnManager
 
 __all__ = [
+    "ActionResolutionConfig",
+    "ActionResolutionStrategy",
+    "ActionResolver",
+    "DecoupledUCT",
     "DeterminizationConfig",
     "DeterminizedMCTS",
     "FogOfWarConfig",
@@ -103,6 +117,8 @@ __all__ = [
     "ScoringConfig",
     "ScoringMethod",
     "SearchStrategy",
+    "SimultaneousMCTSConfig",
+    "SimultaneousNode",
     "TurnManager",
     "TurnManagerConfig",
     "TurnMode",
