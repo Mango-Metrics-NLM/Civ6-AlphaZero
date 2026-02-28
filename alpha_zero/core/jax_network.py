@@ -33,7 +33,11 @@ from typing import Any
 
 import numpy as np
 
-from alpha_zero.core.framework import MASKED_LOGIT_VALUE, is_microciv_config
+from alpha_zero.core.framework import (
+    MASKED_LOGIT_VALUE,
+    RESERVED_CHECKPOINT_KEYS,
+    is_microciv_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +137,9 @@ if _JAX_AVAILABLE:
 
         Stateless normalization (no running statistics), works identically
         in training and inference mode.
+
+        Raises:
+            ValueError: If num_channels is not divisible by num_groups.
         """
 
         weight: jax.Array
@@ -170,7 +177,11 @@ if _JAX_AVAILABLE:
             return x_norm * self.weight[:, None, None] + self.bias[:, None, None]
 
     class JaxResidualBlock(eqx.Module):
-        """Residual block with two convolutional layers and GroupNorm."""
+        """Residual block with two convolutional layers and GroupNorm.
+
+        Raises:
+            ValueError: If num_filters is not divisible by num_groups.
+        """
 
         conv1: eqx.nn.Conv2d
         gn1: JaxGroupNorm
@@ -178,6 +189,11 @@ if _JAX_AVAILABLE:
         gn2: JaxGroupNorm
 
         def __init__(self, num_filters: int, num_groups: int = 8, *, key: jax.Array) -> None:
+            if num_filters % num_groups != 0:
+                raise ValueError(
+                    f"JaxResidualBlock: num_filters ({num_filters}) must be divisible by "
+                    f"num_groups ({num_groups})"
+                )
             key1, key2 = jax.random.split(key)
             self.conv1 = eqx.nn.Conv2d(
                 num_filters, num_filters, kernel_size=3, padding=1, use_bias=False, key=key1
@@ -572,6 +588,11 @@ class JaxNetworkWrapper:
                 f"spatial must be 3D (C,H,W) or 4D (B,C,H,W), "
                 f"got {spatial.ndim}D shape {spatial.shape}"
             )
+        if vector.ndim not in (1, 2):
+            raise ValueError(
+                f"vector must be 1D (V,) or 2D (B,V), "
+                f"got {vector.ndim}D shape {vector.shape}"
+            )
 
         is_batched = spatial.ndim == 4
         logger.debug(
@@ -651,20 +672,19 @@ class JaxNetworkWrapper:
 
         eqx.tree_serialise_leaves(model_path, self._model)
 
-        _reserved_keys = {"config", "param_count", "framework"}
         meta = {
             "config": self._model.config.to_dict(),
             "param_count": int(self._param_count),
             "framework": "jax",
         }
         if metadata:
-            overwritten = set(metadata.keys()) & _reserved_keys
+            overwritten = set(metadata.keys()) & RESERVED_CHECKPOINT_KEYS
             if overwritten:
                 logger.warning(
                     "Metadata keys %s are reserved and will not be overwritten",
                     overwritten,
                 )
-            meta.update({k: v for k, v in metadata.items() if k not in _reserved_keys})
+            meta.update({k: v for k, v in metadata.items() if k not in RESERVED_CHECKPOINT_KEYS})
 
         Path(meta_path).write_text(json.dumps(meta, indent=2))
 

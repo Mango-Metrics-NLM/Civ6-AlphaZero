@@ -44,6 +44,11 @@ MASKED_LOGIT_VALUE: float = -1e9
 MICROCIV_MAX_BOARD_SIZE: int = 16
 MICROCIV_MAX_CHANNELS: int = 13
 
+# Keys reserved by the checkpoint system for internal metadata.
+# User-provided metadata with these keys will be ignored (with a warning).
+# Shared by jax_checkpoint.py and jax_network.py to ensure consistency.
+RESERVED_CHECKPOINT_KEYS: frozenset[str] = frozenset({"framework", "config", "param_count"})
+
 
 # ---------------------------------------------------------------------------
 # Network selection

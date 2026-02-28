@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import numpy as np
-
 import pytest
 import torch
 import torch.nn as nn
@@ -73,8 +72,8 @@ def _has_spacetimedb() -> bool:
 def _has_jax() -> bool:
     """Check if JAX and its dependencies are installed."""
     try:
-        import jax  # noqa: F401
         import equinox  # noqa: F401
+        import jax  # noqa: F401
         import optax  # noqa: F401
 
         return True
@@ -417,34 +416,29 @@ def sample_trajectory_data() -> list[dict]:
     Returns:
         List of trajectory step dictionaries.
     """
+    rng = np.random.default_rng(42)
 
     return [
         {
-            "state": np.random.randn(13, 16, 16).astype(
-                np.float32
-            ),  # MicroCivEncoder.TOTAL_CHANNELS
+            "state": rng.standard_normal((13, 16, 16)).astype(np.float32),
             "action": np.array([5, 8]),
-            "policy": np.random.dirichlet(np.ones(376)).astype(np.float32),
+            "policy": rng.dirichlet(np.ones(376)).astype(np.float32),
             "reward": 0.0,
             "done": False,
             "turn": 1,
         },
         {
-            "state": np.random.randn(13, 16, 16).astype(
-                np.float32
-            ),  # MicroCivEncoder.TOTAL_CHANNELS
+            "state": rng.standard_normal((13, 16, 16)).astype(np.float32),
             "action": np.array([6, 8]),
-            "policy": np.random.dirichlet(np.ones(376)).astype(np.float32),
+            "policy": rng.dirichlet(np.ones(376)).astype(np.float32),
             "reward": 0.1,
             "done": False,
             "turn": 2,
         },
         {
-            "state": np.random.randn(13, 16, 16).astype(
-                np.float32
-            ),  # MicroCivEncoder.TOTAL_CHANNELS
+            "state": rng.standard_normal((13, 16, 16)).astype(np.float32),
             "action": np.array([6, 9]),
-            "policy": np.random.dirichlet(np.ones(376)).astype(np.float32),
+            "policy": rng.dirichlet(np.ones(376)).astype(np.float32),
             "reward": 1.0,
             "done": True,
             "turn": 3,
@@ -466,6 +460,13 @@ class MockTrainingExample:
     action_mask: np.ndarray
     policy: np.ndarray
     value: float
+
+    def __post_init__(self) -> None:
+        if self.policy.shape[0] != self.action_mask.shape[0]:
+            raise ValueError(
+                f"policy size ({self.policy.shape[0]}) != "
+                f"action_mask size ({self.action_mask.shape[0]})"
+            )
 
 
 def make_training_example(

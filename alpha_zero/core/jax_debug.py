@@ -116,18 +116,27 @@ class JaxDebugLogger:
             import jax
 
             leaves = jax.tree.leaves(params)
-            total = sum(leaf.size for leaf in leaves if hasattr(leaf, "size"))
-            total_bytes = sum(
-                leaf.size * leaf.dtype.itemsize
-                for leaf in leaves
-                if hasattr(leaf, "size") and hasattr(leaf, "dtype")
-            )
-            num_leaves = len(leaves)
+            array_leaves = [leaf for leaf in leaves if hasattr(leaf, "size")]
+            if not array_leaves:
+                self._logger.log(self._log_level, "Params '%s': no array leaves found", label)
+                return
+
+            total = sum(leaf.size for leaf in array_leaves)
+            typed_leaves = [leaf for leaf in array_leaves if hasattr(leaf, "dtype")]
+            if len(typed_leaves) < len(array_leaves):
+                self._logger.log(
+                    self._log_level,
+                    "Params '%s': %d/%d leaves lack dtype, memory estimate may be approximate",
+                    label,
+                    len(array_leaves) - len(typed_leaves),
+                    len(array_leaves),
+                )
+            total_bytes = sum(leaf.size * leaf.dtype.itemsize for leaf in typed_leaves)
             self._logger.log(
                 self._log_level,
                 "Params '%s': %d leaves, %d total parameters (%.2f MB)",
                 label,
-                num_leaves,
+                len(array_leaves),
                 total,
                 total_bytes / (1024 * 1024),
             )

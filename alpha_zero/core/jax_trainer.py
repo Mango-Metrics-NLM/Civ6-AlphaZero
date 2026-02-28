@@ -29,6 +29,11 @@ from alpha_zero.core.framework import MASKED_LOGIT_VALUE
 
 logger = logging.getLogger(__name__)
 
+# Deterministic seed for dummy PRNG keys used when key=None (inference mode).
+# Since inference=True disables all stochastic layers (dropout), these keys are
+# never consumed — they exist solely to satisfy vmap's shape requirements.
+_DUMMY_PRNG_SEED: int = 42
+
 try:
     import equinox as eqx
     import jax
@@ -238,7 +243,7 @@ def _batch_loss(
     if key is not None:
         keys = jax.random.split(key, batch_size)
     else:
-        keys = jax.random.split(jax.random.PRNGKey(0), batch_size)
+        keys = jax.random.split(jax.random.PRNGKey(_DUMMY_PRNG_SEED), batch_size)
 
     def single_loss(
         spatial: Any, vector: Any, mask: Any, policy: Any, value: Any, k: Any,
@@ -353,6 +358,9 @@ class JaxDataLoader:
             batch_size: Batch size.
             shuffle: Whether to shuffle examples each epoch.
             seed: Random seed for shuffling.
+
+        Raises:
+            ValueError: If batch_size < 1.
         """
         if batch_size < 1:
             raise ValueError(f"batch_size must be >= 1, got {batch_size}")

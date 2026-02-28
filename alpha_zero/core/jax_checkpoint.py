@@ -32,6 +32,8 @@ from typing import Any
 
 import numpy as np
 
+from alpha_zero.core.framework import RESERVED_CHECKPOINT_KEYS
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -75,18 +77,17 @@ def save_jax_checkpoint(
 
     eqx.tree_serialise_leaves(model_path, model)
 
-    _reserved_keys = {"framework", "config"}
     meta: dict[str, Any] = {"framework": "jax"}
     if hasattr(model, "config") and hasattr(model.config, "to_dict"):
         meta["config"] = model.config.to_dict()
     if metadata:
-        overwritten = set(metadata.keys()) & _reserved_keys
+        overwritten = set(metadata.keys()) & RESERVED_CHECKPOINT_KEYS
         if overwritten:
             logger.warning(
                 "Metadata keys %s are reserved and will not be overwritten",
                 overwritten,
             )
-        meta.update({k: v for k, v in metadata.items() if k not in _reserved_keys})
+        meta.update({k: v for k, v in metadata.items() if k not in RESERVED_CHECKPOINT_KEYS})
 
     Path(meta_path).write_text(json.dumps(meta, indent=2, default=str))
 
@@ -189,9 +190,11 @@ def jax_to_torch_state_dict(
         torch_tensor = torch.from_numpy(jax_array.copy())
         state_dict[torch_name] = torch_tensor
 
+    total_elements = sum(v.numel() for v in state_dict.values())
     logger.info(
-        "Converted JAX → PyTorch state_dict: %d parameters",
+        "Converted JAX → PyTorch state_dict: %d parameters (%d total elements)",
         len(state_dict),
+        total_elements,
     )
 
     return state_dict
@@ -243,10 +246,22 @@ def torch_to_jax_params(
         _torch_tensor_type = None
 
     for torch_key, torch_tensor in state_dict.items():
+        # Skip non-tensor entries (metadata, nested structures)
+        if isinstance(torch_tensor, (dict, list, str, int, float, bool)):
+            logger.debug(
+                "Skipping non-tensor state_dict entry: %s (%s)",
+                torch_key, type(torch_tensor).__name__,
+            )
+            continue
+
         if _torch_tensor_type is not None and isinstance(torch_tensor, _torch_tensor_type):
             np_val = torch_tensor.detach().cpu().numpy()
         else:
-            np_val = np.asarray(torch_tensor)
+            try:
+                np_val = np.asarray(torch_tensor)
+            except (TypeError, ValueError) as exc:
+                logger.warning("Cannot convert state_dict[%s] to array: %s", torch_key, exc)
+                continue
 
         # Try direct match
         jax_name = torch_to_jax_name.get(torch_key, torch_key)
