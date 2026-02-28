@@ -45,6 +45,43 @@ This module provides robust game connection management:
 
 ---
 
+## Skills
+
+- **Connection Resilience**: Retry with exponential backoff and jitter
+- **Latency Tracking**: Rolling window P95/P99 measurement with compensation
+- **Crash Recovery**: JSON checkpoint-based game state recovery
+- **Backend Abstraction**: Wrap game APIs behind a common interface
+
+---
+
+## Sub-Agents
+
+| Agent | Role | When to Invoke |
+|-------|------|----------------|
+| **Connection Debugger** | Diagnose retry failures and latency spikes | Connection instability |
+| **Recovery Tester** | Verify checkpoint recovery roundtrips | Crash recovery failures |
+
+---
+
+## Tools
+
+| Tool | Purpose |
+|------|---------|
+| `pytest tests/ -k integration -v` | Test integration components |
+| `python -c "from alpha_zero.integration import GameConnector"` | Import check |
+
+---
+
+## Invariants
+
+1. `GameConnector` retries are bounded — never exceeds `max_retries` from config
+2. `LatencyTracker` window has fixed capacity — old measurements roll off
+3. Checkpoints are atomic — partial writes never corrupt recovery state
+4. `GameBackend` interface is symmetric: `get_state()` / `apply_action()` always paired
+5. All config presets produce valid, runnable configurations
+
+---
+
 ## Dependencies
 
 - **Internal**: `alpha_zero.envs.microciv` (MicroCivBackend), `alpha_zero.interfaces.unciv_interface` (UncivBackend)

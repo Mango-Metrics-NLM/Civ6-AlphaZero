@@ -41,9 +41,9 @@ This module provides a complete Human vs AI interface:
 
 | File | Responsibility |
 |------|---------------|
-| `config.py` | HumanInterfaceConfig, InputMode, BoardTheme |
+| `config.py` | HumanInterfaceConfig, InputMode |
 | `game_controller.py` | GameController, GamePhase, TurnResult, undo stack |
-| `visualizer.py` | StateVisualizer — ASCII board, move probabilities, evaluation bar, MCTS stats |
+| `visualizer.py` | StateVisualizer, BoardTheme — ASCII board, move probabilities, evaluation bar, MCTS stats |
 | `input_handler.py` | HumanInputHandler, ActionParser, ParsedAction (coordinate/index/command parsing) |
 | `replay.py` | GameRecorder, GameRecording, GameReplay, ReplayManager |
 
@@ -64,6 +64,25 @@ This module provides a complete Human vs AI interface:
 |-------|------|----------------|
 | **UI Tester** | Verify visualization output for different board states | Rendering bugs |
 | **Input Fuzzer** | Test input parser with edge cases | Parsing errors |
+
+---
+
+## Tools
+
+| Tool | Purpose |
+|------|---------|
+| `pytest tests/ -k human_interface -v` | Test human interface components |
+| `python -c "from alpha_zero.human_interface import GameController, StateVisualizer"` | Import check |
+
+---
+
+## Invariants
+
+1. `GamePhase` transitions are validated — no jumping from NOT_STARTED to GAME_OVER
+2. Undo stack never exceeds configured depth
+3. `StateVisualizer` output is pure — no side effects from rendering
+4. `ParsedAction` always has a valid action type, even for invalid user input (error action)
+5. `GameRecording` serialization is version-tagged for forward compatibility
 
 ---
 

@@ -69,6 +69,26 @@ This module provides research-backed performance optimizations:
 
 ---
 
+## Tools
+
+| Tool | Purpose |
+|------|---------|
+| `pytest tests/ -k optimizations -v` | Test optimization components |
+| `python -c "from alpha_zero.optimizations import PerformanceOptimizationsConfig"` | Import check |
+
+---
+
+## Invariants
+
+1. Playout cap never reduces simulations below `min_simulations` threshold
+2. Policy pruning preserves the top-K actions — never prunes the best action
+3. Cyclic LR schedules are deterministic given the same step number
+4. Auxiliary loss weights are non-negative and sum-bounded
+5. Benchmark results include both speed and quality metrics — never speed-only
+6. All optimizations can be individually enabled/disabled via config flags
+
+---
+
 ## Dependencies
 
 - **Internal**: `alpha_zero.core` (MCTS, network)

@@ -72,6 +72,26 @@ All components gracefully degrade when `spacetimedb-sdk` is not installed.
 
 ---
 
+## Tools
+
+| Tool | Purpose |
+|------|---------|
+| `pytest tests/ -k spacetimedb -v` | Test SpacetimeDB components |
+| `python -c "from alpha_zero.spacetimedb import SpacetimeDBConfig"` | Import check (works without SDK) |
+
+---
+
+## Invariants
+
+1. All components work without `spacetimedb-sdk` — graceful degradation via `HAS_SPACETIMEDB` flag
+2. `EventRegistry` handlers are called in registration order
+3. `ConnectionManager` reconnection uses exponential backoff with jitter
+4. `MetricsSink` flush is thread-safe — uses internal lock
+5. Weight serialization roundtrips exactly — `serialize → deserialize` produces identical state_dict
+6. Every async method has a `_sync` counterpart for synchronous callers
+
+---
+
 ## Dependencies
 
 - **Internal**: `alpha_zero.distributed.shared_storage` (GameTrajectory), `alpha_zero.cloud.protocols` (CloudMonitoringProtocol), `alpha_zero.storage.models`

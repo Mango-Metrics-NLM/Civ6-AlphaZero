@@ -42,11 +42,11 @@ This module provides comprehensive model evaluation:
 |------|---------------|
 | `evaluator.py` | ModelEvaluator — main evaluation orchestrator, EvaluationResult |
 | `baselines.py` | BaselineFactory, BaselinePlayer, Random/Heuristic/NeuralNetwork players |
-| `baseline_agents.py` | Lower-level BaseAgent ABC, GreedyHeuristicAgent, MCTSAgentWrapper |
+| `baseline_agents.py` | BaseAgent ABC, RandomAgent, GreedyHeuristicAgent, MCTSAgentWrapper |
 | `config.py` | EvaluationConfig (master), BaselineConfig, DiversityConfig, presets |
 | `diversity.py` | DiversityTracker, DiversityMetrics (entropy, game length, victory types) |
 | `reports.py` | EvaluationReport, ReportGenerator (JSON/Markdown/text output) |
-| `sequential_testing.py` | SequentialTester, SPRT-based early stopping with cost savings |
+| `sequential_testing.py` | SequentialTester, SequentialTestingConfig, SequentialTestResult, EvaluationDecision — SPRT-based early stopping |
 | `evaluation_pipeline.py` | Older evaluation pipeline (EvaluationPipeline) |
 | `muzero_vs_alphazero_benchmark.py` | Architecture comparison benchmarks |
 

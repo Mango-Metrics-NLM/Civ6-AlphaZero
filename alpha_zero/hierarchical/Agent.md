@@ -43,11 +43,16 @@ This module implements a three-level hierarchical reasoning system:
 |------|---------------|
 | `config.py` | HierarchicalConfig, LevelConfig, MCTSLevelConfig, GoalConfig, LLMGuidanceConfig |
 | `controller.py` | HierarchicalController — orchestrates all levels, shaped rewards, save/load |
-| `controllers/` | StrategicController (victory paths), TacticalController (goal decomposition), OperationalController (action selection) |
-| `goals/` | Goal, GoalNode, GoalHierarchy, GoalEvaluator, GoalPropagator, typed goal enums |
-| `mcts/` | HierarchicalMCTS, Option, OptionTermination, MCTSNode, SearchStats |
-| `network/` | HierarchicalNetwork, LevelNetwork, GoalConditionedHead |
-| `encoders/` | Strategic/Tactical/OperationalStateEncoder, GoalEncoder, HierarchicalGoalEncoder |
+| `controllers/level_controller.py` | LevelController — Strategic/Tactical/Operational controllers |
+| `goals/goal_types.py` | Typed goal enums per level (StrategicGoalType, TacticalGoalType, OperationalGoalType) |
+| `goals/goal_node.py` | GoalNode — tree node in goal hierarchy |
+| `goals/goal_hierarchy.py` | GoalHierarchy — tree structure for goal decomposition |
+| `goals/goal_evaluator.py` | GoalEvaluator — progress scoring for goals |
+| `goals/goal_propagator.py` | GoalPropagator — propagate goals down the hierarchy |
+| `mcts/hierarchical_mcts.py` | HierarchicalMCTS, Option, OptionTermination, MCTSNode, SearchStats |
+| `network/hierarchical_network.py` | HierarchicalNetwork, LevelNetwork, GoalConditionedHead |
+| `encoders/state_encoder.py` | Strategic/Tactical/OperationalStateEncoder |
+| `encoders/goal_encoder.py` | GoalEncoder, HierarchicalGoalEncoder |
 | `training_integration.py` | HierarchicalTrainingIntegration — orchestrator hooks, shaped rewards |
 
 ---

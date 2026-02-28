@@ -13,7 +13,7 @@ You are the **Infrastructure Automation Engineer**. You own the deployment tooli
 ## Module Purpose
 
 This module provides infrastructure automation:
-- **VertexJobLauncher**: Submit self-play, training, and evaluation jobs to Vertex AI
+- **VertexAILauncher**: Submit self-play, training, and evaluation jobs to Vertex AI
 - **JobConfig**: Container URI, machine type, GPU type/count, spot configuration
 - **Fleet Management**: Launch multiple self-play workers in parallel
 - **Iteration Orchestration**: Run full self-play → train → eval cycles
@@ -35,7 +35,7 @@ This module provides infrastructure automation:
 
 | File | Responsibility |
 |------|---------------|
-| `vertex_launcher.py` | VertexJobLauncher, JobConfig, fleet/iteration management |
+| `vertex_launcher.py` | VertexAILauncher, JobConfig, fleet/iteration management |
 
 ---
 
@@ -55,6 +55,24 @@ This module provides infrastructure automation:
 | `python -m infra.vertex_launcher --mode=selfplay --iteration=0 --dry-run` | Dry-run self-play |
 | `python -m infra.vertex_launcher --mode=train --iteration=0 --dry-run` | Dry-run training |
 | `python -m infra.vertex_launcher --mode=eval --iteration=0 --dry-run` | Dry-run evaluation |
+
+---
+
+## Sub-Agents
+
+| Agent | Role | When to Invoke |
+|-------|------|----------------|
+| **Job Monitor** | Track Vertex AI job status and costs | Jobs stuck or over budget |
+| **Fleet Health Checker** | Verify all self-play workers are running | Worker fleet degradation |
+
+---
+
+## Invariants
+
+1. `--dry-run` never submits jobs to cloud — only validates configuration
+2. All job submissions require `GOOGLE_CLOUD_PROJECT` and `CIV6_GCS_BUCKET` env vars
+3. Fleet workers get unique `worker_id` assignments — no collisions
+4. Job iteration numbers are monotonically increasing
 
 ---
 

@@ -80,6 +80,26 @@ Implements 11 advanced Civ6 game mechanics as standalone, fully serializable sub
 
 ---
 
+## Tools
+
+| Tool | Purpose |
+|------|---------|
+| `pytest tests/ -k mechanics -v` | Test mechanics subsystems |
+| `python -c "from alpha_zero.mechanics import DiplomacyManager, ReligionManager"` | Import check |
+
+---
+
+## Invariants
+
+1. All managers implement `to_dict()` / `from_dict()` for checkpoint serialization
+2. All configs are `frozen=True` dataclasses — immutable after creation
+3. Every manager exposes `get_*_vector()` returning fixed-size `list[float]` for NN input
+4. Managers are stateless per game — each game creates fresh manager instances
+5. No manager depends on another — they compose independently into environments
+6. Protocol types (`GameStateProtocol`, `CityProtocol`) use structural typing, not inheritance
+
+---
+
 ## Dependencies
 
 - **Internal**: None (fully standalone — future integration with `alpha_zero.envs.civ6_encoder`)

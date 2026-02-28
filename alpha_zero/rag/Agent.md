@@ -54,6 +54,7 @@ This module provides a comprehensive RAG system:
 | `agents/context_builder.py` | ContextBuilder — assemble retrieved chunks |
 | `agents/query_enhancer.py` | QueryEnhancer — LLM-based query rewriting |
 | `utils/cache.py` | TTLCache for query results |
+| `utils/logging.py` | RAGLogger, get_logger, set_correlation_id |
 | `utils/metrics.py` | MetricsCollector for pipeline telemetry |
 
 ---

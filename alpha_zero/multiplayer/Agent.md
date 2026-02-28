@@ -71,6 +71,26 @@ This module extends core AlphaZero for N-player games:
 
 ---
 
+## Tools
+
+| Tool | Purpose |
+|------|---------|
+| `pytest tests/ -k multiplayer -v` | Test multiplayer components |
+| `python -c "from alpha_zero.multiplayer import NPlayerMCTS, TurnManager"` | Import check |
+
+---
+
+## Invariants
+
+1. `NPlayerMCTS` supports 2-6 players — gracefully rejects > 6
+2. Max-N values are N-dimensional — one value per player
+3. `NPlayerEnvAdapter` preserves the original 2-player env API when N=2
+4. Turn ordering is deterministic given the same seed
+5. Opponent model predictions sum to 1.0 (valid probability distribution)
+6. All protocols use structural typing — no forced inheritance on consumer code
+
+---
+
 ## Dependencies
 
 - **Internal**: `alpha_zero.core` (MCTS, network), `alpha_zero.interfaces` (Unciv)

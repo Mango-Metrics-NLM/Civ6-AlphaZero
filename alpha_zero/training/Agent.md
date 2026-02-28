@@ -50,7 +50,7 @@ This module provides extended training infrastructure:
 | `elo_plateau_detector.py` | EloPlateauDetector — ELO stagnation detection |
 | `training_report.py` | TrainingReport — Markdown/HTML report generation |
 | `imitation_pretraining.py` | Supervised pretraining from recorded games |
-| `diagnostics.py` | Network diagnostic utilities (weight stats, activations) |
+| `diagnostics.py` | TrainingDiagnostics — policy entropy, value accuracy, gradient stats, trajectory quality, stall detection |
 
 ---
 

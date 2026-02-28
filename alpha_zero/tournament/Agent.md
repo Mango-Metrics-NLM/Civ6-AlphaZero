@@ -72,6 +72,26 @@ This module provides an ELO-based tournament system:
 
 ---
 
+## Tools
+
+| Tool | Purpose |
+|------|---------|
+| `pytest tests/ -k tournament -v` | Test tournament components |
+| `python -c "from alpha_zero.tournament import ELORatingSystem, TournamentOrchestrator"` | Import check |
+
+---
+
+## Invariants
+
+1. ELO updates are zero-sum — winner gains what loser loses (within K-factor)
+2. Matchmaking never pairs an agent against itself
+3. League tier boundaries are strictly ordered — no overlapping rating ranges
+4. Tournament brackets have power-of-2 participants (with byes if needed)
+5. Match history is append-only — records are never deleted or modified
+6. W&B logging is optional — tournament works fully without it
+
+---
+
 ## Dependencies
 
 - **Internal**: `alpha_zero.core.civ6_mcts` (opponent agents), `alpha_zero.utils.wandb_logger`

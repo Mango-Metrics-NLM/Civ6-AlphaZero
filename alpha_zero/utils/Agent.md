@@ -65,6 +65,8 @@ This module provides the foundational utilities consumed by all other modules:
 | `knowledge_base.py` | Local knowledge base utilities |
 | `simple_mcts.py` | SimpleMCTS for testing (legacy) |
 | `benchmarks.py` | Performance benchmarking utilities |
+| `compat.py` | Compatibility shims for cross-version support |
+| `training_diagnostics.py` | Training diagnostic utilities |
 
 ---
 

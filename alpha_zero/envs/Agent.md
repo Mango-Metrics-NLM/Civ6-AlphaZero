@@ -29,7 +29,7 @@ This module provides game environments for AlphaZero training:
 | **Factory** | `env_factory.py` — `create_game_env()`, `GAMEPLAY_PRESETS` | Create environments from config strings |
 | **Adapter** | `civrealm_wrapper.py` — wraps CivRealm API into Gymnasium interface | Standardize external game APIs |
 | **Strategy** | `civ6_encoder.py` — different encoding strategies per game complexity | Swap encoders without changing environment |
-| **Decorator** | `vectorized_env.py` — wraps single env into batched interface | Add parallelism transparently |
+| **Decorator** | `vectorized_env.py` — `VectorizedMicroCivEnv` wraps MicroCiv into batched interface | Add parallelism for MicroCiv self-play |
 | **Template Method** | `MicroCivEnv.step()` → validate → execute → reward → check done | Fixed step skeleton |
 | **Lazy Import** | `__init__.py` — CivRealm components loaded on access | Avoid import errors when CivRealm unavailable |
 | **Configuration Object** | `docker_config.py` — Docker settings for CivRealm server | Externalize infrastructure config |
