@@ -1,0 +1,52 @@
+# Civ6 AlphaZero Inference Service
+# Optimized for Cloud Run / GKE deployment with GPU support
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+
+LABEL maintainer="civ6az" \
+      description="Civ6 AlphaZero ML Inference Service"
+
+# Avoid interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements-container.txt .
+RUN pip install --no-cache-dir -r requirements-container.txt
+
+# Install FastAPI and inference dependencies
+RUN pip install --no-cache-dir \
+    fastapi==0.109.0 \
+    uvicorn[standard]==0.27.0 \
+    pydantic==2.5.3 \
+    python-multipart==0.0.6
+
+# Copy application code
+COPY alpha_zero/ alpha_zero/
+COPY setup.py pyproject.toml* ./
+RUN pip install --no-cache-dir -e .
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Expose port
+EXPOSE 8000
+
+# Run as non-root user (security best practice)
+RUN useradd -m -u 1000 inference && \
+    chown -R inference:inference /app
+USER inference
+
+# Environment variables (override via Cloud Run/GKE)
+ENV PYTHONUNBUFFERED=1 \
+    PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+
+# Run server
+CMD ["python", "-m", "alpha_zero.inference.api_server"]

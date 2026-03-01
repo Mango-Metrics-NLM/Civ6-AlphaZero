@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Evaluate {{ game }} - Atari AlphaZero{% endblock %}
+
+{% block content %}
+<div class="evaluate-container">
+    <h2>Model Evaluation - {{ game }}</h2>
+    <div class="eval-controls">
+        <label>Model Path: <input type="text" id="eval-model-path" placeholder="path/to/checkpoint.pt" class="input-wide"></label>
+        <label>Episodes: <input type="number" id="eval-episodes" value="10" min="1" max="100" class="input-small"></label>
+        <button id="btn-run-eval" class="btn btn-primary">Run Evaluation</button>
+    </div>
+    <div class="eval-results hidden" id="eval-results">
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3>Episode Rewards</h3>
+                <canvas id="eval-rewards-chart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Episode Lengths</h3>
+                <canvas id="eval-lengths-chart"></canvas>
+            </div>
+        </div>
+        <div class="eval-summary">
+            <div class="status-card">
+                <span class="status-label">Mean Reward</span>
+                <span id="eval-mean-reward" class="status-value">-</span>
+            </div>
+            <div class="status-card">
+                <span class="status-label">Max Reward</span>
+                <span id="eval-max-reward" class="status-value">-</span>
+            </div>
+            <div class="status-card">
+                <span class="status-label">Mean Length</span>
+                <span id="eval-mean-length" class="status-value">-</span>
+            </div>
+        </div>
+    </div>
+    <div class="eval-placeholder" id="eval-placeholder">
+        <p class="muted">Configure evaluation parameters and click Run to evaluate a trained model.</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/training_charts.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const btnRun = document.getElementById('btn-run-eval');
+        btnRun.addEventListener('click', () => {
+            document.getElementById('eval-placeholder').classList.add('hidden');
+            document.getElementById('eval-results').classList.remove('hidden');
+            // Evaluation logic would connect to backend
+            alert('Evaluation endpoint — connect to /api/game to run episodes');
+        });
+    });
+</script>
+{% endblock %}

@@ -5,6 +5,22 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Inference Service (Phase 16)**: Production-ready machine learning inference service for Civ6 AlphaZero model deployment.
+  - FastAPI server for low-latency RESTful inference.
+  - Multi-model caching and hot-swapping.
+  - Support for batch inference and vectorized game states.
+  - Detailed deployment guides for Cloud Run and GKE.
+- **Hex Crystalline Encoder (Phase 17a)**: Advanced spatial encoding for hexagonal grid topologies.
+
+### Fixed
+
+- **Windows Compatibility**: Resolved critical pickling errors in distributed training (`WinError 6`, `_thread.lock` pickling) by the implementation of custom `__getstate__` and `__setstate__` in `SharedStorage` and `DistributedReplayBuffer`.
+- **Orchestrator Stability**: Fixed action space size mismatch in orchestrator smoke tests by ensuring clean checkpoint initialization.
+
 ## [1.2.0] — 2026-02-21
 
 ### Added — Phase 17: Training Readiness & Production Launch
@@ -79,7 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | LR | warmup_cosine, 0.001→0.0001, value_lr_mult=0.1 |
 | Start model | v218 (auto-detected from GCS) |
 | W&B run | `dashing-firebrand-1393` |
-| W&B URL | https://wandb.ai/ianshank-none/civ6-alphazero/runs/ukxjr0uz |
+| W&B URL | <https://wandb.ai/ianshank-none/civ6-alphazero/runs/ukxjr0uz> |
 
 ---
 
@@ -174,6 +190,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Civ6 Lua Integration & Python Bridge Fixes (PR #46)
 
 ##### Python Bridge Fixes
+
 - `action_converter.py`: `int()` → `round()` for coordinate scaling (fixes off-by-one at grid boundaries); extracted `_ITEM_HASH_RANGE` constant
 - `config.py`: Added `typing.Any` import; typed `kwargs` dict
 - `file_bridge.py`: Extracted `_MAX_RETRY_BACKOFF_SECONDS` constant; explicit float/bool casts for robustness
@@ -181,6 +198,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `state_converter.py`: Extracted `_ESTIMATED_TOTAL_TECHS`/`_ESTIMATED_MAX_SCORE` constants; implemented `_extract_civics()` with `_normalize_civic_name()`; `int()` → `round()` in `inverse_scale_coords`
 
 ##### Lua Mod Fixes
+
 - `ActionExecutor.lua`: `UnitManager.MoveUnit` → `RequestOperation` (correct Civ6 API); `safeGetUnit`/`safeGetCity` helpers; new handlers (sleep, promote, delete, buy, citizen, diplomacy stubs)
 - `Main.lua`: Remove duplicate event registrations; re-entrance guard; fix polling handle leak; graceful shutdown
 - `StateExporter.lua`: Nil guards throughout; hex-grid 6-neighbor offsets (was square 8-dir); CanProduce items; civics export; enemy unit detection

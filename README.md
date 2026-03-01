@@ -28,7 +28,8 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 15 | Scaled Training & Value Head Stabilization | ✅ Complete |
 | Phase 15+ | Standalone Tournament Worker & Lua Integration | ✅ Complete |
 | Phase 16 | Batch Inference & Vectorized Self-Play | ✅ Complete |
-| Phase 17 | Training Readiness — action_mask, W&B groups, gumbel default | ✅ Complete |
+| Phase 17a | Hex Crystalline Encoder & A/B Comparison | ✅ Complete |
+| Phase 17b | Training Readiness & Windows Compatibility | ✅ Complete |
 
 **Codebase Statistics:**
 
@@ -85,6 +86,8 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - **Encoder Registry**: Factory pattern for pluggable spatial encoders (`patch_embed`, `hex_crystalline`)
 - **A/B Comparison Pipeline**: Cloud-based encoder comparison with W&B metrics and automated analysis
 - **Gameplay Systems**: Terrain types, fog of war, tech tree, and terrain-aware combat for MicroCiv
+- **Inference Service**: Production-ready machine learning inference service with FastAPI, multi-model caching, and Cloud Run support
+- **Windows Compatibility**: Full support for distributed training on Windows via custom pickling handlers
 
 ## Architecture (C4 Model)
 

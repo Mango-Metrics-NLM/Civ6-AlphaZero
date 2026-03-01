@@ -40,6 +40,15 @@ logger = logging.getLogger(__name__)
 class MCTSNetwork(Protocol):
     """Protocol for neural networks used in MCTS."""
 
+    def __call__(
+        self,
+        spatial: torch.Tensor,
+        vector: torch.Tensor,
+        action_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Call the network directly."""
+        ...
+
     def predict(
         self,
         spatial: torch.Tensor,
@@ -58,7 +67,7 @@ class MCTSNetwork(Protocol):
         """
         ...
 
-    def eval(self) -> None:
+    def eval(self) -> Any:
         """Set network to evaluation mode."""
         ...
 
@@ -118,7 +127,7 @@ class MuZeroNetworkProtocol(Protocol):
         """
         ...
 
-    def eval(self) -> None:
+    def eval(self) -> Any:
         """Set network to evaluation mode."""
         ...
 

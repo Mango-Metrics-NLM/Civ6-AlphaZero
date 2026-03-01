@@ -1,0 +1,13 @@
+[package]
+name = "civ6az-server"
+version = "0.1.0"
+edition = "2021"
+description = "SpacetimeDB server module for Civ6 AlphaZero turn-based strategy game"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+spacetimedb = "1.0"
+log = "0.4"
+rand = "0.8"

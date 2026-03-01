@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Play {{ game }} - Atari AlphaZero{% endblock %}
+
+{% block content %}
+<div class="play-container">
+    <div class="game-panel">
+        <div class="game-header">
+            <h2 id="game-title">{{ game }}</h2>
+            <div class="game-controls">
+                <button id="btn-new-game" class="btn btn-primary">New Game</button>
+                <button id="btn-reset" class="btn btn-secondary">Reset</button>
+                <button id="btn-save" class="btn btn-secondary">Save Episode</button>
+            </div>
+        </div>
+        <div class="canvas-wrapper">
+            <canvas id="game-canvas" width="320" height="420"></canvas>
+            <div id="game-overlay" class="game-overlay hidden">
+                <span id="overlay-text">Press New Game to start</span>
+            </div>
+        </div>
+        <div class="game-info">
+            <span>Score: <strong id="score-display">0</strong></span>
+            <span>Step: <strong id="step-display">0</strong></span>
+            <span>Mode: <strong id="mode-display">Human</strong></span>
+        </div>
+    </div>
+    <div class="side-panel">
+        <div class="panel-section">
+            <h3>Controls</h3>
+            <div class="mode-selector">
+                <label><input type="radio" name="play-mode" value="human" checked> Human Play</label>
+                <label><input type="radio" name="play-mode" value="ai"> AI Autopilot</label>
+                <label><input type="radio" name="play-mode" value="step"> Step-by-Step AI</label>
+            </div>
+            <div id="step-controls" class="hidden">
+                <button id="btn-ai-step" class="btn btn-primary">AI Step</button>
+            </div>
+            <div class="keyboard-help">
+                <p><kbd>&larr;</kbd><kbd>&rarr;</kbd> Move &nbsp; <kbd>Space</kbd> Fire &nbsp; <kbd>Enter</kbd> Reset</p>
+            </div>
+        </div>
+        <div class="panel-section">
+            <h3>AI Analysis</h3>
+            <div class="policy-chart-wrapper">
+                <canvas id="policy-chart" height="200"></canvas>
+            </div>
+            <div class="value-display">
+                Value Estimate: <strong id="value-estimate">-</strong>
+            </div>
+            <div class="action-display">
+                AI Action: <strong id="ai-action-name">-</strong>
+            </div>
+        </div>
+        <div class="panel-section">
+            <h3>MCTS Tree</h3>
+            <div id="mcts-tree-container" class="mcts-tree-mini">
+                <p class="muted">Run an AI step to see the search tree</p>
+            </div>
+            <button id="btn-view-tree" class="btn btn-small">Expand Tree</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="/static/js/atari_game.js"></script>
+<script src="/static/js/mcts_tree.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        window.atariGame = new AtariGame('{{ game }}');
+    });
+</script>
+{% endblock %}

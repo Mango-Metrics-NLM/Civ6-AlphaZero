@@ -1,0 +1,81 @@
+# Cloud Run Service Configuration for Civ6 AlphaZero Inference
+# Deploy with: gcloud run services replace cloud-run-inference.yaml
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: civ6az-inference
+  labels:
+    cloud.googleapis.com/location: us-central1
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/launch-stage: BETA
+spec:
+  template:
+    metadata:
+      annotations:
+        # Autoscaling configuration
+        autoscaling.knative.dev/minScale: '1'
+        autoscaling.knative.dev/maxScale: '10'
+        autoscaling.knative.dev/target: '80'  # 80% CPU target
+
+        # GPU configuration (T4 for cost-effective inference)
+        run.googleapis.com/gpu-type: nvidia-l4
+        run.googleapis.com/gpu-count: '1'
+
+        # Execution environment
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/startup-cpu-boost: 'true'
+    spec:
+      containerConcurrency: 100  # Max concurrent requests per container
+      timeoutSeconds: 300  # 5 minute timeout for MCTS searches
+      serviceAccountName: civ6az-inference@hrmtrain.iam.gserviceaccount.com
+
+      containers:
+      - name: inference
+        image: us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-inference:latest
+
+        ports:
+        - name: http1
+          containerPort: 8000
+
+        env:
+        - name: CIV6AZ_VERTEX_PROJECT
+          value: hrmtrain
+        - name: CIV6AZ_VERTEX_REGION
+          value: us-central1
+        - name: CIV6AZ_GCS_BUCKET
+          value: civ6az-training
+        - name: CIV6AZ_GCS_PREFIX
+          value: models/
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: max_split_size_mb:512
+
+        resources:
+          limits:
+            cpu: '4'
+            memory: 16Gi
+            nvidia.com/gpu: '1'
+          requests:
+            cpu: '2'
+            memory: 8Gi
+
+        # Liveness probe
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+
+        # Startup probe (for slow model loading)
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 12  # 120 seconds total
