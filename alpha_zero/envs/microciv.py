@@ -451,10 +451,10 @@ class MicroCivEnv(gym.Env):
     ) -> tuple[int, int]:
         """Find a valid (non-mountain) position in a range."""
         for _ in range(100):
-            x = start_x + self._rng.integers(0, range_)
-            y = start_y + self._rng.integers(0, range_)
-            x = int(min(max(x, 0), self.board_size - 1))
-            y = int(min(max(y, 0), self.board_size - 1))
+            dx = int(self._rng.integers(0, range_))
+            dy = int(self._rng.integers(0, range_))
+            x = min(max(start_x + dx, 0), self.board_size - 1)
+            y = min(max(start_y + dy, 0), self.board_size - 1)
             if self.terrain.get((x, y), Tile()).terrain_type != "mountain":
                 return (x, y)
         return (start_x, start_y)

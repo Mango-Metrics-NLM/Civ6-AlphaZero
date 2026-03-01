@@ -180,7 +180,8 @@ class NPlayerEnvAdapter:
 
     def get_valid_actions(self) -> np.ndarray:
         """Get mask of valid actions."""
-        return self.env.get_valid_actions()
+        result: np.ndarray = self.env.get_valid_actions()
+        return result
 
     def _enrich_info(
         self,

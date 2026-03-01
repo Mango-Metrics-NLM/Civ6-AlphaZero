@@ -1,160 +1,215 @@
-# Civ6 AlphaZero — Next Steps (Post-Phase 17b)
+# Civ6 AlphaZero — Next Steps (Post v1.3.0)
 
-All infrastructure, optimization, and training-readiness phases (1–17b) are complete. The system
-runs multi-iteration training on Vertex AI with selfplay, training, evaluation, post-run tournament,
-batch inference, and vectorized self-play. Docker **v1.2.0** is deployed on Artifact Registry.
-**218+ model versions** (v0–v218+) exist in GCS.
+## Current State
 
-**Current state**: A 50-iteration production run (`dashing-firebrand-1393`) is **ACTIVE** on
-`civ6az-orchestrator` VM (e2-small, us-central1-a). 4 workers × 50 games = 200 games/iteration,
-GumbelMCTS 16 sims, max_turns=30. W&B run:
-[ukxjr0uz](https://wandb.ai/ianshank-none/civ6-alphazero/runs/ukxjr0uz).
+The project is a **153K-line codebase** (309 Python files, 7,380+ tests) that has progressed
+far beyond its original AlphaZero-for-MicroCiv scope. The system now includes:
+
+- **Core AlphaZero**: MicroCiv env, ResNet + Transformer networks, 4 MCTS variants (Simple, Civ6, Gumbel, Batch)
+- **MuZero**: Learned dynamics model, MuZero trainer, MuZero vs AlphaZero benchmark
+- **Multiplayer (N-player)**: Max-N/Paranoid/Best-Reply MCTS, DUCT for simultaneous actions, opponent modeling, N-player value heads, turn management, scoring
+- **Cloud Infrastructure**: Vertex AI deployment, GCS storage, Docker containers, Spot VM preemption, cost estimation
+- **Optimization**: BatchGumbelMCTS, VectorizedMicroCivEnv, hex crystalline encoder
+- **PBT**: Population-based training with mutation operators, fitness evaluation, W&B tracking (10 files)
+- **Tournament**: ELO-based tournament system, round-robin evaluation (9 files)
+- **Web Interface**: FastAPI + WebSocket game UI (12 files)
+- **Civ6 Bridge**: Lua mod file IPC for real Civ6 connection (7 files)
+- **Hierarchical Planning**: Goal decomposition, sub-goal MCTS (19 files)
+- **RAG/LLM**: Strategy advisor, knowledge base, ChromaDB integration
+
+### Production History
+
+| Run | Version | Iterations | Result |
+|-----|---------|-----------|--------|
+| `dashing-firebrand-1393` | v1.2.0 | 50 | **0 model promotions** (bug: trained from scratch each iter) |
+| — | v1.3.0 | — | Fix deployed: `--model_version` loads base weights. **Not yet validated.** |
+
+### Critical Issue: Training Convergence Unproven
+
+**v1.3.0** fixed the training-from-scratch bug, but the fix has not been run in production.
+The v1.2.0 run wasted ~$28.55 producing models that could never beat the champion because
+each iteration started from random weights instead of fine-tuning the incumbent.
 
 ---
 
 ## Completed Phases (Summary)
 
-| Phase | Description | Version | Key Result |
+| Phase | Description | Version | Key Artifact |
 |-------|-------------|---------|------------|
-| 1–7 | Core AlphaZero through Production PBT | v0.8.0 | Full cloud training pipeline |
-| 8–10 | Safeguards, MuZero, Tournaments | v0.8.0 | Automated interventions + tournament system |
-| 11 | Code Quality & Tech Debt | v0.9.0 | −14,600 LOC dead code, 16 xfail fixes |
-| 13 | Multi-Iteration Training | v0.10.0 | 3-phase cloud pipeline validated |
-| 14 | Learning Signal Validation | v0.11.0 | 20-iter run ($2.44), 2 promotions, policy loss 1.21→0.63 |
-| 15 | Value Head Stabilization | v0.12.0 | Per-head LR multipliers (value=0.1×) |
-| 16 | Batch Inference & Vectorized Self-Play | v0.13.0 | BatchGumbelMCTS, VectorizedMicroCivEnv, cloud orchestrator |
-| 17a | Hex Crystalline Encoder & A/B Comparison | v0.14.1 | HexSpatialEncoder, EncoderRegistry, A/B runs |
-| 17b | Training Readiness | **v1.2.0** | action_mask, W&B groups, gumbel default, eval retry, prod run |
+| 1–7 | Core AlphaZero through cloud deployment | v0.8.0 | Full Vertex AI pipeline |
+| 8–10 | Safeguards, MuZero, Tournaments | v0.8.0 | `alpha_zero/tournament/`, MuZero network |
+| 11 | Code Quality & Tech Debt | v0.9.0 | −14,600 LOC dead code |
+| 13 | Multi-Iteration Training | v0.10.0 | 3-phase cloud pipeline |
+| 14 | Learning Signal Validation | v0.11.0 | 20-iter run, 2 promotions, loss 1.21→0.63 |
+| 15 | Value Head Stabilization | v0.12.0 | Per-head LR multipliers |
+| 16 | Batch Inference & Vectorized Self-Play | v0.13.0 | BatchGumbelMCTS, VectorizedMicroCivEnv |
+| 17a | Hex Crystalline Encoder | v0.14.1 | HexSpatialEncoder, EncoderRegistry |
+| 17b | Training Readiness & Production Launch | v1.2.0 | action_mask, W&B groups, prod run |
+| 18 | Training Worker Fine-Tuning Fix | v1.3.0 | `--model_version` loads incumbent weights |
+| — | Multiplayer Module | — | N-player MCTS, DUCT, turn manager (18 files) |
+| — | PBT Module | — | Population-based training (10 files) |
+| — | Web Interface | — | FastAPI + WebSocket (12 files) |
+| — | Civ6 Bridge | — | Lua mod IPC (7 files) |
+| — | Hierarchical Planning | — | Goal decomposition (19 files) |
+| — | DUCT / Simultaneous Actions | — | SimultaneousMCTS, ActionResolver |
 
 ---
 
-## Active: Monitor 50-Iteration Production Run (`dashing-firebrand-1393`)
+## Immediate Priority: Validate Training Convergence
 
-**Goal**: Validate training readiness improvements (action_mask, W&B groups, gumbel default) at
-scale and generate a strong model for tournament evaluation.
+**This must succeed before any other work makes sense.**
 
-### Metrics to Watch
+### What to Validate
 
-- `orchestrator/eval_win_rate` — target ≥ 3 promotions over 50 iterations
-- `train/policy_loss` — should trend downward (was 1.21→0.63 in Phase 14)
-- `train/value_correlation` — target >0.5 for 10+ consecutive iterations
-- `eval/win_rate` per W&B group — confirm action_mask improves promotion rate
-- `tournament/elo_*` — post-run ELO spread target >100 points
+1. **Weight continuity**: Each iteration fine-tunes the champion, not random init
+2. **Loss decrease**: Policy loss trends downward across iterations
+3. **Model promotions**: At least some trained models beat the incumbent (>55% win rate)
+4. **Win rate improvement**: Network improves against random player
+
+### How to Validate
+
+```bash
+# Local validation (no cloud needed)
+python scripts/validate_v130_training.py --iterations=5 --games=10
+
+# Cloud validation (requires GCP)
+python -m infra.vertex_launcher --mode=iteration --iteration=0 --wait
+```
 
 ### Success Criteria
 
-- 3+ model promotions over 50 iterations
-- Policy loss <0.5 by iteration 50
-- Value correlation stabilization >0.5
-- Post-run tournament ELO spread >100 points
-- Total cost <$15
-
-### Monitor Commands (run on `civ6az-orchestrator` VM)
-
-```bash
-docker logs -f civ6az-prod-v120 2>&1 | tail -50
-```
+- Local validation script exits 0
+- Policy loss at iteration 5 < iteration 1
+- Win rate vs random at iteration 5 > iteration 1
+- At least 1 model promotion in a cloud run
 
 ---
 
-## Phase 18: Batch Self-Play Cloud Integration
+## Near-Term Roadmap
 
-**Goal**: Enable `--num_parallel_games` and `--max_batch_size` in cloud training for 5–10×
-throughput via `BatchGumbelMCTS` + `VectorizedMicroCivEnv`.
+### Phase 19: Batch Self-Play Cloud Integration
 
-**Prerequisite**: Production run `dashing-firebrand-1393` completes successfully.
+**Goal**: Wire `BatchGumbelMCTS` + `VectorizedMicroCivEnv` into cloud containers for
+5-10x throughput improvement.
 
-### Tasks
+**Status**: Local implementation complete. Cloud wiring needed.
 
-1. **Rebuild container** with batch self-play enabled by default (`--num_parallel_games=4`)
-2. **Benchmark cloud throughput**: Compare batched vs baseline games/min on T4 GPU
-3. **Tune batch parameters**: Find optimal `num_parallel_games` for T4 memory (16 GB)
-4. **Run 50-iteration batch training run**: Measure wall-clock speedup and cost reduction
+**Tasks**:
+1. Add `--num_parallel_games` and `--max_batch_size` to `selfplay_worker.py`
+2. Wire through `vertex_orchestrator.py` → `vertex_jobs.py`
+3. Benchmark T4 GPU memory with batched self-play
+4. Run 50-iteration batch training to measure wall-clock speedup
 
-### Estimated Cost
+**Prerequisite**: Training convergence validated (Priority 0).
 
-- Similar per-game cost but ~3–5× faster wall-clock → faster feedback loops
-
----
-
-## Phase 19: MuZero Training Run
-
-**Goal**: Validate the learned dynamics model on MicroCiv and compare against AlphaZero.
-
-### Tasks
-
-1. Run MuZero PBT with `configs/muzero_pbt.yaml` (population_size=6)
-2. Compare AlphaZero vs MuZero on identical hyperparameters (ELO, policy loss, cost)
-3. Measure MuZero's advantage in search efficiency (no env cloning needed)
-
-### Estimated Cost
-
-- 6 agents × 10 generations × ~$0.20/iteration ≈ $12
+**Key Files**:
+- `alpha_zero/cloud/gcp/selfplay_worker.py`
+- `alpha_zero/core/batch_mcts.py` (exists, 580 lines)
+- `alpha_zero/envs/vectorized_env.py` (exists, 350 lines)
 
 ---
 
-## Phase 20: Population-Based Training on Vertex AI
+### Phase 20: N-Player MicroCiv Training (Multiplayer Gaps G7-G9)
 
-**Goal**: Run PBT with population_size=8 to automatically tune hyperparameters.
+**Goal**: Enable 3-8 player training using the already-implemented multiplayer module.
 
-**Prerequisite**: Phase 18 batch self-play validates throughput improvements.
+**Status**: Multiplayer MCTS/scoring/turns fully implemented (18 files). MicroCiv itself
+is still hardcoded for 2 players.
 
-### Tasks
+**Tasks**:
+1. **G7: N-player MicroCiv** — Parameterize `num_players`, fix turn rotation,
+   victory conditions, starting placement (~50 lines in `microciv.py`)
+2. **G8: N-player encoder** — Dynamic channel allocation per player
+   (~100 lines in `civ6_encoder.py`)
+3. **G9: Training pipeline** — `TrainingExample.value` → per-player values,
+   integrate `compute_nplayer_value_loss()` (already exists)
+4. Train 3-4 player MicroCiv agents
 
-1. Launch PBT with `configs/pbt_prod.yaml`
-2. Monitor W&B `pbt/elo_*`, `pbt/fitness_*`, `pbt/mutation_*` metrics
-3. Validate baseline benchmarks at every 5th generation
-4. Use dynamic evaluation strategy switch after generation 11
-
-### Estimated Cost
-
-- 8 agents × 10 generations × ~$0.20/iteration ≈ $16
-
----
-
-## Phase 21: DDP Test Rewrites & Full Type Safety
-
-**Goal**: Fix remaining 12 DDP xfailed tests and achieve full mypy strict mode.
-
-### Tasks
-
-1. Rewrite DDP tests to use `torch.multiprocessing.spawn` instead of subprocess
-2. Add `disallow_untyped_defs` for remaining packages (cloud, evaluation, rag)
-3. Target: 0 xfails, 0 mypy errors
+**Key Files**:
+- `alpha_zero/envs/microciv.py` — hardcoded `1 - self.current_player`
+- `alpha_zero/envs/civ6_encoder.py` — hardcoded 13 channels
+- `alpha_zero/multiplayer/` — already complete
 
 ---
 
-## Phase 22: Human vs AI Interface
+### Phase 21: DDP Test Fixes
 
-**Goal**: Web-based UI for playing against the trained agent.
+**Goal**: Fix 12 xfailed DDP tests to increase confidence in distributed training.
 
-### Tasks
-
-1. FastAPI backend serving the trained model
-2. WebSocket game state streaming
-3. React/HTMX frontend with MicroCiv board visualization
-4. Move history and agent confidence display
+**Tasks**:
+1. Audit xfailed tests — categorize root causes
+2. Rewrite using `torch.multiprocessing.spawn`
+3. Mock DDP init where full process groups unavailable
+4. Target: 0 xfails
 
 ---
 
-## Phase 23: Full Civ6 Integration
+## Medium-Term Roadmap
 
-**Goal**: Play against the real Civilization VI game.
+### Phase 22: MuZero PBT Training Run
 
-### Tasks
+**Goal**: Run MuZero with PBT on Vertex AI, compare against AlphaZero.
 
+**Status**: MuZero network + trainer + PBT module all exist.
+
+**Tasks**:
+1. Run PBT with `configs/muzero_pbt.yaml`
+2. Compare AlphaZero vs MuZero (ELO, loss, cost)
+3. Measure search efficiency gain (no env cloning)
+
+---
+
+### Phase 23: Fog of War / Partial Observability (Gap G10)
+
+**Goal**: Handle information asymmetry in multiplayer.
+
+**Approach**: Start with determinization — sample consistent world states, run MCTS on each.
+
+**Effort**: New module, ~500 lines + tests.
+
+---
+
+### Phase 24: Real Civ6 Integration (Gap G12)
+
+**Goal**: Connect trained model to actual Civilization VI via Lua mod bridge.
+
+**Status**: `alpha_zero/bridge/` module exists (7 files) with file-based IPC.
+
+**Tasks**:
 1. Validate Lua mod with current Civ6 version
-2. Scale model to 16×16 board with 84 spatial channels
-3. Implement full 483K hierarchical action space
-4. Bridge latency optimization
+2. Scale model to full 84-channel encoder
+3. Implement full hierarchical action space
+
+---
+
+## Long-Term Vision
+
+| Feature | Module Status | Effort |
+|---------|---------------|--------|
+| Population diversity training | PBT exists | Medium |
+| Diplomatic reasoning (LLM) | RAG exists, diplomacy module basic | High |
+| Human vs AI (polished) | Web UI exists (alpha) | Medium |
+| Cross-game transfer learning | Not started | Very High |
 
 ---
 
 ## Priority Order
 
 ```
-Monitor prod run ──→ Phase 18 (Batch Cloud) ──→ Phase 19 (MuZero) ──→ Phase 20 (PBT)
-                                              ╰──→ Phase 21 (DDP/Types) ──→ Phase 22 (UI) ──→ Phase 23 (Civ6)
+Validate v1.3.0 convergence (CRITICAL)
+    ↓
+Phase 19: Batch self-play in cloud
+    ↓
+Phase 20: N-player MicroCiv (G7/G8/G9)
+    ↓
+Phase 21: DDP test fixes ─────────────→ Phase 22: MuZero PBT
+                                            ↓
+                                       Phase 23: Fog of war
+                                            ↓
+                                       Phase 24: Full Civ6
 ```
 
-**Immediate focus**: Monitor `dashing-firebrand-1393` production run (50 iterations on Vertex AI).
+---
+
+*Updated: 2026-03-01*
+*Version: v1.3.0 (training convergence fix, awaiting validation)*

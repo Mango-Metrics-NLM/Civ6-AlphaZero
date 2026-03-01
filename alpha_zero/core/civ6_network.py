@@ -33,12 +33,12 @@ try:
     try:
         import numpy.core.multiarray as _ma_legacy
 
-        safe_types.append(_ma_legacy.scalar)  # type: ignore[attr-defined]
+        safe_types.append(_ma_legacy.scalar)
     except (ImportError, AttributeError):
         try:
             import numpy._core.multiarray as _ma_modern
 
-            safe_types.append(_ma_modern.scalar)  # type: ignore[attr-defined]
+            safe_types.append(_ma_modern.scalar)
         except (ImportError, AttributeError):
             pass
 
@@ -1186,11 +1186,11 @@ class HierarchicalPolicyHead(nn.Module):
         act_s = act_s.view(act_s.size(0), -1)
         act_combined = torch.cat([act_s, vector_features, category_probs], dim=1)
         act_hidden = F.relu(self.action_fc1(act_combined))
-        action_logits = self.action_fc2(act_hidden)
+        action_logits: torch.Tensor = self.action_fc2(act_hidden)
 
         if return_category_probs:
-            return action_logits, category_probs  # type: ignore[no-any-return]
-        return action_logits  # type: ignore[no-any-return]
+            return action_logits, category_probs
+        return action_logits
 
 
 class Civ6NetworkV2(nn.Module):

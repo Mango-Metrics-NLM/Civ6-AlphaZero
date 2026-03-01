@@ -749,3 +749,317 @@ class TestProperties:
         expected = population_manager.config.population_size
         assert population_manager.population_size == expected
         assert len(population_manager) == expected
+
+
+# =============================================================================
+# Exploit and Explore Edge Cases
+# =============================================================================
+
+
+class TestExploitExploreEdgeCases:
+    """Additional tests for exploit/explore edge cases."""
+
+    def test_exploit_explore_preserves_population_size(
+        self, population_manager: PopulationManager
+    ) -> None:
+        """Test that exploit/explore maintains the same population size."""
+        agent_ids = population_manager.get_agent_ids()
+        for i, aid in enumerate(agent_ids):
+            population_manager.update_fitness(aid, 0.1 * (i + 1))
+
+        initial_size = population_manager.population_size
+
+        population_manager.exploit_and_explore()
+
+        assert population_manager.population_size == initial_size
+
+    def test_exploit_explore_agent_ids_preserved(
+        self, population_manager: PopulationManager
+    ) -> None:
+        """Test that agent IDs are preserved after exploit/explore."""
+        agent_ids = set(population_manager.get_agent_ids())
+        for i, aid in enumerate(sorted(agent_ids)):
+            population_manager.update_fitness(aid, 0.1 * (i + 1))
+
+        population_manager.exploit_and_explore()
+
+        new_ids = set(population_manager.get_agent_ids())
+        # Agent IDs should be the same (weak agents are replaced in-place)
+        assert new_ids == agent_ids
+
+    def test_exploit_explore_with_resample(
+        self, pbt_config: PBTConfig, rng: np.random.Generator
+    ) -> None:
+        """Test exploit/explore with high resample probability."""
+        pbt_config.resample_probability = 1.0  # Always resample
+        manager = PopulationManager(pbt_config, rng=rng)
+        manager.initialize()
+
+        agent_ids = manager.get_agent_ids()
+        for i, aid in enumerate(agent_ids):
+            manager.update_fitness(aid, 0.1 * (i + 1))
+
+        changes = manager.exploit_and_explore()
+
+        # All replacements should have happened via resampling
+        assert len(changes) == pbt_config.get_num_to_replace()
+        for weak_id, strong_id, new_params in changes:
+            assert isinstance(new_params, dict)
+            assert len(new_params) > 0
+
+    def test_exploit_explore_weight_copy_failure(
+        self, pbt_config: PBTConfig, rng: np.random.Generator
+    ) -> None:
+        """Test exploit/explore handles weight copy failure gracefully."""
+        pbt_config.copy_weights = True
+        manager = PopulationManager(pbt_config, rng=rng)
+        manager.initialize()
+
+        # Set up a copy function that raises
+        copy_fn = MagicMock(side_effect=RuntimeError("Weight copy failed"))
+        manager.set_weight_callbacks(copy_fn=copy_fn)
+
+        agent_ids = manager.get_agent_ids()
+        for i, aid in enumerate(agent_ids):
+            manager.update_fitness(aid, 0.1 * (i + 1))
+
+        # Should not raise
+        changes = manager.exploit_and_explore()
+        assert len(changes) > 0
+
+    def test_exploit_explore_no_copy_weights(
+        self, pbt_config: PBTConfig, rng: np.random.Generator
+    ) -> None:
+        """Test exploit/explore with copy_weights disabled."""
+        pbt_config.copy_weights = False
+        manager = PopulationManager(pbt_config, rng=rng)
+        manager.initialize()
+
+        copy_fn = MagicMock()
+        manager.set_weight_callbacks(copy_fn=copy_fn)
+
+        agent_ids = manager.get_agent_ids()
+        for i, aid in enumerate(agent_ids):
+            manager.update_fitness(aid, 0.1 * (i + 1))
+
+        manager.exploit_and_explore()
+
+        # Copy function should NOT have been called when copy_weights=False
+        copy_fn.assert_not_called()
+
+    def test_exploit_explore_multiple_generations(
+        self, population_manager: PopulationManager
+    ) -> None:
+        """Test multiple generations of exploit/explore."""
+        for gen in range(5):
+            agent_ids = population_manager.get_agent_ids()
+            for i, aid in enumerate(agent_ids):
+                population_manager.update_fitness(aid, 0.1 * (i + 1) + gen * 0.01)
+
+            changes = population_manager.exploit_and_explore()
+            assert len(changes) > 0
+
+        assert population_manager.generation == 5
+
+
+# =============================================================================
+# Selection Method Tests
+# =============================================================================
+
+
+class TestSelectionMethodVariants:
+    """Tests for different selection methods in population manager."""
+
+    def test_select_strong_agent_empty_candidates(
+        self, pbt_config: PBTConfig, rng: np.random.Generator
+    ) -> None:
+        """Test _select_strong_agent with empty candidates falls back."""
+        manager = PopulationManager(pbt_config, rng=rng)
+        manager.initialize()
+
+        # With empty candidates, should fall back to first agent
+        selected = manager._select_strong_agent([])
+        assert selected is not None
+
+    def test_select_strong_agent_fallback_unknown_method(
+        self, pbt_config: PBTConfig, rng: np.random.Generator
+    ) -> None:
+        """Test fallback for unknown selection method."""
+        pbt_config.selection_method = "truncation"  # valid
+        manager = PopulationManager(pbt_config, rng=rng)
+        manager.initialize()
+
+        agent_ids = manager.get_agent_ids()
+        for i, aid in enumerate(agent_ids):
+            manager.update_fitness(aid, 0.1 * (i + 1))
+
+        strong = manager.get_agents_to_copy_from()
+        selected = manager._select_strong_agent(strong)
+        assert selected in strong
+
+    def test_roulette_with_all_zero_fitness(
+        self, pbt_config: PBTConfig, rng: np.random.Generator
+    ) -> None:
+        """Test roulette selection when all agents have zero fitness."""
+        pbt_config.selection_method = "roulette"
+        manager = PopulationManager(pbt_config, rng=rng)
+        manager.initialize()
+
+        # Set all fitness to 0
+        agent_ids = manager.get_agent_ids()
+        for aid in agent_ids:
+            manager.update_fitness(aid, 0.0)
+
+        strong = manager.get_agents_to_copy_from()
+        selected = manager._select_strong_agent(strong)
+        assert selected in strong
+
+    def test_roulette_with_negative_fitness(
+        self, pbt_config: PBTConfig, rng: np.random.Generator
+    ) -> None:
+        """Test roulette selection with negative fitness values."""
+        pbt_config.selection_method = "roulette"
+        manager = PopulationManager(pbt_config, rng=rng)
+        manager.initialize()
+
+        agent_ids = manager.get_agent_ids()
+        for i, aid in enumerate(agent_ids):
+            manager.update_fitness(aid, -0.5 + 0.1 * i)  # Some negative
+
+        strong = manager.get_agents_to_copy_from()
+        selected = manager._select_strong_agent(strong)
+        assert selected in strong
+
+
+# =============================================================================
+# Compute Stats Edge Cases
+# =============================================================================
+
+
+class TestComputeStatsEdgeCases:
+    """Edge case tests for compute_stats."""
+
+    def test_compute_stats_records_to_history(
+        self, population_manager: PopulationManager
+    ) -> None:
+        """Test that compute_stats appends to stats_history."""
+        for aid in population_manager.get_agent_ids():
+            population_manager.update_fitness(aid, 0.5)
+
+        initial_len = len(population_manager.stats_history)
+
+        population_manager.compute_stats()
+        assert len(population_manager.stats_history) == initial_len + 1
+
+        population_manager.compute_stats()
+        assert len(population_manager.stats_history) == initial_len + 2
+
+    def test_compute_stats_total_games_and_steps(
+        self, population_manager: PopulationManager
+    ) -> None:
+        """Test stats tracks total games and steps correctly."""
+        for i, aid in enumerate(population_manager.get_agent_ids()):
+            population_manager.update_fitness(aid, 0.5, games_played=10, training_steps=100)
+
+        stats = population_manager.compute_stats()
+
+        expected_games = 10 * population_manager.population_size
+        expected_steps = 100 * population_manager.population_size
+        assert stats.total_games == expected_games
+        assert stats.total_steps == expected_steps
+
+    def test_compute_stats_non_numeric_hyperparams_excluded(
+        self, pbt_config: PBTConfig, rng: np.random.Generator
+    ) -> None:
+        """Test that non-numeric hyperparameters are excluded from stats."""
+        manager = PopulationManager(pbt_config, rng=rng)
+
+        # Create agents with mixed parameter types
+        agents = []
+        for _ in range(4):
+            agent = AgentState(
+                hyperparameters={
+                    "learning_rate": 0.001,
+                    "optimizer": "adam",  # Non-numeric
+                }
+            )
+            agent.update_fitness(0.5)
+            agents.append(agent)
+
+        manager.initialize(existing_agents=agents)
+
+        stats = manager.compute_stats()
+
+        # learning_rate should have stats
+        assert "learning_rate" in stats.hyperparameter_stats
+        # optimizer should NOT have stats (non-numeric)
+        assert "optimizer" not in stats.hyperparameter_stats
+
+
+# =============================================================================
+# Convergence Edge Cases
+# =============================================================================
+
+
+class TestConvergenceEdgeCases:
+    """Additional convergence tests."""
+
+    def test_convergence_exact_window_boundary(
+        self, pbt_config: PBTConfig, rng: np.random.Generator
+    ) -> None:
+        """Test convergence at exact window boundary."""
+        pbt_config.convergence_window = 3
+        pbt_config.convergence_threshold = 0.1
+        manager = PopulationManager(pbt_config, rng=rng)
+        manager.initialize()
+
+        # Add exactly convergence_window stats with 0 variance
+        for _ in range(3):
+            for aid in manager.get_agent_ids():
+                manager.update_fitness(aid, 0.5)
+            manager.compute_stats()
+
+        assert manager.is_converged()
+
+    def test_convergence_just_below_window(
+        self, pbt_config: PBTConfig, rng: np.random.Generator
+    ) -> None:
+        """Test convergence with window - 1 stats (not enough)."""
+        pbt_config.convergence_window = 5
+        pbt_config.convergence_threshold = 0.1
+        manager = PopulationManager(pbt_config, rng=rng)
+        manager.initialize()
+
+        for _ in range(4):
+            for aid in manager.get_agent_ids():
+                manager.update_fitness(aid, 0.5)
+            manager.compute_stats()
+
+        # Not enough history
+        assert not manager.is_converged()
+
+
+# =============================================================================
+# Initialize With Generation Tracking
+# =============================================================================
+
+
+class TestInitializeGeneration:
+    """Tests for generation tracking during initialization."""
+
+    def test_initialize_existing_agents_with_different_generations(
+        self, pbt_config: PBTConfig
+    ) -> None:
+        """Test that max generation is tracked when loading existing agents."""
+        agents = [
+            AgentState(agent_id="a", hyperparameters={"lr": 0.001}, generation=0),
+            AgentState(agent_id="b", hyperparameters={"lr": 0.002}, generation=3),
+            AgentState(agent_id="c", hyperparameters={"lr": 0.003}, generation=5),
+            AgentState(agent_id="d", hyperparameters={"lr": 0.004}, generation=2),
+        ]
+
+        manager = PopulationManager(pbt_config)
+        manager.initialize(existing_agents=agents)
+
+        # Generation should be the max of all agents
+        assert manager.generation == 5

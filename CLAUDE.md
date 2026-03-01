@@ -343,6 +343,17 @@ When making changes, update the relevant sections below:
 | 2026-02-28 | DUCT for simultaneous actions | Decoupled UCB per player, avoids combinatorial |A|^N explosion via lazy joint children |
 | 2026-02-28 | ActionResolver with strategies | Configurable conflict resolution (independent, priority, random, simultaneous) |
 | 2026-02-28 | SimultaneousMCTSConfig frozen | All DUCT params via frozen dataclass with CIV6AZ_ env overrides |
+| 2026-02-17 | N-player MCTS (Max-N, Paranoid, Best-Reply) | Multiplayer support for 2-8 players, per-player value vectors |
+| 2026-02-17 | Opponent modeling | Frequency-based prediction with exponential decay, Bayesian blending |
+| 2026-02-17 | Turn manager (Sequential/Simultaneous/Dynamic) | Civ6-style dynamic turn modes |
+| 2026-02-18 | Hex crystalline encoder | Hex-topology-aware spatial encoder, axial coordinates, ring-distance PE |
+| 2026-02-21 | GumbelMCTS as default | `DEFAULT_MCTS_TYPE` changed from `civ6` to `gumbel` |
+| 2026-02-21 | Action mask in training pipeline | 5-tensor dataset: spatial, vector, mask, policy, value |
+| 2026-02-23 | Training worker fine-tuning fix | `--model_version` loads incumbent from GCS before training |
+| 2026-03-01 | Civ6 Lua mod bridge | File-based IPC in `alpha_zero/bridge/` (7 files) |
+| 2026-03-01 | Web interface | FastAPI + WebSocket game UI in `alpha_zero/web/` (12 files) |
+| 2026-03-01 | PBT module | Population-based training in `alpha_zero/pbt/` (10 files) |
+| 2026-03-01 | Hierarchical planning | Goal decomposition in `alpha_zero/hierarchical/` (19 files) |
 
 ### 5.3 Known Issues
 
@@ -352,15 +363,19 @@ When making changes, update the relevant sections below:
 | SimpleMCTS random rollout is weak | Use neural network MCTS after initial training |
 | Windows multiprocessing spawn | Use `if __name__ == "__main__"` guard |
 | pytest-xdist not always installed | Tests run without parallel flag if missing |
+| v1.3.0 training convergence unvalidated | Run `scripts/validate_v130_training.py` locally or launch cloud run |
+| MicroCiv hardcoded for 2 players | Multiplayer module built, but env needs G7/G8/G9 changes |
+| 12 DDP tests xfailed | Need rewrite with `torch.multiprocessing.spawn` |
 
-### 5.4 Bug Fixes (2026-01-20)
+### 5.4 Bug Fixes
 
-| Bug | Fix |
-|-----|-----|
-| Action mask indices mismatch | Changed to player-relative indices in `civ6_actions.py` |
-| Evaluation `_env` attribute error | Always create fresh wrapped environment per game |
-| Value tensor shape mismatch | Added `value.unsqueeze(1)` in training loss |
-| Curriculum `record_game` API | Changed `win=` to `won=` parameter |
+| Bug | Fix | Date |
+|-----|-----|------|
+| Action mask indices mismatch | Changed to player-relative indices in `civ6_actions.py` | 2026-01-20 |
+| Evaluation `_env` attribute error | Always create fresh wrapped environment per game | 2026-01-20 |
+| Value tensor shape mismatch | Added `value.unsqueeze(1)` in training loss | 2026-01-20 |
+| Curriculum `record_game` API | Changed `win=` to `won=` parameter | 2026-01-20 |
+| **Training from scratch each iteration** | Added `--model_version` to load incumbent weights (v1.3.0) | 2026-02-23 |
 
 ### 5.5 Information to Preserve
 
@@ -491,6 +506,28 @@ Civ6-AlphaZero/
 │   │   ├── rag_integration.py   # RAG-LLM integration layer
 │   │   ├── strategy_advisor.py  # LLM-based strategy advisor
 │   │   └── __main__.py          # CLI entry point
+│   ├── multiplayer/             # N-player multiplayer support
+│   │   ├── mcts_node.py         # N-player MCTS node (per-player values)
+│   │   ├── mcts.py              # Max-N, Paranoid, Best-Reply MCTS
+│   │   ├── network_heads.py     # N-player value head
+│   │   ├── env_adapter.py       # 2-player → N-player env wrapper
+│   │   ├── turn_manager.py      # Sequential/Simultaneous/Dynamic turns
+│   │   ├── opponent_model.py    # Frequency-based opponent modeling
+│   │   ├── scoring.py           # Ranking & scoring system
+│   │   ├── game_connector.py    # Unciv/Mock game connectors
+│   │   └── config.py            # MultiplayerConfig
+│   ├── pbt/                     # Population-Based Training (10 files)
+│   │   ├── population.py        # Population management
+│   │   ├── mutation.py          # Mutation operators
+│   │   ├── fitness.py           # Fitness evaluation
+│   │   └── muzero_hyperparams.py # MuZero-specific hyperparams
+│   ├── tournament/              # ELO Tournament System (9 files)
+│   ├── web/                     # Web Interface (12 files, FastAPI + WebSocket)
+│   ├── bridge/                  # Civ6 Lua Mod Bridge (7 files, file IPC)
+│   ├── hierarchical/            # Hierarchical Goal Planning (19 files)
+│   ├── training/                # Training integrations
+│   │   ├── muzero_integration.py # MuZero training pipeline
+│   │   └── muzero_trainer.py    # MuZero trainer
 │   ├── interfaces/              # Game interfaces
 │   │   ├── __init__.py
 │   │   └── unciv_interface.py   # Unciv JSON interface
@@ -978,13 +1015,28 @@ python -m infra.vertex_launcher \
 
 ## SECTION 13: NEXT STEPS
 
-### Phase 3+ (Planned)
-1. **Multi-GPU Training**: Extend distributed training to multiple GPUs
-2. **Population-Based Training**: Adaptive hyperparameter tuning
-3. **Full Civ 6 Integration**: Direct game interface (mod or API)
-4. **Tournament System**: ELO-based opponent selection
-5. **Human vs AI**: Interface for human players to challenge trained models
-6. **RAG Enhancement**: LLM-powered strategy recommendations using RAG context
+### Current: Validate v1.3.0 Training Convergence
+- v1.2.0 production run had **0 model promotions** (training-from-scratch bug)
+- v1.3.0 fixed weight loading but has **not been validated** in production
+- Run `python scripts/validate_v130_training.py` for local validation
+
+### Implemented (not yet listed as "complete")
+These features are already substantially built but were never formally tracked as phases:
+- **PBT**: `alpha_zero/pbt/` (10 files, 4,588 lines)
+- **Tournament**: `alpha_zero/tournament/` (9 files, 5,143 lines)
+- **Web Interface**: `alpha_zero/web/` (12 files)
+- **Civ6 Bridge**: `alpha_zero/bridge/` (7 files)
+- **Hierarchical Planning**: `alpha_zero/hierarchical/` (19 files)
+- **MuZero**: `alpha_zero/core/muzero_network.py`, `training/muzero_*`
+- **N-Player Multiplayer**: `alpha_zero/multiplayer/` (18 files)
+
+### Genuine Next Steps
+1. **Validate training convergence**: Prove models improve across iterations
+2. **Batch self-play in cloud**: Wire BatchGumbelMCTS into cloud containers (5-10x throughput)
+3. **N-player MicroCiv**: Fix hardcoded 2-player env (gaps G7/G8/G9)
+4. **DDP test fixes**: Fix 12 xfailed distributed tests
+5. **Fog of war**: Information set sampling for partial observability (gap G10)
+6. **Full Civ6 integration**: Scale to real game via Lua mod bridge
 
 ---
 
@@ -1035,6 +1087,6 @@ across a three-role workflow pipeline: Planning → DEV-SQE → Pre-PR.
 
 ---
 
-*Last updated: 2026-02-08*
-*Phase: 5 - Google Vertex AI Cloud Deployment*
-*Current Focus: Budget-tier cloud deployment with GCS storage and Spot VMs*
+*Last updated: 2026-03-01*
+*Version: v1.3.0 (training convergence fix, awaiting validation)*
+*Current Focus: Validate training convergence, then batch self-play + N-player MicroCiv*

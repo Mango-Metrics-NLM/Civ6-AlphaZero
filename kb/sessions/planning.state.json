@@ -1,4 +1,20 @@
 {
-    "last_session_id": null,
-    "current_focus": "idle"
+    "last_session_id": "session-20260301-plan",
+    "last_timestamp": "2026-03-01T04:30:00Z",
+    "current_focus": "v1.3.0 convergence validation + doc reconciliation",
+    "resume_pointers": {
+        "current_task": "Validate v1.3.0 training convergence",
+        "blocked_on": [],
+        "next_steps": [
+            "Run scripts/validate_v130_training.py locally",
+            "Launch cloud production run with v1.3.0 fix",
+            "Enable batch self-play in cloud (Phase 19)",
+            "N-player MicroCiv gaps G7/G8/G9 (Phase 20)"
+        ]
+    },
+    "context_files": [
+        "NEXT_STEPS.md",
+        "CHANGELOG.md",
+        "scripts/validate_v130_training.py"
+    ]
 }
