@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -16,7 +16,6 @@ from alpha_zero.multiplayer.determinization import (
     WorldSampler,
 )
 from alpha_zero.multiplayer.fog_of_war import FogOfWarManager, VisibilityState
-
 
 # ---------------------------------------------------------------------------
 # Helpers / Fixtures
@@ -85,7 +84,7 @@ def _make_base_mcts(
         mock.search.side_effect = RuntimeError("MCTS exploded")
     else:
         probs = np.ones(action_size) / action_size
-        values = {p: 0.0 for p in range(num_players)}
+        values = dict.fromkeys(range(num_players), 0.0)
         mock.search.return_value = (probs, values)
     return mock
 
@@ -583,7 +582,7 @@ class TestDeterminizedMCTSSearch:
 
         calls = base_mcts.search.call_args_list
         # First call: add_noise=True
-        assert calls[0][1].get("add_noise") is True or calls[0][0] == (env.clone.return_value,) and calls[0][1].get("add_noise") is True
+        assert calls[0][1].get("add_noise") is True or (calls[0][0] == (env.clone.return_value,) and calls[0][1].get("add_noise") is True)
         # Remaining calls: add_noise=False
         for call in calls[1:]:
             assert call[1].get("add_noise") is False
@@ -732,7 +731,7 @@ class TestDeterminizedMCTSSearch:
         env = _make_env(action_size=action_size, num_players=2)
 
         det = DeterminizedMCTS(base_mcts, cfg, sampler)
-        probs, values = det.search(env, game_state, player=0, fog_manager=fog_manager)
+        probs, _values = det.search(env, game_state, player=0, fog_manager=fog_manager)
 
         # Max = [0.8, 0.8, 0.1]; sum=1.7; normalized
         expected = np.array([0.8, 0.8, 0.1])

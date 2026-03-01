@@ -8,10 +8,9 @@ Verifies that:
 
 from __future__ import annotations
 
-from typing import Any, SupportsFloat
+from typing import Any
 
 import numpy as np
-import pytest
 import torch
 
 from alpha_zero.multiplayer import (

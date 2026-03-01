@@ -128,7 +128,7 @@ class TestNPlayerMCTSNode:
 
         parent.visit_count = 20
 
-        action, child = parent.select_child(c_puct=1.5, selecting_player=0)
+        action, _child = parent.select_child(c_puct=1.5, selecting_player=0)
         assert action == 0  # Better for player 0
 
     def test_select_child_paranoid(self):
@@ -149,7 +149,7 @@ class TestNPlayerMCTSNode:
         parent.visit_count = 20
 
         # Opponent (player 1) should pick action that hurts root player 0
-        action, child = parent.select_child_paranoid(c_puct=0.0, root_player=0)
+        action, _child = parent.select_child_paranoid(c_puct=0.0, root_player=0)
         assert action == 1  # Worse for player 0
 
     def test_get_action_probabilities_temperature_1(self):

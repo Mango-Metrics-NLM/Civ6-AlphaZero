@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from alpha_zero.multiplayer.config import TurnManagerConfig
-from alpha_zero.multiplayer.turn_manager import TurnManager, TurnState
+from alpha_zero.multiplayer.turn_manager import TurnManager
 
 
 class TestTurnManagerSequential:
@@ -45,7 +45,7 @@ class TestTurnManagerSequential:
             manager.end_turn()
 
     def test_submit_action(self, manager):
-        state = manager.begin_turn()
+        manager.begin_turn()
         result = manager.submit_action(0, action=42)
         assert result is True
 
