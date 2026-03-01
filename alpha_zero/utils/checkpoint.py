@@ -212,12 +212,31 @@ def save_checkpoint(
     logger.info(f"Saved checkpoint to {path}")
 
 
+def compute_weight_checksum(network: torch.nn.Module) -> float:
+    """Compute a reproducible checksum of network weights.
+
+    Sums the absolute values of all parameters. Useful for detecting
+    weight re-initialisation or verifying checkpoint roundtrip fidelity.
+
+    Args:
+        network: PyTorch module to checksum.
+
+    Returns:
+        Non-negative float representing the total absolute weight magnitude.
+    """
+    total = 0.0
+    for param in network.parameters():
+        total += param.data.abs().sum().item()
+    return total
+
+
 # =============================================================================
 # Module exports
 # =============================================================================
 
 __all__ = [
     "CheckpointLoadResult",
+    "compute_weight_checksum",
     "load_model_state",
     "safe_load_checkpoint",
     "save_checkpoint",

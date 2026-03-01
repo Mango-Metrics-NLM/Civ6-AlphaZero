@@ -358,7 +358,8 @@ class FogOfWarSystem:
             ``np.ndarray`` of shape ``(board_size, board_size)`` with
             values in {UNEXPLORED, SEEN, VISIBLE}.
         """
-        return self._visibility[player].copy()
+        result: np.ndarray = self._visibility[player].copy()
+        return result
 
     # ------------------------------------------------------------------
     # Filtering helpers

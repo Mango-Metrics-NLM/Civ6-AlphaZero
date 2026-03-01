@@ -28,12 +28,14 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-# Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root to path if not already importable
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
-from alpha_zero.core.civ6_network import MicroCivNetwork
-from alpha_zero.envs.microciv import MicroCivEnv
-from alpha_zero.training_civ6 import (
+from alpha_zero.core.civ6_network import MicroCivNetwork  # noqa: E402
+from alpha_zero.envs.microciv import MicroCivEnv  # noqa: E402
+from alpha_zero.training_civ6 import (  # noqa: E402
     ReplayBuffer,
     ReplayDataset,
     TrainingConfig,
@@ -41,8 +43,115 @@ from alpha_zero.training_civ6 import (
     run_self_play,
     train_epoch,
 )
+from alpha_zero.utils.checkpoint import compute_weight_checksum  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ValidationConfig:
+    """Configuration for the v1.3.0 training convergence validator.
+
+    All hardcoded thresholds and defaults are consolidated here for
+    transparency, testability, and environment-variable overrides.
+
+    Attributes:
+        weight_change_threshold: Maximum allowed relative weight change
+            between iterations. Changes above this are treated as
+            re-initialisation (default 0.5 = 50%).
+        checkpoint_tolerance: Maximum absolute difference between pre-save
+            and post-load checksums to consider a roundtrip successful.
+        epsilon: Guard against division-by-zero when computing relative
+            weight changes.
+        iterations: Number of training iterations.
+        games_per_iter: Self-play games per iteration.
+        board_size: MicroCiv board size (smaller = faster).
+        num_simulations: MCTS simulations per move.
+        eval_games: Games for evaluation against random.
+        num_res_blocks: Residual blocks in the network.
+        num_filters: Convolutional filters in the network.
+        batch_size: Training batch size.
+        learning_rate: Optimiser learning rate.
+        weight_decay: Optimiser weight decay.
+        gradient_clip: Maximum gradient norm.
+        num_epochs: Training epochs per iteration.
+        replay_buffer_size: Maximum replay buffer capacity.
+        min_replay_size: Minimum buffer size before training starts.
+        max_turns: Maximum turns per self-play game.
+        sample_multiplier: Multiplier for batch_size to determine sample
+            size from replay buffer.
+    """
+
+    # Thresholds
+    weight_change_threshold: float = 0.5
+    checkpoint_tolerance: float = 1e-4
+    epsilon: float = 1e-8
+
+    # Training loop
+    iterations: int = 5
+    games_per_iter: int = 10
+    board_size: int = 8
+    num_simulations: int = 8
+    eval_games: int = 10
+
+    # Network
+    num_res_blocks: int = 2
+    num_filters: int = 32
+
+    # Optimiser
+    batch_size: int = 32
+    learning_rate: float = 0.002
+    weight_decay: float = 1e-4
+    gradient_clip: float = 1.0
+
+    # Training
+    num_epochs: int = 3
+    replay_buffer_size: int = 10000
+    min_replay_size: int = 32
+    max_turns: int = 50
+    sample_multiplier: int = 20
+
+    def __post_init__(self) -> None:
+        if self.weight_change_threshold <= 0 or self.weight_change_threshold > 1:
+            raise ValueError("weight_change_threshold must be in (0, 1]")
+        if self.checkpoint_tolerance <= 0:
+            raise ValueError("checkpoint_tolerance must be positive")
+        if self.iterations < 1:
+            raise ValueError("iterations must be >= 1")
+        if self.board_size < 4:
+            raise ValueError("board_size must be >= 4")
+
+    @classmethod
+    def from_env(cls) -> ValidationConfig:
+        """Create configuration from environment variables.
+
+        Environment variables (all prefixed ``CIV6AZ_VALIDATE_``):
+            CIV6AZ_VALIDATE_ITERATIONS, CIV6AZ_VALIDATE_GAMES,
+            CIV6AZ_VALIDATE_BOARD_SIZE, CIV6AZ_VALIDATE_NUM_SIMULATIONS,
+            CIV6AZ_VALIDATE_EVAL_GAMES, CIV6AZ_VALIDATE_WEIGHT_THRESHOLD,
+            CIV6AZ_VALIDATE_CHECKPOINT_TOLERANCE
+        """
+        kwargs: dict[str, object] = {}
+        _int_keys = {
+            "CIV6AZ_VALIDATE_ITERATIONS": "iterations",
+            "CIV6AZ_VALIDATE_GAMES": "games_per_iter",
+            "CIV6AZ_VALIDATE_BOARD_SIZE": "board_size",
+            "CIV6AZ_VALIDATE_NUM_SIMULATIONS": "num_simulations",
+            "CIV6AZ_VALIDATE_EVAL_GAMES": "eval_games",
+        }
+        _float_keys = {
+            "CIV6AZ_VALIDATE_WEIGHT_THRESHOLD": "weight_change_threshold",
+            "CIV6AZ_VALIDATE_CHECKPOINT_TOLERANCE": "checkpoint_tolerance",
+        }
+        for env_key, attr in _int_keys.items():
+            val = os.environ.get(env_key)
+            if val is not None:
+                kwargs[attr] = int(val)
+        for env_key, attr in _float_keys.items():
+            val = os.environ.get(env_key)
+            if val is not None:
+                kwargs[attr] = float(val)
+        return cls(**kwargs)
 
 
 @dataclass
@@ -103,20 +212,20 @@ class ValidationResult:
         return "\n".join(lines)
 
 
-def compute_weight_checksum(network: torch.nn.Module) -> float:
-    """Compute a reproducible checksum of network weights."""
-    total = 0.0
-    for param in network.parameters():
-        total += param.data.abs().sum().item()
-    return total
-
-
 def verify_checkpoint_roundtrip(
     network: MicroCivNetwork,
     checkpoint_dir: str,
     device: str,
+    tolerance: float = ValidationConfig.checkpoint_tolerance,
 ) -> bool:
-    """Verify that saving and loading a checkpoint preserves weights exactly."""
+    """Verify that saving and loading a checkpoint preserves weights exactly.
+
+    Args:
+        network: Network to verify.
+        checkpoint_dir: Directory for temporary checkpoint file.
+        device: Torch device string.
+        tolerance: Maximum absolute checksum difference for a match.
+    """
     path = os.path.join(checkpoint_dir, "roundtrip_test.pt")
 
     # Save
@@ -127,7 +236,7 @@ def verify_checkpoint_roundtrip(
     loaded = MicroCivNetwork.load(path, device=device)
     loaded_checksum = compute_weight_checksum(loaded)
 
-    match = abs(original_checksum - loaded_checksum) < 1e-4
+    match = abs(original_checksum - loaded_checksum) < tolerance
     if not match:
         logger.warning(
             "Checkpoint roundtrip MISMATCH: original=%.6f loaded=%.6f",
@@ -144,12 +253,19 @@ def verify_checkpoint_roundtrip(
 
 def verify_weight_continuity(
     checksums: list[float],
+    threshold: float = ValidationConfig.weight_change_threshold,
+    epsilon: float = ValidationConfig.epsilon,
 ) -> bool:
     """Verify that weights change between iterations (not re-initialized).
 
     If the network were re-initialized each iteration, the checksums would
     be uncorrelated. If weights carry over, each iteration's checksum should
     be close to (but different from) the previous one.
+
+    Args:
+        checksums: List of weight checksums, one per iteration.
+        threshold: Maximum relative change before flagging re-init.
+        epsilon: Guard against division-by-zero.
     """
     if len(checksums) < 2:
         return True
@@ -158,10 +274,10 @@ def verify_weight_continuity(
     # (a re-init would produce very different checksums)
     for i in range(1, len(checksums)):
         delta = abs(checksums[i] - checksums[i - 1])
-        relative_change = delta / max(abs(checksums[i - 1]), 1e-8)
+        relative_change = delta / max(abs(checksums[i - 1]), epsilon)
         # Weight updates via gradient descent typically change weights by <10%
         # Random re-initialization would change by >50%
-        if relative_change > 0.5:
+        if relative_change > threshold:
             logger.warning(
                 "Large weight change between iter %d and %d: %.2f%% "
                 "(possible re-initialization)",
@@ -181,6 +297,7 @@ def run_validation(
     num_simulations: int = 8,
     eval_games: int = 10,
     verbose: bool = False,
+    vconfig: ValidationConfig | None = None,
 ) -> ValidationResult:
     """Run the full validation loop.
 
@@ -191,25 +308,28 @@ def run_validation(
         num_simulations: MCTS simulations per move.
         eval_games: Games for evaluation against random.
         verbose: Print detailed progress.
+        vconfig: Optional ValidationConfig for thresholds. Uses defaults if None.
     """
+    if vconfig is None:
+        vconfig = ValidationConfig()
     device = "cpu"
 
     with tempfile.TemporaryDirectory(prefix="civ6az_validate_") as tmpdir:
         config = TrainingConfig(
             board_size=board_size,
-            max_turns=50,
+            max_turns=vconfig.max_turns,
             num_simulations=num_simulations,
-            num_res_blocks=2,
-            num_filters=32,
-            batch_size=32,
-            learning_rate=0.002,
-            weight_decay=1e-4,
-            gradient_clip=1.0,
-            num_epochs=3,
+            num_res_blocks=vconfig.num_res_blocks,
+            num_filters=vconfig.num_filters,
+            batch_size=vconfig.batch_size,
+            learning_rate=vconfig.learning_rate,
+            weight_decay=vconfig.weight_decay,
+            gradient_clip=vconfig.gradient_clip,
+            num_epochs=vconfig.num_epochs,
             num_games_per_iteration=games_per_iter,
             num_iterations=iterations,
-            replay_buffer_size=10000,
-            min_replay_size=32,
+            replay_buffer_size=vconfig.replay_buffer_size,
+            min_replay_size=vconfig.min_replay_size,
             checkpoint_dir=tmpdir,
             log_dir=os.path.join(tmpdir, "logs"),
             device=device,
@@ -264,7 +384,7 @@ def run_validation(
 
             # Training
             if len(replay_buffer) >= config.min_replay_size:
-                sample_size = min(len(replay_buffer), config.batch_size * 20)
+                sample_size = min(len(replay_buffer), config.batch_size * vconfig.sample_multiplier)
                 train_examples = replay_buffer.sample(sample_size)
                 dataset = ReplayDataset(train_examples)
                 dataloader = DataLoader(
@@ -310,10 +430,16 @@ def run_validation(
             logger.info("Saved checkpoint: %s (checksum=%.4f)", ckpt_path, post_checksum)
 
         # Verify checkpoint roundtrip
-        roundtrip_ok = verify_checkpoint_roundtrip(network, tmpdir, device)
+        roundtrip_ok = verify_checkpoint_roundtrip(
+            network, tmpdir, device, tolerance=vconfig.checkpoint_tolerance
+        )
 
         # Verify weight continuity
-        continuity_ok = verify_weight_continuity(weight_checksums)
+        continuity_ok = verify_weight_continuity(
+            weight_checksums,
+            threshold=vconfig.weight_change_threshold,
+            epsilon=vconfig.epsilon,
+        )
 
         # Check loss trend (compare first and last, ignoring NaN)
         valid_losses = [l for l in total_losses if not np.isnan(l)]
