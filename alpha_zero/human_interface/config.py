@@ -202,7 +202,7 @@ class HumanInterfaceConfig:
             value = os.environ.get(env_var)
             if value is not None:
                 try:
-                    config_dict[field_name] = converter(value)
+                    config_dict[field_name] = converter(value)  # type: ignore[operator]
                 except (ValueError, TypeError):
                     pass
 

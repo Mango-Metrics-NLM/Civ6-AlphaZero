@@ -436,5 +436,5 @@ class TrainingDiagnostics:
             List of all recorded values.
         """
         if self._tracker is not None:
-            return self._tracker.get_history(name)
+            return self._tracker.get_history(name)  # type: ignore[no-any-return]
         return list(self._history.get(name, []))

@@ -377,7 +377,7 @@ class PBTCoordinator:
         self._last_checkpoint_step = self._current_step
 
         # Cleanup old checkpoints
-        self.population.cleanup_old_checkpoints(checkpoint_dir)
+        self.population.cleanup_old_checkpoints(checkpoint_dir)  # type: ignore[attr-defined]
 
         logger.info(f"Saved checkpoint: {checkpoint_path}")
 

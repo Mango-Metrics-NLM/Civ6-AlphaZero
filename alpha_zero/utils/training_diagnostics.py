@@ -375,8 +375,8 @@ class TrainingDiagnostics:
             turns=turns,
             total_reward=total_reward,
             outcome=outcome,
-            avg_policy_entropy=avg_entropy,
-            avg_value_prediction=avg_value,
+            avg_policy_entropy=avg_entropy,  # type: ignore[arg-type]
+            avg_value_prediction=avg_value,  # type: ignore[arg-type]
             action_counts=action_counts,
             shaped_reward=shaped_reward,
         )
@@ -971,7 +971,7 @@ def check_value_head(
             _, value = network(spatial, vector)
             predictions.append(float(value.item()))
 
-    predictions = np.array(predictions)
+    predictions = np.array(predictions)  # type: ignore[assignment]
     variance = float(np.var(predictions))
     mean_pred = float(np.mean(predictions))
 

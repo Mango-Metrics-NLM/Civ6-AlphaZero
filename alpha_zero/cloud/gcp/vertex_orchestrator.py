@@ -34,7 +34,7 @@ import os
 import random
 import sys
 import time
-from typing import Final
+from typing import Any, Final
 
 from alpha_zero.cloud.gcp.config import (
     DEFAULT_MCTS_TYPE,
@@ -153,7 +153,7 @@ def parse_args() -> argparse.Namespace:
         help="MCTS algorithm variant",
     )
     parser.add_argument(
-        "--mcts_simulations", type=int, default=64, help="MCTS simulations per move"
+        "--mcts_simulations", type=int, default=400, help="MCTS simulations per move"
     )
     parser.add_argument(
         "--gumbel_num_actions",
@@ -169,7 +169,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--num_parallel_games",
         type=int,
-        default=1,
+        default=4,
         help="Number of parallel games per worker (1=sequential, >1=vectorized)",
     )
     parser.add_argument(
@@ -835,8 +835,8 @@ def _apply_model_subsampling(
 
 
 def _log_tournament_to_wandb(
-    wandb_logger: object | None,
-    tournament_results: dict,
+    wandb_logger: Any | None,
+    tournament_results: dict[str, Any],
 ) -> None:
     """Log tournament results to W&B.
 
@@ -849,9 +849,9 @@ def _log_tournament_to_wandb(
 
     elo_ratings = tournament_results.get("elo_ratings", {})
     for player_id, elo in elo_ratings.items():
-        wandb_logger.log({f"tournament/elo_{player_id}": elo})  # type: ignore[attr-defined]
+        wandb_logger.log({f"tournament/elo_{player_id}": elo})
     wandb_logger.log(
-        {  # type: ignore[attr-defined]
+        {
             "tournament/best_model": tournament_results.get("best_model", ""),
             "tournament/best_elo": tournament_results.get("best_elo", 0.0),
             "tournament/num_models": len(tournament_results.get("model_versions", [])),
@@ -908,7 +908,8 @@ def _run_tournament_cloud(
 
         backend = GCSBackend(config.project_id)
         data = backend.download_blob(config.bucket, "tournament/post_run_results.json")
-        return json.loads(data.decode("utf-8"))
+        parsed = json.loads(data.decode("utf-8"))
+        return parsed if isinstance(parsed, dict) else {}
     except Exception as e:
         logger.warning("Failed to load cloud tournament results from GCS: %s", e)
         return {}
@@ -1143,6 +1144,9 @@ def main() -> int:
         # --- Container image pre-flight validation ---
         if not args.dry_run and not getattr(args, "skip_image_validation", False):
             image_uri = config.container_image_uri
+            if not image_uri:
+                logger.error("Container image URI is not set in config.")
+                return 1
             logger.info("Validating container image: %s", image_uri)
             val_result = validate_container_image(image_uri)
             if not val_result.exists:

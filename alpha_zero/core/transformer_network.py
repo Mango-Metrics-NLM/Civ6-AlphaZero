@@ -1307,7 +1307,7 @@ def create_transformer_network(
         spatial_size=spatial_size,
         vector_dim=vector_dim,
         action_space_size=action_space_size,
-        **merged_config,  # type: ignore[arg-type]
+        **merged_config,
     )
 
     return Civ6TransformerNetwork(config=config)

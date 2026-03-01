@@ -177,11 +177,11 @@ class DDPLearnerConfig(LearnerConfig):
             "master_port": os.environ.get("MASTER_PORT", "29500"),
         }
         # Enable DDP if world_size > 1
-        if env_values["ddp_world_size"] > 1:
+        if env_values["ddp_world_size"] > 1:  # type: ignore[operator]
             env_values["ddp_enabled"] = True
 
         env_values.update(kwargs)
-        return cls(**env_values)
+        return cls(**env_values)  # type: ignore[arg-type]
 
 
 class DDPLearner(Learner):
@@ -232,6 +232,9 @@ class DDPLearner(Learner):
         if self.ddp_config.enabled:
             config.device = self.ddp_config.get_device()
 
+        # Assign config before process group initialization
+        self.config: DDPLearnerConfig = config
+
         # Initialize process group before network creation
         self._process_group_initialized = False
         if self.ddp_config.enabled:
@@ -239,7 +242,7 @@ class DDPLearner(Learner):
 
         # Parent initialization creates network on correct device
         # We'll wrap it with DDP after
-        self.config: DDPLearnerConfig = config
+
         self.storage = shared_storage
         self.replay_buffer = replay_buffer
 
@@ -249,11 +252,11 @@ class DDPLearner(Learner):
 
         # Create or use provided network
         if network is not None:
-            self.network = network.to(config.device)
+            self.network = network.to(config.device)  # type: ignore[assignment]
         else:
             self.network = MicroCivNetwork(
                 board_size=config.board_size,
-                action_space_size=self.action_space_size,
+                action_space_size=self.action_space_size,  # type: ignore[arg-type]
                 num_res_blocks=config.num_res_blocks,
                 num_filters=config.num_filters,
             ).to(config.device)
@@ -265,7 +268,7 @@ class DDPLearner(Learner):
 
         # Wrap with DDP if enabled
         if self.ddp_config.enabled:
-            self.network = self._wrap_ddp(self.network)
+            self.network = self._wrap_ddp(self.network)  # type: ignore[assignment]
 
         # Log network info (only on main process)
         if self.is_main_process():
@@ -298,7 +301,7 @@ class DDPLearner(Learner):
         # AMP scaler for mixed precision
         self.scaler: GradScaler | None = None
         if config.use_amp:
-            self.scaler = torch.amp.GradScaler("cuda")
+            self.scaler = torch.amp.GradScaler("cuda")  # type: ignore[assignment]
             logger.info(f"Mixed precision enabled with {config.amp_dtype}")
 
         # Statistics
@@ -410,7 +413,7 @@ class DDPLearner(Learner):
             Base network without DDP wrapper.
         """
         if isinstance(self.network, DDP):
-            return self.network.module
+            return self.network.module  # type: ignore[no-any-return]
         return self.network
 
     def get_model(self) -> nn.Module:
@@ -717,7 +720,7 @@ class DDPLearner(Learner):
     def all_reduce(
         self,
         tensor: torch.Tensor,
-        op: dist.ReduceOp = dist.ReduceOp.SUM,
+        op: dist.ReduceOp = dist.ReduceOp.SUM,  # type: ignore
     ) -> torch.Tensor:
         """All-reduce a tensor across all processes.
 

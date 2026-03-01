@@ -227,7 +227,7 @@ class PlayoutCapRandomizer:
             # Geometric distribution favors lower values
             # Each doubling has probability (1 - p) of occurring
             k = int(self._rng.geometric(self.config.geometric_p))
-            return min(
+            return min(  # type: ignore[no-any-return]
                 self.config.min_playouts * (2 ** (k - 1)),
                 self.config.max_playouts,
             )

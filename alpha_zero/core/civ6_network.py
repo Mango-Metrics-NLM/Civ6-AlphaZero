@@ -1146,7 +1146,7 @@ class HierarchicalPolicyHead(nn.Module):
         action_logits = self.action_fc2(act_hidden)
 
         if return_category_probs:
-            return action_logits, category_probs  # type: ignore[no-any-return]
+            return action_logits, category_probs
         return action_logits  # type: ignore[no-any-return]
 
 

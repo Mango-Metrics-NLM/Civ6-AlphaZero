@@ -27,9 +27,10 @@ except ImportError:
     TORCH_AVAILABLE = False
 
     # Create dummy classes for type hints
-    class nn:  # noqa: N801
+    class _dummy_nn:
         class Module:
             pass
+    nn = _dummy_nn  # type: ignore[assignment]
 
 
 from alpha_zero.hierarchical.config import HierarchyLevel
@@ -210,7 +211,7 @@ if TORCH_AVAILABLE:
 
             # Output projection
             out = F.relu(self.layer_norm(self.fc1(combined)))
-            return self.fc2(out)
+            return self.fc2(out)  # type: ignore[no-any-return]
 
     class LevelNetwork(nn.Module):
         """Neural network for a specific hierarchy level.
@@ -381,7 +382,7 @@ if TORCH_AVAILABLE:
             spatial_features = self.spatial_fc(x.flatten(1))
             vector_features = self.vector_encoder(vector)
 
-            return self.state_combiner(torch.cat([spatial_features, vector_features], dim=-1))
+            return self.state_combiner(torch.cat([spatial_features, vector_features], dim=-1))  # type: ignore[no-any-return]
 
     class HierarchicalNetwork(nn.Module):
         """Multi-level hierarchical neural network.
@@ -502,7 +503,7 @@ if TORCH_AVAILABLE:
                     context = self.tactical_to_operational(higher_level_embedding)
                     goal_embedding = goal_embedding + context
 
-            return network(spatial, vector, goal_embedding, action_mask)
+            return network(spatial, vector, goal_embedding, action_mask)  # type: ignore[no-any-return]
 
         def forward_all_levels(
             self,
@@ -579,22 +580,22 @@ if TORCH_AVAILABLE:
 
 else:
     # Stub classes when torch not available
-    class ResidualBlock:
+    class ResidualBlock:  # type: ignore[no-redef]
         """Placeholder when torch not available."""
 
         pass
 
-    class GoalConditionedHead:
+    class GoalConditionedHead:  # type: ignore[no-redef]
         """Placeholder when torch not available."""
 
         pass
 
-    class LevelNetwork:
+    class LevelNetwork:  # type: ignore[no-redef]
         """Placeholder when torch not available."""
 
         pass
 
-    class HierarchicalNetwork:
+    class HierarchicalNetwork:  # type: ignore[no-redef]
         """Placeholder when torch not available."""
 
         def __init__(self, *args: Any, **kwargs: Any) -> None:

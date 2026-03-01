@@ -188,7 +188,7 @@ class TrainingMetricsAdapter(logging.LoggerAdapter):
     def process(
         self,
         msg: str,
-        kwargs: dict[str, Any],
+        kwargs: dict[str, Any],  # type: ignore[override]
     ) -> tuple[str, dict[str, Any]]:
         """Process log message to include training context."""
         extra = kwargs.get("extra", {})
@@ -196,7 +196,7 @@ class TrainingMetricsAdapter(logging.LoggerAdapter):
             {
                 "training_step": self._step,
                 "training_epoch": self._epoch,
-                **self.extra,
+                **self.extra,  # type: ignore[dict-item]
             }
         )
         kwargs["extra"] = extra

@@ -156,7 +156,10 @@ def create_mcts(
         f"c_puct={config.c_puct}, device={device}, "
         f"reflection={'enabled' if reflection_memory else 'disabled'}",
     )
-    return Civ6MCTS(network, mcts_config, device=device, reflection_memory=reflection_memory)
+    from typing import cast
+    from alpha_zero.core.network_interfaces import MCTSNetwork
+    return Civ6MCTS(cast(MCTSNetwork, network), mcts_config, device=device, reflection_memory=reflection_memory)
+
 
 
 def create_environment(

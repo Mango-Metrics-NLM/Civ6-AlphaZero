@@ -30,7 +30,7 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
-import numpy as np  # type: ignore[import-untyped]
+import numpy as np
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
@@ -193,7 +193,7 @@ class HeuristicExpertGenerator:
             action = current_agent.select_action(env, obs)
 
             # Store observation and action for this player
-            action_probs = np.zeros(env.action_space.n, dtype=np.float32)
+            action_probs = np.zeros(int(env.action_space.n), dtype=np.float32)  # type: ignore[arg-type]
             action_probs[action] = 1.0  # Hard target from expert
 
             history.append(
@@ -451,7 +451,7 @@ class ImitationPreTrainer:
         else:
             self.network = MicroCivNetwork(
                 board_size=self.config.board_size,
-                action_space_size=self.action_space_size,
+                action_space_size=int(self.action_space_size),  # type: ignore[arg-type]
                 num_res_blocks=self.config.num_res_blocks,
                 num_filters=self.config.num_filters,
             )

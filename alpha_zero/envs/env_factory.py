@@ -82,7 +82,7 @@ def create_game_env(
         return env
 
     # Default preset — plain MicroCivEnv
-    env = MicroCivEnv(
+    env = MicroCivEnv(  # type: ignore[assignment]
         board_size=board_size,
         max_turns=max_turns,
         seed=seed,

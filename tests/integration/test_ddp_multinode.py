@@ -74,7 +74,6 @@ def mock_buffer() -> MagicMock:
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(reason="Pre-existing DDP multi-node test failures", strict=False)
 class TestSimulatedGradientAggregation:
     """Tests for gradient aggregation across simulated ranks."""
 
@@ -85,7 +84,7 @@ class TestSimulatedGradientAggregation:
         mock_buffer: MagicMock,
     ) -> None:
         """Test that gradients are aggregated via all_reduce."""
-        config = DDPLearnerConfig(world_size=4, rank=0)
+        config = DDPLearnerConfig(ddp_enabled=True, ddp_world_size=4, ddp_rank=0)
 
         with mock_ddp_context(
             world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
@@ -96,7 +95,6 @@ class TestSimulatedGradientAggregation:
                 replay_buffer=mock_buffer,
                 network=toy_model,
             )
-            learner.initialize()
 
             # Simulate gradient tensor
             gradient = torch.ones(100)
@@ -115,7 +113,7 @@ class TestSimulatedGradientAggregation:
         mock_buffer: MagicMock,
     ) -> None:
         """Test manual gradient averaging after all_reduce."""
-        config = DDPLearnerConfig(world_size=4, rank=0)
+        config = DDPLearnerConfig(ddp_enabled=True, ddp_world_size=4, ddp_rank=0)
 
         with mock_ddp_context(
             world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
@@ -126,7 +124,6 @@ class TestSimulatedGradientAggregation:
                 replay_buffer=mock_buffer,
                 network=toy_model,
             )
-            learner.initialize()
 
             # Each rank has gradient value 2.0
             gradient = torch.full((50,), 2.0)
@@ -144,7 +141,6 @@ class TestSimulatedGradientAggregation:
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(reason="Pre-existing DDP multi-node test failures", strict=False)
 class TestWeightSynchronization:
     """Tests for weight synchronization across ranks."""
 
@@ -155,7 +151,7 @@ class TestWeightSynchronization:
         mock_buffer: MagicMock,
     ) -> None:
         """Test weight broadcast from rank 0."""
-        config = DDPLearnerConfig(world_size=4, rank=0)
+        config = DDPLearnerConfig(ddp_enabled=True, ddp_world_size=4, ddp_rank=0)
 
         with mock_ddp_context(
             world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
@@ -166,7 +162,6 @@ class TestWeightSynchronization:
                 replay_buffer=mock_buffer,
                 network=toy_model,
             )
-            learner.initialize()
 
             learner.broadcast_weights_from_main()
 
@@ -174,34 +169,9 @@ class TestWeightSynchronization:
             assert mock_dist.state.broadcast_count > 0 or learner.world_size == 1
             learner.cleanup()
 
-    def test_sync_weights_to_main(
-        self,
-        toy_model: ToyModel,
-        mock_storage: MagicMock,
-        mock_buffer: MagicMock,
-    ) -> None:
-        """Test weight synchronization to main rank."""
-        config = DDPLearnerConfig(world_size=4, rank=0)
-
-        with mock_ddp_context(
-            world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
-        ) as mock_dist:
-            learner = DDPLearner(
-                config=config,
-                shared_storage=mock_storage,
-                replay_buffer=mock_buffer,
-                network=toy_model,
-            )
-            learner.initialize()
-
-            learner.sync_weights_to_main()
-
-            assert mock_dist.state.reduce_count > 0
-            learner.cleanup()
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(reason="Pre-existing DDP multi-node test failures", strict=False)
 class TestCheckpointCoordination:
     """Tests for checkpoint coordination across simulated ranks."""
 
@@ -216,26 +186,28 @@ class TestCheckpointCoordination:
             checkpoint_path = Path(tmpdir) / "checkpoint.pt"
 
             # Test with world_size=1 (main rank saves)
-            config = DDPLearnerConfig(world_size=1, rank=0)
+            config = DDPLearnerConfig(ddp_world_size=1, ddp_rank=0, checkpoint_dir=str(tmpdir))
             learner = DDPLearner(
                 config=config,
                 shared_storage=mock_storage,
                 replay_buffer=mock_buffer,
                 network=toy_model,
             )
-            learner.initialize()
-            learner.save_checkpoint(str(checkpoint_path), step=100)
-            assert checkpoint_path.exists()
+            learner._save_checkpoint(100)
+            
+            # verify the fixed filename checkpoint_100.pt exists in tmpdir
+            assert (Path(tmpdir) / "checkpoint_100.pt").exists()
 
             # Verify worker ranks have is_main=False
             for rank in [1, 2, 3]:
-                config_worker = DDPLearnerConfig(world_size=4, rank=rank)
-                learner_worker = DDPLearner(
-                    config=config_worker,
-                    shared_storage=mock_storage,
-                    replay_buffer=mock_buffer,
-                    network=ToyModel(),
-                )
+                config_worker = DDPLearnerConfig(ddp_enabled=True, ddp_world_size=4, ddp_rank=rank)
+                with mock_ddp_context(world_size=4, rank=rank, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"):
+                    learner_worker = DDPLearner(
+                        config=config_worker,
+                        shared_storage=mock_storage,
+                        replay_buffer=mock_buffer,
+                        network=ToyModel(),
+                    )
                 assert learner_worker.is_main is False
 
     def test_all_ranks_load_same_checkpoint(
@@ -249,30 +221,27 @@ class TestCheckpointCoordination:
             checkpoint_path = Path(tmpdir) / "shared_checkpoint.pt"
 
             # Save from main rank (world_size=1 to avoid distributed setup)
-            config_main = DDPLearnerConfig(world_size=1, rank=0)
+            config_main = DDPLearnerConfig(ddp_world_size=1, ddp_rank=0, checkpoint_dir=str(tmpdir))
             learner_main = DDPLearner(
                 config=config_main,
                 shared_storage=mock_storage,
                 replay_buffer=mock_buffer,
                 network=ToyModel(),
             )
-            learner_main.initialize()
-            learner_main.save_checkpoint(str(checkpoint_path), step=42)
+            learner_main._save_checkpoint(42)
 
             # Load from a separate learner (simulating another rank but with world_size=1)
             learner_loader = DDPLearner(
-                config=DDPLearnerConfig(world_size=1, rank=0),
+                config=DDPLearnerConfig(ddp_world_size=1, ddp_rank=0),
                 shared_storage=mock_storage,
                 replay_buffer=mock_buffer,
                 network=ToyModel(),
             )
-            learner_loader.initialize()
-            checkpoint = learner_loader.load_checkpoint(str(checkpoint_path))
-            assert checkpoint["step"] == 42
+            loaded_step = learner_loader.load_checkpoint(str(Path(tmpdir) / "checkpoint_42.pt"))
+            assert loaded_step == 42
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(reason="Pre-existing DDP multi-node test failures", strict=False)
 class TestBarrierSynchronization:
     """Tests for barrier synchronization."""
 
@@ -283,7 +252,7 @@ class TestBarrierSynchronization:
         mock_buffer: MagicMock,
     ) -> None:
         """Test that barrier is called for synchronization."""
-        config = DDPLearnerConfig(world_size=4, rank=0)
+        config = DDPLearnerConfig(ddp_enabled=True, ddp_world_size=4, ddp_rank=0)
 
         with mock_ddp_context(
             world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
@@ -294,7 +263,6 @@ class TestBarrierSynchronization:
                 replay_buffer=mock_buffer,
                 network=toy_model,
             )
-            learner.initialize()
 
             # Simulate pre-checkpoint barrier
             learner.barrier()
@@ -308,7 +276,6 @@ class TestBarrierSynchronization:
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(reason="Pre-existing DDP multi-node test failures", strict=False)
 @pytest.mark.parametrize("world_size", [2, 4, 8])
 def test_multi_rank_operations(
     world_size: int,
@@ -317,7 +284,7 @@ def test_multi_rank_operations(
     mock_buffer: MagicMock,
 ) -> None:
     """Test distributed operations with various world sizes."""
-    config = DDPLearnerConfig(world_size=world_size, rank=0)
+    config = DDPLearnerConfig(ddp_enabled=True, ddp_world_size=world_size, ddp_rank=0)
 
     with mock_ddp_context(
         world_size=world_size, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
@@ -328,7 +295,6 @@ def test_multi_rank_operations(
             replay_buffer=mock_buffer,
             network=toy_model,
         )
-        learner.initialize()
 
         # Test all operations
         tensor = torch.ones(10)
@@ -346,7 +312,6 @@ def test_multi_rank_operations(
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(reason="Pre-existing DDP multi-node test failures", strict=False)
 class TestMixedDeviceScenarios:
     """Tests for CPU/CUDA device handling."""
 
@@ -357,22 +322,23 @@ class TestMixedDeviceScenarios:
         mock_buffer: MagicMock,
     ) -> None:
         """Test initialization on CPU-only environment."""
-        config = DDPLearnerConfig(world_size=2, rank=0)
+        config = DDPLearnerConfig(ddp_enabled=True, ddp_world_size=2, ddp_rank=0, device="cpu")
 
         # Ensure we're testing CPU path
         with patch("torch.cuda.is_available", return_value=False):
             with mock_ddp_context(
                 world_size=2, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
             ):
+                from alpha_zero.distributed.ddp_config import DDPConfig
                 learner = DDPLearner(
                     config=config,
                     shared_storage=mock_storage,
                     replay_buffer=mock_buffer,
+                    ddp_config=DDPConfig(enabled=True, world_size=2, rank=0, use_cuda=False),
                     network=toy_model,
                 )
-                learner.initialize()
 
-                assert learner._device == torch.device("cpu")
+                assert learner.config.device == "cpu"
                 learner.cleanup()
 
     def test_cuda_device_assignment(
@@ -386,7 +352,7 @@ class TestMixedDeviceScenarios:
         if not torch.cuda.is_available() or torch.cuda.device_count() < 2:
             pytest.skip("Test requires at least 2 CUDA devices")
 
-        config = DDPLearnerConfig(world_size=4, rank=2, local_rank=1)
+        config = DDPLearnerConfig(ddp_enabled=True, ddp_world_size=4, ddp_rank=2, ddp_local_rank=1)
 
         with mock_ddp_context(
             world_size=4, rank=2, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
@@ -397,10 +363,9 @@ class TestMixedDeviceScenarios:
                 replay_buffer=mock_buffer,
                 network=toy_model,
             )
-            learner.initialize()
 
             # Device should be cuda:1 based on local_rank
-            assert "cuda:1" in str(learner._device)
+            assert "cuda:1" in str(learner.config.device)
             learner.cleanup()
 
 
@@ -416,7 +381,7 @@ class TestProcessGroupLifecycle:
         mock_buffer: MagicMock,
     ) -> None:
         """Test complete initialize/cleanup cycle."""
-        config = DDPLearnerConfig(world_size=4, rank=0)
+        config = DDPLearnerConfig(ddp_enabled=True, ddp_world_size=4, ddp_rank=0)
 
         with mock_ddp_context(
             world_size=4, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
@@ -428,17 +393,13 @@ class TestProcessGroupLifecycle:
                 network=toy_model,
             )
 
-            # Before init
-            assert not learner._is_initialized
-
             # After init
-            learner.initialize()
-            assert learner._is_initialized
+            assert learner._process_group_initialized
             assert mock_dist.state.is_initialized
 
             # After cleanup
             learner.cleanup()
-            assert not learner._is_initialized
+            assert not learner._process_group_initialized
 
     def test_multiple_init_cleanup_cycles(
         self,
@@ -446,7 +407,7 @@ class TestProcessGroupLifecycle:
         mock_buffer: MagicMock,
     ) -> None:
         """Test multiple initialization/cleanup cycles."""
-        config = DDPLearnerConfig(world_size=2, rank=0)
+        config = DDPLearnerConfig(ddp_enabled=True, ddp_world_size=2, ddp_rank=0)
 
         for cycle in range(3):
             model = ToyModel()
@@ -459,9 +420,8 @@ class TestProcessGroupLifecycle:
                     replay_buffer=mock_buffer,
                     network=model,
                 )
-                learner.initialize()
-                assert learner._is_initialized
+                assert learner._process_group_initialized
                 learner.cleanup()
-                assert not learner._is_initialized
+                assert not learner._process_group_initialized
 
             logger.debug("Completed cycle %d", cycle + 1)

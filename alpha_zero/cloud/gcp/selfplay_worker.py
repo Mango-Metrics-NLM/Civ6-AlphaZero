@@ -33,7 +33,7 @@ try:
 
     _PSUTIL_AVAILABLE = True
 except ImportError:
-    psutil = None  # type: ignore[assignment]
+    psutil = None
     _PSUTIL_AVAILABLE = False
 
 from alpha_zero.cloud.gcp.config import (
@@ -560,7 +560,7 @@ def run_selfplay(
             # Run MCTS with error handling
             try:
                 # Pass env directly since MicroCivEnv implements MCTSEnvironment protocol
-                policy, _ = mcts.search(env)  # type: ignore[arg-type]
+                policy, _ = mcts.search(env)
                 turn = len(trajectory["spatial"])
                 temp = compute_temperature(
                     turn=turn,
@@ -772,7 +772,7 @@ def run_muzero_selfplay(
             try:
                 # MuZeroMCTS.search uses the dynamics model internally
                 # Pass observation dict and action_mask explicitly (MuZeroMCTS signature)
-                policy, value_estimate = mcts.search(obs, action_mask=obs["action_mask"])
+                policy, value_estimate = mcts.search(obs, action_mask=obs["action_mask"])  # type: ignore[call-arg]
                 turn = len(trajectory["spatial"])
                 temp = compute_temperature(
                     turn=turn,
@@ -923,7 +923,7 @@ def run_batch_selfplay(
         num_parallel_envs=num_parallel_games,
     )
     batch_mcts = BatchGumbelMCTS(
-        network=model,
+        network=model,  # type: ignore[arg-type]
         config=mcts_config,
         device=device,
     )
@@ -974,7 +974,7 @@ def run_batch_selfplay(
 
             # Batch MCTS search
             try:
-                results = batch_mcts.batch_search(envs, add_noise=False)
+                results = batch_mcts.batch_search(envs, add_noise=False)  # type: ignore[arg-type]
             except Exception as e:
                 logger.error("Batch search failed at turn %d: %s", turn, e, exc_info=True)
                 if device != "cpu":

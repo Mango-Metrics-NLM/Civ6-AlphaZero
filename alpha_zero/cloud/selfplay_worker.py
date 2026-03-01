@@ -229,7 +229,7 @@ class CloudSelfPlayWorker:
         """Create MCTS instance."""
         from alpha_zero.core.civ6_mcts import SimpleMCTS
 
-        return SimpleMCTS(
+        return SimpleMCTS(  # type: ignore[call-arg]
             num_simulations=self.config.num_simulations,
             c_puct=self.config.c_puct,
             dirichlet_alpha=self.config.dirichlet_alpha,

@@ -135,7 +135,7 @@ class OpenAIEmbeddings(EmbeddingGenerator):
         self.batch_size = batch_size
         self.max_retries = max_retries
         self.timeout = timeout
-        self._client = None
+        self._client: Any | None = None
 
     async def _get_client(self) -> Any:
         """Get or create OpenAI client."""
@@ -344,7 +344,7 @@ class SentenceTransformerEmbeddings(EmbeddingGenerator):
 
         self._model = SentenceTransformer(model_name, device=device)
         dimension = self._model.get_sentence_embedding_dimension()
-        super().__init__(dimension)
+        super().__init__(dimension or 1536)
 
         self.model_name = model_name
         self.batch_size = batch_size

@@ -356,7 +356,7 @@ class EvaluationConfig:
             env_key = f"{prefix}{env_suffix}"
             if env_key in os.environ:
                 try:
-                    value = converter(os.environ[env_key])
+                    value = converter(os.environ[env_key])  # type: ignore[operator]
                     setattr(config, attr, value)
                 except (ValueError, TypeError) as e:
                     raise ValueError(f"Invalid value for {env_key}: {os.environ[env_key]}") from e

@@ -326,7 +326,7 @@ class InferenceEngine:
         with torch.no_grad():
             # Direct network prediction for policy/value
             assert self.current_model is not None
-            policy_logits, value = self.current_model(spatial, vector, action_mask)
+            policy_logits, value = self.current_model(spatial, vector, action_mask)  # type: ignore[arg-type]
 
             # Apply action mask
             masked_logits = policy_logits.clone()

@@ -135,7 +135,7 @@ class ConfigMixin:
             Dictionary representation of the config.
         """
         result = {}
-        for f in fields(self):
+        for f in fields(self):  # type: ignore[arg-type]
             value = getattr(self, f.name)
             if isinstance(value, ConfigMixin):
                 result[f.name] = value.to_dict()
@@ -159,7 +159,7 @@ class ConfigMixin:
         """
         prefix = prefix or getattr(self.__class__, "ENV_PREFIX", "CIV6AZ_")
 
-        for f in fields(self):
+        for f in fields(self):  # type: ignore[arg-type]
             env_key = f"{prefix}{f.name.upper()}"
             if env_key in os.environ:
                 value = os.environ[env_key]

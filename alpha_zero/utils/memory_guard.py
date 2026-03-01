@@ -54,7 +54,7 @@ try:
 
     PSUTIL_AVAILABLE = True
 except ImportError:
-    psutil = None  # type: ignore[assignment]
+    psutil = None
     PSUTIL_AVAILABLE = False
 
 

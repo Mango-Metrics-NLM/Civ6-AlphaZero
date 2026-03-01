@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -281,7 +281,7 @@ class VectorizedMicroCivEnv:
         Returns:
             List of environment indices where done=False.
         """
-        return np.where(~self._done)[0].tolist()
+        return cast(list[int], np.where(~self._done)[0].tolist())
 
     def get_env(self, idx: int) -> MicroCivEnv:
         """Get individual environment by index.

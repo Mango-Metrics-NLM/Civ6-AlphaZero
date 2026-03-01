@@ -382,12 +382,12 @@ class VertexTrainer:
             if status_filter in state_map:
                 filter_str = f'state="{state_map[status_filter]}"'
 
-        jobs = CustomJob.list(
+        custom_jobs = CustomJob.list(
             filter=filter_str,
         )
 
         results: list[TrainingJobInfo] = []
-        for job in list(jobs)[:max_results]:
+        for job in list(custom_jobs)[:max_results]:
             job_resource_name = getattr(job, "resource_name", None)
             if job_resource_name:
                 results.append(self.get_job_status(job_resource_name))
@@ -433,7 +433,7 @@ class VertexTrainer:
 # Protocol compliance check
 def _check_protocol_compliance() -> None:
     """Verify VertexTrainer implements CloudTrainerProtocol."""
-    trainer: CloudTrainerProtocol = VertexTrainer(  # type: ignore
+    trainer: CloudTrainerProtocol = VertexTrainer(
         GCPConfig(), allow_fallback=True
     )
     assert isinstance(trainer, CloudTrainerProtocol)

@@ -452,7 +452,7 @@ class AuxiliaryTargetGenerator:
         """
         if future_states is None or len(future_states) == 0:
             # No future information - use current value if available
-            return game_state.get("value", 0.0)
+            return game_state.get("value", 0.0)  # type: ignore[no-any-return]
 
         # Get value from N steps ahead
         target_step = min(self.config.future_value_steps, len(future_states))

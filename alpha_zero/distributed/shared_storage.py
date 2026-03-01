@@ -205,7 +205,7 @@ class SharedStorage:
     def __setstate__(self, state: dict) -> None:
         """Restore state after pickling."""
         self.__dict__.update(state)
-        self._manager = None  # Manager only lives in the process that created it
+        self._manager = None  # type: ignore[assignment]
         self._owns_manager = False
 
     def shutdown(self) -> None:
@@ -487,11 +487,11 @@ class DistributedReplayBuffer:
     def __setstate__(self, state: dict) -> None:
         """Restore state after pickling."""
         self.__dict__.update(state)
-        self._manager = None
+        self._manager = None  # type: ignore[assignment]
         self._owns_manager = False
         # Actors use None for these as they only use the queue
-        self._buffer = None
-        self._buffer_lock = None
+        self._buffer = None  # type: ignore[assignment]
+        self._buffer_lock = None  # type: ignore[assignment]
 
     def shutdown(self) -> None:
         """Cleanup resources."""
