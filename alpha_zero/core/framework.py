@@ -41,8 +41,9 @@ MASKED_LOGIT_VALUE: float = -1e9
 
 # Thresholds for selecting the MicroCiv (simplified) network variant.
 # MicroCiv is used for small boards with fewer input channels.
+# Max channels = 3 + 4*MAX_PLAYERS + 2 = 37 (for 8-player MicroCiv).
 MICROCIV_MAX_BOARD_SIZE: int = 16
-MICROCIV_MAX_CHANNELS: int = 13
+MICROCIV_MAX_CHANNELS: int = 37
 
 # Keys reserved by the checkpoint system for internal metadata.
 # User-provided metadata with these keys will be ignored (with a warning).

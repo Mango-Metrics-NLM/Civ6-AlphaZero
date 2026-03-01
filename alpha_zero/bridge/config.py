@@ -65,6 +65,14 @@ class BridgeConfig:
         board_size: Internal board size for coordinate scaling
         log_level: Logging verbosity level
         debug_mode: Enable debug features (extra logging, state dumps)
+        num_players: Number of players in the game (2 for standard, up to 12).
+        max_actions_per_second: Rate limit for action submission. Set to 0.0 to
+            disable throttling. Default 1.0 means at most one action per second.
+        multiplayer_mode: Whether to enable multiplayer-specific features such as
+            N-player state detection and player ID remapping.
+        player_id_mapping: Optional explicit mapping from raw Civ6 player IDs to
+            sequential 0-indexed IDs. When None, a mapping is auto-generated from
+            the players present in the game state.
 
     Note:
         The max_retries and retry_delay_s fields are defined for future
@@ -81,6 +89,10 @@ class BridgeConfig:
     board_size: int = 16
     log_level: str = "INFO"
     debug_mode: bool = False
+    num_players: int = 2
+    max_actions_per_second: float = 1.0
+    multiplayer_mode: bool = False
+    player_id_mapping: dict[int, int] | None = None
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -101,6 +113,10 @@ class BridgeConfig:
             raise ValueError("board_size must be between 8 and 128")
         if self.log_level not in ("DEBUG", "INFO", "WARNING", "ERROR"):
             raise ValueError("log_level must be DEBUG, INFO, WARNING, or ERROR")
+        if self.num_players < 2 or self.num_players > 12:
+            raise ValueError("num_players must be between 2 and 12")
+        if self.max_actions_per_second < 0.0:
+            raise ValueError("max_actions_per_second must be non-negative")
 
     @classmethod
     def from_env(cls) -> BridgeConfig:
@@ -157,6 +173,14 @@ class BridgeConfig:
 
         kwargs["debug_mode"] = get_bool("CIV6_DEBUG_MODE", False)
 
+        if num_players := os.environ.get("CIV6_BRIDGE_NUM_PLAYERS"):
+            kwargs["num_players"] = int(num_players)
+
+        if max_aps := os.environ.get("CIV6_BRIDGE_MAX_ACTIONS_PER_SECOND"):
+            kwargs["max_actions_per_second"] = float(max_aps)
+
+        kwargs["multiplayer_mode"] = get_bool("CIV6_BRIDGE_MULTIPLAYER_MODE", False)
+
         return cls(**kwargs)
 
     @property
@@ -204,6 +228,10 @@ class BridgeConfig:
             "board_size": self.board_size,
             "log_level": self.log_level,
             "debug_mode": self.debug_mode,
+            "num_players": self.num_players,
+            "max_actions_per_second": self.max_actions_per_second,
+            "multiplayer_mode": self.multiplayer_mode,
+            "player_id_mapping": self.player_id_mapping,
         }
 
 

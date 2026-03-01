@@ -74,7 +74,6 @@ def mock_buffer() -> MagicMock:
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(reason="Pre-existing DDP multi-node test failures", strict=False)
 class TestSimulatedGradientAggregation:
     """Tests for gradient aggregation across simulated ranks."""
 
@@ -144,7 +143,6 @@ class TestSimulatedGradientAggregation:
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(reason="Pre-existing DDP multi-node test failures", strict=False)
 class TestWeightSynchronization:
     """Tests for weight synchronization across ranks."""
 
@@ -201,7 +199,6 @@ class TestWeightSynchronization:
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(reason="Pre-existing DDP multi-node test failures", strict=False)
 class TestCheckpointCoordination:
     """Tests for checkpoint coordination across simulated ranks."""
 
@@ -272,7 +269,6 @@ class TestCheckpointCoordination:
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(reason="Pre-existing DDP multi-node test failures", strict=False)
 class TestBarrierSynchronization:
     """Tests for barrier synchronization."""
 
@@ -308,7 +304,6 @@ class TestBarrierSynchronization:
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(reason="Pre-existing DDP multi-node test failures", strict=False)
 @pytest.mark.parametrize("world_size", [2, 4, 8])
 def test_multi_rank_operations(
     world_size: int,
@@ -346,7 +341,6 @@ def test_multi_rank_operations(
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(reason="Pre-existing DDP multi-node test failures", strict=False)
 class TestMixedDeviceScenarios:
     """Tests for CPU/CUDA device handling."""
 
@@ -405,7 +399,6 @@ class TestMixedDeviceScenarios:
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(reason="Pre-existing DDP multi-node test failures", strict=False)
 class TestProcessGroupLifecycle:
     """Tests for process group lifecycle management."""
 

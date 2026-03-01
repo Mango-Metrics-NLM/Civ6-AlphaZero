@@ -26,6 +26,11 @@ Example:
     >>> mcts = NPlayerMCTS(network, config.mcts)
 """
 
+from alpha_zero.multiplayer.action_resolution import (
+    ActionResolutionConfig,
+    ActionResolutionStrategy,
+    ActionResolver,
+)
 from alpha_zero.multiplayer.config import (
     MultiplayerConfig,
     NPlayerMCTSConfig,
@@ -35,7 +40,17 @@ from alpha_zero.multiplayer.config import (
     TurnManagerConfig,
     TurnMode,
 )
+from alpha_zero.multiplayer.determinization import (
+    DeterminizationConfig,
+    DeterminizedMCTS,
+    WorldSampler,
+)
 from alpha_zero.multiplayer.env_adapter import NPlayerEnvAdapter
+from alpha_zero.multiplayer.fog_of_war import (
+    FogOfWarConfig,
+    FogOfWarManager,
+    VisibilityState,
+)
 from alpha_zero.multiplayer.game_connector import (
     GameConnector,
     GameConnectorConfig,
@@ -51,6 +66,10 @@ from alpha_zero.multiplayer.network_heads import (
     NPlayerValueHead,
     compute_nplayer_value_loss,
 )
+from alpha_zero.multiplayer.observation_model import (
+    ObservationModel,
+    ObservationModelConfig,
+)
 from alpha_zero.multiplayer.opponent_model import OpponentModel
 from alpha_zero.multiplayer.protocols import (
     MultiplayerEnvironment,
@@ -62,9 +81,22 @@ from alpha_zero.multiplayer.scoring import (
     compute_rankings,
     extract_game_result,
 )
+from alpha_zero.multiplayer.simultaneous_mcts import (
+    DecoupledUCT,
+    SimultaneousMCTSConfig,
+    SimultaneousNode,
+)
 from alpha_zero.multiplayer.turn_manager import TurnManager
 
 __all__ = [
+    "ActionResolutionConfig",
+    "ActionResolutionStrategy",
+    "ActionResolver",
+    "DecoupledUCT",
+    "DeterminizationConfig",
+    "DeterminizedMCTS",
+    "FogOfWarConfig",
+    "FogOfWarManager",
     "GameConnector",
     "GameConnectorConfig",
     "MockGameConnector",
@@ -78,15 +110,21 @@ __all__ = [
     "NPlayerNetworkAdapter",
     "NPlayerNetworkConfig",
     "NPlayerValueHead",
+    "ObservationModel",
+    "ObservationModelConfig",
     "OpponentModel",
     "OpponentModelConfig",
     "ScoringConfig",
     "ScoringMethod",
     "SearchStrategy",
+    "SimultaneousMCTSConfig",
+    "SimultaneousNode",
     "TurnManager",
     "TurnManagerConfig",
     "TurnMode",
     "UncivMultiplayerConnector",
+    "VisibilityState",
+    "WorldSampler",
     "compute_nplayer_value_loss",
     "compute_player_values",
     "compute_rankings",

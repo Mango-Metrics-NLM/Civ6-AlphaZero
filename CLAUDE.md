@@ -309,6 +309,11 @@ When making changes, update the relevant sections below:
 | `pytest tests/unit/test_strategy_advisor.py -v` | Test strategy advisor |
 | `pytest tests/unit/test_storage_backend.py -v` | Test storage backends |
 | `pytest tests/unit/test_replay_buffer.py -v` | Test replay buffers |
+| `pytest tests/unit/test_simultaneous_mcts.py -v` | Test DUCT algorithm |
+| `pytest tests/unit/test_action_resolution.py -v` | Test action conflict resolution |
+| `pytest tests/integration/test_e2e_nplayer_training.py -v` | E2E N-player training |
+| `pytest tests/integration/test_e2e_pipeline.py -v` | E2E pipeline validation |
+| `pytest tests/integration/test_e2e_simultaneous.py -v` | E2E DUCT simultaneous tests |
 | `pytest -k "test_name" -v` | Run specific test by name |
 
 ### 5.2 Architecture Decisions
@@ -335,6 +340,9 @@ When making changes, update the relevant sections below:
 | 2026-02-01 | Cloud-native worker components | Self-play, trainer, evaluator containerized for Vertex AI |
 | 2026-02-01 | Preemption handling | Graceful shutdown on Spot VM preemption with trajectory flush |
 | 2026-02-01 | Budget machine profiles | Pre-configured profiles for T4/L4/A100 GPUs with cost estimates |
+| 2026-02-28 | DUCT for simultaneous actions | Decoupled UCB per player, avoids combinatorial |A|^N explosion via lazy joint children |
+| 2026-02-28 | ActionResolver with strategies | Configurable conflict resolution (independent, priority, random, simultaneous) |
+| 2026-02-28 | SimultaneousMCTSConfig frozen | All DUCT params via frozen dataclass with CIV6AZ_ env overrides |
 
 ### 5.3 Known Issues
 

@@ -30,7 +30,13 @@ from typing import TYPE_CHECKING, Any
 
 import torch
 
+from alpha_zero.utils.registry import default_registry
+
 if TYPE_CHECKING:
+    from alpha_zero.multiplayer.simultaneous_mcts import (
+        DecoupledUCT,
+        SimultaneousMCTSConfig,
+    )
     from alpha_zero.orchestrator.config import (
         CurriculumConfig,
         EnvironmentConfig,
@@ -51,6 +57,7 @@ def create_network(
     action_space_size: int,
     device: str = "cpu",
     framework: str | None = None,
+    num_players: int = 2,
 ) -> Any:
     """Create neural network from configuration.
 
@@ -65,6 +72,8 @@ def create_network(
         device: Compute device ("cpu" or "cuda").
         framework: ML framework ("pytorch" or "jax"). If None, reads from
             CIV6AZ_FRAMEWORK env var, defaulting to "pytorch".
+        num_players: Number of players. When > 2, MicroCivNetwork uses
+            NPlayerValueHead for per-player value output.
 
     Returns:
         Configured neural network on specified device.
@@ -98,13 +107,16 @@ def create_network(
     if is_microciv_config(board_size, config.spatial_channels):
         logger.info(
             f"Creating MicroCivNetwork: board={board_size}, "
-            f"actions={action_space_size}, filters={config.num_filters}",
+            f"actions={action_space_size}, filters={config.num_filters}, "
+            f"num_players={num_players}",
         )
         network: torch.nn.Module = MicroCivNetwork(
             board_size=board_size,
             action_space_size=action_space_size,
             num_res_blocks=config.num_res_blocks,
             num_filters=config.num_filters,
+            spatial_channels=config.spatial_channels,
+            num_players=num_players,
         )
     else:
         logger.info(
@@ -190,6 +202,7 @@ def create_mcts(
 def create_environment(
     config: EnvironmentConfig,
     override_params: dict[str, Any] | None = None,
+    num_players: int = 2,
 ) -> Any:
     """Create environment with tuning and overrides.
 
@@ -199,6 +212,7 @@ def create_environment(
     Args:
         config: Environment configuration.
         override_params: Parameters to override (e.g., from curriculum).
+        num_players: Number of players (2-8).
 
     Returns:
         Configured environment instance.
@@ -212,16 +226,19 @@ def create_environment(
     if override_params:
         board_size = override_params.get("board_size", board_size)
         max_turns = override_params.get("max_turns", max_turns)
+        num_players = override_params.get("num_players", num_players)
 
     logger.info(
         f"Creating environment: type={config.type}, "
-        f"board={board_size}x{board_size}, max_turns={max_turns}"
+        f"board={board_size}x{board_size}, max_turns={max_turns}, "
+        f"num_players={num_players}"
     )
 
     if config.type == "microciv":
         env = MicroCivEnv(
             board_size=board_size,
             max_turns=max_turns,
+            num_players=num_players,
         )
 
         # Note: Environment tuning wrapper is disabled because MCTS
@@ -571,3 +588,62 @@ def create_replay_buffer(
 
     logger.info(f"Creating replay buffer: max_size={max_size}, min_size={min_size}")
     return ReplayBuffer(max_size)
+
+
+def create_simultaneous_mcts(
+    config: SimultaneousMCTSConfig | None = None,
+    num_players: int = 2,
+    action_space_size: int = 356,
+) -> DecoupledUCT:
+    """Create Decoupled UCT (DUCT) for simultaneous-move games.
+
+    Args:
+        config: SimultaneousMCTSConfig instance. If None, uses defaults.
+        num_players: Number of players in the game.
+        action_space_size: Size of the action space.
+
+    Returns:
+        Configured DecoupledUCT instance.
+    """
+    from alpha_zero.multiplayer.simultaneous_mcts import (
+        DecoupledUCT,
+        SimultaneousMCTSConfig,
+    )
+
+    if config is None:
+        config = SimultaneousMCTSConfig()
+
+    logger.info(
+        "Creating DecoupledUCT: num_players=%d, action_space=%d, simulations=%d",
+        num_players, action_space_size, config.num_simulations,
+    )
+    return DecoupledUCT(
+        config=config,
+        num_players=num_players,
+        action_space_size=action_space_size,
+    )
+
+
+# =============================================================================
+# Registry registrations -- makes factory functions discoverable via the
+# default_registry.  These calls are append-only and do not alter the
+# existing public API.
+# =============================================================================
+
+def _register_factories() -> None:
+    """Register all factory functions with the default component registry."""
+    default_registry.register_factory("network", "default", create_network)
+    default_registry.register_factory("mcts", "default", create_mcts)
+    default_registry.register_factory("environment", "default", create_environment)
+    default_registry.register_factory("reward_shaper", "default", create_reward_shaper)
+    default_registry.register_factory("curriculum", "default", create_curriculum_manager)
+    default_registry.register_factory("rag", "default", create_rag_client)
+    default_registry.register_factory("knowledge_base", "default", create_knowledge_base)
+    default_registry.register_factory("llm", "default", create_llm_client)
+    default_registry.register_factory("strategy_advisor", "default", create_strategy_advisor)
+    default_registry.register_factory("wandb", "default", create_wandb_logger)
+    default_registry.register_factory("replay_buffer", "default", create_replay_buffer)
+    default_registry.register_factory("mcts", "duct", create_simultaneous_mcts)
+
+
+_register_factories()

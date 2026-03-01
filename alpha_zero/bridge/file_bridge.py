@@ -126,6 +126,7 @@ class FileBridge:
         self._last_state: GameStateData | None = None
         self._running = False
         self._lock = asyncio.Lock()
+        self._last_action_time: float = 0.0
 
     async def __aenter__(self) -> FileBridge:
         """Async context manager entry."""
@@ -166,6 +167,58 @@ class FileBridge:
         """Generate next message ID."""
         self._msg_counter += 1
         return self._msg_counter
+
+    async def _throttle_action(self) -> None:
+        """Apply rate limiting before sending an action.
+
+        If ``max_actions_per_second`` is set to a positive value in the
+        config, this method will sleep until enough time has passed since
+        the last action to respect the rate limit.
+
+        When ``max_actions_per_second`` is 0.0, throttling is disabled.
+        """
+        rate = self.config.max_actions_per_second
+        if rate <= 0.0:
+            return
+
+        min_interval = 1.0 / rate
+        now = time.time()
+        elapsed = now - self._last_action_time
+
+        if elapsed < min_interval:
+            wait_time = min_interval - elapsed
+            logger.debug(f"Throttling action: waiting {wait_time:.3f}s")
+            await asyncio.sleep(wait_time)
+
+        self._last_action_time = time.time()
+
+    @staticmethod
+    def detect_multiplayer_state(state_data: dict[str, Any]) -> int:
+        """Detect the number of players from a raw state JSON.
+
+        Checks for multiple player entries in the state data to determine
+        whether this is a multiplayer game and how many players are present.
+
+        Args:
+            state_data: Raw parsed JSON state dictionary.
+
+        Returns:
+            Number of players detected (minimum 2).
+        """
+        # Check the "players" list directly
+        players = state_data.get("players", [])
+        if isinstance(players, list) and len(players) >= 2:
+            return len(players)
+
+        # Check within "state" sub-object (protocol wrapper)
+        state_inner = state_data.get("state", {})
+        if isinstance(state_inner, dict):
+            players_inner = state_inner.get("players", [])
+            if isinstance(players_inner, list) and len(players_inner) >= 2:
+                return len(players_inner)
+
+        # Default to 2 players
+        return 2
 
     def _write_heartbeat(self) -> None:
         """Write heartbeat file to indicate Python is alive."""
@@ -223,6 +276,15 @@ class FileBridge:
                     content = state_file.read_text(encoding="utf-8")
                     data = json.loads(content)
 
+                    # Detect multiplayer if enabled
+                    if self.config.multiplayer_mode:
+                        detected_players = self.detect_multiplayer_state(data)
+                        if detected_players != self.config.num_players:
+                            logger.info(
+                                f"Multiplayer: detected {detected_players} players "
+                                f"(config expects {self.config.num_players})"
+                            )
+
                     state_msg = StateMessage.from_dict(data)
                     self._last_state = state_msg.state
                     self._last_state_mtime = mtime
@@ -231,6 +293,7 @@ class FileBridge:
 
                     logger.debug(
                         f"Received state: turn={state_msg.state.turn_id}, "
+                        f"players={len(state_msg.state.players)}, "
                         f"units={len(state_msg.state.units)}, "
                         f"cities={len(state_msg.state.cities)}"
                     )
@@ -311,6 +374,8 @@ class FileBridge:
     async def send_command(self, command: CommandMessage) -> bool:
         """Send a command to the game.
 
+        Applies action throttling if ``max_actions_per_second`` is configured.
+
         Args:
             command: CommandMessage to send.
 
@@ -318,6 +383,9 @@ class FileBridge:
             True if command was written successfully.
         """
         try:
+            # Apply rate limiting before sending
+            await self._throttle_action()
+
             async with self._lock:
                 json_str = command.to_json()
                 self.config.commands_file.write_text(json_str, encoding="utf-8")
