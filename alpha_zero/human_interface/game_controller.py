@@ -390,7 +390,7 @@ class GameController:
 
         if self._game_interface is None:
             raise RuntimeError("Game interface not initialized")
-        
+
         # Execute action
         obs, reward, done, truncated, info = self._game_interface.step(action)
 
@@ -424,7 +424,9 @@ class GameController:
             self._state.phase = GamePhase.GAME_OVER
             logger.info(f"Game over. Winner: {result.winner}")
             if self._on_game_over:
-                self._on_game_over(result.winner if result.winner is not None else -1)  # Or maybe type: ignore
+                self._on_game_over(
+                    result.winner if result.winner is not None else -1
+                )  # Or maybe type: ignore
 
         else:
             # Switch player

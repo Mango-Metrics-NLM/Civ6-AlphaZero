@@ -489,8 +489,11 @@ def validate_constants() -> list[str]:
     """
     errors = []
 
-    # Check game constants consistency
-    if GAME.PLAINS_RATIO + GAME.HILLS_RATIO + GAME.MOUNTAIN_RATIO != 1.0:
+    # Check game constants consistency (use isclose for float comparison)
+    import math
+
+    terrain_sum = GAME.PLAINS_RATIO + GAME.HILLS_RATIO + GAME.MOUNTAIN_RATIO
+    if not math.isclose(terrain_sum, 1.0, rel_tol=1e-9):
         errors.append("Terrain ratios must sum to 1.0")
 
     # Check action space computation

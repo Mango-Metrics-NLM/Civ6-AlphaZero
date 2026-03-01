@@ -330,7 +330,6 @@ class VertexAIClient:
 
             tuning_job.submit(service_account=spec.service_account)  # type: ignore
 
-
             logger.info(
                 "Submitted tuning job: %s (resource: %s)",
                 spec.display_name,

@@ -25,11 +25,11 @@ from alpha_zero.cloud.gcp.config import NetworkArchitectureConfig
 from alpha_zero.cloud.gcp.storage import GCSModelStorage
 from alpha_zero.core.batch_mcts import BatchGumbelMCTS, BatchMCTSConfig
 from alpha_zero.core.civ6_mcts import (
+    Civ6MCTS,
     GumbelMCTS,
     GumbelMCTSConfig,
     MCTSConfig,
     MCTSNetwork,
-    Civ6MCTS,
 )
 from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 from alpha_zero.inference.api_schemas import (

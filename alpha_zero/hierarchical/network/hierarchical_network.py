@@ -30,6 +30,7 @@ except ImportError:
     class _dummy_nn:
         class Module:
             pass
+
     nn = _dummy_nn  # type: ignore[assignment]
 
 

@@ -266,7 +266,6 @@ async def compute_move(request: MoveRequest) -> MoveResponse:
                 detail=f"action_mask shape {mask_np.shape} != expected ({ACTION_SPACE},)",
             )
 
-
         # Run neural network forward pass
         start = time.monotonic()
 

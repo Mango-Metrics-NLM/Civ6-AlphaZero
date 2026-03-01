@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # Optional W&B import
 try:
     import wandb as _wandb
-    
+
     wandb: Any = _wandb
     _WANDB_AVAILABLE = True
 except ImportError:
