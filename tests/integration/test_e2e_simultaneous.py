@@ -71,7 +71,7 @@ class TestDUCTEndToEnd:
         # Result should map player_id -> action probability array
         assert isinstance(result, dict)
         assert len(result) == num_players
-        for _pid, probs in result.items():
+        for _, probs in result.items():
             assert isinstance(probs, np.ndarray)
             assert probs.shape == (env.action_space.n,)
 
@@ -102,7 +102,7 @@ class TestDUCTEndToEnd:
         active_players = list(range(num_players))
         result = duct.search(env, net, active_players)
 
-        for _pid, probs in result.items():
+        for _, probs in result.items():
             action = int(np.argmax(probs))
             # Action should be within the valid action space
             assert 0 <= action < env.action_space.n

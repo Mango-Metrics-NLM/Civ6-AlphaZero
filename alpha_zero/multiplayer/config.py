@@ -17,7 +17,7 @@ from __future__ import annotations
 import enum
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from alpha_zero.multiplayer.determinization import DeterminizationConfig
@@ -305,8 +305,6 @@ class MultiplayerConfig:
 
         # Reconstruct frozen dataclasses with overrides
         for parent_attr, overrides in frozen_overrides.items():
-            from dataclasses import asdict
-
             current = getattr(self, parent_attr)
             current_dict = asdict(current)
             current_dict.update(overrides)
@@ -317,8 +315,6 @@ class MultiplayerConfig:
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
-        from dataclasses import asdict
-
         return asdict(self)
 
     @classmethod

@@ -33,6 +33,10 @@ import torch
 from alpha_zero.utils.registry import default_registry
 
 if TYPE_CHECKING:
+    from alpha_zero.multiplayer.simultaneous_mcts import (
+        DecoupledUCT,
+        SimultaneousMCTSConfig,
+    )
     from alpha_zero.orchestrator.config import (
         CurriculumConfig,
         EnvironmentConfig,
@@ -587,10 +591,10 @@ def create_replay_buffer(
 
 
 def create_simultaneous_mcts(
-    config: Any = None,
+    config: SimultaneousMCTSConfig | None = None,
     num_players: int = 2,
     action_space_size: int = 356,
-) -> Any:
+) -> DecoupledUCT:
     """Create Decoupled UCT (DUCT) for simultaneous-move games.
 
     Args:

@@ -632,3 +632,48 @@ class TestDecoupledUCTExtended:
         duct = DecoupledUCT(config, num_players=2, action_space_size=5)
         assert duct._action_resolver is not None
         assert duct._action_resolver._strategy.value == "priority"
+
+    def test_expand_node_populates_children(self) -> None:
+        """_expand_node populates per-player children and returns values."""
+        config = SimultaneousMCTSConfig(num_simulations=5)
+        duct = DecoupledUCT(config, num_players=2, action_space_size=10)
+
+        env = _make_mock_env(num_players=2, action_space_size=10)
+        network = _make_mock_network(num_players=2, action_space_size=10)
+
+        node = SimultaneousNode(num_players=2)
+        assert not node.is_expanded()
+
+        values = duct._expand_node(node, env, network, active_players=[0, 1])
+
+        # Node should now be expanded with per-player children
+        assert node.is_expanded()
+        assert 0 in node.per_player_children
+        assert 1 in node.per_player_children
+        # Each player should have action stats for all valid actions
+        assert len(node.per_player_children[0]) == 10
+        assert len(node.per_player_children[1]) == 10
+        # Values should be returned as per-player dict
+        assert isinstance(values, dict)
+        assert 0 in values
+        assert 1 in values
+
+    def test_step_env_with_resolution_calls_resolver(self) -> None:
+        """_step_env_with_resolution invokes ActionResolver and env.step."""
+        config = SimultaneousMCTSConfig(
+            num_simulations=5, action_resolution="priority"
+        )
+        duct = DecoupledUCT(config, num_players=2, action_space_size=5)
+
+        env = _make_mock_env(num_players=2, action_space_size=5)
+        joint_action = {0: 2, 1: 3}
+
+        is_terminal, info = duct._step_env_with_resolution(
+            env, joint_action, active_players=[0, 1]
+        )
+
+        # env.step should have been called exactly once
+        env.step.assert_called_once()
+        # Default mock env is non-terminal
+        assert not is_terminal
+        assert isinstance(info, dict)

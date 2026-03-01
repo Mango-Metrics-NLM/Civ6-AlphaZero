@@ -463,6 +463,11 @@ class DecoupledUCT:
         }
 
         node.expand_simultaneous(active_policies, active_masks)
+
+        logger.debug(
+            "Node expanded",
+            extra={"active_players": active_players, "values": values},
+        )
         return values
 
     def _step_env_with_resolution(
@@ -488,7 +493,7 @@ class DecoupledUCT:
 
         # Apply the first resolved action (environment handles turn semantics)
         if resolved:
-            primary_player, primary_action = resolved[0]
+            _primary_player, primary_action = resolved[0]
         else:
             # All actions cancelled by conflict resolution — use first player's action
             primary_action = joint_action.get(active_players[0], 0)
