@@ -610,9 +610,8 @@ def create_simultaneous_mcts(
         config = SimultaneousMCTSConfig()
 
     logger.info(
-        f"Creating DecoupledUCT: num_players={num_players}, "
-        f"action_space={action_space_size}, "
-        f"simulations={config.num_simulations}",
+        "Creating DecoupledUCT: num_players=%d, action_space=%d, simulations=%d",
+        num_players, action_space_size, config.num_simulations,
     )
     return DecoupledUCT(
         config=config,

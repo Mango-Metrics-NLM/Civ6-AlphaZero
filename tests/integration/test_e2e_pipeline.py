@@ -168,6 +168,22 @@ class TestRegistryIntegration:
         mcts_components = default_registry.list_components("mcts")
         assert "default" in mcts_components
 
+        # Verify DUCT is registered
+        assert default_registry.has_component("mcts", "duct"), (
+            "DUCT should be registered under ('mcts', 'duct')"
+        )
+
+    def test_duct_registry_creates_instance(self) -> None:
+        """Registry 'mcts/duct' entry creates a DecoupledUCT instance."""
+        import alpha_zero.utils.factories  # noqa: F401 — triggers registration
+        from alpha_zero.utils.registry import default_registry
+
+        duct = default_registry.create("mcts", "duct", num_players=2, action_space_size=10)
+        assert duct is not None
+        assert hasattr(duct, "search")
+        assert duct.num_players == 2
+        assert duct.action_space_size == 10
+
 
 # ===========================================================================
 # TestSmokeTests
@@ -230,6 +246,7 @@ class TestSmokeTests:
             create_rag_client,
             create_replay_buffer,
             create_reward_shaper,
+            create_simultaneous_mcts,
             create_strategy_advisor,
             create_wandb_logger,
         )
@@ -239,6 +256,7 @@ class TestSmokeTests:
         assert callable(create_mcts)
         assert callable(create_environment)
         assert callable(create_replay_buffer)
+        assert callable(create_simultaneous_mcts)
 
     def test_multiplayer_config_roundtrip(self) -> None:
         """MultiplayerConfig -> to_dict -> from_dict -> matches original."""
@@ -263,7 +281,11 @@ class TestSmokeTests:
         assert isinstance(data, dict)
         assert data["num_players"] == 4
 
+        # Verify from_dict does not mutate the input dict
+        data_copy = dict(data)
         restored = MultiplayerConfig.from_dict(data)
+        assert data == data_copy, "from_dict should not mutate the input dict"
+
         assert restored.num_players == original.num_players
         assert restored.mcts.num_simulations == original.mcts.num_simulations
         assert restored.mcts.c_puct == pytest.approx(original.mcts.c_puct)

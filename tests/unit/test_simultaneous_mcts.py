@@ -29,37 +29,45 @@ def _make_mock_env(
     action_space_size: int = 10,
     current_player: int = 0,
 ) -> MagicMock:
-    """Create a mock multiplayer environment."""
-    env = MagicMock()
-    env.num_players = num_players
-    env.current_player = current_player
+    """Create a mock multiplayer environment.
 
-    action_space = MagicMock()
-    action_space.n = action_space_size
-    env.action_space = action_space
+    Each call to env.clone() returns a fresh mock with the same
+    configuration, preventing mutations from leaking across simulations.
+    """
+    def _build_env() -> MagicMock:
+        env = MagicMock()
+        env.num_players = num_players
+        env.current_player = current_player
 
-    spatial = np.random.randn(13, 8, 8).astype(np.float32)
-    vector = np.random.randn(64).astype(np.float32)
-    action_mask = np.ones(action_space_size, dtype=np.float32)
+        action_space = MagicMock()
+        action_space.n = action_space_size
+        env.action_space = action_space
 
-    env.get_observation.return_value = {
-        "spatial": spatial,
-        "vector": vector,
-        "action_mask": action_mask,
-    }
-    env.get_valid_actions.return_value = action_mask
+        spatial = np.random.randn(13, 8, 8).astype(np.float32)
+        vector = np.random.randn(64).astype(np.float32)
+        action_mask = np.ones(action_space_size, dtype=np.float32)
 
-    # step returns non-terminal by default
-    env.step.return_value = (
-        {"spatial": spatial, "vector": vector, "action_mask": action_mask},
-        0.0,
-        False,
-        False,
-        {},
-    )
+        env.get_observation.return_value = {
+            "spatial": spatial,
+            "vector": vector,
+            "action_mask": action_mask,
+        }
+        env.get_valid_actions.return_value = action_mask
 
-    env.clone.return_value = env
-    return env
+        # step returns non-terminal by default
+        env.step.return_value = (
+            {"spatial": spatial, "vector": vector, "action_mask": action_mask},
+            0.0,
+            False,
+            False,
+            {},
+        )
+
+        # clone() returns a fresh mock each time
+        env.clone.side_effect = lambda: _build_env()
+        return env
+
+    return _build_env()
 
 
 def _make_mock_network(
@@ -98,7 +106,6 @@ class TestSimultaneousNode:
         assert node.value_sums == {}
         assert node.per_player_children == {}
         assert node.joint_children == {}
-        assert node.parent is None
 
     def test_per_player_stats_independence(self) -> None:
         """Per-player action stats are independent."""
@@ -242,7 +249,7 @@ class TestSimultaneousNode:
 
         # Create a joint child
         joint_key = (0, 1)  # Player 0 -> action 0, Player 1 -> action 1
-        child = SimultaneousNode(num_players=2, parent=node)
+        child = SimultaneousNode(num_players=2)
         node.joint_children[joint_key] = child
 
         assert len(node.joint_children) == 1
@@ -564,3 +571,64 @@ class TestChildStats:
         assert stats.visit_count == 10
         assert stats.value_sum == 5.0
         assert stats.prior == 0.3
+
+
+# =============================================================================
+# Additional coverage tests
+# =============================================================================
+
+
+class TestDecoupledUCTExtended:
+    """Extended tests for DecoupledUCT edge cases."""
+
+    def test_temperature_threshold_switches_to_greedy(self) -> None:
+        """After temperature_threshold, search uses greedy (temperature=0)."""
+        config = SimultaneousMCTSConfig(
+            num_simulations=10,
+            temperature=1.0,
+            temperature_threshold=5,
+        )
+        duct = DecoupledUCT(config, num_players=2, action_space_size=5)
+
+        env = _make_mock_env(num_players=2, action_space_size=5)
+        network = _make_mock_network(num_players=2, action_space_size=5)
+
+        # Before threshold: proportional probabilities (warm up the search)
+        duct.search(env, network, active_players=[0, 1], turn_number=3)
+        # After threshold: greedy probabilities
+        result_after = duct.search(env, network, active_players=[0, 1], turn_number=10)
+
+        # Greedy should have exactly one action with probability 1.0
+        for pid in [0, 1]:
+            assert result_after[pid].max() == 1.0, (
+                "After threshold, max prob should be 1.0 (greedy)"
+            )
+
+    def test_extract_terminal_values_draw(self) -> None:
+        """Terminal state with no winner/scores returns all zeros."""
+        config = SimultaneousMCTSConfig(num_simulations=5)
+        duct = DecoupledUCT(config, num_players=2, action_space_size=5)
+
+        values = duct._extract_terminal_values(
+            info={}, active_players=[0, 1]
+        )
+        assert values == {0: 0.0, 1: 0.0}
+
+    def test_extract_terminal_values_winner(self) -> None:
+        """Terminal state with winner returns +1/-1."""
+        config = SimultaneousMCTSConfig(num_simulations=5)
+        duct = DecoupledUCT(config, num_players=3, action_space_size=5)
+
+        values = duct._extract_terminal_values(
+            info={"winner": 1}, active_players=[0, 1, 2]
+        )
+        assert values[1] == 1.0
+        assert values[0] == -1.0
+        assert values[2] == -1.0
+
+    def test_action_resolver_is_wired(self) -> None:
+        """DecoupledUCT creates an ActionResolver from config."""
+        config = SimultaneousMCTSConfig(action_resolution="priority")
+        duct = DecoupledUCT(config, num_players=2, action_space_size=5)
+        assert duct._action_resolver is not None
+        assert duct._action_resolver._strategy.value == "priority"

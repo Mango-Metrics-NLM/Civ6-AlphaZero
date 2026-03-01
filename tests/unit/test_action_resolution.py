@@ -207,3 +207,48 @@ class TestActionResolver:
         result = resolver.resolve(actions)
         # Both conflict groups cancel
         assert len(result) == 0
+
+    def test_priority_drops_lower_priority_on_conflict(self) -> None:
+        """Priority strategy drops lower-priority (higher ID) player on conflict."""
+        resolver = ActionResolver(
+            ActionResolutionConfig(strategy="priority", allow_same_target=False)
+        )
+        # Players 0 and 1 target same action
+        actions = {0: 5, 1: 5, 2: 3}
+        result = resolver.resolve(actions)
+
+        # Player 1 is lower priority (higher ID) so gets dropped
+        assert len(result) == 2
+        assert result[0] == (0, 5)
+        assert result[1] == (2, 3)
+
+    def test_priority_with_allow_same_target(self) -> None:
+        """Priority with allow_same_target=True keeps all actions."""
+        resolver = ActionResolver(
+            ActionResolutionConfig(strategy="priority", allow_same_target=True)
+        )
+        actions = {0: 5, 1: 5, 2: 3}
+        result = resolver.resolve(actions)
+
+        # allow_same_target=True means no dropping
+        assert len(result) == 3
+        assert result == [(0, 5), (1, 5), (2, 3)]
+
+    def test_priority_no_conflict_preserves_all(self) -> None:
+        """Priority without conflicts preserves all actions."""
+        resolver = ActionResolver(
+            ActionResolutionConfig(strategy="priority", allow_same_target=False)
+        )
+        actions = {0: 1, 1: 2, 2: 3}
+        result = resolver.resolve(actions)
+
+        assert len(result) == 3
+        assert result == [(0, 1), (1, 2), (2, 3)]
+
+    def test_invalid_strategy_raises(self) -> None:
+        """Invalid strategy in resolve raises ValueError."""
+        resolver = ActionResolver(ActionResolutionConfig(strategy="independent"))
+        # Bypass normal construction to test the ValueError branch
+        resolver._strategy = "not_a_strategy"  # type: ignore[assignment]
+        with pytest.raises(ValueError, match="Unknown strategy"):
+            resolver.resolve({0: 5})

@@ -269,23 +269,49 @@ class MultiplayerConfig:
             "CIV6AZ_MP_ACTION_RESOLUTION": ("simultaneous_mcts.action_resolution", str),
         }
 
+        # Collect overrides for frozen dataclasses (need reconstruction)
+        frozen_overrides: dict[str, dict[str, Any]] = {}
+
         for env_var, (attr_path, attr_type) in env_map.items():
             value = os.getenv(env_var)
             if value is not None:
                 parts = attr_path.split(".")
-                target = self
-                for part in parts[:-1]:
-                    target = getattr(target, part)
                 if attr_type is bool:
-                    setattr(target, parts[-1], value.lower() in ("true", "1", "yes"))
+                    typed_value: Any = value.lower() in ("true", "1", "yes")
                 else:
-                    setattr(target, parts[-1], attr_type(value))
+                    typed_value = attr_type(value)
+
+                if len(parts) == 2:
+                    parent_attr = parts[0]
+                    child_attr = parts[1]
+                    parent_obj = getattr(self, parent_attr)
+
+                    # Check if target is a frozen dataclass
+                    if hasattr(parent_obj, "__dataclass_fields__") and getattr(
+                        parent_obj, "__dataclass_params__", None
+                    ) and parent_obj.__dataclass_params__.frozen:
+                        frozen_overrides.setdefault(parent_attr, {})[child_attr] = typed_value
+                    else:
+                        setattr(parent_obj, child_attr, typed_value)
+                else:
+                    setattr(self, parts[-1], typed_value)
+
                 logger.info(
                     "Applied env override: %s=%s -> %s",
                     env_var,
                     value,
                     attr_path,
                 )
+
+        # Reconstruct frozen dataclasses with overrides
+        for parent_attr, overrides in frozen_overrides.items():
+            from dataclasses import asdict
+
+            current = getattr(self, parent_attr)
+            current_dict = asdict(current)
+            current_dict.update(overrides)
+            new_obj = type(current)(**current_dict)
+            setattr(self, parent_attr, new_obj)
 
         return self
 
@@ -305,6 +331,8 @@ class MultiplayerConfig:
         Returns:
             MultiplayerConfig instance.
         """
+        # Copy to avoid mutating caller's dict
+        data = dict(data)
         mcts_data = data.pop("mcts", {})
         scoring_data = data.pop("scoring", {})
         turn_data = data.pop("turn_manager", {})

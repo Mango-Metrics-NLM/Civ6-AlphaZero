@@ -31,7 +31,7 @@ class TestConstants:
         assert MICROCIV_MAX_BOARD_SIZE == 16
 
     def test_microciv_max_channels(self):
-        assert MICROCIV_MAX_CHANNELS == 13
+        assert MICROCIV_MAX_CHANNELS == 37
 
     def test_reserved_checkpoint_keys(self):
         assert RESERVED_CHECKPOINT_KEYS == frozenset({"framework", "config", "param_count"})
@@ -45,13 +45,13 @@ class TestIsMicrocivConfig:
         assert is_microciv_config(8, 5) is True
 
     def test_exact_boundary(self):
-        assert is_microciv_config(16, 13) is True
+        assert is_microciv_config(16, 37) is True
 
     def test_board_too_large(self):
         assert is_microciv_config(17, 13) is False
 
     def test_channels_too_many(self):
-        assert is_microciv_config(16, 14) is False
+        assert is_microciv_config(16, 38) is False
 
     def test_full_civ6_config(self):
         assert is_microciv_config(44, 84) is False

@@ -27,15 +27,24 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 import torch
 
 from alpha_zero.core.mcts_constants import EPSILON
-from alpha_zero.multiplayer.action_resolution import ActionResolutionStrategy
+from alpha_zero.multiplayer.action_resolution import (
+    ActionResolutionConfig,
+    ActionResolutionStrategy,
+    ActionResolver,
+)
 from alpha_zero.multiplayer.protocols import MultiplayerEnvironment, MultiplayerNetwork
 
 logger = logging.getLogger(__name__)
+
+# Sentinel action index for inactive players in joint action keys.
+# Using -1 avoids collisions with valid action indices (which are >= 0).
+_INACTIVE_PLAYER_ACTION = -1
 
 
 @dataclass
@@ -75,7 +84,6 @@ class SimultaneousNode:
             Maps player_id -> {action_idx -> ChildStats}.
         joint_children: Lazily expanded joint action children.
             Maps tuple(action_per_player...) -> SimultaneousNode.
-        parent: Parent node reference for backpropagation.
     """
 
     num_players: int = 2
@@ -85,7 +93,6 @@ class SimultaneousNode:
     joint_children: dict[tuple[int, ...], SimultaneousNode] = field(
         default_factory=dict
     )
-    parent: SimultaneousNode | None = field(default=None, repr=False)
 
     def is_expanded(self) -> bool:
         """Check if node has been expanded with per-player statistics."""
@@ -330,6 +337,12 @@ class DecoupledUCT:
         self.num_players = num_players
         self.action_space_size = action_space_size
         self._search_count = 0
+        self._action_resolver = ActionResolver(
+            ActionResolutionConfig(
+                strategy=config.action_resolution,
+                allow_same_target=False,
+            )
+        )
 
         logger.debug(
             "DecoupledUCT initialized",
@@ -338,6 +351,7 @@ class DecoupledUCT:
                 "action_space_size": action_space_size,
                 "num_simulations": config.num_simulations,
                 "c_puct": config.c_puct,
+                "action_resolution": config.action_resolution,
             },
         )
 
@@ -346,6 +360,7 @@ class DecoupledUCT:
         env: MultiplayerEnvironment,
         network: MultiplayerNetwork,
         active_players: list[int],
+        turn_number: int = 0,
     ) -> dict[int, np.ndarray]:
         """Run DUCT search from the current state.
 
@@ -353,41 +368,44 @@ class DecoupledUCT:
             env: Game environment (must support clone()).
             network: Neural network for state evaluation.
             active_players: List of player IDs acting simultaneously.
+            turn_number: Current game turn for temperature threshold.
+                When turn_number >= config.temperature_threshold,
+                temperature is set to near-zero (greedy).
 
         Returns:
             Dict mapping player_id -> action probability distribution.
         """
         self._search_count += 1
 
+        # Apply temperature threshold: switch to greedy after threshold turn
+        temperature = self.config.temperature
+        if turn_number >= self.config.temperature_threshold:
+            temperature = 0.0
+            logger.debug(
+                "Temperature threshold reached, using greedy selection",
+                extra={"turn_number": turn_number, "threshold": self.config.temperature_threshold},
+            )
+
         # Create root node
         root = SimultaneousNode(num_players=self.num_players)
 
-        # Get initial evaluation for all active players
-        policies, _values = self._evaluate(env, network)
+        # Evaluate and expand root
+        self._expand_node(root, env, network, active_players)
 
-        # Build action masks for active players
-        action_masks: dict[int, np.ndarray] = {}
-        for player_id in active_players:
-            action_masks[player_id] = env.get_valid_actions()
-
-        # Filter policies to active players only
-        active_policies = {
-            pid: policies[pid] for pid in active_players if pid in policies
-        }
-        active_masks = {
-            pid: action_masks[pid] for pid in active_players if pid in action_masks
-        }
-
-        # Expand root
-        root.expand_simultaneous(active_policies, active_masks)
-
-        # Add Dirichlet noise at root
+        # Add Dirichlet noise at root for exploration
         self._add_dirichlet_noise(root, active_players)
 
         # Run simulations
-        for _sim_idx in range(self.config.num_simulations):
+        for sim_idx in range(self.config.num_simulations):
             sim_env = env.clone()
             self._run_simulation(sim_env, root, network, active_players)
+
+            if logger.isEnabledFor(logging.DEBUG) and (sim_idx + 1) % 50 == 0:
+                logger.debug(
+                    "DUCT simulation progress",
+                    extra={"sim": sim_idx + 1, "total": self.config.num_simulations,
+                           "root_visits": root.visit_count},
+                )
 
         # Extract per-player action probabilities
         result: dict[int, np.ndarray] = {}
@@ -395,7 +413,7 @@ class DecoupledUCT:
             result[player_id] = root.get_action_probabilities_for_player(
                 player_id,
                 self.action_space_size,
-                temperature=self.config.temperature,
+                temperature=temperature,
             )
 
         logger.debug(
@@ -404,10 +422,84 @@ class DecoupledUCT:
                 "search_id": self._search_count,
                 "root_visits": root.visit_count,
                 "active_players": active_players,
+                "temperature": temperature,
             },
         )
 
         return result
+
+    def _expand_node(
+        self,
+        node: SimultaneousNode,
+        env: MultiplayerEnvironment,
+        network: MultiplayerNetwork,
+        active_players: list[int],
+    ) -> dict[int, float]:
+        """Evaluate and expand a node with per-player action statistics.
+
+        Calls the neural network, builds per-player action masks,
+        and populates the node's per_player_children.
+
+        Args:
+            node: Node to expand.
+            env: Environment at the node's state.
+            network: Neural network for evaluation.
+            active_players: Players acting simultaneously.
+
+        Returns:
+            Per-player values from network evaluation.
+        """
+        policies, values = self._evaluate(env, network)
+
+        action_masks: dict[int, np.ndarray] = {}
+        for player_id in active_players:
+            action_masks[player_id] = env.get_valid_actions()
+
+        active_policies = {
+            pid: policies[pid] for pid in active_players if pid in policies
+        }
+        active_masks = {
+            pid: action_masks[pid] for pid in active_players if pid in action_masks
+        }
+
+        node.expand_simultaneous(active_policies, active_masks)
+        return values
+
+    def _step_env_with_resolution(
+        self,
+        env: MultiplayerEnvironment,
+        joint_action: dict[int, int],
+        active_players: list[int],
+    ) -> tuple[bool, dict[str, Any]]:
+        """Step the environment using the action resolver.
+
+        Resolves the joint action through the configured strategy,
+        then applies the resolved actions to the environment.
+
+        Args:
+            env: Environment to step.
+            joint_action: Maps player_id -> action_idx.
+            active_players: Active player IDs.
+
+        Returns:
+            Tuple of (is_terminal, info_dict).
+        """
+        resolved = self._action_resolver.resolve(joint_action)
+
+        # Apply the first resolved action (environment handles turn semantics)
+        if resolved:
+            primary_player, primary_action = resolved[0]
+        else:
+            # All actions cancelled by conflict resolution — use first player's action
+            primary_action = joint_action.get(active_players[0], 0)
+            primary_player = active_players[0]
+            logger.debug(
+                "All actions cancelled by resolver, falling back",
+                extra={"player": primary_player, "action": primary_action},
+            )
+
+        _obs, _reward, terminated, truncated, info = env.step(primary_action)
+        return (terminated or truncated), info
 
     def _run_simulation(
         self,
@@ -434,6 +526,7 @@ class DecoupledUCT:
         node = root
         search_path: list[SimultaneousNode] = [node]
         joint_actions_path: list[dict[int, int]] = []
+        depth = 0
 
         # === Selection: traverse existing tree ===
         while node.is_expanded():
@@ -447,78 +540,68 @@ class DecoupledUCT:
 
             joint_actions_path.append(joint_action)
 
-            # Form joint action key
+            # Form joint action key using sentinel for inactive players
             joint_key = tuple(
-                joint_action.get(pid, 0) for pid in range(self.num_players)
+                joint_action.get(pid, _INACTIVE_PLAYER_ACTION)
+                for pid in range(self.num_players)
             )
 
             # Check if joint child exists (lazy expansion)
             if joint_key in node.joint_children:
                 node = node.joint_children[joint_key]
                 search_path.append(node)
+                depth += 1
 
-                # Step environment with one of the active player's actions
-                # In simultaneous games, we use the first active player's action
-                # for environment stepping (environment handles simultaneous semantics)
-                primary_action = joint_action.get(active_players[0], 0)
-                _obs, _reward, terminated, truncated, info = env.step(primary_action)
+                is_terminal, info = self._step_env_with_resolution(
+                    env, joint_action, active_players
+                )
 
-                if terminated or truncated:
-                    # Terminal: extract values and backpropagate
+                if is_terminal:
                     terminal_values = self._extract_terminal_values(
                         info, active_players
                     )
                     self._backpropagate(
                         search_path, joint_actions_path, terminal_values
+                    )
+                    logger.debug(
+                        "Simulation hit terminal at depth %d", depth,
+                        extra={"terminal_values": terminal_values},
                     )
                     return
             else:
                 # Joint action not yet visited: create child and expand
-                child = SimultaneousNode(
-                    num_players=self.num_players,
-                    parent=node,
-                )
+                child = SimultaneousNode(num_players=self.num_players)
                 node.joint_children[joint_key] = child
                 search_path.append(child)
+                depth += 1
 
-                # Step environment
-                primary_action = joint_action.get(active_players[0], 0)
-                _obs, _reward, terminated, truncated, info = env.step(primary_action)
+                is_terminal, info = self._step_env_with_resolution(
+                    env, joint_action, active_players
+                )
 
-                if terminated or truncated:
+                if is_terminal:
                     terminal_values = self._extract_terminal_values(
                         info, active_players
                     )
                     self._backpropagate(
                         search_path, joint_actions_path, terminal_values
                     )
+                    logger.debug(
+                        "Simulation hit terminal at new node depth %d", depth,
+                        extra={"terminal_values": terminal_values},
+                    )
                     return
 
                 # Expand the new child node
-                policies, values = self._evaluate(env, network)
-                action_masks: dict[int, np.ndarray] = {}
-                for player_id in active_players:
-                    action_masks[player_id] = env.get_valid_actions()
-
-                active_policies = {
-                    pid: policies[pid]
-                    for pid in active_players
-                    if pid in policies
-                }
-                active_masks = {
-                    pid: action_masks[pid]
-                    for pid in active_players
-                    if pid in action_masks
-                }
-                child.expand_simultaneous(active_policies, active_masks)
+                values = self._expand_node(child, env, network, active_players)
 
                 # Backpropagate network values
                 self._backpropagate(search_path, joint_actions_path, values)
                 return
 
         # Node is not expanded (should only happen at root before expansion)
-        # Evaluate and backpropagate
-        policies, values = self._evaluate(env, network)
+        logger.debug("Simulation reached unexpanded non-root node at depth %d", depth)
+        _policies, values = self._evaluate(env, network)
         self._backpropagate(search_path, joint_actions_path, values)
 
     def _evaluate(
@@ -558,11 +641,17 @@ class DecoupledUCT:
         # Convert values to per-player dict
         player_values: dict[int, float] = {}
         if values_np.ndim == 0:
-            # Scalar value (legacy 2-player)
+            # Scalar value (legacy 2-player zero-sum)
             player_values[0] = float(values_np)
             player_values[1] = float(-values_np)
         else:
-            for i in range(min(len(values_np), self.num_players)):
+            num_values = len(values_np)
+            if num_values < self.num_players:
+                logger.warning(
+                    "Network returned %d values but expected %d players",
+                    num_values, self.num_players,
+                )
+            for i in range(min(num_values, self.num_players)):
                 player_values[i] = float(values_np[i])
 
         return policies, player_values
@@ -588,7 +677,7 @@ class DecoupledUCT:
             if not player_stats:
                 continue
 
-            actions = list(player_stats.keys())
+            actions = sorted(player_stats.keys())
             noise = np.random.dirichlet([alpha] * len(actions))
 
             for i, action in enumerate(actions):
@@ -616,7 +705,7 @@ class DecoupledUCT:
 
     def _extract_terminal_values(
         self,
-        info: dict,
+        info: dict[str, Any],
         active_players: list[int],
     ) -> dict[int, float]:
         """Extract per-player values from terminal game info.
@@ -640,7 +729,11 @@ class DecoupledUCT:
             for pid in active_players:
                 values[pid] = 1.0 if pid == winner else -1.0
         else:
-            # Draw
+            # Draw — no winner or player_scores in terminal info
+            logger.debug(
+                "Terminal state with no winner/scores, treating as draw",
+                extra={"info_keys": list(info.keys())},
+            )
             for pid in active_players:
                 values[pid] = 0.0
 

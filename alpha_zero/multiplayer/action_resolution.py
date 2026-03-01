@@ -23,6 +23,7 @@ import enum
 import logging
 import random
 from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +91,7 @@ class ActionResolver:
     def resolve(
         self,
         actions: dict[int, int],
-        env_state: dict | None = None,
+        env_state: dict[str, Any] | None = None,
     ) -> list[tuple[int, int]]:
         """Resolve simultaneous actions into an ordered list.
 
@@ -108,21 +109,32 @@ class ActionResolver:
         env_state = env_state or {}
 
         if self._strategy == ActionResolutionStrategy.INDEPENDENT:
-            return self._resolve_independent(actions)
+            result = self._resolve_independent(actions)
         elif self._strategy == ActionResolutionStrategy.PRIORITY:
-            return self._resolve_priority(actions)
+            result = self._resolve_priority(actions, env_state)
         elif self._strategy == ActionResolutionStrategy.RANDOM:
-            return self._resolve_random(actions)
+            result = self._resolve_random(actions)
         elif self._strategy == ActionResolutionStrategy.SIMULTANEOUS_APPLY:
-            return self._resolve_simultaneous(actions, env_state)
+            result = self._resolve_simultaneous(actions, env_state)
         else:
-            # Fallback to independent
-            return self._resolve_independent(actions)
+            # Should be unreachable due to __post_init__ validation
+            msg = f"Unknown strategy: {self._strategy}"
+            raise ValueError(msg)
+
+        logger.debug(
+            "Actions resolved",
+            extra={
+                "strategy": self._strategy.value,
+                "input_count": len(actions),
+                "output_count": len(result),
+            },
+        )
+        return result
 
     def detect_conflicts(
         self,
         actions: dict[int, int],
-        env_state: dict | None = None,
+        env_state: dict[str, Any] | None = None,
     ) -> list[tuple[int, int]]:
         """Detect conflicting player pairs.
 
@@ -164,15 +176,50 @@ class ActionResolver:
         self,
         actions: dict[int, int],
     ) -> list[tuple[int, int]]:
-        """Independent: preserve all actions, ordered by player ID."""
+        """Independent: preserve all actions, ordered by player ID.
+
+        No conflict handling — all actions are applied regardless
+        of whether they target the same tile.
+        """
         return [(pid, action) for pid, action in sorted(actions.items())]
 
     def _resolve_priority(
         self,
         actions: dict[int, int],
+        env_state: dict[str, Any],
     ) -> list[tuple[int, int]]:
-        """Priority: lower player ID has higher priority (resolves first)."""
-        return [(pid, action) for pid, action in sorted(actions.items())]
+        """Priority: lower player ID has higher priority.
+
+        When allow_same_target is False, conflicting lower-priority
+        players have their actions dropped. Actions are ordered by
+        player ID (lowest = highest priority).
+        """
+        if self.config.allow_same_target:
+            return [(pid, action) for pid, action in sorted(actions.items())]
+
+        conflicts = self.detect_conflicts(actions, env_state)
+        if not conflicts:
+            return [(pid, action) for pid, action in sorted(actions.items())]
+
+        # Identify players whose actions should be dropped (higher ID loses)
+        dropped: set[int] = set()
+        for _p1, p2 in conflicts:
+            # _p1 < p2 (sorted by detect_conflicts), so p2 is lower priority
+            dropped.add(p2)
+
+        result = [
+            (pid, action) for pid, action in sorted(actions.items())
+            if pid not in dropped
+        ]
+
+        if dropped:
+            logger.debug(
+                "Priority resolution dropped %d actions",
+                len(dropped),
+                extra={"dropped_players": sorted(dropped)},
+            )
+
+        return result
 
     def _resolve_random(
         self,
@@ -186,7 +233,7 @@ class ActionResolver:
     def _resolve_simultaneous(
         self,
         actions: dict[int, int],
-        env_state: dict,
+        env_state: dict[str, Any],
     ) -> list[tuple[int, int]]:
         """Simultaneous apply: conflicts cancel both actions."""
         conflicts = self.detect_conflicts(actions, env_state)
