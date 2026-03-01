@@ -229,7 +229,7 @@ class FogOfWarManager:
 
         * Enemy units on tiles that are not ``VISIBLE`` are removed.
         * Enemy cities on tiles that are not ``VISIBLE`` are removed.
-        * Terrain is retained for ``SEEN`` and ``VISIBLE`` tiles.
+        * Terrain information is not masked and is assumed to be globally known.
         * The ``visibility`` key is injected into the returned dict.
 
         The original *game_state* is **not** mutated.
