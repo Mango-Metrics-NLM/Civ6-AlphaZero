@@ -156,7 +156,10 @@ class UniformMutation(BaseMutation):
         """Apply uniform mutation."""
         if param_range.scale == "categorical":
             if rng.random() < strength:
-                return float(rng.choice(param_range.categories))
+                new_value = rng.choice(param_range.categories)
+                if isinstance(new_value, np.generic):
+                    new_value = new_value.item()
+                return new_value
             return value
 
         if param_range.scale == "log":
