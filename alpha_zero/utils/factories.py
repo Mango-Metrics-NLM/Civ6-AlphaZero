@@ -158,7 +158,7 @@ def create_mcts(
     )
     from typing import cast
 
-    from alpha_zero.core.network_interfaces import MCTSNetwork
+    from alpha_zero.core.civ6_mcts import MCTSNetwork
 
     return Civ6MCTS(
         cast(MCTSNetwork, network), mcts_config, device=device, reflection_memory=reflection_memory
