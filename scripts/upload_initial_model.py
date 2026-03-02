@@ -36,27 +36,42 @@ logger = logging.getLogger(__name__)
 
 
 def create_initial_model(
-    state_channels: int = 64,
-    board_size: int = 10,
-    num_actions: int = 100,
+    state_channels: int | None = None,
+    board_size: int | None = None,
+    num_actions: int | None = None,
 ) -> tuple[dict, dict]:
     """Create an initial random model.
 
+    Defaults come from ``NetworkArchitectureConfig.from_env()`` so that
+    the uploaded model always matches the GCP selfplay/training workers.
+    Env-var overrides (``CIV6AZ_BOARD_SIZE``, ``CIV6AZ_ACTION_SPACE_SIZE``,
+    ``CIV6AZ_SPATIAL_CHANNELS``) apply to both here and the workers.
+
     Args:
-        state_channels: Number of state channels.
-        board_size: Board size (height and width).
-        num_actions: Action space size.
+        state_channels: Number of spatial channels (overrides env default).
+        board_size: Board size HxW (overrides env default).
+        num_actions: Action space size (overrides env default).
 
     Returns:
         Tuple of (state_dict, metadata).
     """
+    from alpha_zero.cloud.gcp.config import NetworkArchitectureConfig
     from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
+    # Use GCP worker defaults as the canonical source of truth.
+    arch = NetworkArchitectureConfig.from_env()
+    resolved_channels = state_channels if state_channels is not None else arch.spatial_channels
+    resolved_board = board_size if board_size is not None else arch.board_size
+    resolved_actions = num_actions if num_actions is not None else arch.action_space_size
+
     model_config = TransformerConfig(
-        spatial_channels=state_channels,
-        spatial_size=board_size,
-        vector_dim=state_channels,
-        action_space_size=num_actions,
+        spatial_channels=resolved_channels,
+        spatial_size=resolved_board,
+        vector_dim=arch.vector_dim,
+        action_space_size=resolved_actions,
+        num_layers=arch.num_layers,
+        embed_dim=arch.embed_dim,
+        num_heads=arch.num_heads,
     )
     model = Civ6TransformerNetwork(config=model_config)
 
@@ -74,9 +89,12 @@ def create_initial_model(
         "description": "Initial random model for self-play training",
         "created_at": datetime.now(UTC).isoformat(),
         "config": {
-            "state_channels": state_channels,
-            "board_size": board_size,
-            "num_actions": num_actions,
+            "state_channels": resolved_channels,
+            "board_size": resolved_board,
+            "num_actions": resolved_actions,
+            "embed_dim": arch.embed_dim,
+            "num_layers": arch.num_layers,
+            "num_heads": arch.num_heads,
         },
         "elo": 0,
     }
@@ -127,20 +145,20 @@ def main() -> int:
     parser.add_argument(
         "--state-channels",
         type=int,
-        default=64,
-        help="Number of state channels (default: 64)",
+        default=None,
+        help="Number of state channels (default: CIV6AZ_SPATIAL_CHANNELS env var or 13)",
     )
     parser.add_argument(
         "--board-size",
         type=int,
-        default=10,
-        help="Board size (default: 10)",
+        default=None,
+        help="Board size (default: CIV6AZ_BOARD_SIZE env var or 8)",
     )
     parser.add_argument(
         "--num-actions",
         type=int,
-        default=100,
-        help="Action space size (default: 100)",
+        default=None,
+        help="Action space size (default: CIV6AZ_ACTION_SPACE_SIZE env var or 376)",
     )
     parser.add_argument(
         "--dry-run",
