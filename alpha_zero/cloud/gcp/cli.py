@@ -187,27 +187,42 @@ def cmd_init(args: argparse.Namespace) -> int:
     if args.upload_model:
         print("\nUploading initial model...")
         try:
-            # Create a minimal initial model
+            # Use NetworkArchitectureConfig.from_env() as the canonical source of truth
+            # for all architecture defaults — same as selfplay_worker and training_worker.
+            from alpha_zero.cloud.gcp.config import NetworkArchitectureConfig
             from alpha_zero.core.transformer_network import (
                 Civ6TransformerNetwork,
                 TransformerConfig,
             )
 
+            arch = NetworkArchitectureConfig.from_env()
             model_config = TransformerConfig(
-                spatial_channels=64,
-                spatial_size=10,
-                vector_dim=64,
-                action_space_size=100,
+                spatial_channels=arch.spatial_channels,
+                spatial_size=arch.board_size,
+                vector_dim=arch.vector_dim,
+                action_space_size=arch.action_space_size,
+                num_layers=arch.num_layers,
+                embed_dim=arch.embed_dim,
+                num_heads=arch.num_heads,
             )
             model = Civ6TransformerNetwork(config=model_config)
 
             storage = GCSModelStorage(config)
             storage.save_model(
-                model,  # Pass model, not state_dict - save_model calls state_dict() internally
+                model,
                 version=0,
-                metadata={"initial": True, "description": "Initial random model"},
+                metadata={
+                    "initial": True,
+                    "description": "Initial random model",
+                    "arch": arch.to_dict(),
+                },
             )
-            print("  Uploaded model v0 to GCS")
+            print(
+                f"  Uploaded model v0 to GCS"
+                f" (board={arch.board_size}x{arch.board_size},"
+                f" actions={arch.action_space_size},"
+                f" embed={arch.embed_dim})"
+            )
         except Exception as e:
             print(f"ERROR: Failed to upload model - {e}")
             return 1
