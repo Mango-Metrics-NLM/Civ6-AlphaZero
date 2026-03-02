@@ -1,69 +1,50 @@
-# MuZero Pipeline — Remediation Sprint
+# MuZero Pipeline — Post-Bug-Fix Training Sprint
 
-> **Sprint Goal:** Unblock the training pipeline by fixing the root cause of 100% selfplay game failures, then rebuild the container and resume training.
+> **Sprint Goal:** Execute a GCP Vertex AI training run after stabilizing the codebase with DDP, lint, and cloud worker fixes.
 
 ## Current State
 
 | Area | Status | Detail |
 |------|--------|--------|
-| Selfplay | ❌ Broken | All games fail: `MuZeroMCTS.search() missing 1 required positional argument: 'action_mask'` |
-| Training | ❌ Blocked | 0 trajectories → exits with code 1 |
-| Evaluation | ⚠️ Stale test | `test_no_command_field_set` asserts wrong command spec |
-| Container | ❌ Stale | `v14-muzero` has old code; local fixes not deployed |
-| W&B | ⚠️ Partial | Injection code exists but host key not set |
+| DDP/Distributed | ✅ Fixed | DDPLearner init stabilized, 32/32 tests pass |
+| Lint (Ruff) | ✅ Clean | 0 E501/I001/W293 violations, format check pass |
+| Cloud Workers | ✅ Validated | selfplay + training worker imports verified |
+| Container | ⚠️ Stale | Must rebuild with all fixes applied |
+| W&B | ⚠️ Timeout | External W&B hashing timeout in cloud tests |
+| Terrain Ratios | ✅ Fixed | Float comparison via `math.isclose` |
 
 ## Milestones
 
-### M1: Fix Stale Test (S) — Epic 7
+### M1: Code Quality Gate (Done) — Phase 0
 
-- **Goal:** Align `test_no_command_field_set` with actual `VertexTournamentJob.launch()` behavior
-- **Complexity:** S (1 file, 1-line change)
-- **Dependencies:** None
+- ✅ Fixed 31 E501, 2 I001, 2 W293 lint violations
+- ✅ Removed stale files and broken test_atari_web
+- ✅ Fixed terrain ratio float comparison
+- **Commit**: `chore: Phase 0 code quality gate`
 
-### M2: Container Rebuild (M) — Epic 5
+### M2: DDP Stabilization (Done) — Phase 1
 
-- **Goal:** Build + push container with all local fixes, including MuZero MCTS fix
-- **Complexity:** M (Cloud Build pipeline, smoke tests)
-- **Dependencies:** All code fixes committed locally
-- **Risk:** Cloud Build quotas, Docker build cache invalidation
+- ✅ DDPLearner `initialize()` removed, init reordered
+- ✅ 32 DDP tests passing (multinode + initialization)
+- **Commit**: `fix: stabilize DDPLearner initialization`
 
-### M3: W&B Key Configuration (S)
+### M3: Cloud Worker Validation (Done) — Phase 2
 
-- **Goal:** Ensure `WANDB_API_KEY` is available in host environment for job dispatch
-- **Complexity:** S (env var setup)
-- **Dependencies:** None
+- ✅ Imports verified, no deprecated API calls
+- ✅ Timeout configs added to vertex_training.yaml
+- ✅ requirements-container.txt deps confirmed
 
-### M4: Smoke Test & Resume Training (L)
+### M4: Container Rebuild (S) — Phase 3
 
-- **Goal:** Run 1 iteration (selfplay + training + eval), verify full pipeline
-- **Complexity:** L (end-to-end cloud validation)
-- **Dependencies:** M1, M2, M3
+- [ ] Cloud Build: `gcloud builds submit --config=dockerfiles/cloudbuild.yaml --substitutions=_IMAGE_TAG=v15-stabilized`
+- **Dependency**: All code fixes committed
 
-### M5: Stale GCS Data Cleanup (S)
+### M5: Full Test Suite (M) — Phase 4
 
-- **Goal:** Delete empty iter_028-033 shard files to avoid confusion
-- **Complexity:** S (gsutil command)
-- **Dependencies:** M4 (wait until pipeline is confirmed working)
+- [ ] Unit, integration, cloud, security, sanity tests
+- [ ] Coverage ≥ 80%
 
-## Sprint Candidates (2-week)
+### M6: GCP Auth & Training (L) — Phase 5-6
 
-### Week 1: Fix & Rebuild
-
-- [x] Root cause analysis (Epic 6) — DONE
-- [ ] M1: Fix stale tournament test
-- [ ] M2: Container rebuild via Cloud Build
-- [ ] M3: W&B key configuration
-
-### Week 2: Validate & Resume
-
-- [ ] M4: End-to-end smoke test
-- [ ] M5: GCS cleanup
-- [ ] Resume full training run
-
-## Blockers & Risks
-
-| Risk | Severity | Mitigation |
-|------|----------|------------|
-| Cloud Build failure | Medium | Cloudbuild.yaml has lint + unit test gates; can fallback to local Docker build |
-| GCP quota exhaustion | Low | Already using T4 GPUs with higher default quota |
-| Container image registry confusion | Low | Standardize on Artifact Registry (`us-central1-docker.pkg.dev`) |
+- [ ] Setup auth, env vars, dry-run
+- [ ] Init → Self-play → Training → Monitor

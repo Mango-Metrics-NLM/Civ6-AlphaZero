@@ -127,6 +127,18 @@ wandb:
   log_frequency: 10
   log_model: true
   log_gradients: false
+  init_timeout: 300  # Seconds to wait for W&B init (default 90s too short for cold starts)
+
+# ============================================================
+# Timeout Configuration
+# ============================================================
+timeouts:
+  # Idle timeout before job is killed (seconds)
+  idle_timeout: 300  # Increased from 120s for container cold starts
+  # Worker heartbeat interval
+  heartbeat_interval: 30
+  # Max time to wait for a process group init
+  process_group_timeout: 300
 
 # ============================================================
 # Cost Monitoring
