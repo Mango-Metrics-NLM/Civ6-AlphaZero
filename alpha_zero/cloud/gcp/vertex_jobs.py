@@ -60,7 +60,7 @@ def _wandb_env_vars() -> dict[str, str]:
     return {k: v for k, v in candidates.items() if v}
 
 
-def _resolve_wandb_key_from_secret_manager() -> str:
+def resolve_wandb_key_from_secret_manager() -> str:
     """Resolve WANDB_API_KEY from GCP Secret Manager at runtime.
 
     Called by workers at container startup (not at job submission time)
@@ -92,6 +92,27 @@ def _resolve_wandb_key_from_secret_manager() -> str:
     except Exception as e:
         logger.debug("Could not read WANDB_API_KEY from Secret Manager: %s", e)
         return ""
+
+
+def ensure_wandb_api_key() -> None:
+    """Resolve and inject WANDB_API_KEY into the environment.
+
+    Worker entrypoints should call this early at startup so that
+    ``wandb.init()`` finds the key automatically.  Prefers an existing
+    ``WANDB_API_KEY`` env var; falls back to Secret Manager.
+
+    Example::
+
+        # In your worker __main__ or entrypoint:
+        from alpha_zero.cloud.gcp.vertex_jobs import ensure_wandb_api_key
+        ensure_wandb_api_key()
+    """
+    if os.environ.get("WANDB_API_KEY"):
+        return  # Already set
+    key = resolve_wandb_key_from_secret_manager()
+    if key:
+        os.environ["WANDB_API_KEY"] = key
+        logger.info("WANDB_API_KEY injected into environment from Secret Manager")
 
 
 logger = logging.getLogger(__name__)

@@ -27,7 +27,7 @@ spec:
         run.googleapis.com/execution-environment: gen2
         run.googleapis.com/startup-cpu-boost: 'true'
     spec:
-      containerConcurrency: 100  # Max concurrent requests per container
+      containerConcurrency: 5  # MCTS is GPU-intensive; matches Terraform concurrency var
       timeoutSeconds: 300  # 5 minute timeout for MCTS searches
       serviceAccountName: civ6az-inference@hrmtrain.iam.gserviceaccount.com
 

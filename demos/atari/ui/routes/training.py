@@ -115,15 +115,35 @@ def _train_loop(
         logger.exception("Training failed")
         return
 
-    # Extract final metrics from summary
-    state.metrics = {
-        "iteration": num_iterations,
-        "policy_loss": float(summary.get("final_policy_loss", 0)),
-        "value_loss": float(summary.get("final_value_loss", 0)),
-        "total_loss": float(summary.get("final_total_loss", 0)),
-        "num_examples": int(summary.get("total_examples", 0)),
-    }
-    state.metrics_history.append(state.metrics.copy())
+    # Extract metrics from summary.
+    # AtariTrainer.train() returns:
+    #   {"final_model": str, "iterations": int, "metrics": [per-iter dicts]}
+    # Each per-iter dict has: total_loss, policy_loss, value_loss, iteration, ...
+    all_metrics: list[dict[str, Any]] = summary.get("metrics", [])
+
+    if all_metrics:
+        # Populate full history
+        for m in all_metrics:
+            state.metrics_history.append({
+                "iteration": m.get("iteration", 0),
+                "policy_loss": float(m.get("policy_loss", 0)),
+                "value_loss": float(m.get("value_loss", 0)),
+                "total_loss": float(m.get("total_loss", 0)),
+                "num_examples": int(m.get("examples", 0)),
+            })
+
+        # Set final metrics from last iteration
+        last = all_metrics[-1]
+        state.metrics = {
+            "iteration": last.get("iteration", num_iterations),
+            "policy_loss": float(last.get("policy_loss", 0)),
+            "value_loss": float(last.get("value_loss", 0)),
+            "total_loss": float(last.get("total_loss", 0)),
+            "num_examples": int(last.get("examples", 0)),
+        }
+    else:
+        state.metrics = {"iteration": num_iterations}
+
     state.iteration = num_iterations
 
     logger.info("Training complete: %s", state.metrics)
