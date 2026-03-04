@@ -16,12 +16,10 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Install Python dependencies
+# Install Python dependencies (single layer for cache efficiency)
 COPY requirements-container.txt .
-RUN pip install --no-cache-dir -r requirements-container.txt
-
-# Install FastAPI and inference dependencies
 RUN pip install --no-cache-dir \
+    -r requirements-container.txt \
     fastapi==0.109.0 \
     uvicorn[standard]==0.27.0 \
     pydantic==2.5.3 \

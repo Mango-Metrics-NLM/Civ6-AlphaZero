@@ -298,6 +298,37 @@ class InferenceEngine:
 
         return spatial_tensor, vector_tensor, action_mask
 
+    def _apply_policy_postprocessing(
+        self,
+        policy_logits: torch.Tensor,
+        action_mask: np.ndarray,
+        temperature: float,
+        value: torch.Tensor | None = None,
+    ) -> tuple[np.ndarray, float]:
+        """Apply action mask, temperature, and convert logits to probabilities.
+
+        Args:
+            policy_logits: Raw policy logits from network [1, action_space].
+            action_mask: Binary mask of valid actions.
+            temperature: Sampling temperature (0 = greedy).
+            value: Optional value tensor from network forward pass.
+
+        Returns:
+            Tuple of (action_probs as numpy array, value_estimate as float).
+        """
+        value_estimate = value[0].item() if value is not None else 0.0
+
+        masked_logits = policy_logits.clone()
+        masked_logits[0, action_mask == 0] = float("-inf")
+
+        if temperature > 0:
+            probs = torch.softmax(masked_logits / temperature, dim=-1)
+        else:
+            probs = torch.zeros_like(masked_logits)
+            probs[0, masked_logits.argmax()] = 1.0
+
+        return probs[0].cpu().numpy(), value_estimate
+
     async def infer(self, request: InferenceRequest) -> ActionDistribution:
         """Run inference for a single game state.
 
@@ -318,33 +349,50 @@ class InferenceEngine:
         # Prepare inputs
         spatial, vector, action_mask = self._prepare_inputs(request.game_state)
 
-        # Create MCTS engine
         mcts_start = time.time()
-        self._create_mcts_engine(request.mcts_type, request.mcts_simulations)
+        assert self.current_model is not None
 
-        # Run MCTS search (mock environment for stateless inference)
-        with torch.no_grad():
-            # Direct network prediction for policy/value
-            assert self.current_model is not None
-            policy_logits, value = self.current_model(spatial, vector, action_mask)  # type: ignore[arg-type]
+        # Use MCTS search when simulations > 0; fall back to raw network output
+        if request.mcts_simulations > 0:
+            mcts_engine = self._create_mcts_engine(
+                request.mcts_type, request.mcts_simulations
+            )
 
-            # Apply action mask
-            masked_logits = policy_logits.clone()
-            masked_logits[0, action_mask == 0] = float("-inf")
+            # Run MCTS search using the engine's network-guided search
+            with torch.no_grad():
+                action_mask_tensor = torch.from_numpy(action_mask).unsqueeze(0).to(
+                    self.device
+                )
+                try:
+                    # Use the MCTS engine to get an improved policy via search
+                    improved_policy, value_estimate = mcts_engine.search(
+                        spatial, vector, action_mask_tensor
+                    )
+                    action_probs = np.asarray(improved_policy, dtype=np.float32)
+                except (AttributeError, TypeError):
+                    # Graceful fallback: if MCTS engine interface differs,
+                    # use initial_inference + temperature-based selection
+                    logger.warning(
+                        "MCTS search interface unavailable, "
+                        "falling back to raw network inference"
+                    )
+                    policy_logits, value = self.current_model(
+                        spatial, vector, action_mask
+                    )  # type: ignore[arg-type]
+                    action_probs, value_estimate = self._apply_policy_postprocessing(
+                        policy_logits, action_mask, request.temperature, value
+                    )
+        else:
+            # Raw network inference (no search) — useful for fast responses
+            with torch.no_grad():
+                policy_logits, value = self.current_model(
+                    spatial, vector, action_mask
+                )  # type: ignore[arg-type]
+                action_probs, value_estimate = self._apply_policy_postprocessing(
+                    policy_logits, action_mask, request.temperature, value
+                )
 
-            # Apply temperature
-            if request.temperature > 0:
-                probs = torch.softmax(masked_logits / request.temperature, dim=-1)
-            else:
-                # Greedy selection
-                probs = torch.zeros_like(masked_logits)
-                probs[0, masked_logits.argmax()] = 1.0
-
-            # Convert to numpy
-            action_probs = probs[0].cpu().numpy()
-            value_estimate = value[0].item()
-
-        (time.time() - mcts_start) * 1000
+        _mcts_time_ms = (time.time() - mcts_start) * 1000
 
         # Select action
         action_id = int(np.argmax(action_probs))

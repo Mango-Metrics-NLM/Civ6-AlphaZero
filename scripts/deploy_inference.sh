@@ -8,11 +8,11 @@ set -euo pipefail
 
 PLATFORM="${1:-cloud-run}"
 VERSION="${2:-latest}"
-PROJECT="hrmtrain"
-REGION="us-central1"
-REPO="civ6az"
+PROJECT="${CIV6AZ_VERTEX_PROJECT:-hrmtrain}"
+REGION="${CIV6AZ_VERTEX_REGION:-us-central1}"
+REPO="${CIV6AZ_ARTIFACT_REPO:-civ6az}"
 IMAGE_NAME="civ6az-inference"
-IMAGE_URI="us-central1-docker.pkg.dev/${PROJECT}/${REPO}/${IMAGE_NAME}:${VERSION}"
+IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT}/${REPO}/${IMAGE_NAME}:${VERSION}"
 
 echo "=== Civ6 AlphaZero Inference Deployment ==="
 echo "Platform: ${PLATFORM}"
