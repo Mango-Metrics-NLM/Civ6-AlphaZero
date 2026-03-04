@@ -25,10 +25,20 @@ def _wandb_env_vars() -> dict[str, str]:
 
     Vertex AI rejects env vars with empty string values, so we only
     include vars that have non-empty values set.
+
+    The WANDB_API_KEY is resolved with the following precedence:
+    1. ``WANDB_API_KEY`` env var (backwards compatible)
+    2. GCP Secret Manager secret named by ``CIV6AZ_WANDB_SECRET_NAME``
+       (default: ``wandb-api-key``).  Falls back silently if SM is
+       unavailable.
     """
+    wandb_key = os.environ.get("WANDB_API_KEY", "")
+    if not wandb_key:
+        wandb_key = _resolve_wandb_key_from_secret_manager()
+
     candidates = {
         "WANDB_ENABLED": os.environ.get("WANDB_ENABLED", "false"),
-        "WANDB_API_KEY": os.environ.get("WANDB_API_KEY", ""),
+        "WANDB_API_KEY": wandb_key,
         "WANDB_PROJECT": os.environ.get("WANDB_PROJECT", "civ6-alphazero"),
         "WANDB_ENTITY": os.environ.get("WANDB_ENTITY", ""),
         "WANDB_MODE": os.environ.get("WANDB_MODE", "online"),
@@ -36,6 +46,30 @@ def _wandb_env_vars() -> dict[str, str]:
         "WANDB_RUN_NAME": os.environ.get("WANDB_RUN_NAME", ""),
     }
     return {k: v for k, v in candidates.items() if v}
+
+
+def _resolve_wandb_key_from_secret_manager() -> str:
+    """Attempt to read WANDB_API_KEY from GCP Secret Manager.
+
+    Returns:
+        The secret value, or empty string if unavailable.
+    """
+    project = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
+    secret_name = os.environ.get("CIV6AZ_WANDB_SECRET_NAME", "wandb-api-key")
+    if not project:
+        return ""
+    try:
+        from google.cloud import secretmanager  # type: ignore[import-untyped]
+
+        client = secretmanager.SecretManagerServiceClient()
+        name = f"projects/{project}/secrets/{secret_name}/versions/latest"
+        response = client.access_secret_version(request={"name": name})
+        key = response.payload.data.decode("UTF-8")
+        logger.info("WANDB_API_KEY resolved from Secret Manager (%s)", secret_name)
+        return key
+    except Exception as e:
+        logger.debug("Could not read WANDB_API_KEY from Secret Manager: %s", e)
+        return ""
 
 
 logger = logging.getLogger(__name__)
