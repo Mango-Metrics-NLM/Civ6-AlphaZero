@@ -482,6 +482,88 @@ def cmd_status(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_orchestrate(args: argparse.Namespace) -> int:
+    """Run multi-iteration orchestrated training with state recovery.
+
+    Wraps :func:`run_iterations` from the vertex orchestrator module,
+    providing a CLI interface for long-running, preemption-resilient
+    training loops.
+    """
+    from alpha_zero.cloud.gcp.vertex_jobs import VertexAIClient
+    from alpha_zero.cloud.gcp.vertex_orchestrator import (
+        get_initial_model_version,
+        run_iterations,
+    )
+
+    config = get_config(getattr(args, "tier", None))
+    dry_run = getattr(args, "dry_run", False)
+
+    if not dry_run:
+        config.validate()
+
+    client = VertexAIClient(
+        project=config.project_id,
+        region=config.region,
+        service_account=config.service_account,
+    )
+
+    # Resolve starting model version from GCS
+    model_version = get_initial_model_version(config, dry_run)
+    start_iter = getattr(args, "start_iter", 0)
+    end_iter = getattr(args, "end_iter", start_iter + 10)
+    eval_threshold = getattr(args, "eval_threshold", 0.55)
+    max_failures = getattr(args, "max_failures", 3)
+    resume = getattr(args, "resume", True)
+    run_id = getattr(args, "run_id", "")
+
+    # Build a namespace with required orchestrator fields
+    orch_args = argparse.Namespace(
+        workers=getattr(args, "workers", 5),
+        games_per_worker=getattr(args, "games_per_worker", 50),
+        max_retries=getattr(args, "max_retries", 2),
+        trajectory_window=getattr(args, "trajectory_window", 5),
+        evaluation_games=getattr(args, "evaluation_games", 30),
+        mcts_type=getattr(args, "mcts_type", "gumbel"),
+        mcts_simulations=getattr(args, "mcts_simulations", 50),
+        board_size=getattr(args, "board_size", 8),
+        action_space_size=getattr(
+            args, "action_space_size", config.network.action_space_size
+        ),
+        epochs=getattr(args, "epochs", 10),
+        batch_size=getattr(args, "batch_size", 64),
+        learning_rate=getattr(args, "learning_rate", 0.001),
+        max_turns=getattr(args, "max_turns", 30),
+        num_res_blocks=config.network.num_layers,
+        num_filters=config.network.embed_dim,
+        reward_shaping=False,
+        gumbel_num_actions=getattr(args, "gumbel_num_actions", 16),
+        evaluation_win_threshold=eval_threshold,
+        agent_id=getattr(args, "agent_id", None),
+        run_id=run_id,
+    )
+
+    print(f"[Orchestrate] Iterations {start_iter}-{end_iter - 1}")
+    print(f"[Orchestrate] Model v{model_version}, resume={resume}")
+    print(f"[Orchestrate] Eval threshold: {eval_threshold:.0%}")
+
+    state = run_iterations(
+        config=config,
+        client=client,
+        args=orch_args,
+        start_iteration=start_iter,
+        end_iteration=end_iter,
+        initial_model_version=model_version,
+        eval_win_threshold=eval_threshold,
+        max_consecutive_failures=max_failures,
+        dry_run=dry_run,
+        resume=resume,
+    )
+
+    summary = state.to_summary()
+    print(f"\n[Orchestrate] Complete: {summary}")
+    return 0 if state.failed_iterations == 0 else 1
+
+
 def main() -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -540,6 +622,29 @@ def main() -> int:
     run_parser.add_argument("--tier", choices=["budget", "ondemand"], default="budget")
     run_parser.add_argument("--dry-run", action="store_true", help="Don't submit jobs")
 
+    # orchestrate command
+    orch_parser = subparsers.add_parser(
+        "orchestrate",
+        help="Run multi-iteration training with state recovery",
+    )
+    orch_parser.add_argument("--start-iter", type=int, default=50, help="First iteration")
+    orch_parser.add_argument("--end-iter", type=int, default=100, help="Last iteration (excl)")
+    orch_parser.add_argument(
+        "--eval-threshold", type=float, default=0.55, help="Min win rate (0-1)"
+    )
+    orch_parser.add_argument("--workers", type=int, default=5, help="Self-play workers")
+    orch_parser.add_argument("--games-per-worker", type=int, default=50)
+    orch_parser.add_argument("--evaluation-games", type=int, default=30)
+    orch_parser.add_argument("--trajectory-window", type=int, default=5)
+    orch_parser.add_argument("--epochs", type=int, default=10)
+    orch_parser.add_argument("--max-failures", type=int, default=3, help="Circuit breaker")
+    orch_parser.add_argument("--resume", action="store_true", default=True)
+    orch_parser.add_argument("--no-resume", dest="resume", action="store_false")
+    orch_parser.add_argument("--run-id", type=str, default="", help="Run ID for state scoping")
+    orch_parser.add_argument("--agent-id", type=str, help="Agent ID for GCS namespace")
+    orch_parser.add_argument("--tier", choices=["budget", "ondemand"], default="budget")
+    orch_parser.add_argument("--dry-run", action="store_true", help="Don't submit jobs")
+
     # status command
     status_parser = subparsers.add_parser("status", help="Check job status")
     status_parser.add_argument("--tier", choices=["budget", "ondemand"], default="budget")
@@ -559,6 +664,7 @@ def main() -> int:
         "selfplay": cmd_selfplay,
         "train": cmd_train,
         "run": cmd_run,
+        "orchestrate": cmd_orchestrate,
         "status": cmd_status,
     }
 
