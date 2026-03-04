@@ -18,6 +18,7 @@ data:
   CIV6AZ_GCS_BUCKET: "civ6az-training"
   CIV6AZ_GCS_PREFIX: "models/"
   PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:512"
+  INFERENCE_PORT: "8080"
 
 ---
 apiVersion: apps/v1
@@ -48,7 +49,7 @@ spec:
 
         ports:
         - name: http
-          containerPort: 8000
+          containerPort: 8080
           protocol: TCP
 
         env:
@@ -72,7 +73,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /health
-            port: 8000
+            port: 8080
           initialDelaySeconds: 60
           periodSeconds: 30
           timeoutSeconds: 10
@@ -81,7 +82,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /health
-            port: 8000
+            port: 8080
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
@@ -91,7 +92,7 @@ spec:
         startupProbe:
           httpGet:
             path: /health
-            port: 8000
+            port: 8080
           initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 10
@@ -109,7 +110,7 @@ spec:
   type: LoadBalancer
   ports:
   - port: 80
-    targetPort: 8000
+    targetPort: 8080
     protocol: TCP
     name: http
   selector:

@@ -3,7 +3,7 @@
 FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
 
 LABEL maintainer="civ6az" \
-      description="Civ6 AlphaZero ML Inference Service"
+    description="Civ6 AlphaZero ML Inference Service"
 
 # Avoid interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
@@ -11,8 +11,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        curl \
-        && rm -rf /var/lib/apt/lists/*
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -32,10 +32,10 @@ RUN pip install --no-cache-dir -e .
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:${INFERENCE_PORT:-8080}/health || exit 1
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8080
 
 # Run as non-root user (security best practice)
 RUN useradd -m -u 1000 inference && \
@@ -44,7 +44,8 @@ USER inference
 
 # Environment variables (override via Cloud Run/GKE)
 ENV PYTHONUNBUFFERED=1 \
-    PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+    PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512 \
+    INFERENCE_PORT=8080
 
-# Run server
-CMD ["python", "-m", "alpha_zero.inference.api_server"]
+# Run server (uses alpha_zero.serving.inference_server — production module)
+CMD ["python", "-m", "alpha_zero.serving.inference_server"]

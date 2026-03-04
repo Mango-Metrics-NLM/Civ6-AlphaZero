@@ -14,13 +14,12 @@
 locals {
   # Environment variables passed to the inference container
   env_vars = {
-    CIV6AZ_MODEL_VERSION  = var.model_version
-    CIV6AZ_GCS_BUCKET     = var.training_bucket
-    CIV6AZ_MCTS_TYPE      = "gumbel"
-    CIV6AZ_MCTS_SIMS      = "16"
+    CIV6AZ_MODEL_VERSION   = var.model_version
+    CIV6AZ_GCS_BUCKET      = var.training_bucket
+    CIV6AZ_MCTS_TYPE       = "gumbel"
+    CIV6AZ_MCTS_SIMS       = "16"
     CIV6AZ_BOARD_SIZE      = "8"
-    CIV6AZ_ACTION_SPACE    = "376"
-    CIV6AZ_DEVICE          = "cuda"
+    CIV6AZ_ACTION_SPACE_SIZE = "376"
     # Inference server config
     INFERENCE_PORT         = "8080"
     INFERENCE_WORKERS      = "1"
