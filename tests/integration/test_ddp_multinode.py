@@ -237,8 +237,8 @@ class TestCheckpointCoordination:
                 replay_buffer=mock_buffer,
                 network=ToyModel(),
             )
-            loaded_step = learner_loader.load_checkpoint(str(Path(tmpdir) / "checkpoint_42.pt"))
-            assert loaded_step == 42
+            loaded_checkpoint = learner_loader.load_checkpoint(str(Path(tmpdir) / "checkpoint_42.pt"))
+            assert loaded_checkpoint["step"] == 42
 
 
 @pytest.mark.integration
