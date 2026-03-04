@@ -86,7 +86,7 @@ class SpatialToTokens(nn.Module):
         self.num_tokens = num_tokens
 
         # Compute pooling dimensions: pool_size^2 >= num_tokens
-        self.pool_size = int(math.ceil(math.sqrt(num_tokens)))
+        self.pool_size = math.ceil(math.sqrt(num_tokens))
         self.pooled_elements = self.pool_size * self.pool_size
 
         # Adaptive pooling to fixed grid
