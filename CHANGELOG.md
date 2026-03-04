@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Sprint 2: Scaling & Optimization
+
+#### Multi-Iteration Orchestrator (M10)
+
+- **`orchestrator_state.py`**: `OrchestratorState` dataclass with GCS-backed save/load for preemption-resilient training runs
+- **`run_iterations()`**: Extracted iteration loop from `main()` with evaluation gate (55% win rate), circuit breaker, cost tracking, W&B logging
+- **CLI `orchestrate` subcommand**: `--start-iter`, `--end-iter`, `--eval-threshold`, `--resume`, `--run-id`, `--agent-id`
+- **20 new tests**: `test_orchestrator_state.py` — state tracking, serialization, GCS mock, dry-run integration
+
+#### Production Monitoring & Cost Control (Phase 4)
+
+- **`scripts/setup_monitoring.sh`**: 4 GCP alerting policies (job failure, daily cost budget, GPU utilization, circuit breaker log)
+- All thresholds configurable via env vars (`DAILY_BUDGET_USD`, `NOTIFICATION_CHANNEL`)
+
+#### Secret Manager Migration (Phase 5)
+
+- **`scripts/setup_secrets.sh`**: Migrate WANDB_API_KEY to GCP Secret Manager
+- **`vertex_jobs.py`**: `_wandb_env_vars()` now resolves WANDB_API_KEY with fallback: env var → Secret Manager → empty
+- **`_resolve_wandb_key_from_secret_manager()`**: New helper using `google.cloud.secretmanager`
+
+#### Code Quality (Phase 1)
+
+- Fixed 5 ruff violations: RUF059 (unused vars ×3), RUF046 (unnecessary int cast), N801 (class naming)
+- Fixed 2 mypy issues in changed files
+
 ### Added
 
 - **Inference Service (Phase 16)**: Production-ready machine learning inference service for Civ6 AlphaZero model deployment.

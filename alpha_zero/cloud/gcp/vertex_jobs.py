@@ -59,7 +59,7 @@ def _resolve_wandb_key_from_secret_manager() -> str:
     if not project:
         return ""
     try:
-        from google.cloud import secretmanager  # type: ignore[import-untyped]
+        from google.cloud import secretmanager
 
         client = secretmanager.SecretManagerServiceClient()
         name = f"projects/{project}/secrets/{secret_name}/versions/latest"

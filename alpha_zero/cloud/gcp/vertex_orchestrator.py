@@ -1215,7 +1215,7 @@ def run_iterations(
 
         # Log to W&B
         if wandb_logger is not None and getattr(wandb_logger, "is_enabled", False):
-            wandb_logger.log(  # type: ignore[union-attr]
+            wandb_logger.log(  # type: ignore[attr-defined]
                 {
                     "orchestrator/iteration": iteration,
                     "orchestrator/model_version": state.current_model_version,
