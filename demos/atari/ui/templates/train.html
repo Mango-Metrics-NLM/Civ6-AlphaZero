@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Train {{ game }} - Atari AlphaZero{% endblock %}
+
+{% block content %}
+<div class="train-container">
+    <div class="train-header">
+        <h2>Training Dashboard - {{ game }}</h2>
+        <div class="train-controls">
+            <label>Iterations: <input type="number" id="train-iters" value="10" min="1" max="1000" class="input-small"></label>
+            <label>Episodes/iter: <input type="number" id="train-episodes" value="2" min="1" max="100" class="input-small"></label>
+            <button id="btn-start-train" class="btn btn-primary">Start Training</button>
+            <button id="btn-stop-train" class="btn btn-danger" disabled>Stop</button>
+        </div>
+    </div>
+    <div class="charts-grid">
+        <div class="chart-card">
+            <h3>Policy Loss</h3>
+            <canvas id="policy-loss-chart"></canvas>
+        </div>
+        <div class="chart-card">
+            <h3>Value Loss</h3>
+            <canvas id="value-loss-chart"></canvas>
+        </div>
+        <div class="chart-card">
+            <h3>Total Loss</h3>
+            <canvas id="total-loss-chart"></canvas>
+        </div>
+        <div class="chart-card">
+            <h3>Training Examples</h3>
+            <canvas id="examples-chart"></canvas>
+        </div>
+    </div>
+    <div class="train-status">
+        <div class="status-card">
+            <span class="status-label">Status</span>
+            <span id="train-status" class="status-value">Idle</span>
+        </div>
+        <div class="status-card">
+            <span class="status-label">Iteration</span>
+            <span id="train-iteration" class="status-value">-</span>
+        </div>
+        <div class="status-card">
+            <span class="status-label">Policy Loss</span>
+            <span id="train-policy-loss" class="status-value">-</span>
+        </div>
+        <div class="status-card">
+            <span class="status-label">Value Loss</span>
+            <span id="train-value-loss" class="status-value">-</span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/training_charts.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        window.trainingDashboard = new TrainingDashboard();
+    });
+</script>
+{% endblock %}

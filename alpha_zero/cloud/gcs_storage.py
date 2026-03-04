@@ -254,7 +254,7 @@ def _get_gcs_client(force_mock: bool = False) -> StorageClientProtocol:
     try:
         from google.cloud import storage
 
-        return storage.Client()
+        return storage.Client()  # type: ignore[no-any-return]
     except ImportError:
         logger.warning("google-cloud-storage not installed, using mock client")
         return MockGCSClient()
@@ -544,7 +544,7 @@ class GCSCheckpointManager:
         blob_name = f"{self.prefix}/checkpoint_{iteration:08d}.pt"
         bucket = self._get_bucket()
         blob = bucket.blob(blob_name)
-        return blob.exists()
+        return blob.exists()  # type: ignore[no-any-return]
 
     def delete_checkpoint(self, iteration: int) -> bool:
         """Delete a checkpoint.

@@ -34,7 +34,10 @@ import os
 import random
 import sys
 import time
-from typing import Final
+from typing import TYPE_CHECKING, Any, Final
+
+if TYPE_CHECKING:
+    from alpha_zero.cloud.gcp.orchestrator_state import OrchestratorState
 
 from alpha_zero.cloud.gcp.config import (
     DEFAULT_MCTS_TYPE,
@@ -153,7 +156,7 @@ def parse_args() -> argparse.Namespace:
         help="MCTS algorithm variant",
     )
     parser.add_argument(
-        "--mcts_simulations", type=int, default=64, help="MCTS simulations per move"
+        "--mcts_simulations", type=int, default=400, help="MCTS simulations per move"
     )
     parser.add_argument(
         "--gumbel_num_actions",
@@ -169,7 +172,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--num_parallel_games",
         type=int,
-        default=1,
+        default=4,
         help="Number of parallel games per worker (1=sequential, >1=vectorized)",
     )
     parser.add_argument(
@@ -841,8 +844,8 @@ def _apply_model_subsampling(
 
 
 def _log_tournament_to_wandb(
-    wandb_logger: object | None,
-    tournament_results: dict,
+    wandb_logger: Any | None,
+    tournament_results: dict[str, Any],
 ) -> None:
     """Log tournament results to W&B.
 
@@ -855,9 +858,9 @@ def _log_tournament_to_wandb(
 
     elo_ratings = tournament_results.get("elo_ratings", {})
     for player_id, elo in elo_ratings.items():
-        wandb_logger.log({f"tournament/elo_{player_id}": elo})  # type: ignore[attr-defined]
+        wandb_logger.log({f"tournament/elo_{player_id}": elo})
     wandb_logger.log(
-        {  # type: ignore[attr-defined]
+        {
             "tournament/best_model": tournament_results.get("best_model", ""),
             "tournament/best_elo": tournament_results.get("best_elo", 0.0),
             "tournament/num_models": len(tournament_results.get("model_versions", [])),
@@ -914,7 +917,8 @@ def _run_tournament_cloud(
 
         backend = GCSBackend(config.project_id)
         data = backend.download_blob(config.bucket, "tournament/post_run_results.json")
-        return json.loads(data.decode("utf-8"))
+        parsed = json.loads(data.decode("utf-8"))
+        return parsed if isinstance(parsed, dict) else {}
     except Exception as e:
         logger.warning("Failed to load cloud tournament results from GCS: %s", e)
         return {}
@@ -1006,6 +1010,247 @@ def run_post_run_evaluation(
     save_tournament_results(config, tournament_results, dry_run=dry_run)
 
     return tournament_results
+
+
+def run_iterations(
+    config: GCPConfig,
+    client: VertexAIClient,
+    args: argparse.Namespace,
+    *,
+    start_iteration: int = 0,
+    end_iteration: int = 10,
+    initial_model_version: int = 0,
+    eval_win_threshold: float = 0.55,
+    max_consecutive_failures: int = 3,
+    wandb_logger: object | None = None,
+    dry_run: bool = False,
+    resume: bool = True,
+) -> OrchestratorState:
+    """Run a sequence of training iterations with state recovery.
+
+    This is the core multi-iteration loop extracted from ``main()``.
+    It persists state to GCS after each iteration so the run can be
+    resumed after preemption.
+
+    Args:
+        config: GCP configuration.
+        client: Vertex AI client.
+        args: Parsed CLI arguments (must contain all orchestrator fields).
+        start_iteration: First iteration number.
+        end_iteration: Last iteration number (exclusive).
+        initial_model_version: Starting model version.
+        eval_win_threshold: Minimum win rate to accept a new model.
+        max_consecutive_failures: Circuit breaker threshold.
+        wandb_logger: Optional W&B logger instance.
+        dry_run: If True, simulate without cloud jobs.
+        resume: If True, attempt to load previous state from GCS.
+
+    Returns:
+        Final OrchestratorState after all iterations (or early stop).
+    """
+    from alpha_zero.cloud.gcp.cost import CostEstimator
+    from alpha_zero.cloud.gcp.orchestrator_state import OrchestratorState
+
+    agent_id = getattr(args, "agent_id", None)
+    run_id = getattr(args, "run_id", "")
+
+    # Attempt to resume from GCS state
+    state: OrchestratorState | None = None
+    if resume and not dry_run:
+        state = OrchestratorState.load(config, agent_id=agent_id, run_id=run_id)
+
+    if state is None:
+        state = OrchestratorState(
+            start_iteration=start_iteration,
+            end_iteration=end_iteration,
+            current_iteration=start_iteration,
+            current_model_version=initial_model_version,
+            initial_model_version=initial_model_version,
+            agent_id=agent_id,
+            run_id=run_id,
+        )
+
+    cost_estimator = CostEstimator(config)
+    max_consec = max_consecutive_failures
+
+    for iteration in state.remaining_iterations():
+        iteration_start = time.time()
+        model_version = state.current_model_version
+
+        logger.info("=" * 60)
+        logger.info("Starting iteration %d (model v%d)", iteration, model_version)
+        logger.info("=" * 60)
+
+        # Phase 1: Self-play
+        sp_start = time.time()
+        selfplay_ok = run_selfplay_phase(
+            config=config,
+            client=client,
+            iteration=iteration,
+            model_version=model_version,
+            num_workers=args.workers,
+            games_per_worker=args.games_per_worker,
+            args=args,
+            max_retries=args.max_retries,
+            dry_run=dry_run,
+        )
+        sp_duration = (time.time() - sp_start) / 3600.0
+        sp_cost = (
+            cost_estimator.estimate_job_cost(
+                machine_type=config.self_play.machine_type,
+                accelerator_type=config.self_play.accelerator_type,
+                accelerator_count=config.self_play.accelerator_count,
+                duration_hours=sp_duration,
+                is_spot=config.self_play.spot,
+            )
+            * args.workers
+        )
+
+        if not selfplay_ok:
+            logger.error("Self-play failed for iteration %d", iteration)
+            state.record_failure(iteration, cost_usd=sp_cost)
+            if max_consec > 0 and state.consecutive_failures >= max_consec:
+                logger.critical(
+                    "CIRCUIT BREAKER: %d consecutive failures (threshold=%d).",
+                    state.consecutive_failures,
+                    max_consec,
+                )
+                break
+            continue
+
+        # Phase 2: Training
+        train_start = time.time()
+        earliest = max(0, iteration - args.trajectory_window + 1)
+        trajectory_iterations = list(range(earliest, iteration + 1))
+        training_ok = run_training_phase(
+            config=config,
+            client=client,
+            iteration=iteration,
+            trajectory_iterations=trajectory_iterations,
+            args=args,
+            max_retries=args.max_retries,
+            dry_run=dry_run,
+        )
+        train_duration = (time.time() - train_start) / 3600.0
+        train_cost = cost_estimator.estimate_job_cost(
+            machine_type=config.training.machine_type,
+            accelerator_type=config.training.accelerator_type,
+            accelerator_count=config.training.accelerator_count,
+            duration_hours=train_duration,
+            is_spot=config.training.spot,
+        )
+
+        if not training_ok:
+            logger.error("Training failed for iteration %d", iteration)
+            state.record_failure(iteration, cost_usd=sp_cost + train_cost)
+            if max_consec > 0 and state.consecutive_failures >= max_consec:
+                logger.critical(
+                    "CIRCUIT BREAKER: %d consecutive failures (threshold=%d).",
+                    state.consecutive_failures,
+                    max_consec,
+                )
+                break
+            continue
+
+        # Get new model version
+        if dry_run:
+            new_version = model_version + 1
+        else:
+            try:
+                storage = GCSModelStorage(config)
+                new_version = storage.get_latest_version()
+            except Exception:
+                new_version = model_version + 1
+
+        # Phase 3: Evaluation (optional)
+        win_rate = 0.0
+        eval_cost = 0.0
+        rejected = False
+
+        if args.evaluation_games > 0 and model_version > 0:
+            eval_start = time.time()
+            eval_ok, win_rate = run_evaluation_phase(
+                config=config,
+                client=client,
+                iteration=iteration,
+                model_version_new=new_version,
+                model_version_old=model_version,
+                args=args,
+                dry_run=dry_run,
+                max_retries=args.max_retries,
+            )
+            eval_duration = (time.time() - eval_start) / 3600.0
+            eval_cost = cost_estimator.estimate_job_cost(
+                machine_type=_EVAL_MACHINE_TYPE,
+                accelerator_type="",
+                accelerator_count=0,
+                duration_hours=eval_duration,
+                is_spot=False,
+            )
+
+            if not eval_ok:
+                state.record_failure(
+                    iteration,
+                    cost_usd=sp_cost + train_cost + eval_cost,
+                )
+                if max_consec > 0 and state.consecutive_failures >= max_consec:
+                    break
+                continue
+
+            # Evaluation gate
+            threshold = eval_win_threshold
+            if win_rate < threshold:
+                logger.warning(
+                    "Model rejected: win_rate=%.2f%% < threshold=%.2f%%",
+                    win_rate * 100,
+                    threshold * 100,
+                )
+                rejected = True
+
+        total_cost = sp_cost + train_cost + eval_cost
+        duration = time.time() - iteration_start
+
+        state.record_success(
+            iteration=iteration,
+            model_version=new_version,
+            win_rate=win_rate,
+            cost_usd=total_cost,
+            duration_seconds=duration,
+            rejected=rejected,
+        )
+
+        # Log to W&B
+        if wandb_logger is not None and getattr(wandb_logger, "is_enabled", False):
+            wandb_logger.log(  # type: ignore[attr-defined]
+                {
+                    "orchestrator/iteration": iteration,
+                    "orchestrator/model_version": state.current_model_version,
+                    "orchestrator/iteration_duration_min": duration / 60,
+                    "orchestrator/cumulative_cost": state.total_cost_usd,
+                    "orchestrator/eval_win_rate": win_rate,
+                },
+                step=iteration,
+            )
+
+        logger.info(
+            "Iteration %d complete in %.1f min. Model: v%d (cost: $%.2f)",
+            iteration,
+            duration / 60,
+            state.current_model_version,
+            total_cost,
+        )
+
+        # Persist state for preemption recovery
+        if not dry_run:
+            state.save(config)
+
+    # Final summary
+    summary = state.to_summary()
+    logger.info("=" * 60)
+    logger.info("Training run complete: %s", summary)
+    logger.info("=" * 60)
+
+    return state
 
 
 def main() -> int:
@@ -1149,6 +1394,9 @@ def main() -> int:
         # --- Container image pre-flight validation ---
         if not args.dry_run and not getattr(args, "skip_image_validation", False):
             image_uri = config.container_image_uri
+            if not image_uri:
+                logger.error("Container image URI is not set in config.")
+                return 1
             logger.info("Validating container image: %s", image_uri)
             val_result = validate_container_image(image_uri)
             if not val_result.exists:

@@ -1,153 +1,165 @@
-# GCP Infrastructure Reference
+# GCP Infrastructure — Civ6 AlphaZero Training
 
-Infrastructure documentation for the Civ6 AlphaZero MuZero training pipeline on Google Cloud Platform.
+## Project Overview
 
-## Project Configuration
-
-| Property | Value |
-|:---|:---|
+| Field | Value |
+|-------|-------|
 | **Project ID** | `hrmtrain` |
+| **Project Number** | `1019219508001` |
 | **Region** | `us-central1` |
-| **Service Account** | `civ6az-vertex@hrmtrain.iam.gserviceaccount.com` |
-| **Provisioning Script** | `scripts/setup_gcp.sh` (bash) / `scripts/setup_gcp.ps1` (PowerShell) |
+| **Account** | `ianshank@gmail.com` |
 
 ## Resources
 
-### GCS Bucket
-
-| Property | Value |
-|:---|:---|
-| **Name** | `civ6az-training` |
-| **Location** | `us-central1` |
-| **Storage Class** | Standard |
-| **Lifecycle** | 90-day auto-delete on `tmp/` prefix |
-
-**Path layout:**
-
-```
-gs://civ6az-training/
-  models/civ6az/         # Model weights (versioned)
-    v001/model.pt
-    latest.json
-  trajectories/civ6az/   # Self-play game data
-    iter_000/
-      shard_worker_00.pt.xz
-      manifest.json
-  checkpoints/civ6az/    # Training checkpoints
-    training_step_1000.pt
-    latest.pt
-```
-
 ### Artifact Registry
 
-| Property | Value |
-|:---|:---|
-| **Repository** | `civ6az` |
-| **Format** | Docker |
-| **Region** | `us-central1` |
-| **Image URI** | `us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v1.0.0` |
+| Repository | Format | Location | Purpose |
+|------------|--------|----------|---------|
+| `civ6az` | DOCKER | us-central1 | Training container images |
+| `civ6az-muzero-world-model` | DOCKER | us-central1 | MuZero world model images |
+| `alphagalerkin` | DOCKER | us-central1 | AlphaGalerkin images |
+| `muzero-world-model` | DOCKER | us-central1 | Legacy MuZero images |
+| `vertex-ai-training` | DOCKER | us-central1 | General Vertex AI training |
 
-### Secret Manager
+**Active Image:**
 
-| Secret Name | Source Env Var | Purpose |
-|:---|:---|:---|
-| `wandb-api-key` | `WANDB_API_KEY` | Weights & Biases experiment tracking |
-| `openai-api-key` | `OPENAI_API_KEY` | LLM-augmented strategy (optional) |
-| `anthropic-api-key` | `ANTHROPIC_API_KEY` | LLM-augmented strategy (optional) |
-
-### Enabled APIs
-
-| API | Purpose |
-|:---|:---|
-| `aiplatform.googleapis.com` | Vertex AI Custom Jobs |
-| `storage.googleapis.com` | GCS storage |
-| `cloudbuild.googleapis.com` | Container build CI |
-| `artifactregistry.googleapis.com` | Docker image registry |
-| `secretmanager.googleapis.com` | Secrets management |
-| `monitoring.googleapis.com` | Metrics and alerting |
-| `containerregistry.googleapis.com` | Legacy GCR (backwards compat) |
-
-## IAM Bindings
-
-Service Account: `civ6az-vertex@hrmtrain.iam.gserviceaccount.com`
-
-| Role | Purpose |
-|:---|:---|
-| `roles/aiplatform.user` | Submit Vertex AI Custom Jobs |
-| `roles/storage.objectAdmin` | Read/write GCS buckets |
-| `roles/artifactregistry.reader` | Pull container images |
-| `roles/secretmanager.secretAccessor` | Read secrets at runtime |
-| `roles/logging.logWriter` | Write Cloud Logging |
-| `roles/monitoring.metricWriter` | Write custom metrics |
-
-## Cost Estimates
-
-| Run Type | Command | Est. Cost |
-|:---|:---|:---|
-| **Dry Run** | `-DryRun` | Free |
-| **Smoke Test** | `-Iterations 1 -Workers 1 -GamesPerWorker 2` | ~$1-2 |
-| **Full PBT** | `-Iterations 10 -Workers 4 -GamesPerWorker 100` | ~$50-75 |
-
-**Per-resource rates** (budget tier, us-central1):
-
-- Self-play worker: ~$0.35/hr (n1-standard-8 + T4 GPU, Spot VMs for 60-91% savings)
-- Training worker: ~$0.35/hr (n1-standard-8 + T4 GPU)
-- GCS storage: ~$0.02/GB/month
-- Secret Manager: ~$0.03/10K accesses
-
-## Launch Commands
-
-```powershell
-# 1. Provision resources (first time only)
-.\scripts\setup_gcp.ps1
-
-# 2. Build and push container
-python scripts/build_and_push.py --tag v1.0.0
-
-# 3. Dry run (free)
-.\scripts\launch_muzero_training.ps1 -DryRun
-
-# 4. Smoke test (~$1-2)
-.\scripts\launch_muzero_training.ps1 -Iterations 1 -Workers 1 -GamesPerWorker 2
-
-# 5. Full PBT training (~$50-75)
-.\scripts\launch_muzero_training.ps1 -Iterations 10 -Workers 4 -GamesPerWorker 100
+```
+us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v1.2.0
 ```
 
-## Monitoring
+**Stabilized Image (post bug-fix):**
 
-```powershell
-# Check job status via CLI
-python -m alpha_zero.cloud.gcp.cli status
-
-# List running Vertex AI jobs
-cmd /c "gcloud ai custom-jobs list --region=us-central1 --filter=state:JOB_STATE_RUNNING --format=table(displayName,state)"
-
-# View logs in Cloud Console
-# https://console.cloud.google.com/logs?project=hrmtrain
+```
+us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v15-stabilized
 ```
 
-## Rollback
+### GCS Buckets
 
-```powershell
+| Bucket | Purpose |
+|--------|---------|
+| `civ6az-training` | Models, trajectories, checkpoints, logs |
+| `civ6az-muzero-training` | MuZero world model artifacts |
+| `hrmtrain_cloudbuild` | Cloud Build source tarballs |
+
+**Bucket Structure — `gs://civ6az-training/`:**
+
+```
+models/civ6az/v000/           # Initial model (v0)
+models/civ6az/v001/..v219/    # 219 trained versions
+trajectories/civ6az/iter_001..iter_049/  # Self-play data
+checkpoints/civ6az/           # Training checkpoints
+logs/civ6az/                  # Training logs
+```
+
+### Vertex AI Custom Jobs
+
+**Training Run Summary (49 iterations):**
+
+| Metric | Value |
+|--------|-------|
+| Total iterations | 49 |
+| Model versions | v000 → v219 |
+| Container image | `civ6az-training:v1.2.0` |
+| W&B project | `civ6-alphazero` |
+| W&B group | `dashing-firebrand-1393` |
+
+**Iteration 49 — Training Job:**
+
+| Field | Value |
+|-------|-------|
+| Display Name | `civ6az-training-iter049` |
+| Job ID | `4029264727690444800` |
+| State | ✅ `JOB_STATE_SUCCEEDED` |
+| Duration | 5m 32s (21:24:44 → 21:30:16 UTC) |
+| Machine | `n1-standard-8` + `NVIDIA_TESLA_T4` × 1 |
+| Disk | 100 GB `pd-ssd` |
+| Epochs | 10 |
+| Trajectory window | iterations 45–49 |
+| LR schedule | warmup_cosine (0.001 → 0.0001) |
+| LR warmup steps | 500 |
+| Value LR multiplier | 0.1 |
+| Architecture | 8×8 board, 376 actions, 6 layers, 64 embed |
+
+**Iteration 49 — Evaluation Job:**
+
+| Field | Value |
+|-------|-------|
+| Display Name | `civ6az-eval-iter049` |
+| Job ID | `6998262782034444288` |
+| State | ✅ `JOB_STATE_SUCCEEDED` |
+| Duration | 21m 7s (21:34:56 → 21:56:03 UTC) |
+| Machine | `n1-standard-4` (CPU-only) |
+| Matchup | v219 vs v218 |
+| Games | 30 |
+| MCTS | Gumbel (16 sims, 16 top actions) |
+| Max turns | 30 |
+
+## Environment Variables
+
+| Variable | Value | Source |
+|----------|-------|--------|
+| `CIV6AZ_VERTEX_PROJECT` | `hrmtrain` | Required |
+| `CIV6AZ_VERTEX_REGION` | `us-central1` | Required |
+| `CIV6AZ_GCS_BUCKET` | `civ6az-training` | Required |
+| `CIV6AZ_CONTAINER_IMAGE_URI` | `us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v15-stabilized` | Required |
+| `CIV6AZ_ENCODER_TYPE` | `patch_embed` | Default |
+| `WANDB_ENABLED` | `true` | Optional |
+| `WANDB_PROJECT` | `civ6-alphazero` | Optional |
+| `WANDB_MODE` | `online` | Optional |
+
+## IAM & Service Accounts
+
+- **Active Account**: `ianshank@gmail.com` (owner)
+- **ADC**: Application Default Credentials configured
+- **Container SA**: Uses Vertex AI default compute service account
+
+## Cost Estimate (Iteration 49)
+
+| Job | Machine | GPU | Duration | Est. Cost |
+|-----|---------|-----|----------|-----------|
+| Training | n1-standard-8 | T4 × 1 | 5.5 min | ~$0.06 |
+| Evaluation | n1-standard-4 | None | 21 min | ~$0.02 |
+| **Total iter 49** | | | 26.5 min | **~$0.08** |
+| **Full 49 iters** | | | ~hours | **~$4-10** |
+
+## Cloud Build Pipeline
+
+**Config**: `dockerfiles/cloudbuild.yaml`
+
+9-step pipeline (5m 7s):
+
+1. Lint (ruff)
+2. Unit tests
+3. Docker build (NVIDIA PyTorch 24.09-py3 base)
+4. Import smoke test
+5. Self-play dry run
+6. Training dry run
+7. MuZero self-play test
+8. Orchestrator guard test
+9. Push to Artifact Registry
+
+## Rollback Instructions
+
+```bash
 # Revert to previous container image
-$env:CIV6AZ_CONTAINER_IMAGE_URI = "us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v0.15.0"
+gcloud builds submit --config=dockerfiles/cloudbuild.yaml \
+  --substitutions=_IMAGE_TAG=v1.2.0 .
 
-# Cancel running Vertex AI job
-gcloud ai custom-jobs cancel JOB_ID --region=us-central1
-
-# List available image versions
-gcloud artifacts docker images list us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training
+# Roll back model version
+python -m alpha_zero.cloud.gcp.cli init --upload-model --version 218
 ```
 
 ## Teardown
 
-> **Warning**: This deletes ALL resources including training data and models.
+```bash
+# Delete training artifacts (DESTRUCTIVE)
+gcloud storage rm -r gs://civ6az-training/trajectories/
+gcloud storage rm -r gs://civ6az-training/checkpoints/
 
-```powershell
-# PowerShell
-.\scripts\setup_gcp.ps1 -Teardown
+# Delete container images
+gcloud artifacts docker images delete \
+  us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v15-stabilized
 
-# Bash/WSL
-bash scripts/setup_gcp.sh --teardown
+# Cancel running jobs
+gcloud ai custom-jobs cancel JOB_ID --region=us-central1
 ```

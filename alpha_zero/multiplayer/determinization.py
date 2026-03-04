@@ -137,9 +137,7 @@ class WorldSampler:
         # Estimate how many hidden enemy units to place.
         # Use a simple heuristic: each non-player should have roughly as
         # many units as the player has (a naive prior).
-        own_unit_count = sum(
-            1 for u in world.get("units", []) if u.get("player") == player
-        )
+        own_unit_count = sum(1 for u in world.get("units", []) if u.get("player") == player)
         num_players = observed_state.get("num_players", self.num_players)
 
         for opponent in range(num_players):
@@ -148,9 +146,7 @@ class WorldSampler:
 
             # Count already-visible opponent units in the observed state.
             visible_opponent_units = [
-                u
-                for u in world.get("units", [])
-                if u.get("player") == opponent
+                u for u in world.get("units", []) if u.get("player") == opponent
             ]
             visible_count = len(visible_opponent_units)
 

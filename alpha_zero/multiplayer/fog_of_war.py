@@ -168,9 +168,7 @@ class FogOfWarManager:
             player = unit.get("player", 0)
             pos = unit.get("position", (0, 0))
             unit_type = unit.get("type", "warrior")
-            sight = self.config.unit_sight_ranges.get(
-                unit_type, self.config.default_sight_range
-            )
+            sight = self.config.unit_sight_ranges.get(unit_type, self.config.default_sight_range)
             self._reveal(player, pos, sight)
 
         for city in cities:
@@ -265,9 +263,7 @@ class FogOfWarManager:
         masked["units"] = filtered_units
         hidden_units = len(game_state.get("units", [])) - len(filtered_units)
         if hidden_units > 0:
-            logger.debug(
-                "Player %d: %d enemy units hidden by fog", player, hidden_units
-            )
+            logger.debug("Player %d: %d enemy units hidden by fog", player, hidden_units)
 
         # Filter cities: keep own always, enemy only if VISIBLE.
         filtered_cities: list[dict[str, Any]] = []

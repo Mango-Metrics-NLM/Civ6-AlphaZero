@@ -86,7 +86,11 @@ class ConnectionManager:
         return callbacks
 
     def _on_model_version_update(
-        self, op: str, old: Any, new: Any, _reducer_event: Any = None,
+        self,
+        op: str,
+        old: Any,
+        new: Any,
+        _reducer_event: Any = None,
     ) -> None:
         """Callback when ModelVersionInfo table changes.
 
@@ -108,11 +112,16 @@ class ConnectionManager:
             if new_version:
                 self._events.fire(MODEL_VERSION_CHANGED, new_version)
                 logger.debug(
-                    "Model version updated to %d via subscription", new_version,
+                    "Model version updated to %d via subscription",
+                    new_version,
                 )
 
     def _on_training_state_update(
-        self, op: str, old: Any, new: Any, _reducer_event: Any = None,
+        self,
+        op: str,
+        old: Any,
+        new: Any,
+        _reducer_event: Any = None,
     ) -> None:
         """Callback when TrainingState table changes.
 
@@ -159,14 +168,12 @@ class ConnectionManager:
 
         if not has_sdk:
             raise SpacetimeDBUnavailableError(
-                "SpacetimeDB SDK not installed. "
-                "Install with: pip install spacetimedb-sdk"
+                "SpacetimeDB SDK not installed. Install with: pip install spacetimedb-sdk"
             )
 
         if not self._config.module_address:
             raise SpacetimeDBConnectionError(
-                "module_address is required. "
-                "Set CIV6_SPACETIMEDB_MODULE environment variable."
+                "module_address is required. Set CIV6_SPACETIMEDB_MODULE environment variable."
             )
 
         try:
@@ -209,9 +216,7 @@ class ConnectionManager:
                 f"Connection timed out after {self._config.connection_timeout}s"
             ) from e
         except Exception as e:
-            raise SpacetimeDBConnectionError(
-                f"Failed to connect: {e}"
-            ) from e
+            raise SpacetimeDBConnectionError(f"Failed to connect: {e}") from e
 
     def connect_with_mock(self, mock_client: Any) -> bool:
         """Connect using a mock client (for testing).
@@ -250,7 +255,7 @@ class ConnectionManager:
         attempt = 0
         while attempt < self._config.max_reconnect_attempts:
             delay = min(
-                self._config.reconnect_interval * (2 ** attempt),
+                self._config.reconnect_interval * (2**attempt),
                 60.0,  # Cap at 60 seconds
             )
             logger.info(

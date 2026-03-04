@@ -18,7 +18,7 @@ from typing import Any
 
 from alpha_zero.cloud.config import CloudConfig
 from alpha_zero.cloud.exceptions import CloudStorageError, PreemptionError
-from alpha_zero.cloud.gcp import (
+from alpha_zero.cloud.gcp import (  # type: ignore[attr-defined]
     CloudLogger,
     CloudMetricsExporter,
     GCSCheckpointManager,

@@ -241,6 +241,7 @@ def torch_to_jax_params(
     # Detect torch.Tensor type robustly (torch may not be installed)
     try:
         import torch as _torch
+
         _torch_tensor_type: type | None = _torch.Tensor
     except ImportError:
         _torch_tensor_type = None
@@ -250,7 +251,8 @@ def torch_to_jax_params(
         if isinstance(torch_tensor, (dict, list, str, int, float, bool)):
             logger.debug(
                 "Skipping non-tensor state_dict entry: %s (%s)",
-                torch_key, type(torch_tensor).__name__,
+                torch_key,
+                type(torch_tensor).__name__,
             )
             continue
 
@@ -296,6 +298,7 @@ def torch_to_jax_params(
 
         def _make_accessor(path_parts: list[str]) -> Any:
             """Build a leaf-accessor closure for eqx.tree_at."""
+
             def accessor(model: Any) -> Any:
                 obj = model
                 for part in path_parts:
@@ -304,6 +307,7 @@ def torch_to_jax_params(
                     else:
                         obj = getattr(obj, part)
                 return obj
+
             return accessor
 
         try:

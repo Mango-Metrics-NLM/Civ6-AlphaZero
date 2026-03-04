@@ -60,9 +60,7 @@ class ActionResolutionConfig:
         """Validate configuration values."""
         valid_strategies = {s.value for s in ActionResolutionStrategy}
         if self.strategy not in valid_strategies:
-            msg = (
-                f"strategy must be one of {valid_strategies}, got {self.strategy!r}"
-            )
+            msg = f"strategy must be one of {valid_strategies}, got {self.strategy!r}"
             raise ValueError(msg)
 
 
@@ -181,7 +179,7 @@ class ActionResolver:
         No conflict handling — all actions are applied regardless
         of whether they target the same tile.
         """
-        return [(pid, action) for pid, action in sorted(actions.items())]
+        return sorted(actions.items())
 
     def _resolve_priority(
         self,
@@ -195,11 +193,11 @@ class ActionResolver:
         player ID (lowest = highest priority).
         """
         if self.config.allow_same_target:
-            return [(pid, action) for pid, action in sorted(actions.items())]
+            return sorted(actions.items())
 
         conflicts = self.detect_conflicts(actions, env_state)
         if not conflicts:
-            return [(pid, action) for pid, action in sorted(actions.items())]
+            return sorted(actions.items())
 
         # Identify players whose actions should be dropped (higher ID loses)
         dropped: set[int] = set()
@@ -207,10 +205,7 @@ class ActionResolver:
             # _p1 < p2 (sorted by detect_conflicts), so p2 is lower priority
             dropped.add(p2)
 
-        result = [
-            (pid, action) for pid, action in sorted(actions.items())
-            if pid not in dropped
-        ]
+        result = [(pid, action) for pid, action in sorted(actions.items()) if pid not in dropped]
 
         if dropped:
             logger.debug(

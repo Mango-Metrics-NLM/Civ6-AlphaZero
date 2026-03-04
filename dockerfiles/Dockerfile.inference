@@ -1,0 +1,56 @@
+# Dockerfile for Civ6 AlphaZero AI Inference Service
+#
+# Extends the training container with an HTTP inference server that:
+# - Loads a model from GCS on startup
+# - Accepts game state via HTTP POST
+# - Runs GumbelMCTS search and returns the best action
+# - Exposes /health for liveness/startup probes
+#
+# Designed for Cloud Run with GPU (NVIDIA L4).
+#
+# Build:
+#   docker build -t civ6az-inference:latest -f dockerfiles/Dockerfile.inference .
+#
+# Run locally:
+#   docker run --rm -p 8080:8080 \
+#     -e CIV6AZ_MODEL_VERSION=v268 \
+#     -e CIV6AZ_GCS_BUCKET=civ6az-training \
+#     civ6az-inference:latest
+
+# Same base as training container for maximum layer cache sharing
+FROM nvcr.io/nvidia/pytorch:24.09-py3
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONPATH=/app
+
+WORKDIR /app
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python dependencies: same as training + inference server deps
+COPY requirements-container.txt .
+COPY requirements-inference.txt .
+RUN pip install --no-cache-dir -r requirements-container.txt \
+    && pip install --no-cache-dir -r requirements-inference.txt
+
+# Copy project source
+COPY . .
+
+# Non-root user
+RUN useradd -m -u 1000 inference && chown -R inference:inference /app
+USER inference
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+EXPOSE 8080
+
+# Start the inference server
+CMD ["python", "-m", "alpha_zero.serving.inference_server"]

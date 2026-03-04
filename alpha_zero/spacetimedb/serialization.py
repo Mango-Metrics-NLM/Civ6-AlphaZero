@@ -51,9 +51,7 @@ def serialize_state_dict(
             data = lzma.compress(data)
         return data
     except Exception as e:
-        raise SpacetimeDBSerializationError(
-            f"Failed to serialize state dict: {e}"
-        ) from e
+        raise SpacetimeDBSerializationError(f"Failed to serialize state dict: {e}") from e
 
 
 def deserialize_state_dict(
@@ -80,9 +78,7 @@ def deserialize_state_dict(
         buffer = io.BytesIO(data)
         return torch.load(buffer, map_location=map_location, weights_only=True)  # type: ignore[no-any-return]
     except Exception as e:
-        raise SpacetimeDBSerializationError(
-            f"Failed to deserialize state dict: {e}"
-        ) from e
+        raise SpacetimeDBSerializationError(f"Failed to deserialize state dict: {e}") from e
 
 
 def serialize_trajectory(
@@ -107,9 +103,7 @@ def serialize_trajectory(
     try:
         return trajectory.to_bytes(compress=compress)
     except Exception as e:
-        raise SpacetimeDBSerializationError(
-            f"Failed to serialize trajectory: {e}"
-        ) from e
+        raise SpacetimeDBSerializationError(f"Failed to serialize trajectory: {e}") from e
 
 
 def deserialize_trajectory(
@@ -133,9 +127,7 @@ def deserialize_trajectory(
 
         return GameTrajectory.from_bytes(data, compressed=compressed)
     except Exception as e:
-        raise SpacetimeDBSerializationError(
-            f"Failed to deserialize trajectory: {e}"
-        ) from e
+        raise SpacetimeDBSerializationError(f"Failed to deserialize trajectory: {e}") from e
 
 
 def serialize_checkpoint(
@@ -162,9 +154,7 @@ def serialize_checkpoint(
             data = lzma.compress(data)
         return data
     except Exception as e:
-        raise SpacetimeDBSerializationError(
-            f"Failed to serialize checkpoint: {e}"
-        ) from e
+        raise SpacetimeDBSerializationError(f"Failed to serialize checkpoint: {e}") from e
 
 
 def deserialize_checkpoint(
@@ -191,9 +181,7 @@ def deserialize_checkpoint(
         buffer = io.BytesIO(data)
         return torch.load(buffer, map_location=map_location, weights_only=False)  # type: ignore[no-any-return]
     except Exception as e:
-        raise SpacetimeDBSerializationError(
-            f"Failed to deserialize checkpoint: {e}"
-        ) from e
+        raise SpacetimeDBSerializationError(f"Failed to deserialize checkpoint: {e}") from e
 
 
 def serialize_metadata(metadata: ModelMetadata | EvaluationResult | Any) -> str:
@@ -221,9 +209,7 @@ def serialize_metadata(metadata: ModelMetadata | EvaluationResult | Any) -> str:
             data = {"value": str(metadata)}
         return json.dumps(data, default=str)
     except Exception as e:
-        raise SpacetimeDBSerializationError(
-            f"Failed to serialize metadata: {e}"
-        ) from e
+        raise SpacetimeDBSerializationError(f"Failed to serialize metadata: {e}") from e
 
 
 def deserialize_metadata(data: str) -> dict[str, Any]:
@@ -241,9 +227,7 @@ def deserialize_metadata(data: str) -> dict[str, Any]:
     try:
         return json.loads(data)  # type: ignore[no-any-return]
     except Exception as e:
-        raise SpacetimeDBSerializationError(
-            f"Failed to deserialize metadata: {e}"
-        ) from e
+        raise SpacetimeDBSerializationError(f"Failed to deserialize metadata: {e}") from e
 
 
 def serialize_config(config: dict[str, Any]) -> str:
@@ -261,9 +245,7 @@ def serialize_config(config: dict[str, Any]) -> str:
     try:
         return json.dumps(config, default=str, indent=2)
     except Exception as e:
-        raise SpacetimeDBSerializationError(
-            f"Failed to serialize config: {e}"
-        ) from e
+        raise SpacetimeDBSerializationError(f"Failed to serialize config: {e}") from e
 
 
 def deserialize_config(data: str) -> dict[str, Any]:
@@ -281,9 +263,7 @@ def deserialize_config(data: str) -> dict[str, Any]:
     try:
         return json.loads(data)  # type: ignore[no-any-return]
     except Exception as e:
-        raise SpacetimeDBSerializationError(
-            f"Failed to deserialize config: {e}"
-        ) from e
+        raise SpacetimeDBSerializationError(f"Failed to deserialize config: {e}") from e
 
 
 def estimate_blob_size_mb(data: bytes) -> float:

@@ -450,7 +450,7 @@ class NetworkConfig:
 class MCTSConfig:
     """MCTS configuration."""
 
-    num_simulations: int = 50
+    num_simulations: int = 400
     c_puct: float = 1.5
     dirichlet_alpha: float = 0.3
     dirichlet_epsilon: float = 0.25
@@ -475,7 +475,7 @@ class TrainingConfig:
     """Training configuration."""
 
     num_iterations: int = 100000
-    games_per_iteration: int = 100
+    games_per_iteration: int = 200
     batch_size: int = 256
     num_epochs: int = 10
     weight_decay: float = 0.0001

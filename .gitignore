@@ -310,3 +310,9 @@ state.json
 commands.json
 ack.json
 heartbeat.json
+
+# Inference & Serving Artifacts
+alpha_zero/serving/logs/
+alpha_zero/serving/metrics/
+alpha_zero/serving/models/export/
+inference_performance.json

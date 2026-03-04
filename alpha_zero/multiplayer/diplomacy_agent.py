@@ -190,9 +190,7 @@ class CoalitionManager:
 
     def _validate_player(self, player: int) -> None:
         if player < 0 or player >= self.num_players:
-            raise ValueError(
-                f"Player {player} out of range [0, {self.num_players})"
-            )
+            raise ValueError(f"Player {player} out of range [0, {self.num_players})")
 
     def _validate_players(self, player_a: int, player_b: int) -> None:
         self._validate_player(player_a)
@@ -507,8 +505,7 @@ class DiplomacyAgent:
             action_type = str(data.get("action_type", ""))
             if action_type not in self.config.proposal_categories:
                 logger.warning(
-                    "LLM proposed unknown action_type '%s'; "
-                    "falling back to first category",
+                    "LLM proposed unknown action_type '%s'; falling back to first category",
                     action_type,
                 )
                 action_type = self.config.proposal_categories[0]

@@ -305,7 +305,7 @@ class DifferentialMutation(BaseMutation):
         if param_range.discrete:
             new_value = round(new_value)
 
-        return new_value
+        return new_value  # type: ignore[no-any-return]
 
 
 class AdaptiveMutation(BaseMutation):
@@ -457,7 +457,7 @@ class CrossoverMutation(BaseMutation):
         if param_range.discrete:
             new_value = round(new_value)
 
-        return new_value
+        return new_value  # type: ignore[no-any-return]
 
     def _blend_crossover(
         self,

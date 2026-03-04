@@ -237,6 +237,21 @@ class SharedStorage:
 
         logger.info("SharedStorage initialized")
 
+    def __getstate__(self) -> dict:
+        """Prepare state for pickling (exclude Manager)."""
+        state = self.__dict__.copy()
+        # Manager is not picklable, but the Proxies it creates ARE picklable
+        # We just need to make sure we don't try to send the Manager object itself
+        if "_manager" in state:
+            del state["_manager"]
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        """Restore state after pickling."""
+        self.__dict__.update(state)
+        self._manager = None  # type: ignore[assignment]
+        self._owns_manager = False
+
     def shutdown(self) -> None:
         """Cleanup resources."""
         if self._owns_manager:
@@ -501,6 +516,27 @@ class DistributedReplayBuffer:
             f"DistributedReplayBuffer initialized (max_size={self.config.max_size})",
         )
 
+    def __getstate__(self) -> dict:
+        """Prepare state for pickling (exclude Manager and learner-only state)."""
+        state = self.__dict__.copy()
+        if "_manager" in state:
+            del state["_manager"]
+        # Actors don't need the buffer or its lock (they only use the queue)
+        if "_buffer" in state:
+            del state["_buffer"]
+        if "_buffer_lock" in state:
+            del state["_buffer_lock"]
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        """Restore state after pickling."""
+        self.__dict__.update(state)
+        self._manager = None  # type: ignore[assignment]
+        self._owns_manager = False
+        # Actors use None for these as they only use the queue
+        self._buffer = None  # type: ignore[assignment]
+        self._buffer_lock = None  # type: ignore[assignment]
+
     def shutdown(self) -> None:
         """Cleanup resources."""
         try:
@@ -637,9 +673,7 @@ class DistributedReplayBuffer:
                 [torch.from_numpy(np.asarray(ex.value)).float() for ex in examples]
             )
         else:
-            value_tensor = torch.tensor(
-                [float(ex.value) for ex in examples]
-            ).float()
+            value_tensor = torch.tensor([float(ex.value) for ex in examples]).float()
 
         return {
             "spatial": torch.stack([torch.from_numpy(ex.spatial).float() for ex in examples]),

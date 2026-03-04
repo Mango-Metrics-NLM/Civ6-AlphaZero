@@ -411,7 +411,7 @@ class VertexJobLauncher:
         custom_job = self._aiplatform.CustomJob(**job_kwargs)
         custom_job.run(sync=False)
 
-        job_id = custom_job.resource_name
+        job_id = str(custom_job.resource_name)
         self._jobs[job_id] = custom_job
 
         logger.info(f"Submitted job: {display_name} (id={job_id})")

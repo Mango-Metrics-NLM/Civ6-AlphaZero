@@ -169,7 +169,8 @@ class SpacetimeDBWeightSynchronizer:
             return False
 
     def update_if_available(
-        self, model: torch.nn.Module,
+        self,
+        model: torch.nn.Module,
     ) -> tuple[bool, int]:
         """Atomically check for and apply weight updates.
 

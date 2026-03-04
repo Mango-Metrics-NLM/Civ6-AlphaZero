@@ -86,6 +86,8 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - **Encoder Registry**: Factory pattern for pluggable spatial encoders (`patch_embed`, `hex_crystalline`)
 - **A/B Comparison Pipeline**: Cloud-based encoder comparison with W&B metrics and automated analysis
 - **Gameplay Systems**: Terrain types, fog of war, tech tree, and terrain-aware combat for MicroCiv
+- **Inference Service**: Production-ready machine learning inference service with FastAPI, multi-model caching, and Cloud Run support
+- **Windows Compatibility**: Full support for distributed training on Windows via custom pickling handlers
 
 ## Architecture (C4 Model)
 

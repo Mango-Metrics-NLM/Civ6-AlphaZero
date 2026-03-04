@@ -131,9 +131,7 @@ class ObservationModel:
         num_to_place = min(num_hidden_units, len(candidate_tiles))
 
         # Sample positions without replacement.
-        chosen_indices = self._rng.choice(
-            len(candidate_tiles), size=num_to_place, replace=False
-        )
+        chosen_indices = self._rng.choice(len(candidate_tiles), size=num_to_place, replace=False)
 
         # Sample unit types.
         weights = np.array(self.config.default_unit_weights, dtype=np.float64)

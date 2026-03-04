@@ -141,8 +141,9 @@ class SpacetimeDBStorageBackend(StorageBackend):
             metadata = ModelMetadata(
                 iteration=metadata.iteration,
                 version=version,
-                **{k: v for k, v in metadata.to_dict().items()
-                   if k not in ("iteration", "version")},
+                **{
+                    k: v for k, v in metadata.to_dict().items() if k not in ("iteration", "version")
+                },
             )
 
         compress = self._config.compress_weights
@@ -162,9 +163,7 @@ class SpacetimeDBStorageBackend(StorageBackend):
             logger.info("Saved model iteration=%d, version=%d", iteration, version)
             return f"spacetimedb://models/{iteration}"
 
-        raise SpacetimeDBConnectionError(
-            f"Failed to save model for iteration {iteration}"
-        )
+        raise SpacetimeDBConnectionError(f"Failed to save model for iteration {iteration}")
 
     def load_model(
         self,
@@ -187,7 +186,9 @@ class SpacetimeDBStorageBackend(StorageBackend):
                 weights_bytes, _meta_dict = result
                 compress = self._config.compress_weights
                 state_dict = deserialize_state_dict(
-                    weights_bytes, compressed=compress, map_location=map_location,
+                    weights_bytes,
+                    compressed=compress,
+                    map_location=map_location,
                 )
                 return state_dict, metadata
 
@@ -197,19 +198,24 @@ class SpacetimeDBStorageBackend(StorageBackend):
             weights_bytes, meta_dict = result
             compress = self._config.compress_weights
             state_dict = deserialize_state_dict(
-                weights_bytes, compressed=compress, map_location=map_location,
+                weights_bytes,
+                compressed=compress,
+                map_location=map_location,
             )
-            metadata = ModelMetadata.from_dict(meta_dict) if meta_dict else ModelMetadata(
-                iteration=iteration, version=0,
+            metadata = (
+                ModelMetadata.from_dict(meta_dict)
+                if meta_dict
+                else ModelMetadata(
+                    iteration=iteration,
+                    version=0,
+                )
             )
             # Populate cache for future lookups
             with self._lock:
                 self._model_metadata[iteration] = metadata
             return state_dict, metadata
 
-        raise FileNotFoundError(
-            f"No model found for iteration {iteration}"
-        )
+        raise FileNotFoundError(f"No model found for iteration {iteration}")
 
     def load_model_by_version(
         self,
@@ -219,18 +225,23 @@ class SpacetimeDBStorageBackend(StorageBackend):
         """Load model weights by version number."""
         result = self._client.get_weights_by_version_sync(version)
         if result is None:
-            raise FileNotFoundError(
-                f"Model weights not found for version {version}"
-            )
+            raise FileNotFoundError(f"Model weights not found for version {version}")
 
         weights_bytes, meta_dict = result
         compress = self._config.compress_weights
         state_dict = deserialize_state_dict(
-            weights_bytes, compressed=compress, map_location=map_location,
+            weights_bytes,
+            compressed=compress,
+            map_location=map_location,
         )
 
-        metadata = ModelMetadata.from_dict(meta_dict) if meta_dict else ModelMetadata(
-            iteration=0, version=version,
+        metadata = (
+            ModelMetadata.from_dict(meta_dict)
+            if meta_dict
+            else ModelMetadata(
+                iteration=0,
+                version=version,
+            )
         )
         return state_dict, metadata
 
@@ -276,11 +287,18 @@ class SpacetimeDBStorageBackend(StorageBackend):
         weights_bytes, meta_dict = result
         compress = self._config.compress_weights
         state_dict = deserialize_state_dict(
-            weights_bytes, compressed=compress, map_location=map_location,
+            weights_bytes,
+            compressed=compress,
+            map_location=map_location,
         )
 
-        metadata = ModelMetadata.from_dict(meta_dict) if meta_dict else ModelMetadata(
-            iteration=0, version=self._champion_version,
+        metadata = (
+            ModelMetadata.from_dict(meta_dict)
+            if meta_dict
+            else ModelMetadata(
+                iteration=0,
+                version=self._champion_version,
+            )
         )
         return state_dict, metadata
 
@@ -328,9 +346,7 @@ class SpacetimeDBStorageBackend(StorageBackend):
                 self._trajectory_metadata[key] = meta
             return f"spacetimedb://trajectories/{key}"
 
-        raise SpacetimeDBConnectionError(
-            f"Failed to save trajectory for game {game_id}"
-        )
+        raise SpacetimeDBConnectionError(f"Failed to save trajectory for game {game_id}")
 
     def list_trajectories(
         self,
@@ -365,9 +381,7 @@ class SpacetimeDBStorageBackend(StorageBackend):
                 trajectory_bytes, _ = result
                 return deserialize_trajectory(trajectory_bytes, compressed=False)
 
-        raise FileNotFoundError(
-            f"Trajectory not found: {iteration}_{worker_id}_{game_id}"
-        )
+        raise FileNotFoundError(f"Trajectory not found: {iteration}_{worker_id}_{game_id}")
 
     def stream_trajectories(
         self,
@@ -386,7 +400,9 @@ class SpacetimeDBStorageBackend(StorageBackend):
         for meta in meta_list:
             try:
                 yield self.load_trajectory(
-                    meta.iteration, meta.worker_id, meta.game_id,
+                    meta.iteration,
+                    meta.worker_id,
+                    meta.game_id,
                 )
             except FileNotFoundError:
                 logger.warning(
@@ -430,9 +446,7 @@ class SpacetimeDBStorageBackend(StorageBackend):
             logger.info("Saved checkpoint iteration=%d", iteration)
             return f"spacetimedb://checkpoints/{iteration}"
 
-        raise SpacetimeDBConnectionError(
-            f"Failed to save checkpoint for iteration {iteration}"
-        )
+        raise SpacetimeDBConnectionError(f"Failed to save checkpoint for iteration {iteration}")
 
     def load_checkpoint(
         self,
@@ -447,7 +461,9 @@ class SpacetimeDBStorageBackend(StorageBackend):
                 data_bytes, _meta_dict = result
                 compress = self._config.compress_weights
                 checkpoint_data = deserialize_checkpoint(
-                    data_bytes, compressed=compress, map_location=map_location,
+                    data_bytes,
+                    compressed=compress,
+                    map_location=map_location,
                 )
                 with self._lock:
                     metadata = self._checkpoint_metadata.get(
@@ -456,9 +472,7 @@ class SpacetimeDBStorageBackend(StorageBackend):
                     )
                 return checkpoint_data, metadata
 
-        raise FileNotFoundError(
-            f"Checkpoint not found for iteration {iteration}"
-        )
+        raise FileNotFoundError(f"Checkpoint not found for iteration {iteration}")
 
     def load_latest_checkpoint(
         self,
@@ -472,7 +486,9 @@ class SpacetimeDBStorageBackend(StorageBackend):
                 iteration, data_bytes, _meta_dict = result
                 compress = self._config.compress_weights
                 checkpoint_data = deserialize_checkpoint(
-                    data_bytes, compressed=compress, map_location=map_location,
+                    data_bytes,
+                    compressed=compress,
+                    map_location=map_location,
                 )
                 with self._lock:
                     metadata = self._checkpoint_metadata.get(
@@ -520,9 +536,7 @@ class SpacetimeDBStorageBackend(StorageBackend):
             result = self._evaluation_results.get(iteration)
 
         if result is None:
-            raise FileNotFoundError(
-                f"Evaluation not found for iteration {iteration}"
-            )
+            raise FileNotFoundError(f"Evaluation not found for iteration {iteration}")
         return result
 
     def list_evaluations(self) -> list[EvaluationResult]:
@@ -549,9 +563,7 @@ class SpacetimeDBStorageBackend(StorageBackend):
         if success:
             return f"spacetimedb://configs/{iteration}"
 
-        raise SpacetimeDBConnectionError(
-            f"Failed to save config for iteration {iteration}"
-        )
+        raise SpacetimeDBConnectionError(f"Failed to save config for iteration {iteration}")
 
     def load_config(
         self,
@@ -564,9 +576,7 @@ class SpacetimeDBStorageBackend(StorageBackend):
             if result is not None:
                 return deserialize_config(result)
 
-        raise FileNotFoundError(
-            f"Config not found for iteration {iteration}"
-        )
+        raise FileNotFoundError(f"Config not found for iteration {iteration}")
 
     # =========================================================================
     # Utility Operations
@@ -611,21 +621,13 @@ class SpacetimeDBStorageBackend(StorageBackend):
         results: list[str] = []
         if "models" in prefix:
             with self._lock:
-                results = [
-                    f"spacetimedb://models/{it}" for it in self._model_metadata
-                ]
+                results = [f"spacetimedb://models/{it}" for it in self._model_metadata]
         elif "trajectories" in prefix:
             with self._lock:
-                results = [
-                    f"spacetimedb://trajectories/{k}"
-                    for k in self._trajectory_metadata
-                ]
+                results = [f"spacetimedb://trajectories/{k}" for k in self._trajectory_metadata]
         elif "checkpoints" in prefix:
             with self._lock:
-                results = [
-                    f"spacetimedb://checkpoints/{it}"
-                    for it in self._checkpoint_metadata
-                ]
+                results = [f"spacetimedb://checkpoints/{it}" for it in self._checkpoint_metadata]
         return results
 
     def close(self) -> None:

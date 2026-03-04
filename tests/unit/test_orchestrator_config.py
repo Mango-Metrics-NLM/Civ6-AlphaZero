@@ -283,7 +283,7 @@ class TestMCTSConfig:
     def test_default_values(self):
         """Test default MCTS configuration."""
         config = MCTSConfig()
-        assert config.num_simulations == 50
+        assert config.num_simulations == 400
         assert config.c_puct == 1.5
         assert config.dirichlet_alpha == 0.3
 
@@ -354,7 +354,7 @@ class TestOrchestratorConfig:
         assert config.mode == "local"
         assert config.experiment_name == "civ6_alphazero_v1"
         assert config.environment.board_size == 16
-        assert config.mcts.num_simulations == 50
+        assert config.mcts.num_simulations == 400
 
     def test_from_yaml(self, tmp_path):
         """Test loading from YAML file."""

@@ -289,9 +289,7 @@ class NPlayerMCTS:
         action_mask = torch.from_numpy(action_mask_np).float().unsqueeze(0).to(self.device)
 
         with torch.no_grad():
-            policy_probs, value_tensor = self.network.predict(
-                spatial, vector, action_mask
-            )
+            policy_probs, value_tensor = self.network.predict(spatial, vector, action_mask)
 
         policy = policy_probs.squeeze(0).cpu().numpy()
         values_np = value_tensor.squeeze(0).cpu().numpy()
@@ -329,9 +327,7 @@ class NPlayerMCTS:
         if not actions:
             return
 
-        noise = np.random.dirichlet(
-            [self.config.dirichlet_alpha] * len(actions)
-        )
+        noise = np.random.dirichlet([self.config.dirichlet_alpha] * len(actions))
         eps = self.config.dirichlet_epsilon
         for i, action in enumerate(actions):
             child = node.children[action]

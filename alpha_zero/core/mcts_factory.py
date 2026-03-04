@@ -171,7 +171,7 @@ def create_mcts(
     )
 
     if variant == "simple":
-        return SimpleMCTS(
+        return SimpleMCTS(  # type: ignore[return-value]
             num_simulations=num_simulations,
             **kwargs,
         )
@@ -210,7 +210,7 @@ def create_mcts(
         config = config_cls(**config_kwargs)
 
     # Filter remaining kwargs to only include params the MCTS class __init__ accepts
-    valid_init_params = set(inspect.signature(mcts_cls.__init__).parameters.keys()) - {
+    valid_init_params = set(inspect.signature(mcts_cls.__init__).parameters.keys()) - {  # type: ignore[misc]
         "self",
         "network",
         "config",
@@ -226,7 +226,7 @@ def create_mcts(
             f"Valid config fields: {valid_fields}, valid init params: {valid_init_params}"
         )
 
-    return mcts_cls(network=network, config=config, device=device, **filtered_kwargs)
+    return mcts_cls(network=network, config=config, device=device, **filtered_kwargs)  # type: ignore[no-any-return]
 
 
 def get_default_config(variant: str | MCTSVariant) -> Any:

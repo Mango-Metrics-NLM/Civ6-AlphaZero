@@ -142,8 +142,7 @@ class ComponentRegistry:
         with self._lock:
             if category not in self._registry:
                 raise KeyError(
-                    f"Unknown category '{category}'. "
-                    f"Available: {list(self._registry.keys())}"
+                    f"Unknown category '{category}'. Available: {list(self._registry.keys())}"
                 )
 
             if name not in self._registry[category]:
@@ -173,8 +172,7 @@ class ComponentRegistry:
         with self._lock:
             if category not in self._registry:
                 raise KeyError(
-                    f"Unknown category '{category}'. "
-                    f"Available: {list(self._registry.keys())}"
+                    f"Unknown category '{category}'. Available: {list(self._registry.keys())}"
                 )
             return sorted(self._registry[category].keys())
 

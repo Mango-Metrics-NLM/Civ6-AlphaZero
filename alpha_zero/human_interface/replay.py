@@ -42,7 +42,7 @@ def _serialize_array(arr: np.ndarray | None) -> list | None:
     """Convert numpy array to list for JSON serialization."""
     if arr is None:
         return None
-    return arr.tolist()
+    return arr.tolist()  # type: ignore[no-any-return]
 
 
 def _deserialize_array(data: list | None) -> np.ndarray | None:
@@ -409,7 +409,7 @@ class GameRecorder:
         if not self._is_recording or self._recording is None:
             return
 
-        turn_data = {
+        turn_data: dict[str, Any] = {
             "action": turn_result.action,
             "player": turn_result.player,
             "is_human": turn_result.is_human,
@@ -459,6 +459,7 @@ class GameRecorder:
         self._is_recording = False
         self._recording = None
 
+        assert recording is not None
         logger.info(f"Stopped recording. {len(recording.turns)} turns captured.")
         return recording
 
@@ -589,7 +590,7 @@ class ReplayManager:
                 logger.warning(f"Failed to load replay {path}: {e}")
 
         # Sort by creation time (newest first)
-        replays.sort(key=lambda x: x["created_at"], reverse=True)
+        replays.sort(key=lambda x: str(x["created_at"]), reverse=True)
         return replays
 
     def list_saves(self) -> list[dict[str, Any]]:
@@ -615,7 +616,7 @@ class ReplayManager:
             except Exception as e:
                 logger.warning(f"Failed to load save {path}: {e}")
 
-        saves.sort(key=lambda x: x["created_at"], reverse=True)
+        saves.sort(key=lambda x: str(x["created_at"]), reverse=True)
         return saves
 
     def delete_replay(self, game_id: str) -> bool:

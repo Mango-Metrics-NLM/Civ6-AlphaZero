@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Replay - Atari AlphaZero{% endblock %}
+
+{% block content %}
+<div class="replay-container">
+    <h2>Episode Replay</h2>
+    <div class="replay-controls-top">
+        <label>Load Recording: <input type="file" id="replay-file" accept=".npz" class="input-file"></label>
+    </div>
+    <div class="replay-main">
+        <div class="replay-canvas-wrapper">
+            <canvas id="replay-canvas" width="320" height="420"></canvas>
+        </div>
+        <div class="replay-timeline">
+            <button id="btn-replay-start" class="btn btn-small">&laquo;</button>
+            <button id="btn-replay-back" class="btn btn-small">&larr;</button>
+            <button id="btn-replay-play" class="btn btn-primary">Play</button>
+            <button id="btn-replay-forward" class="btn btn-small">&rarr;</button>
+            <button id="btn-replay-end" class="btn btn-small">&raquo;</button>
+            <input type="range" id="replay-scrubber" min="0" max="100" value="0" class="scrubber">
+            <span id="replay-frame-num">0 / 0</span>
+        </div>
+        <div class="replay-speed">
+            <label>Speed:
+                <select id="replay-speed">
+                    <option value="0.25">0.25x</option>
+                    <option value="0.5">0.5x</option>
+                    <option value="1" selected>1x</option>
+                    <option value="2">2x</option>
+                    <option value="4">4x</option>
+                </select>
+            </label>
+        </div>
+    </div>
+    <div class="replay-info">
+        <div class="panel-section">
+            <h3>Frame Info</h3>
+            <div>Action: <strong id="replay-action">-</strong></div>
+            <div>Reward: <strong id="replay-reward">-</strong></div>
+            <div>Cumulative: <strong id="replay-cumulative">-</strong></div>
+        </div>
+        <div class="panel-section">
+            <h3>Policy Distribution</h3>
+            <canvas id="replay-policy-chart" height="150"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/replay.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        window.replayController = new ReplayController();
+    });
+</script>
+{% endblock %}

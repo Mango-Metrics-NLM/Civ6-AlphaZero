@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -100,7 +100,7 @@ class VectorizedMicroCivEnv:
         expected_spatial_channels = MicroCivEncoder.TOTAL_CHANNELS
         if spatial_shape[0] != expected_spatial_channels:
             raise ValueError(
-                f"Expected {expected_spatial_channels} spatial channels, " f"got {spatial_shape[0]}"
+                f"Expected {expected_spatial_channels} spatial channels, got {spatial_shape[0]}"
             )
 
         # Pre-allocate observation buffers
@@ -281,7 +281,7 @@ class VectorizedMicroCivEnv:
         Returns:
             List of environment indices where done=False.
         """
-        return np.where(~self._done)[0].tolist()
+        return cast(list[int], np.where(~self._done)[0].tolist())
 
     def get_env(self, idx: int) -> MicroCivEnv:
         """Get individual environment by index.

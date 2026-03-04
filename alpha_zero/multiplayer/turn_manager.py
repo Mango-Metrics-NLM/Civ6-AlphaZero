@@ -207,9 +207,7 @@ class TurnManager:
         """
         if self._turn_state is None:
             return True
-        return all(
-            a is not None for a in self._turn_state.actions_submitted.values()
-        )
+        return all(a is not None for a in self._turn_state.actions_submitted.values())
 
     def is_turn_timed_out(self) -> bool:
         """Check if the current turn has exceeded timeout.
@@ -233,9 +231,7 @@ class TurnManager:
             return
 
         self._eliminated.add(player_id)
-        self._active_players = [
-            p for p in range(self._num_players) if p not in self._eliminated
-        ]
+        self._active_players = [p for p in range(self._num_players) if p not in self._eliminated]
 
         logger.info("Player %d eliminated", player_id)
 
@@ -276,9 +272,7 @@ class TurnManager:
             old_mode = self._current_mode
             self._current_mode = "simultaneous"
             if old_mode != "simultaneous":
-                logger.info(
-                    "Dynamic mode: switching to simultaneous (all wars resolved)"
-                )
+                logger.info("Dynamic mode: switching to simultaneous (all wars resolved)")
 
     def update_from_info(self, info: dict[str, Any]) -> None:
         """Update war/peace state from environment info dict.
@@ -328,9 +322,7 @@ class TurnManager:
         """Advance to the next player in sequential mode."""
         if not self._active_players:
             return
-        self._current_player_idx = (
-            (self._current_player_idx + 1) % len(self._active_players)
-        )
+        self._current_player_idx = (self._current_player_idx + 1) % len(self._active_players)
 
     def get_state_summary(self) -> dict[str, Any]:
         """Get a summary of the current turn manager state.

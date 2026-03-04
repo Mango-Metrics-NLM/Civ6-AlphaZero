@@ -58,7 +58,7 @@ def create_game_env(
     """
     if gameplay_preset not in GAMEPLAY_PRESETS:
         raise ValueError(
-            f"Unknown gameplay_preset {gameplay_preset!r}. " f"Valid presets: {GAMEPLAY_PRESETS}"
+            f"Unknown gameplay_preset {gameplay_preset!r}. Valid presets: {GAMEPLAY_PRESETS}"
         )
 
     if gameplay_preset == "enhanced":
@@ -82,7 +82,7 @@ def create_game_env(
         return env
 
     # Default preset — plain MicroCivEnv
-    env = MicroCivEnv(
+    env = MicroCivEnv(  # type: ignore[assignment]
         board_size=board_size,
         max_turns=max_turns,
         seed=seed,

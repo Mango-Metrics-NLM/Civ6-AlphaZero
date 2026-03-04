@@ -253,18 +253,18 @@ class MetricsCollector:
 
         # Timer stats
         for name in self._timers:
-            summary["timers"][name] = self.get_timer_stats(name)
+            summary["timers"][name] = self.get_timer_stats(name)  # type: ignore[index]
 
         # Counter values
         for name, counter in self._counters.items():
-            summary["counters"][name] = {
+            summary["counters"][name] = {  # type: ignore[index]
                 "value": counter.value,
                 "labels": counter.labels,
             }
 
         # Gauge values
         for name, gauge in self._gauges.items():
-            summary["gauges"][name] = {
+            summary["gauges"][name] = {  # type: ignore[index]
                 "value": gauge.value,
                 "labels": gauge.labels,
             }

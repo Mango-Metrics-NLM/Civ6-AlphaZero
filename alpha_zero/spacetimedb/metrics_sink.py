@@ -62,7 +62,9 @@ class SpacetimeDBMetricsSink:
         self._flush_interval = flush_interval
 
         self._buffer: deque[tuple[int, dict[str, float], dict[str, str] | None]] = deque()
-        self._event_buffer: deque[tuple[str, str, dict[str, str] | None, dict[str, Any] | None]] = deque()
+        self._event_buffer: deque[tuple[str, str, dict[str, str] | None, dict[str, Any] | None]] = (
+            deque()
+        )
         self._lock = threading.RLock()
         self._last_flush_time = time.monotonic()
         self._total_metrics_logged: int = 0
@@ -71,7 +73,8 @@ class SpacetimeDBMetricsSink:
 
         logger.info(
             "SpacetimeDB metrics sink initialized (batch_size=%d, flush_interval=%.1fs)",
-            batch_size, flush_interval,
+            batch_size,
+            flush_interval,
         )
 
     # --- CloudMonitoringProtocol interface ---
@@ -191,7 +194,8 @@ class SpacetimeDBMetricsSink:
                 self._client.log_metrics_sync(step, metrics)
             except Exception:
                 logger.exception(
-                    "Failed to flush metrics for step %d", step,
+                    "Failed to flush metrics for step %d",
+                    step,
                 )
                 # Re-add failed metric to buffer for retry
                 self._buffer.appendleft((step, metrics, labels))
@@ -209,7 +213,9 @@ class SpacetimeDBMetricsSink:
             # Events are already logged locally in log_event()
             # Additional SpacetimeDB storage can be added here
             logger.debug(
-                "Flushed event: [%s] %s", severity, message,
+                "Flushed event: [%s] %s",
+                severity,
+                message,
             )
 
 

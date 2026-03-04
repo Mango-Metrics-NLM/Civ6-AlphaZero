@@ -237,6 +237,7 @@ def run_tournament(
     models: dict[str, torch.nn.Module] = {}
     for version in model_versions:
         player_id = f"v{version:03d}"
+        model: torch.nn.Module
         if dry_run:
             from alpha_zero.core.transformer_network import (
                 Civ6TransformerNetwork,

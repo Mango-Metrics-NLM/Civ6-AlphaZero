@@ -393,7 +393,7 @@ class ReflectionGenerator:
     ) -> str:
         """Build analysis prompt."""
         # Describe trajectory
-        trajectory_description = self._describer.describe_trajectory(
+        trajectory_description = self._describer.describe_trajectory(  # type: ignore[call-arg]
             trajectory,
             max_states=self.config.max_trajectory_states,
         )

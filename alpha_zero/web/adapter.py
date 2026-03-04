@@ -56,7 +56,7 @@ class MicroCivGameAdapter:
     @property
     def action_space_size(self) -> int:
         """Total number of actions in the action space."""
-        return int(self._env.action_space.n)
+        return int(self._env.action_space.n)  # type: ignore[arg-type]
 
     @property
     def board_size(self) -> int:

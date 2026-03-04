@@ -180,7 +180,7 @@ class PopulationManager:
 
         if method == SelectionMethod.TRUNCATION:
             # Uniformly sample from top candidates
-            return self.rng.choice(candidates)
+            return self.rng.choice(candidates)  # type: ignore[no-any-return]
 
         elif method == SelectionMethod.TOURNAMENT:
             # Pick k random agents from candidates and return best
@@ -188,7 +188,7 @@ class PopulationManager:
             pool = self.rng.choice(candidates, size=k, replace=False)
             window = self.config.fitness_smoothing_window
             best_id = max(pool, key=lambda aid: self.agents[aid].get_smoothed_fitness(window))
-            return best_id
+            return best_id  # type: ignore[no-any-return]
 
         elif method == SelectionMethod.RANK:
             # Probability proportional to rank (ascending: worst=rank 1, best=rank N)
@@ -199,7 +199,7 @@ class PopulationManager:
             )
             ranks = np.arange(1, len(candidates) + 1)
             probs = ranks / ranks.sum()
-            return self.rng.choice(candidates, p=probs)
+            return self.rng.choice(candidates, p=probs)  # type: ignore[no-any-return]
 
         elif method == SelectionMethod.ROULETTE:
             # Proportional to fitness
@@ -217,7 +217,7 @@ class PopulationManager:
                 probs = np.ones_like(fitnesses) / len(fitnesses)
             else:
                 probs = fitnesses / total
-            return self.rng.choice(candidates, p=probs)
+            return self.rng.choice(candidates, p=probs)  # type: ignore[no-any-return]
 
         # Fallback
         return self.rng.choice(candidates)
@@ -351,8 +351,7 @@ class PopulationManager:
         changes = self.exploit_and_explore()
 
         logger.info(
-            "Multiplayer evolution complete: generation=%d, "
-            "replacements=%d, diversity_weight=%.3f",
+            "Multiplayer evolution complete: generation=%d, replacements=%d, diversity_weight=%.3f",
             self.generation,
             len(changes),
             self.config.diversity_weight,
@@ -407,7 +406,7 @@ class PopulationManager:
         recent = self.stats_history[-self.config.convergence_window :]
         # Simple check: Average std_fitness over window < threshold
         avg_std = np.mean([s.std_fitness for s in recent])
-        return avg_std < self.config.convergence_threshold
+        return avg_std < self.config.convergence_threshold  # type: ignore[return-value]
 
     def set_weight_callbacks(
         self,

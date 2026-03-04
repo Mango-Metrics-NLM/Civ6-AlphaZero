@@ -103,6 +103,7 @@ class DiplomacyConfig:
         Returns:
             DiplomacyConfig populated from environment.
         """
+
         def _get(key: str, default: str | None = None) -> str | None:
             return os.getenv(f"CIV6AZ_DIPLOMACY_{key}", default)
 

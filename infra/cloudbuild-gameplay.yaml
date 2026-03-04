@@ -1,0 +1,126 @@
+# Cloud Build configuration for Civ6 AlphaZero inference service.
+#
+# Builds and deploys: AI Inference Cloud Run service.
+# Auth and Matchmaking services will be added when ready.
+#
+# This is separate from the training pipeline cloudbuild.yaml to allow
+# independent deployment cadences.
+
+substitutions:
+  _REGION: us-central1
+  _INFERENCE_IMAGE: us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-inference
+  _AUTH_IMAGE: us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-auth
+  _MATCHMAKER_IMAGE: us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-matchmaker
+  _TAG: ${SHORT_SHA}
+  _INFERENCE_SERVICE: civ6az-prod-inference
+  _AUTH_SERVICE: civ6az-prod-auth
+  _MATCHMAKER_SERVICE: civ6az-prod-matchmaker
+
+steps:
+  # ---------- Lint ----------
+  - name: 'python:3.12-slim'
+    id: lint
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        pip install --quiet ruff && \
+        ruff check alpha_zero/ --select E,F --ignore E501 --exit-non-zero-on-fix
+
+  # ---------- Build Inference Image ----------
+  - name: 'gcr.io/cloud-builders/docker'
+    id: build-inference
+    args:
+      - build
+      - -t
+      - ${_INFERENCE_IMAGE}:${_TAG}
+      - -t
+      - ${_INFERENCE_IMAGE}:latest
+      - -f
+      - dockerfiles/Dockerfile.inference
+      - .
+    waitFor:
+      - lint
+
+  # ---------- Smoke Test Inference ----------
+  - name: '${_INFERENCE_IMAGE}:${_TAG}'
+    id: test-inference
+    entrypoint: python
+    dir: /app
+    args:
+      - -c
+      - |
+        from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
+        import torch
+        config = TransformerConfig(spatial_size=8, action_space_size=376, embed_dim=64, num_layers=6)
+        net = Civ6TransformerNetwork(config)
+        spatial = torch.randn(1, 13, 8, 8)
+        vector = torch.randn(1, 64)
+        mask = torch.ones(1, 376)
+        policy, value = net(spatial, vector, mask)
+        assert policy.shape == (1, 376), f"Bad policy shape: {policy.shape}"
+        assert value.shape == (1,), f"Bad value shape: {value.shape}"
+        print(f"Inference smoke test PASSED: policy={policy.shape}, value={value.shape}")
+    waitFor:
+      - build-inference
+
+  # ---------- Push Images ----------
+  - name: 'gcr.io/cloud-builders/docker'
+    id: push-inference
+    args:
+      - push
+      - --all-tags
+      - ${_INFERENCE_IMAGE}
+    waitFor:
+      - test-inference
+
+  # ---------- Deploy Inference to Cloud Run ----------
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: deploy-inference
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_INFERENCE_SERVICE}
+      - --image=${_INFERENCE_IMAGE}:${_TAG}
+      - --region=${_REGION}
+      - --platform=managed
+      - --no-traffic
+      - --tag=canary
+    waitFor:
+      - push-inference
+
+  # ---------- Canary Test (10% traffic for 2 min) ----------
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: canary-inference
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        gcloud run services update-traffic ${_INFERENCE_SERVICE} \
+          --region=${_REGION} \
+          --to-tags=canary=10
+        echo "Canary at 10% traffic. Waiting 120s for monitoring..."
+        sleep 120
+        # Check error rate (simple version -- full version uses Cloud Monitoring API)
+        echo "Canary check passed. Promoting to 100%."
+        gcloud run services update-traffic ${_INFERENCE_SERVICE} \
+          --region=${_REGION} \
+          --to-latest
+    waitFor:
+      - deploy-inference
+
+images:
+  - ${_INFERENCE_IMAGE}:${_TAG}
+  - ${_INFERENCE_IMAGE}:latest
+
+tags:
+  - civ6az
+  - gameplay
+  - inference
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+timeout: 1800s

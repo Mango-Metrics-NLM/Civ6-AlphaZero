@@ -77,10 +77,7 @@ class NPlayerMCTSNode:
         """
         if self.visit_count == 0:
             return dict.fromkeys(range(self.num_players), 0.0)
-        return {
-            p: self.value_sums.get(p, 0.0) / self.visit_count
-            for p in range(self.num_players)
-        }
+        return {p: self.value_sums.get(p, 0.0) / self.visit_count for p in range(self.num_players)}
 
     @property
     def total_visit_value(self) -> float:
@@ -236,9 +233,7 @@ class NPlayerMCTSNode:
         while node is not None:
             node.visit_count += 1
             for player_id, value in values.items():
-                node.value_sums[player_id] = (
-                    node.value_sums.get(player_id, 0.0) + value
-                )
+                node.value_sums[player_id] = node.value_sums.get(player_id, 0.0) + value
             node = node.parent
 
     def backpropagate_paranoid(
@@ -296,9 +291,10 @@ class NPlayerMCTSNode:
             best_action = max(self.children, key=lambda a: self.children[a].visit_count)
             action_probs[best_action] = 1.0
         else:
-            visits = np.array([
-                self.children[a].visit_count for a in sorted(self.children.keys())
-            ], dtype=np.float64)
+            visits = np.array(
+                [self.children[a].visit_count for a in sorted(self.children.keys())],
+                dtype=np.float64,
+            )
             actions = sorted(self.children.keys())
 
             if temperature == 1.0:

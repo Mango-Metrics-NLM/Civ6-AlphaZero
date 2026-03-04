@@ -322,13 +322,15 @@ class UncivMultiplayerConnector(GameConnector):
         civs = raw.get("civilizations", [])
         state["players"] = []
         for i, civ in enumerate(civs):
-            state["players"].append({
-                "id": i,
-                "name": civ.get("civName", f"Player_{i}"),
-                "is_alive": not civ.get("isDefeated", False),
-                "gold": civ.get("gold", 0),
-                "cities": len(civ.get("cities", [])),
-            })
+            state["players"].append(
+                {
+                    "id": i,
+                    "name": civ.get("civName", f"Player_{i}"),
+                    "is_alive": not civ.get("isDefeated", False),
+                    "gold": civ.get("gold", 0),
+                    "cities": len(civ.get("cities", [])),
+                }
+            )
 
         return state
 

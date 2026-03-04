@@ -583,15 +583,13 @@ class MicroCivNetwork(Civ6Network):
                     hidden_dim=config.value_head_hidden,
                 )
                 logger.info(
-                    "MicroCivNetwork: using NPlayerValueHead "
-                    "(num_players=%d, spatial_channels=%d)",
+                    "MicroCivNetwork: using NPlayerValueHead (num_players=%d, spatial_channels=%d)",
                     num_players,
                     spatial_channels,
                 )
             except ImportError:
                 logger.warning(
-                    "NPlayerValueHead not available; using scalar value head "
-                    "for %d players",
+                    "NPlayerValueHead not available; using scalar value head for %d players",
                     num_players,
                 )
 

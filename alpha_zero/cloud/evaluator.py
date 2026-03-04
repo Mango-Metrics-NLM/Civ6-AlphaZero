@@ -179,7 +179,7 @@ class CloudEvaluator:
         """Create MCTS instance for evaluation."""
         from alpha_zero.core.civ6_mcts import SimpleMCTS
 
-        return SimpleMCTS(
+        return SimpleMCTS(  # type: ignore[call-arg]
             num_simulations=self.config.num_simulations,
             c_puct=self.config.c_puct,
             dirichlet_alpha=0.0,  # No exploration noise during evaluation

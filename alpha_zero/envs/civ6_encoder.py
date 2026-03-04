@@ -350,7 +350,9 @@ class MicroCivEncoder:
 
         # Dynamic channel count: 3 terrain + num_players*3 units
         #                        + num_players cities + 1 visibility + 1 bias
-        self.total_channels = self.NUM_TERRAIN + self.num_players * self.NUM_UNIT_TYPES + self.num_players + 2
+        self.total_channels = (
+            self.NUM_TERRAIN + self.num_players * self.NUM_UNIT_TYPES + self.num_players + 2
+        )
 
         # Pre-compute channel offsets for encoding
         self._unit_base = self.NUM_TERRAIN  # start of unit channels
@@ -492,13 +494,9 @@ class MicroCivEncoder:
 
         # Average health
         if own_units:
-            vector[6] = sum(u.get("health", 0) for u in own_units) / (
-                len(own_units) * 100.0
-            )
+            vector[6] = sum(u.get("health", 0) for u in own_units) / (len(own_units) * 100.0)
         if enemy_units:
-            vector[7] = sum(u.get("health", 0) for u in enemy_units) / (
-                len(enemy_units) * 100.0
-            )
+            vector[7] = sum(u.get("health", 0) for u in enemy_units) / (len(enemy_units) * 100.0)
 
         # Economy
         vector[8] = game_state.get("gold", 0) / 500.0

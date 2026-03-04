@@ -38,7 +38,7 @@ class MemoryStoreState:
         ]
 
         if embeddings_list:
-            self.embeddings = np.vstack(embeddings_list)
+            self.embeddings = np.vstack(embeddings_list)  # type: ignore[arg-type]
         else:
             self.embeddings = None
 
@@ -260,7 +260,7 @@ class MemoryVectorStore(VectorStore):
         embeddings_norms = np.where(embeddings_norms == 0, 1, embeddings_norms)
         embeddings_normalized = embeddings / embeddings_norms
 
-        return np.dot(embeddings_normalized, query_normalized)
+        return np.dot(embeddings_normalized, query_normalized)  # type: ignore[no-any-return]
 
     def _compute_euclidean_distances(
         self,
@@ -276,4 +276,4 @@ class MemoryVectorStore(VectorStore):
         Returns:
             Array of distances
         """
-        return np.linalg.norm(embeddings - query, axis=1)
+        return np.linalg.norm(embeddings - query, axis=1)  # type: ignore[no-any-return]

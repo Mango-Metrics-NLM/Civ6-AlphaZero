@@ -295,22 +295,22 @@ class VertexAITrainer:
                 job_config=job_config,
             )
 
-            job = CustomJob(
+            vertex_job = CustomJob(
                 display_name=job_spec["display_name"],
                 worker_pool_specs=job_spec["workerPoolSpecs"],
                 base_output_dir=job_spec["base_output_dir"],
                 labels=job_spec["labels"],
             )
 
-            job.run(
+            vertex_job.run(
                 service_account=job_config.service_account or None,
                 enable_web_access=job_config.enable_web_access,
                 sync=False,  # Non-blocking
             )
 
-            self._jobs[job.resource_name] = job
-            logger.info("Submitted Vertex AI job: %s", job.resource_name)
-            return job.resource_name
+            self._jobs[vertex_job.resource_name] = vertex_job
+            logger.info("Submitted Vertex AI job: %s", vertex_job.resource_name)
+            return vertex_job.resource_name
 
         except Exception as e:
             raise CloudConnectionError(
@@ -426,8 +426,8 @@ class VertexAITrainer:
             if filter_display_name:
                 filter_str = f'display_name="{filter_display_name}"'
 
-            jobs = aiplatform.CustomJob.list(filter=filter_str)  # type: ignore[union-attr]
-            return [job.resource_name for job in jobs[:max_results]]  # type: ignore[union-attr]
+            jobs = aiplatform.CustomJob.list(filter=filter_str)  # type: ignore
+            return [getattr(job, "resource_name", str(job)) for job in jobs[:max_results]]
         except Exception as e:
             logger.warning("Failed to list jobs: %s", e)
             return []

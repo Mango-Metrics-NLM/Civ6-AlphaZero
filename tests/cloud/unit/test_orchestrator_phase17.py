@@ -29,7 +29,11 @@ from alpha_zero.cloud.gcp.vertex_orchestrator import (
 
 @pytest.fixture
 def base_args() -> argparse.Namespace:
-    """Create base orchestrator args with all expected fields (Phase 17 defaults)."""
+    """Create baseline orchestrator args for tests (not CLI defaults).
+
+    Note: ``num_parallel_games`` is set to 1 (CLI default is 4) to ensure
+    deterministic sequential behaviour in unit tests.
+    """
     return argparse.Namespace(
         iterations=3,
         start_iteration=0,
@@ -47,10 +51,10 @@ def base_args() -> argparse.Namespace:
         value_head_dim=64,
         architecture_preset=None,
         mcts_type="gumbel",
-        mcts_simulations=64,
+        mcts_simulations=400,
         gumbel_num_actions=16,
         max_turns=50,
-        num_parallel_games=1,
+        num_parallel_games=1,  # Deliberately set to 1 for sequential behavior tests
         max_batch_size=64,
         evaluation_games=20,
         evaluation_win_threshold=0.55,
@@ -117,9 +121,9 @@ class TestPhase17Defaults:
         assert args.evaluation_games == 20
 
     def test_default_mcts_simulations(self) -> None:
-        """mcts_simulations default changed from 400 to 64."""
+        """mcts_simulations default is 400."""
         args = self._parse_defaults()
-        assert args.mcts_simulations == 64
+        assert args.mcts_simulations == 400
 
     def test_default_architecture_preset_is_none(self) -> None:
         """architecture_preset default is None (no override)."""
@@ -142,9 +146,9 @@ class TestPhase17Defaults:
         assert args.value_head_dim == 64
 
     def test_default_num_parallel_games(self) -> None:
-        """num_parallel_games default is 1 (sequential)."""
+        """num_parallel_games default is 4 (vectorized)."""
         args = self._parse_defaults()
-        assert args.num_parallel_games == 1
+        assert args.num_parallel_games == 4
 
 
 # =============================================================================

@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 # Optional imports - gracefully handle missing dependencies
 # Use TYPE_CHECKING to avoid mypy issues with conditional imports
 if TYPE_CHECKING:
-    from anthropic import Anthropic, AsyncAnthropic  # type: ignore[import]
+    from anthropic import Anthropic, AsyncAnthropic
     from openai import AsyncOpenAI, OpenAI
 
 try:
@@ -45,7 +45,7 @@ except ImportError:
     OpenAI = None  # type: ignore[misc,assignment]
 
 try:
-    from anthropic import Anthropic, AsyncAnthropic  # type: ignore[import, no-redef]
+    from anthropic import Anthropic, AsyncAnthropic
 
     ANTHROPIC_AVAILABLE = True
 except ImportError:
@@ -289,7 +289,7 @@ class OpenAIClient(BaseLLMClient):
 
         response = await self._async_client.chat.completions.create(
             model=model,
-            messages=cast(list[Any], [m.to_openai_format() for m in request_messages]),
+            messages=cast(list[Any], [m.to_openai_format() for m in request_messages]),  # type: ignore
             max_tokens=max_tokens,
             temperature=temperature,
         )
@@ -609,7 +609,7 @@ class LLMClient:
                     messages,
                     **kwargs,
                 )
-                async for chunk in stream:  # type: ignore[attr-defined]
+                async for chunk in stream:
                     yield chunk
                 return
             except Exception as e:

@@ -336,7 +336,7 @@ class FeatureCombiner(nn.Module):
         """
         combined = torch.cat([spatial, vector], dim=1)
         if self.projection is not None:
-            combined = self.projection(combined)  # type: ignore[misc]
+            combined = self.projection(combined)
         return combined
 
 

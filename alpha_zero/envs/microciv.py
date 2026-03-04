@@ -122,7 +122,7 @@ class MicroCivEnv(gym.Env):
     - Flat discrete space covering all possible actions
     """
 
-    metadata: ClassVar[dict[str, list[str]]] = {"render_modes": ["ansi"]}
+    metadata: ClassVar[dict[str, list[str]]] = {"render_modes": ["ansi"]}  # type: ignore[misc]
 
     # Unit production costs (turns)
     UNIT_COSTS: ClassVar[dict[str, int]] = {
@@ -179,8 +179,7 @@ class MicroCivEnv(gym.Env):
 
         if not (2 <= num_players <= GAME.MAX_PLAYERS):
             raise ValueError(
-                f"num_players must be between 2 and {GAME.MAX_PLAYERS}, "
-                f"got {num_players}"
+                f"num_players must be between 2 and {GAME.MAX_PLAYERS}, got {num_players}"
             )
 
         self.board_size = board_size
@@ -319,13 +318,10 @@ class MicroCivEnv(gym.Env):
         if truncated and not terminated:
             # Count cities for each player and pick winner by most cities
             city_counts = [
-                sum(1 for c in self.cities if c.player == p)
-                for p in range(self.num_players)
+                sum(1 for c in self.cities if c.player == p) for p in range(self.num_players)
             ]
             max_cities = max(city_counts)
-            players_with_max = [
-                p for p, count in enumerate(city_counts) if count == max_cities
-            ]
+            players_with_max = [p for p, count in enumerate(city_counts) if count == max_cities]
             if len(players_with_max) == 1:
                 self.winner = players_with_max[0]
             else:
@@ -685,8 +681,8 @@ class MicroCivEnv(gym.Env):
                             unit_type=city.production_queue,
                             position=spawn_pos,
                             strength=self.UNIT_STRENGTH.get(
-                        city.production_queue, UNITS.WARRIOR_STRENGTH
-                    ),
+                                city.production_queue, UNITS.WARRIOR_STRENGTH
+                            ),
                             moves_remaining=0,
                         ),
                     )
@@ -702,9 +698,7 @@ class MicroCivEnv(gym.Env):
             self.turn += 1
             # Reset all units' moves
             for unit in self.units:
-                unit.moves_remaining = self.UNIT_MOVES.get(
-                    unit.unit_type, UNITS.WARRIOR_MOVES
-                )
+                unit.moves_remaining = self.UNIT_MOVES.get(unit.unit_type, UNITS.WARRIOR_MOVES)
 
             # Check for settler -> city conversion
             self._process_settlers()
@@ -810,9 +804,7 @@ class MicroCivEnv(gym.Env):
 
         # Apply fog of war masking when enabled.
         if self.fog_manager is not None:
-            game_state = self.fog_manager.mask_observation(
-                game_state, self.current_player
-            )
+            game_state = self.fog_manager.mask_observation(game_state, self.current_player)
 
         spatial, vector = self.encoder.encode(game_state)
         action_mask = self.action_space_handler.get_valid_mask(
@@ -851,12 +843,8 @@ class MicroCivEnv(gym.Env):
             "current_player": self.current_player,
             "winner": self.winner,
             "num_players": self.num_players,
-            "num_units": [
-                len(self._get_player_units(p)) for p in range(self.num_players)
-            ],
-            "num_cities": [
-                len(self._get_player_cities(p)) for p in range(self.num_players)
-            ],
+            "num_units": [len(self._get_player_units(p)) for p in range(self.num_players)],
+            "num_cities": [len(self._get_player_cities(p)) for p in range(self.num_players)],
             "visited_count": len(self.visited),
         }
 

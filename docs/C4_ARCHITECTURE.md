@@ -617,13 +617,13 @@ Legend:
 │  └────────────────────────────────────────────────────────────────────────┘  │
 │                                                                               │
 │  ┌────────────────────────────────────────────────────────────────────────┐  │
-│  │                      INFERENCE SERVER                                   │  │
+│  │                      INFERENCE SERVER (Phase 16)                        │  │
 │  │                                                                         │  │
 │  │   ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    │  │
-│  │   │  API Gateway    │    │  Model Server   │    │   Game Bridge   │    │  │
-│  │   │  (FastAPI)      │───►│  (TorchServe)   │───►│  (Lua/JSON)     │    │  │
-│  │   │  - REST/WS      │    │  - Batching     │    │  - State sync   │    │  │
-│  │   │  - Auth         │    │  - GPU accel    │    │  - Actions      │    │  │
+│  │   │  API Server     │    │ Inference Engine│    │   Game Bridge   │    │  │
+│  │   │   (FastAPI)     │───►│ (Python/PyTorch)│───►│  (Lua/JSON)     │    │  │
+│  │   │  - REST/Metrics │    │ - MCTS/Batching │    │  - State sync   │    │  │
+│  │   │  - Model Swap   │    │ - GPU memory    │    │  - Actions      │    │  │
 │  │   └─────────────────┘    └─────────────────┘    └─────────────────┘    │  │
 │  └────────────────────────────────────────────────────────────────────────┘  │
 │                                                                               │

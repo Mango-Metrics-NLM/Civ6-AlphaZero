@@ -166,7 +166,7 @@ def load_model_state(
     data = result.data
     for key in ["model_state_dict", "network_state_dict", "state_dict"]:
         if key in data:
-            return data[key]
+            return data[key]  # type: ignore[no-any-return]
 
     # If the checkpoint IS the state dict directly
     if all(isinstance(v, torch.Tensor) for v in data.values()):

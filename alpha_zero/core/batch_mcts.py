@@ -576,7 +576,7 @@ class BatchGumbelMCTS:
             mask_batch = torch.stack(mask_list)
 
             # Single forward pass
-            policy_probs, value_tensor = self.network.predict(  # type: ignore[operator]
+            policy_probs, value_tensor = self.network.predict(
                 spatial_batch,
                 vector_batch,
                 mask_batch,

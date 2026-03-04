@@ -466,7 +466,7 @@ class NeuralNetworkPlayer:
         action_mask: np.ndarray,
     ) -> int:
         """Select action using MCTS."""
-        action_probs, _ = self.mcts.search(env, add_noise=False)
+        action_probs, _ = self.mcts.search(env, add_noise=False)  # type: ignore[union-attr,arg-type]
 
         # Apply temperature
         if self.temperature > 0:
@@ -527,7 +527,7 @@ class NeuralNetworkPlayer:
         self._games_played += 1
         if self.mcts is not None:
             # Reset MCTS tree
-            self.mcts.reset()
+            self.mcts.reset()  # type: ignore[attr-defined]
 
     def get_stats(self) -> dict[str, Any]:
         """Get player statistics."""

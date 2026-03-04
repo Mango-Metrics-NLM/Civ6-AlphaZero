@@ -1321,7 +1321,7 @@ class CivRealmWrapper(gym.Env):
         >>> obs, reward, terminated, truncated, info = env.step(action)
     """
 
-    metadata: ClassVar[dict[str, list[str | None]]] = {"render_modes": ["human", "ansi", None]}
+    metadata: ClassVar[dict[str, list[str | None]]] = {"render_modes": ["human", "ansi", None]}  # type: ignore[misc]
 
     def __init__(
         self,
@@ -1509,7 +1509,7 @@ class CivRealmWrapper(gym.Env):
         available_actions = self._current_obs.get("available_actions", {})
         return self.action_handler.get_action_mask(available_actions)
 
-    def render(self) -> str | None:
+    def render(self) -> str | None:  # type: ignore[override]
         """Render the environment.
 
         Returns:

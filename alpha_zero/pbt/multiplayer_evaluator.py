@@ -130,8 +130,7 @@ class MultiplayerPBTEvaluator:
             self._elo = ELORatingSystem(elo_config)
 
         logger.info(
-            "MultiplayerPBTEvaluator initialized: num_players=%d, "
-            "games_per_eval=%d, scoring=%s",
+            "MultiplayerPBTEvaluator initialized: num_players=%d, games_per_eval=%d, scoring=%s",
             num_players,
             games_per_eval,
             scoring_method,

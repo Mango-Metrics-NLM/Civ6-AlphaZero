@@ -229,7 +229,7 @@ class ParameterServer:
             data = lzma.decompress(data)
 
         buffer = io.BytesIO(data)
-        return torch.load(buffer, map_location="cpu", weights_only=True)
+        return torch.load(buffer, map_location="cpu", weights_only=True)  # type: ignore[no-any-return]
 
     def get_version(self) -> int:
         """Get current version number."""

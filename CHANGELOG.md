@@ -106,7 +106,7 @@ After this fix, training iterations will:
 | LR | warmup_cosine, 0.001→0.0001, value_lr_mult=0.1 |
 | Start model | v218 (auto-detected from GCS) |
 | W&B run | `dashing-firebrand-1393` |
-| W&B URL | https://wandb.ai/ianshank-none/civ6-alphazero/runs/ukxjr0uz |
+| W&B URL | <https://wandb.ai/ianshank-none/civ6-alphazero/runs/ukxjr0uz> |
 
 ---
 
@@ -201,6 +201,7 @@ After this fix, training iterations will:
 #### Civ6 Lua Integration & Python Bridge Fixes (PR #46)
 
 ##### Python Bridge Fixes
+
 - `action_converter.py`: `int()` → `round()` for coordinate scaling (fixes off-by-one at grid boundaries); extracted `_ITEM_HASH_RANGE` constant
 - `config.py`: Added `typing.Any` import; typed `kwargs` dict
 - `file_bridge.py`: Extracted `_MAX_RETRY_BACKOFF_SECONDS` constant; explicit float/bool casts for robustness
@@ -208,6 +209,7 @@ After this fix, training iterations will:
 - `state_converter.py`: Extracted `_ESTIMATED_TOTAL_TECHS`/`_ESTIMATED_MAX_SCORE` constants; implemented `_extract_civics()` with `_normalize_civic_name()`; `int()` → `round()` in `inverse_scale_coords`
 
 ##### Lua Mod Fixes
+
 - `ActionExecutor.lua`: `UnitManager.MoveUnit` → `RequestOperation` (correct Civ6 API); `safeGetUnit`/`safeGetCity` helpers; new handlers (sleep, promote, delete, buy, citizen, diplomacy stubs)
 - `Main.lua`: Remove duplicate event registrations; re-entrance guard; fix polling handle leak; graceful shutdown
 - `StateExporter.lua`: Nil guards throughout; hex-grid 6-neighbor offsets (was square 8-dir); CanProduce items; civics export; enemy unit detection
