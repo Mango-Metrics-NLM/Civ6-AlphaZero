@@ -1077,6 +1077,60 @@ class UncivInterface:
         except Exception as e:
             raise UncivSaveError(f"Error saving game state: {e}") from e
 
+    def parse_multiplayer_save(self, save_path: str) -> dict[str, Any]:
+        """Parse a multiplayer Unciv save file and return metadata.
+
+        This method loads a save file and extracts multiplayer-relevant
+        information such as the number of players, player names, and
+        a mapping from civilization names to sequential IDs.
+
+        The existing single-player ``load_game`` method is unchanged;
+        this method provides additional multiplayer metadata on top of
+        the standard game state.
+
+        Args:
+            save_path: Path to the Unciv JSON save file.
+
+        Returns:
+            Dictionary containing:
+                - ``game_state``: The loaded :class:`UncivGameState`.
+                - ``num_players``: Number of players detected.
+                - ``player_names``: List of civilization names.
+                - ``player_id_mapping``: Dict mapping sequential index to
+                  civilization name.
+                - ``current_player_index``: Index of the current player.
+                - ``is_multiplayer``: Whether the game has > 2 players.
+
+        Raises:
+            UncivLoadError: If the file cannot be loaded or parsed.
+        """
+        game_state = self.load_game(save_path)
+
+        player_names = list(game_state.players.keys())
+        num_players = len(player_names)
+
+        # Build index -> civ name mapping
+        player_id_mapping: dict[int, str] = dict(enumerate(player_names))
+
+        # Determine current player index
+        current_player_index = 0
+        if game_state.current_player in player_names:
+            current_player_index = player_names.index(game_state.current_player)
+
+        logger.info(
+            f"Multiplayer save parsed: {num_players} players, "
+            f"current_player={game_state.current_player} (index {current_player_index})",
+        )
+
+        return {
+            "game_state": game_state,
+            "num_players": num_players,
+            "player_names": player_names,
+            "player_id_mapping": player_id_mapping,
+            "current_player_index": current_player_index,
+            "is_multiplayer": num_players > 2,
+        }
+
     def convert_to_internal(self, unciv_state: UncivGameState | dict) -> dict:
         """Convert Unciv game state to internal encoder format.
 

@@ -68,7 +68,26 @@ from alpha_zero.core.transformer_network import (
     create_transformer_network,
 )
 
+# JAX backend (optional - only available if JAX is installed)
+try:
+    from alpha_zero.core.jax_network import (  # noqa: F401
+        JaxCiv6Network,
+        JaxMicroCivNetwork,
+        JaxNetworkWrapper,
+        create_jax_network,
+    )
+
+    __all_jax__ = [
+        "JaxCiv6Network",
+        "JaxMicroCivNetwork",
+        "JaxNetworkWrapper",
+        "create_jax_network",
+    ]
+except ImportError:
+    __all_jax__ = []
+
 __all__ = [
+    *__all_jax__,
     "ActionSpace",
     # Network heads (reusable components)
     "ActivationType",

@@ -5,14 +5,25 @@ This ensures consistency across tests and makes it easier to update
 values when encoder or environment configurations change.
 
 Usage:
-    from tests.test_constants import TestDefaults
+    from tests.test_constants import TestDefaults, microciv_channels
 
     def test_something():
         board_size = TestDefaults.BOARD_SIZE
         channels = TestDefaults.MICROCIV_CHANNELS
+        channels_4p = microciv_channels(4)  # 21
 """
 
 from __future__ import annotations
+
+
+def microciv_channels(num_players: int = 2) -> int:
+    """Compute the MicroCivEncoder channel count for *num_players*.
+
+    Formula: 3 (terrain) + num_players * 3 (unit types) + num_players (cities)
+             + 1 (visibility) + 1 (bias)
+           = 3 + 4 * num_players + 2
+    """
+    return 3 + 4 * num_players + 2
 
 
 class TestDefaults:
@@ -29,7 +40,9 @@ class TestDefaults:
     FULL_MAP_HEIGHT: int = 54
 
     # Encoder channel counts (from civ6_encoder.py)
-    MICROCIV_CHANNELS: int = 13  # MicroCivEncoder.TOTAL_CHANNELS
+    MICROCIV_CHANNELS: int = 13  # MicroCivEncoder.TOTAL_CHANNELS (2-player default)
+    MICROCIV_4P_CHANNELS: int = 21  # microciv_channels(4)
+    MICROCIV_8P_CHANNELS: int = 37  # microciv_channels(8)
     CIV6_CHANNELS: int = 84  # Civ6StateEncoder.TOTAL_CHANNELS
     CIVREALM_CHANNELS: int = 51  # CivRealmEncoder.TOTAL_CHANNELS
 

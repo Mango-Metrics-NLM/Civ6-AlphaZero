@@ -15,6 +15,8 @@ from alpha_zero.pbt.config import (
     PBTConfig,
     SelectionMethod,
 )
+from alpha_zero.pbt.diversity_tracker import PolicyDiversityTracker
+from alpha_zero.pbt.multiplayer_evaluator import MultiplayerPBTEvaluator, NPlayerArenaRunner
 from alpha_zero.utils.compat import UTC
 
 logger = logging.getLogger(__name__)
@@ -301,6 +303,61 @@ class PopulationManager:
 
         self.agents = new_agents
         self.generation += 1
+        return changes
+
+    def evolve_multiplayer(
+        self,
+        arena_runner: NPlayerArenaRunner,
+        diversity_tracker: PolicyDiversityTracker | None = None,
+    ) -> list[tuple[str, str, dict[str, Any]]]:
+        """Perform a PBT evolution step using N-player evaluation.
+
+        Evaluates the population using :class:`MultiplayerPBTEvaluator`,
+        optionally incorporates diversity bonuses from a
+        :class:`PolicyDiversityTracker`, then applies the standard
+        exploit-and-explore cycle with diversity-aware selection.
+
+        Args:
+            arena_runner: Runner that executes N-player matches.
+            diversity_tracker: Optional tracker for diversity bonuses.
+
+        Returns:
+            List of (replaced_agent_id, source_agent_id, new_hyperparameters).
+        """
+        if not self.agents:
+            return []
+
+        # 1. Evaluate fitness via multiplayer tournament
+        evaluator = MultiplayerPBTEvaluator(
+            num_players=self.config.num_players,
+            games_per_eval=self.config.evaluation_games_per_match,
+        )
+        agents_list = self.get_all_agents()
+        fitness_scores = evaluator.evaluate_population(agents_list, arena_runner)
+
+        # 2. Incorporate diversity bonus
+        if diversity_tracker is not None and self.config.diversity_weight > 0:
+            for aid in fitness_scores:
+                bonus = diversity_tracker.get_diversity_bonus(
+                    aid, weight=self.config.diversity_weight
+                )
+                fitness_scores[aid] += bonus
+
+        # 3. Update agent fitness
+        for aid, fitness in fitness_scores.items():
+            self.update_fitness(aid, fitness)
+
+        # 4. Run standard exploit-and-explore with updated fitness
+        changes = self.exploit_and_explore()
+
+        logger.info(
+            "Multiplayer evolution complete: generation=%d, "
+            "replacements=%d, diversity_weight=%.3f",
+            self.generation,
+            len(changes),
+            self.config.diversity_weight,
+        )
+
         return changes
 
     def compute_stats(self) -> PopulationStats:

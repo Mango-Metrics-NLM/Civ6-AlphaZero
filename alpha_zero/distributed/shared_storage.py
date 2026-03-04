@@ -27,16 +27,23 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TrainingExample:
-    """Single training example from self-play."""
+    """Single training example from self-play.
+
+    For 2-player games, ``value`` is a scalar float (+1 win, -1 loss, 0 draw).
+    For N-player games (N > 2), ``value`` is a numpy array of shape
+    ``(num_players,)`` with per-player values in [-1, 1].
+    """
 
     spatial: np.ndarray
     vector: np.ndarray
     action_mask: np.ndarray
     policy: np.ndarray
-    value: float
+    value: float | np.ndarray
 
     def to_bytes(self, compress: bool = False) -> bytes:
         """Serialize to bytes.
+
+        Handles both scalar float and numpy array value fields.
 
         Args:
             compress: Whether to compress with lzma.
@@ -44,13 +51,20 @@ class TrainingExample:
         Returns:
             Serialized bytes.
         """
+        # Normalise value for serialization: numpy scalar -> float,
+        # numpy array stays as array.
+        if isinstance(self.value, np.ndarray):
+            serialized_value: float | np.ndarray = self.value
+        else:
+            serialized_value = float(self.value)
+
         data = pickle.dumps(
             {
                 "spatial": self.spatial,
                 "vector": self.vector,
                 "action_mask": self.action_mask,
                 "policy": self.policy,
-                "value": self.value,
+                "value": serialized_value,
             }
         )
         if compress:
@@ -60,6 +74,8 @@ class TrainingExample:
     @classmethod
     def from_bytes(cls, data: bytes, compressed: bool = False) -> TrainingExample:
         """Deserialize from bytes.
+
+        Reconstructs both scalar and array value fields correctly.
 
         Args:
             data: Serialized bytes.
@@ -71,24 +87,42 @@ class TrainingExample:
         if compressed:
             data = lzma.decompress(data)
         d = pickle.loads(data)  # noqa: S301
+
+        # Preserve value type: float stays float, ndarray stays ndarray
+        raw_value = d["value"]
+        if isinstance(raw_value, np.ndarray):
+            value: float | np.ndarray = raw_value
+        else:
+            value = float(raw_value)
+
         return cls(
             spatial=d["spatial"],
             vector=d["vector"],
             action_mask=d["action_mask"],
             policy=d["policy"],
-            value=d["value"],
+            value=value,
         )
 
 
 @dataclass
 class GameTrajectory:
-    """Collection of training examples from a single game."""
+    """Collection of training examples from a single game.
+
+    For N-player games, ``num_players`` tracks how many players participated,
+    ``rankings`` stores per-player finishing ranks (0 = 1st place), and
+    ``player_scores`` stores raw scores used for proportional scoring.
+
+    Default values preserve backward compatibility with 2-player code.
+    """
 
     examples: list[TrainingExample] = field(default_factory=list)
     game_id: int = 0
     actor_id: int = 0
     game_length: int = 0
     winner: int | None = None
+    num_players: int = 2
+    rankings: dict[int, int] | None = None
+    player_scores: dict[int, float] | None = None
 
     def __len__(self) -> int:
         """Return number of steps in trajectory."""
@@ -103,6 +137,9 @@ class GameTrajectory:
                 "actor_id": self.actor_id,
                 "game_length": self.game_length,
                 "winner": self.winner,
+                "num_players": self.num_players,
+                "rankings": self.rankings,
+                "player_scores": self.player_scores,
             }
         )
         if compress:
@@ -111,7 +148,11 @@ class GameTrajectory:
 
     @classmethod
     def from_bytes(cls, data: bytes, compressed: bool = False) -> GameTrajectory:
-        """Deserialize from bytes."""
+        """Deserialize from bytes.
+
+        Handles both legacy 2-player payloads (missing new fields) and
+        N-player payloads with full metadata.
+        """
         if compressed:
             data = lzma.decompress(data)
         d = pickle.loads(data)  # noqa: S301
@@ -121,6 +162,9 @@ class GameTrajectory:
             actor_id=d["actor_id"],
             game_length=d["game_length"],
             winner=d["winner"],
+            num_players=d.get("num_players", 2),
+            rankings=d.get("rankings"),
+            player_scores=d.get("player_scores"),
         )
 
 
@@ -622,6 +666,17 @@ class DistributedReplayBuffer:
         if not examples:
             return {}
 
+        # Build value tensor: scalar float -> (B,), ndarray -> (B, num_players)
+        first_value = examples[0].value
+        if isinstance(first_value, np.ndarray):
+            value_tensor = torch.stack(
+                [torch.from_numpy(np.asarray(ex.value)).float() for ex in examples]
+            )
+        else:
+            value_tensor = torch.tensor(
+                [float(ex.value) for ex in examples]
+            ).float()
+
         return {
             "spatial": torch.stack([torch.from_numpy(ex.spatial).float() for ex in examples]),
             "vector": torch.stack([torch.from_numpy(ex.vector).float() for ex in examples]),
@@ -629,7 +684,7 @@ class DistributedReplayBuffer:
                 [torch.from_numpy(ex.action_mask).float() for ex in examples]
             ),
             "policy": torch.stack([torch.from_numpy(ex.policy).float() for ex in examples]),
-            "value": torch.tensor([ex.value for ex in examples]).float(),
+            "value": value_tensor,
         }
 
     def size(self) -> int:

@@ -129,11 +129,10 @@ class TournamentSelection(SelectionStrategy):
         selected = []
         for _ in range(num_to_select):
             # Random tournament
-            tournament = rng.choice(
-                agents,
-                size=min(self.tournament_size, len(agents)),
-                replace=False,  # type: ignore[arg-type]
+            indices = rng.choice(
+                len(agents), size=min(self.tournament_size, len(agents)), replace=False
             )
+            tournament = [agents[i] for i in indices]
             winner = max(tournament, key=lambda a: a.get_smoothed_fitness())
             selected.append(winner)
         return selected
@@ -242,8 +241,10 @@ def create_selection_strategy(method: SelectionMethod, **kwargs: Any) -> Selecti
 
     creator = strategies.get(method, TruncationSelection)
     if callable(creator) and not isinstance(creator, type):
-        return creator()
-    return creator()  # type: ignore[no-any-return]
+        result: SelectionStrategy = creator()
+        return result
+    instance: SelectionStrategy = creator()
+    return instance
 
 
 @dataclass
@@ -370,7 +371,8 @@ class FitnessEvaluator:
 
             # Get opponent policy
             if opponent_agents and self._get_agent_policy_fn:
-                opponent = self.rng.choice(opponent_agents)  # type: ignore[arg-type]
+                opp_idx = self.rng.choice(len(opponent_agents))
+                opponent = opponent_agents[int(opp_idx)]
                 opp_policy = self._get_agent_policy_fn(opponent.agent_id)
             elif opponent_policy:
                 opp_policy = opponent_policy

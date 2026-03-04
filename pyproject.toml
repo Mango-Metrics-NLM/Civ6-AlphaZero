@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alpha_zero"
-version = "1.2.0"
+version = "1.3.0"
 description = "AlphaZero-based AI for Civilization VI"
 requires-python = ">=3.11"
 dependencies = [
@@ -54,12 +54,23 @@ web = [
     "jinja2>=3.1.0",
     "python-multipart>=0.0.6",
 ]
+spacetimedb = [
+    "spacetimedb-sdk>=0.7.0",
+]
+jax = [
+    "jax>=0.4.20",
+    "jaxlib>=0.4.20",
+    "equinox>=0.11.0",
+    "optax>=0.2.0",
+]
 all = [
     "alpha_zero[dev]",
     "alpha_zero[gcp]",
     "alpha_zero[distributed]",
     "alpha_zero[llm]",
     "alpha_zero[web]",
+    "alpha_zero[spacetimedb]",
+    "alpha_zero[jax]",
 ]
 
 [tool.ruff]
@@ -141,6 +152,14 @@ module = ["fastapi.*", "uvicorn.*", "starlette.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = "spacetimedb_sdk.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["jax.*", "jaxlib.*", "equinox.*", "optax.*", "jaxtyping.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
 
@@ -172,6 +191,8 @@ markers = [
     "benchmark: marks tests as benchmarks (deselect with '-m \"not benchmark\"')",
     "web: marks web interface tests",
     "smoke: marks smoke tests for quick validation (select with '-m smoke')",
+    "requires_spacetimedb: marks tests requiring running SpacetimeDB instance",
+    "requires_jax: marks tests requiring JAX installation (install with pip install -e '.[jax]')",
 ]
 
 [tool.coverage.run]

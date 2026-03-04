@@ -5,46 +5,32 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.0] — 2026-02-23
 
-### Added — Sprint 2: Scaling & Optimization
+### Fixed — Training Worker Loads Base Model for Fine-Tuning
 
-#### Multi-Iteration Orchestrator (M10)
+#### Critical Bug Fix: Training From Scratch
 
-- **`orchestrator_state.py`**: `OrchestratorState` dataclass with GCS-backed save/load for preemption-resilient training runs
-- **`run_iterations()`**: Extracted iteration loop from `main()` with evaluation gate (55% win rate), circuit breaker, cost tracking, W&B logging
-- **CLI `orchestrate` subcommand**: `--start-iter`, `--end-iter`, `--eval-threshold`, `--resume`, `--run-id`, `--agent-id`
-- **20 new tests**: `test_orchestrator_state.py` — state tracking, serialization, GCS mock, dry-run integration
+The training worker (`training_worker.py`) was creating a **fresh randomly-initialized model** each iteration instead of loading the current best model from GCS and fine-tuning it. This made it impossible for newly trained models to beat the incumbent champion in evaluation.
 
-#### Production Monitoring & Cost Control (Phase 4)
+- **Impact**: Production run v1.2.0 completed 50 iterations with **zero model promotions** — v218 remained champion for all 50 iterations (~$28.55 wasted)
+- **Root cause**: `training_worker.py` called `create_model()` without loading existing weights; no `--model_version` arg existed
+- **Fix**: Added `--model_version` CLI argument to `training_worker.py` that loads pre-trained weights from GCS before training begins
 
-- **`scripts/setup_monitoring.sh`**: 4 GCP alerting policies (job failure, daily cost budget, GPU utilization, circuit breaker log)
-- All thresholds configurable via env vars (`DAILY_BUDGET_USD`, `NOTIFICATION_CHANNEL`)
+#### Changes
 
-#### Secret Manager Migration (Phase 5)
+- **`training_worker.py`**: Added `--model_version` CLI arg; when set, loads `state_dict` from GCS via `GCSModelStorage.load_model()` before DDP wrapping
+- **`vertex_orchestrator.py`**: `build_training_extra_args()` now accepts `model_version` kwarg and emits `--model_version=N`; `run_training_phase()` passes `model_version` through to training job; main loop passes current `model_version` to training phase
+- **New tests**: 5 tests across `test_training_worker.py` and `test_orchestrator_pipeline.py` verifying arg parsing, weight loading flow, and orchestrator plumbing
 
-- **`scripts/setup_secrets.sh`**: Migrate WANDB_API_KEY to GCP Secret Manager
-- **`vertex_jobs.py`**: `_wandb_env_vars()` now resolves WANDB_API_KEY with fallback: env var → Secret Manager → empty
-- **`_resolve_wandb_key_from_secret_manager()`**: New helper using `google.cloud.secretmanager`
+#### Verification
 
-#### Code Quality (Phase 1)
+After this fix, training iterations will:
+1. Start with low loss (pre-trained weights, not ~6.0 random init)
+2. Progressively improve policy quality across iterations
+3. Produce models that can beat the incumbent in evaluation (>55% win rate)
 
-- Fixed 5 ruff violations: RUF059 (unused vars ×3), RUF046 (unnecessary int cast), N801 (class naming)
-- Fixed 2 mypy issues in changed files
-
-### Added
-
-- **Inference Service (Phase 16)**: Production-ready machine learning inference service for Civ6 AlphaZero model deployment.
-  - FastAPI server for low-latency RESTful inference.
-  - Multi-model caching and hot-swapping.
-  - Support for batch inference and vectorized game states.
-  - Detailed deployment guides for Cloud Run and GKE.
-- **Hex Crystalline Encoder (Phase 17a)**: Advanced spatial encoding for hexagonal grid topologies.
-
-### Fixed
-
-- **Windows Compatibility**: Resolved critical pickling errors in distributed training (`WinError 6`, `_thread.lock` pickling) by the implementation of custom `__getstate__` and `__setstate__` in `SharedStorage` and `DistributedReplayBuffer`.
-- **Orchestrator Stability**: Fixed action space size mismatch in orchestrator smoke tests by ensuring clean checkpoint initialization.
+---
 
 ## [1.2.0] — 2026-02-21
 

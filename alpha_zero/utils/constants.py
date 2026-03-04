@@ -70,6 +70,20 @@ class EncoderConstants:
     CULTURE_NORMALIZATION: float = 500.0
     FAITH_NORMALIZATION: float = 500.0
 
+    # MicroCiv vector normalization factors
+    MICROCIV_TURN_NORMALIZATION: float = 200.0
+    MICROCIV_GOLD_NORMALIZATION: float = 500.0
+    MICROCIV_GOLD_PER_TURN_NORMALIZATION: float = 50.0
+
+    # Full encoder vector normalization factors
+    RESOURCE_NORMALIZATION: float = 20.0
+    CITY_COUNT_NORMALIZATION: float = 20.0
+    UNIT_COUNT_NORMALIZATION: float = 50.0
+    MILITARY_STRENGTH_NORMALIZATION: float = 500.0
+    PER_TURN_NORMALIZATION: float = 100.0
+    CITY_PRODUCTION_NORMALIZATION: float = 100.0
+    CITY_DEFENSE_NORMALIZATION: float = 100.0
+
     # Vector encoding dimensions
     MICROCIV_VECTOR_DIM: int = 64
     FULL_VECTOR_DIM: int = 512
@@ -258,6 +272,28 @@ class GameConstants:
     FORTIFICATION_BONUS: float = 0.25
     TERRAIN_DEFENSE_BONUS: float = 0.1
 
+    # MicroCiv combat damage formula: damage = BASE * ratio + MIN
+    COMBAT_BASE_DAMAGE: int = 30
+    COMBAT_MIN_DAMAGE_ATTACKER: int = 5
+    COMBAT_MIN_DAMAGE_DEFENDER: int = 10
+    COMBAT_SMOOTHING_EPSILON: float = 0.1
+
+    # MicroCiv city mechanics
+    CITY_BASE_PRODUCTION: int = 2  # Added to population for production per turn
+    PRODUCTION_COST_MULTIPLIER: int = 10  # Unit cost * this = production required
+    MIN_CITY_DISTANCE: int = 3  # Minimum distance between cities
+
+    # MicroCiv unit default health
+    DEFAULT_UNIT_HEALTH: int = 100
+    DEFAULT_CITY_DEFENSE: int = 20
+
+    # MicroCiv settler auto-found probability
+    SETTLER_AUTO_FOUND_PROBABILITY: float = 0.1
+
+    # Shaped reward values
+    PRODUCTION_START_REWARD: float = 0.01
+    CITY_FOUND_REWARD: float = 1.0
+
 
 @dataclass(frozen=True)
 class UnitConstants:
@@ -418,6 +454,10 @@ class RewardConstants:
     CITY_LOST_PENALTY: float = -0.1
     INVALID_ACTION_PENALTY: float = -0.01
 
+    # MicroCiv-specific reward values
+    MICROCIV_UNIT_KILL_REWARD: float = 0.1
+    MICROCIV_UNIT_LOST_PENALTY: float = -0.1
+
     # Discount factor
     GAMMA: float = 0.99
 
@@ -489,11 +529,9 @@ def validate_constants() -> list[str]:
     """
     errors = []
 
-    # Check game constants consistency (use isclose for float comparison)
-    import math
-
+    # Check game constants consistency
     terrain_sum = GAME.PLAINS_RATIO + GAME.HILLS_RATIO + GAME.MOUNTAIN_RATIO
-    if not math.isclose(terrain_sum, 1.0, rel_tol=1e-9):
+    if abs(terrain_sum - 1.0) > 1e-9:
         errors.append("Terrain ratios must sum to 1.0")
 
     # Check action space computation

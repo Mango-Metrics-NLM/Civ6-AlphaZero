@@ -28,15 +28,15 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 15 | Scaled Training & Value Head Stabilization | ✅ Complete |
 | Phase 15+ | Standalone Tournament Worker & Lua Integration | ✅ Complete |
 | Phase 16 | Batch Inference & Vectorized Self-Play | ✅ Complete |
-| Phase 17a | Hex Crystalline Encoder & A/B Comparison | ✅ Complete |
-| Phase 17b | Training Readiness & Windows Compatibility | ✅ Complete |
+| Phase 17 | Training Readiness — action_mask, W&B groups, gumbel default | ✅ Complete |
+| Phase 18 | Training Bug Fix — load base model for fine-tuning | ✅ Complete |
 
 **Codebase Statistics:**
 
 - ~62,000 lines of core implementation
 - 5,100+ tests, all passing (canonical Windows deselect list)
 - Docker v1.2.0 on Artifact Registry (`us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v1.2.0`)
-- 218+ model versions in GCS (v0-v218+), production run active
+- 269 model versions in GCS (v0-v268), production run v1.2.0 completed
 - GumbelMCTS default: 13× faster than Civ6MCTS — 50-iter production run active (4 workers × 50 games/iter)
 - Action-masked cross-entropy training, W&B group coordination, eval retry with backoff
 - Python 3.10 compatibility shim for cloud containers (40 files)
@@ -175,6 +175,58 @@ graph TB
     style Network fill:#438dd5,stroke:#2e6295,color:#ffffff
     style MCTS fill:#438dd5,stroke:#2e6295,color:#ffffff
     style MicroCiv fill:#85bbf0,stroke:#5d82a8,color:#000000
+```
+
+### Level 2: Container Diagram - Cloud Training Pipeline (Vertex AI)
+
+Shows the production cloud training loop on GCP Vertex AI.
+
+```mermaid
+graph TB
+    subgraph "GCP Vertex AI"
+        subgraph "Vertex AI Custom Jobs (GPU)"
+            SelfPlayW["Self-Play Workers<br/><i>N parallel T4 GPU jobs</i><br/>Generate game trajectories"]
+            TrainingW["Training Worker<br/><i>T4 GPU job</i><br/>Fine-tune model weights"]
+            EvalW["Evaluation Worker<br/><i>CPU job</i><br/>New vs champion arena"]
+            TournW["Tournament Worker<br/><i>T4 GPU job</i><br/>Round-robin ELO rating"]
+        end
+    end
+
+    subgraph "GCS Storage"
+        Models[("Model Weights<br/><i>gs://bucket/models/</i><br/>v0 - v268+")]
+        Trajectories[("Trajectory Data<br/><i>gs://bucket/trajectories/</i>")]
+    end
+
+    subgraph "Orchestrator VM (e2-small)"
+        Orch["Vertex Orchestrator<br/><i>vertex_orchestrator.py</i><br/>Iteration loop controller"]
+    end
+
+    subgraph "Observability"
+        WandB[("Weights & Biases<br/><i>Group-coordinated runs</i>")]
+    end
+
+    Orch -->|"1. Launch N selfplay jobs"| SelfPlayW
+    SelfPlayW -->|"Load model"| Models
+    SelfPlayW -->|"Save trajectories"| Trajectories
+    Orch -->|"2. Launch training job<br/>--model_version=N"| TrainingW
+    TrainingW -->|"Load base model<br/>(fine-tune, not scratch)"| Models
+    TrainingW -->|"Load training data"| Trajectories
+    TrainingW -->|"Save new model"| Models
+    Orch -->|"3. Launch eval job"| EvalW
+    EvalW -->|"Load new + champion"| Models
+    EvalW -->|"Win rate > 55%<br/>→ promote champion"| Orch
+    Orch -->|"4. Post-run tournament"| TournW
+
+    SelfPlayW -->|"Metrics"| WandB
+    TrainingW -->|"Loss curves"| WandB
+    EvalW -->|"Win rates"| WandB
+    Orch -->|"Iteration stats"| WandB
+
+    style Orch fill:#1168bd,stroke:#0b4884,color:#ffffff
+    style TrainingW fill:#d04437,stroke:#a3362c,color:#ffffff
+    style SelfPlayW fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style EvalW fill:#438dd5,stroke:#2e6295,color:#ffffff
+    style Models fill:#85bbf0,stroke:#5d82a8,color:#000000
 ```
 
 ### Level 3: Component Diagram - Neural Network

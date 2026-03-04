@@ -33,12 +33,12 @@ try:
     try:
         import numpy.core.multiarray as _ma_legacy
 
-        safe_types.append(_ma_legacy.scalar)  # type: ignore[attr-defined]
+        safe_types.append(_ma_legacy.scalar)
     except (ImportError, AttributeError):
         try:
             import numpy._core.multiarray as _ma_modern
 
-            safe_types.append(_ma_modern.scalar)  # type: ignore[attr-defined]
+            safe_types.append(_ma_modern.scalar)
         except (ImportError, AttributeError):
             pass
 
@@ -523,6 +523,11 @@ class MicroCivNetwork(Civ6Network):
     """Simplified network for MicroCiv environment.
 
     Uses smaller architecture for faster training.
+
+    When ``num_players > 2``, the value head is replaced with an
+    :class:`~alpha_zero.multiplayer.network_heads.NPlayerValueHead` that
+    outputs per-player value predictions of shape ``(B, num_players)``.
+    For 2-player games, the original scalar value head is used.
     """
 
     def __init__(
@@ -531,6 +536,8 @@ class MicroCivNetwork(Civ6Network):
         action_space_size: int = 381,
         num_res_blocks: int = 6,
         num_filters: int = 64,
+        spatial_channels: int = 13,
+        num_players: int = 2,
         config: NetworkConfig | None = None,
         **kwargs: Any,
     ) -> None:
@@ -541,12 +548,18 @@ class MicroCivNetwork(Civ6Network):
             action_space_size: Total number of actions.
             num_res_blocks: Number of residual blocks.
             num_filters: Number of convolutional filters.
+            spatial_channels: Number of spatial input channels.
+                Defaults to 13 (2-player MicroCiv). For N-player, use
+                ``3 + 4 * num_players + 2``.
+            num_players: Number of players. When > 2, uses NPlayerValueHead.
             config: Optional network configuration.
             **kwargs: Additional arguments passed to Civ6Network.
         """
+        self._num_players = num_players
+
         if config is None:
             config = NetworkConfig(
-                spatial_channels=13,  # MicroCivEncoder.TOTAL_CHANNELS
+                spatial_channels=spatial_channels,
                 spatial_size=board_size,
                 vector_dim=64,
                 num_res_blocks=num_res_blocks,
@@ -556,6 +569,36 @@ class MicroCivNetwork(Civ6Network):
                 value_head_hidden=64,
             )
         super().__init__(config=config, **kwargs)
+
+        # Replace the value head with an N-player variant when needed
+        if num_players > 2:
+            try:
+                from alpha_zero.multiplayer.network_heads import NPlayerValueHead
+
+                self.value_head = NPlayerValueHead(  # type: ignore[assignment]
+                    spatial_filters=config.num_filters,
+                    spatial_size=config.spatial_size,
+                    vector_dim=config.fc_hidden_dim,
+                    num_players=num_players,
+                    hidden_dim=config.value_head_hidden,
+                )
+                logger.info(
+                    "MicroCivNetwork: using NPlayerValueHead "
+                    "(num_players=%d, spatial_channels=%d)",
+                    num_players,
+                    spatial_channels,
+                )
+            except ImportError:
+                logger.warning(
+                    "NPlayerValueHead not available; using scalar value head "
+                    "for %d players",
+                    num_players,
+                )
+
+    @property
+    def num_players(self) -> int:
+        """Number of players this network supports."""
+        return self._num_players
 
 
 # =============================================================================
@@ -1143,11 +1186,11 @@ class HierarchicalPolicyHead(nn.Module):
         act_s = act_s.view(act_s.size(0), -1)
         act_combined = torch.cat([act_s, vector_features, category_probs], dim=1)
         act_hidden = F.relu(self.action_fc1(act_combined))
-        action_logits = self.action_fc2(act_hidden)
+        action_logits: torch.Tensor = self.action_fc2(act_hidden)
 
         if return_category_probs:
             return action_logits, category_probs
-        return action_logits  # type: ignore[no-any-return]
+        return action_logits
 
 
 class Civ6NetworkV2(nn.Module):

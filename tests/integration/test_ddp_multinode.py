@@ -370,7 +370,6 @@ class TestMixedDeviceScenarios:
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(reason="Pre-existing DDP multi-node test failures", strict=False)
 class TestProcessGroupLifecycle:
     """Tests for process group lifecycle management."""
 

@@ -110,9 +110,9 @@ class TestDDPLearnerConfig:
     def test_default_values(self) -> None:
         """Test default configuration values."""
         config = DDPLearnerConfig()
-        assert config.ddp_backend == "auto"
-        assert config.ddp_world_size == 1
-        assert config.ddp_rank == 0
+        assert config.backend == "auto"
+        assert config.world_size == 1
+        assert config.rank == 0
         assert config.init_method == "env://"
 
     def test_from_env_reads_environment(self) -> None:

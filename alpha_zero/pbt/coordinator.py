@@ -376,8 +376,9 @@ class PBTCoordinator:
 
         self._last_checkpoint_step = self._current_step
 
-        # Cleanup old checkpoints
-        self.population.cleanup_old_checkpoints(checkpoint_dir)  # type: ignore[attr-defined]
+        # Cleanup old checkpoints (if the population manager supports it)
+        if hasattr(self.population, "cleanup_old_checkpoints"):
+            self.population.cleanup_old_checkpoints(checkpoint_dir)
 
         logger.info(f"Saved checkpoint: {checkpoint_path}")
 

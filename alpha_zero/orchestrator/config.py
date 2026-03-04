@@ -34,9 +34,12 @@ import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
+
+if TYPE_CHECKING:
+    from alpha_zero.spacetimedb.config import SpacetimeDBConfig
 
 
 class ScheduleType(str, Enum):
@@ -426,6 +429,7 @@ class NetworkConfig:
     num_heads: int = 4
     value_head_hidden: int = 256
     dropout: float = 0.0
+    framework: str = "pytorch"  # "pytorch" or "jax"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> NetworkConfig:
@@ -438,6 +442,7 @@ class NetworkConfig:
             num_heads=int(data.get("num_heads", 4)),
             value_head_hidden=int(data.get("value_head_hidden", 256)),
             dropout=float(data.get("dropout", 0.0)),
+            framework=str(data.get("framework", "pytorch")),
         )
 
 
@@ -731,6 +736,9 @@ class OrchestratorConfig:
         default_factory=lambda: ScheduleConfig(initial_value=0.25),
     )
 
+    # SpacetimeDB (optional real-time distributed coordination)
+    spacetimedb: SpacetimeDBConfig | None = field(default=None)
+
     # Paths
     checkpoint_dir: str = "checkpoints/orchestrator"
     log_dir: str = "logs/orchestrator"
@@ -797,9 +805,29 @@ class OrchestratorConfig:
             exploration_schedule=ScheduleConfig.from_dict(
                 data.get("exploration_schedule", {"initial_value": 0.25}),
             ),
+            spacetimedb=cls._parse_spacetimedb_config(data.get("spacetimedb")),
             checkpoint_dir=data.get("checkpoint_dir", "checkpoints/orchestrator"),
             log_dir=data.get("log_dir", "logs/orchestrator"),
         )
+
+    @staticmethod
+    def _parse_spacetimedb_config(data: dict[str, Any] | None) -> SpacetimeDBConfig | None:
+        """Parse SpacetimeDB config from dict if present.
+
+        Args:
+            data: SpacetimeDB configuration dictionary.
+
+        Returns:
+            SpacetimeDBConfig or None.
+        """
+        if data is None:
+            return None
+        try:
+            from alpha_zero.spacetimedb.config import SpacetimeDBConfig
+
+            return SpacetimeDBConfig.from_dict(data)
+        except ImportError:
+            return None
 
     @classmethod
     def from_preset(cls, preset: str) -> OrchestratorConfig:

@@ -26,8 +26,23 @@ from alpha_zero.distributed.shared_storage import (
     WeightSynchronizer,
 )
 from alpha_zero.envs.microciv import MicroCivEnv
-from alpha_zero.utils.constants import DISTRIBUTED, GAME
+from alpha_zero.utils.constants import DISTRIBUTED, GAME, REWARDS
 from alpha_zero.utils.reward_shaping import RewardShaper, RewardShapingConfig
+
+try:
+    from alpha_zero.multiplayer.scoring import (
+        compute_player_values as _compute_player_values,
+    )
+    from alpha_zero.multiplayer.scoring import (
+        compute_rankings as _compute_rankings,
+    )
+    from alpha_zero.multiplayer.scoring import (
+        extract_game_result as _extract_game_result,
+    )
+
+    _HAS_MULTIPLAYER_SCORING = True
+except ImportError:  # pragma: no cover
+    _HAS_MULTIPLAYER_SCORING = False
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +57,7 @@ class ActorConfig:
     # Environment settings
     board_size: int = GAME.DEFAULT_BOARD_SIZE
     max_turns: int = GAME.DEFAULT_MAX_TURNS
+    num_players: int = 2
 
     # Network settings
     num_res_blocks: int = 6
@@ -115,6 +131,7 @@ class SelfPlayActor:
         self.env = MicroCivEnv(
             board_size=config.board_size,
             max_turns=config.max_turns,
+            num_players=config.num_players,
         )
         self.action_space_size = self.env.action_space.n
 
@@ -138,11 +155,16 @@ class SelfPlayActor:
 
     def _init_network(self) -> None:
         """Initialize network and MCTS."""
+        # Compute spatial channels dynamically based on num_players
+        spatial_channels = 3 + 4 * self.config.num_players + 2
+
         self.network = MicroCivNetwork(
             board_size=self.config.board_size,
             action_space_size=self.action_space_size,  # type: ignore[arg-type]
             num_res_blocks=self.config.num_res_blocks,
             num_filters=self.config.num_filters,
+            spatial_channels=spatial_channels,
+            num_players=self.config.num_players,
         ).to(self.config.device)
         self.network.eval()
 
@@ -228,7 +250,7 @@ class SelfPlayActor:
         if self.config.use_reward_shaping:
             shaping_config = RewardShapingConfig(
                 enabled=True,
-                gamma=0.99,
+                gamma=REWARDS.GAMMA,
             )
             reward_shaper = RewardShaper(shaping_config, self.config.board_size)
 
@@ -274,16 +296,28 @@ class SelfPlayActor:
 
         # Create training examples with value targets
         winner = info.get("winner")
-        examples = self._create_training_examples(game_history, winner)
+        examples = self._create_training_examples(game_history, winner, info=info)
 
-        # Create trajectory
+        # Create trajectory with N-player metadata
         self._game_id_counter += 1
+        player_scores = info.get("player_scores")
+        rankings: dict[int, int] | None = None
+        if self.config.num_players > 2 and _HAS_MULTIPLAYER_SCORING:
+            rankings = _compute_rankings(
+                winner=winner,
+                player_scores=player_scores,
+                num_players=self.config.num_players,
+            )
+
         trajectory = GameTrajectory(
             examples=examples,
             game_id=self._game_id_counter,
             actor_id=self.config.actor_id,
             game_length=len(game_history),
             winner=winner,
+            num_players=self.config.num_players,
+            rankings=rankings,
+            player_scores=player_scores,
         )
 
         return trajectory
@@ -292,19 +326,31 @@ class SelfPlayActor:
         self,
         game_history: list[GameHistoryItem],
         winner: int | None,
+        info: dict[str, Any] | None = None,
     ) -> list[TrainingExample]:
         """Create training examples with enhanced value targets.
+
+        For 2-player games, values are scalar floats (+1/-1/0).
+        For N-player games (N > 2), values are numpy arrays of shape
+        ``(num_players,)`` with per-player values in [-1, 1].
 
         Args:
             game_history: List of game history items.
             winner: Winner of the game (0, 1, or None for draw).
+            info: Optional environment info dict from the terminal step.
 
         Returns:
             List of training examples with computed value targets.
         """
-        examples = []
-        _n_steps = len(game_history)  # Reserved for future n-step return
-        gamma = 0.99
+        num_players = self.config.num_players
+
+        # --- N-player path: use multiplayer scoring ---
+        if num_players > 2 and _HAS_MULTIPLAYER_SCORING:
+            return self._create_nplayer_examples(game_history, winner, info)
+
+        # --- 2-player (default) path: unchanged ---
+        examples: list[TrainingExample] = []
+        gamma = REWARDS.GAMMA
 
         for i, hist in enumerate(game_history):
             # Base value from game outcome
@@ -318,7 +364,7 @@ class SelfPlayActor:
             # Compute value target
             if self.config.use_reward_shaping and self.config.n_step_returns > 0:
                 # N-step return: sum of discounted shaped rewards + bootstrapped value
-                value = self._compute_n_step_value(
+                value: float = self._compute_n_step_value(
                     game_history,
                     i,
                     outcome_value,
@@ -341,6 +387,60 @@ class SelfPlayActor:
                     action_mask=hist.action_mask,
                     policy=hist.policy,
                     value=value,
+                ),
+            )
+
+        return examples
+
+    def _create_nplayer_examples(
+        self,
+        game_history: list[GameHistoryItem],
+        winner: int | None,
+        info: dict[str, Any] | None = None,
+    ) -> list[TrainingExample]:
+        """Create training examples with per-player value vectors.
+
+        Uses ``alpha_zero.multiplayer.scoring`` to compute per-player values
+        from the game outcome.
+
+        Args:
+            game_history: List of game history items.
+            winner: Winner of the game.
+            info: Optional environment info dict.
+
+        Returns:
+            List of training examples with array-valued value targets.
+        """
+        num_players = self.config.num_players
+
+        # Compute per-player values from game result
+        if info is not None:
+            player_values = _extract_game_result(info, num_players)
+        else:
+            rankings = _compute_rankings(
+                winner=winner,
+                num_players=num_players,
+            )
+            player_values = _compute_player_values(
+                rankings=rankings,
+                num_players=num_players,
+            )
+
+        # Convert to ordered array: [player_0_value, player_1_value, ...]
+        value_array = np.array(
+            [player_values.get(p, 0.0) for p in range(num_players)],
+            dtype=np.float32,
+        )
+
+        examples: list[TrainingExample] = []
+        for hist in game_history:
+            examples.append(
+                TrainingExample(
+                    spatial=hist.spatial,
+                    vector=hist.vector,
+                    action_mask=hist.action_mask,
+                    policy=hist.policy,
+                    value=value_array,
                 ),
             )
 
@@ -561,6 +661,7 @@ class ActorPool:
         config_dict = {
             "board_size": self.base_config.board_size,
             "max_turns": self.base_config.max_turns,
+            "num_players": self.base_config.num_players,
             "num_res_blocks": self.base_config.num_res_blocks,
             "num_filters": self.base_config.num_filters,
             "num_simulations": self.base_config.num_simulations,
@@ -645,6 +746,7 @@ class ActorPool:
         config_dict = {
             "board_size": self.base_config.board_size,
             "max_turns": self.base_config.max_turns,
+            "num_players": self.base_config.num_players,
             "num_res_blocks": self.base_config.num_res_blocks,
             "num_filters": self.base_config.num_filters,
             "num_simulations": self.base_config.num_simulations,
