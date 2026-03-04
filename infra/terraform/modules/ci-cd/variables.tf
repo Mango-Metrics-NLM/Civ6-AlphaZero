@@ -33,3 +33,14 @@ variable "auth_service_name" {
 variable "matchmaking_service_name" {
   type = string
 }
+
+variable "training_bucket" {
+  description = "GCS bucket name for training artifacts and model uploads."
+  type        = string
+}
+
+variable "model_prefix" {
+  description = "GCS object prefix for model uploads (triggers Pub/Sub notification)."
+  type        = string
+  default     = "models/civ6az/"
+}
