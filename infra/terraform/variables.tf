@@ -4,15 +4,13 @@
 # (environments/prod/terraform.tfvars, environments/staging/terraform.tfvars).
 
 variable "project_id" {
-  description = "GCP project ID."
+  description = "GCP project ID. Must be set via .tfvars or -var flag."
   type        = string
-  default     = "hrmtrain"
 }
 
 variable "region" {
-  description = "GCP region for all resources."
+  description = "GCP region for all resources. Must be set via .tfvars or -var flag."
   type        = string
-  default     = "us-central1"
 }
 
 variable "zone" {
@@ -97,9 +95,8 @@ variable "frontend_domain" {
 # ---------- Auth ----------
 
 variable "firebase_project_id" {
-  description = "Firebase project ID (usually same as GCP project)."
+  description = "Firebase project ID (usually same as GCP project). Must be set via .tfvars."
   type        = string
-  default     = "hrmtrain"
 }
 
 # ---------- Monitoring ----------

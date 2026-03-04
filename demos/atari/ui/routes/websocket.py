@@ -31,8 +31,10 @@ def create_websocket_router(session_manager: SessionManager) -> APIRouter:
             {"type": "ping"}
 
         Server -> Client:
-            {"type": "frame", "data": "<base64>", "reward": 0.0, "done": false, "step": 42}
-            {"type": "ai_move", "action": 3, "probs": [...], "value": 0.73}
+            {"type": "state", "data": {<session state>}}
+            {"type": "frame", "data": {<step result dict>}}
+            {"type": "ai_move", "action": 3, "probs": [...], "value": 0.73,
+             "frame": ..., "reward": 0.0, "done": false, "step": 42}
             {"type": "episode_end", "total_reward": 21.0, "steps": 3200}
             {"type": "error", "message": "..."}
             {"type": "pong"}
