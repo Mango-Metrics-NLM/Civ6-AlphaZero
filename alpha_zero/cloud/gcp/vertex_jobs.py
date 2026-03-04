@@ -28,33 +28,55 @@ def _wandb_env_vars() -> dict[str, str]:
 
     The WANDB_API_KEY is resolved with the following precedence:
     1. ``WANDB_API_KEY`` env var (backwards compatible)
-    2. GCP Secret Manager secret named by ``CIV6AZ_WANDB_SECRET_NAME``
-       (default: ``wandb-api-key``).  Falls back silently if SM is
-       unavailable.
+    2. GCP Secret Manager reference passed as env vars
+       ``CIV6AZ_WANDB_SECRET_PROJECT`` and ``CIV6AZ_WANDB_SECRET_NAME``.
+       The worker resolves the secret at runtime to avoid embedding
+       plaintext keys in the Vertex AI job spec.
     """
     wandb_key = os.environ.get("WANDB_API_KEY", "")
-    if not wandb_key:
-        wandb_key = _resolve_wandb_key_from_secret_manager()
 
     candidates = {
         "WANDB_ENABLED": os.environ.get("WANDB_ENABLED", "false"),
-        "WANDB_API_KEY": wandb_key,
         "WANDB_PROJECT": os.environ.get("WANDB_PROJECT", "civ6-alphazero"),
         "WANDB_ENTITY": os.environ.get("WANDB_ENTITY", ""),
         "WANDB_MODE": os.environ.get("WANDB_MODE", "online"),
         "WANDB_GROUP": os.environ.get("WANDB_GROUP", ""),
         "WANDB_RUN_NAME": os.environ.get("WANDB_RUN_NAME", ""),
     }
+
+    if wandb_key:
+        # Direct key provided — pass through (backwards compatible)
+        candidates["WANDB_API_KEY"] = wandb_key
+    else:
+        # Pass Secret Manager reference so worker resolves at runtime
+        sm_project = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
+        sm_secret = os.environ.get(
+            "CIV6AZ_WANDB_SECRET_NAME", "wandb-api-key"
+        )
+        if sm_project:
+            candidates["CIV6AZ_WANDB_SECRET_PROJECT"] = sm_project
+            candidates["CIV6AZ_WANDB_SECRET_NAME"] = sm_secret
+
     return {k: v for k, v in candidates.items() if v}
 
 
 def _resolve_wandb_key_from_secret_manager() -> str:
-    """Attempt to read WANDB_API_KEY from GCP Secret Manager.
+    """Resolve WANDB_API_KEY from GCP Secret Manager at runtime.
+
+    Called by workers at container startup (not at job submission time)
+    to avoid embedding plaintext secrets in job specs.
+
+    Uses env vars set by ``_wandb_env_vars``:
+    - ``CIV6AZ_WANDB_SECRET_PROJECT``: GCP project ID
+    - ``CIV6AZ_WANDB_SECRET_NAME``: Secret name (default: wandb-api-key)
 
     Returns:
         The secret value, or empty string if unavailable.
     """
-    project = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
+    project = os.environ.get(
+        "CIV6AZ_WANDB_SECRET_PROJECT",
+        os.environ.get("GOOGLE_CLOUD_PROJECT", ""),
+    )
     secret_name = os.environ.get("CIV6AZ_WANDB_SECRET_NAME", "wandb-api-key")
     if not project:
         return ""
