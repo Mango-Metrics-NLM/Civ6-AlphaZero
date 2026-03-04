@@ -55,8 +55,7 @@ def _require_jax() -> None:
     """Raise ImportError if JAX is not installed."""
     if not _JAX_AVAILABLE:
         raise ImportError(
-            "JAX backend requires: pip install -e '.[jax]' "
-            "(installs jax, jaxlib, equinox, optax)"
+            "JAX backend requires: pip install -e '.[jax]' (installs jax, jaxlib, equinox, optax)"
         )
 
 
@@ -156,8 +155,7 @@ if _JAX_AVAILABLE:
         ) -> None:
             if num_channels % num_groups != 0:
                 raise ValueError(
-                    f"num_channels ({num_channels}) must be divisible by "
-                    f"num_groups ({num_groups})"
+                    f"num_channels ({num_channels}) must be divisible by num_groups ({num_groups})"
                 )
             self.num_channels = num_channels
             self.num_groups = num_groups
@@ -294,9 +292,7 @@ if _JAX_AVAILABLE:
             key: jax.Array,
         ) -> None:
             key1, key2, key3 = jax.random.split(key, 3)
-            self.conv = eqx.nn.Conv2d(
-                spatial_filters, 2, kernel_size=1, use_bias=False, key=key1
-            )
+            self.conv = eqx.nn.Conv2d(spatial_filters, 2, kernel_size=1, use_bias=False, key=key1)
             self.gn = JaxGroupNorm(2, num_groups=1)
             flat_spatial_dim = 2 * spatial_size * spatial_size
             combined_dim = flat_spatial_dim + vector_dim
@@ -308,9 +304,7 @@ if _JAX_AVAILABLE:
                 warnings.filterwarnings("ignore", message="A JAX array is being set as static")
                 self.fc2 = eqx.nn.Linear(hidden_dim, action_space_size, key=key3)
 
-        def __call__(
-            self, spatial_features: jax.Array, vector_features: jax.Array
-        ) -> jax.Array:
+        def __call__(self, spatial_features: jax.Array, vector_features: jax.Array) -> jax.Array:
             """Forward pass. Returns logits of shape (action_space_size,)."""
             s = jax.nn.relu(self.gn(self.conv(spatial_features)))
             s = s.ravel()
@@ -336,18 +330,14 @@ if _JAX_AVAILABLE:
             key: jax.Array,
         ) -> None:
             key1, key2, key3 = jax.random.split(key, 3)
-            self.conv = eqx.nn.Conv2d(
-                spatial_filters, 1, kernel_size=1, use_bias=False, key=key1
-            )
+            self.conv = eqx.nn.Conv2d(spatial_filters, 1, kernel_size=1, use_bias=False, key=key1)
             self.gn = JaxGroupNorm(1, num_groups=1)
             flat_spatial_dim = spatial_size * spatial_size
             combined_dim = flat_spatial_dim + vector_dim
             self.fc1 = eqx.nn.Linear(combined_dim, hidden_dim, key=key2)
             self.fc2 = eqx.nn.Linear(hidden_dim, 1, key=key3)
 
-        def __call__(
-            self, spatial_features: jax.Array, vector_features: jax.Array
-        ) -> jax.Array:
+        def __call__(self, spatial_features: jax.Array, vector_features: jax.Array) -> jax.Array:
             """Forward pass. Returns scalar value in [-1, 1]."""
             s = jax.nn.relu(self.gn(self.conv(spatial_features)))
             s = s.ravel()
@@ -434,17 +424,13 @@ if _JAX_AVAILABLE:
             """
             dropout_key = key
             spatial_features = self.spatial_encoder(spatial)
-            vector_features = self.vector_encoder(
-                vector, key=dropout_key, inference=inference
-            )
+            vector_features = self.vector_encoder(vector, key=dropout_key, inference=inference)
 
             policy_logits = self.policy_head(spatial_features, vector_features)
             value = self.value_head(spatial_features, vector_features)
 
             if action_mask is not None:
-                policy_logits = jnp.where(
-                    action_mask > 0, policy_logits, MASKED_LOGIT_VALUE
-                )
+                policy_logits = jnp.where(action_mask > 0, policy_logits, MASKED_LOGIT_VALUE)
 
             return policy_logits, value
 
@@ -524,9 +510,7 @@ class JaxNetworkWrapper:
         leaves = jax.tree.leaves(eqx.filter(model, eqx.is_array))
         self._param_count = sum(leaf.size for leaf in leaves)
         total_bytes = sum(
-            leaf.size * leaf.dtype.itemsize
-            for leaf in leaves
-            if hasattr(leaf, "dtype")
+            leaf.size * leaf.dtype.itemsize for leaf in leaves if hasattr(leaf, "dtype")
         )
 
         logger.info(
@@ -559,9 +543,7 @@ class JaxNetworkWrapper:
         action_mask: Any,
     ) -> tuple[Any, Any]:
         """Forward pass for a single sample. Pure function for JIT."""
-        policy_logits, value = model(
-            spatial, vector, action_mask, inference=True
-        )
+        policy_logits, value = model(spatial, vector, action_mask, inference=True)
         policy_probs = jax.nn.softmax(policy_logits)
         return policy_probs, value
 
@@ -593,8 +575,7 @@ class JaxNetworkWrapper:
             )
         if vector.ndim not in (1, 2):
             raise ValueError(
-                f"vector must be 1D (V,) or 2D (B,V), "
-                f"got {vector.ndim}D shape {vector.shape}"
+                f"vector must be 1D (V,) or 2D (B,V), got {vector.ndim}D shape {vector.shape}"
             )
 
         is_batched = spatial.ndim == 4

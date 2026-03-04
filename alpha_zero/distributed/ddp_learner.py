@@ -150,7 +150,11 @@ class DDPLearnerConfig(LearnerConfig):
         # Delegate to the generated dataclass __init__ via parent
         LearnerConfig.__init__(
             self,
-            **{k: v for k, v in known.items() if k in {f.name for f in dataclasses.fields(LearnerConfig)}},
+            **{
+                k: v
+                for k, v in known.items()
+                if k in {f.name for f in dataclasses.fields(LearnerConfig)}
+            },
         )
         # Set DDPLearnerConfig-specific fields
         learner_field_names = {f.name for f in dataclasses.fields(LearnerConfig)}
@@ -169,8 +173,6 @@ class DDPLearnerConfig(LearnerConfig):
             else:
                 raise TypeError(f"Missing required field: {name}")
             object.__setattr__(self, name, value)
-
-
 
     @property
     def world_size(self) -> int:
@@ -832,7 +834,10 @@ class DDPLearner(Learner):
 
         Broadcasts weights from rank 0 to all other processes.
         """
-        if not (self.ddp_config.enabled or self._process_group_initialized) or not dist.is_initialized():
+        if (
+            not (self.ddp_config.enabled or self._process_group_initialized)
+            or not dist.is_initialized()
+        ):
             return
 
         base_network = self._get_base_network()
@@ -967,7 +972,10 @@ class DDPLearner(Learner):
         Returns:
             List of gathered tensors on dst, None on other ranks.
         """
-        if not (self.ddp_config.enabled or self._process_group_initialized) or not dist.is_initialized():
+        if (
+            not (self.ddp_config.enabled or self._process_group_initialized)
+            or not dist.is_initialized()
+        ):
             return [tensor]
 
         if self.ddp_config.rank == dst:

@@ -526,9 +526,7 @@ def cmd_orchestrate(args: argparse.Namespace) -> int:
         mcts_type=getattr(args, "mcts_type", "gumbel"),
         mcts_simulations=getattr(args, "mcts_simulations", 50),
         board_size=getattr(args, "board_size", 8),
-        action_space_size=getattr(
-            args, "action_space_size", config.network.action_space_size
-        ),
+        action_space_size=getattr(args, "action_space_size", config.network.action_space_size),
         epochs=getattr(args, "epochs", 10),
         batch_size=getattr(args, "batch_size", 64),
         learning_rate=getattr(args, "learning_rate", 0.001),

@@ -211,9 +211,7 @@ class MultiplayerConfig:
     scoring: ScoringConfig = field(default_factory=ScoringConfig)
     turn_manager: TurnManagerConfig = field(default_factory=TurnManagerConfig)
     opponent_model: OpponentModelConfig = field(default_factory=OpponentModelConfig)
-    simultaneous_mcts: SimultaneousMCTSConfig = field(
-        default_factory=SimultaneousMCTSConfig
-    )
+    simultaneous_mcts: SimultaneousMCTSConfig = field(default_factory=SimultaneousMCTSConfig)
     spatial_channels_per_player: int = 3
     city_channels_per_player: int = 1
     base_terrain_channels: int = 3
@@ -287,9 +285,11 @@ class MultiplayerConfig:
                     parent_obj = getattr(self, parent_attr)
 
                     # Check if target is a frozen dataclass
-                    if hasattr(parent_obj, "__dataclass_fields__") and getattr(
-                        parent_obj, "__dataclass_params__", None
-                    ) and parent_obj.__dataclass_params__.frozen:
+                    if (
+                        hasattr(parent_obj, "__dataclass_fields__")
+                        and getattr(parent_obj, "__dataclass_params__", None)
+                        and parent_obj.__dataclass_params__.frozen
+                    ):
                         frozen_overrides.setdefault(parent_attr, {})[child_attr] = typed_value
                     else:
                         setattr(parent_obj, child_attr, typed_value)

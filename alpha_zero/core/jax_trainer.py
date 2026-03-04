@@ -48,8 +48,7 @@ except ImportError:
 def _require_jax() -> None:
     if not _JAX_AVAILABLE:
         raise ImportError(
-            "JAX trainer requires: pip install -e '.[jax]' "
-            "(installs jax, jaxlib, equinox, optax)"
+            "JAX trainer requires: pip install -e '.[jax]' (installs jax, jaxlib, equinox, optax)"
         )
 
 
@@ -193,9 +192,7 @@ def jax_compute_loss(
     Returns:
         Tuple of (total_loss, metrics_dict).
     """
-    policy_logits, value = model(
-        spatial, vector, action_mask, key=key, inference=inference
-    )
+    policy_logits, value = model(spatial, vector, action_mask, key=key, inference=inference)
 
     # Policy loss: cross-entropy with soft targets and action masking
     masked_logits = jnp.where(action_mask > 0, policy_logits, MASKED_LOGIT_VALUE)
@@ -248,13 +245,24 @@ def _batch_loss(
         keys = jax.random.split(jax.random.PRNGKey(_DUMMY_PRNG_SEED), batch_size)
 
     def single_loss(
-        spatial: Any, vector: Any, mask: Any, policy: Any, value: Any, k: Any,
+        spatial: Any,
+        vector: Any,
+        mask: Any,
+        policy: Any,
+        value: Any,
+        k: Any,
     ) -> tuple[Any, dict[str, Any]]:
         return jax_compute_loss(
-            model, spatial, vector, mask, policy, value,
+            model,
+            spatial,
+            vector,
+            mask,
+            policy,
+            value,
             policy_loss_weight=policy_loss_weight,
             value_loss_weight=value_loss_weight,
-            key=k, inference=inference,
+            key=k,
+            inference=inference,
         )
 
     # vmap over the batch dimension
@@ -304,7 +312,8 @@ def jax_train_step(
 
     def loss_fn(model: Any) -> tuple[Any, dict[str, Any]]:
         return _batch_loss(
-            model, batch,
+            model,
+            batch,
             policy_loss_weight=policy_loss_weight,
             value_loss_weight=value_loss_weight,
             key=step_key,
@@ -397,7 +406,7 @@ class JaxDataLoader:
             raise StopIteration
 
         end = min(self._pos + self._batch_size, len(self._current_indices))
-        batch_indices = self._current_indices[self._pos:end]
+        batch_indices = self._current_indices[self._pos : end]
         self._pos = end
 
         batch_examples = [self._examples[i] for i in batch_indices]

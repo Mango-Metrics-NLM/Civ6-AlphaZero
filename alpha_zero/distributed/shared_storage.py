@@ -673,9 +673,7 @@ class DistributedReplayBuffer:
                 [torch.from_numpy(np.asarray(ex.value)).float() for ex in examples]
             )
         else:
-            value_tensor = torch.tensor(
-                [float(ex.value) for ex in examples]
-            ).float()
+            value_tensor = torch.tensor([float(ex.value) for ex in examples]).float()
 
         return {
             "spatial": torch.stack([torch.from_numpy(ex.spatial).float() for ex in examples]),

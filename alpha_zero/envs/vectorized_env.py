@@ -100,7 +100,7 @@ class VectorizedMicroCivEnv:
         expected_spatial_channels = MicroCivEncoder.TOTAL_CHANNELS
         if spatial_shape[0] != expected_spatial_channels:
             raise ValueError(
-                f"Expected {expected_spatial_channels} spatial channels, " f"got {spatial_shape[0]}"
+                f"Expected {expected_spatial_channels} spatial channels, got {spatial_shape[0]}"
             )
 
         # Pre-allocate observation buffers

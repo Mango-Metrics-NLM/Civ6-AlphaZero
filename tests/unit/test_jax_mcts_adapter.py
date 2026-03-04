@@ -6,8 +6,11 @@ import torch
 
 jax = pytest.importorskip("jax")
 
-from alpha_zero.core.jax_mcts_adapter import JaxMCTSAdapter
-from alpha_zero.core.jax_network import JaxMicroCivNetwork, JaxNetworkWrapper
+try:
+    from alpha_zero.core.jax_mcts_adapter import JaxMCTSAdapter
+    from alpha_zero.core.jax_network import JaxMicroCivNetwork, JaxNetworkWrapper
+except ImportError:
+    pytest.skip("JAX/Equinox network classes unavailable", allow_module_level=True)
 
 pytestmark = pytest.mark.requires_jax
 

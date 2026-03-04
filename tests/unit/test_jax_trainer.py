@@ -7,16 +7,19 @@ jax = pytest.importorskip("jax")
 jnp = pytest.importorskip("jax.numpy")
 eqx = pytest.importorskip("equinox")
 
-from alpha_zero.core.jax_network import JaxMicroCivNetwork, JaxNetworkWrapper
-from alpha_zero.core.jax_trainer import (
-    JaxDataLoader,
-    JaxTrainConfig,
-    JaxTrainState,
-    create_train_state,
-    jax_compute_loss,
-    jax_train_step,
-)
-from tests.conftest import MockTrainingExample, make_training_example
+try:
+    from alpha_zero.core.jax_network import JaxMicroCivNetwork, JaxNetworkWrapper
+    from alpha_zero.core.jax_trainer import (
+        JaxDataLoader,
+        JaxTrainConfig,
+        JaxTrainState,
+        create_train_state,
+        jax_compute_loss,
+        jax_train_step,
+    )
+    from tests.conftest import MockTrainingExample, make_training_example
+except ImportError:
+    pytest.skip("JAX/Equinox network classes unavailable", allow_module_level=True)
 
 pytestmark = pytest.mark.requires_jax
 

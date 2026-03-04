@@ -364,7 +364,7 @@ def load_muzero_model(
     except RuntimeError as e:
         if "size mismatch" in str(e):
             logger.error(
-                "MuZero architecture mismatch for v%d. Ensure config is saved " "with checkpoints.",
+                "MuZero architecture mismatch for v%d. Ensure config is saved with checkpoints.",
                 version,
             )
         raise RuntimeError(f"Failed to load MuZero state_dict v{version}: {e}") from e

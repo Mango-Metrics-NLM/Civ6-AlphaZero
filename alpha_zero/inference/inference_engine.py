@@ -354,15 +354,11 @@ class InferenceEngine:
 
         # Use MCTS search when simulations > 0; fall back to raw network output
         if request.mcts_simulations > 0:
-            mcts_engine = self._create_mcts_engine(
-                request.mcts_type, request.mcts_simulations
-            )
+            mcts_engine = self._create_mcts_engine(request.mcts_type, request.mcts_simulations)
 
             # Run MCTS search using the engine's network-guided search
             with torch.no_grad():
-                action_mask_tensor = torch.from_numpy(action_mask).unsqueeze(0).to(
-                    self.device
-                )
+                action_mask_tensor = torch.from_numpy(action_mask).unsqueeze(0).to(self.device)
                 try:
                     # Use the MCTS engine to get an improved policy via search
                     improved_policy, value_estimate = mcts_engine.search(
@@ -373,21 +369,16 @@ class InferenceEngine:
                     # Graceful fallback: if MCTS engine interface differs,
                     # use initial_inference + temperature-based selection
                     logger.warning(
-                        "MCTS search interface unavailable, "
-                        "falling back to raw network inference"
+                        "MCTS search interface unavailable, falling back to raw network inference"
                     )
-                    policy_logits, value = self.current_model(
-                        spatial, vector, action_mask
-                    )  # type: ignore[arg-type]
+                    policy_logits, value = self.current_model(spatial, vector, action_mask)  # type: ignore[arg-type]
                     action_probs, value_estimate = self._apply_policy_postprocessing(
                         policy_logits, action_mask, request.temperature, value
                     )
         else:
             # Raw network inference (no search) — useful for fast responses
             with torch.no_grad():
-                policy_logits, value = self.current_model(
-                    spatial, vector, action_mask
-                )  # type: ignore[arg-type]
+                policy_logits, value = self.current_model(spatial, vector, action_mask)  # type: ignore[arg-type]
                 action_probs, value_estimate = self._apply_policy_postprocessing(
                     policy_logits, action_mask, request.temperature, value
                 )

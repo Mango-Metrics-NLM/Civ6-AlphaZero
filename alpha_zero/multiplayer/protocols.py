@@ -53,9 +53,7 @@ class MultiplayerEnvironment(Protocol):
         """Create a deep copy of the environment for simulation."""
         ...
 
-    def step(
-        self, action: int
-    ) -> tuple[Any, SupportsFloat, bool, bool, dict[str, Any]]:
+    def step(self, action: int) -> tuple[Any, SupportsFloat, bool, bool, dict[str, Any]]:
         """Execute action and return (obs, reward, terminated, truncated, info).
 
         The info dict should contain:

@@ -81,9 +81,7 @@ def compute_rankings(
         rankings: dict[int, int] = {}
         current_rank = 0
         for i, player in enumerate(sorted_active):
-            if i > 0 and player_scores.get(player, 0) < player_scores.get(
-                sorted_active[i - 1], 0
-            ):
+            if i > 0 and player_scores.get(player, 0) < player_scores.get(sorted_active[i - 1], 0):
                 current_rank = i
             rankings[player] = current_rank
 
@@ -160,9 +158,7 @@ def compute_player_values(
     elif method == ScoringMethod.WINNER_TAKE_ALL:
         return _winner_take_all_values(rankings, num_players, elimination_penalty)
     elif method == ScoringMethod.PROPORTIONAL:
-        return _proportional_values(
-            rankings, num_players, player_scores, elimination_penalty
-        )
+        return _proportional_values(rankings, num_players, player_scores, elimination_penalty)
     else:
         msg = f"Unknown scoring method: {method}"
         raise ValueError(msg)

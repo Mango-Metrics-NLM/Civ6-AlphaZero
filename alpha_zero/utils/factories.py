@@ -79,10 +79,14 @@ def create_network(
         Configured neural network on specified device.
     """
     effective_framework = (
-        framework
-        or getattr(config, "framework", None)
-        or os.environ.get("CIV6AZ_FRAMEWORK", "pytorch")
-    ).lower().strip()
+        (
+            framework
+            or getattr(config, "framework", None)
+            or os.environ.get("CIV6AZ_FRAMEWORK", "pytorch")
+        )
+        .lower()
+        .strip()
+    )
 
     if effective_framework == "jax":
         try:
@@ -96,7 +100,8 @@ def create_network(
             )
         except ImportError as e:
             logger.warning(
-                "JAX not available, falling back to PyTorch: %s", e,
+                "JAX not available, falling back to PyTorch: %s",
+                e,
             )
             # Fall through to PyTorch
 
@@ -621,7 +626,9 @@ def create_simultaneous_mcts(
 
     logger.info(
         "Creating DecoupledUCT: num_players=%d, action_space=%d, simulations=%d",
-        num_players, action_space_size, config.num_simulations,
+        num_players,
+        action_space_size,
+        config.num_simulations,
     )
     return DecoupledUCT(
         config=config,
@@ -635,6 +642,7 @@ def create_simultaneous_mcts(
 # default_registry.  These calls are append-only and do not alter the
 # existing public API.
 # =============================================================================
+
 
 def _register_factories() -> None:
     """Register all factory functions with the default component registry."""

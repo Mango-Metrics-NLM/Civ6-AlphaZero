@@ -193,7 +193,10 @@ class SpacetimeDBClient:
 
         logger.info(
             "Publishing weights v%d (iteration=%d, size=%.1f MB, champion=%s)",
-            version, iteration, blob_size_mb, is_champion,
+            version,
+            iteration,
+            blob_size_mb,
+            is_champion,
         )
 
         try:
@@ -342,7 +345,8 @@ class SpacetimeDBClient:
         sdk = self._connection.sdk_client
         if hasattr(sdk, "get_model_by_iteration"):
             return await self._call_async_or_sync(
-                sdk.get_model_by_iteration, iteration,
+                sdk.get_model_by_iteration,
+                iteration,
             )
         return None
 
@@ -407,7 +411,8 @@ class SpacetimeDBClient:
         trajectory_id = f"{iteration}_{worker_id}_{game_id}"
         logger.debug(
             "Submitting trajectory %s (%d examples, %.1f KB)",
-            trajectory_id, num_examples,
+            trajectory_id,
+            num_examples,
             len(trajectory_bytes) / 1024,
         )
 
@@ -492,7 +497,9 @@ class SpacetimeDBClient:
             sdk = self._connection.sdk_client
             if hasattr(sdk, "log_metrics"):
                 result = await self._call_async_or_sync(
-                    sdk.log_metrics, step, metrics,
+                    sdk.log_metrics,
+                    step,
+                    metrics,
                 )
             else:
                 result = self._call_reducer(
@@ -599,14 +606,18 @@ class SpacetimeDBClient:
         self._check_connected()
         logger.info(
             "Saving checkpoint for iteration %d (%.1f MB)",
-            iteration, estimate_blob_size_mb(data),
+            iteration,
+            estimate_blob_size_mb(data),
         )
 
         try:
             sdk = self._connection.sdk_client
             if hasattr(sdk, "save_checkpoint"):
                 return await self._call_async_or_sync(
-                    sdk.save_checkpoint, iteration, data, metadata,
+                    sdk.save_checkpoint,
+                    iteration,
+                    data,
+                    metadata,
                 )
             return self._call_reducer(
                 "save_checkpoint",
@@ -653,7 +664,9 @@ class SpacetimeDBClient:
             sdk = self._connection.sdk_client
             if hasattr(sdk, "save_config"):
                 return await self._call_async_or_sync(
-                    sdk.save_config, iteration, config_json,
+                    sdk.save_config,
+                    iteration,
+                    config_json,
                 )
             return self._call_reducer(
                 "save_config",
@@ -700,7 +713,9 @@ class SpacetimeDBClient:
             sdk = self._connection.sdk_client
             if hasattr(sdk, "register_worker"):
                 result = await self._call_async_or_sync(
-                    sdk.register_worker, worker_type, worker_id,
+                    sdk.register_worker,
+                    worker_type,
+                    worker_id,
                 )
             else:
                 result = self._call_reducer(
@@ -748,7 +763,9 @@ class SpacetimeDBClient:
             sdk = self._connection.sdk_client
             if hasattr(sdk, "heartbeat"):
                 result = await self._call_async_or_sync(
-                    sdk.heartbeat, worker_id, games_completed,
+                    sdk.heartbeat,
+                    worker_id,
+                    games_completed,
                 )
             else:
                 result = self._call_reducer(
@@ -882,9 +899,7 @@ class SpacetimeDBClient:
             SpacetimeDBConnectionError: If not connected.
         """
         if not self.is_connected:
-            raise SpacetimeDBConnectionError(
-                "Not connected to SpacetimeDB. Call connect() first."
-            )
+            raise SpacetimeDBConnectionError("Not connected to SpacetimeDB. Call connect() first.")
 
     def _call_reducer(self, reducer_name: str, *args: Any) -> bool:
         """Call a SpacetimeDB reducer through the SDK.
@@ -910,8 +925,7 @@ class SpacetimeDBClient:
 
             raise SpacetimeDBReducerError(
                 reducer_name,
-                "SDK client does not support call_reducer; "
-                f"cannot invoke reducer {reducer_name!r}",
+                f"SDK client does not support call_reducer; cannot invoke reducer {reducer_name!r}",
             )
 
         except (SpacetimeDBConnectionError, SpacetimeDBReducerError):

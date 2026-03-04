@@ -90,9 +90,7 @@ class SimultaneousNode:
     visit_count: int = 0
     value_sums: dict[int, float] = field(default_factory=dict)
     per_player_children: dict[int, dict[int, ChildStats]] = field(default_factory=dict)
-    joint_children: dict[tuple[int, ...], SimultaneousNode] = field(
-        default_factory=dict
-    )
+    joint_children: dict[tuple[int, ...], SimultaneousNode] = field(default_factory=dict)
 
     def is_expanded(self) -> bool:
         """Check if node has been expanded with per-player statistics."""
@@ -128,11 +126,7 @@ class SimultaneousNode:
 
         for action, stats in player_stats.items():
             # Q-value: mean value for this player from this action
-            q_value = (
-                stats.value_sum / stats.visit_count
-                if stats.visit_count > 0
-                else 0.0
-            )
+            q_value = stats.value_sum / stats.visit_count if stats.visit_count > 0 else 0.0
 
             # Exploration bonus
             u_value = c_puct * stats.prior * sqrt_total / (1 + stats.visit_count)
@@ -232,15 +226,11 @@ class SimultaneousNode:
 
         if temperature < EPSILON:
             # Greedy: pick most visited
-            best_action = max(
-                player_stats, key=lambda a: player_stats[a].visit_count
-            )
+            best_action = max(player_stats, key=lambda a: player_stats[a].visit_count)
             action_probs[best_action] = 1.0
         else:
             actions = sorted(player_stats.keys())
-            visits = np.array(
-                [player_stats[a].visit_count for a in actions], dtype=np.float64
-            )
+            visits = np.array([player_stats[a].visit_count for a in actions], dtype=np.float64)
 
             if temperature == 1.0:
                 total = visits.sum()
@@ -403,8 +393,11 @@ class DecoupledUCT:
             if logger.isEnabledFor(logging.DEBUG) and (sim_idx + 1) % 50 == 0:
                 logger.debug(
                     "DUCT simulation progress",
-                    extra={"sim": sim_idx + 1, "total": self.config.num_simulations,
-                           "root_visits": root.visit_count},
+                    extra={
+                        "sim": sim_idx + 1,
+                        "total": self.config.num_simulations,
+                        "root_visits": root.visit_count,
+                    },
                 )
 
         # Extract per-player action probabilities
@@ -455,12 +448,8 @@ class DecoupledUCT:
         for player_id in active_players:
             action_masks[player_id] = env.get_valid_actions()
 
-        active_policies = {
-            pid: policies[pid] for pid in active_players if pid in policies
-        }
-        active_masks = {
-            pid: action_masks[pid] for pid in active_players if pid in action_masks
-        }
+        active_policies = {pid: policies[pid] for pid in active_players if pid in policies}
+        active_masks = {pid: action_masks[pid] for pid in active_players if pid in action_masks}
 
         node.expand_simultaneous(active_policies, active_masks)
 
@@ -547,8 +536,7 @@ class DecoupledUCT:
 
             # Form joint action key using sentinel for inactive players
             joint_key = tuple(
-                joint_action.get(pid, _INACTIVE_PLAYER_ACTION)
-                for pid in range(self.num_players)
+                joint_action.get(pid, _INACTIVE_PLAYER_ACTION) for pid in range(self.num_players)
             )
 
             # Check if joint child exists (lazy expansion)
@@ -562,14 +550,11 @@ class DecoupledUCT:
                 )
 
                 if is_terminal:
-                    terminal_values = self._extract_terminal_values(
-                        info, active_players
-                    )
-                    self._backpropagate(
-                        search_path, joint_actions_path, terminal_values
-                    )
+                    terminal_values = self._extract_terminal_values(info, active_players)
+                    self._backpropagate(search_path, joint_actions_path, terminal_values)
                     logger.debug(
-                        "Simulation hit terminal at depth %d", depth,
+                        "Simulation hit terminal at depth %d",
+                        depth,
                         extra={"terminal_values": terminal_values},
                     )
                     return
@@ -585,14 +570,11 @@ class DecoupledUCT:
                 )
 
                 if is_terminal:
-                    terminal_values = self._extract_terminal_values(
-                        info, active_players
-                    )
-                    self._backpropagate(
-                        search_path, joint_actions_path, terminal_values
-                    )
+                    terminal_values = self._extract_terminal_values(info, active_players)
+                    self._backpropagate(search_path, joint_actions_path, terminal_values)
                     logger.debug(
-                        "Simulation hit terminal at new node depth %d", depth,
+                        "Simulation hit terminal at new node depth %d",
+                        depth,
                         extra={"terminal_values": terminal_values},
                     )
                     return
@@ -654,7 +636,8 @@ class DecoupledUCT:
             if num_values < self.num_players:
                 logger.warning(
                     "Network returned %d values but expected %d players",
-                    num_values, self.num_players,
+                    num_values,
+                    self.num_players,
                 )
             for i in range(min(num_values, self.num_players)):
                 player_values[i] = float(values_np[i])

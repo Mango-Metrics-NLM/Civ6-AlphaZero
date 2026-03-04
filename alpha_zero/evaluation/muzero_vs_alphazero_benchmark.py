@@ -510,7 +510,7 @@ class AlphaZeroVsMuZeroBenchmark:
             "|--------|----------|--------|",
             f"| Games/Min | {az.games_per_minute:.1f} | {mz.games_per_minute:.1f} |",
             f"| Avg Game Length | {az.avg_game_length:.1f} | {mz.avg_game_length:.1f} |",
-            f"| Total Time (s) | {az.total_time_seconds:.1f} | " f"{mz.total_time_seconds:.1f} |",
+            f"| Total Time (s) | {az.total_time_seconds:.1f} | {mz.total_time_seconds:.1f} |",
             "",
             "## Key Insights",
             "",
@@ -518,8 +518,7 @@ class AlphaZeroVsMuZeroBenchmark:
             "(dynamics calls / env clones)",
             f"- **Speed Ratio**: {summary.get('speed_ratio', 0):.2f}x "
             "(MuZero games/min / AlphaZero games/min)",
-            f"- **Win Rate Delta**: {summary.get('win_rate_delta', 0):+.2%} "
-            "(MuZero - AlphaZero)",
+            f"- **Win Rate Delta**: {summary.get('win_rate_delta', 0):+.2%} (MuZero - AlphaZero)",
             "",
         ]
         return "\n".join(lines)

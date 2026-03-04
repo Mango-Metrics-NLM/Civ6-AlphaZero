@@ -112,9 +112,7 @@ class NPlayerEnvAdapter:
         info = self._enrich_info(info)
         return obs, info
 
-    def step(
-        self, action: int
-    ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
+    def step(self, action: int) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
         """Take a step in the environment.
 
         Args:
@@ -131,11 +129,13 @@ class NPlayerEnvAdapter:
             self._player_scores[current] += float(reward)
 
         # Track move
-        self._move_history.append({
-            "player": current,
-            "action": action,
-            "reward": float(reward),
-        })
+        self._move_history.append(
+            {
+                "player": current,
+                "action": action,
+                "reward": float(reward),
+            }
+        )
 
         # Track turns
         if self.current_player == 0:

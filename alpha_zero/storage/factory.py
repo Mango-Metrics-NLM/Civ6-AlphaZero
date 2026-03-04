@@ -129,8 +129,7 @@ def create_storage_backend(
 
     else:
         raise ValueError(
-            f"Invalid backend type: {effective_backend}. "
-            "Must be 'local', 'gcs', or 'spacetimedb'."
+            f"Invalid backend type: {effective_backend}. Must be 'local', 'gcs', or 'spacetimedb'."
         )
 
 

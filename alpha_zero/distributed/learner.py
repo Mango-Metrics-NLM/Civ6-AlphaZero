@@ -396,9 +396,7 @@ class Learner:
             # Policy loss (same as compute_loss, without deprecation warning)
             if action_mask is not None:
                 masked_policy = target_policy * action_mask
-                masked_policy = masked_policy / (
-                    masked_policy.sum(dim=-1, keepdim=True) + 1e-8
-                )
+                masked_policy = masked_policy / (masked_policy.sum(dim=-1, keepdim=True) + 1e-8)
             else:
                 masked_policy = target_policy
             log_probs = torch.nn.functional.log_softmax(policy_logits, dim=-1)

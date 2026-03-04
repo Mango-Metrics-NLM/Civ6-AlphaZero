@@ -85,9 +85,7 @@ class OpponentModel:
     def _initialize_counts(self) -> None:
         """Initialize action count arrays for all players."""
         for player_id in range(self.num_players):
-            self._action_counts[player_id] = np.zeros(
-                self.action_space_size, dtype=np.float64
-            )
+            self._action_counts[player_id] = np.zeros(self.action_space_size, dtype=np.float64)
 
     def update(
         self,
@@ -262,7 +260,9 @@ class OpponentModel:
             "recent_action_count": len(recent),
             "action_entropy": entropy,
             "top_recent_actions": top_actions,
-            "confidence": min(1.0, obs_count / self.config.history_window) if obs_count > 0 else 0.0,
+            "confidence": min(1.0, obs_count / self.config.history_window)
+            if obs_count > 0
+            else 0.0,
         }
 
     def reset(self) -> None:

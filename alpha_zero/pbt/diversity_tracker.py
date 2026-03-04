@@ -60,9 +60,7 @@ class PolicyDiversityTracker:
 
     def __init__(self, action_space_size: int) -> None:
         if action_space_size < 1:
-            raise ValueError(
-                f"action_space_size must be >= 1, got {action_space_size}"
-            )
+            raise ValueError(f"action_space_size must be >= 1, got {action_space_size}")
         self._action_space_size = action_space_size
         self._action_counts: dict[str, np.ndarray] = {}
 
@@ -88,9 +86,7 @@ class PolicyDiversityTracker:
             actions: List of action indices taken by the agent.
         """
         if agent_id not in self._action_counts:
-            self._action_counts[agent_id] = np.zeros(
-                self._action_space_size, dtype=np.float64
-            )
+            self._action_counts[agent_id] = np.zeros(self._action_space_size, dtype=np.float64)
 
         counts = self._action_counts[agent_id]
         for action in actions:
@@ -155,12 +151,8 @@ class PolicyDiversityTracker:
             for i, aid_i in enumerate(agent_ids):
                 for j, aid_j in enumerate(agent_ids):
                     if i < j:
-                        kl_ij = self._kl_divergence(
-                            distributions[aid_i], distributions[aid_j]
-                        )
-                        kl_ji = self._kl_divergence(
-                            distributions[aid_j], distributions[aid_i]
-                        )
+                        kl_ij = self._kl_divergence(distributions[aid_i], distributions[aid_j])
+                        kl_ji = self._kl_divergence(distributions[aid_j], distributions[aid_i])
                         # Symmetric KL (Jensen-Shannon-like)
                         kl_values.append((kl_ij + kl_ji) / 2.0)
             avg_kl = float(np.mean(kl_values)) if kl_values else 0.0
@@ -174,8 +166,7 @@ class PolicyDiversityTracker:
         behavioral_diversity = 0.5 * norm_entropy + 0.5 * norm_kl
 
         logger.debug(
-            "Diversity metrics: entropy=%.4f, kl=%.4f, diversity=%.4f "
-            "(agents=%d)",
+            "Diversity metrics: entropy=%.4f, kl=%.4f, diversity=%.4f (agents=%d)",
             avg_entropy,
             avg_kl,
             behavioral_diversity,
@@ -210,9 +201,7 @@ class PolicyDiversityTracker:
         agent_dist = self._get_distribution(agent_id)
 
         # Compute mean distribution across all other agents
-        other_dists = [
-            self._get_distribution(aid) for aid in agent_ids if aid != agent_id
-        ]
+        other_dists = [self._get_distribution(aid) for aid in agent_ids if aid != agent_id]
         if not other_dists:
             return 0.0
 

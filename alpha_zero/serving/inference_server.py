@@ -46,10 +46,12 @@ MODEL_VERSION = os.environ.get("CIV6AZ_MODEL_VERSION", "v268")
 GCS_BUCKET = os.environ.get("CIV6AZ_GCS_BUCKET", "civ6az-training")
 MCTS_SIMS = int(os.environ.get("CIV6AZ_MCTS_SIMS", "16"))
 BOARD_SIZE = int(os.environ.get("CIV6AZ_BOARD_SIZE", "8"))
-ACTION_SPACE = int(os.environ.get(
-    "CIV6AZ_ACTION_SPACE_SIZE",
-    os.environ.get("CIV6AZ_ACTION_SPACE", "376"),
-))
+ACTION_SPACE = int(
+    os.environ.get(
+        "CIV6AZ_ACTION_SPACE_SIZE",
+        os.environ.get("CIV6AZ_ACTION_SPACE", "376"),
+    )
+)
 DEVICE = os.environ.get("CIV6AZ_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
 PORT = int(os.environ.get("INFERENCE_PORT", "8080"))
 

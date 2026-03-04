@@ -351,8 +351,7 @@ class PopulationManager:
         changes = self.exploit_and_explore()
 
         logger.info(
-            "Multiplayer evolution complete: generation=%d, "
-            "replacements=%d, diversity_weight=%.3f",
+            "Multiplayer evolution complete: generation=%d, replacements=%d, diversity_weight=%.3f",
             self.generation,
             len(changes),
             self.config.diversity_weight,

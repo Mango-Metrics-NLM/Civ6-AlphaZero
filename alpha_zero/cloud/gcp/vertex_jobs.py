@@ -50,9 +50,7 @@ def _wandb_env_vars() -> dict[str, str]:
     else:
         # Pass Secret Manager reference so worker resolves at runtime
         sm_project = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
-        sm_secret = os.environ.get(
-            "CIV6AZ_WANDB_SECRET_NAME", "wandb-api-key"
-        )
+        sm_secret = os.environ.get("CIV6AZ_WANDB_SECRET_NAME", "wandb-api-key")
         if sm_project:
             candidates["CIV6AZ_WANDB_SECRET_PROJECT"] = sm_project
             candidates["CIV6AZ_WANDB_SECRET_NAME"] = sm_secret
