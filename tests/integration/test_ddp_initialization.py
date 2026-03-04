@@ -42,9 +42,9 @@ def ddp_config() -> DDPLearnerConfig:
         num_filters=32,
         batch_size=4,
         learning_rate=0.001,
-        world_size=1,
-        rank=0,
-        backend="gloo",
+        ddp_world_size=1,
+        ddp_rank=0,
+        ddp_backend="gloo",
         device="cpu",
     )
 
@@ -58,9 +58,9 @@ def ddp_config_multi_process() -> DDPLearnerConfig:
         num_filters=32,
         batch_size=4,
         learning_rate=0.001,
-        world_size=4,
-        rank=0,
-        backend="gloo",
+        ddp_world_size=4,
+        ddp_rank=0,
+        ddp_backend="gloo",
         device="cpu",
     )
 
@@ -104,18 +104,16 @@ def mock_replay_buffer() -> MagicMock:
 # ============================================================================
 
 
-@pytest.mark.xfail(reason="Pre-existing DDPLearnerConfig test failures", strict=False)
 class TestDDPLearnerConfig:
     """Tests for DDPLearnerConfig."""
 
     def test_default_values(self) -> None:
         """Test default configuration values."""
         config = DDPLearnerConfig()
-        assert config.backend == "nccl"
-        assert config.world_size == 1
-        assert config.rank == 0
+        assert config.ddp_backend == "auto"
+        assert config.ddp_world_size == 1
+        assert config.ddp_rank == 0
         assert config.init_method == "env://"
-        assert config.gradient_sync_interval == 1
 
     def test_from_env_reads_environment(self) -> None:
         """Test config loads from environment variables."""
@@ -130,23 +128,23 @@ class TestDDPLearnerConfig:
             },
         ):
             config = DDPLearnerConfig.from_env()
-            assert config.world_size == 4
-            assert config.rank == 2
-            assert config.local_rank == 1
+            assert config.ddp_world_size == 4
+            assert config.ddp_rank == 2
+            assert config.ddp_local_rank == 1
             assert config.master_addr == "node0"
             assert config.master_port == "29501"
 
     def test_from_env_with_overrides(self) -> None:
         """Test config from env with explicit overrides."""
         with patch.dict(os.environ, {"WORLD_SIZE": "4"}):
-            config = DDPLearnerConfig.from_env(world_size=8, rank=3)
-            assert config.world_size == 8  # Override takes precedence
-            assert config.rank == 3
+            config = DDPLearnerConfig.from_env(ddp_world_size=8, ddp_rank=3)
+            assert config.ddp_world_size == 8  # Override takes precedence
+            assert config.ddp_rank == 3
 
     def test_gloo_backend_for_cpu(self) -> None:
         """Test gloo backend is used for CPU training."""
-        config = DDPLearnerConfig(backend="gloo", device="cpu")
-        assert config.backend == "gloo"
+        config = DDPLearnerConfig(ddp_backend="gloo", device="cpu")
+        assert config.ddp_backend == "gloo"
         assert config.device == "cpu"
 
 
@@ -155,7 +153,6 @@ class TestDDPLearnerConfig:
 # ============================================================================
 
 
-@pytest.mark.xfail(reason="Pre-existing DDP initialization errors", strict=False)
 class TestDDPInitSingleProcess:
     """Tests for DDP initialization with world_size=1."""
 
@@ -169,9 +166,9 @@ class TestDDPInitSingleProcess:
         """Test DDP initialization with single process."""
         # Initialize process group
         torch.distributed.init_process_group(
-            backend=ddp_config.backend,
-            world_size=ddp_config.world_size,
-            rank=ddp_config.rank,
+            backend=ddp_config.ddp_backend,
+            world_size=ddp_config.ddp_world_size,
+            rank=ddp_config.ddp_rank,
         )
 
         assert mock_backend.state.is_initialized
@@ -183,12 +180,11 @@ class TestDDPInitSingleProcess:
         ddp_config: DDPLearnerConfig,
     ) -> None:
         """Test DDPLearnerConfig properties."""
-        assert ddp_config.world_size == 1
-        assert ddp_config.rank == 0
-        assert ddp_config.backend == "gloo"
+        assert ddp_config.ddp_world_size == 1
+        assert ddp_config.ddp_rank == 0
+        assert ddp_config.ddp_backend == "gloo"
 
 
-@pytest.mark.xfail(reason="Pre-existing DDP multi-process errors", strict=False)
 class TestDDPInitMultiProcessMocked:
     """Tests for DDP initialization with mocked multi-process."""
 
@@ -199,9 +195,9 @@ class TestDDPInitMultiProcessMocked:
     ) -> None:
         """Test DDP initialization with world_size=4 (mocked)."""
         torch.distributed.init_process_group(
-            backend=ddp_config_multi_process.backend,
-            world_size=ddp_config_multi_process.world_size,
-            rank=ddp_config_multi_process.rank,
+            backend=ddp_config_multi_process.ddp_backend,
+            world_size=ddp_config_multi_process.ddp_world_size,
+            rank=ddp_config_multi_process.ddp_rank,
         )
 
         assert mock_backend_multi.state.is_initialized
@@ -242,7 +238,6 @@ class TestDDPInitMultiProcessMocked:
 # ============================================================================
 
 
-@pytest.mark.xfail(reason="Pre-existing DDP device selection errors", strict=False)
 class TestDDPDeviceSelection:
     """Tests for device selection in DDP."""
 
@@ -253,15 +248,15 @@ class TestDDPDeviceSelection:
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
     def test_cuda_device_selection(self) -> None:
         """Test CUDA device selection when available."""
-        config = DDPLearnerConfig(device="cuda", local_rank=0)
+        config = DDPLearnerConfig(device="cuda", ddp_local_rank=0)
         assert config.device == "cuda"
-        assert config.local_rank == 0
+        assert config.ddp_local_rank == 0
 
     def test_device_from_local_rank(self) -> None:
         """Test device assignment from local_rank."""
-        config = DDPLearnerConfig(local_rank=2, device="cpu")
-        # With local_rank=2, in CUDA setup this would be cuda:2
-        assert config.local_rank == 2
+        config = DDPLearnerConfig(ddp_local_rank=2, device="cpu")
+        # With ddp_local_rank=2, in CUDA setup this would be cuda:2
+        assert config.ddp_local_rank == 2
 
 
 # ============================================================================
@@ -366,7 +361,6 @@ class TestMockDDPWrapper:
 # ============================================================================
 
 
-@pytest.mark.xfail(reason="Pre-existing DDP integration errors", strict=False)
 class TestDDPIntegration:
     """Integration tests combining multiple DDP components."""
 
@@ -378,9 +372,9 @@ class TestDDPIntegration:
         """Test complete DDP setup and teardown cycle."""
         # Setup
         torch.distributed.init_process_group(
-            backend=ddp_config.backend,
-            world_size=ddp_config.world_size,
-            rank=ddp_config.rank,
+            backend=ddp_config.ddp_backend,
+            world_size=ddp_config.ddp_world_size,
+            rank=ddp_config.ddp_rank,
         )
         assert torch.distributed.is_initialized()
 
