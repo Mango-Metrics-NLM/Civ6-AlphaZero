@@ -179,7 +179,7 @@ class ActionResolver:
         No conflict handling — all actions are applied regardless
         of whether they target the same tile.
         """
-        return [(pid, action) for pid, action in sorted(actions.items())]
+        return sorted(actions.items())
 
     def _resolve_priority(
         self,
@@ -193,11 +193,11 @@ class ActionResolver:
         player ID (lowest = highest priority).
         """
         if self.config.allow_same_target:
-            return [(pid, action) for pid, action in sorted(actions.items())]
+            return sorted(actions.items())
 
         conflicts = self.detect_conflicts(actions, env_state)
         if not conflicts:
-            return [(pid, action) for pid, action in sorted(actions.items())]
+            return sorted(actions.items())
 
         # Identify players whose actions should be dropped (higher ID loses)
         dropped: set[int] = set()
