@@ -29,7 +29,11 @@ from alpha_zero.cloud.gcp.vertex_orchestrator import (
 
 @pytest.fixture
 def base_args() -> argparse.Namespace:
-    """Create base orchestrator args with all expected fields (Phase 17 defaults)."""
+    """Create baseline orchestrator args for tests (not CLI defaults).
+
+    Note: ``num_parallel_games`` is set to 1 (CLI default is 4) to ensure
+    deterministic sequential behaviour in unit tests.
+    """
     return argparse.Namespace(
         iterations=3,
         start_iteration=0,
