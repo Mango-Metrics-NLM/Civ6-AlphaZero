@@ -140,7 +140,7 @@ class SelfPlayActor:
         """Initialize network and MCTS."""
         self.network = MicroCivNetwork(
             board_size=self.config.board_size,
-            action_space_size=self.action_space_size,
+            action_space_size=int(self.action_space_size),
             num_res_blocks=self.config.num_res_blocks,
             num_filters=self.config.num_filters,
         ).to(self.config.device)
@@ -235,7 +235,7 @@ class SelfPlayActor:
         # Play until game ends
         while True:
             # Get MCTS policy
-            action_probs, _ = self.mcts.search(self.env)
+            action_probs, _ = self.mcts.search(self.env)  # type: ignore[arg-type]
 
             # Compute shaped reward for this state
             shaped_reward = 0.0

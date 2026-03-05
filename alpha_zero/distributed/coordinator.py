@@ -306,9 +306,8 @@ class TrainingCoordinator:
                 checkpoint_interval=self.config.save_interval,
                 device=self.config.device,
                 # DDP-specific settings
-                world_size=self.config.ddp_world_size,
-                backend=self.config.ddp_backend,
-                gradient_sync_interval=self.config.ddp_gradient_sync_interval,
+                ddp_world_size=self.config.ddp_world_size,
+                ddp_backend=self.config.ddp_backend,
             )
             logger.info(
                 f"Creating DDPLearner: backend={self.config.ddp_backend}, "
@@ -394,7 +393,7 @@ class TrainingCoordinator:
             return None
 
         try:
-            return torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+            return torch.load(checkpoint_path, map_location="cpu", weights_only=False)  # type: ignore[no-any-return]
         except Exception as e:
             logger.warning("Failed to load checkpoint %s: %s", checkpoint_path, e)
             return None
@@ -415,7 +414,7 @@ class TrainingCoordinator:
         env = MicroCivEnv(board_size=self.config.board_size)
         self.eval_network = MicroCivNetwork(
             board_size=self.config.board_size,
-            action_space_size=env.action_space.n,
+            action_space_size=int(env.action_space.n),
             num_res_blocks=self.config.num_res_blocks,
             num_filters=self.config.num_filters,
         ).to(self.config.device)
@@ -464,7 +463,7 @@ class TrainingCoordinator:
             num_simulations=self.config.num_simulations // 2,
             c_puct=self.config.c_puct,
         )
-        mcts = Civ6MCTS(self.eval_network, mcts_config, device=self.config.device)
+        mcts = Civ6MCTS(self.eval_network, mcts_config, device=self.config.device)  # type: ignore[arg-type]
 
         wins = 0
         rng = np.random.default_rng()
@@ -475,7 +474,7 @@ class TrainingCoordinator:
 
             while True:
                 if env.current_player == network_player:
-                    action_probs, _ = mcts.search(env, add_noise=False)
+                    action_probs, _ = mcts.search(env, add_noise=False)  # type: ignore[arg-type]
                     action = mcts.select_action(action_probs, temperature=0.0)
                 else:
                     mask = env.get_valid_actions()

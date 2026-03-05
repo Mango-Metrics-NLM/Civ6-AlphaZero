@@ -219,7 +219,7 @@ class Learner:
         # Initialize network
         self.network = MicroCivNetwork(
             board_size=config.board_size,
-            action_space_size=self.action_space_size,
+            action_space_size=int(self.action_space_size),
             num_res_blocks=config.num_res_blocks,
             num_filters=config.num_filters,
         ).to(config.device)

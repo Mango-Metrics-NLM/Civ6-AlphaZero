@@ -177,11 +177,11 @@ class DDPLearnerConfig(LearnerConfig):
             "master_port": os.environ.get("MASTER_PORT", "29500"),
         }
         # Enable DDP if world_size > 1
-        if env_values["ddp_world_size"] > 1:
+        if int(env_values["ddp_world_size"]) > 1:
             env_values["ddp_enabled"] = True
 
         env_values.update(kwargs)
-        return cls(**env_values)
+        return cls(**env_values)  # type: ignore[arg-type]
 
 
 class DDPLearner(Learner):
@@ -249,23 +249,23 @@ class DDPLearner(Learner):
 
         # Create or use provided network
         if network is not None:
-            self.network = network.to(config.device)
+            self.network: nn.Module = network.to(config.device)
         else:
             self.network = MicroCivNetwork(
                 board_size=config.board_size,
-                action_space_size=self.action_space_size,
+                action_space_size=int(self.action_space_size),
                 num_res_blocks=config.num_res_blocks,
                 num_filters=config.num_filters,
             ).to(config.device)
 
         # Apply SyncBatchNorm if enabled and using DDP
         if self.ddp_config.enabled and config.sync_batch_norm:
-            self.network = nn.SyncBatchNorm.convert_sync_batchnorm(self.network)
+            self.network = nn.SyncBatchNorm.convert_sync_batchnorm(self.network)  # type: ignore[assignment]
             logger.info("Applied SyncBatchNorm conversion")
 
         # Wrap with DDP if enabled
         if self.ddp_config.enabled:
-            self.network = self._wrap_ddp(self.network)
+            self.network = self._wrap_ddp(self.network)  # type: ignore[assignment]
 
         # Log network info (only on main process)
         if self.is_main_process():
@@ -298,7 +298,7 @@ class DDPLearner(Learner):
         # AMP scaler for mixed precision
         self.scaler: GradScaler | None = None
         if config.use_amp:
-            self.scaler = torch.amp.GradScaler("cuda")
+            self.scaler = torch.amp.GradScaler("cuda")  # type: ignore[assignment]
             logger.info(f"Mixed precision enabled with {config.amp_dtype}")
 
         # Statistics
@@ -410,7 +410,7 @@ class DDPLearner(Learner):
             Base network without DDP wrapper.
         """
         if isinstance(self.network, DDP):
-            return self.network.module
+            return self.network.module  # type: ignore[return-value]
         return self.network
 
     def get_model(self) -> nn.Module:
@@ -717,7 +717,7 @@ class DDPLearner(Learner):
     def all_reduce(
         self,
         tensor: torch.Tensor,
-        op: dist.ReduceOp = dist.ReduceOp.SUM,
+        op: dist.ReduceOp = dist.ReduceOp.SUM,  # type: ignore[assignment]
     ) -> torch.Tensor:
         """All-reduce a tensor across all processes.
 
