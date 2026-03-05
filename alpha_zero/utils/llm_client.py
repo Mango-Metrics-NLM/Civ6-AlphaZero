@@ -45,7 +45,7 @@ except ImportError:
     OpenAI = None  # type: ignore[misc,assignment]
 
 try:
-    from anthropic import Anthropic, AsyncAnthropic  # type: ignore[no-redef]
+    from anthropic import Anthropic, AsyncAnthropic
 
     ANTHROPIC_AVAILABLE = True
 except ImportError:
@@ -289,7 +289,7 @@ class OpenAIClient(BaseLLMClient):
 
         response = await self._async_client.chat.completions.create(
             model=model,
-            messages=[m.to_openai_format() for m in request_messages],
+            messages=[m.to_openai_format() for m in request_messages],  # type: ignore[misc]
             max_tokens=max_tokens,
             temperature=temperature,
         )

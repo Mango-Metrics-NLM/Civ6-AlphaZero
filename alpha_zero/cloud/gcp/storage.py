@@ -343,7 +343,7 @@ class GCSBackend:
             blob = bucket_obj.blob(blob_path)
             data = blob.download_as_bytes()
             logger.debug("Downloaded %d bytes from gs://%s/%s", len(data), bucket, blob_path)
-            return data
+            return data  # type: ignore[no-any-return]
         except Exception as e:
             raise GCSStorageError(
                 f"Failed to download {blob_path}: {e}",
@@ -365,7 +365,7 @@ class GCSBackend:
         try:
             bucket_obj = self.client.bucket(bucket)
             blob = bucket_obj.blob(blob_path)
-            return blob.exists()
+            return blob.exists()  # type: ignore[no-any-return]
         except Exception:
             return False
 
@@ -585,7 +585,7 @@ class GCSModelStorage:
         try:
             data = self.backend.download_blob(self._bucket, latest_path)
             info = json.loads(data.decode())
-            return info["version"]
+            return info["version"]  # type: ignore[no-any-return]
         except GCSStorageError:
             # Scan for versions if latest.json doesn't exist
             blobs = self.backend.list_blobs(self._bucket, self._paths.models_prefix)
@@ -984,7 +984,7 @@ class GCSCheckpointStorage:
             logger.info(
                 "Loaded checkpoint from %s (step %d)", ckpt_path, checkpoint.get("step", -1)
             )
-            return checkpoint
+            return checkpoint  # type: ignore[no-any-return]
         except GCSStorageError:
             logger.warning("No checkpoint found at %s", ckpt_path)
             return None
