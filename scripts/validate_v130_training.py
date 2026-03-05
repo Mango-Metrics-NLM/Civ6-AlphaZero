@@ -30,15 +30,15 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as nn_func
 
 # Add project root for imports
 _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from alpha_zero.core.civ6_network import MicroCivNetwork
-from alpha_zero.envs.microciv import MicroCivEnv
+from alpha_zero.core.civ6_network import MicroCivNetwork  # noqa: E402
+from alpha_zero.envs.microciv import MicroCivEnv  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +119,7 @@ def _generate_selfplay_data(
             masked_logits = policy_logits.squeeze(0).clone()
             mask_tensor = action_mask.squeeze(0)
             masked_logits[mask_tensor == 0] = float("-inf")
-            probs = F.softmax(masked_logits, dim=-1).cpu().numpy()
+            probs = nn_func.softmax(masked_logits, dim=-1).cpu().numpy()
 
             # Store history
             game_history.append({
@@ -139,7 +139,9 @@ def _generate_selfplay_data(
                 action = int(np.random.choice(len(valid_probs), p=valid_probs))
             else:
                 valid_actions = np.where(obs["action_mask"] > 0)[0]
-                action = int(np.random.choice(valid_actions)) if len(valid_actions) > 0 else 0
+                if len(valid_actions) == 0:
+                    break  # No valid actions, end the game
+                action = int(np.random.choice(valid_actions))
 
             obs, _reward, terminated, truncated, info = env.step(action)
             if terminated or truncated:
@@ -201,13 +203,13 @@ def _train_on_data(
             policy_logits, value = network(spatial, vector, action_mask)
 
             # Value loss
-            value_loss = F.mse_loss(value.squeeze(-1), target_value)
+            value_loss = nn_func.mse_loss(value.squeeze(-1), target_value)
 
             # Policy loss (cross-entropy)
             masked_target = target_policy * action_mask
             target_sum = masked_target.sum(dim=-1, keepdim=True) + 1e-8
             masked_target = masked_target / target_sum
-            log_probs = F.log_softmax(policy_logits, dim=-1)
+            log_probs = nn_func.log_softmax(policy_logits, dim=-1)
             policy_loss = -torch.sum(masked_target * log_probs, dim=-1).mean()
 
             total_loss = policy_loss + value_loss
@@ -258,7 +260,7 @@ def _evaluate_vs_random(
                 masked_logits = policy_logits.squeeze(0).clone()
                 mask_t = action_mask.squeeze(0)
                 masked_logits[mask_t == 0] = float("-inf")
-                probs = F.softmax(masked_logits, dim=-1).cpu().numpy()
+                probs = nn_func.softmax(masked_logits, dim=-1).cpu().numpy()
                 probs = np.clip(probs, 0, None)
                 prob_sum = probs.sum()
                 if prob_sum > 0:
@@ -266,11 +268,15 @@ def _evaluate_vs_random(
                     action = int(np.random.choice(len(probs), p=probs))
                 else:
                     valid = np.where(obs["action_mask"] > 0)[0]
-                    action = int(np.random.choice(valid)) if len(valid) > 0 else 0
+                    if len(valid) == 0:
+                        break
+                    action = int(np.random.choice(valid))
             else:
                 # Random player
                 valid_actions = np.where(obs["action_mask"] > 0)[0]
-                action = int(np.random.choice(valid_actions)) if len(valid_actions) > 0 else 0
+                if len(valid_actions) == 0:
+                    break
+                action = int(np.random.choice(valid_actions))
 
             obs, _reward, terminated, truncated, info = env.step(action)
             if terminated or truncated:
@@ -445,7 +451,7 @@ def main() -> int:
 
     cfg = parse_args()
     logger.info("v1.3.0 Convergence Validation")
-    logger.info("Config: %d iterations, %d games/iter, %d epochs/iter", 
+    logger.info("Config: %d iterations, %d games/iter, %d epochs/iter",
                 cfg.iterations, cfg.games_per_iter, cfg.epochs_per_iter)
 
     result = validate_training_loop(cfg)

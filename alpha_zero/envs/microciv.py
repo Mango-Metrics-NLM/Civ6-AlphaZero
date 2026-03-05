@@ -12,6 +12,7 @@ Victory: Eliminate all enemy cities, or reach turn limit (most cities wins).
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, SupportsFloat
 
@@ -368,8 +369,6 @@ class MicroCivEnv(gym.Env):
         Returns:
             List of (x, y) positions, one per player.
         """
-        import math
-
         positions: list[tuple[int, int]] = []
         center = self.board_size / 2.0
         radius = self.board_size * 0.35  # Keep away from edges
