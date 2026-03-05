@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-03-04 — Sprint 3: Convergence, Batch, N-Player
+
+### Added — Sprint 3
+
+#### Convergence Validation (Epic 2)
+
+- **`scripts/validate_v130_training.py`**: Local validation script for v1.3.0 training fix
+  - Checkpoint round-trip weight preservation
+  - Loss decrease trend across training iterations
+  - Win-rate improvement vs random player baseline
+- **`tests/integration/test_convergence_validation.py`**: 6 integration tests
+
+#### Batch Self-Play Cloud Validation (Epic 3)
+
+- **`tests/integration/test_batch_selfplay_integration.py`**: 12 tests — vectorized env lifecycle, batch MCTS config, trajectory validation, schema consistency
+- **`tests/integration/test_selfplay_worker_batch.py`**: 17 tests — batch mode detection, orchestrator passthrough, temperature scheduling, CLI parsing
+- **`docs/prd/prd-batch-selfplay.md`**: Product requirements document
+
+#### N-Player MicroCiv Foundation (Epic 5)
+
+- **`num_players` parameter**: `MicroCivEnv(num_players=2..6)` — backwards-compatible, default=2
+- **Angular spawn distribution**: `_compute_start_positions()` places N players evenly
+- **Modular turn cycling**: `(current_player + 1) % num_players`
+- **N-player victory**: Last-player-standing elimination
+- **N-player truncation**: Most-cities tiebreak (None for tie)
+- **`tests/integration/test_nplayer_microciv.py`**: 51 tests
+- **`docs/prd/prd-nplayer-microciv.md`**: Product requirements document
+
+#### DDP Test Stabilization (Epic 4)
+
+- **`tests/integration/test_ddp_initialization.py`**: Fixed 17 attribute mismatches, removed 5 xfails → 22/22 pass
+
+### Changed
+
+- **CI/CD Hardening (Epic 1)**: Pinned `ruff==0.8.0`, `mypy==1.13.0`
+- **`PLANNING.md`**: Sprint 3 epics and milestones
+- Fixed lint errors in `inference_engine.py` and `inference_server.py`
+
+### Stats
+
+- 86 new tests, 22 fixed — 13 files changed, +1,935 / -149 lines
+
+---
+
 ### Added
 
 - **Inference Service (Phase 16)**: Production-ready machine learning inference service for Civ6 AlphaZero model deployment.
