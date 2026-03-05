@@ -126,7 +126,7 @@ High-level software containers that compose the system.
 graph TB
     subgraph "Civ6 AlphaZero System"
         subgraph "Training Pipeline"
-            Orchestrator["Training Orchestrator<br/><i>run_enhanced_training.py</i>"]
+            Orchestrator["Training Orchestrator<br/><i>scripts/run_enhanced_training.py</i>"]
             SelfPlay["Self-Play Engine<br/><i>Generates training data</i>"]
             Trainer["Neural Network Trainer<br/><i>Optimizes policy & value</i>"]
             Evaluator["Agent Evaluator<br/><i>Measures performance</i>"]
@@ -983,10 +983,10 @@ The previous training entry points are still available:
 
 ```bash
 # Enhanced training script
-python run_enhanced_training.py --preset balanced --device cuda
+python scripts/run_enhanced_training.py --preset balanced --device cuda
 
 # With W&B tracking
-python run_enhanced_training.py --preset balanced --wandb --wandb-project "civ6-alphazero"
+python scripts/run_enhanced_training.py --preset balanced --wandb --wandb-project "civ6-alphazero"
 ```
 
 ### Programmatic Usage

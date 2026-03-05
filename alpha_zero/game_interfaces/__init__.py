@@ -9,7 +9,7 @@ actual game instances, supporting multiple integration paths:
 - MiniGameGenerator: Curriculum training scenarios
 
 Example:
-    from interfaces import Civ6Bridge, UncivInterface
+    from alpha_zero.game_interfaces import Civ6Bridge, UncivInterface
 
     # For Civ6 with Lua mod
     bridge = Civ6Bridge(state_dir=Path("/path/to/shared"))

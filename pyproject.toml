@@ -83,7 +83,6 @@ ignore = [
     "E501",    # Line length handled separately
     "ANN401",  # Any type allowed for duck typing with cloud SDKs
     "S101",    # Use of assert (needed for tests)
-    "UP038",   # isinstance(x, (A, B)) is faster than isinstance(x, A | B) — deprecated in ruff 0.9+
     "UP042",   # Prefer StrEnum over (str, Enum) — deferred refactor
 ]
 
@@ -93,7 +92,6 @@ ignore = [
 "scripts/*" = ["ANN", "S603", "S607", "S310", "S105", "E741"]  # Scripts use subprocess, URL calls, and short var names
 "alpha_zero/cloud/gcp/container_validator.py" = ["S603"]  # Internal subprocess call with validated input
 "alpha_zero/cloud/preemption.py" = ["S310"]  # GCE metadata URL is intentional
-"run_*.py" = ["ANN"]  # Skip annotations in run scripts
 "alpha_zero/utils/reward_shaping.py" = ["RUF002"]  # Greek math symbols (γ, Φ) in formulas
 "alpha_zero/mechanics/__init__.py" = ["E402"]  # Imports after deprecation warning
 "alpha_zero/human_interface/__init__.py" = ["E402"]  # Imports after deprecation warning
@@ -171,6 +169,7 @@ reportUnknownMemberType = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = [".", "scripts"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short --timeout=120"

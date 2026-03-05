@@ -4,7 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from interfaces.base import (
+from alpha_zero.game_interfaces.base import (
     ActionType,
     City,
     GameAction,
@@ -13,17 +13,17 @@ from interfaces.base import (
     Position,
     Unit,
 )
-from interfaces.civ6_bridge import (
+from alpha_zero.game_interfaces.civ6_bridge import (
     Civ6Bridge,
     Civ6LuaExporter,
     LuaStateParser,
 )
-from interfaces.log_parser import (
+from alpha_zero.game_interfaces.log_parser import (
     Civ6LogParser,
     LogEventType,
     MovementLog,
 )
-from interfaces.mini_games import (
+from alpha_zero.game_interfaces.mini_games import (
     CityDevelopmentMiniGame,
     CombatMiniGame,
     ExpansionMiniGame,
@@ -31,7 +31,7 @@ from interfaces.mini_games import (
     MiniGameGenerator,
     MiniGameType,
 )
-from interfaces.unciv_interface import (
+from alpha_zero.game_interfaces.unciv_interface import (
     UncivActionSerializer,
     UncivInterface,
     UncivStateParser,
