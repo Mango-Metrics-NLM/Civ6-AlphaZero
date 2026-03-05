@@ -208,7 +208,7 @@ class EvaluationPipeline:
         """
         return self._run_evaluation(
             agent,
-            checkpoint_agent,  # type: ignore[arg-type]
+            checkpoint_agent,
             n_games,
             log_interval,
             opponent_name="Checkpoint",
@@ -217,7 +217,7 @@ class EvaluationPipeline:
     def _run_evaluation(
         self,
         agent: BaseAgent | Civ6MCTS,
-        opponent: BaseAgent,
+        opponent: BaseAgent | Civ6MCTS,
         n_games: int,
         log_interval: int,
         opponent_name: str,
@@ -237,6 +237,8 @@ class EvaluationPipeline:
         # Wrap MCTS if needed
         if not isinstance(agent, BaseAgent):
             agent = MCTSAgentWrapper(agent, temperature=0.0)
+        if not isinstance(opponent, BaseAgent):
+            opponent = MCTSAgentWrapper(opponent, temperature=0.0)
 
         start_time = time.time()
         win_rate = WinRateResult()

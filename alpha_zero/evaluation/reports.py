@@ -378,7 +378,7 @@ class ReportGenerator:
         Returns:
             Dictionary of comparison metrics
         """
-        comparison = {
+        comparison: dict[str, Any] = {
             "timestamp1": report1.timestamp,
             "timestamp2": report2.timestamp,
             "win_rate_diff": report2.overall_win_rate - report1.overall_win_rate,
@@ -395,7 +395,7 @@ class ReportGenerator:
             r2 = report2.baseline_results.get(name)
 
             if r1 and r2:
-                comparison["baseline_diffs"][name] = {  # type: ignore[index]
+                comparison["baseline_diffs"][name] = {
                     "win_rate_diff": r2.win_rate - r1.win_rate,
                     "games_diff": r2.games_played - r1.games_played,
                 }

@@ -384,7 +384,8 @@ class RealCiv6Env(gym.Env):
         )
 
         try:
-            ack = self._run_async(self._bridge.send_and_wait(cmd_msg, timeout=self.action_timeout))  # type: ignore[union-attr]
+            assert self._bridge is not None
+            ack = self._run_async(self._bridge.send_and_wait(cmd_msg, timeout=self.action_timeout))
 
             if not ack.success:
                 logger.warning(f"Action failed: {ack.error_message}")
@@ -409,8 +410,9 @@ class RealCiv6Env(gym.Env):
         # Wait for next state
         prev_state = self._current_state
         try:
+            assert self._bridge is not None
             self._raw_state = self._run_async(
-                self._bridge.wait_for_state(timeout=self.bridge_config.command_timeout_ms / 1000.0)  # type: ignore[union-attr]
+                self._bridge.wait_for_state(timeout=self.bridge_config.command_timeout_ms / 1000.0)
             )
             self._current_state = self._state_converter.convert(self._raw_state)
 
@@ -791,8 +793,10 @@ class MockCiv6Env(RealCiv6Env):
             ],
         }
 
-        self._bridge.set_mock_state(mock_state)  # type: ignore[union-attr]
-        self._raw_state = self._run_async(self._bridge.poll_state())  # type: ignore[union-attr]
+        assert self._bridge is not None
+        if hasattr(self._bridge, "set_mock_state"):
+            self._bridge.set_mock_state(mock_state)
+        self._raw_state = self._run_async(self._bridge.poll_state())
         self._current_state = self._state_converter.convert(self._raw_state)
         self._turn = turn_id
 
