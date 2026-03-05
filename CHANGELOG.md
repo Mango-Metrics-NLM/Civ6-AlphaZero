@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### E5: Type Safety Expansion (14 files)
 
 - **`evaluation/config.py`**: `Callable` type hint for `env_mappings`
-- **`evaluation/baselines.py`**: `type: ignore` for numpy assignment, MCTS union-attr/arg-type/attr-defined
+- **`evaluation/baselines.py`**: `dtype=np.float32` for noise addition, assert-narrowed MCTS, `hasattr` guard for `reset()`
 - **`evaluation/baseline_agents.py`**: `int()` cast for MCTS `select_action` return
 - **`evaluation/evaluator.py`**: Forward type declaration for `DiversityTracker | None`
 - **`evaluation/reports.py`**: Explicit `dict[str, Any]` type annotation for comparison dict

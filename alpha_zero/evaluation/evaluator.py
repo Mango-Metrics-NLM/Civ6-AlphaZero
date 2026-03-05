@@ -211,7 +211,7 @@ class ModelEvaluator:
 
     def _setup_diversity_tracker(self) -> None:
         """Set up diversity tracking if enabled."""
-        self.diversity_tracker: DiversityTracker | None
+        self.diversity_tracker: DiversityTracker | None = None
         if self.config.diversity.enabled:
             self.diversity_tracker = DiversityTracker(self.config.diversity)
         else:
