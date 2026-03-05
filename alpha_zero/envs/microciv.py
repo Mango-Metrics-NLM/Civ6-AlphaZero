@@ -12,6 +12,7 @@ Victory: Eliminate all enemy cities, or reach turn limit (most cities wins).
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, SupportsFloat
 
@@ -99,8 +100,8 @@ class MicroCivEnv(gym.Env):
     """MicroCiv environment for AlphaZero training.
 
     A simplified 4X game with:
-    - 2 players (turn-based)
-    - 16x16 tile map
+    - N players (2-6, turn-based, default=2)
+    - Configurable tile map
     - 3 unit types: warrior, settler, archer
     - Simple combat and city founding
 
@@ -111,6 +112,10 @@ class MicroCivEnv(gym.Env):
     Action space:
     - Flat discrete space covering all possible actions
     """
+
+    # Supported player range
+    MIN_PLAYERS: int = 2
+    MAX_PLAYERS: int = 6
 
     metadata: ClassVar[dict[str, list[str]]] = {"render_modes": ["ansi"]}
 
@@ -128,6 +133,7 @@ class MicroCivEnv(gym.Env):
         max_turns: int = 200,
         render_mode: str | None = None,
         seed: int | None = None,
+        num_players: int = 2,
     ) -> None:
         """Initialize MicroCiv environment.
 
@@ -136,12 +142,20 @@ class MicroCivEnv(gym.Env):
             max_turns: Maximum turns before draw.
             render_mode: Rendering mode ('ansi' or None).
             seed: Random seed for reproducibility.
+            num_players: Number of players (2-6, default=2).
         """
         super().__init__()
+
+        if not (self.MIN_PLAYERS <= num_players <= self.MAX_PLAYERS):
+            raise ValueError(
+                f"num_players must be between {self.MIN_PLAYERS} and "
+                f"{self.MAX_PLAYERS}, got {num_players}"
+            )
 
         self.board_size = board_size
         self.max_turns = max_turns
         self.render_mode = render_mode
+        self.num_players = num_players
 
         # Initialize RNG
         self._rng = np.random.default_rng(seed)
@@ -253,15 +267,17 @@ class MicroCivEnv(gym.Env):
         truncated = self.turn >= self.max_turns
 
         if truncated and not terminated:
-            # Count cities for each player
-            p0_cities = sum(1 for c in self.cities if c.player == 0)
-            p1_cities = sum(1 for c in self.cities if c.player == 1)
-            if p0_cities > p1_cities:
-                self.winner = 0
-            elif p1_cities > p0_cities:
-                self.winner = 1
+            # Count cities for each player and find winner
+            city_counts = [
+                sum(1 for c in self.cities if c.player == p)
+                for p in range(self.num_players)
+            ]
+            max_cities = max(city_counts)
+            leaders = [p for p, cnt in enumerate(city_counts) if cnt == max_cities]
+            if len(leaders) == 1:
+                self.winner = leaders[0]
             else:
-                self.winner = None  # Draw
+                self.winner = None  # Draw among leaders
             terminated = True
 
         if terminated:
@@ -301,23 +317,20 @@ class MicroCivEnv(gym.Env):
                 self.terrain[(x, y)] = Tile(terrain_type=terrain_type, yields=yields)
 
     def _place_starting_units(self) -> None:
-        """Place starting units for each player."""
+        """Place starting units for each player.
+
+        Distributes N players evenly around the map perimeter.
+        """
         self.units = []
         self.cities = []
         self._next_unit_id = 0
         self._next_city_id = 0
 
-        # Player 0 starts in bottom-left area
-        p0_start = self._find_valid_position(2, 2, 5)
-        # Player 1 starts in top-right area
-        p1_start = self._find_valid_position(
-            self.board_size - 5,
-            self.board_size - 5,
-            5,
-        )
+        # Generate N starting positions distributed around the map
+        start_positions = self._compute_start_positions()
 
-        # Create starting units
-        for player, pos in enumerate([p0_start, p1_start]):
+        # Create starting units for each player
+        for player, pos in enumerate(start_positions):
             # Settler
             self.units.append(
                 Unit(
@@ -346,6 +359,31 @@ class MicroCivEnv(gym.Env):
             )
             self.visited.add(warrior_pos)  # Mark warrior pos as visited
             self._next_unit_id += 1
+
+    def _compute_start_positions(self) -> list[tuple[int, int]]:
+        """Compute evenly-spaced starting positions for N players.
+
+        Places players around the map perimeter using angular distribution.
+        Falls back to the original corner-based placement for 2 players.
+
+        Returns:
+            List of (x, y) positions, one per player.
+        """
+        positions: list[tuple[int, int]] = []
+        center = self.board_size / 2.0
+        radius = self.board_size * 0.35  # Keep away from edges
+
+        for i in range(self.num_players):
+            angle = 2 * math.pi * i / self.num_players - math.pi / 4
+            cx = int(center + radius * math.cos(angle))
+            cy = int(center + radius * math.sin(angle))
+            # Clamp to valid board range with margin
+            cx = max(2, min(cx, self.board_size - 3))
+            cy = max(2, min(cy, self.board_size - 3))
+            pos = self._find_valid_position(cx, cy, 3)
+            positions.append(pos)
+
+        return positions
 
     def _find_valid_position(
         self,
@@ -587,8 +625,8 @@ class MicroCivEnv(gym.Env):
                     city.production = 0
                     city.production_queue = None
 
-        # Switch player
-        self.current_player = 1 - self.current_player
+        # Switch to next player (modular for N players)
+        self.current_player = (self.current_player + 1) % self.num_players
 
         # If back to player 0, increment turn
         if self.current_player == 0:
@@ -631,23 +669,23 @@ class MicroCivEnv(gym.Env):
     def _check_victory(self) -> bool:
         """Check if game has ended.
 
+        A player is eliminated when they have 0 cities AND 0 units.
+        The game ends when only one player remains.
+
         Returns:
             True if game is over.
         """
-        # Check for elimination
-        p0_cities = sum(1 for c in self.cities if c.player == 0)
-        p1_cities = sum(1 for c in self.cities if c.player == 1)
-        p0_units = sum(1 for u in self.units if u.player == 0)
-        p1_units = sum(1 for u in self.units if u.player == 1)
+        # Find players who still have units or cities
+        alive_players: list[int] = []
+        for p in range(self.num_players):
+            p_cities = sum(1 for c in self.cities if c.player == p)
+            p_units = sum(1 for u in self.units if u.player == p)
+            if p_cities > 0 or p_units > 0:
+                alive_players.append(p)
 
-        # Player 0 eliminated
-        if p0_cities == 0 and p0_units == 0:
-            self.winner = 1
-            return True
-
-        # Player 1 eliminated
-        if p1_cities == 0 and p1_units == 0:
-            self.winner = 0
+        # Game ends when only one player remains
+        if len(alive_players) <= 1:
+            self.winner = alive_players[0] if alive_players else None
             return True
 
         return False
@@ -681,7 +719,7 @@ class MicroCivEnv(gym.Env):
             "cities": [c.to_dict() for c in self.cities],
             "turn": self.turn,
             "current_player": self.current_player,
-            "num_players": 2,
+            "num_players": self.num_players,
         }
 
     def get_observation(self) -> dict[str, np.ndarray]:
@@ -721,13 +759,14 @@ class MicroCivEnv(gym.Env):
             "turn": self.turn,
             "current_player": self.current_player,
             "winner": self.winner,
+            "num_players": self.num_players,
             "num_units": [
-                len(self._get_player_units(0)),
-                len(self._get_player_units(1)),
+                len(self._get_player_units(p))
+                for p in range(self.num_players)
             ],
             "num_cities": [
-                len(self._get_player_cities(0)),
-                len(self._get_player_cities(1)),
+                len(self._get_player_cities(p))
+                for p in range(self.num_players)
             ],
             "visited_count": len(self.visited),
         }
