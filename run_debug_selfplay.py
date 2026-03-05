@@ -90,7 +90,8 @@ class DebugSelfPlayConfig:
         """Load config from environment variables with CIV6AZ_DEBUG_ prefix."""
         config = cls()
 
-        env_mappings = {
+        from collections.abc import Callable
+        env_mappings: dict[str, tuple[str, Callable[[str], Any]]] = {
             "CIV6AZ_DEBUG_NUM_GAMES": ("num_games", int),
             "CIV6AZ_DEBUG_MAX_TURNS": ("max_turns_per_game", int),
             "CIV6AZ_DEBUG_BOARD_SIZE": ("board_size", int),
@@ -150,10 +151,10 @@ class ObservationValidator:
 
         # Check spatial shape
         if "spatial" in obs:
-            expected_shape = (self.spatial_channels, self.board_size, self.board_size)
-            if obs["spatial"].shape != expected_shape:
+            expected_spatial_shape = (self.spatial_channels, self.board_size, self.board_size)
+            if obs["spatial"].shape != expected_spatial_shape:
                 errors.append(
-                    f"Step {step}: Spatial shape {obs['spatial'].shape} != expected {expected_shape}"
+                    f"Step {step}: Spatial shape {obs['spatial'].shape} != expected {expected_spatial_shape}"
                 )
 
             # Check for NaN/Inf
@@ -170,10 +171,10 @@ class ObservationValidator:
 
         # Check vector shape
         if "vector" in obs:
-            expected_shape = (self.vector_dim,)
-            if obs["vector"].shape != expected_shape:
+            expected_vector_shape = (self.vector_dim,)
+            if obs["vector"].shape != expected_vector_shape:
                 errors.append(
-                    f"Step {step}: Vector shape {obs['vector'].shape} != expected {expected_shape}"
+                    f"Step {step}: Vector shape {obs['vector'].shape} != expected {expected_vector_shape}"
                 )
 
             # Check for NaN/Inf
@@ -184,10 +185,10 @@ class ObservationValidator:
 
         # Check action mask
         if "action_mask" in obs:
-            expected_shape = (self.action_space_size,)
-            if obs["action_mask"].shape != expected_shape:
+            expected_mask_shape = (self.action_space_size,)
+            if obs["action_mask"].shape != expected_mask_shape:
                 errors.append(
-                    f"Step {step}: Action mask shape {obs['action_mask'].shape} != expected {expected_shape}"
+                    f"Step {step}: Action mask shape {obs['action_mask'].shape} != expected {expected_mask_shape}"
                 )
 
             # Check mask is binary
@@ -365,8 +366,8 @@ class ReplayBufferValidator:
         self, example: dict[str, Any], index: int
     ) -> ValidationResult:
         """Validate a single training example."""
-        errors = []
-        warnings = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         # Check spatial
         expected_spatial = (self.spatial_channels, self.board_size, self.board_size)
@@ -603,8 +604,8 @@ class GameTerminationValidator:
         truncated: bool,
     ) -> ValidationResult:
         """Validate game termination event."""
-        errors = []
-        warnings = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         # Determine termination reason
         if truncated:
@@ -1027,6 +1028,7 @@ class DebugSelfPlayRunner:
         while step < max_steps:
             # Validate observation
             if self.config.validate_observations:
+                assert self.obs_validator is not None
                 result = self.obs_validator.validate(obs, step)
                 if not result.valid:
                     for error in result.errors:
@@ -1041,6 +1043,7 @@ class DebugSelfPlayRunner:
                 self.config.validate_network_outputs
                 and not self.config.use_simple_mcts
             ):
+                assert self.network is not None
                 with self.profiler.section("network_inference"):
                     with torch.no_grad():
                         spatial_t = (
@@ -1064,6 +1067,7 @@ class DebugSelfPlayRunner:
 
                         policy_logits, value = self.network(spatial_t, vector_t, mask_t)
 
+                        assert self.network_validator is not None
                         result = self.network_validator.validate_forward(
                             policy_logits, value, mask_t, step
                         )
@@ -1081,6 +1085,7 @@ class DebugSelfPlayRunner:
 
             # Validate MCTS results
             if self.config.validate_mcts_search:
+                assert self.mcts_validator is not None
                 result = self.mcts_validator.validate_search(
                     action_probs, root_value, obs["action_mask"], step
                 )
@@ -1202,6 +1207,7 @@ class DebugSelfPlayRunner:
 
             # Validate example
             if self.config.validate_replay_buffer:
+                assert self.buffer_validator is not None
                 result = self.buffer_validator.validate_example(
                     example, len(self.training_examples)
                 )
