@@ -31,6 +31,7 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 17a | Hex Crystalline Encoder & A/B Comparison | ✅ Complete |
 | Phase 17b | Training Readiness & Windows Compatibility | ✅ Complete |
 | Sprint 3 | Convergence, Batch Self-Play, N-Player Foundation | ✅ Complete |
+| Sprint 4 | Type Safety Expansion (envs + evaluation) | ✅ Complete |
 
 **Codebase Statistics:**
 
@@ -41,6 +42,7 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - GumbelMCTS default: 13× faster than Civ6MCTS — 50-iter production run active (4 workers × 50 games/iter)
 - Batch self-play validated: `BatchGumbelMCTS` + `VectorizedMicroCivEnv` (5-10× throughput)
 - N-player MicroCiv: 2-6 players, backwards-compatible
+- Mypy strict mode: `envs/`, `evaluation/`, `web/` packages (0 errors)
 - Action-masked cross-entropy training, W&B group coordination, eval retry with backoff
 - Civ6 Lua mod fully integrated with Python bridge (245 bridge tests, 50 integration tests)
 - 8 remaining xfail tests (7 DDP multinode + 1 hierarchical — deferred)
@@ -157,6 +159,12 @@ graph TB
 
         subgraph "Observability"
             WandbLogger["W&B Logger<br/><i>Experiment tracking</i>"]
+        end
+
+        subgraph "Type Safety Layer"
+            MypyEnvs["envs.* strict<br/><i>Gymnasium overrides, numpy casts</i>"]
+            MypyEval["evaluation.* strict<br/><i>MCTS protocols, agent types</i>"]
+            MypyWeb["web.* strict<br/><i>FastAPI routes, dataclasses</i>"]
         end
     end
 

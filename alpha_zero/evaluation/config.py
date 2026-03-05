@@ -22,6 +22,7 @@ Usage:
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -335,7 +336,7 @@ class EvaluationConfig:
         prefix = config.ENV_PREFIX
 
         # Map of environment variable suffixes to config attributes
-        env_mappings = {
+        env_mappings: dict[str, tuple[str, Callable[[str], Any]]] = {
             "EXPERIMENT_NAME": ("experiment_name", str),
             "MODEL_CHECKPOINT_PATH": ("model_checkpoint_path", str),
             "ELO_ENABLED": ("elo_enabled", lambda x: x.lower() == "true"),

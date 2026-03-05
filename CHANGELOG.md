@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-03-05 — Sprint 4: Type Safety Expansion
+
+### Added
+
+- **Mypy strict overrides** for `alpha_zero.evaluation.*` and `alpha_zero.envs.*` packages (`pyproject.toml`)
+- Explicit type annotations for `run_debug_selfplay.py` validators and config
+
+### Changed — Sprint 4
+
+#### E5: Type Safety Expansion (14 files)
+
+- **`evaluation/config.py`**: `Callable` type hint for `env_mappings`
+- **`evaluation/baselines.py`**: `dtype=np.float32` for noise addition, assert-narrowed MCTS, `hasattr` guard for `reset()`
+- **`evaluation/baseline_agents.py`**: `int()` cast for MCTS `select_action` return
+- **`evaluation/evaluator.py`**: Forward type declaration for `DiversityTracker | None`
+- **`evaluation/reports.py`**: Explicit `dict[str, Any]` type annotation for comparison dict
+- **`evaluation/evaluation_pipeline.py`**: Widened `_run_evaluation` opponent type, wraps MCTS opponents with `MCTSAgentWrapper`
+- **`evaluation/muzero_vs_alphazero_benchmark.py`**: Removed 6 unused `type: ignore` comments
+- **`envs/microciv.py`**: `int()` casts for numpy `integers()`, `type: ignore[misc]` for ClassVar
+- **`envs/microciv_enhanced.py`**: `type: ignore[return-value]` for render
+- **`envs/civrealm_wrapper.py`**: `type: ignore` for numpy overload, ClassVar, render override
+- **`envs/docker_config.py`**: `float()` cast for `min()` return
+- **`envs/env_factory.py`**: Variable rename to avoid assignment type mismatch
+- **`envs/real_civ6_env.py`**: ClassVar, union-attr, override, `float()` cast
+- **`envs/vectorized_env.py`**: `list()`/`int()` casts for no-any-return
+
+#### Debug Self-Play Type Fixes
+
+- **`run_debug_selfplay.py`**: Explicit `list[str]` annotations, renamed shadowed `expected_shape` variables, `assert` guards for Optional validators, `Callable` import
+
+### Stats
+
+- 15 files changed, +46 / -35 lines
+- 0 mypy errors in `alpha_zero.envs.*` and `alpha_zero.evaluation.*`
+
 ## [1.3.0] — 2026-03-04 — Sprint 3: Convergence, Batch, N-Player
 
 ### Added — Sprint 3

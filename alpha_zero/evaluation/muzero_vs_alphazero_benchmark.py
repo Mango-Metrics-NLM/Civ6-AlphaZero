@@ -396,7 +396,7 @@ class AlphaZeroVsMuZeroBenchmark:
 
         while not done:
             try:
-                policy, _ = mcts.search(env)  # type: ignore[arg-type]
+                policy, _ = mcts.search(env)
                 action = mcts.select_action(policy, temperature=0.0)  # Greedy for eval
             except Exception as e:
                 logger.warning("MCTS failed at step %d for %s: %s", game_length, algorithm, e)
@@ -509,7 +509,7 @@ class AlphaZeroVsMuZeroBenchmark:
             "|--------|----------|--------|",
             f"| Games/Min | {az.games_per_minute:.1f} | {mz.games_per_minute:.1f} |",
             f"| Avg Game Length | {az.avg_game_length:.1f} | {mz.avg_game_length:.1f} |",
-            f"| Total Time (s) | {az.total_time_seconds:.1f} | " f"{mz.total_time_seconds:.1f} |",
+            f"| Total Time (s) | {az.total_time_seconds:.1f} | {mz.total_time_seconds:.1f} |",
             "",
             "## Key Insights",
             "",
@@ -517,8 +517,7 @@ class AlphaZeroVsMuZeroBenchmark:
             "(dynamics calls / env clones)",
             f"- **Speed Ratio**: {summary.get('speed_ratio', 0):.2f}x "
             "(MuZero games/min / AlphaZero games/min)",
-            f"- **Win Rate Delta**: {summary.get('win_rate_delta', 0):+.2%} "
-            "(MuZero - AlphaZero)",
+            f"- **Win Rate Delta**: {summary.get('win_rate_delta', 0):+.2%} (MuZero - AlphaZero)",
             "",
         ]
         return "\n".join(lines)
@@ -538,7 +537,7 @@ class AlphaZeroVsMuZeroBenchmark:
             return
 
         try:
-            run = wandb.init(  # type: ignore[union-attr]
+            run = wandb.init(
                 project=self.config.wandb_project,
                 name=f"benchmark-{report.timestamp}",
                 config=asdict(self.config),
@@ -548,7 +547,7 @@ class AlphaZeroVsMuZeroBenchmark:
             summary = report.summary
             for key, value in summary.items():
                 if isinstance(value, (int, float)):
-                    wandb.log({f"benchmark/{key}": value})  # type: ignore[union-attr]
+                    wandb.log({f"benchmark/{key}": value})
 
             # Log per-algorithm metrics
             for algo_name, result in [
@@ -556,7 +555,7 @@ class AlphaZeroVsMuZeroBenchmark:
                 ("muzero", report.muzero_result),
             ]:
                 wandb.log(
-                    {  # type: ignore[union-attr]
+                    {
                         f"{algo_name}/win_rate": result.win_rate,
                         f"{algo_name}/avg_game_length": result.avg_game_length,
                         f"{algo_name}/games_per_minute": result.games_per_minute,
@@ -567,7 +566,7 @@ class AlphaZeroVsMuZeroBenchmark:
                 )
 
             # Log comparison table
-            table = wandb.Table(  # type: ignore[union-attr]
+            table = wandb.Table(
                 columns=[
                     "Algorithm",
                     "Win Rate",
@@ -595,7 +594,7 @@ class AlphaZeroVsMuZeroBenchmark:
                     ],
                 ],
             )
-            wandb.log({"benchmark/comparison_table": table})  # type: ignore[union-attr]
+            wandb.log({"benchmark/comparison_table": table})
 
             run.finish()
             logger.info("W&B logging complete")

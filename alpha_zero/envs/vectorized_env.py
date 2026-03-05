@@ -100,7 +100,7 @@ class VectorizedMicroCivEnv:
         expected_spatial_channels = MicroCivEncoder.TOTAL_CHANNELS
         if spatial_shape[0] != expected_spatial_channels:
             raise ValueError(
-                f"Expected {expected_spatial_channels} spatial channels, " f"got {spatial_shape[0]}"
+                f"Expected {expected_spatial_channels} spatial channels, got {spatial_shape[0]}"
             )
 
         # Pre-allocate observation buffers
@@ -281,7 +281,7 @@ class VectorizedMicroCivEnv:
         Returns:
             List of environment indices where done=False.
         """
-        return np.where(~self._done)[0].tolist()
+        return np.flatnonzero(~self._done).tolist()  # type: ignore[no-any-return]
 
     def get_env(self, idx: int) -> MicroCivEnv:
         """Get individual environment by index.
@@ -330,7 +330,7 @@ class VectorizedMicroCivEnv:
     @property
     def action_space_size(self) -> int:
         """Size of the discrete action space."""
-        return self._action_space_size
+        return int(self._action_space_size)
 
     @property
     def active_count(self) -> int:

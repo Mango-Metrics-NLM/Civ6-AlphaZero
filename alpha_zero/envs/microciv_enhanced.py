@@ -84,7 +84,7 @@ class EnhancedMicroCivEnv(MicroCivEnv):
         self._init_gameplay_systems()
 
         logger.info(
-            "EnhancedMicroCivEnv created: fog=%s, combat=%s, economy=%s, " "growth=%s, terrain=%s",
+            "EnhancedMicroCivEnv created: fog=%s, combat=%s, economy=%s, growth=%s, terrain=%s",
             self.gameplay_config.enable_fog_of_war,
             self.gameplay_config.enable_enhanced_combat,
             self.gameplay_config.enable_economy,
@@ -705,9 +705,10 @@ class EnhancedMicroCivEnv(MicroCivEnv):
             mask = self._fog.get_visibility_mask(self.current_player)
             visible = int((mask == 2).sum())
             total = self.board_size * self.board_size
-            lines.append(f"Visibility: {visible}/{total} tiles " f"({visible * 100 // total}%)")
+            lines.append(f"Visibility: {visible}/{total} tiles ({visible * 100 // total}%)")
 
-        return "\n".join(lines)
+        result: RenderFrame = "\n".join(lines)
+        return result
 
     # ------------------------------------------------------------------
     # Clone override

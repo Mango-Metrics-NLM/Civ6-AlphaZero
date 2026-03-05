@@ -350,7 +350,7 @@ class MCTSAgentWrapper(BaseAgent):
             Selected action index from MCTS.
         """
         action_probs, _ = self.mcts.search(env)
-        return self.mcts.select_action(action_probs, self.temperature)
+        return int(self.mcts.select_action(action_probs, self.temperature))
 
     def reset(self) -> None:
         """Reset MCTS tree for new game."""
