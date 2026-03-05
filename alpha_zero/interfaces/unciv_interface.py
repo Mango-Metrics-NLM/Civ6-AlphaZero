@@ -988,10 +988,12 @@ class UncivInterface:
         # Load the module directly from file
         module_path = Path(__file__).parent.parent / "core" / "civ6_actions.py"
         spec = importlib.util.spec_from_file_location(module_name, module_path)
+        assert spec is not None, f"Could not find module spec for {module_name}"
         actions_module = importlib.util.module_from_spec(spec)
 
         # Register in sys.modules BEFORE exec to allow self-references
         sys.modules[module_name] = actions_module
+        assert spec.loader is not None, f"Module spec for {module_name} has no loader"
         spec.loader.exec_module(actions_module)
 
         return actions_module
@@ -1413,7 +1415,8 @@ class UncivInterface:
         Returns:
             Numpy array of shape (action_space_size,) with 1.0 for valid actions
         """
-        return self.action_space.get_full_mask(state)
+        result: np.ndarray = self.action_space.get_full_mask(state)
+        return result
 
     def _get_action_enums(self) -> Any:
         """Get action enum classes, loading them if needed."""

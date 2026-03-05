@@ -80,7 +80,7 @@ class SerializableMixin:
         kwargs = {}
         for f in fields(cls):
             if f.name in data:
-                value = cls._deserialize_field(f.name, data[f.name], f.type)
+                value = cls._deserialize_field(f.name, data[f.name], f.type)  # type: ignore[attr-defined]
                 kwargs[f.name] = value
         return cls(**kwargs)
 

@@ -226,7 +226,8 @@ class PolicyTargetPruner:
             kl_div = self._compute_kl_divergence(policy, pruned)
             self._stats.record(original_actions, pruned_actions, kl_div)
 
-        return pruned.astype(np.float32)
+        result: np.ndarray = pruned.astype(np.float32)
+        return result
 
     def _apply_temperature(self, policy: np.ndarray) -> np.ndarray:
         """Apply temperature scaling to policy."""

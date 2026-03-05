@@ -317,7 +317,7 @@ class AuxiliaryTargetGenerator:
             attention /= total
         else:
             # Uniform attention if no features
-            attention = np.ones_like(attention) / attention.size
+            attention = np.asarray(np.ones_like(attention) / attention.size, dtype=np.float32)
 
         return attention
 
@@ -452,7 +452,7 @@ class AuxiliaryTargetGenerator:
         """
         if future_states is None or len(future_states) == 0:
             # No future information - use current value if available
-            return game_state.get("value", 0.0)
+            return float(game_state.get("value", 0.0))
 
         # Get value from N steps ahead
         target_step = min(self.config.future_value_steps, len(future_states))
