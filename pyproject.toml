@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alpha_zero"
-version = "1.2.0"
+version = "1.4.0"
 description = "AlphaZero-based AI for Civilization VI"
 requires-python = ">=3.11"
 dependencies = [
@@ -133,6 +133,16 @@ disallow_incomplete_defs = true
 
 [[tool.mypy.overrides]]
 module = "alpha_zero.web.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[[tool.mypy.overrides]]
+module = "alpha_zero.evaluation.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[[tool.mypy.overrides]]
+module = "alpha_zero.envs.*"
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 

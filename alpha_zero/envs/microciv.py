@@ -117,7 +117,7 @@ class MicroCivEnv(gym.Env):
     MIN_PLAYERS: int = 2
     MAX_PLAYERS: int = 6
 
-    metadata: ClassVar[dict[str, list[str]]] = {"render_modes": ["ansi"]}
+    metadata: ClassVar[dict[str, list[str]]] = {"render_modes": ["ansi"]}  # type: ignore[misc]
 
     # Unit production costs (turns)
     UNIT_COSTS: ClassVar[dict[str, int]] = {"warrior": 3, "settler": 5, "archer": 4}
@@ -393,8 +393,8 @@ class MicroCivEnv(gym.Env):
     ) -> tuple[int, int]:
         """Find a valid (non-mountain) position in a range."""
         for _ in range(100):
-            x = start_x + self._rng.integers(0, range_)
-            y = start_y + self._rng.integers(0, range_)
+            x = int(start_x + self._rng.integers(0, range_))
+            y = int(start_y + self._rng.integers(0, range_))
             x = min(max(x, 0), self.board_size - 1)
             y = min(max(y, 0), self.board_size - 1)
             if self.terrain.get((x, y), Tile()).terrain_type != "mountain":

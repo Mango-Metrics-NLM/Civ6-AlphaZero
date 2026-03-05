@@ -395,7 +395,7 @@ class ReportGenerator:
             r2 = report2.baseline_results.get(name)
 
             if r1 and r2:
-                comparison["baseline_diffs"][name] = {
+                comparison["baseline_diffs"][name] = {  # type: ignore[index]
                     "win_rate_diff": r2.win_rate - r1.win_rate,
                     "games_diff": r2.games_played - r1.games_played,
                 }
