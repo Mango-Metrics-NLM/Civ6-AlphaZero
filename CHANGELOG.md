@@ -22,8 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`evaluation/baselines.py`**: `type: ignore` for numpy assignment, MCTS union-attr/arg-type/attr-defined
 - **`evaluation/baseline_agents.py`**: `int()` cast for MCTS `select_action` return
 - **`evaluation/evaluator.py`**: Forward type declaration for `DiversityTracker | None`
-- **`evaluation/reports.py`**: `type: ignore[index]` for dict indexed assignment
-- **`evaluation/evaluation_pipeline.py`**: `type: ignore[arg-type]` for `BaseAgent | Civ6MCTS` union
+- **`evaluation/reports.py`**: Explicit `dict[str, Any]` type annotation for comparison dict
+- **`evaluation/evaluation_pipeline.py`**: Widened `_run_evaluation` opponent type, wraps MCTS opponents with `MCTSAgentWrapper`
 - **`evaluation/muzero_vs_alphazero_benchmark.py`**: Removed 6 unused `type: ignore` comments
 - **`envs/microciv.py`**: `int()` casts for numpy `integers()`, `type: ignore[misc]` for ClassVar
 - **`envs/microciv_enhanced.py`**: `type: ignore[return-value]` for render
