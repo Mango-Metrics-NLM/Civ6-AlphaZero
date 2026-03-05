@@ -169,15 +169,18 @@ class DDPLearnerConfig(LearnerConfig):
         Returns:
             DDPLearnerConfig instance.
         """
-        env_values = {
-            "ddp_world_size": int(os.environ.get("WORLD_SIZE", "1")),
-            "ddp_rank": int(os.environ.get("RANK", "0")),
-            "ddp_local_rank": int(os.environ.get("LOCAL_RANK", "0")),
+        ddp_world_size: int = int(os.environ.get("WORLD_SIZE", "1"))
+        ddp_rank: int = int(os.environ.get("RANK", "0"))
+        ddp_local_rank: int = int(os.environ.get("LOCAL_RANK", "0"))
+        env_values: dict[str, str | int | bool] = {
+            "ddp_world_size": ddp_world_size,
+            "ddp_rank": ddp_rank,
+            "ddp_local_rank": ddp_local_rank,
             "master_addr": os.environ.get("MASTER_ADDR", "localhost"),
             "master_port": os.environ.get("MASTER_PORT", "29500"),
         }
         # Enable DDP if world_size > 1
-        if int(env_values["ddp_world_size"]) > 1:
+        if ddp_world_size > 1:
             env_values["ddp_enabled"] = True
 
         env_values.update(kwargs)
@@ -249,7 +252,7 @@ class DDPLearner(Learner):
 
         # Create or use provided network
         if network is not None:
-            self.network: nn.Module = network.to(config.device)
+            self.network = network.to(config.device)
         else:
             self.network = MicroCivNetwork(
                 board_size=config.board_size,
@@ -260,12 +263,12 @@ class DDPLearner(Learner):
 
         # Apply SyncBatchNorm if enabled and using DDP
         if self.ddp_config.enabled and config.sync_batch_norm:
-            self.network = nn.SyncBatchNorm.convert_sync_batchnorm(self.network)  # type: ignore[assignment]
+            self.network = nn.SyncBatchNorm.convert_sync_batchnorm(self.network)
             logger.info("Applied SyncBatchNorm conversion")
 
         # Wrap with DDP if enabled
         if self.ddp_config.enabled:
-            self.network = self._wrap_ddp(self.network)  # type: ignore[assignment]
+            self.network = self._wrap_ddp(self.network)
 
         # Log network info (only on main process)
         if self.is_main_process():
@@ -410,7 +413,7 @@ class DDPLearner(Learner):
             Base network without DDP wrapper.
         """
         if isinstance(self.network, DDP):
-            return self.network.module  # type: ignore[return-value]
+            return self.network.module  # type: ignore[no-any-return]
         return self.network
 
     def get_model(self) -> nn.Module:

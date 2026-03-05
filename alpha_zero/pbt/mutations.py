@@ -153,7 +153,7 @@ class UniformMutation(BaseMutation):
         """Apply uniform mutation."""
         if param_range.scale == "categorical":
             if rng.random() < strength:
-                return rng.choice(param_range.categories)
+                return rng.choice(param_range.categories)  # type: ignore[no-any-return]
             return value
 
         if param_range.scale == "log":
@@ -201,7 +201,7 @@ class PolynomialMutation(BaseMutation):
         """Apply polynomial mutation."""
         if param_range.scale == "categorical":
             if rng.random() < strength:
-                return rng.choice(param_range.categories)
+                return rng.choice(param_range.categories)  # type: ignore[no-any-return]
             return value
 
         # Normalize value to [0, 1]
@@ -273,7 +273,7 @@ class DifferentialMutation(BaseMutation):
         """Apply differential mutation."""
         if param_range.scale == "categorical":
             if rng.random() < strength:
-                return rng.choice(param_range.categories)
+                return rng.choice(param_range.categories)  # type: ignore[no-any-return]
             return value
 
         if len(self._candidates) < 3:
@@ -299,7 +299,7 @@ class DifferentialMutation(BaseMutation):
         if param_range.discrete:
             new_value = round(new_value)
 
-        return new_value
+        return new_value  # type: ignore[no-any-return]
 
 
 class AdaptiveMutation(BaseMutation):
@@ -429,7 +429,7 @@ class CrossoverMutation(BaseMutation):
 
         if param_range.scale == "categorical":
             # For categorical: randomly pick from either parent
-            return rng.choice([value, parent2_value])
+            return rng.choice([value, parent2_value])  # type: ignore[no-any-return]
 
         # Apply crossover based on type
         if self.crossover_type == "uniform":
@@ -451,7 +451,7 @@ class CrossoverMutation(BaseMutation):
         if param_range.discrete:
             new_value = round(new_value)
 
-        return new_value
+        return new_value  # type: ignore[no-any-return]
 
     def _blend_crossover(
         self,
@@ -509,7 +509,7 @@ class CrossoverMutation(BaseMutation):
             log_p1 = math.log(max(p1, 1e-10))
             log_p2 = math.log(max(p2, 1e-10))
             child_log = 0.5 * ((1 + beta) * log_p1 + (1 - beta) * log_p2)
-            return math.exp(child_log)
+            return math.exp(child_log)  # type: ignore[no-any-return]
         else:
             return 0.5 * ((1 + beta) * p1 + (1 - beta) * p2)
 

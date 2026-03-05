@@ -54,15 +54,36 @@
 | E4: DDP Test Stabilization | M | ✅ | 17 attr fixes, 5 xfails removed → 22/22 |
 | E5: N-Player Foundation | L | ✅ | num_players=2..6, 51 tests |
 
-## Sprint 4 — PLANNED 📋
+## Sprint 4 — COMPLETE ✅ (PR #70, v1.4.0)
 
 | Epic | Complexity | Status | Detail |
 |------|------------|--------|--------|
-| E1: Batch Cloud Deploy | L | [ ] | Phase 18: Docker v1.3.0, `--num_parallel_games=4` default |
-| E2: N-Player Network Heads | L | [ ] | Multi-head policy/value for N-player self-play |
-| E3: Cloud Run Inference | M | [ ] | Deploy inference service to Cloud Run |
-| E4: DDP Multinode Stabilization | M | [ ] | Fix remaining 7 xfail multinode tests |
-| E5: Type Safety Expansion | S | [ ] | Add disallow_untyped_defs for cloud/eval packages |
+| E5: Type Safety Expansion | S | ✅ | Mypy strict for envs/ + evaluation/ (14 files, 0 errors) |
+| Ruff lint/format | S | ✅ | Callable→collections.abc, auto-format 6 files |
+| Code review fixes | S | ✅ | 6 findings addressed (4 rounds), 2 new unit tests |
+
+## Sprint 5 — PLANNED 📋 (v1.5.0)
+
+> **Branch**: `feature/sprint5-type-safety-cloud`
+
+| Epic | Complexity | Status | Detail |
+|------|------------|--------|--------|
+| E1: Type Safety — Core Packages | L | [ ] | 149 mypy errors: utils(41), hierarchical(32), core(23), training(18), pbt(16), optimizations(9), interfaces(7), web(3), envs(2) |
+| E2: Cloud Unit Test Stabilization | M | [ ] | Fix 34m-timeout CI failure in `tests/cloud/unit/` |
+| E3: DDP Multinode Test Fix | M | [ ] | Fix 7 xfailed tests + 32 mypy errors in `distributed/` |
+| E4: CI Pipeline Hardening | S | [ ] | Enforce mypy blocking, add coverage gate, fix Coverage Report |
+| E5: Deferred Packages | M | [ ] | `human_interface/` (12) + `rag/` (11) mypy errors |
+
+## Future — Phase 18–23 (per NEXT_STEPS.md)
+
+| Phase | Description | Prerequisite |
+|-------|-------------|--------------|
+| 18 | Batch Self-Play Cloud Deploy | Sprint 5 CI green |
+| 19 | MuZero Training Run | Phase 18 |
+| 20 | PBT on Vertex AI | Phase 18 |
+| 21 | DDP Test Rewrites & Full Type Safety | Sprint 5 |
+| 22 | Human vs AI Interface | Phase 20 |
+| 23 | Full Civ6 Integration | Phase 22 |
 
 ## Docs
 

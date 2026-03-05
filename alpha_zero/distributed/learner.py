@@ -217,7 +217,7 @@ class Learner:
         self.action_space_size = env.action_space.n
 
         # Initialize network
-        self.network = MicroCivNetwork(
+        self.network: nn.Module = MicroCivNetwork(
             board_size=config.board_size,
             action_space_size=int(self.action_space_size),
             num_res_blocks=config.num_res_blocks,
