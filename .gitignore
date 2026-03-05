@@ -332,3 +332,12 @@ batch_selfplay_metrics/
 # N-player benchmark artifacts
 nplayer_benchmarks/
 *_nplayer_results.json
+
+# ===========================================
+# Sprint 4: Type Safety Expansion (v1.4.0)
+# ===========================================
+# Mypy incremental cache
+.mypy_cache/
+
+# Type stub outputs
+out/

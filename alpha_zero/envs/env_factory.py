@@ -58,7 +58,7 @@ def create_game_env(
     """
     if gameplay_preset not in GAMEPLAY_PRESETS:
         raise ValueError(
-            f"Unknown gameplay_preset {gameplay_preset!r}. " f"Valid presets: {GAMEPLAY_PRESETS}"
+            f"Unknown gameplay_preset {gameplay_preset!r}. Valid presets: {GAMEPLAY_PRESETS}"
         )
 
     if gameplay_preset == "enhanced":

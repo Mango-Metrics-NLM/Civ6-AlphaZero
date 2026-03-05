@@ -91,6 +91,7 @@ class DebugSelfPlayConfig:
         config = cls()
 
         from collections.abc import Callable
+
         env_mappings: dict[str, tuple[str, Callable[[str], Any]]] = {
             "CIV6AZ_DEBUG_NUM_GAMES": ("num_games", int),
             "CIV6AZ_DEBUG_MAX_TURNS": ("max_turns_per_game", int),
@@ -165,9 +166,7 @@ class ObservationValidator:
 
             # Check value range
             if np.any(obs["spatial"] < -10) or np.any(obs["spatial"] > 10):
-                warnings.append(
-                    f"Step {step}: Spatial values outside [-10, 10] range"
-                )
+                warnings.append(f"Step {step}: Spatial values outside [-10, 10] range")
 
         # Check vector shape
         if "vector" in obs:
@@ -254,9 +253,7 @@ class NetworkValidator:
             value_scalar = value.squeeze().item()
 
         if value_scalar < -1.0 or value_scalar > 1.0:
-            warnings.append(
-                f"Step {step}: Value {value_scalar:.4f} outside [-1, 1] range"
-            )
+            warnings.append(f"Step {step}: Value {value_scalar:.4f} outside [-1, 1] range")
 
         # Check for NaN in value
         if torch.isnan(value).any():
@@ -274,9 +271,7 @@ class NetworkValidator:
         # Check probabilities sum to ~1
         prob_sum = np.sum(policy_probs)
         if abs(prob_sum - 1.0) > 1e-4:
-            errors.append(
-                f"Step {step}: Policy probs sum to {prob_sum:.6f}, expected ~1.0"
-            )
+            errors.append(f"Step {step}: Policy probs sum to {prob_sum:.6f}, expected ~1.0")
 
         # Check all probs are non-negative
         if np.any(policy_probs < 0):
@@ -320,9 +315,7 @@ class MCTSValidator:
         # Check probabilities sum to ~1
         prob_sum = np.sum(action_probs)
         if abs(prob_sum - 1.0) > 1e-4:
-            errors.append(
-                f"Step {step}: Action probs sum to {prob_sum:.6f}, expected ~1.0"
-            )
+            errors.append(f"Step {step}: Action probs sum to {prob_sum:.6f}, expected ~1.0")
 
         # Check only valid actions have non-zero probability
         invalid_probs = action_probs * (1 - action_mask)
@@ -333,9 +326,7 @@ class MCTSValidator:
 
         # Check root_value bounds
         if root_value < -1.0 or root_value > 1.0:
-            warnings.append(
-                f"Step {step}: Root value {root_value:.4f} outside [-1, 1] range"
-            )
+            warnings.append(f"Step {step}: Root value {root_value:.4f} outside [-1, 1] range")
 
         # Check for NaN
         if np.any(np.isnan(action_probs)):
@@ -362,9 +353,7 @@ class ReplayBufferValidator:
         self.action_space_size = action_space_size
         self.logger = get_logger("validator.buffer")
 
-    def validate_example(
-        self, example: dict[str, Any], index: int
-    ) -> ValidationResult:
+    def validate_example(self, example: dict[str, Any], index: int) -> ValidationResult:
         """Validate a single training example."""
         errors: list[str] = []
         warnings: list[str] = []
@@ -397,15 +386,11 @@ class ReplayBufferValidator:
         # Check policy sums to ~1
         policy_sum = np.sum(example["policy"])
         if abs(policy_sum - 1.0) > 1e-4:
-            errors.append(
-                f"Example {index}: Policy sums to {policy_sum:.6f}, expected ~1.0"
-            )
+            errors.append(f"Example {index}: Policy sums to {policy_sum:.6f}, expected ~1.0")
 
         # Check value in valid range
         if example["value"] < -1.0 or example["value"] > 1.0:
-            errors.append(
-                f"Example {index}: Value {example['value']:.4f} outside [-1, 1] range"
-            )
+            errors.append(f"Example {index}: Value {example['value']:.4f} outside [-1, 1] range")
 
         return ValidationResult(valid=len(errors) == 0, errors=errors, warnings=warnings)
 
@@ -522,13 +507,10 @@ class ActionTracer:
         if not was_valid:
             self.invalid_action_count += 1
             self.logger.error(
-                f"Game {game_id} Step {step}: INVALID ACTION {action} "
-                f"({action_type}) selected!"
+                f"Game {game_id} Step {step}: INVALID ACTION {action} ({action_type}) selected!"
             )
 
-        self.action_type_counts[action_type] = (
-            self.action_type_counts.get(action_type, 0) + 1
-        )
+        self.action_type_counts[action_type] = self.action_type_counts.get(action_type, 0) + 1
 
         record = ActionRecord(
             game_id=game_id,
@@ -579,9 +561,7 @@ class ActionTracer:
             "invalid_action_rate": invalid_rate,
             "action_type_distribution": dict(self.action_type_counts),
             "end_turn_rate": end_turn_count / max(total_actions, 1),
-            "avg_valid_actions_available": np.mean(
-                [r.action_mask_sum for r in self.records]
-            ),
+            "avg_valid_actions_available": np.mean([r.action_mask_sum for r in self.records]),
         }
 
 
@@ -620,14 +600,16 @@ class GameTerminationValidator:
             reason = "draw"
 
         # Record termination
-        self.termination_records.append({
-            "game_id": game_id,
-            "turn": turn,
-            "winner": winner,
-            "reason": reason,
-            "player_units": player_units,
-            "player_cities": player_cities,
-        })
+        self.termination_records.append(
+            {
+                "game_id": game_id,
+                "turn": turn,
+                "winner": winner,
+                "reason": reason,
+                "player_units": player_units,
+                "player_cities": player_cities,
+            }
+        )
 
         # Check for premature termination
         if turn < self.min_expected_turns and terminated and not truncated:
@@ -638,9 +620,7 @@ class GameTerminationValidator:
 
         # Check for turn 0 termination (should never happen)
         if turn == 0 and terminated:
-            errors.append(
-                f"Game {game_id}: Game terminated at turn 0 - this is a bug"
-            )
+            errors.append(f"Game {game_id}: Game terminated at turn 0 - this is a bug")
 
         return ValidationResult(valid=len(errors) == 0, errors=errors, warnings=warnings)
 
@@ -792,9 +772,7 @@ class DebugReport:
 
         print("\nComponent Status:")
         for component, status in self.component_status.items():
-            status_symbol = {"OK": "[OK]", "WARNING": "[!]", "ERROR": "[X]"}.get(
-                status, "[?]"
-            )
+            status_symbol = {"OK": "[OK]", "WARNING": "[!]", "ERROR": "[X]"}.get(status, "[?]")
             print(f"  {status_symbol} {component}: {status}")
 
         print("\nValidation Results:")
@@ -819,9 +797,7 @@ class DebugReport:
             print("\nPerformance Summary:")
             for section, stats in self.profiler_summary.items():
                 if isinstance(stats, dict) and "mean" in stats:
-                    print(
-                        f"  - {section}: {stats['mean']:.4f}s avg ({stats['count']} calls)"
-                    )
+                    print(f"  - {section}: {stats['mean']:.4f}s avg ({stats['count']} calls)")
 
         if self.recommendations:
             print("\nRecommendations:")
@@ -872,9 +848,7 @@ class DebugSelfPlayRunner:
         # New diagnostic components for termination analysis
         self.action_tracer = ActionTracer()
         self.termination_validator = GameTerminationValidator(min_expected_turns=2)
-        self.snapshot_manager = StateSnapshotManager(
-            snapshot_dir=f"{config.log_dir}/snapshots"
-        )
+        self.snapshot_manager = StateSnapshotManager(snapshot_dir=f"{config.log_dir}/snapshots")
 
         # Components (initialized in _setup_components)
         self.env: MicroCivEnv | None = None
@@ -960,9 +934,7 @@ class DebugSelfPlayRunner:
                     dirichlet_alpha=MCTS_CONSTANTS.DEFAULT_DIRICHLET_ALPHA,
                     dirichlet_epsilon=MCTS_CONSTANTS.DEFAULT_DIRICHLET_EPSILON,
                 )
-                self.mcts = Civ6MCTS(
-                    self.network, mcts_config, device=self.config.device
-                )
+                self.mcts = Civ6MCTS(self.network, mcts_config, device=self.config.device)
                 self.logger.info("Civ6MCTS created (network-guided)")
 
         # Create validators
@@ -1001,9 +973,7 @@ class DebugSelfPlayRunner:
 
             except Exception as e:
                 self.logger.error(f"Game {game_id} failed: {e}", exc_info=True)
-                self.diagnostics.game_results.append(
-                    {"game_id": game_id, "error": str(e)}
-                )
+                self.diagnostics.game_results.append({"game_id": game_id, "error": str(e)})
                 if self.config.fail_fast:
                     raise
 
@@ -1032,17 +1002,12 @@ class DebugSelfPlayRunner:
                 result = self.obs_validator.validate(obs, step)
                 if not result.valid:
                     for error in result.errors:
-                        self.diagnostics.observation_errors.append(
-                            (game_id, step, error)
-                        )
+                        self.diagnostics.observation_errors.append((game_id, step, error))
                         self.logger.error(f"Observation error: {error}")
                 self.diagnostics.warnings.extend(result.warnings)
 
             # Network inference (if using network MCTS)
-            if (
-                self.config.validate_network_outputs
-                and not self.config.use_simple_mcts
-            ):
+            if self.config.validate_network_outputs and not self.config.use_simple_mcts:
                 assert self.network is not None
                 with self.profiler.section("network_inference"):
                     with torch.no_grad():
@@ -1073,9 +1038,7 @@ class DebugSelfPlayRunner:
                         )
                         if not result.valid:
                             for error in result.errors:
-                                self.diagnostics.network_errors.append(
-                                    (game_id, step, error)
-                                )
+                                self.diagnostics.network_errors.append((game_id, step, error))
                                 self.logger.error(f"Network error: {error}")
                         self.diagnostics.warnings.extend(result.warnings)
 
@@ -1108,9 +1071,7 @@ class DebugSelfPlayRunner:
 
             # Select action with action mask enforcement
             temp = 1.0 if step < 10 else 0.0
-            action = self.mcts.select_action(
-                action_probs, temp, action_mask=obs["action_mask"]
-            )
+            action = self.mcts.select_action(action_probs, temp, action_mask=obs["action_mask"])
 
             # Decode action for tracing
             action_dict = self.env.action_space_handler.decode_action(action)
@@ -1259,20 +1220,20 @@ class DebugSelfPlayRunner:
                 batch = [self.training_examples[i] for i in indices]
 
                 # Convert to tensors
-                spatial = torch.stack(
-                    [torch.from_numpy(ex["spatial"]).float() for ex in batch]
-                ).to(self.config.device)
-                vector = torch.stack(
-                    [torch.from_numpy(ex["vector"]).float() for ex in batch]
-                ).to(self.config.device)
+                spatial = torch.stack([torch.from_numpy(ex["spatial"]).float() for ex in batch]).to(
+                    self.config.device
+                )
+                vector = torch.stack([torch.from_numpy(ex["vector"]).float() for ex in batch]).to(
+                    self.config.device
+                )
                 mask = torch.stack(
                     [torch.from_numpy(ex["action_mask"]).float() for ex in batch]
                 ).to(self.config.device)
                 target_policy = torch.stack(
                     [torch.from_numpy(ex["policy"]).float() for ex in batch]
                 ).to(self.config.device)
-                target_value = torch.tensor([ex["value"] for ex in batch]).float().to(
-                    self.config.device
+                target_value = (
+                    torch.tensor([ex["value"] for ex in batch]).float().to(self.config.device)
                 )
 
                 # Forward pass
@@ -1347,19 +1308,13 @@ class DebugSelfPlayRunner:
             )
 
         if d.mcts_errors:
-            recommendations.append(
-                "Check MCTS search for policy probability normalization issues"
-            )
+            recommendations.append("Check MCTS search for policy probability normalization issues")
 
         if d.action_errors:
-            recommendations.append(
-                "Check action selection and masking logic in MCTS"
-            )
+            recommendations.append("Check action selection and masking logic in MCTS")
 
         if d.buffer_errors:
-            recommendations.append(
-                "Check training example generation and value assignment"
-            )
+            recommendations.append("Check training example generation and value assignment")
 
         if d.training_errors:
             recommendations.append(
@@ -1435,15 +1390,9 @@ def main() -> int:
     )
     parser.add_argument("--log-dir", type=str, default="logs/debug_selfplay")
     parser.add_argument("--fail-fast", action="store_true", help="Stop on first error")
-    parser.add_argument(
-        "--no-training-step", action="store_true", help="Skip training step test"
-    )
-    parser.add_argument(
-        "--use-network-mcts", action="store_true", help="Use network-guided MCTS"
-    )
-    parser.add_argument(
-        "--output-json", type=str, default=None, help="Output JSON report path"
-    )
+    parser.add_argument("--no-training-step", action="store_true", help="Skip training step test")
+    parser.add_argument("--use-network-mcts", action="store_true", help="Use network-guided MCTS")
+    parser.add_argument("--output-json", type=str, default=None, help="Output JSON report path")
     parser.add_argument("--device", type=str, default="cpu", help="Compute device")
     args = parser.parse_args()
 

@@ -269,8 +269,7 @@ class MicroCivEnv(gym.Env):
         if truncated and not terminated:
             # Count cities for each player and find winner
             city_counts = [
-                sum(1 for c in self.cities if c.player == p)
-                for p in range(self.num_players)
+                sum(1 for c in self.cities if c.player == p) for p in range(self.num_players)
             ]
             max_cities = max(city_counts)
             leaders = [p for p, cnt in enumerate(city_counts) if cnt == max_cities]
@@ -760,14 +759,8 @@ class MicroCivEnv(gym.Env):
             "current_player": self.current_player,
             "winner": self.winner,
             "num_players": self.num_players,
-            "num_units": [
-                len(self._get_player_units(p))
-                for p in range(self.num_players)
-            ],
-            "num_cities": [
-                len(self._get_player_cities(p))
-                for p in range(self.num_players)
-            ],
+            "num_units": [len(self._get_player_units(p)) for p in range(self.num_players)],
+            "num_cities": [len(self._get_player_cities(p)) for p in range(self.num_players)],
             "visited_count": len(self.visited),
         }
 

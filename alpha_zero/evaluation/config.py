@@ -22,10 +22,11 @@ Usage:
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import yaml
 
