@@ -794,8 +794,14 @@ class MockCiv6Env(RealCiv6Env):
         }
 
         assert self._bridge is not None
-        if hasattr(self._bridge, "set_mock_state"):
-            self._bridge.set_mock_state(mock_state)
+        from alpha_zero.bridge.file_bridge import MockFileBridge
+
+        if not isinstance(self._bridge, MockFileBridge):
+            raise RuntimeError(
+                f"_set_mock_state is only supported with MockFileBridge, "
+                f"but got {type(self._bridge).__name__!r}"
+            )
+        self._bridge.set_mock_state(mock_state)
         self._raw_state = self._run_async(self._bridge.poll_state())
         self._current_state = self._state_converter.convert(self._raw_state)
         self._turn = turn_id
