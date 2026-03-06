@@ -193,7 +193,7 @@ def load_model(
         logger.info("Dry run: creating dummy model")
         # Create a minimal dummy model for testing using CLI-specified dimensions
         dummy_config = TransformerConfig(
-            spatial_channels=13,
+            spatial_channels=28,  # Updated for N-player support (Sprint 6)
             spatial_size=spatial_size,
             vector_dim=64,
             action_space_size=action_space_size,
@@ -447,8 +447,8 @@ def run_selfplay(
     # For dry run, return dummy trajectories without needing actual env/MCTS
     if dry_run:
         logger.info("Dry run: creating dummy trajectories")
-        # MicroCivEncoder.TOTAL_CHANNELS = 13 for spatial encoding
-        spatial_channels = 13
+        # MicroCivEncoder.TOTAL_CHANNELS = 28 for spatial encoding (Sprint 6 N-player)
+        spatial_channels = 28
         vector_dim = 64
         dummy_trajectories: list[dict[str, Any]] = []
         for _ in range(num_games):

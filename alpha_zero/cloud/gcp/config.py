@@ -255,7 +255,7 @@ class NetworkArchitectureConfig:
 
     board_size: int = 8
     action_space_size: int = 376
-    spatial_channels: int = 13
+    spatial_channels: int = 28  # Extended from 13 to 28 for N-player support (Sprint 6)
     vector_dim: int = 64
     num_layers: int = 6
     embed_dim: int = 64
@@ -311,7 +311,7 @@ class NetworkArchitectureConfig:
         return cls(
             board_size=int(os.environ.get("CIV6AZ_BOARD_SIZE", "8")),
             action_space_size=int(os.environ.get("CIV6AZ_ACTION_SPACE_SIZE", "376")),
-            spatial_channels=int(os.environ.get("CIV6AZ_SPATIAL_CHANNELS", "13")),
+            spatial_channels=int(os.environ.get("CIV6AZ_SPATIAL_CHANNELS", "28")),
             vector_dim=int(os.environ.get("CIV6AZ_VECTOR_DIM", "64")),
             num_layers=int(os.environ.get("CIV6AZ_NUM_LAYERS", "6")),
             embed_dim=int(os.environ.get("CIV6AZ_EMBED_DIM", "64")),

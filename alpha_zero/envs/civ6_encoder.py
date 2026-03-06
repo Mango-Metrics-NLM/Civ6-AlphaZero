@@ -309,25 +309,34 @@ class Civ6StateEncoder:
 class MicroCivEncoder:
     """Simplified encoder for MicroCiv training environment.
 
-    Uses fewer channels for faster training:
+    28-channel encoder supporting up to 6 players with per-player tracking:
     - Channels 0-2: Terrain (plains, hills, mountain)
     - Channels 3-5: Own units (warrior, settler, archer)
-    - Channels 6-8: Enemy units
-    - Channel 9: Own cities
-    - Channel 10: Enemy cities
-    - Channel 11: Fog of war (visible)
-    - Channel 12: Constant (bias)
+    - Channels 6-8: Player 1 units (relative to current player, rotated perspective)
+    - Channels 9-11: Player 2 units
+    - Channels 12-14: Player 3 units
+    - Channels 15-17: Player 4 units
+    - Channels 18-20: Player 5 units
+    - Channel 21: Own cities
+    - Channels 22-26: Opponent cities (P1-P5)
+    - Channel 27: Fog/bias
+
+    Backward compatibility: 2-player games use channels 0-12, zeros in 13-27.
     """
 
-    TOTAL_CHANNELS = 13
+    TOTAL_CHANNELS = 28
 
-    def __init__(self, board_size: int = 16) -> None:
+    def __init__(self, board_size: int = 16, num_players: int = 2) -> None:
         """Initialize encoder.
 
         Args:
             board_size: Size of the game board.
+            num_players: Number of players in the game (2-6).
         """
         self.board_size = board_size
+        self.num_players = num_players
+        if not 2 <= num_players <= 6:
+            raise ValueError(f"num_players must be 2-6, got {num_players}")
 
     def encode(self, game_state: dict) -> tuple[torch.Tensor, torch.Tensor]:
         """Encode game state.
@@ -361,7 +370,7 @@ class MicroCivEncoder:
                 if terrain_type in terrain_map:
                     spatial[terrain_map[terrain_type], y, x] = 1.0
 
-        # Units
+        # Units (per-player channels with relative indexing)
         unit_map = {"warrior": 0, "settler": 1, "archer": 2}
         for unit in units:
             pos = unit.get("position", (0, 0))
@@ -374,12 +383,25 @@ class MicroCivEncoder:
             health = unit.get("health", 100) / 100.0
 
             player = unit.get("player", 0)
-            if player == current_player:
-                spatial[3 + type_idx, y, x] = health
-            else:
-                spatial[6 + type_idx, y, x] = health
 
-        # Cities
+            # Compute relative player index (ego-centric view)
+            # Current player → channels 3-5 (own)
+            # Next player in turn order → channels 6-8 (opponent 1)
+            # ... and so on
+            relative_player = (player - current_player) % self.num_players
+
+            if relative_player == 0:
+                # Own units: channels 3-5
+                channel_offset = 3
+            else:
+                # Opponent units: channels 6-20 (3 channels per opponent x 5 opponents)
+                # Opponent 1 (next in turn) -> channels 6-8
+                # Opponent 2 -> channels 9-11, etc.
+                channel_offset = 6 + (relative_player - 1) * 3
+
+            spatial[channel_offset + type_idx, y, x] = health
+
+        # Cities (per-player channels with relative indexing)
         for city in cities:
             pos = city.get("position", (0, 0))
             x, y = pos
@@ -387,28 +409,34 @@ class MicroCivEncoder:
                 continue
 
             player = city.get("player", 0)
-            if player == current_player:
-                spatial[9, y, x] = 1.0
-            else:
-                spatial[10, y, x] = 1.0
 
-        # Fog of war -- use per-tile visibility if available, else all visible
+            # Compute relative player index
+            relative_player = (player - current_player) % self.num_players
+
+            if relative_player == 0:
+                # Own cities: channel 21
+                spatial[21, y, x] = 1.0
+            else:
+                # Opponent cities: channels 22-26 (one per opponent)
+                # Opponent 1 → channel 22, Opponent 2 → channel 23, etc.
+                channel_offset = 22 + (relative_player - 1)
+                spatial[channel_offset, y, x] = 1.0
+
+        # Fog of war / bias channel (channel 27)
+        # Use per-tile visibility if available, else constant bias
         visibility = game_state.get("visibility")
         if visibility is not None:
             for y in range(size):
                 for x in range(size):
                     vis_state = visibility.get((x, y), "unexplored")
                     if vis_state == "visible":
-                        spatial[11, y, x] = 1.0
+                        spatial[27, y, x] = 1.0
                     elif vis_state == "seen":
-                        spatial[11, y, x] = 0.5
+                        spatial[27, y, x] = 0.5
                     # unexplored remains 0.0
         else:
-            # Backward compat: all visible when no visibility data
-            spatial[11, :, :] = 1.0
-
-        # Constant
-        spatial[12, :, :] = 1.0
+            # Backward compat: constant bias when no visibility data
+            spatial[27, :, :] = 1.0
 
         return spatial
 

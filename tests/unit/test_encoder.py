@@ -46,9 +46,9 @@ class TestMicroCivEncoder:
         }
 
     def test_spatial_shape(self, encoder, sample_state):
-        """Spatial tensor has correct shape."""
+        """Spatial tensor has correct shape (28 channels for N-player support)."""
         spatial, _ = encoder.encode(sample_state)
-        assert spatial.shape == (13, 16, 16)
+        assert spatial.shape == (28, 16, 16)
 
     def test_vector_shape(self, encoder, sample_state):
         """Vector tensor has correct shape."""
@@ -89,19 +89,19 @@ class TestMicroCivEncoder:
         assert spatial[8, 10, 10] == 0.75  # channel 8 = enemy archer
 
     def test_city_encoding(self, encoder, sample_state):
-        """Cities are correctly encoded."""
+        """Cities are correctly encoded (updated for 28-channel layout)."""
         spatial, _ = encoder.encode(sample_state)
 
-        # Own city at (2,2)
-        assert spatial[9, 2, 2] == 1.0
+        # Own city at (2,2) - now at channel 21 (was 9)
+        assert spatial[21, 2, 2] == 1.0
 
-        # Enemy city at (13,13)
-        assert spatial[10, 13, 13] == 1.0
+        # Enemy city at (13,13) - now at channel 22 (was 10)
+        assert spatial[22, 13, 13] == 1.0
 
     def test_constant_channel(self, encoder, sample_state):
-        """Constant channel is all ones."""
+        """Constant/fog channel is all ones (now at channel 27)."""
         spatial, _ = encoder.encode(sample_state)
-        assert torch.all(spatial[12] == 1.0)
+        assert torch.all(spatial[27] == 1.0)
 
     def test_encoding_deterministic(self, encoder, sample_state):
         """Encoding is deterministic."""
@@ -122,6 +122,134 @@ class TestMicroCivEncoder:
         spatial, vector = encoder.encode(sample_state)
         assert spatial.dtype == torch.float32
         assert vector.dtype == torch.float32
+
+    def test_4player_distinguishes_opponents(self):
+        """4-player game encodes each opponent in separate channels."""
+        encoder = MicroCivEncoder(board_size=8, num_players=4)
+
+        state = {
+            "current_player": 0,
+            "terrain": {},
+            "units": [
+                # Player 0 (own) units → channels 3-5
+                {"player": 0, "type": "warrior", "position": (1, 1), "health": 100},
+                # Player 1 (opponent 1) units → channels 6-8
+                {"player": 1, "type": "settler", "position": (2, 2), "health": 100},
+                # Player 2 (opponent 2) units → channels 9-11
+                {"player": 2, "type": "archer", "position": (3, 3), "health": 100},
+                # Player 3 (opponent 3) units → channels 12-14
+                {"player": 3, "type": "warrior", "position": (4, 4), "health": 100},
+            ],
+            "cities": [],
+            "turn": 0,
+        }
+
+        spatial, _ = encoder.encode(state)
+
+        # Player 0 (own) warrior at (1,1) → channel 3
+        assert spatial[3, 1, 1] == 1.0, "Own warrior should be at channel 3"
+
+        # Player 1 (opponent 1) settler at (2,2) → channel 6+1=7
+        assert spatial[7, 2, 2] == 1.0, "Opponent 1 settler should be at channel 7"
+
+        # Player 2 (opponent 2) archer at (3,3) → channel 9+2=11
+        assert spatial[11, 3, 3] == 1.0, "Opponent 2 archer should be at channel 11"
+
+        # Player 3 (opponent 3) warrior at (4,4) → channel 12+0=12
+        assert spatial[12, 4, 4] == 1.0, "Opponent 3 warrior should be at channel 12"
+
+        # Verify channels 15-20 are unused (only 4 players)
+        assert torch.all(spatial[15:21] == 0.0), "Channels 15-20 should be zero (unused)"
+
+    def test_6player_all_channels_used(self):
+        """6-player game uses all opponent channels."""
+        encoder = MicroCivEncoder(board_size=8, num_players=6)
+
+        state = {
+            "current_player": 0,
+            "terrain": {},
+            "units": [
+                {"player": 0, "type": "warrior", "position": (0, 0), "health": 100},
+                {"player": 1, "type": "warrior", "position": (1, 1), "health": 100},
+                {"player": 2, "type": "warrior", "position": (2, 2), "health": 100},
+                {"player": 3, "type": "warrior", "position": (3, 3), "health": 100},
+                {"player": 4, "type": "warrior", "position": (4, 4), "health": 100},
+                {"player": 5, "type": "warrior", "position": (5, 5), "health": 100},
+            ],
+            "cities": [],
+            "turn": 0,
+        }
+
+        spatial, _ = encoder.encode(state)
+
+        # All 6 players should have warriors in their respective channels
+        assert spatial[3, 0, 0] == 1.0  # Player 0 (own) → channel 3
+        assert spatial[6, 1, 1] == 1.0  # Player 1 → channel 6
+        assert spatial[9, 2, 2] == 1.0  # Player 2 → channel 9
+        assert spatial[12, 3, 3] == 1.0  # Player 3 → channel 12
+        assert spatial[15, 4, 4] == 1.0  # Player 4 → channel 15
+        assert spatial[18, 5, 5] == 1.0  # Player 5 → channel 18
+
+    def test_2player_backward_compatibility(self):
+        """2-player game uses same channels as legacy 13-channel encoder."""
+        encoder = MicroCivEncoder(board_size=8, num_players=2)
+
+        state = {
+            "current_player": 0,
+            "terrain": {(0, 0): {"type": "plains"}},
+            "units": [
+                {"player": 0, "type": "warrior", "position": (1, 1), "health": 100},
+                {"player": 1, "type": "archer", "position": (2, 2), "health": 75},
+            ],
+            "cities": [
+                {"player": 0, "position": (3, 3)},
+                {"player": 1, "position": (4, 4)},
+            ],
+            "turn": 0,
+        }
+
+        spatial, _ = encoder.encode(state)
+
+        # Verify 2-player uses same channels 0-12 as before
+        assert spatial[0, 0, 0] == 1.0  # Terrain (plains)
+        assert spatial[3, 1, 1] == 1.0  # Own warrior → channel 3
+        assert spatial[8, 2, 2] == 0.75  # Enemy archer → channel 8
+        assert spatial[21, 3, 3] == 1.0  # Own city → channel 21 (updated)
+        assert spatial[22, 4, 4] == 1.0  # Enemy city → channel 22 (updated)
+
+        # Channels 9-20 should be zero (unused opponents in 2-player)
+        assert torch.all(spatial[9:21] == 0.0), "Channels 9-20 should be zero in 2-player"
+
+    def test_relative_perspective_rotation(self):
+        """Relative player indexing rotates perspective based on current_player."""
+        encoder = MicroCivEncoder(board_size=8, num_players=4)
+
+        # Same game state, but viewed from Player 2's perspective
+        state = {
+            "current_player": 2,  # Changed from 0 to 2
+            "terrain": {},
+            "units": [
+                {"player": 0, "type": "warrior", "position": (0, 0), "health": 100},
+                {"player": 1, "type": "warrior", "position": (1, 1), "health": 100},
+                {"player": 2, "type": "warrior", "position": (2, 2), "health": 100},
+                {"player": 3, "type": "warrior", "position": (3, 3), "health": 100},
+            ],
+            "cities": [],
+            "turn": 0,
+        }
+
+        spatial, _ = encoder.encode(state)
+
+        # From Player 2's perspective:
+        # Player 2 (self) → relative = (2-2)%4 = 0 → channels 3-5
+        # Player 3 (next in turn) → relative = (3-2)%4 = 1 → channels 6-8
+        # Player 0 (wraparound) → relative = (0-2)%4 = 2 → channels 9-11
+        # Player 1 → relative = (1-2)%4 = 3 → channels 12-14
+
+        assert spatial[3, 2, 2] == 1.0, "Player 2 (self) should be at channel 3"
+        assert spatial[6, 3, 3] == 1.0, "Player 3 (next) should be at channel 6"
+        assert spatial[9, 0, 0] == 1.0, "Player 0 (wraparound) should be at channel 9"
+        assert spatial[12, 1, 1] == 1.0, "Player 1 should be at channel 12"
 
 
 class TestCiv6StateEncoder:

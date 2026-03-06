@@ -624,7 +624,7 @@ def train_epoch(
     device: torch.device,
     global_step: int = 0,
     wandb_logger: WandbLogger | None = None,
-    spatial_channels: int = 13,
+    spatial_channels: int = 28,  # Updated for N-player support (Sprint 6)
     spatial_size: int = 8,
     wandb_log_interval: int = 10,
     lr_scheduler: HyperparameterScheduler | None = None,
