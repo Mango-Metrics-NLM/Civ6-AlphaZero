@@ -142,9 +142,9 @@ class TestPhase17Defaults:
         assert args.value_head_dim == 64
 
     def test_default_num_parallel_games(self) -> None:
-        """num_parallel_games default is 1 (sequential)."""
+        """num_parallel_games default is 4 (batch enabled in Sprint 6)."""
         args = self._parse_defaults()
-        assert args.num_parallel_games == 1
+        assert args.num_parallel_games == 4
 
 
 # =============================================================================
