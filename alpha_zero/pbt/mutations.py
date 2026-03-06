@@ -509,9 +509,9 @@ class CrossoverMutation(BaseMutation):
             log_p1 = math.log(max(p1, 1e-10))
             log_p2 = math.log(max(p2, 1e-10))
             child_log = 0.5 * ((1 + beta) * log_p1 + (1 - beta) * log_p2)
-            return math.exp(child_log)  # type: ignore[no-any-return]
+            return math.exp(child_log)
         else:
-            return 0.5 * ((1 + beta) * p1 + (1 - beta) * p2)
+            return 0.5 * ((1 + beta) * p1 + (1 - beta) * p2)  # type: ignore[no-any-return]
 
 
 class MutationOperator:

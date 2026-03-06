@@ -281,7 +281,7 @@ class VectorizedMicroCivEnv:
         Returns:
             List of environment indices where done=False.
         """
-        return np.flatnonzero(~self._done).tolist()  # type: ignore[no-any-return]
+        return np.flatnonzero(~self._done).tolist()
 
     def get_env(self, idx: int) -> MicroCivEnv:
         """Get individual environment by index.

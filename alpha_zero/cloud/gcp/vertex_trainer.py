@@ -433,7 +433,7 @@ class VertexTrainer:
 # Protocol compliance check
 def _check_protocol_compliance() -> None:
     """Verify VertexTrainer implements CloudTrainerProtocol."""
-    trainer: CloudTrainerProtocol = VertexTrainer(  # type: ignore
+    trainer: CloudTrainerProtocol = VertexTrainer(
         GCPConfig(), allow_fallback=True
     )
     assert isinstance(trainer, CloudTrainerProtocol)

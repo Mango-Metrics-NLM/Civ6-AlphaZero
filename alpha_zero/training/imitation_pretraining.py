@@ -30,7 +30,7 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
-import numpy as np  # type: ignore[import-untyped]
+import numpy as np
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
