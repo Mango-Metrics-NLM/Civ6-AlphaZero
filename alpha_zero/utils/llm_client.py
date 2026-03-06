@@ -27,7 +27,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar
 
 # Optional imports - gracefully handle missing dependencies
 # Use TYPE_CHECKING to avoid mypy issues with conditional imports

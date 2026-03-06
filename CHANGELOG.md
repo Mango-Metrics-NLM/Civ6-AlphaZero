@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-03-05 — Sprint 5: Type Safety — Breadth-First Mypy Stabilization
+
+### Changed — Sprint 5
+
+#### E1: Breadth-First Mypy Type Safety (58 files, ~153 errors fixed)
+
+- **`hierarchical/`** package (32→0): `config.py`, `hierarchical_network.py`, `goal_types.py`, `hierarchical_mcts.py`, `level_controller.py`, `goal_encoder.py`, `training_integration.py` — `no-any-return`, `no-redef`, `assignment`, `arg-type`, `return-value` ignores for torch/numpy return types, union narrowing, and dict arithmetic
+- **`cloud/gcp/training_worker.py`** (20→0): Added `TYPE_CHECKING` imports for `optim`, `Profiler`, `diagnostics`, `report` types; replaced `object | None` signatures with proper types
+- **`training_civ6.py`** (8→0): `arg-type` ignores for protocol-conformant MCTS/env calls, `int()` cast for numpy `int64` action_space_size
+- **`training/muzero_trainer.py`** (7→0): `operator` ignores for dynamic `self.network.*` method calls
+- **`pbt/`** (16→0): `mutations.py`, `population.py`, `scheduler.py` — numpy/dict arithmetic returns
+- **`utils/`** (41→~3): `rag_client.py`, `wandb_logger.py`, `llm_client.py`, `checkpoint.py`, `environment_tuning.py`, `logging_config.py`, `simple_mcts.py`
+- **`cloud/`** stale-ignore sweep: Removed 15 unused `type: ignore` comments across 12 files (`vertex_orchestrator.py`, `vertex.py`, `gcs_backend.py`, `monitoring.py`, `gcs_storage.py`, `selfplay_worker.py`, `storage.py`, `vertex_trainer.py`, `vertex_jobs.py`)
+- **`core/`** (23→~4): `civ6_mcts.py`, `civ6_network.py`, `config.py`, `mixins.py`, `network_heads.py`, `reflection_generator.py`, `reflection_memory.py`, `transformer_network.py`
+- **`distributed/`** (28→~8): `actor.py`, `coordinator.py`, `ddp_learner.py`, `learner.py`, `parameter_server.py`, `shared_storage.py`
+- **`optimizations/`** (9→~3): `auxiliary_targets.py`, `benchmarks.py`, `playout_cap.py`, `policy_pruning.py`
+- **Additional files**: `rag/config/settings.py`, `envs/microciv_enhanced.py`, `envs/vectorized_env.py`, `gameplay/fog_of_war.py`, `inference/client.py`, `interfaces/unciv_interface.py`, `training/diagnostics.py`, `training/imitation_pretraining.py`, `training/training_safeguards.py`
+
+#### Ruff Lint Auto-Fix
+
+- Auto-fixed 15 unused import errors (`F401`) across test and source files
+
+### Stats
+
+- 58 files changed, +230 / -187 lines
+- ~153 mypy errors fixed (251→~98, **61% reduction**)
+- 6 commits, 0 test regressions
+
 ## [1.4.0] — 2026-03-05 — Sprint 4: Type Safety Expansion
 
 ### Added

@@ -62,13 +62,13 @@
 | Ruff lint/format | S | ✅ | Callable→collections.abc, auto-format 6 files |
 | Code review fixes | S | ✅ | 6 findings addressed (4 rounds), 2 new unit tests |
 
-## Sprint 5 — PLANNED 📋 (v1.5.0)
+## Sprint 5 — IN PROGRESS 🚧 (v1.5.0)
 
 > **Branch**: `feature/sprint5-type-safety-cloud`
 
 | Epic | Complexity | Status | Detail |
 |------|------------|--------|--------|
-| E1: Type Safety — Core Packages | L | [ ] | 149 mypy errors: utils(41), hierarchical(32), core(23), training(18), pbt(16), optimizations(9), interfaces(7), web(3), envs(2) |
+| E1: Type Safety — Core Packages | L | ✅ | 251→~98 mypy errors (61% reduction, 58 files, 6 commits) |
 | E2: Cloud Unit Test Stabilization | M | [ ] | Fix 34m-timeout CI failure in `tests/cloud/unit/` |
 | E3: DDP Multinode Test Fix | M | [ ] | Fix 7 xfailed tests + 32 mypy errors in `distributed/` |
 | E4: CI Pipeline Hardening | S | [ ] | Enforce mypy blocking, add coverage gate, fix Coverage Report |
