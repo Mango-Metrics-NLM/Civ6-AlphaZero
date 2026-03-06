@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alpha_zero"
-version = "1.4.0"
+version = "1.5.0"
 description = "AlphaZero-based AI for Civilization VI"
 requires-python = ">=3.11"
 dependencies = [
@@ -72,7 +72,6 @@ ignore = [
     "E501",    # Line length handled separately
     "ANN401",  # Any type allowed for duck typing with cloud SDKs
     "S101",    # Use of assert (needed for tests)
-    "UP038",   # isinstance(x, (A, B)) is faster than isinstance(x, A | B) — deprecated in ruff 0.9+
     "UP042",   # Prefer StrEnum over (str, Enum) — deferred refactor
 ]
 
@@ -97,9 +96,10 @@ strict_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 show_error_codes = true
+disable_error_code = ["import-untyped"]
 
 [[tool.mypy.overrides]]
-module = "tqdm.*"
+module = ["yaml.*", "tqdm.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

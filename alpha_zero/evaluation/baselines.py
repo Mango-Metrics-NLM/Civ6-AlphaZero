@@ -467,7 +467,7 @@ class NeuralNetworkPlayer:
     ) -> int:
         """Select action using MCTS."""
         assert self.mcts is not None
-        action_probs, _ = self.mcts.search(env, add_noise=False)  # type: ignore[arg-type]
+        action_probs, _ = self.mcts.search(env, add_noise=False)
 
         # Apply temperature
         if self.temperature > 0:
@@ -477,7 +477,7 @@ class NeuralNetworkPlayer:
         else:
             action = int(np.argmax(action_probs))
 
-        return action
+        return int(action)
 
     def _select_with_policy(
         self,
@@ -521,7 +521,7 @@ class NeuralNetworkPlayer:
         else:
             action = int(np.argmax(policy))
 
-        return action
+        return int(action)
 
     def reset(self) -> None:
         """Reset player state for new game."""

@@ -368,15 +368,12 @@ class CostOptimizationManager:
     def _register_callbacks(self) -> None:
         """Register internal callbacks between components."""
 
-        # Notify idle manager when job completes checkpoint
-        def on_checkpoint(path: str) -> None:
-            self._checkpoints += 1
-            logger.debug(f"Checkpoint saved: {path}")
-
-        self.preemption_handler.register_checkpoint_callback(on_checkpoint)
+        # PreemptionHandler manages its own checkpointing internally
+        # via start_checkpoint_timer() and handle_preemption().
+        # Checkpoint count is tracked via get_statistics() if needed.
 
         # Notify cost monitor of idle savings
-        def on_job_stopped(job_name: str) -> None:
+        def on_job_stopped(job_name: str, _status: Any) -> None:
             self._idle_hours_saved += 0.25  # Assume ~15 min saved per stop
             logger.debug(f"Job stopped for idle: {job_name}")
 
@@ -412,12 +409,12 @@ class CostOptimizationManager:
         # Get GPU selection from scheduler
         gpu_selection = self.gpu_scheduler.select_gpu(
             job_type=job_type,
-            iteration=iteration,
+            current_iteration=iteration,
             total_iterations=total_iterations,
         )
 
         gpu_type = gpu_selection.gpu_type
-        use_spot = self.config.enable_spot_vms and gpu_selection.prefer_spot
+        use_spot = self.config.enable_spot_vms and gpu_selection.use_spot
 
         # Check quota availability
         region = self.config.default_region
@@ -460,7 +457,7 @@ class CostOptimizationManager:
             region=region,
             checkpoint_interval=checkpoint_interval,
             estimated_cost_per_hour=estimated_cost,
-            reason=f"Phase: {gpu_selection.phase.value}, Spot: {use_spot}",
+            reason=f"{gpu_selection.reason}, Spot: {use_spot}",
         )
 
     async def start_monitoring(self) -> None:

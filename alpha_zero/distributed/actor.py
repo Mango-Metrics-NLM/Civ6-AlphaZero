@@ -235,7 +235,7 @@ class SelfPlayActor:
         # Play until game ends
         while True:
             # Get MCTS policy
-            action_probs, _ = self.mcts.search(self.env)  # type: ignore[arg-type]
+            action_probs, _ = self.mcts.search(self.env)
 
             # Compute shaped reward for this state
             shaped_reward = 0.0

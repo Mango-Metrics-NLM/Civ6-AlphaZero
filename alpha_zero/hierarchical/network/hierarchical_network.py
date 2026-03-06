@@ -210,7 +210,7 @@ if TORCH_AVAILABLE:
 
             # Output projection
             out = F.relu(self.layer_norm(self.fc1(combined)))
-            return self.fc2(out)  # type: ignore[no-any-return]
+            return self.fc2(out)
 
     class LevelNetwork(nn.Module):
         """Neural network for a specific hierarchy level.
@@ -381,7 +381,7 @@ if TORCH_AVAILABLE:
             spatial_features = self.spatial_fc(x.flatten(1))
             vector_features = self.vector_encoder(vector)
 
-            return self.state_combiner(torch.cat([spatial_features, vector_features], dim=-1))  # type: ignore[no-any-return]
+            return self.state_combiner(torch.cat([spatial_features, vector_features], dim=-1))
 
     class HierarchicalNetwork(nn.Module):
         """Multi-level hierarchical neural network.

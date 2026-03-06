@@ -749,3 +749,85 @@ class TestProperties:
         expected = population_manager.config.population_size
         assert population_manager.population_size == expected
         assert len(population_manager) == expected
+
+
+class TestCleanupOldCheckpoints:
+    """Tests for cleanup_old_checkpoints method."""
+
+    def test_cleanup_nonexistent_dir(self, population_manager: PopulationManager) -> None:
+        """No-op when checkpoint directory does not exist."""
+        population_manager.cleanup_old_checkpoints("/nonexistent/path")
+        # Should not raise
+
+    def test_cleanup_fewer_than_keep_last(self, population_manager: PopulationManager) -> None:
+        """No deletion when checkpoints count <= keep_last."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            for i in range(2):
+                d = base / f"ckpt_{i}"
+                d.mkdir()
+                (d / "metadata.json").write_text("{}")
+
+            population_manager.cleanup_old_checkpoints(base, keep_last=3)
+            remaining = [d for d in base.iterdir() if d.is_dir()]
+            assert len(remaining) == 2
+
+    def test_cleanup_removes_oldest(self, population_manager: PopulationManager) -> None:
+        """Oldest checkpoints are removed, most recent kept."""
+        import time
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            dirs = []
+            for i in range(5):
+                d = base / f"ckpt_{i}"
+                d.mkdir()
+                (d / "metadata.json").write_text("{}")
+                dirs.append(d)
+                time.sleep(0.05)  # Ensure different mtime
+
+            population_manager.cleanup_old_checkpoints(base, keep_last=2)
+            remaining = sorted(d.name for d in base.iterdir() if d.is_dir())
+            assert len(remaining) == 2
+            # Most recent two should survive
+            assert "ckpt_3" in remaining
+            assert "ckpt_4" in remaining
+
+    def test_cleanup_custom_keep_last(self, population_manager: PopulationManager) -> None:
+        """Custom keep_last value is respected."""
+        import time
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            for i in range(4):
+                d = base / f"ckpt_{i}"
+                d.mkdir()
+                (d / "metadata.json").write_text("{}")
+                time.sleep(0.05)
+
+            population_manager.cleanup_old_checkpoints(base, keep_last=1)
+            remaining = [d for d in base.iterdir() if d.is_dir()]
+            assert len(remaining) == 1
+
+    def test_cleanup_ignores_non_checkpoint_dirs(
+        self, population_manager: PopulationManager
+    ) -> None:
+        """Directories without metadata.json are not counted or removed."""
+        import time
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            # Non-checkpoint dir
+            (base / "logs").mkdir()
+
+            for i in range(3):
+                d = base / f"ckpt_{i}"
+                d.mkdir()
+                (d / "metadata.json").write_text("{}")
+                time.sleep(0.05)
+
+            population_manager.cleanup_old_checkpoints(base, keep_last=2)
+            remaining = [d for d in base.iterdir() if d.is_dir()]
+            # 2 checkpoints + 1 non-checkpoint dir = 3
+            assert len(remaining) == 3
+            assert (base / "logs").exists()

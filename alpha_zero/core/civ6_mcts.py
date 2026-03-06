@@ -642,6 +642,8 @@ class SimpleMCTS:
         num_simulations: int = 50,
         c_puct: float = 1.5,
         rollout_depth: int = DEFAULT_ROLLOUT_DEPTH,
+        dirichlet_alpha: float = 0.3,
+        dirichlet_epsilon: float = 0.25,
     ) -> None:
         """Initialize simple MCTS.
 
@@ -649,10 +651,14 @@ class SimpleMCTS:
             num_simulations: Number of MCTS simulations.
             c_puct: Exploration constant.
             rollout_depth: Maximum rollout depth.
+            dirichlet_alpha: Dirichlet noise alpha for root exploration.
+            dirichlet_epsilon: Weight of Dirichlet noise at root.
         """
         self.num_simulations = num_simulations
         self.c_puct = c_puct
         self.rollout_depth = rollout_depth
+        self.dirichlet_alpha = dirichlet_alpha
+        self.dirichlet_epsilon = dirichlet_epsilon
         self._rng = np.random.default_rng()
         self._search_count = 0
         logger.debug(
@@ -1593,9 +1599,9 @@ class MuZeroMCTS:
                 use_categorical_reward=getattr(net_config, "use_categorical_reward", True),
                 reward_support_size=getattr(net_config, "reward_support_size", 601),
             )
-            return cls(network, synced_config, device)  # type: ignore[arg-type]
+            return cls(network, synced_config, device)
 
-        return cls(network, base_config, device)  # type: ignore[arg-type]
+        return cls(network, base_config, device)
 
     def _convert_reward_to_scalar(self, reward: torch.Tensor) -> float:
         """Convert network reward output to scalar value.
@@ -1629,7 +1635,7 @@ class MuZeroMCTS:
                         reward.unsqueeze(0),
                         apply_softmax=True,
                     )
-                    return scalar_reward[0].item()
+                    return float(scalar_reward[0].item())
                 else:
                     raise ValueError(
                         f"Expected categorical reward with support_size={self.config.reward_support_size}, "
@@ -1646,17 +1652,17 @@ class MuZeroMCTS:
                     reward,
                     apply_softmax=True,
                 )
-                return scalar_reward[0].item()
+                return float(scalar_reward[0].item())
             else:
                 raise ValueError(f"Unexpected categorical reward shape: {reward.shape}")
         else:
             # Expect scalar reward: shape (), (1,), (B,), or (B, 1)
             if reward.dim() == 0:
-                return reward.item()
+                return float(reward.item())
             elif reward.dim() == 1:
-                return reward[0].item()
+                return float(reward[0].item())
             elif reward.dim() == 2 and reward.shape[1] == 1:
-                return reward[0, 0].item()
+                return float(reward[0, 0].item())
             else:
                 raise ValueError(
                     f"use_categorical_reward=False but got unexpected reward shape {reward.shape}. "
@@ -2083,7 +2089,7 @@ class MuZeroMCTS:
                 node.hidden_state,
                 mask_tensor.unsqueeze(0),
             )
-        return value.item()
+        return float(value.item())
 
     def _backpropagate(self, search_path: list[MuZeroNode], value: float) -> None:
         """Backpropagate value through search path.

@@ -248,7 +248,7 @@ class SearchStats:
             return policy
 
         counts = self.visit_counts ** (1.0 / temperature)
-        return counts / (counts.sum() + 1e-8)  # type: ignore[no-any-return]
+        return counts / (counts.sum() + 1e-8)
 
 
 class MCTSNode:
@@ -745,11 +745,11 @@ class HierarchicalMCTS:
 
         # Renormalize
         noisy_priors = noisy_priors * valid_actions
-        return noisy_priors / (noisy_priors.sum() + 1e-8)  # type: ignore[no-any-return]
+        return noisy_priors / (noisy_priors.sum() + 1e-8)
 
     def _get_valid_actions(self, state: dict[str, Any]) -> np.ndarray:
         """Get valid action mask for state."""
-        return state.get("action_mask", np.ones(356))  # type: ignore[no-any-return]
+        return state.get("action_mask", np.ones(356))
 
     def _default_state_transition(
         self,

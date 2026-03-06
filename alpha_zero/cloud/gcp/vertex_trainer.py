@@ -56,8 +56,8 @@ try:
     VERTEX_AVAILABLE = True
 except ImportError:
     VERTEX_AVAILABLE = False
-    aiplatform = None  # type: ignore
-    CustomJob = None  # type: ignore
+    aiplatform = None
+    CustomJob = None
 
 
 class VertexTrainer:
@@ -255,7 +255,7 @@ class VertexTrainer:
             timeout=timeout_seconds,
         )
 
-        return job.resource_name
+        return str(job.resource_name)
 
     def get_job_status(self, job_id: str) -> TrainingJobInfo:
         """Get the current status of a training job.

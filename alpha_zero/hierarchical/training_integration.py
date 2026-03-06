@@ -129,7 +129,6 @@ class HierarchicalTrainingIntegration:
 
     def _create_controller(self) -> None:
         """Create the hierarchical controller."""
-        h_config = self.config.hierarchical_config or HierarchicalConfig.default()
         self.controller = create_hierarchical_controller(
             preset="default",
             llm_advisor=self.llm_advisor,
@@ -325,7 +324,7 @@ class HierarchicalTrainingIntegration:
         # Add value estimate metrics
         for level, values in self.state.level_value_estimates.items():
             if values:
-                metrics[f"hierarchical/value_{level}"] = np.mean(values[-100:])  # type: ignore[assignment]
+                metrics[f"hierarchical/value_{level}"] = np.mean(values[-100:])
 
         # Save checkpoint if needed
         if (

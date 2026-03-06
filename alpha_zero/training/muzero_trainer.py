@@ -915,7 +915,7 @@ class MuZeroTrainer:
         """
         if self.config.use_muzero_network and hasattr(self.network, "initial_inference"):
             # MuZero network: use initial_inference
-            output = self.network.initial_inference(  # type: ignore[operator]
+            output = self.network.initial_inference(
                 batch.spatial,
                 batch.vector,
                 batch.action_mask,
@@ -959,7 +959,7 @@ class MuZeroTrainer:
         """
         if self.config.use_muzero_network and hasattr(self.network, "recurrent_inference"):
             # MuZero network: use recurrent_inference
-            next_hidden, reward, policy_logits, value = self.network.recurrent_inference(  # type: ignore[operator]
+            next_hidden, reward, policy_logits, value = self.network.recurrent_inference(
                 hidden_state,
                 action,
                 action_mask,
@@ -1102,12 +1102,12 @@ class MuZeroTrainer:
                     with torch.no_grad():
                         if hasattr(self.network, "representation"):
                             # MuZero network: use representation function
-                            actual_next_hidden = self.network.representation(  # type: ignore[operator]
+                            actual_next_hidden = self.network.representation(
                                 next_obs_spatial, next_obs_vector
                             )
                         else:
                             # AlphaZero fallback: use initial inference
-                            output = self.network.initial_inference(  # type: ignore[operator]
+                            output = self.network.initial_inference(
                                 next_obs_spatial, next_obs_vector
                             )
                             # Handle both tuple and namedtuple/object returns
@@ -1118,14 +1118,14 @@ class MuZeroTrainer:
                             else:
                                 actual_next_hidden = output
                         # Project the actual next observation representation (stop gradient)
-                        proj_target = self.network.project(actual_next_hidden).detach()  # type: ignore[operator]
+                        proj_target = self.network.project(actual_next_hidden).detach()
 
                     # Project dynamics prediction (dynamics model's predicted next state)
-                    proj_dynamics = self.network.project(all_hidden_states[k])  # type: ignore[operator]
+                    proj_dynamics = self.network.project(all_hidden_states[k])
 
                     # Apply prediction head (SimSiam-style asymmetry)
                     if hasattr(self.network, "predict_projection"):
-                        proj_prediction = self.network.predict_projection(proj_dynamics)  # type: ignore[operator]
+                        proj_prediction = self.network.predict_projection(proj_dynamics)
                     else:
                         proj_prediction = proj_dynamics
 

@@ -12,6 +12,7 @@ Usage:
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -176,7 +177,7 @@ class HumanInterfaceConfig:
         """
         config_dict = (base_config or cls()).to_dict()
 
-        env_mapping = {
+        env_mapping: dict[str, tuple[str, Callable[[str], Any]]] = {
             "CIV6AZ_HUMAN_THINKING_TIME_SECONDS": ("thinking_time_seconds", float),
             "CIV6AZ_HUMAN_MAX_THINKING_TIME": ("max_thinking_time", float),
             "CIV6AZ_HUMAN_SHOW_AI_EVALUATION": (

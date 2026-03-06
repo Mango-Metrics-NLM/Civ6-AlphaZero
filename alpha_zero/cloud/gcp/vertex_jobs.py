@@ -222,7 +222,7 @@ class VertexAIClient:
             job.submit(**submit_kwargs)
 
             logger.info("Submitted job: %s (resource: %s)", spec.display_name, job.resource_name)
-            return job.resource_name
+            return str(job.resource_name)
 
         except Exception as e:
             error_msg = str(e).lower()
@@ -328,14 +328,14 @@ class VertexAIClient:
                 parallel_trial_count=parallel_trial_count,
             )
 
-            tuning_job.submit(service_account=spec.service_account)  # type: ignore[attr-defined]
+            tuning_job.submit(service_account=spec.service_account)
 
             logger.info(
                 "Submitted tuning job: %s (resource: %s)",
                 spec.display_name,
                 tuning_job.resource_name,
             )
-            return tuning_job.resource_name
+            return str(tuning_job.resource_name)
 
         except Exception as e:
             raise VertexJobError(

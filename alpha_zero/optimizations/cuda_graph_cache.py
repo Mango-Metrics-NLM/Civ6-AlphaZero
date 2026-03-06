@@ -136,7 +136,8 @@ class CUDAGraphCache:
 
         # Fast path: no CUDA or disabled
         if not self._use_cuda or not self.config.enabled:
-            return self.network.predict(spatial, vector, action_mask)
+            result = self.network.predict(spatial, vector, action_mask)
+            return (result[0], result[1])
 
         # Fast path: cached graph exists
         if batch_size in self._graphs:
@@ -166,10 +167,11 @@ class CUDAGraphCache:
         # Try to capture new graph if we have space
         if len(self._graphs) < self.config.max_cached_sizes:
             start_time = time.perf_counter()
-            cached = self._capture_graph(batch_size, spatial, vector, action_mask)
+            captured = self._capture_graph(batch_size, spatial, vector, action_mask)
             capture_time_ms = (time.perf_counter() - start_time) * 1000
 
-            if cached is not None:
+            if captured is not None:
+                cached = captured
                 self._graphs[batch_size] = cached
                 logger.info(
                     "Captured CUDA graph for batch_size=%d (%.2f ms)",
@@ -192,7 +194,8 @@ class CUDAGraphCache:
             )
 
         # Fallback to direct predict
-        return self.network.predict(spatial, vector, action_mask)
+        result = self.network.predict(spatial, vector, action_mask)
+        return (result[0], result[1])
 
     def _capture_graph(
         self,

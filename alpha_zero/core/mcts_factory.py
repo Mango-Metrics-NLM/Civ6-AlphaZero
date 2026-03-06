@@ -34,7 +34,7 @@ import dataclasses
 import inspect
 import logging
 from enum import Enum
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import numpy as np
 import torch
@@ -64,12 +64,14 @@ class MCTSProtocol(Protocol):
         self,
         env_or_obs: Any,
         add_noise: bool = True,
+        action_mask: np.ndarray | None = None,
     ) -> tuple[np.ndarray, float]:
         """Run MCTS search and return policy and value.
 
         Args:
             env_or_obs: Environment instance or observation dict.
             add_noise: Whether to add exploration noise at root.
+            action_mask: Optional mask for valid actions.
 
         Returns:
             Tuple of (action_probabilities, root_value).
@@ -171,10 +173,10 @@ def create_mcts(
     )
 
     if variant == "simple":
-        return SimpleMCTS(
+        return cast(MCTSProtocol, SimpleMCTS(
             num_simulations=num_simulations,
             **kwargs,
-        )
+        ))
 
     if network is None:
         raise ValueError(f"Network is required for {variant} MCTS variant")
@@ -210,7 +212,7 @@ def create_mcts(
         config = config_cls(**config_kwargs)
 
     # Filter remaining kwargs to only include params the MCTS class __init__ accepts
-    valid_init_params = set(inspect.signature(mcts_cls.__init__).parameters.keys()) - {
+    valid_init_params = set(inspect.signature(mcts_cls).parameters.keys()) - {
         "self",
         "network",
         "config",
@@ -226,7 +228,7 @@ def create_mcts(
             f"Valid config fields: {valid_fields}, valid init params: {valid_init_params}"
         )
 
-    return mcts_cls(network=network, config=config, device=device, **filtered_kwargs)
+    return cast(MCTSProtocol, mcts_cls(network=network, config=config, device=device, **filtered_kwargs))
 
 
 def get_default_config(variant: str | MCTSVariant) -> Any:

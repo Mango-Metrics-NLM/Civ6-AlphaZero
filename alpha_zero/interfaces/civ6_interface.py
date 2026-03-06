@@ -83,7 +83,7 @@ class Civ6Interface(BaseGameInterface):
                 max_turns=500,
                 observation_channels=84,
                 vector_dim=512,
-                action_space_size=None,  # Will be set from env
+                action_space_size=0,  # Will be set from env
             )
 
         super().__init__(config)
@@ -378,4 +378,4 @@ def register_civ6_backend() -> None:
     from alpha_zero.interfaces.base_interface import GameAdapter
 
     GameAdapter.register_backend("civ6", Civ6Interface)
-    GameAdapter.register_backend("civ6_mock", _create_mock_civ6_interface)
+    GameAdapter.register_backend("civ6_mock", _create_mock_civ6_interface)  # type: ignore[arg-type]

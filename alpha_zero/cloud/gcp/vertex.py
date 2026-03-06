@@ -26,8 +26,8 @@ try:
 
     VERTEX_AVAILABLE = True
 except ImportError:
-    aiplatform = None  # type: ignore[assignment]
-    CustomJob = None  # type: ignore[assignment, misc]
+    aiplatform = None
+    CustomJob = None
 
 
 class JobStatus(Enum):
@@ -310,7 +310,7 @@ class VertexAITrainer:
 
             self._jobs[job.resource_name] = job
             logger.info("Submitted Vertex AI job: %s", job.resource_name)
-            return job.resource_name
+            return str(job.resource_name)
 
         except Exception as e:
             raise CloudConnectionError(

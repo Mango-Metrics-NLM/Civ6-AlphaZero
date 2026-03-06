@@ -455,7 +455,7 @@ class AlertManager:
                 json=payload,
                 timeout=10,
             )
-            return response.status_code == 200
+            return bool(response.status_code == 200)
 
         except ImportError:
             logger.warning("requests library not installed, Slack alerts disabled")

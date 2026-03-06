@@ -18,12 +18,9 @@ from typing import Any
 
 from alpha_zero.cloud.config import CloudConfig
 from alpha_zero.cloud.exceptions import CloudStorageError, PreemptionError
-from alpha_zero.cloud.gcp import (
-    CloudLogger,
-    CloudMetricsExporter,
-    GCSCheckpointManager,
-    PreemptionHandler,
-)
+from alpha_zero.cloud.gcp.monitoring import CloudLogger, CloudMetricsExporter
+from alpha_zero.cloud.gcp.preemption import PreemptionHandler
+from alpha_zero.cloud.gcs_storage import GCSCheckpointManager
 from alpha_zero.distributed.coordinator import CoordinatorConfig, TrainingCoordinator
 
 logger = logging.getLogger(__name__)
@@ -143,8 +140,11 @@ class CloudTrainingCoordinator(TrainingCoordinator):
             # Initialize GCS checkpoint manager
             if self._cloud_coordinator_config.enable_cloud_checkpoints:
                 try:
+                    bucket = getattr(self._cloud_config, "bucket_name", "")
+                    prefix = getattr(self._cloud_config, "checkpoint_prefix", "checkpoints")
                     self._gcs_manager = GCSCheckpointManager(
-                        self._cloud_config,
+                        bucket_name=bucket,
+                        prefix=prefix,
                         force_mock=force_mock,
                     )
                     logger.info("GCS checkpoint manager initialized")
@@ -263,14 +263,16 @@ class CloudTrainingCoordinator(TrainingCoordinator):
         # Try cloud if enabled
         if from_cloud and self._gcs_manager:
             try:
+                remote_key: str | None = None
                 if path:
                     remote_key = path
                 else:
-                    remote_key = self._gcs_manager.get_latest_checkpoint()
+                    latest_iter = self._gcs_manager.get_latest_iteration()
+                    remote_key = str(latest_iter) if latest_iter is not None else None
 
                 if remote_key:
-                    local_path = Path(self.config.checkpoint_dir) / Path(remote_key).name
-                    downloaded = self._gcs_manager.download_checkpoint(remote_key, local_path)
+                    local_path = Path(self.config.checkpoint_dir) / f"checkpoint_{remote_key}"
+                    downloaded = self._gcs_manager.download_checkpoint(int(remote_key), local_path)
                     if downloaded.exists():
                         return super().load_checkpoint(str(downloaded))
 
@@ -327,13 +329,11 @@ class CloudTrainingCoordinator(TrainingCoordinator):
 
                 # Force immediate upload
                 if self._gcs_manager:
-                    remote_key = f"{self._cloud_config.checkpoint_prefix}emergency_step_{step}.pt"  # type: ignore[union-attr]
                     self._gcs_manager.upload_checkpoint(
                         checkpoint_path,
-                        remote_key,
-                        metadata={"preemption": "true", "step": str(step)},
+                        iteration=step,
                     )
-                    logger.info("Emergency checkpoint uploaded: %s", remote_key)
+                    logger.info("Emergency checkpoint uploaded for step %d", step)
 
         except Exception as e:
             logger.error("Failed to save emergency checkpoint: %s", e)
@@ -370,9 +370,15 @@ class CloudTrainingCoordinator(TrainingCoordinator):
             try:
                 path = Path(local_path)
                 if path.exists():
-                    remote_key = f"{self._cloud_config.checkpoint_prefix}{path.name}"  # type: ignore[union-attr]
-                    self._gcs_manager.upload_checkpoint(local_path, remote_key)
-                    logger.debug("Uploaded checkpoint: %s", remote_key)
+                    # Extract iteration number from filename if possible
+                    iteration = 0
+                    parts = path.stem.split("_")
+                    for part in reversed(parts):
+                        if part.isdigit():
+                            iteration = int(part)
+                            break
+                    self._gcs_manager.upload_checkpoint(local_path, iteration=iteration)
+                    logger.debug("Uploaded checkpoint: %s", path.name)
             except Exception as e:
                 logger.warning("Failed to upload checkpoint %s: %s", local_path, e)
 

@@ -194,7 +194,7 @@ def self_play_game(
 
     while True:
         # Get MCTS policy
-        action_probs, _ = mcts.search(env)  # type: ignore[arg-type]
+        action_probs, _ = mcts.search(env)
 
         # Store state and policy
         game_history.append(
@@ -275,7 +275,7 @@ def run_self_play(
             temperature=config.temperature,
             temperature_threshold=config.temperature_threshold,
         )
-        mcts = GumbelMCTS(network, gumbel_config, device=config.device)  # type: ignore[arg-type]
+        mcts = GumbelMCTS(network, gumbel_config, device=config.device)
         logger.info(f"Using Gumbel MuZero MCTS with {config.gumbel_num_simulations} simulations")
     else:
         mcts_config = MCTSConfig(
@@ -286,7 +286,7 @@ def run_self_play(
             temperature=config.temperature,
             temperature_threshold=config.temperature_threshold,
         )
-        mcts = Civ6MCTS(network, mcts_config, device=config.device)  # type: ignore[arg-type]
+        mcts = Civ6MCTS(network, mcts_config, device=config.device)
 
     for _ in tqdm(range(num_games), desc="Self-play"):
         game_examples = self_play_game(env, mcts, config)
@@ -376,7 +376,7 @@ def evaluate_against_random(
     """
     env = MicroCivEnv(board_size=config.board_size, max_turns=config.max_turns)
     mcts_config = MCTSConfig(num_simulations=config.num_simulations // 2)
-    mcts = Civ6MCTS(network, mcts_config, device=config.device)  # type: ignore[arg-type]
+    mcts = Civ6MCTS(network, mcts_config, device=config.device)
 
     wins = 0
     rng = np.random.default_rng()
@@ -388,7 +388,7 @@ def evaluate_against_random(
         while True:
             if env.current_player == network_player:
                 # Network's turn
-                action_probs, _ = mcts.search(env, add_noise=False)  # type: ignore[arg-type]
+                action_probs, _ = mcts.search(env, add_noise=False)
                 action = mcts.select_action(action_probs, temperature=0.0)
             else:
                 # Random player's turn

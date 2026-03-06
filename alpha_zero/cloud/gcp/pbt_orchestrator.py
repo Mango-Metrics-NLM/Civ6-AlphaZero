@@ -791,8 +791,8 @@ def _local_arena_runner(
         model_old = _prepare_model(agent_old)
 
         results = run_arena(
-            model_new=model_new,
-            model_old=model_old,
+            model_a=model_new,
+            model_b=model_old,
             num_games=num_games,
             mcts_type="gumbel",
             mcts_sims=25,
@@ -805,10 +805,10 @@ def _local_arena_runner(
         return MatchResult(
             agent_id_new=agent_new.agent_id,
             agent_id_old=agent_old.agent_id,
-            win_rate=results["win_rate"],
-            draw_rate=results["draw_rate"],
-            loss_rate=results["loss_rate"],
-            total_games=int(results["total_games"]),
+            win_rate=results.win_rate,
+            draw_rate=results.draw_rate,
+            loss_rate=results.loss_rate,
+            total_games=results.total_games,
         )
 
     except ImportError:

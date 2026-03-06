@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "feature/*", "next-steps-*"]
+    branches: [main, "feature/*", "next-steps-*", "claude/*"]
   pull_request:
     branches: [main]
 
@@ -27,8 +27,10 @@ jobs:
       - name: Run ruff formatter check
         run: ruff format --check alpha_zero/
 
+      - name: Install type stubs
+        run: pip install types-PyYAML types-tqdm types-setuptools
+
       - name: Run mypy type checker
-        continue-on-error: true
         run: mypy alpha_zero/ --ignore-missing-imports --show-error-codes
 
   test:

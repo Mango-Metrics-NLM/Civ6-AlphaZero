@@ -33,7 +33,7 @@ try:
 
     _PSUTIL_AVAILABLE = True
 except ImportError:
-    psutil = None  # type: ignore[assignment]
+    psutil = None
     _PSUTIL_AVAILABLE = False
 
 from alpha_zero.cloud.gcp.config import (
@@ -974,7 +974,7 @@ def run_batch_selfplay(
 
             # Batch MCTS search
             try:
-                results = batch_mcts.batch_search(envs, add_noise=False)
+                results = batch_mcts.batch_search(envs, add_noise=False)  # type: ignore[arg-type]
             except Exception as e:
                 logger.error("Batch search failed at turn %d: %s", turn, e, exc_info=True)
                 if device != "cpu":

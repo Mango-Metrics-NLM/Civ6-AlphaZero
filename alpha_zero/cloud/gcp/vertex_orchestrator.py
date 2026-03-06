@@ -34,7 +34,7 @@ import os
 import random
 import sys
 import time
-from typing import Final
+from typing import Any, Final
 
 from alpha_zero.cloud.gcp.config import (
     DEFAULT_MCTS_TYPE,
@@ -835,8 +835,8 @@ def _apply_model_subsampling(
 
 
 def _log_tournament_to_wandb(
-    wandb_logger: object | None,
-    tournament_results: dict,
+    wandb_logger: Any | None,
+    tournament_results: dict[str, Any],
 ) -> None:
     """Log tournament results to W&B.
 
@@ -908,7 +908,7 @@ def _run_tournament_cloud(
 
         backend = GCSBackend(config.project_id)
         data = backend.download_blob(config.bucket, "tournament/post_run_results.json")
-        return json.loads(data.decode("utf-8"))
+        return dict(json.loads(data.decode("utf-8")))
     except Exception as e:
         logger.warning("Failed to load cloud tournament results from GCS: %s", e)
         return {}
@@ -1143,6 +1143,9 @@ def main() -> int:
         # --- Container image pre-flight validation ---
         if not args.dry_run and not getattr(args, "skip_image_validation", False):
             image_uri = config.container_image_uri
+            if image_uri is None:
+                logger.error("container_image_uri is not configured")
+                return 1
             logger.info("Validating container image: %s", image_uri)
             val_result = validate_container_image(image_uri)
             if not val_result.exists:

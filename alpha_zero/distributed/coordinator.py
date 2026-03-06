@@ -474,7 +474,7 @@ class TrainingCoordinator:
 
             while True:
                 if env.current_player == network_player:
-                    action_probs, _ = mcts.search(env, add_noise=False)  # type: ignore[arg-type]
+                    action_probs, _ = mcts.search(env, add_noise=False)
                     action = mcts.select_action(action_probs, temperature=0.0)
                 else:
                     mask = env.get_valid_actions()

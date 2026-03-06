@@ -29,7 +29,7 @@ try:
 
     _WANDB_AVAILABLE = True
 except ImportError:
-    wandb = None  # type: ignore[assignment]
+    wandb = None
     _WANDB_AVAILABLE = False
 
 

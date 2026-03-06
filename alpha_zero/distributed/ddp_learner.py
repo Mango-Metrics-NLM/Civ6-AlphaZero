@@ -301,7 +301,7 @@ class DDPLearner(Learner):
         # AMP scaler for mixed precision
         self.scaler: GradScaler | None = None
         if config.use_amp:
-            self.scaler = torch.amp.GradScaler("cuda")  # type: ignore[assignment]
+            self.scaler = torch.amp.GradScaler("cuda")
             logger.info(f"Mixed precision enabled with {config.amp_dtype}")
 
         # Statistics
@@ -413,7 +413,7 @@ class DDPLearner(Learner):
             Base network without DDP wrapper.
         """
         if isinstance(self.network, DDP):
-            return self.network.module  # type: ignore[no-any-return]
+            return self.network.module
         return self.network
 
     def get_model(self) -> nn.Module:
@@ -720,7 +720,7 @@ class DDPLearner(Learner):
     def all_reduce(
         self,
         tensor: torch.Tensor,
-        op: dist.ReduceOp = dist.ReduceOp.SUM,  # type: ignore[assignment]
+        op: dist.ReduceOp = dist.ReduceOp.SUM,
     ) -> torch.Tensor:
         """All-reduce a tensor across all processes.
 

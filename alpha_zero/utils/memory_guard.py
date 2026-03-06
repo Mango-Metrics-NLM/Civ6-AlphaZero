@@ -45,7 +45,7 @@ try:
 
     TORCH_AVAILABLE = True
 except ImportError:
-    torch = None  # type: ignore[assignment]
+    torch = None
     TORCH_AVAILABLE = False
 
 # Try to import psutil for CPU memory tracking
@@ -54,7 +54,7 @@ try:
 
     PSUTIL_AVAILABLE = True
 except ImportError:
-    psutil = None  # type: ignore[assignment]
+    psutil = None
     PSUTIL_AVAILABLE = False
 
 

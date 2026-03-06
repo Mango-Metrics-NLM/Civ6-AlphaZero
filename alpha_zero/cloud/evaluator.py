@@ -182,8 +182,6 @@ class CloudEvaluator:
         return SimpleMCTS(
             num_simulations=self.config.num_simulations,
             c_puct=self.config.c_puct,
-            dirichlet_alpha=0.0,  # No exploration noise during evaluation
-            dirichlet_epsilon=0.0,
         )
 
     def _create_environment(self) -> Any:

@@ -244,32 +244,34 @@ class MetricsCollector:
         """
         uptime = (datetime.now(UTC) - self._start_time).total_seconds()
 
-        summary = {
-            "uptime_seconds": uptime,
-            "timers": {},
-            "counters": {},
-            "gauges": {},
-        }
+        timers: dict[str, Any] = {}
+        counters: dict[str, Any] = {}
+        gauges: dict[str, Any] = {}
 
         # Timer stats
         for name in self._timers:
-            summary["timers"][name] = self.get_timer_stats(name)
+            timers[name] = self.get_timer_stats(name)
 
         # Counter values
         for name, counter in self._counters.items():
-            summary["counters"][name] = {
+            counters[name] = {
                 "value": counter.value,
                 "labels": counter.labels,
             }
 
         # Gauge values
         for name, gauge in self._gauges.items():
-            summary["gauges"][name] = {
+            gauges[name] = {
                 "value": gauge.value,
                 "labels": gauge.labels,
             }
 
-        return summary
+        return {
+            "uptime_seconds": uptime,
+            "timers": timers,
+            "counters": counters,
+            "gauges": gauges,
+        }
 
     def reset(self) -> None:
         """Reset all metrics."""

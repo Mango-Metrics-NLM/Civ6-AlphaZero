@@ -4,12 +4,12 @@ from setuptools import find_packages, setup
 
 setup(
     name="alpha_zero",
-    version="0.2.0",
+    version="1.5.0",
     description="AlphaZero-based AI for Civilization VI with RAG integration",
     packages=find_packages(),
-    python_requires=">=3.10",
+    python_requires=">=3.11",
     install_requires=[
-        "torch>=1.13.0",
+        "torch>=2.0.0",
         "numpy>=1.23.0",
         "gymnasium>=0.29.0",
         "pyyaml>=6.0",

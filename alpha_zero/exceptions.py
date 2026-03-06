@@ -354,7 +354,7 @@ class WeightSyncError(DistributedError):
 # =============================================================================
 
 
-def format_exception_chain(exc: Exception) -> str:
+def format_exception_chain(exc: BaseException) -> str:
     """Format exception with its cause chain.
 
     Args:
@@ -364,7 +364,7 @@ def format_exception_chain(exc: Exception) -> str:
         Formatted string showing exception chain.
     """
     messages = []
-    current: Exception | None = exc
+    current: BaseException | None = exc
 
     while current is not None:
         if isinstance(current, Civ6AlphaZeroError):

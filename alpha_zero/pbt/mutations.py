@@ -484,10 +484,10 @@ class CrossoverMutation(BaseMutation):
             lo = min(p1, p2) - self.blend_alpha * d
             hi = max(p1, p2) + self.blend_alpha * d
 
-            return rng.uniform(
+            return float(rng.uniform(
                 max(lo, param_range.min_value),
                 min(hi, param_range.max_value),
-            )
+            ))
 
     def _sbx_crossover(
         self,

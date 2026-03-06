@@ -44,8 +44,8 @@ from alpha_zero.utils.wandb_logger import WandbLogger
 if TYPE_CHECKING:
     from alpha_zero.orchestrator.scheduler import HyperparameterScheduler
     from alpha_zero.training.diagnostics import TrainingDiagnostics
-    from alpha_zero.training.training_profiler import TrainingProfiler
     from alpha_zero.training.training_report import TrainingReport
+    from alpha_zero.utils.logging_config import PerformanceProfiler
 
 logger = logging.getLogger(__name__)
 
@@ -431,8 +431,8 @@ def train_muzero_epoch(
 
         # MuZero initial inference
         if hasattr(model, "representation"):
-            hidden_state = model.representation(spatial_4d, vector)  # type: ignore[operator]
-            policy_logits, value = model.prediction_function(hidden_state)  # type: ignore[operator]
+            hidden_state = model.representation(spatial_4d, vector)
+            policy_logits, value = model.prediction_function(hidden_state)
         else:
             policy_logits, value = model(spatial_4d, vector)
 
@@ -465,11 +465,11 @@ def train_muzero_epoch(
             # Only unroll if we have valid hidden states
             if current_hidden is not None:
                 for k in range(unroll_steps):
-                    dynamics_out = model.dynamics_function(current_hidden, target_actions)  # type: ignore[operator]
+                    dynamics_out = model.dynamics_function(current_hidden, target_actions)
                     current_hidden = dynamics_out.next_hidden_state
 
                     # Prediction from unrolled state
-                    step_policy_logits, step_value = model.prediction_function(current_hidden)  # type: ignore[operator]
+                    step_policy_logits, step_value = model.prediction_function(current_hidden)
 
                     # Accumulate losses with discount
                     discount_factor = discount ** (k + 1)
@@ -630,7 +630,7 @@ def train_epoch(
     lr_scheduler: HyperparameterScheduler | None = None,
     diagnostics: TrainingDiagnostics | None = None,
     report: TrainingReport | None = None,
-    profiler: TrainingProfiler | None = None,
+    profiler: PerformanceProfiler | None = None,
 ) -> tuple[float, float, float, int]:
     """Train for one epoch.
 
@@ -859,7 +859,7 @@ def save_final_model(
         import dataclasses
         from enum import Enum
 
-        model_config_dict = dataclasses.asdict(model.config)  # type: ignore[call-overload]
+        model_config_dict = dataclasses.asdict(model.config)
         # Convert enums to string values for JSON serialization
         for key, value in model_config_dict.items():
             if isinstance(value, Enum):
@@ -1068,19 +1068,19 @@ def main() -> int:
         else:
             param_groups = [
                 {
-                    "params": list(raw_model.encoder.parameters()),  # type: ignore[union-attr]
+                    "params": list(raw_model.encoder.parameters()),
                     "lr": base_lr,
                     "base_lr_ratio": 1.0,
                     "name": "encoder",
                 },
                 {
-                    "params": list(raw_model.policy_head.parameters()),  # type: ignore[union-attr]
+                    "params": list(raw_model.policy_head.parameters()),
                     "lr": base_lr * args.policy_lr_multiplier,
                     "base_lr_ratio": args.policy_lr_multiplier,
                     "name": "policy_head",
                 },
                 {
-                    "params": list(raw_model.value_head.parameters()),  # type: ignore[union-attr]
+                    "params": list(raw_model.value_head.parameters()),
                     "lr": base_lr * args.value_lr_multiplier,
                     "base_lr_ratio": args.value_lr_multiplier,
                     "name": "value_head",
@@ -1206,7 +1206,7 @@ def main() -> int:
             spatial_size = args.board_size
 
             if is_muzero:
-                loss, policy_loss, value_loss, reward_loss, num_batches = train_muzero_epoch(
+                loss, policy_loss, value_loss, _, num_batches = train_muzero_epoch(
                     model,
                     dataloader,
                     optimizer,
@@ -1292,7 +1292,7 @@ def main() -> int:
             logger.info("Training complete in %.1f seconds", total_time)
 
             # Unwrap model if DDP
-            model_to_save: torch.nn.Module = model.module if world_size > 1 else model  # type: ignore[assignment]
+            model_to_save: torch.nn.Module = model.module if world_size > 1 else model
             uri, version = save_final_model(config, model_to_save, args.iteration, args.dry_run)
             logger.info("Saved final model version %d to %s", version, uri)
 

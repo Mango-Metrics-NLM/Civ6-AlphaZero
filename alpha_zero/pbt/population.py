@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -390,6 +391,33 @@ class PopulationManager:
                 # Save weights to separate dir or same
                 weight_path = agents_dir / f"{aid}.weights"
                 self._save_weights_fn(aid, str(weight_path))
+
+    def cleanup_old_checkpoints(
+        self, checkpoint_dir: Path | str, keep_last: int = 3
+    ) -> None:
+        """Remove old checkpoint directories, keeping the most recent ones.
+
+        Args:
+            checkpoint_dir: Parent directory containing checkpoint subdirectories.
+            keep_last: Number of most recent checkpoints to keep.
+        """
+        checkpoint_dir = Path(checkpoint_dir)
+        if not checkpoint_dir.exists():
+            return
+
+        # Collect checkpoint subdirectories (those containing metadata.json)
+        checkpoint_dirs = sorted(
+            (d for d in checkpoint_dir.iterdir() if d.is_dir() and (d / "metadata.json").exists()),
+            key=lambda d: d.stat().st_mtime,
+        )
+
+        if len(checkpoint_dirs) <= keep_last:
+            return
+
+        to_remove = checkpoint_dirs[: len(checkpoint_dirs) - keep_last]
+        for old_dir in to_remove:
+            logger.info(f"Removing old checkpoint: {old_dir}")
+            shutil.rmtree(old_dir)
 
     def load_checkpoint(self, path: Path | str) -> None:
         path = Path(path)

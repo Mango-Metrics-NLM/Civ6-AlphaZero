@@ -223,7 +223,7 @@ class GreedyHeuristicAgent(BaseAgent):
 
         # ATTACK actions (highest priority)
         if action_space.attack_offset <= action < action_space.skip_offset:
-            return self.priority.attack * self.aggression + self._rng.random() * 5
+            return float(self.priority.attack * self.aggression + self._rng.random() * 5)
 
         # FOUND_CITY actions
         if action_space.found_city_offset <= action < action_space.produce_offset:

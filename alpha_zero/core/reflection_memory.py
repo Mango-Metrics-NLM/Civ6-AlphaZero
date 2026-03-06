@@ -285,7 +285,7 @@ class DefaultStateEncoder:
             }
             embeddings.append(self.encode_state(obs))
 
-        return np.mean(embeddings, axis=0).astype(np.float32)  # type: ignore[no-any-return]
+        return np.mean(embeddings, axis=0).astype(np.float32)
 
 
 class ReflectionMemory:

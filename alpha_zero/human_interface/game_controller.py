@@ -389,6 +389,7 @@ class GameController:
         player = self._state.current_player
 
         # Execute action
+        assert self._game_interface is not None, "Game interface not set"
         obs, reward, done, truncated, info = self._game_interface.step(action)
 
         # Create turn result
@@ -420,7 +421,7 @@ class GameController:
         if result.game_over:
             self._state.phase = GamePhase.GAME_OVER
             logger.info(f"Game over. Winner: {result.winner}")
-            if self._on_game_over:
+            if self._on_game_over and result.winner is not None:
                 self._on_game_over(result.winner)
         else:
             # Switch player
@@ -467,7 +468,7 @@ class GameController:
         self._update_valid_actions()
 
         # Restore game interface state if possible
-        if hasattr(self._game_interface, "set_state"):
+        if self._game_interface is not None and hasattr(self._game_interface, "set_state"):
             self._game_interface.set_state(state_before)
 
         logger.debug(f"Undid move. Now at turn {self._state.turn_number}")

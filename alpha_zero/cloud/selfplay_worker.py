@@ -232,8 +232,6 @@ class CloudSelfPlayWorker:
         return SimpleMCTS(
             num_simulations=self.config.num_simulations,
             c_puct=self.config.c_puct,
-            dirichlet_alpha=self.config.dirichlet_alpha,
-            dirichlet_epsilon=self.config.dirichlet_epsilon,
         )
 
     def _play_game(self) -> GameTrajectory:
