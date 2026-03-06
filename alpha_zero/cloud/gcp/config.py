@@ -46,6 +46,10 @@ VALID_MCTS_TYPES: tuple[str, ...] = ("civ6", "gumbel", "batch_gumbel", "muzero")
 # Default MCTS type when none is specified.
 DEFAULT_MCTS_TYPE: str = "gumbel"
 
+# Default batch self-play configuration (Phase 16 infrastructure, enabled in Sprint 6)
+DEFAULT_NUM_PARALLEL_GAMES: int = 4  # Number of parallel games for batch MCTS
+DEFAULT_MAX_BATCH_SIZE: int = 32  # Maximum batch size for network inference
+
 
 def get_gpu_costs() -> dict[str, float]:
     """Get GPU costs, allowing env-var overrides.

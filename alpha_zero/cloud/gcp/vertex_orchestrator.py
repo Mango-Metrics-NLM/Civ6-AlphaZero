@@ -37,7 +37,9 @@ import time
 from typing import Final
 
 from alpha_zero.cloud.gcp.config import (
+    DEFAULT_MAX_BATCH_SIZE,
     DEFAULT_MCTS_TYPE,
+    DEFAULT_NUM_PARALLEL_GAMES,
     VALID_MCTS_TYPES,
     GCPConfig,
     NetworkArchitectureConfig,
@@ -165,17 +167,17 @@ def parse_args() -> argparse.Namespace:
         "--max_turns", type=int, default=50, help="Max game turns before truncation"
     )
 
-    # Vectorized self-play (opt-in, requires batch_gumbel MCTS)
+    # Vectorized self-play (enabled by default in Sprint 6 for 3-5x speedup)
     parser.add_argument(
         "--num_parallel_games",
         type=int,
-        default=1,
-        help="Number of parallel games per worker (1=sequential, >1=vectorized)",
+        default=DEFAULT_NUM_PARALLEL_GAMES,
+        help="Number of parallel games per worker (default=4 for batch MCTS speedup)",
     )
     parser.add_argument(
         "--max_batch_size",
         type=int,
-        default=64,
+        default=DEFAULT_MAX_BATCH_SIZE,
         help="Max batch size for vectorized inference",
     )
 
