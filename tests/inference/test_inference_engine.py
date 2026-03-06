@@ -6,7 +6,7 @@ Tests model loading, caching, and inference logic.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest

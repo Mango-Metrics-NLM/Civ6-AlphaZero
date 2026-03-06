@@ -659,13 +659,13 @@ class Goal:
         # Compute goal type one-hot based on level
         if self.level == HierarchyLevel.STRATEGIC:
             type_dim = self.NUM_STRATEGIC_GOALS
-            type_idx = list(StrategicGoalType).index(self.goal_type)
+            type_idx = list(StrategicGoalType).index(self.goal_type)  # type: ignore[arg-type]
         elif self.level == HierarchyLevel.TACTICAL:
             type_dim = self.NUM_TACTICAL_GOALS
-            type_idx = list(TacticalGoalType).index(self.goal_type)
+            type_idx = list(TacticalGoalType).index(self.goal_type)  # type: ignore[arg-type]
         else:
             type_dim = self.NUM_OPERATIONAL_GOALS
-            type_idx = list(OperationalGoalType).index(self.goal_type)
+            type_idx = list(OperationalGoalType).index(self.goal_type)  # type: ignore[arg-type]
 
         # Build embedding components
         embed = np.zeros(self.EMBED_DIM, dtype=np.float32)

@@ -16,13 +16,11 @@ Run with:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-import torch
 
-from alpha_zero.core.batch_mcts import BatchGumbelMCTS, BatchMCTSConfig
+from alpha_zero.core.batch_mcts import BatchMCTSConfig
 from alpha_zero.envs.vectorized_env import VectorizedEnvConfig, VectorizedMicroCivEnv
 
 # Small config for fast tests

@@ -116,7 +116,11 @@ class GameStateDescriber(Protocol):
         """Convert action index to human-readable description."""
         ...
 
-    def describe_trajectory(self, trajectory: GameTrajectory) -> str:
+    def describe_trajectory(
+        self,
+        trajectory: GameTrajectory,
+        max_states: int = 10,
+    ) -> str:
         """Convert full trajectory to text summary."""
         ...
 

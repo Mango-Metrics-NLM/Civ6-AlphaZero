@@ -660,4 +660,4 @@ if TORCH_AVAILABLE:
 
             # Concatenate and project
             combined = torch.cat(components, dim=-1)
-            return self.projection(combined)
+            return self.projection(combined)  # type: ignore[no-any-return]

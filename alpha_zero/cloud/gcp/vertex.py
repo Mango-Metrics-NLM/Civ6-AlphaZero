@@ -426,8 +426,8 @@ class VertexAITrainer:
             if filter_display_name:
                 filter_str = f'display_name="{filter_display_name}"'
 
-            jobs = aiplatform.CustomJob.list(filter=filter_str)  # type: ignore[union-attr]
-            return [job.resource_name for job in jobs[:max_results]]  # type: ignore[union-attr]
+            jobs = aiplatform.CustomJob.list(filter=filter_str)
+            return [job.resource_name for job in jobs[:max_results]]
         except Exception as e:
             logger.warning("Failed to list jobs: %s", e)
             return []

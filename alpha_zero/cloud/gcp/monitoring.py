@@ -24,14 +24,14 @@ LOGGING_AVAILABLE = False
 MONITORING_AVAILABLE = False
 
 try:
-    from google.cloud import logging as cloud_logging  # type: ignore[import-untyped]
+    from google.cloud import logging as cloud_logging
 
     LOGGING_AVAILABLE = True
 except ImportError:
     cloud_logging = None  # type: ignore[assignment]
 
 try:
-    from google.cloud import monitoring_v3  # type: ignore[import-untyped]
+    from google.cloud import monitoring_v3
 
     MONITORING_AVAILABLE = True
 except ImportError:

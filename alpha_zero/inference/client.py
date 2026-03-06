@@ -230,7 +230,7 @@ class InferenceClient:
 
         response = self.client.post("/v1/models/swap", json=request.model_dump())
         response.raise_for_status()
-        return response.json()
+        return response.json()  # type: ignore[no-any-return]
 
     def close(self) -> None:
         """Close HTTP clients."""

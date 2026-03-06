@@ -128,15 +128,29 @@ class HierarchicalTrainingIntegration:
         )
 
     def _create_controller(self) -> None:
-        """Create the hierarchical controller."""
-        h_config = self.config.hierarchical_config or HierarchicalConfig.default()
-        self.controller = create_hierarchical_controller(
-            preset="default" if h_config is None else None,
-            llm_advisor=self.llm_advisor,
-        )
+        """Create the hierarchical controller.
+
+        Two creation paths:
+        1. Explicit config: When hierarchical_config is provided, it is used
+           directly WITHOUT applying environment variable overrides. This allows
+           users to have full control over the config they pass.
+        2. Factory preset: When no explicit config is given, uses the factory
+           function which DOES apply environment overrides from CIV6AZ_HIERARCHICAL_*
+           variables.
+
+        To use env overrides with an explicit config, call apply_env_overrides()
+        before passing it to HierarchicalTrainingConfig.
+        """
         if self.config.hierarchical_config:
+            # Use explicit config if provided
             self.controller = HierarchicalController(
                 config=self.config.hierarchical_config,
+                llm_advisor=self.llm_advisor,
+            )
+        else:
+            # Use preset factory function for default config
+            self.controller = create_hierarchical_controller(
+                preset="default",
                 llm_advisor=self.llm_advisor,
             )
 
@@ -192,7 +206,7 @@ class HierarchicalTrainingIntegration:
         if not self.config.enabled or self.controller is None:
             # Fall back to flat decision if available
             if self._original_select_action:
-                return self._original_select_action(game_state, valid_actions)
+                return self._original_select_action(game_state, valid_actions)  # type: ignore[no-any-return]
             # Default: random valid action
             valid_indices = np.where(valid_actions > 0)[0]
             action = int(np.random.choice(valid_indices)) if len(valid_indices) > 0 else 0
@@ -203,7 +217,7 @@ class HierarchicalTrainingIntegration:
             if np.random.random() < self.config.flat_decision_probability:
                 self.state.exploration_decisions += 1
                 if self._original_select_action:
-                    return self._original_select_action(game_state, valid_actions)
+                    return self._original_select_action(game_state, valid_actions)  # type: ignore[no-any-return]
 
         # Hierarchical decision
         decision = self.controller.decide(game_state, valid_actions)
@@ -325,7 +339,7 @@ class HierarchicalTrainingIntegration:
         # Add value estimate metrics
         for level, values in self.state.level_value_estimates.items():
             if values:
-                metrics[f"hierarchical/value_{level}"] = np.mean(values[-100:])
+                metrics[f"hierarchical/value_{level}"] = np.mean(values[-100:])  # type: ignore[assignment]
 
         # Save checkpoint if needed
         if (

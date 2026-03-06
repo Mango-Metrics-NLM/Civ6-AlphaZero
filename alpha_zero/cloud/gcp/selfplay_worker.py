@@ -560,7 +560,7 @@ def run_selfplay(
             # Run MCTS with error handling
             try:
                 # Pass env directly since MicroCivEnv implements MCTSEnvironment protocol
-                policy, _ = mcts.search(env)  # type: ignore[arg-type]
+                policy, _ = mcts.search(env)
                 turn = len(trajectory["spatial"])
                 temp = compute_temperature(
                     turn=turn,

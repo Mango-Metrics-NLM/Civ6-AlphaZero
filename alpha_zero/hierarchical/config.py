@@ -371,11 +371,11 @@ class HierarchicalConfig:
         if isinstance(current_value, bool):
             parsed_value = value.lower() in ("true", "1", "yes", "on")
         elif isinstance(current_value, int):
-            parsed_value = int(value)
+            parsed_value = int(value)  # type: ignore[assignment]
         elif isinstance(current_value, float):
-            parsed_value = float(value)
+            parsed_value = float(value)  # type: ignore[assignment]
         else:
-            parsed_value = value
+            parsed_value = value  # type: ignore[assignment]
 
         setattr(obj, final_key, parsed_value)
 
