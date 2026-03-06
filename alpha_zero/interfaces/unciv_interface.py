@@ -988,12 +988,21 @@ class UncivInterface:
         # Load the module directly from file
         module_path = Path(__file__).parent.parent / "core" / "civ6_actions.py"
         spec = importlib.util.spec_from_file_location(module_name, module_path)
-        assert spec is not None, f"Could not find module spec for {module_name}"
+        if spec is None:
+            raise ModuleNotFoundError(
+                f"Cannot find or load module spec for '{module_name}' at {module_path}. "
+                f"Ensure the file exists: {module_path.absolute()}"
+            )
         actions_module = importlib.util.module_from_spec(spec)
 
         # Register in sys.modules BEFORE exec to allow self-references
         sys.modules[module_name] = actions_module
-        assert spec.loader is not None, f"Module spec for {module_name} has no loader"
+        if spec.loader is None:
+            raise ImportError(
+                f"Module loader not found for '{module_name}'. "
+                f"The spec was created but cannot execute the module. "
+                f"This typically means the file format is not supported."
+            )
         spec.loader.exec_module(actions_module)
 
         return actions_module

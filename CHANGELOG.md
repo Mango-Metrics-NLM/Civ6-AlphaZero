@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 58 files changed, +230 / -187 lines
 - ~153 mypy errors fixed (251→~98, **61% reduction**)
-- 6 commits, 0 test regressions
+- 7 commits, 0 test regressions
 
 ## [1.4.0] — 2026-03-05 — Sprint 4: Type Safety Expansion
 

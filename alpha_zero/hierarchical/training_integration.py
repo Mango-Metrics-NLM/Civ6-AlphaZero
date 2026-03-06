@@ -128,7 +128,19 @@ class HierarchicalTrainingIntegration:
         )
 
     def _create_controller(self) -> None:
-        """Create the hierarchical controller."""
+        """Create the hierarchical controller.
+
+        Two creation paths:
+        1. Explicit config: When hierarchical_config is provided, it is used
+           directly WITHOUT applying environment variable overrides. This allows
+           users to have full control over the config they pass.
+        2. Factory preset: When no explicit config is given, uses the factory
+           function which DOES apply environment overrides from CIV6AZ_HIERARCHICAL_*
+           variables.
+
+        To use env overrides with an explicit config, call apply_env_overrides()
+        before passing it to HierarchicalTrainingConfig.
+        """
         if self.config.hierarchical_config:
             # Use explicit config if provided
             self.controller = HierarchicalController(

@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any, cast
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch.cuda.amp import GradScaler
 from torch.nn.parallel import DistributedDataParallel as DDP  # noqa: N817
 
 from alpha_zero.core.civ6_network import MicroCivNetwork, compute_loss
@@ -41,7 +42,7 @@ from alpha_zero.distributed.shared_storage import (
 from alpha_zero.envs.microciv import MicroCivEnv
 
 if TYPE_CHECKING:
-    from torch.cuda.amp import GradScaler
+    pass
 
 logger = logging.getLogger(__name__)
 
