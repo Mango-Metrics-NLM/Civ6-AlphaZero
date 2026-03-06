@@ -131,7 +131,7 @@ class HierarchicalTrainingIntegration:
         """Create the hierarchical controller."""
         h_config = self.config.hierarchical_config or HierarchicalConfig.default()
         self.controller = create_hierarchical_controller(
-            preset="default" if h_config is None else None,
+            preset="default",
             llm_advisor=self.llm_advisor,
         )
         if self.config.hierarchical_config:
@@ -192,7 +192,7 @@ class HierarchicalTrainingIntegration:
         if not self.config.enabled or self.controller is None:
             # Fall back to flat decision if available
             if self._original_select_action:
-                return self._original_select_action(game_state, valid_actions)
+                return self._original_select_action(game_state, valid_actions)  # type: ignore[no-any-return]
             # Default: random valid action
             valid_indices = np.where(valid_actions > 0)[0]
             action = int(np.random.choice(valid_indices)) if len(valid_indices) > 0 else 0
@@ -203,7 +203,7 @@ class HierarchicalTrainingIntegration:
             if np.random.random() < self.config.flat_decision_probability:
                 self.state.exploration_decisions += 1
                 if self._original_select_action:
-                    return self._original_select_action(game_state, valid_actions)
+                    return self._original_select_action(game_state, valid_actions)  # type: ignore[no-any-return]
 
         # Hierarchical decision
         decision = self.controller.decide(game_state, valid_actions)
@@ -325,7 +325,7 @@ class HierarchicalTrainingIntegration:
         # Add value estimate metrics
         for level, values in self.state.level_value_estimates.items():
             if values:
-                metrics[f"hierarchical/value_{level}"] = np.mean(values[-100:])
+                metrics[f"hierarchical/value_{level}"] = np.mean(values[-100:])  # type: ignore[assignment]
 
         # Save checkpoint if needed
         if (
