@@ -129,14 +129,16 @@ class HierarchicalTrainingIntegration:
 
     def _create_controller(self) -> None:
         """Create the hierarchical controller."""
-        h_config = self.config.hierarchical_config or HierarchicalConfig.default()
-        self.controller = create_hierarchical_controller(
-            preset="default",
-            llm_advisor=self.llm_advisor,
-        )
         if self.config.hierarchical_config:
+            # Use explicit config if provided
             self.controller = HierarchicalController(
                 config=self.config.hierarchical_config,
+                llm_advisor=self.llm_advisor,
+            )
+        else:
+            # Use preset factory function for default config
+            self.controller = create_hierarchical_controller(
+                preset="default",
                 llm_advisor=self.llm_advisor,
             )
 

@@ -324,14 +324,14 @@ class MCTSNode:
 
         return q + u
 
-    def select_child(self, c_puct: float) -> tuple[int, MCTSNode]:
+    def select_child(self, c_puct: float) -> tuple[int, MCTSNode | None]:
         """Select child node with highest UCB score.
 
         Args:
             c_puct: Exploration constant.
 
         Returns:
-            Tuple of (action, child_node).
+            Tuple of (action, child_node). Returns (-1, None) if no children.
         """
         best_score = float("-inf")
         best_action = -1
@@ -344,16 +344,16 @@ class MCTSNode:
                 best_action = action
                 best_child = child
 
-        return best_action, best_child  # type: ignore[return-value]
+        return best_action, best_child
 
-    def select_option_child(self, c_puct: float) -> tuple[str, MCTSNode]:
+    def select_option_child(self, c_puct: float) -> tuple[str, MCTSNode | None]:
         """Select option child with highest UCB score.
 
         Args:
             c_puct: Exploration constant.
 
         Returns:
-            Tuple of (option_id, child_node).
+            Tuple of (option_id, child_node). Returns ("", None) if no option children.
         """
         best_score = float("-inf")
         best_id = ""
@@ -366,7 +366,7 @@ class MCTSNode:
                 best_id = opt_id
                 best_child = child
 
-        return best_id, best_child  # type: ignore[return-value]
+        return best_id, best_child
 
     def expand(
         self,

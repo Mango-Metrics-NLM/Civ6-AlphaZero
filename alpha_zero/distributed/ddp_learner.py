@@ -19,7 +19,7 @@ import os
 import time
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import torch
 import torch.distributed as dist
@@ -301,7 +301,7 @@ class DDPLearner(Learner):
         # AMP scaler for mixed precision
         self.scaler: GradScaler | None = None
         if config.use_amp:
-            self.scaler = torch.amp.GradScaler("cuda")  # type: ignore[assignment]
+            self.scaler = GradScaler()
             logger.info(f"Mixed precision enabled with {config.amp_dtype}")
 
         # Statistics
@@ -413,7 +413,7 @@ class DDPLearner(Learner):
             Base network without DDP wrapper.
         """
         if isinstance(self.network, DDP):
-            return self.network.module  # type: ignore[no-any-return]
+            return cast(nn.Module, self.network.module)
         return self.network
 
     def get_model(self) -> nn.Module:

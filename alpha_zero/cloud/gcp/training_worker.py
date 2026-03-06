@@ -1292,7 +1292,7 @@ def main() -> int:
             logger.info("Training complete in %.1f seconds", total_time)
 
             # Unwrap model if DDP
-            model_to_save: torch.nn.Module = model.module if world_size > 1 else model  # type: ignore[assignment]
+            model_to_save: torch.nn.Module = model.module if isinstance(model, DDP) else model
             uri, version = save_final_model(config, model_to_save, args.iteration, args.dry_run)
             logger.info("Saved final model version %d to %s", version, uri)
 

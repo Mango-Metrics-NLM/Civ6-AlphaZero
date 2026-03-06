@@ -102,7 +102,6 @@ class CoordinatorConfig:
     use_ddp: bool = False
     ddp_backend: str = "gloo"  # "gloo" for CPU, "nccl" for GPU
     ddp_world_size: int = 1
-    ddp_gradient_sync_interval: int = 1
 
     @classmethod
     def from_yaml(cls, path: str) -> CoordinatorConfig:
@@ -174,7 +173,6 @@ class CoordinatorConfig:
         flat_config["use_ddp"] = ddp_cfg.get("use_ddp", False)
         flat_config["ddp_backend"] = ddp_cfg.get("backend", "gloo")
         flat_config["ddp_world_size"] = ddp_cfg.get("world_size", 1)
-        flat_config["ddp_gradient_sync_interval"] = ddp_cfg.get("gradient_sync_interval", 1)
 
         return cls(**flat_config)
 

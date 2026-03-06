@@ -1147,7 +1147,7 @@ class HierarchicalPolicyHead(nn.Module):
 
         if return_category_probs:
             return action_logits, category_probs
-        return action_logits  # type: ignore[no-any-return]
+        return action_logits
 
 
 class Civ6NetworkV2(nn.Module):
