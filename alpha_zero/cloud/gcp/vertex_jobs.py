@@ -906,7 +906,7 @@ class VertexEvaluationJob:
             replica_count=1,
             spot=False,
             service_account=self.config.service_account,
-            timeout_seconds=3600,  # 1 hour
+            timeout_seconds=7200,  # 2 hours (eval takes ~60-65min; 1h was too tight)
         )
 
         job_name = self.client.submit_custom_job(
@@ -926,7 +926,7 @@ class VertexEvaluationJob:
     def wait_for_completion(
         self,
         job_name: str | None = None,
-        timeout_seconds: int = 3600,
+        timeout_seconds: int = 7200,  # 2 hours (matches job-level timeout)
     ) -> JobResult:
         """Wait for evaluation job to complete."""
         job = job_name or self._current_job
