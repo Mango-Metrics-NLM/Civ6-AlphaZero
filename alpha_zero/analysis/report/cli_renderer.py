@@ -58,11 +58,11 @@ class CLIRenderer:
             for i, h in enumerate(headers)
         ]
         header_line = " | ".join(
-            h.ljust(w) for h, w in zip(headers, col_widths)
+            h.ljust(w) for h, w in zip(headers, col_widths, strict=False)
         )
         sep_line = "-+-".join("-" * w for w in col_widths)
         row_lines = [
-            " | ".join(str(cell).ljust(w) for cell, w in zip(row, col_widths))
+            " | ".join(str(cell).ljust(w) for cell, w in zip(row, col_widths, strict=False))
             for row in rows
         ]
         return "\n".join(

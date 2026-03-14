@@ -9,9 +9,11 @@ from __future__ import annotations
 import dataclasses
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from alpha_zero.utils.compat import UTC
 
 
 @dataclass
@@ -39,7 +41,7 @@ class JSONExporter:
     def export(self, report: AnalysisReport, output_path: Path) -> None:
         """Write report as JSON to file."""
         if not report.generated_at:
-            report.generated_at = datetime.now(timezone.utc).isoformat()
+            report.generated_at = datetime.now(UTC).isoformat()
         data = self.to_dict(report)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(

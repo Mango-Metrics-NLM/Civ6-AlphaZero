@@ -8,7 +8,7 @@ trains a fresh model instead of fine-tuning the current best).
 from __future__ import annotations
 
 import dataclasses
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from alpha_zero.analysis.data_model import RunData
@@ -130,7 +130,8 @@ class ModelProgressionAnalyzer:
             return False
 
         high_loss_count = sum(
-            1 for it in iters_with_loss if it.total_loss > self._fresh_loss_threshold  # type: ignore[operator]
+            bool(it.total_loss is not None and it.total_loss > self._fresh_loss_threshold)
+            for it in iters_with_loss
         )
         fraction = high_loss_count / len(iters_with_loss)
         return fraction > 0.8
