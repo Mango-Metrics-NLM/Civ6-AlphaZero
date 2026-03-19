@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.1] — 2026-03-18 — Phase 0: Training-from-Scratch Bug Fix
+
+### Fixed
+
+#### Critical: Champion Model Not Loaded Before Training (`training_worker.py`)
+
+- **Root cause**: `training_worker.py` created fresh models with random weights on every
+  training iteration instead of fine-tuning from the champion. The orchestrator never
+  forwarded the champion model version to the training container. This caused 0 promotions
+  and $28.55 wasted across 50 production iterations.
+
+- **`_load_champion_weights(config, model, start_model_version, is_main_process)`** — new
+  helper that loads GCS champion weights into the model *before* `model.to(device)` and
+  *before* optimizer construction, ensuring optimizer receives fine-tuned parameters.
+
+- **Device placement**: Fixed silent CPU weight load after `model.to(CUDA)` by moving
+  champion load to before `model.to(device)`.
+
+- **Bare `Exception` catch**: Changed to `except GCSStorageError` so programming errors
+  (misconfigured `GCPConfig`, etc.) are no longer masked as "no models found in GCS".
+
+- **`model_version=0` sentinel**: `get_initial_model_version()` returns `0` on a fresh
+  pipeline. The orchestrator now correctly suppresses `--start_model_version` when
+  `model_version == 0`, preventing crashes on first-iteration training jobs.
+
+- **DDP synchronization**: Added `dist.barrier()` before `DDP(model)` wrapping to ensure
+  all ranks have completed weight loading before the DDP wrapper is applied.
+
+- **Dead code removal**: Removed `if metadata is not None:` guard — `load_model()` always
+  returns a `ModelMetadata` instance, never `None`.
+
+- **Type safety**: Replaced `getattr(args, "fresh_start", False)` defensive fallbacks with
+  direct `args.fresh_start` / `args.dry_run` / `args.start_model_version` access (args
+  always defined by `parse_args()`, improves mypy type narrowing).
+
+### Added
+
+- **`--start_model_version`** CLI arg to `training_worker.py`: explicit champion version
+  to fine-tune from (default: latest). Raises `RuntimeError` if specified version missing.
+
+- **`--fresh_start`** CLI arg to `training_worker.py`: explicit opt-in to train from random
+  weights. Default is always to load and fine-tune from the current champion.
+
+- **`build_training_extra_args(args, model_version=None)`**: updated to forward
+  `--start_model_version={N}` to the training container when `model_version > 0`.
+
+- **`run_training_phase(..., current_model_version=None)`**: updated signature threads
+  `model_version` from orchestrator main loop through to the training container args.
+
+- **14 regression tests** in `tests/unit/test_training_worker_resume.py`:
+  - `TestLoadChampionWeights` (6 tests): happy path, explicit version, version-exceeds-latest,
+    no-models-in-GCS, architecture mismatch, non-main-process no-log
+  - `TestBuildTrainingExtraArgsModelVersion` (5 tests): version forwarding, None, zero sentinel,
+    backwards compat, positive versions
+  - `TestLoadChampionWeightsEdgeCases` (3 tests): non-GCSStorageError propagates,
+    load older version below latest, CPU device placement verified
+
 ## [1.5.0] — 2026-03-05 — Sprint 5: Type Safety — Breadth-First Mypy Stabilization
 
 ### Changed — Sprint 5

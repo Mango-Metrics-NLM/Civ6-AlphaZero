@@ -140,6 +140,35 @@ gcloud ai custom-jobs cancel JOB_ID --region=us-central1
 gcloud artifacts docker images list us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training
 ```
 
+## Orchestrator VM (Reboot-Resilient)
+
+The orchestrator runs on a cheap GCE VM and dispatches Vertex AI jobs. It auto-resumes after reboots via systemd.
+
+| Property | Value |
+|:---|:---|
+| **VM Name** | `civ6az-orchestrator` |
+| **Machine Type** | `e2-small` (~$15/month) |
+| **Zone** | `us-central1-a` |
+| **Service** | `civ6az-orchestrator.service` (systemd) |
+| **State** | `gs://civ6az-training/orchestrator/state.json` |
+| **Heartbeat** | `gs://civ6az-training/orchestrator/heartbeat.json` |
+
+### Service Management
+
+```bash
+sudo systemctl start civ6az-orchestrator     # Start
+sudo systemctl stop civ6az-orchestrator      # Stop
+sudo systemctl status civ6az-orchestrator    # Status
+journalctl -u civ6az-orchestrator -f         # Live logs
+```
+
+### Resume Behavior
+
+- State checkpointed to GCS after each completed iteration
+- `--resume` flag restores iteration progress, model version, cost accumulator
+- Systemd `Restart=on-failure` auto-restarts crashed processes within 30s
+- VM `Automatic Restart=On` handles hardware/maintenance reboots
+
 ## Teardown
 
 > **Warning**: This deletes ALL resources including training data and models.

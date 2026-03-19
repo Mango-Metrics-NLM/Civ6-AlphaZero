@@ -45,7 +45,8 @@ class TestMicroCivNetwork:
     @pytest.fixture
     def network(self):
         return MicroCivNetwork(
-            board_size=16,
+            spatial_channels=28,  # Sprint 6: 28 channels for N-player support
+            spatial_size=16,  # board_size renamed to spatial_size
             action_space_size=381,
             num_res_blocks=2,
             num_filters=32,
@@ -54,17 +55,17 @@ class TestMicroCivNetwork:
     def test_forward_shapes(self, network):
         """Forward pass produces correct output shapes."""
         batch_size = 4
-        spatial = torch.randn(batch_size, 13, 16, 16)
+        spatial = torch.randn(batch_size, 28, 16, 16)  # Sprint 6: 28 channels
         vector = torch.randn(batch_size, 64)
 
         policy_logits, value = network(spatial, vector)
 
         assert policy_logits.shape == (batch_size, 381)
-        assert value.shape == (batch_size,)
+        assert value.shape == (batch_size, 6)  # Sprint 6: 6-dim per-player values
 
     def test_value_range(self, network):
         """Value is in [-1, 1] range (tanh)."""
-        spatial = torch.randn(10, 13, 16, 16)
+        spatial = torch.randn(10, 28, 16, 16)  # Sprint 6: 28 channels
         vector = torch.randn(10, 64)
 
         _, value = network(spatial, vector)
@@ -74,7 +75,7 @@ class TestMicroCivNetwork:
 
     def test_action_masking(self, network):
         """Action mask sets invalid actions to low probability."""
-        spatial = torch.randn(2, 13, 16, 16)
+        spatial = torch.randn(2, 28, 16, 16)  # Sprint 6: 28 channels
         vector = torch.randn(2, 64)
         mask = torch.zeros(2, 381)
         mask[:, :10] = 1.0  # Only first 10 actions valid
@@ -86,7 +87,7 @@ class TestMicroCivNetwork:
 
     def test_predict_returns_probs(self, network):
         """Predict method returns probabilities."""
-        spatial = torch.randn(2, 13, 16, 16)
+        spatial = torch.randn(2, 28, 16, 16)  # Sprint 6: 28 channels
         vector = torch.randn(2, 64)
 
         probs, _ = network.predict(spatial, vector)
@@ -97,7 +98,7 @@ class TestMicroCivNetwork:
 
     def test_predict_single(self, network):
         """predict_single works without batch dimension."""
-        spatial = torch.randn(13, 16, 16)
+        spatial = torch.randn(28, 16, 16)  # Sprint 6: 28 channels
         vector = torch.randn(64)
         mask = torch.ones(381)
         mask[100:] = 0
@@ -105,12 +106,14 @@ class TestMicroCivNetwork:
         probs, value = network.predict_single(spatial, vector, mask)
 
         assert probs.shape == (381,)
-        assert isinstance(value, float)
-        assert -1 <= value <= 1
+        # Sprint 6: value is now 6-dim per-player vector
+        assert value.shape == (6,)
+        assert torch.all(value >= -1)
+        assert torch.all(value <= 1)
 
     def test_gradient_flow(self, network):
         """Gradients flow through network."""
-        spatial = torch.randn(2, 13, 16, 16, requires_grad=True)
+        spatial = torch.randn(2, 28, 16, 16, requires_grad=True)  # Sprint 6: 28 channels
         vector = torch.randn(2, 64, requires_grad=True)
 
         policy_logits, value = network(spatial, vector)
@@ -173,9 +176,9 @@ class TestComputeLoss:
     def test_loss_shapes(self):
         """Loss computation produces scalar outputs."""
         policy_logits = torch.randn(8, 100)
-        value = torch.randn(8)
+        value = torch.randn(8, 6)  # Sprint 6: 6-dim per-player values
         target_policy = torch.softmax(torch.randn(8, 100), dim=-1)
-        target_value = torch.randn(8)
+        target_value = torch.randn(8)  # Still scalar target (game outcome for current player)
 
         total, policy, value_loss = compute_loss(policy_logits, value, target_policy, target_value)
 
@@ -186,7 +189,7 @@ class TestComputeLoss:
     def test_loss_positive(self):
         """Losses are non-negative."""
         policy_logits = torch.randn(8, 100)
-        value = torch.randn(8)
+        value = torch.randn(8, 6)  # Sprint 6: 6-dim per-player values
         target_policy = torch.softmax(torch.randn(8, 100), dim=-1)
         target_value = torch.randn(8)
 
@@ -199,7 +202,7 @@ class TestComputeLoss:
     def test_loss_with_mask(self):
         """Loss computation respects action mask."""
         policy_logits = torch.randn(4, 50)
-        value = torch.randn(4)
+        value = torch.randn(4, 6)  # Sprint 6: 6-dim per-player values
         target_policy = torch.zeros(4, 50)
         target_policy[:, :10] = 0.1  # Only first 10 valid
         target_value = torch.randn(4)
@@ -220,7 +223,8 @@ class TestComputeLoss:
         policy_logits[:, 5] = 100.0  # High logit for action 5
 
         target_value = torch.tensor([0.5, -0.5, 0.0, 1.0])
-        value = target_value.clone()
+        # Sprint 6: Replicate scalar target to 6-dim (for testing compute_loss)
+        value = target_value.unsqueeze(1).expand(-1, 6)
 
         total, _policy, value_loss = compute_loss(policy_logits, value, target_policy, target_value)
 

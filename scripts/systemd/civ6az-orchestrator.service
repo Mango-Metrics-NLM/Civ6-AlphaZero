@@ -1,0 +1,26 @@
+[Unit]
+Description=Civ6 AlphaZero Training Orchestrator
+Documentation=file:///home/civ6az/Civ6-AlphaZero/GCP_INFRA.md
+After=network-online.target google-guest-agent.service
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=civ6az
+WorkingDirectory=/home/civ6az/Civ6-AlphaZero
+EnvironmentFile=/home/civ6az/.env.civ6az
+ExecStart=/home/civ6az/Civ6-AlphaZero/venv/bin/python -m alpha_zero.cloud.gcp.vertex_orchestrator --resume --heartbeat_interval=60
+Restart=on-failure
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=civ6az-orchestrator
+# Prevent runaway memory usage
+MemoryMax=2G
+# Allow time for graceful shutdown (save state)
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

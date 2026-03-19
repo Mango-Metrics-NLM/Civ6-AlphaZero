@@ -33,14 +33,16 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Sprint 3 | Convergence, Batch Self-Play, N-Player Foundation | ✅ Complete |
 | Sprint 4 | Type Safety Expansion (envs + evaluation) | ✅ Complete |
 | Sprint 5 | Type Safety — Breadth-First Mypy Stabilization | ✅ Complete |
+| Phase 0 | Critical Bug Fix: Champion model loading (training-from-scratch) | ✅ Complete |
 
 **Codebase Statistics:**
 
 - ~63,000 lines of core implementation
-- 5,200+ tests, all passing (canonical Windows deselect list)
+- 5,214+ tests, all passing (canonical Windows deselect list)
 - Docker v1.2.0 on Artifact Registry (`us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v1.2.0`)
-- 218+ model versions in GCS (v0-v218+), production run active
-- GumbelMCTS default: 13× faster than Civ6MCTS — 50-iter production run active (4 workers × 50 games/iter)
+- 268+ model versions in GCS (v0-v268+), production run complete (50 iters)
+- GumbelMCTS default: 13× faster than Civ6MCTS — 50-iter production run complete (4 workers × 50 games/iter)
+- **Phase 0 bug fix**: Champion model loaded before optimizer init — enables learning signal
 - Batch self-play validated: `BatchGumbelMCTS` + `VectorizedMicroCivEnv` (5-10× throughput)
 - N-player MicroCiv: 2-6 players, backwards-compatible
 - Mypy strict mode: `envs/`, `evaluation/`, `web/`, `hierarchical/`, `pbt/` packages (0 errors)

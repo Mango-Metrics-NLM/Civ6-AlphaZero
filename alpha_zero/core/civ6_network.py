@@ -289,7 +289,7 @@ class ValueHead(nn.Module):
 
         # Output layers
         self.fc1 = nn.Linear(combined_dim, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, 1)
+        self.fc2 = nn.Linear(hidden_dim, 6)  # 6-dim for N-player support (Sprint 6)
 
     def forward(
         self,
@@ -303,7 +303,9 @@ class ValueHead(nn.Module):
             vector_features: Vector features (B, V).
 
         Returns:
-            Value estimate of shape (B, 1).
+            Per-player value estimates of shape (B, 6). Each row contains values
+            for up to 6 players (pad unused with 0). During training, index by
+            current_player to get the relevant value for loss computation.
         """
         # Reduce spatial features
         s = F.relu(self.bn(self.conv(spatial_features)))
@@ -457,7 +459,8 @@ class Civ6Network(nn.Module):
 
         policy_probs, value = self.predict(spatial, vector, action_mask)
 
-        return policy_probs.squeeze(0), value.item()
+        # Return 6-dim value vector (Sprint 6: per-player values)
+        return policy_probs.squeeze(0), value.squeeze(0)
 
     def save(self, path: str) -> None:
         """Save model checkpoint.
@@ -1390,7 +1393,8 @@ class Civ6NetworkV2(nn.Module):
 
         policy_probs, value = self.predict(spatial, vector, action_mask)
 
-        return policy_probs.squeeze(0), value.item()
+        # Return 6-dim value vector (Sprint 6: per-player values)
+        return policy_probs.squeeze(0), value.squeeze(0)
 
     @torch.no_grad()
     def predict_hierarchical(
@@ -1593,7 +1597,7 @@ def compute_loss(
 
     Args:
         policy_logits: Predicted policy logits (B, A).
-        value: Predicted value (B,).
+        value: Predicted value (B,) or (B, 6) for N-player support.
         target_policy: Target policy distribution (B, A).
         target_value: Target value (B,).
         action_mask: Valid action mask (B, A).
@@ -1610,6 +1614,9 @@ def compute_loss(
         stacklevel=2,
     )
     # Value loss (MSE)
+    # Sprint 6: Handle 6-dim per-player values by taking mean across all players
+    if value.dim() == 2 and value.shape[1] == 6:
+        value = value.mean(dim=1)  # Average across all 6 players for backward compat
     value_loss = F.mse_loss(value, target_value)
 
     # Policy loss (cross-entropy)

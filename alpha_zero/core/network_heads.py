@@ -473,6 +473,7 @@ class HeadFactory:
     def create_transformer_value_head(
         embed_dim: int,
         hidden_dim: int = 128,
+        output_dim: int = 1,
         dropout: float = 0.1,
     ) -> nn.Module:
         """Create a transformer-style value head.
@@ -482,6 +483,7 @@ class HeadFactory:
         Args:
             embed_dim: Input embedding dimension.
             hidden_dim: Hidden layer dimension.
+            output_dim: Output dimension (1 for 2-player, 6 for N-player).
             dropout: Dropout probability.
 
         Returns:
@@ -489,7 +491,7 @@ class HeadFactory:
         """
         config = MLPHeadConfig(
             input_dim=embed_dim,
-            output_dim=1,
+            output_dim=output_dim,
             hidden_dims=[hidden_dim, hidden_dim],
             activation="gelu",
             output_activation="tanh",

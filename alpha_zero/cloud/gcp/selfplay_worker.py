@@ -548,6 +548,7 @@ def run_selfplay(
             "action_masks": [],
             "policies": [],
             "actions": [],
+            "current_players": [],  # Track which player made each decision (Sprint 6)
         }
 
         env.reset()
@@ -590,6 +591,7 @@ def run_selfplay(
             trajectory["action_masks"].append(action_mask_flat)
             trajectory["policies"].append(policy.tolist() if hasattr(policy, "tolist") else policy)
             trajectory["actions"].append(int(action))
+            trajectory["current_players"].append(int(env.current_player))  # Sprint 6: per-player values
 
             # Take action
             step_result = env.step(action)
@@ -760,6 +762,7 @@ def run_muzero_selfplay(
             "actions": [],
             "reward_targets": [],
             "value_targets": [],
+            "current_players": [],  # Track which player made each decision (Sprint 6)
             "algorithm": "muzero",
         }
 
@@ -802,6 +805,7 @@ def run_muzero_selfplay(
             trajectory["action_masks"].append(action_mask_flat)
             trajectory["policies"].append(policy.tolist() if hasattr(policy, "tolist") else policy)
             trajectory["actions"].append(int(action))
+            trajectory["current_players"].append(int(env.current_player))  # Sprint 6: per-player values
 
             # Store value estimate from MCTS root for training targets
             trajectory["value_targets"].append(

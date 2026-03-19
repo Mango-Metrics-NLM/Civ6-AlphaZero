@@ -113,6 +113,10 @@ artifacts/
 # Docker (build context only — tracked files are .dockerignore and Dockerfile)
 docker-compose*.yml
 *.tar
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.gz
 
 # GCS / Cloud artifacts
 trajectories/

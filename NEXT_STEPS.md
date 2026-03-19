@@ -1,14 +1,27 @@
-# Civ6 AlphaZero — Next Steps (Post-Phase 17b)
+# Civ6 AlphaZero — Next Steps (Post-Phase 0)
 
 All infrastructure, optimization, and training-readiness phases (1–17b) are complete. The system
 runs multi-iteration training on Vertex AI with selfplay, training, evaluation, post-run tournament,
 batch inference, and vectorized self-play. Docker **v1.2.0** is deployed on Artifact Registry.
 **218+ model versions** (v0–v218+) exist in GCS.
 
-**Current state**: A 50-iteration production run (`dashing-firebrand-1393`) is **ACTIVE** on
-`civ6az-orchestrator` VM (e2-small, us-central1-a). 4 workers × 50 games = 200 games/iteration,
-GumbelMCTS 16 sims, max_turns=30. W&B run:
-[ukxjr0uz](https://wandb.ai/ianshank-none/civ6-alphazero/runs/ukxjr0uz).
+**Current state**: The 50-iteration production run (`dashing-firebrand-1393`) is **COMPLETE**
+(0 promotions — caused by the training-from-scratch bug, now fixed in v1.5.1). Phase 0 bug fix is
+**COMPLETE**. Next priority is Phase 18 (Batch Self-Play Cloud Integration) with the fixed
+training pipeline. W&B run: [ukxjr0uz](https://wandb.ai/ianshank-none/civ6-alphazero/runs/ukxjr0uz).
+
+---
+
+## Phase 0: Training-from-Scratch Bug Fix — COMPLETE (v1.5.1, 2026-03-18)
+
+**Root cause**: `training_worker.py` always created fresh random-weight models, never loading the
+champion from GCS. The orchestrator never forwarded `--start_model_version` to the training
+container. Result: 50 iterations of production training with 0 promotions and $28.55 wasted.
+
+**Fix**: `_load_champion_weights()` helper loads GCS champion weights before `model.to(device)`
+and before optimizer construction. `build_training_extra_args()` now forwards
+`--start_model_version={N}` when `model_version > 0`. 14 regression tests added in
+`tests/unit/test_training_worker_resume.py`.
 
 ---
 
@@ -25,35 +38,7 @@ GumbelMCTS 16 sims, max_turns=30. W&B run:
 | 16 | Batch Inference & Vectorized Self-Play | v0.13.0 | BatchGumbelMCTS, VectorizedMicroCivEnv, cloud orchestrator |
 | 17a | Hex Crystalline Encoder & A/B Comparison | v0.14.1 | HexSpatialEncoder, EncoderRegistry, A/B runs |
 | 17b | Training Readiness | **v1.2.0** | action_mask, W&B groups, gumbel default, eval retry, prod run |
-
----
-
-## Active: Monitor 50-Iteration Production Run (`dashing-firebrand-1393`)
-
-**Goal**: Validate training readiness improvements (action_mask, W&B groups, gumbel default) at
-scale and generate a strong model for tournament evaluation.
-
-### Metrics to Watch
-
-- `orchestrator/eval_win_rate` — target ≥ 3 promotions over 50 iterations
-- `train/policy_loss` — should trend downward (was 1.21→0.63 in Phase 14)
-- `train/value_correlation` — target >0.5 for 10+ consecutive iterations
-- `eval/win_rate` per W&B group — confirm action_mask improves promotion rate
-- `tournament/elo_*` — post-run ELO spread target >100 points
-
-### Success Criteria
-
-- 3+ model promotions over 50 iterations
-- Policy loss <0.5 by iteration 50
-- Value correlation stabilization >0.5
-- Post-run tournament ELO spread >100 points
-- Total cost <$15
-
-### Monitor Commands (run on `civ6az-orchestrator` VM)
-
-```bash
-docker logs -f civ6az-prod-v120 2>&1 | tail -50
-```
+| 0 | Training-from-Scratch Bug Fix | **v1.5.1** | Champion weights loaded before training; 14 regression tests |
 
 ---
 
@@ -62,7 +47,8 @@ docker logs -f civ6az-prod-v120 2>&1 | tail -50
 **Goal**: Enable `--num_parallel_games` and `--max_batch_size` in cloud training for 5–10×
 throughput via `BatchGumbelMCTS` + `VectorizedMicroCivEnv`.
 
-**Prerequisite**: Production run `dashing-firebrand-1393` completes successfully.
+**Prerequisite**: Phase 0 training-from-scratch bug fix is now COMPLETE — training pipeline is
+ready for a new production run.
 
 ### Tasks
 
@@ -156,8 +142,10 @@ throughput via `BatchGumbelMCTS` + `VectorizedMicroCivEnv`.
 ## Priority Order
 
 ```
-Monitor prod run ──→ Phase 18 (Batch Cloud) ──→ Phase 19 (MuZero) ──→ Phase 20 (PBT)
-                                              ╰──→ Phase 21 (DDP/Types) ──→ Phase 22 (UI) ──→ Phase 23 (Civ6)
+Phase 0 DONE ──→ Phase 18 (Batch Cloud) ──→ Phase 19 (MuZero) ──→ Phase 20 (PBT)
+                                         ╰──→ Phase 21 (DDP/Types) ──→ Phase 22 (UI) ──→ Phase 23 (Civ6)
 ```
 
-**Immediate focus**: Monitor `dashing-firebrand-1393` production run (50 iterations on Vertex AI).
+**Immediate focus**: Phase 18 — Batch Self-Play Cloud Integration. Training pipeline is now
+correct (Phase 0 bug fix complete). Next step is a new production run with champion model
+fine-tuning working as intended.

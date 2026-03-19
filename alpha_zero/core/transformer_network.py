@@ -111,6 +111,7 @@ class TransformerConfig:
 
     # Head configuration (independent configurable dimensions)
     value_head_dim: int = 64
+    value_output_dim: int = 6  # N-player support: 1 for 2-player, 6 for N-player
     policy_hidden_dim: int = 128
     num_policy_heads: int = 1
 
@@ -156,6 +157,7 @@ class TransformerConfig:
             num_heads=getattr(net_config, "num_heads", 8),
             policy_hidden_dim=getattr(net_config, "policy_hidden_dim", 128),
             value_head_dim=getattr(net_config, "value_head_dim", 64),
+            value_output_dim=getattr(net_config, "value_output_dim", 6),
             encoder_type=getattr(net_config, "encoder_type", "patch_embed"),
         )
 
@@ -996,6 +998,7 @@ class TransformerValueHead(nn.Module):
         self,
         embed_dim: int,
         hidden_dim: int = 128,
+        output_dim: int = 1,
         dropout: float = 0.1,
     ) -> None:
         """Initialize value head.
@@ -1003,6 +1006,7 @@ class TransformerValueHead(nn.Module):
         Args:
             embed_dim: Input embedding dimension.
             hidden_dim: Hidden layer dimension.
+            output_dim: Output dimension (1 for 2-player, 6 for N-player).
             dropout: Dropout probability.
         """
         super().__init__()
@@ -1014,7 +1018,7 @@ class TransformerValueHead(nn.Module):
             nn.Linear(hidden_dim, hidden_dim),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, 1),
+            nn.Linear(hidden_dim, output_dim),
             nn.Tanh(),
         )
 
@@ -1025,7 +1029,7 @@ class TransformerValueHead(nn.Module):
             x: Pooled features (B, D).
 
         Returns:
-            Value estimate (B, 1).
+            Value estimate (B, output_dim).
         """
         return self.mlp(x)  # type: ignore[no-any-return]
 
@@ -1089,6 +1093,7 @@ class Civ6TransformerNetwork(nn.Module):
         self.value_head = TransformerValueHead(
             embed_dim=config.embed_dim,
             hidden_dim=config.value_head_dim,
+            output_dim=config.value_output_dim,
             dropout=config.dropout,
         )
 
@@ -1125,7 +1130,11 @@ class Civ6TransformerNetwork(nn.Module):
         if action_mask is not None:
             policy_logits = policy_logits.masked_fill(action_mask == 0, -1e9)
 
-        return policy_logits, value.squeeze(-1)
+        # Squeeze value for backward compatibility with 2-player (output_dim=1)
+        if self.config.value_output_dim == 1:
+            value = value.squeeze(-1)  # (B, 1) → (B,)
+
+        return policy_logits, value
 
     def predict(
         self,
