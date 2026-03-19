@@ -33,6 +33,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
 
 from alpha_zero.cloud.gcp.config import GCPConfig
+from alpha_zero.cloud.gcp.exceptions import GCSStorageError
 from alpha_zero.cloud.gcp.storage import (
     GCSCheckpointStorage,
     GCSModelStorage,
@@ -50,6 +51,77 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 CHECKPOINT_RETENTION: int = 3
+
+
+def _load_champion_weights(
+    config: GCPConfig,
+    model: torch.nn.Module,
+    start_model_version: int | None,
+    is_main_process: bool,
+) -> None:
+    """Load champion model weights from GCS into *model* in-place.
+
+    Must be called BEFORE constructing the optimizer so the optimizer
+    receives the fine-tuned parameter tensors, not random weights.
+
+    Args:
+        config: GCPConfig with bucket / prefix information.
+        model: Freshly-created model whose weights will be replaced.
+        start_model_version: Explicit version to load, or None to use latest.
+        is_main_process: Whether this is the DDP rank-0 process (for logging).
+
+    Raises:
+        RuntimeError: If *start_model_version* is specified but not found in GCS.
+        RuntimeError: If no models exist at all in GCS (no champion to load).
+    """
+    storage = GCSModelStorage(config)
+    try:
+        latest = storage.get_latest_version()
+    except GCSStorageError as exc:
+        raise RuntimeError(
+            "Cannot load champion model: no models found in GCS. "
+            "Use --fresh_start to train from random weights intentionally."
+        ) from exc
+
+    version_to_load = start_model_version if start_model_version is not None else latest
+    if start_model_version is not None and start_model_version > latest:
+        raise RuntimeError(
+            f"Requested --start_model_version={start_model_version} but latest "
+            f"available version in GCS is v{latest}. "
+            "Use --fresh_start to train from random weights intentionally."
+        )
+
+    state_dict, metadata, _model_config = storage.load_model(version=version_to_load)
+
+    # Validate that loaded weights match the current architecture before applying
+    current_keys = set(model.state_dict().keys())
+    loaded_keys = set(state_dict.keys())
+    missing = current_keys - loaded_keys
+    unexpected = loaded_keys - current_keys
+    if missing or unexpected:
+        raise RuntimeError(
+            f"Champion model v{version_to_load} shape mismatch: "
+            f"missing keys={missing}, unexpected keys={unexpected}. "
+            "Architecture config may have changed. Use --fresh_start to override."
+        )
+
+    try:
+        model.load_state_dict(state_dict, strict=True)
+    except RuntimeError as exc:
+        raise RuntimeError(
+            f"Champion model v{version_to_load} shape mismatch — cannot load weights: {exc}. "
+            "The architecture config may have changed since this model was saved. "
+            "Use --fresh_start to train from random weights intentionally."
+        ) from exc
+    if is_main_process:
+        logger.info(
+            "Loaded champion model v%d from GCS (requested=%s, latest=%d, elo=%s, iteration=%s)",
+            version_to_load,
+            start_model_version,
+            latest,
+            metadata.elo,
+            metadata.iteration,
+        )
 
 
 def setup_logging() -> None:
@@ -191,6 +263,19 @@ def parse_args() -> argparse.Namespace:
         "--diagnostic_window", type=int, default=100, help="Diagnostics rolling window size"
     )
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
+    parser.add_argument(
+        "--start_model_version",
+        type=int,
+        default=None,
+        help="Champion model version to fine-tune from (None=latest). "
+        "If provided and not found, raises RuntimeError.",
+    )
+    parser.add_argument(
+        "--fresh_start",
+        action="store_true",
+        help="Train from random weights (skip champion model loading). "
+        "Explicit opt-in; default is to fine-tune from champion.",
+    )
     parser.add_argument(
         "--algorithm",
         type=str,
@@ -404,12 +489,14 @@ def train_muzero_epoch(
         # batch[2] is action_mask (added in prepare_dataset); policies and values shift by 1
         target_policies = batch[3].to(device)
         target_values = batch[4].to(device)
+        current_players = batch[5].to(device)  # Sprint 6: per-player value indexing
 
         # MuZero-specific targets (if available in the dataset)
-        target_rewards = batch[5].to(device) if len(batch) > 5 else torch.zeros_like(target_values)
+        # Indices shifted by 1 due to current_players insertion
+        target_rewards = batch[6].to(device) if len(batch) > 6 else torch.zeros_like(target_values)
         target_actions = (
-            batch[6].to(device).long()
-            if len(batch) > 6
+            batch[7].to(device).long()
+            if len(batch) > 7
             else torch.zeros(spatial.shape[0], dtype=torch.long, device=device)
         )
 
@@ -440,8 +527,11 @@ def train_muzero_epoch(
         policy_log_probs = torch.log_softmax(policy_logits, dim=-1)
         policy_loss = -torch.sum(target_policies * policy_log_probs, dim=-1).mean()
 
-        # Value loss (MSE)
-        value_loss = torch.nn.functional.mse_loss(value.squeeze(), target_values)
+        # Value loss (MSE) with per-player indexing (Sprint 6)
+        # value shape: (batch_size, 6) - extract value for current_player
+        batch_indices = torch.arange(batch_size, device=device)
+        value_for_player = value[batch_indices, current_players]
+        value_loss = torch.nn.functional.mse_loss(value_for_player, target_values)
 
         # Reward loss (accumulated from dynamics predictions in unroll loop)
         reward_loss = torch.tensor(0.0, device=device)
@@ -572,6 +662,7 @@ def prepare_dataset(
     action_masks_list = []
     policies = []
     values = []
+    current_players = []  # Track which player made each decision (Sprint 6)
 
     legacy_format_warned = False
 
@@ -588,6 +679,9 @@ def prepare_dataset(
                     action_masks_list.append([1.0] * action_space_size)
                 policies.append(traj["policies"][i])
                 values.append(traj["rewards"][i])
+                # Extract current_player for per-player value indexing (Sprint 6)
+                # Fall back to 0 for legacy trajectories without this field
+                current_players.append(traj["current_players"][i] if "current_players" in traj else 0)
         else:
             # Legacy format: split states into spatial and dummy vector
             if not legacy_format_warned:
@@ -604,6 +698,7 @@ def prepare_dataset(
                 action_masks_list.append([1.0] * action_space_size)
                 policies.append(traj["policies"][i])
                 values.append(traj["rewards"][i])
+                current_players.append(0)  # Legacy: default to player 0
 
     # Convert to tensors
     spatial_tensor = torch.tensor(spatial_list, dtype=torch.float32)
@@ -611,9 +706,15 @@ def prepare_dataset(
     action_masks_tensor = torch.tensor(action_masks_list, dtype=torch.float32)
     policies_tensor = torch.tensor(policies, dtype=torch.float32)
     values_tensor = torch.tensor(values, dtype=torch.float32)
+    current_players_tensor = torch.tensor(current_players, dtype=torch.long)  # Sprint 6
 
     return TensorDataset(
-        spatial_tensor, vector_tensor, action_masks_tensor, policies_tensor, values_tensor
+        spatial_tensor,
+        vector_tensor,
+        action_masks_tensor,
+        policies_tensor,
+        values_tensor,
+        current_players_tensor,  # Sprint 6: per-player value indexing
     )
 
 
@@ -658,12 +759,13 @@ def train_epoch(
     total_value_loss = 0.0
     num_batches = 0
 
-    for spatial, vector, action_mask, target_policies, target_values in dataloader:
+    for spatial, vector, action_mask, target_policies, target_values, current_players in dataloader:
         spatial = spatial.to(device)
         vector = vector.to(device)
         action_mask = action_mask.to(device)
         target_policies = target_policies.to(device)
         target_values = target_values.to(device)
+        current_players = current_players.to(device)  # Sprint 6: per-player value indexing
 
         # Update learning rate from scheduler if available (preserving per-group ratios)
         current_step = global_step + num_batches
@@ -699,8 +801,11 @@ def train_epoch(
         policy_log_probs = torch.log_softmax(policy_logits, dim=-1)
         policy_loss = -torch.sum(masked_target * policy_log_probs, dim=-1).mean()
 
-        # Value loss (MSE)
-        value_loss = torch.nn.functional.mse_loss(value, target_values)
+        # Value loss (MSE) with per-player indexing (Sprint 6)
+        # value shape: (batch_size, 6) - extract value for current_player
+        batch_indices = torch.arange(batch_size, device=device)
+        value_for_player = value[batch_indices, current_players]
+        value_loss = torch.nn.functional.mse_loss(value_for_player, target_values)
 
         # Combined loss
         loss = policy_loss + value_loss
@@ -1025,11 +1130,26 @@ def main() -> int:
                 value_head_dim=getattr(args, "value_head_dim", 64),
                 encoder_type=getattr(args, "encoder_type", "patch_embed"),
             )
+        # Load champion model weights BEFORE .to(device) so state_dict tensors
+        # are placed onto the correct device when model.load_state_dict() runs.
+        # Must also happen BEFORE optimizer construction so optimizer receives
+        # fine-tuned parameter tensors, not random weights.
+        if not args.fresh_start and not args.dry_run:
+            _load_champion_weights(
+                config=config,
+                model=model,
+                start_model_version=args.start_model_version,
+                is_main_process=is_main_process,
+            )
+        elif args.fresh_start and is_main_process:
+            logger.info("--fresh_start specified: training from random weights (no champion load)")
+
         model = model.to(device)
         raw_model = model  # Keep reference before DDP for param group construction
 
-        # Wrap DDP
+        # Wrap DDP — add barrier first so all ranks finish loading before wrapping.
         if world_size > 1:
+            dist.barrier()
             model = DDP(model, device_ids=[local_rank])
 
         # Enable W&B model watching for automatic gradient histograms

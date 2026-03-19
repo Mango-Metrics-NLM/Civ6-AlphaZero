@@ -377,6 +377,24 @@ def parse_args() -> argparse.Namespace:
         help="Agent ID for GCS path namespacing (isolates models/trajectories between runs)",
     )
 
+    # Resume & heartbeat (GCP VM reboot resilience)
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from last saved orchestrator state in GCS (skips completed iterations)",
+    )
+    parser.add_argument(
+        "--heartbeat_interval",
+        type=float,
+        default=60.0,
+        help="Seconds between heartbeat writes to GCS (0=disabled)",
+    )
+    parser.add_argument(
+        "--clear_state",
+        action="store_true",
+        help="Clear saved orchestrator state from GCS before starting (fresh run)",
+    )
+
     return parser.parse_args()
 
 
@@ -443,7 +461,9 @@ def build_selfplay_extra_args(args: argparse.Namespace) -> list[str]:
     return extra
 
 
-def build_training_extra_args(args: argparse.Namespace) -> list[str]:
+def build_training_extra_args(
+    args: argparse.Namespace, model_version: int | None = None
+) -> list[str]:
     """Build extra args list for training container."""
     extra = [
         f"--board_size={args.board_size}",
@@ -489,6 +509,11 @@ def build_training_extra_args(args: argparse.Namespace) -> list[str]:
     # Always forward learning rate (training worker default is 0.001)
     learning_rate = getattr(args, "learning_rate", 0.001)
     extra.append(f"--learning_rate={learning_rate}")
+    # Pass champion model version so training worker fine-tunes instead of training from scratch.
+    # model_version=0 means "no prior models exist" (sentinel from get_initial_model_version),
+    # so only forward when a real model has been saved (version > 0).
+    if model_version is not None and model_version > 0:
+        extra.append(f"--start_model_version={model_version}")
     return extra
 
 
@@ -622,6 +647,7 @@ def run_training_phase(
     args: argparse.Namespace,
     max_retries: int = 2,
     dry_run: bool = False,
+    current_model_version: int | None = None,
 ) -> bool:
     """Run the training phase of an iteration.
 
@@ -638,7 +664,7 @@ def run_training_phase(
     # Override epochs in config
     config.training.epochs_per_iteration = args.epochs
 
-    extra_args = build_training_extra_args(args)
+    extra_args = build_training_extra_args(args, model_version=current_model_version)
     training_manager = VertexTrainingJob(config, client)
 
     for attempt in range(max_retries + 1):
@@ -1212,14 +1238,77 @@ def main() -> int:
         consecutive_failures = 0
         max_consec = getattr(args, "max_consecutive_failures", 3)
         win_rate_history: list[float] = []
+        resume_from_iteration = 0  # 0 = no resume, start from beginning
+
+        # --- State persistence setup (resume / heartbeat) ---
+        from alpha_zero.cloud.gcp.orchestrator_state import (
+            HeartbeatThread,
+            OrchestratorState,
+            OrchestratorStateManager,
+        )
+
+        state_manager = OrchestratorStateManager(config)
+
+        if getattr(args, "clear_state", False):
+            state_manager.clear_state()
+            logger.info("Cleared previous orchestrator state")
+
+        if getattr(args, "resume", False):
+            prior_state = state_manager.load_state()
+            if prior_state is not None:
+                resume_from_iteration = prior_state.current_iteration
+                model_version = prior_state.model_version
+                initial_model_version = prior_state.initial_model_version
+                successful_iterations = prior_state.successful_iterations
+                failed_iterations = prior_state.failed_iterations
+                consecutive_failures = prior_state.consecutive_failures
+                win_rate_history = list(prior_state.win_rate_history)
+                total_estimated_cost = prior_state.total_estimated_cost
+                logger.info(
+                    "Resuming from iteration %d (model v%d, %d succeeded, %d failed)",
+                    resume_from_iteration,
+                    model_version,
+                    successful_iterations,
+                    failed_iterations,
+                )
+            else:
+                logger.info("No prior state found, starting fresh")
+
+        # Start heartbeat thread if interval > 0
+        heartbeat_thread: HeartbeatThread | None = None
+        heartbeat_interval = getattr(args, "heartbeat_interval", 60.0)
+        if heartbeat_interval > 0:
+            heartbeat_thread = HeartbeatThread(
+                state_manager, interval_seconds=heartbeat_interval
+            )
+            heartbeat_thread.update(
+                status="running",
+                iteration=resume_from_iteration,
+                model_version=model_version,
+            )
+            heartbeat_thread.start()
 
         for i in range(args.iterations):
             iteration_start = time.time()
             iteration = args.start_iteration + i
 
+            # Skip already-completed iterations when resuming
+            if i < resume_from_iteration:
+                logger.info(
+                    "Skipping iteration %d (already completed in prior run)",
+                    iteration,
+                )
+                continue
+
             logger.info("=" * 60)
             logger.info("Starting iteration %d (model v%d)", iteration, model_version)
             logger.info("=" * 60)
+
+            # Update heartbeat status
+            if heartbeat_thread is not None:
+                heartbeat_thread.update(
+                    status="selfplay", iteration=iteration, model_version=model_version
+                )
 
             # Apply curriculum overrides if enabled
             if curriculum_manager is not None:
@@ -1308,6 +1397,7 @@ def main() -> int:
                 args=args,
                 max_retries=args.max_retries,
                 dry_run=args.dry_run,
+                current_model_version=model_version,
             )
             train_duration = (time.time() - train_start) / 3600.0
 
@@ -1504,6 +1594,33 @@ def main() -> int:
             successful_iterations += 1
             consecutive_failures = 0  # Reset circuit breaker on success
 
+            # Checkpoint orchestrator state to GCS after each successful iteration
+            orch_state = OrchestratorState(
+                current_iteration=i + 1,
+                start_iteration=args.start_iteration,
+                total_iterations=args.iterations,
+                model_version=model_version,
+                successful_iterations=successful_iterations,
+                failed_iterations=failed_iterations,
+                consecutive_failures=consecutive_failures,
+                win_rate_history=win_rate_history,
+                total_estimated_cost=total_estimated_cost,
+                initial_model_version=initial_model_version,
+            )
+            try:
+                state_manager.save_state(orch_state)
+            except Exception as _save_err:
+                logger.warning("Failed to save orchestrator state: %s", _save_err)
+
+            if heartbeat_thread is not None:
+                heartbeat_thread.update(
+                    status="running", iteration=i + 1, model_version=model_version
+                )
+
+        # Stop heartbeat thread
+        if heartbeat_thread is not None:
+            heartbeat_thread.stop()
+
         total_elapsed = time.time() - total_start
         logger.info("=" * 60)
         logger.info("Training loop complete")
@@ -1549,11 +1666,15 @@ def main() -> int:
 
     except KeyboardInterrupt:
         logger.warning("Orchestrator interrupted by user")
+        if heartbeat_thread is not None:  # type: ignore[possibly-undefined]
+            heartbeat_thread.stop()
         if wandb_logger is not None and wandb_logger.is_enabled:
             wandb_logger.finish(exit_code=130)
         return 130
     except Exception as e:
         logger.exception("Orchestrator failed: %s", e)
+        if heartbeat_thread is not None:  # type: ignore[possibly-undefined]
+            heartbeat_thread.stop()
         if wandb_logger is not None and wandb_logger.is_enabled:
             wandb_logger.finish(exit_code=1)
         return 1
