@@ -1,0 +1,118 @@
+# DEV-SQE Handoff Skill
+
+Run this skill at the end of every DEV-SQE session that does meaningful work.
+
+## Role
+
+The **DEV-SQE** role handles implementation, testing, and quality engineering.
+It receives specs from Planning and hands off to Pre-PR for validation.
+
+## Steps
+
+### 1. Read Current State
+
+Read `kb/sessions/dev-sqe.state.json` to understand the current task and progress.
+
+### 2. Determine Handoff Type
+
+- **SESSION-END**: Continuing DEV-SQE work next session (implementation not complete).
+- **DEV-SQE-HANDOFF**: Implementation and tests complete, handing off to Pre-PR.
+- **DESIGN-GAP**: Found an issue requiring Planning input (feedback loop).
+
+### 3. Gather Test Results
+
+Run and capture results of:
+```bash
+pytest tests/unit/ -v --tb=short 2>&1 | tail -20
+pytest --cov=alpha_zero --cov-report=term-missing 2>&1 | tail -10
+ruff check alpha_zero/ 2>&1
+```
+
+Include pass/fail counts and coverage percentage in the handoff.
+
+### 4. Write Summary
+
+Append a new entry **at the top** of `kb/summaries/dev-sqe.md` with:
+
+```markdown
+## [DATE] - [Brief Title]
+- **Session:** [session-id]
+- **Task:** [what was implemented]
+- **Files Changed:** [list of modified files]
+- **Tests:** [X pass, Y fail, Z% coverage]
+- **Status:** [complete/in-progress/blocked]
+- **Next:** [what the next session should pick up]
+```
+
+Cap at 20 entries — remove oldest from bottom if exceeded.
+
+### 5. Append Ledger Event
+
+Append a single valid JSON line to `kb/ledger/ledger.jsonl`:
+
+**For SESSION-END:**
+```json
+{ "event": "SESSION-END", "role": "dev-sqe", "timestamp": "<ISO-8601>", "session_id": "<id>", "summary": "<one-line summary>" }
+```
+
+**For DEV-SQE-HANDOFF:**
+```json
+{ "event": "DEV-SQE-HANDOFF", "timestamp": "<ISO-8601>", "spec_file": "kb/specs/<filename>.md", "session_id": "<id>", "handoff_to": "pre-pr", "files_changed": ["<file1>", "<file2>"], "tests_added": ["<test1>"], "summary": "<one-line summary>" }
+```
+
+**For DESIGN-GAP:**
+```json
+{ "event": "DESIGN-GAP", "timestamp": "<ISO-8601>", "session_id": "<id>", "handoff_to": "planning", "gap_description": "<what needs clarification>", "blocking_task": "<task that is blocked>" }
+```
+
+**IMPORTANT:** Only append — never overwrite or truncate the ledger file.
+Validate that the appended line is valid JSON after writing.
+
+### 6. Create Handoff Document (DEV-SQE-HANDOFF only)
+
+If handing off to Pre-PR, create an immutable file:
+
+`kb/handoffs/YYYYMMDD-devsqe-to-prepr-<slug>.md`
+
+Contents:
+```markdown
+# DEV-SQE → Pre-PR Handoff
+
+**Date:** YYYY-MM-DD
+**Spec:** kb/specs/<filename>.md
+**Files Changed:** [list]
+**Tests Added:** [list]
+**Test Results:** [X pass, Y fail, Z% coverage on changed modules]
+**Lint Status:** [clean / N issues]
+**Type Check Status:** [clean / N errors]
+**Smoke Tests:** [pass/fail for relevant smoke tests]
+**Known Issues:** [any caveats or limitations]
+```
+
+This file is **immutable** once created.
+
+### 7. Update Session State
+
+Update `kb/sessions/dev-sqe.state.json` with:
+
+```json
+{
+    "last_session_id": "<current-session-id>",
+    "last_timestamp": "<ISO-8601>",
+    "current_focus": "<what to resume next>",
+    "resume_pointers": {
+        "current_task": "<next task>",
+        "blocked_on": [],
+        "next_steps": ["<step1>", "<step2>"]
+    },
+    "context_files": ["<relevant files to read on resume>"]
+}
+```
+
+## Rules
+
+1. NEVER overwrite or truncate `kb/ledger/ledger.jsonl` — only append.
+2. Handoff files in `kb/handoffs/` are immutable once created.
+3. All JSONL entries must be valid JSON — validate after writing.
+4. Summary entries are capped at 20 (remove oldest from bottom).
+5. Always include test results and coverage in handoff documents.

@@ -1,0 +1,96 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ruff:*)",
+      "Bash(mypy:*)",
+      "Bash(pytest:*)",
+      "Bash(python -m alpha_zero:*)",
+      "Bash(python -c:*)",
+      "Bash(python --version:*)",
+      "Bash(pip install:*)",
+      "Bash(pip list:*)",
+      "Bash(make lint:*)",
+      "Bash(make typecheck:*)",
+      "Bash(make test:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(which:*)",
+      "Bash(node:*)",
+      "Bash(npx:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf /:*)",
+      "Bash(rm -rf ~:*)",
+      "Bash(docker push:*)",
+      "Bash(gcloud:*)",
+      "Bash(gsutil:*)",
+      "Bash(kubectl:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import sys; exit(0 if sys.version_info >= (3, 11) else 1)\" && pip install -e '.[dev]' -q 2>/dev/null; echo '{\"systemMessage\": \"Environment: Python '$(python --version 2>&1 | cut -d\" \" -f2)' | ruff '$(ruff --version 2>/dev/null | cut -d\" \" -f2 || echo N/A)' | pytest ready\"}'",
+            "timeout": 60,
+            "statusMessage": "Bootstrapping environment..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_response.filePath // .tool_input.file_path' | { read -r f; echo \"$f\" | grep -qE '\\.py$' && ruff check --fix --quiet \"$f\" && ruff format --quiet \"$f\"; } 2>/dev/null || true",
+            "timeout": 15,
+            "statusMessage": "Linting..."
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "KB=$(cat kb/sessions/planning.state.json 2>/dev/null; cat kb/sessions/dev-sqe.state.json 2>/dev/null; cat kb/sessions/pre-pr.state.json 2>/dev/null) && LEDGER=$(tail -10 kb/ledger/ledger.jsonl 2>/dev/null) && GIT=$(git diff --stat HEAD 2>/dev/null | tail -5) && printf '{\"hookSpecificOutput\": {\"hookEventName\": \"PreCompact\", \"additionalContext\": \"KB_STATE: %s RECENT_LEDGER: %s GIT_STATUS: %s\"}}' \"$KB\" \"$LEDGER\" \"$GIT\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"systemMessage\": \"Reminder: If meaningful work was done, run the appropriate handoff skill before ending (CLAUDE.md Section 14).\"}'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "env": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "RUFF_CACHE_DIR": ".ruff_cache",
+    "PYTEST_TIMEOUT": "300"
+  },
+  "enableAllProjectMcpServers": true
+}
