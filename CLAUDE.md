@@ -1087,6 +1087,56 @@ across a three-role workflow pipeline: Planning → DEV-SQE → Pre-PR.
 
 ---
 
-*Last updated: 2026-03-01*
+## SECTION 15: CLAUDE CODE HARNESS
+
+### 15.1 Overview
+
+The project includes a Claude Code harness in `.claude/` that provides machine-enforceable
+configuration for permissions, hooks, and environment variables. This complements the
+human-readable instructions in this CLAUDE.md file.
+
+### 15.2 Files
+
+| File | Scope | Git | Purpose |
+|------|-------|-----|---------|
+| `.claude/settings.json` | Project | Committed | Team-wide permissions, hooks, env vars |
+| `.claude/settings.local.json` | Personal | Gitignored | Personal overrides (API tokens, etc.) |
+| `.claude/skills/*/SKILL.md` | Project | Committed | Handoff skills for KB workflow |
+
+### 15.3 What the Harness Does
+
+**SessionStart hook:** Automatically verifies Python >= 3.11 and installs dev dependencies
+(`pip install -e '.[dev]'`) at the start of every session. Reports environment status.
+
+**PostToolUse hook (Write|Edit):** After any Python file is written or edited, automatically
+runs `ruff check --fix` and `ruff format` on that file. This means manual linting after
+edits is no longer necessary during Claude Code sessions.
+
+**PreCompact hook:** Before context compaction, dumps KB session state, recent ledger entries,
+and git diff stats into the compacted context. Ensures workflow continuity across compactions.
+
+**Stop hook:** Reminds the agent to run the appropriate handoff skill (Section 14) before
+ending a session that did meaningful work.
+
+**Permissions:** Common safe operations (pytest, ruff, mypy, git, pip, make) are pre-approved.
+Dangerous operations (writing .env, force-push, cloud ops) are denied.
+
+### 15.4 Personal Overrides
+
+Copy and edit `.claude/settings.local.json` for personal settings:
+
+```json
+{
+  "env": {
+    "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_your_token_here"
+  }
+}
+```
+
+This file is gitignored and never committed.
+
+---
+
+*Last updated: 2026-03-31*
 *Version: v1.3.0 (training convergence fix, awaiting validation)*
 *Current Focus: Validate training convergence, then batch self-play + N-player MicroCiv*

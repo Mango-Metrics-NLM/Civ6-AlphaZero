@@ -214,8 +214,12 @@ test_output.txt
 # ===========================================
 .agent/
 .gemini/
-.claude/
-kb/
+
+# Claude Code (commit settings.json and skills; ignore local/personal state)
+.claude/settings.local.json
+.claude/todos.json
+.claude/.state/
+.claude/statsig/
 
 # Local config overrides (may contain real API keys)
 configs/*_local.yaml
