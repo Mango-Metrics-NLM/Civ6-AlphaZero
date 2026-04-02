@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from alpha_zero.hierarchical.config import (
     HierarchicalConfig,
@@ -272,6 +273,16 @@ class TestHierarchicalConfig:
         assert config.is_level_enabled(HierarchyLevel.OPERATIONAL) is True
 
 
+@pytest.fixture
+def fast_config() -> HierarchicalConfig:
+    """HierarchicalConfig with MCTS simulations reduced to 1 for fast tests."""
+    cfg = HierarchicalConfig.default()
+    cfg.strategic.mcts.num_simulations = 1
+    cfg.tactical.mcts.num_simulations = 1
+    cfg.operational.mcts.num_simulations = 1
+    return cfg
+
+
 class TestHierarchicalController:
     """Tests for HierarchicalController."""
 
@@ -284,10 +295,9 @@ class TestHierarchicalController:
         assert controller.tactical is not None
         assert controller.operational is not None
 
-    def test_decide(self) -> None:
+    def test_decide(self, fast_config: HierarchicalConfig) -> None:
         """Test making hierarchical decision."""
-        config = HierarchicalConfig.default()
-        controller = HierarchicalController(config=config)
+        controller = HierarchicalController(config=fast_config)
 
         game_state = {
             "turn": 0,
@@ -304,10 +314,9 @@ class TestHierarchicalController:
         assert isinstance(decision, HierarchicalDecision)
         assert decision.action is not None
 
-    def test_decide_with_valid_actions(self) -> None:
+    def test_decide_with_valid_actions(self, fast_config: HierarchicalConfig) -> None:
         """Test decision respects valid actions."""
-        config = HierarchicalConfig.default()
-        controller = HierarchicalController(config=config)
+        controller = HierarchicalController(config=fast_config)
 
         valid_actions = np.zeros(356)
         valid_actions[42] = 1
@@ -354,16 +363,13 @@ class TestHierarchicalController:
         assert controller.state.total_reward == 0.0
         assert controller.state.episodes == 0
 
-    def test_get_training_data(self) -> None:
+    def test_get_training_data(self, fast_config: HierarchicalConfig) -> None:
         """Test getting training data."""
-        config = HierarchicalConfig.default()
-        controller = HierarchicalController(config=config)
+        controller = HierarchicalController(config=fast_config)
 
-        # Make some decisions
+        # Make a decision to populate training data buffers
         game_state = {"turn": 0, "action_mask": np.ones(356)}
-        for i in range(5):
-            game_state["turn"] = i
-            controller.decide(game_state)
+        controller.decide(game_state)
 
         data = controller.get_training_data()
 

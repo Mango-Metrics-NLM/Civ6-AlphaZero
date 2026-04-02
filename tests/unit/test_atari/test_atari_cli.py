@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from unittest import mock
 
+import pytest
+
 from demos.atari.__main__ import _build_parser, main
 from demos.atari.config import AtariConfig
 
@@ -43,18 +45,30 @@ class TestBuildParser:
 
     def test_parser_training_overrides(self):
         parser = _build_parser()
-        args = parser.parse_args([
-            "--iterations", "50",
-            "--episodes-per-iter", "5",
-            "--batch-size", "64",
-            "--learning-rate", "0.01",
-            "--num-simulations", "100",
-            "--num-res-blocks", "3",
-            "--num-filters", "32",
-            "--discount-factor", "0.95",
-            "--device", "cpu",
-            "--checkpoint-dir", "test_ckpt",
-        ])
+        args = parser.parse_args(
+            [
+                "--iterations",
+                "50",
+                "--episodes-per-iter",
+                "5",
+                "--batch-size",
+                "64",
+                "--learning-rate",
+                "0.01",
+                "--num-simulations",
+                "100",
+                "--num-res-blocks",
+                "3",
+                "--num-filters",
+                "32",
+                "--discount-factor",
+                "0.95",
+                "--device",
+                "cpu",
+                "--checkpoint-dir",
+                "test_ckpt",
+            ]
+        )
         assert args.iterations == 50
         assert args.episodes_per_iter == 5
         assert args.batch_size == 64
@@ -82,6 +96,28 @@ class TestBuildParser:
 
 
 class TestMain:
+    @pytest.fixture(autouse=True)
+    def _mock_trainer_train(self, monkeypatch):
+        """Bypass actual training loop so CLI tests run instantly.
+
+        The conftest already mocks ``gymnasium.make``; this fixture additionally
+        mocks ``AtariTrainer.train`` so that MCTS / network forward passes are
+        never executed during CLI smoke-tests.  The mock returns a minimal
+        results dict that matches the real return type.
+        """
+        from demos.atari.trainer import AtariTrainer
+
+        monkeypatch.setattr(
+            AtariTrainer,
+            "train",
+            lambda self, dry_run=False, **kw: {
+                "iterations": 1,
+                "final_model": "checkpoints/atari/latest.pt",
+                "train_losses": [0.5],
+                "eval_win_rates": [0.5],
+            },
+        )
+
     def test_main_default_dry_run(self):
         """main() with --dry-run should complete without error."""
         main(["--dry-run"])
@@ -96,19 +132,31 @@ class TestMain:
 
     def test_main_with_all_overrides(self):
         """main() applies all CLI overrides correctly."""
-        main([
-            "--game", "Pong",
-            "--iterations", "1",
-            "--episodes-per-iter", "1",
-            "--batch-size", "4",
-            "--learning-rate", "0.01",
-            "--num-simulations", "3",
-            "--num-res-blocks", "1",
-            "--num-filters", "8",
-            "--discount-factor", "0.95",
-            "--device", "cpu",
-            "--dry-run",
-        ])
+        main(
+            [
+                "--game",
+                "Pong",
+                "--iterations",
+                "1",
+                "--episodes-per-iter",
+                "1",
+                "--batch-size",
+                "4",
+                "--learning-rate",
+                "0.01",
+                "--num-simulations",
+                "3",
+                "--num-res-blocks",
+                "1",
+                "--num-filters",
+                "8",
+                "--discount-factor",
+                "0.95",
+                "--device",
+                "cpu",
+                "--dry-run",
+            ]
+        )
 
     def test_main_with_hierarchical(self):
         """main() with --hierarchical enables hierarchical reasoning."""
@@ -157,7 +205,8 @@ class TestMain:
             mock_yaml.return_value = AtariConfig()
             with mock.patch("demos.atari.__main__.AtariTrainer") as mock_trainer:
                 mock_trainer.return_value.train.return_value = {
-                    "iterations": 1, "final_model": "test.pt"
+                    "iterations": 1,
+                    "final_model": "test.pt",
                 }
                 main(["--config", "fake.yaml", "--game", "Breakout", "--dry-run"])
                 config_used = mock_trainer.call_args[0][0]
