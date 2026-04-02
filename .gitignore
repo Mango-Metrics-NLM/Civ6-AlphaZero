@@ -320,3 +320,4 @@ alpha_zero/serving/logs/
 alpha_zero/serving/metrics/
 alpha_zero/serving/models/export/
 inference_performance.json
+.claude/worktrees/
