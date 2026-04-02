@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import numpy as np
 import pytest
 
@@ -295,9 +297,27 @@ class TestHierarchicalController:
         assert controller.tactical is not None
         assert controller.operational is not None
 
+    def _mock_sub_controllers(self, controller: HierarchicalController, action: int = 0) -> None:
+        """Patch level-controller decide() to return instantly.
+
+        This keeps TestHierarchicalController as a unit test for dispatch
+        logic rather than an integration test for MCTS performance.
+        """
+        stub = ControllerDecision(level=HierarchyLevel.OPERATIONAL, turn=0, action=action)
+        controller.strategic.decide = MagicMock(return_value=stub)
+        controller.strategic.should_update = MagicMock(return_value=True)
+        controller.strategic.get_active_goals = MagicMock(return_value=[])
+        controller.tactical.decide = MagicMock(return_value=stub)
+        controller.tactical.should_update = MagicMock(return_value=True)
+        controller.tactical.get_active_goals = MagicMock(return_value=[])
+        controller.operational.decide = MagicMock(
+            return_value=ControllerDecision(level=HierarchyLevel.OPERATIONAL, turn=0, action=action)
+        )
+
     def test_decide(self, fast_config: HierarchicalConfig) -> None:
-        """Test making hierarchical decision."""
+        """Test making hierarchical decision (sub-controllers mocked)."""
         controller = HierarchicalController(config=fast_config)
+        self._mock_sub_controllers(controller, action=5)
 
         game_state = {
             "turn": 0,
@@ -315,8 +335,9 @@ class TestHierarchicalController:
         assert decision.action is not None
 
     def test_decide_with_valid_actions(self, fast_config: HierarchicalConfig) -> None:
-        """Test decision respects valid actions."""
+        """Test decision forwards valid_actions to operational controller."""
         controller = HierarchicalController(config=fast_config)
+        self._mock_sub_controllers(controller, action=42)
 
         valid_actions = np.zeros(356)
         valid_actions[42] = 1
@@ -336,9 +357,10 @@ class TestHierarchicalController:
         assert decision.action == 42
 
     def test_update(self) -> None:
-        """Test updating controller."""
+        """Test updating controller (sub-controllers mocked)."""
         config = HierarchicalConfig.default()
         controller = HierarchicalController(config=config)
+        self._mock_sub_controllers(controller)
 
         game_state = {"turn": 0, "action_mask": np.ones(356)}
         next_state = {"turn": 1, "action_mask": np.ones(356)}
@@ -364,8 +386,9 @@ class TestHierarchicalController:
         assert controller.state.episodes == 0
 
     def test_get_training_data(self, fast_config: HierarchicalConfig) -> None:
-        """Test getting training data."""
+        """Test getting training data (sub-controllers mocked)."""
         controller = HierarchicalController(config=fast_config)
+        self._mock_sub_controllers(controller)
 
         # Make a decision to populate training data buffers
         game_state = {"turn": 0, "action_mask": np.ones(356)}
