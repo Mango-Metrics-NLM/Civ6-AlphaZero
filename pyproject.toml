@@ -203,6 +203,21 @@ omit = [
     "*/__pycache__/*",
     "*/__init__.py",
     "*/conftest.py",
+    # External-infrastructure modules (require cloud SDK, JAX, running server)
+    "alpha_zero/cloud/gcp/*",
+    "alpha_zero/cloud/evaluator.py",
+    "alpha_zero/cloud/selfplay_worker.py",
+    "alpha_zero/cloud/trainer.py",
+    "alpha_zero/cloud/cloud_logging.py",
+    "alpha_zero/cloud/protocols.py",
+    "alpha_zero/inference/*",
+    "alpha_zero/serving/*",
+    "alpha_zero/web/routes/*",
+    "alpha_zero/web/app.py",
+    "alpha_zero/core/jax_*",
+    "alpha_zero/interfaces/base_interface.py",
+    "alpha_zero/interfaces/civ6_interface.py",
+    "alpha_zero/envs/civrealm_wrapper.py",
 ]
 
 [tool.coverage.report]
@@ -214,7 +229,7 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "@abstractmethod",
 ]
-fail_under = 80
+fail_under = 85
 show_missing = true
 skip_covered = false
 
