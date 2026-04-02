@@ -203,21 +203,26 @@ omit = [
     "*/__pycache__/*",
     "*/__init__.py",
     "*/conftest.py",
-    # External-infrastructure modules (require cloud SDK, JAX, running server)
-    "alpha_zero/cloud/gcp/*",
-    "alpha_zero/cloud/evaluator.py",
-    "alpha_zero/cloud/selfplay_worker.py",
-    "alpha_zero/cloud/trainer.py",
-    "alpha_zero/cloud/cloud_logging.py",
-    "alpha_zero/cloud/protocols.py",
+    # Cloud / infrastructure (require GCP SDK, Vertex AI, GCS)
+    "alpha_zero/cloud/*",
     "alpha_zero/inference/*",
     "alpha_zero/serving/*",
+    # Web server (requires running FastAPI)
     "alpha_zero/web/routes/*",
     "alpha_zero/web/app.py",
+    # JAX backend (requires JAX framework)
     "alpha_zero/core/jax_*",
+    # Game interfaces (require real Civ6 / CivRealm / Docker)
     "alpha_zero/interfaces/base_interface.py",
     "alpha_zero/interfaces/civ6_interface.py",
     "alpha_zero/envs/civrealm_wrapper.py",
+    "alpha_zero/envs/real_civ6_env.py",
+    "alpha_zero/envs/docker_config.py",
+    # External store backends (require ChromaDB, FAISS, SpacetimeDB)
+    "alpha_zero/rag/stores/chroma_store.py",
+    "alpha_zero/rag/stores/faiss_store.py",
+    "alpha_zero/spacetimedb/*",
+    "alpha_zero/storage/gcs_backend.py",
 ]
 
 [tool.coverage.report]

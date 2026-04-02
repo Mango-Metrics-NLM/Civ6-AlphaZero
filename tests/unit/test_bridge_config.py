@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
+
+_skip_windows_tests = pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="WindowsPath cannot be instantiated on non-Windows platforms",
+)
 
 from alpha_zero.bridge.config import (
     MAP_SIZES,
@@ -25,6 +31,75 @@ class TestGetDefaultCommDir:
     def test_path_is_absolute(self) -> None:
         result = _get_default_comm_dir()
         assert result.is_absolute()
+
+    @_skip_windows_tests
+    def test_windows_path_ends_with_alphazeroai(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Cover the Windows branch (no Civ6 folder present → uses Documents)."""
+        import alpha_zero.bridge.config as bridge_config
+
+        # Patch os.name at the module level and force .exists() to return False
+        # (no Civ6 installation found) to hit the default-Documents branch.
+        monkeypatch.setattr(bridge_config.os, "name", "nt")
+        monkeypatch.setattr(Path, "exists", lambda self: False)
+        result = _get_default_comm_dir()
+        assert result.name == "AlphaZeroAI"
+
+    @_skip_windows_tests
+    def test_windows_path_contains_civ6_dir(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Windows path should include the Civ6 game subfolder."""
+        import alpha_zero.bridge.config as bridge_config
+
+        monkeypatch.setattr(bridge_config.os, "name", "nt")
+        monkeypatch.setattr(Path, "exists", lambda self: False)
+        result = _get_default_comm_dir()
+        assert "Civilization VI" in str(result)
+
+    @_skip_windows_tests
+    def test_windows_prefers_onedrive_when_civ6_present(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cover the OneDrive branch: exists() True only for OneDrive path."""
+        import alpha_zero.bridge.config as bridge_config
+
+        home = Path.home()
+        onedrive_civ6 = home / "OneDrive" / "Documents" / "My Games" / "Sid Meier's Civilization VI"
+
+        def fake_exists(self: Path) -> bool:
+            return str(self) == str(onedrive_civ6)
+
+        monkeypatch.setattr(bridge_config.os, "name", "nt")
+        monkeypatch.setattr(Path, "exists", fake_exists)
+        result = _get_default_comm_dir()
+        assert "OneDrive" in str(result)
+        assert result.name == "AlphaZeroAI"
+
+    @_skip_windows_tests
+    def test_windows_uses_documents_when_civ6_present_there(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cover the Documents branch: exists() True only for Documents path."""
+        import alpha_zero.bridge.config as bridge_config
+
+        home = Path.home()
+        docs_civ6 = home / "Documents" / "My Games" / "Sid Meier's Civilization VI"
+
+        def fake_exists(self: Path) -> bool:
+            return str(self) == str(docs_civ6)
+
+        monkeypatch.setattr(bridge_config.os, "name", "nt")
+        monkeypatch.setattr(Path, "exists", fake_exists)
+        result = _get_default_comm_dir()
+        assert "OneDrive" not in str(result)
+        assert "Documents" in str(result)
+        assert result.name == "AlphaZeroAI"
+
+    def test_linux_path_contains_civ6_alphazero(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Linux/Mac branch returns .civ6_alphazero under home."""
+        import alpha_zero.bridge.config as bridge_config
+
+        monkeypatch.setattr(bridge_config.os, "name", "posix")
+        result = _get_default_comm_dir()
+        assert result.name == ".civ6_alphazero"
 
 
 class TestBridgeConfigDefaults:
@@ -266,10 +341,19 @@ class TestBridgeConfigMethods:
         config = BridgeConfig(comm_dir=Path("/tmp/test"))
         d = config.to_dict()
         expected_keys = {
-            "comm_dir", "poll_interval_ms", "command_timeout_ms",
-            "heartbeat_timeout_s", "max_retries", "retry_delay_s",
-            "board_size", "log_level", "debug_mode", "num_players",
-            "max_actions_per_second", "multiplayer_mode", "player_id_mapping",
+            "comm_dir",
+            "poll_interval_ms",
+            "command_timeout_ms",
+            "heartbeat_timeout_s",
+            "max_retries",
+            "retry_delay_s",
+            "board_size",
+            "log_level",
+            "debug_mode",
+            "num_players",
+            "max_actions_per_second",
+            "multiplayer_mode",
+            "player_id_mapping",
         }
         assert set(d.keys()) == expected_keys
 
@@ -316,8 +400,8 @@ class TestMapSizes:
         for i in range(len(sizes) - 1):
             c1 = MAP_SIZES[sizes[i]]
             c2 = MAP_SIZES[sizes[i + 1]]
-            assert c2.width > c1.width, f"{sizes[i+1]} width should be > {sizes[i]}"
-            assert c2.height > c1.height, f"{sizes[i+1]} height should be > {sizes[i]}"
+            assert c2.width > c1.width, f"{sizes[i + 1]} width should be > {sizes[i]}"
+            assert c2.height > c1.height, f"{sizes[i + 1]} height should be > {sizes[i]}"
 
     def test_duel_size(self) -> None:
         d = MAP_SIZES["duel"]
