@@ -91,7 +91,8 @@ def _load_model() -> None:
 
     # Download model from GCS
     model_path = f"models/civ6az/{MODEL_VERSION}/model.pt"
-    local_path: str | None = f"/tmp/{MODEL_VERSION}_model.pt"  # noqa: S108
+    cache_dir = os.environ.get("CIV6AZ_MODEL_CACHE_DIR", "/tmp")  # noqa: S108
+    local_path: str | None = f"{cache_dir}/{MODEL_VERSION}_model.pt"
 
     try:
         from google.cloud import storage as gcs_storage
