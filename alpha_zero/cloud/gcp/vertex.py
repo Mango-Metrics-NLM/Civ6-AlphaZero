@@ -26,8 +26,8 @@ try:
 
     VERTEX_AVAILABLE = True
 except ImportError:
-    aiplatform = None  # type: ignore[assignment]
-    CustomJob = None  # type: ignore[assignment, misc]
+    aiplatform = None
+    CustomJob = None
 
 
 class JobStatus(Enum):
@@ -426,7 +426,7 @@ class VertexAITrainer:
             if filter_display_name:
                 filter_str = f'display_name="{filter_display_name}"'
 
-            jobs = aiplatform.CustomJob.list(filter=filter_str)  # type: ignore
+            jobs = aiplatform.CustomJob.list(filter=filter_str)
             return [getattr(job, "resource_name", str(job)) for job in jobs[:max_results]]
         except Exception as e:
             logger.warning("Failed to list jobs: %s", e)

@@ -1593,9 +1593,9 @@ class MuZeroMCTS:
                 use_categorical_reward=getattr(net_config, "use_categorical_reward", True),
                 reward_support_size=getattr(net_config, "reward_support_size", 601),
             )
-            return cls(network, synced_config, device)  # type: ignore[arg-type]
+            return cls(network, synced_config, device)
 
-        return cls(network, base_config, device)  # type: ignore[arg-type]
+        return cls(network, base_config, device)
 
     def _convert_reward_to_scalar(self, reward: torch.Tensor) -> float:
         """Convert network reward output to scalar value.

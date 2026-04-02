@@ -371,14 +371,14 @@ class InferenceEngine:
                     logger.warning(
                         "MCTS search interface unavailable, falling back to raw network inference"
                     )
-                    policy_logits, value = self.current_model(spatial, vector, action_mask)  # type: ignore[arg-type]
+                    policy_logits, value = self.current_model(spatial, vector, action_mask)
                     action_probs, value_estimate = self._apply_policy_postprocessing(
                         policy_logits, action_mask, request.temperature, value
                     )
         else:
             # Raw network inference (no search) — useful for fast responses
             with torch.no_grad():
-                policy_logits, value = self.current_model(spatial, vector, action_mask)  # type: ignore[arg-type]
+                policy_logits, value = self.current_model(spatial, vector, action_mask)
                 action_probs, value_estimate = self._apply_policy_postprocessing(
                     policy_logits, action_mask, request.temperature, value
                 )

@@ -414,7 +414,7 @@ class LocalStorageBackend(StorageBackend):
                 metadata_list.extend(self.list_trajectories(iteration=iteration))
 
         if shuffle:
-            np.random.shuffle(metadata_list)  # type: ignore[arg-type]
+            np.random.shuffle(metadata_list)
 
         for meta in metadata_list:
             try:

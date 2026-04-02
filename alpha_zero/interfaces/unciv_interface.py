@@ -1469,7 +1469,7 @@ class UncivInterface:
         Returns:
             Numpy array of shape (action_space_size,) with 1.0 for valid actions
         """
-        return self.action_space.get_full_mask(state)  # type: ignore[no-any-return]
+        return self.action_space.get_full_mask(state)
 
     def _get_action_enums(self) -> Any:
         """Get action enum classes, loading them if needed."""

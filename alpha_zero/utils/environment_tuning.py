@@ -390,15 +390,15 @@ class TunedEnvironmentWrapper(gym.Wrapper):
 
     def get_valid_actions(self) -> np.ndarray:
         """Get valid actions from underlying environment."""
-        return self.env.get_valid_actions()  # type: ignore[attr-defined,no-any-return]
+        return self.env.get_valid_actions()
 
     def get_observation(self) -> dict[str, np.ndarray]:
         """Get observation from underlying environment."""
-        return self.env.get_observation()  # type: ignore[attr-defined,no-any-return]
+        return self.env.get_observation()
 
     def get_info(self) -> dict[str, Any]:
         """Get info from underlying environment."""
-        return self.env.get_info()  # type: ignore[attr-defined,no-any-return]
+        return self.env.get_info()
 
     def reset(
         self,

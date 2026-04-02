@@ -707,7 +707,7 @@ class EnhancedMicroCivEnv(MicroCivEnv):
             total = self.board_size * self.board_size
             lines.append(f"Visibility: {visible}/{total} tiles ({visible * 100 // total}%)")
 
-        return "\n".join(lines)  # type: ignore[return-value]
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------
     # Clone override

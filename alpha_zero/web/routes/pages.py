@@ -46,7 +46,7 @@ def create_pages_router(session_manager: Any, templates: Any) -> APIRouter:
     async def index(request: Request) -> HTMLResponse:
         """Render the lobby / new game page."""
         sessions = session_manager.list_sessions()
-        return templates.TemplateResponse(  # type: ignore[no-any-return]
+        return templates.TemplateResponse(
             request,
             "index.html",
             {
@@ -71,7 +71,7 @@ def create_pages_router(session_manager: Any, templates: Any) -> APIRouter:
             )
         except (RuntimeError, ValueError) as e:
             logger.error("Failed to create game: %s", e)
-            return templates.TemplateResponse(  # type: ignore[no-any-return]
+            return templates.TemplateResponse(
                 request,
                 "index.html",
                 {
@@ -114,7 +114,7 @@ def create_pages_router(session_manager: Any, templates: Any) -> APIRouter:
             for idx in state.valid_actions
         ]
 
-        return templates.TemplateResponse(  # type: ignore[no-any-return]
+        return templates.TemplateResponse(
             request,
             "game.html",
             {

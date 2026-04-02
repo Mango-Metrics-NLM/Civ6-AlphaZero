@@ -467,7 +467,7 @@ def _get_cloud_monitoring_client(
         return MockCloudMonitoringClient(project=project)
 
     try:
-        from google.cloud import monitoring_v3  # type: ignore
+        from google.cloud import monitoring_v3
 
         return monitoring_v3.MetricServiceClient()
     except ImportError:
@@ -560,7 +560,7 @@ class CloudMetricsExporter:
             return
 
         try:
-            from google.cloud import monitoring_v3  # type: ignore
+            from google.cloud import monitoring_v3
             from google.protobuf import timestamp_pb2
 
             series = monitoring_v3.TimeSeries()

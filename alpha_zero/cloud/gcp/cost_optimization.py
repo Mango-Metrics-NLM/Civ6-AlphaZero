@@ -477,7 +477,7 @@ class CostOptimizationManager:
         # Start component monitoring
         self.idle_manager.start_monitoring()
         self.preemption_handler.start_checkpoint_timer(
-            model=None,  # type: ignore[arg-type]
+            model=None,
             optimizer=None,
             state_getter=lambda: {},
         )

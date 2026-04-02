@@ -293,7 +293,7 @@ class DDPLearnerConfig(LearnerConfig):
             "master_port": os.environ.get("MASTER_PORT", "29500"),
         }
         # Enable DDP if world_size > 1
-        if env_values["ddp_world_size"] > 1:  # type: ignore[operator]
+        if env_values["ddp_world_size"] > 1:
             env_values["ddp_enabled"] = True
 
         # Map alias kwargs to canonical names before merging
@@ -374,11 +374,11 @@ class DDPLearner(Learner):
 
         # Create or use provided network
         if network is not None:
-            self.network = network.to(config.device)  # type: ignore[assignment]
+            self.network = network.to(config.device)
         else:
             self.network = MicroCivNetwork(
                 board_size=config.board_size,
-                action_space_size=self.action_space_size,  # type: ignore[arg-type]
+                action_space_size=self.action_space_size,
                 num_res_blocks=config.num_res_blocks,
                 num_filters=config.num_filters,
             ).to(config.device)
@@ -390,7 +390,7 @@ class DDPLearner(Learner):
 
         # Wrap with DDP if enabled
         if self.ddp_config.enabled:
-            self.network = self._wrap_ddp(self.network)  # type: ignore[assignment]
+            self.network = self._wrap_ddp(self.network)
 
         # Log network info (only on main process)
         if self.is_main_process():
@@ -423,7 +423,7 @@ class DDPLearner(Learner):
         # AMP scaler for mixed precision
         self.scaler: GradScaler | None = None
         if config.use_amp:
-            self.scaler = torch.amp.GradScaler("cuda")  # type: ignore[assignment]
+            self.scaler = torch.amp.GradScaler("cuda")
             logger.info(f"Mixed precision enabled with {config.amp_dtype}")
 
         # Statistics
@@ -575,7 +575,7 @@ class DDPLearner(Learner):
             Base network without DDP wrapper.
         """
         if isinstance(self.network, DDP):
-            return self.network.module  # type: ignore[no-any-return]
+            return self.network.module
         return self.network
 
     def get_model(self) -> nn.Module:
@@ -943,7 +943,7 @@ class DDPLearner(Learner):
     def all_reduce(
         self,
         tensor: torch.Tensor,
-        op: dist.ReduceOp = dist.ReduceOp.SUM,  # type: ignore
+        op: dist.ReduceOp = dist.ReduceOp.SUM,
     ) -> torch.Tensor:
         """All-reduce a tensor across all processes.
 

@@ -457,7 +457,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
         print(f"\nRecent jobs ({len(jobs)}):")
         for job in jobs:
-            state = job.state.name if job.state else "UNKNOWN"  # type: ignore[attr-defined]
+            state = job.state.name if job.state else "UNKNOWN"
             state_indicator = ""
             if state == "JOB_STATE_SUCCEEDED":
                 state_indicator = "[OK]"

@@ -431,7 +431,7 @@ class SimpleMCTS:
             result[valid_actions] = valid_probs
             return result
 
-        return masked_policy  # type: ignore[no-any-return]
+        return masked_policy
 
     def select_action(
         self,

@@ -114,7 +114,7 @@ class Civ6Interface(BaseGameInterface):
             )
 
             # Update action space size from environment
-            self.config.action_space_size = self._env.action_space.n  # type: ignore[attr-defined]
+            self.config.action_space_size = self._env.action_space.n
 
             self._connected = True
             self._game_status = GameStatus.NOT_STARTED

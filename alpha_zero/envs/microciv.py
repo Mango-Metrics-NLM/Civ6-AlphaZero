@@ -122,7 +122,7 @@ class MicroCivEnv(gym.Env):
     - Flat discrete space covering all possible actions
     """
 
-    metadata: ClassVar[dict[str, list[str]]] = {"render_modes": ["ansi"]}  # type: ignore[misc]
+    metadata: ClassVar[dict[str, list[str]]] = {"render_modes": ["ansi"]}
 
     # Unit production costs (turns)
     UNIT_COSTS: ClassVar[dict[str, int]] = {
@@ -921,7 +921,7 @@ class MicroCivEnv(gym.Env):
                 f"{len(self._get_player_cities(p))} cities"
             )
 
-        return "\n".join(lines)  # type: ignore[return-value]
+        return "\n".join(lines)
 
     def _update_fog_visibility(self) -> None:
         """Recompute fog of war visibility from current units and cities."""

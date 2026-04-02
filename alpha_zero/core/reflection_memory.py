@@ -263,7 +263,7 @@ class DefaultStateEncoder:
         if norm > 0:
             projected /= norm
 
-        return projected.astype(np.float32)  # type: ignore[no-any-return]
+        return projected.astype(np.float32)
 
     def encode_trajectory(self, trajectory: GameTrajectory) -> np.ndarray:
         """Encode trajectory using mean of state embeddings.
@@ -285,7 +285,7 @@ class DefaultStateEncoder:
             }
             embeddings.append(self.encode_state(obs))
 
-        return np.mean(embeddings, axis=0).astype(np.float32)  # type: ignore[no-any-return]
+        return np.mean(embeddings, axis=0).astype(np.float32)
 
 
 class ReflectionMemory:

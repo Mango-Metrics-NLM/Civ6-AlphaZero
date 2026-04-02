@@ -426,7 +426,7 @@ class MultiHeadAttention(nn.Module):
         out = self.proj(out)
         out = self.dropout(out)
 
-        return out  # type: ignore[no-any-return]
+        return out
 
     def _standard_attention(
         self,
@@ -454,7 +454,7 @@ class MultiHeadAttention(nn.Module):
         attn = F.softmax(attn, dim=-1)
         attn = self.dropout(attn)
 
-        return attn @ v  # type: ignore[no-any-return]
+        return attn @ v
 
     def _linear_attention(
         self,
@@ -533,9 +533,9 @@ class FeedForward(nn.Module):
         """
         if self.use_glu:
             # SwiGLU: gate * up
-            return self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x)))  # type: ignore[no-any-return]
+            return self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x)))
         else:
-            return self.dropout(self.fc2(F.gelu(self.fc1(x))))  # type: ignore[no-any-return]
+            return self.dropout(self.fc2(F.gelu(self.fc1(x))))
 
 
 class MixtureOfExperts(nn.Module):
@@ -980,7 +980,7 @@ class TransformerPolicyHead(nn.Module):
         Returns:
             Policy logits (B, A).
         """
-        return self.mlp(x)  # type: ignore[no-any-return]
+        return self.mlp(x)
 
 
 class TransformerValueHead(nn.Module):
@@ -1027,7 +1027,7 @@ class TransformerValueHead(nn.Module):
         Returns:
             Value estimate (B, 1).
         """
-        return self.mlp(x)  # type: ignore[no-any-return]
+        return self.mlp(x)
 
 
 class Civ6TransformerNetwork(nn.Module):

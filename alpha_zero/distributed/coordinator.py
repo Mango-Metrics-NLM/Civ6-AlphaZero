@@ -290,7 +290,7 @@ class TrainingCoordinator:
         """
         if self.config.use_ddp:
             # Create DDP-enabled learner
-            ddp_config = DDPLearnerConfig(  # type: ignore[call-arg]
+            ddp_config = DDPLearnerConfig(
                 board_size=self.config.board_size,
                 num_res_blocks=self.config.num_res_blocks,
                 num_filters=self.config.num_filters,
@@ -415,7 +415,7 @@ class TrainingCoordinator:
         env = MicroCivEnv(board_size=self.config.board_size)
         self.eval_network = MicroCivNetwork(
             board_size=self.config.board_size,
-            action_space_size=env.action_space.n,  # type: ignore[arg-type]
+            action_space_size=env.action_space.n,
             num_res_blocks=self.config.num_res_blocks,
             num_filters=self.config.num_filters,
         ).to(self.config.device)
@@ -475,7 +475,7 @@ class TrainingCoordinator:
 
             while True:
                 if env.current_player == network_player:
-                    action_probs, _ = mcts.search(env, add_noise=False)  # type: ignore[arg-type]
+                    action_probs, _ = mcts.search(env, add_noise=False)
                     action = mcts.select_action(action_probs, temperature=0.0)
                 else:
                     mask = env.get_valid_actions()
