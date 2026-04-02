@@ -123,7 +123,7 @@ class Civ6LocalConfig:
         # Support both top-level keys and a nested "civ6_local" section
         data: dict[str, Any] = raw.get("civ6_local", raw)
 
-        known_fields = {f.name for f in cls.__dataclass_fields__.values()}  # type: ignore[attr-defined]
+        known_fields = {f.name for f in cls.__dataclass_fields__.values()}
         filtered = {k: v for k, v in data.items() if k in known_fields}
 
         unknown = set(data.keys()) - known_fields
@@ -409,13 +409,15 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
     logger.info("Connecting to Civ6 bridge at: %s", bridge_cfg.comm_dir)
     logger.info("Start Civilization 6 with the AlphaZeroAI mod to begin.")
 
+    import asyncio
+
     bridge = FileBridge(bridge_cfg)
     try:
-        bridge.run()
+        asyncio.run(bridge.start())
     except KeyboardInterrupt:
         logger.info("Bridge stopped by user.")
     finally:
-        bridge.close()
+        asyncio.run(bridge.stop())
 
     return 0
 

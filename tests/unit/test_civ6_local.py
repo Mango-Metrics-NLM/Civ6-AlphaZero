@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
@@ -766,11 +766,15 @@ class TestRunCiv6Bridge:
     """run_civ6_bridge should call FileBridge.run() and handle KeyboardInterrupt."""
 
     def _make_bridge_mocks(self) -> tuple[MagicMock, MagicMock, MagicMock]:
-        """Return (mock_bridge_instance, mock_bridge_cls, mock_cfg_instance)."""
+        """Return (mock_bridge_instance, mock_bridge_cls, mock_cfg_cls).
+
+        start() and stop() are AsyncMock because FileBridge uses async methods.
+        """
         mock_bridge = MagicMock()
+        mock_bridge.start = AsyncMock()
+        mock_bridge.stop = AsyncMock()
         mock_bridge_cls = MagicMock(return_value=mock_bridge)
-        mock_cfg_instance = MagicMock()
-        mock_cfg_cls = MagicMock(return_value=mock_cfg_instance)
+        mock_cfg_cls = MagicMock(return_value=MagicMock())
         return mock_bridge, mock_bridge_cls, mock_cfg_cls
 
     def test_run_bridge_normal(self) -> None:
@@ -779,30 +783,26 @@ class TestRunCiv6Bridge:
         cfg = Civ6LocalConfig(mode="civ6")
         mock_bridge, mock_bridge_cls, mock_cfg_cls = self._make_bridge_mocks()
 
-        # BridgeConfig and FileBridge are imported inside the function, so patch at source
-        with (
-            patch("alpha_zero.bridge.config.BridgeConfig", mock_cfg_cls),
-            patch("alpha_zero.bridge.file_bridge.FileBridge", mock_bridge_cls),
-            patch.dict(
-                sys.modules,
-                {
-                    "alpha_zero.bridge.config": MagicMock(BridgeConfig=mock_cfg_cls),
-                    "alpha_zero.bridge.file_bridge": MagicMock(FileBridge=mock_bridge_cls),
-                },
-            ),
+        with patch.dict(
+            sys.modules,
+            {
+                "alpha_zero.bridge.config": MagicMock(BridgeConfig=mock_cfg_cls),
+                "alpha_zero.bridge.file_bridge": MagicMock(FileBridge=mock_bridge_cls),
+            },
         ):
             rc = run_civ6_bridge(cfg)
 
         assert rc == 0
-        mock_bridge.run.assert_called_once()
-        mock_bridge.close.assert_called_once()
+        mock_bridge.start.assert_awaited_once()
+        mock_bridge.stop.assert_awaited_once()
 
     def test_run_bridge_keyboard_interrupt(self) -> None:
         from alpha_zero.civ6_local import run_civ6_bridge
 
         cfg = Civ6LocalConfig(mode="civ6")
         mock_bridge = MagicMock()
-        mock_bridge.run.side_effect = KeyboardInterrupt
+        mock_bridge.start = AsyncMock(side_effect=KeyboardInterrupt)
+        mock_bridge.stop = AsyncMock()
         mock_bridge_cls = MagicMock(return_value=mock_bridge)
         mock_cfg_cls = MagicMock(return_value=MagicMock())
 
@@ -816,7 +816,7 @@ class TestRunCiv6Bridge:
             rc = run_civ6_bridge(cfg)
 
         assert rc == 0
-        mock_bridge.close.assert_called_once()
+        mock_bridge.stop.assert_awaited_once()
 
     def test_run_bridge_import_error(self) -> None:
         from alpha_zero.civ6_local import run_civ6_bridge
