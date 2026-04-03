@@ -223,6 +223,12 @@ omit = [
     "alpha_zero/rag/stores/faiss_store.py",
     "alpha_zero/spacetimedb/*",
     "alpha_zero/storage/gcs_backend.py",
+    # Cloud coordinator (requires GCP SDK imports)
+    "alpha_zero/distributed/cloud_coordinator.py",
+    # DDP learner (requires multi-GPU / torch.distributed init)
+    "alpha_zero/distributed/ddp_learner.py",
+    # CUDA graph cache (requires CUDA hardware)
+    "alpha_zero/optimizations/cuda_graph_cache.py",
 ]
 
 [tool.coverage.report]
