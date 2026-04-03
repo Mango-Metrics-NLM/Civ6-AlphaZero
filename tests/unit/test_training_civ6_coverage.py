@@ -31,7 +31,10 @@ from alpha_zero.training_civ6 import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
-def _make_example(board_size: int = 16, action_size: int = 356, value: float = 1.0) -> TrainingExample:
+
+def _make_example(
+    board_size: int = 16, action_size: int = 356, value: float = 1.0
+) -> TrainingExample:
     return TrainingExample(
         spatial=np.random.randn(13, board_size, board_size).astype(np.float32),
         vector=np.random.randn(64).astype(np.float32),
@@ -70,6 +73,7 @@ def examples():
 # TrainingConfig
 # ---------------------------------------------------------------------------
 
+
 class TestTrainingConfig:
     def test_defaults(self):
         cfg = TrainingConfig()
@@ -100,6 +104,7 @@ class TestTrainingConfig:
 # TrainingExample
 # ---------------------------------------------------------------------------
 
+
 class TestTrainingExample:
     def test_creation(self):
         ex = _make_example(value=-1.0)
@@ -111,6 +116,7 @@ class TestTrainingExample:
 # ---------------------------------------------------------------------------
 # ReplayBuffer
 # ---------------------------------------------------------------------------
+
 
 class TestReplayBuffer:
     def test_init(self):
@@ -151,6 +157,7 @@ class TestReplayBuffer:
 # ReplayDataset
 # ---------------------------------------------------------------------------
 
+
 class TestReplayDataset:
     def test_len(self, examples):
         ds = ReplayDataset(examples)
@@ -182,6 +189,7 @@ class TestReplayDataset:
 # self_play_game
 # ---------------------------------------------------------------------------
 
+
 class TestSelfPlayGame:
     def _make_mock_env(self, num_steps: int = 3):
         """Create a mock env that terminates after num_steps."""
@@ -195,7 +203,7 @@ class TestSelfPlayGame:
         env.current_player = 0
 
         step_returns = []
-        for i in range(num_steps - 1):
+        for _i in range(num_steps - 1):
             step_returns.append((obs, 0.0, False, False, {}))
         # Final step: terminated
         step_returns.append((obs, 0.0, True, False, {"winner": 0}))
@@ -233,10 +241,17 @@ class TestSelfPlayGame:
         env = self._make_mock_env(num_steps=1)
         # Override final step to have no winner
         env.step.side_effect = [
-            ({"spatial": np.zeros((13, 8, 8), dtype=np.float32),
-              "vector": np.zeros(64, dtype=np.float32),
-              "action_mask": np.ones(100, dtype=np.float32)},
-             0.0, True, False, {"winner": None})
+            (
+                {
+                    "spatial": np.zeros((13, 8, 8), dtype=np.float32),
+                    "vector": np.zeros(64, dtype=np.float32),
+                    "action_mask": np.ones(100, dtype=np.float32),
+                },
+                0.0,
+                True,
+                False,
+                {"winner": None},
+            )
         ]
         mcts = self._make_mock_mcts()
         cfg = TrainingConfig()
@@ -248,10 +263,17 @@ class TestSelfPlayGame:
         env = self._make_mock_env(num_steps=1)
         # Player 0 plays, but player 1 wins
         env.step.side_effect = [
-            ({"spatial": np.zeros((13, 8, 8), dtype=np.float32),
-              "vector": np.zeros(64, dtype=np.float32),
-              "action_mask": np.ones(100, dtype=np.float32)},
-             0.0, True, False, {"winner": 1})
+            (
+                {
+                    "spatial": np.zeros((13, 8, 8), dtype=np.float32),
+                    "vector": np.zeros(64, dtype=np.float32),
+                    "action_mask": np.ones(100, dtype=np.float32),
+                },
+                0.0,
+                True,
+                False,
+                {"winner": 1},
+            )
         ]
         mcts = self._make_mock_mcts()
         cfg = TrainingConfig()
@@ -295,6 +317,7 @@ class TestSelfPlayGame:
 # run_self_play
 # ---------------------------------------------------------------------------
 
+
 class TestRunSelfPlay:
     @patch("alpha_zero.training_civ6.self_play_game")
     @patch("alpha_zero.training_civ6.MicroCivEnv")
@@ -308,7 +331,6 @@ class TestRunSelfPlay:
         # SimpleMCTS should be used, so network is not passed to MCTS
         call_args = mock_spg.call_args_list
         for call in call_args:
-            mcts_arg = call[0][1]
             # We can't check type because it's the real SimpleMCTS, but we can
             # verify the function was called with the env
             assert call[0][2] == cfg
@@ -352,15 +374,18 @@ class TestRunSelfPlay:
 # train_epoch
 # ---------------------------------------------------------------------------
 
+
 class TestTrainEpoch:
     def test_returns_loss_dict(self, config):
         action_size = 100
-        examples = [_make_example(board_size=config.board_size, action_size=action_size)
-                     for _ in range(8)]
+        examples = [
+            _make_example(board_size=config.board_size, action_size=action_size) for _ in range(8)
+        ]
         ds = ReplayDataset(examples)
         dl = DataLoader(ds, batch_size=config.batch_size, shuffle=False)
 
         from alpha_zero.core.civ6_network import MicroCivNetwork
+
         network = MicroCivNetwork(
             board_size=config.board_size,
             action_space_size=action_size,
@@ -370,6 +395,7 @@ class TestTrainEpoch:
         optimizer = torch.optim.Adam(network.parameters(), lr=0.001)
 
         import warnings
+
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)
             losses = train_epoch(network, optimizer, dl, config)
@@ -382,12 +408,14 @@ class TestTrainEpoch:
 
     def test_network_in_train_mode(self, config):
         action_size = 100
-        examples = [_make_example(board_size=config.board_size, action_size=action_size)
-                     for _ in range(4)]
+        examples = [
+            _make_example(board_size=config.board_size, action_size=action_size) for _ in range(4)
+        ]
         ds = ReplayDataset(examples)
         dl = DataLoader(ds, batch_size=config.batch_size, shuffle=False)
 
         from alpha_zero.core.civ6_network import MicroCivNetwork
+
         network = MicroCivNetwork(
             board_size=config.board_size,
             action_space_size=action_size,
@@ -398,6 +426,7 @@ class TestTrainEpoch:
         optimizer = torch.optim.Adam(network.parameters(), lr=0.001)
 
         import warnings
+
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)
             train_epoch(network, optimizer, dl, config)
@@ -407,12 +436,14 @@ class TestTrainEpoch:
     def test_multiple_batches(self, config):
         action_size = 100
         # Enough examples for multiple batches
-        examples = [_make_example(board_size=config.board_size, action_size=action_size)
-                     for _ in range(20)]
+        examples = [
+            _make_example(board_size=config.board_size, action_size=action_size) for _ in range(20)
+        ]
         ds = ReplayDataset(examples)
         dl = DataLoader(ds, batch_size=4, shuffle=False)
 
         from alpha_zero.core.civ6_network import MicroCivNetwork
+
         network = MicroCivNetwork(
             board_size=config.board_size,
             action_space_size=action_size,
@@ -422,6 +453,7 @@ class TestTrainEpoch:
         optimizer = torch.optim.Adam(network.parameters(), lr=0.001)
 
         import warnings
+
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)
             losses = train_epoch(network, optimizer, dl, config)
@@ -433,6 +465,7 @@ class TestTrainEpoch:
 # ---------------------------------------------------------------------------
 # evaluate_against_random
 # ---------------------------------------------------------------------------
+
 
 class TestEvaluateAgainstRandom:
     @patch("alpha_zero.training_civ6.Civ6MCTS")
@@ -482,8 +515,6 @@ class TestEvaluateAgainstRandom:
         mock_env.get_valid_actions.return_value = np.ones(100, dtype=np.float32)
 
         # Track which player the network is for each game
-        network_players = []
-
         def step_side_effect(action):
             # Record what network_player was for this game
             return (obs, 0.0, True, False, {"winner": None})
@@ -545,6 +576,7 @@ class TestEvaluateAgainstRandom:
 # train (main training loop)
 # ---------------------------------------------------------------------------
 
+
 class TestTrain:
     @patch("alpha_zero.training_civ6.evaluate_against_random")
     @patch("alpha_zero.training_civ6.run_self_play")
@@ -556,8 +588,7 @@ class TestTrain:
         action_size = 100
         # Return enough examples for training
         mock_self_play.return_value = [
-            _make_example(board_size=config.board_size, action_size=action_size)
-            for _ in range(20)
+            _make_example(board_size=config.board_size, action_size=action_size) for _ in range(20)
         ]
         mock_eval.return_value = 0.5
 
@@ -581,8 +612,7 @@ class TestTrain:
 
         action_size = 100
         mock_self_play.return_value = [
-            _make_example(board_size=config.board_size, action_size=action_size)
-            for _ in range(20)
+            _make_example(board_size=config.board_size, action_size=action_size) for _ in range(20)
         ]
         mock_eval.return_value = 0.5
 
@@ -594,6 +624,7 @@ class TestTrain:
             train(config, dry_run=True)
 
         import os
+
         assert os.path.isdir(config.checkpoint_dir)
         assert os.path.isdir(config.log_dir)
 
@@ -605,8 +636,7 @@ class TestTrain:
 
         action_size = 100
         mock_self_play.return_value = [
-            _make_example(board_size=config.board_size, action_size=action_size)
-            for _ in range(20)
+            _make_example(board_size=config.board_size, action_size=action_size) for _ in range(20)
         ]
         mock_eval.return_value = 0.5
 
@@ -619,8 +649,13 @@ class TestTrain:
 
         # First call should use simple MCTS
         first_call = mock_self_play.call_args_list[0]
-        assert first_call[1].get("use_simple_mcts", first_call[0][3] if len(first_call[0]) > 3 else None) is True or \
-            first_call.kwargs.get("use_simple_mcts") is True
+        assert (
+            first_call[1].get(
+                "use_simple_mcts", first_call[0][3] if len(first_call[0]) > 3 else None
+            )
+            is True
+            or first_call.kwargs.get("use_simple_mcts") is True
+        )
 
     @patch("alpha_zero.training_civ6.evaluate_against_random")
     @patch("alpha_zero.training_civ6.run_self_play")
@@ -631,8 +666,7 @@ class TestTrain:
 
         action_size = 100
         mock_self_play.return_value = [
-            _make_example(board_size=config.board_size, action_size=action_size)
-            for _ in range(5)
+            _make_example(board_size=config.board_size, action_size=action_size) for _ in range(5)
         ]
         mock_eval.return_value = 0.5
 
@@ -657,8 +691,7 @@ class TestTrain:
 
         action_size = 100
         mock_self_play.return_value = [
-            _make_example(board_size=config.board_size, action_size=action_size)
-            for _ in range(20)
+            _make_example(board_size=config.board_size, action_size=action_size) for _ in range(20)
         ]
         mock_eval.return_value = 0.5
 
@@ -699,8 +732,7 @@ class TestTrain:
 
         action_size = 100
         mock_self_play.return_value = [
-            _make_example(board_size=config.board_size, action_size=action_size)
-            for _ in range(20)
+            _make_example(board_size=config.board_size, action_size=action_size) for _ in range(20)
         ]
         mock_eval.return_value = 0.5
 
@@ -733,6 +765,7 @@ class TestTrain:
 # main (CLI)
 # ---------------------------------------------------------------------------
 
+
 class TestMain:
     @patch("alpha_zero.training_civ6.train")
     def test_dry_run_flag(self, mock_train):
@@ -757,19 +790,32 @@ class TestMain:
 
     @patch("alpha_zero.training_civ6.train")
     def test_custom_args(self, mock_train):
-        with patch("sys.argv", [
-            "training_civ6",
-            "--board_size", "12",
-            "--num_simulations", "100",
-            "--num_games", "50",
-            "--num_iterations", "200",
-            "--batch_size", "64",
-            "--learning_rate", "0.01",
-            "--num_epochs", "5",
-            "--num_res_blocks", "4",
-            "--num_filters", "32",
-            "--checkpoint_dir", "/tmp/test_ckpt",
-        ]):
+        with patch(
+            "sys.argv",
+            [
+                "training_civ6",
+                "--board_size",
+                "12",
+                "--num_simulations",
+                "100",
+                "--num_games",
+                "50",
+                "--num_iterations",
+                "200",
+                "--batch_size",
+                "64",
+                "--learning_rate",
+                "0.01",
+                "--num_epochs",
+                "5",
+                "--num_res_blocks",
+                "4",
+                "--num_filters",
+                "32",
+                "--checkpoint_dir",
+                "/tmp/test_ckpt",
+            ],
+        ):
             main()
         cfg = mock_train.call_args[0][0]
         assert cfg.board_size == 12
@@ -802,6 +848,7 @@ class TestMain:
 # ---------------------------------------------------------------------------
 # Integration-style: run_self_play with SimpleMCTS (no mocking)
 # ---------------------------------------------------------------------------
+
 
 class TestRunSelfPlayIntegration:
     def test_simple_mcts_small_game(self):

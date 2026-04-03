@@ -166,15 +166,14 @@ class TestSelfPlayActorInit:
 
 
 class TestNetworkInit:
-    def test_init_network_creates_simple_mcts_when_no_weights(
-        self, actor: SelfPlayActor
-    ) -> None:
+    def test_init_network_creates_simple_mcts_when_no_weights(self, actor: SelfPlayActor) -> None:
         """When storage has no weights, actor should use SimpleMCTS."""
         actor._init_network()
         assert actor.network is not None
         assert actor.mcts is not None
         # SimpleMCTS is used when version == 0
         from alpha_zero.core.civ6_mcts import SimpleMCTS
+
         assert isinstance(actor.mcts, SimpleMCTS)
 
     def test_init_network_uses_civ6_mcts_when_weights_available(
@@ -191,9 +190,7 @@ class TestNetworkInit:
 
         # We need the weight sync to report version > 0 after update
         # Patch WeightSynchronizer to simulate having weights
-        with patch(
-            "alpha_zero.distributed.actor.WeightSynchronizer"
-        ) as MockWS:
+        with patch("alpha_zero.distributed.actor.WeightSynchronizer") as MockWS:
             ws_instance = MagicMock()
             ws_instance.should_update.return_value = True
             ws_instance.update_model.return_value = True
@@ -203,6 +200,7 @@ class TestNetworkInit:
             actor._init_network()
 
             from alpha_zero.core.civ6_mcts import Civ6MCTS
+
             assert isinstance(actor.mcts, Civ6MCTS)
 
 
@@ -212,14 +210,10 @@ class TestNetworkInit:
 
 
 class TestWeightUpdates:
-    def test_update_weights_returns_false_when_not_initialized(
-        self, actor: SelfPlayActor
-    ) -> None:
+    def test_update_weights_returns_false_when_not_initialized(self, actor: SelfPlayActor) -> None:
         assert actor._update_weights() is False
 
-    def test_update_weights_returns_false_when_no_new_version(
-        self, actor: SelfPlayActor
-    ) -> None:
+    def test_update_weights_returns_false_when_no_new_version(self, actor: SelfPlayActor) -> None:
         actor._init_network()
         # weight_sync.should_update returns False by default after init
         # because version is 0 and storage also returns 0
@@ -235,9 +229,7 @@ class TestWeightUpdates:
 
 
 class TestTemperatureScheduling:
-    def test_temperature_applied_before_threshold(
-        self, actor: SelfPlayActor
-    ) -> None:
+    def test_temperature_applied_before_threshold(self, actor: SelfPlayActor) -> None:
         """Before temperature_threshold, use configured temperature."""
         actor._init_network()
         assert actor.config.temperature_threshold == 10
@@ -245,21 +237,15 @@ class TestTemperatureScheduling:
         actor.env.turn = 5
         # Temperature should be config.temperature (1.0)
         temp = (
-            actor.config.temperature
-            if actor.env.turn < actor.config.temperature_threshold
-            else 0.0
+            actor.config.temperature if actor.env.turn < actor.config.temperature_threshold else 0.0
         )
         assert temp == 1.0
 
-    def test_temperature_zero_after_threshold(
-        self, actor: SelfPlayActor
-    ) -> None:
+    def test_temperature_zero_after_threshold(self, actor: SelfPlayActor) -> None:
         """After temperature_threshold, temperature should be 0 (greedy)."""
         actor.env.turn = 15
         temp = (
-            actor.config.temperature
-            if actor.env.turn < actor.config.temperature_threshold
-            else 0.0
+            actor.config.temperature if actor.env.turn < actor.config.temperature_threshold else 0.0
         )
         assert temp == 0.0
 
@@ -351,7 +337,7 @@ class TestCreateTrainingExamples:
         examples = actor._create_training_examples(history, winner=0)
         assert len(examples) == 4
         # Player 0 should have positive value, player 1 negative
-        for ex, hist in zip(examples, history):
+        for ex, _hist in zip(examples, history, strict=False):
             assert isinstance(ex, TrainingExample)
             assert ex.spatial.shape == (13, 8, 8)
 
@@ -667,9 +653,7 @@ class TestActorProcess:
             "log_interval": 1,
         }
 
-        with patch(
-            "alpha_zero.distributed.actor.SelfPlayActor"
-        ) as MockActor:
+        with patch("alpha_zero.distributed.actor.SelfPlayActor") as MockActor:
             instance = MagicMock()
             MockActor.return_value = instance
             actor_process(0, config_dict, mock_storage, mock_replay_buffer)
@@ -698,9 +682,7 @@ class TestActorProcess:
             "log_interval": 1,
         }
 
-        with patch(
-            "alpha_zero.distributed.actor.SelfPlayActor"
-        ) as MockActor:
+        with patch("alpha_zero.distributed.actor.SelfPlayActor") as MockActor:
             instance = MagicMock()
             instance.run.side_effect = RuntimeError("crash")
             MockActor.return_value = instance

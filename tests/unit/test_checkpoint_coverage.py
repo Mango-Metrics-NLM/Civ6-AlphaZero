@@ -317,5 +317,5 @@ class TestSaveLoadRoundtrip:
         new_model = torch.nn.Linear(4, 2)
         new_model.load_state_dict(loaded_state)
 
-        for p1, p2 in zip(model.parameters(), new_model.parameters()):
+        for p1, p2 in zip(model.parameters(), new_model.parameters(), strict=False):
             assert torch.equal(p1, p2)

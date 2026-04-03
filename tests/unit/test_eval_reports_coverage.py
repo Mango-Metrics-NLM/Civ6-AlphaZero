@@ -260,7 +260,7 @@ class TestReportGenerator:
 
     def test_generate_and_save_json(self, generator, tmp_path):
         results = {"random": _make_eval_result("random")}
-        report = generator.generate_and_save(
+        generator.generate_and_save(
             results,
             output_dir=tmp_path / "save_test",
             formats=["json"],
@@ -270,7 +270,7 @@ class TestReportGenerator:
 
     def test_generate_and_save_markdown(self, generator, tmp_path):
         results = {"random": _make_eval_result("random")}
-        report = generator.generate_and_save(
+        generator.generate_and_save(
             results,
             output_dir=tmp_path / "save_test",
             formats=["markdown"],
@@ -280,7 +280,7 @@ class TestReportGenerator:
 
     def test_generate_and_save_text(self, generator, tmp_path):
         results = {"random": _make_eval_result("random")}
-        report = generator.generate_and_save(
+        generator.generate_and_save(
             results,
             output_dir=tmp_path / "save_test",
             formats=["text"],
@@ -291,7 +291,7 @@ class TestReportGenerator:
     def test_generate_and_save_all_formats(self, generator, tmp_path):
         results = {"random": _make_eval_result("random")}
         dm = _make_diversity_metrics()
-        report = generator.generate_and_save(
+        generator.generate_and_save(
             results,
             output_dir=tmp_path / "all",
             diversity_metrics=dm,
@@ -305,7 +305,7 @@ class TestReportGenerator:
     def test_generate_and_save_default_formats(self, generator, tmp_path):
         """Default formats are json and markdown."""
         results = {"random": _make_eval_result("random")}
-        report = generator.generate_and_save(results, output_dir=tmp_path / "defaults")
+        generator.generate_and_save(results, output_dir=tmp_path / "defaults")
         assert len(list((tmp_path / "defaults").glob("*.json"))) == 1
         assert len(list((tmp_path / "defaults").glob("*.md"))) == 1
         assert len(list((tmp_path / "defaults").glob("*.txt"))) == 0
@@ -313,18 +313,14 @@ class TestReportGenerator:
     def test_generate_and_save_default_output_dir(self, generator, config):
         """When output_dir is None, uses config.output_dir."""
         results = {"random": _make_eval_result("random")}
-        report = generator.generate_and_save(results, formats=["json"])
+        generator.generate_and_save(results, formats=["json"])
         json_files = list(Path(config.output_dir).glob("*.json"))
         assert len(json_files) == 1
 
     def test_compare_reports_basic(self, generator):
-        r1 = _make_report(
-            baselines={"random": _make_eval_result("random", games=10, wins=5)}
-        )
+        r1 = _make_report(baselines={"random": _make_eval_result("random", games=10, wins=5)})
         r1.overall_win_rate = 0.5
-        r2 = _make_report(
-            baselines={"random": _make_eval_result("random", games=10, wins=7)}
-        )
+        r2 = _make_report(baselines={"random": _make_eval_result("random", games=10, wins=7)})
         r2.overall_win_rate = 0.7
 
         comparison = generator.compare_reports(r1, r2)
@@ -366,14 +362,18 @@ class TestReportGenerator:
 
     def test_compare_reports_mixed_baselines(self, generator):
         """When reports have different baselines, only shared ones are compared."""
-        r1 = _make_report(baselines={
-            "random": _make_eval_result("random", wins=5),
-            "heuristic": _make_eval_result("heuristic", wins=3),
-        })
-        r2 = _make_report(baselines={
-            "random": _make_eval_result("random", wins=7),
-            "mcts": _make_eval_result("mcts", wins=8),
-        })
+        r1 = _make_report(
+            baselines={
+                "random": _make_eval_result("random", wins=5),
+                "heuristic": _make_eval_result("heuristic", wins=3),
+            }
+        )
+        r2 = _make_report(
+            baselines={
+                "random": _make_eval_result("random", wins=7),
+                "mcts": _make_eval_result("mcts", wins=8),
+            }
+        )
         comparison = generator.compare_reports(r1, r2)
         diffs = comparison["baseline_diffs"]
         # "random" is shared, so it gets a diff

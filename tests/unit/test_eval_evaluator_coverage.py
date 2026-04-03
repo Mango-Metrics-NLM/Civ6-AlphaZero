@@ -236,10 +236,8 @@ class TestModelEvaluator:
             output_dir=str(tmp_path / "tb_out"),
             diversity=DiversityConfig(enabled=False),
         )
-        with patch(
-            "alpha_zero.evaluation.evaluator.ModelEvaluator._setup_logging"
-        ) as mock_log:
-            evaluator = ModelEvaluator(config)
+        with patch("alpha_zero.evaluation.evaluator.ModelEvaluator._setup_logging"):
+            ModelEvaluator(config)
         # Just verify it doesn't crash
 
     # -- get_baseline --
@@ -404,12 +402,14 @@ class TestModelEvaluator:
         model_player = MagicMock()
         model_player.reset.return_value = None
 
-        results_iter = iter([
-            GameResult(winner=0, num_turns=5, model_score=1.0, opponent_score=0.0),
-            GameResult(winner=1, num_turns=8, model_score=0.0, opponent_score=1.0),
-            GameResult(winner=None, num_turns=10, model_score=0.5, opponent_score=0.5),
-            GameResult(winner=0, num_turns=6, model_score=1.0, opponent_score=0.0),
-        ])
+        results_iter = iter(
+            [
+                GameResult(winner=0, num_turns=5, model_score=1.0, opponent_score=0.0),
+                GameResult(winner=1, num_turns=8, model_score=0.0, opponent_score=1.0),
+                GameResult(winner=None, num_turns=10, model_score=0.5, opponent_score=0.5),
+                GameResult(winner=0, num_turns=6, model_score=1.0, opponent_score=0.0),
+            ]
+        )
 
         def side_effect(*args, **kwargs):
             return next(results_iter)
@@ -466,9 +466,7 @@ class TestModelEvaluator:
         model_player = MagicMock()
         model_player.reset.return_value = None
 
-        fake_result = GameResult(
-            winner=0, num_turns=5, model_score=1.0, opponent_score=0.0
-        )
+        fake_result = GameResult(winner=0, num_turns=5, model_score=1.0, opponent_score=0.0)
         baseline_config = BaselineConfig(type=BaselineType.RANDOM, name="random_elo", num_games=2)
 
         with patch.object(evaluator, "play_game", return_value=fake_result):
@@ -501,7 +499,9 @@ class TestModelEvaluator:
             experiment_name="skip_test",
             baselines=[
                 BaselineConfig(type=BaselineType.RANDOM, name="enabled", num_games=2, enabled=True),
-                BaselineConfig(type=BaselineType.RANDOM, name="disabled", num_games=2, enabled=False),
+                BaselineConfig(
+                    type=BaselineType.RANDOM, name="disabled", num_games=2, enabled=False
+                ),
             ],
             elo_enabled=False,
             tensorboard_enabled=False,

@@ -30,9 +30,7 @@ def _make_trajectory(n_examples=5, winner=1, game_length=50):
     examples = [_make_example() for _ in range(n_examples)]
     for ex in examples:
         ex.policy[0] = 1.0
-    return GameTrajectory(
-        examples=examples, game_id=42, game_length=game_length, winner=winner
-    )
+    return GameTrajectory(examples=examples, game_id=42, game_length=game_length, winner=winner)
 
 
 class TestReflectionGeneratorConfig:
@@ -187,7 +185,7 @@ class TestDefaultGameStateDescriber:
         result = desc.describe_trajectory(t, max_states=5)
         assert "Draw" in result
         # Should have sampled states
-        lines = [l for l in result.split("\n") if l.strip().startswith("[")]
+        lines = [line for line in result.split("\n") if line.strip().startswith("[")]
         assert len(lines) <= 5
 
 
@@ -214,7 +212,7 @@ class TestReflectionGenerator:
         assert gen._get_llm_client() is mock_llm
 
     def test_get_llm_client_creation_failure(self):
-        gen = ReflectionGenerator()
+        ReflectionGenerator()
         with patch(
             "alpha_zero.core.reflection_generator.ReflectionGenerator._get_llm_client",
             side_effect=RuntimeError("LLM client not available"),

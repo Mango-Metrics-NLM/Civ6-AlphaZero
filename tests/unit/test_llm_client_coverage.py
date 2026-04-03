@@ -282,9 +282,11 @@ class TestOpenAIClient:
     @pytest.mark.asyncio()
     async def test_generate(self, openai_config: LLMConfig) -> None:
         """Test OpenAI generate with mocked async client."""
-        with patch("alpha_zero.utils.llm_client.AsyncOpenAI") as MockAsync, patch(
-            "alpha_zero.utils.llm_client.OpenAI"
-        ) as MockSync, patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True):
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI") as MockAsync,
+            patch("alpha_zero.utils.llm_client.OpenAI") as _MockSync,
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
+        ):
             # Set up mock response
             mock_usage = MagicMock()
             mock_usage.prompt_tokens = 5
@@ -299,15 +301,11 @@ class TestOpenAIClient:
             mock_response.usage = mock_usage
 
             mock_async_instance = MagicMock()
-            mock_async_instance.chat.completions.create = AsyncMock(
-                return_value=mock_response
-            )
+            mock_async_instance.chat.completions.create = AsyncMock(return_value=mock_response)
             MockAsync.return_value = mock_async_instance
 
             client = OpenAIClient(openai_config)
-            resp = await client.generate(
-                "Hello", system_prompt="You are helpful"
-            )
+            resp = await client.generate("Hello", system_prompt="You are helpful")
 
             assert resp.content == "Test response"
             assert resp.provider == LLMProvider.OPENAI
@@ -318,9 +316,11 @@ class TestOpenAIClient:
     @pytest.mark.asyncio()
     async def test_generate_no_usage(self, openai_config: LLMConfig) -> None:
         """Test when response.usage is None."""
-        with patch("alpha_zero.utils.llm_client.AsyncOpenAI") as MockAsync, patch(
-            "alpha_zero.utils.llm_client.OpenAI"
-        ), patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True):
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI") as MockAsync,
+            patch("alpha_zero.utils.llm_client.OpenAI"),
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
+        ):
             mock_choice = MagicMock()
             mock_choice.message.content = "Hello"
             mock_choice.finish_reason = "stop"
@@ -330,9 +330,7 @@ class TestOpenAIClient:
             mock_response.usage = None
 
             mock_async_instance = MagicMock()
-            mock_async_instance.chat.completions.create = AsyncMock(
-                return_value=mock_response
-            )
+            mock_async_instance.chat.completions.create = AsyncMock(return_value=mock_response)
             MockAsync.return_value = mock_async_instance
 
             client = OpenAIClient(openai_config)
@@ -344,9 +342,11 @@ class TestOpenAIClient:
     @pytest.mark.asyncio()
     async def test_generate_none_content(self, openai_config: LLMConfig) -> None:
         """Test when message content is None."""
-        with patch("alpha_zero.utils.llm_client.AsyncOpenAI") as MockAsync, patch(
-            "alpha_zero.utils.llm_client.OpenAI"
-        ), patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True):
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI") as MockAsync,
+            patch("alpha_zero.utils.llm_client.OpenAI"),
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
+        ):
             mock_choice = MagicMock()
             mock_choice.message.content = None
             mock_choice.finish_reason = "stop"
@@ -356,9 +356,7 @@ class TestOpenAIClient:
             mock_response.usage = None
 
             mock_async_instance = MagicMock()
-            mock_async_instance.chat.completions.create = AsyncMock(
-                return_value=mock_response
-            )
+            mock_async_instance.chat.completions.create = AsyncMock(return_value=mock_response)
             MockAsync.return_value = mock_async_instance
 
             client = OpenAIClient(openai_config)
@@ -366,9 +364,11 @@ class TestOpenAIClient:
             assert resp.content == ""
 
     def test_build_messages(self, openai_config: LLMConfig) -> None:
-        with patch("alpha_zero.utils.llm_client.AsyncOpenAI"), patch(
-            "alpha_zero.utils.llm_client.OpenAI"
-        ), patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True):
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI"),
+            patch("alpha_zero.utils.llm_client.OpenAI"),
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
+        ):
             client = OpenAIClient(openai_config)
             msgs = client._build_messages(
                 "Hello",
@@ -380,12 +380,12 @@ class TestOpenAIClient:
             assert msgs[1].role == "assistant"
             assert msgs[2].role == "user"
 
-    def test_build_messages_no_system_no_history(
-        self, openai_config: LLMConfig
-    ) -> None:
-        with patch("alpha_zero.utils.llm_client.AsyncOpenAI"), patch(
-            "alpha_zero.utils.llm_client.OpenAI"
-        ), patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True):
+    def test_build_messages_no_system_no_history(self, openai_config: LLMConfig) -> None:
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI"),
+            patch("alpha_zero.utils.llm_client.OpenAI"),
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
+        ):
             client = OpenAIClient(openai_config)
             msgs = client._build_messages("Hello", None, None)
             assert len(msgs) == 1
@@ -405,21 +405,17 @@ class TestAnthropicClient:
                 AnthropicClient(cfg)
 
     def test_init_raises_without_package(self) -> None:
-        cfg = LLMConfig(
-            provider=LLMProvider.ANTHROPIC, anthropic_api_key="key"
-        )
+        cfg = LLMConfig(provider=LLMProvider.ANTHROPIC, anthropic_api_key="key")
         with patch("alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", False):
             with pytest.raises(LLMConfigError, match="not installed"):
                 AnthropicClient(cfg)
 
     @pytest.mark.asyncio()
     async def test_generate(self, anthropic_config: LLMConfig) -> None:
-        with patch(
-            "alpha_zero.utils.llm_client.AsyncAnthropic"
-        ) as MockAsync, patch(
-            "alpha_zero.utils.llm_client.Anthropic"
-        ), patch(
-            "alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncAnthropic") as MockAsync,
+            patch("alpha_zero.utils.llm_client.Anthropic"),
+            patch("alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True),
         ):
             mock_block = MagicMock()
             mock_block.text = "Anthropic response"
@@ -434,15 +430,11 @@ class TestAnthropicClient:
             mock_response.stop_reason = "end_turn"
 
             mock_async_instance = MagicMock()
-            mock_async_instance.messages.create = AsyncMock(
-                return_value=mock_response
-            )
+            mock_async_instance.messages.create = AsyncMock(return_value=mock_response)
             MockAsync.return_value = mock_async_instance
 
             client = AnthropicClient(anthropic_config)
-            resp = await client.generate(
-                "Hello", system_prompt="Be concise"
-            )
+            resp = await client.generate("Hello", system_prompt="Be concise")
 
             assert resp.content == "Anthropic response"
             assert resp.provider == LLMProvider.ANTHROPIC
@@ -451,15 +443,11 @@ class TestAnthropicClient:
             assert resp.finish_reason == "end_turn"
 
     @pytest.mark.asyncio()
-    async def test_generate_no_system_prompt(
-        self, anthropic_config: LLMConfig
-    ) -> None:
-        with patch(
-            "alpha_zero.utils.llm_client.AsyncAnthropic"
-        ) as MockAsync, patch(
-            "alpha_zero.utils.llm_client.Anthropic"
-        ), patch(
-            "alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True
+    async def test_generate_no_system_prompt(self, anthropic_config: LLMConfig) -> None:
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncAnthropic") as MockAsync,
+            patch("alpha_zero.utils.llm_client.Anthropic"),
+            patch("alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True),
         ):
             mock_block = MagicMock()
             mock_block.text = "Response"
@@ -470,28 +458,22 @@ class TestAnthropicClient:
             mock_response.stop_reason = "end_turn"
 
             mock_async_instance = MagicMock()
-            mock_async_instance.messages.create = AsyncMock(
-                return_value=mock_response
-            )
+            mock_async_instance.messages.create = AsyncMock(return_value=mock_response)
             MockAsync.return_value = mock_async_instance
 
             client = AnthropicClient(anthropic_config)
-            resp = await client.generate("Hello")
+            await client.generate("Hello")
 
             # Verify system was not passed
             call_kwargs = mock_async_instance.messages.create.call_args
             assert "system" not in call_kwargs.kwargs
 
     @pytest.mark.asyncio()
-    async def test_generate_empty_content(
-        self, anthropic_config: LLMConfig
-    ) -> None:
-        with patch(
-            "alpha_zero.utils.llm_client.AsyncAnthropic"
-        ) as MockAsync, patch(
-            "alpha_zero.utils.llm_client.Anthropic"
-        ), patch(
-            "alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True
+    async def test_generate_empty_content(self, anthropic_config: LLMConfig) -> None:
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncAnthropic") as MockAsync,
+            patch("alpha_zero.utils.llm_client.Anthropic"),
+            patch("alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True),
         ):
             mock_response = MagicMock()
             mock_response.content = []
@@ -499,9 +481,7 @@ class TestAnthropicClient:
             mock_response.stop_reason = "end_turn"
 
             mock_async_instance = MagicMock()
-            mock_async_instance.messages.create = AsyncMock(
-                return_value=mock_response
-            )
+            mock_async_instance.messages.create = AsyncMock(return_value=mock_response)
             MockAsync.return_value = mock_async_instance
 
             client = AnthropicClient(anthropic_config)
@@ -510,9 +490,11 @@ class TestAnthropicClient:
             assert resp.usage["input_tokens"] == 0
 
     def test_build_messages(self, anthropic_config: LLMConfig) -> None:
-        with patch("alpha_zero.utils.llm_client.AsyncAnthropic"), patch(
-            "alpha_zero.utils.llm_client.Anthropic"
-        ), patch("alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True):
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncAnthropic"),
+            patch("alpha_zero.utils.llm_client.Anthropic"),
+            patch("alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True),
+        ):
             client = AnthropicClient(anthropic_config)
             msgs = client._build_messages(
                 "Hello",
@@ -522,12 +504,12 @@ class TestAnthropicClient:
             assert msgs[0].role == "assistant"
             assert msgs[1].role == "user"
 
-    def test_build_messages_no_history(
-        self, anthropic_config: LLMConfig
-    ) -> None:
-        with patch("alpha_zero.utils.llm_client.AsyncAnthropic"), patch(
-            "alpha_zero.utils.llm_client.Anthropic"
-        ), patch("alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True):
+    def test_build_messages_no_history(self, anthropic_config: LLMConfig) -> None:
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncAnthropic"),
+            patch("alpha_zero.utils.llm_client.Anthropic"),
+            patch("alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True),
+        ):
             client = AnthropicClient(anthropic_config)
             msgs = client._build_messages("Hello", None)
             assert len(msgs) == 1
@@ -569,55 +551,52 @@ class TestLLMClient:
         with pytest.raises(LLMConfigError, match="No LLM clients"):
             LLMClient(cfg)
 
-    def test_available_providers_openai_only(
-        self, openai_config: LLMConfig
-    ) -> None:
-        with patch("alpha_zero.utils.llm_client.AsyncOpenAI"), patch(
-            "alpha_zero.utils.llm_client.OpenAI"
-        ), patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True):
+    def test_available_providers_openai_only(self, openai_config: LLMConfig) -> None:
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI"),
+            patch("alpha_zero.utils.llm_client.OpenAI"),
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
+        ):
             client = LLMClient(openai_config)
             assert LLMProvider.OPENAI in client.available_providers
 
-    def test_available_providers_anthropic_only(
-        self, anthropic_config: LLMConfig
-    ) -> None:
-        with patch("alpha_zero.utils.llm_client.AsyncAnthropic"), patch(
-            "alpha_zero.utils.llm_client.Anthropic"
-        ), patch("alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True):
+    def test_available_providers_anthropic_only(self, anthropic_config: LLMConfig) -> None:
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncAnthropic"),
+            patch("alpha_zero.utils.llm_client.Anthropic"),
+            patch("alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True),
+        ):
             client = LLMClient(anthropic_config)
             assert LLMProvider.ANTHROPIC in client.available_providers
 
-    def test_provider_order_openai_preferred(
-        self, openai_config: LLMConfig
-    ) -> None:
-        with patch("alpha_zero.utils.llm_client.AsyncOpenAI"), patch(
-            "alpha_zero.utils.llm_client.OpenAI"
-        ), patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True):
+    def test_provider_order_openai_preferred(self, openai_config: LLMConfig) -> None:
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI"),
+            patch("alpha_zero.utils.llm_client.OpenAI"),
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
+        ):
             client = LLMClient(openai_config)
             order = client._get_provider_order()
             assert order[0] == LLMProvider.OPENAI
 
-    def test_provider_order_anthropic_preferred(
-        self, anthropic_config: LLMConfig
-    ) -> None:
-        with patch("alpha_zero.utils.llm_client.AsyncAnthropic"), patch(
-            "alpha_zero.utils.llm_client.Anthropic"
-        ), patch("alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True):
+    def test_provider_order_anthropic_preferred(self, anthropic_config: LLMConfig) -> None:
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncAnthropic"),
+            patch("alpha_zero.utils.llm_client.Anthropic"),
+            patch("alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True),
+        ):
             client = LLMClient(anthropic_config)
             order = client._get_provider_order()
             assert order[0] == LLMProvider.ANTHROPIC
 
-    def test_provider_order_auto_prefers_anthropic(
-        self, both_config: LLMConfig
-    ) -> None:
-        with patch("alpha_zero.utils.llm_client.AsyncOpenAI"), patch(
-            "alpha_zero.utils.llm_client.OpenAI"
-        ), patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True), patch(
-            "alpha_zero.utils.llm_client.AsyncAnthropic"
-        ), patch(
-            "alpha_zero.utils.llm_client.Anthropic"
-        ), patch(
-            "alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True
+    def test_provider_order_auto_prefers_anthropic(self, both_config: LLMConfig) -> None:
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI"),
+            patch("alpha_zero.utils.llm_client.OpenAI"),
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
+            patch("alpha_zero.utils.llm_client.AsyncAnthropic"),
+            patch("alpha_zero.utils.llm_client.Anthropic"),
+            patch("alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True),
         ):
             client = LLMClient(both_config)
             order = client._get_provider_order()
@@ -625,9 +604,11 @@ class TestLLMClient:
 
     @pytest.mark.asyncio()
     async def test_generate_success(self, openai_config: LLMConfig) -> None:
-        with patch("alpha_zero.utils.llm_client.AsyncOpenAI"), patch(
-            "alpha_zero.utils.llm_client.OpenAI"
-        ), patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True):
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI"),
+            patch("alpha_zero.utils.llm_client.OpenAI"),
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
+        ):
             client = LLMClient(openai_config)
 
             mock_resp = LLMResponse(
@@ -642,12 +623,12 @@ class TestLLMClient:
             assert resp.content == "Result"
 
     @pytest.mark.asyncio()
-    async def test_generate_retries_on_failure(
-        self, openai_config: LLMConfig
-    ) -> None:
-        with patch("alpha_zero.utils.llm_client.AsyncOpenAI"), patch(
-            "alpha_zero.utils.llm_client.OpenAI"
-        ), patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True):
+    async def test_generate_retries_on_failure(self, openai_config: LLMConfig) -> None:
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI"),
+            patch("alpha_zero.utils.llm_client.OpenAI"),
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
+        ):
             client = LLMClient(openai_config)
 
             mock_resp = LLMResponse(
@@ -656,9 +637,7 @@ class TestLLMClient:
                 provider=LLMProvider.OPENAI,
             )
             # Fail first, succeed second
-            mock_inner = AsyncMock(
-                side_effect=[RuntimeError("transient"), mock_resp]
-            )
+            mock_inner = AsyncMock(side_effect=[RuntimeError("transient"), mock_resp])
             client._clients[LLMProvider.OPENAI].generate = mock_inner
 
             with patch("asyncio.sleep", new_callable=AsyncMock):
@@ -668,17 +647,15 @@ class TestLLMClient:
             assert mock_inner.call_count == 2
 
     @pytest.mark.asyncio()
-    async def test_generate_all_retries_exhausted_raises(
-        self, openai_config: LLMConfig
-    ) -> None:
-        with patch("alpha_zero.utils.llm_client.AsyncOpenAI"), patch(
-            "alpha_zero.utils.llm_client.OpenAI"
-        ), patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True):
+    async def test_generate_all_retries_exhausted_raises(self, openai_config: LLMConfig) -> None:
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI"),
+            patch("alpha_zero.utils.llm_client.OpenAI"),
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
+        ):
             client = LLMClient(openai_config)
 
-            mock_inner = AsyncMock(
-                side_effect=RuntimeError("persistent error")
-            )
+            mock_inner = AsyncMock(side_effect=RuntimeError("persistent error"))
             client._clients[LLMProvider.OPENAI].generate = mock_inner
 
             with patch("asyncio.sleep", new_callable=AsyncMock):
@@ -686,25 +663,20 @@ class TestLLMClient:
                     await client.generate("Hello")
 
     @pytest.mark.asyncio()
-    async def test_generate_fallback_to_second_provider(
-        self, both_config: LLMConfig
-    ) -> None:
+    async def test_generate_fallback_to_second_provider(self, both_config: LLMConfig) -> None:
         """When first provider fails all retries, fall back to second."""
-        with patch("alpha_zero.utils.llm_client.AsyncOpenAI"), patch(
-            "alpha_zero.utils.llm_client.OpenAI"
-        ), patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True), patch(
-            "alpha_zero.utils.llm_client.AsyncAnthropic"
-        ), patch(
-            "alpha_zero.utils.llm_client.Anthropic"
-        ), patch(
-            "alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI"),
+            patch("alpha_zero.utils.llm_client.OpenAI"),
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
+            patch("alpha_zero.utils.llm_client.AsyncAnthropic"),
+            patch("alpha_zero.utils.llm_client.Anthropic"),
+            patch("alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True),
         ):
             client = LLMClient(both_config)
 
             # Anthropic fails (first in auto order)
-            anthropic_mock = AsyncMock(
-                side_effect=RuntimeError("anthropic down")
-            )
+            anthropic_mock = AsyncMock(side_effect=RuntimeError("anthropic down"))
             client._clients[LLMProvider.ANTHROPIC].generate = anthropic_mock
 
             # OpenAI succeeds
@@ -723,9 +695,11 @@ class TestLLMClient:
             assert resp.provider == LLMProvider.OPENAI
 
     def test_generate_sync(self, openai_config: LLMConfig) -> None:
-        with patch("alpha_zero.utils.llm_client.AsyncOpenAI"), patch(
-            "alpha_zero.utils.llm_client.OpenAI"
-        ), patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True):
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI"),
+            patch("alpha_zero.utils.llm_client.OpenAI"),
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
+        ):
             client = LLMClient(openai_config)
 
             mock_resp = LLMResponse(
@@ -744,10 +718,11 @@ class TestLLMClient:
             "LLM_PROVIDER": "openai",
             "OPENAI_API_KEY": "sk-env-test",
         }
-        with patch.dict(os.environ, env, clear=False), patch(
-            "alpha_zero.utils.llm_client.AsyncOpenAI"
-        ), patch("alpha_zero.utils.llm_client.OpenAI"), patch(
-            "alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True
+        with (
+            patch.dict(os.environ, env, clear=False),
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI"),
+            patch("alpha_zero.utils.llm_client.OpenAI"),
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
         ):
             client = LLMClient.from_env()
             assert LLMProvider.OPENAI in client.available_providers
@@ -760,12 +735,12 @@ class TestLLMClient:
 
 class TestLLMClientStreaming:
     @pytest.mark.asyncio()
-    async def test_generate_stream_success(
-        self, openai_config: LLMConfig
-    ) -> None:
-        with patch("alpha_zero.utils.llm_client.AsyncOpenAI"), patch(
-            "alpha_zero.utils.llm_client.OpenAI"
-        ), patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True):
+    async def test_generate_stream_success(self, openai_config: LLMConfig) -> None:
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI"),
+            patch("alpha_zero.utils.llm_client.OpenAI"),
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
+        ):
             client = LLMClient(openai_config)
 
             async def mock_stream(*args, **kwargs):
@@ -780,30 +755,25 @@ class TestLLMClientStreaming:
             assert chunks == ["Hello", " ", "world"]
 
     @pytest.mark.asyncio()
-    async def test_generate_stream_fallback(
-        self, both_config: LLMConfig
-    ) -> None:
-        with patch("alpha_zero.utils.llm_client.AsyncOpenAI"), patch(
-            "alpha_zero.utils.llm_client.OpenAI"
-        ), patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True), patch(
-            "alpha_zero.utils.llm_client.AsyncAnthropic"
-        ), patch(
-            "alpha_zero.utils.llm_client.Anthropic"
-        ), patch(
-            "alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True
+    async def test_generate_stream_fallback(self, both_config: LLMConfig) -> None:
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI"),
+            patch("alpha_zero.utils.llm_client.OpenAI"),
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
+            patch("alpha_zero.utils.llm_client.AsyncAnthropic"),
+            patch("alpha_zero.utils.llm_client.Anthropic"),
+            patch("alpha_zero.utils.llm_client.ANTHROPIC_AVAILABLE", True),
         ):
             client = LLMClient(both_config)
 
             async def failing_stream(*args, **kwargs):
                 raise RuntimeError("stream failed")
-                yield  # noqa: unreachable - makes it an async generator
+                yield
 
             async def ok_stream(*args, **kwargs):
                 yield "ok"
 
-            client._clients[
-                LLMProvider.ANTHROPIC
-            ].generate_stream = failing_stream
+            client._clients[LLMProvider.ANTHROPIC].generate_stream = failing_stream
             client._clients[LLMProvider.OPENAI].generate_stream = ok_stream
 
             chunks = []
@@ -812,21 +782,19 @@ class TestLLMClientStreaming:
             assert chunks == ["ok"]
 
     @pytest.mark.asyncio()
-    async def test_generate_stream_all_fail(
-        self, openai_config: LLMConfig
-    ) -> None:
-        with patch("alpha_zero.utils.llm_client.AsyncOpenAI"), patch(
-            "alpha_zero.utils.llm_client.OpenAI"
-        ), patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True):
+    async def test_generate_stream_all_fail(self, openai_config: LLMConfig) -> None:
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI"),
+            patch("alpha_zero.utils.llm_client.OpenAI"),
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
+        ):
             client = LLMClient(openai_config)
 
             async def failing_stream(*args, **kwargs):
                 raise RuntimeError("fail")
-                yield  # noqa: unreachable
+                yield
 
-            client._clients[
-                LLMProvider.OPENAI
-            ].generate_stream = failing_stream
+            client._clients[LLMProvider.OPENAI].generate_stream = failing_stream
 
             with pytest.raises(LLMError, match="All providers failed"):
                 async for _ in client.generate_stream("Hi"):
@@ -840,9 +808,11 @@ class TestLLMClientStreaming:
 
 class TestCreateLLMClient:
     def test_with_config(self, openai_config: LLMConfig) -> None:
-        with patch("alpha_zero.utils.llm_client.AsyncOpenAI"), patch(
-            "alpha_zero.utils.llm_client.OpenAI"
-        ), patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True):
+        with (
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI"),
+            patch("alpha_zero.utils.llm_client.OpenAI"),
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
+        ):
             client = create_llm_client(openai_config)
             assert isinstance(client, LLMClient)
 
@@ -851,10 +821,11 @@ class TestCreateLLMClient:
             "OPENAI_API_KEY": "sk-factory-test",
             "LLM_PROVIDER": "openai",
         }
-        with patch.dict(os.environ, env, clear=False), patch(
-            "alpha_zero.utils.llm_client.AsyncOpenAI"
-        ), patch("alpha_zero.utils.llm_client.OpenAI"), patch(
-            "alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True
+        with (
+            patch.dict(os.environ, env, clear=False),
+            patch("alpha_zero.utils.llm_client.AsyncOpenAI"),
+            patch("alpha_zero.utils.llm_client.OpenAI"),
+            patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True),
         ):
             client = create_llm_client()
             assert isinstance(client, LLMClient)
@@ -876,9 +847,7 @@ class TestConvenienceFunctions:
             provider=LLMProvider.OPENAI,
         )
 
-        with patch.object(
-            mod, "create_llm_client"
-        ) as mock_create:
+        with patch.object(mod, "create_llm_client") as mock_create:
             mock_client = MagicMock()
             mock_client.generate = AsyncMock(return_value=mock_resp)
             mock_create.return_value = mock_client

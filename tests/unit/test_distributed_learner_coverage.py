@@ -176,7 +176,7 @@ class TestGradientAccumulator:
 
     def test_multi_step_no_update_until_threshold(self):
         acc, net, opt = self._make_accumulator(steps=3)
-        for i in range(2):
+        for _i in range(2):
             x = torch.randn(2, 4)
             loss = net(x).sum()
             did_step = acc.accumulate(loss)
@@ -194,9 +194,9 @@ class TestGradientAccumulator:
         loss = net(x).sum()
         acc.accumulate(loss)
         # After clipping, all gradients should have norm <= clip
-        total_norm = sum(
-            p.grad.norm().item() ** 2 for p in net.parameters() if p.grad is not None
-        ) ** 0.5
+        total_norm = (
+            sum(p.grad.norm().item() ** 2 for p in net.parameters() if p.grad is not None) ** 0.5
+        )
         assert total_norm <= 0.001 + 1e-6
 
     def test_gradient_clip_zero_skips_clipping(self):
@@ -315,7 +315,9 @@ class TestLearnerTrainStep:
         learner.train_step()
         assert learner.training_step == initial_step + 1
 
-    def test_train_step_with_gradient_accumulation(self, learner_config, shared_storage, replay_buffer):
+    def test_train_step_with_gradient_accumulation(
+        self, learner_config, shared_storage, replay_buffer
+    ):
         """With accumulation_steps=2, training_step only increments every 2 calls."""
         learner_config.gradient_accumulation_steps = 2
         learner = Learner(learner_config, shared_storage, replay_buffer)
@@ -429,7 +431,9 @@ class TestLearnerRun:
 
         publish_calls = []
         with patch.object(learner, "train_step", side_effect=fake_train_step):
-            with patch.object(learner, "_publish_weights", side_effect=lambda: publish_calls.append(1)):
+            with patch.object(
+                learner, "_publish_weights", side_effect=lambda: publish_calls.append(1)
+            ):
                 with patch.object(learner, "_save_checkpoint"):
                     learner.run()
 

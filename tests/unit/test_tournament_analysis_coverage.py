@@ -338,7 +338,7 @@ class TestCompareGenerationsDetailed:
 
         cmp = analyzer.compare_generations(["gen_0_p1"], ["gen_1_p1"])
 
-        assert cmp.significant == False
+        assert not cmp.significant
 
     def test_bad_player_id_format(self, analyzer, mock_history):
         """Player IDs that don't match gen_N_xxx pattern use defaults."""
@@ -373,7 +373,7 @@ class TestCompareGenerationsDetailed:
 
         cmp = analyzer.compare_generations(["gen_0_p1"], ["gen_1_p1"])
 
-        assert cmp.significant == False
+        assert not cmp.significant
 
     def test_multiple_players_per_generation(self, analyzer, mock_history):
         """Cross-generation matches across multiple players."""

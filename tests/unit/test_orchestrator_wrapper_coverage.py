@@ -77,7 +77,9 @@ class TestPaddedEnvironmentWrapper:
         return env
 
     def test_getattr_forwards(self, mock_env):
-        wrapper = PaddedEnvironmentWrapper(mock_env, expected_board_size=16, expected_action_size=100)
+        wrapper = PaddedEnvironmentWrapper(
+            mock_env, expected_board_size=16, expected_action_size=100
+        )
         mock_env.some_attr = 42
         assert wrapper.some_attr == 42
 
@@ -88,7 +90,9 @@ class TestPaddedEnvironmentWrapper:
         assert result.shape == (13, 8, 8)
 
     def test_pad_spatial_pads(self, mock_env):
-        wrapper = PaddedEnvironmentWrapper(mock_env, expected_board_size=16, expected_action_size=50)
+        wrapper = PaddedEnvironmentWrapper(
+            mock_env, expected_board_size=16, expected_action_size=50
+        )
         spatial = np.random.rand(13, 8, 8).astype(np.float32)
         result = wrapper._pad_spatial(spatial)
         assert result.shape == (13, 16, 16)
@@ -102,7 +106,9 @@ class TestPaddedEnvironmentWrapper:
         assert result.shape == (50,)
 
     def test_pad_actions_pads(self, mock_env):
-        wrapper = PaddedEnvironmentWrapper(mock_env, expected_board_size=8, expected_action_size=100)
+        wrapper = PaddedEnvironmentWrapper(
+            mock_env, expected_board_size=8, expected_action_size=100
+        )
         actions = np.ones(50, dtype=np.float32)
         result = wrapper._pad_actions(actions)
         assert result.shape == (100,)
@@ -110,7 +116,9 @@ class TestPaddedEnvironmentWrapper:
         assert np.all(result[50:] == 0.0)
 
     def test_get_observation_dict(self, mock_env):
-        wrapper = PaddedEnvironmentWrapper(mock_env, expected_board_size=16, expected_action_size=100)
+        wrapper = PaddedEnvironmentWrapper(
+            mock_env, expected_board_size=16, expected_action_size=100
+        )
         mock_env.get_observation.return_value = {
             "spatial": np.random.rand(13, 8, 8).astype(np.float32),
             "vector": np.random.rand(64).astype(np.float32),
@@ -122,7 +130,9 @@ class TestPaddedEnvironmentWrapper:
         assert obs["vector"].shape == (64,)  # Unchanged
 
     def test_get_observation_non_dict(self, mock_env):
-        wrapper = PaddedEnvironmentWrapper(mock_env, expected_board_size=16, expected_action_size=100)
+        wrapper = PaddedEnvironmentWrapper(
+            mock_env, expected_board_size=16, expected_action_size=100
+        )
         mock_env.get_observation.return_value = np.array([1.0, 2.0])
         obs = wrapper.get_observation()
         assert isinstance(obs, np.ndarray)
@@ -134,13 +144,17 @@ class TestPaddedEnvironmentWrapper:
             wrapper._get_observation()
 
     def test_get_valid_actions(self, mock_env):
-        wrapper = PaddedEnvironmentWrapper(mock_env, expected_board_size=8, expected_action_size=100)
+        wrapper = PaddedEnvironmentWrapper(
+            mock_env, expected_board_size=8, expected_action_size=100
+        )
         mock_env.get_valid_actions.return_value = np.ones(50, dtype=np.float32)
         result = wrapper.get_valid_actions()
         assert result.shape == (100,)
 
     def test_reset_tuple(self, mock_env):
-        wrapper = PaddedEnvironmentWrapper(mock_env, expected_board_size=16, expected_action_size=100)
+        wrapper = PaddedEnvironmentWrapper(
+            mock_env, expected_board_size=16, expected_action_size=100
+        )
         mock_env.reset.return_value = (
             {
                 "spatial": np.random.rand(13, 8, 8).astype(np.float32),
@@ -161,7 +175,9 @@ class TestPaddedEnvironmentWrapper:
         assert info == {}
 
     def test_step_dict_obs(self, mock_env):
-        wrapper = PaddedEnvironmentWrapper(mock_env, expected_board_size=16, expected_action_size=100)
+        wrapper = PaddedEnvironmentWrapper(
+            mock_env, expected_board_size=16, expected_action_size=100
+        )
         mock_env.step.return_value = (
             {"spatial": np.random.rand(13, 8, 8).astype(np.float32)},
             1.0,
@@ -181,7 +197,9 @@ class TestPaddedEnvironmentWrapper:
         assert terminated is True
 
     def test_clone(self, mock_env):
-        wrapper = PaddedEnvironmentWrapper(mock_env, expected_board_size=16, expected_action_size=100)
+        wrapper = PaddedEnvironmentWrapper(
+            mock_env, expected_board_size=16, expected_action_size=100
+        )
         cloned_env = MagicMock()
         mock_env.clone.return_value = cloned_env
         cloned = wrapper.clone()
@@ -215,7 +233,7 @@ class TestTrainingOrchestratorInit:
     def test_setup_logging_with_log_dir(self, config, tmp_path):
         config.log_dir = str(tmp_path)
         with patch("alpha_zero.orchestrator.orchestrator.signal.signal"):
-            orch = TrainingOrchestrator(config)
+            TrainingOrchestrator(config)
         # Should have created a log file
         log_files = list(tmp_path.glob("*.log"))
         assert len(log_files) >= 1

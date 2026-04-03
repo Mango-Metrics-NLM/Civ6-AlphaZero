@@ -305,7 +305,7 @@ class TestRAGAgentWorkflowDocuments:
         workflow = RAGAgentWorkflow(store, embedder)
         workflow._is_initialized = True
 
-        results = await workflow.query("test", top_k=3)
+        await workflow.query("test", top_k=3)
         embedder.embed_text.assert_awaited_once_with("test")
         store.search.assert_awaited_once()
 

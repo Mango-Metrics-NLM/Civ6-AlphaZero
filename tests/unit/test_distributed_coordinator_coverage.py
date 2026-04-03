@@ -33,27 +33,29 @@ from alpha_zero.distributed.coordinator import (
 # ---------------------------------------------------------------------------
 
 
-def _make_coordinator(extra_config: dict | None = None, tmpdir: str | None = None) -> tuple[TrainingCoordinator, str]:
+def _make_coordinator(
+    extra_config: dict | None = None, tmpdir: str | None = None
+) -> tuple[TrainingCoordinator, str]:
     """Build a TrainingCoordinator with all heavy deps mocked."""
     if tmpdir is None:
         raise ValueError("tmpdir required")
 
-    kwargs = dict(
-        board_size=8,
-        max_turns=20,
-        num_res_blocks=2,
-        num_filters=16,
-        num_simulations=5,
-        num_actors=2,
-        batch_size=16,
-        replay_buffer_size=500,
-        min_replay_size=50,
-        max_games=0,
-        max_training_steps=0,
-        device="cpu",
-        checkpoint_dir=os.path.join(tmpdir, "ckpt"),
-        log_dir=os.path.join(tmpdir, "logs"),
-    )
+    kwargs = {
+        "board_size": 8,
+        "max_turns": 20,
+        "num_res_blocks": 2,
+        "num_filters": 16,
+        "num_simulations": 5,
+        "num_actors": 2,
+        "batch_size": 16,
+        "replay_buffer_size": 500,
+        "min_replay_size": 50,
+        "max_games": 0,
+        "max_training_steps": 0,
+        "device": "cpu",
+        "checkpoint_dir": os.path.join(tmpdir, "ckpt"),
+        "log_dir": os.path.join(tmpdir, "logs"),
+    }
     if extra_config:
         kwargs.update(extra_config)
 
@@ -311,11 +313,7 @@ class TestLogStatus:
     def test_log_status_with_loss_history(self, coordinator):
         self._setup_storage_stats(
             coordinator,
-            extra={
-                "loss_history": [
-                    {"total_loss": 1.5, "policy_loss": 0.8, "value_loss": 0.7}
-                ]
-            },
+            extra={"loss_history": [{"total_loss": 1.5, "policy_loss": 0.8, "value_loss": 0.7}]},
         )
         coordinator.actor_pool = None
         coordinator.start_time = 0.0

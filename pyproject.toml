@@ -88,8 +88,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "ANN", "N803", "S108", "S603", "S607", "S310", "N806", "N812", "RUF012", "S110", "S104", "B017", "RUF003"]
-"**/tests/*" = ["S101", "ANN", "N803", "S108", "S603", "S607", "S310", "N806", "N812", "RUF012", "S110", "S104", "B017", "RUF003"]
+"tests/*" = ["S101", "ANN", "N803", "S108", "S603", "S607", "S310", "N806", "N812", "RUF012", "S110", "S104", "B017", "RUF003", "RUF059"]
+"**/tests/*" = ["S101", "ANN", "N803", "S108", "S603", "S607", "S310", "N806", "N812", "RUF012", "S110", "S104", "B017", "RUF003", "RUF059"]
 "scripts/*" = ["ANN", "S603", "S607", "S310", "S105", "E741"]  # Scripts use subprocess, URL calls, and short var names
 "alpha_zero/cloud/gcp/container_validator.py" = ["S603"]  # Internal subprocess call with validated input
 "alpha_zero/cloud/preemption.py" = ["S310"]  # GCE metadata URL is intentional

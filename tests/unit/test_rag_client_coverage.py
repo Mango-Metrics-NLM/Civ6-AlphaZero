@@ -62,7 +62,7 @@ class TestRAGClientNoChroma:
     @patch("alpha_zero.utils.rag_client.CHROMA_AVAILABLE", False)
     def test_init_without_chroma(self, caplog):
         with caplog.at_level(logging.WARNING):
-            client = RAGClient(RAGConfig())
+            RAGClient(RAGConfig())
         assert "chromadb not installed" in caplog.text
 
     @patch("alpha_zero.utils.rag_client.CHROMA_AVAILABLE", False)
@@ -257,5 +257,5 @@ class TestRAGClientWithMockedChroma:
 
         cfg = RAGConfig(persist_directory=str(tmp_path / "db"))
         with caplog.at_level(logging.WARNING):
-            client = RAGClient(cfg)
+            RAGClient(cfg)
         assert "sentence-transformers not installed" in caplog.text
