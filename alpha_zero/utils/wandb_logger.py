@@ -52,8 +52,8 @@ try:
     WANDB_AVAILABLE = True
 except (ImportError, AttributeError):
     WANDB_AVAILABLE = False
-    wandb = None  # type: ignore[assignment]
-    Run = None  # type: ignore[assignment,misc]
+    wandb = None
+    Run = None
 
 # Load environment variables
 try:
@@ -223,13 +223,13 @@ class WandbLogger:
             init_kwargs.update(kwargs)
 
             # Initialize run
-            self._run = wandb.init(**init_kwargs)  # type: ignore[arg-type]
+            self._run = wandb.init(**init_kwargs)
             self._initialized = True
 
             # Log code if enabled
             if self.config.log_code:
                 try:
-                    wandb.run.log_code(".")  # type: ignore[union-attr]
+                    wandb.run.log_code(".")
                 except Exception as e:
                     logger.warning(f"Failed to log code: {e}")
 
@@ -788,7 +788,7 @@ class WandbLogger:
             return
 
         try:
-            wandb.log({name: wandb.Histogram(values, num_bins=num_bins)})  # type: ignore[arg-type]
+            wandb.log({name: wandb.Histogram(values, num_bins=num_bins)})
         except Exception as e:
             logger.warning(f"Failed to log histogram: {e}")
 
@@ -830,7 +830,7 @@ class WandbLogger:
             return
 
         try:
-            wandb.watch(model, log=log, log_freq=log_freq)  # type: ignore[arg-type]
+            wandb.watch(model, log=log, log_freq=log_freq)
             logger.info(f"Watching model for {log}")
         except Exception as e:
             logger.warning(f"Failed to watch model: {e}")
@@ -873,7 +873,7 @@ class WandbLogger:
             return
 
         try:
-            wandb.alert(title=title, text=text, level=level)  # type: ignore[attr-defined]
+            wandb.alert(title=title, text=text, level=level)
         except Exception as e:
             logger.warning(f"Failed to send alert: {e}")
 
@@ -888,7 +888,7 @@ class WandbLogger:
 
         try:
             for key, value in data.items():
-                wandb.run.summary[key] = value  # type: ignore[union-attr]
+                wandb.run.summary[key] = value
         except Exception as e:
             logger.warning(f"Failed to update summary: {e}")
 

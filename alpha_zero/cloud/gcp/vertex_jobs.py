@@ -403,7 +403,7 @@ class VertexAIClient:
                 parallel_trial_count=parallel_trial_count,
             )
 
-            tuning_job.submit(service_account=spec.service_account)  # type: ignore
+            tuning_job.submit(service_account=spec.service_account)
 
             logger.info(
                 "Submitted tuning job: %s (resource: %s)",
@@ -836,6 +836,7 @@ class VertexTrainingJob:
 
         # Base args for the worker
         worker_args = [
+            "--mode=training",
             f"--iteration={iteration}",
             f"--trajectory_iterations={','.join(map(str, trajectory_iterations))}",
             f"--epochs={training_config.epochs_per_iteration}",

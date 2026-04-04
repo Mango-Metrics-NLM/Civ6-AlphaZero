@@ -32,6 +32,9 @@ DEFAULT_C_VISIT_DIVISOR: float = float(os.getenv("MCTS_C_VISIT_DIVISOR", "50.0")
 DEFAULT_C_VISIT: float = float(os.getenv("MCTS_C_VISIT", "50.0"))
 """Default c_visit value for MCTS configuration."""
 
+GREEDY_THRESHOLD: float = float(os.getenv("MCTS_GREEDY_THRESHOLD", "0.99"))
+"""Probability threshold above which action selection becomes greedy."""
+
 # =============================================================================
 # Logging Configuration
 # =============================================================================

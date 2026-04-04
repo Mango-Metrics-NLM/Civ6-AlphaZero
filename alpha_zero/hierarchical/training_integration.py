@@ -325,7 +325,7 @@ class HierarchicalTrainingIntegration:
         # Add value estimate metrics
         for level, values in self.state.level_value_estimates.items():
             if values:
-                metrics[f"hierarchical/value_{level}"] = np.mean(values[-100:])  # type: ignore[assignment]
+                metrics[f"hierarchical/value_{level}"] = np.mean(values[-100:])
 
         # Save checkpoint if needed
         if (

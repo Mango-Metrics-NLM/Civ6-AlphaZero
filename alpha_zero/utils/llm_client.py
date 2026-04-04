@@ -41,8 +41,8 @@ try:
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
-    AsyncOpenAI = None  # type: ignore[misc,assignment]
-    OpenAI = None  # type: ignore[misc,assignment]
+    AsyncOpenAI = None
+    OpenAI = None
 
 try:
     from anthropic import Anthropic, AsyncAnthropic
@@ -50,8 +50,8 @@ try:
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
-    AsyncAnthropic = None  # type: ignore[misc,assignment]
-    Anthropic = None  # type: ignore[misc,assignment]
+    AsyncAnthropic = None
+    Anthropic = None
 
 # Load environment variables from .env file if available
 try:

@@ -651,6 +651,8 @@ class MacroActionConfig:
     planning_horizon: int = 5
     replanning_frequency: int = 3
     abort_threshold: float = 0.5
+    max_movement_steps: int = 10
+    max_exploration_steps: int = 20
 
 
 @dataclass
@@ -832,7 +834,7 @@ class MacroActionPlanner:
         distance = abs(dx) + abs(dy)
 
         # Movement action placeholder
-        for _ in range(min(distance, 10)):
+        for _ in range(min(distance, self.config.max_movement_steps)):
             steps.append(1)  # Placeholder move action
 
         # Found city action
@@ -886,7 +888,7 @@ class MacroActionPlanner:
         steps = []
 
         # Spiral exploration pattern
-        for _ in range(20):
+        for _ in range(self.config.max_exploration_steps):
             steps.append(5)  # Placeholder exploration moves
 
         return MacroAction(

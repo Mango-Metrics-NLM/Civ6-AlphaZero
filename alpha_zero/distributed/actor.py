@@ -160,7 +160,7 @@ class SelfPlayActor:
 
         self.network = MicroCivNetwork(
             board_size=self.config.board_size,
-            action_space_size=self.action_space_size,  # type: ignore[arg-type]
+            action_space_size=self.action_space_size,
             num_res_blocks=self.config.num_res_blocks,
             num_filters=self.config.num_filters,
             spatial_channels=spatial_channels,
@@ -257,7 +257,7 @@ class SelfPlayActor:
         # Play until game ends
         while True:
             # Get MCTS policy
-            action_probs, _ = self.mcts.search(self.env)  # type: ignore[arg-type]
+            action_probs, _ = self.mcts.search(self.env)
 
             # Compute shaped reward for this state
             shaped_reward = 0.0

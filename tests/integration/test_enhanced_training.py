@@ -98,6 +98,7 @@ class TestSelfPlayEnhanced:
             assert ex.value in [-1.0, 0.0, 1.0]
 
 
+@pytest.mark.slow
 class TestRunSelfPlayEnhanced:
     """Integration tests for run_self_play_enhanced."""
 
@@ -241,6 +242,7 @@ class TestTrainEpoch:
         assert losses["total_loss"] >= 0  # Loss is non-negative
 
 
+@pytest.mark.slow
 class TestEvaluateNetwork:
     """Integration tests for evaluate_network."""
 
@@ -295,6 +297,7 @@ class TestEvaluateNetwork:
         assert metrics["avg_game_length"] > 0
 
 
+@pytest.mark.slow
 class TestRunEnhancedTrainingMinimal:
     """Integration tests for run_enhanced_training with minimal config."""
 
@@ -385,6 +388,7 @@ class TestRunEnhancedTrainingMinimal:
             assert "curriculum_stages" in history
 
 
+@pytest.mark.slow
 class TestTrainingHistoryStructure:
     """Tests for training history output structure."""
 

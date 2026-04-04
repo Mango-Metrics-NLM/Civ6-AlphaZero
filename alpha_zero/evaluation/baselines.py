@@ -466,7 +466,7 @@ class NeuralNetworkPlayer:
         action_mask: np.ndarray,
     ) -> int:
         """Select action using MCTS."""
-        action_probs, _ = self.mcts.search(env, add_noise=False)  # type: ignore[union-attr,arg-type]
+        action_probs, _ = self.mcts.search(env, add_noise=False)
 
         # Apply temperature
         if self.temperature > 0:

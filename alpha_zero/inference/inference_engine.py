@@ -195,7 +195,12 @@ class InferenceEngine:
 
         # Load from GCS
         try:
-            state_dict, metadata, saved_config = self.storage.load_model(version)
+            result = self.storage.load_model(version)
+            if len(result) == 3:
+                state_dict, metadata, saved_config = result
+            else:
+                state_dict, metadata = result
+                saved_config = None
 
             # Create network architecture
             net_config = NetworkArchitectureConfig()
@@ -371,14 +376,14 @@ class InferenceEngine:
                     logger.warning(
                         "MCTS search interface unavailable, falling back to raw network inference"
                     )
-                    policy_logits, value = self.current_model(spatial, vector, action_mask)  # type: ignore[arg-type]
+                    policy_logits, value = self.current_model(spatial, vector, action_mask)
                     action_probs, value_estimate = self._apply_policy_postprocessing(
                         policy_logits, action_mask, request.temperature, value
                     )
         else:
             # Raw network inference (no search) — useful for fast responses
             with torch.no_grad():
-                policy_logits, value = self.current_model(spatial, vector, action_mask)  # type: ignore[arg-type]
+                policy_logits, value = self.current_model(spatial, vector, action_mask)
                 action_probs, value_estimate = self._apply_policy_postprocessing(
                     policy_logits, action_mask, request.temperature, value
                 )

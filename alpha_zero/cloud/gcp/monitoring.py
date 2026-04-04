@@ -28,10 +28,10 @@ try:
 
     LOGGING_AVAILABLE = True
 except ImportError:
-    cloud_logging = None  # type: ignore[assignment]
+    cloud_logging = None
 
 try:
-    from google.cloud import monitoring_v3  # type: ignore
+    from google.cloud import monitoring_v3
 
     MONITORING_AVAILABLE = True
 except ImportError:

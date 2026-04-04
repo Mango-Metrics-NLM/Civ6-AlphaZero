@@ -923,7 +923,7 @@ def run_batch_selfplay(
         num_parallel_envs=num_parallel_games,
     )
     batch_mcts = BatchGumbelMCTS(
-        network=model,  # type: ignore[arg-type]
+        network=model,
         config=mcts_config,
         device=device,
     )

@@ -31,6 +31,7 @@ from alpha_zero.core.mcts_constants import (
     DEFAULT_C_VISIT_DIVISOR,
     DEFAULT_ROLLOUT_DEPTH,
     EPSILON,
+    GREEDY_THRESHOLD,
 )
 
 # Module-level logger
@@ -1371,7 +1372,7 @@ class GumbelMCTS:
             # Renormalize after masking
             action_probs = action_probs / action_probs.sum()
 
-        if temperature == 0 or action_probs.max() > 0.99:
+        if temperature == 0 or action_probs.max() > GREEDY_THRESHOLD:
             # Greedy selection (usual case for Gumbel MCTS)
             return int(np.argmax(action_probs))
 
@@ -1593,9 +1594,9 @@ class MuZeroMCTS:
                 use_categorical_reward=getattr(net_config, "use_categorical_reward", True),
                 reward_support_size=getattr(net_config, "reward_support_size", 601),
             )
-            return cls(network, synced_config, device)  # type: ignore[arg-type]
+            return cls(network, synced_config, device)
 
-        return cls(network, base_config, device)  # type: ignore[arg-type]
+        return cls(network, base_config, device)
 
     def _convert_reward_to_scalar(self, reward: torch.Tensor) -> float:
         """Convert network reward output to scalar value.
@@ -1943,7 +1944,7 @@ class MuZeroMCTS:
 
         # Traverse tree
         depth = 0
-        max_depth = 20  # Prevent infinite loops
+        max_depth = DEFAULT_ROLLOUT_DEPTH  # Prevent infinite loops
 
         while node.is_expanded() and depth < max_depth:
             action, child = node.select_child(self.config.c_puct, min_q, max_q)
@@ -2173,7 +2174,7 @@ class MuZeroMCTS:
         Returns:
             Selected action index.
         """
-        if temperature == 0 or action_probs.max() > 0.99:
+        if temperature == 0 or action_probs.max() > GREEDY_THRESHOLD:
             return int(np.argmax(action_probs))
 
         # Apply temperature

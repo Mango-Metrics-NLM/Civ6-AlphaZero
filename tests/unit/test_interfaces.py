@@ -2,6 +2,7 @@
 
 import json
 import tempfile
+import unittest.mock
 from pathlib import Path
 
 from interfaces.base import (
@@ -352,7 +353,12 @@ class TestCiv6Bridge:
                 state_dir=state_dir,
                 action_dir=action_dir,
             )
-            bridge.connect()
+            # Mock time to skip the blocking poll loop
+            with unittest.mock.patch("interfaces.civ6_bridge.time") as mock_time:
+                # First call returns start, second call exceeds timeout
+                mock_time.time.side_effect = [0, 0, 999]
+                mock_time.sleep = unittest.mock.MagicMock()
+                bridge.connect()
 
             assert state_dir.exists()
             assert action_dir.exists()

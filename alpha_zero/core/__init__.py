@@ -64,7 +64,6 @@ from alpha_zero.core.transformer_network import (
     Civ6TransformerNetwork,
     NormType,
     TransformerConfig,
-    compute_transformer_loss,
     create_transformer_network,
 )
 
@@ -144,7 +143,6 @@ __all__ = [
     # Core loss functions
     "compute_policy_loss",
     "compute_reward_loss",
-    "compute_transformer_loss",
     "compute_value_loss",
     "compute_value_prefix_loss",
     "create_transformer_network",

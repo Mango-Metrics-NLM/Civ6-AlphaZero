@@ -177,7 +177,7 @@ class ConnectionManager:
             )
 
         try:
-            from spacetimedb_sdk.spacetimedb_async_client import (  # type: ignore[import-untyped]
+            from spacetimedb_sdk.spacetimedb_async_client import (
                 SpacetimeDBAsyncClient,
             )
 

@@ -20,14 +20,14 @@ from typing import Any
 
 # Optional SDK import — gracefully handle missing dependency
 try:
-    from spacetimedb_sdk.spacetimedb_async_client import (  # type: ignore[import-untyped]
+    from spacetimedb_sdk.spacetimedb_async_client import (
         SpacetimeDBAsyncClient as _SpacetimeDBAsyncClient,
     )
 
     HAS_SPACETIMEDB = True
 except ImportError:
     HAS_SPACETIMEDB = False
-    _SpacetimeDBAsyncClient = None  # type: ignore[assignment,misc]
+    _SpacetimeDBAsyncClient = None
 
 # Always-available imports
 from alpha_zero.spacetimedb.config import SpacetimeDBConfig

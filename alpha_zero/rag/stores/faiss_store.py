@@ -208,7 +208,7 @@ class FAISSVectorStore(VectorStore):
 
         async with self._lock:
             # Prepare embeddings
-            embeddings = np.vstack([doc.embedding for doc in documents]).astype(np.float32)  # type: ignore[misc]
+            embeddings = np.vstack([doc.embedding for doc in documents]).astype(np.float32)
 
             # Normalize for cosine similarity
             if self.distance_metric == "cosine":

@@ -307,7 +307,9 @@ class TestGaussianMutation:
 
         results = [mutation.mutate(value, log_discrete_range, rng, 0.3) for _ in range(100)]
         assert all(isinstance(r, int) for r in results)
-        assert all(log_discrete_range.min_value <= r <= log_discrete_range.max_value for r in results)
+        assert all(
+            log_discrete_range.min_value <= r <= log_discrete_range.max_value for r in results
+        )
 
 
 # =============================================================================
@@ -339,14 +341,10 @@ class TestUniformMutation:
 
         assert all(log_range.min_value <= r <= log_range.max_value for r in results)
 
-    @pytest.mark.xfail(
-        reason="Bug: UniformMutation.mutate uses float(rng.choice(...)) for string categories",
-        strict=True,
-    )
     def test_mutate_categorical(
         self, rng: np.random.Generator, categorical_range: HyperparameterRange
     ) -> None:
-        """Test uniform mutation on categorical parameter (known bug)."""
+        """Test uniform mutation on categorical parameter."""
         mutation = UniformMutation()
         value = "adam"
 
@@ -356,14 +354,10 @@ class TestUniformMutation:
         assert all(r in categorical_range.categories for r in results)
         assert len(set(results)) > 1
 
-    @pytest.mark.xfail(
-        reason="Bug: UniformMutation.mutate uses float(rng.choice(...)) for string categories",
-        strict=True,
-    )
     def test_mutate_categorical_low_strength(
         self, rng: np.random.Generator, categorical_range: HyperparameterRange
     ) -> None:
-        """Test that low strength keeps categorical unchanged often (known bug)."""
+        """Test that low strength keeps categorical unchanged often."""
         mutation = UniformMutation()
         value = "adam"
 
@@ -394,16 +388,14 @@ class TestUniformMutation:
 
         results = [mutation.mutate(value, log_discrete_range, rng, 0.3) for _ in range(100)]
         assert all(isinstance(r, int) for r in results)
-        assert all(log_discrete_range.min_value <= r <= log_discrete_range.max_value for r in results)
+        assert all(
+            log_discrete_range.min_value <= r <= log_discrete_range.max_value for r in results
+        )
 
-    @pytest.mark.xfail(
-        reason="Bug: UniformMutation.mutate uses float(rng.choice(...)) for string categories",
-        strict=True,
-    )
     def test_mutate_categorical_string_bug(
         self, rng: np.random.Generator, categorical_range: HyperparameterRange
     ) -> None:
-        """Test uniform mutation on categorical with string categories (known bug)."""
+        """Test uniform mutation on categorical with string categories."""
         mutation = UniformMutation()
         value = "adam"
         # This fails because UniformMutation does float(rng.choice(categories))

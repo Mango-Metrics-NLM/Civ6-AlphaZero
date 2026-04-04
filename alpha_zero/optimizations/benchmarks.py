@@ -574,7 +574,7 @@ class OptimizationBenchmark:
         def compute_loss() -> dict[str, float]:
             i = idx[0] % len(predictions_list)
             idx[0] += 1
-            return calculator.compute_loss(predictions_list[i], targets_list[i])  # type: ignore[arg-type]
+            return calculator.compute_loss(predictions_list[i], targets_list[i])
 
         times, losses = self._time_function(compute_loss, num_iterations)
 

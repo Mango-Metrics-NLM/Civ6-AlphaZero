@@ -157,7 +157,7 @@ class RealCiv6Env(gym.Env):
         >>> env.close()
     """
 
-    metadata: ClassVar[dict[str, list[str] | int]] = {  # type: ignore[misc]
+    metadata: ClassVar[dict[str, list[str] | int]] = {
         "render_modes": ["human"],
         "render_fps": 1,
     }
@@ -492,25 +492,6 @@ class RealCiv6Env(gym.Env):
             "action_mask": action_mask,
         }
 
-    def _get_observation(self) -> dict[str, np.ndarray]:
-        """Get current observation (deprecated).
-
-        .. deprecated::
-            Use :meth:`get_observation` instead. This method will be removed
-            in a future version.
-
-        Returns:
-            Observation dictionary with spatial, vector, and action_mask.
-        """
-        import warnings
-
-        warnings.warn(
-            "_get_observation() is deprecated, use get_observation() instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.get_observation()
-
     def get_info(self) -> dict[str, Any]:
         """Get current info dictionary.
 
@@ -538,25 +519,6 @@ class RealCiv6Env(gym.Env):
             "winner_id": winner_id,
             "is_game_over": self._raw_state.is_game_over if self._raw_state else False,
         }
-
-    def _get_info(self) -> dict[str, Any]:
-        """Get current info dictionary (deprecated).
-
-        .. deprecated::
-            Use :meth:`get_info` instead. This method will be removed
-            in a future version.
-
-        Returns:
-            Info dictionary with game state details.
-        """
-        import warnings
-
-        warnings.warn(
-            "_get_info() is deprecated, use get_info() instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.get_info()
 
     def _calculate_reward(
         self,
@@ -628,7 +590,7 @@ class RealCiv6Env(gym.Env):
             logger.debug(f"Async operation error: {e}")
             raise
 
-    def render(self) -> np.ndarray | None:  # type: ignore[override]
+    def render(self) -> np.ndarray | None:
         """Render the environment.
 
         Currently only supports "human" mode which prints state info.

@@ -28,7 +28,6 @@ from alpha_zero.core.transformer_network import (
     TransformerPolicyHead,
     TransformerValueHead,
     VectorProjection,
-    compute_transformer_loss,
     create_transformer_network,
     get_norm_layer,
 )
@@ -706,90 +705,6 @@ class TestCreateTransformerNetwork:
 
 
 # =============================================================================
-# Loss Function Tests
-# =============================================================================
-
-
-class TestComputeTransformerLoss:
-    """Tests for compute_transformer_loss."""
-
-    def test_basic_loss(self) -> None:
-        """Test basic loss computation."""
-        policy_logits = torch.randn(2, 10)
-        value = torch.randn(2)
-        target_policy = F.softmax(torch.randn(2, 10), dim=-1)
-        target_value = torch.randn(2)
-
-        loss, loss_dict = compute_transformer_loss(
-            policy_logits, value, target_policy, target_value
-        )
-
-        assert loss.shape == ()
-        assert "total" in loss_dict
-        assert "policy" in loss_dict
-        assert "value" in loss_dict
-        assert "entropy" in loss_dict
-
-    def test_loss_with_mask(self) -> None:
-        """Test loss with action mask."""
-        policy_logits = torch.randn(2, 10)
-        value = torch.randn(2)
-        target_policy = torch.zeros(2, 10)
-        target_policy[:, :5] = 0.2  # Only first 5 actions valid
-        target_value = torch.randn(2)
-        action_mask = torch.zeros(2, 10)
-        action_mask[:, :5] = 1
-
-        loss, _ = compute_transformer_loss(
-            policy_logits, value, target_policy, target_value, action_mask
-        )
-
-        assert loss.shape == ()
-        assert not torch.isnan(loss)
-
-    def test_loss_weights(self) -> None:
-        """Test loss weight parameters."""
-        policy_logits = torch.randn(2, 10)
-        value = torch.randn(2)
-        target_policy = F.softmax(torch.randn(2, 10), dim=-1)
-        target_value = torch.randn(2)
-
-        # With different weights
-        _, loss1 = compute_transformer_loss(
-            policy_logits, value, target_policy, target_value, policy_weight=1.0, value_weight=1.0
-        )
-
-        _, loss2 = compute_transformer_loss(
-            policy_logits, value, target_policy, target_value, policy_weight=2.0, value_weight=0.5
-        )
-
-        # Different weights should give different totals
-        assert loss1["total"] != loss2["total"]
-
-    def test_entropy_regularization(self) -> None:
-        """Test entropy term."""
-        # Uniform distribution has maximum entropy
-        policy_logits_uniform = torch.zeros(2, 10)
-        # Peaked distribution has minimum entropy
-        policy_logits_peaked = torch.zeros(2, 10)
-        policy_logits_peaked[:, 0] = 100
-
-        value = torch.zeros(2)
-        target_policy = F.softmax(torch.randn(2, 10), dim=-1)
-        target_value = torch.zeros(2)
-
-        _, loss_uniform = compute_transformer_loss(
-            policy_logits_uniform, value, target_policy, target_value
-        )
-        _, loss_peaked = compute_transformer_loss(
-            policy_logits_peaked, value, target_policy, target_value
-        )
-
-        # Uniform should have higher entropy
-        assert loss_uniform["entropy"] > loss_peaked["entropy"]
-
-
-# =============================================================================
 # Integration Tests
 # =============================================================================
 
@@ -812,8 +727,11 @@ class TestTransformerIntegration:
         network.train()
         policy_logits, value = network(spatial, vector)
 
-        # Compute loss
-        loss, _ = compute_transformer_loss(policy_logits, value, target_policy, target_value)
+        # Compute loss using standard cross-entropy + MSE
+        log_probs = F.log_softmax(policy_logits, dim=-1)
+        policy_loss = -torch.sum(target_policy * log_probs, dim=-1).mean()
+        value_loss = F.mse_loss(value, target_value)
+        loss = policy_loss + value_loss
 
         # Backward pass
         optimizer.zero_grad()

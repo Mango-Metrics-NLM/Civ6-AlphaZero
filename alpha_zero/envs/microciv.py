@@ -122,7 +122,7 @@ class MicroCivEnv(gym.Env):
     - Flat discrete space covering all possible actions
     """
 
-    metadata: ClassVar[dict[str, list[str]]] = {"render_modes": ["ansi"]}  # type: ignore[misc]
+    metadata: ClassVar[dict[str, list[str]]] = {"render_modes": ["ansi"]}
 
     # Unit production costs (turns)
     UNIT_COSTS: ClassVar[dict[str, int]] = {
@@ -817,25 +817,6 @@ class MicroCivEnv(gym.Env):
             "action_mask": action_mask,
         }
 
-    def _get_observation(self) -> dict[str, np.ndarray]:
-        """Get observation for current player (deprecated).
-
-        .. deprecated::
-            Use :meth:`get_observation` instead. This method will be removed
-            in a future version.
-
-        Returns:
-            Observation dictionary with spatial, vector, and action_mask.
-        """
-        import warnings
-
-        warnings.warn(
-            "_get_observation() is deprecated, use get_observation() instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.get_observation()
-
     def get_info(self) -> dict[str, Any]:
         """Get info dictionary."""
         return {
@@ -847,25 +828,6 @@ class MicroCivEnv(gym.Env):
             "num_cities": [len(self._get_player_cities(p)) for p in range(self.num_players)],
             "visited_count": len(self.visited),
         }
-
-    def _get_info(self) -> dict[str, Any]:
-        """Get info dictionary (deprecated).
-
-        .. deprecated::
-            Use :meth:`get_info` instead. This method will be removed
-            in a future version.
-
-        Returns:
-            Info dictionary with game state details.
-        """
-        import warnings
-
-        warnings.warn(
-            "_get_info() is deprecated, use get_info() instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.get_info()
 
     def get_valid_actions(self) -> np.ndarray:
         """Get valid action mask.
@@ -921,7 +883,7 @@ class MicroCivEnv(gym.Env):
                 f"{len(self._get_player_cities(p))} cities"
             )
 
-        return "\n".join(lines)  # type: ignore[return-value]
+        return "\n".join(lines)
 
     def _update_fog_visibility(self) -> None:
         """Recompute fog of war visibility from current units and cities."""

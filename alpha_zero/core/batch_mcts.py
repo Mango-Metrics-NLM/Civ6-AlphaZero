@@ -46,6 +46,10 @@ from alpha_zero.core.mcts_constants import (
     DEFAULT_C_VISIT,
     DEFAULT_C_VISIT_DIVISOR,
     EPSILON,
+    LOG_SEARCH_STATS_INTERVAL,
+)
+from alpha_zero.core.mcts_constants import (
+    GREEDY_THRESHOLD as _GREEDY_THRESHOLD,
 )
 from alpha_zero.utils.wandb_logger import log_metrics
 
@@ -56,8 +60,6 @@ logger = logging.getLogger(__name__)
 
 # Threshold below which action probability sums are treated as zero
 _PROBABILITY_SUM_EPSILON = 1e-8
-# Threshold above which the max action probability triggers greedy selection
-_GREEDY_THRESHOLD = 0.99
 
 
 @dataclass(slots=True)
@@ -157,7 +159,7 @@ class BatchGumbelMCTS:
 
         # Metrics tracking for W&B logging
         self._search_count = 0
-        self._log_interval = 10
+        self._log_interval = LOG_SEARCH_STATS_INTERVAL
 
     def search(
         self,

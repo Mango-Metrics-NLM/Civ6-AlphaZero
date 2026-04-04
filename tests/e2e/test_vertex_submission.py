@@ -98,10 +98,10 @@ class TestVertexSubmission:
         worker_spec = worker_specs[0]
         assert worker_spec["container_spec"]["image_uri"] == "gcr.io/test/image:latest"
 
-        # Check args
+        # Check args (mode is determined by the container command, not args)
         cmd_args = worker_spec["container_spec"].get("args", [])
-        assert "--mode=selfplay" in cmd_args
         assert "--worker_id=0" in cmd_args
+        assert "--model_version=10" in cmd_args
 
         # Check machine spec
         assert worker_spec["machine_spec"]["machine_type"] == "n2-standard-4"

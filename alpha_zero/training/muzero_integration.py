@@ -20,7 +20,7 @@ try:
 
     TORCH_AVAILABLE = True
 except ImportError:
-    torch = None  # type: ignore[assignment]
+    torch = None
     TORCH_AVAILABLE = False
 
 import yaml
@@ -236,7 +236,7 @@ class MuZeroTrainingBridge:
             discount=self.config.discount,
         )
         mcts = MuZeroMCTS(
-            network=network,  # type: ignore[arg-type]
+            network=network,
             config=mcts_config,
             device=device,
         )
@@ -363,10 +363,10 @@ class MuZeroTrainingBridge:
         # Create and return trajectory
         trajectory = GameTrajectory(
             observations=observations,
-            actions=actions,  # type: ignore[arg-type]
-            rewards=rewards,  # type: ignore[arg-type]
-            policies=policies,  # type: ignore[arg-type]
-            values=values,  # type: ignore[arg-type]
+            actions=actions,
+            rewards=rewards,
+            policies=policies,
+            values=values,
         )
 
         return trajectory
