@@ -137,12 +137,6 @@ class TestPaddedEnvironmentWrapper:
         obs = wrapper.get_observation()
         assert isinstance(obs, np.ndarray)
 
-    def test_deprecated_get_observation(self, mock_env):
-        wrapper = PaddedEnvironmentWrapper(mock_env, expected_board_size=8, expected_action_size=50)
-        mock_env.get_observation.return_value = {"spatial": np.zeros((13, 8, 8))}
-        with pytest.warns(DeprecationWarning, match="_get_observation"):
-            wrapper._get_observation()
-
     def test_get_valid_actions(self, mock_env):
         wrapper = PaddedEnvironmentWrapper(
             mock_env, expected_board_size=8, expected_action_size=100

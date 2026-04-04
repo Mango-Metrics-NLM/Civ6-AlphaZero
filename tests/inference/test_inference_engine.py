@@ -6,7 +6,7 @@ Tests model loading, caching, and inference logic.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 import pytest
@@ -38,6 +38,7 @@ def mock_storage():
 
     storage.load_model.return_value = (state_dict, metadata)
     storage.load_champion.return_value = (state_dict, metadata)
+    storage.get_latest_version.return_value = 100
 
     return storage
 
@@ -157,7 +158,7 @@ class TestInferenceEngine:
 
         assert version == 100
         assert engine.current_version == 100
-        mock_storage.load_champion.assert_called_once()
+        mock_storage.get_latest_version.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_load_model_specific_version(self, mock_storage, inference_config):
@@ -295,7 +296,11 @@ class TestInferenceEngineIntegration:
             )
 
             # Run inference
-            with patch("alpha_zero.inference.inference_engine.GumbelMCTS"):
+            with patch("alpha_zero.inference.inference_engine.GumbelMCTS") as MockMCTS:
+                mock_mcts = MockMCTS.return_value
+                # search returns (improved_policy, value_estimate)
+                mock_policy = torch.softmax(torch.randn(376), dim=0).numpy()
+                mock_mcts.search.return_value = (mock_policy, 0.5)
                 action_dist = await engine.infer(request)
 
             # Verify output

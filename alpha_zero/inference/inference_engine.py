@@ -195,7 +195,12 @@ class InferenceEngine:
 
         # Load from GCS
         try:
-            state_dict, metadata, saved_config = self.storage.load_model(version)
+            result = self.storage.load_model(version)
+            if len(result) == 3:
+                state_dict, metadata, saved_config = result
+            else:
+                state_dict, metadata = result
+                saved_config = None
 
             # Create network architecture
             net_config = NetworkArchitectureConfig()

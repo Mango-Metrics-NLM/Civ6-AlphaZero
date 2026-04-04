@@ -10,6 +10,7 @@ provided by conftest.py.
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import torch
 
 from demos.atari.atari_env import AtariEnv
@@ -41,7 +42,9 @@ class TestMCTSProtocolIntegration:
     def test_simple_mcts_search(self):
         from alpha_zero.core.civ6_mcts import SimpleMCTS
 
-        env = AtariEnv(AtariEnvConfig(game_name="Fake", frame_height=42, frame_width=42, frame_stack=2))
+        env = AtariEnv(
+            AtariEnvConfig(game_name="Fake", frame_height=42, frame_width=42, frame_stack=2)
+        )
         env.reset()
 
         mcts = SimpleMCTS(num_simulations=5, c_puct=1.5)
@@ -54,12 +57,16 @@ class TestMCTSProtocolIntegration:
     def test_civ6_mcts_search(self):
         from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig
 
-        env_cfg = AtariEnvConfig(game_name="Fake", frame_height=42, frame_width=42, frame_stack=2, vector_dim=8)
+        env_cfg = AtariEnvConfig(
+            game_name="Fake", frame_height=42, frame_width=42, frame_stack=2, vector_dim=8
+        )
         env = AtariEnv(env_cfg)
         env.reset()
 
         net = AtariNetwork(
-            config=AtariNetworkConfig(num_res_blocks=1, num_filters=8, fc_hidden_dim=16, value_head_hidden=8),
+            config=AtariNetworkConfig(
+                num_res_blocks=1, num_filters=8, fc_hidden_dim=16, value_head_hidden=8
+            ),
             num_actions=env.action_space.n,
             spatial_size=env_cfg.spatial_size,
             spatial_channels=env_cfg.spatial_channels,
@@ -178,6 +185,7 @@ class TestTrainEpoch:
 # ============================================================================
 
 
+@pytest.mark.slow
 class TestAtariTrainer:
     def test_dry_run(self, fast_config):
         trainer = AtariTrainer(fast_config)
@@ -197,11 +205,21 @@ class TestAtariTrainer:
 
     def test_default_config_dry_run(self):
         """Verify the default AtariConfig works for a dry run."""
-        trainer = AtariTrainer(AtariConfig(
-            environment=AtariEnvConfig(game_name="FakeGame", frame_height=42, frame_width=42, frame_stack=2, vector_dim=8),
-            network=AtariNetworkConfig(num_res_blocks=1, num_filters=8, fc_hidden_dim=16, value_head_hidden=8),
-            training=AtariTrainingConfig(device="cpu", min_replay_size=1),
-        ))
+        trainer = AtariTrainer(
+            AtariConfig(
+                environment=AtariEnvConfig(
+                    game_name="FakeGame",
+                    frame_height=42,
+                    frame_width=42,
+                    frame_stack=2,
+                    vector_dim=8,
+                ),
+                network=AtariNetworkConfig(
+                    num_res_blocks=1, num_filters=8, fc_hidden_dim=16, value_head_hidden=8
+                ),
+                training=AtariTrainingConfig(device="cpu", min_replay_size=1),
+            )
+        )
         result = trainer.train(dry_run=True)
         assert result["iterations"] == 1
 
@@ -215,9 +233,16 @@ class TestConfigIntegration:
     def test_pong_yaml_loads(self):
         """Verify the shipped pong.yaml is valid."""
         import os
+
         yaml_path = os.path.join(
             os.path.dirname(__file__),
-            "..", "..", "..", "demos", "atari", "configs", "pong.yaml",
+            "..",
+            "..",
+            "..",
+            "demos",
+            "atari",
+            "configs",
+            "pong.yaml",
         )
         if os.path.exists(yaml_path):
             cfg = AtariConfig.from_yaml(yaml_path)
@@ -226,9 +251,16 @@ class TestConfigIntegration:
     def test_breakout_yaml_loads(self):
         """Verify the shipped breakout.yaml is valid."""
         import os
+
         yaml_path = os.path.join(
             os.path.dirname(__file__),
-            "..", "..", "..", "demos", "atari", "configs", "breakout.yaml",
+            "..",
+            "..",
+            "..",
+            "demos",
+            "atari",
+            "configs",
+            "breakout.yaml",
         )
         if os.path.exists(yaml_path):
             cfg = AtariConfig.from_yaml(yaml_path)
@@ -240,6 +272,7 @@ class TestConfigIntegration:
 # ============================================================================
 
 
+@pytest.mark.slow
 class TestNovelFeaturesIntegration:
     def test_dry_run_with_reflection(self, fast_config):
         """Verify training works with reflection memory enabled."""
@@ -299,8 +332,12 @@ class TestNovelFeaturesIntegration:
         rag.ingest_knowledge("Test strategy", action_hints=[0, 1])
 
         examples, trajectory = run_episode(
-            env, net, mcts, fast_config.training,
-            rag_advisor=rag, game_name="FakeGame",
+            env,
+            net,
+            mcts,
+            fast_config.training,
+            rag_advisor=rag,
+            game_name="FakeGame",
         )
         assert len(examples) > 0
         assert len(trajectory) > 0

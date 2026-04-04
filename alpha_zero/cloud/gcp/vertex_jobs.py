@@ -836,6 +836,7 @@ class VertexTrainingJob:
 
         # Base args for the worker
         worker_args = [
+            "--mode=training",
             f"--iteration={iteration}",
             f"--trajectory_iterations={','.join(map(str, trajectory_iterations))}",
             f"--epochs={training_config.epochs_per_iteration}",

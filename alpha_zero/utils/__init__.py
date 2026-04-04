@@ -89,12 +89,6 @@ from alpha_zero.utils.agent_tools import (  # noqa: E402
 __all__ = [
     # Configuration
     "ActionSpaceConfig",
-    "AgentTaskStatus",
-    # Benchmarks
-    "BenchmarkConfig",
-    "BenchmarkResult",
-    "BenchmarkSuite",
-    "Benchmarker",
     "Civ6Config",
     # Agent Tools
     "CodeExplorer",
@@ -120,16 +114,14 @@ __all__ = [
     "RunStatus",
     "Task",
     "TaskTracker",
+    # Test Runner (backwards compatibility)
     "TestConfig",
     "TestResult",
-    # Test Runner (backwards compatibility)
     "TestRunner",
     "TestStatus",
     "TrainingConfig",
     "TrainingLogger",
     "UncivConfig",
-    "benchmark_function",
-    "create_mechanics_benchmarks",
     "explore",
     "find_definition",
     "get_default_config",
@@ -137,12 +129,9 @@ __all__ = [
     "load_config",
     "merge_configs",
     "quick_test",
-    "run_all_benchmarks",
     "run_tests",
     "save_config",
-    "search",
     "setup_logging",
-    "time_function",
     "timed_section",
     "timer",
 ]
@@ -174,7 +163,6 @@ try:
     _WANDB_AVAILABLE = True
     __all__.extend(
         [
-            "WandbConfig",
             "WandbLogger",
             "get_wandb_logger",
             "init_wandb",
@@ -194,7 +182,6 @@ try:
     _RAG_AVAILABLE = True
     __all__.extend(
         [
-            "KnowledgeBase",
             "RAGClient",
             "RAGConfig",
         ]

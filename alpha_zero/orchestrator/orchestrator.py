@@ -188,21 +188,6 @@ class PaddedEnvironmentWrapper:
             return padded_obs
         return obs  # type: ignore[no-any-return]
 
-    def _get_observation(self) -> dict[str, np.ndarray]:
-        """Get padded observation from environment (deprecated).
-
-        .. deprecated::
-            Use :meth:`get_observation` instead.
-        """
-        import warnings
-
-        warnings.warn(
-            "_get_observation() is deprecated, use get_observation() instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.get_observation()
-
     def get_valid_actions(self) -> np.ndarray:
         """Get padded action mask."""
         mask = self._env.get_valid_actions()

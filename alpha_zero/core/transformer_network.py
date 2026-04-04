@@ -164,9 +164,9 @@ class TransformerConfig:
         self._num_patches = (self.spatial_size // self.patch_size) ** 2
         self._head_dim = self.embed_dim // self.num_heads
 
-        assert (
-            self.embed_dim % self.num_heads == 0
-        ), f"embed_dim ({self.embed_dim}) must be divisible by num_heads ({self.num_heads})"
+        assert self.embed_dim % self.num_heads == 0, (
+            f"embed_dim ({self.embed_dim}) must be divisible by num_heads ({self.num_heads})"
+        )
 
         # Warn about known incorrect defaults that may indicate stale config
         if self.action_space_size == 381:
@@ -1311,74 +1311,3 @@ def create_transformer_network(
     )
 
     return Civ6TransformerNetwork(config=config)
-
-
-def compute_transformer_loss(
-    policy_logits: torch.Tensor,
-    value: torch.Tensor,
-    target_policy: torch.Tensor,
-    target_value: torch.Tensor,
-    action_mask: torch.Tensor | None = None,
-    policy_weight: float = 1.0,
-    value_weight: float = 1.0,
-    entropy_weight: float = 0.01,
-) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-    """Compute loss for transformer network with entropy regularization.
-
-    .. deprecated::
-        Use :func:`alpha_zero.core.losses.compute_policy_loss` and
-        :func:`alpha_zero.core.losses.compute_value_loss` with
-        :class:`alpha_zero.core.losses.LossConfig` for more comprehensive
-        loss computation with categorical support.
-
-    Args:
-        policy_logits: Predicted policy logits (B, A).
-        value: Predicted value (B,).
-        target_policy: Target policy distribution (B, A).
-        target_value: Target value (B,).
-        action_mask: Optional action mask (B, A).
-        policy_weight: Weight for policy loss.
-        value_weight: Weight for value loss.
-        entropy_weight: Weight for entropy regularization.
-
-    Returns:
-        Tuple of (total_loss, loss_dict).
-    """
-    import warnings
-
-    warnings.warn(
-        "compute_transformer_loss() is deprecated. Use alpha_zero.core.losses.compute_policy_loss() "
-        "and alpha_zero.core.losses.compute_value_loss() with LossConfig for more comprehensive loss computation.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    # Value loss (MSE)
-    value_loss = F.mse_loss(value, target_value)
-
-    # Policy loss (cross-entropy)
-    if action_mask is not None:
-        target_policy = target_policy * action_mask
-        target_policy = target_policy / (target_policy.sum(dim=-1, keepdim=True) + 1e-8)
-
-    log_probs = F.log_softmax(policy_logits, dim=-1)
-    policy_loss = -torch.sum(target_policy * log_probs, dim=-1).mean()
-
-    # Entropy regularization (encourages exploration)
-    probs = F.softmax(policy_logits, dim=-1)
-    entropy = -torch.sum(probs * log_probs, dim=-1).mean()
-
-    # Total loss
-    total_loss = (
-        policy_weight * policy_loss
-        + value_weight * value_loss
-        - entropy_weight * entropy  # Subtract to maximize entropy
-    )
-
-    loss_dict = {
-        "total": total_loss,
-        "policy": policy_loss,
-        "value": value_loss,
-        "entropy": entropy,
-    }
-
-    return total_loss, loss_dict

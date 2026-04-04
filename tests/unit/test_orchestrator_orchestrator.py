@@ -336,20 +336,6 @@ class TestPaddedEnvironmentWrapper:
         assert isinstance(result, PaddedEnvironmentWrapper)
         assert result._expected_board_size == wrapper._expected_board_size
 
-    def test_deprecated_get_observation(self, wrapper, small_env):
-        obs = {
-            "spatial": np.zeros((13, 4, 4), dtype=np.float32),
-            "action_mask": np.ones(20, dtype=np.float32),
-        }
-        small_env.get_observation.return_value = obs
-        import warnings
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            result = wrapper._get_observation()
-        assert any(issubclass(warning.category, DeprecationWarning) for warning in w)
-        assert result["spatial"].shape == (13, 8, 8)
-
 
 # ---------------------------------------------------------------------------
 # TrainingOrchestrator — initialisation
