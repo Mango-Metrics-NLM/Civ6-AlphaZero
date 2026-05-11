@@ -156,7 +156,7 @@ def trigger_cloud_build(
                 args=[
                     "build",
                     "-t",
-                    f"gcr.io/{project_id}/civ6az-training:{tag}",
+                    f"gcr.io/{project_id}/civ6az-muzero:{tag}",
                     "-f",
                     "dockerfiles/Dockerfile.vertex",
                     ".",
@@ -165,7 +165,7 @@ def trigger_cloud_build(
             ),
             # Smoke test
             cloudbuild_v1.BuildStep(
-                name=f"gcr.io/{project_id}/civ6az-training:{tag}",
+                name=f"gcr.io/{project_id}/civ6az-muzero:{tag}",
                 entrypoint="python",
                 args=[
                     "-c",
@@ -177,7 +177,7 @@ def trigger_cloud_build(
             ),
             # Test selfplay worker
             cloudbuild_v1.BuildStep(
-                name=f"gcr.io/{project_id}/civ6az-training:{tag}",
+                name=f"gcr.io/{project_id}/civ6az-muzero:{tag}",
                 entrypoint="python",
                 args=[
                     "-m",
@@ -197,13 +197,13 @@ def trigger_cloud_build(
                 name="gcr.io/cloud-builders/docker",
                 args=[
                     "push",
-                    f"gcr.io/{project_id}/civ6az-training:{tag}",
+                    f"gcr.io/{project_id}/civ6az-muzero:{tag}",
                 ],
                 id="push",
                 wait_for=["test-selfplay"],
             ),
         ],
-        images=[f"gcr.io/{project_id}/civ6az-training:{tag}"],
+        images=[f"gcr.io/{project_id}/civ6az-muzero:{tag}"],
         options=cloudbuild_v1.BuildOptions(
             logging=cloudbuild_v1.BuildOptions.LoggingMode.CLOUD_LOGGING_ONLY,
             machine_type=cloudbuild_v1.BuildOptions.MachineType.E2_HIGHCPU_8,
@@ -229,8 +229,8 @@ def trigger_cloud_build(
 
     if result.status == cloudbuild_v1.Build.Status.SUCCESS:
         print("\nBuild completed successfully!")
-        print(f"Image: gcr.io/{project_id}/civ6az-training:{tag}")
-        return f"gcr.io/{project_id}/civ6az-training:{tag}"
+        print(f"Image: gcr.io/{project_id}/civ6az-muzero:{tag}")
+        return f"gcr.io/{project_id}/civ6az-muzero:{tag}"
     else:
         print(f"\nBuild failed with status: {result.status.name}")
         raise RuntimeError(f"Build failed: {result.status.name}")
@@ -261,9 +261,9 @@ def main() -> None:
         using_defaults = True
 
     if not bucket_name:
-        print("WARNING: CIV6AZ_GCS_BUCKET not set, using default 'civ6az-training'")
+        print("WARNING: CIV6AZ_GCS_BUCKET not set, using default 'civ6az-muzero-training'")
         print("  Set this environment variable for your GCS bucket.")
-        bucket_name = "civ6az-training"
+        bucket_name = "civ6az-muzero-training"
         using_defaults = True
 
     if using_defaults:

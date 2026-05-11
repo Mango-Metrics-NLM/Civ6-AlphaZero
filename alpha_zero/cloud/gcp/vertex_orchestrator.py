@@ -62,6 +62,12 @@ def parse_args() -> argparse.Namespace:
     # Iteration control
     parser.add_argument("--iterations", type=int, default=10, help="Number of training iterations")
     parser.add_argument("--start_iteration", type=int, default=0, help="Starting iteration number")
+    parser.add_argument(
+        "--model_version_start",
+        type=int,
+        default=None,
+        help="Override initial model version (use 0 for fresh random init, e.g. MuZero)",
+    )
     parser.add_argument("--workers", type=int, default=2, help="Number of self-play workers")
     parser.add_argument(
         "--games_per_worker", type=int, default=100, help="Games per self-play worker"
@@ -917,7 +923,11 @@ def main() -> int:
             return 0 if results else 1
 
         # Get starting model version (save for post-run tournament)
-        model_version = get_initial_model_version(config, args.dry_run)
+        if args.model_version_start is not None:
+            model_version = args.model_version_start
+            logger.info("Using explicit model version start: %d", model_version)
+        else:
+            model_version = get_initial_model_version(config, args.dry_run)
         initial_model_version = model_version
 
         # Initialize cost estimator
