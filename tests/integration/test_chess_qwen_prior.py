@@ -9,9 +9,9 @@ import os
 import socket
 from urllib.parse import urlparse
 
-import chess
 import pytest
 
+from alpha_zero.envs.chess_actions import move_to_index
 from alpha_zero.envs.chess_env import ChessEnv
 from alpha_zero.orchestrator.chess_advisor import ChessAdvisor, ChessAdvisorConfig
 from alpha_zero.utils.llm_client import LLMClient, LLMConfig, LLMProvider
@@ -65,9 +65,5 @@ def test_advisor_prior_blends_with_mcts() -> None:
     assert prior.shape == env.get_observation()["action_mask"].shape
     assert abs(prior.sum() - 1.0) < 1e-4
     # Mass should sit on legal-move indices.
-    legal_idx = [
-        __import__("alpha_zero.envs.chess_actions", fromlist=["move_to_index"]).move_to_index(m)
-        for m in env.board.legal_moves
-    ]
+    legal_idx = [move_to_index(m) for m in env.board.legal_moves]
     assert prior[legal_idx].sum() == pytest.approx(prior.sum(), abs=1e-4)
-    _ = chess  # silence "unused import" when not exercised above

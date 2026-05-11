@@ -132,8 +132,10 @@ def _play_one_game(
     """Play a game with the agent picking random legal moves (placeholder).
 
     Returns the reward from the *agent*'s perspective: +1 win, -1 loss, 0 draw.
-    The agent always plays White in this thin entrypoint; production training
-    alternates colours.
+    The agent plays whichever side is to move at ``env.reset()`` — for the
+    standard starting position that's White, but a ``starting_fen`` with
+    Black to move will assign the agent the Black pieces. Production
+    training should alternate colours explicitly across games.
 
     Args:
         env: A ``ChessEnv`` (or any env exposing the same observation dict).

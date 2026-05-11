@@ -16,10 +16,9 @@ from alpha_zero.envs.env_factory import (
 from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.envs.microciv_enhanced import EnhancedMicroCivEnv
 
-# ``MICROCIV_PRESETS`` (a subset of GAMEPLAY_PRESETS) is used for shape-sensitive
-# parametrisation below; chess uses a different observation/action shape and is
-# tested separately in ``test_chess_env.py``.
-_ = MICROCIV_PRESETS  # keep import alive for formatters that strip "unused" names
+# ``MICROCIV_PRESETS`` (a subset of GAMEPLAY_PRESETS) is used by the
+# parametrised tests below for shape-sensitive cases; chess uses a different
+# observation/action shape and is tested separately in ``test_chess_env.py``.
 
 # ---------------------------------------------------------------------------
 # Preset selection
