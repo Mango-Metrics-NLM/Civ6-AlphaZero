@@ -151,7 +151,9 @@ class TestModelVersionStartFlag:
         """
         from alpha_zero.cloud.gcp.vertex_orchestrator import parse_args
 
-        test_args = ["vertex_orchestrator", "--config", "configs/cloud_training_v1.yaml"]
+        # vertex_orchestrator.parse_args has no required positional args and
+        # no --config flag; defaults populate everything.
+        test_args = ["vertex_orchestrator"]
         with patch.object(sys, "argv", test_args):
             args = parse_args()
         assert args.model_version_start is None
@@ -160,12 +162,7 @@ class TestModelVersionStartFlag:
         """``--model_version_start=0`` should round-trip as integer 0 (not falsy None)."""
         from alpha_zero.cloud.gcp.vertex_orchestrator import parse_args
 
-        test_args = [
-            "vertex_orchestrator",
-            "--config",
-            "configs/cloud_training_v1.yaml",
-            "--model_version_start=0",
-        ]
+        test_args = ["vertex_orchestrator", "--model_version_start=0"]
         with patch.object(sys, "argv", test_args):
             args = parse_args()
         assert args.model_version_start == 0
@@ -176,12 +173,7 @@ class TestModelVersionStartFlag:
         """``--model_version_start=42`` should round-trip as integer 42."""
         from alpha_zero.cloud.gcp.vertex_orchestrator import parse_args
 
-        test_args = [
-            "vertex_orchestrator",
-            "--config",
-            "configs/cloud_training_v1.yaml",
-            "--model_version_start=42",
-        ]
+        test_args = ["vertex_orchestrator", "--model_version_start=42"]
         with patch.object(sys, "argv", test_args):
             args = parse_args()
         assert args.model_version_start == 42
@@ -190,11 +182,6 @@ class TestModelVersionStartFlag:
         """Non-integer values should fail argparse type conversion."""
         from alpha_zero.cloud.gcp.vertex_orchestrator import parse_args
 
-        test_args = [
-            "vertex_orchestrator",
-            "--config",
-            "configs/cloud_training_v1.yaml",
-            "--model_version_start=latest",
-        ]
+        test_args = ["vertex_orchestrator", "--model_version_start=latest"]
         with patch.object(sys, "argv", test_args), pytest.raises(SystemExit):
             parse_args()

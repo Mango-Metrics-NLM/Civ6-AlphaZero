@@ -417,7 +417,7 @@ class TestConfigFiltering:
         # Simulate a checkpoint config with ViT-specific fields
         checkpoint_config = {
             "spatial_size": 8,
-            "vector_size": 64,
+            "vector_dim": 64,
             "action_space_size": 376,
             "num_res_blocks": 6,
             "hidden_state_channels": 64,
@@ -454,7 +454,7 @@ class TestConfigFiltering:
         # All valid fields
         checkpoint_config = {
             "spatial_size": 16,
-            "vector_size": 128,
+            "vector_dim": 128,
             "action_space_size": 500,
             "num_res_blocks": 4,
             "hidden_state_channels": 32,
@@ -478,7 +478,7 @@ class TestArchitectureMismatchFallback:
 
         config = MuZeroConfig(
             spatial_size=8,
-            vector_size=64,
+            vector_dim=64,
             action_space_size=376,
             num_res_blocks=6,
             hidden_state_channels=64,
@@ -510,7 +510,7 @@ class TestArchitectureMismatchFallback:
 
         config = MuZeroConfig(
             spatial_size=8,
-            vector_size=64,
+            vector_dim=64,
             action_space_size=376,
             num_res_blocks=6,
             hidden_state_channels=64,
