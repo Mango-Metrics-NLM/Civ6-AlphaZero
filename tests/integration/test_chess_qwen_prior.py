@@ -18,9 +18,16 @@ from alpha_zero.utils.llm_client import LLMClient, LLMConfig, LLMProvider
 
 
 def _server_reachable(url: str) -> bool:
+    """Return ``True`` iff a TCP connect to the URL's host:port succeeds.
+
+    Falls back to the well-known port for the URL's scheme (443 for
+    ``https``, 80 otherwise) when the URL does not include an explicit
+    port, so HTTPS base URLs are checked correctly.
+    """
     parsed = urlparse(url)
     host = parsed.hostname or "127.0.0.1"
-    port = parsed.port or 80
+    default_port = 443 if parsed.scheme == "https" else 80
+    port = parsed.port or default_port
     try:
         with socket.create_connection((host, port), timeout=1.0):
             return True

@@ -123,18 +123,36 @@ def _build_advisor(advisor_cfg: dict[str, Any], llm_cfg: dict[str, Any]):  # typ
     return ChessAdvisor(advisor_config, llm_client=LLMClient(llm_config))
 
 
-def _play_one_game(env, opponent, max_plies: int) -> float:  # type: ignore[no-untyped-def]
+def _play_one_game(
+    env,  # type: ignore[no-untyped-def]
+    opponent,  # type: ignore[no-untyped-def]
+    max_plies: int,
+    rng: np.random.Generator | None = None,
+) -> float:
     """Play a game with the agent picking random legal moves (placeholder).
 
     Returns the reward from the *agent*'s perspective: +1 win, -1 loss, 0 draw.
     The agent always plays White in this thin entrypoint; production training
     alternates colours.
+
+    Args:
+        env: A ``ChessEnv`` (or any env exposing the same observation dict).
+        opponent: An :class:`Opponent` providing ``get_action(env, mask)``.
+        max_plies: Hard cap on game length; the agent forfeits the draw if
+            the cap is hit before checkmate/stalemate. Required so the loop
+            cannot wedge on a pathologically long game when the env's own
+            ``max_plies`` is not enforced (e.g. tests passing a stub env).
+        rng: Optional NumPy random generator. If ``None``, a deterministic
+            generator seeded with ``0`` is used so ``--dry-run`` and CI
+            invocations of this helper are reproducible. Production training
+            should pass its own seeded RNG per game.
     """
+    if rng is None:
+        rng = np.random.default_rng(0)
     obs, _ = env.reset()
     agent_player = env.current_player
     reward = 0.0
-    rng = np.random.default_rng()
-    while True:
+    for _ply in range(max_plies):
         mask = obs["action_mask"]
         legal = np.flatnonzero(mask > 0)
         if legal.size == 0:
