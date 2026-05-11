@@ -341,9 +341,14 @@ def load_muzero_model(
     if model_config_dict is not None:
         logger.info("Using saved MuZero model config from checkpoint")
         config_copy = model_config_dict.copy()
-        # Remove computed fields
-        config_copy.pop("_num_patches", None)
-        config_copy.pop("_head_dim", None)
+        # Filter to only known MuZeroConfig fields (tolerates ViT fields like patch_size)
+        import dataclasses as _dc
+
+        valid_fields = {f.name for f in _dc.fields(MuZeroConfig)}
+        unknown_keys = [k for k in config_copy if k not in valid_fields]
+        if unknown_keys:
+            logger.info("Filtering %d unknown config keys: %s", len(unknown_keys), unknown_keys[:5])
+        config_copy = {k: v for k, v in config_copy.items() if k in valid_fields}
         try:
             muzero_config = MuZeroConfig(**config_copy)
         except TypeError as e:
@@ -353,6 +358,25 @@ def load_muzero_model(
     try:
         model = MuZeroNetwork(config=muzero_config)
         incompatible = model.load_state_dict(state_dict, strict=False)
+
+        # Check for severe architecture mismatch (e.g. ViT checkpoint vs CNN MuZero)
+        total_keys = len(state_dict)
+        mismatch_keys = len(incompatible.missing_keys) + len(incompatible.unexpected_keys)
+        mismatch_ratio = mismatch_keys / max(total_keys, 1)
+
+        if mismatch_ratio > 0.2:
+            logger.warning(
+                "Architecture mismatch: %d/%d keys incompatible (%.0f%%). "
+                "Checkpoint appears to be a different architecture (e.g. ViT vs CNN). "
+                "Using fresh random MuZero weights instead.",
+                mismatch_keys,
+                total_keys,
+                mismatch_ratio * 100,
+            )
+            model = MuZeroNetwork(config=muzero_config)
+            model.eval()
+            logger.info("Created fresh MuZero model (random init) for self-play")
+            return model
 
         if incompatible.missing_keys:
             logger.warning("Missing keys in MuZero state_dict: %s", incompatible.missing_keys[:5])
@@ -770,9 +794,12 @@ def run_muzero_selfplay(
             obs = env.get_observation()
 
             try:
-                # MuZeroMCTS.search uses the dynamics model internally
-                # Pass observation dict and action_mask explicitly (MuZeroMCTS signature)
-                policy, value_estimate = mcts.search(obs, action_mask=obs["action_mask"])  # type: ignore[call-arg]
+                # MuZeroMCTS.search needs observation dict + action mask. The
+                # mask is already a key in the observation produced by
+                # env.get_observation() above, so reuse it instead of calling
+                # env.get_valid_actions() a second time.
+                action_mask = obs["action_mask"]
+                policy, value_estimate = mcts.search(obs, action_mask)
                 turn = len(trajectory["spatial"])
                 temp = compute_temperature(
                     turn=turn,

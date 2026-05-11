@@ -445,7 +445,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
         # List recent jobs
         jobs = aiplatform.CustomJob.list(
-            filter='display_name:"civ6az-"',
+            filter='display_name:"civ6az-mzwm-"',
             order_by="create_time desc",
         )
 

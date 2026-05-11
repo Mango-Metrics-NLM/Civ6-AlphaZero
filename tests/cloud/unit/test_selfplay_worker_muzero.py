@@ -396,3 +396,212 @@ class TestMainMuZeroRouting:
                 exit_code = main()
 
         assert exit_code == 130
+
+
+# =============================================================================
+# Config Filtering Tests (v15 fix regression)
+# =============================================================================
+
+
+class TestConfigFiltering:
+    """Tests for MuZeroConfig filtering of unknown fields."""
+
+    def test_config_filtering_strips_unknown_fields(self) -> None:
+        """Config filter should strip ViT fields like patch_size."""
+        import dataclasses as _dc
+
+        from alpha_zero.core.muzero_network import MuZeroConfig
+
+        valid_fields = {f.name for f in _dc.fields(MuZeroConfig)}
+
+        # Simulate a checkpoint config with ViT-specific fields
+        checkpoint_config = {
+            "spatial_size": 8,
+            "vector_size": 64,
+            "action_space_size": 376,
+            "num_res_blocks": 6,
+            "hidden_state_channels": 64,
+            # ViT fields that should be stripped:
+            "patch_size": 4,
+            "embed_dim": 256,
+            "transformer_depth": 12,
+        }
+
+        unknown_keys = [k for k in checkpoint_config if k not in valid_fields]
+        filtered = {k: v for k, v in checkpoint_config.items() if k in valid_fields}
+
+        assert "patch_size" in unknown_keys
+        assert "embed_dim" in unknown_keys
+        assert "transformer_depth" in unknown_keys
+        assert "patch_size" not in filtered
+        assert "embed_dim" not in filtered
+        assert "spatial_size" in filtered
+        assert "action_space_size" in filtered
+
+        # Verify filtered config can construct MuZeroConfig
+        config = MuZeroConfig(**filtered)
+        assert config.spatial_size == 8
+        assert config.action_space_size == 376
+
+    def test_valid_fields_pass_through_unchanged(self) -> None:
+        """All recognized MuZeroConfig fields should pass through filtering."""
+        import dataclasses as _dc
+
+        from alpha_zero.core.muzero_network import MuZeroConfig
+
+        valid_fields = {f.name for f in _dc.fields(MuZeroConfig)}
+
+        # All valid fields
+        checkpoint_config = {
+            "spatial_size": 16,
+            "vector_size": 128,
+            "action_space_size": 500,
+            "num_res_blocks": 4,
+            "hidden_state_channels": 32,
+        }
+
+        filtered = {k: v for k, v in checkpoint_config.items() if k in valid_fields}
+        assert filtered == checkpoint_config  # Nothing stripped
+
+
+# =============================================================================
+# Architecture Mismatch Fallback Tests (v16 threshold fix)
+# =============================================================================
+
+
+class TestArchitectureMismatchFallback:
+    """Tests for architecture mismatch fallback (threshold at 20%)."""
+
+    def test_mismatch_above_threshold_triggers_fallback(self) -> None:
+        """Mismatch ratio >20% should use fresh random weights."""
+        from alpha_zero.core.muzero_network import MuZeroConfig, MuZeroNetwork
+
+        config = MuZeroConfig(
+            spatial_size=8,
+            vector_size=64,
+            action_space_size=376,
+            num_res_blocks=6,
+            hidden_state_channels=64,
+        )
+        model = MuZeroNetwork(config=config)
+
+        # Build a fake state dict with >20% mismatched keys
+        real_state = model.state_dict()
+        total_keys = len(real_state)
+
+        # Remove >20% of keys and add fake ones to simulate ViT checkpoint
+        keys_to_remove = list(real_state.keys())[: total_keys // 3]
+        fake_state = {k: v for k, v in real_state.items() if k not in keys_to_remove}
+        for i, k in enumerate(keys_to_remove):
+            fake_state[f"vit_encoder.layer_{i}.weight"] = torch.randn(64, 64)
+
+        # Load with strict=False to get incompatible keys
+        incompatible = model.load_state_dict(fake_state, strict=False)
+        mismatch_keys = len(incompatible.missing_keys) + len(incompatible.unexpected_keys)
+        mismatch_ratio = mismatch_keys / max(len(fake_state), 1)
+
+        assert mismatch_ratio > 0.2, (
+            f"Test setup error: mismatch ratio {mismatch_ratio:.2f} should be >0.2"
+        )
+
+    def test_mismatch_below_threshold_loads_normally(self) -> None:
+        """Mismatch ratio <=20% should load weights normally."""
+        from alpha_zero.core.muzero_network import MuZeroConfig, MuZeroNetwork
+
+        config = MuZeroConfig(
+            spatial_size=8,
+            vector_size=64,
+            action_space_size=376,
+            num_res_blocks=6,
+            hidden_state_channels=64,
+        )
+        model = MuZeroNetwork(config=config)
+
+        # Use a real state dict (0% mismatch)
+        real_state = model.state_dict()
+        incompatible = model.load_state_dict(real_state, strict=False)
+        mismatch_keys = len(incompatible.missing_keys) + len(incompatible.unexpected_keys)
+        mismatch_ratio = mismatch_keys / max(len(real_state), 1)
+
+        assert mismatch_ratio <= 0.2
+        assert mismatch_ratio == 0.0  # Perfect match
+
+
+# =============================================================================
+# MCTS Search API Regression Tests (v14 bug prevention)
+# =============================================================================
+
+
+class TestMCTSSearchAPI:
+    """Regression tests ensuring MCTS search uses (obs, action_mask) API."""
+
+    def test_muzero_mcts_search_signature(self) -> None:
+        """MuZeroMCTS.search must accept (obs, action_mask), NOT (env)."""
+        import inspect
+
+        from alpha_zero.core.civ6_mcts import MuZeroMCTS
+
+        sig = inspect.signature(MuZeroMCTS.search)
+        param_names = list(sig.parameters.keys())
+
+        # 'self' is first, then obs-like, then action_mask
+        assert len(param_names) >= 3, (
+            f"MuZeroMCTS.search should have at least 3 params (self, obs, action_mask), "
+            f"got: {param_names}"
+        )
+        # Should NOT accept a single 'env' parameter (the v14 bug pattern)
+        assert "env" not in param_names, (
+            "MuZeroMCTS.search should NOT accept 'env' — use obs + action_mask instead"
+        )
+
+    def test_search_call_in_selfplay_uses_obs_and_mask(self) -> None:
+        """Verify the selfplay code calls mcts.search(obs, action_mask).
+
+        Locates ``selfplay_worker.py`` by introspecting the imported module
+        instead of a hard-coded absolute path, so the test runs in any
+        checkout, worktree, or CI environment.
+        """
+        import ast
+        import inspect
+        import pathlib
+
+        from alpha_zero.cloud.gcp import selfplay_worker
+
+        source_path = pathlib.Path(inspect.getfile(selfplay_worker))
+        assert source_path.is_file(), f"Resolved source path does not exist: {source_path}"
+
+        source = source_path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        # Only the MuZero self-play loop must use the (obs, action_mask)
+        # signature — the legacy Civ6 path correctly calls ``mcts.search(env)``.
+        # Scope the AST search to functions named ``run_muzero_selfplay``.
+        muzero_funcs = [
+            n for n in ast.walk(tree)
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and n.name == "run_muzero_selfplay"
+        ]
+        assert muzero_funcs, "run_muzero_selfplay function not found in selfplay_worker.py"
+
+        mcts_search_calls: list[ast.Call] = []
+        for func in muzero_funcs:
+            for node in ast.walk(func):
+                if isinstance(node, ast.Call):
+                    fn = node.func
+                    if (
+                        isinstance(fn, ast.Attribute)
+                        and fn.attr == "search"
+                        and isinstance(fn.value, ast.Name)
+                        and fn.value.id == "mcts"
+                    ):
+                        mcts_search_calls.append(node)
+
+        assert mcts_search_calls, "No mcts.search(...) calls found inside run_muzero_selfplay"
+
+        for call in mcts_search_calls:
+            # Should have 2 positional args (obs, action_mask), NOT 1 (env).
+            assert len(call.args) == 2, (
+                f"mcts.search in run_muzero_selfplay should be called with 2 args "
+                f"(obs, action_mask), got {len(call.args)} args at line {call.lineno}"
+            )
+
