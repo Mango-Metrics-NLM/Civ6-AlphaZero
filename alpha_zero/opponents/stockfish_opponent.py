@@ -190,20 +190,22 @@ class StockfishOpponent:
         """
         board: chess.Board = env.board
         if self._engine is None or self._closed:
-            return self._fallback_action(board, reason="engine unavailable")
+            return self._fallback_action(board, action_mask, reason="engine unavailable")
         try:
             result = self._engine.play(board, self._build_limit())
         except chess.engine.EngineError as exc:
-            return self._fallback_action(board, reason=f"EngineError: {exc}")
+            return self._fallback_action(board, action_mask, reason=f"EngineError: {exc}")
         if result.move is None:
-            return self._fallback_action(board, reason="engine returned no move")
+            return self._fallback_action(board, action_mask, reason="engine returned no move")
         try:
             action = move_to_index(result.move)
         except ValueError as exc:
-            return self._fallback_action(board, reason=f"unencodable move: {exc}")
+            return self._fallback_action(board, action_mask, reason=f"unencodable move: {exc}")
         if not (0 <= action < action_mask.shape[0]) or action_mask[action] == 0:
             return self._fallback_action(
-                board, reason=f"engine returned masked action {action} ({result.move.uci()})"
+                board,
+                action_mask,
+                reason=f"engine returned masked action {action} ({result.move.uci()})",
             )
         return action
 
@@ -238,29 +240,39 @@ class StockfishOpponent:
 
     # -------------------------------------------------------------- internals
 
-    def _fallback_action(self, board: chess.Board, reason: str) -> int:
+    def _fallback_action(
+        self, board: chess.Board, action_mask: np.ndarray, reason: str
+    ) -> int:
         if not self._fallback_warned:
             logger.warning(
                 "Stockfish unavailable, falling back to random move: %s",
                 reason,
             )
             self._fallback_warned = True
-        legal = list(board.legal_moves)
-        if not legal:
-            raise RuntimeError("No legal moves available for fallback")
-        chosen = random.choice(legal)  # noqa: S311 - not cryptographic
-        # Convert with a safe path: even if move_to_index has trouble, fall
-        # back to the first legal action index in the mask.
-        try:
-            return move_to_index(chosen)
-        except ValueError:  # pragma: no cover
-            # As a final safeguard, decode each candidate via index_to_move().
-            for move in legal:
-                try:
-                    return move_to_index(move)
-                except ValueError:
-                    continue
-            raise
+        # Build a list of (move, action_index) for moves that are both
+        # legal on the board AND permitted by action_mask. Honouring the
+        # mask is essential: callers (e.g. self-play wrappers) may mask
+        # out moves that are board-legal for game-rule reasons, and a
+        # fallback that ignores the mask would let those slip through.
+        candidates: list[tuple[chess.Move, int]] = []
+        for move in board.legal_moves:
+            try:
+                idx = move_to_index(move)
+            except ValueError:  # pragma: no cover - all legal moves encode
+                continue
+            if 0 <= idx < action_mask.shape[0] and action_mask[idx] > 0:
+                candidates.append((move, idx))
+        if candidates:
+            _, idx = random.choice(candidates)  # noqa: S311 - not cryptographic
+            return idx
+        # No mask-respecting legal move exists. Last-resort: any encodable
+        # legal move. If even that's empty we cannot proceed.
+        for move in board.legal_moves:
+            try:
+                return move_to_index(move)
+            except ValueError:  # pragma: no cover
+                continue
+        raise RuntimeError("No legal moves available for fallback")
 
 
 # Keep ``index_to_move`` import alive for downstream debugging / extensions.

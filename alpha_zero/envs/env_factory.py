@@ -62,12 +62,21 @@ def create_game_env(
         gameplay_preset: One of :data:`GAMEPLAY_PRESETS`.
             ``"default"`` returns a plain :class:`MicroCivEnv`;
             ``"enhanced"`` returns an :class:`EnhancedMicroCivEnv` with
-            all gameplay systems enabled.
+            all gameplay systems enabled;
+            ``"chess"`` returns a :class:`ChessEnv` (not a MicroCiv subclass).
         seed: Optional random seed for reproducibility.
         render_mode: Rendering mode (``'ansi'`` or ``None``).
 
     Returns:
-        A game environment instance (always a ``MicroCivEnv`` or subclass).
+        A game environment instance implementing the ``MCTSEnvironment``
+        protocol. Concrete type depends on ``gameplay_preset``:
+
+        - ``"default"`` → :class:`MicroCivEnv`
+        - ``"enhanced"`` → :class:`EnhancedMicroCivEnv` (a ``MicroCivEnv``
+          subclass)
+        - ``"chess"`` → :class:`ChessEnv` (**not** a ``MicroCivEnv`` subclass;
+          presets in :data:`MICROCIV_PRESETS` filter this out for MicroCiv-
+          shape-sensitive call sites)
 
     Raises:
         ValueError: If *gameplay_preset* is not a recognised value.

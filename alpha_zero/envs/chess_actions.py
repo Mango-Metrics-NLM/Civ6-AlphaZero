@@ -169,15 +169,24 @@ def move_to_index(move: chess.Move) -> int:
 
 
 def index_to_move(index: int, board: chess.Board) -> chess.Move:
-    """Decode an action index into a ``chess.Move`` legal on ``board``.
+    """Decode an action index into a ``chess.Move`` with the encoded geometry.
 
     The board context is required because (a) underpromotion planes don't
     distinguish piece colour direction (white moves +1 rank, black -1), and
     (b) a queen-direction move that lands on the last rank is auto-promoted
     to a queen for the side to move.
 
+    .. note::
+       This function only validates **index range and on-board geometry**.
+       It does **not** check that the resulting move is legal in the current
+       position (e.g. blocked sliders, pieces pinned to the king, side-to-move
+       parity, en-passant rights). Callers that need legality must verify
+       ``move in board.legal_moves`` themselves; for an explicit legality
+       check use :func:`legal_action_mask` to gate indices before decoding.
+
     Raises:
-        ValueError: If the index is out of range or yields no legal move.
+        ValueError: If the index is out of range or its encoded target square
+            falls off the board.
     """
     if not 0 <= index < ACTION_SPACE_SIZE:
         raise ValueError(f"Index {index} out of range [0, {ACTION_SPACE_SIZE})")

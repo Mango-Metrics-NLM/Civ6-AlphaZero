@@ -402,6 +402,7 @@ class Civ6MCTS:
             raise ValueError(f"llm_prior_weight must be in [0, 1]; got {llm_prior_weight}")
         self._llm_prior_fn = llm_prior_fn
         self._llm_prior_weight = llm_prior_weight
+        self._llm_warned = False
         self._search_count = 0
         logger.debug(
             "Civ6MCTS initialized",
@@ -593,23 +594,30 @@ class Civ6MCTS:
         Returns the input policy unchanged when ``llm_prior_fn`` is ``None``,
         so behaviour is byte-identical to the pre-extension code path.
 
-        On any failure inside the user-supplied callable, we log once and
-        fall back to the network policy — never crash MCTS.
+        On any failure inside the user-supplied callable (exception or
+        shape mismatch), we fall back to the network policy and log a
+        warning **once per Civ6MCTS instance** (gated by ``_llm_warned``)
+        so a misbehaving LLM cannot spam the MCTS hot loop. MCTS never
+        crashes due to advisor failure.
         """
         if self._llm_prior_fn is None:
             return network_policy
         try:
             llm_prior = self._llm_prior_fn(env, action_mask)
         except Exception as exc:  # pragma: no cover - defensive logging
-            logger.warning("llm_prior_fn raised %s; using network policy", exc)
+            if not self._llm_warned:
+                logger.warning("llm_prior_fn raised %s; using network policy", exc)
+                self._llm_warned = True
             return network_policy
         llm_prior = np.asarray(llm_prior, dtype=np.float64)
         if llm_prior.shape != network_policy.shape:
-            logger.warning(
-                "llm_prior shape %s != policy shape %s; using network policy",
-                llm_prior.shape,
-                network_policy.shape,
-            )
+            if not self._llm_warned:
+                logger.warning(
+                    "llm_prior shape %s != policy shape %s; using network policy",
+                    llm_prior.shape,
+                    network_policy.shape,
+                )
+                self._llm_warned = True
             return network_policy
         # Mask + blend + renormalise.
         masked_llm = llm_prior * (action_mask > 0).astype(np.float64)
@@ -623,7 +631,7 @@ class Civ6MCTS:
         blended_sum = blended.sum()
         if blended_sum <= 0:
             return network_policy
-        return (blended / blended_sum).astype(network_policy.dtype, copy=False)
+        return (blended / blended_sum).astype(network_policy.dtype)
 
     def _get_action_probs(
         self,

@@ -14,12 +14,19 @@ need to special-case chess:
 - ``action_mask``: ``float32`` array of shape ``(ACTION_SPACE_SIZE,)`` with
   1.0 marking legal moves.
 
-Reward is sparse and returned at terminal states only:
-``+1`` for the side that just moved if it delivered checkmate; ``-1`` if the
-side to move is checkmated; ``0`` for draws. ``info["winner"]`` is set to the
-winning player's index (0 = white, 1 = black) on checkmate, otherwise
-``None``. This matches the convention used by ``Civ6MCTS`` at the win-check
-path in ``civ6_mcts.py``.
+Reward convention (sparse, returned at terminal states only):
+
+- ``step()`` returns the reward **from the perspective of the player who
+  just moved**. In standard chess, the side that delivers checkmate is the
+  side that just moved, so terminal-checkmate is always ``+1`` for the
+  mover.
+- Draws (stalemate, insufficient material, threefold repetition, fifty-move
+  rule, ``max_plies`` cap) return ``0``.
+
+``info["winner"]`` is set to the winning player's index (``0 = white``,
+``1 = black``) on checkmate, and ``None`` for draws. This matches the
+convention consumed by ``Civ6MCTS`` at the win-check path in
+``civ6_mcts.py``.
 """
 
 from __future__ import annotations
