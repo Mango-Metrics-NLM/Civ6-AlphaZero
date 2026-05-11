@@ -8,9 +8,18 @@ from __future__ import annotations
 
 import pytest
 
-from alpha_zero.envs.env_factory import GAMEPLAY_PRESETS, create_game_env
+from alpha_zero.envs.env_factory import (
+    GAMEPLAY_PRESETS,
+    MICROCIV_PRESETS,
+    create_game_env,
+)
 from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.envs.microciv_enhanced import EnhancedMicroCivEnv
+
+# ``MICROCIV_PRESETS`` (a subset of GAMEPLAY_PRESETS) is used for shape-sensitive
+# parametrisation below; chess uses a different observation/action shape and is
+# tested separately in ``test_chess_env.py``.
+_ = MICROCIV_PRESETS  # keep import alive for formatters that strip "unused" names
 
 # ---------------------------------------------------------------------------
 # Preset selection
@@ -57,9 +66,13 @@ class TestPresetSelection:
 
 
 class TestObservationShapes:
-    """Both presets must produce identical observation shapes."""
+    """MicroCiv presets must produce identical observation shapes.
 
-    @pytest.fixture(params=GAMEPLAY_PRESETS)
+    ``chess`` is excluded — it has its own shape contract (8x8, 4672 actions)
+    verified in ``tests/unit/test_chess_env.py``.
+    """
+
+    @pytest.fixture(params=MICROCIV_PRESETS)
     def env(self, request: pytest.FixtureRequest) -> MicroCivEnv:
         e = create_game_env(board_size=8, max_turns=10, gameplay_preset=request.param)
         e.reset()
@@ -92,12 +105,12 @@ class TestObservationShapes:
 class TestParameterPropagation:
     """Factory correctly threads board_size, max_turns, and seed."""
 
-    @pytest.mark.parametrize("preset", GAMEPLAY_PRESETS)
+    @pytest.mark.parametrize("preset", MICROCIV_PRESETS)
     def test_board_size_propagation(self, preset: str) -> None:
         env = create_game_env(board_size=6, max_turns=10, gameplay_preset=preset)
         assert env.board_size == 6
 
-    @pytest.mark.parametrize("preset", GAMEPLAY_PRESETS)
+    @pytest.mark.parametrize("preset", MICROCIV_PRESETS)
     def test_max_turns_propagation(self, preset: str) -> None:
         env = create_game_env(board_size=6, max_turns=15, gameplay_preset=preset)
         assert env.max_turns == 15

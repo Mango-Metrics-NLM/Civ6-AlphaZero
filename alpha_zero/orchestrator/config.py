@@ -392,11 +392,23 @@ class EnvironmentConfig:
     early_termination_stalemate_threshold: int = 20
     production_multiplier: float = 1.5
     base_production: int = 3
+    #: When ``type == "chess"``, the gameplay preset routed through
+    #: ``create_game_env``. Defaults to ``"default"`` to remain backwards
+    #: compatible with MicroCiv configs.
+    gameplay_preset: str = "default"
+    #: Chess-only: number of past plies to encode (1..8). 1 → 21 channels,
+    #: 8 → 119 channels per AlphaZero paper. Ignored for MicroCiv.
+    chess_history_depth: int = 1
+    #: Chess-only: max plies before truncation (default 512 = 256 full moves).
+    chess_max_plies: int = 512
+    #: Chess-only: optional FEN to start from (None → standard).
+    chess_starting_fen: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EnvironmentConfig:
         """Create from dictionary."""
         early_term = data.get("early_termination", {})
+        chess_block = data.get("chess", {}) or {}
         return cls(
             type=data.get("type", "microciv"),
             board_size=int(data.get("board_size", 16)),
@@ -415,6 +427,10 @@ class EnvironmentConfig:
                 data.get("production", {}).get("multiplier", 1.5),
             ),
             base_production=int(data.get("production", {}).get("base_production", 3)),
+            gameplay_preset=str(data.get("gameplay_preset", "default")),
+            chess_history_depth=int(chess_block.get("history_depth", 1)),
+            chess_max_plies=int(chess_block.get("max_plies", 512)),
+            chess_starting_fen=chess_block.get("starting_fen"),
         )
 
 
