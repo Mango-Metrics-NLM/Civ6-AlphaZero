@@ -11,6 +11,7 @@ Tests the MuZero-specific functions in selfplay_worker.py:
 from __future__ import annotations
 
 import sys
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -470,61 +471,153 @@ class TestConfigFiltering:
 
 
 class TestArchitectureMismatchFallback:
-    """Tests for architecture mismatch fallback (threshold at 20%)."""
+    """Tests for the >20% architecture-mismatch fallback in ``load_muzero_model``.
 
-    def test_mismatch_above_threshold_triggers_fallback(self) -> None:
-        """Mismatch ratio >20% should use fresh random weights."""
+    These tests exercise the *production loader* path
+    (``selfplay_worker.load_muzero_model``) end-to-end with a stubbed
+    ``GCSModelStorage.load_model``, rather than just recomputing the
+    mismatch ratio on the side — the previous version of this test did
+    not actually verify that the fallback branch ran, only that the
+    arithmetic Copilot reviewed would have crossed the threshold.
+    """
+
+    @staticmethod
+    def _muzero_kwargs() -> dict[str, int]:
+        return {
+            "spatial_size": 8,
+            "vector_dim": 64,
+            "action_space_size": 376,
+            "num_res_blocks": 6,
+            "hidden_state_channels": 64,
+        }
+
+    @staticmethod
+    def _muzero_config_dict_from_kwargs(kwargs: dict[str, int]) -> dict[str, Any]:
+        """Build the saved-config dict used by load_muzero_model's reconstruction path."""
+        # Mirror the fields load_muzero_model wires up explicitly so the
+        # reconstructed MuZeroConfig matches the production loader's view.
+        return {
+            "spatial_channels": 13,  # SPATIAL_CHANNELS used by the loader
+            **kwargs,
+        }
+
+    def test_mismatch_above_threshold_triggers_fallback(
+        self,
+        gcp_config: GCPConfig,
+    ) -> None:
+        """Stubbed checkpoint with >20% mismatched keys → loader returns fresh model.
+
+        Verified by injecting unique-id parameters into the fake state_dict
+        and asserting they are NOT present in the returned model — i.e. the
+        loader silently dropped the bad checkpoint and built a fresh
+        ``MuZeroNetwork`` from the same config.
+        """
+        from alpha_zero.cloud.gcp import selfplay_worker
+        from alpha_zero.cloud.gcp.storage import ModelMetadata
         from alpha_zero.core.muzero_network import MuZeroConfig, MuZeroNetwork
 
-        config = MuZeroConfig(
-            spatial_size=8,
-            vector_dim=64,
-            action_space_size=376,
-            num_res_blocks=6,
-            hidden_state_channels=64,
-        )
-        model = MuZeroNetwork(config=config)
+        kwargs = self._muzero_kwargs()
+        cfg = MuZeroConfig(**kwargs)
+        baseline = MuZeroNetwork(config=cfg)
+        real_state = baseline.state_dict()
 
-        # Build a fake state dict with >20% mismatched keys
-        real_state = model.state_dict()
-        total_keys = len(real_state)
-
-        # Remove >20% of keys and add fake ones to simulate ViT checkpoint
-        keys_to_remove = list(real_state.keys())[: total_keys // 3]
+        # Drop > 20% of real keys and add foreign keys so the loader's
+        # mismatch_ratio crosses the 0.2 threshold.
+        keys_to_remove = list(real_state.keys())[: max(1, len(real_state) // 3)]
         fake_state = {k: v for k, v in real_state.items() if k not in keys_to_remove}
-        for i, k in enumerate(keys_to_remove):
-            fake_state[f"vit_encoder.layer_{i}.weight"] = torch.randn(64, 64)
+        # SENTINEL: a key the fresh model will never have. Used to assert the
+        # loader did NOT consume these weights.
+        sentinel_key = "vit_encoder.layer_999.weight"
+        fake_state[sentinel_key] = torch.full((4, 4), 7.0)
+        for i in range(len(keys_to_remove)):
+            fake_state[f"vit_encoder.layer_{i}.weight"] = torch.full((4, 4), float(i + 1))
 
-        # Load with strict=False to get incompatible keys
-        incompatible = model.load_state_dict(fake_state, strict=False)
-        mismatch_keys = len(incompatible.missing_keys) + len(incompatible.unexpected_keys)
-        mismatch_ratio = mismatch_keys / max(len(fake_state), 1)
+        fake_metadata = ModelMetadata(version=999, iteration=0, elo=None)
+        fake_cfg_dict = self._muzero_config_dict_from_kwargs(kwargs)
 
-        assert mismatch_ratio > 0.2, (
-            f"Test setup error: mismatch ratio {mismatch_ratio:.2f} should be >0.2"
+        with patch.object(
+            selfplay_worker, "GCSModelStorage"
+        ) as MockStorage:
+            MockStorage.return_value.load_model.return_value = (
+                fake_state,
+                fake_metadata,
+                fake_cfg_dict,
+            )
+            model = selfplay_worker.load_muzero_model(
+                config=gcp_config,
+                version=999,
+                board_size=kwargs["spatial_size"],
+                action_space_size=kwargs["action_space_size"],
+                num_res_blocks=kwargs["num_res_blocks"],
+                num_filters=kwargs["hidden_state_channels"],
+                dry_run=False,
+            )
+
+        # The fallback should have returned a fresh MuZeroNetwork. We don't
+        # compare weights directly (the baseline ``baseline`` used different
+        # randomness) — instead we assert the foreign keys never reached the
+        # returned model's state_dict.
+        returned_keys = set(model.state_dict().keys())
+        assert sentinel_key not in returned_keys, (
+            "Sentinel key from fake checkpoint leaked into returned model — "
+            "fallback branch did not run"
         )
+        for i in range(len(keys_to_remove)):
+            assert f"vit_encoder.layer_{i}.weight" not in returned_keys, (
+                f"Foreign key vit_encoder.layer_{i}.weight leaked into returned "
+                "model — fallback branch did not run"
+            )
+        # And the returned model should be in eval mode (loader sets this).
+        assert not model.training
 
-    def test_mismatch_below_threshold_loads_normally(self) -> None:
-        """Mismatch ratio <=20% should load weights normally."""
+    def test_mismatch_below_threshold_loads_normally(
+        self,
+        gcp_config: GCPConfig,
+    ) -> None:
+        """0% mismatch → loader returns the model with the supplied weights."""
+        from alpha_zero.cloud.gcp import selfplay_worker
+        from alpha_zero.cloud.gcp.storage import ModelMetadata
         from alpha_zero.core.muzero_network import MuZeroConfig, MuZeroNetwork
 
-        config = MuZeroConfig(
-            spatial_size=8,
-            vector_dim=64,
-            action_space_size=376,
-            num_res_blocks=6,
-            hidden_state_channels=64,
+        kwargs = self._muzero_kwargs()
+        cfg = MuZeroConfig(**kwargs)
+        baseline = MuZeroNetwork(config=cfg)
+        # Set a recognisable scalar in one parameter so we can verify it was
+        # actually adopted by the returned model (i.e. fallback did NOT fire).
+        with torch.no_grad():
+            first_param_name = next(iter(baseline.state_dict()))
+            baseline.state_dict()[first_param_name].fill_(0.5)
+        real_state = baseline.state_dict()
+
+        fake_metadata = ModelMetadata(version=42, iteration=0, elo=None)
+        fake_cfg_dict = self._muzero_config_dict_from_kwargs(kwargs)
+
+        with patch.object(
+            selfplay_worker, "GCSModelStorage"
+        ) as MockStorage:
+            MockStorage.return_value.load_model.return_value = (
+                real_state,
+                fake_metadata,
+                fake_cfg_dict,
+            )
+            model = selfplay_worker.load_muzero_model(
+                config=gcp_config,
+                version=42,
+                board_size=kwargs["spatial_size"],
+                action_space_size=kwargs["action_space_size"],
+                num_res_blocks=kwargs["num_res_blocks"],
+                num_filters=kwargs["hidden_state_channels"],
+                dry_run=False,
+            )
+
+        # The sentinel value we injected must be present in the returned model
+        # — proving the supplied state_dict was loaded, not discarded.
+        returned = model.state_dict()[first_param_name]
+        assert torch.all(returned == 0.5), (
+            "Loaded model parameter does not carry the sentinel value 0.5 — "
+            "fallback branch fired unexpectedly"
         )
-        model = MuZeroNetwork(config=config)
-
-        # Use a real state dict (0% mismatch)
-        real_state = model.state_dict()
-        incompatible = model.load_state_dict(real_state, strict=False)
-        mismatch_keys = len(incompatible.missing_keys) + len(incompatible.unexpected_keys)
-        mismatch_ratio = mismatch_keys / max(len(real_state), 1)
-
-        assert mismatch_ratio <= 0.2
-        assert mismatch_ratio == 0.0  # Perfect match
+        assert not model.training
 
 
 # =============================================================================

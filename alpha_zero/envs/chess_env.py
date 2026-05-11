@@ -170,8 +170,12 @@ class ChessEnv:
         mover_player = self.current_player
         self._board.push(move)
 
-        # Update terminal flags.
-        outcome = self._board.outcome(claim_draw=False)
+        # Update terminal flags, including the claimable draws called out in
+        # the module docstring (threefold repetition, fifty-move rule). With
+        # ``claim_draw=False`` the env would silently fall through to the
+        # ``max_plies`` truncation branch for those positions instead of
+        # producing a proper draw outcome with ``winner=None``.
+        outcome = self._board.outcome(claim_draw=True)
         reward: float = 0.0
         if outcome is not None:
             self._terminated = True

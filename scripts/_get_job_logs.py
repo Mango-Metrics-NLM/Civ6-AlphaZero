@@ -28,8 +28,13 @@ def _try_filter(filter_str: str, page_size: int = 20) -> list[dict]:
     """Run one log query; empty list if non-200 or no entries."""
     import requests  # noqa: PLC0415
 
+    # Cloud Logging entries:list expects ``resourceNames`` in the form
+    # ``projects/<project-id>``. The legacy ``projectIds`` field is rejected
+    # by current API versions and silently returns an empty result set;
+    # ``fetch_vertex_logs.py`` and ``_fetch_job_logs.py`` already use the
+    # correct shape — keep this in sync.
     body = {
-        "projectIds": [PROJECT],
+        "resourceNames": [f"projects/{PROJECT}"],
         "filter": filter_str,
         "orderBy": "timestamp desc",
         "pageSize": page_size,
