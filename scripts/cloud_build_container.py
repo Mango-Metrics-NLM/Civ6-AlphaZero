@@ -1,6 +1,6 @@
 """Build and push a fresh MuZero-World-Model container via Cloud Build.
 
-Creates a project-isolated Artifact Registry repo (`muzero-world-model`)
+Creates a project-isolated Artifact Registry repo (`civ6az-muzero-world-model`)
 and builds the container remotely — no local Docker required.
 
 Usage:
@@ -38,8 +38,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ── Constants ──────────────────────────────────────────────────────────────
-REPO_NAME = "muzero-world-model"  # Dedicated AR repo — NOT shared
-DEFAULT_IMAGE_NAME = "muzero-training"
+REPO_NAME = "civ6az-muzero-world-model"  # Dedicated AR repo — NOT shared
+DEFAULT_IMAGE_NAME = "civ6az-muzero"
 DEFAULT_TAG = "v12-muzero"
 
 
@@ -162,7 +162,7 @@ def upload_source_to_gcs(
         # Cloud Build uses a default bucket: {project_id}_cloudbuild
         bucket = f"{project}_cloudbuild"
 
-    object_name = f"source/muzero-world-model-{int(time.time())}.tar.gz"
+    object_name = f"source/civ6az-muzero-world-model-{int(time.time())}.tar.gz"
 
     # Upload via GCS JSON API (resumable for large files, simple for small)
     url = (

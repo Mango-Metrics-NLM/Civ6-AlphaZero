@@ -1,61 +1,72 @@
-"""Fetch the LATEST container logs for a Vertex AI job, focusing on application output."""
+"""Fetch Cloud Logging entries for a failed (or completed) Vertex AI job.
 
-import json
-import os
-import socket
+Usage:
+    python scripts/_fetch_job_logs.py <job_id>
+"""
+
+from __future__ import annotations
+
+import logging
 import sys
 
-import requests
+from scripts._gcp_lib import (
+    LOGGING_ENTRIES_URL,
+    PROJECT,
+    auth_headers,
+    configure_script_logging,
+)
 
-# Force IPv4
-_orig_gai = socket.getaddrinfo
-socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]
+logger = logging.getLogger(__name__)
 
-JOB_ID = sys.argv[1] if len(sys.argv) > 1 else "492670183786151936"
 
-creds_path = os.path.join(os.environ["APPDATA"], "gcloud", "application_default_credentials.json")
-with open(creds_path) as f:
-    creds = json.load(f)
+def fetch_logs(job_id: str, page_size: int = 50) -> int:
+    """Print log lines (chronological) for ``job_id``. Returns entry count."""
+    import requests  # noqa: PLC0415
 
-token = requests.post("https://oauth2.googleapis.com/token", data={
-    "client_id": creds["client_id"],
-    "client_secret": creds["client_secret"],
-    "refresh_token": creds["refresh_token"],
-    "grant_type": "refresh_token",
-}, timeout=15).json()["access_token"]
-
-url = "https://logging.googleapis.com/v2/entries:list"
-# Get latest logs (desc order) filtering for container stdout/stderr
-resp = requests.post(url, headers={"Authorization": f"Bearer {token}"}, json={
-    "resourceNames": ["projects/hrmtrain"],
-    "filter": f'resource.type="ml_job" AND resource.labels.job_id="{JOB_ID}" AND resource.labels.task_name="workerpool0-0"',
-    "orderBy": "timestamp desc",
-    "pageSize": 50,
-}, timeout=30)
-
-data = resp.json()
-entries = data.get("entries", [])
-if not entries:
-    # Try broader filter
-    print("No entries with ml_job filter. Trying broader search...")
-    resp = requests.post(url, headers={"Authorization": f"Bearer {token}"}, json={
-        "resourceNames": ["projects/hrmtrain"],
-        "filter": f'"{JOB_ID}" AND NOT textPayload:"provisioning"',
+    body = {
+        "resourceNames": [f"projects/{PROJECT}"],
+        "filter": (
+            f'resource.type="ml_job" '
+            f'AND resource.labels.job_id="{job_id}" '
+            f'AND resource.labels.task_name="workerpool0-0"'
+        ),
         "orderBy": "timestamp desc",
-        "pageSize": 30,
-    }, timeout=30)
-    data = resp.json()
-    entries = data.get("entries", [])
+        "pageSize": page_size,
+    }
+    resp = requests.post(LOGGING_ENTRIES_URL, headers=auth_headers(), json=body, timeout=30)
+    if resp.status_code != 200:
+        logger.error("Log fetch failed: HTTP %d — %s", resp.status_code, resp.text[:300])
+        return -1
 
-if not entries:
-    print(f"No log entries found for job {JOB_ID}")
-else:
-    # Print in chronological order (oldest first)
+    entries = resp.json().get("entries", [])
+    if not entries:
+        logger.info("No ml_job/workerpool0-0 entries for %s — broadening filter", job_id)
+        body["filter"] = f'"{job_id}" AND NOT textPayload:"provisioning"'
+        resp = requests.post(LOGGING_ENTRIES_URL, headers=auth_headers(), json=body, timeout=30)
+        entries = resp.json().get("entries", []) if resp.status_code == 200 else []
+
+    if not entries:
+        logger.warning("No log entries found for %s", job_id)
+        return 0
+
     for entry in reversed(entries):
         ts = entry.get("timestamp", "")[11:23]
         msg = entry.get("textPayload", "")
         if not msg:
             jp = entry.get("jsonPayload", {})
             msg = jp.get("message", str(jp) if jp else "")
-        if msg and "provisioning" not in msg.lower():
-            print(f"{ts} {msg[:300]}")
+        if msg:
+            print(f"{ts} {msg[:400]}")
+    return len(entries)
+
+
+def main(argv: list[str]) -> int:
+    configure_script_logging()
+    if len(argv) < 2:
+        print("Usage: python scripts/_fetch_job_logs.py <job_id>", file=sys.stderr)
+        return 2
+    return 0 if fetch_logs(argv[1]) >= 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

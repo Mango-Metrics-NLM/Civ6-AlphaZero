@@ -72,17 +72,17 @@ def _load_config() -> dict[str, str]:
         "project": project,
         "region": region,
         "agent_id": agent_id,
-        "gcs_bucket": os.environ.get("CIV6AZ_GCS_BUCKET", "civ6az-training"),
+        "gcs_bucket": os.environ.get("CIV6AZ_GCS_BUCKET", "civ6az-muzero-training"),
         "container_image": os.environ.get(
             "CIV6AZ_CONTAINER_IMAGE_URI",
-            f"{region}-docker.pkg.dev/{project}/muzero-world-model/muzero-training:v14-muzero",
+            f"{region}-docker.pkg.dev/{project}/civ6az-muzero-world-model/civ6az-muzero:v16-full-fix",
         ),
         "service_account": os.environ.get(
             "CIV6AZ_VERTEX_SERVICE_ACCOUNT",
             "1019219508001-compute@developer.gserviceaccount.com",
         ),
         "api_host": f"{region}-aiplatform.googleapis.com",
-        "wandb_project": os.environ.get("WANDB_PROJECT", "civ6-alphazero"),
+        "wandb_project": os.environ.get("WANDB_PROJECT", "civ6az-muzero-world-model"),
         "wandb_enabled": os.environ.get("WANDB_ENABLED", "true"),
     }
 
@@ -195,6 +195,7 @@ def get_access_token() -> str:
 def build_job_payload(cfg: dict[str, str]) -> dict[str, Any]:
     """Build Vertex AI CustomJob payload."""
     agent_id = cfg["agent_id"]
+    wandb_api_key = os.environ.get("WANDB_API_KEY", "")
     env_vars = {
         "CIV6AZ_VERTEX_PROJECT": cfg["project"],
         "CIV6AZ_VERTEX_REGION": cfg["region"],
@@ -205,8 +206,10 @@ def build_job_payload(cfg: dict[str, str]) -> dict[str, Any]:
         "WANDB_RUN_GROUP": agent_id,
         "WANDB_ENABLED": cfg["wandb_enabled"],
     }
+    if wandb_api_key:
+        env_vars["WANDB_API_KEY"] = wandb_api_key
     payload: dict[str, Any] = {
-        "displayName": f"civ6az-{agent_id}-orchestrator",
+        "displayName": f"civ6az-mzwm-{agent_id}-orchestrator",
         "jobSpec": {
             "workerPoolSpecs": [
                 {
@@ -218,11 +221,12 @@ def build_job_payload(cfg: dict[str, str]) -> dict[str, Any]:
                         "args": [
                             f"--algorithm={agent_id}",
                             "--iterations=50",
-                            "--mcts_simulations=400",
-                            "--mcts_type=gumbel",
+                            "--mcts_simulations=50",
+                            "--mcts_type=muzero",
                             "--workers=2",
                             "--games_per_worker=10",
                             "--epochs=10",
+                            "--model_version_start=0",
                         ],
                         "env": [{"name": k, "value": v} for k, v in env_vars.items()],
                     },

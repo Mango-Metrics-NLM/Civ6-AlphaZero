@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 import torch
 
-from alpha_zero.envs.env_factory import GAMEPLAY_PRESETS, create_game_env
+from alpha_zero.envs.env_factory import GAMEPLAY_PRESETS, MICROCIV_PRESETS, create_game_env
 from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.envs.microciv_enhanced import EnhancedMicroCivEnv
 from alpha_zero.envs.vectorized_env import VectorizedEnvConfig, VectorizedMicroCivEnv
@@ -81,7 +81,7 @@ class TestObservationParity:
     """Both presets produce identical observation shapes."""
 
     @pytest.mark.parametrize("board_size", [6, 8])
-    @pytest.mark.parametrize("preset", GAMEPLAY_PRESETS)
+    @pytest.mark.parametrize("preset", MICROCIV_PRESETS)
     def test_spatial_shape(self, board_size: int, preset: str) -> None:
         env = create_game_env(board_size=board_size, max_turns=10, gameplay_preset=preset)
         env.reset()
@@ -89,7 +89,7 @@ class TestObservationParity:
         assert obs["spatial"].shape == (SPATIAL_CHANNELS, board_size, board_size)
 
     @pytest.mark.parametrize("board_size", [6, 8])
-    @pytest.mark.parametrize("preset", GAMEPLAY_PRESETS)
+    @pytest.mark.parametrize("preset", MICROCIV_PRESETS)
     def test_vector_shape(self, board_size: int, preset: str) -> None:
         env = create_game_env(board_size=board_size, max_turns=10, gameplay_preset=preset)
         env.reset()
@@ -97,14 +97,14 @@ class TestObservationParity:
         assert obs["vector"].shape == (VECTOR_DIM,)
 
     @pytest.mark.parametrize("board_size", [6, 8])
-    @pytest.mark.parametrize("preset", GAMEPLAY_PRESETS)
+    @pytest.mark.parametrize("preset", MICROCIV_PRESETS)
     def test_action_mask_shape(self, board_size: int, preset: str) -> None:
         env = create_game_env(board_size=board_size, max_turns=10, gameplay_preset=preset)
         env.reset()
         obs = env.get_observation()
         assert obs["action_mask"].shape == (ACTION_SPACE_SIZE,)
 
-    @pytest.mark.parametrize("preset", GAMEPLAY_PRESETS)
+    @pytest.mark.parametrize("preset", MICROCIV_PRESETS)
     def test_action_space_size(self, preset: str) -> None:
         env = create_game_env(board_size=8, max_turns=10, gameplay_preset=preset)
         assert env.action_space.n == ACTION_SPACE_SIZE

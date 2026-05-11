@@ -63,6 +63,9 @@ jax = [
     "equinox>=0.11.0",
     "optax>=0.2.0",
 ]
+chess = [
+    "chess>=1.11.0",
+]
 all = [
     "alpha_zero[dev]",
     "alpha_zero[gcp]",
@@ -71,6 +74,7 @@ all = [
     "alpha_zero[web]",
     "alpha_zero[spacetimedb]",
     "alpha_zero[jax]",
+    "alpha_zero[chess]",
 ]
 
 [tool.ruff]

@@ -89,6 +89,9 @@ class LLMConfig:
     openai_model: str = "gpt-4"
     openai_max_tokens: int = 4096
     openai_temperature: float = 0.7
+    # Optional base URL for OpenAI-compatible servers (LM Studio, Ollama, vLLM, etc.).
+    # When set, a placeholder api_key is accepted and the SDK is pointed at this URL.
+    openai_base_url: str | None = None
 
     # Anthropic settings
     anthropic_api_key: str | None = None
@@ -123,13 +126,26 @@ class LLMConfig:
         }
         provider = provider_map.get(provider_str, LLMProvider.AUTO)
 
+        # Accept both OPENAI_BASE_URL (industry convention) and LM_STUDIO_BASE_URL
+        # (project-specific). The latter wins if both are set, since it's the
+        # more explicit intent.
+        base_url = os.getenv("LM_STUDIO_BASE_URL") or os.getenv("OPENAI_BASE_URL")
+
+        # When pointing at a local OpenAI-compatible server (LM Studio etc.),
+        # the SDK still requires a non-empty api_key string. Fall back to a
+        # placeholder so users don't need to invent a fake key.
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if base_url and not openai_api_key:
+            openai_api_key = "lm-studio"
+
         return cls(
             provider=provider,
-            openai_api_key=os.getenv("OPENAI_API_KEY"),
+            openai_api_key=openai_api_key,
             openai_org_id=os.getenv("OPENAI_ORG_ID"),
             openai_model=os.getenv("OPENAI_MODEL", "gpt-4"),
             openai_max_tokens=int(os.getenv("OPENAI_MAX_TOKENS", "4096")),
             openai_temperature=float(os.getenv("OPENAI_TEMPERATURE", "0.7")),
+            openai_base_url=base_url,
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
             anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
             anthropic_max_tokens=int(os.getenv("ANTHROPIC_MAX_TOKENS", "4096")),
@@ -255,20 +271,21 @@ class OpenAIClient(BaseLLMClient):
         if not OPENAI_AVAILABLE:
             raise LLMConfigError("OpenAI package not installed. Run: pip install openai")
 
-        if not config.openai_api_key:
+        # Allow placeholder key when an OpenAI-compatible local server is configured.
+        # The SDK requires a non-empty string but the local server ignores its value.
+        if not config.openai_api_key and not config.openai_base_url:
             raise LLMConfigError("OpenAI API key not configured")
 
         self.config = config
-        self._async_client = AsyncOpenAI(
-            api_key=config.openai_api_key,
-            organization=config.openai_org_id,
-            timeout=config.timeout,
-        )
-        self._sync_client = OpenAI(
-            api_key=config.openai_api_key,
-            organization=config.openai_org_id,
-            timeout=config.timeout,
-        )
+        client_kwargs: dict[str, Any] = {
+            "api_key": config.openai_api_key or "lm-studio",
+            "organization": config.openai_org_id,
+            "timeout": config.timeout,
+        }
+        if config.openai_base_url:
+            client_kwargs["base_url"] = config.openai_base_url
+        self._async_client = AsyncOpenAI(**client_kwargs)
+        self._sync_client = OpenAI(**client_kwargs)
 
     async def generate(
         self,
@@ -492,8 +509,13 @@ class LLMClient:
             except LLMConfigError as e:
                 logger.warning(f"Failed to initialize Anthropic client: {e}")
 
-        # Try to initialize OpenAI client
-        if self.config.openai_api_key and OPENAI_AVAILABLE:
+        # Try to initialize OpenAI client.
+        # A base_url alone (LM Studio / Ollama / vLLM) is sufficient — the
+        # OpenAIClient constructor injects a placeholder api_key in that case.
+        has_openai_credentials = bool(self.config.openai_api_key) or bool(
+            self.config.openai_base_url
+        )
+        if has_openai_credentials and OPENAI_AVAILABLE:
             try:
                 self._clients[LLMProvider.OPENAI] = OpenAIClient(self.config)
                 logger.info("OpenAI client initialized")

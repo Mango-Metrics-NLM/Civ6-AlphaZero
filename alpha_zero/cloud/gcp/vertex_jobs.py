@@ -37,7 +37,9 @@ def _wandb_env_vars() -> dict[str, str]:
 
     candidates = {
         "WANDB_ENABLED": os.environ.get("WANDB_ENABLED", "false"),
-        "WANDB_PROJECT": os.environ.get("WANDB_PROJECT", "civ6-alphazero"),
+        # WANDB_PROJECT default scoped to the MuZero world-model run; PR #75's
+        # Secret Manager fallback for WANDB_API_KEY (below) is preserved.
+        "WANDB_PROJECT": os.environ.get("WANDB_PROJECT", "civ6az-muzero-world-model"),
         "WANDB_ENTITY": os.environ.get("WANDB_ENTITY", ""),
         "WANDB_MODE": os.environ.get("WANDB_MODE", "online"),
         "WANDB_GROUP": os.environ.get("WANDB_GROUP", ""),
@@ -530,7 +532,7 @@ class VertexTuningJob:
 
         # Create base job spec
         spec = JobSpec(
-            display_name=f"civ6az-tuning-iter{iteration:03d}",
+            display_name=f"civ6az-mzwm-tuning-iter{iteration:03d}",
             container_uri=container,
             args=args,
             env_vars={
@@ -659,7 +661,7 @@ class VertexSelfPlayJob:
                 args.extend(extra_args)
 
             spec = JobSpec(
-                display_name=f"civ6az-selfplay-iter{iteration:03d}-worker{worker_id:02d}",
+                display_name=f"civ6az-mzwm-selfplay-iter{iteration:03d}-worker{worker_id:02d}",
                 container_uri=container,
                 command=["python", "-m", "alpha_zero.cloud.gcp.selfplay_worker"],
                 args=args,
@@ -850,7 +852,7 @@ class VertexTrainingJob:
             worker_args.extend(extra_args)
 
         spec = JobSpec(
-            display_name=f"civ6az-training-iter{iteration:03d}",
+            display_name=f"civ6az-mzwm-training-iter{iteration:03d}",
             container_uri=container,
             command=command,
             args=worker_args,
@@ -964,7 +966,7 @@ class VertexEvaluationJob:
             args.extend(extra_args)
 
         spec = JobSpec(
-            display_name=f"civ6az-eval-iter{iteration:03d}",
+            display_name=f"civ6az-mzwm-eval-iter{iteration:03d}",
             container_uri=container,
             command=["python", "-m", "alpha_zero.cloud.gcp.entrypoint"],
             args=args,
@@ -1097,7 +1099,7 @@ class VertexTournamentJob:
         env_vars = {k: v for k, v in env_vars.items() if v}
 
         spec = JobSpec(
-            display_name=f"civ6az-tournament-{len(model_versions)}models",
+            display_name=f"civ6az-mzwm-tournament-{len(model_versions)}models",
             container_uri=container,
             command=["python", "-m", "alpha_zero.cloud.gcp.entrypoint"],
             args=args,
