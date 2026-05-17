@@ -13,11 +13,13 @@ from alpha_zero.utils.constants import (
     GAME,
     MCTS,
     NETWORK,
+    PATHS,
     TRAINING,
     EncoderConstants,
     GameConstants,
     MCTSConstants,
     NetworkConstants,
+    PathConstants,
     TrainingConstants,
 )
 
@@ -419,6 +421,97 @@ class TestGameConstants:
         assert gc.DEFAULT_MAX_TURNS > 0
 
 
+class TestPathConstants:
+    """Tests for PathConstants and the configs that consume them.
+
+    Pinning these in tests guards against the entire class of bugs where
+    a hardcoded path appears as a class default AND as a from_dict
+    fallback, then drifts when only one of the two is updated.
+    """
+
+    def test_path_constants_are_non_empty_strings(self) -> None:
+        pc = PathConstants()
+        for name in (
+            "RAG_PERSIST_DIR",
+            "RAG_KNOWLEDGE_DIR",
+            "RAG_COLLECTION_NAME",
+            "REFLECTION_PERSIST_DIR",
+            "REFLECTION_COLLECTION_NAME",
+            "ORCHESTRATOR_CHECKPOINT_DIR",
+            "ORCHESTRATOR_LOG_DIR",
+            "DEFAULT_LOCAL_STORAGE_ROOT",
+        ):
+            value = getattr(pc, name)
+            assert isinstance(value, str)
+            assert value, f"{name} must be a non-empty string"
+
+    def test_rag_config_paths_sourced_from_constants(self) -> None:
+        from alpha_zero.orchestrator.config import RAGConfig
+
+        c = RAGConfig()
+        assert c.persist_directory == PATHS.RAG_PERSIST_DIR
+        assert c.knowledge_dir == PATHS.RAG_KNOWLEDGE_DIR
+        assert c.collection_name == PATHS.RAG_COLLECTION_NAME
+
+    def test_reflection_config_paths_sourced_from_constants(self) -> None:
+        from alpha_zero.orchestrator.config import ReflectionIntegrationConfig
+
+        c = ReflectionIntegrationConfig()
+        assert c.persist_directory == PATHS.REFLECTION_PERSIST_DIR
+        assert c.collection_name == PATHS.REFLECTION_COLLECTION_NAME
+
+    def test_orchestrator_config_paths_sourced_from_constants(self) -> None:
+        from alpha_zero.orchestrator.config import OrchestratorConfig
+
+        c = OrchestratorConfig()
+        assert c.checkpoint_dir == PATHS.ORCHESTRATOR_CHECKPOINT_DIR
+        assert c.log_dir == PATHS.ORCHESTRATOR_LOG_DIR
+
+    def test_storage_config_base_path_sourced_from_constants(self) -> None:
+        from alpha_zero.storage.config import StorageConfig
+
+        assert StorageConfig().base_path == PATHS.DEFAULT_LOCAL_STORAGE_ROOT
+        # for_local() factory honors override but defaults to the constant.
+        assert StorageConfig.for_local().base_path == PATHS.DEFAULT_LOCAL_STORAGE_ROOT
+
+    def test_path_consuming_configs_no_drift_on_from_dict(self) -> None:
+        """from_dict({}) must agree with the class default constructor
+        for every config class that holds a path. Same pattern that was
+        a real bug in MCTSConfig (400 vs 50) — this guards the next
+        recurrence at the path layer."""
+        from alpha_zero.orchestrator.config import (
+            RAGConfig,
+            ReflectionIntegrationConfig,
+            TrainingConfig,
+        )
+        from alpha_zero.storage.config import StorageConfig
+
+        for cls, attrs in (
+            (RAGConfig, ("persist_directory", "knowledge_dir", "collection_name")),
+            (
+                ReflectionIntegrationConfig,
+                ("persist_directory", "collection_name"),
+            ),
+            (StorageConfig, ("base_path",)),
+            (TrainingConfig, ("games_per_iteration",)),
+        ):
+            default = cls()
+            from_empty = cls.from_dict({})
+            for attr in attrs:
+                assert getattr(default, attr) == getattr(from_empty, attr), (
+                    f"{cls.__name__}.{attr} drift: "
+                    f"class={getattr(default, attr)!r} from_dict={getattr(from_empty, attr)!r}"
+                )
+
+    def test_training_config_games_per_iteration_drift_fixed(self) -> None:
+        """Regression test for the specific 200 vs 100 bug fixed in this
+        branch — class default was 200, from_dict literal was 100."""
+        from alpha_zero.orchestrator.config import TrainingConfig
+
+        assert TrainingConfig().games_per_iteration == 200
+        assert TrainingConfig.from_dict({}).games_per_iteration == 200
+
+
 class TestGlobalInstances:
     """Tests for global constant instances."""
 
@@ -429,6 +522,7 @@ class TestGlobalInstances:
         assert MCTS is not None
         assert TRAINING is not None
         assert GAME is not None
+        assert PATHS is not None
 
     def test_global_instances_are_correct_type(self) -> None:
         """Test that global instances have correct types."""
@@ -437,6 +531,7 @@ class TestGlobalInstances:
         assert isinstance(MCTS, MCTSConstants)
         assert isinstance(TRAINING, TrainingConstants)
         assert isinstance(GAME, GameConstants)
+        assert isinstance(PATHS, PathConstants)
 
 
 class TestConstantsConsistency:

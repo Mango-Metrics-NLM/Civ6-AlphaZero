@@ -38,7 +38,7 @@ from typing import Any
 
 import yaml
 
-from alpha_zero.utils.constants import MCTS
+from alpha_zero.utils.constants import MCTS, PATHS
 
 class ScheduleType(str, Enum):
     """Types of hyperparameter schedules."""
@@ -199,29 +199,33 @@ class AutonomyLevel:
 
 @dataclass
 class RAGConfig:
-    """Configuration for RAG (Retrieval-Augmented Generation) system."""
+    """Configuration for RAG (Retrieval-Augmented Generation) system.
+
+    Path defaults sourced from alpha_zero.utils.constants.PATHS.
+    """
 
     enabled: bool = True
-    persist_directory: str = "data/knowledge_db"
-    collection_name: str = "civ6_knowledge"
+    persist_directory: str = PATHS.RAG_PERSIST_DIR
+    collection_name: str = PATHS.RAG_COLLECTION_NAME
     embedding_model: str = "all-MiniLM-L6-v2"
     top_k: int = 5
     auto_ingest: bool = True
-    knowledge_dir: str = "data/knowledge"
+    knowledge_dir: str = PATHS.RAG_KNOWLEDGE_DIR
     store_insights: bool = True
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RAGConfig:
-        """Create from dictionary."""
+        """Create from dictionary. Missing fields fall back to class defaults."""
+        defaults = cls()
         return cls(
-            enabled=data.get("enabled", True),
-            persist_directory=data.get("persist_directory", "data/knowledge_db"),
-            collection_name=data.get("collection_name", "civ6_knowledge"),
-            embedding_model=data.get("embedding_model", "all-MiniLM-L6-v2"),
-            top_k=int(data.get("top_k", 5)),
-            auto_ingest=data.get("auto_ingest", True),
-            knowledge_dir=data.get("knowledge_dir", "data/knowledge"),
-            store_insights=data.get("store_insights", True),
+            enabled=data.get("enabled", defaults.enabled),
+            persist_directory=data.get("persist_directory", defaults.persist_directory),
+            collection_name=data.get("collection_name", defaults.collection_name),
+            embedding_model=data.get("embedding_model", defaults.embedding_model),
+            top_k=int(data.get("top_k", defaults.top_k)),
+            auto_ingest=data.get("auto_ingest", defaults.auto_ingest),
+            knowledge_dir=data.get("knowledge_dir", defaults.knowledge_dir),
+            store_insights=data.get("store_insights", defaults.store_insights),
         )
 
 
@@ -281,17 +285,20 @@ class StrategyAdvisorConfig:
 
 @dataclass
 class ReflectionIntegrationConfig:
-    """Configuration for LATS-style reflection memory integration."""
+    """Configuration for LATS-style reflection memory integration.
+
+    Path defaults sourced from alpha_zero.utils.constants.PATHS.
+    """
 
     enabled: bool = False  # Disabled by default for backwards compatibility
     storage_backend: str = "memory"  # "memory", "chroma", "faiss"
-    collection_name: str = "game_reflections"
+    collection_name: str = PATHS.REFLECTION_COLLECTION_NAME
     embedding_dimension: int = 384
     similarity_threshold: float = 0.7
     max_retrievals: int = 5
     warning_penalty: float = 0.1  # Penalty applied to MCTS value
     max_entries: int = 10000
-    persist_directory: str = "data/reflections"
+    persist_directory: str = PATHS.REFLECTION_PERSIST_DIR
 
     # LLM reflection generation settings
     generate_critiques: bool = True  # Use LLM to generate verbal critiques
@@ -302,22 +309,27 @@ class ReflectionIntegrationConfig:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ReflectionIntegrationConfig:
-        """Create from dictionary."""
+        """Create from dictionary. Missing fields fall back to class defaults."""
+        defaults = cls()
         return cls(
-            enabled=data.get("enabled", False),
-            storage_backend=data.get("storage_backend", "memory"),
-            collection_name=data.get("collection_name", "game_reflections"),
-            embedding_dimension=int(data.get("embedding_dimension", 384)),
-            similarity_threshold=float(data.get("similarity_threshold", 0.7)),
-            max_retrievals=int(data.get("max_retrievals", 5)),
-            warning_penalty=float(data.get("warning_penalty", 0.1)),
-            max_entries=int(data.get("max_entries", 10000)),
-            persist_directory=data.get("persist_directory", "data/reflections"),
-            generate_critiques=data.get("generate_critiques", True),
-            llm_temperature=float(data.get("llm_temperature", 0.3)),
-            llm_max_tokens=int(data.get("llm_max_tokens", 500)),
-            cache_critiques=data.get("cache_critiques", True),
-            use_fallback_on_failure=data.get("use_fallback_on_failure", True),
+            enabled=data.get("enabled", defaults.enabled),
+            storage_backend=data.get("storage_backend", defaults.storage_backend),
+            collection_name=data.get("collection_name", defaults.collection_name),
+            embedding_dimension=int(data.get("embedding_dimension", defaults.embedding_dimension)),
+            similarity_threshold=float(
+                data.get("similarity_threshold", defaults.similarity_threshold)
+            ),
+            max_retrievals=int(data.get("max_retrievals", defaults.max_retrievals)),
+            warning_penalty=float(data.get("warning_penalty", defaults.warning_penalty)),
+            max_entries=int(data.get("max_entries", defaults.max_entries)),
+            persist_directory=data.get("persist_directory", defaults.persist_directory),
+            generate_critiques=data.get("generate_critiques", defaults.generate_critiques),
+            llm_temperature=float(data.get("llm_temperature", defaults.llm_temperature)),
+            llm_max_tokens=int(data.get("llm_max_tokens", defaults.llm_max_tokens)),
+            cache_critiques=data.get("cache_critiques", defaults.cache_critiques),
+            use_fallback_on_failure=data.get(
+                "use_fallback_on_failure", defaults.use_fallback_on_failure
+            ),
         )
 
     @classmethod
@@ -514,21 +526,24 @@ class TrainingConfig:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TrainingConfig:
-        """Create from dictionary."""
+        """Create from dictionary. Missing fields fall back to class defaults
+        (previously used independent literals like games_per_iteration=100
+        that disagreed with the class default of 200)."""
+        defaults = cls()
         return cls(
-            num_iterations=int(data.get("num_iterations", 100000)),
-            games_per_iteration=int(data.get("games_per_iteration", 100)),
-            batch_size=int(data.get("batch_size", 256)),
-            num_epochs=int(data.get("num_epochs", 10)),
-            weight_decay=float(data.get("weight_decay", 0.0001)),
-            gradient_clip=float(data.get("gradient_clip", 1.0)),
-            replay_buffer_size=int(data.get("replay_buffer_size", 500000)),
-            min_replay_size=int(data.get("min_replay_size", 10000)),
-            checkpoint_interval=int(data.get("checkpoint_interval", 1000)),
-            evaluation_interval=int(data.get("evaluation_interval", 500)),
-            evaluation_games=int(data.get("evaluation_games", 20)),
-            max_checkpoints=int(data.get("max_checkpoints", 10)),
-            resume=data.get("resume", True),
+            num_iterations=int(data.get("num_iterations", defaults.num_iterations)),
+            games_per_iteration=int(data.get("games_per_iteration", defaults.games_per_iteration)),
+            batch_size=int(data.get("batch_size", defaults.batch_size)),
+            num_epochs=int(data.get("num_epochs", defaults.num_epochs)),
+            weight_decay=float(data.get("weight_decay", defaults.weight_decay)),
+            gradient_clip=float(data.get("gradient_clip", defaults.gradient_clip)),
+            replay_buffer_size=int(data.get("replay_buffer_size", defaults.replay_buffer_size)),
+            min_replay_size=int(data.get("min_replay_size", defaults.min_replay_size)),
+            checkpoint_interval=int(data.get("checkpoint_interval", defaults.checkpoint_interval)),
+            evaluation_interval=int(data.get("evaluation_interval", defaults.evaluation_interval)),
+            evaluation_games=int(data.get("evaluation_games", defaults.evaluation_games)),
+            max_checkpoints=int(data.get("max_checkpoints", defaults.max_checkpoints)),
+            resume=data.get("resume", defaults.resume),
         )
 
 
@@ -760,9 +775,18 @@ class OrchestratorConfig:
         default_factory=lambda: ScheduleConfig(initial_value=0.25),
     )
 
+<<<<<<< HEAD
     # Paths
     checkpoint_dir: str = "checkpoints/orchestrator"
     log_dir: str = "logs/orchestrator"
+=======
+    # SpacetimeDB (optional real-time distributed coordination)
+    spacetimedb: SpacetimeDBConfig | None = field(default=None)
+
+    # Paths (defaults sourced from alpha_zero.utils.constants.PATHS)
+    checkpoint_dir: str = PATHS.ORCHESTRATOR_CHECKPOINT_DIR
+    log_dir: str = PATHS.ORCHESTRATOR_LOG_DIR
+>>>>>>> 8bb02b7 (refactor(config): centralize paths via PathConstants, fix TrainingConfig drift)
     config_path: str | None = None
 
     @classmethod
@@ -826,8 +850,14 @@ class OrchestratorConfig:
             exploration_schedule=ScheduleConfig.from_dict(
                 data.get("exploration_schedule", {"initial_value": 0.25}),
             ),
+<<<<<<< HEAD
             checkpoint_dir=data.get("checkpoint_dir", "checkpoints/orchestrator"),
             log_dir=data.get("log_dir", "logs/orchestrator"),
+=======
+            spacetimedb=cls._parse_spacetimedb_config(data.get("spacetimedb")),
+            checkpoint_dir=data.get("checkpoint_dir", PATHS.ORCHESTRATOR_CHECKPOINT_DIR),
+            log_dir=data.get("log_dir", PATHS.ORCHESTRATOR_LOG_DIR),
+>>>>>>> 8bb02b7 (refactor(config): centralize paths via PathConstants, fix TrainingConfig drift)
         )
 
     @classmethod

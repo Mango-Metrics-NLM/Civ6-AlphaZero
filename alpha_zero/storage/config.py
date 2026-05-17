@@ -18,6 +18,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from alpha_zero.utils.constants import PATHS
+
 
 @dataclass
 class GCSConfig:
@@ -77,7 +79,7 @@ class StorageConfig:
     """
 
     backend_type: Literal["local", "gcs"] = "local"
-    base_path: str = "./storage"
+    base_path: str = PATHS.DEFAULT_LOCAL_STORAGE_ROOT
     gcs: GCSConfig = field(default_factory=GCSConfig)
 
     # Compression settings
@@ -162,7 +164,7 @@ class StorageConfig:
 
         return cls(
             backend_type=data.get("backend_type", "local"),
-            base_path=data.get("base_path", "./storage"),
+            base_path=data.get("base_path", PATHS.DEFAULT_LOCAL_STORAGE_ROOT),
             gcs=gcs_config,
             compress_weights=data.get("compress_weights", True),
             compress_trajectories=data.get("compress_trajectories", False),
@@ -203,7 +205,7 @@ class StorageConfig:
     @classmethod
     def for_local(
         cls,
-        base_path: str = "./storage",
+        base_path: str = PATHS.DEFAULT_LOCAL_STORAGE_ROOT,
         compress_weights: bool = True,
     ) -> StorageConfig:
         """Create configuration for local storage."""

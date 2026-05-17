@@ -469,6 +469,38 @@ class LoggingConstants:
 
 
 # =============================================================================
+# PATH CONSTANTS
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class PathConstants:
+    """Default filesystem paths used across configurable components.
+
+    All paths are relative to the project root. Override via configuration
+    (YAML / CIV6AZ_* env vars) when deploying. Centralising them here
+    prevents the same literal appearing in both a class default and its
+    from_dict fallback (a real source of silent drift in the codebase).
+    """
+
+    # RAG knowledge base
+    RAG_PERSIST_DIR: str = "data/knowledge_db"
+    RAG_KNOWLEDGE_DIR: str = "data/knowledge"
+    RAG_COLLECTION_NAME: str = "civ6_knowledge"
+
+    # LATS reflection memory
+    REFLECTION_PERSIST_DIR: str = "data/reflections"
+    REFLECTION_COLLECTION_NAME: str = "game_reflections"
+
+    # Orchestrator artifacts
+    ORCHESTRATOR_CHECKPOINT_DIR: str = "checkpoints/orchestrator"
+    ORCHESTRATOR_LOG_DIR: str = "logs/orchestrator"
+
+    # Storage backend root
+    DEFAULT_LOCAL_STORAGE_ROOT: str = "./storage"
+
+
+# =============================================================================
 # GLOBAL INSTANCES (for convenience)
 # =============================================================================
 
@@ -482,6 +514,7 @@ ACTION_SPACE = ActionSpaceConstants()
 DISTRIBUTED = DistributedConstants()
 REWARDS = RewardConstants()
 LOGGING = LoggingConstants()
+PATHS = PathConstants()
 
 
 def get_all_constants() -> dict[str, Any]:
@@ -501,6 +534,7 @@ def get_all_constants() -> dict[str, Any]:
         "distributed": DISTRIBUTED,
         "rewards": REWARDS,
         "logging": LOGGING,
+        "paths": PATHS,
     }
 
 
