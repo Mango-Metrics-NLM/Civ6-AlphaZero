@@ -303,21 +303,39 @@ class TestSetupDDPEnvironment:
         # Should not set env vars
         assert os.environ.get("WORLD_SIZE") is None
 
-    def test_setup_env_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test environment setup when DDP enabled."""
-        config = DDPConfig(
-            enabled=True,
-            world_size=4,
-            rank=2,
-            local_rank=1,
-            master_addr="10.0.0.1",
-            master_port=12345,
-        )
+    def test_setup_env_enabled(self) -> None:
+        """Test environment setup when DDP enabled.
 
-        setup_ddp_environment(config)
+        ``setup_ddp_environment`` writes WORLD_SIZE/RANK/LOCAL_RANK/
+        MASTER_ADDR/MASTER_PORT directly to os.environ; without explicit
+        cleanup these leak to later tests and any code that triggers
+        torch.distributed initialization will block waiting for peer
+        processes that don't exist. This was a reproducible test-suite
+        hang in tests/cloud/unit/ where test_ddp_config preceded
+        test_training_muzero_dispatch.
+        """
+        ddp_vars = ("WORLD_SIZE", "RANK", "LOCAL_RANK", "MASTER_ADDR", "MASTER_PORT")
+        original = {v: os.environ.get(v) for v in ddp_vars}
+        try:
+            config = DDPConfig(
+                enabled=True,
+                world_size=4,
+                rank=2,
+                local_rank=1,
+                master_addr="10.0.0.1",
+                master_port=12345,
+            )
 
-        assert os.environ["WORLD_SIZE"] == "4"
-        assert os.environ["RANK"] == "2"
-        assert os.environ["LOCAL_RANK"] == "1"
-        assert os.environ["MASTER_ADDR"] == "10.0.0.1"
-        assert os.environ["MASTER_PORT"] == "12345"
+            setup_ddp_environment(config)
+
+            assert os.environ["WORLD_SIZE"] == "4"
+            assert os.environ["RANK"] == "2"
+            assert os.environ["LOCAL_RANK"] == "1"
+            assert os.environ["MASTER_ADDR"] == "10.0.0.1"
+            assert os.environ["MASTER_PORT"] == "12345"
+        finally:
+            for var, value in original.items():
+                if value is None:
+                    os.environ.pop(var, None)
+                else:
+                    os.environ[var] = value
