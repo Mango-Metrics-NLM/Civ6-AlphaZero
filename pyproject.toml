@@ -195,6 +195,35 @@ omit = [
     "*/__pycache__/*",
     "*/__init__.py",
     "*/conftest.py",
+    # Cloud / infrastructure (require GCP SDK, Vertex AI, GCS)
+    "alpha_zero/cloud/*",
+    "alpha_zero/inference/*",
+    "alpha_zero/serving/*",
+    # Web server (requires running FastAPI)
+    "alpha_zero/web/routes/*",
+    "alpha_zero/web/app.py",
+    # JAX backend (requires JAX framework)
+    "alpha_zero/core/jax_*",
+    # Game interfaces (require real Civ6 / CivRealm / Docker)
+    "alpha_zero/interfaces/base_interface.py",
+    "alpha_zero/interfaces/civ6_interface.py",
+    "alpha_zero/envs/civrealm_wrapper.py",
+    "alpha_zero/envs/real_civ6_env.py",
+    "alpha_zero/envs/docker_config.py",
+    # External store backends (require ChromaDB, FAISS, SpacetimeDB)
+    "alpha_zero/rag/stores/chroma_store.py",
+    "alpha_zero/rag/stores/faiss_store.py",
+    "alpha_zero/spacetimedb/*",
+    "alpha_zero/storage/gcs_backend.py",
+    # Cloud coordinator (requires GCP SDK imports)
+    "alpha_zero/distributed/cloud_coordinator.py",
+    # DDP learner (requires multi-GPU / torch.distributed init)
+    "alpha_zero/distributed/ddp_learner.py",
+    # CUDA graph cache (requires CUDA hardware)
+    "alpha_zero/optimizations/cuda_graph_cache.py",
+    # Orchestrator main entrypoint (CLI argparse, exercised by smoke tests
+    # not unit tests)
+    "alpha_zero/orchestrator/__main__.py",
 ]
 
 [tool.coverage.report]
@@ -206,7 +235,7 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "@abstractmethod",
 ]
-fail_under = 80
+fail_under = 85
 show_missing = true
 skip_covered = false
 
