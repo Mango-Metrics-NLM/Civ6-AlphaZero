@@ -140,18 +140,23 @@ class NetworkConstants:
 
 @dataclass(frozen=True)
 class MCTSConstants:
-    """Constants for Monte Carlo Tree Search."""
+    """Constants for Monte Carlo Tree Search.
 
-    # PUCT formula parameters
+    Per-variant simulation budgets are explicit so drift between Civ6MCTS,
+    GumbelMCTS, MuZeroMCTS, and the orchestrator config is audited rather
+    than silently accumulated across three files.
+    """
+
+    # PUCT formula parameters (shared across all variants)
     DEFAULT_C_PUCT: float = 1.5
     DEFAULT_C_PUCT_BASE: float = 19652.0
     DEFAULT_C_PUCT_INIT: float = 1.25
 
-    # Exploration noise
+    # Exploration noise (shared across all variants)
     DEFAULT_DIRICHLET_ALPHA: float = 0.3
     DEFAULT_DIRICHLET_EPSILON: float = 0.25
 
-    # Temperature annealing
+    # Temperature annealing (shared across all variants)
     DEFAULT_TEMPERATURE: float = 1.0
     DEFAULT_TEMPERATURE_THRESHOLD: int = 30
     DEFAULT_TEMPERATURE_FINAL: float = 0.0
@@ -159,10 +164,28 @@ class MCTSConstants:
     # Virtual loss for parallel MCTS
     DEFAULT_VIRTUAL_LOSS: float = 3.0
 
-    # Search limits
-    DEFAULT_NUM_SIMULATIONS: int = 50
+    # Per-variant simulation budgets (previously duplicated and drifting)
+    CLASSIC_NUM_SIMULATIONS: int = 200  # Civ6MCTS / SimpleMCTS
+    GUMBEL_NUM_SIMULATIONS: int = 64  # GumbelMCTS — fewer needed via sequential halving
+    MUZERO_NUM_SIMULATIONS: int = 50  # MuZeroMCTS — hidden-state based
+    ORCHESTRATOR_NUM_SIMULATIONS: int = 50  # Aligned with main's MCTSConfig default
+
+    # Backwards-compatible alias (older code referenced DEFAULT_NUM_SIMULATIONS).
+    # Equals CLASSIC_NUM_SIMULATIONS — kept distinct so refactors that want the
+    # classic value can be explicit.
+    DEFAULT_NUM_SIMULATIONS: int = 200
     MIN_SIMULATIONS: int = 1
     MAX_SIMULATIONS: int = 10000
+
+    # Gumbel-specific parameters
+    GUMBEL_NUM_SAMPLED_ACTIONS: int = 16
+    GUMBEL_MAX_CONSIDERED_ACTIONS: int = 32
+    GUMBEL_C_SCALE: float = 1.0
+    GUMBEL_MIN_ACTIONS_AFTER_HALVING: int = 1
+
+    # MuZero-specific parameters
+    MUZERO_DISCOUNT: float = 0.997
+    MUZERO_REWARD_SUPPORT_SIZE: int = 601
 
     # Numerical stability
     PRIOR_EPSILON: float = 1e-8

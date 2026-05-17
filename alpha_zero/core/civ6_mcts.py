@@ -32,6 +32,7 @@ from alpha_zero.core.mcts_constants import (
     DEFAULT_ROLLOUT_DEPTH,
     EPSILON,
 )
+from alpha_zero.utils.constants import MCTS
 
 # Module-level logger
 logger = logging.getLogger(__name__)
@@ -181,14 +182,37 @@ class MCTSEnvironment(Protocol):
 
 @dataclass(slots=True)
 class MCTSConfig:
-    """Configuration for MCTS."""
+    """Configuration for MCTS.
 
-    num_simulations: int = 200
-    c_puct: float = 1.5
-    dirichlet_alpha: float = 0.3
-    dirichlet_epsilon: float = 0.25
-    temperature: float = 1.0
-    temperature_threshold: int = 30  # Turn after which to use temperature=0
+    Defaults sourced from alpha_zero.utils.constants.MCTS to keep hyperparameter
+    values consistent across all MCTS variants and the orchestrator config.
+    """
+
+    num_simulations: int = MCTS.CLASSIC_NUM_SIMULATIONS
+    c_puct: float = MCTS.DEFAULT_C_PUCT
+    dirichlet_alpha: float = MCTS.DEFAULT_DIRICHLET_ALPHA
+    dirichlet_epsilon: float = MCTS.DEFAULT_DIRICHLET_EPSILON
+    temperature: float = MCTS.DEFAULT_TEMPERATURE
+    temperature_threshold: int = MCTS.DEFAULT_TEMPERATURE_THRESHOLD
+
+    def __post_init__(self) -> None:
+        if not MCTS.MIN_SIMULATIONS <= self.num_simulations <= MCTS.MAX_SIMULATIONS:
+            raise ValueError(
+                f"num_simulations must be in [{MCTS.MIN_SIMULATIONS}, "
+                f"{MCTS.MAX_SIMULATIONS}]; got {self.num_simulations}"
+            )
+        if self.c_puct <= 0:
+            raise ValueError(f"c_puct must be > 0; got {self.c_puct}")
+        if self.dirichlet_alpha <= 0:
+            raise ValueError(f"dirichlet_alpha must be > 0; got {self.dirichlet_alpha}")
+        if not 0.0 <= self.dirichlet_epsilon <= 1.0:
+            raise ValueError(f"dirichlet_epsilon must be in [0, 1]; got {self.dirichlet_epsilon}")
+        if self.temperature < 0:
+            raise ValueError(f"temperature must be >= 0; got {self.temperature}")
+        if self.temperature_threshold < 0:
+            raise ValueError(
+                f"temperature_threshold must be >= 0; got {self.temperature_threshold}"
+            )
 
 
 @dataclass(slots=True)
@@ -211,15 +235,31 @@ class GumbelMCTSConfig:
         temperature_threshold: Turn after which to use temperature=0.
     """
 
-    num_simulations: int = 64
-    num_sampled_actions: int = 16
-    max_considered_actions: int = 32
+    num_simulations: int = MCTS.GUMBEL_NUM_SIMULATIONS
+    num_sampled_actions: int = MCTS.GUMBEL_NUM_SAMPLED_ACTIONS
+    max_considered_actions: int = MCTS.GUMBEL_MAX_CONSIDERED_ACTIONS
     c_visit: float = DEFAULT_C_VISIT
-    c_scale: float = 1.0
+    c_scale: float = MCTS.GUMBEL_C_SCALE
     use_sequential_halving: bool = True
-    min_actions_after_halving: int = 1
-    temperature: float = 1.0
-    temperature_threshold: int = 30
+    min_actions_after_halving: int = MCTS.GUMBEL_MIN_ACTIONS_AFTER_HALVING
+    temperature: float = MCTS.DEFAULT_TEMPERATURE
+    temperature_threshold: int = MCTS.DEFAULT_TEMPERATURE_THRESHOLD
+
+    def __post_init__(self) -> None:
+        if not MCTS.MIN_SIMULATIONS <= self.num_simulations <= MCTS.MAX_SIMULATIONS:
+            raise ValueError(
+                f"num_simulations must be in [{MCTS.MIN_SIMULATIONS}, "
+                f"{MCTS.MAX_SIMULATIONS}]; got {self.num_simulations}"
+            )
+        if self.num_sampled_actions <= 0:
+            raise ValueError(f"num_sampled_actions must be > 0; got {self.num_sampled_actions}")
+        if self.max_considered_actions < self.num_sampled_actions:
+            raise ValueError(
+                "max_considered_actions must be >= num_sampled_actions; "
+                f"got {self.max_considered_actions} < {self.num_sampled_actions}"
+            )
+        if self.temperature < 0:
+            raise ValueError(f"temperature must be >= 0; got {self.temperature}")
 
 
 @dataclass(slots=True)
@@ -1410,17 +1450,39 @@ class MuZeroMCTSConfig:
         reward_support_size: Size of categorical support (only used if use_categorical_reward=True).
     """
 
-    num_simulations: int = 50
-    c_puct: float = 1.5
-    dirichlet_alpha: float = 0.3
-    dirichlet_epsilon: float = 0.25
+    num_simulations: int = MCTS.MUZERO_NUM_SIMULATIONS
+    c_puct: float = MCTS.DEFAULT_C_PUCT
+    dirichlet_alpha: float = MCTS.DEFAULT_DIRICHLET_ALPHA
+    dirichlet_epsilon: float = MCTS.DEFAULT_DIRICHLET_EPSILON
     use_gumbel: bool = True
-    num_sampled_actions: int = 16
+    num_sampled_actions: int = MCTS.GUMBEL_NUM_SAMPLED_ACTIONS
     use_sequential_halving: bool = True
-    temperature: float = 1.0
-    discount: float = 0.997
+    temperature: float = MCTS.DEFAULT_TEMPERATURE
+    discount: float = MCTS.MUZERO_DISCOUNT
     use_categorical_reward: bool = True
-    reward_support_size: int = 601
+    reward_support_size: int = MCTS.MUZERO_REWARD_SUPPORT_SIZE
+
+    def __post_init__(self) -> None:
+        if not MCTS.MIN_SIMULATIONS <= self.num_simulations <= MCTS.MAX_SIMULATIONS:
+            raise ValueError(
+                f"num_simulations must be in [{MCTS.MIN_SIMULATIONS}, "
+                f"{MCTS.MAX_SIMULATIONS}]; got {self.num_simulations}"
+            )
+        if self.c_puct <= 0:
+            raise ValueError(f"c_puct must be > 0; got {self.c_puct}")
+        if self.dirichlet_alpha <= 0:
+            raise ValueError(f"dirichlet_alpha must be > 0; got {self.dirichlet_alpha}")
+        if not 0.0 <= self.dirichlet_epsilon <= 1.0:
+            raise ValueError(f"dirichlet_epsilon must be in [0, 1]; got {self.dirichlet_epsilon}")
+        if self.temperature < 0:
+            raise ValueError(f"temperature must be >= 0; got {self.temperature}")
+        if not 0.0 < self.discount <= 1.0:
+            raise ValueError(f"discount must be in (0, 1]; got {self.discount}")
+        if self.use_categorical_reward and self.reward_support_size <= 0:
+            raise ValueError(
+                f"reward_support_size must be > 0 when use_categorical_reward=True; "
+                f"got {self.reward_support_size}"
+            )
 
 
 @dataclass

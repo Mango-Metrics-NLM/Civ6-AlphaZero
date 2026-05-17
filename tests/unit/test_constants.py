@@ -184,6 +184,148 @@ class TestMCTSConstants:
         assert mc.MIN_SIMULATIONS > 0
         assert mc.DEFAULT_NUM_SIMULATIONS >= mc.MIN_SIMULATIONS
 
+    def test_per_variant_simulation_budgets(self) -> None:
+        """Per-variant budgets are positive and within global bounds."""
+        mc = MCTSConstants()
+        for budget in (
+            mc.CLASSIC_NUM_SIMULATIONS,
+            mc.GUMBEL_NUM_SIMULATIONS,
+            mc.MUZERO_NUM_SIMULATIONS,
+            mc.ORCHESTRATOR_NUM_SIMULATIONS,
+        ):
+            assert mc.MIN_SIMULATIONS <= budget <= mc.MAX_SIMULATIONS
+
+    def test_gumbel_params(self) -> None:
+        """Gumbel-specific constants are internally consistent."""
+        mc = MCTSConstants()
+        assert mc.GUMBEL_NUM_SAMPLED_ACTIONS > 0
+        assert mc.GUMBEL_MAX_CONSIDERED_ACTIONS >= mc.GUMBEL_NUM_SAMPLED_ACTIONS
+        assert mc.GUMBEL_MIN_ACTIONS_AFTER_HALVING >= 1
+        assert mc.GUMBEL_C_SCALE > 0
+
+    def test_muzero_params(self) -> None:
+        """MuZero-specific constants are sane."""
+        mc = MCTSConstants()
+        assert 0 < mc.MUZERO_DISCOUNT <= 1.0
+        assert mc.MUZERO_REWARD_SUPPORT_SIZE > 0
+
+
+class TestMCTSConfigValidation:
+    """Tests for runtime validation on the MCTS config dataclasses.
+
+    These validations are new boundary checks added to prevent silently
+    accepting invalid hyperparameter combinations.
+    """
+
+    def test_core_mctsconfig_rejects_negative_simulations(self) -> None:
+        import pytest
+
+        from alpha_zero.core.civ6_mcts import MCTSConfig
+
+        with pytest.raises(ValueError, match="num_simulations"):
+            MCTSConfig(num_simulations=-1)
+
+    def test_core_mctsconfig_rejects_excessive_simulations(self) -> None:
+        import pytest
+
+        from alpha_zero.core.civ6_mcts import MCTSConfig
+        from alpha_zero.utils.constants import MCTS
+
+        with pytest.raises(ValueError, match="num_simulations"):
+            MCTSConfig(num_simulations=MCTS.MAX_SIMULATIONS + 1)
+
+    def test_core_mctsconfig_rejects_invalid_dirichlet_epsilon(self) -> None:
+        import pytest
+
+        from alpha_zero.core.civ6_mcts import MCTSConfig
+
+        with pytest.raises(ValueError, match="dirichlet_epsilon"):
+            MCTSConfig(dirichlet_epsilon=1.5)
+        with pytest.raises(ValueError, match="dirichlet_epsilon"):
+            MCTSConfig(dirichlet_epsilon=-0.1)
+
+    def test_core_mctsconfig_rejects_nonpositive_c_puct(self) -> None:
+        import pytest
+
+        from alpha_zero.core.civ6_mcts import MCTSConfig
+
+        with pytest.raises(ValueError, match="c_puct"):
+            MCTSConfig(c_puct=0.0)
+
+    def test_core_mctsconfig_rejects_negative_temperature(self) -> None:
+        import pytest
+
+        from alpha_zero.core.civ6_mcts import MCTSConfig
+
+        with pytest.raises(ValueError, match="temperature"):
+            MCTSConfig(temperature=-0.5)
+
+    def test_gumbel_config_rejects_inconsistent_action_counts(self) -> None:
+        import pytest
+
+        from alpha_zero.core.civ6_mcts import GumbelMCTSConfig
+
+        with pytest.raises(ValueError, match="max_considered_actions"):
+            GumbelMCTSConfig(num_sampled_actions=32, max_considered_actions=8)
+
+    def test_muzero_config_rejects_invalid_discount(self) -> None:
+        import pytest
+
+        from alpha_zero.core.civ6_mcts import MuZeroMCTSConfig
+
+        with pytest.raises(ValueError, match="discount"):
+            MuZeroMCTSConfig(discount=0.0)
+        with pytest.raises(ValueError, match="discount"):
+            MuZeroMCTSConfig(discount=1.5)
+
+    def test_orchestrator_mctsconfig_validation(self) -> None:
+        import pytest
+
+        from alpha_zero.orchestrator.config import MCTSConfig as OrchMCTSConfig
+
+        with pytest.raises(ValueError, match="num_simulations"):
+            OrchMCTSConfig(num_simulations=0)
+        with pytest.raises(ValueError, match="dirichlet_epsilon"):
+            OrchMCTSConfig(dirichlet_epsilon=2.0)
+
+    def test_orchestrator_mctsconfig_from_dict_no_drift(self) -> None:
+        """from_dict({}) must agree with the class default constructor.
+
+        Previously from_dict used different fallback values (e.g.
+        num_simulations=50 vs class default 400) which silently changed
+        behavior depending on construction path.
+        """
+        from alpha_zero.orchestrator.config import MCTSConfig as OrchMCTSConfig
+
+        default = OrchMCTSConfig()
+        from_empty = OrchMCTSConfig.from_dict({})
+
+        assert from_empty.num_simulations == default.num_simulations
+        assert from_empty.c_puct == default.c_puct
+        assert from_empty.dirichlet_alpha == default.dirichlet_alpha
+        assert from_empty.dirichlet_epsilon == default.dirichlet_epsilon
+        assert from_empty.temperature == default.temperature
+        assert from_empty.temperature_threshold == default.temperature_threshold
+
+    def test_per_variant_defaults_sourced_from_constants(self) -> None:
+        """All four MCTS config classes draw defaults from utils.constants.MCTS.
+
+        Pinning this in a test guards against future drift back into
+        hard-coded literals.
+        """
+        from alpha_zero.core.civ6_mcts import (
+            GumbelMCTSConfig,
+            MCTSConfig,
+            MuZeroMCTSConfig,
+        )
+        from alpha_zero.orchestrator.config import MCTSConfig as OrchMCTSConfig
+        from alpha_zero.utils.constants import MCTS
+
+        assert MCTSConfig().num_simulations == MCTS.CLASSIC_NUM_SIMULATIONS
+        assert GumbelMCTSConfig().num_simulations == MCTS.GUMBEL_NUM_SIMULATIONS
+        assert MuZeroMCTSConfig().num_simulations == MCTS.MUZERO_NUM_SIMULATIONS
+        assert OrchMCTSConfig().num_simulations == MCTS.ORCHESTRATOR_NUM_SIMULATIONS
+
 
 class TestTrainingConstants:
     """Tests for TrainingConstants dataclass."""
@@ -295,9 +437,9 @@ class TestConstantsConsistency:
             for j, (start_j, end_j) in enumerate(ranges):
                 if i != j:
                     # Ranges should not overlap
-                    assert (
-                        end_i <= start_j or end_j <= start_i
-                    ), f"Ranges {ranges[i]} and {ranges[j]} overlap"
+                    assert end_i <= start_j or end_j <= start_i, (
+                        f"Ranges {ranges[i]} and {ranges[j]} overlap"
+                    )
 
     def test_normalization_factors_reasonable(self) -> None:
         """Test normalization factors have reasonable values."""

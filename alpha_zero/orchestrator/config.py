@@ -38,6 +38,7 @@ from typing import Any
 
 import yaml
 
+from alpha_zero.utils.constants import MCTS
 
 class ScheduleType(str, Enum):
     """Types of hyperparameter schedules."""
@@ -443,25 +444,53 @@ class NetworkConfig:
 
 @dataclass
 class MCTSConfig:
-    """MCTS configuration."""
+    """MCTS configuration for orchestrated training.
 
-    num_simulations: int = 50
-    c_puct: float = 1.5
-    dirichlet_alpha: float = 0.3
-    dirichlet_epsilon: float = 0.25
-    temperature: float = 1.0
-    temperature_threshold: int = 30
+    Defaults sourced from alpha_zero.utils.constants.MCTS for auditable
+    single source of truth.
+    """
+
+    num_simulations: int = MCTS.ORCHESTRATOR_NUM_SIMULATIONS
+    c_puct: float = MCTS.DEFAULT_C_PUCT
+    dirichlet_alpha: float = MCTS.DEFAULT_DIRICHLET_ALPHA
+    dirichlet_epsilon: float = MCTS.DEFAULT_DIRICHLET_EPSILON
+    temperature: float = MCTS.DEFAULT_TEMPERATURE
+    temperature_threshold: int = MCTS.DEFAULT_TEMPERATURE_THRESHOLD
+
+    def __post_init__(self) -> None:
+        if not MCTS.MIN_SIMULATIONS <= self.num_simulations <= MCTS.MAX_SIMULATIONS:
+            raise ValueError(
+                f"num_simulations must be in [{MCTS.MIN_SIMULATIONS}, "
+                f"{MCTS.MAX_SIMULATIONS}]; got {self.num_simulations}"
+            )
+        if self.c_puct <= 0:
+            raise ValueError(f"c_puct must be > 0; got {self.c_puct}")
+        if self.dirichlet_alpha <= 0:
+            raise ValueError(f"dirichlet_alpha must be > 0; got {self.dirichlet_alpha}")
+        if not 0.0 <= self.dirichlet_epsilon <= 1.0:
+            raise ValueError(f"dirichlet_epsilon must be in [0, 1]; got {self.dirichlet_epsilon}")
+        if self.temperature < 0:
+            raise ValueError(f"temperature must be >= 0; got {self.temperature}")
+        if self.temperature_threshold < 0:
+            raise ValueError(
+                f"temperature_threshold must be >= 0; got {self.temperature_threshold}"
+            )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MCTSConfig:
-        """Create from dictionary."""
+        """Create from dictionary. Missing fields fall back to class defaults
+        (previously this used different fallback values than the class
+        defaults, causing silent drift between construction paths)."""
+        defaults = cls()
         return cls(
-            num_simulations=int(data.get("num_simulations", 50)),
-            c_puct=float(data.get("c_puct", 1.5)),
-            dirichlet_alpha=float(data.get("dirichlet_alpha", 0.3)),
-            dirichlet_epsilon=float(data.get("dirichlet_epsilon", 0.25)),
-            temperature=float(data.get("temperature", 1.0)),
-            temperature_threshold=int(data.get("temperature_threshold", 30)),
+            num_simulations=int(data.get("num_simulations", defaults.num_simulations)),
+            c_puct=float(data.get("c_puct", defaults.c_puct)),
+            dirichlet_alpha=float(data.get("dirichlet_alpha", defaults.dirichlet_alpha)),
+            dirichlet_epsilon=float(data.get("dirichlet_epsilon", defaults.dirichlet_epsilon)),
+            temperature=float(data.get("temperature", defaults.temperature)),
+            temperature_threshold=int(
+                data.get("temperature_threshold", defaults.temperature_threshold)
+            ),
         )
 
 
