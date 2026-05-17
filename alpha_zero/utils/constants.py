@@ -168,7 +168,10 @@ class MCTSConstants:
     CLASSIC_NUM_SIMULATIONS: int = 200  # Civ6MCTS / SimpleMCTS
     GUMBEL_NUM_SIMULATIONS: int = 64  # GumbelMCTS — fewer needed via sequential halving
     MUZERO_NUM_SIMULATIONS: int = 50  # MuZeroMCTS — hidden-state based
-    ORCHESTRATOR_NUM_SIMULATIONS: int = 50  # Aligned with main's MCTSConfig default
+    # Orchestrator training budget. Matches the orchestrator.MCTSConfig
+    # default and the production orchestrator.yaml preset, kept distinct
+    # from CLASSIC_NUM_SIMULATIONS so the two can be tuned independently.
+    ORCHESTRATOR_NUM_SIMULATIONS: int = 50
 
     # Backwards-compatible alias (older code referenced DEFAULT_NUM_SIMULATIONS).
     # Equals CLASSIC_NUM_SIMULATIONS — kept distinct so refactors that want the

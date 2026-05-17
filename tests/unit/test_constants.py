@@ -280,6 +280,30 @@ class TestMCTSConfigValidation:
         with pytest.raises(ValueError, match="discount"):
             MuZeroMCTSConfig(discount=1.5)
 
+    def test_muzero_config_rejects_nonpositive_sampled_actions_under_gumbel(self) -> None:
+        """MuZeroMCTSConfig with use_gumbel=True must reject non-positive
+        num_sampled_actions. Without this guard, _gumbel_search() would
+        pass a non-positive value into gumbel_sample_actions and crash at
+        search time (PR #77 review feedback)."""
+        import pytest
+
+        from alpha_zero.core.civ6_mcts import MuZeroMCTSConfig
+
+        with pytest.raises(ValueError, match="num_sampled_actions"):
+            MuZeroMCTSConfig(use_gumbel=True, num_sampled_actions=0)
+        with pytest.raises(ValueError, match="num_sampled_actions"):
+            MuZeroMCTSConfig(use_gumbel=True, num_sampled_actions=-1)
+
+    def test_muzero_config_skips_sampled_actions_check_when_gumbel_disabled(
+        self,
+    ) -> None:
+        """The num_sampled_actions field is only used by Gumbel search, so
+        when use_gumbel=False a non-positive value is harmless."""
+        from alpha_zero.core.civ6_mcts import MuZeroMCTSConfig
+
+        # Should not raise.
+        MuZeroMCTSConfig(use_gumbel=False, num_sampled_actions=0)
+
     def test_orchestrator_mctsconfig_validation(self) -> None:
         import pytest
 
@@ -326,9 +350,10 @@ class TestMCTSConfigValidation:
     def test_orchestrator_mctsconfig_from_dict_no_drift(self) -> None:
         """from_dict({}) must agree with the class default constructor.
 
-        Previously from_dict used different fallback values (e.g.
-        num_simulations=50 vs class default 400) which silently changed
-        behavior depending on construction path.
+        This guards against the entire drift bug class where a class default
+        and its from_dict literal fallback get out of sync over time, silently
+        producing different behaviour depending on whether a field is present
+        in the YAML being loaded.
         """
         from alpha_zero.orchestrator.config import MCTSConfig as OrchMCTSConfig
 
@@ -475,10 +500,11 @@ class TestPathConstants:
         assert StorageConfig.for_local().base_path == PATHS.DEFAULT_LOCAL_STORAGE_ROOT
 
     def test_path_consuming_configs_no_drift_on_from_dict(self) -> None:
-        """from_dict({}) must agree with the class default constructor
-        for every config class that holds a path. Same pattern that was
-        a real bug in MCTSConfig (400 vs 50) — this guards the next
-        recurrence at the path layer."""
+        """from_dict({}) must agree with the class default constructor for
+        every config class that holds a path. Guards the drift bug class —
+        a class default and its from_dict literal fallback getting out of
+        sync — at the path layer (RAGConfig, ReflectionIntegrationConfig,
+        StorageConfig) and on TrainingConfig.games_per_iteration."""
         from alpha_zero.orchestrator.config import (
             RAGConfig,
             ReflectionIntegrationConfig,

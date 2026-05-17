@@ -1485,6 +1485,14 @@ class MuZeroMCTSConfig:
             raise ValueError(
                 f"temperature_threshold must be >= 0; got {self.temperature_threshold}"
             )
+        # num_sampled_actions is used by _gumbel_search via min(num_sampled_actions,
+        # len(valid_actions)); a non-positive value would propagate into
+        # gumbel_sample_actions and crash at search time.
+        if self.use_gumbel and self.num_sampled_actions <= 0:
+            raise ValueError(
+                f"num_sampled_actions must be > 0 when use_gumbel=True; "
+                f"got {self.num_sampled_actions}"
+            )
         if not 0.0 < self.discount <= 1.0:
             raise ValueError(f"discount must be in (0, 1]; got {self.discount}")
         if self.use_categorical_reward and self.reward_support_size <= 0:

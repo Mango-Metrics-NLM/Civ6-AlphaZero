@@ -40,6 +40,7 @@ import yaml
 
 from alpha_zero.utils.constants import ENCODER, MCTS, NETWORK, PATHS
 
+
 class ScheduleType(str, Enum):
     """Types of hyperparameter schedules."""
 
@@ -499,9 +500,13 @@ class MCTSConfig:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MCTSConfig:
-        """Create from dictionary. Missing fields fall back to class defaults
-        (previously this used different fallback values than the class
-        defaults, causing silent drift between construction paths)."""
+        """Create from dictionary.
+
+        Missing fields fall back to the class defaults via ``defaults = cls()``
+        rather than duplicated literal fallbacks. This makes it structurally
+        impossible for the class default and the from_dict fallback to drift
+        apart over time (a recurring bug class on configs with many fields).
+        """
         defaults = cls()
         return cls(
             num_simulations=int(data.get("num_simulations", defaults.num_simulations)),
@@ -535,9 +540,12 @@ class TrainingConfig:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TrainingConfig:
-        """Create from dictionary. Missing fields fall back to class defaults
-        (previously used independent literals like games_per_iteration=100
-        that disagreed with the class default of 200)."""
+        """Create from dictionary.
+
+        Missing fields fall back to the class defaults via ``defaults = cls()``
+        rather than duplicated literal fallbacks, so a future change to a class
+        default automatically propagates to the from_dict path.
+        """
         defaults = cls()
         return cls(
             num_iterations=int(data.get("num_iterations", defaults.num_iterations)),
