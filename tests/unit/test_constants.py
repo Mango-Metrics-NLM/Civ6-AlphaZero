@@ -304,6 +304,38 @@ class TestMCTSConfigValidation:
         # Should not raise.
         MuZeroMCTSConfig(use_gumbel=False, num_sampled_actions=0)
 
+    def test_muzero_from_network_preserves_temperature_threshold(self) -> None:
+        """MuZeroMCTS.from_network() must propagate every base_config field
+        when it syncs reward settings from the network. Previously
+        temperature_threshold and reward_support_size were silently reset
+        to class defaults, losing user overrides (PR #77 review feedback)."""
+        from unittest.mock import MagicMock
+
+        from alpha_zero.core.civ6_mcts import MuZeroMCTS, MuZeroMCTSConfig
+
+        # Network stub with its own config (triggers the synced_config path)
+        fake_network = MagicMock(spec=["config", "to", "eval"])
+        fake_network.config = MagicMock()
+        fake_network.config.use_categorical_reward = True
+        fake_network.config.reward_support_size = 401  # non-default
+        fake_network.to.return_value = fake_network
+
+        user_config = MuZeroMCTSConfig(
+            temperature_threshold=99,  # non-default
+            temperature=0.5,
+            num_simulations=33,
+        )
+        mcts = MuZeroMCTS.from_network(fake_network, config=user_config)
+
+        # Every field of base_config must round-trip into the synced config.
+        assert mcts.config.temperature_threshold == 99, (
+            "from_network dropped temperature_threshold"
+        )
+        assert mcts.config.temperature == 0.5
+        assert mcts.config.num_simulations == 33
+        # Reward settings come from the network when present.
+        assert mcts.config.reward_support_size == 401
+
     def test_orchestrator_mctsconfig_validation(self) -> None:
         import pytest
 

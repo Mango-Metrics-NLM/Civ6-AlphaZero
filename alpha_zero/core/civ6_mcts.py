@@ -1667,10 +1667,13 @@ class MuZeroMCTS:
                 num_sampled_actions=base_config.num_sampled_actions,
                 use_sequential_halving=base_config.use_sequential_halving,
                 temperature=base_config.temperature,
+                temperature_threshold=base_config.temperature_threshold,
                 discount=base_config.discount,
                 # Sync with network config
                 use_categorical_reward=getattr(net_config, "use_categorical_reward", True),
-                reward_support_size=getattr(net_config, "reward_support_size", 601),
+                reward_support_size=getattr(
+                    net_config, "reward_support_size", base_config.reward_support_size
+                ),
             )
             return cls(network, synced_config, device)  # type: ignore[arg-type]
 

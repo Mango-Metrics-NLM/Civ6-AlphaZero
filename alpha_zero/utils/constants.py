@@ -169,8 +169,11 @@ class MCTSConstants:
     GUMBEL_NUM_SIMULATIONS: int = 64  # GumbelMCTS — fewer needed via sequential halving
     MUZERO_NUM_SIMULATIONS: int = 50  # MuZeroMCTS — hidden-state based
     # Orchestrator training budget. Matches the orchestrator.MCTSConfig
-    # default and the production orchestrator.yaml preset, kept distinct
-    # from CLASSIC_NUM_SIMULATIONS so the two can be tuned independently.
+    # dataclass default and configs/orchestrator.yaml (the default preset).
+    # NOTE: configs/orchestrator_production.yaml overrides this to 200
+    # and configs/orchestrator_fast.yaml to 10 — those are explicit
+    # preset overrides, not the library default. Kept distinct from
+    # CLASSIC_NUM_SIMULATIONS so the two can be tuned independently.
     ORCHESTRATOR_NUM_SIMULATIONS: int = 50
 
     # Backwards-compatible alias (older code referenced DEFAULT_NUM_SIMULATIONS).
