@@ -38,7 +38,7 @@ from typing import Any
 
 import yaml
 
-from alpha_zero.utils.constants import MCTS, PATHS
+from alpha_zero.utils.constants import ENCODER, MCTS, NETWORK, PATHS
 
 class ScheduleType(str, Enum):
     """Types of hyperparameter schedules."""
@@ -430,27 +430,36 @@ class EnvironmentConfig:
 
 @dataclass
 class NetworkConfig:
-    """Neural network configuration."""
+    """Neural network configuration.
 
-    spatial_channels: int = 13
-    vector_dim: int = 64
-    num_res_blocks: int = 6
-    num_filters: int = 64
-    num_heads: int = 4
-    value_head_hidden: int = 256
-    dropout: float = 0.0
+    Shape defaults sourced from alpha_zero.utils.constants ENCODER and
+    NETWORK. num_heads and dropout intentionally diverge from
+    NetworkConstants (which uses 8 and 0.1) because the orchestrator's
+    default network is smaller for faster Phase 1 training.
+    """
+
+    spatial_channels: int = ENCODER.MICROCIV_CHANNELS
+    vector_dim: int = ENCODER.MICROCIV_VECTOR_DIM
+    num_res_blocks: int = NETWORK.DEFAULT_NUM_RES_BLOCKS
+    num_filters: int = NETWORK.DEFAULT_NUM_FILTERS
+    num_heads: int = 4  # orchestrator-specific, smaller than NETWORK.DEFAULT_NUM_HEADS
+    value_head_hidden: int = NETWORK.DEFAULT_FC_DIM
+    dropout: float = 0.0  # orchestrator-specific, no dropout for Phase 1 training
+    framework: str = "pytorch"  # "pytorch" or "jax"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> NetworkConfig:
-        """Create from dictionary."""
+        """Create from dictionary. Missing fields fall back to class defaults."""
+        defaults = cls()
         return cls(
-            spatial_channels=int(data.get("spatial_channels", 13)),
-            vector_dim=int(data.get("vector_dim", 64)),
-            num_res_blocks=int(data.get("num_res_blocks", 6)),
-            num_filters=int(data.get("num_filters", 64)),
-            num_heads=int(data.get("num_heads", 4)),
-            value_head_hidden=int(data.get("value_head_hidden", 256)),
-            dropout=float(data.get("dropout", 0.0)),
+            spatial_channels=int(data.get("spatial_channels", defaults.spatial_channels)),
+            vector_dim=int(data.get("vector_dim", defaults.vector_dim)),
+            num_res_blocks=int(data.get("num_res_blocks", defaults.num_res_blocks)),
+            num_filters=int(data.get("num_filters", defaults.num_filters)),
+            num_heads=int(data.get("num_heads", defaults.num_heads)),
+            value_head_hidden=int(data.get("value_head_hidden", defaults.value_head_hidden)),
+            dropout=float(data.get("dropout", defaults.dropout)),
+            framework=str(data.get("framework", defaults.framework)),
         )
 
 
@@ -775,18 +784,9 @@ class OrchestratorConfig:
         default_factory=lambda: ScheduleConfig(initial_value=0.25),
     )
 
-<<<<<<< HEAD
-    # Paths
-    checkpoint_dir: str = "checkpoints/orchestrator"
-    log_dir: str = "logs/orchestrator"
-=======
-    # SpacetimeDB (optional real-time distributed coordination)
-    spacetimedb: SpacetimeDBConfig | None = field(default=None)
-
     # Paths (defaults sourced from alpha_zero.utils.constants.PATHS)
     checkpoint_dir: str = PATHS.ORCHESTRATOR_CHECKPOINT_DIR
     log_dir: str = PATHS.ORCHESTRATOR_LOG_DIR
->>>>>>> 8bb02b7 (refactor(config): centralize paths via PathConstants, fix TrainingConfig drift)
     config_path: str | None = None
 
     @classmethod
@@ -850,14 +850,8 @@ class OrchestratorConfig:
             exploration_schedule=ScheduleConfig.from_dict(
                 data.get("exploration_schedule", {"initial_value": 0.25}),
             ),
-<<<<<<< HEAD
-            checkpoint_dir=data.get("checkpoint_dir", "checkpoints/orchestrator"),
-            log_dir=data.get("log_dir", "logs/orchestrator"),
-=======
-            spacetimedb=cls._parse_spacetimedb_config(data.get("spacetimedb")),
             checkpoint_dir=data.get("checkpoint_dir", PATHS.ORCHESTRATOR_CHECKPOINT_DIR),
             log_dir=data.get("log_dir", PATHS.ORCHESTRATOR_LOG_DIR),
->>>>>>> 8bb02b7 (refactor(config): centralize paths via PathConstants, fix TrainingConfig drift)
         )
 
     @classmethod
