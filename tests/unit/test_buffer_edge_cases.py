@@ -1,6 +1,7 @@
 """Edge case tests for replay buffer."""
 
 import threading
+import time
 
 import numpy as np
 
@@ -11,6 +12,29 @@ from alpha_zero.distributed.shared_storage import (
     TrainingExample,
 )
 from alpha_zero.utils.constants import ENCODER
+
+
+def _drain_buffer_queue(buffer: DistributedReplayBuffer, timeout: float = 5.0) -> None:
+    """Block until the buffer's internal trajectory queue is fully drained.
+
+    Calls ``process_pending_trajectories`` in a tight loop until it returns 0
+    (no more items) or the deadline expires. Needed because mp.Queue uses a
+    background QueueFeederThread to flush items into the pipe; ``put()``
+    returns before the bytes are visible to a reader, and on Python 3.12 the
+    gap is large enough that draining 'right after submit' often misses items.
+    """
+    deadline = time.monotonic() + timeout
+    consecutive_empty = 0
+    while time.monotonic() < deadline:
+        n = buffer.process_pending_trajectories(max_count=1000)
+        if n == 0:
+            consecutive_empty += 1
+            # Two consecutive empty drains means the feeder is caught up.
+            if consecutive_empty >= 2:
+                return
+            time.sleep(0.01)
+        else:
+            consecutive_empty = 0
 
 
 def _make_example():
@@ -39,7 +63,15 @@ class TestBufferEdgeCases:
             buffer.shutdown()
 
     def test_buffer_size_after_overflow(self):
-        """Buffer should not exceed max_size after overflow."""
+        """Buffer should not exceed max_size after overflow.
+
+        Submits 2.5x the buffer capacity and waits for the queue feeder
+        thread to fully flush before asserting. Without the drain helper
+        this test was a hang risk on Python 3.12: mp.Queue's feeder thread
+        can lag behind put() by enough that calling process_pending right
+        after submit_trajectory misses items, while submitting more keeps
+        the pipe pressurised.
+        """
         config = ReplayBufferConfig(max_size=20, min_size=1)
         buffer = DistributedReplayBuffer(config=config)
         try:
@@ -50,8 +82,7 @@ class TestBufferEdgeCases:
                     actor_id=0,
                 )
                 buffer.submit_trajectory(trajectory, timeout=0.5)
-                buffer.process_pending_trajectories(max_count=10)
-            buffer.process_pending_trajectories(max_count=100)
+            _drain_buffer_queue(buffer)
             assert buffer.size() <= config.max_size
         finally:
             buffer.shutdown()
