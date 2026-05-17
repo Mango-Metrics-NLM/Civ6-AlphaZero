@@ -530,17 +530,22 @@ class TestPathConstants:
                 )
 
     def test_training_config_games_per_iteration_drift_fixed(self) -> None:
-        """Regression test for the silent-drift bug class fixed in this
-        branch. The class default and the from_dict fallback must agree
-        regardless of what value either currently holds — the bug was
-        that they disagreed (200 vs 100), not the value itself."""
+        """Regression test for the silent-drift bug class fixed in this branch.
+
+        The class default and the from_dict fallback must agree regardless
+        of what value either currently holds — the bug was structural (the
+        two paths used independent literals that could drift apart over
+        time), not about any specific numeric pair. Embedding specific
+        values in the docstring would itself drift if either default is
+        retuned later, so we describe the bug class instead.
+        """
         from alpha_zero.orchestrator.config import TrainingConfig
 
         class_default = TrainingConfig().games_per_iteration
         from_empty = TrainingConfig.from_dict({}).games_per_iteration
-        assert class_default == from_empty, (
-            f"games_per_iteration drift: class={class_default!r} from_dict={from_empty!r}"
-        )
+        assert (
+            class_default == from_empty
+        ), f"games_per_iteration drift: class={class_default!r} from_dict={from_empty!r}"
 
 
 class TestGlobalInstances:
@@ -596,9 +601,9 @@ class TestConstantsConsistency:
             for j, (start_j, end_j) in enumerate(ranges):
                 if i != j:
                     # Ranges should not overlap
-                    assert end_i <= start_j or end_j <= start_i, (
-                        f"Ranges {ranges[i]} and {ranges[j]} overlap"
-                    )
+                    assert (
+                        end_i <= start_j or end_j <= start_i
+                    ), f"Ranges {ranges[i]} and {ranges[j]} overlap"
 
     def test_normalization_factors_reasonable(self) -> None:
         """Test normalization factors have reasonable values."""
