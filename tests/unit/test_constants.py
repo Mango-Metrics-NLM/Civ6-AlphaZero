@@ -288,6 +288,39 @@ class TestMCTSConfigValidation:
         with pytest.raises(ValueError, match="dirichlet_epsilon"):
             OrchMCTSConfig(dirichlet_epsilon=2.0)
 
+    def test_temperature_threshold_validated_across_variants(self) -> None:
+        """Negative temperature_threshold must be rejected by every variant.
+
+        Field added to MuZeroMCTSConfig in response to PR #77 review;
+        validation added to GumbelMCTSConfig at the same time so all four
+        config classes (classic / gumbel / muzero / orchestrator) reject
+        negative thresholds consistently.
+        """
+        import pytest
+
+        from alpha_zero.core.civ6_mcts import (
+            GumbelMCTSConfig,
+            MCTSConfig,
+            MuZeroMCTSConfig,
+        )
+        from alpha_zero.orchestrator.config import MCTSConfig as OrchMCTSConfig
+
+        for cls in (MCTSConfig, GumbelMCTSConfig, MuZeroMCTSConfig, OrchMCTSConfig):
+            with pytest.raises(ValueError, match="temperature_threshold"):
+                cls(temperature_threshold=-1)
+
+    def test_muzero_config_has_temperature_threshold(self) -> None:
+        """MuZeroMCTSConfig exposes temperature_threshold like the other variants.
+
+        Previously absent — would have prevented turn-based temperature
+        schedules during MuZero self-play.
+        """
+        from alpha_zero.core.civ6_mcts import MuZeroMCTSConfig
+        from alpha_zero.utils.constants import MCTS
+
+        cfg = MuZeroMCTSConfig()
+        assert cfg.temperature_threshold == MCTS.DEFAULT_TEMPERATURE_THRESHOLD
+
     def test_orchestrator_mctsconfig_from_dict_no_drift(self) -> None:
         """from_dict({}) must agree with the class default constructor.
 

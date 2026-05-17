@@ -260,6 +260,10 @@ class GumbelMCTSConfig:
             )
         if self.temperature < 0:
             raise ValueError(f"temperature must be >= 0; got {self.temperature}")
+        if self.temperature_threshold < 0:
+            raise ValueError(
+                f"temperature_threshold must be >= 0; got {self.temperature_threshold}"
+            )
 
 
 @dataclass(slots=True)
@@ -1458,6 +1462,7 @@ class MuZeroMCTSConfig:
     num_sampled_actions: int = MCTS.GUMBEL_NUM_SAMPLED_ACTIONS
     use_sequential_halving: bool = True
     temperature: float = MCTS.DEFAULT_TEMPERATURE
+    temperature_threshold: int = MCTS.DEFAULT_TEMPERATURE_THRESHOLD
     discount: float = MCTS.MUZERO_DISCOUNT
     use_categorical_reward: bool = True
     reward_support_size: int = MCTS.MUZERO_REWARD_SUPPORT_SIZE
@@ -1476,6 +1481,10 @@ class MuZeroMCTSConfig:
             raise ValueError(f"dirichlet_epsilon must be in [0, 1]; got {self.dirichlet_epsilon}")
         if self.temperature < 0:
             raise ValueError(f"temperature must be >= 0; got {self.temperature}")
+        if self.temperature_threshold < 0:
+            raise ValueError(
+                f"temperature_threshold must be >= 0; got {self.temperature_threshold}"
+            )
         if not 0.0 < self.discount <= 1.0:
             raise ValueError(f"discount must be in (0, 1]; got {self.discount}")
         if self.use_categorical_reward and self.reward_support_size <= 0:
