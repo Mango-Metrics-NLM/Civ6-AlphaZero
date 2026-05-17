@@ -343,12 +343,21 @@ class TestCiv6Bridge:
             assert not bridge.is_connected
 
     def test_bridge_connect_creates_directories(self):
-        """Test that connect creates directories."""
+        """Test that connect creates directories.
+
+        Uses a short connect timeout because connect() polls for state.json
+        until the mod appears OR the timeout fires; with the default 30s
+        and pytest-timeout=30s the two race, which manifests as an
+        intermittent CI failure on slower runners (notably Python 3.12).
+        100ms is enough for the directory-creation side effect we're
+        verifying.
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
             state_dir = Path(tmpdir) / "state"
             action_dir = Path(tmpdir) / "action"
 
             bridge = Civ6Bridge(
+                config=InterfaceConfig(timeout_seconds=0.1),
                 state_dir=state_dir,
                 action_dir=action_dir,
             )
