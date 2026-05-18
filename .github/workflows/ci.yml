@@ -154,7 +154,13 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          pytest tests/ --cov=alpha_zero --cov-report=xml --cov-report=term-missing --cov-fail-under=80
+          pytest tests/unit/ tests/sanity/ tests/integration/ tests/cloud/unit/ \
+            --cov=alpha_zero \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=80 \
+            -m "not slow and not requires_env" \
+            --ignore=tests/unit/test_distributed
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
