@@ -140,18 +140,23 @@ class NetworkConstants:
 
 @dataclass(frozen=True)
 class MCTSConstants:
-    """Constants for Monte Carlo Tree Search."""
+    """Constants for Monte Carlo Tree Search.
 
-    # PUCT formula parameters
+    Per-variant simulation budgets are explicit so drift between Civ6MCTS,
+    GumbelMCTS, MuZeroMCTS, and the orchestrator config is audited rather
+    than silently accumulated across three files.
+    """
+
+    # PUCT formula parameters (shared across all variants)
     DEFAULT_C_PUCT: float = 1.5
     DEFAULT_C_PUCT_BASE: float = 19652.0
     DEFAULT_C_PUCT_INIT: float = 1.25
 
-    # Exploration noise
+    # Exploration noise (shared across all variants)
     DEFAULT_DIRICHLET_ALPHA: float = 0.3
     DEFAULT_DIRICHLET_EPSILON: float = 0.25
 
-    # Temperature annealing
+    # Temperature annealing (shared across all variants)
     DEFAULT_TEMPERATURE: float = 1.0
     DEFAULT_TEMPERATURE_THRESHOLD: int = 30
     DEFAULT_TEMPERATURE_FINAL: float = 0.0
@@ -159,10 +164,34 @@ class MCTSConstants:
     # Virtual loss for parallel MCTS
     DEFAULT_VIRTUAL_LOSS: float = 3.0
 
-    # Search limits
-    DEFAULT_NUM_SIMULATIONS: int = 50
+    # Per-variant simulation budgets (previously duplicated and drifting)
+    CLASSIC_NUM_SIMULATIONS: int = 200  # Civ6MCTS / SimpleMCTS
+    GUMBEL_NUM_SIMULATIONS: int = 64  # GumbelMCTS — fewer needed via sequential halving
+    MUZERO_NUM_SIMULATIONS: int = 50  # MuZeroMCTS — hidden-state based
+    # Orchestrator training budget. Matches the orchestrator.MCTSConfig
+    # dataclass default and configs/orchestrator.yaml (the default preset).
+    # NOTE: configs/orchestrator_production.yaml overrides this to 200
+    # and configs/orchestrator_fast.yaml to 10 — those are explicit
+    # preset overrides, not the library default. Kept distinct from
+    # CLASSIC_NUM_SIMULATIONS so the two can be tuned independently.
+    ORCHESTRATOR_NUM_SIMULATIONS: int = 50
+
+    # Backwards-compatible alias (older code referenced DEFAULT_NUM_SIMULATIONS).
+    # Equals CLASSIC_NUM_SIMULATIONS — kept distinct so refactors that want the
+    # classic value can be explicit.
+    DEFAULT_NUM_SIMULATIONS: int = 200
     MIN_SIMULATIONS: int = 1
     MAX_SIMULATIONS: int = 10000
+
+    # Gumbel-specific parameters
+    GUMBEL_NUM_SAMPLED_ACTIONS: int = 16
+    GUMBEL_MAX_CONSIDERED_ACTIONS: int = 32
+    GUMBEL_C_SCALE: float = 1.0
+    GUMBEL_MIN_ACTIONS_AFTER_HALVING: int = 1
+
+    # MuZero-specific parameters
+    MUZERO_DISCOUNT: float = 0.997
+    MUZERO_REWARD_SUPPORT_SIZE: int = 601
 
     # Numerical stability
     PRIOR_EPSILON: float = 1e-8
@@ -446,6 +475,38 @@ class LoggingConstants:
 
 
 # =============================================================================
+# PATH CONSTANTS
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class PathConstants:
+    """Default filesystem paths used across configurable components.
+
+    All paths are relative to the project root. Override via configuration
+    (YAML / CIV6AZ_* env vars) when deploying. Centralising them here
+    prevents the same literal appearing in both a class default and its
+    from_dict fallback (a real source of silent drift in the codebase).
+    """
+
+    # RAG knowledge base
+    RAG_PERSIST_DIR: str = "data/knowledge_db"
+    RAG_KNOWLEDGE_DIR: str = "data/knowledge"
+    RAG_COLLECTION_NAME: str = "civ6_knowledge"
+
+    # LATS reflection memory
+    REFLECTION_PERSIST_DIR: str = "data/reflections"
+    REFLECTION_COLLECTION_NAME: str = "game_reflections"
+
+    # Orchestrator artifacts
+    ORCHESTRATOR_CHECKPOINT_DIR: str = "checkpoints/orchestrator"
+    ORCHESTRATOR_LOG_DIR: str = "logs/orchestrator"
+
+    # Storage backend root
+    DEFAULT_LOCAL_STORAGE_ROOT: str = "./storage"
+
+
+# =============================================================================
 # GLOBAL INSTANCES (for convenience)
 # =============================================================================
 
@@ -459,6 +520,7 @@ ACTION_SPACE = ActionSpaceConstants()
 DISTRIBUTED = DistributedConstants()
 REWARDS = RewardConstants()
 LOGGING = LoggingConstants()
+PATHS = PathConstants()
 
 
 def get_all_constants() -> dict[str, Any]:
@@ -478,6 +540,7 @@ def get_all_constants() -> dict[str, Any]:
         "distributed": DISTRIBUTED,
         "rewards": REWARDS,
         "logging": LOGGING,
+        "paths": PATHS,
     }
 
 
