@@ -38,6 +38,8 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from alpha_zero.monitoring.config import MLflowConfig, parse_tag_string
+
 if TYPE_CHECKING:
     from alpha_zero.spacetimedb.config import SpacetimeDBConfig
 
@@ -501,6 +503,11 @@ class TrainingConfig:
     checkpoint_interval: int = 1000
     evaluation_interval: int = 500
     evaluation_games: int = 20
+    # Iterations between rich EvaluationPipeline runs (vs random + heuristic).
+    # The fast inline champion-vs-self eval still runs every iteration; this
+    # gates the richer, more expensive opponent suite used to compute
+    # value_correlation and update ELO.
+    full_eval_interval: int = 5
     max_checkpoints: int = 10
     resume: bool = True  # Auto-resume from latest checkpoint if available
 
@@ -519,6 +526,7 @@ class TrainingConfig:
             checkpoint_interval=int(data.get("checkpoint_interval", 1000)),
             evaluation_interval=int(data.get("evaluation_interval", 500)),
             evaluation_games=int(data.get("evaluation_games", 20)),
+            full_eval_interval=int(data.get("full_eval_interval", 5)),
             max_checkpoints=int(data.get("max_checkpoints", 10)),
             resume=data.get("resume", True),
         )
@@ -720,6 +728,7 @@ class OrchestratorConfig:
     curriculum: CurriculumConfig = field(default_factory=CurriculumConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     wandb: WandbConfig = field(default_factory=WandbConfig)
+    mlflow: MLflowConfig = field(default_factory=MLflowConfig)
     rag: RAGConfig = field(default_factory=RAGConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     strategy_advisor: StrategyAdvisorConfig = field(
@@ -798,6 +807,7 @@ class OrchestratorConfig:
             curriculum=CurriculumConfig.from_dict(data.get("curriculum", {})),
             logging=LoggingConfig.from_dict(data.get("logging", {})),
             wandb=WandbConfig.from_dict(data.get("wandb", {})),
+            mlflow=MLflowConfig.from_dict(data.get("mlflow", {})),
             rag=RAGConfig.from_dict(data.get("rag", {})),
             llm=LLMConfig.from_dict(data.get("llm", {})),
             strategy_advisor=StrategyAdvisorConfig.from_dict(
@@ -974,6 +984,7 @@ class OrchestratorConfig:
             "rewards": self.rewards,
             "logging": self.logging,
             "wandb": self.wandb,
+            "mlflow": self.mlflow,
             "rag": self.rag,
             "llm": self.llm,
             "resources": self.resources,
@@ -996,6 +1007,11 @@ class OrchestratorConfig:
                 setattr(target, attr, int(value))
             elif isinstance(current_value, float):
                 setattr(target, attr, float(value))
+            elif isinstance(current_value, dict):
+                # Parse "k1=v1,k2=v2" form used by env-var overrides such as
+                # CIV6AZ_MLFLOW_TAGS. Without this, a raw string would clobber
+                # the dict field.
+                setattr(target, attr, parse_tag_string(value))
             else:
                 setattr(target, attr, value)
         except (ValueError, TypeError):

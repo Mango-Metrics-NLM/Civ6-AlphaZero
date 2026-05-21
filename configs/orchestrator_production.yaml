@@ -113,6 +113,21 @@ wandb:
     - production
     - full-pipeline
 
+# MLflow monitoring (opt-in; the launch_50iter_production_monitored.py script
+# enables this via CIV6AZ_MLFLOW_ENABLED=true). Coexists with W&B.
+mlflow:
+  enabled: false
+  tracking_uri: file://./mlruns
+  experiment_name: civ6_production
+  run_name: null
+  tags:
+    backend: alphazero
+    preset: production
+  log_models: true
+  log_artifacts: true
+  nested_runs: true
+  fail_silently: true
+
 logging:
   level: INFO
   tensorboard: true

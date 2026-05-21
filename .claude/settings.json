@@ -4,6 +4,7 @@
       "Bash(ruff:*)",
       "Bash(mypy:*)",
       "Bash(pytest:*)",
+      "Bash(mlflow:*)",
       "Bash(python -m alpha_zero:*)",
       "Bash(python -c:*)",
       "Bash(python --version:*)",
