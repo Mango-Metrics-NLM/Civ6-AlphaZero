@@ -54,6 +54,12 @@ web = [
     "jinja2>=3.1.0",
     "python-multipart>=0.0.6",
 ]
+# MLflow experiment tracking. Optional; the orchestrator gracefully degrades
+# when mlflow is not installed. Upper bound: mlflow 3.x reshuffles MlflowClient
+# APIs and is in active dev — pin to 2.x for now.
+monitoring = [
+    "mlflow>=2.12.0",
+]
 spacetimedb = [
     "spacetimedb-sdk>=0.7.0",
 ]
@@ -75,6 +81,7 @@ all = [
     "alpha_zero[spacetimedb]",
     "alpha_zero[jax]",
     "alpha_zero[chess]",
+    "alpha_zero[monitoring]",
 ]
 
 [tool.ruff]

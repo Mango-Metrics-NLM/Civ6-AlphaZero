@@ -64,6 +64,10 @@ strategy_advisor:
 wandb:
   enabled: false
 
+# MLflow disabled in the fast preset to keep smoke runs side-effect-free.
+mlflow:
+  enabled: false
+
 logging:
   level: DEBUG
   tensorboard: false

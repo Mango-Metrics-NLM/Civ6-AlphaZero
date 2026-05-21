@@ -275,6 +275,9 @@ When making changes, update the relevant sections below:
 | `python -m alpha_zero.orchestrator --help` | Show orchestrator options |
 | `python -m alpha_zero.orchestrator --preset fast --dry_run` | Fast preset smoke test |
 | `python -m alpha_zero.orchestrator --config configs/orchestrator.yaml --dry_run` | Config file smoke test |
+| `python scripts/launch_50iter_production_monitored.py --dry-run` | MLflow-monitored 50-iter production dry run |
+| `python scripts/launch_50iter_production_monitored.py` | Launch full 50-iter production run with MLflow |
+| `mlflow ui --backend-store-uri ./mlruns --port 5000` | Inspect MLflow runs in the browser |
 
 #### Cloud Deployment Commands
 
@@ -354,6 +357,7 @@ When making changes, update the relevant sections below:
 | 2026-03-01 | Web interface | FastAPI + WebSocket game UI in `alpha_zero/web/` (12 files) |
 | 2026-03-01 | PBT module | Population-based training in `alpha_zero/pbt/` (10 files) |
 | 2026-03-01 | Hierarchical planning | Goal decomposition in `alpha_zero/hierarchical/` (19 files) |
+| 2026-05-21 | MLflow monitoring (orchestrator + tournament) | Phased rollout — coexists with W&B in the orchestrator; W&B remains primary in `cloud/`, `pbt/`, `evaluation/`, `optimizations/` pending follow-up sweep. Optional `[monitoring]` extra. Tracks win_rate, value_correlation, ELO spread per iteration. |
 
 ### 5.3 Known Issues
 
@@ -366,6 +370,8 @@ When making changes, update the relevant sections below:
 | v1.3.0 training convergence unvalidated | Run `scripts/validate_v130_training.py` locally or launch cloud run |
 | MicroCiv hardcoded for 2 players | Multiplayer module built, but env needs G7/G8/G9 changes |
 | 12 DDP tests xfailed | Need rewrite with `torch.multiprocessing.spawn` |
+| Two divergent `WandbConfig` classes (`orchestrator/config.py` + `utils/wandb_logger.py`) | Unification deferred; `MLflowConfig` is single-source to avoid repeating the issue. |
+| W&B → MLflow swap is partial (orchestrator only this PR) | cloud/, pbt/, evaluation/, optimizations/ still call wandb directly. Tracked as a follow-up sweep. |
 
 ### 5.4 Bug Fixes
 
@@ -506,6 +512,12 @@ Civ6-AlphaZero/
 │   │   ├── rag_integration.py   # RAG-LLM integration layer
 │   │   ├── strategy_advisor.py  # LLM-based strategy advisor
 │   │   └── __main__.py          # CLI entry point
+│   ├── monitoring/              # MLflow experiment tracking (NEW)
+│   │   ├── config.py            # MLflowConfig dataclass (env-var + YAML aware)
+│   │   ├── metrics.py           # compute_value_correlation / compute_elo_spread / compute_policy_entropy
+│   │   ├── mlflow_logger.py     # Hardened MLflowLogger (optional import, try/except guards)
+│   │   ├── tournament_dashboards.py # TournamentMlflowLogger
+│   │   └── __init__.py          # Public exports
 │   ├── multiplayer/             # N-player multiplayer support
 │   │   ├── mcts_node.py         # N-player MCTS node (per-player values)
 │   │   ├── mcts.py              # Max-N, Paranoid, Best-Reply MCTS
@@ -787,6 +799,43 @@ rag.store_training_insight("Found that aggressive expansion wins more games")
 
 rag.close()
 ```
+
+### 9.9 MLflow Monitoring
+
+Optional MLflow tracking backend for the orchestrator. Tracks win rates,
+value correlation, ELO spread, and training metrics. Coexists with W&B
+(both can be enabled in parallel).
+
+```python
+from alpha_zero.monitoring import MLflowConfig, MLflowLogger
+
+config = MLflowConfig(
+    enabled=True,
+    tracking_uri="file://./mlruns",
+    experiment_name="civ6_50iter",
+    run_name="trial_1",
+    tags={"env": "prod"},
+)
+logger = MLflowLogger(config)
+logger.init(config_dict={"lr": 0.001, "batch_size": 64})
+logger.log_iteration(
+    iteration=5,
+    train_metrics={"train/loss": 1.2},
+    game_metrics={"game/win_rate": 0.6},
+    scheduler_metrics={"train/learning_rate": 0.001},
+)
+logger.finish()
+```
+
+Env vars (`CIV6AZ_MLFLOW_*` prefix): `ENABLED`, `TRACKING_URI`,
+`EXPERIMENT_NAME`, `RUN_NAME`, `TAGS` (form `"k=v,k=v"`),
+`ARTIFACT_LOCATION`, `LOG_FREQUENCY`, `LOG_MODELS`, `LOG_ARTIFACTS`,
+`NESTED_RUNS`, `FAIL_SILENTLY`. Standard `MLFLOW_*` env vars also honored
+as fallback.
+
+Install: `pip install -e '.[monitoring]'`. Launch the 50-iter production
+run via `scripts/launch_50iter_production_monitored.py`. Inspect via
+`mlflow ui --backend-store-uri ./mlruns --port 5000`.
 
 ---
 
