@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from .base import (
     GameAction,
@@ -174,7 +174,7 @@ class Civ6LogParser:
     """
 
     # Log file patterns for different event types
-    PATTERNS = {
+    PATTERNS: ClassVar[dict[str, re.Pattern[str]]] = {
         "turn_start": re.compile(
             r"\[(\d+:\d+:\d+)\].*Turn (\d+) has started for player (\d+)"
         ),

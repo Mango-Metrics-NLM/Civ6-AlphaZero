@@ -1257,7 +1257,7 @@ class Civ6Bridge(GameInterface):
         Returns:
             Hexadecimal checksum string.
         """
-        return hashlib.md5(content.encode()).hexdigest()[:8]
+        return hashlib.md5(content.encode(), usedforsecurity=False).hexdigest()[:8]
 
     def wait_for_turn(self, timeout_seconds: float | None = None) -> bool:
         """Wait for our turn to begin.

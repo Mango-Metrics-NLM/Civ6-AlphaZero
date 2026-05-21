@@ -81,7 +81,7 @@ class MiniGame(ABC):
             config: Game configuration.
         """
         self.config = config
-        self._rng = random.Random(config.random_seed)
+        self._rng = random.Random(config.random_seed)  # noqa: S311
         self._state: GameState | None = None
         self._turn = 0
         self._done = False
@@ -178,7 +178,7 @@ class MiniGame(ABC):
             Initial state.
         """
         if seed is not None:
-            self._rng = random.Random(seed)
+            self._rng = random.Random(seed)  # noqa: S311
         self._state = self.generate_initial_state()
         self._turn = 0
         self._done = False
@@ -768,7 +768,7 @@ class MiniGameGenerator:
             board_size=8,
             max_turns=50,
         )
-        self._rng = random.Random(seed)
+        self._rng = random.Random(seed)  # noqa: S311
 
     def create_game(
         self,
