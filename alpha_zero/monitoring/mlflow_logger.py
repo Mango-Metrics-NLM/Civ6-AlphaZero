@@ -198,7 +198,7 @@ class MLflowLogger:
         return bool(self.config.enabled and MLFLOW_AVAILABLE)
 
     @property
-    def enabled(self) -> bool:  # noqa: D401 - simple property
+    def enabled(self) -> bool:
         """Backwards-compat alias for :attr:`is_enabled` (PR #79 surface)."""
         return self.is_enabled
 
