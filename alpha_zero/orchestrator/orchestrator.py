@@ -469,11 +469,19 @@ class TrainingOrchestrator:
                     experiment_name=self.config.experiment_name,
                 )
 
-            # Initialize MLflow (runs in parallel with W&B; either or both can be enabled)
+            # Initialize MLflow (runs in parallel with W&B; either or both can be enabled).
+            # The experiment name comes from config.mlflow.experiment_name (set via
+            # YAML or CIV6AZ_MLFLOW_EXPERIMENT_NAME); the top-level
+            # config.experiment_name is used only as a fallback when the mlflow
+            # section did not set its own. This keeps CIV6AZ_MLFLOW_EXPERIMENT_NAME
+            # authoritative over CIV6AZ_EXPERIMENT_NAME for MLflow specifically.
             if self.config.mlflow.enabled:
+                mlflow_experiment_name = (
+                    self.config.mlflow.experiment_name or self.config.experiment_name
+                )
                 self._mlflow_logger = create_mlflow_logger(
                     self.config.mlflow,
-                    experiment_name=self.config.experiment_name,
+                    experiment_name=mlflow_experiment_name,
                 )
                 if self._mlflow_logger is not None:
                     hparams: dict[str, Any] = {
