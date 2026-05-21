@@ -15,7 +15,7 @@
 # Prerequisites:
 #   - WANDB_API_KEY set (optional, for experiment tracking)
 #   - gcloud auth configured with hrmtrain project
-#   - Docker image pushed: gcr.io/hrmtrain/civ6az-training:latest
+#   - Docker image pushed: gcr.io/hrmtrain/civ6az-muzero:latest
 
 # --- Pipeline ---
 pipeline:
@@ -60,7 +60,7 @@ reward_shaping:
 # --- W&B ---
 wandb:
   enabled: true
-  project: civ6-alphazero
+  project: civ6az-muzero-world-model
   tags:
     - cloud-v1
     - gumbel

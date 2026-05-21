@@ -39,4 +39,4 @@ trialJobSpec:
         acceleratorCount: 1
       replicaCount: 1
       containerSpec:
-        imageUri: gcr.io/civ6-alphazero/civ6az:latest # Will be overridden by cli/job logic
+        imageUri: us-central1-docker.pkg.dev/hrmtrain/civ6az-muzero-world-model/civ6az-muzero:v16-full-fix

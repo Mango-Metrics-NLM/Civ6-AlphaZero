@@ -5,6 +5,93 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — 2026-05-21
+
+### Added — MLflow Monitoring & Evaluation Analytics
+
+#### New Scripts (`scripts/`)
+
+- **`scripts/analyse_training_run.py`** — Analyses policy loss trend and value head stability by reading MLflow metrics; produces per-run diagnostic summaries and trend plots
+- **`scripts/post_run_evaluation.py`** — Post-run ELO tournament + baseline evaluation (random / heuristic agents) with results logged to MLflow; wraps the model in `Civ6MCTS` and calls `evaluate_vs_random(agent, n_games=n)` correctly
+- **`scripts/run_baseline_eval.py`** — Standalone baseline evaluation that loads a model from GCS, auto-detects the latest run via `resolve_run_id()`, and logs results to MLflow
+- **`scripts/migrate_mlflow_to_sqlite.py`** — Automates migration from the deprecated file-store (`mlruns/`) to the SQLite backend (`mlflow.db`); supports `--dry-run` mode
+- **`scripts/local_training_run.py`** — Orchestrated local training run entry point; single command to run selfplay → training → evaluation locally with full MLflow instrumentation
+
+#### MLflow Monitoring Package (`alpha_zero/monitoring/`)
+
+- **`alpha_zero/monitoring/__init__.py`** — Public API: exports `MLflowLogger`, `MLflowMonitoringConfig`, `AlphaZeroMLflowEvaluator`
+- **`alpha_zero/monitoring/config.py`** — `MLflowMonitoringConfig` dataclass: `tracking_uri`, `experiment_name`, `use_sqlite`, `tags`; fully serialisable with `to_dict()` / `from_dict()`
+- **`alpha_zero/monitoring/mlflow_logger.py`** — `MLflowLogger` class:
+  - Run lifecycle management (`start_run()` / `end_run()`) with correct FAILED vs FINISHED status on exit
+  - `log_params()`, `log_metrics()`, `log_metric()`, `set_tag()`, `log_artifact()`
+  - **`log_evaluation_result()`** — logs 14 metrics from `EvaluationResult` / `WinRateResult`: 4 counts (`wins`, `losses`, `draws`, `total_games`) + 3 rates (`win_rate`, `draw_rate`, `loss_rate` as 0–1 fractions) + 7 game-level stats
+  - Param values truncated at 250 characters (MLflow limit)
+- **`alpha_zero/monitoring/mlflow_evaluator.py`** — `AlphaZeroMLflowEvaluator`:
+  - `compute_policy_entropy(logits)` — Shannon entropy of policy distribution
+  - `compute_value_mae(predictions, targets)` — Mean Absolute Error of value head
+  - `compute_policy_top1_accuracy(logits, targets)` — Top-1 accuracy of greedy policy
+  - `compute_action_diversity(action_sequences)` — Unique-action ratio across a game batch
+  - `compute_metrics(model, dataloader)` — Aggregates all four metrics over a dataset
+
+#### New Utility (`alpha_zero/utils/`)
+
+- **`alpha_zero/utils/env_loader.py`** — Zero-dependency `.env` loading (no `python-dotenv` required):
+  - `load_civ6az_env(path)` — Loads `.env` file and merges into `os.environ` without overwriting existing vars
+  - `require_civ6az_env(key)` — Retrieves an env var or raises `RuntimeError` with a descriptive message
+  - `_parse_dotenv(text)` — Pure-Python parser handling quoted values, inline comments, and `export` prefixes
+
+#### New Documentation (`docs/`)
+
+- **`docs/GCP_INFRA.md`** — GCP infrastructure reference (VM sizing, Artifact Registry, IAP tunnelling, cost breakdown)
+- **`docs/architecture/ADR-gcp-resource-deployment.md`** — Architecture Decision Record: rationale for Vertex AI + GCS resource deployment strategy
+- **`docs/prd/prd-gcp-resource-deployment.md`** — Product Requirements Document for GCP resource deployment feature
+
+---
+
+### Fixed
+
+#### `scripts/post_run_evaluation.py` — EvaluationPipeline API
+
+- **Wrong kwargs**: was calling `evaluate_vs_random(model=model, num_games=n, device=d)` — incorrect API
+- **Fix**: wraps model in `Civ6MCTS` and calls `evaluate_vs_random(agent, n_games=n)`
+- **Win rate type**: `EvaluationResult.win_rate` is a `WinRateResult` object, not a scalar `float`; all access sites updated
+
+#### `scripts/run_baseline_eval.py` — Hardcoded run_id & result access
+
+- **Hardcoded run_id**: removed hardcoded production `run_id` default
+- **Auto-detection**: added `resolve_run_id()` to locate the most recent MLflow run automatically
+- **result.summary**: was treated as `dict`; it returns a `str` — fixed to use string formatting
+- **result.win_rate**: was accessed as `float`; it is a `WinRateResult` object — fixed across all callsites
+
+#### `alpha_zero/monitoring/mlflow_logger.py` — Lifecycle & param safety
+
+- **`log_evaluation_result()`**: added missing method (14 metrics, 0–1 rate normalisation)
+- **Lifecycle state machine**: `end_run()` now correctly sets status to `FAILED` on exception and `FINISHED` on clean exit
+- **Param truncation**: added 250-character truncation for MLflow param values (API limit)
+
+---
+
+### Changed
+
+- **Version**: 1.3.0 → 1.4.0
+- **MLflow tracking**: migrated from file-store (`mlruns/`) to SQLite backend (`mlflow.db`); `migrate_mlflow_to_sqlite.py` automates the one-time migration
+- **Lint** (`ruff`): fixed `E501` line-too-long in `post_run_evaluation.py`; fixed `RUF002` en-dash in `run_baseline_eval.py` docstrings
+
+#### Test Suite (81 new tests)
+
+| File | Tests | Covers |
+|------|------:|--------|
+| `tests/scripts/test_run_baseline_eval.py` | 39 | `run_baseline_eval.py` — arg parsing, `resolve_run_id`, GCS load, MLflow log, error paths |
+| `tests/scripts/test_analyse_training_run.py` | 9 | `analyse_training_run.py` — metric fetch, trend analysis, edge cases |
+| `tests/scripts/test_post_run_evaluation.py` | 11 | `post_run_evaluation.py` — pipeline wiring, ELO logging, random-agent baseline |
+| `tests/unit/test_monitoring/test_mlflow_logger.py` | 24 | `MLflowLogger` — lifecycle, `log_params`, `log_metrics`, `log_evaluation_result`, truncation, failure state |
+| `tests/unit/test_monitoring/test_mlflow_evaluator.py` | 12 | `AlphaZeroMLflowEvaluator` — entropy, MAE, top-1 accuracy, action diversity, `compute_metrics` |
+| `tests/unit/test_utils/test_env_loader.py` | 18 | `env_loader` — `.env` parsing, quoting, comments, `export` prefix, `require_civ6az_env` errors |
+
+**Total tests: 217 passing** (136 pre-existing + 81 new)
+
+---
+
 ## [1.3.0] — 2026-02-23
 
 ### Fixed — Training Worker Loads Base Model for Fine-Tuning

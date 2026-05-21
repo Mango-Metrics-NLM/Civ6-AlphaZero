@@ -19,6 +19,7 @@ import argparse
 import logging
 import os
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -69,7 +70,7 @@ class Civ6LocalConfig:
     device: str = "cpu"
     web_host: str = "127.0.0.1"
     web_port: int = 8080
-    bridge_ipc_dir: str = "/tmp/civ6az_bridge"  # noqa: S108
+    bridge_ipc_dir: str = os.path.join(tempfile.gettempdir(), "civ6az_bridge")
     log_level: str = "INFO"
     dry_run: bool = False
 

@@ -18,7 +18,7 @@ Monte Carlo Tree Search, and deep neural networks.
 ```
 This succeeds when:
 - [ ] All tests pass: `pytest tests/ -v` exits with code 0
-- [ ] Coverage >= 80%: `pytest --cov=alpha_zero --cov-report=term-missing` shows >= 80%
+- [ ] Coverage >= 85%: `pytest --cov=alpha_zero --cov-report=term-missing` shows >= 85%
 - [ ] Type checking passes: `mypy alpha_zero/` exits with code 0
 - [ ] Linting passes: `ruff check alpha_zero/` exits with code 0
 - [ ] Training smoke test: `python -m alpha_zero.training_civ6 --dry_run` completes
@@ -314,7 +314,14 @@ When making changes, update the relevant sections below:
 | `pytest tests/integration/test_e2e_nplayer_training.py -v` | E2E N-player training |
 | `pytest tests/integration/test_e2e_pipeline.py -v` | E2E pipeline validation |
 | `pytest tests/integration/test_e2e_simultaneous.py -v` | E2E DUCT simultaneous tests |
+| `pytest tests/unit/test_monitoring/ tests/unit/test_utils/ -v` | Test monitoring + utils |
+| `pytest tests/scripts/ -v` | Test eval scripts |
 | `pytest -k "test_name" -v` | Run specific test by name |
+| `python scripts/migrate_mlflow_to_sqlite.py --help` | MLflow migration tool |
+| `mlflow ui --backend-store-uri sqlite:///mlflow.db` | Launch MLflow UI |
+| `python scripts/analyse_training_run.py --help` | Training run analysis |
+| `python scripts/post_run_evaluation.py --help` | Post-run ELO + baseline eval |
+| `python scripts/run_baseline_eval.py --help` | Baseline evaluation (random/heuristic) |
 
 ### 5.2 Architecture Decisions
 
@@ -354,6 +361,10 @@ When making changes, update the relevant sections below:
 | 2026-03-01 | Web interface | FastAPI + WebSocket game UI in `alpha_zero/web/` (12 files) |
 | 2026-03-01 | PBT module | Population-based training in `alpha_zero/pbt/` (10 files) |
 | 2026-03-01 | Hierarchical planning | Goal decomposition in `alpha_zero/hierarchical/` (19 files) |
+| 2026-05-21 | MLflow monitoring layer (alpha_zero/monitoring/) | Centralised experiment tracking with SQLite backend; file-store mlruns/ is deprecated |
+| 2026-05-21 | env_loader.py zero-dependency .env loader | No python-dotenv dep; CIV6AZ_ env var convention; graceful missing-key warnings |
+| 2026-05-21 | EvaluationResult API: WinRateResult nesting | win_rate is WinRateResult object (0-100 scale); MLflow logs normalise to 0-1 |
+| 2026-05-21 | log_evaluation_result() 14-metric logging | 4 counts + 3 normalised rates + 7 game stats per evaluation run |
 
 ### 5.3 Known Issues
 
@@ -366,6 +377,8 @@ When making changes, update the relevant sections below:
 | v1.3.0 training convergence unvalidated | Run `scripts/validate_v130_training.py` locally or launch cloud run |
 | MicroCiv hardcoded for 2 players | Multiplayer module built, but env needs G7/G8/G9 changes |
 | 12 DDP tests xfailed | Need rewrite with `torch.multiprocessing.spawn` |
+| mlruns/ file-store deprecated | Run scripts/migrate_mlflow_to_sqlite.py to migrate to sqlite:///mlflow.db |
+| test_deployment_infra.py: 6 failures | Require .env file not present locally; skip with pytest -m 'not env_required' |
 
 ### 5.4 Bug Fixes
 
@@ -376,6 +389,10 @@ When making changes, update the relevant sections below:
 | Value tensor shape mismatch | Added `value.unsqueeze(1)` in training loss | 2026-01-20 |
 | Curriculum `record_game` API | Changed `win=` to `won=` parameter | 2026-01-20 |
 | **Training from scratch each iteration** | Added `--model_version` to load incumbent weights (v1.3.0) | 2026-02-23 |
+| EvaluationPipeline wrong kwargs | Changed evaluate_vs_random(model=, device=) → (Civ6MCTS(agent), n_games=) | 2026-05-21 |
+| run_baseline_eval hardcoded run_id | Added resolve_run_id() auto-detection; removed production UUID default | 2026-05-21 |
+| EvaluationResult.win_rate type | win_rate is WinRateResult object, not float; fixed access to .win_rate.win_rate | 2026-05-21 |
+| MLflowLogger lifecycle | FAILED vs FINISHED status now set correctly on context manager exit | 2026-05-21 |
 
 ### 5.5 Information to Preserve
 
@@ -531,6 +548,11 @@ Civ6-AlphaZero/
 │   ├── interfaces/              # Game interfaces
 │   │   ├── __init__.py
 │   │   └── unciv_interface.py   # Unciv JSON interface
+│   ├── monitoring/              # MLflow Monitoring Layer (NEW)
+│   │   ├── __init__.py
+│   │   ├── config.py            # MLflowMonitoringConfig dataclass
+│   │   ├── mlflow_logger.py     # MLflowLogger: lifecycle + 14-metric evaluation logging
+│   │   └── mlflow_evaluator.py  # AlphaZeroMLflowEvaluator: policy entropy, value MAE, accuracy
 │   ├── utils/                   # Utilities
 │   │   ├── __init__.py
 │   │   ├── logging.py           # Logging infrastructure
@@ -538,7 +560,8 @@ Civ6-AlphaZero/
 │   │   ├── llm_client.py        # LLM API integration
 │   │   ├── factories.py         # Component factory functions
 │   │   ├── test_runner.py       # Test execution utilities
-│   │   └── agent_tools.py       # Claude Code agent tools
+│   │   ├── agent_tools.py       # Claude Code agent tools
+│   │   └── env_loader.py        # Zero-dependency .env loader (CIV6AZ_ convention)
 │   └── training_civ6.py         # Training entry point
 ├── dockerfiles/                 # Container images (NEW)
 │   ├── Dockerfile.base          # Base image with PyTorch
@@ -551,6 +574,10 @@ Civ6-AlphaZero/
 ├── tests/
 │   ├── __init__.py
 │   ├── unit/                    # Unit tests
+│   │   ├── test_monitoring/     # MLflow monitoring tests (24)
+│   │   └── test_utils/          # Env loader tests (18)
+│   ├── scripts/                 # Script-level tests (39 + more)
+│   │   └── test_run_baseline_eval.py
 │   └── integration/             # Integration tests
 ├── configs/
 │   ├── civ6_config.yaml         # Original configuration file

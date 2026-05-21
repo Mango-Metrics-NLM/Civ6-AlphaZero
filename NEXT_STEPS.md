@@ -1,3 +1,23 @@
+## Phase 19: MLflow Monitoring Layer (COMPLETE — 2026-05-21)
+
+### Delivered
+- `alpha_zero/monitoring/` package: MLflowLogger, MLflowMonitoringConfig, AlphaZeroMLflowEvaluator
+- `alpha_zero/utils/env_loader.py`: zero-dependency .env loading
+- 5 evaluation/analysis scripts in scripts/
+- 81 new tests (217 total passing)
+- SQLite MLflow migration tool
+- P0 bug fixes: EvaluationPipeline API, EvaluationResult type access
+
+### Next Steps (Phase 20)
+1. **MLflow Dashboard Integration** — Wire analyse_training_run.py output into MLflow custom charts
+2. **Automated Regression Suite** — Schedule post_run_evaluation.py as CI step on model checkpoint
+3. **Coverage to 90%** — Add integration tests for monitoring ↔ evaluation pipeline
+4. **ELO Dashboard** — Log ELO time-series to MLflow; create heatmap of model matchup results
+5. **GCS Model Registry** — Replace manual version tracking with MLflow Model Registry
+6. **Training Alert System** — Use log_evaluation_result() to trigger Slack/email alerts on regression
+
+---
+
 # Civ6 AlphaZero — Next Steps (Post v1.3.0)
 
 ## Current State

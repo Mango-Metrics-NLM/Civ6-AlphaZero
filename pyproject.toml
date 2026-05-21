@@ -77,6 +77,36 @@ all = [
     "alpha_zero[chess]",
 ]
 
+
+# Explicit package discovery so editable installs (pip install -e .) deterministically
+# register every alpha_zero submodule. Without this, setuptools auto-discovery has
+# to guess against the many top-level dirs in this repo, and the resulting custom
+# MetaPathFinder can fail to resolve submodules when imported through long
+# transitive chains (e.g. `python scripts/run_chess_training.py` triggering
+# `from alpha_zero.utils.checkpoint import ...` via env_factory -> microciv -> core).
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["alpha_zero*"]
+exclude = [
+    "tests*",
+    "scripts*",
+    "infra*",
+    "configs*",
+    "data*",
+    "docs*",
+    "dockerfiles*",
+    "kb*",
+    "examples*",
+    "demos*",
+    "checkpoints*",
+    "logs*",
+    "replays*",
+    "mod*",
+    "k8s*",
+    "spacetimedb_module*",
+    "server-module*",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

@@ -3,13 +3,21 @@
 
 Loads ``configs/chess_config.yaml`` (or a user-supplied path), wires the
 ``ChessEnv`` + ``StockfishOpponent`` + ``StockfishCurriculum`` + optional
-``ChessAdvisor`` together, and runs N iterations.
+``ChessAdvisor`` + ``Civ6MCTS`` together, and runs N iterations.
 
 This is intentionally minimal — it exists to make the end-to-end demo
-runnable with a single command. It does not implement the full
-self-play/learner loop; that lives in the orchestrator and will be wired
-in a follow-up. ``--dry-run`` validates the configuration and exits
-without playing, suitable for CI smoke tests.
+runnable with a single command. It does *not* implement the full
+self-play/learner loop (no replay buffer, no gradient updates, no trained
+network); that lives in the orchestrator. The MCTS here uses a uniform
+stub network so ``Civ6MCTS.search()`` runs and exercises the LLM-prior
+callback — sufficient to prove Qwen actually shapes play but not a strong
+chess agent. ``--dry-run`` validates the configuration and exits without
+playing, suitable for CI smoke tests.
+
+Each finished game is written as a PGN file under ``--pgn-dir``
+(default ``replays/chess/``) so you can paste it into Lichess Analysis
+or open it in any chess GUI to watch the moves. Use ``--no-pgn`` to
+disable.
 
 Usage::
 
@@ -22,6 +30,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import datetime as _dt
 import logging
 import os
 import random
@@ -123,31 +132,175 @@ def _build_advisor(advisor_cfg: dict[str, Any], llm_cfg: dict[str, Any]):  # typ
     return ChessAdvisor(advisor_config, llm_client=LLMClient(llm_config))
 
 
+class _UniformChessNetwork:
+    """Minimal MCTSNetwork stub for the wiring smoke test."""
+
+    def __init__(self, action_space_size: int) -> None:
+        self._n = int(action_space_size)
+
+    def predict(self, spatial, vector, action_mask):  # type: ignore[no-untyped-def]
+        import torch
+
+        batch = spatial.shape[0]
+        mask = action_mask.float()
+        denom = mask.sum(dim=-1, keepdim=True).clamp_min(1.0)
+        policy = mask / denom
+        value = torch.zeros((batch, 1), dtype=torch.float32, device=spatial.device)
+        return policy, value
+
+    def __call__(self, spatial, vector, action_mask=None):  # type: ignore[no-untyped-def]
+        if action_mask is None:
+            import torch
+
+            action_mask = torch.ones((spatial.shape[0], self._n), dtype=torch.float32)
+        return self.predict(spatial, vector, action_mask)
+
+    def eval(self):  # type: ignore[no-untyped-def]
+        return self
+
+
+def _resolve_device(requested: str) -> str:
+    """Resolve the requested torch device, falling back to cpu when needed.
+
+    ``requested`` may be ``"auto"`` (pick cuda when available, else cpu),
+    ``"cuda"`` / ``"cuda:N"`` (use that GPU; fall back to cpu with a warning
+    if CUDA isn't available), or ``"cpu"``. We keep this dependency on torch
+    inside the function so importing this module doesn't pull torch in just
+    to print --help.
+    """
+    try:
+        import torch
+    except Exception:
+        return "cpu"
+    if requested == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    if requested.startswith("cuda") and not torch.cuda.is_available():
+        logger.warning("CUDA requested but unavailable; falling back to cpu")
+        return "cpu"
+    return requested
+
+
+def _build_mcts(  # type: ignore[no-untyped-def]
+    advisor,
+    training_cfg: dict[str, Any],
+    action_space_size: int,
+    device: str = "auto",
+):
+    """Construct a Civ6MCTS instance wired to the LLM advisor (if any).
+
+    ``device`` controls only the *stub network* device. The Qwen LLM runs in
+    LM Studio (a separate process) and its GPU usage is configured there,
+    not here. Keeping this knob is still worth it for when a real chess
+    network replaces the stub.
+    """
+    try:
+        from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig
+    except Exception as exc:
+        logger.warning("Civ6MCTS unavailable (%s); falling back to random play", exc)
+        return None
+
+    resolved_device = _resolve_device(device)
+    mcts_cfg = MCTSConfig(
+        num_simulations=int(training_cfg.get("num_simulations", 64)),
+        c_puct=float(training_cfg.get("c_puct", 1.5)),
+    )
+    network = _UniformChessNetwork(action_space_size=action_space_size)
+    llm_prior_fn = advisor.mcts_callback() if advisor is not None else None
+    llm_prior_weight = (
+        float(advisor.config.prior_weight) if advisor is not None else 0.5
+    )
+    mcts = Civ6MCTS(
+        network=network,
+        config=mcts_cfg,
+        device=resolved_device,
+        llm_prior_fn=llm_prior_fn,
+        llm_prior_weight=llm_prior_weight,
+    )
+    logger.info(
+        "Civ6MCTS constructed: simulations=%d, device=%s, llm_prior=%s, weight=%s",
+        mcts_cfg.num_simulations,
+        resolved_device,
+        llm_prior_fn is not None,
+        llm_prior_weight,
+    )
+    return mcts
+
+
+def _dump_pgn(
+    env,  # type: ignore[no-untyped-def]
+    pgn_dir: Path,
+    game_idx: int,
+    iteration: int,
+    agent_player: int,
+    reward: float,
+    advisor_enabled: bool,
+    opponent_label: str,
+) -> Path | None:
+    """Serialize the just-finished game's board history to a PGN file.
+
+    Returns the written path, or ``None`` if PGN dumping is unavailable
+    (e.g. python-chess.pgn not importable, or env doesn't expose ``_board``).
+    """
+    try:
+        import chess
+        import chess.pgn
+    except Exception as exc:
+        logger.debug("PGN dump skipped (chess.pgn unavailable: %s)", exc)
+        return None
+    board = getattr(env, "_board", None)
+    if not isinstance(board, chess.Board):
+        logger.debug("PGN dump skipped: env has no chess.Board attribute")
+        return None
+    try:
+        pgn_dir.mkdir(parents=True, exist_ok=True)
+        game = chess.pgn.Game.from_board(board)
+        agent_label = "MCTS+LLM" if advisor_enabled else "MCTS"
+        if agent_player == 0:  # agent plays White
+            game.headers["White"] = agent_label
+            game.headers["Black"] = opponent_label
+        else:
+            game.headers["White"] = opponent_label
+            game.headers["Black"] = agent_label
+        game.headers["Event"] = "Civ6-AlphaZero chess vs Stockfish"
+        game.headers["Site"] = "local"
+        game.headers["Date"] = _dt.datetime.now().strftime("%Y.%m.%d")
+        game.headers["Round"] = f"{iteration}.{game_idx}"
+        # Use the board's actual outcome string when present; fall back to
+        # synthesising one from the agent reward so a truncated game still
+        # gets a well-formed PGN result tag.
+        outcome = board.outcome(claim_draw=True)
+        if outcome is not None and outcome.result() in {"1-0", "0-1", "1/2-1/2"}:
+            result = outcome.result()
+        else:
+            if reward > 0:
+                result = "1-0" if agent_player == 0 else "0-1"
+            elif reward < 0:
+                result = "0-1" if agent_player == 0 else "1-0"
+            else:
+                result = "1/2-1/2"
+        game.headers["Result"] = result
+        path = pgn_dir / f"iter{iteration:03d}_game{game_idx:03d}.pgn"
+        with path.open("w", encoding="utf-8") as fh:
+            print(game, file=fh)
+        logger.info("PGN written: %s", path)
+        return path
+    except Exception as exc:
+        logger.warning("PGN dump failed: %s", exc)
+        return None
+
+
 def _play_one_game(
     env,  # type: ignore[no-untyped-def]
     opponent,  # type: ignore[no-untyped-def]
     max_plies: int,
+    mcts=None,  # type: ignore[no-untyped-def]
     rng: np.random.Generator | None = None,
-) -> float:
-    """Play a game with the agent picking random legal moves (placeholder).
+) -> tuple[float, int]:
+    """Play one chess game; return (agent reward, agent player index).
 
-    Returns the reward from the *agent*'s perspective: +1 win, -1 loss, 0 draw.
-    The agent plays whichever side is to move at ``env.reset()`` — for the
-    standard starting position that's White, but a ``starting_fen`` with
-    Black to move will assign the agent the Black pieces. Production
-    training should alternate colours explicitly across games.
-
-    Args:
-        env: A ``ChessEnv`` (or any env exposing the same observation dict).
-        opponent: An :class:`Opponent` providing ``get_action(env, mask)``.
-        max_plies: Hard cap on game length; the agent forfeits the draw if
-            the cap is hit before checkmate/stalemate. Required so the loop
-            cannot wedge on a pathologically long game when the env's own
-            ``max_plies`` is not enforced (e.g. tests passing a stub env).
-        rng: Optional NumPy random generator. If ``None``, a deterministic
-            generator seeded with ``0`` is used so ``--dry-run`` and CI
-            invocations of this helper are reproducible. Production training
-            should pass its own seeded RNG per game.
+    The returned ``agent_player`` is the colour the agent played
+    (``0`` for White, ``1`` for Black) — needed by the PGN writer to
+    populate the White/Black tags correctly.
     """
     if rng is None:
         rng = np.random.default_rng(0)
@@ -160,7 +313,15 @@ def _play_one_game(
         if legal.size == 0:
             break
         if env.current_player == agent_player:
-            action = int(rng.choice(legal))
+            if mcts is not None:
+                action_probs, _root_value = mcts.search(env, add_noise=False)
+                masked_probs = action_probs * mask
+                if masked_probs.sum() <= 0:
+                    action = int(rng.choice(legal))
+                else:
+                    action = int(np.argmax(masked_probs))
+            else:
+                action = int(rng.choice(legal))
         else:
             action = opponent.get_action(env, mask)
         obs, _step_reward, terminated, truncated, info = env.step(action)
@@ -173,10 +334,17 @@ def _play_one_game(
             else:
                 reward = -1.0
             break
-    return reward
+    return reward, agent_player
 
 
-def _run(config: dict[str, Any], iterations: int, games_per_iter: int, dry_run: bool) -> int:
+def _run(
+    config: dict[str, Any],
+    iterations: int,
+    games_per_iter: int,
+    dry_run: bool,
+    pgn_dir: Path | None,
+    device: str = "auto",
+) -> int:
     from alpha_zero.envs.env_factory import create_game_env
 
     env_cfg = config.get("environment", {})
@@ -192,35 +360,58 @@ def _run(config: dict[str, Any], iterations: int, games_per_iter: int, dry_run: 
     curriculum_cfg = config.get("curriculum", {})
     advisor_cfg = config.get("advisor", {})
     llm_cfg = config.get("llm", {})
+    training_cfg = config.get("training", {})
 
     curriculum = _build_curriculum(curriculum_cfg)
-    # Advisor optional; constructed even in dry-run for validation.
     advisor = _build_advisor(advisor_cfg, llm_cfg)
     logger.info("Curriculum: %s mode, initial=%d", curriculum.config.mode, curriculum.current_value)
     if advisor is not None:
         logger.info("ChessAdvisor: enabled, weight=%s", advisor.config.prior_weight)
 
+    mcts = _build_mcts(
+        advisor,
+        training_cfg,
+        action_space_size=env.action_space.n,
+        device=device,
+    )
+
     if dry_run:
         logger.info(
-            "Dry run OK: env=%s, iterations=%d, games_per_iter=%d",
+            "Dry run OK: env=%s, iterations=%d, games_per_iter=%d, mcts=%s, pgn_dir=%s",
             type(env).__name__,
             iterations,
             games_per_iter,
+            mcts is not None,
+            pgn_dir,
         )
         return 0
 
-    # Build opponent only when actually running games (needs real stockfish binary).
     opponent = _build_opponent(opponent_cfg)
+    advisor_enabled = bool(advisor_cfg.get("enabled"))
     try:
         for it in range(iterations):
             wins = 0
-            for _ in range(games_per_iter):
+            for game_idx in range(games_per_iter):
                 if curriculum.target == "skill":
                     opponent.set_skill(curriculum.current_value)
                 else:
                     opponent.set_elo(curriculum.current_value)
-                reward = _play_one_game(env, opponent, max_plies=env.max_plies)
+                reward, agent_player = _play_one_game(
+                    env, opponent, max_plies=env.max_plies, mcts=mcts
+                )
                 wins += 1 if reward > 0 else 0
+                if pgn_dir is not None:
+                    label = f"Stockfish-{curriculum.target}-{curriculum.current_value}"
+                    _dump_pgn(
+                        env,
+                        pgn_dir=pgn_dir,
+                        game_idx=game_idx,
+                        iteration=it,
+                        agent_player=agent_player,
+                        reward=reward,
+                        advisor_enabled=advisor_enabled,
+                        opponent_label=label,
+                    )
             win_rate = wins / max(games_per_iter, 1)
             new_strength = curriculum.update(win_rate=win_rate)
             logger.info("Iteration %d: win_rate=%.3f, curriculum=%d", it, win_rate, new_strength)
@@ -242,6 +433,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-advisor", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--log-level", default="INFO")
+    parser.add_argument(
+        "--pgn-dir",
+        type=Path,
+        default=Path(__file__).resolve().parent.parent / "replays" / "chess",
+        help="Directory to write per-game PGN files (one per finished game).",
+    )
+    parser.add_argument(
+        "--no-pgn", action="store_true", help="Disable PGN writing entirely."
+    )
+    parser.add_argument(
+        "--device",
+        default="auto",
+        help="Torch device for the MCTS stub network: 'auto' (default), 'cpu', "
+        "'cuda', or 'cuda:N'. Note: this does NOT affect LM Studio/Qwen, "
+        "which is configured inside LM Studio itself.",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -263,9 +470,17 @@ def main(argv: list[str] | None = None) -> int:
         config.setdefault("curriculum", {})["initial_value"] = args.skill
     if args.no_advisor:
         config.setdefault("advisor", {})["enabled"] = False
+    pgn_dir = None if args.no_pgn else args.pgn_dir
     random.seed(0)
     np.random.seed(0)
-    return _run(config, iterations, games_per_iter, dry_run=args.dry_run)
+    return _run(
+        config,
+        iterations,
+        games_per_iter,
+        dry_run=args.dry_run,
+        pgn_dir=pgn_dir,
+        device=args.device,
+    )
 
 
 if __name__ == "__main__":

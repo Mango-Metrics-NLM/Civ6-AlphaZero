@@ -196,10 +196,33 @@ experiments/
 mlruns/
 ray_results/
 
+# ===========================================
+# MLflow (Phase 19 — v1.4.0)
+# ===========================================
+# SQLite backend (local dev)
+mlflow.db
+mlflow.db-shm
+mlflow.db-wal
+# Artifact store (local runs)
+mlartifacts/
+# Migration script output
+mlflow_migration_*.log
+
 # Evaluation reports (generated)
 evaluation_reports/
 *_evaluation_report.json
 *_evaluation_report.md
+
+# ===========================================
+# Results & Training Outputs (Phase 19)
+# ===========================================
+# Local result files (ELO rankings, tournament results)
+results/
+*_results.json
+*_elo_*.json
+# Analysis outputs
+analysis_output/
+*_analysis_report.md
 
 # Benchmark results (generated)
 benchmark_results/
