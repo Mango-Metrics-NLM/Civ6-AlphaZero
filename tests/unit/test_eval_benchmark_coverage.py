@@ -454,7 +454,12 @@ class TestAlphaZeroVsMuZeroBenchmark:
             benchmark.log_to_wandb(report)  # should not raise
 
     def test_log_to_wandb_success(self, benchmark):
-        """When wandb is available and enabled, should log metrics."""
+        """When tracker is enabled, log_to_wandb calls init/log/log_table/finish.
+
+        v1.5.0: the method name is preserved for callers but implementation
+        now routes through ``alpha_zero.utils.experiment_tracker._get_tracker``
+        (MLflow via WandbCompatAdapter) instead of the W&B SDK directly.
+        """
         benchmark.config.wandb_enabled = True
         az = BenchmarkResult(
             algorithm="alphazero",
@@ -478,23 +483,23 @@ class TestAlphaZeroVsMuZeroBenchmark:
             summary={"alphazero_win_rate": 0.5, "muzero_win_rate": 0.6},
         )
 
-        mock_wandb = MagicMock()
-        mock_run = MagicMock()
-        mock_wandb.init.return_value = mock_run
-        mock_wandb.Table.return_value = MagicMock()
+        mock_tracker = MagicMock()
+        mock_tracker.is_enabled = True
 
-        with (
-            patch("alpha_zero.evaluation.muzero_vs_alphazero_benchmark._WANDB_AVAILABLE", True),
-            patch("alpha_zero.evaluation.muzero_vs_alphazero_benchmark.wandb", mock_wandb),
+        with patch(
+            "alpha_zero.evaluation.muzero_vs_alphazero_benchmark._get_tracker",
+            return_value=mock_tracker,
         ):
             benchmark.log_to_wandb(report)
 
-        mock_wandb.init.assert_called_once()
-        assert mock_wandb.log.call_count >= 3  # summary + 2 algos + table
-        mock_run.finish.assert_called_once()
+        mock_tracker.init.assert_called_once()
+        # summary + 2 algos = at least 3 .log() calls; log_table is separate
+        assert mock_tracker.log.call_count >= 3
+        mock_tracker.log_table.assert_called_once()
+        mock_tracker.finish.assert_called_once()
 
     def test_log_to_wandb_exception(self, benchmark):
-        """When wandb raises an exception, should log error and not crash."""
+        """When the tracker raises during init, log_to_wandb must not crash."""
         benchmark.config.wandb_enabled = True
         report = ComparisonReport(
             config=benchmark.config,
@@ -503,11 +508,12 @@ class TestAlphaZeroVsMuZeroBenchmark:
             summary={"key": 1.0},
         )
 
-        mock_wandb = MagicMock()
-        mock_wandb.init.side_effect = RuntimeError("W&B init failed")
+        mock_tracker = MagicMock()
+        mock_tracker.is_enabled = True
+        mock_tracker.init.side_effect = RuntimeError("tracker init failed")
 
-        with (
-            patch("alpha_zero.evaluation.muzero_vs_alphazero_benchmark._WANDB_AVAILABLE", True),
-            patch("alpha_zero.evaluation.muzero_vs_alphazero_benchmark.wandb", mock_wandb),
+        with patch(
+            "alpha_zero.evaluation.muzero_vs_alphazero_benchmark._get_tracker",
+            return_value=mock_tracker,
         ):
             benchmark.log_to_wandb(report)  # should not raise
