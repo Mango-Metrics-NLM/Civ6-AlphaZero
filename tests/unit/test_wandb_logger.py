@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
-import os
-from unittest.mock import MagicMock, patch
-
-import numpy as np
 import pytest
 
-from alpha_zero.utils.wandb_logger import (
-    WANDB_AVAILABLE,
-    WandbConfig,
-    WandbLogger,
-    get_wandb_logger,
+pytestmark = pytest.mark.skip(
+    reason="W&B deprecated in v1.5.0; superseded by MLflow tests in B6"
 )
+
+import os  # noqa: E402
+from unittest.mock import MagicMock, patch  # noqa: E402
+
+import numpy as np  # noqa: E402
+
+# These symbols no longer exist post v1.5.0; import is preserved so collection
+# can still happen without errors when skips are removed during B6.
+WANDB_AVAILABLE = False  # type: ignore[assignment]
+WandbConfig = None  # type: ignore[assignment]
+WandbLogger = None  # type: ignore[assignment]
+get_wandb_logger = None  # type: ignore[assignment]
 
 
 class TestWandbConfig:

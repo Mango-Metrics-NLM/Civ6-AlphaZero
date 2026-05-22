@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import numpy as np
 import pytest
-import torch
 
-from alpha_zero.core.civ6_network import MicroCivNetwork
-from alpha_zero.envs.microciv import MicroCivEnv
-from alpha_zero.utils.wandb_logger import (
+pytestmark = pytest.mark.skip(
+    reason="W&B deprecated in v1.5.0; superseded by MLflow tests in B6"
+)
+
+import os  # noqa: E402
+from pathlib import Path  # noqa: E402
+from unittest.mock import MagicMock, patch  # noqa: E402
+
+import numpy as np  # noqa: E402
+import torch  # noqa: E402
+
+from alpha_zero.core.civ6_network import MicroCivNetwork  # noqa: E402
+from alpha_zero.envs.microciv import MicroCivEnv  # noqa: E402
+from alpha_zero.utils.wandb_logger import (  # noqa: E402
     WandbConfig,
     WandbLogger,
 )
