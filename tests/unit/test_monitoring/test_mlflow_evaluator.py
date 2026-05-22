@@ -214,7 +214,7 @@ class TestComputeValueMAE:
         assert isinstance(result, float)
 
     def test_single_sample(self) -> None:
-        """Single prediction–outcome pair must produce correct MAE."""
+        """Single prediction-outcome pair must produce correct MAE."""
         result = compute_value_mae(
             np.array([0.3], dtype=np.float32),
             np.array([1.0], dtype=np.float32),
@@ -401,7 +401,7 @@ class TestAlphaZeroMLflowEvaluator:
         rng = np.random.default_rng(0)
         n_actions = 8
         positions = []
-        for i in range(4):
+        for _ in range(4):
             positions.append(
                 {
                     "spatial": rng.standard_normal((4, 4, 4)).astype(np.float32),

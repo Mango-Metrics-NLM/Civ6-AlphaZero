@@ -27,8 +27,10 @@
 | Phase 16 | Batch Inference & Vectorized Self-Play | ✅ Complete |
 | Phase 17a | Hex Crystalline Encoder & A/B Comparison | ✅ Complete |
 | Phase 17b | Training Readiness — action_mask, W&B groups, gumbel default, eval retry | ✅ Complete |
+| Sprint 4 | Type Safety Expansion (envs + evaluation) | ✅ Complete |
+| Sprint 5 | Type Safety — Breadth-First Mypy Stabilization (61% error reduction) | ✅ Complete |
 
-**Codebase Statistics:** ~62,000 LOC core, 4,880+ tests, Docker v1.2.0 (Artifact Registry), 218+ models in GCS
+**Codebase Statistics:** ~63,000 LOC core, 5,200+ tests, Docker v1.2.0 (Artifact Registry), 218+ models in GCS, 251→~98 mypy errors (61% reduction)
 
 ---
 

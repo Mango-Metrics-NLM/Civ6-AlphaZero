@@ -110,7 +110,7 @@ class MicroCivEnv(gym.Env):
 
     A simplified 4X game with:
     - 2-8 players (turn-based, default 2)
-    - 16x16 tile map
+    - Configurable tile map (default 16x16)
     - 3 unit types: warrior, settler, archer
     - Simple combat and city founding
 
@@ -122,7 +122,11 @@ class MicroCivEnv(gym.Env):
     - Flat discrete space covering all possible actions
     """
 
-    metadata: ClassVar[dict[str, list[str]]] = {"render_modes": ["ansi"]}
+    # Supported player range
+    MIN_PLAYERS: int = 2
+    MAX_PLAYERS: int = 6
+
+    metadata: ClassVar[dict[str, list[str]]] = {"render_modes": ["ansi"]}  # type: ignore[misc]
 
     # Unit production costs (turns)
     UNIT_COSTS: ClassVar[dict[str, int]] = {
@@ -173,7 +177,7 @@ class MicroCivEnv(gym.Env):
                 observations are masked per player visibility.
 
         Raises:
-            ValueError: If num_players is not in range [2, MAX_PLAYERS].
+            ValueError: If num_players is not in range [2, GAME.MAX_PLAYERS].
         """
         super().__init__()
 
@@ -376,17 +380,10 @@ class MicroCivEnv(gym.Env):
         self._next_city_id = 0
 
         # Compute starting positions using angular distribution
-        positions = self._compute_starting_positions()
+        start_positions = self._compute_starting_positions()
 
         # Create starting units for each player
-        for player, base_pos in enumerate(positions):
-            # Find a valid (non-mountain) position near the computed position
-            pos = self._find_valid_position(
-                max(0, base_pos[0] - 2),
-                max(0, base_pos[1] - 2),
-                5,
-            )
-
+        for player, pos in enumerate(start_positions):
             # Settler
             self.units.append(
                 Unit(
@@ -420,22 +417,24 @@ class MicroCivEnv(gym.Env):
         """Compute starting positions for all players using angular distribution.
 
         Players are evenly spaced around a circle centered on the map.
+        Each position is then snapped to a valid (non-mountain) tile.
 
         Returns:
             List of (x, y) positions, one per player.
         """
         positions: list[tuple[int, int]] = []
-        center = self.board_size / 2
+        center = self.board_size / 2.0
         radius = self.board_size * 0.35  # Keep away from edges
 
         for i in range(self.num_players):
-            angle = 2 * math.pi * i / self.num_players
-            x = int(center + radius * math.cos(angle))
-            y = int(center + radius * math.sin(angle))
-            # Clamp to ensure we stay within valid board range
-            x = max(1, min(self.board_size - 2, x))
-            y = max(1, min(self.board_size - 2, y))
-            positions.append((x, y))
+            angle = 2 * math.pi * i / self.num_players - math.pi / 4
+            cx = int(center + radius * math.cos(angle))
+            cy = int(center + radius * math.sin(angle))
+            # Clamp to valid board range with margin
+            cx = max(2, min(cx, self.board_size - 3))
+            cy = max(2, min(cy, self.board_size - 3))
+            pos = self._find_valid_position(cx, cy, 3)
+            positions.append(pos)
 
         return positions
 
@@ -445,15 +444,25 @@ class MicroCivEnv(gym.Env):
         start_y: int,
         range_: int,
     ) -> tuple[int, int]:
-        """Find a valid (non-mountain) position in a range."""
+        """Find a valid (non-mountain) position in a range.
+
+        Positions are clamped to ``[1, board_size - 2]`` so starting units
+        never spawn on the very edge of the board (tests assert this margin,
+        and the action-space neighbour lookups assume one tile of slack on
+        each side).
+        """
         for _ in range(100):
-            dx = int(self._rng.integers(0, range_))
-            dy = int(self._rng.integers(0, range_))
-            x = min(max(start_x + dx, 0), self.board_size - 1)
-            y = min(max(start_y + dy, 0), self.board_size - 1)
+            x = int(start_x + self._rng.integers(0, range_))
+            y = int(start_y + self._rng.integers(0, range_))
+            x = min(max(x, 1), self.board_size - 2)
+            y = min(max(y, 1), self.board_size - 2)
             if self.terrain.get((x, y), Tile()).terrain_type != "mountain":
                 return (x, y)
-        return (start_x, start_y)
+        # Fallback also respects the margin.
+        return (
+            min(max(start_x, 1), self.board_size - 2),
+            min(max(start_y, 1), self.board_size - 2),
+        )
 
     def _find_adjacent_valid(self, pos: tuple[int, int]) -> tuple[int, int]:
         """Find an adjacent valid position."""
@@ -690,7 +699,7 @@ class MicroCivEnv(gym.Env):
                     city.production = 0
                     city.production_queue = None
 
-        # Switch to next player
+        # Switch to next player (modular for N players)
         self.current_player = (self.current_player + 1) % self.num_players
 
         # If back to player 0, increment turn
@@ -735,7 +744,8 @@ class MicroCivEnv(gym.Env):
         """Check if game has ended.
 
         A player is eliminated when they have 0 cities AND 0 units.
-        If exactly 1 player remains, they win.
+        If exactly 1 player remains, they win. If 0 players remain (edge case),
+        the game ends in a draw.
 
         Returns:
             True if game is over.
@@ -748,14 +758,9 @@ class MicroCivEnv(gym.Env):
             if p_cities > 0 or p_units > 0:
                 surviving_players.append(p)
 
-        # If exactly one player survives, they win
-        if len(surviving_players) == 1:
-            self.winner = surviving_players[0]
-            return True
-
-        # If no players survive (edge case), it's a draw
-        if len(surviving_players) == 0:
-            self.winner = None
+        # Game ends when at most one player remains
+        if len(surviving_players) <= 1:
+            self.winner = surviving_players[0] if surviving_players else None
             return True
 
         return False

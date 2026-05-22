@@ -1,7 +1,8 @@
 """Unit tests for alpha_zero.exceptions module.
 
 Covers the full exception hierarchy, context handling, custom __init__ methods,
-and the format_exception_chain utility function.
+and the format_exception_chain utility function. All custom exceptions are
+subclasses of Civ6AlphaZeroError so a single except clause can catch them all.
 """
 
 from __future__ import annotations
@@ -584,3 +585,98 @@ class TestFormatExceptionChain:
         exc = Civ6AlphaZeroError("just message")
         result = format_exception_chain(exc)
         assert result == "just message"
+
+
+class TestExceptionHierarchyParameterized:
+    """Every project exception inherits from Civ6AlphaZeroError so callers
+    can catch them all with one except clause.
+
+    This parameterized variant complements TestExceptionHierarchy above by
+    providing per-class assertions for easier debugging when a single subclass
+    breaks the contract.
+    """
+
+    @pytest.mark.parametrize(
+        "exc_cls",
+        [
+            ConfigurationError,
+            NetworkError,
+            NetworkInferenceError,
+            NetworkLoadError,
+            MCTSError,
+            MCTSSearchError,
+            MCTSTimeoutError,
+            EnvironmentError,
+            InvalidActionError,
+            StateEncodingError,
+            BridgeError,
+            StateTimeoutError,
+            ActionTimeoutError,
+            BridgeConnectionError,
+            TrainingError,
+            ReplayBufferError,
+            GradientError,
+            DistributedError,
+            ActorError,
+            LearnerError,
+            WeightSyncError,
+        ],
+    )
+    def test_inherits_from_base(self, exc_cls: type) -> None:
+        assert issubclass(exc_cls, Civ6AlphaZeroError)
+
+    def test_network_hierarchy(self) -> None:
+        assert issubclass(NetworkInferenceError, NetworkError)
+        assert issubclass(NetworkLoadError, NetworkError)
+
+    def test_mcts_hierarchy(self) -> None:
+        assert issubclass(MCTSSearchError, MCTSError)
+        assert issubclass(MCTSTimeoutError, MCTSError)
+
+    def test_environment_hierarchy(self) -> None:
+        assert issubclass(InvalidActionError, EnvironmentError)
+        assert issubclass(StateEncodingError, EnvironmentError)
+
+    def test_bridge_hierarchy(self) -> None:
+        assert issubclass(StateTimeoutError, BridgeError)
+        assert issubclass(ActionTimeoutError, BridgeError)
+        assert issubclass(BridgeConnectionError, BridgeError)
+
+    def test_training_hierarchy(self) -> None:
+        assert issubclass(ReplayBufferError, TrainingError)
+        assert issubclass(GradientError, TrainingError)
+
+    def test_distributed_hierarchy(self) -> None:
+        assert issubclass(ActorError, DistributedError)
+        assert issubclass(LearnerError, DistributedError)
+        assert issubclass(WeightSyncError, DistributedError)
+
+
+class TestExceptionContext:
+    """Subclasses inherit the context-handling protocol from the base."""
+
+    def test_subclass_with_context(self) -> None:
+        err = MCTSTimeoutError("search timed out", context={"simulations": 100})
+        assert err.message == "search timed out"
+        assert err.context["simulations"] == 100
+        assert "simulations=100" in str(err)
+
+    def test_environment_error_does_not_shadow_builtin(self) -> None:
+        """alpha_zero.exceptions.EnvironmentError is its own type even though
+        Python has a builtin EnvironmentError (alias for OSError)."""
+        import builtins
+
+        # Project-specific EnvironmentError is distinct from the builtin
+        # (which on modern Pythons is just an alias for OSError).
+        assert EnvironmentError is not builtins.OSError
+        assert issubclass(EnvironmentError, Civ6AlphaZeroError)
+
+    def test_chaining_with_from_clause(self) -> None:
+        try:
+            try:
+                raise ValueError("root cause")
+            except ValueError as e:
+                raise NetworkLoadError("could not load checkpoint") from e
+        except NetworkLoadError as e:
+            assert isinstance(e.__cause__, ValueError)
+            assert str(e.__cause__) == "root cause"

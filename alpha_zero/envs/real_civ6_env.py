@@ -157,7 +157,7 @@ class RealCiv6Env(gym.Env):
         >>> env.close()
     """
 
-    metadata: ClassVar[dict[str, list[str] | int]] = {
+    metadata: ClassVar[dict[str, list[str] | int]] = {  # type: ignore[misc]
         "render_modes": ["human"],
         "render_fps": 1,
     }
@@ -384,7 +384,8 @@ class RealCiv6Env(gym.Env):
         )
 
         try:
-            ack = self._run_async(self._bridge.send_and_wait(cmd_msg, timeout=self.action_timeout))  # type: ignore[union-attr]
+            assert self._bridge is not None
+            ack = self._run_async(self._bridge.send_and_wait(cmd_msg, timeout=self.action_timeout))
 
             if not ack.success:
                 logger.warning(f"Action failed: {ack.error_message}")
@@ -409,6 +410,7 @@ class RealCiv6Env(gym.Env):
         # Wait for next state
         prev_state = self._current_state
         try:
+            assert self._bridge is not None
             self._raw_state = self._run_async(
                 self._bridge.wait_for_state(timeout=self.bridge_config.command_timeout_ms / 1000.0)  # type: ignore[union-attr]
             )
@@ -559,7 +561,7 @@ class RealCiv6Env(gym.Env):
         curr_gold = curr_state.get("gold", 0)
         reward += (curr_gold - prev_gold) * config.gold_scale
 
-        return reward  # type: ignore[no-any-return]
+        return float(reward)
 
     def _run_async(self, coro: Any) -> Any:
         """Run async coroutine from sync context.
@@ -590,7 +592,7 @@ class RealCiv6Env(gym.Env):
             logger.debug(f"Async operation error: {e}")
             raise
 
-    def render(self) -> np.ndarray | None:
+    def render(self) -> np.ndarray | None:  # type: ignore[override]
         """Render the environment.
 
         Currently only supports "human" mode which prints state info.
@@ -753,8 +755,16 @@ class MockCiv6Env(RealCiv6Env):
             ],
         }
 
-        self._bridge.set_mock_state(mock_state)  # type: ignore[union-attr]
-        self._raw_state = self._run_async(self._bridge.poll_state())  # type: ignore[union-attr]
+        assert self._bridge is not None
+        from alpha_zero.bridge.file_bridge import MockFileBridge
+
+        if not isinstance(self._bridge, MockFileBridge):
+            raise RuntimeError(
+                f"_set_mock_state is only supported with MockFileBridge, "
+                f"but got {type(self._bridge).__name__!r}"
+            )
+        self._bridge.set_mock_state(mock_state)
+        self._raw_state = self._run_async(self._bridge.poll_state())
         self._current_state = self._state_converter.convert(self._raw_state)
         self._turn = turn_id
 

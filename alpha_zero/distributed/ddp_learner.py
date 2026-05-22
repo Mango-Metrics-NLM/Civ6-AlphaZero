@@ -19,11 +19,12 @@ import os
 import time
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch.cuda.amp import GradScaler
 from torch.nn.parallel import DistributedDataParallel as DDP  # noqa: N817
 
 from alpha_zero.core.civ6_network import MicroCivNetwork, compute_loss
@@ -41,7 +42,7 @@ from alpha_zero.distributed.shared_storage import (
 from alpha_zero.envs.microciv import MicroCivEnv
 
 if TYPE_CHECKING:
-    from torch.cuda.amp import GradScaler
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -285,15 +286,18 @@ class DDPLearnerConfig(LearnerConfig):
         Returns:
             DDPLearnerConfig instance.
         """
-        env_values: dict[str, Any] = {
-            "ddp_world_size": int(os.environ.get("WORLD_SIZE", "1")),
-            "ddp_rank": int(os.environ.get("RANK", "0")),
-            "ddp_local_rank": int(os.environ.get("LOCAL_RANK", "0")),
+        ddp_world_size: int = int(os.environ.get("WORLD_SIZE", "1"))
+        ddp_rank: int = int(os.environ.get("RANK", "0"))
+        ddp_local_rank: int = int(os.environ.get("LOCAL_RANK", "0"))
+        env_values: dict[str, str | int | bool] = {
+            "ddp_world_size": ddp_world_size,
+            "ddp_rank": ddp_rank,
+            "ddp_local_rank": ddp_local_rank,
             "master_addr": os.environ.get("MASTER_ADDR", "localhost"),
             "master_port": os.environ.get("MASTER_PORT", "29500"),
         }
         # Enable DDP if world_size > 1
-        if env_values["ddp_world_size"] > 1:
+        if ddp_world_size > 1:
             env_values["ddp_enabled"] = True
 
         # Map alias kwargs to canonical names before merging
@@ -303,7 +307,7 @@ class DDPLearnerConfig(LearnerConfig):
             mapped_kwargs[canonical] = v
 
         env_values.update(mapped_kwargs)
-        return cls(**env_values)
+        return cls(**env_values)  # type: ignore[arg-type]
 
 
 class DDPLearner(Learner):
@@ -378,7 +382,7 @@ class DDPLearner(Learner):
         else:
             self.network = MicroCivNetwork(
                 board_size=config.board_size,
-                action_space_size=self.action_space_size,
+                action_space_size=int(self.action_space_size),
                 num_res_blocks=config.num_res_blocks,
                 num_filters=config.num_filters,
             ).to(config.device)
@@ -423,7 +427,7 @@ class DDPLearner(Learner):
         # AMP scaler for mixed precision
         self.scaler: GradScaler | None = None
         if config.use_amp:
-            self.scaler = torch.amp.GradScaler("cuda")
+            self.scaler = GradScaler()
             logger.info(f"Mixed precision enabled with {config.amp_dtype}")
 
         # Statistics
@@ -575,7 +579,7 @@ class DDPLearner(Learner):
             Base network without DDP wrapper.
         """
         if isinstance(self.network, DDP):
-            return self.network.module
+            return cast(nn.Module, self.network.module)
         return self.network
 
     def get_model(self) -> nn.Module:
@@ -943,7 +947,7 @@ class DDPLearner(Learner):
     def all_reduce(
         self,
         tensor: torch.Tensor,
-        op: dist.ReduceOp = dist.ReduceOp.SUM,
+        op: dist.ReduceOp = dist.ReduceOp.SUM,  # type: ignore[assignment]
     ) -> torch.Tensor:
         """All-reduce a tensor across all processes.
 

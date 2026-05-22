@@ -1,1 +1,1 @@
-# Tests for alpha_zero/monitoring/ package.
+"""Unit tests for the alpha_zero.monitoring package."""

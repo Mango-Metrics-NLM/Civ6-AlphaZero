@@ -96,9 +96,7 @@ class ChessEnv:
         # here means an invalid vector_size fails at construction time with
         # a clear error instead of much later inside reset()/get_observation().
         if vector_size < 8:
-            raise ValueError(
-                f"vector_size must be >= 8 to fit core features (got {vector_size})"
-            )
+            raise ValueError(f"vector_size must be >= 8 to fit core features (got {vector_size})")
         self.history_depth = history_depth
         self.vector_size = vector_size
         self.max_plies = max_plies

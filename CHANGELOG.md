@@ -5,90 +5,208 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.4.0] — 2026-05-21
+## [1.6.0] — 2026-05-21 — MLflow Monitoring & Evaluation Analytics
 
-### Added — MLflow Monitoring & Evaluation Analytics
+> **Version note:** Bumped from `1.4.0` to `1.6.0` after merging this branch with `origin/main`, which had independently released `1.5.0` (Sprint 5 type safety) on top of an earlier `1.4.0` (Sprint 4). The MLflow monitoring layer is the largest behavioural change of this release line, so it owns the minor bump.
+
+### Added — MLflow Monitoring & Evaluation Analytics (PR #78 + PR #79 combined)
 
 #### New Scripts (`scripts/`)
 
-- **`scripts/analyse_training_run.py`** — Analyses policy loss trend and value head stability by reading MLflow metrics; produces per-run diagnostic summaries and trend plots
-- **`scripts/post_run_evaluation.py`** — Post-run ELO tournament + baseline evaluation (random / heuristic agents) with results logged to MLflow; wraps the model in `Civ6MCTS` and calls `evaluate_vs_random(agent, n_games=n)` correctly
-- **`scripts/run_baseline_eval.py`** — Standalone baseline evaluation that loads a model from GCS, auto-detects the latest run via `resolve_run_id()`, and logs results to MLflow
-- **`scripts/migrate_mlflow_to_sqlite.py`** — Automates migration from the deprecated file-store (`mlruns/`) to the SQLite backend (`mlflow.db`); supports `--dry-run` mode
-- **`scripts/local_training_run.py`** — Orchestrated local training run entry point; single command to run selfplay → training → evaluation locally with full MLflow instrumentation
+- **`scripts/analyse_training_run.py`** — Analyses policy loss trend and value head stability by reading MLflow metrics; produces per-run diagnostic summaries and trend plots.
+- **`scripts/post_run_evaluation.py`** — Post-run ELO tournament + baseline evaluation (random / heuristic agents) with results logged to MLflow; wraps the model in `Civ6MCTS` and calls `evaluate_vs_random(agent, n_games=n)` correctly.
+- **`scripts/run_baseline_eval.py`** — Standalone baseline evaluation that loads a model from GCS, auto-detects the latest run via `resolve_run_id()`, and logs results to MLflow.
+- **`scripts/migrate_mlflow_to_sqlite.py`** — Automates migration from the deprecated file-store (`mlruns/`) to the SQLite backend (`mlflow.db`); supports `--dry-run` mode.
+- **`scripts/local_training_run.py`** — Orchestrated local training run entry point; single command to run selfplay -> training -> evaluation locally with full MLflow instrumentation.
+- **`scripts/launch_50iter_production_monitored.py`** (PR #78) — Wraps the production preset with `CIV6AZ_MLFLOW_*` env overrides for the P0 50-iter monitored run.
 
 #### MLflow Monitoring Package (`alpha_zero/monitoring/`)
 
-- **`alpha_zero/monitoring/__init__.py`** — Public API: exports `MLflowLogger`, `MLflowMonitoringConfig`, `AlphaZeroMLflowEvaluator`
-- **`alpha_zero/monitoring/config.py`** — `MLflowMonitoringConfig` dataclass: `tracking_uri`, `experiment_name`, `use_sqlite`, `tags`; fully serialisable with `to_dict()` / `from_dict()`
+- **`alpha_zero/monitoring/__init__.py`** — Public API: exports `MLflowConfig` / `MonitoringConfig` (alias), `MLflowLogger`, `AlphaZeroMLflowEvaluator`, `TournamentMlflowLogger`, stateless metric helpers, `MLFLOW_AVAILABLE`, `parse_tag_string`, `get_default_tracking_uri`, plus the `mlflow` and `MlflowClient` module-level symbols for test patching.
+- **`alpha_zero/monitoring/config.py`** — `MLflowConfig` dataclass (canonical) with `MonitoringConfig` alias. Field union of both PRs: `enabled`, `tracking_uri`, `registry_uri`, `experiment_name`, `run_name`, `tags`, `description`, `artifact_location`, `log_frequency`, `log_models`, `log_artifacts`, `log_system_metrics`, `nested_runs`, `fail_silently`, `request_timeout_seconds`, `eval_interval`, `log_grad_norms`. Constructors `from_dict` (dict / "k=v" string / list-of-pairs / `[{key,value}]`) and `from_env` (`CIV6AZ_MLFLOW_*` > `MLFLOW_*`).
 - **`alpha_zero/monitoring/mlflow_logger.py`** — `MLflowLogger` class:
-  - Run lifecycle management (`start_run()` / `end_run()`) with correct FAILED vs FINISHED status on exit
-  - `log_params()`, `log_metrics()`, `log_metric()`, `set_tag()`, `log_artifact()`
-  - **`log_evaluation_result()`** — logs 14 metrics from `EvaluationResult` / `WinRateResult`: 4 counts (`wins`, `losses`, `draws`, `total_games`) + 3 rates (`win_rate`, `draw_rate`, `loss_rate` as 0–1 fractions) + 7 game-level stats
-  - Param values truncated at 250 characters (MLflow limit)
+  - Dual-mode constructor: positional `MLflowConfig` OR keyword args (mutually exclusive).
+  - Lifecycle aliases: `init`/`finish` (PR #78) and `start_run`/`end_run` + context manager (PR #79).
+  - Run lifecycle management with correct `FAILED` vs `FINISHED` status on exit.
+  - `log_params()`, `log_metrics()`, `log_metric()`, `set_tag()`, `set_tags()`, `log_artifact()`, `log_figure()`, `log_table()`, `log_text()`, `log_model_checkpoint()`, `log_iteration()`, `log_evaluation()`, `log_elo_update()`, `step_context()`.
+  - **`log_evaluation_result()`** — logs 14 metrics from `EvaluationResult` / `WinRateResult`: 4 counts (`wins`, `losses`, `draws`, `total_games`) + 3 rates (`win_rate`, `draw_rate`, `loss_rate` as 0-1 fractions) + 7 game-level stats.
+  - Param values truncated at 250 characters (MLflow limit).
 - **`alpha_zero/monitoring/mlflow_evaluator.py`** — `AlphaZeroMLflowEvaluator`:
-  - `compute_policy_entropy(logits)` — Shannon entropy of policy distribution
-  - `compute_value_mae(predictions, targets)` — Mean Absolute Error of value head
-  - `compute_policy_top1_accuracy(logits, targets)` — Top-1 accuracy of greedy policy
-  - `compute_action_diversity(action_sequences)` — Unique-action ratio across a game batch
-  - `compute_metrics(model, dataloader)` — Aggregates all four metrics over a dataset
+  - `compute_policy_entropy(logits)` — Shannon entropy of policy distribution.
+  - `compute_value_mae(predictions, targets)` — Mean Absolute Error of value head.
+  - `compute_policy_top1_accuracy(logits, targets)` — Top-1 accuracy of greedy policy.
+  - `compute_action_diversity(action_sequences)` — Unique-action ratio across a game batch.
+  - `compute_metrics(model, dataloader)` — Aggregates all four metrics over a dataset.
+- **`alpha_zero/monitoring/metrics.py`** (PR #78) — Stateless helpers: `compute_value_correlation`, `compute_elo_spread`, `compute_policy_entropy` (all NaN-safe).
+- **`alpha_zero/monitoring/tournament_dashboards.py`** (PR #78) — `TournamentMlflowLogger`: match / round / leaderboard / head-to-head facade.
 
 #### New Utility (`alpha_zero/utils/`)
 
 - **`alpha_zero/utils/env_loader.py`** — Zero-dependency `.env` loading (no `python-dotenv` required):
-  - `load_civ6az_env(path)` — Loads `.env` file and merges into `os.environ` without overwriting existing vars
-  - `require_civ6az_env(key)` — Retrieves an env var or raises `RuntimeError` with a descriptive message
-  - `_parse_dotenv(text)` — Pure-Python parser handling quoted values, inline comments, and `export` prefixes
+  - `load_civ6az_env(path)` — Loads `.env` file and merges into `os.environ` without overwriting existing vars.
+  - `require_civ6az_env(key)` — Retrieves an env var or raises `RuntimeError` with a descriptive message.
+  - `_parse_dotenv(text)` — Pure-Python parser handling quoted values, inline comments, and `export` prefixes.
 
 #### New Documentation (`docs/`)
 
-- **`docs/GCP_INFRA.md`** — GCP infrastructure reference (VM sizing, Artifact Registry, IAP tunnelling, cost breakdown)
-- **`docs/architecture/ADR-gcp-resource-deployment.md`** — Architecture Decision Record: rationale for Vertex AI + GCS resource deployment strategy
-- **`docs/prd/prd-gcp-resource-deployment.md`** — Product Requirements Document for GCP resource deployment feature
-
----
+- **`docs/GCP_INFRA.md`** — GCP infrastructure reference (VM sizing, Artifact Registry, IAP tunnelling, cost breakdown).
+- **`docs/architecture/ADR-gcp-resource-deployment.md`** — Architecture Decision Record: rationale for Vertex AI + GCS resource deployment strategy.
+- **`docs/prd/prd-gcp-resource-deployment.md`** — Product Requirements Document for GCP resource deployment feature.
 
 ### Fixed
 
 #### `scripts/post_run_evaluation.py` — EvaluationPipeline API
 
-- **Wrong kwargs**: was calling `evaluate_vs_random(model=model, num_games=n, device=d)` — incorrect API
-- **Fix**: wraps model in `Civ6MCTS` and calls `evaluate_vs_random(agent, n_games=n)`
-- **Win rate type**: `EvaluationResult.win_rate` is a `WinRateResult` object, not a scalar `float`; all access sites updated
+- **Wrong kwargs**: was calling `evaluate_vs_random(model=model, num_games=n, device=d)` - incorrect API.
+- **Fix**: wraps model in `Civ6MCTS` and calls `evaluate_vs_random(agent, n_games=n)`.
+- **Win rate type**: `EvaluationResult.win_rate` is a `WinRateResult` object, not a scalar `float`; all access sites updated.
 
 #### `scripts/run_baseline_eval.py` — Hardcoded run_id & result access
 
-- **Hardcoded run_id**: removed hardcoded production `run_id` default
-- **Auto-detection**: added `resolve_run_id()` to locate the most recent MLflow run automatically
-- **result.summary**: was treated as `dict`; it returns a `str` — fixed to use string formatting
-- **result.win_rate**: was accessed as `float`; it is a `WinRateResult` object — fixed across all callsites
+- **Hardcoded run_id**: removed hardcoded production `run_id` default.
+- **Auto-detection**: added `resolve_run_id()` to locate the most recent MLflow run automatically.
+- **result.summary**: was treated as `dict`; it returns a `str` - fixed to use string formatting.
+- **result.win_rate**: was accessed as `float`; it is a `WinRateResult` object - fixed across all callsites.
 
 #### `alpha_zero/monitoring/mlflow_logger.py` — Lifecycle & param safety
 
-- **`log_evaluation_result()`**: added missing method (14 metrics, 0–1 rate normalisation)
-- **Lifecycle state machine**: `end_run()` now correctly sets status to `FAILED` on exception and `FINISHED` on clean exit
-- **Param truncation**: added 250-character truncation for MLflow param values (API limit)
-
----
+- **`log_evaluation_result()`**: added method (14 metrics, 0-1 rate normalisation).
+- **Lifecycle state machine**: `end_run()` now correctly sets status to `FAILED` on exception and `FINISHED` on clean exit.
+- **Param truncation**: 250-character truncation for MLflow param values (API limit).
+- **`start_run()` orphan-run guard** (post-review fix): refuses to open a nested run before `init()` has succeeded; logs a warning instead of leaking a top-level run outside the managed lifecycle.
+- **`artifact_location` silent-drop warning** (post-review fix): if `MlflowClient` setup fails and `artifact_location` was configured (e.g. `gs://bucket/...`), emit a real `logger.warning` instead of a `debug` log so the misconfiguration is visible.
 
 ### Changed
 
-- **Version**: 1.3.0 → 1.4.0
-- **MLflow tracking**: migrated from file-store (`mlruns/`) to SQLite backend (`mlflow.db`); `migrate_mlflow_to_sqlite.py` automates the one-time migration
-- **Lint** (`ruff`): fixed `E501` line-too-long in `post_run_evaluation.py`; fixed `RUF002` en-dash in `run_baseline_eval.py` docstrings
+- **Version**: 1.3.0 -> 1.6.0 (bumped past origin/main's 1.5.0 Sprint 5 release).
+- **MLflow tracking**: migrated from file-store (`mlruns/`) to SQLite backend (`mlflow.db`); `migrate_mlflow_to_sqlite.py` automates the one-time migration.
+- **Lint** (`ruff`): fixed `E501` line-too-long in `post_run_evaluation.py`; fixed `RUF002` en-dash in `run_baseline_eval.py` docstrings; dropped `RUF059` from per-file-ignores (rule introduced in ruff 0.9 not yet pinned).
+- **CHANGELOG / NEXT_STEPS / PLANNING / README**: union-merged with origin/main's Sprint 5 entries.
 
-#### Test Suite (81 new tests)
+#### Test Suite (81 new tests + 4 post-review additions)
 
 | File | Tests | Covers |
-|------|------:|--------|
-| `tests/scripts/test_run_baseline_eval.py` | 39 | `run_baseline_eval.py` — arg parsing, `resolve_run_id`, GCS load, MLflow log, error paths |
-| `tests/scripts/test_analyse_training_run.py` | 9 | `analyse_training_run.py` — metric fetch, trend analysis, edge cases |
-| `tests/scripts/test_post_run_evaluation.py` | 11 | `post_run_evaluation.py` — pipeline wiring, ELO logging, random-agent baseline |
-| `tests/unit/test_monitoring/test_mlflow_logger.py` | 24 | `MLflowLogger` — lifecycle, `log_params`, `log_metrics`, `log_evaluation_result`, truncation, failure state |
-| `tests/unit/test_monitoring/test_mlflow_evaluator.py` | 12 | `AlphaZeroMLflowEvaluator` — entropy, MAE, top-1 accuracy, action diversity, `compute_metrics` |
-| `tests/unit/test_utils/test_env_loader.py` | 18 | `env_loader` — `.env` parsing, quoting, comments, `export` prefix, `require_civ6az_env` errors |
+| --- | ---: | --- |
+| `tests/scripts/test_run_baseline_eval.py` | 39 | `run_baseline_eval.py` - arg parsing, `resolve_run_id`, GCS load, MLflow log, error paths |
+| `tests/scripts/test_analyse_training_run.py` | 9 | `analyse_training_run.py` - metric fetch, trend analysis, edge cases |
+| `tests/scripts/test_post_run_evaluation.py` | 11 | `post_run_evaluation.py` - pipeline wiring, ELO logging, random-agent baseline |
+| `tests/unit/test_monitoring/test_mlflow_logger.py` | 24 + 4 | `MLflowLogger` - lifecycle, log_params, log_metrics, log_evaluation_result, truncation, failure state; orphan-run guard, artifact_location warning |
+| `tests/unit/test_monitoring/test_mlflow_evaluator.py` | 12 | `AlphaZeroMLflowEvaluator` - entropy, MAE, top-1 accuracy, action diversity, `compute_metrics` |
+| `tests/unit/test_monitoring/test_apply_override_dict.py` | 6 | `_apply_override` dict-merge fix for `CIV6AZ_MLFLOW_TAGS` (PR #78) |
+| `tests/unit/test_monitoring/test_factory.py` | 6 | `create_mlflow_logger` factory wiring (PR #78) |
+| `tests/unit/test_monitoring/test_metrics_helpers.py` | 18 | `compute_value_correlation`, `compute_elo_spread`, `compute_policy_entropy` (PR #78) |
+| `tests/unit/test_monitoring/test_mlflow_config.py` | 27 | `MLflowConfig` defaults, `from_dict`, `from_env`, tag parsing (PR #78) |
+| `tests/unit/test_monitoring/test_tournament_mlflow.py` | 8 | `TournamentMlflowLogger` (PR #78) |
+| `tests/unit/test_orchestrator_mlflow_integration.py` | 7 | Orchestrator + MLflow end-to-end wiring (PR #78) |
+| `tests/integration/test_mlflow_e2e.py` | 5 | Real MLflow file-backend roundtrip (gated by `pytest.importorskip("mlflow")`) |
+| `tests/unit/test_utils/test_env_loader.py` | 18 | `env_loader` - `.env` parsing, quoting, comments, `export` prefix, `require_civ6az_env` errors |
 
-**Total tests: 217 passing** (136 pre-existing + 81 new)
+**Total monitoring tests after merge: 179 passing in `tests/unit/test_monitoring/`** (113 from PR #79 + 66 from PR #78 + 4 added during code-review fixes).
+
+## [1.5.0] — 2026-03-05 — Sprint 5: Type Safety — Breadth-First Mypy Stabilization
+
+### Changed — Sprint 5
+
+#### E1: Breadth-First Mypy Type Safety (58 files, ~153 errors fixed)
+
+- **`hierarchical/`** package (32→0): `config.py`, `hierarchical_network.py`, `goal_types.py`, `hierarchical_mcts.py`, `level_controller.py`, `goal_encoder.py`, `training_integration.py` — `no-any-return`, `no-redef`, `assignment`, `arg-type`, `return-value` ignores for torch/numpy return types, union narrowing, and dict arithmetic
+- **`cloud/gcp/training_worker.py`** (20→0): Added `TYPE_CHECKING` imports for `optim`, `Profiler`, `diagnostics`, `report` types; replaced `object | None` signatures with proper types
+- **`training_civ6.py`** (8→0): `arg-type` ignores for protocol-conformant MCTS/env calls, `int()` cast for numpy `int64` action_space_size
+- **`training/muzero_trainer.py`** (7→0): `operator` ignores for dynamic `self.network.*` method calls
+- **`pbt/`** (16→0): `mutations.py`, `population.py`, `scheduler.py` — numpy/dict arithmetic returns
+- **`utils/`** (41→~3): `rag_client.py`, `wandb_logger.py`, `llm_client.py`, `checkpoint.py`, `environment_tuning.py`, `logging_config.py`, `simple_mcts.py`
+- **`cloud/`** stale-ignore sweep: Removed 15 unused `type: ignore` comments across 12 files (`vertex_orchestrator.py`, `vertex.py`, `gcs_backend.py`, `monitoring.py`, `gcs_storage.py`, `selfplay_worker.py`, `storage.py`, `vertex_trainer.py`, `vertex_jobs.py`)
+- **`core/`** (23→~4): `civ6_mcts.py`, `civ6_network.py`, `config.py`, `mixins.py`, `network_heads.py`, `reflection_generator.py`, `reflection_memory.py`, `transformer_network.py`
+- **`distributed/`** (28→~8): `actor.py`, `coordinator.py`, `ddp_learner.py`, `learner.py`, `parameter_server.py`, `shared_storage.py`
+- **`optimizations/`** (9→~3): `auxiliary_targets.py`, `benchmarks.py`, `playout_cap.py`, `policy_pruning.py`
+- **Additional files**: `rag/config/settings.py`, `envs/microciv_enhanced.py`, `envs/vectorized_env.py`, `gameplay/fog_of_war.py`, `inference/client.py`, `interfaces/unciv_interface.py`, `training/diagnostics.py`, `training/imitation_pretraining.py`, `training/training_safeguards.py`
+
+#### Ruff Lint Auto-Fix
+
+- Auto-fixed 15 unused import errors (`F401`) across test and source files
+
+### Stats
+
+- 58 files changed, +230 / -187 lines
+- ~153 mypy errors fixed (251→~98, **61% reduction**)
+- 7 commits, 0 test regressions
+
+## [1.4.0] — 2026-03-05 — Sprint 4: Type Safety Expansion
+
+### Added
+
+- **Mypy strict overrides** for `alpha_zero.evaluation.*` and `alpha_zero.envs.*` packages (`pyproject.toml`)
+- Explicit type annotations for `run_debug_selfplay.py` validators and config
+
+### Changed — Sprint 4
+
+#### E5: Type Safety Expansion (14 files)
+
+- **`evaluation/config.py`**: `Callable` type hint for `env_mappings`
+- **`evaluation/baselines.py`**: `dtype=np.float32` for noise addition, assert-narrowed MCTS, `hasattr` guard for `reset()`
+- **`evaluation/baseline_agents.py`**: `int()` cast for MCTS `select_action` return
+- **`evaluation/evaluator.py`**: Forward type declaration for `DiversityTracker | None`
+- **`evaluation/reports.py`**: Explicit `dict[str, Any]` type annotation for comparison dict
+- **`evaluation/evaluation_pipeline.py`**: Widened `_run_evaluation` opponent type, wraps MCTS opponents with `MCTSAgentWrapper`
+- **`evaluation/muzero_vs_alphazero_benchmark.py`**: Removed 6 unused `type: ignore` comments
+- **`envs/microciv.py`**: `int()` casts for numpy `integers()`, `type: ignore[misc]` for ClassVar
+- **`envs/microciv_enhanced.py`**: `type: ignore[return-value]` for render
+- **`envs/civrealm_wrapper.py`**: `type: ignore` for numpy overload, ClassVar, render override
+- **`envs/docker_config.py`**: `float()` cast for `min()` return
+- **`envs/env_factory.py`**: Variable rename to avoid assignment type mismatch
+- **`envs/real_civ6_env.py`**: ClassVar, union-attr, override, `float()` cast
+- **`envs/vectorized_env.py`**: `list()`/`int()` casts for no-any-return
+
+#### Debug Self-Play Type Fixes
+
+- **`run_debug_selfplay.py`**: Explicit `list[str]` annotations, renamed shadowed `expected_shape` variables, `assert` guards for Optional validators, `Callable` import
+
+### Stats
+
+- 15 files changed, +46 / -35 lines
+- 0 mypy errors in `alpha_zero.envs.*` and `alpha_zero.evaluation.*`
+
+## [1.3.0] — 2026-03-04 — Sprint 3: Convergence, Batch, N-Player
+
+### Added — Sprint 3
+
+#### Convergence Validation (Epic 2)
+
+- **`scripts/validate_v130_training.py`**: Local validation script for v1.3.0 training fix
+  - Checkpoint round-trip weight preservation
+  - Loss decrease trend across training iterations
+  - Win-rate improvement vs random player baseline
+- **`tests/integration/test_convergence_validation.py`**: 6 integration tests
+
+#### Batch Self-Play Cloud Validation (Epic 3)
+
+- **`tests/integration/test_batch_selfplay_integration.py`**: 12 tests — vectorized env lifecycle, batch MCTS config, trajectory validation, schema consistency
+- **`tests/integration/test_selfplay_worker_batch.py`**: 17 tests — batch mode detection, orchestrator passthrough, temperature scheduling, CLI parsing
+- **`docs/prd/prd-batch-selfplay.md`**: Product requirements document
+
+#### N-Player MicroCiv Foundation (Epic 5)
+
+- **`num_players` parameter**: `MicroCivEnv(num_players=2..6)` — backwards-compatible, default=2
+- **Angular spawn distribution**: `_compute_start_positions()` places N players evenly
+- **Modular turn cycling**: `(current_player + 1) % num_players`
+- **N-player victory**: Last-player-standing elimination
+- **N-player truncation**: Most-cities tiebreak (None for tie)
+- **`tests/integration/test_nplayer_microciv.py`**: 51 tests
+- **`docs/prd/prd-nplayer-microciv.md`**: Product requirements document
+
+#### DDP Test Stabilization (Epic 4)
+
+- **`tests/integration/test_ddp_initialization.py`**: Fixed 17 attribute mismatches, removed 5 xfails → 22/22 pass
+
+### Changed
+
+- **CI/CD Hardening (Epic 1)**: Pinned `ruff==0.8.0`, `mypy==1.13.0`
+- **`PLANNING.md`**: Sprint 3 epics and milestones
+- Fixed lint errors in `inference_engine.py` and `inference_server.py`
+
+### Stats
+
+- 86 new tests, 22 fixed — 13 files changed, +1,935 / -149 lines
 
 ---
 

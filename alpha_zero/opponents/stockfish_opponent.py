@@ -240,9 +240,7 @@ class StockfishOpponent:
 
     # -------------------------------------------------------------- internals
 
-    def _fallback_action(
-        self, board: chess.Board, action_mask: np.ndarray, reason: str
-    ) -> int:
+    def _fallback_action(self, board: chess.Board, action_mask: np.ndarray, reason: str) -> int:
         if not self._fallback_warned:
             logger.warning(
                 "Stockfish unavailable, falling back to random move: %s",

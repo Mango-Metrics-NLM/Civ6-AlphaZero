@@ -138,7 +138,7 @@ class DockerConnectionConfig:
             Delay in seconds for this attempt.
         """
         delay = self.retry_delay_s * (2**attempt)
-        return min(delay, self.max_backoff_s)  # type: ignore[no-any-return]
+        return float(min(delay, self.max_backoff_s))
 
     def to_dict(self) -> dict[str, Any]:
         """Convert configuration to dictionary.

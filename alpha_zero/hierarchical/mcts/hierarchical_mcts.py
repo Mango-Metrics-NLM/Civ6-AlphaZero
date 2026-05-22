@@ -248,7 +248,7 @@ class SearchStats:
             return policy
 
         counts = self.visit_counts ** (1.0 / temperature)
-        return counts / (counts.sum() + 1e-8)
+        return counts / (counts.sum() + 1e-8)  # type: ignore[no-any-return]
 
 
 class MCTSNode:
@@ -324,14 +324,14 @@ class MCTSNode:
 
         return q + u
 
-    def select_child(self, c_puct: float) -> tuple[int, MCTSNode]:
+    def select_child(self, c_puct: float) -> tuple[int, MCTSNode | None]:
         """Select child node with highest UCB score.
 
         Args:
             c_puct: Exploration constant.
 
         Returns:
-            Tuple of (action, child_node).
+            Tuple of (action, child_node). Returns (-1, None) if no children.
         """
         best_score = float("-inf")
         best_action = -1
@@ -346,14 +346,14 @@ class MCTSNode:
 
         return best_action, best_child  # type: ignore[return-value]
 
-    def select_option_child(self, c_puct: float) -> tuple[str, MCTSNode]:
+    def select_option_child(self, c_puct: float) -> tuple[str, MCTSNode | None]:
         """Select option child with highest UCB score.
 
         Args:
             c_puct: Exploration constant.
 
         Returns:
-            Tuple of (option_id, child_node).
+            Tuple of (option_id, child_node). Returns ("", None) if no option children.
         """
         best_score = float("-inf")
         best_id = ""
@@ -745,11 +745,11 @@ class HierarchicalMCTS:
 
         # Renormalize
         noisy_priors = noisy_priors * valid_actions
-        return noisy_priors / (noisy_priors.sum() + 1e-8)
+        return noisy_priors / (noisy_priors.sum() + 1e-8)  # type: ignore[no-any-return]
 
     def _get_valid_actions(self, state: dict[str, Any]) -> np.ndarray:
         """Get valid action mask for state."""
-        return state.get("action_mask", np.ones(356))
+        return state.get("action_mask", np.ones(356))  # type: ignore[no-any-return]
 
     def _default_state_transition(
         self,

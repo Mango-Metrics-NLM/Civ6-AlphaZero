@@ -25,7 +25,8 @@ _orig_getaddrinfo = socket.getaddrinfo
 
 
 def _ipv4_only_getaddrinfo(
-    *args: Any, **kwargs: Any,
+    *args: Any,
+    **kwargs: Any,
 ) -> list[tuple[socket.AddressFamily, int, int, str, tuple[str, int]]]:
     """Filter DNS results to IPv4 only, preventing IPv6 hangs."""
     results = _orig_getaddrinfo(*args, **kwargs)
@@ -34,8 +35,10 @@ def _ipv4_only_getaddrinfo(
 
 socket.getaddrinfo = _ipv4_only_getaddrinfo  # type: ignore[assignment]
 
-# Also disable torch distributed backends that try network ops at import
-import os
+# Also disable torch distributed backends that try network ops at import.
+# The ``noqa: E402`` is intentional: env vars must be set BEFORE any torch
+# import in user code below, and the IPv4 monkeypatch must run first.
+import os  # noqa: E402
 
 os.environ.setdefault("TORCH_DISTRIBUTED_DEBUG", "OFF")
 os.environ.setdefault("NCCL_DEBUG", "OFF")
@@ -47,14 +50,15 @@ os.environ.setdefault("TORCH_HOME", os.path.join(os.environ.get("TEMP", "."), "t
 os.environ.setdefault("PYTORCH_NO_CUDA_MEMORY_CACHING", "1")
 os.environ.setdefault("NO_PROXY", "*")
 
-# ───────────────────────────────────────────────────────────────────────
-# Now safe to import everything
-# ───────────────────────────────────────────────────────────────────────
-import sys
+# -----------------------------------------------------------------------
+# Now safe to import everything (post env-var + getaddrinfo patches).
+# -----------------------------------------------------------------------
+import sys  # noqa: E402
+
 
 def main() -> int:
     """Run pytest with forwarded CLI arguments."""
-    import pytest  # noqa: E402 — must be after IPv4 patch
+    import pytest
 
     # Forward all CLI args to pytest
     args = sys.argv[1:] if len(sys.argv) > 1 else ["tests/", "-v", "--tb=short"]

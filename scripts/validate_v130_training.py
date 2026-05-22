@@ -1,10 +1,15 @@
-"""Validate v1.3.0 training convergence — weight loading and model improvement.
+#!/usr/bin/env python3
+"""Validate v1.3.0 training convergence - weight loading and model improvement.
 
-This script runs a small-scale local training loop to verify:
-1. Model weights carry over between iterations (not random re-init)
-2. Policy loss trends downward across iterations
-3. Win rate against random player improves
-4. Checkpoint save/load round-trips correctly
+This script runs a small-scale local training loop to verify the v1.3.0 fix
+(each training iteration fine-tunes incumbent weights instead of training from
+random initialization).
+
+Validation checks:
+  1. Model weights carry over between iterations (not random re-init)
+  2. Policy/total loss trends downward across iterations
+  3. Win rate against random player improves (informational)
+  4. Checkpoint save/load round-trips correctly
 
 This validates the same conceptual fix as v1.3.0 (--model_version for cloud),
 but using the local training pipeline's checkpoint mechanism.
@@ -13,6 +18,10 @@ Usage:
     python scripts/validate_v130_training.py
     python scripts/validate_v130_training.py --iterations=10 --games=20
     python scripts/validate_v130_training.py --verbose
+
+Exit codes:
+    0 - all validations passed
+    1 - validation failed
 """
 
 from __future__ import annotations
@@ -195,14 +204,21 @@ class ValidationResult:
             lines.append(f"    Iter {i + 1}: {cs:.6f}")
         lines.append("")
         lines.append("  Checks:")
-        lines.append(f"    [{'PASS' if self.weight_continuity_verified else 'FAIL'}] "
-                     "Weight continuity (not re-initialized between iterations)")
-        lines.append(f"    [{'PASS' if self.loss_trend_downward else 'FAIL'}] "
-                     "Loss trend downward")
-        lines.append(f"    [{'PASS' if self.win_rate_improved else 'INFO'}] "
-                     "Win rate improved (last > first, informational)")
-        lines.append(f"    [{'PASS' if self.checkpoint_roundtrip_ok else 'FAIL'}] "
-                     "Checkpoint save/load roundtrip")
+        lines.append(
+            f"    [{'PASS' if self.weight_continuity_verified else 'FAIL'}] "
+            "Weight continuity (not re-initialized between iterations)"
+        )
+        lines.append(
+            f"    [{'PASS' if self.loss_trend_downward else 'FAIL'}] Loss trend downward"
+        )
+        lines.append(
+            f"    [{'PASS' if self.win_rate_improved else 'INFO'}] "
+            "Win rate improved (last > first, informational)"
+        )
+        lines.append(
+            f"    [{'PASS' if self.checkpoint_roundtrip_ok else 'FAIL'}] "
+            "Checkpoint save/load roundtrip"
+        )
         lines.append("")
         if self.all_passed:
             lines.append("  RESULT: ALL CHECKS PASSED")
@@ -344,7 +360,7 @@ def run_validation(
         env = MicroCivEnv(board_size=board_size)
         action_space_size = env.action_space.n
 
-        # Initialize network — ONCE, then carry weights across iterations
+        # Initialize network - ONCE, then carry weights across iterations
         network = MicroCivNetwork(
             board_size=board_size,
             action_space_size=action_space_size,
@@ -367,7 +383,9 @@ def run_validation(
         win_rates: list[float] = []
         weight_checksums: list[float] = []
 
-        logger.info("Starting validation: %d iterations, %d games/iter", iterations, games_per_iter)
+        logger.info(
+            "Starting validation: %d iterations, %d games/iter", iterations, games_per_iter
+        )
         logger.info("Board size: %d, MCTS sims: %d", board_size, num_simulations)
         logger.info("Network params: %d", sum(p.numel() for p in network.parameters()))
 
@@ -384,7 +402,9 @@ def run_validation(
 
             # Training
             if len(replay_buffer) >= config.min_replay_size:
-                sample_size = min(len(replay_buffer), config.batch_size * vconfig.sample_multiplier)
+                sample_size = min(
+                    len(replay_buffer), config.batch_size * vconfig.sample_multiplier
+                )
                 train_examples = replay_buffer.sample(sample_size)
                 dataset = ReplayDataset(train_examples)
                 dataloader = DataLoader(
@@ -442,20 +462,20 @@ def run_validation(
         )
 
         # Check loss trend (compare first and last, ignoring NaN)
-        valid_losses = [l for l in total_losses if not np.isnan(l)]
+        valid_losses = [val for val in total_losses if not np.isnan(val)]
         if len(valid_losses) >= 2:
             loss_trend_down = valid_losses[-1] < valid_losses[0]
         else:
             loss_trend_down = False
 
-        # Check win rate improvement (soft check — may not trigger with few iterations)
+        # Check win rate improvement (soft check - may not trigger with few iterations)
         if len(win_rates) >= 2:
             wr_improved = win_rates[-1] > win_rates[0]
         else:
             wr_improved = False
 
         # Core checks: weight continuity + loss trend + checkpoint roundtrip
-        # Win rate is informational — it takes many more iterations to improve
+        # Win rate is informational - it takes many more iterations to improve
         all_passed = continuity_ok and loss_trend_down and roundtrip_ok
 
         return ValidationResult(
@@ -473,29 +493,31 @@ def run_validation(
         )
 
 
-def main() -> None:
+def main() -> int:
+    """Parse args, run validation, and return an exit code."""
     parser = argparse.ArgumentParser(
-        description="Validate v1.3.0 training convergence"
+        description="Validate v1.3.0 training convergence",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
         "--iterations", type=int, default=5,
-        help="Number of training iterations (default: 5)",
+        help="Number of training iterations",
     )
     parser.add_argument(
         "--games", type=int, default=10,
-        help="Self-play games per iteration (default: 10)",
+        help="Self-play games per iteration",
     )
     parser.add_argument(
         "--board_size", type=int, default=8,
-        help="Board size (default: 8, smaller = faster)",
+        help="Board size (smaller = faster)",
     )
     parser.add_argument(
         "--num_simulations", type=int, default=8,
-        help="MCTS simulations per move (default: 8)",
+        help="MCTS simulations per move",
     )
     parser.add_argument(
         "--eval_games", type=int, default=10,
-        help="Evaluation games against random (default: 10)",
+        help="Evaluation games against random",
     )
     parser.add_argument(
         "--verbose", action="store_true",
@@ -519,10 +541,10 @@ def main() -> None:
         verbose=args.verbose,
     )
 
-    print(result.summary())
+    logger.info(result.summary())
 
-    sys.exit(0 if result.all_passed else 1)
+    return 0 if result.all_passed else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

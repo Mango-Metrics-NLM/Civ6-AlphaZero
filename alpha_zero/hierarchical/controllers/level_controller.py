@@ -382,7 +382,7 @@ class StrategicController(LevelController):
         ratio = strength / (avg_enemy_strength + 1)
         current_progress = victory.get("domination", 0)
 
-        return min(1.0, ratio * 0.3 + current_progress * 0.7)  # type: ignore[no-any-return]
+        return float(min(1.0, ratio * 0.3 + current_progress * 0.7))
 
     def _assess_science_viability(self, game_state: dict[str, Any]) -> float:
         """Assess viability of science victory."""
@@ -392,7 +392,7 @@ class StrategicController(LevelController):
         science_per_turn = game_state.get("yields", {}).get("science_per_turn", 0)
         current_progress = victory.get("science", 0)
 
-        return min(1.0, (science_per_turn / 100.0) * 0.3 + current_progress * 0.7)  # type: ignore[no-any-return]
+        return float(min(1.0, (science_per_turn / 100.0) * 0.3 + current_progress * 0.7))
 
     def _assess_culture_viability(self, game_state: dict[str, Any]) -> float:
         """Assess viability of culture victory."""
@@ -400,11 +400,13 @@ class StrategicController(LevelController):
         culture_per_turn = game_state.get("yields", {}).get("culture_per_turn", 0)
         tourism = game_state.get("tourism", 0)
 
-        return min(  # type: ignore[no-any-return]
-            1.0,
-            (culture_per_turn / 100.0) * 0.2
-            + (tourism / 500.0) * 0.2
-            + victory.get("culture", 0) * 0.6,
+        return float(
+            min(
+                1.0,
+                (culture_per_turn / 100.0) * 0.2
+                + (tourism / 500.0) * 0.2
+                + victory.get("culture", 0) * 0.6,
+            )
         )
 
     def _assess_religious_viability(self, game_state: dict[str, Any]) -> float:
@@ -412,7 +414,7 @@ class StrategicController(LevelController):
         victory = game_state.get("victory_progress", {})
         faith_per_turn = game_state.get("yields", {}).get("faith_per_turn", 0)
 
-        return min(1.0, (faith_per_turn / 50.0) * 0.3 + victory.get("religious", 0) * 0.7)  # type: ignore[no-any-return]
+        return float(min(1.0, (faith_per_turn / 50.0) * 0.3 + victory.get("religious", 0) * 0.7))
 
     def _assess_diplomatic_viability(self, game_state: dict[str, Any]) -> float:
         """Assess viability of diplomatic victory."""
@@ -420,7 +422,7 @@ class StrategicController(LevelController):
         diplomacy = game_state.get("diplomacy", {})
         favor = diplomacy.get("favor", 0)
 
-        return min(1.0, (favor / 100.0) * 0.3 + victory.get("diplomatic", 0) * 0.7)  # type: ignore[no-any-return]
+        return float(min(1.0, (favor / 100.0) * 0.3 + victory.get("diplomatic", 0) * 0.7))
 
     def _should_reconsider_victory_path(
         self,

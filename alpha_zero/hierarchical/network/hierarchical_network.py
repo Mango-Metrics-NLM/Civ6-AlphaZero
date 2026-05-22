@@ -31,7 +31,7 @@ except ImportError:
         class Module:
             pass
 
-    nn = _DummyNn
+    nn = _DummyNn  # type: ignore[misc,assignment]
 
 
 from alpha_zero.hierarchical.config import HierarchyLevel
@@ -212,7 +212,7 @@ if TORCH_AVAILABLE:
 
             # Output projection
             out = F.relu(self.layer_norm(self.fc1(combined)))
-            return self.fc2(out)
+            return self.fc2(out)  # type: ignore[no-any-return]
 
     class LevelNetwork(nn.Module):
         """Neural network for a specific hierarchy level.
@@ -383,7 +383,7 @@ if TORCH_AVAILABLE:
             spatial_features = self.spatial_fc(x.flatten(1))
             vector_features = self.vector_encoder(vector)
 
-            return self.state_combiner(torch.cat([spatial_features, vector_features], dim=-1))
+            return self.state_combiner(torch.cat([spatial_features, vector_features], dim=-1))  # type: ignore[no-any-return]
 
     class HierarchicalNetwork(nn.Module):
         """Multi-level hierarchical neural network.
