@@ -525,19 +525,20 @@ def create_wandb_logger(
         return None
 
     try:
-        from alpha_zero.utils.wandb_logger import WandbConfig, WandbLogger
+        from alpha_zero.monitoring.config import MonitoringConfig
+        from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
-        wandb_config = WandbConfig(
-            project=config.project,
-            entity=config.entity,
-            tags=config.tags,
-            mode=config.mode,
+        # Legacy W&B config maps onto MonitoringConfig: project -> experiment_name,
+        # tags -> tags dict. entity/mode are W&B-specific and dropped.
+        monitoring_cfg = MonitoringConfig(
+            experiment_name=config.project,
+            tags=dict(config.tags) if config.tags else {},
         )
 
-        logger.info(f"Creating W&B logger: project={config.project}")
-        return WandbLogger(wandb_config)
+        logger.info("Creating MLflow-backed tracker: experiment=%s", config.project)
+        return WandbLogger.from_config(monitoring_cfg)
     except ImportError:
-        logger.warning("W&B not available")
+        logger.warning("MLflow not available")
         return None
 
 

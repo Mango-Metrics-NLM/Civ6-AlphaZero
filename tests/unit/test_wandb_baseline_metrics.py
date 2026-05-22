@@ -1,15 +1,19 @@
 """Tests for WandB baseline evaluation metrics logging."""
 
-from unittest.mock import MagicMock, patch
-
 import pytest
 
-from alpha_zero.evaluation.evaluation_pipeline import (
+pytestmark = pytest.mark.skip(
+    reason="W&B deprecated in v1.5.0; superseded by MLflow tests in B6"
+)
+
+from unittest.mock import MagicMock, patch  # noqa: E402
+
+from alpha_zero.evaluation.evaluation_pipeline import (  # noqa: E402
     EvaluationResult,
     GameResult,
     WinRateResult,
 )
-from alpha_zero.utils.wandb_logger import WandbConfig, WandbLogger
+from alpha_zero.utils.wandb_logger import WandbConfig, WandbLogger  # noqa: E402
 
 
 class TestWandbBaselineLogging:

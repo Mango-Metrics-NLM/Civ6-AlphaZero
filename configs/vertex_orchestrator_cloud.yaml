@@ -28,11 +28,11 @@ workerPoolSpecs:
           value: "us-central1-docker.pkg.dev/hrmtrain/civ6az-muzero-world-model/civ6az-muzero:v16-full-fix"
         - name: CIV6AZ_AGENT_ID
           value: "muzero"
-        - name: WANDB_API_KEY
-          value: "${WANDB_API_KEY}"
-        - name: WANDB_PROJECT
+        - name: MLFLOW_TRACKING_URI
+          value: "${MLFLOW_TRACKING_URI}"
+        - name: MLFLOW_EXPERIMENT_NAME
           value: "civ6az-muzero-world-model"
-        - name: WANDB_RUN_GROUP
+        - name: MLFLOW_RUN_GROUP
           value: "muzero"
-        - name: WANDB_ENABLED
+        - name: MLFLOW_ENABLED
           value: "true"

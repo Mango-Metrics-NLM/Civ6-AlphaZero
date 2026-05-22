@@ -21,17 +21,13 @@ from typing import Any
 
 import torch
 
+# Experiment tracking (routes to MLflow via the canonical tracker).
+from alpha_zero.utils.experiment_tracker import get_tracker as _get_tracker
+
 logger = logging.getLogger(__name__)
 
-# Optional W&B import
-try:
-    import wandb as _wandb
-
-    wandb: Any = _wandb
-    _WANDB_AVAILABLE = True
-except ImportError:
-    wandb = None
-    _WANDB_AVAILABLE = False
+_WANDB_AVAILABLE = True
+wandb: Any = None  # legacy compatibility; no longer used directly
 
 
 @dataclass
@@ -529,33 +525,34 @@ class AlphaZeroVsMuZeroBenchmark:
         Args:
             report: ComparisonReport with data.
         """
-        if not _WANDB_AVAILABLE:
-            logger.warning("W&B not available, skipping logging")
-            return
-
         if not self.config.wandb_enabled:
-            logger.info("W&B logging disabled in config")
+            logger.info("Experiment tracking disabled in config")
             return
 
         try:
-            run = wandb.init(
-                project=self.config.wandb_project,
-                name=f"benchmark-{report.timestamp}",
-                config=asdict(self.config),
-            )
+            tracker = _get_tracker()
+            if not getattr(tracker, "is_enabled", True):
+                logger.info("Experiment tracker not enabled, skipping logging")
+                return
+
+            tracker.init()
 
             # Log summary metrics
             summary = report.summary
-            for key, value in summary.items():
-                if isinstance(value, (int, float)):
-                    wandb.log({f"benchmark/{key}": value})
+            scalar_summary = {
+                f"benchmark/{key}": value
+                for key, value in summary.items()
+                if isinstance(value, (int, float))
+            }
+            if scalar_summary:
+                tracker.log(scalar_summary)
 
             # Log per-algorithm metrics
             for algo_name, result in [
                 ("alphazero", report.alphazero_result),
                 ("muzero", report.muzero_result),
             ]:
-                wandb.log(
+                tracker.log(
                     {
                         f"{algo_name}/win_rate": result.win_rate,
                         f"{algo_name}/avg_game_length": result.avg_game_length,
@@ -566,39 +563,42 @@ class AlphaZeroVsMuZeroBenchmark:
                     }
                 )
 
-            # Log comparison table
-            table = wandb.Table(
-                columns=[
-                    "Algorithm",
-                    "Win Rate",
-                    "Games/Min",
-                    "Env Clones",
-                    "Dynamics Calls",
-                    "Avg Game Length",
+            # Log comparison table via the tracker's log_table API.
+            columns = [
+                "Algorithm",
+                "Win Rate",
+                "Games/Min",
+                "Env Clones",
+                "Dynamics Calls",
+                "Avg Game Length",
+            ]
+            data = [
+                [
+                    "AlphaZero",
+                    report.alphazero_result.win_rate,
+                    report.alphazero_result.games_per_minute,
+                    report.alphazero_result.search_metrics.total_env_clones,
+                    report.alphazero_result.search_metrics.total_dynamics_calls,
+                    report.alphazero_result.avg_game_length,
                 ],
-                data=[
-                    [
-                        "AlphaZero",
-                        report.alphazero_result.win_rate,
-                        report.alphazero_result.games_per_minute,
-                        report.alphazero_result.search_metrics.total_env_clones,
-                        report.alphazero_result.search_metrics.total_dynamics_calls,
-                        report.alphazero_result.avg_game_length,
-                    ],
-                    [
-                        "MuZero",
-                        report.muzero_result.win_rate,
-                        report.muzero_result.games_per_minute,
-                        report.muzero_result.search_metrics.total_env_clones,
-                        report.muzero_result.search_metrics.total_dynamics_calls,
-                        report.muzero_result.avg_game_length,
-                    ],
+                [
+                    "MuZero",
+                    report.muzero_result.win_rate,
+                    report.muzero_result.games_per_minute,
+                    report.muzero_result.search_metrics.total_env_clones,
+                    report.muzero_result.search_metrics.total_dynamics_calls,
+                    report.muzero_result.avg_game_length,
                 ],
-            )
-            wandb.log({"benchmark/comparison_table": table})
+            ]
+            if hasattr(tracker, "log_table"):
+                tracker.log_table(
+                    name="benchmark/comparison_table",
+                    columns=columns,
+                    data=data,
+                )
 
-            run.finish()
-            logger.info("W&B logging complete")
+            tracker.finish()
+            logger.info("Experiment tracker logging complete")
 
         except Exception as e:
-            logger.error("Failed to log to W&B: %s", e)
+            logger.error("Failed to log benchmark results: %s", e)

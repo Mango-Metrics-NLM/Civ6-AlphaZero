@@ -16,7 +16,7 @@ import numpy as np
 from alpha_zero.envs.civ6_encoder import MicroCivEncoder
 from alpha_zero.envs.env_factory import create_game_env
 from alpha_zero.envs.microciv import MicroCivEnv
-from alpha_zero.utils.wandb_logger import log_metrics
+from alpha_zero.utils.experiment_tracker import log_metrics
 
 logger = logging.getLogger(__name__)
 

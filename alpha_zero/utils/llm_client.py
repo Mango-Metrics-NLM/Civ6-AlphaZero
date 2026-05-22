@@ -41,8 +41,8 @@ try:
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
-    AsyncOpenAI = None
-    OpenAI = None
+    AsyncOpenAI = None  # type: ignore[misc,assignment]
+    OpenAI = None  # type: ignore[misc,assignment]
 
 try:
     from anthropic import Anthropic, AsyncAnthropic
@@ -50,8 +50,8 @@ try:
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
-    AsyncAnthropic = None
-    Anthropic = None
+    AsyncAnthropic = None  # type: ignore[misc,assignment]
+    Anthropic = None  # type: ignore[misc,assignment]
 
 # Load environment variables from .env file if available
 try:
@@ -509,13 +509,11 @@ class LLMClient:
             except LLMConfigError as e:
                 logger.warning(f"Failed to initialize Anthropic client: {e}")
 
-        # Try to initialize OpenAI client.
-        # A base_url alone (LM Studio / Ollama / vLLM) is sufficient — the
-        # OpenAIClient constructor injects a placeholder api_key in that case.
-        has_openai_credentials = bool(self.config.openai_api_key) or bool(
-            self.config.openai_base_url
-        )
-        if has_openai_credentials and OPENAI_AVAILABLE:
+        # Try to initialize OpenAI client. The base_url path supports
+        # LM Studio / Ollama / vLLM local servers, which accept a placeholder
+        # API key — so either a key OR a base_url is sufficient to attempt
+        # init (OpenAIClient itself enforces "at least one" via LLMConfigError).
+        if OPENAI_AVAILABLE and (self.config.openai_api_key or self.config.openai_base_url):
             try:
                 self._clients[LLMProvider.OPENAI] = OpenAIClient(self.config)
                 logger.info("OpenAI client initialized")

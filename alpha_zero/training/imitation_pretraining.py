@@ -41,7 +41,7 @@ from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.evaluation.baseline_agents import BaseAgent, GreedyHeuristicAgent
 
 if TYPE_CHECKING:
-    from alpha_zero.utils.wandb_logger import WandbLogger
+    from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
 logger = logging.getLogger(__name__)
 

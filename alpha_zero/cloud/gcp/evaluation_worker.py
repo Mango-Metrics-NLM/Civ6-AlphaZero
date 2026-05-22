@@ -26,7 +26,7 @@ import torch
 from alpha_zero.cloud.gcp.arena import run_arena
 from alpha_zero.cloud.gcp.config import DEFAULT_MCTS_TYPE, VALID_MCTS_TYPES, GCPConfig
 from alpha_zero.cloud.gcp.storage import GCSModelStorage
-from alpha_zero.utils.wandb_logger import WandbLogger
+from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
 logger = logging.getLogger(__name__)
 

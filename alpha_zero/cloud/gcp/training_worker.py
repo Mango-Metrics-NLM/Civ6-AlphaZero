@@ -39,7 +39,13 @@ from alpha_zero.cloud.gcp.storage import (
     GCSTrajectoryStorage,
 )
 from alpha_zero.core.losses import LossConfig, compute_reward_loss
-from alpha_zero.utils.wandb_logger import WandbLogger
+from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
+
+if TYPE_CHECKING:
+    from alpha_zero.orchestrator.scheduler import HyperparameterScheduler
+    from alpha_zero.training.diagnostics import TrainingDiagnostics
+    from alpha_zero.training.training_profiler import TrainingProfiler
+    from alpha_zero.training.training_report import TrainingReport
 
 if TYPE_CHECKING:
     from alpha_zero.orchestrator.scheduler import HyperparameterScheduler
@@ -146,12 +152,6 @@ def parse_args() -> argparse.Namespace:
         "--checkpoint_interval", type=int, default=1000, help="Steps between checkpoints"
     )
     parser.add_argument("--resume_from", type=str, default=None, help="Checkpoint to resume from")
-    parser.add_argument(
-        "--model_version",
-        type=int,
-        default=None,
-        help="Model version to load as base weights for fine-tuning (None=train from scratch)",
-    )
     # Network architecture args passed by the Vertex orchestrator
     parser.add_argument("--board_size", type=int, default=8, help="Board size (spatial_size)")
     parser.add_argument("--action_space_size", type=int, default=376, help="Action space size")
@@ -913,7 +913,7 @@ def main() -> int:
     # Initialize W&B (disabled by default, opt-in via WANDB_ENABLED env var)
     wandb_logger = None
     try:
-        from alpha_zero.utils.wandb_logger import WandbLogger
+        from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
         wandb_logger = WandbLogger.from_env()
         if wandb_logger.is_enabled:
@@ -1032,15 +1032,6 @@ def main() -> int:
                 encoder_type=getattr(args, "encoder_type", "patch_embed"),
             )
         model = model.to(device)
-
-        # Load pre-trained weights for fine-tuning (if specified)
-        if args.model_version is not None and not args.dry_run:
-            storage = GCSModelStorage(config)
-            state_dict, _metadata, _model_config = storage.load_model(args.model_version)
-            model.load_state_dict(state_dict, strict=False)
-            if is_main_process:
-                logger.info("Loaded base model v%d for fine-tuning", args.model_version)
-
         raw_model = model  # Keep reference before DDP for param group construction
 
         # Wrap DDP

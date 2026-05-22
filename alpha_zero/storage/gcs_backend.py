@@ -485,7 +485,7 @@ class GCSStorageBackend(StorageBackend):
                 metadata_list.extend(self.list_trajectories(iteration=iteration))
 
         if shuffle:
-            np.random.shuffle(metadata_list)
+            np.random.shuffle(metadata_list)  # type: ignore[arg-type]
 
         for meta in metadata_list:
             try:

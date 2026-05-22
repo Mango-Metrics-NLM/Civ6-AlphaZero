@@ -224,13 +224,22 @@ class MLflowConfig:
             or os.environ.get("MLFLOW_EXPERIMENT_NAME")
             or DEFAULT_EXPERIMENT_NAME
         )
+        # Allow MLFLOW_ENABLED to opt-in even when CIV6AZ_MLFLOW_ENABLED is unset.
+        if os.environ.get(f"{ENV_PREFIX}ENABLED") is not None:
+            enabled = _bool_env(f"{ENV_PREFIX}ENABLED", default=False)
+        else:
+            enabled = _bool_env("MLFLOW_ENABLED", default=False)
         return cls(
-            enabled=_bool_env(f"{ENV_PREFIX}ENABLED", default=False),
+            enabled=enabled,
             tracking_uri=tracking_uri,
-            registry_uri=os.environ.get(f"{ENV_PREFIX}REGISTRY_URI"),
+            registry_uri=(
+                os.environ.get(f"{ENV_PREFIX}REGISTRY_URI") or os.environ.get("MLFLOW_REGISTRY_URI")
+            ),
             experiment_name=experiment_name,
-            run_name=os.environ.get(f"{ENV_PREFIX}RUN_NAME"),
-            tags=parse_tag_string(os.environ.get(f"{ENV_PREFIX}TAGS", "")),
+            run_name=(os.environ.get(f"{ENV_PREFIX}RUN_NAME") or os.environ.get("MLFLOW_RUN_NAME")),
+            tags=parse_tag_string(
+                os.environ.get(f"{ENV_PREFIX}TAGS") or os.environ.get("MLFLOW_TAGS", "")
+            ),
             description=os.environ.get(f"{ENV_PREFIX}DESCRIPTION", ""),
             artifact_location=os.environ.get(f"{ENV_PREFIX}ARTIFACT_LOCATION"),
             log_frequency=int(os.environ.get(f"{ENV_PREFIX}LOG_FREQUENCY", "1")),

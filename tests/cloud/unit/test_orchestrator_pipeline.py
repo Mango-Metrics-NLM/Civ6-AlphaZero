@@ -116,15 +116,21 @@ class TestBuildExtraArgs:
         assert any("--board_size=8" in a for a in extra)
         assert any("--action_space_size=376" in a for a in extra)
 
-    def test_training_extra_args_with_model_version(self, base_args: argparse.Namespace) -> None:
-        """Training args include --model_version when provided."""
-        extra = build_training_extra_args(base_args, model_version=42)
-        assert "--model_version=42" in extra
+    def test_training_extra_args_never_emits_model_version(
+        self, base_args: argparse.Namespace
+    ) -> None:
+        """Orchestrator no longer emits --model_version.
 
-    def test_training_extra_args_without_model_version(self, base_args: argparse.Namespace) -> None:
-        """Training args omit --model_version when None."""
-        extra = build_training_extra_args(base_args)
-        assert not any("--model_version" in a for a in extra)
+        The training worker dropped the flag in favour of checkpoint resumption
+        via --resume_from (see vertex_orchestrator._resolve_resume_token and
+        the gemini-code-assist review on PR #81). The kwarg is preserved on the
+        function signature for backward compatibility but the value is never
+        forwarded; both with-value and without-value calls must omit it.
+        """
+        without = build_training_extra_args(base_args)
+        with_value = build_training_extra_args(base_args, model_version=42)
+        assert not any("--model_version" in a for a in without)
+        assert not any("--model_version" in a for a in with_value)
 
     def test_evaluation_extra_args(self, base_args: argparse.Namespace) -> None:
         """Evaluation args include MCTS and board config."""

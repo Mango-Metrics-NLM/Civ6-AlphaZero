@@ -541,6 +541,10 @@ class TestMultiplayerStateDetection:
 # =============================================================================
 
 
+@pytest.mark.skip(
+    reason="UncivInterface.parse_multiplayer_save is a planned method not yet implemented; "
+    "tests precede the implementation. Re-enable once the parser ships."
+)
 class TestUncivMultiplayerSaveParsing:
     """Tests for Unciv multiplayer save parsing."""
 

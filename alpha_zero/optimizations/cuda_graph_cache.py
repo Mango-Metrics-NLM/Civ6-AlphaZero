@@ -21,7 +21,7 @@ from typing import Any, NamedTuple
 
 import torch
 
-from alpha_zero.utils.wandb_logger import log_metrics
+from alpha_zero.utils.experiment_tracker import log_metrics
 
 logger = logging.getLogger(__name__)
 

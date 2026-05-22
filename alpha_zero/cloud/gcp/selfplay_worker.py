@@ -1069,19 +1069,18 @@ def run_batch_selfplay(
 
         # Log batch metrics to W&B
         try:
-            from alpha_zero.utils.wandb_logger import WANDB_AVAILABLE, log_metrics
+            from alpha_zero.utils.experiment_tracker import log_metrics
 
-            if WANDB_AVAILABLE:
-                log_metrics(
-                    {
-                        "selfplay/batch_games_completed": batch_games,
-                        "selfplay/batch_time_seconds": batch_elapsed,
-                        "selfplay/parallel_envs": num_parallel_games,
-                        "selfplay/total_games_completed": games_completed,
-                    }
-                )
+            log_metrics(
+                {
+                    "selfplay/batch_games_completed": batch_games,
+                    "selfplay/batch_time_seconds": batch_elapsed,
+                    "selfplay/parallel_envs": num_parallel_games,
+                    "selfplay/total_games_completed": games_completed,
+                }
+            )
         except ImportError:
-            logger.debug("wandb not installed, skipping batch metrics logging")
+            logger.debug("experiment tracker not available, skipping batch metrics logging")
 
         # Memory cleanup between batches
         if device != "cpu":
@@ -1147,7 +1146,7 @@ def main() -> int:
     # Initialize W&B (disabled by default, opt-in via WANDB_ENABLED env var)
     wandb_logger = None
     try:
-        from alpha_zero.utils.wandb_logger import WandbLogger
+        from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
         wandb_logger = WandbLogger.from_env()
         if wandb_logger.is_enabled:
@@ -1304,7 +1303,7 @@ def main() -> int:
 
             # Log batch-specific metrics
             if use_batch:
-                from alpha_zero.utils.wandb_logger import log_metrics
+                from alpha_zero.utils.experiment_tracker import log_metrics
 
                 log_metrics(
                     {

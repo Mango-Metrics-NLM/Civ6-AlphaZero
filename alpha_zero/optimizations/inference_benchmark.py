@@ -31,6 +31,23 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
+def _reset_peak_gpu_memory() -> None:
+    """Reset CUDA peak memory tracker. No-op on CPU."""
+    import torch
+
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
+
+
+def _read_peak_gpu_memory_mb() -> float | None:
+    """Return peak CUDA memory in MB, or None on CPU."""
+    import torch
+
+    if not torch.cuda.is_available():
+        return None
+    return torch.cuda.max_memory_allocated() / (1024**2)
+
+
 @dataclass
 class InferenceMetrics:
     """Metrics for inference performance benchmarking.
@@ -46,6 +63,8 @@ class InferenceMetrics:
         network_eval_time_pct: Percentage of time spent in network evaluation.
         env_step_time_pct: Percentage of time spent in environment stepping.
         additional_metrics: Additional benchmark-specific metrics.
+        peak_gpu_memory_mb: Peak CUDA memory in MB during the timed block,
+            or None when running on CPU.
     """
 
     name: str
@@ -58,6 +77,7 @@ class InferenceMetrics:
     network_eval_time_pct: float
     env_step_time_pct: float
     additional_metrics: dict[str, Any] = field(default_factory=dict)
+    peak_gpu_memory_mb: float | None = None
 
     def summary(self) -> str:
         """Generate human-readable summary of metrics.
@@ -101,6 +121,7 @@ class InferenceMetrics:
             "network_eval_time_pct": self.network_eval_time_pct,
             "env_step_time_pct": self.env_step_time_pct,
             "additional_metrics": dict(self.additional_metrics),
+            "peak_gpu_memory_mb": self.peak_gpu_memory_mb,
         }
 
         return result
@@ -184,6 +205,7 @@ class InferenceBenchmark:
         # Benchmark phase
         total_moves = 0
         total_game_time = 0.0
+        _reset_peak_gpu_memory()
         start_time = time.perf_counter()
 
         for i in range(num_games):
@@ -193,6 +215,7 @@ class InferenceBenchmark:
             logger.debug(f"Game {i + 1}/{num_games}: {move_count} moves in {game_time:.2f}s")
 
         total_time = time.perf_counter() - start_time
+        peak_mem_mb = _read_peak_gpu_memory_mb()
 
         # Calculate metrics
         games_per_minute = (num_games / total_time) * 60.0
@@ -220,6 +243,7 @@ class InferenceBenchmark:
                 "num_simulations": num_simulations,
                 "num_sampled_actions": num_sampled_actions,
             },
+            peak_gpu_memory_mb=peak_mem_mb,
         )
 
         logger.info(f"Single-env benchmark complete:\n{metrics.summary()}")
@@ -294,6 +318,7 @@ class InferenceBenchmark:
         total_moves = 0
         total_game_time = 0.0
         games_completed = 0
+        _reset_peak_gpu_memory()
         start_time = time.perf_counter()
 
         while games_completed < num_games:
@@ -311,6 +336,7 @@ class InferenceBenchmark:
             )
 
         total_time = time.perf_counter() - start_time
+        peak_mem_mb = _read_peak_gpu_memory_mb()
 
         # Calculate metrics
         games_per_minute = (games_completed / total_time) * 60.0
@@ -343,6 +369,7 @@ class InferenceBenchmark:
                 "num_parallel_envs": num_parallel,
                 "max_batch_size": max_batch_size,
             },
+            peak_gpu_memory_mb=peak_mem_mb,
         )
 
         logger.info(f"Batch benchmark complete:\n{metrics.summary()}")
@@ -409,25 +436,24 @@ class InferenceBenchmark:
 
         # W&B logging
         try:
-            from alpha_zero.utils.wandb_logger import WANDB_AVAILABLE, log_metrics
+            from alpha_zero.utils.experiment_tracker import log_metrics
 
-            if WANDB_AVAILABLE:
-                log_metrics(
-                    {
-                        "benchmark/single_games_per_minute": single_metrics.games_per_minute,
-                        "benchmark/batch_games_per_minute": batch_metrics.games_per_minute,
-                        "benchmark/speedup": speedup,
-                        "benchmark/speedup_moves": speedup_moves,
-                        "benchmark/parallel_envs": num_parallel,
-                        "benchmark/single_moves_per_second": single_metrics.moves_per_second,
-                        "benchmark/batch_moves_per_second": batch_metrics.moves_per_second,
-                    }
-                )
+            log_metrics(
+                {
+                    "benchmark/single_games_per_minute": single_metrics.games_per_minute,
+                    "benchmark/batch_games_per_minute": batch_metrics.games_per_minute,
+                    "benchmark/speedup": speedup,
+                    "benchmark/speedup_moves": speedup_moves,
+                    "benchmark/parallel_envs": num_parallel,
+                    "benchmark/single_moves_per_second": single_metrics.moves_per_second,
+                    "benchmark/batch_moves_per_second": batch_metrics.moves_per_second,
+                }
+            )
 
-                # Log comparison table
-                self._log_comparison_table(single_metrics, batch_metrics, speedup)
+            # Log comparison table
+            self._log_comparison_table(single_metrics, batch_metrics, speedup)
         except ImportError:
-            logger.warning("W&B not available, skipping logging")
+            logger.warning("Experiment tracker not available, skipping logging")
 
         return {
             "single": single_metrics,
@@ -540,9 +566,9 @@ class InferenceBenchmark:
             speedup: Speedup ratio (batch/single).
         """
         try:
-            from alpha_zero.utils.wandb_logger import WandbLogger
+            from alpha_zero.utils.experiment_tracker import get_tracker
 
-            logger_instance = WandbLogger()
+            logger_instance = get_tracker()
 
             columns = [
                 "Mode",

@@ -20,10 +20,10 @@ from alpha_zero.cloud.gcp.vertex_jobs import (
     VertexSelfPlayJob,
     VertexTrainingJob,
 )
+from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 from alpha_zero.pbt.config import AgentState, PBTConfig
 from alpha_zero.pbt.evaluator import EvaluationReport, MatchResult, PBTEvaluator
 from alpha_zero.pbt.population import PopulationManager
-from alpha_zero.utils.wandb_logger import WandbLogger
 
 # Training safeguards (optional, graceful degradation)
 try:

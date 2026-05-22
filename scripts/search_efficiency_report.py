@@ -2,8 +2,14 @@
 
 Generates comparison plots and markdown report for AlphaZero vs MuZero
 search efficiency. Works in two modes:
-1. W&B mode: pulls search metrics from W&B runs
-2. Local mode: reads from benchmark JSON output files
+1. W&B mode (legacy): pulls search metrics from historical W&B runs.
+2. Local mode (preferred): reads from benchmark JSON output files.
+
+.. deprecated:: 1.5.0
+    The ``--wandb_run`` path still uses ``wandb.Api()`` to pull
+    historical metrics. v1.5.0 migrates active tracking to MLflow; a
+    future revision should port this to ``mlflow.MlflowClient``. Use
+    ``--benchmark_results`` for current runs.
 
 Usage:
     # From benchmark output files

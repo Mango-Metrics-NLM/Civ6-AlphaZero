@@ -435,7 +435,7 @@ def main() -> int:
         import os
 
         if os.environ.get("WANDB_ENABLED", "").lower() == "true":
-            from alpha_zero.utils.wandb_logger import WandbLogger
+            from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
             wandb_logger = WandbLogger.from_env()
             if wandb_logger.is_enabled:

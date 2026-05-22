@@ -82,6 +82,10 @@ class TestBuildSelfplayExtraArgs:
 # =============================================================================
 
 
+@pytest.mark.skip(
+    reason="W&B env coordination replaced by MLFLOW_* in B3; "
+    "superseded by tests/cloud/unit/test_orchestrator_mlflow.py"
+)
 class TestWandbEnvVarPropagation:
     """Tests for W&B environment variable propagation to child jobs."""
 

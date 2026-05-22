@@ -51,7 +51,7 @@ from alpha_zero.core.mcts_constants import (
 from alpha_zero.core.mcts_constants import (
     GREEDY_THRESHOLD as _GREEDY_THRESHOLD,
 )
-from alpha_zero.utils.wandb_logger import log_metrics
+from alpha_zero.utils.experiment_tracker import log_metrics
 
 if TYPE_CHECKING:
     from alpha_zero.core.civ6_mcts import MCTSEnvironment, MCTSNetwork

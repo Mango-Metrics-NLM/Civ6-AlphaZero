@@ -20,44 +20,48 @@ from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.exceptions import PreemptionError, QuotaExceededError, VertexJobError
 
 
-def _wandb_env_vars() -> dict[str, str]:
-    """Get W&B env vars for container passthrough, filtering out empty values.
+def _tracker_env_vars() -> dict[str, str]:
+    """Collect MLflow tracking env vars to inject into worker containers.
 
-    Vertex AI rejects env vars with empty string values, so we only
-    include vars that have non-empty values set.
+    Vertex AI rejects env vars with empty string values, so this filters
+    them out. Returns only ``MLFLOW_*`` keys that are set to a non-empty
+    value in the orchestrator process environment, ready to be merged
+    into a ``JobSpec.env_vars`` dict.
 
-    The WANDB_API_KEY is resolved with the following precedence:
-    1. ``WANDB_API_KEY`` env var (backwards compatible)
-    2. GCP Secret Manager reference passed as env vars
-       ``CIV6AZ_WANDB_SECRET_PROJECT`` and ``CIV6AZ_WANDB_SECRET_NAME``.
-       The worker resolves the secret at runtime to avoid embedding
-       plaintext keys in the Vertex AI job spec.
+    Covers:
+    - ``MLFLOW_TRACKING_URI``: where MLflow records runs
+    - ``MLFLOW_EXPERIMENT_NAME``: experiment grouping
+    - ``MLFLOW_RUN_NAME``: per-phase run name (set by orchestrator)
+    - ``MLFLOW_TAGS``: comma-separated ``k=v`` tags (e.g. group encoding)
+    - ``MLFLOW_ENABLED``: feature flag for the tracker
+    - ``MLFLOW_REGISTRY_URI``: optional separate registry URI
     """
-    wandb_key = os.environ.get("WANDB_API_KEY", "")
+    keys = (
+        "MLFLOW_TRACKING_URI",
+        "MLFLOW_EXPERIMENT_NAME",
+        "MLFLOW_RUN_NAME",
+        "MLFLOW_TAGS",
+        "MLFLOW_ENABLED",
+        "MLFLOW_REGISTRY_URI",
+    )
+    return {k: os.environ[k] for k in keys if os.environ.get(k)}
 
-    candidates = {
-        "WANDB_ENABLED": os.environ.get("WANDB_ENABLED", "false"),
-        # WANDB_PROJECT default scoped to the MuZero world-model run; PR #75's
-        # Secret Manager fallback for WANDB_API_KEY (below) is preserved.
-        "WANDB_PROJECT": os.environ.get("WANDB_PROJECT", "civ6az-muzero-world-model"),
-        "WANDB_ENTITY": os.environ.get("WANDB_ENTITY", ""),
-        "WANDB_MODE": os.environ.get("WANDB_MODE", "online"),
-        "WANDB_GROUP": os.environ.get("WANDB_GROUP", ""),
-        "WANDB_RUN_NAME": os.environ.get("WANDB_RUN_NAME", ""),
-    }
 
-    if wandb_key:
-        # Direct key provided — pass through (backwards compatible)
-        candidates["WANDB_API_KEY"] = wandb_key
-    else:
-        # Pass Secret Manager reference so worker resolves at runtime
-        sm_project = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
-        sm_secret = os.environ.get("CIV6AZ_WANDB_SECRET_NAME", "wandb-api-key")
-        if sm_project:
-            candidates["CIV6AZ_WANDB_SECRET_PROJECT"] = sm_project
-            candidates["CIV6AZ_WANDB_SECRET_NAME"] = sm_secret
+def _wandb_env_vars() -> dict[str, str]:
+    """Deprecated alias for :func:`_tracker_env_vars`.
 
-    return {k: v for k, v in candidates.items() if v}
+    Kept for one release so external callers (and a few tests) keep
+    working while the W&B-shaped name fades out. Internal call sites
+    in this module should use :func:`_tracker_env_vars` directly.
+    """
+    import warnings
+
+    warnings.warn(
+        "_wandb_env_vars is deprecated; use _tracker_env_vars.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _tracker_env_vars()
 
 
 def resolve_wandb_key_from_secret_manager() -> str:
@@ -66,7 +70,7 @@ def resolve_wandb_key_from_secret_manager() -> str:
     Called by workers at container startup (not at job submission time)
     to avoid embedding plaintext secrets in job specs.
 
-    Uses env vars set by ``_wandb_env_vars``:
+    Uses env vars (legacy W&B secret pathway, kept for backwards compat):
     - ``CIV6AZ_WANDB_SECRET_PROJECT``: GCP project ID
     - ``CIV6AZ_WANDB_SECRET_NAME``: Secret name (default: wandb-api-key)
 
@@ -540,7 +544,7 @@ class VertexTuningJob:
                 "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
                 "CIV6AZ_VERTEX_REGION": self.config.region,
                 "CIV6AZ_ENCODER_TYPE": getattr(self.config.network, "encoder_type", "patch_embed"),
-                **_wandb_env_vars(),
+                **_tracker_env_vars(),
             },
             machine_type="n1-standard-4",  # Tuning trials usually smaller
             accelerator_type="NVIDIA_TESLA_T4",
@@ -669,7 +673,7 @@ class VertexSelfPlayJob:
                     "CIV6AZ_GCS_BUCKET": self.config.bucket,
                     "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
                     "CIV6AZ_VERTEX_REGION": self.config.region,
-                    **_wandb_env_vars(),
+                    **_tracker_env_vars(),
                 },
                 machine_type=worker_config.machine_type,
                 accelerator_type=worker_config.accelerator_type,
@@ -861,7 +865,7 @@ class VertexTrainingJob:
                 "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
                 "CIV6AZ_VERTEX_REGION": self.config.region,
                 "CIV6AZ_ENCODER_TYPE": getattr(self.config.network, "encoder_type", "patch_embed"),
-                **_wandb_env_vars(),
+                **_tracker_env_vars(),
             },
             machine_type=training_config.machine_type,
             accelerator_type=training_config.accelerator_type,
@@ -975,7 +979,7 @@ class VertexEvaluationJob:
                 "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
                 "CIV6AZ_VERTEX_REGION": self.config.region,
                 "CIV6AZ_ENCODER_TYPE": getattr(self.config.network, "encoder_type", "patch_embed"),
-                **_wandb_env_vars(),
+                **_tracker_env_vars(),
             },
             # CPU-only: evaluation doesn't need GPU
             machine_type="n1-standard-4",
@@ -1095,7 +1099,7 @@ class VertexTournamentJob:
             "CIV6AZ_VERTEX_REGION": self.config.region,
             "CIV6AZ_ENCODER_TYPE": getattr(self.config.network, "encoder_type", "patch_embed"),
         }
-        env_vars.update(_wandb_env_vars())
+        env_vars.update(_tracker_env_vars())
         env_vars = {k: v for k, v in env_vars.items() if v}
 
         spec = JobSpec(

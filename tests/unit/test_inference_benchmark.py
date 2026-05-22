@@ -161,6 +161,8 @@ class TestInferenceMetrics:
             "network_eval_time_pct",
             "env_step_time_pct",
             "additional_metrics",
+            # v1.5.0 D1: peak GPU memory tracking for batch self-play.
+            "peak_gpu_memory_mb",
         }
 
         assert set(result.keys()) == expected_keys

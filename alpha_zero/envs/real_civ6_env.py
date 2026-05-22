@@ -412,7 +412,7 @@ class RealCiv6Env(gym.Env):
         try:
             assert self._bridge is not None
             self._raw_state = self._run_async(
-                self._bridge.wait_for_state(timeout=self.bridge_config.command_timeout_ms / 1000.0)  # type: ignore[union-attr]
+                self._bridge.wait_for_state(timeout=self.bridge_config.command_timeout_ms / 1000.0)
             )
             self._current_state = self._state_converter.convert(self._raw_state)
 
@@ -494,6 +494,25 @@ class RealCiv6Env(gym.Env):
             "action_mask": action_mask,
         }
 
+    def _get_observation(self) -> dict[str, np.ndarray]:
+        """Get current observation (deprecated).
+
+        .. deprecated::
+            Use :meth:`get_observation` instead. This method will be removed
+            in a future version.
+
+        Returns:
+            Observation dictionary with spatial, vector, and action_mask.
+        """
+        import warnings
+
+        warnings.warn(
+            "_get_observation() is deprecated, use get_observation() instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.get_observation()
+
     def get_info(self) -> dict[str, Any]:
         """Get current info dictionary.
 
@@ -521,6 +540,25 @@ class RealCiv6Env(gym.Env):
             "winner_id": winner_id,
             "is_game_over": self._raw_state.is_game_over if self._raw_state else False,
         }
+
+    def _get_info(self) -> dict[str, Any]:
+        """Get current info dictionary (deprecated).
+
+        .. deprecated::
+            Use :meth:`get_info` instead. This method will be removed
+            in a future version.
+
+        Returns:
+            Info dictionary with game state details.
+        """
+        import warnings
+
+        warnings.warn(
+            "_get_info() is deprecated, use get_info() instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.get_info()
 
     def _calculate_reward(
         self,

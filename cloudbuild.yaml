@@ -1,5 +1,5 @@
 substitutions:
-  _TAG_NAME: v1.2.0
+  _TAG_NAME: v1.5.0
   _IMAGE: us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training
 
 steps:
@@ -38,6 +38,10 @@ steps:
   id: test-selfplay
   entrypoint: python
   dir: /app
+  env:
+  - 'MLFLOW_TRACKING_URI=file:/workspace/mlruns'
+  - 'MLFLOW_EXPERIMENT_NAME=ci-smoke'
+  - 'MLFLOW_ENABLED=true'
   args:
   - -m
   - alpha_zero.cloud.gcp.selfplay_worker
@@ -53,6 +57,10 @@ steps:
   id: test-training
   entrypoint: python
   dir: /app
+  env:
+  - 'MLFLOW_TRACKING_URI=file:/workspace/mlruns'
+  - 'MLFLOW_EXPERIMENT_NAME=ci-smoke'
+  - 'MLFLOW_ENABLED=true'
   args:
   - -m
   - alpha_zero.cloud.gcp.training_worker
@@ -67,6 +75,10 @@ steps:
   id: test-muzero-selfplay
   entrypoint: python
   dir: /app
+  env:
+  - 'MLFLOW_TRACKING_URI=file:/workspace/mlruns'
+  - 'MLFLOW_EXPERIMENT_NAME=ci-smoke'
+  - 'MLFLOW_ENABLED=true'
   args:
   - -m
   - alpha_zero.cloud.gcp.selfplay_worker
@@ -101,6 +113,10 @@ steps:
   id: test-evaluation
   entrypoint: python
   dir: /app
+  env:
+  - 'MLFLOW_TRACKING_URI=file:/workspace/mlruns'
+  - 'MLFLOW_EXPERIMENT_NAME=ci-smoke'
+  - 'MLFLOW_ENABLED=true'
   args:
   - -m
   - alpha_zero.cloud.gcp.evaluation_worker

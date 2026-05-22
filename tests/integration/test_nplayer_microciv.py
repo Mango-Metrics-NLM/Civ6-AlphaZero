@@ -39,8 +39,10 @@ def env_2p():
 def env_np(request):
     """N-player environment (parametrized)."""
     return MicroCivEnv(
-        board_size=_BOARD_SIZE, max_turns=_MAX_TURNS,
-        seed=42, num_players=request.param,
+        board_size=_BOARD_SIZE,
+        max_turns=_MAX_TURNS,
+        seed=42,
+        num_players=request.param,
     )
 
 
@@ -87,6 +89,7 @@ class TestBackwardsCompat:
         """Observation shape unchanged for 2 players."""
         obs, _ = env_2p.reset()
         from alpha_zero.envs.civ6_encoder import MicroCivEncoder
+
         assert obs["spatial"].shape == (MicroCivEncoder.TOTAL_CHANNELS, _BOARD_SIZE, _BOARD_SIZE)
         assert obs["vector"].shape == (64,)
 
@@ -133,11 +136,18 @@ class TestNPlayerConstruction:
         assert info["num_players"] == env_np.num_players
 
     def test_invalid_num_players_raises(self):
-        """Invalid num_players should raise ValueError."""
+        """Invalid num_players should raise ValueError.
+
+        MicroCivEnv accepts ``2 <= num_players <= GAME.MAX_PLAYERS``; assert
+        the boundary using the constant so this test stays correct if the
+        cap moves.
+        """
+        from alpha_zero.utils.constants import GAME
+
         with pytest.raises(ValueError):
             MicroCivEnv(board_size=_BOARD_SIZE, num_players=1)
         with pytest.raises(ValueError):
-            MicroCivEnv(board_size=_BOARD_SIZE, num_players=7)
+            MicroCivEnv(board_size=_BOARD_SIZE, num_players=GAME.MAX_PLAYERS + 1)
         with pytest.raises(ValueError):
             MicroCivEnv(board_size=_BOARD_SIZE, num_players=0)
 
@@ -198,8 +208,7 @@ class TestNPlayerVictory:
 
     def test_last_player_standing_wins(self):
         """When all but one player is eliminated, that player wins."""
-        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=_MAX_TURNS,
-                          num_players=4, seed=42)
+        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=_MAX_TURNS, num_players=4, seed=42)
         env.reset()
 
         # Remove all units/cities for players 1, 2, 3
@@ -211,8 +220,7 @@ class TestNPlayerVictory:
 
     def test_two_remaining_no_victory(self):
         """Game continues while 2+ players remain."""
-        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=_MAX_TURNS,
-                          num_players=4, seed=42)
+        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=_MAX_TURNS, num_players=4, seed=42)
         env.reset()
 
         # Remove only player 2 and 3's units
@@ -222,8 +230,7 @@ class TestNPlayerVictory:
 
     def test_all_eliminated_none_winner(self):
         """If all players eliminated, winner is None."""
-        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=_MAX_TURNS,
-                          num_players=3, seed=42)
+        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=_MAX_TURNS, num_players=3, seed=42)
         env.reset()
 
         env.units = []
@@ -245,8 +252,7 @@ class TestNPlayerTruncation:
         """Player with most cities wins on truncation."""
         from alpha_zero.envs.microciv import City
 
-        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=5,
-                          num_players=3, seed=42)
+        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=5, num_players=3, seed=42)
         env.reset()
         env.turn = 5  # Force truncation
 
@@ -264,8 +270,7 @@ class TestNPlayerTruncation:
         """Equal city counts produce None winner."""
         from alpha_zero.envs.microciv import City
 
-        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=5,
-                          num_players=3, seed=42)
+        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=5, num_players=3, seed=42)
         env.reset()
         env.turn = 5
 
@@ -287,11 +292,25 @@ class TestNPlayerTruncation:
 class TestNPlayerEncoder:
     """Tests that encoder produces correct shapes for N-player games."""
 
-    def test_spatial_shape_unchanged(self, env_np):
-        """Spatial observation shape is independent of num_players."""
+    def test_spatial_shape_scales_with_num_players(self, env_np):
+        """Spatial channels scale with num_players (3 + 4*N + 2).
+
+        The encoder layout from civ6_encoder.MicroCivEncoder docstring:
+          - 3 channels: shared terrain (plains/hills/mountain)
+          - 3 * num_players channels: unit types per player
+          - num_players channels: per-player city presence
+          - 1 channel: visibility (fog of war)
+          - 1 channel: constant bias
+        Total = 3 + 4 * num_players + 2.
+
+        For num_players=2 this gives the legacy 13. For 3/4/6 it gives 17/21/29.
+        ``MicroCivEncoder.TOTAL_CHANNELS`` is a class-level constant fixed at
+        13 for backwards-compat with code that references it directly; the
+        instance dynamically sizes its output.
+        """
         obs, _ = env_np.reset()
-        from alpha_zero.envs.civ6_encoder import MicroCivEncoder
-        assert obs["spatial"].shape == (MicroCivEncoder.TOTAL_CHANNELS, _BOARD_SIZE, _BOARD_SIZE)
+        expected_channels = 3 + 4 * env_np.num_players + 2
+        assert obs["spatial"].shape == (expected_channels, _BOARD_SIZE, _BOARD_SIZE)
 
     def test_vector_shape_unchanged(self, env_np):
         """Vector observation shape is independent of num_players."""

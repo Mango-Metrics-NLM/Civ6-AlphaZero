@@ -151,12 +151,19 @@ if _LLM_AVAILABLE:
         ]
     )
 
-# W&B Logger (optional - depends on wandb package)
+# Experiment tracker (MLflow-backed; preserves legacy WandbLogger name for
+# downstream callers via the WandbCompatAdapter alias).
 try:
-    from alpha_zero.utils.wandb_logger import (  # noqa: F401
-        WandbLogger,
-        get_wandb_logger,
-        init_wandb,
+    from alpha_zero.monitoring.mlflow_logger import (  # noqa: F401
+        WandbCompatAdapter as WandbLogger,
+    )
+    from alpha_zero.utils.experiment_tracker import (  # noqa: F401
+        get_tracker as get_wandb_logger,
+    )
+    from alpha_zero.utils.experiment_tracker import (  # noqa: F401
+        init_tracker as init_wandb,
+    )
+    from alpha_zero.utils.experiment_tracker import (  # noqa: F401
         log_metrics,
     )
 

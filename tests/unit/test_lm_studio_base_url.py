@@ -32,6 +32,21 @@ from alpha_zero.utils.llm_client import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _force_openai_available() -> "object":
+    """Treat openai as importable in every test in this module.
+
+    The CI matrix does not install the optional ``openai`` SDK, so
+    ``alpha_zero.utils.llm_client.OPENAI_AVAILABLE`` is False at import time
+    and ``OpenAIClient.__init__`` raises before any patched SDK constructor
+    is reached. Patch the module-level flag so the tests exercise the real
+    plumbing (with mocked SDK classes) regardless of whether the optional
+    dep is present.
+    """
+    with patch("alpha_zero.utils.llm_client.OPENAI_AVAILABLE", True):
+        yield
+
+
 class TestLLMConfigBaseURL:
     """Verify base_url field on LLMConfig and its env-var sourcing."""
 
