@@ -18,7 +18,7 @@ from alpha_zero.tournament.elo import ELORatingSystem
 from alpha_zero.tournament.history import MatchHistory
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -61,7 +61,9 @@ def fetch_logs(project_id: str, job_id: str, start_time: str | None = None) -> l
 
         except Exception as e:
             if ("Quota exceeded" in str(e) or "429" in str(e)) and last_timestamp:
-                logger.warning(f"Quota exceeded. Fetched {fetch_count} in this batch. Waiting 65s...")
+                logger.warning(
+                    f"Quota exceeded. Fetched {fetch_count} in this batch. Waiting 65s..."
+                )
                 # Shift start_time slightly to avoid re-fetching the last entry
                 # last_timestamp is a datetime object
                 next_start_dt = last_timestamp + timedelta(microseconds=1)
@@ -75,12 +77,11 @@ def fetch_logs(project_id: str, job_id: str, start_time: str | None = None) -> l
     logger.info(f"Fetched {len(log_messages)} log entries total.")
     return log_messages
 
+
 def parse_match_results(logs: list[str]) -> list[dict]:
     """Parse matchup results from logs."""
     # Pattern: Result: v000 vs v001 -> W:8 D:1 L:1 (win_rate=80.0%)
-    match_pattern = re.compile(
-        r"Result:\s+(v\d+)\s+vs\s+(v\d+)\s+->\s+W:(\d+)\s+D:(\d+)\s+L:(\d+)"
-    )
+    match_pattern = re.compile(r"Result:\s+(v\d+)\s+vs\s+(v\d+)\s+->\s+W:(\d+)\s+D:(\d+)\s+L:(\d+)")
 
     matchups = []
     seen_match_keys = set()
@@ -97,18 +98,21 @@ def parse_match_results(logs: list[str]) -> list[dict]:
             # Use a key to avoid duplicates if logs overlaps
             match_key = f"{player_a}_{player_b}_{wins}_{draws}_{losses}"
             if match_key not in seen_match_keys:
-                matchups.append({
-                    "player_a": player_a,
-                    "player_b": player_b,
-                    "wins": wins,
-                    "draws": draws,
-                    "losses": losses,
-                    "total_games": wins + draws + losses
-                })
+                matchups.append(
+                    {
+                        "player_a": player_a,
+                        "player_b": player_b,
+                        "wins": wins,
+                        "draws": draws,
+                        "losses": losses,
+                        "total_games": wins + draws + losses,
+                    }
+                )
                 seen_match_keys.add(match_key)
 
     logger.info(f"Parsed {len(matchups)} unique matchups from logs.")
     return matchups
+
 
 def reconstruct_tournament(matchups: list[dict], output_db: str):
     """Reconstruct tournament history and run analysis."""
@@ -130,9 +134,7 @@ def reconstruct_tournament(matchups: list[dict], output_db: str):
         rating_b = stats_b.current_rating if stats_b else 1500.0
 
         for k in range(matchup["wins"]):
-            change_a, change_b = elo_system.calculate_rating_changes(
-                rating_a, rating_b, 1.0, 0.0
-            )
+            change_a, change_b = elo_system.calculate_rating_changes(rating_a, rating_b, 1.0, 0.0)
             rating_a_new = rating_a + change_a
             rating_b_new = rating_b + change_b
 
@@ -147,15 +149,13 @@ def reconstruct_tournament(matchups: list[dict], output_db: str):
                 player1_rating_change=change_a,
                 player2_rating_change=change_b,
                 winner_id=player_a,
-                duration_seconds=0
+                duration_seconds=0,
             )
             history.record_match(res, rating_a_new, rating_b_new)
             rating_a, rating_b = rating_a_new, rating_b_new
 
         for k in range(matchup["draws"]):
-            change_a, change_b = elo_system.calculate_rating_changes(
-                rating_a, rating_b, 0.5, 0.5
-            )
+            change_a, change_b = elo_system.calculate_rating_changes(rating_a, rating_b, 0.5, 0.5)
             rating_a_new = rating_a + change_a
             rating_b_new = rating_b + change_b
 
@@ -170,15 +170,13 @@ def reconstruct_tournament(matchups: list[dict], output_db: str):
                 player1_rating_change=change_a,
                 player2_rating_change=change_b,
                 winner_id=None,
-                duration_seconds=0
+                duration_seconds=0,
             )
             history.record_match(res, rating_a_new, rating_b_new)
             rating_a, rating_b = rating_a_new, rating_b_new
 
         for k in range(matchup["losses"]):
-            change_a, change_b = elo_system.calculate_rating_changes(
-                rating_a, rating_b, 0.0, 1.0
-            )
+            change_a, change_b = elo_system.calculate_rating_changes(rating_a, rating_b, 0.0, 1.0)
             rating_a_new = rating_a + change_a
             rating_b_new = rating_b + change_b
 
@@ -193,7 +191,7 @@ def reconstruct_tournament(matchups: list[dict], output_db: str):
                 player1_rating_change=change_a,
                 player2_rating_change=change_b,
                 winner_id=player_b,
-                duration_seconds=0
+                duration_seconds=0,
             )
             history.record_match(res, rating_a_new, rating_b_new)
             rating_a, rating_b = rating_a_new, rating_b_new
@@ -201,12 +199,17 @@ def reconstruct_tournament(matchups: list[dict], output_db: str):
     logger.info("Tournament reconstruction complete.")
     return history
 
+
 def main():
     parser = argparse.ArgumentParser(description="Reconstruct tournament from logs")
     parser.add_argument("--project", default="hrmtrain", help="GCP Project ID")
     parser.add_argument("--job_id", default="356684784686071808", help="Vertex AI Job ID")
-    parser.add_argument("--output", default="data/tournament_reconstructed.db", help="Output DB path")
-    parser.add_argument("--report", default="reports/tournament_analysis.md", help="Output report path")
+    parser.add_argument(
+        "--output", default="data/tournament_reconstructed.db", help="Output DB path"
+    )
+    parser.add_argument(
+        "--report", default="reports/tournament_analysis.md", help="Output report path"
+    )
 
     args = parser.parse_args()
 
@@ -231,6 +234,7 @@ def main():
     analyzer.export_report(args.report.replace(".md", ".json"), format="json")
 
     logger.info(f"Analysis report generated at {args.report}")
+
 
 if __name__ == "__main__":
     main()

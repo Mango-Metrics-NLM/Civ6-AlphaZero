@@ -10,6 +10,7 @@ Example:
     >>> registry.register("logger", LoggerFactory)
     >>> logger = registry.create("logger", name="app")
 """
+
 from __future__ import annotations
 
 import logging
@@ -318,9 +319,7 @@ class FactoryRegistry:
         # Validate configuration
         errors = factory.validate_config(config)
         if errors:
-            raise ComponentCreationError(
-                f"Configuration validation failed for {name}: {errors}"
-            )
+            raise ComponentCreationError(f"Configuration validation failed for {name}: {errors}")
 
         # Create instance
         instance = factory.create(config or {}, **kwargs)
@@ -358,9 +357,7 @@ class FactoryRegistry:
                 # Recursively create dependency
                 dependencies[dep_name] = self.create(dep_name)
             except ComponentNotFoundError:
-                self._logger.warning(
-                    f"Optional dependency not found: {dep_name}"
-                )
+                self._logger.warning(f"Optional dependency not found: {dep_name}")
 
         return dependencies
 
@@ -574,6 +571,7 @@ def component(
         ...     def __init__(self, config: dict):
         ...         pass
     """
+
     def decorator(cls: type[T]) -> type[T]:
         component_name = name or cls.__name__
         metadata = ComponentMetadata(

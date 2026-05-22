@@ -44,6 +44,7 @@ from alpha_zero.training.muzero_trainer import (
 # W&B import (optional)
 try:
     from alpha_zero.utils.wandb_logger import WandbConfig, WandbLogger
+
     WANDB_AVAILABLE = True
 except ImportError:
     WANDB_AVAILABLE = False
@@ -158,11 +159,13 @@ def self_play_game(
 
     while not done:
         # Store observation as dict
-        observations.append({
-            "spatial": obs["spatial"].copy(),
-            "vector": obs["vector"].copy(),
-            "action_mask": obs["action_mask"].copy(),
-        })
+        observations.append(
+            {
+                "spatial": obs["spatial"].copy(),
+                "vector": obs["vector"].copy(),
+                "action_mask": obs["action_mask"].copy(),
+            }
+        )
 
         # Get MCTS policy
         action_probs, _root_value = mcts.search(obs, obs["action_mask"], add_noise=True)
@@ -180,11 +183,13 @@ def self_play_game(
         dones.append(done)
 
     # Append terminal observation (MuZero requires T+1 observations for T actions)
-    observations.append({
-        "spatial": obs["spatial"].copy(),
-        "vector": obs["vector"].copy(),
-        "action_mask": obs["action_mask"].copy(),
-    })
+    observations.append(
+        {
+            "spatial": obs["spatial"].copy(),
+            "vector": obs["vector"].copy(),
+            "action_mask": obs["action_mask"].copy(),
+        }
+    )
 
     # Compute target values based on game outcome
     winner = info.get("winner")
@@ -198,7 +203,7 @@ def self_play_game(
         n_steps = min(config.td_steps, steps_remaining)
 
         # Sum discounted rewards
-        value = sum(rewards[i + j] * (discount ** j) for j in range(n_steps))
+        value = sum(rewards[i + j] * (discount**j) for j in range(n_steps))
 
         # Add terminal value if we reached the end
         if i + n_steps >= game_history_len:
@@ -208,7 +213,7 @@ def self_play_game(
                 terminal_value = 1.0
             else:
                 terminal_value = -1.0
-            value += terminal_value * (discount ** n_steps)
+            value += terminal_value * (discount**n_steps)
 
         target_values.append(value)
 
@@ -282,7 +287,9 @@ def run_self_play(
         trajectories.append(trajectory)
         total_turns += len(trajectory.actions)
 
-    logger.info(f"Self-play complete: {num_games} games, avg length: {total_turns/num_games:.1f} turns")
+    logger.info(
+        f"Self-play complete: {num_games} games, avg length: {total_turns/num_games:.1f} turns"
+    )
     return trajectories
 
 
@@ -301,11 +308,10 @@ def run_self_play_parallel(
 
     # Convert config to dict for serialization
     run_config_dict = {
-        k: v for k, v in config.__dict__.items()
-        if not k.startswith('_') and not callable(v)
+        k: v for k, v in config.__dict__.items() if not k.startswith("_") and not callable(v)
     }
     # Force CPU for workers
-    run_config_dict['device'] = 'cpu'
+    run_config_dict["device"] = "cpu"
 
     trajectories = []
 
@@ -326,7 +332,9 @@ def run_self_play_parallel(
             trajectories.append(trajectory)
 
     total_turns = sum(len(t.actions) for t in trajectories)
-    logger.info(f"Parallel self-play complete: {num_games} games, avg length: {total_turns/num_games:.1f} turns")
+    logger.info(
+        f"Parallel self-play complete: {num_games} games, avg length: {total_turns/num_games:.1f} turns"
+    )
     return trajectories
 
 
@@ -349,10 +357,12 @@ def train(config: MuZeroRunConfig, wandb_logger: Any = None) -> dict[str, float]
 
     # Log config to W&B summary
     if wandb_logger and wandb_logger.is_initialized:
-        wandb_logger.summary({
-            "network_params": param_count,
-            "action_space": action_space_size,
-        })
+        wandb_logger.summary(
+            {
+                "network_params": param_count,
+                "action_space": action_space_size,
+            }
+        )
 
     # Create trainer (trainer manages its own optimizer)
     trainer_config = MuZeroTrainingConfig(
@@ -370,7 +380,7 @@ def train(config: MuZeroRunConfig, wandb_logger: Any = None) -> dict[str, float]
     trajectory_buffer = TrajectoryBuffer(max_trajectories=config.replay_buffer_size // 100)
 
     # Training metrics
-    best_avg_length = float('inf')
+    best_avg_length = float("inf")
     training_stats = {
         "total_games": 0,
         "total_steps": 0,
@@ -395,17 +405,21 @@ def train(config: MuZeroRunConfig, wandb_logger: Any = None) -> dict[str, float]
         training_stats["total_games"] += len(trajectories)
         avg_game_length = np.mean([len(t.actions) for t in trajectories])
 
-        logger.info(f"Self-play: {len(trajectories)} games in {self_play_time:.1f}s, avg length: {avg_game_length:.1f}")
+        logger.info(
+            f"Self-play: {len(trajectories)} games in {self_play_time:.1f}s, avg length: {avg_game_length:.1f}"
+        )
 
         # Log self-play metrics
         if wandb_logger:
-            wandb_logger.log({
-                "iteration": iteration + 1,
-                "self_play/num_games": len(trajectories),
-                "self_play/avg_game_length": avg_game_length,
-                "self_play/time_seconds": self_play_time,
-                "self_play/buffer_size": len(trajectory_buffer),
-            })
+            wandb_logger.log(
+                {
+                    "iteration": iteration + 1,
+                    "self_play/num_games": len(trajectories),
+                    "self_play/avg_game_length": avg_game_length,
+                    "self_play/time_seconds": self_play_time,
+                    "self_play/buffer_size": len(trajectory_buffer),
+                }
+            )
 
         # Training
         if len(trajectory_buffer) >= config.min_replay_size // 100:
@@ -450,17 +464,19 @@ def train(config: MuZeroRunConfig, wandb_logger: Any = None) -> dict[str, float]
 
                 # Log training metrics
                 if wandb_logger:
-                    wandb_logger.log({
-                        "iteration": iteration + 1,
-                        "training/total_loss": avg_losses.get("total_loss", 0),
-                        "training/policy_loss": avg_losses.get("policy_loss", 0),
-                        "training/value_loss": avg_losses.get("value_loss", 0),
-                        "training/reward_loss": avg_losses.get("reward_loss", 0),
-                        "training/consistency_loss": avg_losses.get("consistency_loss", 0),
-                        "training/num_batches": num_batches,
-                        "training/time_seconds": train_time,
-                        "training/total_steps": training_stats["total_steps"],
-                    })
+                    wandb_logger.log(
+                        {
+                            "iteration": iteration + 1,
+                            "training/total_loss": avg_losses.get("total_loss", 0),
+                            "training/policy_loss": avg_losses.get("policy_loss", 0),
+                            "training/value_loss": avg_losses.get("value_loss", 0),
+                            "training/reward_loss": avg_losses.get("reward_loss", 0),
+                            "training/consistency_loss": avg_losses.get("consistency_loss", 0),
+                            "training/num_batches": num_batches,
+                            "training/time_seconds": train_time,
+                            "training/total_steps": training_stats["total_steps"],
+                        }
+                    )
 
         # Track best model
         if avg_game_length < best_avg_length:
@@ -470,13 +486,16 @@ def train(config: MuZeroRunConfig, wandb_logger: Any = None) -> dict[str, float]
         # Checkpointing
         if (iteration + 1) % config.save_interval == 0:
             checkpoint_path = Path(config.checkpoint_dir) / f"muzero_iter_{iteration+1}.pt"
-            torch.save({
-                "iteration": iteration + 1,
-                "network_state_dict": network.state_dict(),
-                "optimizer_state_dict": trainer.optimizer.state_dict(),
-                "config": config.__dict__,
-                "stats": training_stats,
-            }, checkpoint_path)
+            torch.save(
+                {
+                    "iteration": iteration + 1,
+                    "network_state_dict": network.state_dict(),
+                    "optimizer_state_dict": trainer.optimizer.state_dict(),
+                    "config": config.__dict__,
+                    "stats": training_stats,
+                },
+                checkpoint_path,
+            )
             logger.info(f"Saved checkpoint: {checkpoint_path}")
 
             if wandb_logger:
@@ -497,16 +516,24 @@ def main():
     parser = argparse.ArgumentParser(description="MuZero Training for Civ6")
 
     # Quick presets
-    parser.add_argument("--quick", action="store_true", help="Quick test run (2 iterations, 5 games)")
-    parser.add_argument("--fast", action="store_true", help="Fast training (10 iterations, 10 games)")
-    parser.add_argument("--small", action="store_true", help="Use small 8x8 board for faster testing")
+    parser.add_argument(
+        "--quick", action="store_true", help="Quick test run (2 iterations, 5 games)"
+    )
+    parser.add_argument(
+        "--fast", action="store_true", help="Fast training (10 iterations, 10 games)"
+    )
+    parser.add_argument(
+        "--small", action="store_true", help="Use small 8x8 board for faster testing"
+    )
 
     # Training params
     parser.add_argument("--iterations", type=int, default=50, help="Number of iterations")
     parser.add_argument("--games", type=int, default=20, help="Games per iteration")
     parser.add_argument("--batch-size", type=int, default=128, help="Batch size")
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
-    parser.add_argument("--workers", type=int, default=1, help="Parallel self-play workers (1=sequential)")
+    parser.add_argument(
+        "--workers", type=int, default=1, help="Parallel self-play workers (1=sequential)"
+    )
 
     # Network architecture
     parser.add_argument("--res-blocks", type=int, default=None, help="Number of residual blocks")
@@ -527,7 +554,9 @@ def main():
 
     # Other
     parser.add_argument("--device", type=str, default=None, help="Device (cuda/cpu)")
-    parser.add_argument("--checkpoint-dir", type=str, default="checkpoints/muzero", help="Checkpoint directory")
+    parser.add_argument(
+        "--checkpoint-dir", type=str, default="checkpoints/muzero", help="Checkpoint directory"
+    )
 
     args = parser.parse_args()
 
@@ -611,11 +640,13 @@ def main():
 
         # Final log
         if wandb_logger:
-            wandb_logger.log({
-                "final/total_games": stats["total_games"],
-                "final/total_steps": stats["total_steps"],
-                "final/best_avg_length": stats["best_avg_length"],
-            })
+            wandb_logger.log(
+                {
+                    "final/total_games": stats["total_games"],
+                    "final/total_steps": stats["total_steps"],
+                    "final/best_avg_length": stats["best_avg_length"],
+                }
+            )
     finally:
         if wandb_logger:
             wandb_logger.finish()
