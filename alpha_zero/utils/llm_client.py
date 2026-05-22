@@ -509,8 +509,11 @@ class LLMClient:
             except LLMConfigError as e:
                 logger.warning(f"Failed to initialize Anthropic client: {e}")
 
-        # Try to initialize OpenAI client
-        if self.config.openai_api_key and OPENAI_AVAILABLE:
+        # Try to initialize OpenAI client. The base_url path supports
+        # LM Studio / Ollama / vLLM local servers, which accept a placeholder
+        # API key — so either a key OR a base_url is sufficient to attempt
+        # init (OpenAIClient itself enforces "at least one" via LLMConfigError).
+        if OPENAI_AVAILABLE and (self.config.openai_api_key or self.config.openai_base_url):
             try:
                 self._clients[LLMProvider.OPENAI] = OpenAIClient(self.config)
                 logger.info("OpenAI client initialized")
