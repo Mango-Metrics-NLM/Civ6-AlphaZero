@@ -120,6 +120,17 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Override initial model version (use 0 for fresh random init, e.g. MuZero)",
     )
+    parser.add_argument(
+        "--resume_from",
+        type=str,
+        default=None,
+        help=(
+            "Token forwarded to the training worker's --resume_from. "
+            "'latest' loads the latest pointer; an integer loads that training "
+            "step. When omitted, the orchestrator auto-detects and emits 'latest' "
+            "if a checkpoint exists at the conventional GCS path."
+        ),
+    )
     parser.add_argument("--workers", type=int, default=2, help="Number of self-play workers")
     parser.add_argument(
         "--games_per_worker", type=int, default=100, help="Games per self-play worker"
@@ -387,6 +398,56 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _resolve_resume_token(
+    args: argparse.Namespace,
+    iteration: int,
+    checkpoint_storage: Any | None = None,
+) -> str | None:
+    """Resolve the value to pass as ``--resume_from`` to the training worker.
+
+    Returns:
+        - The explicit ``args.resume_from`` value when set (operator override).
+        - ``"latest"`` when a checkpoint exists at the conventional GCS path
+          (``gs://{bucket}/checkpoints/civ6az/latest.pt``).
+        - ``None`` when no checkpoint exists (cold start).
+
+    The training worker (``training_worker.py``) parses the returned token and
+    calls ``GCSCheckpointStorage.load_checkpoint(step=...)`` to resume optimizer
+    state and the global step counter.  Without a token the worker starts from
+    random init — which is what caused the v1.2.0 50-iter run to produce zero
+    promotions.
+    """
+    explicit = getattr(args, "resume_from", None)
+    if explicit:
+        return str(explicit)
+
+    if checkpoint_storage is None:
+        from alpha_zero.cloud.gcp.storage import GCSCheckpointStorage
+
+        # Orchestrator builds GCPConfig from env vars (CIV6AZ_*), matching the
+        # pattern used elsewhere in this module (see the main() factory site).
+        gcp_cfg = GCPConfig()
+        checkpoint_storage = GCSCheckpointStorage(config=gcp_cfg)
+
+    try:
+        latest = checkpoint_storage.load_checkpoint(step=None)
+    except Exception as exc:  # noqa: BLE001 — non-fatal; cold start is OK
+        logger.warning("resume_from resolution failed (%s); cold-starting", exc)
+        latest = None
+
+    if latest is None:
+        if iteration > 0:
+            logger.warning(
+                "iteration=%d but no incumbent checkpoint at latest pointer - "
+                "training will start from random init. Promotions are extremely "
+                "unlikely.",
+                iteration,
+            )
+        return None
+
+    return "latest"
+
+
 def get_initial_model_version(config: GCPConfig, dry_run: bool = False) -> int:
     """Get the latest model version from GCS, or 0 if none exists."""
     if dry_run:
@@ -498,6 +559,11 @@ def build_training_extra_args(
     # Always forward learning rate (training worker default is 0.001)
     learning_rate = getattr(args, "learning_rate", 0.001)
     extra.append(f"--learning_rate={learning_rate}")
+    # Forward --resume_from when set (training worker will resolve "latest"
+    # via GCSCheckpointStorage and rehydrate optimizer state + global step).
+    resume = getattr(args, "resume_from", None)
+    if resume:
+        extra.append(f"--resume_from={resume}")
     # Base model for fine-tuning
     if model_version is not None:
         extra.append(f"--model_version={model_version}")
@@ -1562,6 +1628,27 @@ def main() -> int:
             logger.info(
                 "Phase 2: Training on trajectories from iterations %s", trajectory_iterations
             )
+
+            # Resolve --resume_from for this iteration so the training worker
+            # fine-tunes the incumbent checkpoint instead of starting fresh.
+            # In dry_run mode skip the GCS round-trip and honour only an
+            # explicit operator override on args.resume_from.
+            if args.dry_run:
+                resume_token = getattr(args, "resume_from", None)
+            else:
+                resume_token = _resolve_resume_token(args, iteration=iteration)
+            if resume_token:
+                args.resume_from = resume_token
+                logger.info(
+                    "iteration %d: resuming training from %s", iteration, resume_token
+                )
+            else:
+                args.resume_from = None
+                logger.info(
+                    "iteration %d: cold-start training (no incumbent checkpoint)",
+                    iteration,
+                )
+
             training_ok = run_training_phase(
                 config=config,
                 client=client,
