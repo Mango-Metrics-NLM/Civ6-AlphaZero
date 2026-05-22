@@ -625,9 +625,7 @@ class MLflowLogger:
 
         if metrics:
             self.log_metrics(metrics, step=step)
-            logger.debug(
-                "Logged %d evaluation metrics under prefix %r", len(metrics), prefix
-            )
+            logger.debug("Logged %d evaluation metrics under prefix %r", len(metrics), prefix)
         else:
             logger.warning("log_evaluation_result: no metrics extracted from result")
 
@@ -819,9 +817,7 @@ class MLflowLogger:
         if client is None:
             return
         try:
-            client.set_tags(
-                {str(k): _truncate(str(v)) for k, v in tags.items()}
-            )
+            client.set_tags({str(k): _truncate(str(v)) for k, v in tags.items()})
         except Exception as exc:
             if not self.config.fail_silently:
                 raise

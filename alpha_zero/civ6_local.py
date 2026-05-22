@@ -20,7 +20,7 @@ import logging
 import os
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -70,7 +70,9 @@ class Civ6LocalConfig:
     device: str = "cpu"
     web_host: str = "127.0.0.1"
     web_port: int = 8080
-    bridge_ipc_dir: str = os.path.join(tempfile.gettempdir(), "civ6az_bridge")
+    bridge_ipc_dir: str = field(
+        default_factory=lambda: os.path.join(tempfile.gettempdir(), "civ6az_bridge")
+    )
     log_level: str = "INFO"
     dry_run: bool = False
 
@@ -320,9 +322,11 @@ def run_microciv(config: Civ6LocalConfig) -> int:
     device = torch.device(config.device if torch.cuda.is_available() else "cpu")
 
     env = MicroCivEnv(board_size=config.board_size)
-    action_size = env.action_space.n
+    # ``Discrete.n`` may surface as numpy int / float depending on gym version;
+    # cast to plain int for the network constructor's typed signature.
+    action_size = int(env.action_space.n)
     obs_sample, _ = env.reset()
-    spatial_channels = obs_sample["spatial"].shape[0]
+    spatial_channels = int(obs_sample["spatial"].shape[0])
 
     net = MicroCivNetwork(
         board_size=config.board_size,

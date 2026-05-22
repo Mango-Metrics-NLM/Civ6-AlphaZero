@@ -227,12 +227,18 @@ def load_config(args: argparse.Namespace) -> Any:
     if args.no_wandb:
         config.wandb.enabled = False
 
-    if args.no_mlflow:
+    # MLflow flags were added by the PR #78/#79 monitoring branch; the
+    # ``getattr`` defaults keep ``load_config`` callable from older test
+    # fixtures (or external callers) that build a Namespace without these
+    # attributes.
+    if getattr(args, "no_mlflow", False):
         config.mlflow.enabled = False
-    if args.mlflow_tracking_uri:
-        config.mlflow.tracking_uri = args.mlflow_tracking_uri
-    if args.mlflow_experiment_name:
-        config.mlflow.experiment_name = args.mlflow_experiment_name
+    mlflow_tracking_uri = getattr(args, "mlflow_tracking_uri", None)
+    if mlflow_tracking_uri:
+        config.mlflow.tracking_uri = mlflow_tracking_uri
+    mlflow_experiment_name = getattr(args, "mlflow_experiment_name", None)
+    if mlflow_experiment_name:
+        config.mlflow.experiment_name = mlflow_experiment_name
 
     if args.no_rag:
         config.rag.enabled = False

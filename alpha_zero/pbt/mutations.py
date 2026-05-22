@@ -440,13 +440,20 @@ class CrossoverMutation(BaseMutation):
             return value
 
         if param_range.scale == "categorical":
-            # For categorical: randomly pick from either parent
-            return float(rng.choice([value, parent2_value]))
+            # For categorical: randomly pick from either parent. Index-based
+            # selection preserves string members; ``rng.choice`` directly on
+            # a list of strings returns ``np.str_`` which then breaks the
+            # ``float(...)`` wrapper.
+            candidates = [value, parent2_value]
+            idx = int(rng.integers(0, len(candidates)))
+            return candidates[idx]
 
         # Apply crossover based on type
         if self.crossover_type == "uniform":
-            # Uniform crossover: randomly pick from either parent
-            new_value = float(rng.choice([value, parent2_value]))
+            # Uniform crossover: randomly pick from either parent (numeric).
+            candidates = [value, parent2_value]
+            idx = int(rng.integers(0, len(candidates)))
+            new_value = float(candidates[idx])
         elif self.crossover_type == "blend":
             # BLX-alpha: blend values with extension
             new_value = self._blend_crossover(value, parent2_value, param_range, rng)

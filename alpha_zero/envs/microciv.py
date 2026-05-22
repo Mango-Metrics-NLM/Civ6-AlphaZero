@@ -444,15 +444,25 @@ class MicroCivEnv(gym.Env):
         start_y: int,
         range_: int,
     ) -> tuple[int, int]:
-        """Find a valid (non-mountain) position in a range."""
+        """Find a valid (non-mountain) position in a range.
+
+        Positions are clamped to ``[1, board_size - 2]`` so starting units
+        never spawn on the very edge of the board (tests assert this margin,
+        and the action-space neighbour lookups assume one tile of slack on
+        each side).
+        """
         for _ in range(100):
             x = int(start_x + self._rng.integers(0, range_))
             y = int(start_y + self._rng.integers(0, range_))
-            x = min(max(x, 0), self.board_size - 1)
-            y = min(max(y, 0), self.board_size - 1)
+            x = min(max(x, 1), self.board_size - 2)
+            y = min(max(y, 1), self.board_size - 2)
             if self.terrain.get((x, y), Tile()).terrain_type != "mountain":
                 return (x, y)
-        return (start_x, start_y)
+        # Fallback also respects the margin.
+        return (
+            min(max(start_x, 1), self.board_size - 2),
+            min(max(start_y, 1), self.board_size - 2),
+        )
 
     def _find_adjacent_valid(self, pos: tuple[int, int]) -> tuple[int, int]:
         """Find an adjacent valid position."""

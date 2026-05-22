@@ -161,9 +161,7 @@ def require_civ6az_env(dotenv_path: str | Path | None = None) -> dict[str, str]:
     resolved = load_civ6az_env(dotenv_path=dotenv_path, warn_missing=False)
     missing = [var for var in _REQUIRED_VARS if not resolved.get(var)]
     if missing:
-        descriptions = "\n".join(
-            f"  {var}: {_REQUIRED_VARS[var]}" for var in missing
-        )
+        descriptions = "\n".join(f"  {var}: {_REQUIRED_VARS[var]}" for var in missing)
         raise RuntimeError(
             f"Missing required CIV6AZ environment variables:\n{descriptions}\n"
             "Set them in your shell or create a .env file at the project root."
