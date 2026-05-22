@@ -5,6 +5,8 @@ Unit tests for training worker.
 import os
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from alpha_zero.cloud.gcp.training_worker import cleanup_ddp, setup_ddp
 
 
@@ -152,8 +154,18 @@ class TestPrepareDatasetActionMask:
         assert values.ndim == 1
 
 
+@pytest.mark.skip(
+    reason="--model_version flag removed from training_worker in v1.5.0 (PR #81); "
+    "checkpoint resumption now happens via --resume_from=latest. "
+    "See alpha_zero/cloud/gcp/vertex_orchestrator._resolve_resume_token."
+)
 class TestModelVersionArg:
-    """Tests for --model_version CLI argument and base model loading."""
+    """Tests for --model_version CLI argument and base model loading.
+
+    DEPRECATED v1.5.0: training_worker no longer accepts --model_version;
+    base-model fine-tuning is via --resume_from. Tests retained as
+    documentation of the migration; can be deleted in v1.7.0.
+    """
 
     def test_model_version_arg_parsed(self) -> None:
         """--model_version is parsed correctly."""
@@ -162,7 +174,9 @@ class TestModelVersionArg:
         from alpha_zero.cloud.gcp.training_worker import parse_args
 
         with patch.object(
-            sys, "argv", ["worker", "--iteration=0", "--trajectory_iterations=0", "--model_version=5"]
+            sys,
+            "argv",
+            ["worker", "--iteration=0", "--trajectory_iterations=0", "--model_version=5"],
         ):
             args = parse_args()
         assert args.model_version == 5
@@ -178,11 +192,16 @@ class TestModelVersionArg:
         assert args.model_version is None
 
 
+@pytest.mark.skip(
+    reason="--model_version flag removed from training_worker in v1.5.0 (PR #81); "
+    "weight reloading is now exercised by tests/integration/test_training_resume_continuity.py "
+    "which round-trips through GCSCheckpointStorage."
+)
 class TestModelVersionWeightLoading:
     """Tests for actual weight loading behavior with --model_version.
 
-    These tests verify the v1.3.0 fix: that training loads pre-trained
-    weights instead of training from scratch each iteration.
+    DEPRECATED v1.5.0: superseded by GCSCheckpointStorage round-trip
+    coverage in tests/integration/test_training_resume_continuity.py.
     """
 
     def test_weight_loading_changes_model_state(self) -> None:
