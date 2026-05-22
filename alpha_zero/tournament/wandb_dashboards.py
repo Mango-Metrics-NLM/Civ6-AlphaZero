@@ -47,9 +47,9 @@ from typing import Any
 
 import numpy as np
 
+from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 from alpha_zero.tournament.config import MatchResult
 from alpha_zero.tournament.elo import RatingLeaderboard
-from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
 logger = logging.getLogger(__name__)
 

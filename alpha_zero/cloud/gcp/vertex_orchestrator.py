@@ -442,9 +442,18 @@ def _resolve_resume_token(
     if checkpoint_storage is None:
         from alpha_zero.cloud.gcp.storage import GCSCheckpointStorage
 
-        # Orchestrator builds GCPConfig from env vars (CIV6AZ_*), matching the
-        # pattern used elsewhere in this module (see the main() factory site).
-        gcp_cfg = GCPConfig()
+        # Honour CLI overrides (--gcs_bucket, --project, --region) when set;
+        # fall back to env vars (CIV6AZ_*) otherwise. Only pass kwargs that
+        # are explicitly set so GCPConfig defaults / env-var loading apply
+        # for the rest.
+        gcp_kwargs: dict[str, Any] = {}
+        if getattr(args, "gcs_bucket", None):
+            gcp_kwargs["bucket"] = args.gcs_bucket
+        if getattr(args, "project", None):
+            gcp_kwargs["project_id"] = args.project
+        if getattr(args, "region", None):
+            gcp_kwargs["region"] = args.region
+        gcp_cfg = GCPConfig(**gcp_kwargs)
         checkpoint_storage = GCSCheckpointStorage(config=gcp_cfg)
 
     try:
@@ -594,9 +603,11 @@ def build_training_extra_args(
     resume = getattr(args, "resume_from", None)
     if resume:
         extra.append(f"--resume_from={resume}")
-    # Base model for fine-tuning
-    if model_version is not None:
-        extra.append(f"--model_version={model_version}")
+    # NOTE: --model_version is intentionally NOT emitted. The training worker
+    # no longer accepts it; checkpoint-resume happens via --resume_from=latest
+    # (or an explicit token). The `model_version` kwarg is kept on the
+    # signature for backwards-compat with callers that still pass it.
+    _ = model_version  # silence unused; preserved for caller compat
     return extra
 
 

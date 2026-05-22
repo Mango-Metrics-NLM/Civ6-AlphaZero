@@ -990,7 +990,7 @@ class WandbCompatAdapter(MLflowLogger):
         self,
         data: dict[str, Any],
         step: int | None = None,
-        commit: bool = True,  # noqa: ARG002 - W&B-only flag, ignored
+        commit: bool = True,
     ) -> None:
         """Mirror ``WandbLogger.log(data, step, commit)``.
 
@@ -1250,9 +1250,19 @@ class WandbCompatAdapter(MLflowLogger):
             name, columns, rows = args
             if not rows or not columns:
                 return
+            # Validate rectangular shape; refusing non-rectangular data
+            # loudly surfaces malformed calls instead of corrupting the CSV
+            # via the previous strict=False zip (which silently dropped cells).
+            n_cols = len(columns)
             column_data: dict[str, list[Any]] = {col: [] for col in columns}
-            for row in rows:
-                for col, val in zip(columns, row, strict=False):
+            for row_idx, row in enumerate(rows):
+                if len(row) != n_cols:
+                    raise ValueError(
+                        f"log_table: row {row_idx} has {len(row)} values but "
+                        f"columns has {n_cols} entries; refusing to log "
+                        f"non-rectangular data"
+                    )
+                for col, val in zip(columns, row, strict=True):
                     column_data[col].append(val)
             super().log_table(column_data, artifact_filename=f"{name}.csv")
             return
@@ -1263,11 +1273,11 @@ class WandbCompatAdapter(MLflowLogger):
     # No-op parity (W&B-only features without a clean MLflow equivalent)
     # ------------------------------------------------------------------
 
-    def watch_model(self, *args: Any, **kwargs: Any) -> None:  # noqa: ARG002
+    def watch_model(self, *args: Any, **kwargs: Any) -> None:
         """No-op: MLflow has no direct equivalent of ``wandb.watch``."""
         return None
 
-    def define_metric(self, *args: Any, **kwargs: Any) -> None:  # noqa: ARG002
+    def define_metric(self, *args: Any, **kwargs: Any) -> None:
         """No-op: MLflow infers metric axes from logged step values."""
         return None
 
@@ -1281,18 +1291,18 @@ class WandbCompatAdapter(MLflowLogger):
 
     def log_histogram(
         self,
-        name: str,  # noqa: ARG002
-        values: Any,  # noqa: ARG002
-        num_bins: int = 64,  # noqa: ARG002
+        name: str,
+        values: Any,
+        num_bins: int = 64,
     ) -> None:
         """No-op stub for parity with ``WandbLogger.log_histogram``."""
         return None
 
     def log_image(
         self,
-        name: str,  # noqa: ARG002
-        image: Any,  # noqa: ARG002
-        caption: str | None = None,  # noqa: ARG002
+        name: str,
+        image: Any,
+        caption: str | None = None,
     ) -> None:
         """No-op stub for parity with ``WandbLogger.log_image``."""
         return None
@@ -1300,8 +1310,8 @@ class WandbCompatAdapter(MLflowLogger):
     def log_model(
         self,
         model_path: str,
-        name: str | None = None,  # noqa: ARG002
-        metadata: dict[str, Any] | None = None,  # noqa: ARG002
+        name: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Mirror ``WandbLogger.log_model`` - upload checkpoint as an artifact."""
         self.log_artifact(str(model_path), artifact_path="model")

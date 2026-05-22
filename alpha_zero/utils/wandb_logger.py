@@ -12,7 +12,11 @@ from alpha_zero.monitoring.config import MonitoringConfig as WandbConfig  # noqa
 from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger  # noqa: F401
 from alpha_zero.utils.experiment_tracker import (  # noqa: F401
     get_tracker as get_wandb_logger,
+)
+from alpha_zero.utils.experiment_tracker import (  # noqa: F401
     init_tracker as init_wandb,
+)
+from alpha_zero.utils.experiment_tracker import (  # noqa: F401
     log_metrics,
 )
 

@@ -123,3 +123,56 @@ def test_build_training_extra_args_omits_resume_when_none():
     args = _make_args(resume_from=None)
     extra = vo.build_training_extra_args(args)
     assert not any(a.startswith("--resume_from") for a in extra)
+
+
+def test_build_training_extra_args_does_not_emit_model_version():
+    """training_worker.py no longer accepts --model_version; resumption is via
+    --resume_from. The orchestrator must not emit --model_version even when
+    a model_version kwarg is passed (kept on the signature for caller compat).
+    """
+    args = _make_args()
+    extra_no_kwarg = vo.build_training_extra_args(args)
+    extra_with_kwarg = vo.build_training_extra_args(args, model_version=42)
+    for extra in (extra_no_kwarg, extra_with_kwarg):
+        assert not any(a.startswith("--model_version") for a in extra), (
+            f"--model_version must not be emitted; got {extra!r}"
+        )
+
+
+def test_resolve_resume_honors_cli_bucket_override(monkeypatch):
+    """When --gcs_bucket is set on args, the helper builds GCPConfig with
+    that bucket rather than silently falling through to CIV6AZ_GCS_BUCKET.
+    """
+    monkeypatch.delenv("CIV6AZ_GCS_BUCKET", raising=False)
+    captured: dict[str, object] = {}
+
+    class _FakeGCPConfig:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+            self.bucket = kwargs.get("bucket", "from-env")
+            self.project_id = kwargs.get("project_id", "p")
+            self.region = kwargs.get("region", "us-central1")
+
+    class _FakeCkptStorage:
+        def __init__(self, config):
+            self.config = config
+
+        def load_checkpoint(self, step=None):
+            return None
+
+    # Patch the name as imported in vertex_orchestrator (module-level)
+    monkeypatch.setattr(vo, "GCPConfig", _FakeGCPConfig)
+    monkeypatch.setattr(
+        "alpha_zero.cloud.gcp.storage.GCSCheckpointStorage", _FakeCkptStorage
+    )
+
+    args = _make_args(gcs_bucket="cli-bucket-override")
+    # Add the optional CLI fields the helper reads via getattr
+    args.project = "cli-project"
+    args.region = "us-east1"
+
+    result = vo._resolve_resume_token(args, iteration=0)
+    assert result is None  # no checkpoint -> cold start
+    assert captured.get("bucket") == "cli-bucket-override"
+    assert captured.get("project_id") == "cli-project"
+    assert captured.get("region") == "us-east1"

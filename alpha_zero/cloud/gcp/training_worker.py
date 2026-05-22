@@ -1212,7 +1212,7 @@ def main() -> int:
             spatial_size = args.board_size
 
             if is_muzero:
-                loss, policy_loss, value_loss, reward_loss, num_batches = train_muzero_epoch(
+                loss, policy_loss, value_loss, _reward_loss, num_batches = train_muzero_epoch(
                     model,
                     dataloader,
                     optimizer,

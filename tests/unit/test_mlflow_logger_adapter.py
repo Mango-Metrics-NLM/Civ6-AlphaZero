@@ -145,6 +145,21 @@ def test_adapter_log_table_matches_wandblogger_signature():
     adapter.finish()
 
 
+def test_adapter_log_table_rejects_non_rectangular_data():
+    """A short row used to be silently dropped by ``zip(..., strict=False)``,
+    producing column lists of mismatched lengths and a corrupted CSV. The
+    adapter now raises ``ValueError`` so malformed input surfaces immediately.
+    """
+    adapter = _disabled_adapter()
+    with pytest.raises(ValueError, match="non-rectangular"):
+        adapter.log_table(
+            "broken",
+            ["a", "b", "c"],
+            [[1, 2, 3], [4, 5]],  # second row missing a value
+        )
+    adapter.finish()
+
+
 # ---------------------------------------------------------------------------
 # Misc parity smoke tests
 # ---------------------------------------------------------------------------

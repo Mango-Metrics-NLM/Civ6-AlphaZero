@@ -159,7 +159,11 @@ try:
     )
     from alpha_zero.utils.experiment_tracker import (  # noqa: F401
         get_tracker as get_wandb_logger,
+    )
+    from alpha_zero.utils.experiment_tracker import (  # noqa: F401
         init_tracker as init_wandb,
+    )
+    from alpha_zero.utils.experiment_tracker import (  # noqa: F401
         log_metrics,
     )
 
