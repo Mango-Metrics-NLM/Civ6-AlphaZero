@@ -38,8 +38,10 @@ from alpha_zero.monitoring.metrics import (
 from alpha_zero.monitoring.mlflow_evaluator import AlphaZeroMLflowEvaluator
 from alpha_zero.monitoring.mlflow_logger import (
     MLFLOW_AVAILABLE,
+    MlflowClient,
     MLflowLogger,
     get_default_tracking_uri,
+    mlflow,
 )
 from alpha_zero.monitoring.tournament_dashboards import TournamentMlflowLogger
 
@@ -51,11 +53,13 @@ __all__ = [
     "AlphaZeroMLflowEvaluator",
     "MLflowConfig",
     "MLflowLogger",
+    "MlflowClient",
     "MonitoringConfig",
     "TournamentMlflowLogger",
     "compute_elo_spread",
     "compute_policy_entropy",
     "compute_value_correlation",
     "get_default_tracking_uri",
+    "mlflow",
     "parse_tag_string",
 ]

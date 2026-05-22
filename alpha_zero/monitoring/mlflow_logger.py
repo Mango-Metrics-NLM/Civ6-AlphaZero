@@ -287,9 +287,24 @@ class MLflowLogger:
             except Exception as exc:
                 if not self.config.fail_silently:
                     raise
-                logger.debug(
-                    "MlflowClient setup failed (continuing without it): %s", exc
-                )
+                # Escalate to a real warning when the user explicitly asked
+                # for a custom artifact_location (e.g. ``gs://bucket/...``);
+                # falling back to ``mlflow.set_experiment(name)`` drops that
+                # configuration silently and lands artifacts in the default
+                # local store, which is almost never what the user wants.
+                if self.config.artifact_location:
+                    logger.warning(
+                        "MlflowClient setup failed; artifact_location=%r "
+                        "will NOT be honored - artifacts will land in the "
+                        "default store. Cause: %s",
+                        self.config.artifact_location,
+                        exc,
+                    )
+                else:
+                    logger.debug(
+                        "MlflowClient setup failed (continuing without it): %s",
+                        exc,
+                    )
                 self._client = None
                 with suppress(Exception):
                     mlflow.set_experiment(self.config.experiment_name)
@@ -352,10 +367,24 @@ class MLflowLogger:
         - Called with ``run_name=...`` or ``nested=True`` it opens an
           additional run handle (PR #78 lifecycle) and returns it. The
           caller owns the lifetime in that case.
+
+        The PR #78 path additionally requires the parent run to be open
+        already; calling ``start_run(run_name=...)`` without a preceding
+        ``init()`` would otherwise create an orphan top-level run outside
+        the managed lifecycle. We log a warning and return ``None`` in that
+        case to surface the misuse without crashing training.
         """
         if run_name is None and not nested:
             self.init()
             return self._parent_run
+        if not self.is_initialized:
+            logger.warning(
+                "MLflowLogger.start_run(run_name=%r, nested=%s) called before "
+                "init(); refusing to open an orphan run. Call init() first.",
+                run_name,
+                nested,
+            )
+            return None
         if not self.is_enabled:
             return None
         client: Any = self._mlflow if self._mlflow is not None else mlflow

@@ -161,7 +161,12 @@ class MLflowConfig:
         keys (parsed as ``None``) fall back to module defaults instead of
         the literal string ``"None"``.
         """
-        raw_tags = data.get("tags") or {}
+        # Use ``is None`` instead of falsy-check so the empty-list and
+        # empty-dict cases reach the ``isinstance`` dispatch consistently
+        # (a future hook on either branch will still fire).
+        raw_tags: Any = data.get("tags")
+        if raw_tags is None:
+            raw_tags = {}
         tags_dict: dict[str, str]
         if isinstance(raw_tags, str):
             tags_dict = parse_tag_string(raw_tags)

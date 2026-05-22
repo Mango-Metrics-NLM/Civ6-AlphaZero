@@ -279,6 +279,42 @@ def test_init_raises_when_fail_silently_false(mock_mlflow: Any) -> None:
         logger.init()
 
 
+def test_init_warns_when_artifact_location_dropped_on_client_failure(
+    mock_mlflow: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    """If MlflowClient setup fails AND artifact_location was set, warn loudly.
+
+    The fallback path uses ``mlflow.set_experiment(name)`` which cannot honor
+    ``artifact_location``. A silent debug log would mask a real misconfig.
+    """
+    mock_mlflow["client_cls"].side_effect = RuntimeError("backend unreachable")
+    logger = MLflowLogger(
+        _enabled_config(
+            fail_silently=True,
+            artifact_location="gs://bucket/civ6-mlflow",
+        )
+    )
+    with caplog.at_level(logging.WARNING):
+        logger.init()
+    assert any(
+        "artifact_location" in r.message and "NOT be honored" in r.message
+        for r in caplog.records
+    )
+
+
+def test_init_does_not_warn_when_artifact_location_unset(
+    mock_mlflow: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    """If artifact_location is unset, the client fallback is debug-only."""
+    mock_mlflow["client_cls"].side_effect = RuntimeError("backend unreachable")
+    logger = MLflowLogger(_enabled_config(fail_silently=True))
+    with caplog.at_level(logging.WARNING):
+        logger.init()
+    assert not any(
+        "artifact_location" in r.message for r in caplog.records
+    )
+
+
 def test_run_id_property(active_logger: MLflowLogger) -> None:
     assert active_logger.run_id == "run-1234"
 
@@ -759,10 +795,28 @@ def test_start_run_returns_handle(mock_mlflow: Any) -> None:
     assert logger.start_run("nested", nested=True) is not None
 
 
+def test_start_run_refuses_before_init(
+    mock_mlflow: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    """``start_run(run_name=...)`` without ``init()`` must NOT open an orphan run."""
+    logger = MLflowLogger(_enabled_config())
+    mock_mlflow["mlflow"].start_run.reset_mock()
+    with caplog.at_level(logging.WARNING):
+        result = logger.start_run("nested", nested=True)
+    assert result is None
+    # The PR #78 patched ``mlflow.start_run`` is the same symbol the guard
+    # would otherwise call - it must not be invoked when no parent is open.
+    mock_mlflow["mlflow"].start_run.assert_not_called()
+    assert any("orphan" in r.message for r in caplog.records)
+
+
 def test_start_run_swallows(mock_mlflow: Any) -> None:
-    mock_mlflow["mlflow"].start_run.side_effect = RuntimeError("boom")
+    """After ``init()``, a backend error on nested ``start_run`` is swallowed."""
     logger = MLflowLogger(_enabled_config(fail_silently=True))
-    assert logger.start_run("x") is None
+    logger.init()
+    # Now make the nested call raise; init's own start_run already succeeded.
+    mock_mlflow["mlflow"].start_run.side_effect = RuntimeError("boom")
+    assert logger.start_run("nested", nested=True) is None
 
 
 def test_finish_idempotent(mock_mlflow: Any) -> None:
