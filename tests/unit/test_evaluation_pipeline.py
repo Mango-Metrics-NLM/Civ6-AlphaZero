@@ -1,5 +1,7 @@
 """Tests for the evaluation module."""
 
+import numpy as np
+
 from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.evaluation.baseline_agents import (
     GreedyHeuristicAgent,
@@ -208,3 +210,41 @@ class TestBaselineVsBaseline:
         assert game_result.num_turns > 0
         assert game_result.game_duration_seconds > 0
         assert game_result.winner in [0, 1, None]
+
+
+class TestMCTSOpponentWrapping:
+    """Tests for MCTS opponent wrapping in _run_evaluation."""
+
+    def test_mcts_opponent_is_wrapped(self):
+        """Non-BaseAgent opponent should be wrapped with MCTSAgentWrapper."""
+        from unittest.mock import MagicMock
+
+        pipeline = EvaluationPipeline(board_size=8, max_turns=30, seed=42)
+
+        # Create a stub MCTS-like object (not a BaseAgent)
+        stub_mcts = MagicMock()
+        stub_mcts.search = MagicMock(return_value=(np.zeros(376), {}))
+        stub_mcts.select_action = MagicMock(return_value=0)
+
+        agent = RandomAgent(seed=42)
+
+        # _run_evaluation should wrap the non-BaseAgent opponent
+        # and complete without AttributeError
+        result = pipeline._run_evaluation(
+            agent, stub_mcts, n_games=1, log_interval=1, opponent_name="StubMCTS"
+        )
+
+        assert result.win_rate.total_games == 1
+
+    def test_base_agent_opponent_not_wrapped(self):
+        """BaseAgent opponent should not be double-wrapped."""
+        pipeline = EvaluationPipeline(board_size=8, max_turns=30, seed=42)
+        agent = RandomAgent(seed=42)
+        opponent = RandomAgent(seed=123)
+
+        # Should complete normally — opponent is already a BaseAgent
+        result = pipeline._run_evaluation(
+            agent, opponent, n_games=1, log_interval=1, opponent_name="Random"
+        )
+
+        assert result.win_rate.total_games == 1

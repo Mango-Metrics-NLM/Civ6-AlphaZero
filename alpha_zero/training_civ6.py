@@ -194,7 +194,7 @@ def self_play_game(
 
     while True:
         # Get MCTS policy
-        action_probs, _ = mcts.search(env)
+        action_probs, _ = mcts.search(env)  # type: ignore[arg-type]
 
         # Store state and policy
         game_history.append(
@@ -275,7 +275,7 @@ def run_self_play(
             temperature=config.temperature,
             temperature_threshold=config.temperature_threshold,
         )
-        mcts = GumbelMCTS(network, gumbel_config, device=config.device)
+        mcts = GumbelMCTS(network, gumbel_config, device=config.device)  # type: ignore[arg-type]
         logger.info(f"Using Gumbel MuZero MCTS with {config.gumbel_num_simulations} simulations")
     else:
         mcts_config = MCTSConfig(
@@ -286,7 +286,7 @@ def run_self_play(
             temperature=config.temperature,
             temperature_threshold=config.temperature_threshold,
         )
-        mcts = Civ6MCTS(network, mcts_config, device=config.device)
+        mcts = Civ6MCTS(network, mcts_config, device=config.device)  # type: ignore[arg-type]
 
     for _ in tqdm(range(num_games), desc="Self-play"):
         game_examples = self_play_game(env, mcts, config)
@@ -376,7 +376,7 @@ def evaluate_against_random(
     """
     env = MicroCivEnv(board_size=config.board_size, max_turns=config.max_turns)
     mcts_config = MCTSConfig(num_simulations=config.num_simulations // 2)
-    mcts = Civ6MCTS(network, mcts_config, device=config.device)
+    mcts = Civ6MCTS(network, mcts_config, device=config.device)  # type: ignore[arg-type]
 
     wins = 0
     rng = np.random.default_rng()
@@ -388,7 +388,7 @@ def evaluate_against_random(
         while True:
             if env.current_player == network_player:
                 # Network's turn
-                action_probs, _ = mcts.search(env, add_noise=False)
+                action_probs, _ = mcts.search(env, add_noise=False)  # type: ignore[arg-type]
                 action = mcts.select_action(action_probs, temperature=0.0)
             else:
                 # Random player's turn
@@ -425,7 +425,7 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
     # Initialize network
     network = MicroCivNetwork(
         board_size=config.board_size,
-        action_space_size=action_space_size,
+        action_space_size=int(action_space_size),
         num_res_blocks=config.num_res_blocks,
         num_filters=config.num_filters,
     ).to(config.device)

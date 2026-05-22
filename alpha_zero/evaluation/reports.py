@@ -378,7 +378,7 @@ class ReportGenerator:
         Returns:
             Dictionary of comparison metrics
         """
-        comparison = {
+        comparison: dict[str, Any] = {
             "timestamp1": report1.timestamp,
             "timestamp2": report2.timestamp,
             "win_rate_diff": report2.overall_win_rate - report1.overall_win_rate,

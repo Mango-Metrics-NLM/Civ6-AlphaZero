@@ -29,20 +29,28 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 15+ | Standalone Tournament Worker & Lua Integration | ✅ Complete |
 | Phase 16 | Batch Inference & Vectorized Self-Play | ✅ Complete |
 | Phase 17 | Training Readiness — action_mask, W&B groups, gumbel default | ✅ Complete |
+| Phase 17a | Hex Crystalline Encoder & A/B Comparison | ✅ Complete |
+| Phase 17b | Training Readiness & Windows Compatibility | ✅ Complete |
 | Phase 18 | Training Bug Fix — load base model for fine-tuning | ✅ Complete |
+| Phase 19 | MLflow Monitoring Layer (PR #78 + PR #79 combined) | ✅ Complete |
+| Sprint 3 | Convergence, Batch Self-Play, N-Player Foundation | ✅ Complete |
+| Sprint 4 | Type Safety Expansion (envs + evaluation) | ✅ Complete |
+| Sprint 5 | Type Safety — Breadth-First Mypy Stabilization | ✅ Complete |
 
 **Codebase Statistics:**
 
-- ~62,000 lines of core implementation
-- 5,100+ tests, all passing (canonical Windows deselect list)
+- ~63,000 lines of core implementation
+- 5,200+ tests, all passing (canonical Windows deselect list)
 - Docker v1.2.0 on Artifact Registry (`us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v1.2.0`)
 - 269 model versions in GCS (v0-v268), production run v1.2.0 completed
 - GumbelMCTS default: 13× faster than Civ6MCTS — 50-iter production run active (4 workers × 50 games/iter)
+- Batch self-play validated: `BatchGumbelMCTS` + `VectorizedMicroCivEnv` (5-10× throughput)
+- N-player MicroCiv: 2-6 players, backwards-compatible
+- Mypy strict mode: `envs/`, `evaluation/`, `web/`, `hierarchical/`, `pbt/` packages (0 errors)
+- **Sprint 5 type safety**: 251→~98 mypy errors (61% reduction, 58 files, 7 commits)
 - Action-masked cross-entropy training, W&B group coordination, eval retry with backoff
-- Python 3.10 compatibility shim for cloud containers (40 files)
-- Gameplay systems: terrain, fog of war, tech tree, combat
 - Civ6 Lua mod fully integrated with Python bridge (245 bridge tests, 50 integration tests)
-- 13 remaining xfail tests (12 DDP + 1 hierarchical — deferred)
+- 8 remaining xfail tests (7 DDP multinode + 1 hierarchical — deferred)
 
 ## Key Features
 
@@ -55,12 +63,13 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - **Environment Tuning**: Configurable game mechanics for faster iteration
 - **Comprehensive Game Mechanics**: 11 modules covering diplomacy, trade, espionage, religion, and more
 - **W&B Integration**: Full experiment tracking with Weights & Biases
-- **MicroCiv Environment**: Gymnasium-compliant simulation of Civ6 core mechanics
+- **MicroCiv Environment**: Gymnasium-compliant simulation of Civ6 core mechanics (N-player: 2-6)
 - **Real Civ6 Bridge**: File-based IPC bridge for playing actual Civilization VI
 - **Lua Mod Integration**: Complete Civ6 mod for game state export and action execution
 - **RAG Integration**: Retrieval-Augmented Generation for knowledge-enhanced decision making
 - **GCP Vertex AI Pipeline**: Distributed cloud training with selfplay, training, and evaluation phases
 - **GumbelMCTS**: 5-50x faster MCTS variant via Gumbel sampling (no Dirichlet noise needed)
+- **Batch Self-Play**: `BatchGumbelMCTS` + `VectorizedMicroCivEnv` for 5-10× GPU utilization
 - **MCTS Factory**: Pluggable MCTS instantiation (`create_mcts("civ6"|"gumbel"|"muzero", ...)`)
 - **Model Evaluation Arena**: Automated new-vs-old model comparison with win rate gating
 - **Population-Based Training**: Production PBT with W&B dashboards, ELO evaluation, 6 mutation strategies
@@ -145,11 +154,22 @@ graph TB
         end
 
         subgraph "Environment"
-            MicroCiv["MicroCiv Environment<br/><i>Simplified Civ6</i>"]
+            MicroCiv["MicroCiv Environment<br/><i>N-Player Simplified Civ6</i>"]
+            VecEnv["VectorizedMicroCivEnv<br/><i>Parallel game instances</i>"]
+        end
+
+        subgraph "Batch Inference"
+            BatchMCTS["BatchGumbelMCTS<br/><i>Batched network evaluation</i>"]
         end
 
         subgraph "Observability"
             WandbLogger["W&B Logger<br/><i>Experiment tracking</i>"]
+        end
+
+        subgraph "Type Safety Layer"
+            MypyEnvs["envs.* strict<br/><i>Gymnasium overrides, numpy casts</i>"]
+            MypyEval["evaluation.* strict<br/><i>MCTS protocols, agent types</i>"]
+            MypyWeb["web.* strict<br/><i>FastAPI routes, dataclasses</i>"]
         end
     end
 

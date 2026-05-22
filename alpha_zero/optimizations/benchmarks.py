@@ -17,7 +17,7 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -448,7 +448,7 @@ class OptimizationBenchmark:
         """
         config = config or AuxiliaryTargetsConfig()
         generator = AuxiliaryTargetGenerator(
-            config, board_size, action_space_size, seed=self._rng.integers(0, 2**31)
+            config, board_size, action_space_size, seed=int(self._rng.integers(0, 2**31))
         )
 
         # Create sample game states
@@ -574,7 +574,10 @@ class OptimizationBenchmark:
         def compute_loss() -> dict[str, float]:
             i = idx[0] % len(predictions_list)
             idx[0] += 1
-            return calculator.compute_loss(predictions_list[i], targets_list[i])
+            return calculator.compute_loss(
+                cast(dict[str, np.ndarray], predictions_list[i]),
+                targets_list[i],
+            )
 
         times, losses = self._time_function(compute_loss, num_iterations)
 

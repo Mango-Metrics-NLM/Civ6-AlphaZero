@@ -110,9 +110,9 @@ class TestDDPLearnerConfig:
     def test_default_values(self) -> None:
         """Test default configuration values."""
         config = DDPLearnerConfig()
-        assert config.backend == "auto"
-        assert config.world_size == 1
-        assert config.rank == 0
+        assert config.ddp_backend == "auto"
+        assert config.ddp_world_size == 1
+        assert config.ddp_rank == 0
         assert config.init_method == "env://"
 
     def test_from_env_reads_environment(self) -> None:
@@ -255,7 +255,7 @@ class TestDDPDeviceSelection:
     def test_device_from_local_rank(self) -> None:
         """Test device assignment from local_rank."""
         config = DDPLearnerConfig(ddp_local_rank=2, device="cpu")
-        # With local_rank=2, in CUDA setup this would be cuda:2
+        # With ddp_local_rank=2, in CUDA setup this would be cuda:2
         assert config.ddp_local_rank == 2
 
 

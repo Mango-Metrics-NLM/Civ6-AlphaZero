@@ -207,7 +207,10 @@ class PolynomialMutation(BaseMutation):
         """Apply polynomial mutation."""
         if param_range.scale == "categorical":
             if rng.random() < strength:
-                return float(rng.choice(param_range.categories))
+                new_value = rng.choice(param_range.categories)
+                if isinstance(new_value, np.generic):
+                    new_value = new_value.item()
+                return new_value
             return value
 
         # Normalize value to [0, 1]
@@ -279,7 +282,10 @@ class DifferentialMutation(BaseMutation):
         """Apply differential mutation."""
         if param_range.scale == "categorical":
             if rng.random() < strength:
-                return float(rng.choice(param_range.categories))
+                new_value = rng.choice(param_range.categories)
+                if isinstance(new_value, np.generic):
+                    new_value = new_value.item()
+                return new_value
             return value
 
         if len(self._candidates) < 3:
@@ -305,7 +311,7 @@ class DifferentialMutation(BaseMutation):
         if param_range.discrete:
             new_value = round(new_value)
 
-        return new_value
+        return new_value  # type: ignore[no-any-return]
 
 
 class AdaptiveMutation(BaseMutation):
@@ -457,7 +463,7 @@ class CrossoverMutation(BaseMutation):
         if param_range.discrete:
             new_value = round(new_value)
 
-        return new_value
+        return new_value  # type: ignore[no-any-return]
 
     def _blend_crossover(
         self,

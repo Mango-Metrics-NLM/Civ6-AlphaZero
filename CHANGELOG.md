@@ -5,9 +5,122 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.4.0] — 2026-05-21
+## [1.6.0] — 2026-05-21 — MLflow Monitoring & Evaluation Analytics
 
-### Added — MLflow Monitoring & Evaluation Analytics
+> **Version note:** Bumped from `1.4.0` to `1.6.0` after merging this branch with `origin/main`, which had independently released `1.5.0` (Sprint 5 type safety) on top of an earlier `1.4.0` (Sprint 4). The MLflow monitoring layer is the largest behavioural change of this release line, so it owns the minor bump.
+
+### Added — MLflow Monitoring & Evaluation Analytics (PR #78 + PR #79 combined)
+
+## [1.5.0] — 2026-03-05 — Sprint 5: Type Safety — Breadth-First Mypy Stabilization
+
+### Changed — Sprint 5
+
+#### E1: Breadth-First Mypy Type Safety (58 files, ~153 errors fixed)
+
+- **`hierarchical/`** package (32→0): `config.py`, `hierarchical_network.py`, `goal_types.py`, `hierarchical_mcts.py`, `level_controller.py`, `goal_encoder.py`, `training_integration.py` — `no-any-return`, `no-redef`, `assignment`, `arg-type`, `return-value` ignores for torch/numpy return types, union narrowing, and dict arithmetic
+- **`cloud/gcp/training_worker.py`** (20→0): Added `TYPE_CHECKING` imports for `optim`, `Profiler`, `diagnostics`, `report` types; replaced `object | None` signatures with proper types
+- **`training_civ6.py`** (8→0): `arg-type` ignores for protocol-conformant MCTS/env calls, `int()` cast for numpy `int64` action_space_size
+- **`training/muzero_trainer.py`** (7→0): `operator` ignores for dynamic `self.network.*` method calls
+- **`pbt/`** (16→0): `mutations.py`, `population.py`, `scheduler.py` — numpy/dict arithmetic returns
+- **`utils/`** (41→~3): `rag_client.py`, `wandb_logger.py`, `llm_client.py`, `checkpoint.py`, `environment_tuning.py`, `logging_config.py`, `simple_mcts.py`
+- **`cloud/`** stale-ignore sweep: Removed 15 unused `type: ignore` comments across 12 files (`vertex_orchestrator.py`, `vertex.py`, `gcs_backend.py`, `monitoring.py`, `gcs_storage.py`, `selfplay_worker.py`, `storage.py`, `vertex_trainer.py`, `vertex_jobs.py`)
+- **`core/`** (23→~4): `civ6_mcts.py`, `civ6_network.py`, `config.py`, `mixins.py`, `network_heads.py`, `reflection_generator.py`, `reflection_memory.py`, `transformer_network.py`
+- **`distributed/`** (28→~8): `actor.py`, `coordinator.py`, `ddp_learner.py`, `learner.py`, `parameter_server.py`, `shared_storage.py`
+- **`optimizations/`** (9→~3): `auxiliary_targets.py`, `benchmarks.py`, `playout_cap.py`, `policy_pruning.py`
+- **Additional files**: `rag/config/settings.py`, `envs/microciv_enhanced.py`, `envs/vectorized_env.py`, `gameplay/fog_of_war.py`, `inference/client.py`, `interfaces/unciv_interface.py`, `training/diagnostics.py`, `training/imitation_pretraining.py`, `training/training_safeguards.py`
+
+#### Ruff Lint Auto-Fix
+
+- Auto-fixed 15 unused import errors (`F401`) across test and source files
+
+### Stats
+
+- 58 files changed, +230 / -187 lines
+- ~153 mypy errors fixed (251→~98, **61% reduction**)
+- 7 commits, 0 test regressions
+
+## [1.4.0] — 2026-03-05 — Sprint 4: Type Safety Expansion
+
+### Added
+
+- **Mypy strict overrides** for `alpha_zero.evaluation.*` and `alpha_zero.envs.*` packages (`pyproject.toml`)
+- Explicit type annotations for `run_debug_selfplay.py` validators and config
+
+### Changed — Sprint 4
+
+#### E5: Type Safety Expansion (14 files)
+
+- **`evaluation/config.py`**: `Callable` type hint for `env_mappings`
+- **`evaluation/baselines.py`**: `dtype=np.float32` for noise addition, assert-narrowed MCTS, `hasattr` guard for `reset()`
+- **`evaluation/baseline_agents.py`**: `int()` cast for MCTS `select_action` return
+- **`evaluation/evaluator.py`**: Forward type declaration for `DiversityTracker | None`
+- **`evaluation/reports.py`**: Explicit `dict[str, Any]` type annotation for comparison dict
+- **`evaluation/evaluation_pipeline.py`**: Widened `_run_evaluation` opponent type, wraps MCTS opponents with `MCTSAgentWrapper`
+- **`evaluation/muzero_vs_alphazero_benchmark.py`**: Removed 6 unused `type: ignore` comments
+- **`envs/microciv.py`**: `int()` casts for numpy `integers()`, `type: ignore[misc]` for ClassVar
+- **`envs/microciv_enhanced.py`**: `type: ignore[return-value]` for render
+- **`envs/civrealm_wrapper.py`**: `type: ignore` for numpy overload, ClassVar, render override
+- **`envs/docker_config.py`**: `float()` cast for `min()` return
+- **`envs/env_factory.py`**: Variable rename to avoid assignment type mismatch
+- **`envs/real_civ6_env.py`**: ClassVar, union-attr, override, `float()` cast
+- **`envs/vectorized_env.py`**: `list()`/`int()` casts for no-any-return
+
+#### Debug Self-Play Type Fixes
+
+- **`run_debug_selfplay.py`**: Explicit `list[str]` annotations, renamed shadowed `expected_shape` variables, `assert` guards for Optional validators, `Callable` import
+
+### Stats
+
+- 15 files changed, +46 / -35 lines
+- 0 mypy errors in `alpha_zero.envs.*` and `alpha_zero.evaluation.*`
+
+## [1.3.0] — 2026-03-04 — Sprint 3: Convergence, Batch, N-Player
+
+### Added — Sprint 3
+
+#### Convergence Validation (Epic 2)
+
+- **`scripts/validate_v130_training.py`**: Local validation script for v1.3.0 training fix
+  - Checkpoint round-trip weight preservation
+  - Loss decrease trend across training iterations
+  - Win-rate improvement vs random player baseline
+- **`tests/integration/test_convergence_validation.py`**: 6 integration tests
+
+#### Batch Self-Play Cloud Validation (Epic 3)
+
+- **`tests/integration/test_batch_selfplay_integration.py`**: 12 tests — vectorized env lifecycle, batch MCTS config, trajectory validation, schema consistency
+- **`tests/integration/test_selfplay_worker_batch.py`**: 17 tests — batch mode detection, orchestrator passthrough, temperature scheduling, CLI parsing
+- **`docs/prd/prd-batch-selfplay.md`**: Product requirements document
+
+#### N-Player MicroCiv Foundation (Epic 5)
+
+- **`num_players` parameter**: `MicroCivEnv(num_players=2..6)` — backwards-compatible, default=2
+- **Angular spawn distribution**: `_compute_start_positions()` places N players evenly
+- **Modular turn cycling**: `(current_player + 1) % num_players`
+- **N-player victory**: Last-player-standing elimination
+- **N-player truncation**: Most-cities tiebreak (None for tie)
+- **`tests/integration/test_nplayer_microciv.py`**: 51 tests
+- **`docs/prd/prd-nplayer-microciv.md`**: Product requirements document
+
+#### DDP Test Stabilization (Epic 4)
+
+- **`tests/integration/test_ddp_initialization.py`**: Fixed 17 attribute mismatches, removed 5 xfails → 22/22 pass
+
+### Changed
+
+- **CI/CD Hardening (Epic 1)**: Pinned `ruff==0.8.0`, `mypy==1.13.0`
+- **`PLANNING.md`**: Sprint 3 epics and milestones
+- Fixed lint errors in `inference_engine.py` and `inference_server.py`
+
+### Stats
+
+- 86 new tests, 22 fixed — 13 files changed, +1,935 / -149 lines
+
+---
+
+<!-- Below this point: 1.6.0 MLflow Monitoring & Evaluation Analytics content -->
+
+### Added
 
 #### New Scripts (`scripts/`)
 

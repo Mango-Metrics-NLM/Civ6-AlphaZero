@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     from alpha_zero.spacetimedb.config import SpacetimeDBConfig
 
+from alpha_zero.utils.constants import PATHS
+
 
 @dataclass
 class GCSConfig:
@@ -80,7 +82,7 @@ class StorageConfig:
     """
 
     backend_type: Literal["local", "gcs", "spacetimedb"] = "local"
-    base_path: str = "./storage"
+    base_path: str = PATHS.DEFAULT_LOCAL_STORAGE_ROOT
     gcs: GCSConfig = field(default_factory=GCSConfig)
     spacetimedb: SpacetimeDBConfig | None = None
 
@@ -172,7 +174,7 @@ class StorageConfig:
 
         return cls(
             backend_type=data.get("backend_type", "local"),
-            base_path=data.get("base_path", "./storage"),
+            base_path=data.get("base_path", PATHS.DEFAULT_LOCAL_STORAGE_ROOT),
             gcs=gcs_config,
             spacetimedb=spacetimedb_config,
             compress_weights=data.get("compress_weights", True),
@@ -217,7 +219,7 @@ class StorageConfig:
     @classmethod
     def for_local(
         cls,
-        base_path: str = "./storage",
+        base_path: str = PATHS.DEFAULT_LOCAL_STORAGE_ROOT,
         compress_weights: bool = True,
     ) -> StorageConfig:
         """Create configuration for local storage."""

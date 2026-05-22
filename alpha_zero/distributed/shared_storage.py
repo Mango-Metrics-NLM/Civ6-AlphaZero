@@ -249,7 +249,7 @@ class SharedStorage:
     def __setstate__(self, state: dict) -> None:
         """Restore state after pickling."""
         self.__dict__.update(state)
-        self._manager = None  # type: ignore[assignment]
+        self._manager = None  # type: ignore[assignment]  # Manager only lives in the process that created it
         self._owns_manager = False
 
     def shutdown(self) -> None:

@@ -27,7 +27,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar
 
 # Optional imports - gracefully handle missing dependencies
 # Use TYPE_CHECKING to avoid mypy issues with conditional imports
@@ -306,7 +306,7 @@ class OpenAIClient(BaseLLMClient):
 
         response = await self._async_client.chat.completions.create(
             model=model,
-            messages=cast(list[Any], [m.to_openai_format() for m in request_messages]),  # type: ignore
+            messages=[m.to_openai_format() for m in request_messages],  # type: ignore[misc]
             max_tokens=max_tokens,
             temperature=temperature,
         )
