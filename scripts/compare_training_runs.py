@@ -3,12 +3,20 @@
 Compares two training runs side-by-side (e.g., patch_embed vs hex_crystalline encoder).
 Supports both W&B-based comparison and log-file-based fallback.
 
+.. deprecated:: 1.5.0
+    The W&B branch of this script still uses ``wandb.Api()`` to read
+    historical runs. v1.5.0 migrates active tracking to MLflow but
+    historical W&B runs remain readable via the legacy API. Future work
+    should port the metric-fetching path to ``mlflow.MlflowClient`` for
+    consistency. Until then, log-file mode (``--log_a``/``--log_b``) is
+    the recommended path post-MLflow migration.
+
 Usage:
-    # W&B mode
+    # W&B mode (legacy — only works for historical runs in W&B)
     python scripts/compare_training_runs.py --run_a indulgent-date-703 --run_b sunny-fog-469 \
         --labels "Batch,Baseline" --output_dir reports/batch_comparison
 
-    # Log-file mode (when wandb unavailable)
+    # Log-file mode (preferred post-MLflow migration)
     python scripts/compare_training_runs.py --log_a logs/run_a.log --log_b logs/run_b.log \
         --labels "PatchEmbed,HexCrystalline" --output_dir reports/encoder_comparison
 """

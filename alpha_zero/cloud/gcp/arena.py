@@ -196,21 +196,20 @@ def run_arena(
     # Log arena metrics to W&B
     total_elapsed = time.time() - start_time
     try:
-        from alpha_zero.utils.wandb_logger import WANDB_AVAILABLE, log_metrics
+        from alpha_zero.utils.experiment_tracker import log_metrics
 
-        if WANDB_AVAILABLE:
-            log_metrics(
-                {
-                    "arena/total_games": num_games,
-                    "arena/wins": wins,
-                    "arena/losses": losses,
-                    "arena/draws": draws,
-                    "arena/win_rate": wins / max(num_games, 1),
-                    "arena/games_per_minute": num_games / max(total_elapsed / 60, 0.001),
-                }
-            )
+        log_metrics(
+            {
+                "arena/total_games": num_games,
+                "arena/wins": wins,
+                "arena/losses": losses,
+                "arena/draws": draws,
+                "arena/win_rate": wins / max(num_games, 1),
+                "arena/games_per_minute": num_games / max(total_elapsed / 60, 0.001),
+            }
+        )
     except ImportError:
-        logger.debug("wandb not installed, skipping arena metrics logging")
+        logger.debug("experiment tracker not available, skipping arena metrics logging")
 
     return ArenaResult(
         wins=wins,

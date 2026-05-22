@@ -409,25 +409,24 @@ class InferenceBenchmark:
 
         # W&B logging
         try:
-            from alpha_zero.utils.wandb_logger import WANDB_AVAILABLE, log_metrics
+            from alpha_zero.utils.experiment_tracker import log_metrics
 
-            if WANDB_AVAILABLE:
-                log_metrics(
-                    {
-                        "benchmark/single_games_per_minute": single_metrics.games_per_minute,
-                        "benchmark/batch_games_per_minute": batch_metrics.games_per_minute,
-                        "benchmark/speedup": speedup,
-                        "benchmark/speedup_moves": speedup_moves,
-                        "benchmark/parallel_envs": num_parallel,
-                        "benchmark/single_moves_per_second": single_metrics.moves_per_second,
-                        "benchmark/batch_moves_per_second": batch_metrics.moves_per_second,
-                    }
-                )
+            log_metrics(
+                {
+                    "benchmark/single_games_per_minute": single_metrics.games_per_minute,
+                    "benchmark/batch_games_per_minute": batch_metrics.games_per_minute,
+                    "benchmark/speedup": speedup,
+                    "benchmark/speedup_moves": speedup_moves,
+                    "benchmark/parallel_envs": num_parallel,
+                    "benchmark/single_moves_per_second": single_metrics.moves_per_second,
+                    "benchmark/batch_moves_per_second": batch_metrics.moves_per_second,
+                }
+            )
 
-                # Log comparison table
-                self._log_comparison_table(single_metrics, batch_metrics, speedup)
+            # Log comparison table
+            self._log_comparison_table(single_metrics, batch_metrics, speedup)
         except ImportError:
-            logger.warning("W&B not available, skipping logging")
+            logger.warning("Experiment tracker not available, skipping logging")
 
         return {
             "single": single_metrics,
@@ -540,9 +539,9 @@ class InferenceBenchmark:
             speedup: Speedup ratio (batch/single).
         """
         try:
-            from alpha_zero.utils.wandb_logger import WandbLogger
+            from alpha_zero.utils.experiment_tracker import get_tracker
 
-            logger_instance = WandbLogger()
+            logger_instance = get_tracker()
 
             columns = [
                 "Mode",

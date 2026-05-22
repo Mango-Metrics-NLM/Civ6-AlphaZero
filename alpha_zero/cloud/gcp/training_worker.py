@@ -39,7 +39,7 @@ from alpha_zero.cloud.gcp.storage import (
     GCSTrajectoryStorage,
 )
 from alpha_zero.core.losses import LossConfig, compute_reward_loss
-from alpha_zero.utils.wandb_logger import WandbLogger
+from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
 if TYPE_CHECKING:
     from alpha_zero.orchestrator.scheduler import HyperparameterScheduler
@@ -907,7 +907,7 @@ def main() -> int:
     # Initialize W&B (disabled by default, opt-in via WANDB_ENABLED env var)
     wandb_logger = None
     try:
-        from alpha_zero.utils.wandb_logger import WandbLogger
+        from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
         wandb_logger = WandbLogger.from_env()
         if wandb_logger.is_enabled:

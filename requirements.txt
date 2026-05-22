@@ -18,8 +18,11 @@ tqdm>=4.65.0
 types-tqdm>=4.65.0
 python-dotenv>=1.0.0
 
-# Experiment Tracking
-wandb>=0.15.0
+# Experiment Tracking — MLflow is canonical from v1.5.0; the [gcs] extra
+# pulls in google-cloud-storage so MLflow can write artifacts to gs:// URIs
+# (used by the orchestrator VM). google-cloud-storage is also listed below
+# for explicit pinning.
+mlflow[gcs]>=2.10.0,<3.0
 
 # LLM Integration (optional - install if using LLM features)
 openai>=1.0.0
