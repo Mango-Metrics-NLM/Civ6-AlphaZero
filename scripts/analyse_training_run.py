@@ -386,7 +386,9 @@ def _write_policy_csv(trend: PolicyLossTrend, path: Path) -> None:
     with path.open("w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["iteration", "avg_policy_loss", "smoothed"])
-        for it, raw, sm in zip(trend.iterations, trend.avg_policy_loss, trend.smoothed, strict=True):
+        for it, raw, sm in zip(
+            trend.iterations, trend.avg_policy_loss, trend.smoothed, strict=True
+        ):
             writer.writerow([it, raw, sm])
 
 
@@ -576,9 +578,13 @@ def main(argv: list[str] | None = None) -> int:
     print()
     print("--- Policy Loss ---")
     print(f"  First -> Last : {policy.first_loss:.4f} -> {policy.last_loss:.4f}")
-    print(f"  Reduction    : {policy.total_reduction:.4f} ({policy.total_reduction/policy.first_loss*100:.1f}%)")
+    print(
+        f"  Reduction    : {policy.total_reduction:.4f} ({policy.total_reduction/policy.first_loss*100:.1f}%)"
+    )
     print(f"  Slope        : {policy.slope:.6f}  R²={policy.r_squared:.4f}")
-    print(f"  Converged    : {'YES' if policy.converged else 'NO'} (threshold={policy.convergence_threshold})")
+    print(
+        f"  Converged    : {'YES' if policy.converged else 'NO'} (threshold={policy.convergence_threshold})"
+    )
     print()
     print("--- Value Head Stability ---")
     print(f"  First -> Last : {value.first_loss:.6f} -> {value.last_loss:.6f}")
@@ -610,17 +616,20 @@ def main(argv: list[str] | None = None) -> int:
             mlflow.log_artifact(str(policy_csv), artifact_path="analysis")
             mlflow.log_artifact(str(value_csv), artifact_path="analysis")
             mlflow.log_artifact(str(summary_json), artifact_path="analysis")
-            mlflow.log_metrics({
-                "analysis/policy_slope": policy.slope,
-                "analysis/policy_r_squared": policy.r_squared,
-                "analysis/policy_reduction_pct": (
-                    policy.total_reduction / policy.first_loss * 100
-                    if policy.first_loss else 0.0
-                ),
-                "analysis/value_cv": value.cv if not math.isnan(value.cv) else 0.0,
-                "analysis/value_monotone": float(value.monotone_increasing),
-                "analysis/converged": float(policy.converged),
-            })
+            mlflow.log_metrics(
+                {
+                    "analysis/policy_slope": policy.slope,
+                    "analysis/policy_r_squared": policy.r_squared,
+                    "analysis/policy_reduction_pct": (
+                        policy.total_reduction / policy.first_loss * 100
+                        if policy.first_loss
+                        else 0.0
+                    ),
+                    "analysis/value_cv": value.cv if not math.isnan(value.cv) else 0.0,
+                    "analysis/value_monotone": float(value.monotone_increasing),
+                    "analysis/converged": float(policy.converged),
+                }
+            )
         logger.info("Analysis artifacts uploaded to MLflow run %s", run_id)
 
     return 0

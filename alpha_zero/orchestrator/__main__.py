@@ -113,6 +113,23 @@ Environment Variables:
         help="Disable W&B logging",
     )
     parser.add_argument(
+        "--no-mlflow",
+        action="store_true",
+        help="Disable MLflow logging",
+    )
+    parser.add_argument(
+        "--mlflow-tracking-uri",
+        type=str,
+        default=None,
+        help="MLflow tracking URI (default: file://./mlruns)",
+    )
+    parser.add_argument(
+        "--mlflow-experiment-name",
+        type=str,
+        default=None,
+        help="MLflow experiment name",
+    )
+    parser.add_argument(
         "--no-rag",
         action="store_true",
         help="Disable RAG integration",
@@ -209,6 +226,19 @@ def load_config(args: argparse.Namespace) -> Any:
     # Apply feature toggles
     if args.no_wandb:
         config.wandb.enabled = False
+
+    # MLflow flags were added by the PR #78/#79 monitoring branch; the
+    # ``getattr`` defaults keep ``load_config`` callable from older test
+    # fixtures (or external callers) that build a Namespace without these
+    # attributes.
+    if getattr(args, "no_mlflow", False):
+        config.mlflow.enabled = False
+    mlflow_tracking_uri = getattr(args, "mlflow_tracking_uri", None)
+    if mlflow_tracking_uri:
+        config.mlflow.tracking_uri = mlflow_tracking_uri
+    mlflow_experiment_name = getattr(args, "mlflow_experiment_name", None)
+    if mlflow_experiment_name:
+        config.mlflow.experiment_name = mlflow_experiment_name
 
     if args.no_rag:
         config.rag.enabled = False

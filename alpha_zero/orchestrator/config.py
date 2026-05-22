@@ -34,11 +34,15 @@ import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from alpha_zero.monitoring.config import MLflowConfig, parse_tag_string
 from alpha_zero.utils.constants import ENCODER, MCTS, NETWORK, PATHS
+
+if TYPE_CHECKING:
+    from alpha_zero.spacetimedb.config import SpacetimeDBConfig
 
 
 class ScheduleType(str, Enum):
@@ -403,11 +407,23 @@ class EnvironmentConfig:
     early_termination_stalemate_threshold: int = 20
     production_multiplier: float = 1.5
     base_production: int = 3
+    #: When ``type == "chess"``, the gameplay preset routed through
+    #: ``create_game_env``. Defaults to ``"default"`` to remain backwards
+    #: compatible with MicroCiv configs.
+    gameplay_preset: str = "default"
+    #: Chess-only: number of past plies to encode (1..8). 1 → 21 channels,
+    #: 8 → 119 channels per AlphaZero paper. Ignored for MicroCiv.
+    chess_history_depth: int = 1
+    #: Chess-only: max plies before truncation (default 512 = 256 full moves).
+    chess_max_plies: int = 512
+    #: Chess-only: optional FEN to start from (None → standard).
+    chess_starting_fen: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EnvironmentConfig:
         """Create from dictionary."""
         early_term = data.get("early_termination", {})
+        chess_block = data.get("chess", {}) or {}
         return cls(
             type=data.get("type", "microciv"),
             board_size=int(data.get("board_size", 16)),
@@ -426,6 +442,10 @@ class EnvironmentConfig:
                 data.get("production", {}).get("multiplier", 1.5),
             ),
             base_production=int(data.get("production", {}).get("base_production", 3)),
+            gameplay_preset=str(data.get("gameplay_preset", "default")),
+            chess_history_depth=int(chess_block.get("history_depth", 1)),
+            chess_max_plies=int(chess_block.get("max_plies", 512)),
+            chess_starting_fen=chess_block.get("starting_fen"),
         )
 
 
@@ -525,7 +545,7 @@ class TrainingConfig:
     """Training configuration."""
 
     num_iterations: int = 100000
-    games_per_iteration: int = 100
+    games_per_iteration: int = 200
     batch_size: int = 256
     num_epochs: int = 10
     weight_decay: float = 0.0001
@@ -535,6 +555,11 @@ class TrainingConfig:
     checkpoint_interval: int = 1000
     evaluation_interval: int = 500
     evaluation_games: int = 20
+    # Iterations between rich EvaluationPipeline runs (vs random + heuristic).
+    # The fast inline champion-vs-self eval still runs every iteration; this
+    # gates the richer, more expensive opponent suite used to compute
+    # value_correlation and update ELO.
+    full_eval_interval: int = 5
     max_checkpoints: int = 10
     resume: bool = True  # Auto-resume from latest checkpoint if available
 
@@ -559,6 +584,7 @@ class TrainingConfig:
             checkpoint_interval=int(data.get("checkpoint_interval", defaults.checkpoint_interval)),
             evaluation_interval=int(data.get("evaluation_interval", defaults.evaluation_interval)),
             evaluation_games=int(data.get("evaluation_games", defaults.evaluation_games)),
+            full_eval_interval=int(data.get("full_eval_interval", defaults.full_eval_interval)),
             max_checkpoints=int(data.get("max_checkpoints", defaults.max_checkpoints)),
             resume=data.get("resume", defaults.resume),
         )
@@ -760,6 +786,7 @@ class OrchestratorConfig:
     curriculum: CurriculumConfig = field(default_factory=CurriculumConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     wandb: WandbConfig = field(default_factory=WandbConfig)
+    mlflow: MLflowConfig = field(default_factory=MLflowConfig)
     rag: RAGConfig = field(default_factory=RAGConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     strategy_advisor: StrategyAdvisorConfig = field(
@@ -791,6 +818,9 @@ class OrchestratorConfig:
     exploration_schedule: ScheduleConfig = field(
         default_factory=lambda: ScheduleConfig(initial_value=0.25),
     )
+
+    # SpacetimeDB (optional real-time distributed coordination)
+    spacetimedb: SpacetimeDBConfig | None = field(default=None)
 
     # Paths (defaults sourced from alpha_zero.utils.constants.PATHS)
     checkpoint_dir: str = PATHS.ORCHESTRATOR_CHECKPOINT_DIR
@@ -835,6 +865,7 @@ class OrchestratorConfig:
             curriculum=CurriculumConfig.from_dict(data.get("curriculum", {})),
             logging=LoggingConfig.from_dict(data.get("logging", {})),
             wandb=WandbConfig.from_dict(data.get("wandb", {})),
+            mlflow=MLflowConfig.from_dict(data.get("mlflow", {})),
             rag=RAGConfig.from_dict(data.get("rag", {})),
             llm=LLMConfig.from_dict(data.get("llm", {})),
             strategy_advisor=StrategyAdvisorConfig.from_dict(
@@ -858,9 +889,29 @@ class OrchestratorConfig:
             exploration_schedule=ScheduleConfig.from_dict(
                 data.get("exploration_schedule", {"initial_value": 0.25}),
             ),
+            spacetimedb=cls._parse_spacetimedb_config(data.get("spacetimedb")),
             checkpoint_dir=data.get("checkpoint_dir", PATHS.ORCHESTRATOR_CHECKPOINT_DIR),
             log_dir=data.get("log_dir", PATHS.ORCHESTRATOR_LOG_DIR),
         )
+
+    @staticmethod
+    def _parse_spacetimedb_config(data: dict[str, Any] | None) -> SpacetimeDBConfig | None:
+        """Parse SpacetimeDB config from dict if present.
+
+        Args:
+            data: SpacetimeDB configuration dictionary.
+
+        Returns:
+            SpacetimeDBConfig or None.
+        """
+        if data is None:
+            return None
+        try:
+            from alpha_zero.spacetimedb.config import SpacetimeDBConfig
+
+            return SpacetimeDBConfig.from_dict(data)
+        except ImportError:
+            return None
 
     @classmethod
     def from_preset(cls, preset: str) -> OrchestratorConfig:
@@ -991,6 +1042,7 @@ class OrchestratorConfig:
             "rewards": self.rewards,
             "logging": self.logging,
             "wandb": self.wandb,
+            "mlflow": self.mlflow,
             "rag": self.rag,
             "llm": self.llm,
             "resources": self.resources,
@@ -1013,6 +1065,11 @@ class OrchestratorConfig:
                 setattr(target, attr, int(value))
             elif isinstance(current_value, float):
                 setattr(target, attr, float(value))
+            elif isinstance(current_value, dict):
+                # Parse "k1=v1,k2=v2" form used by env-var overrides such as
+                # CIV6AZ_MLFLOW_TAGS. Without this, a raw string would clobber
+                # the dict field.
+                setattr(target, attr, parse_tag_string(value))
             else:
                 setattr(target, attr, value)
         except (ValueError, TypeError):

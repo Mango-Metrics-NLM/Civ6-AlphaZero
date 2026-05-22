@@ -27,12 +27,21 @@ def test_monitoring_config_from_env_defaults(monkeypatch):
         "MLFLOW_TAGS",
         "MLFLOW_ENABLED",
         "MLFLOW_REGISTRY_URI",
+        "CIV6AZ_MLFLOW_TRACKING_URI",
+        "CIV6AZ_MLFLOW_EXPERIMENT_NAME",
+        "CIV6AZ_MLFLOW_RUN_NAME",
+        "CIV6AZ_MLFLOW_TAGS",
+        "CIV6AZ_MLFLOW_ENABLED",
+        "CIV6AZ_MLFLOW_REGISTRY_URI",
     ):
         monkeypatch.delenv(var, raising=False)
     cfg = MonitoringConfig.from_env()
-    assert cfg.tracking_uri == "mlruns"
-    assert cfg.experiment_name == "civ6az-alphazero"
-    assert cfg.enabled is True
+    # Defaults are MLflow-canonical (file://./mlruns, civ6-alphazero, enabled=False
+    # opt-in). The MonitoringConfig name is preserved as an alias for backward
+    # compatibility with v1.5.0 worker code.
+    assert cfg.tracking_uri == "file://./mlruns"
+    assert cfg.experiment_name == "civ6-alphazero"
+    assert cfg.enabled is False
     assert cfg.tags == {}
     assert cfg.registry_uri is None
     assert cfg.run_name is None
@@ -126,7 +135,8 @@ def test_adapter_log_population_stats_matches_wandblogger_signature():
 
 def test_adapter_log_table_matches_wandblogger_signature():
     adapter = _disabled_adapter()
-    # WandbLogger.log_table(name, columns, data)
+    # WandbLogger.log_table(name, columns, data) - polymorphic adapter
+    # accepts both W&B and MLflow-style call shapes.
     adapter.log_table(
         "promotions",
         ["iteration", "win_rate"],

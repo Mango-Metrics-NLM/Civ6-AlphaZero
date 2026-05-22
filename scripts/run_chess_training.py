@@ -206,9 +206,7 @@ def _build_mcts(  # type: ignore[no-untyped-def]
     )
     network = _UniformChessNetwork(action_space_size=action_space_size)
     llm_prior_fn = advisor.mcts_callback() if advisor is not None else None
-    llm_prior_weight = (
-        float(advisor.config.prior_weight) if advisor is not None else 0.5
-    )
+    llm_prior_weight = float(advisor.config.prior_weight) if advisor is not None else 0.5
     mcts = Civ6MCTS(
         network=network,
         config=mcts_cfg,
@@ -439,9 +437,7 @@ def main(argv: list[str] | None = None) -> int:
         default=Path(__file__).resolve().parent.parent / "replays" / "chess",
         help="Directory to write per-game PGN files (one per finished game).",
     )
-    parser.add_argument(
-        "--no-pgn", action="store_true", help="Disable PGN writing entirely."
-    )
+    parser.add_argument("--no-pgn", action="store_true", help="Disable PGN writing entirely.")
     parser.add_argument(
         "--device",
         default="auto",

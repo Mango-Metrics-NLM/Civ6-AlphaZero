@@ -27,9 +27,11 @@ except ImportError:
     TORCH_AVAILABLE = False
 
     # Create dummy classes for type hints
-    class nn:  # type: ignore[no-redef]  # noqa: N801
+    class _DummyNn:
         class Module:
             pass
+
+    nn = _DummyNn  # type: ignore[misc,assignment]
 
 
 from alpha_zero.hierarchical.config import HierarchyLevel

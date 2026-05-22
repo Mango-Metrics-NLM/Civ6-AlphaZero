@@ -463,10 +463,10 @@ class TestPolynomialMutation:
         # Higher eta should produce smaller variance
         assert low_var > high_var
 
-    @pytest.mark.xfail(
-        reason="Bug: PolynomialMutation.mutate uses float(rng.choice(...)) for string categories",
-        strict=True,
-    )
+    # Previously xfail(strict=True). Sprint 5 merge switched the implementation
+    # to index-based ``rng.choice(len(categories))`` so categorical mutation now
+    # returns valid string members rather than coerced floats; the test now
+    # passes and is unmarked.
     def test_mutate_categorical(
         self, rng: np.random.Generator, categorical_range: HyperparameterRange
     ) -> None:
@@ -478,10 +478,10 @@ class TestPolynomialMutation:
         # Should produce valid categories
         assert all(r in categorical_range.categories for r in results)
 
-    @pytest.mark.xfail(
-        reason="Bug: PolynomialMutation.mutate uses float(rng.choice(...)) for string categories",
-        strict=True,
-    )
+    # Previously xfail(strict=True). Sprint 5 merge switched the implementation
+    # to index-based ``rng.choice(len(categories))`` so categorical mutation now
+    # returns valid string members rather than coerced floats; the test now
+    # passes and is unmarked.
     def test_mutate_categorical_low_strength(
         self, rng: np.random.Generator, categorical_range: HyperparameterRange
     ) -> None:
@@ -577,10 +577,9 @@ class TestDifferentialMutation:
 
         assert all(log_range.min_value <= r <= log_range.max_value for r in results)
 
-    @pytest.mark.xfail(
-        reason="Bug: DifferentialMutation.mutate uses float(rng.choice(...)) for string categories",
-        strict=True,
-    )
+    # Previously xfail(strict=True). Sprint 5 merge switched DifferentialMutation
+    # to index-based ``rng.choice(len(categories))`` for string categoricals;
+    # the test now passes and is unmarked.
     def test_mutate_categorical(
         self, rng: np.random.Generator, categorical_range: HyperparameterRange
     ) -> None:
@@ -842,10 +841,9 @@ class TestCrossoverMutation:
         for r in results:
             assert abs(r - 0.5) < 0.01  # Should be very close to average
 
-    @pytest.mark.xfail(
-        reason="Bug: CrossoverMutation.mutate uses float(rng.choice(...)) for string categories",
-        strict=True,
-    )
+    # Previously xfail(strict=True). Sprint 5 merge switched CrossoverMutation
+    # to a string-preserving categorical path; the test now passes and is
+    # unmarked.
     def test_mutate_categorical(
         self, rng: np.random.Generator, categorical_range: HyperparameterRange
     ) -> None:

@@ -47,6 +47,12 @@ if TYPE_CHECKING:
     from alpha_zero.training.training_profiler import TrainingProfiler
     from alpha_zero.training.training_report import TrainingReport
 
+if TYPE_CHECKING:
+    from alpha_zero.orchestrator.scheduler import HyperparameterScheduler
+    from alpha_zero.training.diagnostics import TrainingDiagnostics
+    from alpha_zero.training.training_profiler import TrainingProfiler
+    from alpha_zero.training.training_report import TrainingReport
+
 logger = logging.getLogger(__name__)
 
 CHECKPOINT_RETENTION: int = 3

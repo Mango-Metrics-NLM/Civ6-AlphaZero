@@ -7,6 +7,7 @@ only requires editing this file.
 from __future__ import annotations
 
 import logging
+from typing import cast
 
 from alpha_zero.monitoring.config import MonitoringConfig
 from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter
@@ -20,7 +21,10 @@ def get_tracker() -> WandbCompatAdapter:
     """Return the process-wide tracker singleton (creates one if needed)."""
     global _TRACKER
     if _TRACKER is None:
-        _TRACKER = WandbCompatAdapter.from_config(MonitoringConfig.from_env())
+        _TRACKER = cast(
+            WandbCompatAdapter,
+            WandbCompatAdapter.from_config(MonitoringConfig.from_env()),
+        )
     return _TRACKER
 
 
@@ -28,7 +32,7 @@ def init_tracker(config: MonitoringConfig | None = None) -> WandbCompatAdapter:
     """Initialise (or re-initialise) the singleton tracker."""
     global _TRACKER
     cfg = config or MonitoringConfig.from_env()
-    _TRACKER = WandbCompatAdapter.from_config(cfg)
+    _TRACKER = cast(WandbCompatAdapter, WandbCompatAdapter.from_config(cfg))
     _TRACKER.init()
     return _TRACKER
 

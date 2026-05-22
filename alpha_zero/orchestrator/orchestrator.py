@@ -70,6 +70,7 @@ from alpha_zero.utils.factories import (
     create_environment,
     create_llm_client,
     create_mcts,
+    create_mlflow_logger,
     create_network,
     create_replay_buffer,
     create_reward_shaper,
@@ -279,6 +280,10 @@ class TrainingOrchestrator:
         self._rag: RAGIntegration | None = None
         self._strategy_advisor: StrategyAdvisor | None = None
         self._wandb_logger: Any = None
+        self._mlflow_logger: Any = None
+        self._elo_system: Any = None
+        self._eval_pipeline: Any = None
+        self._elo_ratings: dict[str, float] = {}
         self._device = "cpu"
 
         # Reflection system (LATS-style learning from failures)
@@ -463,6 +468,66 @@ class TrainingOrchestrator:
                     self.config.wandb,
                     experiment_name=self.config.experiment_name,
                 )
+
+            # Initialize MLflow (runs in parallel with W&B; either or both can be enabled).
+            # The experiment name comes from config.mlflow.experiment_name (set via
+            # YAML or CIV6AZ_MLFLOW_EXPERIMENT_NAME); the top-level
+            # config.experiment_name is used only as a fallback when the mlflow
+            # section did not set its own. This keeps CIV6AZ_MLFLOW_EXPERIMENT_NAME
+            # authoritative over CIV6AZ_EXPERIMENT_NAME for MLflow specifically.
+            if self.config.mlflow.enabled:
+                mlflow_experiment_name = (
+                    self.config.mlflow.experiment_name or self.config.experiment_name
+                )
+                self._mlflow_logger = create_mlflow_logger(
+                    self.config.mlflow,
+                    experiment_name=mlflow_experiment_name,
+                )
+                if self._mlflow_logger is not None:
+                    hparams: dict[str, Any] = {
+                        "training/batch_size": self.config.training.batch_size,
+                        "training/num_epochs": self.config.training.num_epochs,
+                        "training/games_per_iteration": (self.config.training.games_per_iteration),
+                        "training/full_eval_interval": (self.config.training.full_eval_interval),
+                        "training/num_iterations": self.config.training.num_iterations,
+                        "mcts/num_simulations": self.config.mcts.num_simulations,
+                        "mcts/c_puct": self.config.mcts.c_puct,
+                        "network/num_res_blocks": self.config.network.num_res_blocks,
+                        "network/num_filters": self.config.network.num_filters,
+                        "env/board_size": self.config.environment.board_size,
+                        "env/max_turns": self.config.environment.max_turns,
+                        "lr_schedule/initial": self.config.lr_schedule.initial_value,
+                        "experiment_name": self.config.experiment_name,
+                    }
+                    self._mlflow_logger.init(config_dict=hparams)
+
+            # Initialize EvaluationPipeline + ELO for value_correlation and elo_spread.
+            # These are independent of the MLflow flag so other consumers (e.g.
+            # in-memory introspection) can use them.
+            try:
+                from alpha_zero.evaluation.evaluation_pipeline import EvaluationPipeline
+                from alpha_zero.tournament.config import ELOConfig
+                from alpha_zero.tournament.elo import ELORatingSystem
+
+                self._eval_pipeline = EvaluationPipeline(
+                    board_size=self.config.environment.board_size,
+                    max_turns=self.config.environment.max_turns,
+                    seed=self.config.random_seed,
+                )
+                self._elo_system = ELORatingSystem(ELOConfig())
+                # Seed both rolling identities to the initial rating.
+                initial_rating = float(self._elo_system.config.initial_rating)
+                self._elo_ratings = {
+                    "current": initial_rating,
+                    "previous_best": initial_rating,
+                }
+            except ImportError as exc:
+                logger.warning(
+                    "EvaluationPipeline / ELO unavailable; skipping rich eval: %s",
+                    exc,
+                )
+                self._eval_pipeline = None
+                self._elo_system = None
 
             # Initialize reflection system (LATS-style learning from failures)
             if self.config.reflection.enabled and REFLECTION_AVAILABLE:
@@ -1398,7 +1463,93 @@ class TrainingOrchestrator:
 
         logger.info(f"Evaluation: win_rate={win_rate:.3f}, avg_reward={avg_reward:.3f}")
 
+        # Log the fast champion-vs-self signal to MLflow every evaluation step.
+        if self._mlflow_logger is not None:
+            self._mlflow_logger.log_metrics(
+                {
+                    "eval/champion/win_rate": float(win_rate),
+                    "eval/champion/avg_reward": float(avg_reward),
+                },
+                step=self.state.iteration,
+            )
+
+        # Periodically run the richer EvaluationPipeline (value_correlation +
+        # vs-random / vs-heuristic) and update the ELO leaderboard.
+        self._run_periodic_full_evaluation(win_rate)
+
         return {"win_rate": win_rate, "avg_reward": avg_reward}
+
+    def _run_periodic_full_evaluation(self, win_rate: float) -> None:
+        """Run EvaluationPipeline + ELO update every ``full_eval_interval`` iters.
+
+        Logs ``eval/<opponent>/*`` and ``elo/*`` metrics to MLflow. No-op if
+        prerequisites are missing or the iteration is off-cadence.
+        """
+        if self._eval_pipeline is None or self._elo_system is None:
+            return
+        interval = max(int(self.config.training.full_eval_interval), 1)
+        if self.state.iteration % interval != 0:
+            return
+
+        try:
+            random_result = self._eval_pipeline.evaluate_vs_random(
+                self._network,
+                n_games=self.config.training.evaluation_games,
+            )
+            heuristic_result = self._eval_pipeline.evaluate_vs_heuristic(
+                self._network,
+                n_games=self.config.training.evaluation_games,
+            )
+        except Exception as exc:
+            logger.warning("Periodic full evaluation failed: %s", exc)
+            return
+
+        eval_results = {"random": random_result, "heuristic": heuristic_result}
+
+        # ELO update vs the rolling "previous_best" identity.
+        elo_updates: list[Any] = []
+        previous_rating = self._elo_ratings.get("previous_best", 0.0)
+        current_rating = self._elo_ratings.get("current", 0.0)
+        if win_rate > self.state.best_win_rate:
+            score1, score2 = 1.0, 0.0
+        elif win_rate < self.state.best_win_rate:
+            score1, score2 = 0.0, 1.0
+        else:
+            score1, score2 = 0.5, 0.5
+        try:
+            update1, update2 = self._elo_system.process_match(
+                player1_id="current",
+                player2_id="previous_best",
+                player1_rating=current_rating,
+                player2_rating=previous_rating,
+                score1=score1,
+                score2=score2,
+            )
+            self._elo_ratings["current"] = float(update1.rating_after)
+            self._elo_ratings["previous_best"] = float(update2.rating_after)
+            elo_updates = [update1, update2]
+        except Exception as exc:
+            logger.warning("ELO update failed: %s", exc)
+            elo_updates = []
+
+        if self._mlflow_logger is not None:
+            self._mlflow_logger.log_evaluation(eval_results, self.state.iteration)
+            if elo_updates:
+                leaderboard = self._build_elo_leaderboard()
+                self._mlflow_logger.log_elo_update(
+                    elo_updates,
+                    leaderboard,
+                    self.state.iteration,
+                )
+
+    def _build_elo_leaderboard(self) -> Any:
+        """Build a ``RatingLeaderboard`` snapshot from ``self._elo_ratings``."""
+        from alpha_zero.tournament.elo import RatingLeaderboard
+
+        board = RatingLeaderboard()
+        for player_id, rating in self._elo_ratings.items():
+            board.update(player_id, rating)
+        return board
 
     def _save_checkpoint(self) -> None:
         """Save training checkpoint."""
@@ -1503,6 +1654,33 @@ class TrainingOrchestrator:
                 }
             )
 
+        # Log to MLflow (parallel to W&B; both can be enabled simultaneously)
+        if self._mlflow_logger is not None:
+            game_metrics: dict[str, float] = {
+                "game/games": float(len(game_results)),
+                "game/win_rate": float(win_rate),
+                "game/avg_game_length": float(avg_turns),
+            }
+            train_metrics_ns: dict[str, float] = {
+                f"train/{k}" if not k.startswith("train/") else k: float(v)
+                for k, v in train_metrics.items()
+            }
+            scheduler_metrics: dict[str, float] = {}
+            if self._scheduler is not None:
+                scheduler_metrics = {
+                    "train/learning_rate": float(self._scheduler.get_learning_rate()),
+                    "train/batch_size": float(self._scheduler.get_batch_size()),
+                    "train/buffer_size": float(len(self._replay_buffer)),
+                    "train/curriculum_stage": float(self.state.curriculum_stage),
+                    "train/iteration_time_seconds": float(iteration_time),
+                }
+            self._mlflow_logger.log_iteration(
+                iteration=iteration,
+                train_metrics=train_metrics_ns,
+                game_metrics=game_metrics,
+                scheduler_metrics=scheduler_metrics,
+            )
+
     def _cleanup(self) -> None:
         """Cleanup resources on shutdown."""
         logger.info("Cleaning up...")
@@ -1525,6 +1703,10 @@ class TrainingOrchestrator:
         # Close W&B
         if self._wandb_logger and hasattr(self._wandb_logger, "finish"):
             self._wandb_logger.finish()
+
+        # Close MLflow
+        if self._mlflow_logger is not None and hasattr(self._mlflow_logger, "finish"):
+            self._mlflow_logger.finish()
 
         self.state.is_running = False
         elapsed = time.time() - self.state.start_time

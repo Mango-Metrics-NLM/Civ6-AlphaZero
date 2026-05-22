@@ -72,7 +72,15 @@ class TestCiv6LocalConfigDefaults:
         assert Civ6LocalConfig().web_port == 8080
 
     def test_bridge_ipc_dir_default(self) -> None:
-        assert Civ6LocalConfig().bridge_ipc_dir == "/tmp/civ6az_bridge"
+        # ``bridge_ipc_dir`` is sourced from ``tempfile.gettempdir()``; the
+        # exact prefix differs by OS (``/tmp`` on Linux, ``C:\Users\...\Temp``
+        # on Windows). Assert the suffix and the parent-dir alignment instead
+        # of hardcoding a POSIX path.
+        import os
+        import tempfile
+
+        expected = os.path.join(tempfile.gettempdir(), "civ6az_bridge")
+        assert Civ6LocalConfig().bridge_ipc_dir == expected
 
     def test_log_level_default(self) -> None:
         assert Civ6LocalConfig().log_level == "INFO"
