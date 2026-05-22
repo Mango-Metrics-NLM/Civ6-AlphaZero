@@ -39,8 +39,10 @@ def env_2p():
 def env_np(request):
     """N-player environment (parametrized)."""
     return MicroCivEnv(
-        board_size=_BOARD_SIZE, max_turns=_MAX_TURNS,
-        seed=42, num_players=request.param,
+        board_size=_BOARD_SIZE,
+        max_turns=_MAX_TURNS,
+        seed=42,
+        num_players=request.param,
     )
 
 
@@ -87,6 +89,7 @@ class TestBackwardsCompat:
         """Observation shape unchanged for 2 players."""
         obs, _ = env_2p.reset()
         from alpha_zero.envs.civ6_encoder import MicroCivEncoder
+
         assert obs["spatial"].shape == (MicroCivEncoder.TOTAL_CHANNELS, _BOARD_SIZE, _BOARD_SIZE)
         assert obs["vector"].shape == (64,)
 
@@ -133,11 +136,18 @@ class TestNPlayerConstruction:
         assert info["num_players"] == env_np.num_players
 
     def test_invalid_num_players_raises(self):
-        """Invalid num_players should raise ValueError."""
+        """Invalid num_players should raise ValueError.
+
+        MicroCivEnv accepts ``2 <= num_players <= GAME.MAX_PLAYERS``; assert
+        the boundary using the constant so this test stays correct if the
+        cap moves.
+        """
+        from alpha_zero.utils.constants import GAME
+
         with pytest.raises(ValueError):
             MicroCivEnv(board_size=_BOARD_SIZE, num_players=1)
         with pytest.raises(ValueError):
-            MicroCivEnv(board_size=_BOARD_SIZE, num_players=7)
+            MicroCivEnv(board_size=_BOARD_SIZE, num_players=GAME.MAX_PLAYERS + 1)
         with pytest.raises(ValueError):
             MicroCivEnv(board_size=_BOARD_SIZE, num_players=0)
 
@@ -198,8 +208,7 @@ class TestNPlayerVictory:
 
     def test_last_player_standing_wins(self):
         """When all but one player is eliminated, that player wins."""
-        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=_MAX_TURNS,
-                          num_players=4, seed=42)
+        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=_MAX_TURNS, num_players=4, seed=42)
         env.reset()
 
         # Remove all units/cities for players 1, 2, 3
@@ -211,8 +220,7 @@ class TestNPlayerVictory:
 
     def test_two_remaining_no_victory(self):
         """Game continues while 2+ players remain."""
-        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=_MAX_TURNS,
-                          num_players=4, seed=42)
+        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=_MAX_TURNS, num_players=4, seed=42)
         env.reset()
 
         # Remove only player 2 and 3's units
@@ -222,8 +230,7 @@ class TestNPlayerVictory:
 
     def test_all_eliminated_none_winner(self):
         """If all players eliminated, winner is None."""
-        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=_MAX_TURNS,
-                          num_players=3, seed=42)
+        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=_MAX_TURNS, num_players=3, seed=42)
         env.reset()
 
         env.units = []
@@ -245,8 +252,7 @@ class TestNPlayerTruncation:
         """Player with most cities wins on truncation."""
         from alpha_zero.envs.microciv import City
 
-        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=5,
-                          num_players=3, seed=42)
+        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=5, num_players=3, seed=42)
         env.reset()
         env.turn = 5  # Force truncation
 
@@ -264,8 +270,7 @@ class TestNPlayerTruncation:
         """Equal city counts produce None winner."""
         from alpha_zero.envs.microciv import City
 
-        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=5,
-                          num_players=3, seed=42)
+        env = MicroCivEnv(board_size=_BOARD_SIZE, max_turns=5, num_players=3, seed=42)
         env.reset()
         env.turn = 5
 
@@ -291,6 +296,7 @@ class TestNPlayerEncoder:
         """Spatial observation shape is independent of num_players."""
         obs, _ = env_np.reset()
         from alpha_zero.envs.civ6_encoder import MicroCivEncoder
+
         assert obs["spatial"].shape == (MicroCivEncoder.TOTAL_CHANNELS, _BOARD_SIZE, _BOARD_SIZE)
 
     def test_vector_shape_unchanged(self, env_np):
