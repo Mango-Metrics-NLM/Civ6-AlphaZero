@@ -1391,10 +1391,10 @@ def main() -> int:
         args.policy_hidden_dim = preset_config.policy_hidden_dim
         args.value_head_dim = preset_config.value_head_dim
 
-    # Initialize W&B for orchestrator (opt-in via WANDB_ENABLED env var)
+    # Initialize experiment tracker for orchestrator (opt-in via MLFLOW_ENABLED env var)
     wandb_logger = None
     try:
-        from alpha_zero.utils.wandb_logger import WandbLogger
+        from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
         wandb_logger = WandbLogger.from_env()
         if wandb_logger.is_enabled:
