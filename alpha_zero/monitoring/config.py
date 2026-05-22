@@ -15,6 +15,7 @@ Example YAML (dangerous: tracking_uri: -> becomes None, NOT converted to
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -29,6 +30,17 @@ DEFAULT_TRACKING_URI: str = "mlruns"
 
 #: Default experiment name used when none is specified.
 DEFAULT_EXPERIMENT_NAME: str = "civ6az-alphazero"
+
+# ---------------------------------------------------------------------------
+# Environment variable names (MLFLOW_* convention)
+# ---------------------------------------------------------------------------
+
+ENV_TRACKING_URI = "MLFLOW_TRACKING_URI"
+ENV_EXPERIMENT_NAME = "MLFLOW_EXPERIMENT_NAME"
+ENV_RUN_NAME = "MLFLOW_RUN_NAME"
+ENV_TAGS = "MLFLOW_TAGS"
+ENV_ENABLED = "MLFLOW_ENABLED"
+ENV_REGISTRY_URI = "MLFLOW_REGISTRY_URI"
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +78,42 @@ class MonitoringConfig:
     # ------------------------------------------------------------------
     # Constructors
     # ------------------------------------------------------------------
+
+    @classmethod
+    def from_env(cls) -> MonitoringConfig:
+        """Build a MonitoringConfig from ``MLFLOW_*`` environment variables.
+
+        Recognised variables:
+
+        - ``MLFLOW_TRACKING_URI``  -> ``tracking_uri``
+        - ``MLFLOW_REGISTRY_URI``  -> ``registry_uri``
+        - ``MLFLOW_EXPERIMENT_NAME`` -> ``experiment_name``
+        - ``MLFLOW_RUN_NAME``      -> ``run_name``
+        - ``MLFLOW_TAGS``          -> ``tags`` (comma-separated ``k=v`` pairs)
+        - ``MLFLOW_ENABLED``       -> ``enabled`` (``0/false/no/off/<empty>`` => False)
+
+        Returns:
+            A MonitoringConfig populated from the current environment.
+        """
+        raw_tags = os.environ.get(ENV_TAGS, "").strip()
+        tags: dict[str, str] = {}
+        if raw_tags:
+            for pair in raw_tags.split(","):
+                if "=" in pair:
+                    k, v = pair.split("=", 1)
+                    tags[k.strip()] = v.strip()
+
+        enabled_raw = os.environ.get(ENV_ENABLED, "true").strip().lower()
+        enabled = enabled_raw not in {"0", "false", "no", "off", ""}
+
+        return cls(
+            tracking_uri=os.environ.get(ENV_TRACKING_URI) or DEFAULT_TRACKING_URI,
+            registry_uri=os.environ.get(ENV_REGISTRY_URI) or None,
+            experiment_name=os.environ.get(ENV_EXPERIMENT_NAME) or DEFAULT_EXPERIMENT_NAME,
+            run_name=os.environ.get(ENV_RUN_NAME) or None,
+            tags=tags,
+            enabled=enabled,
+        )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MonitoringConfig:
