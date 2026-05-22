@@ -431,9 +431,21 @@ def _resolve_resume_token(
 
     try:
         latest = checkpoint_storage.load_checkpoint(step=None)
-    except Exception as exc:  # noqa: BLE001 — non-fatal; cold start is OK
+    except (GCSStorageError, ImportError) as exc:
+        # Expected failure modes (missing checkpoint, lazy-loaded backend
+        # unavailable in tests) — cold-start is the right behaviour.
         logger.warning("resume_from resolution failed (%s); cold-starting", exc)
         latest = None
+    except Exception:
+        # Unexpected: misconfigured GCPConfig, torch.load deserialisation
+        # crash, etc.  Silently cold-starting here reproduces the v1.2.0
+        # zero-promotion bug — surface the traceback loudly so Cloud Logging
+        # captures it and re-raise.
+        logger.error(
+            "Unexpected error resolving resume token; re-raising",
+            exc_info=True,
+        )
+        raise
 
     if latest is None:
         if iteration > 0:

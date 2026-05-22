@@ -81,6 +81,38 @@ def test_explicit_args_resume_from_overrides_auto_resolution():
     fake_ckpt_storage.load_checkpoint.assert_not_called()
 
 
+def test_resolve_returns_none_on_gcs_storage_error():
+    """Expected: GCSStorageError (missing checkpoint) -> cold-start (None)."""
+    from alpha_zero.cloud.gcp.exceptions import GCSStorageError
+
+    fake_ckpt_storage = MagicMock()
+    fake_ckpt_storage.load_checkpoint.side_effect = GCSStorageError("not found")
+    args = _make_args()
+
+    result = vo._resolve_resume_token(
+        args, iteration=3, checkpoint_storage=fake_ckpt_storage
+    )
+    assert result is None
+
+
+def test_resolve_reraises_unexpected_exceptions():
+    """Unexpected errors (not GCSStorageError) must surface, not silently cold-start.
+
+    Reproduces the v1.2.0 zero-promotion failure mode: a misconfigured
+    GCPConfig or a torch.load deserialisation crash used to be swallowed
+    by a broad ``except Exception`` and treated as "no checkpoint", causing
+    every iteration to train from random init.
+    """
+    fake_ckpt_storage = MagicMock()
+    fake_ckpt_storage.load_checkpoint.side_effect = RuntimeError("torch deser failure")
+    args = _make_args()
+
+    with pytest.raises(RuntimeError, match="torch deser failure"):
+        vo._resolve_resume_token(
+            args, iteration=3, checkpoint_storage=fake_ckpt_storage
+        )
+
+
 def test_build_training_extra_args_emits_resume_when_provided():
     args = _make_args(resume_from="latest")
     extra = vo.build_training_extra_args(args)
