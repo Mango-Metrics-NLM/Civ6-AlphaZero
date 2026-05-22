@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# v1.5.0 production orchestrator launcher.
+# v1.6.0 production orchestrator launcher.
 #
 # Runs the Vertex orchestrator directly (NOT via entrypoint --mode=orchestrator,
 # which is intentionally blocked inside containers). Routes experiment tracking
@@ -11,14 +11,14 @@
 # BEFORE incurring Vertex AI job spend.
 #
 # Usage (on civ6az-orchestrator VM):
-#   bash launch_prod_v1.5.0.sh
+#   bash launch_prod_v1.6.0.sh
 #
 # Override via env:
-#   ITERATIONS=10 WORKERS=2 bash launch_prod_v1.5.0.sh
+#   ITERATIONS=10 WORKERS=2 bash launch_prod_v1.6.0.sh
 #
 set -euo pipefail
 
-VERSION="${VERSION:-v1.5.0}"
+VERSION="${VERSION:-v1.6.0}"
 PROJECT="${CIV6AZ_VERTEX_PROJECT:-hrmtrain}"
 REGION="${CIV6AZ_VERTEX_REGION:-us-central1}"
 BUCKET="${CIV6AZ_GCS_BUCKET:-civ6az-training}"
@@ -51,7 +51,7 @@ export MLFLOW_ENABLED=true
 # Pre-flight: verify GCS write access before launching anything expensive.
 PROBE_BLOB="${MLFLOW_ARTIFACT_ROOT%/}/.write-probe-$(date +%s)"
 echo "Pre-flight: writing probe blob to ${PROBE_BLOB}"
-if ! echo "v1.5.0-prod-probe" | gsutil cp - "${PROBE_BLOB}"; then
+if ! echo "v1.6.0-prod-probe" | gsutil cp - "${PROBE_BLOB}"; then
     echo "FATAL: VM service account cannot write to ${MLFLOW_ARTIFACT_ROOT}." >&2
     echo "       Verify storage.objectAdmin on bucket gs://${BUCKET}." >&2
     exit 1

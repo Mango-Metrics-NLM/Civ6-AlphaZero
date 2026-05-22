@@ -1,5 +1,5 @@
 substitutions:
-  _TAG_NAME: v1.5.0
+  _TAG_NAME: v1.6.0
   _IMAGE: us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training
 
 steps:
