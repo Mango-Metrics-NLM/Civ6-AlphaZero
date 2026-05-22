@@ -292,12 +292,25 @@ class TestNPlayerTruncation:
 class TestNPlayerEncoder:
     """Tests that encoder produces correct shapes for N-player games."""
 
-    def test_spatial_shape_unchanged(self, env_np):
-        """Spatial observation shape is independent of num_players."""
-        obs, _ = env_np.reset()
-        from alpha_zero.envs.civ6_encoder import MicroCivEncoder
+    def test_spatial_shape_scales_with_num_players(self, env_np):
+        """Spatial channels scale with num_players (3 + 4*N + 2).
 
-        assert obs["spatial"].shape == (MicroCivEncoder.TOTAL_CHANNELS, _BOARD_SIZE, _BOARD_SIZE)
+        The encoder layout from civ6_encoder.MicroCivEncoder docstring:
+          - 3 channels: shared terrain (plains/hills/mountain)
+          - 3 * num_players channels: unit types per player
+          - num_players channels: per-player city presence
+          - 1 channel: visibility (fog of war)
+          - 1 channel: constant bias
+        Total = 3 + 4 * num_players + 2.
+
+        For num_players=2 this gives the legacy 13. For 3/4/6 it gives 17/21/29.
+        ``MicroCivEncoder.TOTAL_CHANNELS`` is a class-level constant fixed at
+        13 for backwards-compat with code that references it directly; the
+        instance dynamically sizes its output.
+        """
+        obs, _ = env_np.reset()
+        expected_channels = 3 + 4 * env_np.num_players + 2
+        assert obs["spatial"].shape == (expected_channels, _BOARD_SIZE, _BOARD_SIZE)
 
     def test_vector_shape_unchanged(self, env_np):
         """Vector observation shape is independent of num_players."""
