@@ -157,7 +157,7 @@ class RealCiv6Env(gym.Env):
         >>> env.close()
     """
 
-    metadata: ClassVar[dict[str, list[str] | int]] = {
+    metadata: ClassVar[dict[str, list[str] | int]] = {  # type: ignore[misc]
         "render_modes": ["human"],
         "render_fps": 1,
     }
@@ -384,7 +384,8 @@ class RealCiv6Env(gym.Env):
         )
 
         try:
-            ack = self._run_async(self._bridge.send_and_wait(cmd_msg, timeout=self.action_timeout))  # type: ignore[union-attr]
+            assert self._bridge is not None
+            ack = self._run_async(self._bridge.send_and_wait(cmd_msg, timeout=self.action_timeout))
 
             if not ack.success:
                 logger.warning(f"Action failed: {ack.error_message}")
@@ -409,8 +410,9 @@ class RealCiv6Env(gym.Env):
         # Wait for next state
         prev_state = self._current_state
         try:
+            assert self._bridge is not None
             self._raw_state = self._run_async(
-                self._bridge.wait_for_state(timeout=self.bridge_config.command_timeout_ms / 1000.0)  # type: ignore[union-attr]
+                self._bridge.wait_for_state(timeout=self.bridge_config.command_timeout_ms / 1000.0)
             )
             self._current_state = self._state_converter.convert(self._raw_state)
 
@@ -492,6 +494,25 @@ class RealCiv6Env(gym.Env):
             "action_mask": action_mask,
         }
 
+    def _get_observation(self) -> dict[str, np.ndarray]:
+        """Get current observation (deprecated).
+
+        .. deprecated::
+            Use :meth:`get_observation` instead. This method will be removed
+            in a future version.
+
+        Returns:
+            Observation dictionary with spatial, vector, and action_mask.
+        """
+        import warnings
+
+        warnings.warn(
+            "_get_observation() is deprecated, use get_observation() instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.get_observation()
+
     def get_info(self) -> dict[str, Any]:
         """Get current info dictionary.
 
@@ -519,6 +540,25 @@ class RealCiv6Env(gym.Env):
             "winner_id": winner_id,
             "is_game_over": self._raw_state.is_game_over if self._raw_state else False,
         }
+
+    def _get_info(self) -> dict[str, Any]:
+        """Get current info dictionary (deprecated).
+
+        .. deprecated::
+            Use :meth:`get_info` instead. This method will be removed
+            in a future version.
+
+        Returns:
+            Info dictionary with game state details.
+        """
+        import warnings
+
+        warnings.warn(
+            "_get_info() is deprecated, use get_info() instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.get_info()
 
     def _calculate_reward(
         self,
@@ -559,7 +599,7 @@ class RealCiv6Env(gym.Env):
         curr_gold = curr_state.get("gold", 0)
         reward += (curr_gold - prev_gold) * config.gold_scale
 
-        return reward  # type: ignore[no-any-return]
+        return float(reward)
 
     def _run_async(self, coro: Any) -> Any:
         """Run async coroutine from sync context.
@@ -590,7 +630,7 @@ class RealCiv6Env(gym.Env):
             logger.debug(f"Async operation error: {e}")
             raise
 
-    def render(self) -> np.ndarray | None:
+    def render(self) -> np.ndarray | None:  # type: ignore[override]
         """Render the environment.
 
         Currently only supports "human" mode which prints state info.
@@ -753,8 +793,16 @@ class MockCiv6Env(RealCiv6Env):
             ],
         }
 
-        self._bridge.set_mock_state(mock_state)  # type: ignore[union-attr]
-        self._raw_state = self._run_async(self._bridge.poll_state())  # type: ignore[union-attr]
+        assert self._bridge is not None
+        from alpha_zero.bridge.file_bridge import MockFileBridge
+
+        if not isinstance(self._bridge, MockFileBridge):
+            raise RuntimeError(
+                f"_set_mock_state is only supported with MockFileBridge, "
+                f"but got {type(self._bridge).__name__!r}"
+            )
+        self._bridge.set_mock_state(mock_state)
+        self._raw_state = self._run_async(self._bridge.poll_state())
         self._current_state = self._state_converter.convert(self._raw_state)
         self._turn = turn_id
 

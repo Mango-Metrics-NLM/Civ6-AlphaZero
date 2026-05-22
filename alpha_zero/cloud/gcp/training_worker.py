@@ -24,7 +24,7 @@ import logging
 import os
 import sys
 import time
-from typing import Any
+from typing import TYPE_CHECKING
 
 import torch
 import torch.distributed as dist
@@ -40,6 +40,12 @@ from alpha_zero.cloud.gcp.storage import (
 )
 from alpha_zero.core.losses import LossConfig, compute_reward_loss
 from alpha_zero.utils.wandb_logger import WandbLogger
+
+if TYPE_CHECKING:
+    from alpha_zero.orchestrator.scheduler import HyperparameterScheduler
+    from alpha_zero.training.diagnostics import TrainingDiagnostics
+    from alpha_zero.training.training_profiler import TrainingProfiler
+    from alpha_zero.training.training_report import TrainingReport
 
 logger = logging.getLogger(__name__)
 
@@ -140,12 +146,6 @@ def parse_args() -> argparse.Namespace:
         "--checkpoint_interval", type=int, default=1000, help="Steps between checkpoints"
     )
     parser.add_argument("--resume_from", type=str, default=None, help="Checkpoint to resume from")
-    parser.add_argument(
-        "--model_version",
-        type=int,
-        default=None,
-        help="Model version to load as base weights for fine-tuning (None=train from scratch)",
-    )
     # Network architecture args passed by the Vertex orchestrator
     parser.add_argument("--board_size", type=int, default=8, help="Board size (spatial_size)")
     parser.add_argument("--action_space_size", type=int, default=376, help="Action space size")
@@ -372,7 +372,7 @@ def train_muzero_epoch(
     global_step: int = 0,
     wandb_logger: WandbLogger | None = None,
     wandb_log_interval: int = 10,
-    lr_scheduler: Any | None = None,
+    lr_scheduler: HyperparameterScheduler | None = None,
 ) -> tuple[float, float, float, float, int]:
     """Train MuZero model for one epoch using trajectory-based multi-step learning.
 
@@ -431,8 +431,8 @@ def train_muzero_epoch(
 
         # MuZero initial inference
         if hasattr(model, "representation"):
-            hidden_state = model.representation(spatial_4d, vector)
-            policy_logits, value = model.prediction_function(hidden_state)
+            hidden_state = model.representation(spatial_4d, vector)  # type: ignore[operator]
+            policy_logits, value = model.prediction_function(hidden_state)  # type: ignore[operator]
         else:
             policy_logits, value = model(spatial_4d, vector)
 
@@ -465,11 +465,11 @@ def train_muzero_epoch(
             # Only unroll if we have valid hidden states
             if current_hidden is not None:
                 for k in range(unroll_steps):
-                    dynamics_out = model.dynamics_function(current_hidden, target_actions)
+                    dynamics_out = model.dynamics_function(current_hidden, target_actions)  # type: ignore[operator]
                     current_hidden = dynamics_out.next_hidden_state
 
                     # Prediction from unrolled state
-                    step_policy_logits, step_value = model.prediction_function(current_hidden)
+                    step_policy_logits, step_value = model.prediction_function(current_hidden)  # type: ignore[operator]
 
                     # Accumulate losses with discount
                     discount_factor = discount ** (k + 1)
@@ -627,10 +627,10 @@ def train_epoch(
     spatial_channels: int = 13,
     spatial_size: int = 8,
     wandb_log_interval: int = 10,
-    lr_scheduler: Any | None = None,
-    diagnostics: Any | None = None,
-    report: Any | None = None,
-    profiler: Any | None = None,
+    lr_scheduler: HyperparameterScheduler | None = None,
+    diagnostics: TrainingDiagnostics | None = None,
+    report: TrainingReport | None = None,
+    profiler: TrainingProfiler | None = None,
 ) -> tuple[float, float, float, int]:
     """Train for one epoch.
 
@@ -859,7 +859,7 @@ def save_final_model(
         import dataclasses
         from enum import Enum
 
-        model_config_dict = dataclasses.asdict(model.config)
+        model_config_dict = dataclasses.asdict(model.config)  # type: ignore[call-overload]
         # Convert enums to string values for JSON serialization
         for key, value in model_config_dict.items():
             if isinstance(value, Enum):
@@ -1026,15 +1026,6 @@ def main() -> int:
                 encoder_type=getattr(args, "encoder_type", "patch_embed"),
             )
         model = model.to(device)
-
-        # Load pre-trained weights for fine-tuning (if specified)
-        if args.model_version is not None and not args.dry_run:
-            storage = GCSModelStorage(config)
-            state_dict, _metadata, _model_config = storage.load_model(args.model_version)
-            model.load_state_dict(state_dict, strict=False)
-            if is_main_process:
-                logger.info("Loaded base model v%d for fine-tuning", args.model_version)
-
         raw_model = model  # Keep reference before DDP for param group construction
 
         # Wrap DDP
@@ -1077,19 +1068,19 @@ def main() -> int:
         else:
             param_groups = [
                 {
-                    "params": list(raw_model.encoder.parameters()),
+                    "params": list(raw_model.encoder.parameters()),  # type: ignore[union-attr]
                     "lr": base_lr,
                     "base_lr_ratio": 1.0,
                     "name": "encoder",
                 },
                 {
-                    "params": list(raw_model.policy_head.parameters()),
+                    "params": list(raw_model.policy_head.parameters()),  # type: ignore[union-attr]
                     "lr": base_lr * args.policy_lr_multiplier,
                     "base_lr_ratio": args.policy_lr_multiplier,
                     "name": "policy_head",
                 },
                 {
-                    "params": list(raw_model.value_head.parameters()),
+                    "params": list(raw_model.value_head.parameters()),  # type: ignore[union-attr]
                     "lr": base_lr * args.value_lr_multiplier,
                     "base_lr_ratio": args.value_lr_multiplier,
                     "name": "value_head",
@@ -1215,7 +1206,7 @@ def main() -> int:
             spatial_size = args.board_size
 
             if is_muzero:
-                loss, policy_loss, value_loss, _reward_loss, num_batches = train_muzero_epoch(
+                loss, policy_loss, value_loss, reward_loss, num_batches = train_muzero_epoch(
                     model,
                     dataloader,
                     optimizer,
@@ -1301,11 +1292,7 @@ def main() -> int:
             logger.info("Training complete in %.1f seconds", total_time)
 
             # Unwrap model if DDP
-            from typing import cast
-
-            model_to_save: torch.nn.Module = cast(
-                torch.nn.Module, model.module if world_size > 1 else model
-            )
+            model_to_save: torch.nn.Module = model.module if isinstance(model, DDP) else model
             uri, version = save_final_model(config, model_to_save, args.iteration, args.dry_run)
             logger.info("Saved final model version %d to %s", version, uri)
 

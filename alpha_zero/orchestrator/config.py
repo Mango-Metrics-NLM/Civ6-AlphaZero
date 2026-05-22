@@ -34,12 +34,11 @@ import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import yaml
 
-if TYPE_CHECKING:
-    from alpha_zero.spacetimedb.config import SpacetimeDBConfig
+from alpha_zero.utils.constants import ENCODER, MCTS, NETWORK, PATHS
 
 
 class ScheduleType(str, Enum):
@@ -201,29 +200,33 @@ class AutonomyLevel:
 
 @dataclass
 class RAGConfig:
-    """Configuration for RAG (Retrieval-Augmented Generation) system."""
+    """Configuration for RAG (Retrieval-Augmented Generation) system.
+
+    Path defaults sourced from alpha_zero.utils.constants.PATHS.
+    """
 
     enabled: bool = True
-    persist_directory: str = "data/knowledge_db"
-    collection_name: str = "civ6_knowledge"
+    persist_directory: str = PATHS.RAG_PERSIST_DIR
+    collection_name: str = PATHS.RAG_COLLECTION_NAME
     embedding_model: str = "all-MiniLM-L6-v2"
     top_k: int = 5
     auto_ingest: bool = True
-    knowledge_dir: str = "data/knowledge"
+    knowledge_dir: str = PATHS.RAG_KNOWLEDGE_DIR
     store_insights: bool = True
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RAGConfig:
-        """Create from dictionary."""
+        """Create from dictionary. Missing fields fall back to class defaults."""
+        defaults = cls()
         return cls(
-            enabled=data.get("enabled", True),
-            persist_directory=data.get("persist_directory", "data/knowledge_db"),
-            collection_name=data.get("collection_name", "civ6_knowledge"),
-            embedding_model=data.get("embedding_model", "all-MiniLM-L6-v2"),
-            top_k=int(data.get("top_k", 5)),
-            auto_ingest=data.get("auto_ingest", True),
-            knowledge_dir=data.get("knowledge_dir", "data/knowledge"),
-            store_insights=data.get("store_insights", True),
+            enabled=data.get("enabled", defaults.enabled),
+            persist_directory=data.get("persist_directory", defaults.persist_directory),
+            collection_name=data.get("collection_name", defaults.collection_name),
+            embedding_model=data.get("embedding_model", defaults.embedding_model),
+            top_k=int(data.get("top_k", defaults.top_k)),
+            auto_ingest=data.get("auto_ingest", defaults.auto_ingest),
+            knowledge_dir=data.get("knowledge_dir", defaults.knowledge_dir),
+            store_insights=data.get("store_insights", defaults.store_insights),
         )
 
 
@@ -283,17 +286,20 @@ class StrategyAdvisorConfig:
 
 @dataclass
 class ReflectionIntegrationConfig:
-    """Configuration for LATS-style reflection memory integration."""
+    """Configuration for LATS-style reflection memory integration.
+
+    Path defaults sourced from alpha_zero.utils.constants.PATHS.
+    """
 
     enabled: bool = False  # Disabled by default for backwards compatibility
     storage_backend: str = "memory"  # "memory", "chroma", "faiss"
-    collection_name: str = "game_reflections"
+    collection_name: str = PATHS.REFLECTION_COLLECTION_NAME
     embedding_dimension: int = 384
     similarity_threshold: float = 0.7
     max_retrievals: int = 5
     warning_penalty: float = 0.1  # Penalty applied to MCTS value
     max_entries: int = 10000
-    persist_directory: str = "data/reflections"
+    persist_directory: str = PATHS.REFLECTION_PERSIST_DIR
 
     # LLM reflection generation settings
     generate_critiques: bool = True  # Use LLM to generate verbal critiques
@@ -304,22 +310,27 @@ class ReflectionIntegrationConfig:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ReflectionIntegrationConfig:
-        """Create from dictionary."""
+        """Create from dictionary. Missing fields fall back to class defaults."""
+        defaults = cls()
         return cls(
-            enabled=data.get("enabled", False),
-            storage_backend=data.get("storage_backend", "memory"),
-            collection_name=data.get("collection_name", "game_reflections"),
-            embedding_dimension=int(data.get("embedding_dimension", 384)),
-            similarity_threshold=float(data.get("similarity_threshold", 0.7)),
-            max_retrievals=int(data.get("max_retrievals", 5)),
-            warning_penalty=float(data.get("warning_penalty", 0.1)),
-            max_entries=int(data.get("max_entries", 10000)),
-            persist_directory=data.get("persist_directory", "data/reflections"),
-            generate_critiques=data.get("generate_critiques", True),
-            llm_temperature=float(data.get("llm_temperature", 0.3)),
-            llm_max_tokens=int(data.get("llm_max_tokens", 500)),
-            cache_critiques=data.get("cache_critiques", True),
-            use_fallback_on_failure=data.get("use_fallback_on_failure", True),
+            enabled=data.get("enabled", defaults.enabled),
+            storage_backend=data.get("storage_backend", defaults.storage_backend),
+            collection_name=data.get("collection_name", defaults.collection_name),
+            embedding_dimension=int(data.get("embedding_dimension", defaults.embedding_dimension)),
+            similarity_threshold=float(
+                data.get("similarity_threshold", defaults.similarity_threshold)
+            ),
+            max_retrievals=int(data.get("max_retrievals", defaults.max_retrievals)),
+            warning_penalty=float(data.get("warning_penalty", defaults.warning_penalty)),
+            max_entries=int(data.get("max_entries", defaults.max_entries)),
+            persist_directory=data.get("persist_directory", defaults.persist_directory),
+            generate_critiques=data.get("generate_critiques", defaults.generate_critiques),
+            llm_temperature=float(data.get("llm_temperature", defaults.llm_temperature)),
+            llm_max_tokens=int(data.get("llm_max_tokens", defaults.llm_max_tokens)),
+            cache_critiques=data.get("cache_critiques", defaults.cache_critiques),
+            use_fallback_on_failure=data.get(
+                "use_fallback_on_failure", defaults.use_fallback_on_failure
+            ),
         )
 
     @classmethod
@@ -392,23 +403,11 @@ class EnvironmentConfig:
     early_termination_stalemate_threshold: int = 20
     production_multiplier: float = 1.5
     base_production: int = 3
-    #: When ``type == "chess"``, the gameplay preset routed through
-    #: ``create_game_env``. Defaults to ``"default"`` to remain backwards
-    #: compatible with MicroCiv configs.
-    gameplay_preset: str = "default"
-    #: Chess-only: number of past plies to encode (1..8). 1 → 21 channels,
-    #: 8 → 119 channels per AlphaZero paper. Ignored for MicroCiv.
-    chess_history_depth: int = 1
-    #: Chess-only: max plies before truncation (default 512 = 256 full moves).
-    chess_max_plies: int = 512
-    #: Chess-only: optional FEN to start from (None → standard).
-    chess_starting_fen: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> EnvironmentConfig:
         """Create from dictionary."""
         early_term = data.get("early_termination", {})
-        chess_block = data.get("chess", {}) or {}
         return cls(
             type=data.get("type", "microciv"),
             board_size=int(data.get("board_size", 16)),
@@ -427,62 +426,97 @@ class EnvironmentConfig:
                 data.get("production", {}).get("multiplier", 1.5),
             ),
             base_production=int(data.get("production", {}).get("base_production", 3)),
-            gameplay_preset=str(data.get("gameplay_preset", "default")),
-            chess_history_depth=int(chess_block.get("history_depth", 1)),
-            chess_max_plies=int(chess_block.get("max_plies", 512)),
-            chess_starting_fen=chess_block.get("starting_fen"),
         )
 
 
 @dataclass
 class NetworkConfig:
-    """Neural network configuration."""
+    """Neural network configuration.
 
-    spatial_channels: int = 13
-    vector_dim: int = 64
-    num_res_blocks: int = 6
-    num_filters: int = 64
-    num_heads: int = 4
-    value_head_hidden: int = 256
-    dropout: float = 0.0
+    Shape defaults sourced from alpha_zero.utils.constants ENCODER and
+    NETWORK. num_heads and dropout intentionally diverge from
+    NetworkConstants (which uses 8 and 0.1) because the orchestrator's
+    default network is smaller for faster Phase 1 training.
+    """
+
+    spatial_channels: int = ENCODER.MICROCIV_CHANNELS
+    vector_dim: int = ENCODER.MICROCIV_VECTOR_DIM
+    num_res_blocks: int = NETWORK.DEFAULT_NUM_RES_BLOCKS
+    num_filters: int = NETWORK.DEFAULT_NUM_FILTERS
+    num_heads: int = 4  # orchestrator-specific, smaller than NETWORK.DEFAULT_NUM_HEADS
+    value_head_hidden: int = NETWORK.DEFAULT_FC_DIM
+    dropout: float = 0.0  # orchestrator-specific, no dropout for Phase 1 training
     framework: str = "pytorch"  # "pytorch" or "jax"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> NetworkConfig:
-        """Create from dictionary."""
+        """Create from dictionary. Missing fields fall back to class defaults."""
+        defaults = cls()
         return cls(
-            spatial_channels=int(data.get("spatial_channels", 13)),
-            vector_dim=int(data.get("vector_dim", 64)),
-            num_res_blocks=int(data.get("num_res_blocks", 6)),
-            num_filters=int(data.get("num_filters", 64)),
-            num_heads=int(data.get("num_heads", 4)),
-            value_head_hidden=int(data.get("value_head_hidden", 256)),
-            dropout=float(data.get("dropout", 0.0)),
-            framework=str(data.get("framework", "pytorch")),
+            spatial_channels=int(data.get("spatial_channels", defaults.spatial_channels)),
+            vector_dim=int(data.get("vector_dim", defaults.vector_dim)),
+            num_res_blocks=int(data.get("num_res_blocks", defaults.num_res_blocks)),
+            num_filters=int(data.get("num_filters", defaults.num_filters)),
+            num_heads=int(data.get("num_heads", defaults.num_heads)),
+            value_head_hidden=int(data.get("value_head_hidden", defaults.value_head_hidden)),
+            dropout=float(data.get("dropout", defaults.dropout)),
+            framework=str(data.get("framework", defaults.framework)),
         )
 
 
 @dataclass
 class MCTSConfig:
-    """MCTS configuration."""
+    """MCTS configuration for orchestrated training.
 
-    num_simulations: int = 400
-    c_puct: float = 1.5
-    dirichlet_alpha: float = 0.3
-    dirichlet_epsilon: float = 0.25
-    temperature: float = 1.0
-    temperature_threshold: int = 30
+    Defaults sourced from alpha_zero.utils.constants.MCTS for auditable
+    single source of truth.
+    """
+
+    num_simulations: int = MCTS.ORCHESTRATOR_NUM_SIMULATIONS
+    c_puct: float = MCTS.DEFAULT_C_PUCT
+    dirichlet_alpha: float = MCTS.DEFAULT_DIRICHLET_ALPHA
+    dirichlet_epsilon: float = MCTS.DEFAULT_DIRICHLET_EPSILON
+    temperature: float = MCTS.DEFAULT_TEMPERATURE
+    temperature_threshold: int = MCTS.DEFAULT_TEMPERATURE_THRESHOLD
+
+    def __post_init__(self) -> None:
+        if not MCTS.MIN_SIMULATIONS <= self.num_simulations <= MCTS.MAX_SIMULATIONS:
+            raise ValueError(
+                f"num_simulations must be in [{MCTS.MIN_SIMULATIONS}, "
+                f"{MCTS.MAX_SIMULATIONS}]; got {self.num_simulations}"
+            )
+        if self.c_puct <= 0:
+            raise ValueError(f"c_puct must be > 0; got {self.c_puct}")
+        if self.dirichlet_alpha <= 0:
+            raise ValueError(f"dirichlet_alpha must be > 0; got {self.dirichlet_alpha}")
+        if not 0.0 <= self.dirichlet_epsilon <= 1.0:
+            raise ValueError(f"dirichlet_epsilon must be in [0, 1]; got {self.dirichlet_epsilon}")
+        if self.temperature < 0:
+            raise ValueError(f"temperature must be >= 0; got {self.temperature}")
+        if self.temperature_threshold < 0:
+            raise ValueError(
+                f"temperature_threshold must be >= 0; got {self.temperature_threshold}"
+            )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MCTSConfig:
-        """Create from dictionary."""
+        """Create from dictionary.
+
+        Missing fields fall back to the class defaults via ``defaults = cls()``
+        rather than duplicated literal fallbacks. This makes it structurally
+        impossible for the class default and the from_dict fallback to drift
+        apart over time (a recurring bug class on configs with many fields).
+        """
+        defaults = cls()
         return cls(
-            num_simulations=int(data.get("num_simulations", 50)),
-            c_puct=float(data.get("c_puct", 1.5)),
-            dirichlet_alpha=float(data.get("dirichlet_alpha", 0.3)),
-            dirichlet_epsilon=float(data.get("dirichlet_epsilon", 0.25)),
-            temperature=float(data.get("temperature", 1.0)),
-            temperature_threshold=int(data.get("temperature_threshold", 30)),
+            num_simulations=int(data.get("num_simulations", defaults.num_simulations)),
+            c_puct=float(data.get("c_puct", defaults.c_puct)),
+            dirichlet_alpha=float(data.get("dirichlet_alpha", defaults.dirichlet_alpha)),
+            dirichlet_epsilon=float(data.get("dirichlet_epsilon", defaults.dirichlet_epsilon)),
+            temperature=float(data.get("temperature", defaults.temperature)),
+            temperature_threshold=int(
+                data.get("temperature_threshold", defaults.temperature_threshold)
+            ),
         )
 
 
@@ -491,7 +525,7 @@ class TrainingConfig:
     """Training configuration."""
 
     num_iterations: int = 100000
-    games_per_iteration: int = 200
+    games_per_iteration: int = 100
     batch_size: int = 256
     num_epochs: int = 10
     weight_decay: float = 0.0001
@@ -506,21 +540,27 @@ class TrainingConfig:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TrainingConfig:
-        """Create from dictionary."""
+        """Create from dictionary.
+
+        Missing fields fall back to the class defaults via ``defaults = cls()``
+        rather than duplicated literal fallbacks, so a future change to a class
+        default automatically propagates to the from_dict path.
+        """
+        defaults = cls()
         return cls(
-            num_iterations=int(data.get("num_iterations", 100000)),
-            games_per_iteration=int(data.get("games_per_iteration", 100)),
-            batch_size=int(data.get("batch_size", 256)),
-            num_epochs=int(data.get("num_epochs", 10)),
-            weight_decay=float(data.get("weight_decay", 0.0001)),
-            gradient_clip=float(data.get("gradient_clip", 1.0)),
-            replay_buffer_size=int(data.get("replay_buffer_size", 500000)),
-            min_replay_size=int(data.get("min_replay_size", 10000)),
-            checkpoint_interval=int(data.get("checkpoint_interval", 1000)),
-            evaluation_interval=int(data.get("evaluation_interval", 500)),
-            evaluation_games=int(data.get("evaluation_games", 20)),
-            max_checkpoints=int(data.get("max_checkpoints", 10)),
-            resume=data.get("resume", True),
+            num_iterations=int(data.get("num_iterations", defaults.num_iterations)),
+            games_per_iteration=int(data.get("games_per_iteration", defaults.games_per_iteration)),
+            batch_size=int(data.get("batch_size", defaults.batch_size)),
+            num_epochs=int(data.get("num_epochs", defaults.num_epochs)),
+            weight_decay=float(data.get("weight_decay", defaults.weight_decay)),
+            gradient_clip=float(data.get("gradient_clip", defaults.gradient_clip)),
+            replay_buffer_size=int(data.get("replay_buffer_size", defaults.replay_buffer_size)),
+            min_replay_size=int(data.get("min_replay_size", defaults.min_replay_size)),
+            checkpoint_interval=int(data.get("checkpoint_interval", defaults.checkpoint_interval)),
+            evaluation_interval=int(data.get("evaluation_interval", defaults.evaluation_interval)),
+            evaluation_games=int(data.get("evaluation_games", defaults.evaluation_games)),
+            max_checkpoints=int(data.get("max_checkpoints", defaults.max_checkpoints)),
+            resume=data.get("resume", defaults.resume),
         )
 
 
@@ -752,12 +792,9 @@ class OrchestratorConfig:
         default_factory=lambda: ScheduleConfig(initial_value=0.25),
     )
 
-    # SpacetimeDB (optional real-time distributed coordination)
-    spacetimedb: SpacetimeDBConfig | None = field(default=None)
-
-    # Paths
-    checkpoint_dir: str = "checkpoints/orchestrator"
-    log_dir: str = "logs/orchestrator"
+    # Paths (defaults sourced from alpha_zero.utils.constants.PATHS)
+    checkpoint_dir: str = PATHS.ORCHESTRATOR_CHECKPOINT_DIR
+    log_dir: str = PATHS.ORCHESTRATOR_LOG_DIR
     config_path: str | None = None
 
     @classmethod
@@ -821,29 +858,9 @@ class OrchestratorConfig:
             exploration_schedule=ScheduleConfig.from_dict(
                 data.get("exploration_schedule", {"initial_value": 0.25}),
             ),
-            spacetimedb=cls._parse_spacetimedb_config(data.get("spacetimedb")),
-            checkpoint_dir=data.get("checkpoint_dir", "checkpoints/orchestrator"),
-            log_dir=data.get("log_dir", "logs/orchestrator"),
+            checkpoint_dir=data.get("checkpoint_dir", PATHS.ORCHESTRATOR_CHECKPOINT_DIR),
+            log_dir=data.get("log_dir", PATHS.ORCHESTRATOR_LOG_DIR),
         )
-
-    @staticmethod
-    def _parse_spacetimedb_config(data: dict[str, Any] | None) -> SpacetimeDBConfig | None:
-        """Parse SpacetimeDB config from dict if present.
-
-        Args:
-            data: SpacetimeDB configuration dictionary.
-
-        Returns:
-            SpacetimeDBConfig or None.
-        """
-        if data is None:
-            return None
-        try:
-            from alpha_zero.spacetimedb.config import SpacetimeDBConfig
-
-            return SpacetimeDBConfig.from_dict(data)
-        except ImportError:
-            return None
 
     @classmethod
     def from_preset(cls, preset: str) -> OrchestratorConfig:

@@ -14,7 +14,6 @@ Usage:
 
 from __future__ import annotations
 
-import logging
 import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -24,8 +23,6 @@ from typing import Any
 import numpy as np
 
 from alpha_zero.pbt.config import HyperparameterRange, HyperparameterSpace
-
-logger = logging.getLogger(__name__)
 
 
 class MutationStrategy(str, Enum):
@@ -156,10 +153,7 @@ class UniformMutation(BaseMutation):
         """Apply uniform mutation."""
         if param_range.scale == "categorical":
             if rng.random() < strength:
-                new_value = rng.choice(param_range.categories)
-                if isinstance(new_value, np.generic):
-                    new_value = new_value.item()
-                return new_value
+                return rng.choice(param_range.categories)  # type: ignore[no-any-return]
             return value
 
         if param_range.scale == "log":
@@ -170,12 +164,12 @@ class UniformMutation(BaseMutation):
 
             delta = strength * log_range
             new_log_value = rng.uniform(log_value - delta, log_value + delta)
-            new_value = math.exp(float(np.clip(new_log_value, log_min, log_max)))
+            new_value = math.exp(np.clip(new_log_value, log_min, log_max))
         else:
             value_range = param_range.max_value - param_range.min_value
             delta = strength * value_range
             new_value = rng.uniform(value - delta, value + delta)
-            new_value = float(np.clip(new_value, param_range.min_value, param_range.max_value))
+            new_value = np.clip(new_value, param_range.min_value, param_range.max_value)
 
         if param_range.discrete:
             new_value = round(new_value)
@@ -207,7 +201,7 @@ class PolynomialMutation(BaseMutation):
         """Apply polynomial mutation."""
         if param_range.scale == "categorical":
             if rng.random() < strength:
-                return float(rng.choice(param_range.categories))
+                return rng.choice(param_range.categories)  # type: ignore[no-any-return]
             return value
 
         # Normalize value to [0, 1]
@@ -279,7 +273,7 @@ class DifferentialMutation(BaseMutation):
         """Apply differential mutation."""
         if param_range.scale == "categorical":
             if rng.random() < strength:
-                return float(rng.choice(param_range.categories))
+                return rng.choice(param_range.categories)  # type: ignore[no-any-return]
             return value
 
         if len(self._candidates) < 3:
@@ -300,12 +294,12 @@ class DifferentialMutation(BaseMutation):
         else:
             new_value = a + self.f * strength * (b - c)
 
-        new_value = float(np.clip(new_value, param_range.min_value, param_range.max_value))
+        new_value = np.clip(new_value, param_range.min_value, param_range.max_value)
 
         if param_range.discrete:
             new_value = round(new_value)
 
-        return new_value
+        return new_value  # type: ignore[no-any-return]
 
 
 class AdaptiveMutation(BaseMutation):
@@ -435,12 +429,12 @@ class CrossoverMutation(BaseMutation):
 
         if param_range.scale == "categorical":
             # For categorical: randomly pick from either parent
-            return float(rng.choice([value, parent2_value]))
+            return rng.choice([value, parent2_value])  # type: ignore[no-any-return]
 
         # Apply crossover based on type
         if self.crossover_type == "uniform":
             # Uniform crossover: randomly pick from either parent
-            new_value = float(rng.choice([value, parent2_value]))
+            new_value = rng.choice([value, parent2_value])
         elif self.crossover_type == "blend":
             # BLX-alpha: blend values with extension
             new_value = self._blend_crossover(value, parent2_value, param_range, rng)
@@ -452,12 +446,12 @@ class CrossoverMutation(BaseMutation):
             new_value = (value + parent2_value) / 2
 
         # Clip to valid range
-        new_value = float(np.clip(new_value, param_range.min_value, param_range.max_value))
+        new_value = np.clip(new_value, param_range.min_value, param_range.max_value)
 
         if param_range.discrete:
             new_value = round(new_value)
 
-        return new_value
+        return new_value  # type: ignore[no-any-return]
 
     def _blend_crossover(
         self,
@@ -517,7 +511,7 @@ class CrossoverMutation(BaseMutation):
             child_log = 0.5 * ((1 + beta) * log_p1 + (1 - beta) * log_p2)
             return math.exp(child_log)
         else:
-            return float(0.5 * ((1 + beta) * p1 + (1 - beta) * p2))
+            return 0.5 * ((1 + beta) * p1 + (1 - beta) * p2)  # type: ignore[no-any-return]
 
 
 class MutationOperator:
@@ -575,19 +569,9 @@ class MutationOperator:
 
         strategy = self._strategies.get(self.config.strategy)
         if strategy is None:
-            logger.debug("Unknown strategy %r, falling back to gaussian", self.config.strategy)
             strategy = self._strategies["gaussian"]
 
-        new_value = strategy.mutate(value, param_range, self.rng, strength)
-        logger.debug(
-            "Mutated %s: %s -> %s (strategy=%s, strength=%.4f)",
-            param_range.name,
-            value,
-            new_value,
-            self.config.strategy,
-            strength,
-        )
-        return new_value
+        return strategy.mutate(value, param_range, self.rng, strength)
 
     def mutate_all(
         self,
@@ -610,23 +594,14 @@ class MutationOperator:
         gen = generation if generation is not None else self._generation
         result = {}
 
-        mutated_count = 0
         for name, param_range in hyperparameter_space.get_all_params().items():
             current_value = values.get(name, param_range.sample(self.rng))
 
             if self.rng.random() < mutation_probability:
                 result[name] = self.mutate(current_value, param_range, gen)
-                mutated_count += 1
             else:
                 result[name] = current_value
 
-        logger.info(
-            "Mutated %d/%d hyperparameters (generation=%d, probability=%.2f)",
-            mutated_count,
-            len(hyperparameter_space.get_all_params()),
-            gen,
-            mutation_probability,
-        )
         return result
 
     def set_candidates_for_differential(

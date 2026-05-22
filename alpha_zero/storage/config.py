@@ -16,10 +16,9 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
-if TYPE_CHECKING:
-    from alpha_zero.spacetimedb.config import SpacetimeDBConfig
+from alpha_zero.utils.constants import PATHS
 
 
 @dataclass
@@ -79,10 +78,9 @@ class StorageConfig:
         champion_subdir: Subdirectory for champion model.
     """
 
-    backend_type: Literal["local", "gcs", "spacetimedb"] = "local"
-    base_path: str = "./storage"
+    backend_type: Literal["local", "gcs"] = "local"
+    base_path: str = PATHS.DEFAULT_LOCAL_STORAGE_ROOT
     gcs: GCSConfig = field(default_factory=GCSConfig)
-    spacetimedb: SpacetimeDBConfig | None = None
 
     # Compression settings
     compress_weights: bool = True
@@ -108,7 +106,7 @@ class StorageConfig:
     def _apply_env_overrides(self) -> None:
         """Apply environment variable overrides."""
         if env_backend := os.environ.get("CIV6_STORAGE_BACKEND"):
-            if env_backend in ("local", "gcs", "spacetimedb"):
+            if env_backend in ("local", "gcs"):
                 self.backend_type = env_backend  # type: ignore[assignment]
 
         if env_path := os.environ.get("CIV6_STORAGE_BASE_PATH"):
@@ -164,17 +162,10 @@ class StorageConfig:
             retry_max_attempts=gcs_data.get("retry_max_attempts", 5),
         )
 
-        spacetimedb_config = None
-        if stdb_data := data.get("spacetimedb"):
-            from alpha_zero.spacetimedb.config import SpacetimeDBConfig
-
-            spacetimedb_config = SpacetimeDBConfig.from_dict(stdb_data)
-
         return cls(
             backend_type=data.get("backend_type", "local"),
-            base_path=data.get("base_path", "./storage"),
+            base_path=data.get("base_path", PATHS.DEFAULT_LOCAL_STORAGE_ROOT),
             gcs=gcs_config,
-            spacetimedb=spacetimedb_config,
             compress_weights=data.get("compress_weights", True),
             compress_trajectories=data.get("compress_trajectories", False),
             models_subdir=data.get("models_subdir", "models"),
@@ -189,7 +180,7 @@ class StorageConfig:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        result: dict[str, Any] = {
+        return {
             "backend_type": self.backend_type,
             "base_path": self.base_path,
             "gcs": {
@@ -210,14 +201,11 @@ class StorageConfig:
             "logs_subdir": self.logs_subdir,
             "use_vertex_ai_paths": self.use_vertex_ai_paths,
         }
-        if self.spacetimedb is not None:
-            result["spacetimedb"] = self.spacetimedb.to_dict()
-        return result
 
     @classmethod
     def for_local(
         cls,
-        base_path: str = "./storage",
+        base_path: str = PATHS.DEFAULT_LOCAL_STORAGE_ROOT,
         compress_weights: bool = True,
     ) -> StorageConfig:
         """Create configuration for local storage."""
@@ -242,35 +230,6 @@ class StorageConfig:
                 prefix=prefix,
                 project=project,
             ),
-        )
-
-    @classmethod
-    def for_spacetimedb(
-        cls,
-        module_address: str,
-        host: str = "http://localhost:3000",
-        compress_weights: bool = True,
-    ) -> StorageConfig:
-        """Create configuration for SpacetimeDB storage.
-
-        Args:
-            module_address: SpacetimeDB module address.
-            host: SpacetimeDB server host URL.
-            compress_weights: Whether to compress model weights.
-
-        Returns:
-            StorageConfig configured for SpacetimeDB backend.
-        """
-        from alpha_zero.spacetimedb.config import SpacetimeDBConfig
-
-        return cls(
-            backend_type="spacetimedb",
-            spacetimedb=SpacetimeDBConfig(
-                enabled=True,
-                host=host,
-                module_address=module_address,
-            ),
-            compress_weights=compress_weights,
         )
 
     @classmethod

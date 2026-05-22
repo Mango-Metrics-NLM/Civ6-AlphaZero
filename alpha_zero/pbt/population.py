@@ -406,7 +406,7 @@ class PopulationManager:
         recent = self.stats_history[-self.config.convergence_window :]
         # Simple check: Average std_fitness over window < threshold
         avg_std = np.mean([s.std_fitness for s in recent])
-        return avg_std < self.config.convergence_threshold
+        return bool(avg_std < self.config.convergence_threshold)
 
     def set_weight_callbacks(
         self,

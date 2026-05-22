@@ -988,12 +988,21 @@ class UncivInterface:
         # Load the module directly from file
         module_path = Path(__file__).parent.parent / "core" / "civ6_actions.py"
         spec = importlib.util.spec_from_file_location(module_name, module_path)
-        if spec is None or spec.loader is None:
-            raise ImportError(f"Could not load module from {module_path}")
+        if spec is None:
+            raise ModuleNotFoundError(
+                f"Cannot find or load module spec for '{module_name}' at {module_path}. "
+                f"Ensure the file exists: {module_path.absolute()}"
+            )
         actions_module = importlib.util.module_from_spec(spec)
 
         # Register in sys.modules BEFORE exec to allow self-references
         sys.modules[module_name] = actions_module
+        if spec.loader is None:
+            raise ImportError(
+                f"Module loader not found for '{module_name}'. "
+                f"The spec was created but cannot execute the module. "
+                f"This typically means the file format is not supported."
+            )
         spec.loader.exec_module(actions_module)
 
         return actions_module
@@ -1076,60 +1085,6 @@ class UncivInterface:
             raise UncivSaveError(f"Cannot write game file: {e}") from e
         except Exception as e:
             raise UncivSaveError(f"Error saving game state: {e}") from e
-
-    def parse_multiplayer_save(self, save_path: str) -> dict[str, Any]:
-        """Parse a multiplayer Unciv save file and return metadata.
-
-        This method loads a save file and extracts multiplayer-relevant
-        information such as the number of players, player names, and
-        a mapping from civilization names to sequential IDs.
-
-        The existing single-player ``load_game`` method is unchanged;
-        this method provides additional multiplayer metadata on top of
-        the standard game state.
-
-        Args:
-            save_path: Path to the Unciv JSON save file.
-
-        Returns:
-            Dictionary containing:
-                - ``game_state``: The loaded :class:`UncivGameState`.
-                - ``num_players``: Number of players detected.
-                - ``player_names``: List of civilization names.
-                - ``player_id_mapping``: Dict mapping sequential index to
-                  civilization name.
-                - ``current_player_index``: Index of the current player.
-                - ``is_multiplayer``: Whether the game has > 2 players.
-
-        Raises:
-            UncivLoadError: If the file cannot be loaded or parsed.
-        """
-        game_state = self.load_game(save_path)
-
-        player_names = list(game_state.players.keys())
-        num_players = len(player_names)
-
-        # Build index -> civ name mapping
-        player_id_mapping: dict[int, str] = dict(enumerate(player_names))
-
-        # Determine current player index
-        current_player_index = 0
-        if game_state.current_player in player_names:
-            current_player_index = player_names.index(game_state.current_player)
-
-        logger.info(
-            f"Multiplayer save parsed: {num_players} players, "
-            f"current_player={game_state.current_player} (index {current_player_index})",
-        )
-
-        return {
-            "game_state": game_state,
-            "num_players": num_players,
-            "player_names": player_names,
-            "player_id_mapping": player_id_mapping,
-            "current_player_index": current_player_index,
-            "is_multiplayer": num_players > 2,
-        }
 
     def convert_to_internal(self, unciv_state: UncivGameState | dict) -> dict:
         """Convert Unciv game state to internal encoder format.
@@ -1469,7 +1424,8 @@ class UncivInterface:
         Returns:
             Numpy array of shape (action_space_size,) with 1.0 for valid actions
         """
-        return self.action_space.get_full_mask(state)
+        result: np.ndarray = self.action_space.get_full_mask(state)
+        return result
 
     def _get_action_enums(self) -> Any:
         """Get action enum classes, loading them if needed."""

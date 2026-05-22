@@ -164,18 +164,18 @@ is still hardcoded for 2 players.
 
 ---
 
-## Medium-Term Roadmap
+## Phase 21: DDP Test Rewrites & Remaining Type Safety
 
-### Phase 22: MuZero PBT Training Run
+**Goal**: Fix remaining 12 DDP xfailed tests and bring remaining ~98 mypy errors to zero.
+
+> **Sprint 5 delivered**: 251→~98 mypy errors (61% reduction) across 58 files.
+> Zero-error packages: `envs/`, `evaluation/`, `web/`, `hierarchical/`, `pbt/`, `training_worker.py`, `training_civ6.py`.
 
 **Goal**: Run MuZero with PBT on Vertex AI, compare against AlphaZero.
 
-**Status**: MuZero network + trainer + PBT module all exist.
-
-**Tasks**:
-1. Run PBT with `configs/muzero_pbt.yaml`
-2. Compare AlphaZero vs MuZero (ELO, loss, cost)
-3. Measure search efficiency gain (no env cloning)
+1. Rewrite DDP tests to use `torch.multiprocessing.spawn` instead of subprocess
+2. Add `disallow_untyped_defs` for remaining packages (`distributed`, `human_interface`, `rag`, `cloud` residual)
+3. Target: 0 xfails, 0 mypy errors
 
 ---
 

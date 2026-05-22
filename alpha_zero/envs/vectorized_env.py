@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 
@@ -281,7 +281,7 @@ class VectorizedMicroCivEnv:
         Returns:
             List of environment indices where done=False.
         """
-        return cast(list[int], np.where(~self._done)[0].tolist())
+        return np.flatnonzero(~self._done).tolist()
 
     def get_env(self, idx: int) -> MicroCivEnv:
         """Get individual environment by index.
@@ -330,7 +330,7 @@ class VectorizedMicroCivEnv:
     @property
     def action_space_size(self) -> int:
         """Size of the discrete action space."""
-        return self._action_space_size
+        return int(self._action_space_size)
 
     @property
     def active_count(self) -> int:

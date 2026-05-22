@@ -1,19 +1,18 @@
 """Reconstruct tournament results from Cloud Logging for a cancelled job."""
 
 import argparse
-import json
 import logging
 import re
 import sys
 import time
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from google.cloud import logging_v2
 from google.cloud import aiplatform
-from alpha_zero.tournament.history import MatchHistory, MatchRecord
+from alpha_zero.tournament.history import MatchHistory
 from alpha_zero.tournament.analysis import TournamentAnalyzer
-from alpha_zero.tournament.config import MatchResult, TournamentConfig, MatchOutcome
+from alpha_zero.tournament.config import MatchResult
 from alpha_zero.tournament.elo import ELORatingSystem
 
 # Configure logging

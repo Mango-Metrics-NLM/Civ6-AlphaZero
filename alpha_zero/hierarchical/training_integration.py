@@ -128,15 +128,29 @@ class HierarchicalTrainingIntegration:
         )
 
     def _create_controller(self) -> None:
-        """Create the hierarchical controller."""
-        h_config = self.config.hierarchical_config or HierarchicalConfig.default()
-        self.controller = create_hierarchical_controller(
-            preset="default" if h_config is None else None,  # type: ignore[arg-type]
-            llm_advisor=self.llm_advisor,
-        )
+        """Create the hierarchical controller.
+
+        Two creation paths:
+        1. Explicit config: When hierarchical_config is provided, it is used
+           directly WITHOUT applying environment variable overrides. This allows
+           users to have full control over the config they pass.
+        2. Factory preset: When no explicit config is given, uses the factory
+           function which DOES apply environment overrides from CIV6AZ_HIERARCHICAL_*
+           variables.
+
+        To use env overrides with an explicit config, call apply_env_overrides()
+        before passing it to HierarchicalTrainingConfig.
+        """
         if self.config.hierarchical_config:
+            # Use explicit config if provided
             self.controller = HierarchicalController(
                 config=self.config.hierarchical_config,
+                llm_advisor=self.llm_advisor,
+            )
+        else:
+            # Use preset factory function for default config
+            self.controller = create_hierarchical_controller(
+                preset="default",
                 llm_advisor=self.llm_advisor,
             )
 
@@ -325,7 +339,7 @@ class HierarchicalTrainingIntegration:
         # Add value estimate metrics
         for level, values in self.state.level_value_estimates.items():
             if values:
-                metrics[f"hierarchical/value_{level}"] = np.mean(values[-100:])
+                metrics[f"hierarchical/value_{level}"] = np.mean(values[-100:])  # type: ignore[assignment]
 
         # Save checkpoint if needed
         if (

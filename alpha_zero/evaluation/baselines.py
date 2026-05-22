@@ -223,7 +223,7 @@ class HeuristicPlayer:
             scores[i] = self._evaluate_action(env, action, observation)
 
         # Add small random noise for tie-breaking
-        scores = scores + self._rng.random(len(scores)) * 0.001
+        scores += self._rng.random(len(scores), dtype=np.float32) * 0.001
 
         best_idx = np.argmax(scores)
         return int(valid_actions[best_idx])
@@ -466,7 +466,8 @@ class NeuralNetworkPlayer:
         action_mask: np.ndarray,
     ) -> int:
         """Select action using MCTS."""
-        action_probs, _ = self.mcts.search(env, add_noise=False)
+        assert self.mcts is not None
+        action_probs, _ = self.mcts.search(env, add_noise=False)  # type: ignore[arg-type]
 
         # Apply temperature
         if self.temperature > 0:
@@ -526,8 +527,8 @@ class NeuralNetworkPlayer:
         """Reset player state for new game."""
         self._games_played += 1
         if self.mcts is not None:
-            # Reset MCTS tree
-            self.mcts.reset()  # type: ignore[attr-defined]
+            if hasattr(self.mcts, "reset"):
+                self.mcts.reset()
 
     def get_stats(self) -> dict[str, Any]:
         """Get player statistics."""
