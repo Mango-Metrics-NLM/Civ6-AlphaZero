@@ -70,6 +70,24 @@ _JITTER_FRACTION: Final[float] = 0.25
 _EVAL_MACHINE_TYPE: Final[str] = "n1-standard-4"
 
 
+def _phase_run_name(iteration: int, phase: str) -> str:
+    """Compose an MLflow run name for a per-phase worker run.
+
+    Encodes the orchestrator's run group as the prefix so all per-phase
+    runs sort together in the MLflow UI even when no explicit group/tag
+    is set (the prefix carries the grouping information).
+
+    Args:
+        iteration: Current orchestrator iteration (0-based).
+        phase: ``"selfplay"`` | ``"training"`` | ``"eval"``.
+
+    Returns:
+        e.g. ``"civ6az-selfplay-iter003"``.
+    """
+    base = os.environ.get("MLFLOW_RUN_GROUP", "civ6az")
+    return f"{base}-{phase}-iter{iteration:03d}"
+
+
 def compute_retry_delay(
     attempt: int,
     *,
@@ -648,7 +666,7 @@ def run_selfplay_phase(
 
     for attempt in range(max_retries + 1):
         try:
-            os.environ["WANDB_RUN_NAME"] = f"selfplay-iter{iteration:03d}"
+            os.environ["MLFLOW_RUN_NAME"] = _phase_run_name(iteration, "selfplay")
             job_names = selfplay_manager.launch(
                 num_workers=num_workers,
                 model_version=model_version,
@@ -699,7 +717,7 @@ def run_selfplay_phase(
                 continue
             return False
         finally:
-            os.environ.pop("WANDB_RUN_NAME", None)
+            os.environ.pop("MLFLOW_RUN_NAME", None)
 
     return False
 
@@ -734,7 +752,7 @@ def run_training_phase(
 
     for attempt in range(max_retries + 1):
         try:
-            os.environ["WANDB_RUN_NAME"] = f"training-iter{iteration:03d}"
+            os.environ["MLFLOW_RUN_NAME"] = _phase_run_name(iteration, "training")
             job_name = training_manager.launch(
                 iteration=iteration,
                 trajectory_iterations=trajectory_iterations,
@@ -788,7 +806,7 @@ def run_training_phase(
                 continue
             return False
         finally:
-            os.environ.pop("WANDB_RUN_NAME", None)
+            os.environ.pop("MLFLOW_RUN_NAME", None)
 
     return False
 
@@ -843,7 +861,7 @@ def run_evaluation_phase(
                 )
                 logger.info("Evaluation retry %d/%d in %.0fs...", attempt, max_retries, delay)
                 time.sleep(delay)
-            os.environ["WANDB_RUN_NAME"] = f"eval-iter{iteration:03d}"
+            os.environ["MLFLOW_RUN_NAME"] = _phase_run_name(iteration, "eval")
             job_name = eval_manager.launch(
                 model_version_new=model_version_new,
                 model_version_old=model_version_old,
@@ -899,7 +917,7 @@ def run_evaluation_phase(
             if attempt == max_retries:
                 return False, 0.0
         finally:
-            os.environ.pop("WANDB_RUN_NAME", None)
+            os.environ.pop("MLFLOW_RUN_NAME", None)
 
     return False, 0.0
 
@@ -1405,17 +1423,29 @@ def main() -> int:
                     "mode": "orchestrator",
                 }
             )
-            # Propagate run name as W&B group for all worker containers
-            # so selfplay/training/evaluation runs appear grouped in the UI
+            # Propagate run name as the MLflow run group for all worker
+            # containers so selfplay/training/evaluation runs sort together
+            # in the MLflow UI. The group is encoded two ways for downstream
+            # consumers: (1) ``MLFLOW_RUN_GROUP`` is the canonical orchestrator
+            # group name and feeds ``_phase_run_name`` so each worker run is
+            # named ``<group>-<phase>-iter<N>``, and (2) it's added to
+            # ``MLFLOW_TAGS`` as ``group=<name>`` so MLflow's filter/search
+            # UI can use it directly.
             try:
                 run_obj = getattr(wandb_logger, "run", None)
                 if run_obj is not None:
                     group_name = getattr(run_obj, "name", None) or getattr(run_obj, "id", None)
                     if group_name:
-                        os.environ["WANDB_GROUP"] = group_name
-                        logger.info("W&B group set to: %s", group_name)
+                        os.environ["MLFLOW_RUN_GROUP"] = group_name
+                        existing_tags = os.environ.get("MLFLOW_TAGS", "").strip()
+                        group_tag = f"group={group_name}"
+                        if existing_tags:
+                            os.environ["MLFLOW_TAGS"] = f"{existing_tags},{group_tag}"
+                        else:
+                            os.environ["MLFLOW_TAGS"] = group_tag
+                        logger.info("MLflow run group set to: %s", group_name)
             except Exception as _e:
-                logger.debug("Could not set WANDB_GROUP: %s", _e)
+                logger.debug("Could not set MLFLOW_RUN_GROUP: %s", _e)
             logger.info("W&B logging enabled for orchestrator")
     except ImportError:
         logger.debug("W&B not available")
