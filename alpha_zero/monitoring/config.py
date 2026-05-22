@@ -233,17 +233,12 @@ class MLflowConfig:
             enabled=enabled,
             tracking_uri=tracking_uri,
             registry_uri=(
-                os.environ.get(f"{ENV_PREFIX}REGISTRY_URI")
-                or os.environ.get("MLFLOW_REGISTRY_URI")
+                os.environ.get(f"{ENV_PREFIX}REGISTRY_URI") or os.environ.get("MLFLOW_REGISTRY_URI")
             ),
             experiment_name=experiment_name,
-            run_name=(
-                os.environ.get(f"{ENV_PREFIX}RUN_NAME")
-                or os.environ.get("MLFLOW_RUN_NAME")
-            ),
+            run_name=(os.environ.get(f"{ENV_PREFIX}RUN_NAME") or os.environ.get("MLFLOW_RUN_NAME")),
             tags=parse_tag_string(
-                os.environ.get(f"{ENV_PREFIX}TAGS")
-                or os.environ.get("MLFLOW_TAGS", "")
+                os.environ.get(f"{ENV_PREFIX}TAGS") or os.environ.get("MLFLOW_TAGS", "")
             ),
             description=os.environ.get(f"{ENV_PREFIX}DESCRIPTION", ""),
             artifact_location=os.environ.get(f"{ENV_PREFIX}ARTIFACT_LOCATION"),

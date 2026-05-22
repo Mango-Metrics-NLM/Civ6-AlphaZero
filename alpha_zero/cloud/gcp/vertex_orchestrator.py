@@ -1692,9 +1692,7 @@ def main() -> int:
                 resume_token = _resolve_resume_token(args, iteration=iteration)
             if resume_token:
                 args.resume_from = resume_token
-                logger.info(
-                    "iteration %d: resuming training from %s", iteration, resume_token
-                )
+                logger.info("iteration %d: resuming training from %s", iteration, resume_token)
             else:
                 args.resume_from = None
                 logger.info(

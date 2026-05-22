@@ -45,7 +45,7 @@ def _read_peak_gpu_memory_mb() -> float | None:
 
     if not torch.cuda.is_available():
         return None
-    return torch.cuda.max_memory_allocated() / (1024 ** 2)
+    return torch.cuda.max_memory_allocated() / (1024**2)
 
 
 @dataclass

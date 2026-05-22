@@ -4,6 +4,7 @@ This module preserves the legacy ``WandbLogger``/``WandbConfig`` symbol
 names but routes them to MLflow under the hood. New code should import
 from ``alpha_zero.utils.experiment_tracker``.
 """
+
 from __future__ import annotations
 
 import warnings
