@@ -391,7 +391,7 @@ omit = [
 # Coverage gate (85% historical target from PR 79; origin/main lowered to 80%
 # after adding the broader omit list above. Using 80% to match origin/main's CI
 # expectation - we can tighten back to 85% once the omitted modules get tests).
-fail_under = 80
+fail_under = 85
 show_missing = true
 skip_covered = false
 

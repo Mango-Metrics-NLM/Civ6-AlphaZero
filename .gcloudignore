@@ -15,13 +15,21 @@
 __pycache__/
 *.py[cod]
 *.pyo
+
+# Type-checker & linter caches (LARGE — exclude explicitly)
 .mypy_cache/
 .ruff_cache/
+.hypothesis/
 
-# Virtual environments
+# Virtual environments (including scan venvs)
 .venv/
+.venv-scan/
 venv/
 env/
+
+# AI / agent workspaces (LARGE — never needed in container)
+.claude/
+.gemini/
 
 # W&B run data (large, not needed in container)
 wandb/
@@ -32,6 +40,11 @@ checkpoints/
 outputs/
 runs/
 logs/
+replays/
+saves/
+results/
+data/
+test_results/
 
 # Test data / coverage
 .pytest_cache/
@@ -64,6 +77,8 @@ node_modules/
 *.onnx
 *.h5
 *.pkl
+*.safetensors
+*.bin
 
-# Gemini/agent artifacts
-.gemini/
+# Benchmark / experiment dirs
+.benchmarks/

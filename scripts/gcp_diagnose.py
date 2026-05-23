@@ -196,20 +196,48 @@ def check_gcloud_auth() -> CheckResult:
 
 
 def check_python_auth() -> CheckResult:
-    """Verify Python SDK authentication (ADC)."""
+    """Verify Python SDK authentication (ADC).
+
+    Refreshes the token before checking ``credentials.valid`` because
+    ``google.auth.default()`` returns credentials that are always
+    ``valid=False`` until the first refresh call.
+    """
     try:
         import google.auth  # type: ignore[import-untyped]
+        import google.auth.transport.requests  # type: ignore[import-untyped]
 
         credentials, project = google.auth.default()
+
+        # Refresh if needed — ADC tokens start as expired/invalid.
+        refresh_error: str | None = None
+        if not getattr(credentials, "valid", True):
+            try:
+                request = google.auth.transport.requests.Request()
+                credentials.refresh(request)
+            except Exception as exc:
+                refresh_error = str(exc)
+
+        is_valid = getattr(credentials, "valid", False)
+        status = CheckStatus.OK if is_valid else CheckStatus.WARN
+        message = (
+            f"ADC available (project: {project}, type: {type(credentials).__name__})"
+            if is_valid
+            else f"ADC found but token refresh failed (project: {project})"
+        )
+        details: dict[str, Any] = {
+            "project": project,
+            "credential_type": type(credentials).__name__,
+            "valid": is_valid,
+        }
+        if refresh_error:
+            details["refresh_error"] = refresh_error
+            details["recommendation"] = "Run: gcloud auth application-default login"
+
         return CheckResult(
             name="python_adc",
-            status=CheckStatus.OK,
-            message=(f"ADC available (project: {project}, " f"type: {type(credentials).__name__})"),
-            details={
-                "project": project,
-                "credential_type": type(credentials).__name__,
-                "valid": getattr(credentials, "valid", "unknown"),
-            },
+            status=status,
+            message=message,
+            details=details,
         )
     except ImportError:
         return CheckResult(

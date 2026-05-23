@@ -12,6 +12,11 @@ _skip_windows_tests = pytest.mark.skipif(
     reason="WindowsPath cannot be instantiated on non-Windows platforms",
 )
 
+_skip_on_windows = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="PosixPath cannot be instantiated on Windows",
+)
+
 from alpha_zero.bridge.config import (
     MAP_SIZES,
     BridgeConfig,
@@ -93,13 +98,16 @@ class TestGetDefaultCommDir:
         assert "Documents" in str(result)
         assert result.name == "AlphaZeroAI"
 
+    @_skip_on_windows
     def test_linux_path_contains_civ6_alphazero(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Linux/Mac branch returns .civ6_alphazero under home."""
         import alpha_zero.bridge.config as bridge_config
 
+        monkeypatch.setattr(Path, "home", lambda: Path("/home/testuser"))
         monkeypatch.setattr(bridge_config.os, "name", "posix")
         result = _get_default_comm_dir()
         assert result.name == ".civ6_alphazero"
+        assert result == Path("/home/testuser/.civ6_alphazero")
 
 
 class TestBridgeConfigDefaults:
@@ -145,7 +153,7 @@ class TestBridgeConfigDefaults:
     def test_string_comm_dir_converted_to_path(self) -> None:
         config = BridgeConfig(comm_dir="/tmp/test_bridge")  # type: ignore[arg-type]
         assert isinstance(config.comm_dir, Path)
-        assert str(config.comm_dir) == "/tmp/test_bridge"
+        assert config.comm_dir == Path("/tmp/test_bridge")
 
 
 class TestBridgeConfigValidation:
@@ -330,7 +338,7 @@ class TestBridgeConfigMethods:
         config = BridgeConfig(comm_dir=Path("/tmp/test"))
         d = config.to_dict()
         assert isinstance(d, dict)
-        assert d["comm_dir"] == "/tmp/test"
+        assert Path(d["comm_dir"]) == Path("/tmp/test")
         assert d["poll_interval_ms"] == 10
         assert d["board_size"] == 16
         assert d["num_players"] == 2

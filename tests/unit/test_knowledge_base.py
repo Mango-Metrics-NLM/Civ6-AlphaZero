@@ -23,7 +23,7 @@ def kb_dir(tmp_path: Path) -> Path:
     """Knowledge directory with three small markdown files."""
     (tmp_path / "a.md").write_text("alpha paragraph one\n\nalpha paragraph two\n")
     (tmp_path / "b.md").write_text("beta content\n")
-    (tmp_path / "c.txt").write_text("ignored — not markdown")
+    (tmp_path / "c.txt").write_text("ignored - not markdown")
     sub = tmp_path / "sub"
     sub.mkdir()
     (sub / "nested.md").write_text("nested content")
