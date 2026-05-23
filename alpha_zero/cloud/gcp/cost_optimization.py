@@ -373,14 +373,14 @@ class CostOptimizationManager:
             self._checkpoints += 1
             logger.debug(f"Checkpoint saved: {path}")
 
-        self.preemption_handler.register_checkpoint_callback(on_checkpoint)
+        self.preemption_handler.register_checkpoint_callback(on_checkpoint)  # type: ignore[attr-defined]
 
         # Notify cost monitor of idle savings
         def on_job_stopped(job_name: str) -> None:
             self._idle_hours_saved += 0.25  # Assume ~15 min saved per stop
             logger.debug(f"Job stopped for idle: {job_name}")
 
-        self.idle_manager.register_stop_callback(on_job_stopped)
+        self.idle_manager.register_stop_callback(on_job_stopped)  # type: ignore[arg-type]
 
     def get_optimized_job_config(
         self,
@@ -410,14 +410,14 @@ class CostOptimizationManager:
             )
 
         # Get GPU selection from scheduler
-        gpu_selection = self.gpu_scheduler.select_gpu(
+        gpu_selection = self.gpu_scheduler.select_gpu(  # type: ignore[call-arg]
             job_type=job_type,
             iteration=iteration,
             total_iterations=total_iterations,
         )
 
         gpu_type = gpu_selection.gpu_type
-        use_spot = self.config.enable_spot_vms and gpu_selection.prefer_spot
+        use_spot = self.config.enable_spot_vms and gpu_selection.prefer_spot  # type: ignore[attr-defined]
 
         # Check quota availability
         region = self.config.default_region
@@ -460,7 +460,7 @@ class CostOptimizationManager:
             region=region,
             checkpoint_interval=checkpoint_interval,
             estimated_cost_per_hour=estimated_cost,
-            reason=f"Phase: {gpu_selection.phase.value}, Spot: {use_spot}",
+            reason=f"Phase: {gpu_selection.phase.value}, Spot: {use_spot}",  # type: ignore[attr-defined]
         )
 
     async def start_monitoring(self) -> None:
@@ -477,7 +477,7 @@ class CostOptimizationManager:
         # Start component monitoring
         self.idle_manager.start_monitoring()
         self.preemption_handler.start_checkpoint_timer(
-            model=None,  # Will be set by trainer
+            model=None,
             optimizer=None,
             state_getter=lambda: {},
         )

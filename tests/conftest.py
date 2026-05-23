@@ -12,10 +12,12 @@ from __future__ import annotations
 import os
 import tempfile
 from collections.abc import Generator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 import torch
 import torch.nn as nn
@@ -57,6 +59,28 @@ def _has_gcp_config() -> bool:
     return bool(os.environ.get("GCP_PROJECT_ID") and os.environ.get("GCS_BUCKET_NAME"))
 
 
+def _has_spacetimedb() -> bool:
+    """Check if SpacetimeDB SDK is installed and configured."""
+    try:
+        import spacetimedb_sdk  # noqa: F401
+
+        return bool(os.environ.get("CIV6_SPACETIMEDB_MODULE"))
+    except ImportError:
+        return False
+
+
+def _has_jax() -> bool:
+    """Check if JAX and its dependencies are installed."""
+    try:
+        import equinox  # noqa: F401
+        import jax  # noqa: F401
+        import optax  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
 # Pytest markers for conditional execution
 def pytest_configure(config: pytest.Config) -> None:
     """Register custom markers."""
@@ -71,15 +95,26 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers", "requires_env: marks tests requiring external environment (Docker, etc.)"
     )
     config.addinivalue_line("markers", "slow: marks tests as slow-running")
+    config.addinivalue_line(
+        "markers",
+        "requires_spacetimedb: marks tests requiring running SpacetimeDB instance",
+    )
+    config.addinivalue_line(
+        "markers",
+        "requires_jax: marks tests requiring JAX installation (pip install -e '.[jax]')",
+    )
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Skip tests marked with requires_gcp if credentials unavailable."""
+    """Skip tests marked with requires_gcp/requires_spacetimedb if unavailable."""
     skip_gcp = pytest.mark.skip(
         reason="GCP credentials not available. Set GOOGLE_APPLICATION_CREDENTIALS or run 'gcloud auth application-default login'"
     )
     skip_config = pytest.mark.skip(
         reason="GCP configuration incomplete. Set GCP_PROJECT_ID and GCS_BUCKET_NAME"
+    )
+    skip_spacetimedb = pytest.mark.skip(
+        reason="SpacetimeDB not available. Install spacetimedb-sdk and set CIV6_SPACETIMEDB_MODULE"
     )
 
     for item in items:
@@ -88,6 +123,16 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
                 item.add_marker(skip_gcp)
             elif not _has_gcp_config():
                 item.add_marker(skip_config)
+        if "requires_spacetimedb" in item.keywords:
+            if not _has_spacetimedb():
+                item.add_marker(skip_spacetimedb)
+        if "requires_jax" in item.keywords:
+            if not _has_jax():
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason="JAX not installed. Install with: pip install -e '.[jax]'"
+                    )
+                )
 
 
 # Fixtures for cloud testing
@@ -371,37 +416,81 @@ def sample_trajectory_data() -> list[dict]:
     Returns:
         List of trajectory step dictionaries.
     """
-    import numpy as np
+    rng = np.random.default_rng(42)
 
     return [
         {
-            "state": np.random.randn(13, 16, 16).astype(
-                np.float32
-            ),  # MicroCivEncoder.TOTAL_CHANNELS
+            "state": rng.standard_normal((13, 16, 16)).astype(np.float32),
             "action": np.array([5, 8]),
-            "policy": np.random.dirichlet(np.ones(376)).astype(np.float32),
+            "policy": rng.dirichlet(np.ones(376)).astype(np.float32),
             "reward": 0.0,
             "done": False,
             "turn": 1,
         },
         {
-            "state": np.random.randn(13, 16, 16).astype(
-                np.float32
-            ),  # MicroCivEncoder.TOTAL_CHANNELS
+            "state": rng.standard_normal((13, 16, 16)).astype(np.float32),
             "action": np.array([6, 8]),
-            "policy": np.random.dirichlet(np.ones(376)).astype(np.float32),
+            "policy": rng.dirichlet(np.ones(376)).astype(np.float32),
             "reward": 0.1,
             "done": False,
             "turn": 2,
         },
         {
-            "state": np.random.randn(13, 16, 16).astype(
-                np.float32
-            ),  # MicroCivEncoder.TOTAL_CHANNELS
+            "state": rng.standard_normal((13, 16, 16)).astype(np.float32),
             "action": np.array([6, 9]),
-            "policy": np.random.dirichlet(np.ones(376)).astype(np.float32),
+            "policy": rng.dirichlet(np.ones(376)).astype(np.float32),
             "reward": 1.0,
             "done": True,
             "turn": 3,
         },
     ]
+
+
+# =============================================================================
+# Shared Training Example Fixtures (used by JAX and integration tests)
+# =============================================================================
+
+
+@dataclass
+class MockTrainingExample:
+    """Shared mock training example for JAX and training tests."""
+
+    spatial: np.ndarray
+    vector: np.ndarray
+    action_mask: np.ndarray
+    policy: np.ndarray
+    value: float
+
+    def __post_init__(self) -> None:
+        if self.policy.shape[0] != self.action_mask.shape[0]:
+            raise ValueError(
+                f"policy size ({self.policy.shape[0]}) != "
+                f"action_mask size ({self.action_mask.shape[0]})"
+            )
+
+
+def make_training_example(
+    board_size: int = 16,
+    action_size: int = 381,
+    rng: np.random.Generator | None = None,
+) -> MockTrainingExample:
+    """Create a random training example.
+
+    Args:
+        board_size: Board size for spatial input.
+        action_size: Action space size.
+        rng: Optional random generator for reproducibility.
+
+    Returns:
+        MockTrainingExample with random data.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+    policy = rng.dirichlet(np.ones(action_size)).astype(np.float32)
+    return MockTrainingExample(
+        spatial=rng.standard_normal((13, board_size, board_size)).astype(np.float32),
+        vector=rng.standard_normal((64,)).astype(np.float32),
+        action_mask=np.ones(action_size, dtype=np.float32),
+        policy=policy,
+        value=float(rng.uniform(-1, 1)),
+    )

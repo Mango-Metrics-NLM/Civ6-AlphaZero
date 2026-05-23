@@ -371,6 +371,6 @@ def format_exception_chain(exc: Exception) -> str:
             messages.append(str(current))
         else:
             messages.append(f"{type(current).__name__}: {current}")
-        current = current.__cause__
+        current = current.__cause__  # type: ignore[assignment]
 
     return " -> ".join(messages)

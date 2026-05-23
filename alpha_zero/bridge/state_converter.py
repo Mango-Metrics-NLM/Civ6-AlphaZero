@@ -220,6 +220,7 @@ class StateConverter:
 
     Attributes:
         board_size: Target board size for coordinate scaling.
+        num_players: Number of players in the game.
         terrain_mapping: Terrain type mappings.
         unit_mapping: Unit type mappings.
         encoder: Optional Civ6StateEncoder for direct tensor output.
@@ -228,6 +229,7 @@ class StateConverter:
     def __init__(
         self,
         board_size: int = 16,
+        num_players: int = 2,
         terrain_mapping: TerrainMapping | None = None,
         unit_mapping: UnitMapping | None = None,
         create_encoder: bool = True,
@@ -236,11 +238,13 @@ class StateConverter:
 
         Args:
             board_size: Target board size for the neural network.
+            num_players: Number of players in the game.
             terrain_mapping: Custom terrain mappings (uses defaults if None).
             unit_mapping: Custom unit mappings (uses defaults if None).
             create_encoder: Whether to create an internal encoder.
         """
         self.board_size = board_size
+        self.num_players = num_players
         self.terrain_mapping = terrain_mapping or TerrainMapping()
         self.unit_mapping = unit_mapping or UnitMapping()
 
@@ -540,8 +544,12 @@ class StateConverter:
             scaled_pos = self._scale_coords(unit.x, unit.y)
             unit_type = self.unit_mapping.get_unit_type(unit.unit_type)
 
-            # Determine player index (0 = current player, 1+ = others)
-            if unit.owner_id == state.player_id:
+            # Determine player index.
+            # In N-player mode, use the owner_id directly (assumes remapped).
+            # In 2-player mode, preserve backward-compatible binary mapping.
+            if self.num_players > 2:
+                player = unit.owner_id
+            elif unit.owner_id == state.player_id:
                 player = current_player
             else:
                 player = 1 if current_player == 0 else 0
@@ -583,8 +591,12 @@ class StateConverter:
         for city in state.cities:
             scaled_pos = self._scale_coords(city.x, city.y)
 
-            # Determine player index
-            if city.owner_id == state.player_id:
+            # Determine player index.
+            # In N-player mode, use the owner_id directly (assumes remapped).
+            # In 2-player mode, preserve backward-compatible binary mapping.
+            if self.num_players > 2:
+                player = city.owner_id
+            elif city.owner_id == state.player_id:
                 player = current_player
             else:
                 player = 1 if current_player == 0 else 0
@@ -864,6 +876,146 @@ class StateConverter:
         orig_y = max(0, min(self._map_config.height - 1, orig_y))
 
         return (orig_x, orig_y)
+
+    # -------------------------------------------------------------------------
+    # Multiplayer / N-player support
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def build_player_id_mapping(
+        raw_player_ids: list[int],
+    ) -> dict[int, int]:
+        """Build a mapping from raw (potentially non-contiguous) player IDs to
+        sequential 0-indexed IDs.
+
+        For example, raw IDs ``[0, 1, 3, 5]`` would map to
+        ``{0: 0, 1: 1, 3: 2, 5: 3}``.
+
+        Args:
+            raw_player_ids: List of raw player IDs found in the game state.
+
+        Returns:
+            Dictionary mapping raw player ID -> sequential index.
+        """
+        sorted_ids = sorted(set(raw_player_ids))
+        return {raw_id: idx for idx, raw_id in enumerate(sorted_ids)}
+
+    @staticmethod
+    def _remap_player_ids(
+        raw_state: dict[str, Any],
+        player_mapping: dict[int, int],
+    ) -> dict[str, Any]:
+        """Remap player IDs in a raw state dictionary from non-contiguous IDs
+        to sequential 0-indexed IDs.
+
+        This modifies player, unit, and city owner references in-place on a
+        *shallow copy* of the input so the caller's original data is preserved.
+
+        Args:
+            raw_state: Raw game state dictionary (must contain ``players``,
+                ``units``, and ``cities`` lists of dicts with ``id`` /
+                ``owner_id`` fields).
+            player_mapping: Mapping from raw player IDs to sequential IDs,
+                as returned by :meth:`build_player_id_mapping`.
+
+        Returns:
+            A new state dictionary with remapped IDs.
+        """
+        import copy as _copy
+
+        remapped = _copy.copy(raw_state)
+
+        # Remap players
+        if "players" in remapped:
+            new_players = []
+            for p in remapped["players"]:
+                p_copy = dict(p)
+                old_id = p_copy.get("id")
+                if old_id is not None and old_id in player_mapping:
+                    p_copy["id"] = player_mapping[old_id]
+                new_players.append(p_copy)
+            remapped["players"] = new_players
+
+        # Remap unit owner_id
+        if "units" in remapped:
+            new_units = []
+            for u in remapped["units"]:
+                u_copy = dict(u)
+                old_owner = u_copy.get("owner_id")
+                if old_owner is not None and old_owner in player_mapping:
+                    u_copy["owner_id"] = player_mapping[old_owner]
+                new_units.append(u_copy)
+            remapped["units"] = new_units
+
+        # Remap city owner_id
+        if "cities" in remapped:
+            new_cities = []
+            for c in remapped["cities"]:
+                c_copy = dict(c)
+                old_owner = c_copy.get("owner_id")
+                if old_owner is not None and old_owner in player_mapping:
+                    c_copy["owner_id"] = player_mapping[old_owner]
+                new_cities.append(c_copy)
+            remapped["cities"] = new_cities
+
+        # Remap top-level player_id if present
+        if "player_id" in remapped:
+            old_pid = remapped["player_id"]
+            if old_pid in player_mapping:
+                remapped["player_id"] = player_mapping[old_pid]
+
+        # Remap winner_id if present
+        if "winner_id" in remapped and remapped["winner_id"] is not None:
+            old_winner = remapped["winner_id"]
+            if old_winner in player_mapping:
+                remapped["winner_id"] = player_mapping[old_winner]
+
+        return remapped
+
+    def convert_multiplayer_state(
+        self,
+        raw_state: dict[str, Any],
+        num_players: int | None = None,
+        player_mapping: dict[int, int] | None = None,
+    ) -> dict[str, Any]:
+        """Convert a multiplayer game state with N-player support.
+
+        This method detects the number of players in the state, builds (or
+        uses a supplied) player ID mapping, remaps IDs to sequential indices,
+        and then delegates to :meth:`convert` for the final tensor-ready
+        format.
+
+        Args:
+            raw_state: Raw game state dictionary or :class:`GameStateData`.
+            num_players: Override for the number of players. When ``None``,
+                the value is inferred from the ``players`` list in the state.
+            player_mapping: Explicit player ID mapping. When ``None``, one is
+                built automatically from the player IDs in the state.
+
+        Returns:
+            Converted state dictionary compatible with ``Civ6StateEncoder``,
+            with additional ``_num_players`` and ``_player_mapping`` metadata.
+        """
+        # Determine player mapping
+        if player_mapping is None:
+            players_list = raw_state.get("players", [])
+            raw_ids = [p.get("id", i) for i, p in enumerate(players_list)]
+            player_mapping = self.build_player_id_mapping(raw_ids)
+
+        # Infer num_players
+        effective_num_players = num_players or len(player_mapping)
+
+        # Remap IDs
+        remapped = self._remap_player_ids(raw_state, player_mapping)
+
+        # Delegate to standard convert (via GameStateData)
+        converted = self.convert(remapped)
+
+        # Attach multiplayer metadata
+        converted["_num_players"] = effective_num_players
+        converted["_player_mapping"] = player_mapping
+
+        return converted
 
     @property
     def map_config(self) -> MapSizeConfig | None:

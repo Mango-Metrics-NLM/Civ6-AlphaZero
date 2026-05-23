@@ -1,7 +1,7 @@
 # Civ6 AlphaZero — Project Plan
 
-> **Active Sprint**: Sprint 4 — Scalable Multi-Player & Cloud Optimization
-> **Branch**: TBD (create from `main` after PR #68 merges)
+> **Active Sprint**: Sprint 5 (in progress, see below) + v1.6.0 MLflow Monitoring (this branch)
+> **Branches**: this branch combines PR #77 (Sprint 5 type safety) with PR #78 + PR #79 (MLflow monitoring layer).
 
 ## Current State
 
@@ -12,10 +12,10 @@
 | CI Pipeline | ✅ Passing | All jobs green (lint, test, security, cloud) |
 | Architecture | ✅ Merged | cli.py + upload_initial_model.py aligned |
 | Lint | ✅ Clean | 0 violations (ruff 0.8.0, mypy 1.13.0) |
-| Secrets | ✅ Migrated | WANDB_API_KEY → Secret Manager |
+| Secrets | ✅ Migrated | WANDB_API_KEY -> Secret Manager |
 | Orchestrator | ✅ M10 | run_iterations() + CLI orchestrate |
 | PBT | ✅ M11 | Full module (97 tests) |
-| Monitoring | ✅ Scripts | 4 alerting policies |
+| Monitoring | ✅ Scripts + MLflow | 4 alerting policies + MLflow tracking layer (v1.6.0) |
 | N-Player | ✅ Sprint 3 | MicroCivEnv(num_players=2..6) |
 | Batch Self-Play | ✅ Sprint 3 | BatchGumbelMCTS + VectorizedMicroCivEnv validated |
 

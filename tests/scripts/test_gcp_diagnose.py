@@ -189,6 +189,7 @@ class TestCheckGcloudAuth:
         assert "timed out" in result.message
 
 
+@pytest.mark.requires_env
 class TestCheckPythonAuth:
     """Tests for check_python_auth."""
 

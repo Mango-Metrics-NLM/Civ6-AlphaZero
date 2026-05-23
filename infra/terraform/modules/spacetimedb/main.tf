@@ -42,7 +42,7 @@ resource "google_compute_instance" "spacetimedb" {
     gce-container-declaration = yamlencode({
       spec = {
         containers = [{
-          image = "clockworklabs/spacetimedb:latest"
+          image = var.spacetimedb_image
           name  = "spacetimedb"
           ports = [
             { containerPort = 3000 },  # HTTP/WebSocket
@@ -131,7 +131,7 @@ resource "google_compute_resource_policy" "snapshot_schedule" {
 
 resource "google_compute_disk_resource_policy_attachment" "snapshot" {
   name    = google_compute_resource_policy.snapshot_schedule.name
-  disk    = google_compute_instance.spacetimedb.name
+  disk    = google_compute_instance.spacetimedb.boot_disk[0].source
   zone    = var.zone
   project = var.project_id
 }

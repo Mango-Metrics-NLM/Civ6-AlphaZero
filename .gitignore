@@ -57,6 +57,7 @@ coverage.xml
 !.env.template
 !.env.example
 .venv
+.venv-*/
 env/
 venv/
 ENV/
@@ -195,10 +196,33 @@ experiments/
 mlruns/
 ray_results/
 
+# ===========================================
+# MLflow (Phase 19 — v1.4.0)
+# ===========================================
+# SQLite backend (local dev)
+mlflow.db
+mlflow.db-shm
+mlflow.db-wal
+# Artifact store (local runs)
+mlartifacts/
+# Migration script output
+mlflow_migration_*.log
+
 # Evaluation reports (generated)
 evaluation_reports/
 *_evaluation_report.json
 *_evaluation_report.md
+
+# ===========================================
+# Results & Training Outputs (Phase 19)
+# ===========================================
+# Local result files (ELO rankings, tournament results)
+results/
+*_results.json
+*_elo_*.json
+# Analysis outputs
+analysis_output/
+*_analysis_report.md
 
 # Benchmark results (generated)
 benchmark_results/
@@ -214,8 +238,12 @@ test_output.txt
 # ===========================================
 .agent/
 .gemini/
-.claude/
-kb/
+
+# Claude Code (commit settings.json and skills; ignore local/personal state)
+.claude/settings.local.json
+.claude/todos.json
+.claude/.state/
+.claude/statsig/
 
 # Local config overrides (may contain real API keys)
 configs/*_local.yaml
@@ -295,8 +323,12 @@ coverage.xml
 # Trajectory cleanup logs
 trajectory_cleanup_*.log
 
-# Production launch scripts (may contain env-specific vars)
+# Production launch scripts (may contain env-specific vars).
+# v1.5.0+ launchers are deliberately committed: they take ALL secrets from
+# env / VM SA, no hardcoded keys. Add explicit negations as new versions land.
 scripts/launch_prod_*.sh
+!scripts/launch_prod_v1.5.0.sh
+!scripts/launch_prod_v1.6.0.sh
 
 # Vertex AI job ID tracking files
 vertex_job_ids*.json
@@ -316,6 +348,8 @@ alpha_zero/serving/logs/
 alpha_zero/serving/metrics/
 alpha_zero/serving/models/export/
 inference_performance.json
+# Claude Code worktrees (isolated dev sandboxes)
+.claude/worktrees/
 
 # ===========================================
 # Sprint 3: Convergence Validation & N-Player (v1.3.0)
@@ -334,10 +368,9 @@ nplayer_benchmarks/
 *_nplayer_results.json
 
 # ===========================================
-# Sprint 4–5: Type Safety Expansion (v1.4.0–v1.5.0)
+# Sprint 4-5: Type Safety Expansion (v1.4.0-v1.5.0)
 # ===========================================
-# Mypy incremental cache
-.mypy_cache/
+# (.mypy_cache/ already listed above)
 
 # Type stub outputs
 out/

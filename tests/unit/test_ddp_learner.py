@@ -204,8 +204,9 @@ class TestDDPLearnerInitialization:
     ) -> None:
         """Test initialization on non-main rank.
 
-        Note: When ddp_enabled=False, is_main returns True because DDP is not active.
-        This test verifies rank and local_rank are set correctly from config.
+        When world_size > 1, rank > 0 processes are non-main even if
+        ``ddp_enabled=False`` (which only controls whether the process
+        group is actually initialized).
         """
         config = DDPLearnerConfig(
             ddp_world_size=4,
@@ -228,8 +229,8 @@ class TestDDPLearnerInitialization:
             # Rank is stored from config
             assert learner.rank == 2
             assert learner.local_rank == 0
-            # When DDP is disabled, is_main returns True (single-process semantics)
-            assert learner.is_main_process() is True
+            # With world_size > 1, non-zero rank is not main
+            assert learner.is_main_process() is False
 
 
 class TestDDPLearnerCommunication:

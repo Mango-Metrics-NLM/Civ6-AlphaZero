@@ -20,22 +20,103 @@ from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.exceptions import PreemptionError, QuotaExceededError, VertexJobError
 
 
-def _wandb_env_vars() -> dict[str, str]:
-    """Get W&B env vars for container passthrough, filtering out empty values.
+def _tracker_env_vars() -> dict[str, str]:
+    """Collect MLflow tracking env vars to inject into worker containers.
 
-    Vertex AI rejects env vars with empty string values, so we only
-    include vars that have non-empty values set.
+    Vertex AI rejects env vars with empty string values, so this filters
+    them out. Returns only ``MLFLOW_*`` keys that are set to a non-empty
+    value in the orchestrator process environment, ready to be merged
+    into a ``JobSpec.env_vars`` dict.
+
+    Covers:
+    - ``MLFLOW_TRACKING_URI``: where MLflow records runs
+    - ``MLFLOW_EXPERIMENT_NAME``: experiment grouping
+    - ``MLFLOW_RUN_NAME``: per-phase run name (set by orchestrator)
+    - ``MLFLOW_TAGS``: comma-separated ``k=v`` tags (e.g. group encoding)
+    - ``MLFLOW_ENABLED``: feature flag for the tracker
+    - ``MLFLOW_REGISTRY_URI``: optional separate registry URI
     """
-    candidates = {
-        "WANDB_ENABLED": os.environ.get("WANDB_ENABLED", "false"),
-        "WANDB_API_KEY": os.environ.get("WANDB_API_KEY", ""),
-        "WANDB_PROJECT": os.environ.get("WANDB_PROJECT", "civ6-alphazero"),
-        "WANDB_ENTITY": os.environ.get("WANDB_ENTITY", ""),
-        "WANDB_MODE": os.environ.get("WANDB_MODE", "online"),
-        "WANDB_GROUP": os.environ.get("WANDB_GROUP", ""),
-        "WANDB_RUN_NAME": os.environ.get("WANDB_RUN_NAME", ""),
-    }
-    return {k: v for k, v in candidates.items() if v}
+    keys = (
+        "MLFLOW_TRACKING_URI",
+        "MLFLOW_EXPERIMENT_NAME",
+        "MLFLOW_RUN_NAME",
+        "MLFLOW_TAGS",
+        "MLFLOW_ENABLED",
+        "MLFLOW_REGISTRY_URI",
+    )
+    return {k: os.environ[k] for k in keys if os.environ.get(k)}
+
+
+def _wandb_env_vars() -> dict[str, str]:
+    """Deprecated alias for :func:`_tracker_env_vars`.
+
+    Kept for one release so external callers (and a few tests) keep
+    working while the W&B-shaped name fades out. Internal call sites
+    in this module should use :func:`_tracker_env_vars` directly.
+    """
+    import warnings
+
+    warnings.warn(
+        "_wandb_env_vars is deprecated; use _tracker_env_vars.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _tracker_env_vars()
+
+
+def resolve_wandb_key_from_secret_manager() -> str:
+    """Resolve WANDB_API_KEY from GCP Secret Manager at runtime.
+
+    Called by workers at container startup (not at job submission time)
+    to avoid embedding plaintext secrets in job specs.
+
+    Uses env vars (legacy W&B secret pathway, kept for backwards compat):
+    - ``CIV6AZ_WANDB_SECRET_PROJECT``: GCP project ID
+    - ``CIV6AZ_WANDB_SECRET_NAME``: Secret name (default: wandb-api-key)
+
+    Returns:
+        The secret value, or empty string if unavailable.
+    """
+    project = os.environ.get(
+        "CIV6AZ_WANDB_SECRET_PROJECT",
+        os.environ.get("GOOGLE_CLOUD_PROJECT", ""),
+    )
+    secret_name = os.environ.get("CIV6AZ_WANDB_SECRET_NAME", "wandb-api-key")
+    if not project:
+        return ""
+    try:
+        from google.cloud import secretmanager
+
+        client = secretmanager.SecretManagerServiceClient()
+        name = f"projects/{project}/secrets/{secret_name}/versions/latest"
+        response = client.access_secret_version(request={"name": name})
+        key = response.payload.data.decode("UTF-8")
+        logger.info("WANDB_API_KEY resolved from Secret Manager (%s)", secret_name)
+        return key
+    except Exception as e:
+        logger.debug("Could not read WANDB_API_KEY from Secret Manager: %s", e)
+        return ""
+
+
+def ensure_wandb_api_key() -> None:
+    """Resolve and inject WANDB_API_KEY into the environment.
+
+    Worker entrypoints should call this early at startup so that
+    ``wandb.init()`` finds the key automatically.  Prefers an existing
+    ``WANDB_API_KEY`` env var; falls back to Secret Manager.
+
+    Example::
+
+        # In your worker __main__ or entrypoint:
+        from alpha_zero.cloud.gcp.vertex_jobs import ensure_wandb_api_key
+        ensure_wandb_api_key()
+    """
+    if os.environ.get("WANDB_API_KEY"):
+        return  # Already set
+    key = resolve_wandb_key_from_secret_manager()
+    if key:
+        os.environ["WANDB_API_KEY"] = key
+        logger.info("WANDB_API_KEY injected into environment from Secret Manager")
 
 
 logger = logging.getLogger(__name__)
@@ -455,7 +536,7 @@ class VertexTuningJob:
 
         # Create base job spec
         spec = JobSpec(
-            display_name=f"civ6az-tuning-iter{iteration:03d}",
+            display_name=f"civ6az-mzwm-tuning-iter{iteration:03d}",
             container_uri=container,
             args=args,
             env_vars={
@@ -463,7 +544,7 @@ class VertexTuningJob:
                 "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
                 "CIV6AZ_VERTEX_REGION": self.config.region,
                 "CIV6AZ_ENCODER_TYPE": getattr(self.config.network, "encoder_type", "patch_embed"),
-                **_wandb_env_vars(),
+                **_tracker_env_vars(),
             },
             machine_type="n1-standard-4",  # Tuning trials usually smaller
             accelerator_type="NVIDIA_TESLA_T4",
@@ -584,7 +665,7 @@ class VertexSelfPlayJob:
                 args.extend(extra_args)
 
             spec = JobSpec(
-                display_name=f"civ6az-selfplay-iter{iteration:03d}-worker{worker_id:02d}",
+                display_name=f"civ6az-mzwm-selfplay-iter{iteration:03d}-worker{worker_id:02d}",
                 container_uri=container,
                 command=["python", "-m", "alpha_zero.cloud.gcp.selfplay_worker"],
                 args=args,
@@ -592,7 +673,7 @@ class VertexSelfPlayJob:
                     "CIV6AZ_GCS_BUCKET": self.config.bucket,
                     "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
                     "CIV6AZ_VERTEX_REGION": self.config.region,
-                    **_wandb_env_vars(),
+                    **_tracker_env_vars(),
                 },
                 machine_type=worker_config.machine_type,
                 accelerator_type=worker_config.accelerator_type,
@@ -761,6 +842,7 @@ class VertexTrainingJob:
 
         # Base args for the worker
         worker_args = [
+            "--mode=training",
             f"--iteration={iteration}",
             f"--trajectory_iterations={','.join(map(str, trajectory_iterations))}",
             f"--epochs={training_config.epochs_per_iteration}",
@@ -774,7 +856,7 @@ class VertexTrainingJob:
             worker_args.extend(extra_args)
 
         spec = JobSpec(
-            display_name=f"civ6az-training-iter{iteration:03d}",
+            display_name=f"civ6az-mzwm-training-iter{iteration:03d}",
             container_uri=container,
             command=command,
             args=worker_args,
@@ -783,7 +865,7 @@ class VertexTrainingJob:
                 "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
                 "CIV6AZ_VERTEX_REGION": self.config.region,
                 "CIV6AZ_ENCODER_TYPE": getattr(self.config.network, "encoder_type", "patch_embed"),
-                **_wandb_env_vars(),
+                **_tracker_env_vars(),
             },
             machine_type=training_config.machine_type,
             accelerator_type=training_config.accelerator_type,
@@ -888,7 +970,7 @@ class VertexEvaluationJob:
             args.extend(extra_args)
 
         spec = JobSpec(
-            display_name=f"civ6az-eval-iter{iteration:03d}",
+            display_name=f"civ6az-mzwm-eval-iter{iteration:03d}",
             container_uri=container,
             command=["python", "-m", "alpha_zero.cloud.gcp.entrypoint"],
             args=args,
@@ -897,7 +979,7 @@ class VertexEvaluationJob:
                 "CIV6AZ_VERTEX_PROJECT": self.config.project_id,
                 "CIV6AZ_VERTEX_REGION": self.config.region,
                 "CIV6AZ_ENCODER_TYPE": getattr(self.config.network, "encoder_type", "patch_embed"),
-                **_wandb_env_vars(),
+                **_tracker_env_vars(),
             },
             # CPU-only: evaluation doesn't need GPU
             machine_type="n1-standard-4",
@@ -1017,11 +1099,11 @@ class VertexTournamentJob:
             "CIV6AZ_VERTEX_REGION": self.config.region,
             "CIV6AZ_ENCODER_TYPE": getattr(self.config.network, "encoder_type", "patch_embed"),
         }
-        env_vars.update(_wandb_env_vars())
+        env_vars.update(_tracker_env_vars())
         env_vars = {k: v for k, v in env_vars.items() if v}
 
         spec = JobSpec(
-            display_name=f"civ6az-tournament-{len(model_versions)}models",
+            display_name=f"civ6az-mzwm-tournament-{len(model_versions)}models",
             container_uri=container,
             command=["python", "-m", "alpha_zero.cloud.gcp.entrypoint"],
             args=args,

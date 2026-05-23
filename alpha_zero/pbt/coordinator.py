@@ -376,8 +376,9 @@ class PBTCoordinator:
 
         self._last_checkpoint_step = self._current_step
 
-        # Cleanup old checkpoints
-        self.population.cleanup_old_checkpoints(checkpoint_dir)
+        # Cleanup old checkpoints (if the population manager supports it)
+        if hasattr(self.population, "cleanup_old_checkpoints"):
+            self.population.cleanup_old_checkpoints(checkpoint_dir)
 
         logger.info(f"Saved checkpoint: {checkpoint_path}")
 
@@ -426,9 +427,7 @@ class PBTCoordinator:
             return
 
         try:
-            import wandb
-
-            wandb.log(
+            self.wandb_logger.log(
                 {
                     f"pbt/agent/{agent_id}/loss": metrics.get("loss", 0),
                     f"pbt/agent/{agent_id}/policy_loss": metrics.get("policy_loss", 0),
@@ -449,10 +448,8 @@ class PBTCoordinator:
             return
 
         try:
-            import wandb
-
             # Population stats
-            wandb.log(
+            self.wandb_logger.log(
                 {
                     "pbt/population/mean_fitness": stats.mean_fitness,
                     "pbt/population/max_fitness": stats.max_fitness,
@@ -465,7 +462,7 @@ class PBTCoordinator:
 
             # Hyperparameter distributions
             for param_name, param_stats in stats.hyperparameter_stats.items():
-                wandb.log(
+                self.wandb_logger.log(
                     {
                         f"pbt/hyperparams/{param_name}/mean": param_stats["mean"],
                         f"pbt/hyperparams/{param_name}/std": param_stats["std"],
@@ -486,9 +483,7 @@ class PBTCoordinator:
             return
 
         try:
-            import wandb
-
-            wandb.log(
+            self.wandb_logger.log(
                 {
                     "pbt/exploit_explore/agents_replaced": len(changes),
                     "pbt/exploit_explore/generation": self.population.generation,

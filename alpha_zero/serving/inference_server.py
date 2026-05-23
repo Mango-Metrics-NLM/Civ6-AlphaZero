@@ -10,7 +10,8 @@ Environment Variables:
     CIV6AZ_GCS_BUCKET: GCS bucket containing model weights.
     CIV6AZ_MCTS_SIMS: Number of MCTS simulations per move (default: 16).
     CIV6AZ_BOARD_SIZE: Board size (default: 8).
-    CIV6AZ_ACTION_SPACE: Action space size (default: 376).
+    CIV6AZ_ACTION_SPACE_SIZE: Action space size (default: 376).
+        Also accepts CIV6AZ_ACTION_SPACE for backwards compatibility.
     CIV6AZ_DEVICE: PyTorch device (default: "cuda" if available).
     INFERENCE_PORT: Server port (default: 8080).
 
@@ -45,7 +46,12 @@ MODEL_VERSION = os.environ.get("CIV6AZ_MODEL_VERSION", "v268")
 GCS_BUCKET = os.environ.get("CIV6AZ_GCS_BUCKET", "civ6az-training")
 MCTS_SIMS = int(os.environ.get("CIV6AZ_MCTS_SIMS", "16"))
 BOARD_SIZE = int(os.environ.get("CIV6AZ_BOARD_SIZE", "8"))
-ACTION_SPACE = int(os.environ.get("CIV6AZ_ACTION_SPACE", "376"))
+ACTION_SPACE = int(
+    os.environ.get(
+        "CIV6AZ_ACTION_SPACE_SIZE",
+        os.environ.get("CIV6AZ_ACTION_SPACE", "376"),
+    )
+)
 DEVICE = os.environ.get("CIV6AZ_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
 PORT = int(os.environ.get("INFERENCE_PORT", "8080"))
 
@@ -85,7 +91,8 @@ def _load_model() -> None:
 
     # Download model from GCS
     model_path = f"models/civ6az/{MODEL_VERSION}/model.pt"
-    local_path: str | None = f"/tmp/{MODEL_VERSION}_model.pt"  # noqa: S108
+    cache_dir = os.environ.get("CIV6AZ_MODEL_CACHE_DIR", "/tmp")  # noqa: S108
+    local_path: str | None = f"{cache_dir}/{MODEL_VERSION}_model.pt"
 
     try:
         from google.cloud import storage as gcs_storage

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = ROOT / "scripts"
 
@@ -99,6 +101,7 @@ class TestDockerIgnore:
         assert "tests/" in content
 
 
+@pytest.mark.requires_env
 class TestEnvFile:
     """Verify .env has required GCP configuration."""
 

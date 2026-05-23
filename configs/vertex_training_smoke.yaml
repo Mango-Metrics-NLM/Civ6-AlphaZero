@@ -19,7 +19,7 @@ workerPoolSpecs:
       machineType: n1-standard-4
     replicaCount: 1
     containerSpec:
-      imageUri: us-central1-docker.pkg.dev/hrmtrain/vertex-ai-training/hrm-training:v11-smoke
+      imageUri: us-central1-docker.pkg.dev/hrmtrain/civ6az-muzero-world-model/civ6az-muzero:v16-full-fix
       args:
         - "--mode=training"
         - "--iteration=1"
@@ -35,11 +35,11 @@ workerPoolSpecs:
         # WANDB_API_KEY: Inject via Secret Manager or local override.
         # DO NOT commit real keys here. See header for setup instructions.
         - name: WANDB_PROJECT
-          value: "civ6-alphazero"
+          value: "civ6az-muzero-world-model"
         - name: WANDB_ENABLED
           value: "true"
         - name: CIV6AZ_GCS_BUCKET
-          value: "civ6az-training"
+          value: "civ6az-muzero-training"
         - name: CIV6AZ_VERTEX_PROJECT
           value: "hrmtrain"
         - name: CIV6AZ_VERTEX_REGION

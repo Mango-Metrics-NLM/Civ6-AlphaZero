@@ -300,7 +300,12 @@ def mock_ddp_context(
 ) -> Generator[MockDistributedBackend, None, None]:
     """Context manager for mocking DDP environment.
 
-    Patches both torch.distributed and DDP wrapper.
+    Patches both torch.distributed and DDP wrapper.  Also patches
+    ``torch.cuda.is_available`` to return ``False`` and
+    ``alpha_zero.distributed.ddp_config.DDPConfig.get_device`` to return
+    ``"cpu"``, so the learner runs on CPU even when the config would
+    otherwise select a CUDA device.  This makes tests work in CPU-only
+    environments without an NVIDIA driver.
 
     Args:
         world_size: Simulated world size.
@@ -325,4 +330,9 @@ def mock_ddp_context(
 
     with backend.patch():
         with patch(ddp_patch_target, MockDDPWrapper):
-            yield backend
+            with patch("torch.cuda.is_available", return_value=False):
+                with patch(
+                    "alpha_zero.distributed.ddp_config.DDPConfig.get_device",
+                    return_value="cpu",
+                ):
+                    yield backend

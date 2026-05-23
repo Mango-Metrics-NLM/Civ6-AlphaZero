@@ -47,6 +47,7 @@ def setup_logging() -> None:
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments for tournament worker."""
     parser = argparse.ArgumentParser(description="Civ6 AlphaZero Tournament Worker")
+    parser.add_argument("--mode", type=str, default="tournament", help="Worker mode (tournament)")
 
     # Model selection (mutually prioritized: explicit > stride/range > all)
     parser.add_argument(
@@ -237,6 +238,7 @@ def run_tournament(
     models: dict[str, torch.nn.Module] = {}
     for version in model_versions:
         player_id = f"v{version:03d}"
+        model: torch.nn.Module
         if dry_run:
             from alpha_zero.core.transformer_network import (
                 Civ6TransformerNetwork,
@@ -434,7 +436,7 @@ def main() -> int:
         import os
 
         if os.environ.get("WANDB_ENABLED", "").lower() == "true":
-            from alpha_zero.utils.wandb_logger import WandbLogger
+            from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
             wandb_logger = WandbLogger.from_env()
             if wandb_logger.is_enabled:

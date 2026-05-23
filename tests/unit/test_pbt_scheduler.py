@@ -953,3 +953,227 @@ class TestSchedulerIntegration:
         assert state.evaluation_count == 5
         assert state.best_fitness_seen == 0.65
         assert state.fitness_plateau_count == 2  # Last two were plateaus
+
+
+# =============================================================================
+# Additional FitnessEvaluator Tests
+# =============================================================================
+
+
+class TestFitnessEvaluatorAdvanced:
+    """Advanced tests for FitnessEvaluator with policy callbacks and opponents."""
+
+    def test_evaluate_agent_with_policy_fn(self) -> None:
+        """Test evaluate_agent uses get_agent_policy_fn when set."""
+        evaluator = FitnessEvaluator(games_per_evaluation=5)
+
+        policy_fn = MagicMock(return_value="mock_policy")
+
+        def mock_play(p1: Any, p2: Any) -> tuple[float, float]:
+            return (1.0, 0.0)
+
+        evaluator.set_callbacks(play_game_fn=mock_play, get_agent_policy_fn=policy_fn)
+
+        agent = AgentState(agent_id="test_agent")
+        result = evaluator.evaluate_agent(agent)
+
+        # policy_fn should have been called for the agent
+        policy_fn.assert_called()
+        assert result.wins == 5
+        assert result.fitness == 1.0
+
+    def test_evaluate_agent_with_opponent_agents(self) -> None:
+        """Test evaluate_agent with explicit opponent agents."""
+        evaluator = FitnessEvaluator(games_per_evaluation=5, rng=np.random.default_rng(42))
+
+        policy_fn = MagicMock(return_value="mock_policy")
+
+        def mock_play(p1: Any, p2: Any) -> tuple[float, float]:
+            return (1.0, 0.0)
+
+        evaluator.set_callbacks(play_game_fn=mock_play, get_agent_policy_fn=policy_fn)
+
+        agent = AgentState(agent_id="test_agent")
+        opponents = [AgentState(agent_id=f"opp_{i}") for i in range(3)]
+
+        result = evaluator.evaluate_agent(agent, opponent_agents=opponents)
+
+        assert result.wins == 5
+        # policy_fn should have been called for agent + opponents
+        assert policy_fn.call_count >= 5
+
+    def test_evaluate_agent_with_opponent_policy(self) -> None:
+        """Test evaluate_agent with explicit opponent policy function."""
+        evaluator = FitnessEvaluator(games_per_evaluation=3)
+
+        def mock_play(p1: Any, p2: Any) -> tuple[float, float]:
+            return (0.0, 1.0)  # Agent always loses
+
+        evaluator.set_callbacks(play_game_fn=mock_play)
+
+        agent = AgentState(agent_id="test_agent")
+        opponent_policy = MagicMock()
+
+        result = evaluator.evaluate_agent(agent, opponent_policy=opponent_policy)
+
+        assert result.losses == 3
+        assert result.fitness == 0.0
+
+    def test_evaluate_agent_all_games_fail(self) -> None:
+        """Test evaluate_agent when all games throw exceptions."""
+        evaluator = FitnessEvaluator(games_per_evaluation=5)
+
+        def always_fail(p1: Any, p2: Any) -> tuple[float, float]:
+            raise RuntimeError("Game crash")
+
+        evaluator.set_callbacks(play_game_fn=always_fail)
+
+        agent = AgentState(agent_id="test_agent")
+        result = evaluator.evaluate_agent(agent)
+
+        assert result.games_played == 0
+        assert result.fitness == 0.0
+
+    def test_evaluate_population_empty_list(self) -> None:
+        """Test evaluating empty population."""
+        evaluator = FitnessEvaluator(games_per_evaluation=3)
+
+        def mock_play(p1: Any, p2: Any) -> tuple[float, float]:
+            return (0.5, 0.5)
+
+        evaluator.set_callbacks(play_game_fn=mock_play)
+
+        results = evaluator.evaluate_population([])
+        assert len(results) == 0
+
+    def test_evaluate_agent_total_reward_tracked(self) -> None:
+        """Test that total reward is tracked in evaluation details."""
+        evaluator = FitnessEvaluator(games_per_evaluation=3)
+
+        rewards = [1.0, 0.5, 0.0]
+        game_idx = 0
+
+        def mock_play(p1: Any, p2: Any) -> tuple[float, float]:
+            nonlocal game_idx
+            r = rewards[game_idx]
+            game_idx += 1
+            return (r, 1.0 - r)
+
+        evaluator.set_callbacks(play_game_fn=mock_play)
+
+        agent = AgentState(agent_id="test_agent")
+        result = evaluator.evaluate_agent(agent)
+
+        assert result.details["total_reward"] == pytest.approx(1.5)
+
+
+# =============================================================================
+# Additional Selection Strategy Edge Cases
+# =============================================================================
+
+
+class TestSelectionEdgeCases:
+    """Additional edge case tests for selection strategies."""
+
+    def test_truncation_all_same_fitness(self, rng: np.random.Generator) -> None:
+        """Test truncation when all agents have same fitness."""
+        agents = [
+            AgentState(agent_id=f"agent_{i}", fitness_score=0.5)
+            for i in range(5)
+        ]
+        for a in agents:
+            a.fitness_history = [0.5]
+
+        strategy = TruncationSelection()
+        selected = strategy.select(agents, num_to_select=2, rng=rng)
+        assert len(selected) == 2
+
+    def test_steady_state_all_same_fitness(self, rng: np.random.Generator) -> None:
+        """Test steady state when all agents have same fitness."""
+        agents = [
+            AgentState(agent_id=f"agent_{i}", fitness_score=0.5)
+            for i in range(5)
+        ]
+        for a in agents:
+            a.fitness_history = [0.5]
+
+        strategy = SteadyStateSelection()
+        selected = strategy.select(agents, num_to_select=2, rng=rng)
+        assert len(selected) == 2
+
+    def test_roulette_single_agent(self, rng: np.random.Generator) -> None:
+        """Test roulette with single agent."""
+        agents = [AgentState(agent_id="solo", fitness_score=0.8)]
+        agents[0].fitness_history = [0.8]
+
+        strategy = RouletteSelection()
+        selected = strategy.select(agents, num_to_select=1, rng=rng)
+        assert len(selected) == 1
+        assert selected[0].agent_id == "solo"
+
+    def test_tournament_single_agent(self, rng: np.random.Generator) -> None:
+        """Test tournament with single agent."""
+        agents = [AgentState(agent_id="solo", fitness_score=0.8)]
+        agents[0].fitness_history = [0.8]
+
+        strategy = TournamentSelection(tournament_size=3)
+        selected = strategy.select(agents, num_to_select=1, rng=rng)
+        assert len(selected) == 1
+        assert selected[0].agent_id == "solo"
+
+
+# =============================================================================
+# Record Empty Evaluation
+# =============================================================================
+
+
+class TestSchedulerEmptyResults:
+    """Tests for scheduler with empty evaluation results."""
+
+    def test_record_evaluation_empty_results(self, pbt_config: PBTConfig) -> None:
+        """Test recording evaluation with empty results list."""
+        scheduler = PBTScheduler(config=pbt_config)
+
+        scheduler.record_evaluation(100, [])
+
+        state = scheduler.get_state()
+        assert state.evaluation_count == 1
+        assert state.best_fitness_seen == float("-inf")
+
+    def test_record_evaluation_single_result(self, pbt_config: PBTConfig) -> None:
+        """Test recording evaluation with single result."""
+        scheduler = PBTScheduler(config=pbt_config)
+
+        results = [EvaluationResult(agent_id="a", fitness=0.42)]
+        scheduler.record_evaluation(100, results)
+
+        state = scheduler.get_state()
+        assert state.best_fitness_seen == 0.42
+        assert state.fitness_plateau_count == 0
+
+
+# =============================================================================
+# Scheduler With Different Selection Methods
+# =============================================================================
+
+
+class TestSchedulerSelectionMethods:
+    """Test PBTScheduler with different selection method configurations."""
+
+    @pytest.mark.parametrize("method", ["truncation", "tournament", "roulette", "rank"])
+    def test_scheduler_with_selection_method(
+        self,
+        method: str,
+        sample_agents: list[AgentState],
+    ) -> None:
+        """Test scheduler works with all selection methods."""
+        config = PBTConfig(
+            population_size=8,
+            selection_method=method,
+            tournament_size=3,
+            evaluation_interval=100,
+        )
+        scheduler = PBTScheduler(config=config, rng=np.random.default_rng(42))
+
+        selected = scheduler.select_for_exploitation(sample_agents, num_to_select=2)
+        assert len(selected) == 2

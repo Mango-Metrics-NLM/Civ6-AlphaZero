@@ -74,8 +74,10 @@ class TestMainMuZeroTrainingDispatch:
     @patch("alpha_zero.cloud.gcp.training_worker.prepare_dataset")
     @patch("alpha_zero.cloud.gcp.training_worker.load_trajectories")
     @patch("alpha_zero.cloud.gcp.training_worker.GCPConfig")
+    @patch("alpha_zero.cloud.gcp.training_worker.setup_ddp", return_value=(0, 0, 1))
     def test_muzero_dispatches_to_muzero_model(
         self,
+        _mock_ddp: MagicMock,
         mock_config_cls: MagicMock,
         mock_load_traj: MagicMock,
         mock_prepare: MagicMock,
@@ -133,8 +135,10 @@ class TestMainMuZeroTrainingDispatch:
     @patch("alpha_zero.cloud.gcp.training_worker.prepare_dataset")
     @patch("alpha_zero.cloud.gcp.training_worker.load_trajectories")
     @patch("alpha_zero.cloud.gcp.training_worker.GCPConfig")
+    @patch("alpha_zero.cloud.gcp.training_worker.setup_ddp", return_value=(0, 0, 1))
     def test_alphazero_dispatches_to_standard_model(
         self,
+        _mock_ddp: MagicMock,
         mock_config_cls: MagicMock,
         mock_load_traj: MagicMock,
         mock_prepare: MagicMock,

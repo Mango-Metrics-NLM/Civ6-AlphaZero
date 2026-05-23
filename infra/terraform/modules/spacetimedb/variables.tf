@@ -43,3 +43,9 @@ variable "service_account" {
   description = "Service account email for the instance."
   type        = string
 }
+
+variable "spacetimedb_image" {
+  description = "Pinned SpacetimeDB container image. Avoid :latest for supply chain safety."
+  type        = string
+  default     = "clockworklabs/spacetimedb:v1.1.1"
+}

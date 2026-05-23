@@ -344,7 +344,7 @@ class MCTSNode:
                 best_action = action
                 best_child = child
 
-        return best_action, best_child
+        return best_action, best_child  # type: ignore[return-value]
 
     def select_option_child(self, c_puct: float) -> tuple[str, MCTSNode | None]:
         """Select option child with highest UCB score.
@@ -366,7 +366,7 @@ class MCTSNode:
                 best_id = opt_id
                 best_child = child
 
-        return best_id, best_child
+        return best_id, best_child  # type: ignore[return-value]
 
     def expand(
         self,

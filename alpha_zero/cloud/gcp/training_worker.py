@@ -39,7 +39,13 @@ from alpha_zero.cloud.gcp.storage import (
     GCSTrajectoryStorage,
 )
 from alpha_zero.core.losses import LossConfig, compute_reward_loss
-from alpha_zero.utils.wandb_logger import WandbLogger
+from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
+
+if TYPE_CHECKING:
+    from alpha_zero.orchestrator.scheduler import HyperparameterScheduler
+    from alpha_zero.training.diagnostics import TrainingDiagnostics
+    from alpha_zero.training.training_profiler import TrainingProfiler
+    from alpha_zero.training.training_report import TrainingReport
 
 if TYPE_CHECKING:
     from alpha_zero.orchestrator.scheduler import HyperparameterScheduler
@@ -131,6 +137,7 @@ def report_tuning_metric(metric: dict[str, float], step: int) -> None:
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Civ6AZ Training Worker")
+    parser.add_argument("--mode", type=str, default="training", help="Worker mode (training)")
     parser.add_argument("--iteration", type=int, required=True, help="Training iteration")
     parser.add_argument(
         "--trajectory_iterations",
@@ -907,7 +914,7 @@ def main() -> int:
     # Initialize W&B (disabled by default, opt-in via WANDB_ENABLED env var)
     wandb_logger = None
     try:
-        from alpha_zero.utils.wandb_logger import WandbLogger
+        from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
         wandb_logger = WandbLogger.from_env()
         if wandb_logger.is_enabled:
@@ -1206,7 +1213,7 @@ def main() -> int:
             spatial_size = args.board_size
 
             if is_muzero:
-                loss, policy_loss, value_loss, reward_loss, num_batches = train_muzero_epoch(
+                loss, policy_loss, value_loss, _reward_loss, num_batches = train_muzero_epoch(
                     model,
                     dataloader,
                     optimizer,

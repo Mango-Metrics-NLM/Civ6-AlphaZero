@@ -37,7 +37,7 @@ resource "google_cloud_run_v2_service" "auth" {
     }
 
     containers {
-      image = "${var.name_prefix}-auth:latest"
+      image = var.container_image
 
       ports {
         container_port = 8080

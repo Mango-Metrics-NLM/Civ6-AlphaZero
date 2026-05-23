@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+@pytest.mark.slow
 class TestEnhancedTrainingWithMockedWandb:
     """Integration tests with mocked W&B to avoid actual API calls."""
 
@@ -87,6 +88,7 @@ class TestEnhancedTrainingWithMockedWandb:
             assert len(history["iterations"]) == 2
 
 
+@pytest.mark.slow
 class TestWandbLoggingCallSequence:
     """Tests for the sequence of W&B logging calls."""
 
@@ -126,6 +128,7 @@ class TestWandbLoggingCallSequence:
         assert "log_training_step" in expected_sequence
 
 
+@pytest.mark.slow
 class TestWandbHistoryTracking:
     """Tests for history tracking with W&B."""
 
@@ -160,6 +163,7 @@ class TestWandbHistoryTracking:
             assert isinstance(final_metrics["avg_game_length"], (int, float))
 
 
+@pytest.mark.slow
 class TestWandbConfigPropagation:
     """Tests for W&B configuration propagation."""
 
@@ -200,6 +204,7 @@ class TestWandbConfigPropagation:
         assert config_dict["use_curriculum"] == use_curriculum
 
 
+@pytest.mark.slow
 class TestWandbErrorHandling:
     """Tests for W&B error handling."""
 
@@ -253,6 +258,7 @@ class TestWandbErrorHandling:
             # Note: This may or may not trigger depending on import state
 
 
+@pytest.mark.slow
 class TestWandbArtifactLogging:
     """Tests for W&B artifact (model) logging."""
 
@@ -280,6 +286,7 @@ class TestWandbArtifactLogging:
         assert "total_games" in final_metadata
 
 
+@pytest.mark.slow
 class TestWandbTagsAndNaming:
     """Tests for W&B tags and run naming."""
 
@@ -308,6 +315,7 @@ class TestWandbTagsAndNaming:
         assert " " not in default_project
 
 
+@pytest.mark.slow
 class TestWandbMetricsCompleteness:
     """Tests for completeness of W&B metrics logging."""
 

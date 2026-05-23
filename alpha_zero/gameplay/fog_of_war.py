@@ -175,7 +175,7 @@ class FogOfWarSystem:
         total_visible = int(np.sum(grid == VISIBLE))
         total_seen = int(np.sum(grid == SEEN))
         logger.debug(
-            "Player %d visibility updated: %d visible, %d seen, " "%d units, %d cities",
+            "Player %d visibility updated: %d visible, %d seen, %d units, %d cities",
             player,
             total_visible,
             total_seen,
@@ -440,7 +440,7 @@ class FogOfWarSystem:
         encoding[2] = (grid == UNEXPLORED).astype(np.float32)
 
         logger.debug(
-            "encode_for_spatial: player %d -- visible=%d, seen=%d, " "unexplored=%d",
+            "encode_for_spatial: player %d -- visible=%d, seen=%d, unexplored=%d",
             player,
             int(encoding[0].sum()),
             int(encoding[1].sum()),
@@ -487,7 +487,7 @@ class FogOfWarSystem:
         stored_board_size = data.get("board_size", board_size)
         if stored_board_size != board_size:
             logger.warning(
-                "from_dict: stored board_size %d differs from requested %d; " "using stored value",
+                "from_dict: stored board_size %d differs from requested %d; using stored value",
                 stored_board_size,
                 board_size,
             )

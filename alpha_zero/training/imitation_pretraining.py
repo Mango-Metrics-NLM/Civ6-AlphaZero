@@ -41,7 +41,7 @@ from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.evaluation.baseline_agents import BaseAgent, GreedyHeuristicAgent
 
 if TYPE_CHECKING:
-    from alpha_zero.utils.wandb_logger import WandbLogger
+    from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +193,7 @@ class HeuristicExpertGenerator:
             action = current_agent.select_action(env, obs)
 
             # Store observation and action for this player
-            action_probs = np.zeros(env.action_space.n, dtype=np.float32)
+            action_probs = np.zeros(int(env.action_space.n), dtype=np.float32)
             action_probs[action] = 1.0  # Hard target from expert
 
             history.append(
@@ -451,7 +451,7 @@ class ImitationPreTrainer:
         else:
             self.network = MicroCivNetwork(
                 board_size=self.config.board_size,
-                action_space_size=self.action_space_size,
+                action_space_size=int(self.action_space_size),
                 num_res_blocks=self.config.num_res_blocks,
                 num_filters=self.config.num_filters,
             )

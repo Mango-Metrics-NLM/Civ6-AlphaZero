@@ -33,7 +33,7 @@ try:
 
     _PSUTIL_AVAILABLE = True
 except ImportError:
-    psutil = None  # type: ignore[assignment]
+    psutil = None
     _PSUTIL_AVAILABLE = False
 
 from alpha_zero.cloud.gcp.config import (
@@ -341,9 +341,14 @@ def load_muzero_model(
     if model_config_dict is not None:
         logger.info("Using saved MuZero model config from checkpoint")
         config_copy = model_config_dict.copy()
-        # Remove computed fields
-        config_copy.pop("_num_patches", None)
-        config_copy.pop("_head_dim", None)
+        # Filter to only known MuZeroConfig fields (tolerates ViT fields like patch_size)
+        import dataclasses as _dc
+
+        valid_fields = {f.name for f in _dc.fields(MuZeroConfig)}
+        unknown_keys = [k for k in config_copy if k not in valid_fields]
+        if unknown_keys:
+            logger.info("Filtering %d unknown config keys: %s", len(unknown_keys), unknown_keys[:5])
+        config_copy = {k: v for k, v in config_copy.items() if k in valid_fields}
         try:
             muzero_config = MuZeroConfig(**config_copy)
         except TypeError as e:
@@ -353,6 +358,25 @@ def load_muzero_model(
     try:
         model = MuZeroNetwork(config=muzero_config)
         incompatible = model.load_state_dict(state_dict, strict=False)
+
+        # Check for severe architecture mismatch (e.g. ViT checkpoint vs CNN MuZero)
+        total_keys = len(state_dict)
+        mismatch_keys = len(incompatible.missing_keys) + len(incompatible.unexpected_keys)
+        mismatch_ratio = mismatch_keys / max(total_keys, 1)
+
+        if mismatch_ratio > 0.2:
+            logger.warning(
+                "Architecture mismatch: %d/%d keys incompatible (%.0f%%). "
+                "Checkpoint appears to be a different architecture (e.g. ViT vs CNN). "
+                "Using fresh random MuZero weights instead.",
+                mismatch_keys,
+                total_keys,
+                mismatch_ratio * 100,
+            )
+            model = MuZeroNetwork(config=muzero_config)
+            model.eval()
+            logger.info("Created fresh MuZero model (random init) for self-play")
+            return model
 
         if incompatible.missing_keys:
             logger.warning("Missing keys in MuZero state_dict: %s", incompatible.missing_keys[:5])
@@ -364,7 +388,7 @@ def load_muzero_model(
     except RuntimeError as e:
         if "size mismatch" in str(e):
             logger.error(
-                "MuZero architecture mismatch for v%d. Ensure config is saved " "with checkpoints.",
+                "MuZero architecture mismatch for v%d. Ensure config is saved with checkpoints.",
                 version,
             )
         raise RuntimeError(f"Failed to load MuZero state_dict v{version}: {e}") from e
@@ -770,9 +794,12 @@ def run_muzero_selfplay(
             obs = env.get_observation()
 
             try:
-                # MuZeroMCTS.search uses the dynamics model internally
-                # Pass observation dict and action_mask explicitly (MuZeroMCTS signature)
-                policy, value_estimate = mcts.search(obs, action_mask=obs["action_mask"])
+                # MuZeroMCTS.search needs observation dict + action mask. The
+                # mask is already a key in the observation produced by
+                # env.get_observation() above, so reuse it instead of calling
+                # env.get_valid_actions() a second time.
+                action_mask = obs["action_mask"]
+                policy, value_estimate = mcts.search(obs, action_mask)
                 turn = len(trajectory["spatial"])
                 temp = compute_temperature(
                     turn=turn,
@@ -974,7 +1001,7 @@ def run_batch_selfplay(
 
             # Batch MCTS search
             try:
-                results = batch_mcts.batch_search(envs, add_noise=False)
+                results = batch_mcts.batch_search(envs, add_noise=False)  # type: ignore[arg-type]
             except Exception as e:
                 logger.error("Batch search failed at turn %d: %s", turn, e, exc_info=True)
                 if device != "cpu":
@@ -1042,19 +1069,18 @@ def run_batch_selfplay(
 
         # Log batch metrics to W&B
         try:
-            from alpha_zero.utils.wandb_logger import WANDB_AVAILABLE, log_metrics
+            from alpha_zero.utils.experiment_tracker import log_metrics
 
-            if WANDB_AVAILABLE:
-                log_metrics(
-                    {
-                        "selfplay/batch_games_completed": batch_games,
-                        "selfplay/batch_time_seconds": batch_elapsed,
-                        "selfplay/parallel_envs": num_parallel_games,
-                        "selfplay/total_games_completed": games_completed,
-                    }
-                )
+            log_metrics(
+                {
+                    "selfplay/batch_games_completed": batch_games,
+                    "selfplay/batch_time_seconds": batch_elapsed,
+                    "selfplay/parallel_envs": num_parallel_games,
+                    "selfplay/total_games_completed": games_completed,
+                }
+            )
         except ImportError:
-            logger.debug("wandb not installed, skipping batch metrics logging")
+            logger.debug("experiment tracker not available, skipping batch metrics logging")
 
         # Memory cleanup between batches
         if device != "cpu":
@@ -1120,7 +1146,7 @@ def main() -> int:
     # Initialize W&B (disabled by default, opt-in via WANDB_ENABLED env var)
     wandb_logger = None
     try:
-        from alpha_zero.utils.wandb_logger import WandbLogger
+        from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
         wandb_logger = WandbLogger.from_env()
         if wandb_logger.is_enabled:
@@ -1277,7 +1303,7 @@ def main() -> int:
 
             # Log batch-specific metrics
             if use_batch:
-                from alpha_zero.utils.wandb_logger import log_metrics
+                from alpha_zero.utils.experiment_tracker import log_metrics
 
                 log_metrics(
                     {

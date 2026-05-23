@@ -29,3 +29,8 @@ variable "service_account" {
   description = "Service account email."
   type        = string
 }
+
+variable "container_image" {
+  description = "Fully-qualified container image URI for the auth service."
+  type        = string
+}

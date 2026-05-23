@@ -295,6 +295,7 @@ def generate_random_trajectory(
 # =============================================================================
 
 
+@pytest.mark.slow
 class TestMuZeroSelfPlay:
     """Tests for self-play with MuZeroMCTS."""
 
@@ -487,6 +488,7 @@ class TestMuZeroSelfPlay:
 # =============================================================================
 
 
+@pytest.mark.slow
 class TestMuZeroTrainingLoop:
     """Tests for MuZero training loop."""
 
@@ -942,6 +944,7 @@ class TestBackwardsCompatibility:
 # =============================================================================
 
 
+@pytest.mark.slow
 class TestCheckpointing:
     """Tests for saving and loading MuZero networks."""
 

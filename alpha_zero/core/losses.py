@@ -1146,7 +1146,7 @@ class MuZeroLossCalculator:
         logger.debug("Using MuZero network interface")
 
         # Initial inference - duck-typed method call
-        initial_output = network.initial_inference(  # type: ignore[operator]
+        initial_output = network.initial_inference(
             batch.observations_spatial[0],
             batch.observations_vector[0],
             batch.action_masks[0] if batch.action_masks else None,
@@ -1180,7 +1180,7 @@ class MuZeroLossCalculator:
             logger.debug("Unrolling dynamics step %d", k)
 
             # Recurrent inference - duck-typed method call
-            recurrent_output = network.recurrent_inference(  # type: ignore[operator]
+            recurrent_output = network.recurrent_inference(
                 current_hidden,
                 batch.actions[k],
                 batch.action_masks[k + 1] if batch.action_masks else None,
@@ -1309,7 +1309,7 @@ class MuZeroLossCalculator:
     def _get_projection(self, network: nn.Module, hidden_state: torch.Tensor) -> torch.Tensor:
         """Get projection from hidden state for consistency loss."""
         if hasattr(network, "project"):
-            return network.project(hidden_state)  # type: ignore[operator, no-any-return]
+            return network.project(hidden_state)
         else:
             logger.warning("Network doesn't have project method, using identity")
             return hidden_state.mean(dim=(2, 3)) if hidden_state.dim() == 4 else hidden_state
@@ -1322,7 +1322,7 @@ class MuZeroLossCalculator:
     ) -> torch.Tensor:
         """Get representation from observation."""
         if hasattr(network, "representation"):
-            return network.representation(spatial, vector)  # type: ignore[operator, no-any-return]
+            return network.representation(spatial, vector)
         else:
             logger.warning("Network doesn't have representation method")
             return spatial
@@ -1334,7 +1334,7 @@ class MuZeroLossCalculator:
     ) -> torch.Tensor:
         """Get value prefix prediction from hidden state."""
         if hasattr(network, "predict_value_prefix"):
-            return network.predict_value_prefix(hidden_state)  # type: ignore[operator, no-any-return]
+            return network.predict_value_prefix(hidden_state)
         else:
             logger.warning("Network doesn't have predict_value_prefix method")
             batch_size = hidden_state.size(0)

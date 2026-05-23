@@ -25,11 +25,18 @@ Usage:
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING, Any
 
 import torch
 
+from alpha_zero.utils.registry import default_registry
+
 if TYPE_CHECKING:
+    from alpha_zero.multiplayer.simultaneous_mcts import (
+        DecoupledUCT,
+        SimultaneousMCTSConfig,
+    )
     from alpha_zero.orchestrator.config import (
         CurriculumConfig,
         EnvironmentConfig,
@@ -49,34 +56,72 @@ def create_network(
     board_size: int,
     action_space_size: int,
     device: str = "cpu",
-) -> torch.nn.Module:
+    framework: str | None = None,
+    num_players: int = 2,
+) -> Any:
     """Create neural network from configuration.
 
     Automatically selects between MicroCivNetwork (for smaller boards)
     and Civ6Network (for larger boards or when attention is needed).
+    Supports both PyTorch and JAX backends via the framework parameter.
 
     Args:
         config: Network configuration.
         board_size: Game board size.
         action_space_size: Size of action space.
         device: Compute device ("cpu" or "cuda").
+        framework: ML framework ("pytorch" or "jax"). If None, reads from
+            CIV6AZ_FRAMEWORK env var, defaulting to "pytorch".
+        num_players: Number of players. When > 2, MicroCivNetwork uses
+            NPlayerValueHead for per-player value output.
 
     Returns:
         Configured neural network on specified device.
     """
+    effective_framework = (
+        (
+            framework
+            or getattr(config, "framework", None)
+            or os.environ.get("CIV6AZ_FRAMEWORK", "pytorch")
+        )
+        .lower()
+        .strip()
+    )
+
+    if effective_framework == "jax":
+        try:
+            from alpha_zero.core.jax_network import create_jax_network
+
+            logger.info("Creating JAX network via factory")
+            return create_jax_network(
+                config,
+                board_size=board_size,
+                action_space_size=action_space_size,
+            )
+        except ImportError as e:
+            logger.warning(
+                "JAX not available, falling back to PyTorch: %s",
+                e,
+            )
+            # Fall through to PyTorch
+
     from alpha_zero.core.civ6_network import Civ6Network, MicroCivNetwork
+    from alpha_zero.core.framework import is_microciv_config
 
     # Use MicroCivNetwork for smaller boards (faster training)
-    if board_size <= 16 and config.spatial_channels <= 13:
+    if is_microciv_config(board_size, config.spatial_channels):
         logger.info(
             f"Creating MicroCivNetwork: board={board_size}, "
-            f"actions={action_space_size}, filters={config.num_filters}",
+            f"actions={action_space_size}, filters={config.num_filters}, "
+            f"num_players={num_players}",
         )
         network: torch.nn.Module = MicroCivNetwork(
             board_size=board_size,
             action_space_size=action_space_size,
             num_res_blocks=config.num_res_blocks,
             num_filters=config.num_filters,
+            spatial_channels=config.spatial_channels,
+            num_players=num_players,
         )
     else:
         logger.info(
@@ -156,12 +201,19 @@ def create_mcts(
         f"c_puct={config.c_puct}, device={device}, "
         f"reflection={'enabled' if reflection_memory else 'disabled'}",
     )
-    return Civ6MCTS(network, mcts_config, device=device, reflection_memory=reflection_memory)
+    from typing import cast
+
+    from alpha_zero.core.civ6_mcts import MCTSNetwork
+
+    return Civ6MCTS(
+        cast(MCTSNetwork, network), mcts_config, device=device, reflection_memory=reflection_memory
+    )
 
 
 def create_environment(
     config: EnvironmentConfig,
     override_params: dict[str, Any] | None = None,
+    num_players: int = 2,
 ) -> Any:
     """Create environment with tuning and overrides.
 
@@ -171,6 +223,7 @@ def create_environment(
     Args:
         config: Environment configuration.
         override_params: Parameters to override (e.g., from curriculum).
+        num_players: Number of players (2-8).
 
     Returns:
         Configured environment instance.
@@ -184,16 +237,19 @@ def create_environment(
     if override_params:
         board_size = override_params.get("board_size", board_size)
         max_turns = override_params.get("max_turns", max_turns)
+        num_players = override_params.get("num_players", num_players)
 
     logger.info(
         f"Creating environment: type={config.type}, "
-        f"board={board_size}x{board_size}, max_turns={max_turns}"
+        f"board={board_size}x{board_size}, max_turns={max_turns}, "
+        f"num_players={num_players}"
     )
 
     if config.type == "microciv":
         env = MicroCivEnv(
             board_size=board_size,
             max_turns=max_turns,
+            num_players=num_players,
         )
 
         # Note: Environment tuning wrapper is disabled because MCTS
@@ -469,19 +525,86 @@ def create_wandb_logger(
         return None
 
     try:
-        from alpha_zero.utils.wandb_logger import WandbConfig, WandbLogger
+        from alpha_zero.monitoring.config import MonitoringConfig
+        from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
-        wandb_config = WandbConfig(
-            project=config.project,
-            entity=config.entity,
-            tags=config.tags,
-            mode=config.mode,
+        # Legacy W&B config maps onto MonitoringConfig: project -> experiment_name,
+        # tags -> tags dict. entity/mode are W&B-specific and dropped.
+        monitoring_cfg = MonitoringConfig(
+            experiment_name=config.project,
+            tags=dict(config.tags) if config.tags else {},
         )
 
-        logger.info(f"Creating W&B logger: project={config.project}")
-        return WandbLogger(wandb_config)
+        logger.info("Creating MLflow-backed tracker: experiment=%s", config.project)
+        return WandbLogger.from_config(monitoring_cfg)
     except ImportError:
-        logger.warning("W&B not available")
+        logger.warning("MLflow not available")
+        return None
+
+
+def create_mlflow_logger(
+    config: Any,
+    experiment_name: str | None = None,
+) -> Any | None:
+    """Create MLflow logger from an ``MLflowConfig``.
+
+    Returns ``None`` when disabled, when the ``mlflow`` package is not
+    installed, or when logger construction raises. The orchestrator treats
+    ``None`` as "tracking off" and continues normally.
+
+    Args:
+        config: ``MLflowConfig`` (from ``alpha_zero.monitoring.config``) or any
+            duck-typed object exposing the same fields.
+        experiment_name: Optional override; falls back to ``config.experiment_name``.
+
+    Returns:
+        Configured ``MLflowLogger`` or ``None``.
+    """
+    if not getattr(config, "enabled", False):
+        logger.info("MLflow logging disabled")
+        return None
+    try:
+        from alpha_zero.monitoring import MLFLOW_AVAILABLE, MLflowConfig, MLflowLogger
+
+        if not MLFLOW_AVAILABLE:
+            logger.warning(
+                "MLflow package not installed; install with: pip install -e '.[monitoring]'"
+            )
+            return None
+
+        mlflow_config = MLflowConfig(
+            enabled=True,
+            tracking_uri=config.tracking_uri,
+            registry_uri=getattr(config, "registry_uri", None),
+            experiment_name=experiment_name or config.experiment_name,
+            run_name=config.run_name,
+            tags=dict(config.tags) if config.tags else {},
+            description=getattr(config, "description", ""),
+            artifact_location=getattr(config, "artifact_location", None),
+            log_frequency=getattr(config, "log_frequency", 1),
+            log_models=getattr(config, "log_models", True),
+            log_artifacts=getattr(config, "log_artifacts", True),
+            log_system_metrics=getattr(config, "log_system_metrics", False),
+            nested_runs=getattr(config, "nested_runs", True),
+            fail_silently=getattr(config, "fail_silently", True),
+            request_timeout_seconds=getattr(
+                config,
+                "request_timeout_seconds",
+                30.0,
+            ),
+        )
+
+        logger.info(
+            "Creating MLflow logger: uri=%s experiment=%s",
+            mlflow_config.tracking_uri,
+            mlflow_config.experiment_name,
+        )
+        return MLflowLogger(mlflow_config)
+    except ImportError:
+        logger.warning("MLflow not available; install with: pip install -e '.[monitoring]'")
+        return None
+    except Exception as exc:
+        logger.warning("create_mlflow_logger failed: %s", exc)
         return None
 
 
@@ -543,3 +666,66 @@ def create_replay_buffer(
 
     logger.info(f"Creating replay buffer: max_size={max_size}, min_size={min_size}")
     return ReplayBuffer(max_size)
+
+
+def create_simultaneous_mcts(
+    config: SimultaneousMCTSConfig | None = None,
+    num_players: int = 2,
+    action_space_size: int = 356,
+) -> DecoupledUCT:
+    """Create Decoupled UCT (DUCT) for simultaneous-move games.
+
+    Args:
+        config: SimultaneousMCTSConfig instance. If None, uses defaults.
+        num_players: Number of players in the game.
+        action_space_size: Size of the action space.
+
+    Returns:
+        Configured DecoupledUCT instance.
+    """
+    from alpha_zero.multiplayer.simultaneous_mcts import (
+        DecoupledUCT,
+        SimultaneousMCTSConfig,
+    )
+
+    if config is None:
+        config = SimultaneousMCTSConfig()
+
+    logger.info(
+        "Creating DecoupledUCT: num_players=%d, action_space=%d, simulations=%d",
+        num_players,
+        action_space_size,
+        config.num_simulations,
+    )
+    return DecoupledUCT(
+        config=config,
+        num_players=num_players,
+        action_space_size=action_space_size,
+    )
+
+
+# =============================================================================
+# Registry registrations -- makes factory functions discoverable via the
+# default_registry.  These calls are append-only and do not alter the
+# existing public API.
+# =============================================================================
+
+
+def _register_factories() -> None:
+    """Register all factory functions with the default component registry."""
+    default_registry.register_factory("network", "default", create_network)
+    default_registry.register_factory("mcts", "default", create_mcts)
+    default_registry.register_factory("environment", "default", create_environment)
+    default_registry.register_factory("reward_shaper", "default", create_reward_shaper)
+    default_registry.register_factory("curriculum", "default", create_curriculum_manager)
+    default_registry.register_factory("rag", "default", create_rag_client)
+    default_registry.register_factory("knowledge_base", "default", create_knowledge_base)
+    default_registry.register_factory("llm", "default", create_llm_client)
+    default_registry.register_factory("strategy_advisor", "default", create_strategy_advisor)
+    default_registry.register_factory("wandb", "default", create_wandb_logger)
+    default_registry.register_factory("mlflow", "default", create_mlflow_logger)
+    default_registry.register_factory("replay_buffer", "default", create_replay_buffer)
+    default_registry.register_factory("mcts", "duct", create_simultaneous_mcts)
+
+
+_register_factories()

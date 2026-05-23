@@ -1,0 +1,38 @@
+workerPoolSpecs:
+  - machineSpec:
+      machineType: n1-standard-4
+    replicaCount: 1
+    containerSpec:
+      imageUri: us-central1-docker.pkg.dev/hrmtrain/civ6az-muzero-world-model/civ6az-muzero:v16-full-fix
+      command:
+        - python
+        - -m
+        - alpha_zero.cloud.gcp.vertex_orchestrator
+      args:
+        - "--algorithm=muzero"
+        - "--iterations=50"
+        - "--mcts_simulations=50"
+        - "--mcts_type=muzero"
+        - "--workers=2"
+        - "--games_per_worker=10"
+        - "--epochs=10"
+        - "--model_version_start=0"
+      env:
+        - name: CIV6AZ_VERTEX_PROJECT
+          value: "hrmtrain"
+        - name: CIV6AZ_VERTEX_REGION
+          value: "us-central1"
+        - name: CIV6AZ_GCS_BUCKET
+          value: "civ6az-muzero-training"
+        - name: CIV6AZ_CONTAINER_IMAGE_URI
+          value: "us-central1-docker.pkg.dev/hrmtrain/civ6az-muzero-world-model/civ6az-muzero:v16-full-fix"
+        - name: CIV6AZ_AGENT_ID
+          value: "muzero"
+        - name: MLFLOW_TRACKING_URI
+          value: "${MLFLOW_TRACKING_URI}"
+        - name: MLFLOW_EXPERIMENT_NAME
+          value: "civ6az-muzero-world-model"
+        - name: MLFLOW_RUN_GROUP
+          value: "muzero"
+        - name: MLFLOW_ENABLED
+          value: "true"

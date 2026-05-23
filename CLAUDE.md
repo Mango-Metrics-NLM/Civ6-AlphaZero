@@ -18,7 +18,7 @@ Monte Carlo Tree Search, and deep neural networks.
 ```
 This succeeds when:
 - [ ] All tests pass: `pytest tests/ -v` exits with code 0
-- [ ] Coverage >= 80%: `pytest --cov=alpha_zero --cov-report=term-missing` shows >= 80%
+- [ ] Coverage >= 85%: `pytest --cov=alpha_zero --cov-report=term-missing` shows >= 85%
 - [ ] Type checking passes: `mypy alpha_zero/` exits with code 0
 - [ ] Linting passes: `ruff check alpha_zero/` exits with code 0
 - [ ] Training smoke test: `python -m alpha_zero.training_civ6 --dry_run` completes
@@ -275,6 +275,9 @@ When making changes, update the relevant sections below:
 | `python -m alpha_zero.orchestrator --help` | Show orchestrator options |
 | `python -m alpha_zero.orchestrator --preset fast --dry_run` | Fast preset smoke test |
 | `python -m alpha_zero.orchestrator --config configs/orchestrator.yaml --dry_run` | Config file smoke test |
+| `python scripts/launch_50iter_production_monitored.py --dry-run` | MLflow-monitored 50-iter production dry run |
+| `python scripts/launch_50iter_production_monitored.py` | Launch full 50-iter production run with MLflow |
+| `mlflow ui --backend-store-uri ./mlruns --port 5000` | Inspect MLflow runs in the browser |
 
 #### Cloud Deployment Commands
 
@@ -309,7 +312,19 @@ When making changes, update the relevant sections below:
 | `pytest tests/unit/test_strategy_advisor.py -v` | Test strategy advisor |
 | `pytest tests/unit/test_storage_backend.py -v` | Test storage backends |
 | `pytest tests/unit/test_replay_buffer.py -v` | Test replay buffers |
+| `pytest tests/unit/test_simultaneous_mcts.py -v` | Test DUCT algorithm |
+| `pytest tests/unit/test_action_resolution.py -v` | Test action conflict resolution |
+| `pytest tests/integration/test_e2e_nplayer_training.py -v` | E2E N-player training |
+| `pytest tests/integration/test_e2e_pipeline.py -v` | E2E pipeline validation |
+| `pytest tests/integration/test_e2e_simultaneous.py -v` | E2E DUCT simultaneous tests |
+| `pytest tests/unit/test_monitoring/ tests/unit/test_utils/ -v` | Test monitoring + utils |
+| `pytest tests/scripts/ -v` | Test eval scripts |
 | `pytest -k "test_name" -v` | Run specific test by name |
+| `python scripts/migrate_mlflow_to_sqlite.py --help` | MLflow migration tool |
+| `mlflow ui --backend-store-uri sqlite:///mlflow.db` | Launch MLflow UI |
+| `python scripts/analyse_training_run.py --help` | Training run analysis |
+| `python scripts/post_run_evaluation.py --help` | Post-run ELO + baseline eval |
+| `python scripts/run_baseline_eval.py --help` | Baseline evaluation (random/heuristic) |
 
 ### 5.2 Architecture Decisions
 
@@ -335,6 +350,27 @@ When making changes, update the relevant sections below:
 | 2026-02-01 | Cloud-native worker components | Self-play, trainer, evaluator containerized for Vertex AI |
 | 2026-02-01 | Preemption handling | Graceful shutdown on Spot VM preemption with trajectory flush |
 | 2026-02-01 | Budget machine profiles | Pre-configured profiles for T4/L4/A100 GPUs with cost estimates |
+| 2026-02-28 | DUCT for simultaneous actions | Decoupled UCB per player, avoids combinatorial |A|^N explosion via lazy joint children |
+| 2026-02-28 | ActionResolver with strategies | Configurable conflict resolution (independent, priority, random, simultaneous) |
+| 2026-02-28 | SimultaneousMCTSConfig frozen | All DUCT params via frozen dataclass with CIV6AZ_ env overrides |
+| 2026-02-17 | N-player MCTS (Max-N, Paranoid, Best-Reply) | Multiplayer support for 2-8 players, per-player value vectors |
+| 2026-02-17 | Opponent modeling | Frequency-based prediction with exponential decay, Bayesian blending |
+| 2026-02-17 | Turn manager (Sequential/Simultaneous/Dynamic) | Civ6-style dynamic turn modes |
+| 2026-02-18 | Hex crystalline encoder | Hex-topology-aware spatial encoder, axial coordinates, ring-distance PE |
+| 2026-02-21 | GumbelMCTS as default | `DEFAULT_MCTS_TYPE` changed from `civ6` to `gumbel` |
+| 2026-02-21 | Action mask in training pipeline | 5-tensor dataset: spatial, vector, mask, policy, value |
+| 2026-02-23 | Training worker fine-tuning fix | `--model_version` loads incumbent from GCS before training |
+| 2026-03-01 | Civ6 Lua mod bridge | File-based IPC in `alpha_zero/bridge/` (7 files) |
+| 2026-03-01 | Web interface | FastAPI + WebSocket game UI in `alpha_zero/web/` (12 files) |
+| 2026-03-01 | PBT module | Population-based training in `alpha_zero/pbt/` (10 files) |
+| 2026-03-01 | Hierarchical planning | Goal decomposition in `alpha_zero/hierarchical/` (19 files) |
+| 2026-05-21 | MLflow monitoring layer (alpha_zero/monitoring/) | Centralised experiment tracking with SQLite backend; file-store mlruns/ is deprecated. Combines PR #78 (orchestrator + tournament dashboards + stateless metric helpers) and PR #79 (log_evaluation_result + AlphaZeroMLflowEvaluator + analysis scripts). `MLflowConfig` is the single-source dataclass; `MonitoringConfig` retained as a backwards-compat alias. |
+| 2026-05-21 | env_loader.py zero-dependency .env loader | No python-dotenv dep; CIV6AZ_ env var convention; graceful missing-key warnings |
+| 2026-05-21 | EvaluationResult API: WinRateResult nesting | win_rate is WinRateResult object (0-100 scale); MLflow logs normalise to 0-1 |
+| 2026-05-21 | log_evaluation_result() 14-metric logging | 4 counts + 3 normalised rates + 7 game stats per evaluation run |
+| 2026-05-21 | TournamentMlflowLogger (PR #78) | Match / round / leaderboard / head-to-head facade for tournament telemetry |
+| 2026-05-21 | Stateless monitoring helpers (PR #78) | `compute_value_correlation`, `compute_elo_spread`, `compute_policy_entropy` (NaN-safe, importable from `alpha_zero.monitoring`) |
+| 2026-05-21 | W&B coexists with MLflow | Phased rollout; both backends can be enabled simultaneously. W&B remains primary in `cloud/`, `pbt/`, `evaluation/`, `optimizations/` pending follow-up sweep. Optional `[monitoring]` extra. |
 
 ### 5.3 Known Issues
 
@@ -344,15 +380,27 @@ When making changes, update the relevant sections below:
 | SimpleMCTS random rollout is weak | Use neural network MCTS after initial training |
 | Windows multiprocessing spawn | Use `if __name__ == "__main__"` guard |
 | pytest-xdist not always installed | Tests run without parallel flag if missing |
+| v1.3.0 training convergence unvalidated | Run `scripts/validate_v130_training.py` locally or launch cloud run |
+| MicroCiv hardcoded for 2 players | Multiplayer module built, but env needs G7/G8/G9 changes |
+| 12 DDP tests xfailed | Need rewrite with `torch.multiprocessing.spawn` |
+| mlruns/ file-store deprecated | Run `scripts/migrate_mlflow_to_sqlite.py` to migrate to `sqlite:///mlflow.db` |
+| test_deployment_infra.py: 6 failures | Require .env file not present locally; skip with `pytest -m 'not env_required'` |
+| Two divergent `WandbConfig` classes (`orchestrator/config.py` + `utils/wandb_logger.py`) | Unification deferred; `MLflowConfig` is single-source to avoid repeating the issue. |
+| W&B -> MLflow swap is partial | `cloud/`, `pbt/`, `evaluation/`, `optimizations/` still call wandb directly. Tracked as a follow-up sweep. |
 
-### 5.4 Bug Fixes (2026-01-20)
+### 5.4 Bug Fixes
 
-| Bug | Fix |
-|-----|-----|
-| Action mask indices mismatch | Changed to player-relative indices in `civ6_actions.py` |
-| Evaluation `_env` attribute error | Always create fresh wrapped environment per game |
-| Value tensor shape mismatch | Added `value.unsqueeze(1)` in training loss |
-| Curriculum `record_game` API | Changed `win=` to `won=` parameter |
+| Bug | Fix | Date |
+|-----|-----|------|
+| Action mask indices mismatch | Changed to player-relative indices in `civ6_actions.py` | 2026-01-20 |
+| Evaluation `_env` attribute error | Always create fresh wrapped environment per game | 2026-01-20 |
+| Value tensor shape mismatch | Added `value.unsqueeze(1)` in training loss | 2026-01-20 |
+| Curriculum `record_game` API | Changed `win=` to `won=` parameter | 2026-01-20 |
+| **Training from scratch each iteration** | Added `--model_version` to load incumbent weights (v1.3.0) | 2026-02-23 |
+| EvaluationPipeline wrong kwargs | Changed evaluate_vs_random(model=, device=) → (Civ6MCTS(agent), n_games=) | 2026-05-21 |
+| run_baseline_eval hardcoded run_id | Added resolve_run_id() auto-detection; removed production UUID default | 2026-05-21 |
+| EvaluationResult.win_rate type | win_rate is WinRateResult object, not float; fixed access to .win_rate.win_rate | 2026-05-21 |
+| MLflowLogger lifecycle | FAILED vs FINISHED status now set correctly on context manager exit | 2026-05-21 |
 
 ### 5.5 Information to Preserve
 
@@ -483,9 +531,42 @@ Civ6-AlphaZero/
 │   │   ├── rag_integration.py   # RAG-LLM integration layer
 │   │   ├── strategy_advisor.py  # LLM-based strategy advisor
 │   │   └── __main__.py          # CLI entry point
+│   ├── monitoring/              # MLflow experiment tracking (NEW)
+│   │   ├── config.py            # MLflowConfig dataclass (env-var + YAML aware)
+│   │   ├── metrics.py           # compute_value_correlation / compute_elo_spread / compute_policy_entropy
+│   │   ├── mlflow_logger.py     # Hardened MLflowLogger (optional import, try/except guards)
+│   │   ├── tournament_dashboards.py # TournamentMlflowLogger
+│   │   └── __init__.py          # Public exports
+│   ├── multiplayer/             # N-player multiplayer support
+│   │   ├── mcts_node.py         # N-player MCTS node (per-player values)
+│   │   ├── mcts.py              # Max-N, Paranoid, Best-Reply MCTS
+│   │   ├── network_heads.py     # N-player value head
+│   │   ├── env_adapter.py       # 2-player → N-player env wrapper
+│   │   ├── turn_manager.py      # Sequential/Simultaneous/Dynamic turns
+│   │   ├── opponent_model.py    # Frequency-based opponent modeling
+│   │   ├── scoring.py           # Ranking & scoring system
+│   │   ├── game_connector.py    # Unciv/Mock game connectors
+│   │   └── config.py            # MultiplayerConfig
+│   ├── pbt/                     # Population-Based Training (10 files)
+│   │   ├── population.py        # Population management
+│   │   ├── mutation.py          # Mutation operators
+│   │   ├── fitness.py           # Fitness evaluation
+│   │   └── muzero_hyperparams.py # MuZero-specific hyperparams
+│   ├── tournament/              # ELO Tournament System (9 files)
+│   ├── web/                     # Web Interface (12 files, FastAPI + WebSocket)
+│   ├── bridge/                  # Civ6 Lua Mod Bridge (7 files, file IPC)
+│   ├── hierarchical/            # Hierarchical Goal Planning (19 files)
+│   ├── training/                # Training integrations
+│   │   ├── muzero_integration.py # MuZero training pipeline
+│   │   └── muzero_trainer.py    # MuZero trainer
 │   ├── interfaces/              # Game interfaces
 │   │   ├── __init__.py
 │   │   └── unciv_interface.py   # Unciv JSON interface
+│   ├── monitoring/              # MLflow Monitoring Layer (NEW)
+│   │   ├── __init__.py
+│   │   ├── config.py            # MLflowMonitoringConfig dataclass
+│   │   ├── mlflow_logger.py     # MLflowLogger: lifecycle + 14-metric evaluation logging
+│   │   └── mlflow_evaluator.py  # AlphaZeroMLflowEvaluator: policy entropy, value MAE, accuracy
 │   ├── utils/                   # Utilities
 │   │   ├── __init__.py
 │   │   ├── logging.py           # Logging infrastructure
@@ -493,7 +574,8 @@ Civ6-AlphaZero/
 │   │   ├── llm_client.py        # LLM API integration
 │   │   ├── factories.py         # Component factory functions
 │   │   ├── test_runner.py       # Test execution utilities
-│   │   └── agent_tools.py       # Claude Code agent tools
+│   │   ├── agent_tools.py       # Claude Code agent tools
+│   │   └── env_loader.py        # Zero-dependency .env loader (CIV6AZ_ convention)
 │   └── training_civ6.py         # Training entry point
 ├── dockerfiles/                 # Container images (NEW)
 │   ├── Dockerfile.base          # Base image with PyTorch
@@ -506,6 +588,10 @@ Civ6-AlphaZero/
 ├── tests/
 │   ├── __init__.py
 │   ├── unit/                    # Unit tests
+│   │   ├── test_monitoring/     # MLflow monitoring tests (24)
+│   │   └── test_utils/          # Env loader tests (18)
+│   ├── scripts/                 # Script-level tests (39 + more)
+│   │   └── test_run_baseline_eval.py
 │   └── integration/             # Integration tests
 ├── configs/
 │   ├── civ6_config.yaml         # Original configuration file
@@ -743,6 +829,43 @@ rag.store_training_insight("Found that aggressive expansion wins more games")
 rag.close()
 ```
 
+### 9.9 MLflow Monitoring
+
+Optional MLflow tracking backend for the orchestrator. Tracks win rates,
+value correlation, ELO spread, and training metrics. Coexists with W&B
+(both can be enabled in parallel).
+
+```python
+from alpha_zero.monitoring import MLflowConfig, MLflowLogger
+
+config = MLflowConfig(
+    enabled=True,
+    tracking_uri="file://./mlruns",
+    experiment_name="civ6_50iter",
+    run_name="trial_1",
+    tags={"env": "prod"},
+)
+logger = MLflowLogger(config)
+logger.init(config_dict={"lr": 0.001, "batch_size": 64})
+logger.log_iteration(
+    iteration=5,
+    train_metrics={"train/loss": 1.2},
+    game_metrics={"game/win_rate": 0.6},
+    scheduler_metrics={"train/learning_rate": 0.001},
+)
+logger.finish()
+```
+
+Env vars (`CIV6AZ_MLFLOW_*` prefix): `ENABLED`, `TRACKING_URI`,
+`EXPERIMENT_NAME`, `RUN_NAME`, `TAGS` (form `"k=v,k=v"`),
+`ARTIFACT_LOCATION`, `LOG_FREQUENCY`, `LOG_MODELS`, `LOG_ARTIFACTS`,
+`NESTED_RUNS`, `FAIL_SILENTLY`. Standard `MLFLOW_*` env vars also honored
+as fallback.
+
+Install: `pip install -e '.[monitoring]'`. Launch the 50-iter production
+run via `scripts/launch_50iter_production_monitored.py`. Inspect via
+`mlflow ui --backend-store-uri ./mlruns --port 5000`.
+
 ---
 
 ## SECTION 10: DEBUG COMMANDS
@@ -970,13 +1093,28 @@ python -m infra.vertex_launcher \
 
 ## SECTION 13: NEXT STEPS
 
-### Phase 3+ (Planned)
-1. **Multi-GPU Training**: Extend distributed training to multiple GPUs
-2. **Population-Based Training**: Adaptive hyperparameter tuning
-3. **Full Civ 6 Integration**: Direct game interface (mod or API)
-4. **Tournament System**: ELO-based opponent selection
-5. **Human vs AI**: Interface for human players to challenge trained models
-6. **RAG Enhancement**: LLM-powered strategy recommendations using RAG context
+### Current: Validate v1.3.0 Training Convergence
+- v1.2.0 production run had **0 model promotions** (training-from-scratch bug)
+- v1.3.0 fixed weight loading but has **not been validated** in production
+- Run `python scripts/validate_v130_training.py` for local validation
+
+### Implemented (not yet listed as "complete")
+These features are already substantially built but were never formally tracked as phases:
+- **PBT**: `alpha_zero/pbt/` (10 files, 4,588 lines)
+- **Tournament**: `alpha_zero/tournament/` (9 files, 5,143 lines)
+- **Web Interface**: `alpha_zero/web/` (12 files)
+- **Civ6 Bridge**: `alpha_zero/bridge/` (7 files)
+- **Hierarchical Planning**: `alpha_zero/hierarchical/` (19 files)
+- **MuZero**: `alpha_zero/core/muzero_network.py`, `training/muzero_*`
+- **N-Player Multiplayer**: `alpha_zero/multiplayer/` (18 files)
+
+### Genuine Next Steps
+1. **Validate training convergence**: Prove models improve across iterations
+2. **Batch self-play in cloud**: Wire BatchGumbelMCTS into cloud containers (5-10x throughput)
+3. **N-player MicroCiv**: Fix hardcoded 2-player env (gaps G7/G8/G9)
+4. **DDP test fixes**: Fix 12 xfailed distributed tests
+5. **Fog of war**: Information set sampling for partial observability (gap G10)
+6. **Full Civ6 integration**: Scale to real game via Lua mod bridge
 
 ---
 
@@ -1027,6 +1165,56 @@ across a three-role workflow pipeline: Planning → DEV-SQE → Pre-PR.
 
 ---
 
-*Last updated: 2026-02-08*
-*Phase: 5 - Google Vertex AI Cloud Deployment*
-*Current Focus: Budget-tier cloud deployment with GCS storage and Spot VMs*
+## SECTION 15: CLAUDE CODE HARNESS
+
+### 15.1 Overview
+
+The project includes a Claude Code harness in `.claude/` that provides machine-enforceable
+configuration for permissions, hooks, and environment variables. This complements the
+human-readable instructions in this CLAUDE.md file.
+
+### 15.2 Files
+
+| File | Scope | Git | Purpose |
+|------|-------|-----|---------|
+| `.claude/settings.json` | Project | Committed | Team-wide permissions, hooks, env vars |
+| `.claude/settings.local.json` | Personal | Gitignored | Personal overrides (API tokens, etc.) |
+| `.claude/skills/*/SKILL.md` | Project | Committed | Handoff skills for KB workflow |
+
+### 15.3 What the Harness Does
+
+**SessionStart hook:** Automatically verifies Python >= 3.11 and installs dev dependencies
+(`pip install -e '.[dev]'`) at the start of every session. Reports environment status.
+
+**PostToolUse hook (Write|Edit):** After any Python file is written or edited, automatically
+runs `ruff check --fix` and `ruff format` on that file. This means manual linting after
+edits is no longer necessary during Claude Code sessions.
+
+**PreCompact hook:** Before context compaction, dumps KB session state, recent ledger entries,
+and git diff stats into the compacted context. Ensures workflow continuity across compactions.
+
+**Stop hook:** Reminds the agent to run the appropriate handoff skill (Section 14) before
+ending a session that did meaningful work.
+
+**Permissions:** Common safe operations (pytest, ruff, mypy, git, pip, make) are pre-approved.
+Dangerous operations (writing .env, force-push, cloud ops) are denied.
+
+### 15.4 Personal Overrides
+
+Copy and edit `.claude/settings.local.json` for personal settings:
+
+```json
+{
+  "env": {
+    "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_your_token_here"
+  }
+}
+```
+
+This file is gitignored and never committed.
+
+---
+
+*Last updated: 2026-03-31*
+*Version: v1.3.0 (training convergence fix, awaiting validation)*
+*Current Focus: Validate training convergence, then batch self-play + N-player MicroCiv*

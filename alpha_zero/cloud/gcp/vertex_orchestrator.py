@@ -34,7 +34,10 @@ import os
 import random
 import sys
 import time
-from typing import Final
+from typing import TYPE_CHECKING, Any, Final
+
+if TYPE_CHECKING:
+    from alpha_zero.cloud.gcp.orchestrator_state import OrchestratorState
 
 from alpha_zero.cloud.gcp.config import (
     DEFAULT_MCTS_TYPE,
@@ -65,6 +68,24 @@ _JITTER_FRACTION: Final[float] = 0.25
 # Machine type used by VertexEvaluationJob — kept in sync with VertexEvaluationJob.launch()
 # to ensure cost estimates match actual spending.
 _EVAL_MACHINE_TYPE: Final[str] = "n1-standard-4"
+
+
+def _phase_run_name(iteration: int, phase: str) -> str:
+    """Compose an MLflow run name for a per-phase worker run.
+
+    Encodes the orchestrator's run group as the prefix so all per-phase
+    runs sort together in the MLflow UI even when no explicit group/tag
+    is set (the prefix carries the grouping information).
+
+    Args:
+        iteration: Current orchestrator iteration (0-based).
+        phase: ``"selfplay"`` | ``"training"`` | ``"eval"``.
+
+    Returns:
+        e.g. ``"civ6az-selfplay-iter003"``.
+    """
+    base = os.environ.get("MLFLOW_RUN_GROUP", "civ6az")
+    return f"{base}-{phase}-iter{iteration:03d}"
 
 
 def compute_retry_delay(
@@ -111,6 +132,23 @@ def parse_args() -> argparse.Namespace:
     # Iteration control
     parser.add_argument("--iterations", type=int, default=10, help="Number of training iterations")
     parser.add_argument("--start_iteration", type=int, default=0, help="Starting iteration number")
+    parser.add_argument(
+        "--model_version_start",
+        type=int,
+        default=None,
+        help="Override initial model version (use 0 for fresh random init, e.g. MuZero)",
+    )
+    parser.add_argument(
+        "--resume_from",
+        type=str,
+        default=None,
+        help=(
+            "Token forwarded to the training worker's --resume_from. "
+            "'latest' loads the latest pointer; an integer loads that training "
+            "step. When omitted, the orchestrator auto-detects and emits 'latest' "
+            "if a checkpoint exists at the conventional GCS path."
+        ),
+    )
     parser.add_argument("--workers", type=int, default=2, help="Number of self-play workers")
     parser.add_argument(
         "--games_per_worker", type=int, default=100, help="Games per self-play worker"
@@ -153,7 +191,7 @@ def parse_args() -> argparse.Namespace:
         help="MCTS algorithm variant",
     )
     parser.add_argument(
-        "--mcts_simulations", type=int, default=64, help="MCTS simulations per move"
+        "--mcts_simulations", type=int, default=400, help="MCTS simulations per move"
     )
     parser.add_argument(
         "--gumbel_num_actions",
@@ -169,7 +207,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--num_parallel_games",
         type=int,
-        default=1,
+        default=4,
         help="Number of parallel games per worker (1=sequential, >1=vectorized)",
     )
     parser.add_argument(
@@ -378,6 +416,77 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _resolve_resume_token(
+    args: argparse.Namespace,
+    iteration: int,
+    checkpoint_storage: Any | None = None,
+) -> str | None:
+    """Resolve the value to pass as ``--resume_from`` to the training worker.
+
+    Returns:
+        - The explicit ``args.resume_from`` value when set (operator override).
+        - ``"latest"`` when a checkpoint exists at the conventional GCS path
+          (``gs://{bucket}/checkpoints/civ6az/latest.pt``).
+        - ``None`` when no checkpoint exists (cold start).
+
+    The training worker (``training_worker.py``) parses the returned token and
+    calls ``GCSCheckpointStorage.load_checkpoint(step=...)`` to resume optimizer
+    state and the global step counter.  Without a token the worker starts from
+    random init — which is what caused the v1.2.0 50-iter run to produce zero
+    promotions.
+    """
+    explicit = getattr(args, "resume_from", None)
+    if explicit:
+        return str(explicit)
+
+    if checkpoint_storage is None:
+        from alpha_zero.cloud.gcp.storage import GCSCheckpointStorage
+
+        # Honour CLI overrides (--gcs_bucket, --project, --region) when set;
+        # fall back to env vars (CIV6AZ_*) otherwise. Only pass kwargs that
+        # are explicitly set so GCPConfig defaults / env-var loading apply
+        # for the rest.
+        gcp_kwargs: dict[str, Any] = {}
+        if getattr(args, "gcs_bucket", None):
+            gcp_kwargs["bucket"] = args.gcs_bucket
+        if getattr(args, "project", None):
+            gcp_kwargs["project_id"] = args.project
+        if getattr(args, "region", None):
+            gcp_kwargs["region"] = args.region
+        gcp_cfg = GCPConfig(**gcp_kwargs)
+        checkpoint_storage = GCSCheckpointStorage(config=gcp_cfg)
+
+    try:
+        latest = checkpoint_storage.load_checkpoint(step=None)
+    except (GCSStorageError, ImportError) as exc:
+        # Expected failure modes (missing checkpoint, lazy-loaded backend
+        # unavailable in tests) — cold-start is the right behaviour.
+        logger.warning("resume_from resolution failed (%s); cold-starting", exc)
+        latest = None
+    except Exception:
+        # Unexpected: misconfigured GCPConfig, torch.load deserialisation
+        # crash, etc.  Silently cold-starting here reproduces the v1.2.0
+        # zero-promotion bug — surface the traceback loudly so Cloud Logging
+        # captures it and re-raise.
+        logger.error(
+            "Unexpected error resolving resume token; re-raising",
+            exc_info=True,
+        )
+        raise
+
+    if latest is None:
+        if iteration > 0:
+            logger.warning(
+                "iteration=%d but no incumbent checkpoint at latest pointer - "
+                "training will start from random init. Promotions are extremely "
+                "unlikely.",
+                iteration,
+            )
+        return None
+
+    return "latest"
+
+
 def get_initial_model_version(config: GCPConfig, dry_run: bool = False) -> int:
     """Get the latest model version from GCS, or 0 if none exists."""
     if dry_run:
@@ -441,7 +550,9 @@ def build_selfplay_extra_args(args: argparse.Namespace) -> list[str]:
     return extra
 
 
-def build_training_extra_args(args: argparse.Namespace) -> list[str]:
+def build_training_extra_args(
+    args: argparse.Namespace, *, model_version: int | None = None
+) -> list[str]:
     """Build extra args list for training container."""
     extra = [
         f"--board_size={args.board_size}",
@@ -487,6 +598,16 @@ def build_training_extra_args(args: argparse.Namespace) -> list[str]:
     # Always forward learning rate (training worker default is 0.001)
     learning_rate = getattr(args, "learning_rate", 0.001)
     extra.append(f"--learning_rate={learning_rate}")
+    # Forward --resume_from when set (training worker will resolve "latest"
+    # via GCSCheckpointStorage and rehydrate optimizer state + global step).
+    resume = getattr(args, "resume_from", None)
+    if resume:
+        extra.append(f"--resume_from={resume}")
+    # NOTE: --model_version is intentionally NOT emitted. The training worker
+    # no longer accepts it; checkpoint-resume happens via --resume_from=latest
+    # (or an explicit token). The `model_version` kwarg is kept on the
+    # signature for backwards-compat with callers that still pass it.
+    _ = model_version  # silence unused; preserved for caller compat
     return extra
 
 
@@ -556,7 +677,7 @@ def run_selfplay_phase(
 
     for attempt in range(max_retries + 1):
         try:
-            os.environ["WANDB_RUN_NAME"] = f"selfplay-iter{iteration:03d}"
+            os.environ["MLFLOW_RUN_NAME"] = _phase_run_name(iteration, "selfplay")
             job_names = selfplay_manager.launch(
                 num_workers=num_workers,
                 model_version=model_version,
@@ -607,7 +728,7 @@ def run_selfplay_phase(
                 continue
             return False
         finally:
-            os.environ.pop("WANDB_RUN_NAME", None)
+            os.environ.pop("MLFLOW_RUN_NAME", None)
 
     return False
 
@@ -620,6 +741,7 @@ def run_training_phase(
     args: argparse.Namespace,
     max_retries: int = 2,
     dry_run: bool = False,
+    model_version: int | None = None,
 ) -> bool:
     """Run the training phase of an iteration.
 
@@ -636,12 +758,12 @@ def run_training_phase(
     # Override epochs in config
     config.training.epochs_per_iteration = args.epochs
 
-    extra_args = build_training_extra_args(args)
+    extra_args = build_training_extra_args(args, model_version=model_version)
     training_manager = VertexTrainingJob(config, client)
 
     for attempt in range(max_retries + 1):
         try:
-            os.environ["WANDB_RUN_NAME"] = f"training-iter{iteration:03d}"
+            os.environ["MLFLOW_RUN_NAME"] = _phase_run_name(iteration, "training")
             job_name = training_manager.launch(
                 iteration=iteration,
                 trajectory_iterations=trajectory_iterations,
@@ -695,7 +817,7 @@ def run_training_phase(
                 continue
             return False
         finally:
-            os.environ.pop("WANDB_RUN_NAME", None)
+            os.environ.pop("MLFLOW_RUN_NAME", None)
 
     return False
 
@@ -750,7 +872,7 @@ def run_evaluation_phase(
                 )
                 logger.info("Evaluation retry %d/%d in %.0fs...", attempt, max_retries, delay)
                 time.sleep(delay)
-            os.environ["WANDB_RUN_NAME"] = f"eval-iter{iteration:03d}"
+            os.environ["MLFLOW_RUN_NAME"] = _phase_run_name(iteration, "eval")
             job_name = eval_manager.launch(
                 model_version_new=model_version_new,
                 model_version_old=model_version_old,
@@ -806,7 +928,7 @@ def run_evaluation_phase(
             if attempt == max_retries:
                 return False, 0.0
         finally:
-            os.environ.pop("WANDB_RUN_NAME", None)
+            os.environ.pop("MLFLOW_RUN_NAME", None)
 
     return False, 0.0
 
@@ -835,8 +957,8 @@ def _apply_model_subsampling(
 
 
 def _log_tournament_to_wandb(
-    wandb_logger: object | None,
-    tournament_results: dict,
+    wandb_logger: Any | None,
+    tournament_results: dict[str, Any],
 ) -> None:
     """Log tournament results to W&B.
 
@@ -908,7 +1030,8 @@ def _run_tournament_cloud(
 
         backend = GCSBackend(config.project_id)
         data = backend.download_blob(config.bucket, "tournament/post_run_results.json")
-        return json.loads(data.decode("utf-8"))
+        parsed = json.loads(data.decode("utf-8"))
+        return parsed if isinstance(parsed, dict) else {}
     except Exception as e:
         logger.warning("Failed to load cloud tournament results from GCS: %s", e)
         return {}
@@ -1002,6 +1125,247 @@ def run_post_run_evaluation(
     return tournament_results
 
 
+def run_iterations(
+    config: GCPConfig,
+    client: VertexAIClient,
+    args: argparse.Namespace,
+    *,
+    start_iteration: int = 0,
+    end_iteration: int = 10,
+    initial_model_version: int = 0,
+    eval_win_threshold: float = 0.55,
+    max_consecutive_failures: int = 3,
+    wandb_logger: object | None = None,
+    dry_run: bool = False,
+    resume: bool = True,
+) -> OrchestratorState:
+    """Run a sequence of training iterations with state recovery.
+
+    This is the core multi-iteration loop extracted from ``main()``.
+    It persists state to GCS after each iteration so the run can be
+    resumed after preemption.
+
+    Args:
+        config: GCP configuration.
+        client: Vertex AI client.
+        args: Parsed CLI arguments (must contain all orchestrator fields).
+        start_iteration: First iteration number.
+        end_iteration: Last iteration number (exclusive).
+        initial_model_version: Starting model version.
+        eval_win_threshold: Minimum win rate to accept a new model.
+        max_consecutive_failures: Circuit breaker threshold.
+        wandb_logger: Optional W&B logger instance.
+        dry_run: If True, simulate without cloud jobs.
+        resume: If True, attempt to load previous state from GCS.
+
+    Returns:
+        Final OrchestratorState after all iterations (or early stop).
+    """
+    from alpha_zero.cloud.gcp.cost import CostEstimator
+    from alpha_zero.cloud.gcp.orchestrator_state import OrchestratorState
+
+    agent_id = getattr(args, "agent_id", None)
+    run_id = getattr(args, "run_id", "")
+
+    # Attempt to resume from GCS state
+    state: OrchestratorState | None = None
+    if resume and not dry_run:
+        state = OrchestratorState.load(config, agent_id=agent_id, run_id=run_id)
+
+    if state is None:
+        state = OrchestratorState(
+            start_iteration=start_iteration,
+            end_iteration=end_iteration,
+            current_iteration=start_iteration,
+            current_model_version=initial_model_version,
+            initial_model_version=initial_model_version,
+            agent_id=agent_id,
+            run_id=run_id,
+        )
+
+    cost_estimator = CostEstimator(config)
+    max_consec = max_consecutive_failures
+
+    for iteration in state.remaining_iterations():
+        iteration_start = time.time()
+        model_version = state.current_model_version
+
+        logger.info("=" * 60)
+        logger.info("Starting iteration %d (model v%d)", iteration, model_version)
+        logger.info("=" * 60)
+
+        # Phase 1: Self-play
+        sp_start = time.time()
+        selfplay_ok = run_selfplay_phase(
+            config=config,
+            client=client,
+            iteration=iteration,
+            model_version=model_version,
+            num_workers=args.workers,
+            games_per_worker=args.games_per_worker,
+            args=args,
+            max_retries=args.max_retries,
+            dry_run=dry_run,
+        )
+        sp_duration = (time.time() - sp_start) / 3600.0
+        sp_cost = (
+            cost_estimator.estimate_job_cost(
+                machine_type=config.self_play.machine_type,
+                accelerator_type=config.self_play.accelerator_type,
+                accelerator_count=config.self_play.accelerator_count,
+                duration_hours=sp_duration,
+                is_spot=config.self_play.spot,
+            )
+            * args.workers
+        )
+
+        if not selfplay_ok:
+            logger.error("Self-play failed for iteration %d", iteration)
+            state.record_failure(iteration, cost_usd=sp_cost)
+            if max_consec > 0 and state.consecutive_failures >= max_consec:
+                logger.critical(
+                    "CIRCUIT BREAKER: %d consecutive failures (threshold=%d).",
+                    state.consecutive_failures,
+                    max_consec,
+                )
+                break
+            continue
+
+        # Phase 2: Training
+        train_start = time.time()
+        earliest = max(0, iteration - args.trajectory_window + 1)
+        trajectory_iterations = list(range(earliest, iteration + 1))
+        training_ok = run_training_phase(
+            config=config,
+            client=client,
+            iteration=iteration,
+            trajectory_iterations=trajectory_iterations,
+            args=args,
+            max_retries=args.max_retries,
+            dry_run=dry_run,
+        )
+        train_duration = (time.time() - train_start) / 3600.0
+        train_cost = cost_estimator.estimate_job_cost(
+            machine_type=config.training.machine_type,
+            accelerator_type=config.training.accelerator_type,
+            accelerator_count=config.training.accelerator_count,
+            duration_hours=train_duration,
+            is_spot=config.training.spot,
+        )
+
+        if not training_ok:
+            logger.error("Training failed for iteration %d", iteration)
+            state.record_failure(iteration, cost_usd=sp_cost + train_cost)
+            if max_consec > 0 and state.consecutive_failures >= max_consec:
+                logger.critical(
+                    "CIRCUIT BREAKER: %d consecutive failures (threshold=%d).",
+                    state.consecutive_failures,
+                    max_consec,
+                )
+                break
+            continue
+
+        # Get new model version
+        if dry_run:
+            new_version = model_version + 1
+        else:
+            try:
+                storage = GCSModelStorage(config)
+                new_version = storage.get_latest_version()
+            except Exception:
+                new_version = model_version + 1
+
+        # Phase 3: Evaluation (optional)
+        win_rate = 0.0
+        eval_cost = 0.0
+        rejected = False
+
+        if args.evaluation_games > 0 and model_version > 0:
+            eval_start = time.time()
+            eval_ok, win_rate = run_evaluation_phase(
+                config=config,
+                client=client,
+                iteration=iteration,
+                model_version_new=new_version,
+                model_version_old=model_version,
+                args=args,
+                dry_run=dry_run,
+                max_retries=args.max_retries,
+            )
+            eval_duration = (time.time() - eval_start) / 3600.0
+            eval_cost = cost_estimator.estimate_job_cost(
+                machine_type=_EVAL_MACHINE_TYPE,
+                accelerator_type="",
+                accelerator_count=0,
+                duration_hours=eval_duration,
+                is_spot=False,
+            )
+
+            if not eval_ok:
+                state.record_failure(
+                    iteration,
+                    cost_usd=sp_cost + train_cost + eval_cost,
+                )
+                if max_consec > 0 and state.consecutive_failures >= max_consec:
+                    break
+                continue
+
+            # Evaluation gate
+            threshold = eval_win_threshold
+            if win_rate < threshold:
+                logger.warning(
+                    "Model rejected: win_rate=%.2f%% < threshold=%.2f%%",
+                    win_rate * 100,
+                    threshold * 100,
+                )
+                rejected = True
+
+        total_cost = sp_cost + train_cost + eval_cost
+        duration = time.time() - iteration_start
+
+        state.record_success(
+            iteration=iteration,
+            model_version=new_version,
+            win_rate=win_rate,
+            cost_usd=total_cost,
+            duration_seconds=duration,
+            rejected=rejected,
+        )
+
+        # Log to W&B
+        if wandb_logger is not None and getattr(wandb_logger, "is_enabled", False):
+            wandb_logger.log(  # type: ignore[attr-defined]
+                {
+                    "orchestrator/iteration": iteration,
+                    "orchestrator/model_version": state.current_model_version,
+                    "orchestrator/iteration_duration_min": duration / 60,
+                    "orchestrator/cumulative_cost": state.total_cost_usd,
+                    "orchestrator/eval_win_rate": win_rate,
+                },
+                step=iteration,
+            )
+
+        logger.info(
+            "Iteration %d complete in %.1f min. Model: v%d (cost: $%.2f)",
+            iteration,
+            duration / 60,
+            state.current_model_version,
+            total_cost,
+        )
+
+        # Persist state for preemption recovery
+        if not dry_run:
+            state.save(config)
+
+    # Final summary
+    summary = state.to_summary()
+    logger.info("=" * 60)
+    logger.info("Training run complete: %s", summary)
+    logger.info("=" * 60)
+
+    return state
+
+
 def main() -> int:
     """Main entry point.
 
@@ -1038,10 +1402,10 @@ def main() -> int:
         args.policy_hidden_dim = preset_config.policy_hidden_dim
         args.value_head_dim = preset_config.value_head_dim
 
-    # Initialize W&B for orchestrator (opt-in via WANDB_ENABLED env var)
+    # Initialize experiment tracker for orchestrator (opt-in via MLFLOW_ENABLED env var)
     wandb_logger = None
     try:
-        from alpha_zero.utils.wandb_logger import WandbLogger
+        from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
         wandb_logger = WandbLogger.from_env()
         if wandb_logger.is_enabled:
@@ -1070,17 +1434,29 @@ def main() -> int:
                     "mode": "orchestrator",
                 }
             )
-            # Propagate run name as W&B group for all worker containers
-            # so selfplay/training/evaluation runs appear grouped in the UI
+            # Propagate run name as the MLflow run group for all worker
+            # containers so selfplay/training/evaluation runs sort together
+            # in the MLflow UI. The group is encoded two ways for downstream
+            # consumers: (1) ``MLFLOW_RUN_GROUP`` is the canonical orchestrator
+            # group name and feeds ``_phase_run_name`` so each worker run is
+            # named ``<group>-<phase>-iter<N>``, and (2) it's added to
+            # ``MLFLOW_TAGS`` as ``group=<name>`` so MLflow's filter/search
+            # UI can use it directly.
             try:
                 run_obj = getattr(wandb_logger, "run", None)
                 if run_obj is not None:
                     group_name = getattr(run_obj, "name", None) or getattr(run_obj, "id", None)
                     if group_name:
-                        os.environ["WANDB_GROUP"] = group_name
-                        logger.info("W&B group set to: %s", group_name)
+                        os.environ["MLFLOW_RUN_GROUP"] = group_name
+                        existing_tags = os.environ.get("MLFLOW_TAGS", "").strip()
+                        group_tag = f"group={group_name}"
+                        if existing_tags:
+                            os.environ["MLFLOW_TAGS"] = f"{existing_tags},{group_tag}"
+                        else:
+                            os.environ["MLFLOW_TAGS"] = group_tag
+                        logger.info("MLflow run group set to: %s", group_name)
             except Exception as _e:
-                logger.debug("Could not set WANDB_GROUP: %s", _e)
+                logger.debug("Could not set MLFLOW_RUN_GROUP: %s", _e)
             logger.info("W&B logging enabled for orchestrator")
     except ImportError:
         logger.debug("W&B not available")
@@ -1143,6 +1519,9 @@ def main() -> int:
         # --- Container image pre-flight validation ---
         if not args.dry_run and not getattr(args, "skip_image_validation", False):
             image_uri = config.container_image_uri
+            if not image_uri:
+                logger.error("Container image URI is not set in config.")
+                return 1
             logger.info("Validating container image: %s", image_uri)
             val_result = validate_container_image(image_uri)
             if not val_result.exists:
@@ -1195,7 +1574,11 @@ def main() -> int:
             return 0 if results else 1
 
         # Get starting model version (save for post-run tournament)
-        model_version = get_initial_model_version(config, args.dry_run)
+        if args.model_version_start is not None:
+            model_version = args.model_version_start
+            logger.info("Using explicit model version start: %d", model_version)
+        else:
+            model_version = get_initial_model_version(config, args.dry_run)
         initial_model_version = model_version
 
         # Initialize cost estimator
@@ -1298,6 +1681,25 @@ def main() -> int:
             logger.info(
                 "Phase 2: Training on trajectories from iterations %s", trajectory_iterations
             )
+
+            # Resolve --resume_from for this iteration so the training worker
+            # fine-tunes the incumbent checkpoint instead of starting fresh.
+            # In dry_run mode skip the GCS round-trip and honour only an
+            # explicit operator override on args.resume_from.
+            if args.dry_run:
+                resume_token = getattr(args, "resume_from", None)
+            else:
+                resume_token = _resolve_resume_token(args, iteration=iteration)
+            if resume_token:
+                args.resume_from = resume_token
+                logger.info("iteration %d: resuming training from %s", iteration, resume_token)
+            else:
+                args.resume_from = None
+                logger.info(
+                    "iteration %d: cold-start training (no incumbent checkpoint)",
+                    iteration,
+                )
+
             training_ok = run_training_phase(
                 config=config,
                 client=client,
@@ -1306,6 +1708,7 @@ def main() -> int:
                 args=args,
                 max_retries=args.max_retries,
                 dry_run=args.dry_run,
+                model_version=model_version,
             )
             train_duration = (time.time() - train_start) / 3600.0
 

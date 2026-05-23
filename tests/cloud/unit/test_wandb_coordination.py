@@ -18,6 +18,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+@pytest.mark.skip(
+    reason="W&B env coordination replaced by MLFLOW_* in B3; "
+    "superseded by tests/cloud/unit/test_orchestrator_mlflow.py"
+)
 class TestWandbEnvVars:
     """Tests for _wandb_env_vars() passthrough function."""
 
@@ -69,6 +73,10 @@ class TestWandbEnvVars:
         assert result["WANDB_RUN_NAME"] == "selfplay-iter001"
 
 
+@pytest.mark.skip(
+    reason="W&B env coordination replaced by MLFLOW_* in B3; "
+    "superseded by tests/cloud/unit/test_orchestrator_mlflow.py"
+)
 class TestEvaluationJobWandb:
     """Tests that VertexEvaluationJob.launch() includes W&B env vars."""
 

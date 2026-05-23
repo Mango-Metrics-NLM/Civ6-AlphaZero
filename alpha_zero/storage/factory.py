@@ -111,8 +111,26 @@ def create_storage_backend(
         logger.info(f"Creating GCSStorageBackend: gs://{config.gcs.bucket}/{config.gcs.prefix}")
         return GCSStorageBackend(config)
 
+    elif effective_backend == "spacetimedb":
+        # Import SpacetimeDB backend only when needed
+        try:
+            from alpha_zero.storage.spacetimedb_backend import SpacetimeDBStorageBackend
+        except ImportError as e:
+            raise ImportError(
+                "SpacetimeDB backend requires spacetimedb-sdk. "
+                "Install with: pip install spacetimedb-sdk"
+            ) from e
+
+        stdb_config = getattr(config, "spacetimedb", None)
+        host = stdb_config.host if stdb_config else "http://localhost:3000"
+        module = stdb_config.module_address if stdb_config else ""
+        logger.info("Creating SpacetimeDBStorageBackend (host=%s, module=%s)", host, module)
+        return SpacetimeDBStorageBackend(config)
+
     else:
-        raise ValueError(f"Invalid backend type: {effective_backend}. Must be 'local' or 'gcs'.")
+        raise ValueError(
+            f"Invalid backend type: {effective_backend}. Must be 'local', 'gcs', or 'spacetimedb'."
+        )
 
 
 def get_storage_backend_from_env() -> StorageBackend:

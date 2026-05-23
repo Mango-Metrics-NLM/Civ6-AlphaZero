@@ -563,3 +563,457 @@ class TestSelectionMethod:
         """Test string conversion."""
         method = SelectionMethod("truncation")
         assert method == SelectionMethod.TRUNCATION
+
+    def test_all_values_unique(self):
+        """Test all enum values are unique."""
+        values = [m.value for m in SelectionMethod]
+        assert len(values) == len(set(values))
+
+
+# =============================================================================
+# Additional Validation Tests
+# =============================================================================
+
+
+class TestPBTConfigValidation:
+    """Additional validation tests for PBTConfig."""
+
+    def test_mutation_strength_zero_raises(self):
+        """Test mutation_strength=0 raises ValueError."""
+        with pytest.raises(ValueError, match="mutation_strength"):
+            PBTConfig(mutation_strength=0.0)
+
+    def test_mutation_strength_above_one_raises(self):
+        """Test mutation_strength > 1 raises ValueError."""
+        with pytest.raises(ValueError, match="mutation_strength"):
+            PBTConfig(mutation_strength=1.5)
+
+    def test_truncation_fraction_zero_raises(self):
+        """Test truncation_fraction=0 raises ValueError."""
+        with pytest.raises(ValueError, match="truncation_fraction"):
+            PBTConfig(truncation_fraction=0.0)
+
+    def test_invalid_evaluation_strategy_raises(self):
+        """Test invalid evaluation_strategy raises ValueError."""
+        with pytest.raises(ValueError, match="evaluation_strategy"):
+            PBTConfig(evaluation_strategy="invalid_strategy")
+
+    def test_evaluation_games_per_match_zero_raises(self):
+        """Test evaluation_games_per_match=0 raises ValueError."""
+        with pytest.raises(ValueError, match="evaluation_games_per_match"):
+            PBTConfig(evaluation_games_per_match=0)
+
+    def test_elo_initial_rating_zero_raises(self):
+        """Test elo_initial_rating=0 raises ValueError."""
+        with pytest.raises(ValueError, match="elo_initial_rating"):
+            PBTConfig(elo_initial_rating=0)
+
+    def test_elo_k_factor_zero_raises(self):
+        """Test elo_k_factor=0 raises ValueError."""
+        with pytest.raises(ValueError, match="elo_k_factor"):
+            PBTConfig(elo_k_factor=0)
+
+    def test_diversity_weight_negative_raises(self):
+        """Test diversity_weight < 0 raises ValueError."""
+        with pytest.raises(ValueError, match="diversity_weight"):
+            PBTConfig(diversity_weight=-0.1)
+
+    def test_num_players_one_raises(self):
+        """Test num_players < 2 raises ValueError."""
+        with pytest.raises(ValueError, match="num_players"):
+            PBTConfig(num_players=1)
+
+    def test_valid_top_k_vs_best_strategy(self):
+        """Test valid top_k_vs_best evaluation strategy."""
+        config = PBTConfig(evaluation_strategy="top_k_vs_best")
+        assert config.evaluation_strategy == "top_k_vs_best"
+
+
+# =============================================================================
+# From YAML Edge Cases
+# =============================================================================
+
+
+class TestPBTConfigYAMLEdgeCases:
+    """Edge case tests for YAML loading."""
+
+    def test_from_yaml_nonexistent_raises(self):
+        """Test from_yaml with nonexistent file raises FileNotFoundError."""
+        with pytest.raises(FileNotFoundError):
+            PBTConfig.from_yaml("/nonexistent/path.yaml")
+
+    def test_from_yaml_empty_file(self):
+        """Test from_yaml with empty YAML file uses defaults."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "empty.yaml"
+            path.write_text("")
+
+            config = PBTConfig.from_yaml(path)
+            assert config.population_size == 16  # Default
+
+    def test_from_yaml_with_hyperparameter_space(self):
+        """Test from_yaml with hyperparameter_space section."""
+        yaml_content = """
+population_size: 8
+hyperparameter_space:
+  learning_rate:
+    name: learning_rate
+    min_value: 0.0001
+    max_value: 0.01
+    scale: log
+  batch_size:
+    name: batch_size
+    min_value: 16
+    max_value: 256
+    scale: linear
+    discrete: true
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "config.yaml"
+            path.write_text(yaml_content)
+
+            config = PBTConfig.from_yaml(path)
+            assert config.population_size == 8
+            assert config.hyperparameter_space.learning_rate.min_value == 0.0001
+            assert config.hyperparameter_space.batch_size.discrete is True
+
+    def test_from_yaml_ignores_unknown_fields(self):
+        """Test from_yaml ignores fields not in PBTConfig."""
+        yaml_content = """
+population_size: 8
+unknown_field: some_value
+another_unknown: 42
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "config.yaml"
+            path.write_text(yaml_content)
+
+            config = PBTConfig.from_yaml(path)
+            assert config.population_size == 8
+            assert not hasattr(config, "unknown_field")
+
+
+# =============================================================================
+# From Env Edge Cases
+# =============================================================================
+
+
+class TestPBTConfigEnvEdgeCases:
+    """Edge case tests for environment variable loading."""
+
+    def test_from_env_bool_conversion(self):
+        """Test environment variable bool conversion."""
+        os.environ["CIV6AZ_PBT_WANDB_ENABLED"] = "false"
+        os.environ["CIV6AZ_PBT_COPY_WEIGHTS"] = "0"
+
+        try:
+            config = PBTConfig.from_env()
+            assert config.wandb_enabled is False
+            assert config.copy_weights is False
+        finally:
+            del os.environ["CIV6AZ_PBT_WANDB_ENABLED"]
+            del os.environ["CIV6AZ_PBT_COPY_WEIGHTS"]
+
+    def test_from_env_ignores_invalid_values(self):
+        """Test from_env ignores values that fail conversion."""
+        os.environ["CIV6AZ_PBT_POPULATION_SIZE"] = "not_a_number"
+
+        try:
+            config = PBTConfig.from_env()
+            # Should keep default since conversion failed
+            assert config.population_size == 16
+        finally:
+            del os.environ["CIV6AZ_PBT_POPULATION_SIZE"]
+
+    def test_from_env_ignores_unknown_params(self):
+        """Test from_env ignores env vars for non-existent params."""
+        os.environ["CIV6AZ_PBT_NONEXISTENT_PARAM"] = "42"
+
+        try:
+            config = PBTConfig.from_env()
+            assert not hasattr(config, "nonexistent_param")
+        finally:
+            del os.environ["CIV6AZ_PBT_NONEXISTENT_PARAM"]
+
+    def test_from_env_with_base_config(self):
+        """Test from_env with a base config object."""
+        base = PBTConfig(population_size=8, mutation_strength=0.3)
+        os.environ["CIV6AZ_PBT_MUTATION_STRENGTH"] = "0.5"
+
+        try:
+            config = PBTConfig.from_env(base_config=base)
+            assert config.population_size == 8  # From base
+            assert config.mutation_strength == 0.5  # From env
+        finally:
+            del os.environ["CIV6AZ_PBT_MUTATION_STRENGTH"]
+
+    def test_from_env_string_value(self):
+        """Test from_env handles string values."""
+        os.environ["CIV6AZ_PBT_SELECTION_METHOD"] = "tournament"
+
+        try:
+            config = PBTConfig.from_env()
+            assert config.selection_method == "tournament"
+        finally:
+            del os.environ["CIV6AZ_PBT_SELECTION_METHOD"]
+
+    def test_from_env_list_value(self):
+        """Test from_env handles list values."""
+        os.environ["CIV6AZ_PBT_BASELINE_AGENTS"] = "[random, simple]"
+
+        try:
+            config = PBTConfig.from_env()
+            assert config.baseline_agents == ["random", "simple"]
+        finally:
+            del os.environ["CIV6AZ_PBT_BASELINE_AGENTS"]
+
+
+# =============================================================================
+# HyperparameterRange Edge Cases
+# =============================================================================
+
+
+class TestHyperparameterRangeEdgeCases:
+    """Edge case tests for HyperparameterRange."""
+
+    def test_clip_categorical_invalid_value(self):
+        """Test clip on categorical with invalid value returns first category."""
+        param = HyperparameterRange(
+            name="opt",
+            min_value=0,
+            max_value=2,
+            scale="categorical",
+            categories=["adam", "sgd", "rmsprop"],
+        )
+        result = param.clip("invalid_optimizer")
+        assert result == "adam"
+
+    def test_clip_categorical_valid_value(self):
+        """Test clip on categorical with valid value returns it unchanged."""
+        param = HyperparameterRange(
+            name="opt",
+            min_value=0,
+            max_value=2,
+            scale="categorical",
+            categories=["adam", "sgd", "rmsprop"],
+        )
+        result = param.clip("sgd")
+        assert result == "sgd"
+
+    def test_clip_discrete(self):
+        """Test clip rounds discrete values."""
+        param = HyperparameterRange(
+            name="batch",
+            min_value=32,
+            max_value=256,
+            scale="linear",
+            discrete=True,
+        )
+        result = param.clip(100.7)
+        assert result == 101
+        assert isinstance(result, int)
+
+    def test_sample_without_rng(self):
+        """Test sample works without providing rng."""
+        param = HyperparameterRange("test", 0.0, 1.0, "linear")
+        value = param.sample()  # No rng provided
+        assert 0.0 <= value <= 1.0
+
+    def test_mutate_without_rng(self):
+        """Test mutate works without providing rng."""
+        param = HyperparameterRange("test", 0.0, 1.0, "linear")
+        value = param.mutate(0.5)  # No rng provided
+        assert 0.0 <= value <= 1.0
+
+
+# =============================================================================
+# AgentState Edge Cases
+# =============================================================================
+
+
+class TestAgentStateEdgeCases:
+    """Edge case tests for AgentState."""
+
+    def test_update_fitness_caps_history(self):
+        """Test that fitness history is capped at max_history."""
+        agent = AgentState()
+
+        for i in range(150):
+            agent.update_fitness(float(i), max_history=100)
+
+        assert len(agent.fitness_history) == 100
+        # Should contain the most recent 100 values
+        assert agent.fitness_history[-1] == 149.0
+
+    def test_get_smoothed_fitness_no_history(self):
+        """Test smoothed fitness with no history returns fitness_score."""
+        agent = AgentState(fitness_score=0.42)
+        assert agent.get_smoothed_fitness() == 0.42
+
+    def test_get_smoothed_fitness_window_larger_than_history(self):
+        """Test smoothed fitness when window > history length."""
+        agent = AgentState()
+        agent.update_fitness(0.5)
+        agent.update_fitness(0.7)
+
+        # Window of 10, but only 2 entries
+        smoothed = agent.get_smoothed_fitness(window=10)
+        assert smoothed == pytest.approx(0.6)
+
+    def test_from_dict_missing_fields_use_defaults(self):
+        """Test from_dict with minimal data uses defaults."""
+        data = {"agent_id": "test123"}
+        agent = AgentState.from_dict(data)
+
+        assert agent.agent_id == "test123"
+        assert agent.fitness_score == 0.0
+        assert agent.games_played == 0
+        assert agent.generation == 0
+        assert agent.elo_rating == 1200.0
+
+    def test_clone_preserves_parent_id(self):
+        """Test that clone sets parent_id to original agent_id."""
+        rng = np.random.default_rng(42)
+        space = HyperparameterSpace()
+
+        original = AgentState(
+            agent_id="parent_agent",
+            hyperparameters=space.sample_all(rng),
+        )
+
+        clone = original.clone_with_mutations(space, rng)
+        assert clone.parent_id == "parent_agent"
+
+    def test_clone_resets_fitness(self):
+        """Test that clone starts with fresh fitness."""
+        rng = np.random.default_rng(42)
+        space = HyperparameterSpace()
+
+        original = AgentState(
+            hyperparameters=space.sample_all(rng),
+            fitness_score=0.9,
+            games_played=100,
+        )
+        original.update_fitness(0.9)
+
+        clone = original.clone_with_mutations(space, rng)
+        assert clone.fitness_score == 0.0
+        assert clone.games_played == 0
+        assert clone.fitness_history == []
+
+    def test_update_fitness_sets_last_updated(self):
+        """Test update_fitness updates the last_updated timestamp."""
+        agent = AgentState()
+        original_updated = agent.last_updated
+
+        agent.update_fitness(0.7)
+        # Timestamp should be different (or at least not error)
+        assert agent.last_updated is not None
+
+
+# =============================================================================
+# HyperparameterSpace Edge Cases
+# =============================================================================
+
+
+class TestHyperparameterSpaceEdgeCases:
+    """Edge case tests for HyperparameterSpace."""
+
+    def test_mutate_all_zero_probability(self):
+        """Test mutate_all with zero probability returns original values."""
+        rng = np.random.default_rng(42)
+        space = HyperparameterSpace()
+
+        original = space.sample_all(rng)
+        mutated = space.mutate_all(original, rng, mutation_probability=0.0)
+
+        assert original == mutated
+
+    def test_mutate_all_missing_value_gets_sampled(self):
+        """Test mutate_all samples missing values."""
+        rng = np.random.default_rng(42)
+        space = HyperparameterSpace()
+
+        # Provide only learning_rate
+        partial = {"learning_rate": 0.001}
+        mutated = space.mutate_all(partial, rng, mutation_probability=1.0)
+
+        # Should have all parameters
+        assert set(mutated.keys()) == set(space.get_all_params().keys())
+
+    def test_from_dict_with_custom_params(self):
+        """Test from_dict handles custom_params."""
+        data = {
+            "custom_params": {
+                "my_param": {
+                    "name": "my_param",
+                    "min_value": 0.0,
+                    "max_value": 10.0,
+                    "scale": "linear",
+                }
+            }
+        }
+        space = HyperparameterSpace.from_dict(data)
+        params = space.get_all_params()
+        assert "my_param" in params
+        assert params["my_param"].min_value == 0.0
+        assert params["my_param"].max_value == 10.0
+
+
+# =============================================================================
+# PBTConfig to_dict Completeness
+# =============================================================================
+
+
+class TestPBTConfigToDict:
+    """Tests for PBTConfig.to_dict completeness."""
+
+    def test_to_dict_all_fields_present(self):
+        """Test that to_dict includes all important fields."""
+        config = PBTConfig()
+        d = config.to_dict()
+
+        expected_keys = [
+            "population_size",
+            "min_population_size",
+            "evaluation_interval",
+            "evaluation_games",
+            "fitness_smoothing_window",
+            "selection_method",
+            "truncation_fraction",
+            "tournament_size",
+            "mutation_probability",
+            "mutation_strength",
+            "resample_probability",
+            "exploit_threshold",
+            "copy_weights",
+            "hyperparameter_space",
+            "checkpoint_dir",
+            "checkpoint_interval",
+            "max_checkpoints",
+            "log_dir",
+            "wandb_enabled",
+            "wandb_project",
+            "wandb_tags",
+            "convergence_threshold",
+            "convergence_window",
+            "evaluation_strategy",
+            "evaluation_games_per_match",
+            "elo_initial_rating",
+            "elo_k_factor",
+            "baseline_interval",
+            "baseline_agents",
+            "checkpoint_retention_generations",
+            "evaluation_strategy_switch_gen",
+            "multiplayer_mode",
+            "diversity_weight",
+            "num_players",
+        ]
+
+        for key in expected_keys:
+            assert key in d, f"Missing key: {key}"
+
+    def test_get_num_to_replace_minimum_one(self):
+        """Test get_num_to_replace always returns at least 1."""
+        config = PBTConfig(population_size=4, truncation_fraction=0.01)
+        assert config.get_num_to_replace() >= 1

@@ -19,13 +19,14 @@ import json
 import logging
 import sys
 import time
+from typing import Any
 
 import torch
 
 from alpha_zero.cloud.gcp.arena import run_arena
 from alpha_zero.cloud.gcp.config import DEFAULT_MCTS_TYPE, VALID_MCTS_TYPES, GCPConfig
 from alpha_zero.cloud.gcp.storage import GCSModelStorage
-from alpha_zero.utils.wandb_logger import WandbLogger
+from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +111,7 @@ def load_model(
 
     if dry_run:
         logger.info("Dry run: using fresh model v%d (no GCS load)", version)
-        cfg_kwargs: dict[str, int] = {}
+        cfg_kwargs: dict[str, Any] = {}
         if spatial_size is not None:
             cfg_kwargs["spatial_size"] = spatial_size
         if action_space_size is not None:
@@ -238,7 +239,8 @@ def load_results(
     blob_path = f"{RESULTS_PREFIX}/iter_{iteration:03d}/results.json"
     try:
         data = backend.download_blob(config.bucket, blob_path)
-        return json.loads(data.decode("utf-8"))
+        parsed = json.loads(data.decode("utf-8"))
+        return parsed if isinstance(parsed, dict) else None
     except GCSStorageError:
         return None
 

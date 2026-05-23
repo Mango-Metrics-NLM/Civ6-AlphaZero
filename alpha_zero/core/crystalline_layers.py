@@ -232,7 +232,7 @@ class CrystallineLatticeLayer(nn.Module):
             msg = f"Input dimension {x.shape[-1]} doesn't match layer dimension {self.dim}"
             raise ValueError(msg)
 
-        batch_size, seq_len, _ = x.shape
+        _batch_size, _seq_len, _ = x.shape
 
         # Apply each transformation: (B, S, D) @ (D, D)^T -> (B, S, D)
         transformed_list: list[Tensor] = []

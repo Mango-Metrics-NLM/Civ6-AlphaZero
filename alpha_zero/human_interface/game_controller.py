@@ -388,6 +388,9 @@ class GameController:
         state_before = self._observation.copy() if self._observation is not None else None
         player = self._state.current_player
 
+        if self._game_interface is None:
+            raise RuntimeError("Game interface not initialized")
+
         # Execute action
         obs, reward, done, truncated, info = self._game_interface.step(action)
 
@@ -421,7 +424,10 @@ class GameController:
             self._state.phase = GamePhase.GAME_OVER
             logger.info(f"Game over. Winner: {result.winner}")
             if self._on_game_over:
-                self._on_game_over(result.winner)
+                self._on_game_over(
+                    result.winner if result.winner is not None else -1
+                )  # Or maybe type: ignore
+
         else:
             # Switch player
             self._state.current_player = 1 - self._state.current_player
@@ -467,7 +473,7 @@ class GameController:
         self._update_valid_actions()
 
         # Restore game interface state if possible
-        if hasattr(self._game_interface, "set_state"):
+        if self._game_interface is not None and hasattr(self._game_interface, "set_state"):
             self._game_interface.set_state(state_before)
 
         logger.debug(f"Undid move. Now at turn {self._state.turn_number}")

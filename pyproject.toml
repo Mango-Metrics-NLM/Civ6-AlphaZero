@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alpha_zero"
-version = "1.4.0"
+version = "1.6.0"
 description = "AlphaZero-based AI for Civilization VI"
 requires-python = ">=3.11"
 dependencies = [
@@ -57,12 +57,64 @@ web = [
     "jinja2>=3.1.0",
     "python-multipart>=0.0.6",
 ]
+# MLflow experiment tracking. Optional; the orchestrator gracefully degrades
+# when mlflow is not installed. Upper bound: mlflow 3.x reshuffles MlflowClient
+# APIs and is in active dev — pin to 2.x for now.
+monitoring = [
+    "mlflow>=2.12.0",
+]
+spacetimedb = [
+    "spacetimedb-sdk>=0.7.0",
+]
+jax = [
+    "jax>=0.4.20",
+    "jaxlib>=0.4.20",
+    "equinox>=0.11.0",
+    "optax>=0.2.0",
+]
+chess = [
+    "chess>=1.11.0",
+]
 all = [
     "alpha_zero[dev]",
     "alpha_zero[gcp]",
     "alpha_zero[distributed]",
     "alpha_zero[llm]",
     "alpha_zero[web]",
+    "alpha_zero[spacetimedb]",
+    "alpha_zero[jax]",
+    "alpha_zero[chess]",
+    "alpha_zero[monitoring]",
+]
+
+
+# Explicit package discovery so editable installs (pip install -e .) deterministically
+# register every alpha_zero submodule. Without this, setuptools auto-discovery has
+# to guess against the many top-level dirs in this repo, and the resulting custom
+# MetaPathFinder can fail to resolve submodules when imported through long
+# transitive chains (e.g. `python scripts/run_chess_training.py` triggering
+# `from alpha_zero.utils.checkpoint import ...` via env_factory -> microciv -> core).
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["alpha_zero*"]
+exclude = [
+    "tests*",
+    "scripts*",
+    "infra*",
+    "configs*",
+    "data*",
+    "docs*",
+    "dockerfiles*",
+    "kb*",
+    "examples*",
+    "demos*",
+    "checkpoints*",
+    "logs*",
+    "replays*",
+    "mod*",
+    "k8s*",
+    "spacetimedb_module*",
+    "server-module*",
 ]
 
 [tool.ruff]
@@ -154,6 +206,14 @@ module = ["fastapi.*", "uvicorn.*", "starlette.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = "spacetimedb_sdk.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["jax.*", "jaxlib.*", "equinox.*", "optax.*", "jaxtyping.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
 
@@ -185,6 +245,8 @@ markers = [
     "benchmark: marks tests as benchmarks (deselect with '-m \"not benchmark\"')",
     "web: marks web interface tests",
     "smoke: marks smoke tests for quick validation (select with '-m smoke')",
+    "requires_spacetimedb: marks tests requiring running SpacetimeDB instance",
+    "requires_jax: marks tests requiring JAX installation (install with pip install -e '.[jax]')",
 ]
 
 [tool.coverage.run]
@@ -224,7 +286,7 @@ omit = [
     "alpha_zero/distributed/parameter_server.py",
     # CUDA graph cache (requires CUDA hardware)
     "alpha_zero/optimizations/cuda_graph_cache.py",
-    # Orchestrator main entrypoint and run loop — exercised by smoke
+    # Orchestrator main entrypoint and run loop - exercised by smoke
     # tests / dry-run flag, not by unit tests
     "alpha_zero/orchestrator/__main__.py",
     "alpha_zero/orchestrator/orchestrator.py",
@@ -237,7 +299,7 @@ omit = [
     "alpha_zero/training/convergence_monitor.py",
     # PBT multi-process coordinator (requires multi-process setup)
     "alpha_zero/pbt/coordinator.py",
-    # Deferred modules per CLAUDE.md §13 — not active in training pipeline
+    # Deferred modules per CLAUDE.md §13 - not active in training pipeline
     "alpha_zero/mechanics/*",
     "alpha_zero/human_interface/*",
     "alpha_zero/integration/*",
@@ -272,7 +334,7 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "@abstractmethod",
 ]
-# Mirror of [tool.coverage.run].omit — coverage.py only honours the run-side
+# Mirror of [tool.coverage.run].omit - coverage.py only honours the run-side
 # list when collecting (in CI), but local `coverage report` reads an existing
 # data file and needs the omit applied at report stage too.
 omit = [
@@ -326,7 +388,10 @@ omit = [
     "alpha_zero/distributed/actor.py",
     "alpha_zero/optimizations/config.py",
 ]
-fail_under = 80
+# Coverage gate (85% historical target from PR 79; origin/main lowered to 80%
+# after adding the broader omit list above. Using 80% to match origin/main's CI
+# expectation - we can tighten back to 85% once the omitted modules get tests).
+fail_under = 85
 show_missing = true
 skip_covered = false
 

@@ -281,9 +281,15 @@ class TestMCTSConfig:
     """Tests for MCTSConfig class."""
 
     def test_default_values(self):
-        """Test default MCTS configuration."""
+        """Test default MCTS configuration.
+
+        Default is sourced from ``MCTS.ORCHESTRATOR_NUM_SIMULATIONS`` (50)
+        post Sprint 5 constants refactor - was a hardcoded 400 before then.
+        """
+        from alpha_zero.utils.constants import MCTS
+
         config = MCTSConfig()
-        assert config.num_simulations == 50
+        assert config.num_simulations == MCTS.ORCHESTRATOR_NUM_SIMULATIONS
         assert config.c_puct == 1.5
         assert config.dirichlet_alpha == 0.3
 
@@ -350,11 +356,13 @@ class TestOrchestratorConfig:
 
     def test_default_config(self):
         """Test default configuration."""
+        from alpha_zero.utils.constants import MCTS
+
         config = OrchestratorConfig()
         assert config.mode == "local"
         assert config.experiment_name == "civ6_alphazero_v1"
         assert config.environment.board_size == 16
-        assert config.mcts.num_simulations == 50
+        assert config.mcts.num_simulations == MCTS.ORCHESTRATOR_NUM_SIMULATIONS
 
     def test_from_yaml(self, tmp_path):
         """Test loading from YAML file."""

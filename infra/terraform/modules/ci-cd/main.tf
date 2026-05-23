@@ -82,16 +82,30 @@ resource "google_pubsub_topic" "model_updates" {
   project = var.project_id
 }
 
+# IAM: allow GCS service account to publish to the model-updates topic
+data "google_storage_project_service_account" "gcs_sa" {
+  project = var.project_id
+}
+
+resource "google_pubsub_topic_iam_member" "gcs_publisher" {
+  topic   = google_pubsub_topic.model_updates.id
+  role    = "roles/pubsub.publisher"
+  member  = "serviceAccount:${data.google_storage_project_service_account.gcs_sa.email_address}"
+}
+
 # GCS notification -> Pub/Sub when a new model is uploaded
 resource "google_storage_notification" "model_upload" {
   count = var.github_repo != "" ? 1 : 0
 
-  bucket         = "civ6az-training"
+  bucket         = var.training_bucket
   payload_format = "JSON_API_V1"
   topic          = google_pubsub_topic.model_updates.id
   event_types    = ["OBJECT_FINALIZE"]
 
-  object_name_prefix = "models/civ6az/"
+  object_name_prefix = var.model_prefix
 
-  depends_on = [google_pubsub_topic.model_updates]
+  depends_on = [
+    google_pubsub_topic.model_updates,
+    google_pubsub_topic_iam_member.gcs_publisher,
+  ]
 }

@@ -1,7 +1,7 @@
-# Cloud Build configuration for Civ6 AlphaZero gameplay services.
+# Cloud Build configuration for Civ6 AlphaZero inference service.
 #
-# Builds and deploys: AI Inference, Auth, Matchmaking Cloud Run services.
-# Triggered on push to main branch (configured via Terraform CI/CD module).
+# Builds and deploys: AI Inference Cloud Run service.
+# Auth and Matchmaking services will be added when ready.
 #
 # This is separate from the training pipeline cloudbuild.yaml to allow
 # independent deployment cadences.
@@ -59,7 +59,7 @@ steps:
         mask = torch.ones(1, 376)
         policy, value = net(spatial, vector, mask)
         assert policy.shape == (1, 376), f"Bad policy shape: {policy.shape}"
-        assert value.shape == (1, 1), f"Bad value shape: {value.shape}"
+        assert value.shape == (1,), f"Bad value shape: {value.shape}"
         print(f"Inference smoke test PASSED: policy={policy.shape}, value={value.shape}")
     waitFor:
       - build-inference

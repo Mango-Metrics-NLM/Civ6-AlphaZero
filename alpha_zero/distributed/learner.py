@@ -25,6 +25,13 @@ from alpha_zero.distributed.shared_storage import (
 from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.utils.checkpoint import safe_load_checkpoint
 
+try:
+    from alpha_zero.multiplayer.network_heads import compute_nplayer_value_loss
+
+    _HAS_NPLAYER_LOSS = True
+except ImportError:  # pragma: no cover
+    _HAS_NPLAYER_LOSS = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,6 +41,7 @@ class LearnerConfig:
 
     # Environment (for network initialization)
     board_size: int = 16
+    num_players: int = 2
 
     # Network settings
     num_res_blocks: int = 6
@@ -213,8 +221,14 @@ class Learner:
         self.replay_buffer = replay_buffer
 
         # Initialize environment to get action space size
-        env = MicroCivEnv(board_size=config.board_size)
+        env = MicroCivEnv(
+            board_size=config.board_size,
+            num_players=config.num_players,
+        )
         self.action_space_size = env.action_space.n
+
+        # Compute spatial channels dynamically based on num_players
+        spatial_channels = 3 + 4 * config.num_players + 2
 
         # Initialize network
         self.network: nn.Module = MicroCivNetwork(
@@ -222,6 +236,8 @@ class Learner:
             action_space_size=int(self.action_space_size),
             num_res_blocks=config.num_res_blocks,
             num_filters=config.num_filters,
+            spatial_channels=spatial_channels,
+            num_players=config.num_players,
         ).to(config.device)
 
         logger.info(
@@ -369,14 +385,32 @@ class Learner:
         self.network.train()
         policy_logits, value = self.network(spatial, vector, action_mask)
 
-        # Compute loss
-        total_loss, p_loss, v_loss = compute_loss(
-            policy_logits,
-            value,
-            target_policy,
-            target_value,
-            action_mask,
-        )
+        # Compute loss -- branch on N-player vs 2-player value targets
+        if target_value.dim() > 1 and _HAS_NPLAYER_LOSS:
+            # N-player path: per-player value vector
+            v_loss = compute_nplayer_value_loss(
+                predicted=value,
+                target=target_value,
+                num_players=self.config.num_players,
+            )
+            # Policy loss (same as compute_loss, without deprecation warning)
+            if action_mask is not None:
+                masked_policy = target_policy * action_mask
+                masked_policy = masked_policy / (masked_policy.sum(dim=-1, keepdim=True) + 1e-8)
+            else:
+                masked_policy = target_policy
+            log_probs = torch.nn.functional.log_softmax(policy_logits, dim=-1)
+            p_loss = -torch.sum(masked_policy * log_probs, dim=-1).mean()
+            total_loss = p_loss + v_loss
+        else:
+            # 2-player path: scalar value, use legacy compute_loss
+            total_loss, p_loss, v_loss = compute_loss(
+                policy_logits,
+                value,
+                target_policy,
+                target_value,
+                action_mask,
+            )
 
         # Accumulate gradients and step
         did_step = self.grad_accumulator.accumulate(total_loss)

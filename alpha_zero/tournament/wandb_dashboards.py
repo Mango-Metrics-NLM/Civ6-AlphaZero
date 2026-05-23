@@ -8,7 +8,7 @@ All visualization methods are no-ops when the underlying WandbLogger is not
 initialized, ensuring graceful degradation when W&B is disabled.
 
 Usage:
-    from alpha_zero.utils.wandb_logger import WandbLogger
+    from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
     from alpha_zero.tournament.wandb_dashboards import TournamentWandbLogger
 
     wandb_logger = WandbLogger.from_env()
@@ -47,9 +47,9 @@ from typing import Any
 
 import numpy as np
 
+from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 from alpha_zero.tournament.config import MatchResult
 from alpha_zero.tournament.elo import RatingLeaderboard
-from alpha_zero.utils.wandb_logger import WandbLogger
 
 logger = logging.getLogger(__name__)
 

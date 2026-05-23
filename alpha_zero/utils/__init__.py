@@ -89,12 +89,6 @@ from alpha_zero.utils.agent_tools import (  # noqa: E402
 __all__ = [
     # Configuration
     "ActionSpaceConfig",
-    "AgentTaskStatus",
-    # Benchmarks
-    "BenchmarkConfig",
-    "BenchmarkResult",
-    "BenchmarkSuite",
-    "Benchmarker",
     "Civ6Config",
     # Agent Tools
     "CodeExplorer",
@@ -120,16 +114,14 @@ __all__ = [
     "RunStatus",
     "Task",
     "TaskTracker",
+    # Test Runner (backwards compatibility)
     "TestConfig",
     "TestResult",
-    # Test Runner (backwards compatibility)
     "TestRunner",
     "TestStatus",
     "TrainingConfig",
     "TrainingLogger",
     "UncivConfig",
-    "benchmark_function",
-    "create_mechanics_benchmarks",
     "explore",
     "find_definition",
     "get_default_config",
@@ -137,12 +129,9 @@ __all__ = [
     "load_config",
     "merge_configs",
     "quick_test",
-    "run_all_benchmarks",
     "run_tests",
     "save_config",
-    "search",
     "setup_logging",
-    "time_function",
     "timed_section",
     "timer",
 ]
@@ -162,19 +151,25 @@ if _LLM_AVAILABLE:
         ]
     )
 
-# W&B Logger (optional - depends on wandb package)
+# Experiment tracker (MLflow-backed; preserves legacy WandbLogger name for
+# downstream callers via the WandbCompatAdapter alias).
 try:
-    from alpha_zero.utils.wandb_logger import (  # noqa: F401
-        WandbLogger,
-        get_wandb_logger,
-        init_wandb,
+    from alpha_zero.monitoring.mlflow_logger import (  # noqa: F401
+        WandbCompatAdapter as WandbLogger,
+    )
+    from alpha_zero.utils.experiment_tracker import (  # noqa: F401
+        get_tracker as get_wandb_logger,
+    )
+    from alpha_zero.utils.experiment_tracker import (  # noqa: F401
+        init_tracker as init_wandb,
+    )
+    from alpha_zero.utils.experiment_tracker import (  # noqa: F401
         log_metrics,
     )
 
     _WANDB_AVAILABLE = True
     __all__.extend(
         [
-            "WandbConfig",
             "WandbLogger",
             "get_wandb_logger",
             "init_wandb",
@@ -194,7 +189,6 @@ try:
     _RAG_AVAILABLE = True
     __all__.extend(
         [
-            "KnowledgeBase",
             "RAGClient",
             "RAGConfig",
         ]

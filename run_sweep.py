@@ -4,6 +4,15 @@ This script is invoked by W&B sweep agents to run training with specific
 hyperparameter configurations. It extracts sweep config and launches
 the training script with appropriate arguments.
 
+.. deprecated:: 1.5.0
+    The Civ6 AlphaZero project migrated experiment tracking from
+    Weights & Biases to MLflow in v1.5.0. ``run_sweep.py`` still depends
+    on W&B *sweep* primitives (``wandb.init``, ``wandb.config``) which do
+    not have a 1:1 MLflow equivalent. A faithful MLflow port would
+    require re-implementing sweep semantics (search space, agent
+    coordination) on top of e.g. Optuna, which is a separate effort. Use
+    this script only if you have an active wandb sweep configuration.
+
 Features:
 - Configurable timeout for training runs
 - Proper error handling and logging
@@ -14,8 +23,17 @@ import logging
 import os
 import subprocess
 import sys
+import warnings
 
-import wandb
+warnings.warn(
+    "run_sweep.py still uses the W&B sweep API. The project is migrating to "
+    "MLflow; a sweep-equivalent (Optuna or MLflow's hyperparam search) is "
+    "tracked as a follow-up task.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
+import wandb  # noqa: E402  (deferred until after deprecation notice)
 
 # Configure logging
 logging.basicConfig(

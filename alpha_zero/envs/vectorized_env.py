@@ -9,14 +9,14 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
 from alpha_zero.envs.civ6_encoder import MicroCivEncoder
 from alpha_zero.envs.env_factory import create_game_env
 from alpha_zero.envs.microciv import MicroCivEnv
-from alpha_zero.utils.wandb_logger import log_metrics
+from alpha_zero.utils.experiment_tracker import log_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -281,7 +281,7 @@ class VectorizedMicroCivEnv:
         Returns:
             List of environment indices where done=False.
         """
-        return np.flatnonzero(~self._done).tolist()
+        return cast(list[int], np.flatnonzero(~self._done).tolist())
 
     def get_env(self, idx: int) -> MicroCivEnv:
         """Get individual environment by index.

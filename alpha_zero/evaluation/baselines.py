@@ -527,6 +527,7 @@ class NeuralNetworkPlayer:
         """Reset player state for new game."""
         self._games_played += 1
         if self.mcts is not None:
+            # Reset MCTS tree
             if hasattr(self.mcts, "reset"):
                 self.mcts.reset()
 

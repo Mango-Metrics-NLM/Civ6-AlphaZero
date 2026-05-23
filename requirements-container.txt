@@ -8,8 +8,11 @@ pyyaml>=6.0
 tqdm>=4.65.0
 python-dotenv>=1.0.0
 
-# Experiment tracking (optional, enabled via WANDB_ENABLED=true)
-wandb>=0.15.0
+# Experiment tracking (MLflow canonical from v1.5.0). The [gcs] extra
+# brings in google-cloud-storage so MLflow can use gs:// artifact roots
+# from the orchestrator VM. google-cloud-storage is also listed below
+# for explicit pinning.
+mlflow[gcs]>=2.10.0,<3.0
 
 # GCP / Vertex AI
 google-cloud-storage>=2.10.0

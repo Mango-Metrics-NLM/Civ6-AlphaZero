@@ -1,0 +1,59 @@
+# Multiplayer Training Configuration
+# For 4-player Civ6 AlphaZero training with simultaneous turns.
+#
+# Usage:
+#   python -m alpha_zero.orchestrator --config configs/multiplayer_training.yaml
+#
+# Override via environment variables:
+#   CIV6AZ_MP_NUM_PLAYERS=6
+#   CIV6AZ_MP_TURN_MODE=sequential
+#   CIV6AZ_MP_SEARCH_STRATEGY=paranoid
+
+num_players: 4
+board_size: 16
+max_turns: 200
+
+turn_manager:
+  mode: "simultaneous"
+  turn_timeout_seconds: 0
+  allow_concurrent_actions: true
+
+mcts:
+  num_simulations: 400
+  search_strategy: "max_n"
+  c_puct: 1.5
+  dirichlet_alpha: 0.3
+  dirichlet_epsilon: 0.25
+  temperature: 1.0
+  temperature_threshold: 30
+  use_opponent_modeling: false
+  value_normalization: true
+
+simultaneous_mcts:
+  num_simulations: 200
+  c_puct: 1.5
+  dirichlet_alpha: 0.3
+  dirichlet_epsilon: 0.25
+  temperature: 1.0
+  temperature_threshold: 30
+  action_resolution: "independent"
+
+scoring:
+  method: "linear_ranking"
+  draw_value: 0.0
+  elimination_penalty: 0.0
+
+opponent_model:
+  enabled: false
+  history_window: 50
+  feature_dim: 32
+  update_frequency: 1
+  decay_rate: 0.95
+
+fog_of_war:
+  enabled: false
+
+determinization:
+  enabled: false
+  num_worlds: 8
+  combine_method: "average"

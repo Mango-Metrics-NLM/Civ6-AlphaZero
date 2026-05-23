@@ -38,7 +38,7 @@ from alpha_zero.cloud.gcp.exceptions import ConfigurationError
 from alpha_zero.utils.compat import UTC
 
 if TYPE_CHECKING:
-    from alpha_zero.utils.wandb_logger import WandbLogger
+    from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
 logger = logging.getLogger(__name__)
 

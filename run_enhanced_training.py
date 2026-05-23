@@ -128,7 +128,12 @@ def self_play_game_enhanced(
         Tuple of (training examples, game stats)
     """
     examples = []
-    obs, _info = env.reset()
+    # ``info`` must be in scope BEFORE the loop so the step-limit guard below
+    # can record ``truncated_by_step_limit`` without raising NameError when
+    # the guard fires before the first ``env.step`` returns one. Seeded with
+    # reset()'s info dict so any keys the env populates on initial state are
+    # preserved (e.g. ``early_termination`` read on line ~216).
+    obs, info = env.reset()
 
     if reward_shaper:
         reward_shaper.reset()

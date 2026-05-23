@@ -86,7 +86,7 @@ class SpatialToTokens(nn.Module):
         self.num_tokens = num_tokens
 
         # Compute pooling dimensions: pool_size^2 >= num_tokens
-        self.pool_size = int(math.ceil(math.sqrt(num_tokens)))
+        self.pool_size = math.ceil(math.sqrt(num_tokens))
         self.pooled_elements = self.pool_size * self.pool_size
 
         # Adaptive pooling to fixed grid
@@ -213,7 +213,7 @@ class HexSpatialEncoder(nn.Module):
                 symmetry_type = SymmetryType(config.lattice_type)
             except ValueError:
                 logger.warning(
-                    f"Unknown lattice type '{config.lattice_type}', " f"falling back to HEXAGONAL"
+                    f"Unknown lattice type '{config.lattice_type}', falling back to HEXAGONAL"
                 )
                 symmetry_type = SymmetryType.HEXAGONAL
 
@@ -305,7 +305,7 @@ def create_hex_encoder(
     }
 
     logger.debug(
-        f"create_hex_encoder: patch_size={patch_size} → " f"num_output_tokens={num_output_tokens}"
+        f"create_hex_encoder: patch_size={patch_size} → num_output_tokens={num_output_tokens}"
     )
 
     return HexSpatialEncoder(config=HexEncoderConfig(**factory_kwargs))

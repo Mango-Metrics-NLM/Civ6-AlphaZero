@@ -1,0 +1,72 @@
+# Chess vs. Stockfish training/eval configuration.
+#
+# Every value below has a safe default. Override with environment variables
+# using the standard CIV6AZ_* convention (e.g. CIV6AZ_CHESS_STOCKFISH_SKILL=10).
+
+environment:
+  type: chess
+  gameplay_preset: chess
+  chess:
+    history_depth: 1      # 1..8. 1 → ~21 channels (fast), 8 → 119 channels (AlphaZero paper).
+    max_plies: 512        # truncation cap; 512 plies = 256 full moves.
+    starting_fen: null    # null → standard start; or a FEN string for custom positions.
+
+network:
+  spatial_channels: 21    # = channels_for_history(history_depth=1). Override if changing depth.
+  vector_dim: 64
+  num_res_blocks: 6
+  num_filters: 64
+  num_heads: 4
+  value_head_hidden: 256
+  dropout: 0.0
+  framework: pytorch
+
+opponent:
+  # All knobs are mirrored on StockfishOpponentConfig.
+  path: null              # null → falls back to STOCKFISH_PATH env var at use time.
+  skill: 5                # 0..20; ignored when use_elo is true.
+  elo: 1500               # 1320..3190; used when use_elo is true.
+  use_elo: false
+  depth_limit: 10         # search-depth cap in plies; null disables.
+  time_limit_s: null      # search-time cap in seconds; null disables.
+  node_limit: null
+  threads: 1
+  hash_mb: 16
+  name: stockfish
+
+curriculum:
+  target: skill           # skill | elo
+  mode: fixed             # fixed | linear | adaptive
+  initial_value: 5
+  step_size: 1            # linear-mode step.
+  step_every: 1
+  window_size: 5          # adaptive-mode rolling win-rate window.
+  promote_threshold: 0.6
+  demote_threshold: 0.3
+  adaptive_step: 1
+
+advisor:
+  enabled: true          # Master switch — true to enable Qwen-via-LM-Studio prior.
+  prior_weight: 0.3       # MCTS blend weight [0, 1]; 0 = network only, 1 = LLM only.
+  max_ply_for_prior: 6   # Only consult the LLM in the opening (first 24 plies).
+  cache_size: 4096        # LRU cache keyed on FEN.
+  max_tokens: 512
+  temperature: 0.2
+  log_commentary: false
+
+llm:
+  # Used by the advisor; aligns with alpha_zero.utils.llm_client.LLMConfig.
+  provider: openai        # 'openai' here means "any OpenAI-compatible endpoint."
+  openai_model: qwen2.5-14b-instruct-1m
+  openai_base_url: http://localhost:1234/v1
+  openai_api_key: lm-studio     # placeholder accepted by LM Studio
+  openai_max_tokens: 512
+  openai_temperature: 0.2
+
+training:
+  iterations: 10
+  games_per_iteration: 5
+  num_simulations: 8     # MCTS budget per move; 64 = GumbelMCTS default.
+  c_puct: 1.5
+  temperature: 1.0
+  temperature_threshold: 30

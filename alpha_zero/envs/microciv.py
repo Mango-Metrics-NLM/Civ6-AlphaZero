@@ -6,7 +6,8 @@ A minimal 4X game that captures core Civ mechanics:
 - Exploit: Cities produce units
 - Exterminate: Combat between units
 
-Victory: Eliminate all enemy cities, or reach turn limit (most cities wins).
+Supports 2-8 players (default 2 for backward compatibility).
+Victory: Eliminate all enemy cities/units, or reach turn limit (most cities wins).
 """
 
 from __future__ import annotations
@@ -23,6 +24,14 @@ from gymnasium.core import RenderFrame
 
 from alpha_zero.core.civ6_actions import MicroCivActionSpace
 from alpha_zero.envs.civ6_encoder import MicroCivEncoder
+from alpha_zero.utils.constants import GAME, REWARDS, UNITS
+
+try:
+    from alpha_zero.multiplayer.fog_of_war import FogOfWarConfig as _FogOfWarConfig
+    from alpha_zero.multiplayer.fog_of_war import FogOfWarManager as _FogOfWarManager
+except ImportError:  # pragma: no cover
+    _FogOfWarConfig = None  # type: ignore[assignment,misc]
+    _FogOfWarManager = None  # type: ignore[assignment,misc]
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +44,9 @@ class Unit:
     player: int
     unit_type: str
     position: tuple[int, int]
-    health: int = 100
-    moves_remaining: int = 2
-    strength: int = 20
+    health: int = GAME.DEFAULT_UNIT_HEALTH
+    moves_remaining: int = UNITS.WARRIOR_MOVES
+    strength: int = UNITS.WARRIOR_STRENGTH
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
@@ -63,7 +72,7 @@ class City:
     population: int = 1
     production: int = 0
     production_queue: str | None = None
-    defense: int = 20
+    defense: int = GAME.DEFAULT_CITY_DEFENSE
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
@@ -100,8 +109,8 @@ class MicroCivEnv(gym.Env):
     """MicroCiv environment for AlphaZero training.
 
     A simplified 4X game with:
-    - N players (2-6, turn-based, default=2)
-    - Configurable tile map
+    - 2-8 players (turn-based, default 2)
+    - Configurable tile map (default 16x16)
     - 3 unit types: warrior, settler, archer
     - Simple combat and city founding
 
@@ -120,9 +129,29 @@ class MicroCivEnv(gym.Env):
     metadata: ClassVar[dict[str, list[str]]] = {"render_modes": ["ansi"]}  # type: ignore[misc]
 
     # Unit production costs (turns)
-    UNIT_COSTS: ClassVar[dict[str, int]] = {"warrior": 3, "settler": 5, "archer": 4}
-    UNIT_STRENGTH: ClassVar[dict[str, int]] = {"warrior": 20, "settler": 0, "archer": 15}
-    UNIT_MOVES: ClassVar[dict[str, int]] = {"warrior": 2, "settler": 2, "archer": 2}
+    UNIT_COSTS: ClassVar[dict[str, int]] = {
+        "warrior": UNITS.WARRIOR_COST,
+        "settler": UNITS.SETTLER_COST,
+        "archer": UNITS.ARCHER_COST,
+    }
+    UNIT_STRENGTH: ClassVar[dict[str, int]] = {
+        "warrior": UNITS.WARRIOR_STRENGTH,
+        "settler": UNITS.SETTLER_STRENGTH,
+        "archer": UNITS.ARCHER_STRENGTH,
+    }
+    UNIT_MOVES: ClassVar[dict[str, int]] = {
+        "warrior": UNITS.WARRIOR_MOVES,
+        "settler": UNITS.SETTLER_MOVES,
+        "archer": UNITS.ARCHER_MOVES,
+    }
+
+    # Player symbols for rendering (indexed by player ID)
+    PLAYER_SYMBOLS: ClassVar[dict[str, list[str]]] = {
+        "warrior": ["W", "w", "2", "3", "4", "5", "6", "7"],
+        "settler": ["S", "s", "T", "U", "V", "X", "Y", "Z"],
+        "archer": ["A", "a", "b", "d", "e", "f", "g", "h"],
+        "city": ["C", "c", "o", "p", "q", "r", "u", "x"],
+    }
 
     # Explicit type hint for MCTS compatibility
     action_space: spaces.Discrete
@@ -134,6 +163,7 @@ class MicroCivEnv(gym.Env):
         render_mode: str | None = None,
         seed: int | None = None,
         num_players: int = 2,
+        fog_of_war: bool = False,
     ) -> None:
         """Initialize MicroCiv environment.
 
@@ -142,14 +172,18 @@ class MicroCivEnv(gym.Env):
             max_turns: Maximum turns before draw.
             render_mode: Rendering mode ('ansi' or None).
             seed: Random seed for reproducibility.
-            num_players: Number of players (2-6, default=2).
+            num_players: Number of players (2-8, default 2).
+            fog_of_war: Whether fog of war is enabled. When ``True``,
+                observations are masked per player visibility.
+
+        Raises:
+            ValueError: If num_players is not in range [2, GAME.MAX_PLAYERS].
         """
         super().__init__()
 
-        if not (self.MIN_PLAYERS <= num_players <= self.MAX_PLAYERS):
+        if not (2 <= num_players <= GAME.MAX_PLAYERS):
             raise ValueError(
-                f"num_players must be between {self.MIN_PLAYERS} and "
-                f"{self.MAX_PLAYERS}, got {num_players}"
+                f"num_players must be between 2 and {GAME.MAX_PLAYERS}, got {num_players}"
             )
 
         self.board_size = board_size
@@ -166,7 +200,7 @@ class MicroCivEnv(gym.Env):
             max_units=20,
             max_cities=5,
         )
-        self.encoder = MicroCivEncoder(board_size=board_size)
+        self.encoder = MicroCivEncoder(board_size=board_size, num_players=num_players)
 
         # Gymnasium spaces
         self.action_space = spaces.Discrete(self.action_space_handler.total_size)
@@ -175,7 +209,7 @@ class MicroCivEnv(gym.Env):
                 "spatial": spaces.Box(
                     low=0.0,
                     high=1.0,
-                    shape=(MicroCivEncoder.TOTAL_CHANNELS, board_size, board_size),
+                    shape=(self.encoder.total_channels, board_size, board_size),
                     dtype=np.float32,
                 ),
                 "vector": spaces.Box(
@@ -205,6 +239,16 @@ class MicroCivEnv(gym.Env):
         self._next_city_id: int = 0
         self.visited: set[tuple[int, int]] = set()  # Track visited tiles
 
+        # Fog of war (optional)
+        self._fog_of_war_enabled = fog_of_war
+        self.fog_manager: _FogOfWarManager | None = None
+        if fog_of_war:
+            self.fog_manager = _FogOfWarManager(
+                _FogOfWarConfig(enabled=True),
+                board_size=board_size,
+                num_players=num_players,
+            )
+
     def reset(
         self,
         *,
@@ -231,6 +275,11 @@ class MicroCivEnv(gym.Env):
         self.done = False
         self.winner = None
 
+        # Reset and compute initial fog of war visibility.
+        if self.fog_manager is not None:
+            self.fog_manager.reset(self.num_players)
+            self._update_fog_visibility()
+
         obs = self.get_observation()
         info = self.get_info()
 
@@ -255,6 +304,10 @@ class MicroCivEnv(gym.Env):
         action_dict = self.action_space_handler.decode_action(action)
         reward, action_success, action_error = self._execute_action(action_dict)
 
+        # Update fog of war after state-changing actions.
+        if action_success:
+            self._update_fog_visibility()
+
         # Log failed actions for debugging
         if not action_success:
             logger.warning(
@@ -267,25 +320,25 @@ class MicroCivEnv(gym.Env):
         truncated = self.turn >= self.max_turns
 
         if truncated and not terminated:
-            # Count cities for each player and find winner
+            # Count cities for each player and pick winner by most cities
             city_counts = [
                 sum(1 for c in self.cities if c.player == p) for p in range(self.num_players)
             ]
             max_cities = max(city_counts)
-            leaders = [p for p, cnt in enumerate(city_counts) if cnt == max_cities]
-            if len(leaders) == 1:
-                self.winner = leaders[0]
+            players_with_max = [p for p, count in enumerate(city_counts) if count == max_cities]
+            if len(players_with_max) == 1:
+                self.winner = players_with_max[0]
             else:
-                self.winner = None  # Draw among leaders
+                self.winner = None  # Draw (tied for most cities)
             terminated = True
 
         if terminated:
             self.done = True
             # Final reward based on winner
             if self.winner == self.current_player:
-                reward += 1.0
+                reward += REWARDS.WIN_REWARD
             elif self.winner is not None:
-                reward -= 1.0
+                reward -= REWARDS.WIN_REWARD
 
         obs = self.get_observation()
         info = self.get_info()
@@ -303,10 +356,10 @@ class MicroCivEnv(gym.Env):
             for x in range(self.board_size):
                 # Random terrain type
                 r = self._rng.random()
-                if r < 0.7:
+                if r < GAME.PLAINS_RATIO:
                     terrain_type = "plains"
                     yields = {"food": 2, "production": 1}
-                elif r < 0.9:
+                elif r < GAME.PLAINS_RATIO + GAME.HILLS_RATIO:
                     terrain_type = "hills"
                     yields = {"food": 1, "production": 2}
                 else:
@@ -318,15 +371,16 @@ class MicroCivEnv(gym.Env):
     def _place_starting_units(self) -> None:
         """Place starting units for each player.
 
-        Distributes N players evenly around the map perimeter.
+        Uses angular distribution to spread players evenly around the map.
+        For 2 players, positions approximate the original bottom-left / top-right layout.
         """
         self.units = []
         self.cities = []
         self._next_unit_id = 0
         self._next_city_id = 0
 
-        # Generate N starting positions distributed around the map
-        start_positions = self._compute_start_positions()
+        # Compute starting positions using angular distribution
+        start_positions = self._compute_starting_positions()
 
         # Create starting units for each player
         for player, pos in enumerate(start_positions):
@@ -337,8 +391,8 @@ class MicroCivEnv(gym.Env):
                     player=player,
                     unit_type="settler",
                     position=pos,
-                    strength=0,
-                    moves_remaining=2,
+                    strength=UNITS.SETTLER_STRENGTH,
+                    moves_remaining=UNITS.SETTLER_MOVES,
                 ),
             )
             self.visited.add(pos)  # Mark start pos as visited
@@ -352,18 +406,18 @@ class MicroCivEnv(gym.Env):
                     player=player,
                     unit_type="warrior",
                     position=warrior_pos,
-                    strength=20,
-                    moves_remaining=2,
+                    strength=UNITS.WARRIOR_STRENGTH,
+                    moves_remaining=UNITS.WARRIOR_MOVES,
                 ),
             )
             self.visited.add(warrior_pos)  # Mark warrior pos as visited
             self._next_unit_id += 1
 
-    def _compute_start_positions(self) -> list[tuple[int, int]]:
-        """Compute evenly-spaced starting positions for N players.
+    def _compute_starting_positions(self) -> list[tuple[int, int]]:
+        """Compute starting positions for all players using angular distribution.
 
-        Places players around the map perimeter using angular distribution.
-        Falls back to the original corner-based placement for 2 players.
+        Players are evenly spaced around a circle centered on the map.
+        Each position is then snapped to a valid (non-mountain) tile.
 
         Returns:
             List of (x, y) positions, one per player.
@@ -390,15 +444,56 @@ class MicroCivEnv(gym.Env):
         start_y: int,
         range_: int,
     ) -> tuple[int, int]:
-        """Find a valid (non-mountain) position in a range."""
+        """Find a valid (non-mountain) position in a range.
+
+        Positions are clamped to ``[1, board_size - 2]`` so starting units
+        never spawn on the very edge of the board (tests assert this margin,
+        and the action-space neighbour lookups assume one tile of slack on
+        each side).
+
+        If randomised sampling fails to find a passable tile (e.g. a mountain
+        cluster occupies the search radius), exhaustively scan the
+        ``[1, board_size - 2]`` interior in spiral order around the start
+        before giving up. As a last resort, raise ``RuntimeError`` rather than
+        silently returning an impassable tile — spawning units on mountains
+        would break movement logic downstream.
+        """
+
+        def _clamp(x: int, y: int) -> tuple[int, int]:
+            return (
+                min(max(x, 1), self.board_size - 2),
+                min(max(y, 1), self.board_size - 2),
+            )
+
+        def _is_passable(x: int, y: int) -> bool:
+            return self.terrain.get((x, y), Tile()).terrain_type != "mountain"
+
+        # 1. Random sampling around the seed position (fast path).
         for _ in range(100):
             x = int(start_x + self._rng.integers(0, range_))
             y = int(start_y + self._rng.integers(0, range_))
-            x = min(max(x, 0), self.board_size - 1)
-            y = min(max(y, 0), self.board_size - 1)
-            if self.terrain.get((x, y), Tile()).terrain_type != "mountain":
+            x, y = _clamp(x, y)
+            if _is_passable(x, y):
                 return (x, y)
-        return (start_x, start_y)
+
+        # 2. Deterministic ring-walk over the interior: guarantees we find a
+        #    passable tile if one exists within the playable area.
+        sx, sy = _clamp(start_x, start_y)
+        max_radius = self.board_size  # bounded by board size
+        for radius in range(0, max_radius):
+            for dy in range(-radius, radius + 1):
+                for dx in range(-radius, radius + 1):
+                    if max(abs(dx), abs(dy)) != radius:
+                        continue  # only walk the current ring
+                    x, y = _clamp(sx + dx, sy + dy)
+                    if _is_passable(x, y):
+                        return (x, y)
+
+        raise RuntimeError(
+            f"No passable spawn tile found near ({start_x}, {start_y}) on a "
+            f"{self.board_size}x{self.board_size} board — terrain generator "
+            "produced an unplayable map."
+        )
 
     def _find_adjacent_valid(self, pos: tuple[int, int]) -> tuple[int, int]:
         """Find an adjacent valid position."""
@@ -507,8 +602,8 @@ class MicroCivEnv(gym.Env):
 
             # Check for nearby cities
             has_nearby_city = any(
-                abs(c.position[0] - unit.position[0]) <= 3
-                and abs(c.position[1] - unit.position[1]) <= 3
+                abs(c.position[0] - unit.position[0]) <= GAME.MIN_CITY_DISTANCE
+                and abs(c.position[1] - unit.position[1]) <= GAME.MIN_CITY_DISTANCE
                 for c in self.cities
             )
             if has_nearby_city:
@@ -528,7 +623,7 @@ class MicroCivEnv(gym.Env):
             unit.moves_remaining = 0  # Action used
 
             # Reward for founding city
-            reward += 1.0
+            reward += GAME.CITY_FOUND_REWARD
 
             # Remove settler
             if unit in self.units:
@@ -549,7 +644,7 @@ class MicroCivEnv(gym.Env):
                 return 0.0, False, f"City {city_idx} already has production queued"
 
             city.production_queue = unit_type
-            reward += 0.01  # Small reward for starting production
+            reward += GAME.PRODUCTION_START_REWARD
             return reward, True, ""
 
         return 0.0, False, f"Unknown action type: {action_type}"
@@ -577,14 +672,20 @@ class MicroCivEnv(gym.Env):
             return 0.0
 
         # Simple combat resolution
-        attacker_str = attacker.strength * (attacker.health / 100.0)
-        defender_str = defender.strength * (defender.health / 100.0)
+        attacker_str = attacker.strength * (attacker.health / float(GAME.DEFAULT_UNIT_HEALTH))
+        defender_str = defender.strength * (defender.health / float(GAME.DEFAULT_UNIT_HEALTH))
 
         # Damage calculation
         if attacker_str + defender_str > 0:
-            attacker_ratio = attacker_str / (attacker_str + defender_str + 0.1)
-            damage_to_defender = int(30 * attacker_ratio + 10)
-            damage_to_attacker = int(30 * (1 - attacker_ratio) + 5)
+            attacker_ratio = attacker_str / (
+                attacker_str + defender_str + GAME.COMBAT_SMOOTHING_EPSILON
+            )
+            damage_to_defender = int(
+                GAME.COMBAT_BASE_DAMAGE * attacker_ratio + GAME.COMBAT_MIN_DAMAGE_DEFENDER
+            )
+            damage_to_attacker = int(
+                GAME.COMBAT_BASE_DAMAGE * (1 - attacker_ratio) + GAME.COMBAT_MIN_DAMAGE_ATTACKER
+            )
 
             defender.health -= damage_to_defender
             attacker.health -= damage_to_attacker
@@ -592,11 +693,11 @@ class MicroCivEnv(gym.Env):
             # Remove dead units
             if defender.health <= 0:
                 self.units.remove(defender)
-                reward += 0.1  # Reward for killing enemy unit
+                reward += REWARDS.MICROCIV_UNIT_KILL_REWARD
 
             if attacker.health <= 0:
                 self.units.remove(attacker)
-                reward -= 0.1  # Penalty for losing unit
+                reward += REWARDS.MICROCIV_UNIT_LOST_PENALTY
 
         return reward
 
@@ -605,8 +706,11 @@ class MicroCivEnv(gym.Env):
         # Process cities (production)
         for city in self._get_player_cities(self.current_player):
             if city.production_queue:
-                city.production += city.population + 2  # Base production
-                cost = self.UNIT_COSTS.get(city.production_queue, 5) * 10
+                city.production += city.population + GAME.CITY_BASE_PRODUCTION
+                cost = (
+                    self.UNIT_COSTS.get(city.production_queue, UNITS.SETTLER_COST)
+                    * GAME.PRODUCTION_COST_MULTIPLIER
+                )
                 if city.production >= cost:
                     # Spawn unit
                     spawn_pos = self._find_adjacent_valid(city.position)
@@ -616,7 +720,9 @@ class MicroCivEnv(gym.Env):
                             player=city.player,
                             unit_type=city.production_queue,
                             position=spawn_pos,
-                            strength=self.UNIT_STRENGTH.get(city.production_queue, 20),
+                            strength=self.UNIT_STRENGTH.get(
+                                city.production_queue, UNITS.WARRIOR_STRENGTH
+                            ),
                             moves_remaining=0,
                         ),
                     )
@@ -632,7 +738,7 @@ class MicroCivEnv(gym.Env):
             self.turn += 1
             # Reset all units' moves
             for unit in self.units:
-                unit.moves_remaining = self.UNIT_MOVES.get(unit.unit_type, 2)
+                unit.moves_remaining = self.UNIT_MOVES.get(unit.unit_type, UNITS.WARRIOR_MOVES)
 
             # Check for settler -> city conversion
             self._process_settlers()
@@ -644,11 +750,11 @@ class MicroCivEnv(gym.Env):
             if unit.unit_type == "settler":
                 # Auto-found city if on good terrain and no city nearby
                 has_nearby_city = any(
-                    abs(c.position[0] - unit.position[0]) <= 3
-                    and abs(c.position[1] - unit.position[1]) <= 3
+                    abs(c.position[0] - unit.position[0]) <= GAME.MIN_CITY_DISTANCE
+                    and abs(c.position[1] - unit.position[1]) <= GAME.MIN_CITY_DISTANCE
                     for c in self.cities
                 )
-                if not has_nearby_city and self._rng.random() < 0.1:
+                if not has_nearby_city and self._rng.random() < GAME.SETTLER_AUTO_FOUND_PROBABILITY:
                     # Found city
                     city_name = f"City {self._next_city_id}"
                     self.cities.append(
@@ -669,22 +775,23 @@ class MicroCivEnv(gym.Env):
         """Check if game has ended.
 
         A player is eliminated when they have 0 cities AND 0 units.
-        The game ends when only one player remains.
+        If exactly 1 player remains, they win. If 0 players remain (edge case),
+        the game ends in a draw.
 
         Returns:
             True if game is over.
         """
-        # Find players who still have units or cities
-        alive_players: list[int] = []
+        # Find all surviving players (those with at least one city or unit)
+        surviving_players: list[int] = []
         for p in range(self.num_players):
             p_cities = sum(1 for c in self.cities if c.player == p)
             p_units = sum(1 for u in self.units if u.player == p)
             if p_cities > 0 or p_units > 0:
-                alive_players.append(p)
+                surviving_players.append(p)
 
-        # Game ends when only one player remains
-        if len(alive_players) <= 1:
-            self.winner = alive_players[0] if alive_players else None
+        # Game ends when at most one player remains
+        if len(surviving_players) <= 1:
+            self.winner = surviving_players[0] if surviving_players else None
             return True
 
         return False
@@ -722,35 +829,29 @@ class MicroCivEnv(gym.Env):
         }
 
     def get_observation(self) -> dict[str, np.ndarray]:
-        """Get observation for current player."""
+        """Get observation for current player.
+
+        When fog of war is enabled, the game state is masked so the
+        current player only sees units/cities within their visibility
+        range. The encoder receives visibility data for proper fog
+        channel encoding.
+        """
         game_state = self._get_game_state()
+
+        # Apply fog of war masking when enabled.
+        if self.fog_manager is not None:
+            game_state = self.fog_manager.mask_observation(game_state, self.current_player)
+
         spatial, vector = self.encoder.encode(game_state)
-        action_mask = self.action_space_handler.get_valid_mask(game_state)
+        action_mask = self.action_space_handler.get_valid_mask(
+            self._get_game_state()  # action mask uses full state
+        )
 
         return {
             "spatial": spatial.numpy(),
             "vector": vector.numpy(),
             "action_mask": action_mask,
         }
-
-    def _get_observation(self) -> dict[str, np.ndarray]:
-        """Get observation for current player (deprecated).
-
-        .. deprecated::
-            Use :meth:`get_observation` instead. This method will be removed
-            in a future version.
-
-        Returns:
-            Observation dictionary with spatial, vector, and action_mask.
-        """
-        import warnings
-
-        warnings.warn(
-            "_get_observation() is deprecated, use get_observation() instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.get_observation()
 
     def get_info(self) -> dict[str, Any]:
         """Get info dictionary."""
@@ -763,25 +864,6 @@ class MicroCivEnv(gym.Env):
             "num_cities": [len(self._get_player_cities(p)) for p in range(self.num_players)],
             "visited_count": len(self.visited),
         }
-
-    def _get_info(self) -> dict[str, Any]:
-        """Get info dictionary (deprecated).
-
-        .. deprecated::
-            Use :meth:`get_info` instead. This method will be removed
-            in a future version.
-
-        Returns:
-            Info dictionary with game state details.
-        """
-        import warnings
-
-        warnings.warn(
-            "_get_info() is deprecated, use get_info() instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.get_info()
 
     def get_valid_actions(self) -> np.ndarray:
         """Get valid action mask.
@@ -817,30 +899,36 @@ class MicroCivEnv(gym.Env):
         # Mark cities
         for city in self.cities:
             x, y = city.position
-            grid[y][x] = "C" if city.player == 0 else "c"
+            symbols = self.PLAYER_SYMBOLS["city"]
+            grid[y][x] = symbols[city.player % len(symbols)]
 
         # Mark units
         for unit in self.units:
             x, y = unit.position
-            if unit.unit_type == "warrior":
-                grid[y][x] = "W" if unit.player == 0 else "w"
-            elif unit.unit_type == "settler":
-                grid[y][x] = "S" if unit.player == 0 else "s"
-            elif unit.unit_type == "archer":
-                grid[y][x] = "A" if unit.player == 0 else "a"
+            unit_symbols = self.PLAYER_SYMBOLS.get(unit.unit_type)
+            if unit_symbols:
+                grid[y][x] = unit_symbols[unit.player % len(unit_symbols)]
 
         for row in grid:
             lines.append(" ".join(row))
 
         lines.append("=" * (self.board_size * 2 + 1))
-        lines.append(
-            f"P0: {len(self._get_player_units(0))} units, {len(self._get_player_cities(0))} cities"
-        )
-        lines.append(
-            f"P1: {len(self._get_player_units(1))} units, {len(self._get_player_cities(1))} cities"
-        )
+        for p in range(self.num_players):
+            lines.append(
+                f"P{p}: {len(self._get_player_units(p))} units, "
+                f"{len(self._get_player_cities(p))} cities"
+            )
 
-        return "\n".join(lines)  # type: ignore[return-value]
+        return "\n".join(lines)
+
+    def _update_fog_visibility(self) -> None:
+        """Recompute fog of war visibility from current units and cities."""
+        if self.fog_manager is None:
+            return
+
+        unit_dicts = [u.to_dict() for u in self.units]
+        city_dicts = [c.to_dict() for c in self.cities]
+        self.fog_manager.compute_visibility(unit_dicts, city_dicts)
 
     def clone(self) -> MicroCivEnv:
         """Create a deep copy of the environment.
@@ -854,6 +942,8 @@ class MicroCivEnv(gym.Env):
             board_size=self.board_size,
             max_turns=self.max_turns,
             render_mode=self.render_mode,
+            num_players=self.num_players,
+            fog_of_war=self._fog_of_war_enabled,
         )
         new_env.terrain = copy.deepcopy(self.terrain)
         new_env.units = copy.deepcopy(self.units)
@@ -865,4 +955,6 @@ class MicroCivEnv(gym.Env):
         new_env._next_unit_id = self._next_unit_id
         new_env._next_city_id = self._next_city_id
         new_env.visited = copy.deepcopy(self.visited)
+        if self.fog_manager is not None:
+            new_env.fog_manager = copy.deepcopy(self.fog_manager)
         return new_env

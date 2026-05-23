@@ -5,7 +5,103 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.6.0] — 2026-05-21 — MLflow Monitoring & Evaluation Analytics
+
+> **Version note:** Bumped from `1.4.0` to `1.6.0` after merging this branch with `origin/main`, which had independently released `1.5.0` (Sprint 5 type safety) on top of an earlier `1.4.0` (Sprint 4). The MLflow monitoring layer is the largest behavioural change of this release line, so it owns the minor bump.
+
+### Added — MLflow Monitoring & Evaluation Analytics (PR #78 + PR #79 combined)
+
+#### New Scripts (`scripts/`)
+
+- **`scripts/analyse_training_run.py`** — Analyses policy loss trend and value head stability by reading MLflow metrics; produces per-run diagnostic summaries and trend plots.
+- **`scripts/post_run_evaluation.py`** — Post-run ELO tournament + baseline evaluation (random / heuristic agents) with results logged to MLflow; wraps the model in `Civ6MCTS` and calls `evaluate_vs_random(agent, n_games=n)` correctly.
+- **`scripts/run_baseline_eval.py`** — Standalone baseline evaluation that loads a model from GCS, auto-detects the latest run via `resolve_run_id()`, and logs results to MLflow.
+- **`scripts/migrate_mlflow_to_sqlite.py`** — Automates migration from the deprecated file-store (`mlruns/`) to the SQLite backend (`mlflow.db`); supports `--dry-run` mode.
+- **`scripts/local_training_run.py`** — Orchestrated local training run entry point; single command to run selfplay -> training -> evaluation locally with full MLflow instrumentation.
+- **`scripts/launch_50iter_production_monitored.py`** (PR #78) — Wraps the production preset with `CIV6AZ_MLFLOW_*` env overrides for the P0 50-iter monitored run.
+
+#### MLflow Monitoring Package (`alpha_zero/monitoring/`)
+
+- **`alpha_zero/monitoring/__init__.py`** — Public API: exports `MLflowConfig` / `MonitoringConfig` (alias), `MLflowLogger`, `AlphaZeroMLflowEvaluator`, `TournamentMlflowLogger`, stateless metric helpers, `MLFLOW_AVAILABLE`, `parse_tag_string`, `get_default_tracking_uri`, plus the `mlflow` and `MlflowClient` module-level symbols for test patching.
+- **`alpha_zero/monitoring/config.py`** — `MLflowConfig` dataclass (canonical) with `MonitoringConfig` alias. Field union of both PRs: `enabled`, `tracking_uri`, `registry_uri`, `experiment_name`, `run_name`, `tags`, `description`, `artifact_location`, `log_frequency`, `log_models`, `log_artifacts`, `log_system_metrics`, `nested_runs`, `fail_silently`, `request_timeout_seconds`, `eval_interval`, `log_grad_norms`. Constructors `from_dict` (dict / "k=v" string / list-of-pairs / `[{key,value}]`) and `from_env` (`CIV6AZ_MLFLOW_*` > `MLFLOW_*`).
+- **`alpha_zero/monitoring/mlflow_logger.py`** — `MLflowLogger` class:
+  - Dual-mode constructor: positional `MLflowConfig` OR keyword args (mutually exclusive).
+  - Lifecycle aliases: `init`/`finish` (PR #78) and `start_run`/`end_run` + context manager (PR #79).
+  - Run lifecycle management with correct `FAILED` vs `FINISHED` status on exit.
+  - `log_params()`, `log_metrics()`, `log_metric()`, `set_tag()`, `set_tags()`, `log_artifact()`, `log_figure()`, `log_table()`, `log_text()`, `log_model_checkpoint()`, `log_iteration()`, `log_evaluation()`, `log_elo_update()`, `step_context()`.
+  - **`log_evaluation_result()`** — logs 14 metrics from `EvaluationResult` / `WinRateResult`: 4 counts (`wins`, `losses`, `draws`, `total_games`) + 3 rates (`win_rate`, `draw_rate`, `loss_rate` as 0-1 fractions) + 7 game-level stats.
+  - Param values truncated at 250 characters (MLflow limit).
+- **`alpha_zero/monitoring/mlflow_evaluator.py`** — `AlphaZeroMLflowEvaluator`:
+  - `compute_policy_entropy(logits)` — Shannon entropy of policy distribution.
+  - `compute_value_mae(predictions, targets)` — Mean Absolute Error of value head.
+  - `compute_policy_top1_accuracy(logits, targets)` — Top-1 accuracy of greedy policy.
+  - `compute_action_diversity(action_sequences)` — Unique-action ratio across a game batch.
+  - `compute_metrics(model, dataloader)` — Aggregates all four metrics over a dataset.
+- **`alpha_zero/monitoring/metrics.py`** (PR #78) — Stateless helpers: `compute_value_correlation`, `compute_elo_spread`, `compute_policy_entropy` (all NaN-safe).
+- **`alpha_zero/monitoring/tournament_dashboards.py`** (PR #78) — `TournamentMlflowLogger`: match / round / leaderboard / head-to-head facade.
+
+#### New Utility (`alpha_zero/utils/`)
+
+- **`alpha_zero/utils/env_loader.py`** — Zero-dependency `.env` loading (no `python-dotenv` required):
+  - `load_civ6az_env(path)` — Loads `.env` file and merges into `os.environ` without overwriting existing vars.
+  - `require_civ6az_env(key)` — Retrieves an env var or raises `RuntimeError` with a descriptive message.
+  - `_parse_dotenv(text)` — Pure-Python parser handling quoted values, inline comments, and `export` prefixes.
+
+#### New Documentation (`docs/`)
+
+- **`docs/GCP_INFRA.md`** — GCP infrastructure reference (VM sizing, Artifact Registry, IAP tunnelling, cost breakdown).
+- **`docs/architecture/ADR-gcp-resource-deployment.md`** — Architecture Decision Record: rationale for Vertex AI + GCS resource deployment strategy.
+- **`docs/prd/prd-gcp-resource-deployment.md`** — Product Requirements Document for GCP resource deployment feature.
+
+### Fixed
+
+#### `scripts/post_run_evaluation.py` — EvaluationPipeline API
+
+- **Wrong kwargs**: was calling `evaluate_vs_random(model=model, num_games=n, device=d)` - incorrect API.
+- **Fix**: wraps model in `Civ6MCTS` and calls `evaluate_vs_random(agent, n_games=n)`.
+- **Win rate type**: `EvaluationResult.win_rate` is a `WinRateResult` object, not a scalar `float`; all access sites updated.
+
+#### `scripts/run_baseline_eval.py` — Hardcoded run_id & result access
+
+- **Hardcoded run_id**: removed hardcoded production `run_id` default.
+- **Auto-detection**: added `resolve_run_id()` to locate the most recent MLflow run automatically.
+- **result.summary**: was treated as `dict`; it returns a `str` - fixed to use string formatting.
+- **result.win_rate**: was accessed as `float`; it is a `WinRateResult` object - fixed across all callsites.
+
+#### `alpha_zero/monitoring/mlflow_logger.py` — Lifecycle & param safety
+
+- **`log_evaluation_result()`**: added method (14 metrics, 0-1 rate normalisation).
+- **Lifecycle state machine**: `end_run()` now correctly sets status to `FAILED` on exception and `FINISHED` on clean exit.
+- **Param truncation**: 250-character truncation for MLflow param values (API limit).
+- **`start_run()` orphan-run guard** (post-review fix): refuses to open a nested run before `init()` has succeeded; logs a warning instead of leaking a top-level run outside the managed lifecycle.
+- **`artifact_location` silent-drop warning** (post-review fix): if `MlflowClient` setup fails and `artifact_location` was configured (e.g. `gs://bucket/...`), emit a real `logger.warning` instead of a `debug` log so the misconfiguration is visible.
+
+### Changed
+
+- **Version**: 1.3.0 -> 1.6.0 (bumped past origin/main's 1.5.0 Sprint 5 release).
+- **MLflow tracking**: migrated from file-store (`mlruns/`) to SQLite backend (`mlflow.db`); `migrate_mlflow_to_sqlite.py` automates the one-time migration.
+- **Lint** (`ruff`): fixed `E501` line-too-long in `post_run_evaluation.py`; fixed `RUF002` en-dash in `run_baseline_eval.py` docstrings; dropped `RUF059` from per-file-ignores (rule introduced in ruff 0.9 not yet pinned).
+- **CHANGELOG / NEXT_STEPS / PLANNING / README**: union-merged with origin/main's Sprint 5 entries.
+
+#### Test Suite (81 new tests + 4 post-review additions)
+
+| File | Tests | Covers |
+| --- | ---: | --- |
+| `tests/scripts/test_run_baseline_eval.py` | 39 | `run_baseline_eval.py` - arg parsing, `resolve_run_id`, GCS load, MLflow log, error paths |
+| `tests/scripts/test_analyse_training_run.py` | 9 | `analyse_training_run.py` - metric fetch, trend analysis, edge cases |
+| `tests/scripts/test_post_run_evaluation.py` | 11 | `post_run_evaluation.py` - pipeline wiring, ELO logging, random-agent baseline |
+| `tests/unit/test_monitoring/test_mlflow_logger.py` | 24 + 4 | `MLflowLogger` - lifecycle, log_params, log_metrics, log_evaluation_result, truncation, failure state; orphan-run guard, artifact_location warning |
+| `tests/unit/test_monitoring/test_mlflow_evaluator.py` | 12 | `AlphaZeroMLflowEvaluator` - entropy, MAE, top-1 accuracy, action diversity, `compute_metrics` |
+| `tests/unit/test_monitoring/test_apply_override_dict.py` | 6 | `_apply_override` dict-merge fix for `CIV6AZ_MLFLOW_TAGS` (PR #78) |
+| `tests/unit/test_monitoring/test_factory.py` | 6 | `create_mlflow_logger` factory wiring (PR #78) |
+| `tests/unit/test_monitoring/test_metrics_helpers.py` | 18 | `compute_value_correlation`, `compute_elo_spread`, `compute_policy_entropy` (PR #78) |
+| `tests/unit/test_monitoring/test_mlflow_config.py` | 27 | `MLflowConfig` defaults, `from_dict`, `from_env`, tag parsing (PR #78) |
+| `tests/unit/test_monitoring/test_tournament_mlflow.py` | 8 | `TournamentMlflowLogger` (PR #78) |
+| `tests/unit/test_orchestrator_mlflow_integration.py` | 7 | Orchestrator + MLflow end-to-end wiring (PR #78) |
+| `tests/integration/test_mlflow_e2e.py` | 5 | Real MLflow file-backend roundtrip (gated by `pytest.importorskip("mlflow")`) |
+| `tests/unit/test_utils/test_env_loader.py` | 18 | `env_loader` - `.env` parsing, quoting, comments, `export` prefix, `require_civ6az_env` errors |
+
+**Total monitoring tests after merge: 179 passing in `tests/unit/test_monitoring/`** (113 from PR #79 + 66 from PR #78 + 4 added during code-review fixes).
 
 ## [1.5.0] — 2026-03-05 — Sprint 5: Type Safety — Breadth-First Mypy Stabilization
 
@@ -114,19 +210,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-### Added
+## [1.3.0] — 2026-02-23
 
-- **Inference Service (Phase 16)**: Production-ready machine learning inference service for Civ6 AlphaZero model deployment.
-  - FastAPI server for low-latency RESTful inference.
-  - Multi-model caching and hot-swapping.
-  - Support for batch inference and vectorized game states.
-  - Detailed deployment guides for Cloud Run and GKE.
-- **Hex Crystalline Encoder (Phase 17a)**: Advanced spatial encoding for hexagonal grid topologies.
+### Fixed — Training Worker Loads Base Model for Fine-Tuning
 
-### Fixed
+#### Critical Bug Fix: Training From Scratch
 
-- **Windows Compatibility**: Resolved critical pickling errors in distributed training (`WinError 6`, `_thread.lock` pickling) by the implementation of custom `__getstate__` and `__setstate__` in `SharedStorage` and `DistributedReplayBuffer`.
-- **Orchestrator Stability**: Fixed action space size mismatch in orchestrator smoke tests by ensuring clean checkpoint initialization.
+The training worker (`training_worker.py`) was creating a **fresh randomly-initialized model** each iteration instead of loading the current best model from GCS and fine-tuning it. This made it impossible for newly trained models to beat the incumbent champion in evaluation.
+
+- **Impact**: Production run v1.2.0 completed 50 iterations with **zero model promotions** — v218 remained champion for all 50 iterations (~$28.55 wasted)
+- **Root cause**: `training_worker.py` called `create_model()` without loading existing weights; no `--model_version` arg existed
+- **Fix**: Added `--model_version` CLI argument to `training_worker.py` that loads pre-trained weights from GCS before training begins
+
+#### Changes
+
+- **`training_worker.py`**: Added `--model_version` CLI arg; when set, loads `state_dict` from GCS via `GCSModelStorage.load_model()` before DDP wrapping
+- **`vertex_orchestrator.py`**: `build_training_extra_args()` now accepts `model_version` kwarg and emits `--model_version=N`; `run_training_phase()` passes `model_version` through to training job; main loop passes current `model_version` to training phase
+- **New tests**: 5 tests across `test_training_worker.py` and `test_orchestrator_pipeline.py` verifying arg parsing, weight loading flow, and orchestrator plumbing
+
+#### Verification
+
+After this fix, training iterations will:
+1. Start with low loss (pre-trained weights, not ~6.0 random init)
+2. Progressively improve policy quality across iterations
+3. Produce models that can beat the incumbent in evaluation (>55% win rate)
+
+---
 
 ## [1.2.0] — 2026-02-21
 

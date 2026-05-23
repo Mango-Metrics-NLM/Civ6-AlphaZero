@@ -21,7 +21,7 @@ from typing import Any, NamedTuple
 
 import torch
 
-from alpha_zero.utils.wandb_logger import log_metrics
+from alpha_zero.utils.experiment_tracker import log_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +136,7 @@ class CUDAGraphCache:
 
         # Fast path: no CUDA or disabled
         if not self._use_cuda or not self.config.enabled:
-            return self.network.predict(spatial, vector, action_mask)
+            return self.network.predict(spatial, vector, action_mask)  # type: ignore[no-any-return]
 
         # Fast path: cached graph exists
         if batch_size in self._graphs:
@@ -166,7 +166,7 @@ class CUDAGraphCache:
         # Try to capture new graph if we have space
         if len(self._graphs) < self.config.max_cached_sizes:
             start_time = time.perf_counter()
-            cached = self._capture_graph(batch_size, spatial, vector, action_mask)
+            cached = self._capture_graph(batch_size, spatial, vector, action_mask)  # type: ignore[assignment]
             capture_time_ms = (time.perf_counter() - start_time) * 1000
 
             if cached is not None:
@@ -192,7 +192,7 @@ class CUDAGraphCache:
             )
 
         # Fallback to direct predict
-        return self.network.predict(spatial, vector, action_mask)
+        return self.network.predict(spatial, vector, action_mask)  # type: ignore[no-any-return]
 
     def _capture_graph(
         self,

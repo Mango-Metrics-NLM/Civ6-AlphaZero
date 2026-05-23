@@ -190,6 +190,27 @@ wandb:
   mode: online
 
 # =============================================================================
+# MLflow Configuration
+# =============================================================================
+# MLflow runs in parallel with W&B. The tracking URI defaults to a local file
+# backend; set to gs://... or an MLflow server URL for cloud setups. All
+# fields are overridable via CIV6AZ_MLFLOW_* env vars (see
+# alpha_zero.monitoring.config for the full contract).
+mlflow:
+  enabled: false
+  tracking_uri: file://./mlruns
+  experiment_name: civ6-alphazero
+  run_name: null
+  tags:
+    backend: alphazero
+  artifact_location: null
+  log_frequency: 1
+  log_models: true
+  log_artifacts: true
+  nested_runs: true
+  fail_silently: true
+
+# =============================================================================
 # RAG Configuration
 # =============================================================================
 rag:
@@ -253,6 +274,24 @@ autonomy:
   prohibit_main_commits: true
   prohibit_env_modification: true
   prohibit_checkpoint_deletion: true
+
+# =============================================================================
+# SpacetimeDB (optional - real-time distributed coordination)
+# =============================================================================
+# spacetimedb:
+#   enabled: false
+#   host: "http://localhost:3000"
+#   module_address: ""
+#   ssl_enabled: false
+#   reconnect_interval: 5.0
+#   max_reconnect_attempts: 10
+#   connection_timeout: 30.0
+#   subscription_timeout: 30.0
+#   compress_weights: true
+#   max_weight_blob_mb: 500
+#   subscribe_model_versions: true
+#   subscribe_training_state: true
+#   subscribe_metrics: false
 
 # =============================================================================
 # Paths

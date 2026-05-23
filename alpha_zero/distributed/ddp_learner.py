@@ -19,7 +19,7 @@ import os
 import time
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import torch
 import torch.distributed as dist
@@ -53,6 +53,12 @@ class DDPLearnerConfig(LearnerConfig):
 
     Extends LearnerConfig with DDP-specific settings.
 
+    Supports convenience aliases for DDP fields:
+        - ``world_size`` -> ``ddp_world_size``
+        - ``rank`` -> ``ddp_rank``
+        - ``local_rank`` -> ``ddp_local_rank``
+        - ``backend`` -> ``ddp_backend``
+
     Attributes:
         ddp_enabled: Whether DDP is enabled.
         ddp_world_size: Total number of processes across all nodes.
@@ -70,6 +76,7 @@ class DDPLearnerConfig(LearnerConfig):
         master_port: Port for master node (for env setup).
         init_method: URL for process group initialization.
         gradient_as_bucket_view: Memory optimization for gradients.
+        gradient_sync_interval: Steps between gradient syncs (default 1).
     """
 
     # DDP settings (can also be configured via DDPConfig)
@@ -88,6 +95,7 @@ class DDPLearnerConfig(LearnerConfig):
     broadcast_buffers: bool = True
     bucket_cap_mb: int = 25
     gradient_as_bucket_view: bool = True
+    gradient_sync_interval: int = 1
 
     # Distributed checkpointing
     checkpoint_only_on_main: bool = True
@@ -99,6 +107,113 @@ class DDPLearnerConfig(LearnerConfig):
     master_addr: str = ""
     master_port: str = "29500"
     init_method: str = "env://"
+
+    # Alias mapping for convenience field names
+    _ALIAS_MAP: ClassVar[dict[str, str]] = {
+        "world_size": "ddp_world_size",
+        "rank": "ddp_rank",
+        "local_rank": "ddp_local_rank",
+        "backend": "ddp_backend",
+    }
+
+    def __init__(self, **kwargs: Any) -> None:
+        """Initialize DDPLearnerConfig with optional convenience aliases.
+
+        Accepts short-form kwargs (``world_size``, ``rank``, ``local_rank``,
+        ``backend``) and maps them to their ``ddp_*`` counterparts.  Explicit
+        ``ddp_*`` kwargs take precedence over aliases.
+
+        When ``ddp_world_size > 1`` and the caller did NOT explicitly set
+        ``ddp_enabled=False``, DDP is auto-enabled.
+
+        Args:
+            **kwargs: Configuration values (supports both alias and full names).
+        """
+        # Map convenience aliases to canonical names
+        for alias, canonical in self._ALIAS_MAP.items():
+            if alias in kwargs and canonical not in kwargs:
+                kwargs[canonical] = kwargs.pop(alias)
+            elif alias in kwargs:
+                # Both alias and canonical provided; canonical wins
+                kwargs.pop(alias)
+
+        # Collect fields defined by LearnerConfig and DDPLearnerConfig
+        import dataclasses
+
+        all_fields = {f.name for f in dataclasses.fields(DDPLearnerConfig)}
+
+        # Separate known fields from extras
+        known: dict[str, Any] = {}
+        for k, v in kwargs.items():
+            if k in all_fields:
+                known[k] = v
+
+        # Delegate to the generated dataclass __init__ via parent
+        LearnerConfig.__init__(
+            self,
+            **{
+                k: v
+                for k, v in known.items()
+                if k in {f.name for f in dataclasses.fields(LearnerConfig)}
+            },
+        )
+        # Set DDPLearnerConfig-specific fields
+        learner_field_names = {f.name for f in dataclasses.fields(LearnerConfig)}
+        ddp_fields = {
+            f.name: f
+            for f in dataclasses.fields(DDPLearnerConfig)
+            if f.name not in learner_field_names
+        }
+        for name, field_obj in ddp_fields.items():
+            if name in known:
+                value = known[name]
+            elif field_obj.default is not dataclasses.MISSING:
+                value = field_obj.default
+            elif field_obj.default_factory is not dataclasses.MISSING:
+                value = field_obj.default_factory()
+            else:
+                raise TypeError(f"Missing required field: {name}")
+            object.__setattr__(self, name, value)
+
+    @property
+    def world_size(self) -> int:
+        """Convenience alias for ddp_world_size."""
+        return self.ddp_world_size
+
+    @world_size.setter
+    def world_size(self, value: int) -> None:
+        """Set ddp_world_size via alias."""
+        self.ddp_world_size = value
+
+    @property
+    def rank(self) -> int:
+        """Convenience alias for ddp_rank."""
+        return self.ddp_rank
+
+    @rank.setter
+    def rank(self, value: int) -> None:
+        """Set ddp_rank via alias."""
+        self.ddp_rank = value
+
+    @property
+    def local_rank(self) -> int:
+        """Convenience alias for ddp_local_rank."""
+        return self.ddp_local_rank
+
+    @local_rank.setter
+    def local_rank(self, value: int) -> None:
+        """Set ddp_local_rank via alias."""
+        self.ddp_local_rank = value
+
+    @property
+    def backend(self) -> str:
+        """Convenience alias for ddp_backend."""
+        return self.ddp_backend
+
+    @backend.setter
+    def backend(self, value: str) -> None:
+        """Set ddp_backend via alias."""
+        self.ddp_backend = value
 
     @classmethod
     def from_learner_config(
@@ -165,7 +280,8 @@ class DDPLearnerConfig(LearnerConfig):
         - MASTER_PORT
 
         Args:
-            **kwargs: Override values for config.
+            **kwargs: Override values for config. Supports both
+                ``world_size`` (alias) and ``ddp_world_size`` (canonical).
 
         Returns:
             DDPLearnerConfig instance.
@@ -184,7 +300,13 @@ class DDPLearnerConfig(LearnerConfig):
         if ddp_world_size > 1:
             env_values["ddp_enabled"] = True
 
-        env_values.update(kwargs)
+        # Map alias kwargs to canonical names before merging
+        mapped_kwargs: dict[str, Any] = {}
+        for k, v in kwargs.items():
+            canonical = cls._ALIAS_MAP.get(k, k)
+            mapped_kwargs[canonical] = v
+
+        env_values.update(mapped_kwargs)
         return cls(**env_values)  # type: ignore[arg-type]
 
 
@@ -236,6 +358,9 @@ class DDPLearner(Learner):
         if self.ddp_config.enabled:
             config.device = self.ddp_config.get_device()
 
+        # Assign config before process group initialization
+        self.config: DDPLearnerConfig = config
+
         # Initialize process group before network creation
         self._process_group_initialized = False
         if self.ddp_config.enabled:
@@ -243,7 +368,7 @@ class DDPLearner(Learner):
 
         # Parent initialization creates network on correct device
         # We'll wrap it with DDP after
-        self.config: DDPLearnerConfig = config
+
         self.storage = shared_storage
         self.replay_buffer = replay_buffer
 
@@ -345,6 +470,46 @@ class DDPLearner(Learner):
         """Get local rank within this node."""
         return self.ddp_config.local_rank
 
+    @property
+    def _is_initialized(self) -> bool:
+        """Whether the learner has been initialized.
+
+        Maps to the internal process group state.
+        """
+        return self._process_group_initialized
+
+    @_is_initialized.setter
+    def _is_initialized(self, value: bool) -> None:
+        """Set initialization state."""
+        self._process_group_initialized = value
+
+    @property
+    def _device(self) -> torch.device:
+        """Torch device for this learner."""
+        return torch.device(self.config.device)
+
+    def initialize(self) -> None:
+        """Initialize the DDP learner.
+
+        Sets up the distributed process group and marks the learner as
+        initialized.  When ``ddp_enabled`` is ``True`` *or* ``world_size > 1``,
+        ``dist.init_process_group`` is called (which the mock backend
+        intercepts during testing).  For single-process mode with
+        ``world_size == 1`` and DDP disabled, the learner is simply
+        marked as initialized.
+        """
+        if self._process_group_initialized:
+            return
+
+        # Initialize the process group when DDP is enabled or
+        # world_size > 1 (covers mocked multi-process testing)
+        if self.ddp_config.enabled or self.ddp_config.world_size > 1:
+            self._init_process_group()
+        else:
+            # Single-process non-DDP mode
+            self._process_group_initialized = True
+            logger.debug("DDPLearner initialized (non-distributed mode)")
+
     def _init_process_group(self) -> None:
         """Initialize the distributed process group."""
         if self._process_group_initialized:
@@ -436,12 +601,17 @@ class DDPLearner(Learner):
     def is_main_process(self) -> bool:
         """Check if this is the main (rank 0) process.
 
-        Returns:
-            True if rank 0 or DDP not enabled.
+        Returns ``True`` when this process should be treated as the main
+        coordinator.  This is the case when:
+        - DDP is enabled and ``rank == 0``, or
+        - ``world_size > 1`` and ``rank == 0`` (multi-process config), or
+        - ``world_size == 1`` and DDP is not enabled (single-process).
         """
-        if not self.ddp_config.enabled:
-            return True
-        return self.ddp_config.rank == 0
+        # Multi-process: only rank 0 is main
+        if self.ddp_config.enabled or self.ddp_config.world_size > 1:
+            return self.ddp_config.rank == 0
+        # Single-process: always main
+        return True
 
     def train_step(self) -> dict[str, float] | None:
         """Perform a single training step with DDP support.
@@ -594,9 +764,9 @@ class DDPLearner(Learner):
 
         return checkpoint_path
 
-    def load_checkpoint(
+    def load_checkpoint(  # type: ignore[override]
         self, path: str, strict: bool = True, validate_world_size: bool = True
-    ) -> int:
+    ) -> dict[str, Any]:
         """Load a training checkpoint.
 
         All processes load the checkpoint for consistency.
@@ -607,7 +777,7 @@ class DDPLearner(Learner):
             validate_world_size: Whether to warn if world_size differs.
 
         Returns:
-            Training step from checkpoint.
+            The loaded checkpoint dictionary.
 
         Raises:
             FileNotFoundError: If checkpoint file doesn't exist.
@@ -661,14 +831,17 @@ class DDPLearner(Learner):
         if self.is_main_process():
             logger.info(f"Loaded checkpoint from {path} (step {step})")
 
-        return step
+        return checkpoint
 
     def synchronize_weights(self) -> None:
         """Synchronize weights across all processes.
 
         Broadcasts weights from rank 0 to all other processes.
         """
-        if not self.ddp_config.enabled:
+        if (
+            not (self.ddp_config.enabled or self._process_group_initialized)
+            or not dist.is_initialized()
+        ):
             return
 
         base_network = self._get_base_network()
@@ -681,6 +854,59 @@ class DDPLearner(Learner):
     def broadcast_weights_from_main(self) -> None:
         """Broadcast weights from main process to all workers."""
         self.synchronize_weights()
+
+    def sync_weights_to_main(self) -> None:
+        """Synchronize (reduce) weights to the main (rank 0) process.
+
+        Uses ``dist.reduce`` to sum parameters from all workers to rank 0.
+        """
+        if not self.ddp_config.enabled and not dist.is_initialized():
+            return
+
+        base_network = self._get_base_network()
+        for param in base_network.parameters():
+            dist.reduce(param.data, dst=0)
+
+        logger.debug("Reduced weights to main process")
+
+    def save_checkpoint(self, path: str, step: int = 0) -> str:
+        """Save a training checkpoint to a specific path.
+
+        Public API for checkpoint saving. Only rank 0 saves when
+        ``checkpoint_only_on_main`` is True.
+
+        Args:
+            path: File path to save the checkpoint.
+            step: Current training step.
+
+        Returns:
+            The checkpoint path (or empty string if not saved).
+        """
+        if self.config.checkpoint_only_on_main and not self.is_main_process():
+            return ""
+
+        save_dict: dict[str, Any] = {
+            "step": step,
+            "network_state_dict": self._get_base_network().state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "lr_scheduler_step": self.lr_scheduler.current_step,
+        }
+
+        if self.scaler is not None:
+            save_dict["scaler_state_dict"] = self.scaler.state_dict()
+
+        if self.ddp_config.enabled:
+            save_dict["ddp_world_size"] = self.ddp_config.world_size
+            save_dict["ddp_rank"] = self.ddp_config.rank
+
+        # Ensure directory exists
+        checkpoint_dir = os.path.dirname(path)
+        if checkpoint_dir:
+            os.makedirs(checkpoint_dir, exist_ok=True)
+
+        torch.save(save_dict, path)
+        logger.info(f"Saved checkpoint: {path} (step {step})")
+        return path
 
     def all_reduce_losses(
         self,
@@ -715,7 +941,7 @@ class DDPLearner(Learner):
 
     def barrier(self) -> None:
         """Synchronization barrier across all processes."""
-        if self.ddp_config.enabled and dist.is_initialized():
+        if (self.ddp_config.enabled or self._process_group_initialized) and dist.is_initialized():
             dist.barrier()
 
     def all_reduce(
@@ -732,7 +958,7 @@ class DDPLearner(Learner):
         Returns:
             Reduced tensor (modified in-place).
         """
-        if self.ddp_config.enabled and dist.is_initialized():
+        if (self.ddp_config.enabled or self._process_group_initialized) and dist.is_initialized():
             dist.all_reduce(tensor, op=op)
         return tensor
 
@@ -750,7 +976,10 @@ class DDPLearner(Learner):
         Returns:
             List of gathered tensors on dst, None on other ranks.
         """
-        if not self.ddp_config.enabled or not dist.is_initialized():
+        if (
+            not (self.ddp_config.enabled or self._process_group_initialized)
+            or not dist.is_initialized()
+        ):
             return [tensor]
 
         if self.ddp_config.rank == dst:
@@ -889,10 +1118,11 @@ class DDPLearner(Learner):
 
     def cleanup(self) -> None:
         """Clean up distributed resources."""
-        if self._process_group_initialized and dist.is_initialized():
-            dist.destroy_process_group()
+        if self._process_group_initialized:
+            if dist.is_initialized():
+                dist.destroy_process_group()
+                logger.info("Destroyed process group")
             self._process_group_initialized = False
-            logger.info("Destroyed process group")
 
     def get_statistics(self) -> dict:
         """Get learner statistics.

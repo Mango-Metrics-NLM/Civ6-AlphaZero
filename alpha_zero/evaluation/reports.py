@@ -389,16 +389,17 @@ class ReportGenerator:
             comparison["elo_diff"] = report2.overall_elo - report1.overall_elo
 
         # Compare per-baseline
-        comparison["baseline_diffs"] = {}
+        baseline_diffs: dict[str, Any] = {}
         for name in set(report1.baseline_results.keys()) | set(report2.baseline_results.keys()):
             r1 = report1.baseline_results.get(name)
             r2 = report2.baseline_results.get(name)
 
             if r1 and r2:
-                comparison["baseline_diffs"][name] = {
+                baseline_diffs[name] = {
                     "win_rate_diff": r2.win_rate - r1.win_rate,
                     "games_diff": r2.games_played - r1.games_played,
                 }
+        comparison["baseline_diffs"] = baseline_diffs
 
         # Compare diversity if both have it
         if report1.diversity_metrics and report2.diversity_metrics:

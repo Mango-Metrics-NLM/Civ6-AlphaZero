@@ -1,6 +1,7 @@
 {
     "phase": "6",
-    "status": "planning",
+    "status": "implemented",
     "active_spec": "kb/specs/20260208-phase-6-pbt.md",
-    "current_step": "Core PBT Logic Implementation"
+    "current_step": "PBT module substantially complete (10 files, 4588 lines in alpha_zero/pbt/)",
+    "note": "PBT was implemented but never formally tracked. Module exists with population management, mutation operators, fitness evaluation."
 }

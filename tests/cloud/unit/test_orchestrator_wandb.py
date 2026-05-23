@@ -1,8 +1,9 @@
 """Unit tests for vertex_orchestrator W&B logging integration.
 
-Tests the orchestrator's W&B logging functionality added to the main() function,
-including initialization, per-iteration metrics, summary logging, and proper
-cleanup in the finally block.
+DEPRECATED v1.5.0: tests patch alpha_zero.utils.wandb_logger.wandb (the
+underlying library), which no longer exists on the deprecation shim.
+Coverage is now provided by test_orchestrator_mlflow.py + the WandbCompatAdapter
+parity tests in test_mlflow_logger_adapter.py.
 """
 
 from __future__ import annotations
@@ -10,6 +11,11 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+pytestmark = pytest.mark.skip(
+    reason="W&B deprecated in v1.5.0; superseded by test_orchestrator_mlflow.py "
+           "and test_mlflow_logger_adapter.py"
+)
 
 
 class TestOrchestratorWandbLogging:
