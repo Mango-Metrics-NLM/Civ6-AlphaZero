@@ -19,7 +19,6 @@ import pytest
 
 from alpha_zero.envs.microciv import MicroCivEnv
 
-
 _BOARD_SIZE = 8
 _MAX_TURNS = 30
 

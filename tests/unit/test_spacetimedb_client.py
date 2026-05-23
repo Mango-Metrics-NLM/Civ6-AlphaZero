@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import logging
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -15,13 +13,12 @@ from alpha_zero.spacetimedb.events import (
     CONNECTION_STATE_CHANGED,
     METRICS_UPDATED,
     MODEL_VERSION_CHANGED,
-    TRAJECTORY_ADDED,
     TRAINING_STATE_CHANGED,
+    TRAJECTORY_ADDED,
     WORKER_STATUS_CHANGED,
 )
 from alpha_zero.spacetimedb.exceptions import (
     SpacetimeDBConnectionError,
-    SpacetimeDBReducerError,
     SpacetimeDBSerializationError,
 )
 from tests.mocks.spacetimedb_mocks import MockSpacetimeDBClient

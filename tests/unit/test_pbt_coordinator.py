@@ -19,15 +19,13 @@ Tests cover:
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
-from alpha_zero.pbt.config import AgentState, PBTConfig
+from alpha_zero.pbt.config import PBTConfig
 from alpha_zero.pbt.coordinator import (
     PBTCoordinator,
     PBTProgress,

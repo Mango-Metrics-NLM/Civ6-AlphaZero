@@ -271,8 +271,31 @@ class InferenceEngine:
 
         Returns:
             Tuple of (action_probs as numpy array, value_estimate as float).
+
+        Notes:
+            ``value`` may arrive with any of the following shapes depending on
+            the network implementation:
+              - ``()``          — legacy scalar value
+              - ``(1,)``        — 2-player network (current convention)
+              - ``(1, 1)``      — squeeze-omitted 2-player output
+              - ``(1, N)``      — N-player value vector (we report the first
+                player's value to preserve the float contract; callers that
+                need per-player values should use the network directly)
+            ``value[0].item()`` only works for ``(1,)`` and would raise on
+            ``(1, N)`` with N > 1, so we flatten first.
         """
-        value_estimate = value[0].item() if value is not None else 0.0
+        if value is None:
+            value_estimate = 0.0
+        else:
+            flat = value.reshape(-1)
+            value_estimate = float(flat[0].item()) if flat.numel() > 0 else 0.0
+            if flat.numel() > 1:
+                logger.debug(
+                    "Network returned per-player value tensor (shape=%s); "
+                    "reporting first player's value as scalar (%.4f)",
+                    tuple(value.shape),
+                    value_estimate,
+                )
 
         masked_logits = policy_logits.clone()
         masked_logits[0, action_mask == 0] = float("-inf")

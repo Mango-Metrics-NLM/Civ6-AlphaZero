@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -16,7 +16,6 @@ from alpha_zero.multiplayer.determinization import (
     WorldSampler,
 )
 from alpha_zero.multiplayer.fog_of_war import FogOfWarManager, VisibilityState
-
 
 # ---------------------------------------------------------------------------
 # Helpers / Fixtures
@@ -583,7 +582,7 @@ class TestDeterminizedMCTSSearch:
 
         calls = base_mcts.search.call_args_list
         # First call: add_noise=True
-        assert calls[0][1].get("add_noise") is True or calls[0][0] == (env.clone.return_value,) and calls[0][1].get("add_noise") is True
+        assert calls[0][1].get("add_noise") is True or (calls[0][0] == (env.clone.return_value,) and calls[0][1].get("add_noise") is True)
         # Remaining calls: add_noise=False
         for call in calls[1:]:
             assert call[1].get("add_noise") is False
