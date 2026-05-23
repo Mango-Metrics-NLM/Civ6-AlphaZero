@@ -23,20 +23,12 @@ import torch.nn as nn
 
 from alpha_zero.cloud.gcp.config import NetworkArchitectureConfig
 from alpha_zero.cloud.gcp.storage import GCSModelStorage
-from alpha_zero.core.batch_mcts import BatchGumbelMCTS, BatchMCTSConfig
-from alpha_zero.core.civ6_mcts import (
-    Civ6MCTS,
-    GumbelMCTS,
-    GumbelMCTSConfig,
-    MCTSConfig,
-    MCTSNetwork,
-)
+from alpha_zero.core.civ6_mcts import MCTSNetwork
 from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 from alpha_zero.inference.api_schemas import (
     ActionDistribution,
     GameState,
     InferenceRequest,
-    MCTSType,
 )
 
 logger = logging.getLogger(__name__)
@@ -152,9 +144,6 @@ class InferenceEngine:
         self.current_version: int | None = None
         self.current_model: MCTSNetwork | Any | None = None
 
-        # MCTS engines (created per request type)
-        self.mcts_engines: dict[str, Any] = {}
-
         # Metrics tracking
         self.start_time = time.time()
         self.total_requests = 0
@@ -236,44 +225,6 @@ class InferenceEngine:
         except Exception as e:
             logger.error(f"Failed to load model v{version}: {e}")
             raise RuntimeError(f"Model loading failed: {e}") from e
-
-    def _create_mcts_engine(self, mcts_type: MCTSType, num_simulations: int) -> Any:
-        """Create MCTS engine for given configuration.
-
-        Args:
-            mcts_type: MCTS algorithm type.
-            num_simulations: Number of simulations.
-
-        Returns:
-            MCTS engine instance.
-        """
-        if self.current_model is None:
-            raise RuntimeError("No model loaded")
-
-        if mcts_type == MCTSType.GUMBEL:
-            # Standard GumbelMCTS
-            config = GumbelMCTSConfig(num_simulations=num_simulations)
-            return GumbelMCTS(
-                network=self.current_model,
-                config=config,
-                device=self.config.device,
-            )
-        elif mcts_type == MCTSType.BATCH_GUMBEL:
-            # Batched GumbelMCTS
-            batch_config = BatchMCTSConfig(num_simulations=num_simulations)
-            return BatchGumbelMCTS(
-                network=self.current_model,
-                config=batch_config,
-                device=self.config.device,
-            )
-        else:  # CIV6
-            # Classic Civ6MCTS
-            civ6_config = MCTSConfig(num_simulations=num_simulations)
-            return Civ6MCTS(
-                network=self.current_model,
-                config=civ6_config,
-                device=self.config.device,
-            )
 
     def _prepare_inputs(
         self, game_state: GameState
@@ -357,36 +308,28 @@ class InferenceEngine:
         mcts_start = time.time()
         assert self.current_model is not None
 
-        # Use MCTS search when simulations > 0; fall back to raw network output
+        # Tree-search MCTS (Civ6/Gumbel/BatchGumbel) needs an environment with
+        # clone() to expand the search tree — see Civ6MCTS.search(env, ...) and
+        # GumbelMCTS.search(env, ...). The inference engine only receives
+        # observations, so we cannot run those engines from a raw GameState.
+        # We log the constraint when the client requests simulations so it is
+        # visible in production, and route everything through the network's
+        # masked forward pass. Wiring observation-only search (e.g. MuZero MCTS)
+        # is tracked separately and will dispatch on `request.mcts_type` here.
+        action_mask_tensor = torch.from_numpy(action_mask).to(self.device)
         if request.mcts_simulations > 0:
-            mcts_engine = self._create_mcts_engine(request.mcts_type, request.mcts_simulations)
+            logger.warning(
+                "MCTS search requested but inference engine has no environment; "
+                "falling back to raw network inference (mcts_type=%s, sims=%d)",
+                request.mcts_type.value,
+                request.mcts_simulations,
+            )
 
-            # Run MCTS search using the engine's network-guided search
-            with torch.no_grad():
-                action_mask_tensor = torch.from_numpy(action_mask).unsqueeze(0).to(self.device)
-                try:
-                    # Use the MCTS engine to get an improved policy via search
-                    improved_policy, value_estimate = mcts_engine.search(
-                        spatial, vector, action_mask_tensor
-                    )
-                    action_probs = np.asarray(improved_policy, dtype=np.float32)
-                except (AttributeError, TypeError):
-                    # Graceful fallback: if MCTS engine interface differs,
-                    # use initial_inference + temperature-based selection
-                    logger.warning(
-                        "MCTS search interface unavailable, falling back to raw network inference"
-                    )
-                    policy_logits, value = self.current_model(spatial, vector, action_mask)
-                    action_probs, value_estimate = self._apply_policy_postprocessing(
-                        policy_logits, action_mask, request.temperature, value
-                    )
-        else:
-            # Raw network inference (no search) — useful for fast responses
-            with torch.no_grad():
-                policy_logits, value = self.current_model(spatial, vector, action_mask)
-                action_probs, value_estimate = self._apply_policy_postprocessing(
-                    policy_logits, action_mask, request.temperature, value
-                )
+        with torch.no_grad():
+            policy_logits, value = self.current_model(spatial, vector, action_mask_tensor)
+        action_probs, value_estimate = self._apply_policy_postprocessing(
+            policy_logits, action_mask, request.temperature, value
+        )
 
         _mcts_time_ms = (time.time() - mcts_start) * 1000
 

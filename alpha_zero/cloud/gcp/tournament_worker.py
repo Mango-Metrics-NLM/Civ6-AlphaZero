@@ -47,9 +47,7 @@ def setup_logging() -> None:
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments for tournament worker."""
     parser = argparse.ArgumentParser(description="Civ6 AlphaZero Tournament Worker")
-    parser.add_argument(
-        "--mode", type=str, default="tournament", help="Worker mode (tournament)"
-    )
+    parser.add_argument("--mode", type=str, default="tournament", help="Worker mode (tournament)")
 
     # Model selection (mutually prioritized: explicit > stride/range > all)
     parser.add_argument(

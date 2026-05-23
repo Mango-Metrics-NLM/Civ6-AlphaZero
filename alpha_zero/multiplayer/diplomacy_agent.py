@@ -526,9 +526,12 @@ class DiplomacyAgent:
 
     @staticmethod
     def _extract_json(text: str) -> str:
-        """Extract the first JSON object from *text*.
+        """Extract the first balanced JSON object from *text*.
 
-        Handles cases where the LLM wraps JSON in markdown code fences.
+        Handles markdown code fences and ignores braces that appear inside
+        JSON string literals (including escaped quotes), so payloads like
+        ``{"reasoning": "Alliance {clause} is good"}`` are extracted intact
+        instead of being truncated at the inner ``}``.
         """
         # Strip markdown code fences
         stripped = text.strip()
@@ -541,19 +544,35 @@ class DiplomacyAgent:
                 stripped = stripped[: -len("```")]
             stripped = stripped.strip()
 
-        # Find first { ... } pair
+        # Find first { ... } pair using a string-aware scanner
         start = stripped.find("{")
         if start == -1:
             return stripped
 
         depth = 0
+        in_string = False
+        escape = False
         for i in range(start, len(stripped)):
-            if stripped[i] == "{":
+            ch = stripped[i]
+            if in_string:
+                # Skip the character following a backslash (handles \" \\ etc.)
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+                continue
+            if ch == '"':
+                in_string = True
+                continue
+            if ch == "{":
                 depth += 1
-            elif stripped[i] == "}":
+            elif ch == "}":
                 depth -= 1
                 if depth == 0:
                     return stripped[start : i + 1]
 
-        # Fallback: return from first brace onward
+        # Fallback: return from first brace onward (caller will fail to parse,
+        # which is the correct signal that the LLM emitted truncated JSON).
         return stripped[start:]

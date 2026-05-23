@@ -450,18 +450,49 @@ class MicroCivEnv(gym.Env):
         never spawn on the very edge of the board (tests assert this margin,
         and the action-space neighbour lookups assume one tile of slack on
         each side).
+
+        If randomised sampling fails to find a passable tile (e.g. a mountain
+        cluster occupies the search radius), exhaustively scan the
+        ``[1, board_size - 2]`` interior in spiral order around the start
+        before giving up. As a last resort, raise ``RuntimeError`` rather than
+        silently returning an impassable tile — spawning units on mountains
+        would break movement logic downstream.
         """
+
+        def _clamp(x: int, y: int) -> tuple[int, int]:
+            return (
+                min(max(x, 1), self.board_size - 2),
+                min(max(y, 1), self.board_size - 2),
+            )
+
+        def _is_passable(x: int, y: int) -> bool:
+            return self.terrain.get((x, y), Tile()).terrain_type != "mountain"
+
+        # 1. Random sampling around the seed position (fast path).
         for _ in range(100):
             x = int(start_x + self._rng.integers(0, range_))
             y = int(start_y + self._rng.integers(0, range_))
-            x = min(max(x, 1), self.board_size - 2)
-            y = min(max(y, 1), self.board_size - 2)
-            if self.terrain.get((x, y), Tile()).terrain_type != "mountain":
+            x, y = _clamp(x, y)
+            if _is_passable(x, y):
                 return (x, y)
-        # Fallback also respects the margin.
-        return (
-            min(max(start_x, 1), self.board_size - 2),
-            min(max(start_y, 1), self.board_size - 2),
+
+        # 2. Deterministic ring-walk over the interior: guarantees we find a
+        #    passable tile if one exists within the playable area.
+        sx, sy = _clamp(start_x, start_y)
+        max_radius = self.board_size  # bounded by board size
+        for radius in range(0, max_radius):
+            for dy in range(-radius, radius + 1):
+                for dx in range(-radius, radius + 1):
+                    if max(abs(dx), abs(dy)) != radius:
+                        continue  # only walk the current ring
+                    x, y = _clamp(sx + dx, sy + dy)
+                    if _is_passable(x, y):
+                        return (x, y)
+
+        raise RuntimeError(
+            f"No passable spawn tile found near ({start_x}, {start_y}) on a "
+            f"{self.board_size}x{self.board_size} board — terrain generator "
+            "produced an unplayable map."
         )
 
     def _find_adjacent_valid(self, pos: tuple[int, int]) -> tuple[int, int]:

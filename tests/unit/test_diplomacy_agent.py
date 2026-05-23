@@ -28,7 +28,6 @@ from alpha_zero.multiplayer.diplomacy_agent import (
 )
 from alpha_zero.multiplayer.diplomacy_config import DiplomacyConfig
 
-
 # =========================================================================
 # DiplomacyConfig tests
 # =========================================================================
@@ -262,10 +261,7 @@ class TestDiplomacyHistory:
         # Player 0 is involved in events 0 and 2
         events = history.get_history(player=0)
         assert len(events) == 2
-        assert all(
-            e["proposer"] == 0 or e["target"] == 0
-            for e in events
-        )
+        assert all(e["proposer"] == 0 or e["target"] == 0 for e in events)
 
     def test_trust_score_no_interactions(self) -> None:
         history = DiplomacyHistory()
@@ -356,7 +352,9 @@ class TestDiplomacyAgentDisabled:
     def test_disabled_agent_evaluate(self) -> None:
         agent = DiplomacyAgent(DiplomacyConfig.default())  # disabled
         proposal = DiplomaticProposal(
-            proposer=0, target=1, action_type="alliance",
+            proposer=0,
+            target=1,
+            action_type="alliance",
         )
         result = asyncio.run(agent.evaluate_proposal(_make_game_state(), proposal))
         assert isinstance(result, ProposalEvaluation)
@@ -365,9 +363,7 @@ class TestDiplomacyAgentDisabled:
 
     def test_disabled_agent_generate(self) -> None:
         agent = DiplomacyAgent(DiplomacyConfig.default())
-        result = asyncio.run(
-            agent.generate_proposal(_make_game_state(), player_id=0, target_id=1)
-        )
+        result = asyncio.run(agent.generate_proposal(_make_game_state(), player_id=0, target_id=1))
         assert result is None
 
 
@@ -402,11 +398,13 @@ class TestDiplomacyAgentWithMockedLLM:
         return agent, mock_client
 
     def test_evaluate_valid_json(self) -> None:
-        response_json = json.dumps({
-            "score": 0.8,
-            "reasoning": "This alliance strengthens both players",
-            "counter_terms": {"duration": 20},
-        })
+        response_json = json.dumps(
+            {
+                "score": 0.8,
+                "reasoning": "This alliance strengthens both players",
+                "counter_terms": {"duration": 20},
+            }
+        )
         agent, mock = self._make_agent_with_mock(eval_response=response_json)
         proposal = DiplomaticProposal(proposer=0, target=1, action_type="alliance")
         result = asyncio.run(agent.evaluate_proposal(_make_game_state(), proposal))
@@ -459,15 +457,15 @@ class TestDiplomacyAgentWithMockedLLM:
         assert "failed" in result.reasoning.lower()
 
     def test_generate_valid_json(self) -> None:
-        response_json = json.dumps({
-            "action_type": "trade",
-            "terms": {"gold_per_turn": 5},
-            "rationale": "Mutual benefit",
-        })
-        agent, mock = self._make_agent_with_mock(gen_response=response_json)
-        result = asyncio.run(
-            agent.generate_proposal(_make_game_state(), player_id=0, target_id=1)
+        response_json = json.dumps(
+            {
+                "action_type": "trade",
+                "terms": {"gold_per_turn": 5},
+                "rationale": "Mutual benefit",
+            }
         )
+        agent, mock = self._make_agent_with_mock(gen_response=response_json)
+        result = asyncio.run(agent.generate_proposal(_make_game_state(), player_id=0, target_id=1))
 
         assert result is not None
         assert result.proposer == 0
@@ -477,24 +475,22 @@ class TestDiplomacyAgentWithMockedLLM:
         assert result.rationale == "Mutual benefit"
 
     def test_generate_unknown_action_type_falls_back(self) -> None:
-        response_json = json.dumps({
-            "action_type": "nuclear_strike",
-            "terms": {},
-            "rationale": "Boom",
-        })
-        agent, _ = self._make_agent_with_mock(gen_response=response_json)
-        result = asyncio.run(
-            agent.generate_proposal(_make_game_state(), player_id=0, target_id=1)
+        response_json = json.dumps(
+            {
+                "action_type": "nuclear_strike",
+                "terms": {},
+                "rationale": "Boom",
+            }
         )
+        agent, _ = self._make_agent_with_mock(gen_response=response_json)
+        result = asyncio.run(agent.generate_proposal(_make_game_state(), player_id=0, target_id=1))
         assert result is not None
         # Falls back to first category
         assert result.action_type == agent.config.proposal_categories[0]
 
     def test_generate_malformed_json(self) -> None:
         agent, _ = self._make_agent_with_mock(gen_response="I can't generate JSON")
-        result = asyncio.run(
-            agent.generate_proposal(_make_game_state(), player_id=0, target_id=1)
-        )
+        result = asyncio.run(agent.generate_proposal(_make_game_state(), player_id=0, target_id=1))
         assert result is None
 
     def test_generate_llm_exception(self) -> None:
@@ -505,30 +501,30 @@ class TestDiplomacyAgentWithMockedLLM:
         mock_client.generate = AsyncMock(side_effect=ConnectionError("Network error"))
         agent.llm_client = mock_client
 
-        result = asyncio.run(
-            agent.generate_proposal(_make_game_state(), player_id=0, target_id=1)
-        )
+        result = asyncio.run(agent.generate_proposal(_make_game_state(), player_id=0, target_id=1))
         assert result is None
 
     def test_generate_non_dict_terms(self) -> None:
-        response_json = json.dumps({
-            "action_type": "peace",
-            "terms": "not a dict",
-            "rationale": "Peace!",
-        })
-        agent, _ = self._make_agent_with_mock(gen_response=response_json)
-        result = asyncio.run(
-            agent.generate_proposal(_make_game_state(), player_id=0, target_id=1)
+        response_json = json.dumps(
+            {
+                "action_type": "peace",
+                "terms": "not a dict",
+                "rationale": "Peace!",
+            }
         )
+        agent, _ = self._make_agent_with_mock(gen_response=response_json)
+        result = asyncio.run(agent.generate_proposal(_make_game_state(), player_id=0, target_id=1))
         assert result is not None
         assert result.terms == {}  # coerced to empty dict
 
     def test_evaluate_non_dict_counter_terms(self) -> None:
-        response_json = json.dumps({
-            "score": 0.6,
-            "reasoning": "ok",
-            "counter_terms": "not a dict",
-        })
+        response_json = json.dumps(
+            {
+                "score": 0.6,
+                "reasoning": "ok",
+                "counter_terms": "not a dict",
+            }
+        )
         agent, _ = self._make_agent_with_mock(eval_response=response_json)
         proposal = DiplomaticProposal(proposer=0, target=1, action_type="trade")
         result = asyncio.run(agent.evaluate_proposal(_make_game_state(), proposal))
@@ -561,9 +557,7 @@ class TestDiplomacyAgentGracefulDegradation:
         ):
             agent = DiplomacyAgent(config)
 
-        result = asyncio.run(
-            agent.generate_proposal(_make_game_state(), player_id=0, target_id=1)
-        )
+        result = asyncio.run(agent.generate_proposal(_make_game_state(), player_id=0, target_id=1))
         assert result is None
 
 
@@ -604,6 +598,22 @@ class TestDiplomacyAgentJSONExtraction:
         result = DiplomacyAgent._extract_json(text)
         parsed = json.loads(result)
         assert parsed["key"] == "value"
+
+    def test_braces_in_string_literal_do_not_close_object(self) -> None:
+        """Regression: '}' inside a JSON string must not end the object."""
+        text = '{"reasoning": "Treaty {fair} accepted", "score": 0.55}'
+        result = DiplomacyAgent._extract_json(text)
+        parsed = json.loads(result)
+        assert parsed["reasoning"] == "Treaty {fair} accepted"
+        assert parsed["score"] == 0.55
+
+    def test_escaped_quote_in_string_literal(self) -> None:
+        """Escaped \\" must not flip string-mode tracking."""
+        text = r'{"q": "say \"}\" loud", "ok": true}'
+        result = DiplomacyAgent._extract_json(text)
+        parsed = json.loads(result)
+        assert parsed["q"] == 'say "}" loud'
+        assert parsed["ok"] is True
 
 
 class TestDiplomacyAgentFormatting:
