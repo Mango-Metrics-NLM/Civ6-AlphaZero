@@ -9,11 +9,15 @@ AlphaZeroActionExecutor = AlphaZeroActionExecutor or {}
 
 local Log = nil  -- Will be set after Logger loads
 
--- Action type constants (must match Python ActionType enum)
+-- Action type constants (must match Python ActionType enum exactly).
+-- The action-mask invariant test (tests/unit/test_bridge_action_invariant.py)
+-- asserts at CI time that this table and Python ActionType cover the same
+-- set of values; do NOT add to one side without the other.
 local ACTION_TYPES = {
     END_TURN = "end_turn",
     UNIT_MOVE = "unit_move",
     UNIT_ATTACK = "unit_attack",
+    UNIT_RANGED_ATTACK = "unit_ranged_attack",
     UNIT_FORTIFY = "unit_fortify",
     UNIT_SKIP = "unit_skip",
     UNIT_SLEEP = "unit_sleep",
@@ -424,6 +428,290 @@ local function executeResearchCivic(playerId, command)
     return false, ERROR_CODES.EXECUTION_FAILED, "Civic research failed"
 end
 
+-- ----------------------------------------------------------------------------
+-- v1.8.0 W2.1 step 4 — newly-implemented handlers
+-- ----------------------------------------------------------------------------
+
+-- Buy production (rush-buy a unit or building with gold).
+-- Mirrors executeCityProduce's API + dispatch tables, but calls PURCHASE
+-- instead of BUILD.
+local PURCHASE_PARAM_KEYS = {
+    unit = "PARAM_UNIT_TYPE",
+    building = "PARAM_BUILDING_TYPE",
+    wonder = "PARAM_BUILDING_TYPE",
+    district = "PARAM_DISTRICT_TYPE",
+}
+
+local function executeCityBuy(playerId, command)
+    local cityId = command.city_id
+    local itemId = command.item_id
+    local itemType = command.item_type or "unit"
+
+    if not cityId or not itemId then
+        return false, ERROR_CODES.INVALID_COMMAND, "Missing city_id or item_id"
+    end
+
+    if Log then Log.Info("Executing: CITY_BUY city=%d item=%s type=%s",
+        cityId, tostring(itemId), tostring(itemType)) end
+
+    local city, errCode, errMsg = safeGetCity(playerId, cityId)
+    if not city then
+        return false, errCode, errMsg
+    end
+
+    -- Primary method: CityManager.RequestOperation(city, CityOperationTypes.PURCHASE, params).
+    if CityManager and CityManager.RequestOperation and CityOperationTypes then
+        local paramKey = PURCHASE_PARAM_KEYS[itemType] or PURCHASE_PARAM_KEYS["unit"]
+        if CityOperationTypes[paramKey] and CityOperationTypes.PURCHASE then
+            local params = {}
+            params[CityOperationTypes[paramKey]] = itemId
+            CityManager.RequestOperation(city, CityOperationTypes.PURCHASE, params)
+            return true, nil, string.format("City %d purchasing %s (%s)",
+                cityId, tostring(itemId), tostring(itemType))
+        end
+    end
+
+    -- Fallback: buildQueue:PurchaseProduction(type, item) on older Civ6 mod contexts.
+    local buildQueue = city:GetBuildQueue()
+    if buildQueue and buildQueue.PurchaseProduction then
+        local ok, result = pcall(function()
+            return buildQueue:PurchaseProduction(itemType, itemId)
+        end)
+        if ok and result then
+            return true, nil, string.format("City %d purchased %s (fallback)",
+                cityId, tostring(itemId))
+        end
+    end
+
+    return false, ERROR_CODES.EXECUTION_FAILED, "Purchase failed"
+end
+
+-- Lock or unlock a citizen on a specific plot.
+-- command.item_id = plot index; command.metadata.lock = boolean.
+local function executeCityCitizen(playerId, command)
+    local cityId = command.city_id
+    local plotIndex = command.item_id
+    local lock = false
+    if command.metadata and command.metadata.lock ~= nil then
+        lock = command.metadata.lock
+    end
+
+    if not cityId then
+        return false, ERROR_CODES.INVALID_COMMAND, "Missing city_id"
+    end
+    if plotIndex == nil then
+        return false, ERROR_CODES.INVALID_COMMAND, "Missing item_id (plot index)"
+    end
+
+    if Log then Log.Info("Executing: CITY_CITIZEN city=%d plot=%d lock=%s",
+        cityId, plotIndex, tostring(lock)) end
+
+    local city, errCode, errMsg = safeGetCity(playerId, cityId)
+    if not city then
+        return false, errCode, errMsg
+    end
+
+    local citizens = city.GetCitizens and city:GetCitizens()
+    if not citizens then
+        return false, ERROR_CODES.EXECUTION_FAILED, "Citizens not available"
+    end
+
+    if citizens.SetCitizenLocked then
+        local ok = pcall(function() citizens:SetCitizenLocked(plotIndex, lock) end)
+        if ok then
+            return true, nil, string.format("Plot %d lock=%s on city %d",
+                plotIndex, tostring(lock), cityId)
+        end
+    end
+
+    return false, ERROR_CODES.EXECUTION_FAILED, "Citizen lock failed"
+end
+
+-- Promote a unit. command.item_id carries the promotion id (0 = first available).
+local function executeUnitPromote(playerId, command)
+    local unitId = command.unit_id
+    local promotionId = command.item_id  -- may be 0 for first-available
+    if not unitId then
+        return false, ERROR_CODES.INVALID_COMMAND, "Missing unit_id"
+    end
+
+    if Log then Log.Info("Executing: UNIT_PROMOTE unit=%d promotion=%s",
+        unitId, tostring(promotionId)) end
+
+    local unit, errCode, errMsg = safeGetUnit(playerId, unitId)
+    if not unit then
+        return false, errCode, errMsg
+    end
+
+    if unit.CanPromote and not unit:CanPromote() then
+        return false, ERROR_CODES.EXECUTION_FAILED, "Unit cannot promote right now"
+    end
+
+    if UnitManager and UnitManager.RequestOperation and UnitOperationTypes
+        and UnitOperationTypes.PROMOTE then
+        local params = nil
+        if promotionId and promotionId > 0
+            and UnitOperationTypes.PARAM_PROMOTION_TYPE then
+            params = {}
+            params[UnitOperationTypes.PARAM_PROMOTION_TYPE] = promotionId
+        end
+        UnitManager.RequestOperation(unit, UnitOperationTypes.PROMOTE, params)
+        return true, nil, "Promotion requested"
+    end
+
+    return false, ERROR_CODES.EXECUTION_FAILED, "Promote operation unavailable"
+end
+
+-- Delete (disband) a unit.
+local function executeUnitDelete(playerId, command)
+    local unitId = command.unit_id
+    if not unitId then
+        return false, ERROR_CODES.INVALID_COMMAND, "Missing unit_id"
+    end
+
+    if Log then Log.Info("Executing: UNIT_DELETE unit=%d", unitId) end
+
+    local unit, errCode, errMsg = safeGetUnit(playerId, unitId)
+    if not unit then
+        return false, errCode, errMsg
+    end
+
+    if UnitManager and UnitManager.RequestCommand and UnitCommandTypes
+        and UnitCommandTypes.DELETE then
+        UnitManager.RequestCommand(unit, UnitCommandTypes.DELETE)
+        return true, nil, "Unit deleted"
+    end
+
+    return false, ERROR_CODES.EXECUTION_FAILED, "Delete command unavailable"
+end
+
+-- ----------------------------------------------------------------------------
+-- v1.8.0 W2.1 step 5 — diplomacy dispatcher
+-- ----------------------------------------------------------------------------
+
+-- Sub-action ID -> name mapping. Mirrors DiplomacyActionType in
+-- alpha_zero/core/civ6_actions.py:79-90 (IntEnum values are part of the
+-- wire contract; do NOT reorder). 9 total sub-actions; 3 implemented this
+-- sprint per BRIDGE_IMPLEMENTED_DIPLOMACY, 6 round-trip to NOT_IMPLEMENTED.
+local DIPLOMACY_SUB_ACTION_NAMES = {
+    [0] = "DECLARE_WAR",
+    [1] = "MAKE_PEACE",
+    [2] = "OPEN_BORDERS",
+    [3] = "ALLIANCE",
+    [4] = "TRADE_DEAL",
+    [5] = "DENOUNCE",
+    [6] = "DELEGATE",
+    [7] = "EMBASSY",
+    [8] = "JOINT_WAR",
+}
+
+-- Per-sub-action dispatch table. Implemented = function, Deferred = false.
+local DIPLOMACY_SUB_ACTION_HANDLERS
+
+local function _diplomacyRequest(playerId, targetPlayerId, civ6ActionName, subActionName)
+    -- Resolve the Civ6 Lua diplomacy API and request the action against the
+    -- target player. The Civ6 API surface varies slightly across game patches;
+    -- this code uses the most-stable path: Players[pid]:GetDiplomacy():DoAction
+    -- when available, else falls back to UI.RequestDiplomacyMove. Both are
+    -- documented entry points.
+    if not Players or not Players[playerId] then
+        return false, ERROR_CODES.EXECUTION_FAILED, "Player not found: " .. tostring(playerId)
+    end
+
+    local player = Players[playerId]
+    local diplomacy = player.GetDiplomacy and player:GetDiplomacy() or nil
+    if not diplomacy then
+        return false, ERROR_CODES.EXECUTION_FAILED, "Diplomacy table unavailable"
+    end
+
+    -- Primary path: GetDiplomacy():DoAction(...). Civ6 expects a string or
+    -- int action constant from DiplomaticActions table; pass civ6ActionName.
+    if diplomacy.DoAction then
+        local ok = pcall(function() diplomacy:DoAction(civ6ActionName, targetPlayerId) end)
+        if ok then
+            return true, nil, string.format("%s against player %d", subActionName, targetPlayerId)
+        end
+    end
+
+    -- Fallback: UI.RequestDiplomacyMove for older mod contexts.
+    if UI and UI.RequestDiplomacyMove then
+        local ok = pcall(function() UI.RequestDiplomacyMove(civ6ActionName, targetPlayerId) end)
+        if ok then
+            return true, nil, string.format("%s requested via UI (player %d)",
+                subActionName, targetPlayerId)
+        end
+    end
+
+    return false, ERROR_CODES.EXECUTION_FAILED,
+        string.format("No diplomacy API available for %s", subActionName)
+end
+
+local function diplomacyDeclareWar(playerId, targetPlayerId)
+    return _diplomacyRequest(playerId, targetPlayerId, "DIPLOACTION_DECLARE_WAR", "DECLARE_WAR")
+end
+
+local function diplomacyMakePeace(playerId, targetPlayerId)
+    return _diplomacyRequest(playerId, targetPlayerId, "DIPLOACTION_MAKE_PEACE", "MAKE_PEACE")
+end
+
+local function diplomacyDenounce(playerId, targetPlayerId)
+    return _diplomacyRequest(playerId, targetPlayerId, "DIPLOACTION_DENOUNCE", "DENOUNCE")
+end
+
+DIPLOMACY_SUB_ACTION_HANDLERS = {
+    [0] = diplomacyDeclareWar,    -- DECLARE_WAR
+    [1] = diplomacyMakePeace,     -- MAKE_PEACE
+    [2] = false,                  -- OPEN_BORDERS  (deferred)
+    [3] = false,                  -- ALLIANCE      (deferred)
+    [4] = false,                  -- TRADE_DEAL    (deferred)
+    [5] = diplomacyDenounce,      -- DENOUNCE
+    [6] = false,                  -- DELEGATE      (deferred)
+    [7] = false,                  -- EMBASSY       (deferred)
+    [8] = false,                  -- JOINT_WAR     (deferred)
+}
+
+-- Diplomacy dispatcher. Reads command.metadata.{sub_action, target_player_id}.
+local function executeDiplomacy(playerId, command)
+    local metadata = command.metadata or {}
+    local subActionId = metadata.sub_action
+    local targetPlayerId = metadata.target_player_id
+
+    if subActionId == nil then
+        return false, ERROR_CODES.INVALID_COMMAND, "DIPLOMACY missing metadata.sub_action"
+    end
+    if targetPlayerId == nil then
+        return false, ERROR_CODES.INVALID_COMMAND, "DIPLOMACY missing metadata.target_player_id"
+    end
+
+    local subActionName = DIPLOMACY_SUB_ACTION_NAMES[subActionId] or "UNKNOWN"
+    if Log then
+        Log.Info("Executing: DIPLOMACY sub_action=%d (%s) target_player=%d",
+            subActionId, subActionName, targetPlayerId)
+    end
+
+    local handler = DIPLOMACY_SUB_ACTION_HANDLERS[subActionId]
+    if not handler then
+        -- Unknown sub-action id (out-of-range or new enum member added to
+        -- Python without a matching Lua handler).
+        local msg = string.format(
+            "Diplomacy sub-action id %d not recognised (Python/Lua enum drift?)",
+            subActionId)
+        if Log then Log.Warn(msg) end
+        return false, ERROR_CODES.NOT_IMPLEMENTED, msg
+    end
+    if handler == false then
+        -- Recognised but deferred this sprint. Per-sub-action log line per
+        -- the v1.8.0 plan's "log deferred sub-actions" requirement so future
+        -- prioritisation can see which sub-actions the agent actually picks.
+        local msg = string.format("Diplomacy sub-action '%s' deferred to v1.9.0",
+            subActionName)
+        if Log then Log.Info(msg) end
+        return false, ERROR_CODES.NOT_IMPLEMENTED, msg
+    end
+
+    return handler(playerId, targetPlayerId)
+end
+
 -- Stub handler for unimplemented actions
 local function executeNotImplemented(playerId, command)
     local actionType = command and command.action_type or "unknown"
@@ -432,24 +720,28 @@ local function executeNotImplemented(playerId, command)
     return false, ERROR_CODES.NOT_IMPLEMENTED, msg
 end
 
--- Action dispatch table
+-- Action dispatch table.
+-- v1.8.0 W2.1 step 4: CITY_BUY, CITY_CITIZEN, UNIT_PROMOTE, UNIT_DELETE now
+-- have real handlers (above). DIPLOMACY still routes to executeNotImplemented
+-- pending W2.1 step 5 (executeDiplomacy dispatcher).
 local ACTION_HANDLERS = {
     [ACTION_TYPES.END_TURN] = executeEndTurn,
     [ACTION_TYPES.UNIT_MOVE] = executeUnitMove,
     [ACTION_TYPES.UNIT_ATTACK] = executeUnitAttack,
+    [ACTION_TYPES.UNIT_RANGED_ATTACK] = executeUnitAttack,  -- same RequestOperation(RANGE_ATTACK)
     [ACTION_TYPES.UNIT_FORTIFY] = executeUnitFortify,
     [ACTION_TYPES.UNIT_SKIP] = executeUnitSkip,
     [ACTION_TYPES.UNIT_SLEEP] = executeUnitSleep,
     [ACTION_TYPES.UNIT_FOUND_CITY] = executeFoundCity,
     [ACTION_TYPES.UNIT_BUILD] = executeUnitBuild,
+    [ACTION_TYPES.UNIT_PROMOTE] = executeUnitPromote,
+    [ACTION_TYPES.UNIT_DELETE] = executeUnitDelete,
     [ACTION_TYPES.CITY_PRODUCE] = executeCityProduce,
-    [ACTION_TYPES.CITY_BUY] = executeNotImplemented,
-    [ACTION_TYPES.CITY_CITIZEN] = executeNotImplemented,
+    [ACTION_TYPES.CITY_BUY] = executeCityBuy,
+    [ACTION_TYPES.CITY_CITIZEN] = executeCityCitizen,
     [ACTION_TYPES.RESEARCH_TECH] = executeResearchTech,
     [ACTION_TYPES.RESEARCH_CIVIC] = executeResearchCivic,
-    [ACTION_TYPES.UNIT_PROMOTE] = executeNotImplemented,
-    [ACTION_TYPES.UNIT_DELETE] = executeNotImplemented,
-    [ACTION_TYPES.DIPLOMACY] = executeNotImplemented,
+    [ACTION_TYPES.DIPLOMACY] = executeDiplomacy,  -- W2.1 step 5 (3 sub-actions live)
 }
 
 -- ----------------------------------------------------------------------------
