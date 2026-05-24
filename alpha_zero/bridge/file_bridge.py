@@ -373,19 +373,21 @@ class FileBridge:
 
         # Track heartbeat check timing separately
         last_heartbeat_check = start_time
+        last_wait_log = start_time  # throttle "waiting to connect" messages
+        _WAIT_LOG_INTERVAL_S = 10.0
         # Only raise ConnectionLostError if we had a prior live connection.
         # On first connect, we simply wait for the Lua mod to start.
         ever_connected = self.stats.states_received > 0
 
         while True:
             # Check timeout
-            elapsed = time.time() - start_time
+            now = time.time()
+            elapsed = now - start_time
             if elapsed > timeout:
                 raise StateTimeoutError(timeout)
 
             # Check heartbeat ONLY after we know the Lua mod was alive at least
             # once, and only after a grace period, and only periodically.
-            now = time.time()
             if (
                 ever_connected
                 and elapsed > self.config.heartbeat_timeout_s
@@ -394,11 +396,11 @@ class FileBridge:
                 last_heartbeat_check = now
                 if not self.check_heartbeat():
                     raise ConnectionLostError()
-            elif not ever_connected and elapsed > 5.0 and int(elapsed) % 10 == 0:
-                # Log a friendly waiting message every ~10s during initial wait
+            elif not ever_connected and elapsed > 5.0 and now - last_wait_log >= _WAIT_LOG_INTERVAL_S:
+                last_wait_log = now
                 logger.info(
-                    "Waiting for Civ6 mod to connect... (%.0fs elapsed) "
-                    "Start Civilization 6 with AlphaZeroAI mod enabled.",
+                    "Waiting for Civ6 mod to connect... (%.0fs elapsed). "
+                    "Enable AlphaZeroAI mod and start/load a game.",
                     elapsed,
                 )
 
@@ -416,6 +418,7 @@ class FileBridge:
 
             # Wait before next poll
             await asyncio.sleep(poll_interval)
+
 
     def get_last_state(self) -> GameStateData | None:
         """Get the last received state.
