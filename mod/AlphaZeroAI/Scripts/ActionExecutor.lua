@@ -154,8 +154,10 @@ local function executeUnitMove(playerId, command)
     return false, ERROR_CODES.EXECUTION_FAILED, "Move execution failed: UnitManager.RequestOperation not available"
 end
 
--- Attack a target position with a unit
-local function executeUnitAttack(playerId, command)
+-- Shared attack body. Issues the named Civ6 UnitOperation against the
+-- target tile. `opName` must be a key on UnitOperationTypes (e.g.
+-- "MOVE_TO" for melee engagement, "RANGE_ATTACK" for ranged units).
+local function _executeAttackOperation(playerId, command, opName, logLabel)
     local unitId = command.unit_id
     local target = command.target
 
@@ -163,28 +165,48 @@ local function executeUnitAttack(playerId, command)
         return false, ERROR_CODES.INVALID_COMMAND, "Missing unit_id or target"
     end
 
-    if Log then Log.Info("Executing: UNIT_ATTACK unit=%d at (%d,%d)", unitId, target.x, target.y) end
+    if Log then
+        Log.Info("Executing: %s unit=%d at (%d,%d)", logLabel, unitId, target.x, target.y)
+    end
 
     local unit, errCode, errMsg = safeGetUnit(playerId, unitId)
     if not unit then
         return false, errCode, errMsg
     end
 
-    -- Check attacks remaining
+    -- Check attacks remaining (applies to both melee and ranged).
     if (unit:GetAttacksRemaining() or 0) <= 0 then
         return false, ERROR_CODES.NOT_ENOUGH_MOVEMENT, "Unit has no attacks remaining"
     end
 
-    -- Execute attack using RequestOperation
     if UnitManager and UnitManager.RequestOperation and UnitOperationTypes then
+        local op = UnitOperationTypes[opName]
+        if op == nil then
+            return false, ERROR_CODES.EXECUTION_FAILED,
+                string.format("UnitOperationTypes.%s not available", opName)
+        end
         local params = {}
         params[UnitOperationTypes.PARAM_X] = target.x
         params[UnitOperationTypes.PARAM_Y] = target.y
-        UnitManager.RequestOperation(unit, UnitOperationTypes.RANGE_ATTACK, params)
-        return true, nil, string.format("Attack executed at (%d,%d)", target.x, target.y)
+        UnitManager.RequestOperation(unit, op, params)
+        return true, nil, string.format("%s executed at (%d,%d)", logLabel, target.x, target.y)
     end
 
     return false, ERROR_CODES.EXECUTION_FAILED, "Attack execution failed"
+end
+
+-- Melee attack: move onto the target tile to engage. Civ6's MOVE_TO
+-- operation against an occupied enemy tile resolves to a melee attack.
+-- (Hardening fix for gap-analysis C1 on commit 3572832: previously this
+-- routed through RANGE_ATTACK, which silent-no-ops for melee units.)
+local function executeUnitAttack(playerId, command)
+    return _executeAttackOperation(playerId, command, "MOVE_TO", "UNIT_ATTACK")
+end
+
+-- Ranged attack: explicit RANGE_ATTACK operation for archers / catapults /
+-- bombards. Distinct from melee per Python ActionType.UNIT_RANGED_ATTACK.
+local function executeUnitRangedAttack(playerId, command)
+    return _executeAttackOperation(playerId, command, "RANGE_ATTACK", "UNIT_RANGED_ATTACK")
 end
 
 -- Fortify a unit
@@ -488,6 +510,18 @@ end
 
 -- Lock or unlock a citizen on a specific plot.
 -- command.item_id = plot index; command.metadata.lock = boolean.
+--
+-- CAVEAT (gap-analysis C2 on commit 3572832):
+-- `SetCitizenLocked` is a void Civ6 API. The `ok` returned by `pcall`
+-- only indicates that no Lua exception was thrown — it does NOT confirm
+-- the lock state was actually applied (e.g. when the plot is outside the
+-- city's working radius, or the citizen is already in the requested
+-- state). The handler returns true so the agent loop sees `ack.success=
+-- true` even if the in-game change was silently rejected. Future hardening
+-- could query `citizens:GetCitizenIsWorking(plotIndex)` after the call to
+-- compare against `lock`, but that API surface varies across Civ6 patches.
+-- For v1.8.0 we accept the void-call contract and rely on action-mask
+-- legality filtering to keep the agent from issuing nonsense plots.
 local function executeCityCitizen(playerId, command)
     local cityId = command.city_id
     local plotIndex = command.item_id
@@ -517,9 +551,11 @@ local function executeCityCitizen(playerId, command)
     end
 
     if citizens.SetCitizenLocked then
+        -- `ok` = pcall status only (see caveat above). Returning true here
+        -- means "no exception", not "lock applied".
         local ok = pcall(function() citizens:SetCitizenLocked(plotIndex, lock) end)
         if ok then
-            return true, nil, string.format("Plot %d lock=%s on city %d",
+            return true, nil, string.format("Plot %d lock=%s on city %d (void API, see caveat)",
                 plotIndex, tostring(lock), cityId)
         end
     end
@@ -721,14 +757,15 @@ local function executeNotImplemented(playerId, command)
 end
 
 -- Action dispatch table.
--- v1.8.0 W2.1 step 4: CITY_BUY, CITY_CITIZEN, UNIT_PROMOTE, UNIT_DELETE now
--- have real handlers (above). DIPLOMACY still routes to executeNotImplemented
--- pending W2.1 step 5 (executeDiplomacy dispatcher).
+-- All 17 ActionType members have real handlers as of v1.8.0 W2.1 steps 4 + 5
+-- (CITY_BUY, CITY_CITIZEN, UNIT_PROMOTE, UNIT_DELETE, DIPLOMACY) and the
+-- W2.1 hardening pass (UNIT_RANGED_ATTACK = executeUnitRangedAttack, distinct
+-- from melee UNIT_ATTACK). The action-mask invariant test enforces zero stubs.
 local ACTION_HANDLERS = {
     [ACTION_TYPES.END_TURN] = executeEndTurn,
     [ACTION_TYPES.UNIT_MOVE] = executeUnitMove,
     [ACTION_TYPES.UNIT_ATTACK] = executeUnitAttack,
-    [ACTION_TYPES.UNIT_RANGED_ATTACK] = executeUnitAttack,  -- same RequestOperation(RANGE_ATTACK)
+    [ACTION_TYPES.UNIT_RANGED_ATTACK] = executeUnitRangedAttack,
     [ACTION_TYPES.UNIT_FORTIFY] = executeUnitFortify,
     [ACTION_TYPES.UNIT_SKIP] = executeUnitSkip,
     [ACTION_TYPES.UNIT_SLEEP] = executeUnitSleep,

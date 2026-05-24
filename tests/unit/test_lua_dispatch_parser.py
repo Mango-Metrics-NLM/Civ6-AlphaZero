@@ -18,10 +18,8 @@ from tests.fixtures.lua_dispatch_parser import (
     LuaParseError,
     implemented_action_values,
     load_dispatch_from_file,
-    parse_action_handlers,
     parse_action_types,
 )
-
 
 SAMPLES_DIR = Path(__file__).parent.parent / "fixtures" / "lua_dispatch_samples"
 REAL_LUA = (
@@ -47,6 +45,27 @@ class TestParseActionTypes:
         text = "local ACTION_TYPES = { }"
         with pytest.raises(LuaParseError, match="contained no entries"):
             parse_action_types(text)
+
+    def test_double_dash_in_string_literal_fails_loud(self) -> None:
+        """Gap-analysis I4 documented behaviour: a string value containing
+        ``--`` corrupts the affected line via the comment-stripper, but the
+        failure mode is *loud* — the line is dropped, the table appears
+        empty / malformed, and we raise ``LuaParseError`` rather than
+        silently returning truncated data. The downstream invariant test
+        also catches the resulting entry-count mismatch."""
+        # Single-line table: '--' makes the closing brace get stripped.
+        text = 'local ACTION_TYPES = { OPTION = "foo--bar" }'
+        with pytest.raises(LuaParseError):
+            parse_action_types(text)
+        # Multi-line table: '--' on one entry drops just that entry; if it
+        # was the only entry, the parser raises "no entries".
+        multi = '\n'.join([
+            "local ACTION_TYPES = {",
+            '    OPTION = "foo--bar",',
+            "}",
+        ])
+        with pytest.raises(LuaParseError, match="no entries"):
+            parse_action_types(multi)
 
 
 class TestParseActionHandlers:
@@ -89,14 +108,32 @@ class TestRealLuaFile:
                 handlers[key] != NOT_IMPLEMENTED_HANDLER
             ), f"{key} still routes to {NOT_IMPLEMENTED_HANDLER} — W2.1 not done"
 
-    def test_implemented_set_matches_action_types_keys(self) -> None:
-        """Every ACTION_TYPES entry must have a corresponding handler entry,
-        and after W2.1 every one of those handlers must be real."""
+    def test_keys_match_between_action_types_and_handlers(self) -> None:
+        """Every ACTION_TYPES entry must have a corresponding ACTION_HANDLERS
+        entry (and vice-versa). Parser-correctness only — the "all handlers
+        are real (non-stub)" assertion lives in
+        :mod:`tests.unit.test_bridge_action_invariant` where it belongs.
+
+        Gap-analysis I2 on commit 3572832 surfaced the previous version of
+        this test as conflating parser correctness with implementation
+        completeness: that conflation would have failed at the wrong time
+        (during development of a deferred handler) and the proper "no stubs"
+        gate is the invariant test."""
         types, handlers = load_dispatch_from_file(REAL_LUA)
         assert set(types.keys()) == set(handlers.keys()), (
             "ACTION_TYPES and ACTION_HANDLERS keys must match exactly. "
             "Symmetric difference: " + str(set(types.keys()) ^ set(handlers.keys()))
         )
-        # All implemented in W2.1
-        implemented = implemented_action_values(types, handlers)
-        assert implemented == set(types.values())
+
+    def test_implemented_action_values_helper_returns_only_non_stubs(self) -> None:
+        """Helper correctness — the function MUST NOT include action values
+        whose handler is ``executeNotImplemented`` (this is the property the
+        invariant test depends on)."""
+        types, handlers = load_dispatch_from_file(
+            SAMPLES_DIR / "with_comments_and_trailing_commas.lua"
+        )
+        impl = implemented_action_values(types, handlers)
+        # UNIT_ATTACK in the sample maps to executeNotImplemented; it must
+        # NOT appear in the implemented set.
+        assert "unit_attack" not in impl
+        assert impl == {"end_turn", "unit_move"}

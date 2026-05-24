@@ -17,10 +17,23 @@ extracts the two structures the invariant cares about:
    to a handler function name.
 
 Handles: line comments (``-- ...``), inline comments after entries,
-trailing commas, multi-line tables, and whitespace variation. Does NOT
-handle: conditional ``if FEATURE_X then handler = ...`` branches or
-runtime mutation of the table (Civ6 mod tables are static at load time
-in this codebase).
+trailing commas, multi-line tables, and whitespace variation.
+
+Does NOT handle:
+- Conditional ``if FEATURE_X then handler = ...`` branches.
+- Runtime mutation of the table (Civ6 mod tables are static at load
+  time in this codebase).
+- Lua long-string literals containing ``--`` (e.g. ``[[option--value]]``).
+  The comment-stripper would corrupt the affected line, but the failure
+  mode is *loud, not silent*: the truncated line will not match the
+  ``KEY = "value"`` regex, so the entry is dropped and the resulting
+  count mismatch surfaces as either ``ACTION_TYPES block not found``,
+  ``contained no entries``, or (downstream) the action-mask invariant
+  test's enum-mismatch assertion. No silent corruption — just a less
+  helpful first-line error message than ideal. Documented per
+  gap-analysis I4 on commit 3572832; a future fix would two-pass strip
+  (long-strings first, then line comments) if any string value ever
+  legitimately contains ``--``.
 
 Public API:
 

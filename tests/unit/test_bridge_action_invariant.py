@@ -41,15 +41,22 @@ from tests.fixtures.lua_dispatch_parser import (
     load_dispatch_from_file,
 )
 
-
 REAL_LUA_PATH = (
     Path(__file__).parent.parent.parent / "mod" / "AlphaZeroAI" / "Scripts" / "ActionExecutor.lua"
 )
 
-# Category -> ActionType the converter is allowed to produce.
-# Used by the invariant to translate "the converter chose category X" into
-# "the Lua dispatch table must have a non-stub handler for one of these".
-# Diplomacy is its own dispatcher (sub-actions are checked separately).
+# Category -> set of ActionType the converter is allowed to produce when the
+# category-specific sub-action IS implemented in the converter. Used by the
+# invariant to translate "the converter chose category X" into "the Lua
+# dispatch table must have a non-stub handler for one of these".
+#
+# Gap-analysis I3 split: this set deliberately does NOT include `END_TURN`
+# for CITY_ACTION even though the converter falls back to END_TURN for
+# unsupported CityActionType sub-actions (CHANGE_PRODUCTION/SELL_BUILDING/
+# SET_FOCUS/RANGED_ATTACK/PURCHASE_TILE). Allowing END_TURN here would mean
+# every CITY_ACTION test trivially passes the Lua-handler check (END_TURN is
+# always implemented), defeating the invariant. The unsupported-fallback
+# path is exercised separately by ``TestStrictnessAcceptanceCriterion``.
 CATEGORY_TO_ACTION_TYPES: dict[ActionCategory, set[ActionType]] = {
     ActionCategory.END_TURN: {ActionType.END_TURN},
     ActionCategory.UNIT_ACTION: {
@@ -68,16 +75,25 @@ CATEGORY_TO_ACTION_TYPES: dict[ActionCategory, set[ActionType]] = {
         ActionType.CITY_PRODUCE,
         ActionType.CITY_BUY,
         ActionType.CITY_CITIZEN,
-        # END_TURN can also come out of CITY_ACTION via the unsupported
-        # fallback for CHANGE_PRODUCTION/SELL_BUILDING/SET_FOCUS/RANGED_ATTACK/
-        # PURCHASE_TILE — flagged in the converter's metadata with
-        # `unsupported=True`, not a real END_TURN command.
-        ActionType.END_TURN,
     },
     ActionCategory.RESEARCH_TECH: {ActionType.RESEARCH_TECH},
     ActionCategory.RESEARCH_CIVIC: {ActionType.RESEARCH_CIVIC},
     ActionCategory.DIPLOMACY: {ActionType.DIPLOMACY},
 }
+
+# CityActionType sub-action ids that fall through the converter's
+# "unsupported sub-action" branch and emit END_TURN with
+# ``metadata={"unsupported": True}``. These are deliberately deferred this
+# sprint; the unsupported-fallback contract is exercised in
+# ``TestStrictnessAcceptanceCriterion`` rather than the main invariant
+# (which would otherwise be weakened — see gap-analysis I3).
+UNSUPPORTED_CITY_SUB_ACTIONS: set[int] = {
+    6,
+    7,
+    9,
+    10,
+    11,
+}  # CHANGE_PRODUCTION, SELL_BUILDING, SET_FOCUS, RANGED_ATTACK, PURCHASE_TILE
 
 
 @pytest.fixture(scope="module")
