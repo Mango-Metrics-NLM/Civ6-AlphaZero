@@ -191,7 +191,9 @@ class TestFileBridgeLifecycle:
     @pytest.mark.asyncio
     async def test_start_writes_heartbeat(self, bridge: FileBridge) -> None:
         await bridge.start()
-        assert bridge.config.heartbeat_file.exists()
+        # Python now writes python_heartbeat.txt, not heartbeat.txt
+        python_hb = bridge.config.comm_dir / "python_heartbeat.txt"
+        assert python_hb.exists()
 
     @pytest.mark.asyncio
     async def test_stop_sets_running_false(self, bridge: FileBridge) -> None:
@@ -229,7 +231,10 @@ class TestCheckHeartbeat:
 
     @pytest.mark.asyncio
     async def test_fresh_heartbeat_returns_true(self, bridge: FileBridge) -> None:
-        await bridge.start()  # writes heartbeat with now() timestamp
+        await bridge.start()
+        # Write a fresh Lua-style heartbeat (lua_alive=True) so check_heartbeat() returns True
+        fresh = {"timestamp": time.time(), "lua_alive": True}
+        bridge.config.heartbeat_file.write_text(json.dumps(fresh))
         assert bridge.check_heartbeat() is True
 
     def test_missing_heartbeat_file_returns_false(self, bridge: FileBridge) -> None:
@@ -239,9 +244,16 @@ class TestCheckHeartbeat:
 
     def test_stale_heartbeat_returns_false(self, bridge: FileBridge) -> None:
         bridge.config.comm_dir.mkdir(parents=True, exist_ok=True)
-        # Write a heartbeat that is 1000 seconds old
-        stale = {"timestamp": time.time() - 1000, "python_alive": True}
+        # Write a Lua heartbeat that is 1000 seconds old
+        stale = {"timestamp": time.time() - 1000, "lua_alive": True}
         bridge.config.heartbeat_file.write_text(json.dumps(stale))
+        assert bridge.check_heartbeat() is False
+
+    def test_python_only_heartbeat_returns_false(self, bridge: FileBridge) -> None:
+        """Python's own heartbeat (python_alive=True) must not be mistaken for Lua."""
+        bridge.config.comm_dir.mkdir(parents=True, exist_ok=True)
+        python_hb = {"timestamp": time.time(), "python_alive": True}
+        bridge.config.heartbeat_file.write_text(json.dumps(python_hb))
         assert bridge.check_heartbeat() is False
 
     def test_invalid_json_heartbeat_returns_false(self, bridge: FileBridge) -> None:
@@ -475,6 +487,9 @@ class TestIsConnected:
     @pytest.mark.asyncio
     async def test_connected_after_start_with_fresh_heartbeat(self, bridge: FileBridge) -> None:
         await bridge.start()
+        # Write a fresh Lua heartbeat so is_connected returns True
+        fresh = {"timestamp": time.time(), "lua_alive": True}
+        bridge.config.heartbeat_file.write_text(json.dumps(fresh))
         assert bridge.is_connected is True
 
     @pytest.mark.asyncio
