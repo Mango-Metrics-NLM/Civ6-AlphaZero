@@ -123,7 +123,9 @@ function AlphaZeroConfig.Init()
 
     -- Set derived paths using detected path separator
     local basePath = getDocumentsPath()
+    print("[AlphaZero] Config: base path = " .. tostring(basePath))
     currentConfig.COMM_DIR = basePath .. PATH_SEP .. currentConfig.COMM_DIR_NAME
+    print("[AlphaZero] Config: COMM_DIR = " .. tostring(currentConfig.COMM_DIR))
     currentConfig.STATE_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.STATE_FILE
     currentConfig.COMMANDS_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.COMMANDS_FILE
     currentConfig.ACK_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ACK_FILE
@@ -143,28 +145,34 @@ function AlphaZeroConfig.LoadOverrides()
         return
     end
 
-    local configPath = currentConfig.COMM_DIR .. PATH_SEP .. "alphazero_config.json"
-    local file = io.open(configPath, "r")
-    if file then
-        local content = file:read("*all")
-        file:close()
+    -- io may not be available at all script loading contexts in Civ6
+    if not io or not io.open then
+        print("[AlphaZero] Config: io not available, skipping override file load")
+        return
+    end
 
-        -- Use JSON decoder (safe, no code execution)
-        if AlphaZeroJson and content and #content > 0 then
-            local overrides, err = AlphaZeroJson.Decode(content)
-            if overrides and type(overrides) == 'table' then
-                currentConfig = mergeTables(currentConfig, overrides)
-                -- Recalculate derived paths if COMM_DIR changed
-                if overrides.COMM_DIR then
-                    currentConfig.STATE_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.STATE_FILE
-                    currentConfig.COMMANDS_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.COMMANDS_FILE
-                    currentConfig.ACK_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ACK_FILE
-                    currentConfig.HEARTBEAT_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.HEARTBEAT_FILE
-                    currentConfig.ERROR_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ERROR_FILE
-                end
-            elseif err then
-                print("[AlphaZero] Config override parse error: " .. tostring(err))
+    local configPath = currentConfig.COMM_DIR .. PATH_SEP .. "alphazero_config.json"
+    local ok, file = pcall(io.open, configPath, "r")
+    if not ok or not file then return end
+
+    local content = file:read("*all")
+    file:close()
+
+    -- Use JSON decoder (safe, no code execution)
+    if AlphaZeroJson and content and #content > 0 then
+        local overrides, err = AlphaZeroJson.Decode(content)
+        if overrides and type(overrides) == 'table' then
+            currentConfig = mergeTables(currentConfig, overrides)
+            -- Recalculate derived paths if COMM_DIR changed
+            if overrides.COMM_DIR then
+                currentConfig.STATE_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.STATE_FILE
+                currentConfig.COMMANDS_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.COMMANDS_FILE
+                currentConfig.ACK_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ACK_FILE
+                currentConfig.HEARTBEAT_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.HEARTBEAT_FILE
+                currentConfig.ERROR_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ERROR_FILE
             end
+        elseif err then
+            print("[AlphaZero] Config override parse error: " .. tostring(err))
         end
     end
 end
