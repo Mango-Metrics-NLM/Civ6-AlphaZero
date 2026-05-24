@@ -8,8 +8,8 @@
 
 AlphaZeroConfig = AlphaZeroConfig or {}
 
--- Cross-platform path separator
-local PATH_SEP = package.config and package.config:sub(1, 1) or "/"
+-- Cross-platform path separator (safe for Civ6 Lua sandbox: package is nil)
+local PATH_SEP = (os.getenv("WINDIR") ~= nil) and "\\" or "/"
 
 -- ----------------------------------------------------------------------------
 -- Default Configuration Values
