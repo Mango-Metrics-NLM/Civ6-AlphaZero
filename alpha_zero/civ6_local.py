@@ -39,6 +39,22 @@ VALID_DEVICES = ("cpu", "cuda")
 ENV_PREFIX = "CIV6AZ_LOCAL_"
 
 
+def _get_default_bridge_ipc_dir() -> Path:
+    """Return the default IPC directory for the Civ6 bridge.
+
+    Delegates to ``alpha_zero.bridge.config._get_default_comm_dir`` which
+    already handles OneDrive-redirected *Documents* folders on Windows.
+    Falls back to ``%TEMP%/civ6az_bridge`` when the bridge package is not
+    importable (e.g., during unit tests that stub out the bridge layer).
+    """
+    try:
+        from alpha_zero.bridge.config import _get_default_comm_dir  # noqa: PLC0415
+
+        return _get_default_comm_dir()
+    except Exception:
+        return Path(tempfile.gettempdir()) / "civ6az_bridge"
+
+
 # ---------------------------------------------------------------------------
 # Configuration dataclass
 # ---------------------------------------------------------------------------
@@ -74,7 +90,7 @@ class Civ6LocalConfig:
     web_host: str = "127.0.0.1"
     web_port: int = 8080
     bridge_ipc_dir: str = field(
-        default_factory=lambda: os.path.join(tempfile.gettempdir(), "civ6az_bridge")
+        default_factory=lambda: str(_get_default_bridge_ipc_dir())
     )
     log_level: str = "INFO"
     dry_run: bool = False
