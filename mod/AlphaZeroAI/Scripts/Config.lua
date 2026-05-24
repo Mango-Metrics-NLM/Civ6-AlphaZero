@@ -96,19 +96,30 @@ local function mergeTables(a, b)
     return result
 end
 
-
 -- Get the base path for Civ6 documents.
--- Civ6's Lua sandbox strips os.getenv, so we use the native Modding API.
+-- Uses UI.GetAppSavegameDirectory() which is available in the
+-- AddUserInterfaces context (not in AddGameplayScripts).
 local function getDocumentsPath()
-    -- Civ6 exposes Modding.GetUserDataFolder() which returns the correct
-    -- "My Games/Sid Meier's Civilization VI" path, handling OneDrive redirects.
-    if Modding and Modding.GetUserDataFolder then
-        local folder = Modding.GetUserDataFolder()
-        if folder and folder ~= "" then
-            return folder
+    -- Attempt 1: Civ6 save-game directory via UI API (available in-game).
+    local ok, saveDir = pcall(function()
+        return UI.GetAppSavegameDirectory()
+    end)
+    if ok and saveDir and saveDir ~= "" then
+        print("[AlphaZero] Config: resolved save dir via UI API: " .. saveDir)
+        return saveDir
+    end
+
+    -- Attempt 2: Environment variable (set before launching Civ6).
+    if os.getenv then
+        local envDir = os.getenv("ALPHAZERO_CIV6_IPC_DIR")
+        if envDir and envDir ~= "" then
+            print("[AlphaZero] Config: resolved via env var: " .. envDir)
+            return envDir
         end
     end
-    -- Fallback: use a path relative to the mod root (works for testing)
+
+    -- Fallback: relative path (for testing)
+    print("[AlphaZero] Config: WARNING - using relative path fallback")
     return "."
 end
 

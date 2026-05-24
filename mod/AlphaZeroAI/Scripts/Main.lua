@@ -5,7 +5,16 @@
 -- Fixes: deduplicated events, proper polling handle, graceful shutdown, timeout.
 -- ============================================================================
 
+-- Load dependent modules via include() (required in AddUserInterfaces context)
+include("Config")
+include("Logger")
+include("JsonEncoder")
+include("FileIO")
+include("StateExporter")
+include("ActionExecutor")
+
 AlphaZeroBridge = AlphaZeroBridge or {}
+
 
 local Log = nil  -- Will be set after Logger initializes
 
