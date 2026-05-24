@@ -305,9 +305,7 @@ class TestConversionResult:
 
     def test_stores_command_and_decoded(self) -> None:
         cmd = LuaCommand(action_type=ActionType.UNIT_MOVE, unit_id=5)
-        decoded = HierarchicalAction(
-            category=ActionCategory.UNIT_ACTION, selector=0, action_type=0
-        )
+        decoded = HierarchicalAction(category=ActionCategory.UNIT_ACTION, selector=0, action_type=0)
         result = ConversionResult(command=cmd, decoded_action=decoded)
         assert result.command.unit_id == 5
         assert result.decoded_action.category == ActionCategory.UNIT_ACTION
@@ -473,11 +471,14 @@ class TestActionConverterConvert:
         cmd = converter.convert(flat_idx, game_state_with_units, validate=False)
         assert cmd.action_type == ActionType.UNIT_BUILD
 
-    def test_unsupported_unit_action_defaults_to_skip(
+    def test_sleep_unit_action_now_has_dedicated_branch(
         self, converter: ActionConverter, game_state_with_units: dict
     ) -> None:
-        # SLEEP is not directly mapped to a specific ActionType branch,
-        # so it falls to the else clause which produces UNIT_SKIP
+        """v1.8.0 W2.1 added a real branch for SLEEP / PROMOTE / DELETE — the
+        converter no longer silently degrades them to UNIT_SKIP. SLEEP is
+        the most-likely-to-be-issued of the three (every fortified unit can
+        sleep), so the regression matters most here. PROMOTE / DELETE are
+        covered by their own tests further down."""
         action = HierarchicalAction(
             category=ActionCategory.UNIT_ACTION,
             selector=0,
@@ -486,8 +487,68 @@ class TestActionConverterConvert:
         )
         flat_idx = converter.action_space.encode(action)
         cmd = converter.convert(flat_idx, game_state_with_units, validate=False)
-        assert cmd.action_type == ActionType.UNIT_SKIP
-        assert cmd.metadata.get("original_action") == "SLEEP"
+        assert cmd.action_type == ActionType.UNIT_SLEEP
+        assert cmd.unit_id == 10  # player-0 unit at selector=0
+
+    def test_promote_unit_action_has_dedicated_branch(
+        self, converter: ActionConverter, game_state_with_units: dict
+    ) -> None:
+        """v1.8.0 W2.1 added a dedicated PROMOTE branch.
+
+        Note: the action-space encoder represents unit-action ``target`` as a
+        spatial coordinate tuple, so the promotion-id-in-``target`` channel
+        round-trips to (0, 0). ``item_id`` therefore lands as 0 (the Lua
+        side defaults to the first available promotion in that case) — same
+        contract as the BUILD_IMPROVEMENT test above.
+        """
+        action = HierarchicalAction(
+            category=ActionCategory.UNIT_ACTION,
+            selector=0,
+            action_type=UnitActionType.PROMOTE.value,
+            target=(0, 0),
+        )
+        flat_idx = converter.action_space.encode(action)
+        cmd = converter.convert(flat_idx, game_state_with_units, validate=False)
+        assert cmd.action_type == ActionType.UNIT_PROMOTE
+        assert cmd.unit_id == 10
+
+    def test_delete_unit_action_has_dedicated_branch(
+        self, converter: ActionConverter, game_state_with_units: dict
+    ) -> None:
+        """v1.8.0 W2.1 added a dedicated DELETE branch."""
+        action = HierarchicalAction(
+            category=ActionCategory.UNIT_ACTION,
+            selector=0,
+            action_type=UnitActionType.DELETE.value,
+            target=(0, 0),
+        )
+        flat_idx = converter.action_space.encode(action)
+        cmd = converter.convert(flat_idx, game_state_with_units, validate=False)
+        assert cmd.action_type == ActionType.UNIT_DELETE
+        assert cmd.unit_id == 10
+
+    def test_manage_citizens_city_action_has_dedicated_branch(
+        self, converter: ActionConverter, game_state_with_cities: dict
+    ) -> None:
+        """v1.8.0 W2.1 added a dedicated MANAGE_CITIZENS branch.
+
+        ``item_id`` carries the plot index when present (action-space
+        encoder preserves the BUY_UNIT-style int target). The Lua side
+        will default to plot 0 if absent.
+        """
+        action = HierarchicalAction(
+            category=ActionCategory.CITY_ACTION,
+            selector=0,
+            action_type=CityActionType.MANAGE_CITIZENS.value,
+            target=5,  # plot index to toggle
+        )
+        flat_idx = converter.action_space.encode(action)
+        cmd = converter.convert(flat_idx, game_state_with_cities, validate=False)
+        assert cmd.action_type == ActionType.CITY_CITIZEN
+        assert cmd.city_id == 100
+        # City actions use target as an int by convention (see PRODUCE_UNIT
+        # in `_convert_city_action`) so plot index survives the round-trip.
+        assert cmd.item_id == 5
 
     def test_city_produce_unit_action(
         self, converter: ActionConverter, game_state_with_cities: dict
@@ -591,9 +652,7 @@ class TestActionConverterConvert:
         assert cmd.metadata.get("unsupported") is True
 
     def test_tech_action(self, converter: ActionConverter) -> None:
-        action = HierarchicalAction(
-            category=ActionCategory.RESEARCH_TECH, selector=5
-        )
+        action = HierarchicalAction(category=ActionCategory.RESEARCH_TECH, selector=5)
         flat_idx = converter.action_space.encode(action)
         game_state: dict = {"units": [], "cities": [], "current_player": 0}
         cmd = converter.convert(flat_idx, game_state, validate=False)
@@ -601,26 +660,66 @@ class TestActionConverterConvert:
         assert cmd.item_id == 5
 
     def test_civic_action(self, converter: ActionConverter) -> None:
-        action = HierarchicalAction(
-            category=ActionCategory.RESEARCH_CIVIC, selector=10
-        )
+        action = HierarchicalAction(category=ActionCategory.RESEARCH_CIVIC, selector=10)
         flat_idx = converter.action_space.encode(action)
         game_state: dict = {"units": [], "cities": [], "current_player": 0}
         cmd = converter.convert(flat_idx, game_state, validate=False)
         assert cmd.action_type == ActionType.RESEARCH_CIVIC
         assert cmd.item_id == 10
 
-    def test_unsupported_category_returns_end_turn(self, converter: ActionConverter) -> None:
-        # DIPLOMACY is a supported category in the action space but has no specific
-        # branch in _convert, so falls through to else clause
+    def test_diplomacy_category_now_returns_diplomacy_command(
+        self, converter: ActionConverter
+    ) -> None:
+        """v1.8.0 W2.1 step 3 added a real DIPLOMACY converter branch; the
+        category that used to fall through the silent-sink else now returns
+        a DIPLOMACY ``LuaCommand`` with the sub_action metadata the Lua
+        dispatcher will route on. The previous expectation (END_TURN with
+        ``unsupported=True``) was a code smell — it masked a real protocol
+        gap. This test pins the new contract."""
         action = HierarchicalAction(
-            category=ActionCategory.DIPLOMACY, selector=0, action_type=0
-        )
+            category=ActionCategory.DIPLOMACY, selector=1, action_type=0
+        )  # selector=1 = target player 1, action_type=0 = DECLARE_WAR
         flat_idx = converter.action_space.encode(action)
         game_state: dict = {"units": [], "cities": [], "current_player": 0}
         cmd = converter.convert(flat_idx, game_state, validate=False)
+        assert cmd.action_type == ActionType.DIPLOMACY
+        assert cmd.metadata is not None
+        assert cmd.metadata["sub_action"] == 0  # DECLARE_WAR
+        assert cmd.metadata["sub_action_name"] == "DECLARE_WAR"
+        assert cmd.metadata["target_player_id"] == 1
+        assert cmd.metadata["implemented_this_sprint"] is True
+
+    def test_unsupported_category_raises_in_strict_mode(self, converter: ActionConverter) -> None:
+        """v1.8.0 W2.1 step 3 made ``strict=True`` the default for
+        :meth:`ActionConverter.convert`. Categories without an implemented
+        converter branch (ESPIONAGE, GOVERNMENT, GREAT_PERSON) now raise
+        :class:`InvalidActionError` instead of silently returning END_TURN."""
+        from alpha_zero.bridge.action_converter import InvalidActionError
+
+        action = HierarchicalAction(category=ActionCategory.ESPIONAGE, selector=0, action_type=0)
+        flat_idx = converter.action_space.encode(action)
+        game_state: dict = {"units": [], "cities": [], "current_player": 0}
+        with pytest.raises(InvalidActionError, match="has no implemented converter"):
+            converter.convert(flat_idx, game_state, validate=False)
+
+    def test_unsupported_category_legacy_path_with_strict_false(
+        self, converter: ActionConverter, caplog
+    ) -> None:
+        """``strict=False`` opt-out preserves the legacy silent-sink contract
+        for backward-compatible callers (notably ``convert_with_result`` and
+        anything else that hasn't been audited yet). A warning is logged
+        whenever the legacy path fires so the regression is visible."""
+        import logging
+
+        action = HierarchicalAction(category=ActionCategory.GOVERNMENT, selector=0, action_type=0)
+        flat_idx = converter.action_space.encode(action)
+        game_state: dict = {"units": [], "cities": [], "current_player": 0}
+        with caplog.at_level(logging.WARNING, logger="alpha_zero.bridge.action_converter"):
+            cmd = converter.convert(flat_idx, game_state, validate=False, strict=False)
         assert cmd.action_type == ActionType.END_TURN
+        assert cmd.metadata is not None
         assert cmd.metadata.get("unsupported") is True
+        assert any("silent fallback" in r.message for r in caplog.records)
 
     def test_invalid_action_idx_raises_error(self, converter: ActionConverter) -> None:
         # An index beyond the action space total size should fail decode
@@ -641,9 +740,7 @@ class TestActionConverterConvert:
         with pytest.raises(InvalidActionError, match="out of range"):
             converter.convert(flat_idx, game_state_empty, validate=False)
 
-    def test_unit_action_out_of_range_raises_error(
-        self, converter: ActionConverter
-    ) -> None:
+    def test_unit_action_out_of_range_raises_error(self, converter: ActionConverter) -> None:
         # Encode a unit action for unit_idx=99, but provide only 1 player unit
         action = HierarchicalAction(
             category=ActionCategory.UNIT_ACTION,
@@ -660,9 +757,7 @@ class TestActionConverterConvert:
         with pytest.raises(InvalidActionError, match="out of range"):
             converter.convert(flat_idx, game_state, validate=False)
 
-    def test_city_action_out_of_range_raises_error(
-        self, converter: ActionConverter
-    ) -> None:
+    def test_city_action_out_of_range_raises_error(self, converter: ActionConverter) -> None:
         action = HierarchicalAction(
             category=ActionCategory.CITY_ACTION,
             selector=19,
@@ -678,9 +773,7 @@ class TestActionConverterConvert:
         with pytest.raises(InvalidActionError, match="out of range"):
             converter.convert(flat_idx, game_state, validate=False)
 
-    def test_validate_against_legal_actions_raises(
-        self, converter: ActionConverter
-    ) -> None:
+    def test_validate_against_legal_actions_raises(self, converter: ActionConverter) -> None:
         """When validate=True and action not in legal_actions, raises error."""
         end_turn_idx = converter.action_space.category_offsets[ActionCategory.END_TURN]
         game_state: dict = {"units": [], "cities": [], "current_player": 0}
@@ -689,18 +782,14 @@ class TestActionConverterConvert:
         with pytest.raises(InvalidActionError, match="not in the legal actions"):
             converter.convert(end_turn_idx, game_state, legal_actions, validate=True)
 
-    def test_validate_end_turn_passes_when_legal(
-        self, converter: ActionConverter
-    ) -> None:
+    def test_validate_end_turn_passes_when_legal(self, converter: ActionConverter) -> None:
         end_turn_idx = converter.action_space.category_offsets[ActionCategory.END_TURN]
         game_state: dict = {"units": [], "cities": [], "current_player": 0}
         legal_actions = [LegalAction(action_type="end_turn")]
         cmd = converter.convert(end_turn_idx, game_state, legal_actions, validate=True)
         assert cmd.action_type == ActionType.END_TURN
 
-    def test_validate_with_dict_legal_actions(
-        self, converter: ActionConverter
-    ) -> None:
+    def test_validate_with_dict_legal_actions(self, converter: ActionConverter) -> None:
         """Legal actions can be dicts -- converter parses them."""
         end_turn_idx = converter.action_space.category_offsets[ActionCategory.END_TURN]
         game_state: dict = {"units": [], "cities": [], "current_player": 0}
@@ -774,9 +863,7 @@ class TestConvertWithResult:
 class TestGenerateActionMask:
     """generate_action_mask creates a binary mask from legal actions."""
 
-    def test_empty_legal_actions_fallback_to_end_turn(
-        self, converter: ActionConverter
-    ) -> None:
+    def test_empty_legal_actions_fallback_to_end_turn(self, converter: ActionConverter) -> None:
         game_state: dict = {"units": [], "cities": [], "current_player": 0}
         mask = converter.generate_action_mask([], game_state)
         assert mask.shape == (converter.action_space_size,)
@@ -903,9 +990,7 @@ class TestGenerateActionMask:
         mask = converter.generate_action_mask(legal_actions, game_state)
         assert mask.sum() >= 2
 
-    def test_city_produce_unknown_type_backwards_compat(
-        self, converter: ActionConverter
-    ) -> None:
+    def test_city_produce_unknown_type_backwards_compat(self, converter: ActionConverter) -> None:
         """Unknown item_type should encode both unit and building (backwards compat)."""
         game_state = {
             "current_player": 0,
@@ -967,9 +1052,7 @@ class TestGenerateActionMask:
             "cities": [{"_id": 100, "player": 0}],
         }
         legal_actions = [
-            LegalAction(
-                action_type="produce", city_id=999, items=[0], item_type="unit"
-            ),
+            LegalAction(action_type="produce", city_id=999, items=[0], item_type="unit"),
             LegalAction(action_type="end_turn"),
         ]
         mask = converter.generate_action_mask(legal_actions, game_state)
@@ -1219,9 +1302,7 @@ class TestIsActionLegal:
         assert converter._is_action_legal(decoded, game_state, legal_actions) is False
 
     def test_other_category_defaults_to_true(self, converter: ActionConverter) -> None:
-        decoded = HierarchicalAction(
-            category=ActionCategory.DIPLOMACY, selector=0, action_type=0
-        )
+        decoded = HierarchicalAction(category=ActionCategory.DIPLOMACY, selector=0, action_type=0)
         game_state: dict = {"units": [], "cities": [], "current_player": 0}
         legal_actions = [LegalAction(action_type="end_turn")]
         assert converter._is_action_legal(decoded, game_state, legal_actions) is True

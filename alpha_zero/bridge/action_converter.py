@@ -35,10 +35,12 @@ from alpha_zero.bridge.protocol import (
     Position,
 )
 from alpha_zero.core.civ6_actions import (
+    BRIDGE_IMPLEMENTED_DIPLOMACY,
     ActionCategory,
     ActionSpace,
     ActionSpaceConfig,
     CityActionType,
+    DiplomacyActionType,
     HierarchicalAction,
     UnitActionType,
 )
@@ -343,18 +345,18 @@ class ActionConverter:
     ) -> LuaCommand:
         """Map a hierarchical diplomacy action to a Lua DIPLOMACY command.
 
-        v1.8.0 W2.1 step 3: only the 3 sub-actions in
+        v1.8.0 W2.1 step 3 (hardened in step 3.5): only the 3 sub-actions in
         :data:`alpha_zero.core.civ6_actions.BRIDGE_IMPLEMENTED_DIPLOMACY`
-        (DECLARE_WAR / MAKE_PEACE / DENOUNCE) get a `sub_action` metadata
-        entry the Lua dispatcher recognises. Other sub-actions still emit a
-        DIPLOMACY command so the Lua side can log the deferred sub-action
-        in one place — `executeDiplomacy` returns NOT_IMPLEMENTED for them.
-        """
-        from alpha_zero.core.civ6_actions import (
-            BRIDGE_IMPLEMENTED_DIPLOMACY,
-            DiplomacyActionType,
-        )
+        (DECLARE_WAR / MAKE_PEACE / DENOUNCE) get an ``implemented_this_sprint=True``
+        marker. Other sub-actions still emit a DIPLOMACY command so the Lua
+        side can log the deferred sub-action in one place — ``executeDiplomacy``
+        returns ``NOT_IMPLEMENTED`` for them.
 
+        Selector convention: ``decoded.selector`` holds the target player id
+        for diplomacy actions (Level 1 of the action hierarchy). ``decoded.target``
+        is reserved for spatial coordinates / item indices and is NOT a valid
+        player-id field for diplomacy — earlier draft used it by mistake.
+        """
         # The decoded.action_type for DIPLOMACY is the IntEnum int value.
         sub_action_int = int(decoded.action_type)
         try:
@@ -364,10 +366,14 @@ class ActionConverter:
             # for the Lua side to log but mark unsupported.
             return LuaCommand(
                 action_type=ActionType.DIPLOMACY,
-                metadata={"sub_action": sub_action_int, "unsupported_sub_action": True},
+                metadata={
+                    "sub_action": sub_action_int,
+                    "unsupported_sub_action": True,
+                },
             )
 
-        target_player = int(getattr(decoded, "target", 0) or 0)
+        # Level 1 selector encodes the opposing player id for diplomacy.
+        target_player = int(decoded.selector or 0)
         return LuaCommand(
             action_type=ActionType.DIPLOMACY,
             metadata={
@@ -396,7 +402,14 @@ class ActionConverter:
         """
         try:
             decoded = self.action_space.decode(action_idx)
-            command = self.convert(action_idx, game_state, legal_actions, validate=False)
+            # strict=False preserves the legacy silent-sink contract that
+            # `convert_with_result` callers (notably
+            # `alpha_zero.envs.real_civ6_env`) depend on: unsupported
+            # categories return an END_TURN placeholder rather than raising.
+            # The outer wrapper distinguishes via `is_valid` / `validation_error`.
+            command = self.convert(
+                action_idx, game_state, legal_actions, validate=False, strict=False
+            )
 
             # Check if valid
             is_valid = True
@@ -520,12 +533,44 @@ class ActionConverter:
                 item_id=target if isinstance(target, int) else 0,
             )
 
+        elif action_type == UnitActionType.SLEEP:
+            # v1.8.0 W2.1 — surface SLEEP as its own command type instead of
+            # silently degrading to SKIP. Lua handler at ActionExecutor.lua:233.
+            return LuaCommand(
+                action_type=ActionType.UNIT_SLEEP,
+                unit_id=unit_id,
+            )
+
+        elif action_type == UnitActionType.PROMOTE:
+            # v1.8.0 W2.1 — Lua handler implemented in step 4. Promotion id
+            # carried in `item_id` so the Lua side can pick the promotion to
+            # apply; defaults to 0 (mod selects the first available promotion).
+            return LuaCommand(
+                action_type=ActionType.UNIT_PROMOTE,
+                unit_id=unit_id,
+                item_id=target if isinstance(target, int) else 0,
+            )
+
+        elif action_type == UnitActionType.DELETE:
+            # v1.8.0 W2.1 — Lua handler implemented in step 4.
+            return LuaCommand(
+                action_type=ActionType.UNIT_DELETE,
+                unit_id=unit_id,
+            )
+
         else:
-            # Default to skip for unsupported action types
+            # Unit action types still without a dedicated converter branch
+            # (ATTACK already handled above as the explicit case; remaining
+            # below-this-line members are RANGED_ATTACK, PILLAGE, REPAIR,
+            # EMBARK, DISEMBARK, HEAL, AIRLIFT, PARADROP — deferred to a
+            # follow-up sprint). Fall back to SKIP and record metadata so
+            # the action-mask invariant test can identify gaps; the agent
+            # loop will report `invalid_actions += 1` when the Lua side
+            # acks NOT_IMPLEMENTED.
             return LuaCommand(
                 action_type=ActionType.UNIT_SKIP,
                 unit_id=unit_id,
-                metadata={"original_action": action_type.name},
+                metadata={"original_action": action_type.name, "unsupported": True},
             )
 
     def _convert_city_action(
@@ -614,8 +659,23 @@ class ActionConverter:
                 item_type="building",
             )
 
+        elif action_type == CityActionType.MANAGE_CITIZENS:
+            # v1.8.0 W2.1 — Lua handler implemented in step 4. `item_id`
+            # carries the plot index to toggle; `metadata["lock"]` carries
+            # the desired lock state (True/False) for `SetCitizenLocked`.
+            lock_state = bool(getattr(decoded, "lock_state", False))
+            return LuaCommand(
+                action_type=ActionType.CITY_CITIZEN,
+                city_id=city_id,
+                item_id=item_id,
+                metadata={"lock": lock_state},
+            )
+
         else:
-            # Default to no-op for unsupported actions
+            # City action types still without a dedicated converter branch
+            # (CHANGE_PRODUCTION, SELL_BUILDING, SET_FOCUS, RANGED_ATTACK,
+            # PURCHASE_TILE). Fall back to END_TURN and record metadata so
+            # the action-mask invariant test can identify gaps.
             return LuaCommand(
                 action_type=ActionType.END_TURN,
                 metadata={"city_action": action_type.name, "unsupported": True},
