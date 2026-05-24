@@ -312,7 +312,10 @@ class TestApplyPolicyPostprocessing:
         import logging
 
         value = torch.tensor([[0.7, -0.4, 0.1]])  # 3-player vector
-        with caplog.at_level(logging.DEBUG, logger="alpha_zero.inference.inference_engine"):
+        # The shape-normaliser lives in alpha_zero.bridge.utils now (shared
+        # between InferenceEngine and BridgeAgentLoop). Catch its DEBUG log
+        # there rather than on the inference_engine logger.
+        with caplog.at_level(logging.DEBUG, logger="alpha_zero.bridge.utils"):
             _probs, value_estimate = engine._apply_policy_postprocessing(
                 self._logits(), self._mask(), temperature=1.0, value=value
             )

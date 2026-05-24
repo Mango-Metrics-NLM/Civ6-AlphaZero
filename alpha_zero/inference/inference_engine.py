@@ -21,6 +21,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from alpha_zero.bridge.utils import extract_scalar_value
 from alpha_zero.cloud.gcp.config import NetworkArchitectureConfig
 from alpha_zero.cloud.gcp.storage import GCSModelStorage
 from alpha_zero.core.civ6_mcts import MCTSNetwork
@@ -284,18 +285,10 @@ class InferenceEngine:
             ``value[0].item()`` only works for ``(1,)`` and would raise on
             ``(1, N)`` with N > 1, so we flatten first.
         """
-        if value is None:
-            value_estimate = 0.0
-        else:
-            flat = value.reshape(-1)
-            value_estimate = float(flat[0].item()) if flat.numel() > 0 else 0.0
-            if flat.numel() > 1:
-                logger.debug(
-                    "Network returned per-player value tensor (shape=%s); "
-                    "reporting first player's value as scalar (%.4f)",
-                    tuple(value.shape),
-                    value_estimate,
-                )
+        # Shared shape-normaliser keeps this in sync with
+        # alpha_zero.bridge.agent_loop.GreedyNetworkPolicy._infer_sync so the
+        # PR #82 invariant can only drift in one place.
+        value_estimate = extract_scalar_value(value, log_per_player=True)
 
         masked_logits = policy_logits.clone()
         masked_logits[0, action_mask == 0] = float("-inf")

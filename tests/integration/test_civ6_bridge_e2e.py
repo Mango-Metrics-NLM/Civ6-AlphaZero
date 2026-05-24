@@ -28,20 +28,13 @@ from alpha_zero.bridge.agent_loop import (
 )
 from alpha_zero.bridge.config import BridgeConfig
 from alpha_zero.bridge.file_bridge import MockFileBridge
-from alpha_zero.bridge.protocol import (
-    GameStateData,
-    LegalAction,
-    MapData,
-    MessageType,
-    PlayerData,
-    TileData,
-)
+from alpha_zero.bridge.protocol import MessageType
 from alpha_zero.bridge.state_converter import StateConverter
 from alpha_zero.core.civ6_network import MicroCivNetwork
 from alpha_zero.storage.config import StorageConfig
 from alpha_zero.storage.factory import create_storage_backend
+from tests.fixtures.bridge_snapshots import state_message_dict
 from tests.fixtures.build_smoke_champion import build_smoke_champion
-
 
 # --------------------------------------------------------------------------- #
 # Fixtures
@@ -69,89 +62,12 @@ def smoke_network(smoke_champion: Path) -> MicroCivNetwork:
     return net
 
 
-def _minimal_state(turn_id: int = 1) -> GameStateData:
-    """A minimal but protocol-valid GameStateData with one legal end_turn action.
-
-    Coordinates and player IDs follow what StateConverter expects: at least
-    one tile, two players, ``end_turn`` always legal so the agent always has
-    a fallback even if the network's preferred action is illegal.
-    """
-    tiles = [
-        TileData(
-            x=0,
-            y=0,
-            terrain="TERRAIN_GRASS",
-            features=[],
-            is_visible=True,
-            is_revealed=True,
-        )
-    ]
-    return GameStateData(
-        turn_id=turn_id,
-        player_id=0,
-        map_data=MapData(width=8, height=8, tiles=tiles),
-        units=[],
-        cities=[],
-        players=[
-            PlayerData(id=0, civilization="CIVILIZATION_AMERICA", is_alive=True),
-            PlayerData(id=1, civilization="CIVILIZATION_ENGLAND", is_alive=True),
-        ],
-        legal_actions=[LegalAction(action_type="end_turn", unit_id=0, city_id=0)],
-        current_player_civ="CIVILIZATION_AMERICA",
-    )
-
-
+# State helpers live in tests/fixtures/bridge_snapshots.py so the W2.2
+# Civ6MctsPolicy tests (and any future bridge consumer) can reuse them
+# without duplicating per-schema serialisation logic. See gap-analysis
+# Important #5 for rationale.
 def _state_dict(turn_id: int = 1) -> dict:
-    """A StateMessage-compatible dict wrapping ``_minimal_state``."""
-    state = _minimal_state(turn_id)
-    state_payload = {
-        "turn_id": state.turn_id,
-        "player_id": state.player_id,
-        "player": {
-            "id": state.player_id,
-            "civilization": state.current_player_civ,
-            "is_alive": True,
-        },
-        "map_data": {
-            "width": state.map_data.width,
-            "height": state.map_data.height,
-            "tiles": [
-                {
-                    "x": t.x,
-                    "y": t.y,
-                    "terrain": t.terrain,
-                    "features": t.features,
-                    "is_visible": t.is_visible,
-                    "is_revealed": t.is_revealed,
-                }
-                for t in state.map_data.tiles
-            ],
-        },
-        "units": [],
-        "cities": [],
-        "players": [
-            {
-                "id": p.id,
-                "civilization": p.civilization,
-                "is_alive": p.is_alive,
-            }
-            for p in state.players
-        ],
-        "legal_actions": [
-            {"action_type": la.action_type, "unit_id": la.unit_id, "city_id": la.city_id}
-            for la in state.legal_actions
-        ],
-        "current_player_civ": state.current_player_civ,
-        "era": 0,
-        "is_game_over": state.is_game_over,
-        "winner_id": state.winner_id,
-    }
-    return {
-        "type": MessageType.STATE.value,
-        "msg_id": turn_id,
-        "timestamp": 0.0,
-        "state": state_payload,
-    }
+    return state_message_dict(turn_id=turn_id, board_size=_TEST_BOARD_SIZE)
 
 
 # --------------------------------------------------------------------------- #
@@ -186,12 +102,14 @@ async def test_bridge_e2e_one_turn(smoke_network: MicroCivNetwork) -> None:
         bridge.set_mock_state(_state_dict(turn_id=1))
         # Ack with the next msg_id the loop will use; the bridge increments
         # the counter on send_command via _next_msg_id().
-        bridge.set_mock_ack({
-            "msg_id": bridge._msg_counter + 1,
-            "type": MessageType.ACK.value,
-            "timestamp": 0.0,
-            "success": True,
-        })
+        bridge.set_mock_ack(
+            {
+                "msg_id": bridge._msg_counter + 1,
+                "type": MessageType.ACK.value,
+                "timestamp": 0.0,
+                "success": True,
+            }
+        )
         try:
             return await loop.run()
         finally:
@@ -237,12 +155,14 @@ async def test_bridge_e2e_multiple_turns_uses_real_network(
             run_task = asyncio.create_task(loop.run())
             for turn in range(1, 4):
                 bridge.set_mock_state(_state_dict(turn_id=turn))
-                bridge.set_mock_ack({
-                    "msg_id": bridge._msg_counter + 1,
-                    "type": MessageType.ACK.value,
-                    "timestamp": 0.0,
-                    "success": True,
-                })
+                bridge.set_mock_ack(
+                    {
+                        "msg_id": bridge._msg_counter + 1,
+                        "type": MessageType.ACK.value,
+                        "timestamp": 0.0,
+                        "success": True,
+                    }
+                )
                 # Wait briefly for the loop to consume the state.
                 await asyncio.sleep(0.1)
             return await run_task

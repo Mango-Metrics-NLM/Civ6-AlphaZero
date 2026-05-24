@@ -51,6 +51,7 @@ from alpha_zero.bridge.protocol import (
     create_end_turn_command,
 )
 from alpha_zero.bridge.state_converter import StateConverter
+from alpha_zero.bridge.utils import extract_scalar_value
 
 logger = logging.getLogger(__name__)
 
@@ -159,10 +160,10 @@ class GreedyNetworkPolicy:
             return 0, 0.0
 
         action_idx = int(np.argmax(masked))
-        # value tensor may be shape (1,) / (1,1) / (1,N) per the PR #82 fix;
-        # flatten + take first element so all shapes round-trip.
-        flat = value.reshape(-1)
-        value_scalar = float(flat[0].item()) if flat.numel() > 0 else 0.0
+        # Value tensor may be ()/(1,)/(1,1)/(1,N) per the PR #82 invariant;
+        # delegate to the shared shape-normaliser so this stays in sync with
+        # alpha_zero.inference.inference_engine._apply_policy_postprocessing.
+        value_scalar = extract_scalar_value(value)
         return action_idx, value_scalar
 
 
@@ -197,6 +198,13 @@ class AgentLoopConfig:
     reconnect_window_s: float = 60.0
     snapshot_log_dir: Path | None = None
     mcts_in_thread: bool = True
+    # Observation-fallback shape used when the StateConverter encoding path
+    # raises. Defaults match the 2-player MicroCiv encoder convention; bump
+    # ``fallback_spatial_channels`` to 84 when targeting Civ6StateEncoder
+    # and ``fallback_board_size`` to whatever the trained network expects.
+    fallback_spatial_channels: int = 13
+    fallback_vector_dim: int = 64
+    fallback_board_size: int = 8
 
     def __post_init__(self) -> None:
         if self.max_turns < 0:
@@ -210,6 +218,14 @@ class AgentLoopConfig:
             )
         if self.reconnect_window_s < 0:
             raise ValueError(f"reconnect_window_s must be >= 0, got {self.reconnect_window_s}")
+        if self.fallback_spatial_channels <= 0:
+            raise ValueError(
+                f"fallback_spatial_channels must be > 0, got {self.fallback_spatial_channels}"
+            )
+        if self.fallback_vector_dim <= 0:
+            raise ValueError(f"fallback_vector_dim must be > 0, got {self.fallback_vector_dim}")
+        if self.fallback_board_size < 4:
+            raise ValueError(f"fallback_board_size must be >= 4, got {self.fallback_board_size}")
         if self.snapshot_log_dir is not None:
             self.snapshot_log_dir = Path(self.snapshot_log_dir)
 
@@ -224,6 +240,9 @@ class AgentLoopConfig:
             CIV6AZ_AGENT_RECONNECT_WINDOW_S
             CIV6AZ_AGENT_SNAPSHOT_LOG_DIR
             CIV6AZ_AGENT_MCTS_IN_THREAD  ("1"/"0"/"true"/"false")
+            CIV6AZ_AGENT_FALLBACK_SPATIAL_CHANNELS
+            CIV6AZ_AGENT_FALLBACK_VECTOR_DIM
+            CIV6AZ_AGENT_FALLBACK_BOARD_SIZE
         """
         source = env if env is not None else os.environ
         kwargs: dict[str, Any] = {}
@@ -239,6 +258,12 @@ class AgentLoopConfig:
             kwargs["snapshot_log_dir"] = Path(raw)
         if (raw := source.get(ENV_PREFIX + "MCTS_IN_THREAD")) is not None:
             kwargs["mcts_in_thread"] = raw.lower() in ("1", "true", "yes", "on")
+        if (raw := source.get(ENV_PREFIX + "FALLBACK_SPATIAL_CHANNELS")) is not None:
+            kwargs["fallback_spatial_channels"] = int(raw)
+        if (raw := source.get(ENV_PREFIX + "FALLBACK_VECTOR_DIM")) is not None:
+            kwargs["fallback_vector_dim"] = int(raw)
+        if (raw := source.get(ENV_PREFIX + "FALLBACK_BOARD_SIZE")) is not None:
+            kwargs["fallback_board_size"] = int(raw)
         return cls(**kwargs)
 
 
@@ -481,7 +506,7 @@ class BridgeAgentLoop:
             return
 
         command = CommandMessage.create_single(
-            msg_id=self.bridge._next_msg_id(),
+            msg_id=self.bridge.next_msg_id(),
             command=lua_command,
         )
 
@@ -542,7 +567,7 @@ class BridgeAgentLoop:
         """Send an end_turn fallback. Best-effort; never raises."""
         self._stats.fallback_end_turns += 1
         try:
-            cmd = create_end_turn_command(self.bridge._next_msg_id())
+            cmd = create_end_turn_command(self.bridge.next_msg_id())
             await self.bridge.send_command(cmd)
             logger.debug("Sent safe end_turn fallback (count=%d)", self._stats.fallback_end_turns)
         except Exception as exc:
@@ -589,15 +614,52 @@ class BridgeAgentLoop:
                 "action_mask": legal_mask,
             }
         except Exception as exc:
-            # Fallback: zeros with correct shapes if the converter cannot
-            # re-encode. The policy will still produce a (likely random)
-            # action, which the loop then masks/validates.
-            logger.warning("State encoding failed (%s); using zero observation", exc)
+            # Fallback: zeros with the configured fallback shapes if the
+            # converter cannot re-encode. The policy will still produce a
+            # (likely random) action, which the loop then masks/validates.
+            # Shapes come from AgentLoopConfig.fallback_* (not hardcoded), and
+            # board_size additionally honours the live StateConverter when
+            # available so it stays correct after a reconfigure.
+            shapes = self._resolve_fallback_shapes()
+            logger.warning(
+                "State encoding failed (%s); using zero observation "
+                "(spatial_channels=%d, board_size=%d, vector_dim=%d)",
+                exc,
+                shapes["spatial_channels"],
+                shapes["board_size"],
+                shapes["vector_dim"],
+            )
             return {
-                "spatial": np.zeros((13, 8, 8), dtype=np.float32),
-                "vector": np.zeros(64, dtype=np.float32),
+                "spatial": np.zeros(
+                    (
+                        shapes["spatial_channels"],
+                        shapes["board_size"],
+                        shapes["board_size"],
+                    ),
+                    dtype=np.float32,
+                ),
+                "vector": np.zeros(shapes["vector_dim"], dtype=np.float32),
                 "action_mask": legal_mask,
             }
+
+    def _resolve_fallback_shapes(self) -> dict[str, int]:
+        """Resolve fallback-observation shapes from config and converter.
+
+        Order of precedence (most specific wins):
+          1. ``state_converter.board_size`` if the live converter exposes
+             one (covers per-instance overrides without a config reload).
+          2. ``AgentLoopConfig.fallback_*`` (env-overridable via
+             ``CIV6AZ_AGENT_FALLBACK_*``).
+        """
+        board_size = int(
+            getattr(self.state_converter, "board_size", self.config.fallback_board_size)
+            or self.config.fallback_board_size
+        )
+        return {
+            "spatial_channels": self.config.fallback_spatial_channels,
+            "vector_dim": self.config.fallback_vector_dim,
+            "board_size": board_size,
+        }
 
     def _maybe_log_snapshot(
         self,

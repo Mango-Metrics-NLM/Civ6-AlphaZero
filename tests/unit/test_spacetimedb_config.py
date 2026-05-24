@@ -68,7 +68,7 @@ class TestSpacetimeDBConfig:
         """CIV6_SPACETIMEDB_AUTH_TOKEN overrides auth_token."""
         with patch.dict(
             os.environ,
-            {"CIV6_SPACETIMEDB_AUTH_TOKEN": "secret-token-123"},  # noqa: S105
+            {"CIV6_SPACETIMEDB_AUTH_TOKEN": "secret-token-123"},
             clear=True,
         ):
             config = SpacetimeDBConfig()

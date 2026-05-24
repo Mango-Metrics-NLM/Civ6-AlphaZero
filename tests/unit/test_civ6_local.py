@@ -1039,6 +1039,54 @@ class TestRunCiv6Bridge:
         assert network is not None
         assert any("synthetic weights" in r.message.lower() for r in caplog.records)
 
+    def test_run_bridge_corrupt_checkpoint_falls_back_with_warning(
+        self, tmp_path: Path, caplog
+    ) -> None:
+        """Gap-analysis Important #4: corrupt-checkpoint branch must be tested.
+
+        A checkpoint file that exists but can't be deserialised (corrupted,
+        wrong format, etc.) used to be a silent failure. The fallback now
+        logs a clear warning and returns a synthetic-weights network so
+        the bridge agent loop can still run for diagnostics.
+        """
+        import logging
+
+        from alpha_zero.civ6_local import _build_network_for_bridge
+
+        # Write garbage to a .pt file - torch.load will raise.
+        ckpt = tmp_path / "corrupt.pt"
+        ckpt.write_text("this is not a real checkpoint")
+
+        cfg = Civ6LocalConfig(mode="civ6", board_size=8, checkpoint_path=str(ckpt))
+        with caplog.at_level(logging.WARNING, logger="alpha_zero.civ6_local"):
+            network = _build_network_for_bridge(cfg)
+
+        assert network is not None  # synthetic-weights fallback succeeded
+        assert any(
+            "failed to load checkpoint" in r.message.lower()
+            and "synthetic weights" in r.message.lower()
+            for r in caplog.records
+        ), [r.message for r in caplog.records]
+
+    def test_run_bridge_missing_checkpoint_path_falls_back_with_warning(
+        self, tmp_path: Path, caplog
+    ) -> None:
+        """Checkpoint path that points nowhere logs a clear warning and
+        falls through to the synthetic-weights branch."""
+        import logging
+
+        from alpha_zero.civ6_local import _build_network_for_bridge
+
+        missing = tmp_path / "does_not_exist.pt"
+        cfg = Civ6LocalConfig(mode="civ6", board_size=8, checkpoint_path=str(missing))
+        with caplog.at_level(logging.WARNING, logger="alpha_zero.civ6_local"):
+            network = _build_network_for_bridge(cfg)
+
+        assert network is not None
+        assert any("does not exist" in r.message.lower() for r in caplog.records), [
+            r.message for r in caplog.records
+        ]
+
 
 # ---------------------------------------------------------------------------
 # run_web — unit-level mock test

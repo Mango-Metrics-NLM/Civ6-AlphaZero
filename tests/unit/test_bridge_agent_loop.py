@@ -38,7 +38,6 @@ from alpha_zero.bridge.file_bridge import (
 )
 from alpha_zero.bridge.protocol import AckMessage
 
-
 # ---------------------------------------------------------------------------
 # AgentLoopConfig
 # ---------------------------------------------------------------------------
@@ -84,6 +83,9 @@ class TestAgentLoopConfig:
             f"{ENV_PREFIX}RECONNECT_WINDOW_S": "5",
             f"{ENV_PREFIX}SNAPSHOT_LOG_DIR": str(tmp_path),
             f"{ENV_PREFIX}MCTS_IN_THREAD": "false",
+            f"{ENV_PREFIX}FALLBACK_SPATIAL_CHANNELS": "84",
+            f"{ENV_PREFIX}FALLBACK_VECTOR_DIM": "128",
+            f"{ENV_PREFIX}FALLBACK_BOARD_SIZE": "16",
         }
         cfg = AgentLoopConfig.from_env(env=env)
         assert cfg.max_turns == 42
@@ -92,6 +94,24 @@ class TestAgentLoopConfig:
         assert cfg.reconnect_window_s == 5.0
         assert cfg.snapshot_log_dir == tmp_path
         assert cfg.mcts_in_thread is False
+        # Fallback observation shape now config-driven (gap fix #1).
+        assert cfg.fallback_spatial_channels == 84
+        assert cfg.fallback_vector_dim == 128
+        assert cfg.fallback_board_size == 16
+
+    @pytest.mark.parametrize(
+        ("kwargs", "match"),
+        [
+            ({"fallback_spatial_channels": 0}, "fallback_spatial_channels"),
+            ({"fallback_spatial_channels": -1}, "fallback_spatial_channels"),
+            ({"fallback_vector_dim": 0}, "fallback_vector_dim"),
+            ({"fallback_board_size": 3}, "fallback_board_size"),
+        ],
+    )
+    def test_fallback_shapes_validated(self, kwargs: dict, match: str) -> None:
+        """Fallback shape fields must be positive / non-tiny."""
+        with pytest.raises(ValueError, match=match):
+            AgentLoopConfig(**kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -442,9 +462,7 @@ class TestBridgeAgentLoopRecovery:
     ) -> None:
         mock_bridge.wait_for_state.side_effect = ConnectionLostError()
         loop = make_loop(
-            config=AgentLoopConfig(
-                max_turns=5, per_turn_timeout_s=0.5, on_disconnect="exit"
-            )
+            config=AgentLoopConfig(max_turns=5, per_turn_timeout_s=0.5, on_disconnect="exit")
         )
 
         code = await loop.run()
@@ -460,12 +478,8 @@ class TestBridgeAgentLoopRecovery:
         make_loop,
     ) -> None:
         # Patch backoff bounds so the test doesn't burn 8 real seconds.
-        monkeypatch.setattr(
-            "alpha_zero.bridge.agent_loop._RECONNECT_INITIAL_BACKOFF_S", 0.01
-        )
-        monkeypatch.setattr(
-            "alpha_zero.bridge.agent_loop._RECONNECT_MAX_BACKOFF_S", 0.05
-        )
+        monkeypatch.setattr("alpha_zero.bridge.agent_loop._RECONNECT_INITIAL_BACKOFF_S", 0.01)
+        monkeypatch.setattr("alpha_zero.bridge.agent_loop._RECONNECT_MAX_BACKOFF_S", 0.05)
 
         # First wait_for_state -> disconnect; second -> state.
         mock_bridge.wait_for_state.side_effect = [
@@ -495,12 +509,8 @@ class TestBridgeAgentLoopRecovery:
         monkeypatch,
         make_loop,
     ) -> None:
-        monkeypatch.setattr(
-            "alpha_zero.bridge.agent_loop._RECONNECT_INITIAL_BACKOFF_S", 0.01
-        )
-        monkeypatch.setattr(
-            "alpha_zero.bridge.agent_loop._RECONNECT_MAX_BACKOFF_S", 0.02
-        )
+        monkeypatch.setattr("alpha_zero.bridge.agent_loop._RECONNECT_INITIAL_BACKOFF_S", 0.01)
+        monkeypatch.setattr("alpha_zero.bridge.agent_loop._RECONNECT_MAX_BACKOFF_S", 0.02)
 
         mock_bridge.wait_for_state.side_effect = ConnectionLostError()
         # Heartbeat never recovers.
@@ -565,9 +575,7 @@ class TestBridgeAgentLoopStats:
         mock_bridge.wait_for_state.return_value = fake_state
         fake_state_converter.convert.side_effect = RuntimeError("boom")
         loop = make_loop(
-            config=AgentLoopConfig(
-                max_turns=1, per_turn_timeout_s=0.5, snapshot_log_dir=tmp_path
-            )
+            config=AgentLoopConfig(max_turns=1, per_turn_timeout_s=0.5, snapshot_log_dir=tmp_path)
         )
 
         await loop.run()
@@ -576,3 +584,248 @@ class TestBridgeAgentLoopStats:
         children = list(tmp_path.iterdir())
         assert children, "expected snapshot directory to be created"
         assert any((c / "error.txt").exists() for c in children)
+
+
+# ---------------------------------------------------------------------------
+# Error paths surfaced by the W1.5 gap-analysis pass
+# ---------------------------------------------------------------------------
+
+
+class TestBridgeAgentLoopErrorPaths:
+    """Coverage for branches the original W1.1 suite did not exercise."""
+
+    @pytest.mark.asyncio
+    async def test_send_safe_end_turn_failure_is_recorded(
+        self,
+        mock_bridge: MagicMock,
+        fake_state: MagicMock,
+        fake_state_converter: MagicMock,
+        make_loop,
+    ) -> None:
+        """When even the fallback end_turn raises, the loop must not crash.
+
+        Regression for the inner ``except`` branch in
+        :meth:`BridgeAgentLoop._send_safe_end_turn`. The previous test suite
+        only exercised the happy-fallback path (converter raises ->
+        send_command succeeds). This guards the failure-within-fallback
+        branch so we don't trade one silent failure for another.
+        """
+        mock_bridge.wait_for_state.return_value = fake_state
+        # Trigger the safe-end_turn path via a converter failure...
+        fake_state_converter.convert.side_effect = RuntimeError("converter boom")
+        # ...and make even the fallback send_command raise.
+        mock_bridge.send_command.side_effect = OSError("disk full")
+
+        loop = make_loop(config=AgentLoopConfig(max_turns=1, per_turn_timeout_s=0.5))
+        code = await loop.run()
+
+        # Loop should still terminate cleanly (no propagation), but the
+        # failure is recorded in stats for the eval harness.
+        assert code == BridgeAgentLoop.EXIT_OK
+        stats = loop.stats()
+        assert stats["fallback_end_turns"] == 1
+        assert stats["last_error"] is not None
+        assert "fallback_end_turn" in stats["last_error"]
+
+    @pytest.mark.asyncio
+    async def test_build_observation_falls_back_to_config_shapes(
+        self,
+        mock_bridge: MagicMock,
+        fake_state: MagicMock,
+        fake_state_converter: MagicMock,
+        fake_policy: AsyncMock,
+        fake_action_converter: MagicMock,
+    ) -> None:
+        """When the encoding path fails, the fallback obs matches AgentLoopConfig.
+
+        Regression for Critical-1 of the gap analysis: previously this path
+        hardcoded ``(13, 8, 8)`` regardless of the network's input shape.
+        """
+        from alpha_zero.bridge.agent_loop import BridgeAgentLoop
+
+        # Force the "_obs" shortcut OFF so the encoding path runs, then
+        # make convert_and_encode raise to trip the fallback.
+        fake_state_converter.convert.return_value = {
+            "current_player": 0,
+            "units": [],
+            "cities": [],
+            "_legal_actions": [],
+            "_map_size": (4, 4),
+            # No "_obs" key => loop must go through convert_and_encode.
+        }
+        fake_state_converter.convert_and_encode.side_effect = RuntimeError("encode boom")
+        fake_state_converter.board_size = 4  # honour the converter's board_size
+
+        mock_bridge.wait_for_state.return_value = fake_state
+
+        loop = BridgeAgentLoop(
+            bridge=mock_bridge,
+            policy=fake_policy,
+            state_converter=fake_state_converter,
+            action_converter=fake_action_converter,
+            config=AgentLoopConfig(
+                max_turns=1,
+                per_turn_timeout_s=0.5,
+                fallback_spatial_channels=21,  # exotic; not the legacy 13
+                fallback_vector_dim=96,
+                fallback_board_size=16,  # should be overridden by converter
+            ),
+        )
+
+        await loop.run()
+
+        # The policy was invoked - capture the observation it received.
+        first_call = fake_policy.select_action.await_args
+        assert first_call is not None
+        obs = first_call.args[0]
+        # Spatial: configured channels x converter board size x converter board size.
+        assert obs["spatial"].shape == (
+            21,
+            4,
+            4,
+        ), f"Expected (21, 4, 4) from config + converter board_size; got {obs['spatial'].shape}"
+        # Vector dim from config.
+        assert obs["vector"].shape == (96,)
+        # dtype invariant - float32 always.
+        assert obs["spatial"].dtype == np.dtype("float32")
+        assert obs["vector"].dtype == np.dtype("float32")
+
+    @pytest.mark.asyncio
+    async def test_loop_uses_public_next_msg_id(
+        self,
+        mock_bridge: MagicMock,
+        fake_state: MagicMock,
+        make_loop,
+    ) -> None:
+        """Critical-2 of the gap analysis: callers must use the public alias.
+
+        If the loop is ever refactored to skip ``next_msg_id`` and reach
+        through ``_next_msg_id`` again, MockFileBridge tests would still
+        pass (MagicMock auto-creates the attribute) but real consumers
+        would break. This test pins the public-API contract.
+        """
+        mock_bridge.wait_for_state.return_value = fake_state
+        loop = make_loop(config=AgentLoopConfig(max_turns=1, per_turn_timeout_s=0.5))
+
+        await loop.run()
+
+        # `next_msg_id` (public) was called at least once for the command.
+        assert mock_bridge.next_msg_id.called, (
+            "BridgeAgentLoop must call the public next_msg_id(), not "
+            "_next_msg_id(). See gap-analysis Critical #2."
+        )
+
+
+# ---------------------------------------------------------------------------
+# FileBridge.next_msg_id public alias (gap-analysis Critical #2)
+# ---------------------------------------------------------------------------
+
+
+class TestFileBridgeNextMsgIdAlias:
+    """The public alias must produce the same monotonic IDs as the legacy
+    private method."""
+
+    def test_public_alias_delegates_to_private(self) -> None:
+        from alpha_zero.bridge.config import BridgeConfig
+        from alpha_zero.bridge.file_bridge import FileBridge
+
+        bridge = FileBridge(BridgeConfig())
+        a = bridge.next_msg_id()
+        b = bridge.next_msg_id()
+        c = bridge._next_msg_id()  # legacy path still works
+        assert b == a + 1
+        assert c == b + 1
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage for low-probability error paths
+# ---------------------------------------------------------------------------
+
+
+class TestBridgeAgentLoopBranchCoverage:
+    """Tests targeting branches missed by the main suite, to keep the
+    bridge module above the 85% coverage floor as new paths are added."""
+
+    @pytest.mark.asyncio
+    async def test_policy_exception_triggers_safe_end_turn(
+        self,
+        mock_bridge: MagicMock,
+        fake_state: MagicMock,
+        fake_policy: AsyncMock,
+        make_loop,
+    ) -> None:
+        """When the policy raises, the loop falls back to a safe end_turn."""
+        mock_bridge.wait_for_state.return_value = fake_state
+        fake_policy.select_action.side_effect = RuntimeError("policy boom")
+        loop = make_loop(config=AgentLoopConfig(max_turns=1, per_turn_timeout_s=0.5))
+
+        code = await loop.run()
+
+        assert code == BridgeAgentLoop.EXIT_OK
+        stats = loop.stats()
+        # The fallback end_turn was sent and the failure was recorded.
+        assert stats["fallback_end_turns"] >= 1
+        assert stats["last_error"] is not None
+        assert "policy" in stats["last_error"]
+
+    @pytest.mark.asyncio
+    async def test_ack_success_false_counts_as_invalid_action(
+        self,
+        mock_bridge: MagicMock,
+        fake_state: MagicMock,
+        make_loop,
+    ) -> None:
+        """A Lua mod ack with success=False is recorded as an invalid action."""
+        mock_bridge.wait_for_state.return_value = fake_state
+        mock_bridge.send_and_wait_with_retry.return_value = AckMessage(
+            msg_id=1,
+            success=False,
+            timestamp=0.0,
+            error_code="NOT_IMPLEMENTED",
+            error_message="city_buy not wired",
+        )
+        loop = make_loop(config=AgentLoopConfig(max_turns=1, per_turn_timeout_s=0.5))
+
+        code = await loop.run()
+
+        assert code == BridgeAgentLoop.EXIT_OK
+        assert loop.stats()["invalid_actions"] == 1
+
+    @pytest.mark.asyncio
+    async def test_action_converter_generic_exception_triggers_safe_end_turn(
+        self,
+        mock_bridge: MagicMock,
+        fake_state: MagicMock,
+        fake_action_converter: MagicMock,
+        make_loop,
+    ) -> None:
+        """Non-InvalidAction exceptions from the action converter fall through
+        the generic except branch and trigger a safe end_turn."""
+        mock_bridge.wait_for_state.return_value = fake_state
+        fake_action_converter.convert.side_effect = RuntimeError("action boom")
+        loop = make_loop(config=AgentLoopConfig(max_turns=1, per_turn_timeout_s=0.5))
+
+        code = await loop.run()
+
+        assert code == BridgeAgentLoop.EXIT_OK
+        stats = loop.stats()
+        assert stats["fallback_end_turns"] >= 1
+        assert "action_converter" in (stats["last_error"] or "")
+
+    @pytest.mark.asyncio
+    async def test_send_generic_exception_increments_ack_failures(
+        self,
+        mock_bridge: MagicMock,
+        fake_state: MagicMock,
+        make_loop,
+    ) -> None:
+        """A non-AckTimeout / non-ConnectionLost send failure is still recorded."""
+        mock_bridge.wait_for_state.return_value = fake_state
+        mock_bridge.send_and_wait_with_retry.side_effect = RuntimeError("send boom")
+        loop = make_loop(config=AgentLoopConfig(max_turns=1, per_turn_timeout_s=0.5))
+
+        code = await loop.run()
+
+        assert code == BridgeAgentLoop.EXIT_OK
+        assert loop.stats()["ack_failures"] == 1
+        assert "send" in (loop.stats()["last_error"] or "")
