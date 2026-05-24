@@ -22,8 +22,8 @@ local minLogLevel = LOG_LEVELS.INFO
 local logBuffer = {}
 local MAX_BUFFER_SIZE = 100
 
--- Cross-platform path separator (safe for Civ6 Lua sandbox: package is nil)
-local PATH_SEP = (os.getenv("WINDIR") ~= nil) and "\\" or "/"
+-- Path separator: hardcoded for Civ6 Windows/Steam (os.getenv stripped from sandbox)
+local PATH_SEP = "\\"
 
 -- Log rotation settings
 local MAX_LOG_SIZE = 5 * 1024 * 1024  -- 5MB

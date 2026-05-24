@@ -8,8 +8,9 @@
 
 AlphaZeroConfig = AlphaZeroConfig or {}
 
--- Cross-platform path separator (safe for Civ6 Lua sandbox: package is nil)
-local PATH_SEP = (os.getenv("WINDIR") ~= nil) and "\\" or "/"
+-- Path separator: Civ6 Lua sandbox strips package and os.getenv, so we
+-- hardcode backslash. The mod only runs inside Civ6 (Windows/Steam).
+local PATH_SEP = "\\"
 
 -- ----------------------------------------------------------------------------
 -- Default Configuration Values

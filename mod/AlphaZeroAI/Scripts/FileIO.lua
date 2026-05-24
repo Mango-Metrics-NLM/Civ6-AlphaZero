@@ -10,8 +10,8 @@ AlphaZeroFileIO = AlphaZeroFileIO or {}
 
 local Log = nil  -- Will be set after Logger loads
 
--- Cross-platform path separator (safe for Civ6 Lua sandbox: package is nil)
-local PATH_SEP = (os.getenv("WINDIR") ~= nil) and "\\" or "/"
+-- Path separator: hardcoded for Civ6 Windows/Steam (os.getenv stripped from sandbox)
+local PATH_SEP = "\\"
 
 -- Track file content hashes for change detection
 local fileContentHashes = {}
