@@ -96,21 +96,19 @@ local function mergeTables(a, b)
     return result
 end
 
--- Get the base path for Civ6 documents (cross-platform)
+
+-- Get the base path for Civ6 documents.
+-- Civ6's Lua sandbox strips os.getenv, so we use the native Modding API.
 local function getDocumentsPath()
-    -- Try to get from environment or use standard path
-    if PATH_SEP == "\\" then
-        -- Windows
-        local userProfile = os.getenv("USERPROFILE")
-        if userProfile then
-            return userProfile .. "\\Documents\\My Games\\Sid Meier's Civilization VI"
+    -- Civ6 exposes Modding.GetUserDataFolder() which returns the correct
+    -- "My Games/Sid Meier's Civilization VI" path, handling OneDrive redirects.
+    if Modding and Modding.GetUserDataFolder then
+        local folder = Modding.GetUserDataFolder()
+        if folder and folder ~= "" then
+            return folder
         end
     end
-    -- Unix/macOS fallback
-    local home = os.getenv("HOME")
-    if home then
-        return home .. "/Documents/My Games/Sid Meier's Civilization VI"
-    end
+    -- Fallback: use a path relative to the mod root (works for testing)
     return "."
 end
 
