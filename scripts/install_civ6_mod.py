@@ -46,9 +46,9 @@ _DEFAULT_SOURCE_DIR: str = "mod/AlphaZeroAI"
 def get_default_mod_dir() -> Path:
     """Resolve the default Civ6 Mods directory on Windows.
 
-    Returns the path::
-
-        %USERPROFILE%\\Documents\\My Games\\Sid Meier's Civilization VI\\Mods
+    Prefers OneDrive-redirected Documents when the Civ6 folder exists there
+    (common on modern Windows where Documents is backed by OneDrive).  Falls
+    back to the bare ``%USERPROFILE%\\Documents`` path otherwise.
 
     On non-Windows systems, a warning is logged and the same path layout is
     constructed using ``~`` so the caller can still override it with
@@ -60,19 +60,30 @@ def get_default_mod_dir() -> Path:
             "You may need to provide --mod-dir manually."
         )
 
-    # Standard Windows path: %USERPROFILE%\Documents\My Games\Sid Meier's Civilization VI\Mods
-    user_profile = os.environ.get("USERPROFILE")
-    if not user_profile:
-        # Fallback if USERPROFILE is missing (CI, Linux, macOS)
-        user_profile = os.path.expanduser("~")
+    user_profile = os.environ.get("USERPROFILE") or os.path.expanduser("~")
+    base = Path(user_profile)
 
-    return (
-        Path(user_profile)
-        / "Documents"
-        / _WIN_GAMES_FOLDER
-        / _CIV6_FOLDER
-        / _MODS_SUBFOLDER
+    civ6_rel = Path(_WIN_GAMES_FOLDER) / _CIV6_FOLDER
+
+    # Candidate paths in preference order: OneDrive, then bare Documents
+    candidates = [
+        base / "OneDrive" / "Documents" / civ6_rel,
+        base / "Documents" / civ6_rel,
+    ]
+
+    for candidate in candidates:
+        if candidate.exists():
+            chosen = candidate / _MODS_SUBFOLDER
+            logger.info("Auto-detected Civ6 user-data at: %s", candidate)
+            return chosen
+
+    # Neither exists yet (Civ6 not installed / first run) — use OneDrive as default
+    logger.warning(
+        "Civ6 user-data directory not found. Defaulting to OneDrive path. "
+        "Pass --mod-dir to override."
     )
+    return base / "OneDrive" / "Documents" / civ6_rel / _MODS_SUBFOLDER
+
 
 
 def main() -> int:
