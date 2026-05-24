@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from alpha_zero.multiplayer.config import TurnManagerConfig
-from alpha_zero.multiplayer.turn_manager import TurnManager, TurnState
+from alpha_zero.multiplayer.turn_manager import TurnManager
 
 
 class TestTurnManagerSequential:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import pytest
@@ -11,10 +10,8 @@ import torch
 from alpha_zero.spacetimedb.config import SpacetimeDBConfig
 from alpha_zero.storage.config import StorageConfig
 from alpha_zero.storage.models import (
-    CheckpointMetadata,
     EvaluationResult,
     ModelMetadata,
-    TrajectoryMetadata,
 )
 from alpha_zero.storage.spacetimedb_backend import SpacetimeDBStorageBackend
 from tests.mocks.spacetimedb_mocks import MockSpacetimeDBClient

@@ -33,7 +33,7 @@ from alpha_zero.utils.llm_client import (
 
 
 @pytest.fixture(autouse=True)
-def _force_openai_available() -> "object":
+def _force_openai_available() -> object:
     """Treat openai as importable in every test in this module.
 
     The CI matrix does not install the optional ``openai`` SDK, so

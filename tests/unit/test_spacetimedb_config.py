@@ -72,7 +72,7 @@ class TestSpacetimeDBConfig:
             clear=True,
         ):
             config = SpacetimeDBConfig()
-        assert config.auth_token == "secret-token-123"
+        assert config.auth_token == "secret-token-123"  # noqa: S105
 
     def test_env_override_ssl(self):
         """CIV6_SPACETIMEDB_SSL overrides ssl_enabled."""
@@ -133,7 +133,7 @@ class TestSpacetimeDBConfig:
                 enabled=True,
                 host="http://test:3000",
                 module_address="test",
-                auth_token="secret",
+                auth_token="secret",  # noqa: S106
             )
         result = config.to_dict()
         assert result["enabled"] is True

@@ -680,19 +680,16 @@ class TestDiplomacyAgentInit:
 
     def test_init_enabled_no_llm_available(self, enabled_config: DiplomacyConfig):
         """When enabled but LLM import fails, client should be None."""
-        with patch(
-            "alpha_zero.multiplayer.diplomacy_agent._LLM_AVAILABLE", False
-        ):
+        with patch("alpha_zero.multiplayer.diplomacy_agent._LLM_AVAILABLE", False):
             agent = DiplomacyAgent(config=enabled_config)
             assert agent.llm_client is None
 
     def test_init_enabled_create_fails(self, enabled_config: DiplomacyConfig):
         """When create_llm_client raises, agent degrades gracefully."""
         mock_create = MagicMock(side_effect=RuntimeError("No API key"))
-        with patch(
-            "alpha_zero.multiplayer.diplomacy_agent._LLM_AVAILABLE", True
-        ), patch(
-            "alpha_zero.multiplayer.diplomacy_agent.create_llm_client", mock_create
+        with (
+            patch("alpha_zero.multiplayer.diplomacy_agent._LLM_AVAILABLE", True),
+            patch("alpha_zero.multiplayer.diplomacy_agent.create_llm_client", mock_create),
         ):
             agent = DiplomacyAgent(config=enabled_config)
             assert agent.llm_client is None
@@ -701,10 +698,9 @@ class TestDiplomacyAgentInit:
         """When create_llm_client succeeds, client is set."""
         mock_client = MagicMock()
         mock_create = MagicMock(return_value=mock_client)
-        with patch(
-            "alpha_zero.multiplayer.diplomacy_agent._LLM_AVAILABLE", True
-        ), patch(
-            "alpha_zero.multiplayer.diplomacy_agent.create_llm_client", mock_create
+        with (
+            patch("alpha_zero.multiplayer.diplomacy_agent._LLM_AVAILABLE", True),
+            patch("alpha_zero.multiplayer.diplomacy_agent.create_llm_client", mock_create),
         ):
             agent = DiplomacyAgent(config=enabled_config)
             assert agent.llm_client is mock_client
@@ -744,9 +740,7 @@ class TestDiplomacyAgentEvaluateFallback:
 class TestDiplomacyAgentGenerateFallback:
     """Test generate_proposal when LLM is unavailable."""
 
-    def test_disabled_returns_none(
-        self, disabled_agent: DiplomacyAgent, sample_game_state: dict
-    ):
+    def test_disabled_returns_none(self, disabled_agent: DiplomacyAgent, sample_game_state: dict):
         result = disabled_agent.generate_proposal_sync(sample_game_state, 0, 1)
         assert result is None
 
@@ -839,9 +833,7 @@ class TestDiplomacyAgentEvaluateWithLLM:
         self, sample_proposal, sample_game_state, mock_llm_response
     ):
         agent, llm = self._make_agent_with_mock_llm()
-        response_json = json.dumps(
-            {"score": 0.6, "reasoning": "ok", "counter_terms": "invalid"}
-        )
+        response_json = json.dumps({"score": 0.6, "reasoning": "ok", "counter_terms": "invalid"})
         llm.generate = AsyncMock(return_value=mock_llm_response(response_json))
 
         result = asyncio.run(agent.evaluate_proposal(sample_game_state, sample_proposal))
@@ -889,9 +881,7 @@ class TestDiplomacyAgentGenerateWithLLM:
         assert result.terms == {"duration": 10}
         assert result.rationale == "Strength in unity"
 
-    def test_generate_unknown_action_type_fallback(
-        self, sample_game_state, mock_llm_response
-    ):
+    def test_generate_unknown_action_type_fallback(self, sample_game_state, mock_llm_response):
         agent, llm = self._make_agent_with_mock_llm()
         response_json = json.dumps(
             {
@@ -907,9 +897,7 @@ class TestDiplomacyAgentGenerateWithLLM:
         # Falls back to first category
         assert result.action_type == agent.config.proposal_categories[0]
 
-    def test_generate_invalid_json_returns_none(
-        self, sample_game_state, mock_llm_response
-    ):
+    def test_generate_invalid_json_returns_none(self, sample_game_state, mock_llm_response):
         agent, llm = self._make_agent_with_mock_llm()
         llm.generate = AsyncMock(return_value=mock_llm_response("garbage data"))
 
@@ -923,9 +911,7 @@ class TestDiplomacyAgentGenerateWithLLM:
         result = asyncio.run(agent.generate_proposal(sample_game_state, 0, 1))
         assert result is None
 
-    def test_generate_invalid_terms_becomes_empty_dict(
-        self, sample_game_state, mock_llm_response
-    ):
+    def test_generate_invalid_terms_becomes_empty_dict(self, sample_game_state, mock_llm_response):
         agent, llm = self._make_agent_with_mock_llm()
         response_json = json.dumps(
             {
@@ -940,9 +926,7 @@ class TestDiplomacyAgentGenerateWithLLM:
         assert result is not None
         assert result.terms == {}
 
-    def test_generate_missing_rationale_defaults(
-        self, sample_game_state, mock_llm_response
-    ):
+    def test_generate_missing_rationale_defaults(self, sample_game_state, mock_llm_response):
         agent, llm = self._make_agent_with_mock_llm()
         response_json = json.dumps({"action_type": "peace", "terms": {}})
         llm.generate = AsyncMock(return_value=mock_llm_response(response_json))
@@ -966,9 +950,7 @@ class TestDiplomacyAgentSyncWrappers:
         sample_proposal: DiplomaticProposal,
         sample_game_state: dict,
     ):
-        sync_result = disabled_agent.evaluate_proposal_sync(
-            sample_game_state, sample_proposal
-        )
+        sync_result = disabled_agent.evaluate_proposal_sync(sample_game_state, sample_proposal)
         async_result = asyncio.run(
             disabled_agent.evaluate_proposal(sample_game_state, sample_proposal)
         )
@@ -979,9 +961,7 @@ class TestDiplomacyAgentSyncWrappers:
         self, disabled_agent: DiplomacyAgent, sample_game_state: dict
     ):
         sync_result = disabled_agent.generate_proposal_sync(sample_game_state, 0, 1)
-        async_result = asyncio.run(
-            disabled_agent.generate_proposal(sample_game_state, 0, 1)
-        )
+        async_result = asyncio.run(disabled_agent.generate_proposal(sample_game_state, 0, 1))
         assert sync_result == async_result  # Both should be None
 
 
@@ -1042,6 +1022,33 @@ class TestExtractJson:
         result = DiplomacyAgent._extract_json(text)
         # Fallback: returns from first brace onward
         assert result.startswith("{")
+
+    def test_braces_inside_string_values(self):
+        """Inner '}' inside a string literal must not close the object early."""
+        text = '{"reasoning": "Alliance {clause} is good", "score": 0.4}'
+        result = DiplomacyAgent._extract_json(text)
+        parsed = json.loads(result)
+        assert parsed["reasoning"] == "Alliance {clause} is good"
+        assert parsed["score"] == 0.4
+
+    def test_escaped_quote_inside_string(self):
+        """Escaped quotes (\\") must not toggle string-mode tracking."""
+        text = '{"q": "she said \\"hi}\\" and left", "ok": true}'
+        result = DiplomacyAgent._extract_json(text)
+        parsed = json.loads(result)
+        assert parsed["q"] == 'she said "hi}" and left'
+        assert parsed["ok"] is True
+
+    def test_braces_in_string_with_surrounding_prose(self):
+        """Surrounding text + braces-in-strings combined."""
+        text = (
+            'Analysis: {"action": "propose", '
+            '"terms": "Trade gold {amount} for tech"} -- end of payload'
+        )
+        result = DiplomacyAgent._extract_json(text)
+        parsed = json.loads(result)
+        assert parsed["action"] == "propose"
+        assert parsed["terms"] == "Trade gold {amount} for tech"
 
 
 # ======================================================================
@@ -1157,9 +1164,7 @@ class TestParseEvaluationResponse:
 
     def test_counter_terms_valid_dict(self):
         agent = self._make_agent()
-        resp = json.dumps(
-            {"score": 0.5, "reasoning": "ok", "counter_terms": {"gold": 100}}
-        )
+        resp = json.dumps({"score": 0.5, "reasoning": "ok", "counter_terms": {"gold": 100}})
         result = agent._parse_evaluation_response(resp)
         assert result.counter_terms == {"gold": 100}
 

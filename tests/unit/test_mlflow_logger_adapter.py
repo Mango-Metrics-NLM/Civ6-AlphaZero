@@ -13,7 +13,6 @@ import pytest
 from alpha_zero.monitoring.config import MonitoringConfig
 from alpha_zero.monitoring.mlflow_logger import MLflowLogger, WandbCompatAdapter
 
-
 # ---------------------------------------------------------------------------
 # MonitoringConfig.from_env
 # ---------------------------------------------------------------------------

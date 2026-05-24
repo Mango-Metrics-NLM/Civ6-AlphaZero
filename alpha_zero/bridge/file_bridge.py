@@ -164,9 +164,25 @@ class FileBridge:
         logger.info("File bridge stopped")
 
     def _next_msg_id(self) -> int:
-        """Generate next message ID."""
+        """Generate next message ID (legacy internal name).
+
+        Prefer :meth:`next_msg_id` from new call sites; this private
+        method is retained so existing callers (and ``MockFileBridge``
+        subclass tests) keep working.
+        """
         self._msg_counter += 1
         return self._msg_counter
+
+    def next_msg_id(self) -> int:
+        """Public alias for :meth:`_next_msg_id`.
+
+        Exposed so :class:`alpha_zero.bridge.agent_loop.BridgeAgentLoop`
+        and other callers do not have to reach through the private
+        ``_next_msg_id`` name. Returns a monotonically-increasing message
+        ID suitable for :class:`alpha_zero.bridge.protocol.CommandMessage`
+        ``msg_id`` correlation.
+        """
+        return self._next_msg_id()
 
     async def _throttle_action(self) -> None:
         """Apply rate limiting before sending an action.

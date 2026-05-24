@@ -26,12 +26,12 @@ def test_wandb_logger_import_emits_deprecation_warning():
 
 
 def test_wandb_logger_class_is_adapter_alias():
-    from alpha_zero.utils.wandb_logger import WandbLogger
     from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter
+    from alpha_zero.utils.wandb_logger import WandbLogger
     assert WandbLogger is WandbCompatAdapter or issubclass(WandbLogger, WandbCompatAdapter)
 
 
 def test_wandb_config_class_is_monitoring_alias():
-    from alpha_zero.utils.wandb_logger import WandbConfig
     from alpha_zero.monitoring.config import MonitoringConfig
+    from alpha_zero.utils.wandb_logger import WandbConfig
     assert WandbConfig is MonitoringConfig or issubclass(WandbConfig, MonitoringConfig)

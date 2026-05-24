@@ -328,6 +328,7 @@ trajectory_cleanup_*.log
 # env / VM SA, no hardcoded keys. Add explicit negations as new versions land.
 scripts/launch_prod_*.sh
 !scripts/launch_prod_v1.5.0.sh
+!scripts/launch_prod_v1.6.0.sh
 
 # Vertex AI job ID tracking files
 vertex_job_ids*.json

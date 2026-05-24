@@ -296,11 +296,19 @@ class NPlayerMCTS:
 
         # Convert to per-player dict
         if values_np.ndim == 0:
-            # Scalar value (legacy 2-player network)
-            player_values = {
-                0: float(values_np),
-                1: float(-values_np),
-            }
+            # Scalar value (legacy 2-player network): the network predicts the
+            # value from the *current* player's perspective. We must map it to
+            # the right player ID instead of hardcoding 0/1.
+            # By convention (see civ6_encoder.py), vector[1] holds current_player.
+            vector_obs = obs["vector"]
+            current_player = int(vector_obs[1]) if vector_obs.shape[0] > 1 else 0
+            current_player = max(0, min(current_player, self.num_players - 1))
+            scalar_value = float(values_np)
+            # Initialise all players to opponent value, then override current.
+            # For >2 players, a scalar legacy network cannot distinguish
+            # between opponents, so we share the negated value uniformly.
+            player_values = {p: -scalar_value for p in range(self.num_players)}
+            player_values[current_player] = scalar_value
         else:
             # Vector of per-player values
             player_values = {

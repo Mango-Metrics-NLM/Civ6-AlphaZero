@@ -137,6 +137,7 @@ def report_tuning_metric(metric: dict[str, float], step: int) -> None:
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Civ6AZ Training Worker")
+    parser.add_argument("--mode", type=str, default="training", help="Worker mode (training)")
     parser.add_argument("--iteration", type=int, required=True, help="Training iteration")
     parser.add_argument(
         "--trajectory_iterations",

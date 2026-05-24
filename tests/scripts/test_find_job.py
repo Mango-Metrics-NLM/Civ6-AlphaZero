@@ -8,8 +8,6 @@ filter-string construction, and the project/region default-resolution logic
 from __future__ import annotations
 
 import importlib.util
-import io
-import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 

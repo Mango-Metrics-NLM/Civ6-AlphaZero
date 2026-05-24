@@ -1,6 +1,5 @@
 """Unit tests for JAX MCTS adapter."""
 
-import numpy as np
 import pytest
 import torch
 

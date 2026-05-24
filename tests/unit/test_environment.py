@@ -218,3 +218,52 @@ class TestMicroCivEnv:
 
         assert np.allclose(obs1["spatial"], obs2["spatial"])
         assert np.allclose(obs1["vector"], obs2["vector"])
+
+
+class TestFindValidPosition:
+    """Regression tests for _find_valid_position passability invariants."""
+
+    def _make_env_with_mountains(self, passable_only: set[tuple[int, int]]):
+        """Build an env whose terrain is all mountain except *passable_only*."""
+        from alpha_zero.envs.microciv import Tile
+
+        env = MicroCivEnv(board_size=8, seed=1)
+        env.reset()
+        # Overwrite terrain: mountain everywhere, passable_only is plains.
+        env.terrain = {}
+        for x in range(env.board_size):
+            for y in range(env.board_size):
+                if (x, y) in passable_only:
+                    env.terrain[(x, y)] = Tile(terrain_type="plains")
+                else:
+                    env.terrain[(x, y)] = Tile(terrain_type="mountain")
+        return env
+
+    def test_fallback_skips_mountain_when_random_fails(self):
+        """When sampling around start hits mountains, scan finds a passable tile."""
+        # Only (5, 5) is passable. Start far from it so random sampling fails.
+        env = self._make_env_with_mountains(passable_only={(5, 5)})
+        pos = env._find_valid_position(start_x=1, start_y=1, range_=2)
+
+        from alpha_zero.envs.microciv import Tile
+
+        assert (
+            env.terrain.get(pos, Tile()).terrain_type != "mountain"
+        ), f"Fallback returned mountain tile {pos}, violating spawn invariant"
+        assert pos == (5, 5)
+
+    def test_raises_when_no_passable_tile_exists(self):
+        """If the whole interior is mountain, raise rather than return one."""
+        env = self._make_env_with_mountains(passable_only=set())
+        with pytest.raises(RuntimeError, match="No passable spawn tile"):
+            env._find_valid_position(start_x=4, start_y=4, range_=2)
+
+    def test_random_path_still_succeeds_on_open_map(self):
+        """On a fully passable map, fast path returns a clamped tile."""
+        # Make every interior tile passable.
+        passable = {(x, y) for x in range(8) for y in range(8)}
+        env = self._make_env_with_mountains(passable_only=passable)
+        for _ in range(10):
+            pos = env._find_valid_position(start_x=3, start_y=3, range_=3)
+            assert 1 <= pos[0] <= env.board_size - 2
+            assert 1 <= pos[1] <= env.board_size - 2
