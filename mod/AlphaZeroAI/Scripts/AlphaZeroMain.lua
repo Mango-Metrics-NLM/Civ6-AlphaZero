@@ -1,14 +1,11 @@
-﻿-- ============================================================================
+-- ============================================================================
 -- AlphaZeroMain.lua - Bundled entry point for AlphaZero AI Bridge
 -- ============================================================================
--- All modules concatenated into a single file for Civ6 AddUserInterfaces
--- context (avoids include/require path resolution issues).
+-- All modules concatenated into a single file for Civ6 AddUserInterfaces.
 -- ============================================================================
-
 
 
 -- ========== BEGIN Config.lua ==========
-
 -- ============================================================================
 -- Config.lua - Configuration management for AlphaZero AI Bridge
 -- ============================================================================
@@ -271,9 +268,7 @@ print("[AlphaZero] Config module loaded - Version " .. AlphaZeroConfig.Get("VERS
 
 -- ========== END Config.lua ==========
 
-
 -- ========== BEGIN Logger.lua ==========
-
 -- ============================================================================
 -- Logger.lua - Logging system for AlphaZero AI Bridge
 -- ============================================================================
@@ -491,9 +486,7 @@ print("[AlphaZero] Logger module loaded")
 
 -- ========== END Logger.lua ==========
 
-
 -- ========== BEGIN JsonEncoder.lua ==========
-
 -- ============================================================================
 -- JsonEncoder.lua - Pure Lua JSON encoder/decoder for AlphaZero AI Bridge
 -- ============================================================================
@@ -949,9 +942,7 @@ print("[AlphaZero] JsonEncoder module loaded")
 
 -- ========== END JsonEncoder.lua ==========
 
-
 -- ========== BEGIN FileIO.lua ==========
-
 -- ============================================================================
 -- FileIO.lua - File I/O operations for AlphaZero AI Bridge
 -- ============================================================================
@@ -1011,6 +1002,11 @@ end
 
 -- Ensure directory exists (cross-platform)
 local function ensureDirectory(path)
+    -- os.execute may be stripped in Civ6 sandbox; skip if unavailable
+    if not os or not os.execute then
+        return
+    end
+
     local safe, err = isPathSafe(path)
     if not safe then
         if Log then Log.Error("Security warning: %s: %s", err, path) end
@@ -1018,17 +1014,21 @@ local function ensureDirectory(path)
     end
 
     local safePath = shellEscape(path)
-    if PATH_SEP == "/" then
-        -- Unix/macOS
-        os.execute('mkdir -p "' .. safePath .. '" 2>/dev/null')
-    else
-        -- Windows
-        os.execute('mkdir "' .. safePath .. '" 2>nul')
+    local ok = pcall(function()
+        if PATH_SEP == "/" then
+            os.execute('mkdir -p "' .. safePath .. '" 2>/dev/null')
+        else
+            os.execute('mkdir "' .. safePath .. '" 2>nul')
+        end
+    end)
+    if not ok then
+        print("[AlphaZero] FileIO: could not create directory (os.execute sandboxed)")
     end
 end
 
 -- Check if file exists
 local function fileExists(path)
+    if not io or not io.open then return false end
     local file = io.open(path, "r")
     if file then
         file:close()
@@ -1047,6 +1047,13 @@ function AlphaZeroFileIO.Init()
         Log = AlphaZeroLogger.CreateLogger("FileIO")
     end
 
+    -- Diagnostic: check io availability
+    if io and io.open then
+        print("[AlphaZero] FileIO: io.open is AVAILABLE")
+    else
+        print("[AlphaZero] FileIO: WARNING - io.open is NOT available, file I/O will fail")
+    end
+
     -- Load configurable max read size
     if AlphaZeroConfig then
         MAX_READ_BYTES = AlphaZeroConfig.Get("MAX_FILE_READ_BYTES") or MAX_READ_BYTES
@@ -1056,12 +1063,15 @@ function AlphaZeroFileIO.Init()
     local commDir = AlphaZeroConfig and AlphaZeroConfig.Get("COMM_DIR")
     if commDir then
         ensureDirectory(commDir)
-        if Log then Log.Info("Comm directory: %s", commDir) end
+        print("[AlphaZero] FileIO: Comm directory: " .. commDir)
     end
 end
 
 -- Read a file and return contents (with size limit)
 function AlphaZeroFileIO.Read(path)
+    if not io or not io.open then
+        return nil, "io not available in this Lua context"
+    end
     local file, err = io.open(path, "r")
     if not file then
         if Log then Log.Debug("Could not open file for reading: %s", path) end
@@ -1085,6 +1095,9 @@ end
 
 -- Write content to a file
 function AlphaZeroFileIO.Write(path, content)
+    if not io or not io.open then
+        return false, "io not available in this Lua context"
+    end
     local file, err = io.open(path, "w")
     if not file then
         if Log then Log.Error("Could not open file for writing: %s - %s", path, tostring(err)) end
@@ -1105,6 +1118,9 @@ end
 
 -- Append content to a file
 function AlphaZeroFileIO.Append(path, content)
+    if not io or not io.open then
+        return false, "io not available in this Lua context"
+    end
     local file, err = io.open(path, "a")
     if not file then
         if Log then Log.Error("Could not open file for appending: %s", path) end
@@ -1341,9 +1357,7 @@ print("[AlphaZero] FileIO module loaded")
 
 -- ========== END FileIO.lua ==========
 
-
 -- ========== BEGIN StateExporter.lua ==========
-
 -- ============================================================================
 -- StateExporter.lua - Game state serialization for AlphaZero AI Bridge
 -- ============================================================================
@@ -2107,9 +2121,7 @@ print("[AlphaZero] StateExporter module loaded")
 
 -- ========== END StateExporter.lua ==========
 
-
 -- ========== BEGIN ActionExecutor.lua ==========
-
 -- ============================================================================
 -- ActionExecutor.lua - Command execution for AlphaZero AI Bridge
 -- ============================================================================
@@ -2563,7 +2575,7 @@ local function executeResearchCivic(playerId, command)
 end
 
 -- ----------------------------------------------------------------------------
--- v1.8.0 W2.1 step 4 â€” newly-implemented handlers
+-- v1.8.0 W2.1 step 4 — newly-implemented handlers
 -- ----------------------------------------------------------------------------
 
 -- Buy production (rush-buy a unit or building with gold).
@@ -2625,7 +2637,7 @@ end
 --
 -- CAVEAT (gap-analysis C2 on commit 3572832):
 -- `SetCitizenLocked` is a void Civ6 API. The `ok` returned by `pcall`
--- only indicates that no Lua exception was thrown â€” it does NOT confirm
+-- only indicates that no Lua exception was thrown — it does NOT confirm
 -- the lock state was actually applied (e.g. when the plot is outside the
 -- city's working radius, or the citizen is already in the requested
 -- state). The handler returns true so the agent loop sees `ack.success=
@@ -2734,7 +2746,7 @@ local function executeUnitDelete(playerId, command)
 end
 
 -- ----------------------------------------------------------------------------
--- v1.8.0 W2.1 step 5 â€” diplomacy dispatcher
+-- v1.8.0 W2.1 step 5 — diplomacy dispatcher
 -- ----------------------------------------------------------------------------
 
 -- Sub-action ID -> name mapping. Mirrors DiplomacyActionType in
@@ -3048,9 +3060,7 @@ print("[AlphaZero] ActionExecutor module loaded")
 
 -- ========== END ActionExecutor.lua ==========
 
-
 -- ========== BEGIN Main.lua ==========
-
 -- ============================================================================
 -- Main.lua - Entry point for AlphaZero AI Bridge
 -- ============================================================================
@@ -3493,6 +3503,3 @@ print("[AlphaZero] Main module loaded - Bridge ready")
 print("[AlphaZero] Version: " .. (AlphaZeroConfig and AlphaZeroConfig.Get("VERSION") or "unknown"))
 
 -- ========== END Main.lua ==========
-
-
-

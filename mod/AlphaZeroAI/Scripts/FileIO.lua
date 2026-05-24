@@ -57,6 +57,11 @@ end
 
 -- Ensure directory exists (cross-platform)
 local function ensureDirectory(path)
+    -- os.execute may be stripped in Civ6 sandbox; skip if unavailable
+    if not os or not os.execute then
+        return
+    end
+
     local safe, err = isPathSafe(path)
     if not safe then
         if Log then Log.Error("Security warning: %s: %s", err, path) end
@@ -64,17 +69,21 @@ local function ensureDirectory(path)
     end
 
     local safePath = shellEscape(path)
-    if PATH_SEP == "/" then
-        -- Unix/macOS
-        os.execute('mkdir -p "' .. safePath .. '" 2>/dev/null')
-    else
-        -- Windows
-        os.execute('mkdir "' .. safePath .. '" 2>nul')
+    local ok = pcall(function()
+        if PATH_SEP == "/" then
+            os.execute('mkdir -p "' .. safePath .. '" 2>/dev/null')
+        else
+            os.execute('mkdir "' .. safePath .. '" 2>nul')
+        end
+    end)
+    if not ok then
+        print("[AlphaZero] FileIO: could not create directory (os.execute sandboxed)")
     end
 end
 
 -- Check if file exists
 local function fileExists(path)
+    if not io or not io.open then return false end
     local file = io.open(path, "r")
     if file then
         file:close()
@@ -93,6 +102,13 @@ function AlphaZeroFileIO.Init()
         Log = AlphaZeroLogger.CreateLogger("FileIO")
     end
 
+    -- Diagnostic: check io availability
+    if io and io.open then
+        print("[AlphaZero] FileIO: io.open is AVAILABLE")
+    else
+        print("[AlphaZero] FileIO: WARNING - io.open is NOT available, file I/O will fail")
+    end
+
     -- Load configurable max read size
     if AlphaZeroConfig then
         MAX_READ_BYTES = AlphaZeroConfig.Get("MAX_FILE_READ_BYTES") or MAX_READ_BYTES
@@ -102,12 +118,15 @@ function AlphaZeroFileIO.Init()
     local commDir = AlphaZeroConfig and AlphaZeroConfig.Get("COMM_DIR")
     if commDir then
         ensureDirectory(commDir)
-        if Log then Log.Info("Comm directory: %s", commDir) end
+        print("[AlphaZero] FileIO: Comm directory: " .. commDir)
     end
 end
 
 -- Read a file and return contents (with size limit)
 function AlphaZeroFileIO.Read(path)
+    if not io or not io.open then
+        return nil, "io not available in this Lua context"
+    end
     local file, err = io.open(path, "r")
     if not file then
         if Log then Log.Debug("Could not open file for reading: %s", path) end
@@ -131,6 +150,9 @@ end
 
 -- Write content to a file
 function AlphaZeroFileIO.Write(path, content)
+    if not io or not io.open then
+        return false, "io not available in this Lua context"
+    end
     local file, err = io.open(path, "w")
     if not file then
         if Log then Log.Error("Could not open file for writing: %s - %s", path, tostring(err)) end
@@ -151,6 +173,9 @@ end
 
 -- Append content to a file
 function AlphaZeroFileIO.Append(path, content)
+    if not io or not io.open then
+        return false, "io not available in this Lua context"
+    end
     local file, err = io.open(path, "a")
     if not file then
         if Log then Log.Error("Could not open file for appending: %s", path) end
