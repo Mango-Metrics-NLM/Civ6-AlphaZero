@@ -14,6 +14,7 @@
 
     <Files>
         <File>Scripts/AlphaZeroMain.xml</File>
+        <File>Scripts/AlphaZeroMain.lua</File>
         <File>Scripts/Config.lua</File>
         <File>Scripts/Logger.lua</File>
         <File>Scripts/JsonEncoder.lua</File>

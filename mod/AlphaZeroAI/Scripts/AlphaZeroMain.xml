@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Context>
-    <LuaContext ID="AlphaZeroMain" FileName="Main"/>
+    <LuaContext ID="AlphaZeroMain" FileName="AlphaZeroMain"/>
 </Context>
