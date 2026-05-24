@@ -55,6 +55,7 @@ class Civ6LocalConfig:
         num_players: Number of players (2-8, MicroCiv only)
         num_simulations: MCTS simulations per move
         device: PyTorch inference device (cpu | cuda)
+        use_mcts: Use MCTS policy instead of greedy argmax
         web_host: Bind address for web mode
         web_port: Port for web mode
         bridge_ipc_dir: IPC directory for civ6 bridge mode
@@ -68,6 +69,8 @@ class Civ6LocalConfig:
     num_players: int = 2
     num_simulations: int = 50
     device: str = "cpu"
+    use_mcts: bool = False
+    use_eval_harness: bool = False
     web_host: str = "127.0.0.1"
     web_port: int = 8080
     bridge_ipc_dir: str = field(
@@ -146,6 +149,7 @@ class Civ6LocalConfig:
             CIV6AZ_LOCAL_NUM_PLAYERS       — number of players (int)
             CIV6AZ_LOCAL_NUM_SIMULATIONS   — MCTS simulations (int)
             CIV6AZ_LOCAL_DEVICE            — inference device
+            CIV6AZ_LOCAL_USE_MCTS          — use MCTS for bridge mode (1/true/yes)
             CIV6AZ_LOCAL_WEB_HOST          — web server bind address
             CIV6AZ_LOCAL_WEB_PORT          — web server port (int)
             CIV6AZ_LOCAL_BRIDGE_IPC_DIR    — bridge IPC directory
@@ -181,6 +185,10 @@ class Civ6LocalConfig:
             kwargs["num_simulations"] = int(v)
         if (v := _get("DEVICE")) is not None:
             kwargs["device"] = v
+        if (v := _get("USE_MCTS")) is not None:
+            kwargs["use_mcts"] = _get_bool("USE_MCTS", False)
+        if (v := _get("USE_EVAL_HARNESS")) is not None:
+            kwargs["use_eval_harness"] = _get_bool("USE_EVAL_HARNESS", False)
         if (v := _get("WEB_HOST")) is not None:
             kwargs["web_host"] = v
         if (v := _get("WEB_PORT")) is not None:
@@ -257,6 +265,8 @@ class Civ6LocalConfig:
             "num_players": self.num_players,
             "num_simulations": self.num_simulations,
             "device": self.device,
+            "use_mcts": self.use_mcts,
+            "use_eval_harness": self.use_eval_harness,
             "web_host": self.web_host,
             "web_port": self.web_port,
             "bridge_ipc_dir": self.bridge_ipc_dir,
@@ -466,22 +476,38 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
     logger.info("Start Civilization 6 with the AlphaZeroAI mod to begin.")
 
     # Build the policy network. When a checkpoint is supplied, load it;
-    # otherwise log a clear warning and use a synthetic-weights network -
-    # the loop wiring still gets exercised, the agent just plays poorly.
     network = _build_network_for_bridge(config)
-    policy = GreedyNetworkPolicy(network=network, device=config.device)
+    if config.use_mcts:
+        from alpha_zero.bridge.mcts_policy import Civ6MctsPolicy
+        from alpha_zero.core.civ6_mcts import GumbelMCTSConfig
+        gumbel_cfg = GumbelMCTSConfig(
+            num_simulations=config.num_simulations,
+            num_sampled_actions=min(config.num_simulations, 16),
+        )
+        policy = Civ6MctsPolicy(network=network, config=gumbel_cfg, device=config.device)
+        logger.info("Bridge using Civ6MctsPolicy (sims=%d)", config.num_simulations)
+    else:
+        policy = GreedyNetworkPolicy(network=network, device=config.device)
+        logger.info("Bridge using GreedyNetworkPolicy")
 
     state_converter = StateConverter(board_size=config.board_size)
     action_converter = ActionConverter(board_size=config.board_size)
     agent_cfg = AgentLoopConfig.from_env()
 
     bridge = FileBridge(bridge_cfg)
+    
+    eval_harness = None
+    if config.use_eval_harness:
+        from alpha_zero.bridge.eval_harness import BridgeEvalHarness
+        eval_harness = BridgeEvalHarness()
+
     agent_loop = BridgeAgentLoop(
         bridge=bridge,
         policy=policy,
         state_converter=state_converter,
         action_converter=action_converter,
         config=agent_cfg,
+        eval_harness=eval_harness,
     )
 
     import asyncio
@@ -704,6 +730,29 @@ Examples:
         choices=list(VALID_DEVICES),
         help="PyTorch inference device (default: cpu)",
     )
+    mcts_group = parser.add_mutually_exclusive_group()
+    mcts_group.add_argument(
+        "--mcts",
+        action="store_true",
+        dest="use_mcts",
+        default=None,
+        help="Use MCTS policy in civ6 mode (W2.2+)",
+    )
+    mcts_group.add_argument(
+        "--no-mcts",
+        action="store_false",
+        dest="use_mcts",
+        default=None,
+        help="Use Greedy policy in civ6 mode",
+    )
+
+    parser.add_argument(
+        "--eval-harness",
+        action="store_true",
+        dest="use_eval_harness",
+        default=None,
+        help="Enable MLflow-based BridgeEvalHarness for local civ6 play",
+    )
 
     # Web options
     parser.add_argument(
@@ -786,6 +835,10 @@ def build_config(args: argparse.Namespace) -> Civ6LocalConfig:
         overrides["num_simulations"] = args.num_simulations
     if args.device is not None:
         overrides["device"] = args.device
+    if args.use_mcts is not None:
+        overrides["use_mcts"] = args.use_mcts
+    if args.use_eval_harness is not None:
+        overrides["use_eval_harness"] = args.use_eval_harness
     if args.web_host is not None:
         overrides["web_host"] = args.web_host
     if args.web_port is not None:

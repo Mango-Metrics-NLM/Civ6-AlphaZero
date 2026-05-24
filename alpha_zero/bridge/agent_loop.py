@@ -43,7 +43,10 @@ from alpha_zero.bridge.file_bridge import (
     FileBridge,
     StateTimeoutError,
 )
-from alpha_zero.bridge.health_checker import GameBridgeHealthChecker
+from alpha_zero.bridge.health_checker import (
+    CircuitBreakerOpenError,
+    GameBridgeHealthChecker,
+)
 from alpha_zero.bridge.protocol import (
     CommandMessage,
     GameStateData,
@@ -86,6 +89,7 @@ class PolicyEngine(Protocol):
         self,
         obs: dict[str, np.ndarray],
         legal_mask: np.ndarray,
+        converted_state: dict[str, Any] | None = None,
     ) -> tuple[int, dict[str, float]]:
         """Choose an action index given an observation and legal mask.
 
@@ -93,6 +97,8 @@ class PolicyEngine(Protocol):
             obs: Encoder observation dict (``spatial``, ``vector``, ...).
             legal_mask: ``(action_space_size,)`` float32 mask;
                 ``1.0`` = legal, ``0.0`` = illegal.
+            converted_state: Full converted state dict from the bridge,
+                required by MCTS-based policies to seed their simulation env.
 
         Returns:
             ``(action_idx, diagnostics)``. The diagnostics dict is logged
@@ -124,6 +130,7 @@ class GreedyNetworkPolicy:
         self,
         obs: dict[str, np.ndarray],
         legal_mask: np.ndarray,
+        converted_state: dict[str, Any] | None = None,
     ) -> tuple[int, dict[str, float]]:
         """Run network inference in a worker thread and return masked argmax."""
         # Import torch lazily - module-level import would force the heavy
@@ -339,6 +346,7 @@ class BridgeAgentLoop:
         action_converter: ActionConverter,
         config: AgentLoopConfig,
         health_checker: GameBridgeHealthChecker | None = None,
+        eval_harness: Any | None = None,
     ) -> None:
         self.bridge = bridge
         self.policy = policy
@@ -346,6 +354,7 @@ class BridgeAgentLoop:
         self.action_converter = action_converter
         self.config = config
         self.health_checker = health_checker
+        self.eval_harness = eval_harness
         self._stats = _SessionStats()
         self._stopped = False
 
@@ -372,6 +381,15 @@ class BridgeAgentLoop:
             for the full list.
         """
         logger.info("BridgeAgentLoop.run() starting")
+        if self.eval_harness:
+            self.eval_harness.on_start(
+                config_dict={
+                    "max_turns": self.config.max_turns,
+                    "per_turn_timeout_s": self.config.per_turn_timeout_s,
+                    "mcts_in_thread": self.config.mcts_in_thread,
+                }
+            )
+
         try:
             while not self._stopped:
                 if self.config.max_turns and self._stats.turns_played >= self.config.max_turns:
@@ -379,10 +397,17 @@ class BridgeAgentLoop:
                     return self.EXIT_OK
 
                 try:
-                    state = await self.bridge.wait_for_state(
-                        timeout=self.config.per_turn_timeout_s,
-                        require_new=True,
-                    )
+                    if self.health_checker is not None:
+                        state = await self.health_checker.execute_with_retry(
+                            self.bridge.wait_for_state,
+                            timeout=self.config.per_turn_timeout_s,
+                            require_new=True,
+                        )
+                    else:
+                        state = await self.bridge.wait_for_state(
+                            timeout=self.config.per_turn_timeout_s,
+                            require_new=True,
+                        )
                 except StateTimeoutError as exc:
                     self._stats.state_timeouts += 1
                     self._stats.last_error = str(exc)
@@ -393,6 +418,15 @@ class BridgeAgentLoop:
                     )
                     # Retry on next loop iteration; do NOT abort the whole session
                     # for a single missed state - Civ6 can pause for animations.
+                    continue
+                except CircuitBreakerOpenError as exc:
+                    self._stats.state_timeouts += 1
+                    self._stats.last_error = str(exc)
+                    logger.warning(
+                        "Circuit breaker open; sleeping %.1fs before retry",
+                        exc.retry_after,
+                    )
+                    await asyncio.sleep(max(exc.retry_after, 1.0))
                     continue
                 except ConnectionLostError as exc:
                     recovered = await self._handle_disconnect(exc)
@@ -406,13 +440,14 @@ class BridgeAgentLoop:
                         state.winner_id,
                     )
                     return self.EXIT_OK
-
                 await self._step_once(state)
 
         except asyncio.CancelledError:
             logger.info("BridgeAgentLoop cancelled")
             return self.EXIT_CANCELLED
         finally:
+            if self.eval_harness:
+                self.eval_harness.on_stop(self.stats())
             logger.info(
                 "BridgeAgentLoop finished: turns=%d ack_failures=%d reconnects=%d",
                 self._stats.turns_played,
@@ -467,7 +502,9 @@ class BridgeAgentLoop:
         obs = self._build_observation(converted_state, legal_mask)
 
         try:
-            action_idx, diagnostics = await self.policy.select_action(obs, legal_mask)
+            action_idx, diagnostics = await self.policy.select_action(
+                obs, legal_mask, converted_state
+            )
         except Exception as exc:
             self._stats.last_error = f"policy: {exc}"
             logger.error("Policy selection failed: %s", exc, exc_info=True)
@@ -481,6 +518,8 @@ class BridgeAgentLoop:
             action_idx,
             diagnostics,
         )
+        if self.eval_harness:
+            self.eval_harness.on_turn_end(state.turn_id, diagnostics)
 
         # Convert action -> Lua command, falling back to end_turn on invalid.
         try:
@@ -511,7 +550,18 @@ class BridgeAgentLoop:
         )
 
         try:
-            ack = await self.bridge.send_and_wait_with_retry(command)
+            if self.health_checker is not None:
+                ack = await self.health_checker.execute_with_retry(
+                    self.bridge.send_and_wait_with_retry,
+                    command,
+                )
+            else:
+                ack = await self.bridge.send_and_wait_with_retry(command)
+        except CircuitBreakerOpenError as exc:
+            self._stats.ack_failures += 1
+            self._stats.last_error = f"circuit_open: {exc}"
+            logger.warning("Circuit breaker open on send (%s); skipping ack", exc)
+            self._maybe_log_snapshot(state, command, None, exc)
         except (AckTimeoutError, ConnectionLostError) as exc:
             self._stats.ack_failures += 1
             self._stats.last_error = f"ack: {exc}"

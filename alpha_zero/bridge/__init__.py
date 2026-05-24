@@ -67,6 +67,11 @@ __all__ = [
     "ActionType",
     # Config
     "BridgeConfig",
+    # MCTS / policy
+    "BridgeMCTSEnv",
+    "Civ6MctsPolicy",
+    # Eval harness
+    "BridgeEvalHarness",
     "CityData",
     "CommandMessage",
     "ErrorCode",
@@ -128,4 +133,16 @@ def __getattr__(name: str) -> Any:
         from alpha_zero.bridge.action_converter import ActionConverter
 
         return ActionConverter
+    if name == "BridgeMCTSEnv":
+        from alpha_zero.bridge.mcts_policy import BridgeMCTSEnv
+
+        return BridgeMCTSEnv
+    if name == "Civ6MctsPolicy":
+        from alpha_zero.bridge.mcts_policy import Civ6MctsPolicy
+
+        return Civ6MctsPolicy
+    if name == "BridgeEvalHarness":
+        from alpha_zero.bridge.eval_harness import BridgeEvalHarness
+
+        return BridgeEvalHarness
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
