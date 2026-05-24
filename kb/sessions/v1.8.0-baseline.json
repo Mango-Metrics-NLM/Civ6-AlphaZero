@@ -1,0 +1,20 @@
+{
+  "sprint": "v1.8.0",
+  "branch": "feature/v1.8.0-civ6-steam-demo",
+  "baseline_commit": "25527ab",
+  "baseline_commit_message": "Merge pull request #83 from Mango-Metrics-NLM/feature/v1.7.0-local-gameplay",
+  "recorded_at": "2026-05-24T16:20:00Z",
+  "subset_baseline": {
+    "scope": "tests/unit/test_bridge_agent_loop.py tests/unit/test_civ6_local.py tests/unit/test_bridge_utils.py tests/integration/test_civ6_bridge_e2e.py tests/inference/test_inference_engine.py",
+    "passed": 191,
+    "skipped": 0,
+    "failed": 0,
+    "duration_s": 3.69,
+    "note": "Verified pre-W2.1 baseline on the modules this sprint will directly touch."
+  },
+  "full_suite_baseline_note": "Full-suite baseline (tests/ -m 'not slow and not requires_env') was attempted but hit Windows-Bash output buffering + a hanging integration test (SSL handshake in cloud tests). The pre-merge full-suite measurement was 9,549 passed / 102 skipped (commit c941802, recorded in PR #83 description). Sprint regression checks compare against the subset baseline above (191/0/0) for the modules under direct change; the full-suite gate is enforced by GitHub Actions CI on the PR.",
+  "regression_gate": {
+    "subset_modules": "191 must remain passing (or move only by net-new tests added in this sprint)",
+    "full_suite": "Trust CI: tests/ -m 'not slow and not requires_env' must not regress vs PR #83's green state"
+  }
+}

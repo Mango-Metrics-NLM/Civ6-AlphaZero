@@ -248,6 +248,7 @@ class ActionConverter:
         game_state: dict[str, Any],
         legal_actions: list[LegalAction | dict] | None = None,
         validate: bool = True,
+        strict: bool = True,
     ) -> LuaCommand:
         """Convert action index to Lua command.
 
@@ -257,13 +258,23 @@ class ActionConverter:
             legal_actions: Legal actions from Lua (for validation).
             validate: Whether to validate against legal actions. If True and
                 the action is not in legal_actions, raises InvalidActionError.
+            strict: Default True as of v1.8.0 W2.1 step 3. When True, an
+                action category that has no implemented branch (i.e. one of
+                DIPLOMACY, ESPIONAGE, GOVERNMENT, GREAT_PERSON not yet
+                handled here) raises :class:`InvalidActionError` instead of
+                silently returning an END_TURN placeholder. Set to False to
+                opt into the legacy silent-sink behaviour for backward
+                compatibility with callers that haven't been audited yet
+                (a warning is logged whenever the legacy branch fires).
 
         Returns:
             LuaCommand ready for execution.
 
         Raises:
-            InvalidActionError: If action cannot be converted, or if validate=True
-                and action is not in legal_actions list.
+            InvalidActionError: If action cannot be decoded, or if
+                validate=True and the action is not in legal_actions, or
+                if strict=True and the action category has no implemented
+                branch.
         """
         # Decode the hierarchical action
         try:
@@ -298,12 +309,74 @@ class ActionConverter:
         elif decoded.category == ActionCategory.RESEARCH_CIVIC:
             return self._convert_civic_action(decoded, game_state)
 
+        elif decoded.category == ActionCategory.DIPLOMACY:
+            return self._convert_diplomacy_action(decoded, game_state)
+
         else:
-            # For other categories, create a generic command
+            # Unhandled category. Pre-v1.8.0 this silently returned END_TURN
+            # with metadata.unsupported=True, masking real protocol gaps
+            # (silent-sink fallthrough). v1.8.0 W2.1 step 3 made strict=True
+            # the default; pass strict=False to opt into the legacy path.
+            if strict:
+                raise InvalidActionError(
+                    f"Action {action_idx} (category={decoded.category.name}) "
+                    f"has no implemented converter branch. Pass strict=False to "
+                    f"fall back to the legacy END_TURN placeholder.",
+                    action_idx,
+                )
+            logger.warning(
+                "ActionConverter.convert(strict=False) silent fallback fired "
+                "for action_idx=%d, category=%s — caller should be updated to "
+                "handle the unsupported category explicitly.",
+                action_idx,
+                decoded.category.name,
+            )
             return LuaCommand(
                 action_type=ActionType.END_TURN,
                 metadata={"category": decoded.category.name, "unsupported": True},
             )
+
+    def _convert_diplomacy_action(
+        self,
+        decoded: HierarchicalAction,
+        _game_state: dict[str, Any],
+    ) -> LuaCommand:
+        """Map a hierarchical diplomacy action to a Lua DIPLOMACY command.
+
+        v1.8.0 W2.1 step 3: only the 3 sub-actions in
+        :data:`alpha_zero.core.civ6_actions.BRIDGE_IMPLEMENTED_DIPLOMACY`
+        (DECLARE_WAR / MAKE_PEACE / DENOUNCE) get a `sub_action` metadata
+        entry the Lua dispatcher recognises. Other sub-actions still emit a
+        DIPLOMACY command so the Lua side can log the deferred sub-action
+        in one place — `executeDiplomacy` returns NOT_IMPLEMENTED for them.
+        """
+        from alpha_zero.core.civ6_actions import (
+            BRIDGE_IMPLEMENTED_DIPLOMACY,
+            DiplomacyActionType,
+        )
+
+        # The decoded.action_type for DIPLOMACY is the IntEnum int value.
+        sub_action_int = int(decoded.action_type)
+        try:
+            sub_action = DiplomacyActionType(sub_action_int)
+        except ValueError:
+            # Decoder produced an out-of-range diplomacy id; record metadata
+            # for the Lua side to log but mark unsupported.
+            return LuaCommand(
+                action_type=ActionType.DIPLOMACY,
+                metadata={"sub_action": sub_action_int, "unsupported_sub_action": True},
+            )
+
+        target_player = int(getattr(decoded, "target", 0) or 0)
+        return LuaCommand(
+            action_type=ActionType.DIPLOMACY,
+            metadata={
+                "sub_action": int(sub_action),
+                "sub_action_name": sub_action.name,
+                "target_player_id": target_player,
+                "implemented_this_sprint": sub_action in BRIDGE_IMPLEMENTED_DIPLOMACY,
+            },
+        )
 
     def convert_with_result(
         self,

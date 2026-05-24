@@ -77,7 +77,24 @@ class CityActionType(IntEnum):
 
 
 class DiplomacyActionType(IntEnum):
-    """Diplomacy action types."""
+    """Diplomacy action types — authoritative source for the bridge layer.
+
+    These are the diplomacy sub-actions the Lua mod's ``executeDiplomacy``
+    dispatcher recognises (see ``mod/AlphaZeroAI/Scripts/ActionExecutor.lua``).
+    ``LuaCommand.metadata["sub_action"]`` carries the integer value across
+    the file IPC boundary, so the IntEnum int IDs are part of the wire
+    contract and must NOT be reordered.
+
+    v1.8.0 W2.1 step 5 implements: ``DECLARE_WAR``, ``MAKE_PEACE``,
+    ``DENOUNCE``. The remaining 6 sub-actions round-trip to a
+    ``NOT_IMPLEMENTED`` ack with a per-sub-action log line — see
+    ``docs/architecture/diplomacy_scope.md``.
+
+    Distinct from :class:`alpha_zero.mechanics.diplomacy.DiplomaticActionType`,
+    which covers a different (higher-level) action space for the mechanics
+    module's diplomacy modelling. See ``_MECHANICS_DIPLOMACY_TO_BRIDGE``
+    below for the 3-action overlap mapping.
+    """
 
     DECLARE_WAR = 0
     MAKE_PEACE = 1
@@ -88,6 +105,20 @@ class DiplomacyActionType(IntEnum):
     DELEGATE = 6
     EMBASSY = 7
     JOINT_WAR = 8
+
+
+# v1.8.0 W2.1 step 2 — the bridge layer (this module) and the mechanics
+# module (``alpha_zero.mechanics.diplomacy``) maintain separate diplomacy
+# enums covering overlapping but non-identical action spaces. The bridge
+# enum is the authoritative wire-protocol identifier; the mechanics enum
+# is used by higher-level diplomacy modelling (LLM agent, treaties).
+# This mapping is the only overlap with stable semantic equivalents in
+# Civ6's Lua API today.
+BRIDGE_IMPLEMENTED_DIPLOMACY: tuple[DiplomacyActionType, ...] = (
+    DiplomacyActionType.DECLARE_WAR,
+    DiplomacyActionType.MAKE_PEACE,
+    DiplomacyActionType.DENOUNCE,
+)
 
 
 @dataclass

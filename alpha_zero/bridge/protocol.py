@@ -373,7 +373,14 @@ class MessageType(str, Enum):
 
 
 class ActionType(str, Enum):
-    """Supported action types for Lua commands."""
+    """Supported action types for Lua commands.
+
+    Values MUST match the keys in ``mod/AlphaZeroAI/Scripts/ActionExecutor.lua``
+    ``ACTION_HANDLERS`` table (and the ``ACTION_TYPES`` constants there).
+    See ``tests/unit/test_bridge_action_invariant.py`` for the runtime check
+    that the Python enum and the Lua dispatch table stay in sync (v1.8.0
+    W2.1 step 6).
+    """
 
     END_TURN = "end_turn"
     UNIT_MOVE = "unit_move"
@@ -381,12 +388,17 @@ class ActionType(str, Enum):
     UNIT_RANGED_ATTACK = "unit_ranged_attack"
     UNIT_FORTIFY = "unit_fortify"
     UNIT_SKIP = "unit_skip"
+    UNIT_SLEEP = "unit_sleep"
     UNIT_FOUND_CITY = "unit_found_city"
     UNIT_BUILD = "unit_build"
+    UNIT_PROMOTE = "unit_promote"  # v1.8.0 W2.1
+    UNIT_DELETE = "unit_delete"  # v1.8.0 W2.1
     CITY_PRODUCE = "city_produce"
     CITY_BUY = "city_buy"
+    CITY_CITIZEN = "city_citizen"  # v1.8.0 W2.1
     RESEARCH_TECH = "research_tech"
     RESEARCH_CIVIC = "research_civic"
+    DIPLOMACY = "diplomacy"  # v1.8.0 W2.1 (dispatcher; sub-action in metadata)
 
 
 @dataclass
