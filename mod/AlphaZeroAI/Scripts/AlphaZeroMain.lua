@@ -1750,22 +1750,23 @@ local function exportUnits(playerId)
                         -- Wrap unit data construction in pcall — some methods
                         -- may not exist in AddUserInterfaces context
                         local ok_unit, unitData = pcall(function()
+                            local dmg = unit:GetDamage() or 0
                             return {
                                 id = unit:GetID(),
                                 type_name = typeInfo.type_name,
                                 owner = pid,
                                 x = x,
                                 y = y,
-                                hp = unit:GetDamage() and (100 - unit:GetDamage()) or 100,
+                                hp = 100 - dmg,
                                 max_hp = 100,
-                                damage = unit:GetDamage() or 0,
-                                movement = unit:GetMovementMovesRemaining and unit:GetMovementMovesRemaining() or 0,
-                                max_movement = unit:GetMaxMoves and unit:GetMaxMoves() or 2,
-                                combat_strength = unit:GetCombat and unit:GetCombat() or 0,
-                                ranged_strength = unit:GetRangedCombat and unit:GetRangedCombat() or 0,
-                                range = unit:GetRange and unit:GetRange() or 0,
+                                damage = dmg,
+                                movement = unit:GetMovementMovesRemaining() or 0,
+                                max_movement = unit:GetMaxMoves() or 2,
+                                combat_strength = unit:GetCombat() or 0,
+                                ranged_strength = unit:GetRangedCombat() or 0,
+                                range = unit:GetRange() or 0,
                                 is_civilian = typeInfo.is_civilian,
-                                can_attack = unit:GetAttacksRemaining and (unit:GetAttacksRemaining() or 0) > 0 or false,
+                                can_attack = (unit:GetAttacksRemaining() or 0) > 0,
                                 promotions = {},
                             }
                         end)
