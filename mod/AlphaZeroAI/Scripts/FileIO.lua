@@ -194,8 +194,9 @@ end
 
 -- Delete a file
 function AlphaZeroFileIO.Delete(path)
-    local ok, err = os.remove(path)
-    if not ok and fileExists(path) then
+    if not os or not os.remove then return true, nil end
+    local ok, err = pcall(os.remove, path)
+    if not ok then
         if Log then Log.Warn("Could not delete file: %s", path) end
         return false, err
     end

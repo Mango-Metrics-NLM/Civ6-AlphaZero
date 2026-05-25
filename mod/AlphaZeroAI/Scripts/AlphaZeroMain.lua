@@ -1145,8 +1145,9 @@ end
 
 -- Delete a file
 function AlphaZeroFileIO.Delete(path)
-    local ok, err = os.remove(path)
-    if not ok and fileExists(path) then
+    if not os or not os.remove then return true, nil end
+    local ok, err = pcall(os.remove, path)
+    if not ok then
         if Log then Log.Warn("Could not delete file: %s", path) end
         return false, err
     end
@@ -1811,6 +1812,10 @@ local function exportCities(playerId)
                     end
 
                     if canSee then
+                        -- pcall wrappers for city methods that may not exist in all contexts
+                        local ok_cap, is_cap = pcall(function() return city:IsCapital() end)
+                        local ok_str, str_val = pcall(function() return city:GetStrengthValue() end)
+
                         local cityData = {
                             id = city:GetID(),
                             name = city:GetName() or "Unknown",
@@ -1818,8 +1823,8 @@ local function exportCities(playerId)
                             x = x,
                             y = y,
                             population = city:GetPopulation() or 1,
-                            is_capital = city:IsCapital(),
-                            defense_strength = city:GetStrengthValue() or 0,
+                            is_capital = (ok_cap and is_cap) or false,
+                            defense_strength = (ok_str and str_val) or 0,
                             buildings = {},
                             districts = {},
                             current_production = nil,
@@ -2156,10 +2161,18 @@ function AlphaZeroStateExporter.ExportState(playerId)
     return state
 end
 
--- Export and write state to file
+-- Export and write state to file (with pcall safety net)
 function AlphaZeroStateExporter.ExportAndWrite(playerId)
-    local state = AlphaZeroStateExporter.ExportState(playerId)
-    return AlphaZeroFileIO.WriteState(state)
+    local ok, state = pcall(AlphaZeroStateExporter.ExportState, playerId)
+    if not ok then
+        print("[AlphaZero] ERROR: ExportState crashed: " .. tostring(state))
+        return false, tostring(state)
+    end
+    local writeOk, writeErr = AlphaZeroFileIO.WriteState(state)
+    if not writeOk then
+        print("[AlphaZero] ERROR: WriteState failed: " .. tostring(writeErr))
+    end
+    return writeOk, writeErr
 end
 
 -- Initialize on load
