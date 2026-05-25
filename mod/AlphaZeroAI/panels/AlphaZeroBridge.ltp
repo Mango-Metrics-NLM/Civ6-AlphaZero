@@ -1,0 +1,173 @@
+<?xml version="1.0"?>
+<PanelData xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>AlphaZero Bridge</Name>
+  <App>Civ6</App>
+  <EnterAction>
+    -- Initialize relay state
+    AZ_RELAY_ACTIVE = true;
+    AZ_RELAY_COUNT = 0;
+    AZ_LAST_POLL = 0;
+    AZ_POLL_INTERVAL = 0.5;
+    print("[AlphaZero Panel] Bridge panel loaded");
+  </EnterAction>
+  <ExitAction>
+    AZ_RELAY_ACTIVE = false;
+    print("[AlphaZero Panel] Bridge panel unloaded");
+  </ExitAction>
+  <CompatibleStates>
+    <string>GameCore_Tuner</string>
+  </CompatibleStates>
+  <LoadStates />
+  <Actions>
+    <ActionData>
+      <Name>Relay Commands Now</Name>
+      <Action>
+        -- Read commands.json and inject into ExposedMembers
+        local COMMANDS_PATH = "C:/Users/iansh/OneDrive/Documents/My Games/Sid Meier's Civilization VI/AlphaZeroAI/commands.json";
+        local f = io.open(COMMANDS_PATH, "r");
+        if f then
+            local content = f:read("*a");
+            f:close();
+            if content and #content > 2 then
+                ExposedMembers.AlphaZeroCommand = content;
+                AZ_RELAY_COUNT = (AZ_RELAY_COUNT or 0) + 1;
+                print("[AlphaZero Panel] Command relayed (#" .. AZ_RELAY_COUNT .. "): " .. string.sub(content, 1, 100));
+                -- Clear the file after reading
+                local fw = io.open(COMMANDS_PATH, "w");
+                if fw then
+                    fw:write("");
+                    fw:close();
+                end
+            end
+        end
+      </Action>
+      <Location>
+        <X>20</X>
+        <Y>50</Y>
+      </Location>
+    </ActionData>
+    <ActionData>
+      <Name>Dump State</Name>
+      <Action>
+        -- Trigger state export if mod is loaded
+        if ExposedMembers and ExposedMembers.AlphaZeroExportState then
+            ExposedMembers.AlphaZeroExportState();
+            print("[AlphaZero Panel] State export triggered");
+        else
+            print("[AlphaZero Panel] WARNING: AlphaZeroExportState not available");
+        end
+      </Action>
+      <Location>
+        <X>180</X>
+        <Y>50</Y>
+      </Location>
+    </ActionData>
+    <ActionData>
+      <Name>Check Status</Name>
+      <Action>
+        print("[AlphaZero Panel] === STATUS ===");
+        print("  Relay active: " .. tostring(AZ_RELAY_ACTIVE or false));
+        print("  Commands relayed: " .. tostring(AZ_RELAY_COUNT or 0));
+        if ExposedMembers then
+            print("  ExposedMembers.AlphaZeroCommand: " .. tostring(ExposedMembers.AlphaZeroCommand ~= nil));
+            print("  ExposedMembers.AlphaZeroAck: " .. tostring(ExposedMembers.AlphaZeroAck ~= nil));
+            print("  ExposedMembers.AlphaZeroHeartbeat: " .. tostring(ExposedMembers.AlphaZeroHeartbeat ~= nil));
+        end
+        print("[AlphaZero Panel] === END STATUS ===");
+      </Action>
+      <Location>
+        <X>330</X>
+        <Y>50</Y>
+      </Location>
+    </ActionData>
+    <ActionData>
+      <Name>Clear ExposedMembers</Name>
+      <Action>
+        if ExposedMembers then
+            ExposedMembers.AlphaZeroCommand = nil;
+            ExposedMembers.AlphaZeroAck = nil;
+            ExposedMembers.AlphaZeroState = nil;
+            ExposedMembers.AlphaZeroHeartbeat = nil;
+            print("[AlphaZero Panel] ExposedMembers cleared");
+        end
+      </Action>
+      <Location>
+        <X>20</X>
+        <Y>90</Y>
+      </Location>
+    </ActionData>
+  </Actions>
+  <StringControls>
+    <StringControlData>
+      <Name>Commands File Path</Name>
+      <GetFunction>function()
+  return "C:/Users/iansh/OneDrive/Documents/My Games/Sid Meier's Civilization VI/AlphaZeroAI/commands.json";
+end</GetFunction>
+      <SetFunction>function(value)
+  -- Path is informational only for now
+  print("[AlphaZero Panel] Commands path: " .. tostring(value));
+end</SetFunction>
+      <Location>
+        <X>20</X>
+        <Y>130</Y>
+      </Location>
+    </StringControlData>
+  </StringControls>
+  <IntegerControls>
+    <IntegerControlData>
+      <Name>Commands Relayed</Name>
+      <GetFunction>function()
+  return AZ_RELAY_COUNT or 0;
+end</GetFunction>
+      <SetFunction>function(value)
+  -- Read-only display
+end</SetFunction>
+      <Location>
+        <X>20</X>
+        <Y>170</Y>
+      </Location>
+      <DefaultValue>0</DefaultValue>
+    </IntegerControlData>
+  </IntegerControls>
+  <FloatControls />
+  <BooleanControls>
+    <BooleanControlData>
+      <Name>Auto-Relay (periodic polling)</Name>
+      <GetFunction>function()
+  -- When true, the panel periodically checks commands.json
+  -- Note: .ltp panels don't have a true timer, but the GetFunction
+  -- is called on each panel refresh (~1-2 Hz). We use this to
+  -- piggyback the auto-relay polling.
+  if AZ_RELAY_ACTIVE then
+      local COMMANDS_PATH = "C:/Users/iansh/OneDrive/Documents/My Games/Sid Meier's Civilization VI/AlphaZeroAI/commands.json";
+      local f = io.open(COMMANDS_PATH, "r");
+      if f then
+          local content = f:read("*a");
+          f:close();
+          if content and #content > 2 then
+              ExposedMembers.AlphaZeroCommand = content;
+              AZ_RELAY_COUNT = (AZ_RELAY_COUNT or 0) + 1;
+              print("[AlphaZero Panel] Auto-relayed command #" .. AZ_RELAY_COUNT);
+              local fw = io.open(COMMANDS_PATH, "w");
+              if fw then fw:write(""); fw:close(); end
+          end
+      end
+  end
+  return AZ_RELAY_ACTIVE or false;
+end</GetFunction>
+      <SetFunction>function(value)
+  AZ_RELAY_ACTIVE = value;
+  print("[AlphaZero Panel] Auto-relay " .. (value and "ENABLED" or "DISABLED"));
+end</SetFunction>
+      <Location>
+        <X>20</X>
+        <Y>210</Y>
+      </Location>
+    </BooleanControlData>
+  </BooleanControls>
+  <TableViews />
+  <DataViews />
+  <StatTrackers />
+  <SelectionLists />
+  <MultiselectLists />
+</PanelData>

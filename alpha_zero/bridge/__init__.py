@@ -1,7 +1,11 @@
-"""Civ6 Bridge - File-based IPC for real game communication.
+"""Civ6 Bridge - IPC for real game communication.
 
 This package provides the bridge system for communication between
 the Python AlphaZero agent and the Civilization VI game via a Lua mod.
+
+Supports two bridge backends:
+- FileBridge: File-based IPC (polling) for when Lua has io access.
+- LiveBridge: Log-tailing + file-relay for when Lua uses print-based IPC.
 
 The bridge uses file-based IPC (polling) instead of TCP sockets because
 Civ6's Lua runtime is sandboxed and blocks external libraries.
@@ -96,6 +100,10 @@ __all__ = [
     "get_map_config",
     # Protocol - Utilities
     "validate_state_json",
+    # Live bridge (log-tailing + command relay)
+    "LiveBridge",
+    "LogTailer",
+    "TunerBridge",
 ]
 
 
@@ -145,4 +153,16 @@ def __getattr__(name: str) -> Any:
         from alpha_zero.bridge.eval_harness import BridgeEvalHarness
 
         return BridgeEvalHarness
+    if name == "LiveBridge":
+        from alpha_zero.bridge.live_bridge import LiveBridge
+
+        return LiveBridge
+    if name == "LogTailer":
+        from alpha_zero.bridge.log_tailer import LogTailer
+
+        return LogTailer
+    if name == "TunerBridge":
+        from alpha_zero.bridge.tuner_bridge import TunerBridge
+
+        return TunerBridge
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

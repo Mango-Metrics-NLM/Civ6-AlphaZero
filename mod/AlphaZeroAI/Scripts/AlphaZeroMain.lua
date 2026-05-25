@@ -1252,8 +1252,24 @@ function AlphaZeroFileIO.WriteState(state)
         if not path then return false, "STATE_PATH not configured" end
         return AlphaZeroFileIO.Write(path, json)
     else
-        -- Print-based IPC fallback
-        print("AZ_STATE:" .. json)
+        -- Print-based IPC fallback with chunking for large states
+        -- Lua.log truncates lines at ~4KB; split into 3500-char chunks
+        local MAX_CHUNK = 3500
+        local jsonLen = #json
+        if jsonLen <= MAX_CHUNK then
+            -- Small enough for a single line
+            print("AZ_STATE:" .. json)
+        else
+            -- Chunked output: AZ_STATE_CHUNK:seq/total:data
+            local totalChunks = math.ceil(jsonLen / MAX_CHUNK)
+            for i = 1, totalChunks do
+                local startPos = (i - 1) * MAX_CHUNK + 1
+                local endPos = math.min(i * MAX_CHUNK, jsonLen)
+                local chunk = json:sub(startPos, endPos)
+                print("AZ_STATE_CHUNK:" .. i .. "/" .. totalChunks .. ":" .. chunk)
+            end
+            print("AZ_STATE_END:" .. totalChunks)
+        end
         return true, nil
     end
 end
