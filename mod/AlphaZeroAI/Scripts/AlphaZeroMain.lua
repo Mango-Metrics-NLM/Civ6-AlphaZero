@@ -3162,6 +3162,40 @@ function AlphaZeroBridge.Initialize()
         AlphaZeroActionExecutor.Init()
     end
 
+    -- Diagnostic: dump available APIs to Lua.log
+    local apis = {
+        {"io", io},
+        {"io.open", io and io.open},
+        {"os", os},
+        {"os.time", os and os.time},
+        {"os.clock", os and os.clock},
+        {"os.execute", os and os.execute},
+        {"os.getenv", os and os.getenv},
+        {"os.remove", os and os.remove},
+        {"os.rename", os and os.rename},
+        {"UI", UI},
+        {"UI.GetAppSavegameDirectory", UI and UI.GetAppSavegameDirectory},
+        {"UI.DataError", UI and UI.DataError},
+        {"Modding", Modding},
+        {"Modding.GetUserDataFolder", Modding and Modding.GetUserDataFolder},
+        {"Game", Game},
+        {"Players", Players},
+        {"GameEvents", GameEvents},
+        {"Events", Events},
+        {"ContextPtr", ContextPtr},
+        {"Network", Network},
+        {"loadfile", loadfile},
+        {"dofile", dofile},
+        {"require", require},
+        {"include", include},
+    }
+    print("[AlphaZero] === API AVAILABILITY DIAGNOSTIC ===")
+    for _, entry in ipairs(apis) do
+        local name, val = entry[1], entry[2]
+        print(string.format("[AlphaZero] %s = %s", name, val and "AVAILABLE" or "nil"))
+    end
+    print("[AlphaZero] === END DIAGNOSTIC ===")
+
     -- Validate configuration
     if AlphaZeroConfig and AlphaZeroConfig.Validate then
         local valid, errors = AlphaZeroConfig.Validate()
