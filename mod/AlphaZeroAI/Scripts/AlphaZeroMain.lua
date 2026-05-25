@@ -2156,15 +2156,28 @@ function AlphaZeroStateExporter.ExportState(playerId)
         end
     end
 
-    -- Export components
-    state.map = exportMap(playerId)
-    state.units = exportUnits(playerId)
-    state.cities = exportCities(playerId)
-    state.player = exportPlayer(playerId)
-    state.players = { state.player }  -- Include at least current player
+    -- Export components (each wrapped in pcall for resilience)
+    local ok, result
+
+    ok, result = pcall(exportMap, playerId)
+    state.map = ok and result or {width = 0, height = 0, tiles = {}}
+
+    ok, result = pcall(exportUnits, playerId)
+    state.units = ok and result or {}
+
+    ok, result = pcall(exportCities, playerId)
+    state.cities = ok and result or {}
+
+    ok, result = pcall(exportPlayer, playerId)
+    state.player = ok and result or {id = playerId}
+    state.players = { state.player }
 
     if AlphaZeroConfig and AlphaZeroConfig.IsEnabled("LEGAL_ACTIONS") then
-        state.legal_actions = exportLegalActions(playerId)
+        ok, result = pcall(exportLegalActions, playerId)
+        state.legal_actions = ok and result or {{action = "end_turn"}}
+        if not ok then
+            print("[AlphaZero] WARN: exportLegalActions failed: " .. tostring(result))
+        end
     end
 
     -- Check game end
