@@ -265,139 +265,180 @@ function AlphaZeroFileIO.WriteJson(path, data, pretty)
 end
 
 -- Write state to state file
-function AlphaZeroFileIO.WriteState(state)
-    local path = AlphaZeroConfig and AlphaZeroConfig.Get("STATE_PATH")
-    if not path then
-        return false, "STATE_PATH not configured"
-    end
+-- ============================================================================
+-- Print-based IPC fallback (used when io.open is nil in Civ6 sandbox)
+-- Protocol: Lua prints "AZ_STATE:{json}" etc. to Lua.log
+--           Python tails Lua.log for these prefixed lines
+--           Python sets ExposedMembers.AlphaZeroCommand for commands
+-- ============================================================================
 
-    local ok, err = AlphaZeroFileIO.WriteJson(path, state, false)
-    if ok and Log then
-        Log.Info("State written: turn=%s, units=%d, cities=%d",
-            tostring(state.turn_id),
-            state.units and #state.units or 0,
-            state.cities and #state.cities or 0)
-    end
-    return ok, err
+local HAS_IO = (io ~= nil and io.open ~= nil)
+
+-- Safe timestamp helper (os.time may be stripped)
+local function safeTimestamp()
+    return (os and os.time) and os.time() or 0
 end
 
--- Read commands from commands file
+-- Get current game turn
+local function currentTurn()
+    return (Game and Game.GetCurrentGameTurn) and Game.GetCurrentGameTurn() or 0
+end
+
+function AlphaZeroFileIO.WriteState(state)
+    if not AlphaZeroJson then
+        return false, "JSON encoder not available"
+    end
+
+    local json, err = AlphaZeroJson.Encode(state, false)
+    if not json then
+        return false, err
+    end
+
+    if HAS_IO then
+        -- File-based IPC
+        local path = AlphaZeroConfig and AlphaZeroConfig.Get("STATE_PATH")
+        if not path then return false, "STATE_PATH not configured" end
+        return AlphaZeroFileIO.Write(path, json)
+    else
+        -- Print-based IPC fallback
+        print("AZ_STATE:" .. json)
+        return true, nil
+    end
+end
+
+-- Read commands from either file or ExposedMembers
 function AlphaZeroFileIO.ReadCommands()
-    local path = AlphaZeroConfig and AlphaZeroConfig.Get("COMMANDS_PATH")
-    if not path then
-        return nil, "COMMANDS_PATH not configured"
-    end
+    if HAS_IO then
+        -- File-based IPC
+        local path = AlphaZeroConfig and AlphaZeroConfig.Get("COMMANDS_PATH")
+        if not path then return nil, "COMMANDS_PATH not configured" end
+        if not AlphaZeroFileIO.HasChanged(path) then return nil, nil end
+        return AlphaZeroFileIO.ReadJson(path)
+    else
+        -- ExposedMembers-based IPC fallback
+        if ExposedMembers and ExposedMembers.AlphaZeroCommand then
+            local cmdJson = ExposedMembers.AlphaZeroCommand
+            ExposedMembers.AlphaZeroCommand = nil  -- Consume command
 
-    -- Check if file changed
-    if not AlphaZeroFileIO.HasChanged(path) then
-        return nil, nil  -- No new commands
+            if AlphaZeroJson and AlphaZeroJson.Decode then
+                local data, err = AlphaZeroJson.Decode(cmdJson)
+                if data then
+                    print("[AlphaZero] Command received via ExposedMembers")
+                    return data, nil
+                else
+                    return nil, "JSON decode error: " .. tostring(err)
+                end
+            end
+        end
+        return nil, nil  -- No commands available
     end
-
-    local data, err = AlphaZeroFileIO.ReadJson(path)
-    if err then
-        return nil, err
-    end
-
-    if data and Log then
-        Log.Info("Commands received: msg_id=%s, count=%d",
-            tostring(data.msg_id),
-            data.commands and #data.commands or 0)
-    end
-
-    return data, nil
 end
 
 -- Write acknowledgment
 function AlphaZeroFileIO.WriteAck(msgId, success, errorCode, errorMessage, executed)
-    local path = AlphaZeroConfig and AlphaZeroConfig.Get("ACK_PATH")
-    if not path then
-        return false, "ACK_PATH not configured"
-    end
-
     local ack = {
         msg_id = msgId,
-        timestamp = os.time(),
+        timestamp = safeTimestamp(),
         success = success,
         error_code = errorCode,
         error_message = errorMessage,
         executed = executed or {},
     }
 
-    local ok, err = AlphaZeroFileIO.WriteJson(path, ack, false)
-    if ok and Log then
-        Log.Debug("Ack written: msg_id=%d, success=%s", msgId, tostring(success))
+    if not AlphaZeroJson then return false, "JSON encoder not available" end
+    local json, err = AlphaZeroJson.Encode(ack, false)
+    if not json then return false, err end
+
+    if HAS_IO then
+        local path = AlphaZeroConfig and AlphaZeroConfig.Get("ACK_PATH")
+        if not path then return false, "ACK_PATH not configured" end
+        return AlphaZeroFileIO.Write(path, json)
+    else
+        -- Print-based fallback + ExposedMembers
+        print("AZ_ACK:" .. json)
+        if ExposedMembers then
+            ExposedMembers.AlphaZeroAck = json
+        end
+        return true, nil
     end
-    return ok, err
 end
 
 -- Write heartbeat
 function AlphaZeroFileIO.WriteHeartbeat()
-    local path = AlphaZeroConfig and AlphaZeroConfig.Get("HEARTBEAT_PATH")
-    if not path then
-        return false, "HEARTBEAT_PATH not configured"
-    end
-
     local heartbeat = {
-        timestamp = os.time(),
+        timestamp = safeTimestamp(),
         lua_alive = true,
-        turn = 0,
+        turn = currentTurn(),
     }
 
-    if Game then
-        heartbeat.turn = Game.GetCurrentGameTurn() or 0
-    end
+    if not AlphaZeroJson then return false, "JSON encoder not available" end
+    local json, err = AlphaZeroJson.Encode(heartbeat, false)
+    if not json then return false, err end
 
-    return AlphaZeroFileIO.WriteJson(path, heartbeat, false)
+    if HAS_IO then
+        local path = AlphaZeroConfig and AlphaZeroConfig.Get("HEARTBEAT_PATH")
+        if not path then return false, "HEARTBEAT_PATH not configured" end
+        return AlphaZeroFileIO.Write(path, json)
+    else
+        -- Print-based fallback + ExposedMembers
+        print("AZ_HB:" .. json)
+        if ExposedMembers then
+            ExposedMembers.AlphaZeroHeartbeat = json
+        end
+        return true, nil
+    end
 end
 
--- Write error to error file
+-- Write error
 function AlphaZeroFileIO.WriteError(code, message, context)
-    local path = AlphaZeroConfig and AlphaZeroConfig.Get("ERROR_PATH")
-    if not path then
-        return false, "ERROR_PATH not configured"
-    end
-
     local errorData = {
-        timestamp = os.time(),
+        timestamp = safeTimestamp(),
         code = code,
         message = message,
         context = context,
+        turn = currentTurn(),
     }
 
-    if Game then
-        errorData.turn = Game.GetCurrentGameTurn() or 0
-    end
+    if not AlphaZeroJson then return false, "JSON encoder not available" end
+    local json, err = AlphaZeroJson.Encode(errorData, false)
+    if not json then return false, err end
 
-    if not AlphaZeroJson then
-        return false, "JSON encoder not available"
+    if HAS_IO then
+        local path = AlphaZeroConfig and AlphaZeroConfig.Get("ERROR_PATH")
+        if not path then return false, "ERROR_PATH not configured" end
+        return AlphaZeroFileIO.Append(path, json .. "\n")
+    else
+        print("AZ_ERR:" .. json)
+        return true, nil
     end
-
-    -- Append to error file
-    local json, encodeErr = AlphaZeroJson.Encode(errorData, false)
-    if not json then
-        return false, encodeErr
-    end
-
-    return AlphaZeroFileIO.Append(path, json .. "\n")
 end
 
--- Clear all communication files
+-- Clear all communication files / ExposedMembers
 function AlphaZeroFileIO.ClearAll()
-    local files = {
-        AlphaZeroConfig and AlphaZeroConfig.Get("STATE_PATH"),
-        AlphaZeroConfig and AlphaZeroConfig.Get("COMMANDS_PATH"),
-        AlphaZeroConfig and AlphaZeroConfig.Get("ACK_PATH"),
-        AlphaZeroConfig and AlphaZeroConfig.Get("ERROR_PATH"),
-    }
-
-    for _, path in ipairs(files) do
-        if path then
-            AlphaZeroFileIO.Delete(path)
-            AlphaZeroFileIO.ResetChangeTracking(path)
+    if HAS_IO then
+        local files = {
+            AlphaZeroConfig and AlphaZeroConfig.Get("STATE_PATH"),
+            AlphaZeroConfig and AlphaZeroConfig.Get("COMMANDS_PATH"),
+            AlphaZeroConfig and AlphaZeroConfig.Get("ACK_PATH"),
+            AlphaZeroConfig and AlphaZeroConfig.Get("ERROR_PATH"),
+        }
+        for _, path in ipairs(files) do
+            if path then
+                AlphaZeroFileIO.Delete(path)
+                AlphaZeroFileIO.ResetChangeTracking(path)
+            end
         end
     end
 
-    if Log then Log.Info("Cleared all communication files") end
+    -- Clear ExposedMembers regardless
+    if ExposedMembers then
+        ExposedMembers.AlphaZeroState = nil
+        ExposedMembers.AlphaZeroCommand = nil
+        ExposedMembers.AlphaZeroAck = nil
+        ExposedMembers.AlphaZeroHeartbeat = nil
+    end
+
+    print("[AlphaZero] Cleared all communication channels")
 end
 
 -- Get path separator (for reuse by other modules)
@@ -408,4 +449,5 @@ end
 -- Initialize on load
 AlphaZeroFileIO.Init()
 
-print("[AlphaZero] FileIO module loaded")
+print("[AlphaZero] FileIO module loaded (io=" .. (HAS_IO and "file" or "print") .. " mode)")
+
