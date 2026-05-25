@@ -330,14 +330,17 @@ local function checkLogRotation(logPath)
     if rotationChecked then return end
     rotationChecked = true  -- Only check once per session
 
+    -- io/os may be stripped in Civ6 sandbox
+    if not io or not io.open then return end
+
     local f = io.open(logPath, "rb")
     if f then
         local size = f:seek("end")
         f:close()
-        if size and size > MAX_LOG_SIZE then
+        if size and size > MAX_LOG_SIZE and os and os.remove then
             -- Rotate: remove old backup, rename current to .old
-            os.remove(logPath .. ".old")
-            os.rename(logPath, logPath .. ".old")
+            pcall(os.remove, logPath .. ".old")
+            pcall(os.rename, logPath, logPath .. ".old")
         end
     end
 end
@@ -347,6 +350,9 @@ local function writeToFile(formatted)
     if not AlphaZeroConfig or not AlphaZeroConfig.IsEnabled("LOGGING") then
         return
     end
+
+    -- io may be stripped in Civ6 sandbox; skip file logging
+    if not io or not io.open then return end
 
     local logPath = AlphaZeroConfig.Get("COMM_DIR")
     if not logPath then return end
@@ -3068,6 +3074,13 @@ print("[AlphaZero] ActionExecutor module loaded")
 -- Fixes: deduplicated events, proper polling handle, graceful shutdown, timeout.
 -- ============================================================================
 
+-- Load dependent modules via include() (required in AddUserInterfaces context)
+include("Config")
+include("Logger")
+include("JsonEncoder")
+include("FileIO")
+include("StateExporter")
+include("ActionExecutor")
 
 AlphaZeroBridge = AlphaZeroBridge or {}
 
@@ -3198,7 +3211,7 @@ function AlphaZeroBridge.OnTurnStart(playerId)
     bridgeState.isMyTurn = true
     bridgeState.actionsThisTurn = 0
     bridgeState.waitingForCommand = true
-    bridgeState.turnStartTime = os.time()
+    bridgeState.turnStartTime = (os and os.time) and os.time() or 0
 
     -- Export and write current state
     local success, err = AlphaZeroStateExporter.ExportAndWrite(playerId)
@@ -3264,7 +3277,7 @@ function AlphaZeroBridge.PollCommands()
 
     -- Command timeout check
     local timeout = (AlphaZeroConfig and AlphaZeroConfig.Get("COMMAND_TIMEOUT")) or 30.0
-    local elapsed = os.time() - bridgeState.turnStartTime
+    local elapsed = ((os and os.time) and os.time() or 0) - bridgeState.turnStartTime
     if elapsed > timeout then
         if Log then Log.Warn("Command timeout after %ds, stopping poll", elapsed) end
         bridgeState.waitingForCommand = false
@@ -3272,7 +3285,7 @@ function AlphaZeroBridge.PollCommands()
     end
 
     -- Write heartbeat periodically
-    local now = os.time()
+    local now = (os and os.time) and os.time() or 0
     if now - bridgeState.lastHeartbeatTime >= 1 then
         if AlphaZeroFileIO then
             AlphaZeroFileIO.WriteHeartbeat()

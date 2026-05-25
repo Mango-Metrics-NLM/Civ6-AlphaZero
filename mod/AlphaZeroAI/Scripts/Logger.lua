@@ -59,14 +59,17 @@ local function checkLogRotation(logPath)
     if rotationChecked then return end
     rotationChecked = true  -- Only check once per session
 
+    -- io/os may be stripped in Civ6 sandbox
+    if not io or not io.open then return end
+
     local f = io.open(logPath, "rb")
     if f then
         local size = f:seek("end")
         f:close()
-        if size and size > MAX_LOG_SIZE then
+        if size and size > MAX_LOG_SIZE and os and os.remove then
             -- Rotate: remove old backup, rename current to .old
-            os.remove(logPath .. ".old")
-            os.rename(logPath, logPath .. ".old")
+            pcall(os.remove, logPath .. ".old")
+            pcall(os.rename, logPath, logPath .. ".old")
         end
     end
 end
@@ -76,6 +79,9 @@ local function writeToFile(formatted)
     if not AlphaZeroConfig or not AlphaZeroConfig.IsEnabled("LOGGING") then
         return
     end
+
+    -- io may be stripped in Civ6 sandbox; skip file logging
+    if not io or not io.open then return end
 
     local logPath = AlphaZeroConfig.Get("COMM_DIR")
     if not logPath then return end

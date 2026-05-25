@@ -142,7 +142,7 @@ function AlphaZeroBridge.OnTurnStart(playerId)
     bridgeState.isMyTurn = true
     bridgeState.actionsThisTurn = 0
     bridgeState.waitingForCommand = true
-    bridgeState.turnStartTime = os.time()
+    bridgeState.turnStartTime = (os and os.time) and os.time() or 0
 
     -- Export and write current state
     local success, err = AlphaZeroStateExporter.ExportAndWrite(playerId)
@@ -208,7 +208,7 @@ function AlphaZeroBridge.PollCommands()
 
     -- Command timeout check
     local timeout = (AlphaZeroConfig and AlphaZeroConfig.Get("COMMAND_TIMEOUT")) or 30.0
-    local elapsed = os.time() - bridgeState.turnStartTime
+    local elapsed = ((os and os.time) and os.time() or 0) - bridgeState.turnStartTime
     if elapsed > timeout then
         if Log then Log.Warn("Command timeout after %ds, stopping poll", elapsed) end
         bridgeState.waitingForCommand = false
@@ -216,7 +216,7 @@ function AlphaZeroBridge.PollCommands()
     end
 
     -- Write heartbeat periodically
-    local now = os.time()
+    local now = (os and os.time) and os.time() or 0
     if now - bridgeState.lastHeartbeatTime >= 1 then
         if AlphaZeroFileIO then
             AlphaZeroFileIO.WriteHeartbeat()
