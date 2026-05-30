@@ -759,6 +759,44 @@ class LoggingConfig:
 
 
 @dataclass
+class StagnationConfig:
+    """Training-stagnation detection settings (opt-in).
+
+    Wraps the standalone ``EloPlateauDetector`` (and optionally
+    ``ConvergenceMonitor``). Detector thresholds themselves come from their own
+    ``CIV6AZ_ELO_*`` / ``CIV6AZ_CONVERGENCE_*`` env vars; this config only governs
+    whether stagnation detection runs and how the orchestrator reacts.
+
+    Attributes:
+        enabled: Master switch (default off — zero behaviour change).
+        use_elo_plateau: Use the ELO/win-rate plateau detector (recommended).
+        use_convergence: Use the loss/win-rate convergence monitor. Off by
+            default: a loss signal can fall while the champion never improves
+            (the v1.2.0 "0 promotions" trap), so it is not a safe default.
+        auto_stop: Request a graceful shutdown on plateau (else alert only).
+        alert_to_mlflow: Emit ``stagnation/*`` metrics + a warning tag to MLflow.
+    """
+
+    enabled: bool = False
+    use_elo_plateau: bool = True
+    use_convergence: bool = False
+    auto_stop: bool = False
+    alert_to_mlflow: bool = True
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> StagnationConfig:
+        """Create from dictionary."""
+        defaults = cls()
+        return cls(
+            enabled=bool(data.get("enabled", defaults.enabled)),
+            use_elo_plateau=bool(data.get("use_elo_plateau", defaults.use_elo_plateau)),
+            use_convergence=bool(data.get("use_convergence", defaults.use_convergence)),
+            auto_stop=bool(data.get("auto_stop", defaults.auto_stop)),
+            alert_to_mlflow=bool(data.get("alert_to_mlflow", defaults.alert_to_mlflow)),
+        )
+
+
+@dataclass
 class OrchestratorConfig:
     """Master configuration for the Training Orchestrator.
 
@@ -802,6 +840,9 @@ class OrchestratorConfig:
     hierarchical: HierarchicalConfig = field(
         default_factory=HierarchicalConfig,
     )
+
+    # Training-stagnation detection (opt-in)
+    stagnation: StagnationConfig = field(default_factory=StagnationConfig)
 
     # Resource management
     resources: ResourceBudget = field(default_factory=ResourceBudget)
@@ -877,6 +918,7 @@ class OrchestratorConfig:
             hierarchical=HierarchicalConfig.from_dict(
                 data.get("hierarchical", {}),
             ),
+            stagnation=StagnationConfig.from_dict(data.get("stagnation", {})),
             resources=ResourceBudget.from_dict(data.get("resources", {})),
             autonomy=AutonomyLevel.from_dict(data.get("autonomy", {})),
             lr_schedule=ScheduleConfig.from_dict(data.get("lr_schedule", {})),
@@ -1048,6 +1090,7 @@ class OrchestratorConfig:
             "resources": self.resources,
             "reflection": self.reflection,
             "hierarchical": self.hierarchical,
+            "stagnation": self.stagnation,
         }
 
         if section not in section_map:

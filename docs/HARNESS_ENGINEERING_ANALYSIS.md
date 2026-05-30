@@ -146,3 +146,28 @@ The throughline: **Civ6-AlphaZero already practices harness engineering** — th
 that names what the repo already does, and (b) two specific upgrades — *independent
 evaluation* and *stagnation escalation* — that the project currently under-applies,
 the second of which maps squarely onto its top open problem.
+
+---
+
+## 6. Guardrail / assumption audit (H10)
+
+Every guardrail encodes an assumption about a *current* limitation; as the model
+and the trained net improve, some assumptions expire and the guardrail becomes
+pure cost. Revisit this checklist each release: for each guardrail, disable it,
+measure the impact, and either keep (with evidence) or retire it.
+
+| Guardrail | Assumption it encodes | How to audit | Last reviewed |
+|-----------|-----------------------|--------------|---------------|
+| 3×-failure stop (CLAUDE.md §4.2) | The agent loops unproductively on repeats | Disable; see if longer self-recovery now succeeds | 2026-05-30 |
+| `PostToolUse` ruff `--fix` autolinter | Manual lint is forgotten / noisy | Disable for a session; count new lint defects | 2026-05-30 |
+| `PreToolUse` prohibited-action guard | Agent may commit to `main` / overspend games | Inspect deny logs; were any denials false positives? | 2026-05-30 |
+| Stagnation thresholds (`CIV6AZ_ELO_*`, `CIV6_STAGNATION_PATIENCE`) | Current net plateaus are real stalls | Replay a known-good run; confirm no false stop | 2026-05-30 |
+| Paranoid / Max-N MCTS variants | Net is too weak for naive Max-N | A/B the variants as the net strengthens | — |
+| `promotion_threshold = 0.55` | Below this, "improvement" is noise | Re-estimate from eval-game variance at current strength | — |
+
+> **Live example (this change):** the `PostToolUse` ruff `--fix` autolinter removed
+> two imports (`json`, `Sequence`) *between* edits, because at the instant of the
+> import edit the names were not yet referenced. The fix (re-adding once used) is
+> trivial, but it is exactly the kind of expired/over-eager guardrail this audit
+> exists to catch — an autofix that mutates files mid-task can fight a multi-edit
+> change. Worth revisiting whether `--fix` should run only on the final edit.
