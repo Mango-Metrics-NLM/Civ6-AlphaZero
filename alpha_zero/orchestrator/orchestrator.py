@@ -296,6 +296,12 @@ class TrainingOrchestrator:
         # Training safeguards (Phase 8)
         self._training_safeguard: Any = None
 
+        # Training-stagnation detector (win-rate / ELO plateau). Opt-in via
+        # config.stagnation; mirrors the safeguard hook but fires at eval time
+        # because the signal (win-rate vs incumbent / ELO) lives there.
+        self._stagnation_detector: Any = None
+        self._stagnation_stopped: bool = False
+
         # MuZero integration (Phase 9)
         self._muzero_bridge: Any = None
         self._training_mode: str = "alphazero"
@@ -528,6 +534,25 @@ class TrainingOrchestrator:
                 )
                 self._eval_pipeline = None
                 self._elo_system = None
+
+            # Training-stagnation detector (opt-in). Reuses the standalone,
+            # already-tested EloPlateauDetector; keyed on ELO/win-rate (NOT loss,
+            # which can fall while the champion never improves — the v1.2.0 trap).
+            if getattr(self.config, "stagnation", None) and self.config.stagnation.enabled:
+                try:
+                    from alpha_zero.training.elo_plateau_detector import (
+                        EloPlateauDetector,
+                        EloPlateauDetectorConfig,
+                    )
+
+                    self._stagnation_detector = EloPlateauDetector(
+                        EloPlateauDetectorConfig.from_env(),
+                        alert_manager=None,
+                    )
+                    logger.info("Training-stagnation detector enabled (ELO plateau).")
+                except Exception as exc:  # graceful degradation, like safeguards
+                    logger.warning("Stagnation detector unavailable: %s", exc)
+                    self._stagnation_detector = None
 
             # Initialize reflection system (LATS-style learning from failures)
             if self.config.reflection.enabled and REFLECTION_AVAILABLE:
@@ -1477,6 +1502,10 @@ class TrainingOrchestrator:
         # vs-random / vs-heuristic) and update the ELO leaderboard.
         self._run_periodic_full_evaluation(win_rate)
 
+        # Stagnation check (after eval/ELO are fresh). Alerts and, if configured,
+        # requests a graceful stop.
+        self._check_training_stagnation(win_rate)
+
         return {"win_rate": win_rate, "avg_reward": avg_reward}
 
     def _run_periodic_full_evaluation(self, win_rate: float) -> None:
@@ -1541,6 +1570,72 @@ class TrainingOrchestrator:
                     leaderboard,
                     self.state.iteration,
                 )
+
+    def _check_training_stagnation(self, win_rate: float) -> None:
+        """Feed the stagnation detector and act on a detected plateau.
+
+        No-op unless ``config.stagnation.enabled`` created a detector. The signal
+        is ELO when available, else a win-rate-scaled pseudo-rating so the same
+        plateau logic works without the (optional) ELO system. On plateau we log
+        an MLflow alert and, if ``config.stagnation.auto_stop`` is set, request a
+        graceful shutdown (the run loop checkpoints on exit, preserving best).
+        """
+        detector = self._stagnation_detector
+        if detector is None:
+            return
+
+        # Prefer real ELO; otherwise map win-rate into an ELO-like scale so the
+        # detector's point-based improvement threshold stays meaningful
+        # (0.01 win-rate ~= 10 ELO points, the default improvement threshold).
+        if self._elo_system is not None and "current" in self._elo_ratings:
+            rating = float(self._elo_ratings["current"])
+        else:
+            rating = float(win_rate) * 1000.0
+
+        try:
+            detector.record_evaluation(
+                iteration=self.state.iteration,
+                elo_rating=rating,
+                win_rate=float(win_rate),
+                games_played=int(self.config.training.evaluation_games),
+            )
+            plateau = bool(detector.is_plateau())
+            stats = detector.get_statistics()
+        except Exception as exc:  # detector must never crash training
+            logger.warning("Stagnation check failed: %s", exc)
+            return
+
+        stalled_for = int(stats.get("iterations_since_improvement", 0))
+
+        if self.config.stagnation.alert_to_mlflow and self._mlflow_logger is not None:
+            try:
+                self._mlflow_logger.log_metrics(
+                    {
+                        "stagnation/elo_plateau": float(plateau),
+                        "stagnation/iterations_since_improvement": float(stalled_for),
+                    },
+                    step=self.state.iteration,
+                )
+                if plateau and hasattr(self._mlflow_logger, "set_tag"):
+                    self._mlflow_logger.set_tag(
+                        "alert/WARNING/stagnation",
+                        f"ELO/win-rate plateau for {stalled_for} evals at "
+                        f"iteration {self.state.iteration}",
+                    )
+            except Exception as exc:
+                logger.warning("Failed to log stagnation metrics: %s", exc)
+
+        if plateau:
+            logger.warning(
+                "Training stagnation: no win-rate/ELO improvement for %d evaluations "
+                "(iteration %d).",
+                stalled_for,
+                self.state.iteration,
+            )
+            if self.config.stagnation.auto_stop:
+                logger.warning("auto_stop enabled - requesting graceful shutdown.")
+                self._stagnation_stopped = True
+                self._shutdown_requested = True
 
     def _build_elo_leaderboard(self) -> Any:
         """Build a ``RatingLeaderboard`` snapshot from ``self._elo_ratings``."""
