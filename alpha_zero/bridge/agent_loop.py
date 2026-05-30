@@ -688,25 +688,46 @@ class BridgeAgentLoop:
             ts = int(time.time() * 1000)
             target = self.config.snapshot_log_dir / f"turn{self._stats.turns_played}_{ts}"
             target.mkdir(parents=True, exist_ok=True)
-            if state is not None:
-                # ``GameStateData`` is a dataclass; ``str()`` would emit a Python
-                # repr, not valid JSON. Serialise via ``asdict`` so the ``.json``
-                # files are parseable by standard tooling.
-                (target / "state.json").write_text(
-                    json.dumps(asdict(state), indent=2, default=str), encoding="utf-8"
-                )
-            if command is not None:
-                (target / "commands.json").write_text(command.to_json(), encoding="utf-8")
-            if ack is not None:
-                if hasattr(ack, "to_json"):
-                    ack_text = ack.to_json()
-                else:
-                    try:
-                        ack_text = json.dumps(asdict(ack), indent=2, default=str)
-                    except TypeError:
-                        ack_text = json.dumps(ack, indent=2, default=str)
-                (target / "ack.json").write_text(ack_text, encoding="utf-8")
+
+            # error.txt first: it only depends on ``exc`` and must always be
+            # recorded, even if a payload below fails to serialise.
             (target / "error.txt").write_text(f"{type(exc).__name__}: {exc}\n", encoding="utf-8")
+
+            def _dump(name: str, obj: Any) -> None:
+                """Write ``obj`` as valid JSON, isolated so one failure can't
+                skip the others. Prefers ``to_json``, then ``asdict`` (dataclass),
+                then a plain ``json.dumps``; skips the payload if none apply (e.g.
+                a test Mock) rather than raising."""
+                text: str | None = None
+                to_json = getattr(obj, "to_json", None)
+                if callable(to_json):
+                    try:
+                        candidate = to_json()
+                        if isinstance(candidate, str):
+                            text = candidate
+                    except Exception:
+                        text = None
+                if text is None:
+                    for attempt in (
+                        lambda: json.dumps(asdict(obj), indent=2, default=str),
+                        lambda: json.dumps(obj, indent=2, default=str),
+                    ):
+                        try:
+                            text = attempt()
+                            break
+                        except TypeError:
+                            continue
+                if text is None:
+                    logger.debug("Snapshot %s skipped (not serialisable)", name)
+                    return
+                (target / name).write_text(text, encoding="utf-8")
+
+            if state is not None:
+                _dump("state.json", state)
+            if command is not None:
+                _dump("commands.json", command)
+            if ack is not None:
+                _dump("ack.json", ack)
             logger.debug("Snapshot written to %s", target)
         except Exception as snap_exc:
             logger.warning("Failed to write debug snapshot: %s", snap_exc)
