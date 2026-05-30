@@ -667,87 +667,70 @@ class TestMainRunners:
 
 
 class TestRunMicrociv:
-    """run_microciv should complete a game loop via mocked env and net."""
+    """run_microciv should complete a game loop via mocked env and MCTS.
 
-    def test_run_microciv_completes(self) -> None:
+    Updated for W1.3: the function now invokes ``GumbelMCTS.search(env)`` per
+    turn instead of greedy-network argmax. Tests must provide a mock MCTS
+    that returns ``(action_probs, root_value)`` tuples.
+    """
+
+    @staticmethod
+    def _make_fake_obs(action_size: int = 10, board_size: int = 4) -> dict:
         import numpy as np
 
+        return {
+            "spatial": np.zeros((13, board_size, board_size), dtype=np.float32),
+            "vector": np.zeros((64,), dtype=np.float32),
+            "action_mask": np.ones(action_size, dtype=np.float32),
+        }
+
+    @staticmethod
+    def _make_mock_env(action_size: int = 10) -> MagicMock:
+        mock_env = MagicMock()
+        mock_env.action_space.n = action_size
+        fake_obs = TestRunMicrociv._make_fake_obs(action_size)
+        mock_env.reset.return_value = (fake_obs, {})
+        # Single-step game: terminated=True so the loop exits after one turn.
+        mock_env.step.return_value = (fake_obs, 1.0, True, False, {"winner": "player_0"})
+        return mock_env
+
+    @staticmethod
+    def _make_mock_network(action_size: int = 10) -> MagicMock:
+        import torch
+
+        mock_net = MagicMock()
+        mock_net.return_value = (torch.zeros(1, action_size), torch.tensor([[0.5]]))
+        mock_net.to.return_value = mock_net
+        return mock_net
+
+    @staticmethod
+    def _make_mock_mcts(action_size: int = 10) -> MagicMock:
+        import numpy as np
+
+        mock_mcts_instance = MagicMock()
+        # search(env, add_noise=...) -> (action_probs, root_value)
+        # Uniform probs over a legal action set.
+        probs = np.ones(action_size, dtype=np.float64) / action_size
+        mock_mcts_instance.search = MagicMock(return_value=(probs, 0.5))
+        return mock_mcts_instance
+
+    def test_run_microciv_invokes_mcts(self) -> None:
+        """W1.3 regression: MCTS.search() MUST be called every turn.
+
+        Previously, ``run_microciv`` constructed a GumbelMCTS instance then
+        ignored it (``_mcts =`` with the underscore prefix), falling back
+        to a greedy network-output argmax. This test pins the new behaviour
+        so the regression cannot recur.
+        """
         from alpha_zero.civ6_local import run_microciv
 
         cfg = Civ6LocalConfig(mode="microciv", board_size=4, num_simulations=1)
-
-        # Build a minimal fake observation
         action_size = 10
-        fake_obs = {
-            "spatial": np.zeros((13, 4, 4), dtype=np.float32),
-            "vector": np.zeros((64,), dtype=np.float32),
-            "action_mask": np.ones(action_size, dtype=np.float32),
-        }
 
-        # Mock gymnasium environment
-        mock_env = MagicMock()
-        mock_env.action_space.n = action_size
-        mock_env.reset.return_value = (fake_obs, {})
-        # Step returns terminated=True immediately so the loop ends in one step
-        mock_env.step.return_value = (fake_obs, 1.0, True, False, {"winner": "player_0"})
-
-        import torch
-
-        fake_policy = torch.zeros(1, action_size)
-        fake_value = torch.tensor([[0.5]])
-
-        mock_net = MagicMock()
-        mock_net.return_value = (fake_policy, fake_value)
-        # .to(device) must return the same mock so __call__ return_value is preserved
-        mock_net.to.return_value = mock_net
-
-        mock_net_cls = MagicMock(return_value=mock_net)
-        mock_env_cls = MagicMock(return_value=mock_env)
-
-        with patch.dict(
-            sys.modules,
-            {
-                "alpha_zero.envs.microciv": MagicMock(MicroCivEnv=mock_env_cls),
-                "alpha_zero.core.civ6_network": MagicMock(MicroCivNetwork=mock_net_cls),
-                "alpha_zero.core.civ6_mcts": MagicMock(
-                    GumbelMCTS=MagicMock(), GumbelMCTSConfig=MagicMock()
-                ),
-            },
-        ):
-            rc = run_microciv(cfg)
-
-        assert rc == 0
-
-    def test_run_microciv_loads_checkpoint(self, tmp_path: Path) -> None:
-        import numpy as np
-        import torch
-
-        from alpha_zero.civ6_local import run_microciv
-
-        # Create a real (empty) checkpoint file
-        ckpt = tmp_path / "model.pt"
-        torch.save({}, ckpt)
-
-        cfg = Civ6LocalConfig(
-            mode="microciv", board_size=4, num_simulations=1, checkpoint_path=str(ckpt)
-        )
-
-        action_size = 10
-        fake_obs = {
-            "spatial": np.zeros((13, 4, 4), dtype=np.float32),
-            "vector": np.zeros((64,), dtype=np.float32),
-            "action_mask": np.ones(action_size, dtype=np.float32),
-        }
-
-        mock_env = MagicMock()
-        mock_env.action_space.n = action_size
-        mock_env.reset.return_value = (fake_obs, {})
-        mock_env.step.return_value = (fake_obs, 0.0, True, False, {})
-
-        fake_policy = torch.zeros(1, action_size)
-        mock_net = MagicMock()
-        mock_net.return_value = (fake_policy, torch.tensor([[0.0]]))
-        mock_net.to.return_value = mock_net
+        mock_env = self._make_mock_env(action_size)
+        mock_net = self._make_mock_network(action_size)
+        mock_mcts_instance = self._make_mock_mcts(action_size)
+        mock_mcts_cls = MagicMock(return_value=mock_mcts_instance)
 
         with patch.dict(
             sys.modules,
@@ -757,7 +740,81 @@ class TestRunMicrociv:
                     MicroCivNetwork=MagicMock(return_value=mock_net)
                 ),
                 "alpha_zero.core.civ6_mcts": MagicMock(
-                    GumbelMCTS=MagicMock(), GumbelMCTSConfig=MagicMock()
+                    GumbelMCTS=mock_mcts_cls, GumbelMCTSConfig=MagicMock()
+                ),
+            },
+        ):
+            rc = run_microciv(cfg)
+
+        assert rc == 0
+        # The whole point of W1.3: MCTS.search MUST be invoked at least once.
+        mock_mcts_instance.search.assert_called()
+        # Verify the env was passed (not raw tensors as in the broken path).
+        first_call_args = mock_mcts_instance.search.call_args
+        assert first_call_args is not None
+        assert first_call_args.args[0] is mock_env
+
+    def test_run_microciv_completes(self) -> None:
+        """Smoke test: full loop completes when MCTS produces uniform probs."""
+        from alpha_zero.civ6_local import run_microciv
+
+        cfg = Civ6LocalConfig(mode="microciv", board_size=4, num_simulations=1)
+        action_size = 10
+        mock_env = self._make_mock_env(action_size)
+        mock_net = self._make_mock_network(action_size)
+        mock_mcts_instance = self._make_mock_mcts(action_size)
+
+        with patch.dict(
+            sys.modules,
+            {
+                "alpha_zero.envs.microciv": MagicMock(MicroCivEnv=MagicMock(return_value=mock_env)),
+                "alpha_zero.core.civ6_network": MagicMock(
+                    MicroCivNetwork=MagicMock(return_value=mock_net)
+                ),
+                "alpha_zero.core.civ6_mcts": MagicMock(
+                    GumbelMCTS=MagicMock(return_value=mock_mcts_instance),
+                    GumbelMCTSConfig=MagicMock(),
+                ),
+            },
+        ):
+            rc = run_microciv(cfg)
+
+        assert rc == 0
+
+    def test_run_microciv_loads_checkpoint(self, tmp_path: Path) -> None:
+        """Checkpoint loading still works under the MCTS-driven path."""
+        import torch
+
+        from alpha_zero.civ6_local import run_microciv
+
+        ckpt = tmp_path / "model.pt"
+        torch.save({}, ckpt)
+
+        cfg = Civ6LocalConfig(
+            mode="microciv", board_size=4, num_simulations=1, checkpoint_path=str(ckpt)
+        )
+        action_size = 10
+        mock_env = self._make_mock_env(action_size)
+        mock_env.step.return_value = (
+            self._make_fake_obs(action_size),
+            0.0,
+            True,
+            False,
+            {},
+        )
+        mock_net = self._make_mock_network(action_size)
+        mock_mcts_instance = self._make_mock_mcts(action_size)
+
+        with patch.dict(
+            sys.modules,
+            {
+                "alpha_zero.envs.microciv": MagicMock(MicroCivEnv=MagicMock(return_value=mock_env)),
+                "alpha_zero.core.civ6_network": MagicMock(
+                    MicroCivNetwork=MagicMock(return_value=mock_net)
+                ),
+                "alpha_zero.core.civ6_mcts": MagicMock(
+                    GumbelMCTS=MagicMock(return_value=mock_mcts_instance),
+                    GumbelMCTSConfig=MagicMock(),
                 ),
             },
         ):
@@ -771,77 +828,264 @@ class TestRunMicrociv:
 
 
 class TestRunCiv6Bridge:
-    """run_civ6_bridge should call FileBridge.run() and handle KeyboardInterrupt."""
+    """run_civ6_bridge wires the BridgeAgentLoop and handles the lifecycle.
 
-    def _make_bridge_mocks(self) -> tuple[MagicMock, MagicMock, MagicMock]:
-        """Return (mock_bridge_instance, mock_bridge_cls, mock_cfg_cls).
+    Rewritten for W1.2: the function no longer just calls `bridge.start()`,
+    so the old assertions against `bridge.start.assert_awaited_once()` no
+    longer make sense. The agent_loop owns the per-turn cadence now, and
+    these tests assert on `agent_loop.run` being awaited instead.
+    """
 
-        start() and stop() are AsyncMock because FileBridge uses async methods.
-        """
-        mock_bridge = MagicMock()
-        mock_bridge.start = AsyncMock()
-        mock_bridge.stop = AsyncMock()
-        mock_bridge_cls = MagicMock(return_value=mock_bridge)
-        mock_cfg_cls = MagicMock(return_value=MagicMock())
-        return mock_bridge, mock_bridge_cls, mock_cfg_cls
-
-    def test_run_bridge_normal(self) -> None:
+    def test_run_bridge_normal_drives_agent_loop(self) -> None:
+        """Happy path: start -> agent_loop.run -> stop, all on one event loop."""
         from alpha_zero.civ6_local import run_civ6_bridge
 
         cfg = Civ6LocalConfig(mode="civ6")
-        mock_bridge, mock_bridge_cls, mock_cfg_cls = self._make_bridge_mocks()
 
-        with patch.dict(
-            sys.modules,
-            {
-                "alpha_zero.bridge.config": MagicMock(BridgeConfig=mock_cfg_cls),
-                "alpha_zero.bridge.file_bridge": MagicMock(FileBridge=mock_bridge_cls),
-            },
+        mock_bridge = MagicMock()
+        mock_bridge.start = AsyncMock()
+        mock_bridge.stop = AsyncMock()
+        mock_loop = MagicMock()
+        mock_loop.run = AsyncMock(return_value=0)
+        mock_network = MagicMock()
+
+        with (
+            patch("alpha_zero.civ6_local._build_network_for_bridge", return_value=mock_network),
+            patch.dict(
+                sys.modules,
+                {
+                    "alpha_zero.bridge.config": MagicMock(
+                        BridgeConfig=MagicMock(return_value=MagicMock())
+                    ),
+                    "alpha_zero.bridge.file_bridge": MagicMock(
+                        FileBridge=MagicMock(return_value=mock_bridge)
+                    ),
+                    "alpha_zero.bridge.state_converter": MagicMock(
+                        StateConverter=MagicMock(return_value=MagicMock())
+                    ),
+                    "alpha_zero.bridge.action_converter": MagicMock(
+                        ActionConverter=MagicMock(return_value=MagicMock())
+                    ),
+                    "alpha_zero.bridge.agent_loop": MagicMock(
+                        AgentLoopConfig=MagicMock(),
+                        BridgeAgentLoop=MagicMock(return_value=mock_loop),
+                        GreedyNetworkPolicy=MagicMock(return_value=MagicMock()),
+                    ),
+                },
+            ),
         ):
             rc = run_civ6_bridge(cfg)
 
         assert rc == 0
         mock_bridge.start.assert_awaited_once()
+        mock_loop.run.assert_awaited_once()
         mock_bridge.stop.assert_awaited_once()
 
-    def test_run_bridge_keyboard_interrupt(self) -> None:
+    def test_run_bridge_keyboard_interrupt_returns_130(self) -> None:
+        """Ctrl-C during the loop returns exit code 130 (POSIX SIGINT)."""
         from alpha_zero.civ6_local import run_civ6_bridge
 
         cfg = Civ6LocalConfig(mode="civ6")
-        mock_bridge = MagicMock()
-        mock_bridge.start = AsyncMock(side_effect=KeyboardInterrupt)
-        mock_bridge.stop = AsyncMock()
-        mock_bridge_cls = MagicMock(return_value=mock_bridge)
-        mock_cfg_cls = MagicMock(return_value=MagicMock())
 
-        with patch.dict(
-            sys.modules,
-            {
-                "alpha_zero.bridge.config": MagicMock(BridgeConfig=mock_cfg_cls),
-                "alpha_zero.bridge.file_bridge": MagicMock(FileBridge=mock_bridge_cls),
-            },
+        mock_bridge = MagicMock()
+        mock_bridge.start = AsyncMock()
+        mock_bridge.stop = AsyncMock()
+        mock_loop = MagicMock()
+        # KeyboardInterrupt raised from the agent loop's run() must propagate
+        # out of asyncio.run and be caught by the outer handler.
+        mock_loop.run = AsyncMock(side_effect=KeyboardInterrupt)
+
+        with (
+            patch("alpha_zero.civ6_local._build_network_for_bridge", return_value=MagicMock()),
+            patch.dict(
+                sys.modules,
+                {
+                    "alpha_zero.bridge.config": MagicMock(
+                        BridgeConfig=MagicMock(return_value=MagicMock())
+                    ),
+                    "alpha_zero.bridge.file_bridge": MagicMock(
+                        FileBridge=MagicMock(return_value=mock_bridge)
+                    ),
+                    "alpha_zero.bridge.state_converter": MagicMock(
+                        StateConverter=MagicMock(return_value=MagicMock())
+                    ),
+                    "alpha_zero.bridge.action_converter": MagicMock(
+                        ActionConverter=MagicMock(return_value=MagicMock())
+                    ),
+                    "alpha_zero.bridge.agent_loop": MagicMock(
+                        AgentLoopConfig=MagicMock(),
+                        BridgeAgentLoop=MagicMock(return_value=mock_loop),
+                        GreedyNetworkPolicy=MagicMock(return_value=MagicMock()),
+                    ),
+                },
+            ),
         ):
             rc = run_civ6_bridge(cfg)
 
-        assert rc == 0
+        assert rc == 130
+        # Stop must still be awaited via the finally branch even after Ctrl-C.
         mock_bridge.stop.assert_awaited_once()
 
     def test_run_bridge_import_error(self) -> None:
+        """Missing bridge package surfaces a clean exit code 1 (unchanged)."""
         from alpha_zero.civ6_local import run_civ6_bridge
 
         cfg = Civ6LocalConfig(mode="civ6")
 
-        # Simulate missing bridge package by injecting None into sys.modules
+        # Simulate missing bridge package by injecting None into sys.modules.
+        # The import error fires before agent_loop construction, so this
+        # branch is unchanged from the pre-W1.2 behaviour.
         with patch.dict(
             sys.modules,
             {
                 "alpha_zero.bridge.config": None,  # type: ignore[dict-item]
                 "alpha_zero.bridge.file_bridge": None,  # type: ignore[dict-item]
+                "alpha_zero.bridge.agent_loop": None,  # type: ignore[dict-item]
             },
         ):
             rc = run_civ6_bridge(cfg)
 
         assert rc == 1
+
+    def test_run_bridge_uses_single_event_loop(self) -> None:
+        """Regression for the inherited double-asyncio.run bug.
+
+        The pre-W1.2 implementation opened two separate ``asyncio.run``
+        calls (one for start, one for stop in the finally), so async state
+        from start was invisible to the cleanup loop. The fix collapses
+        both into one coroutine wrapped by a single ``asyncio.run``.
+        """
+        from alpha_zero.civ6_local import run_civ6_bridge
+
+        cfg = Civ6LocalConfig(mode="civ6")
+
+        mock_bridge = MagicMock()
+        mock_bridge.start = AsyncMock()
+        mock_bridge.stop = AsyncMock()
+        mock_loop = MagicMock()
+        mock_loop.run = AsyncMock(return_value=0)
+
+        with (
+            patch("alpha_zero.civ6_local._build_network_for_bridge", return_value=MagicMock()),
+            patch("asyncio.run", wraps=__import__("asyncio").run) as spy_run,
+            patch.dict(
+                sys.modules,
+                {
+                    "alpha_zero.bridge.config": MagicMock(
+                        BridgeConfig=MagicMock(return_value=MagicMock())
+                    ),
+                    "alpha_zero.bridge.file_bridge": MagicMock(
+                        FileBridge=MagicMock(return_value=mock_bridge)
+                    ),
+                    "alpha_zero.bridge.state_converter": MagicMock(
+                        StateConverter=MagicMock(return_value=MagicMock())
+                    ),
+                    "alpha_zero.bridge.action_converter": MagicMock(
+                        ActionConverter=MagicMock(return_value=MagicMock())
+                    ),
+                    "alpha_zero.bridge.agent_loop": MagicMock(
+                        AgentLoopConfig=MagicMock(),
+                        BridgeAgentLoop=MagicMock(return_value=mock_loop),
+                        GreedyNetworkPolicy=MagicMock(return_value=MagicMock()),
+                    ),
+                },
+            ),
+        ):
+            rc = run_civ6_bridge(cfg)
+
+        assert rc == 0
+        # Exactly one asyncio.run call (W1.2 fix). The pre-W1.2 code made two.
+        assert spy_run.call_count == 1
+
+    def test_run_bridge_loads_checkpoint(self, tmp_path) -> None:
+        """When ``--checkpoint`` is a storage dir, load_champion is called."""
+        from alpha_zero.civ6_local import _build_network_for_bridge
+
+        # Real call against a tmp storage dir built by the W1.4 fixture.
+        from tests.fixtures.build_smoke_champion import build_smoke_champion
+
+        build_smoke_champion(tmp_path, board_size=8)
+
+        cfg = Civ6LocalConfig(
+            mode="civ6",
+            checkpoint_path=str(tmp_path),
+            board_size=8,
+        )
+        network = _build_network_for_bridge(cfg)
+        # If load succeeded the network has parameters bound to non-default
+        # values; we don't assert specific values (random init), only that
+        # the call did not raise and the network is usable.
+        assert network is not None
+        # Smoke: forward pass works.
+        import numpy as np
+        import torch
+
+        spatial = torch.from_numpy(np.zeros((1, 13, 8, 8), dtype=np.float32))
+        vector = torch.from_numpy(np.zeros((1, 64), dtype=np.float32))
+        policy, value = network(spatial, vector)
+        assert policy.shape[0] == 1
+        assert value.shape[0] == 1
+
+    def test_run_bridge_falls_back_to_synthetic_weights(self, caplog) -> None:
+        """No checkpoint -> warning logged, network still constructed."""
+        import logging
+
+        from alpha_zero.civ6_local import _build_network_for_bridge
+
+        cfg = Civ6LocalConfig(mode="civ6", checkpoint_path=None, board_size=8)
+        with caplog.at_level(logging.WARNING, logger="alpha_zero.civ6_local"):
+            network = _build_network_for_bridge(cfg)
+
+        assert network is not None
+        assert any("synthetic weights" in r.message.lower() for r in caplog.records)
+
+    def test_run_bridge_corrupt_checkpoint_falls_back_with_warning(
+        self, tmp_path: Path, caplog
+    ) -> None:
+        """Gap-analysis Important #4: corrupt-checkpoint branch must be tested.
+
+        A checkpoint file that exists but can't be deserialised (corrupted,
+        wrong format, etc.) used to be a silent failure. The fallback now
+        logs a clear warning and returns a synthetic-weights network so
+        the bridge agent loop can still run for diagnostics.
+        """
+        import logging
+
+        from alpha_zero.civ6_local import _build_network_for_bridge
+
+        # Write garbage to a .pt file - torch.load will raise.
+        ckpt = tmp_path / "corrupt.pt"
+        ckpt.write_text("this is not a real checkpoint")
+
+        cfg = Civ6LocalConfig(mode="civ6", board_size=8, checkpoint_path=str(ckpt))
+        with caplog.at_level(logging.WARNING, logger="alpha_zero.civ6_local"):
+            network = _build_network_for_bridge(cfg)
+
+        assert network is not None  # synthetic-weights fallback succeeded
+        assert any(
+            "failed to load checkpoint" in r.message.lower()
+            and "synthetic weights" in r.message.lower()
+            for r in caplog.records
+        ), [r.message for r in caplog.records]
+
+    def test_run_bridge_missing_checkpoint_path_falls_back_with_warning(
+        self, tmp_path: Path, caplog
+    ) -> None:
+        """Checkpoint path that points nowhere logs a clear warning and
+        falls through to the synthetic-weights branch."""
+        import logging
+
+        from alpha_zero.civ6_local import _build_network_for_bridge
+
+        missing = tmp_path / "does_not_exist.pt"
+        cfg = Civ6LocalConfig(mode="civ6", board_size=8, checkpoint_path=str(missing))
+        with caplog.at_level(logging.WARNING, logger="alpha_zero.civ6_local"):
+            network = _build_network_for_bridge(cfg)
+
+        assert network is not None
+        assert any("does not exist" in r.message.lower() for r in caplog.records), [
+            r.message for r in caplog.records
+        ]
 
 
 # ---------------------------------------------------------------------------

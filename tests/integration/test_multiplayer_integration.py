@@ -23,7 +23,6 @@ from alpha_zero.multiplayer.opponent_model import OpponentModel
 from alpha_zero.multiplayer.scoring import (
     ScoringMethod,
     compute_player_values,
-    compute_rankings,
     extract_game_result,
 )
 from alpha_zero.multiplayer.turn_manager import TurnManager

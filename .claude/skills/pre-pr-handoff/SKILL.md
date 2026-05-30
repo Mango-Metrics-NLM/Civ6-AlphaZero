@@ -37,7 +37,22 @@ pytest tests/ -v --cov=alpha_zero --cov-report=term-missing
 python -m alpha_zero.training_civ6 --dry_run
 ```
 
-Record pass/fail status for each.
+Record pass/fail status for each. **This verification gate is mandatory: do not
+mark PR-READY unless lint, types, and the touched tests pass** (see Rule 6).
+
+### 2b. Independent Review (isolated context)
+
+Harness-engineering principle: a model over-rates its own work, so **evaluation
+must run with context independent from generation**. Do not eyeball your own diff
+inline. Instead, dispatch the review to a fresh agent so judgement is decoupled:
+
+- Run the `code-review` skill on the diff, **or**
+- Launch an `Agent` (e.g. `subagent_type: Explore`) whose only task is to review
+  the changed files against the spec's acceptance criteria and report defects.
+
+Treat the subagent's findings as the review of record; fold fixes back through
+DEV-SQE (QA-GAP) if they are non-trivial. Note in the summary that review ran in
+an isolated subagent.
 
 ### 3. Determine Handoff Type
 

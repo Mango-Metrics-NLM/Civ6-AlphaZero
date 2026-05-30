@@ -6,8 +6,6 @@ all components work together correctly.
 
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 import torch
 import torch.nn as nn
@@ -16,7 +14,6 @@ from alpha_zero.spacetimedb.client import SpacetimeDBClient
 from alpha_zero.spacetimedb.config import SpacetimeDBConfig
 from alpha_zero.spacetimedb.metrics_sink import SpacetimeDBMetricsSink
 from alpha_zero.spacetimedb.serialization import (
-    deserialize_state_dict,
     serialize_state_dict,
 )
 from alpha_zero.spacetimedb.weight_sync import SpacetimeDBWeightSynchronizer

@@ -6,7 +6,6 @@ import asyncio
 import time
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 import yaml
@@ -20,7 +19,6 @@ from alpha_zero.bridge.health_checker import (
     HealthStatus,
     OperationTimeoutError,
 )
-
 
 # ── Config Tests ──────────────────────────────────────────────────────────
 

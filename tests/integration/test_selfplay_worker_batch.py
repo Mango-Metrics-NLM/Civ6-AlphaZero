@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 from unittest.mock import patch
 
-
 # ============================================================================
 # Test: Batch Mode Detection
 # ============================================================================

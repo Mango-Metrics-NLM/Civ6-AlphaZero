@@ -21,6 +21,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from alpha_zero.bridge.utils import extract_scalar_value
 from alpha_zero.cloud.gcp.config import NetworkArchitectureConfig
 from alpha_zero.cloud.gcp.storage import GCSModelStorage
 from alpha_zero.core.civ6_mcts import MCTSNetwork
@@ -271,8 +272,23 @@ class InferenceEngine:
 
         Returns:
             Tuple of (action_probs as numpy array, value_estimate as float).
+
+        Notes:
+            ``value`` may arrive with any of the following shapes depending on
+            the network implementation:
+              - ``()``          — legacy scalar value
+              - ``(1,)``        — 2-player network (current convention)
+              - ``(1, 1)``      — squeeze-omitted 2-player output
+              - ``(1, N)``      — N-player value vector (we report the first
+                player's value to preserve the float contract; callers that
+                need per-player values should use the network directly)
+            ``value[0].item()`` only works for ``(1,)`` and would raise on
+            ``(1, N)`` with N > 1, so we flatten first.
         """
-        value_estimate = value[0].item() if value is not None else 0.0
+        # Shared shape-normaliser keeps this in sync with
+        # alpha_zero.bridge.agent_loop.GreedyNetworkPolicy._infer_sync so the
+        # PR #82 invariant can only drift in one place.
+        value_estimate = extract_scalar_value(value, log_per_player=True)
 
         masked_logits = policy_logits.clone()
         masked_logits[0, action_mask == 0] = float("-inf")

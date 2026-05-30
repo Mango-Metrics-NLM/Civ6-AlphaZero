@@ -267,6 +267,85 @@ class TestInferenceEngine:
         assert metrics["p95_latency_ms"] > 0
 
 
+class TestApplyPolicyPostprocessing:
+    """Regression tests for value-tensor shape handling.
+
+    Networks produced over the project's history return ``value`` with
+    various shapes. ``_apply_policy_postprocessing`` must not crash on any
+    of them, since the inference engine is the single entry point for all
+    served models.
+    """
+
+    @pytest.fixture
+    def engine(self, mock_storage, inference_config):
+        return InferenceEngine(mock_storage, inference_config)
+
+    def _logits(self, action_space: int = 376) -> torch.Tensor:
+        # Deterministic, finite logits so softmax is well-defined.
+        return torch.zeros(1, action_space)
+
+    def _mask(self, action_space: int = 376) -> np.ndarray:
+        return np.ones(action_space, dtype=np.float32)
+
+    @pytest.mark.parametrize(
+        ("value_tensor", "expected"),
+        [
+            (torch.tensor([[0.5]]), 0.5),  # (1, 1) — squeeze-omitted 2P output
+            (torch.tensor([0.42]), 0.42),  # (1,)   — current convention
+            (torch.tensor(0.3), 0.3),  # scalar — legacy
+        ],
+    )
+    def test_scalar_value_shapes_round_trip(
+        self, engine, value_tensor: torch.Tensor, expected: float
+    ) -> None:
+        _probs, value_estimate = engine._apply_policy_postprocessing(
+            self._logits(), self._mask(), temperature=1.0, value=value_tensor
+        )
+        assert value_estimate == pytest.approx(expected, abs=1e-6)
+
+    def test_multi_player_value_reports_first_player(self, engine, caplog) -> None:
+        """N-player networks (shape (1, N)) report player 0's value without crashing.
+
+        Previously ``value[0].item()`` raised
+        ``RuntimeError: only one element tensors can be converted`` for N>1.
+        """
+        import logging
+
+        value = torch.tensor([[0.7, -0.4, 0.1]])  # 3-player vector
+        # The shape-normaliser lives in alpha_zero.bridge.utils now (shared
+        # between InferenceEngine and BridgeAgentLoop). Catch its DEBUG log
+        # there rather than on the inference_engine logger.
+        with caplog.at_level(logging.DEBUG, logger="alpha_zero.bridge.utils"):
+            _probs, value_estimate = engine._apply_policy_postprocessing(
+                self._logits(), self._mask(), temperature=1.0, value=value
+            )
+        assert value_estimate == pytest.approx(0.7)
+        # Debug log surfaces the per-player tensor so operators can audit it.
+        assert any("per-player value tensor" in r.message for r in caplog.records)
+
+    def test_none_value_returns_zero(self, engine) -> None:
+        _probs, value_estimate = engine._apply_policy_postprocessing(
+            self._logits(), self._mask(), temperature=1.0, value=None
+        )
+        assert value_estimate == 0.0
+
+    def test_empty_value_returns_zero(self, engine) -> None:
+        """Defensive: empty value tensor must not raise."""
+        _probs, value_estimate = engine._apply_policy_postprocessing(
+            self._logits(), self._mask(), temperature=1.0, value=torch.empty(0)
+        )
+        assert value_estimate == 0.0
+
+    def test_greedy_temperature_selects_argmax(self, engine) -> None:
+        logits = torch.tensor([[0.0, 10.0, 0.0, 0.0]])
+        mask = np.ones(4, dtype=np.float32)
+        probs, _ = engine._apply_policy_postprocessing(
+            logits, mask, temperature=0.0, value=None
+        )
+        assert int(np.argmax(probs)) == 1
+        assert probs[1] == pytest.approx(1.0)
+
+
 @pytest.mark.integration
 class TestInferenceEngineIntegration:
     """Integration tests with real network."""

@@ -17,7 +17,6 @@ from alpha_zero.core.jax_checkpoint import (
 )
 from alpha_zero.core.jax_network import (
     JaxMicroCivNetwork,
-    JaxNetworkConfig,
     JaxNetworkWrapper,
 )
 

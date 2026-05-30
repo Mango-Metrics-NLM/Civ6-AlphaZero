@@ -194,7 +194,7 @@ class TestCheckpointCoordination:
                 network=toy_model,
             )
             learner._save_checkpoint(100)
-            
+
             # verify the fixed filename checkpoint_100.pt exists in tmpdir
             assert (Path(tmpdir) / "checkpoint_100.pt").exists()
 

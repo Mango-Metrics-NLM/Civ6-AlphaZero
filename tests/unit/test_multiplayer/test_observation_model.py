@@ -6,12 +6,11 @@ import numpy as np
 import pytest
 
 from alpha_zero.multiplayer.observation_model import (
-    ObservationModel,
-    ObservationModelConfig,
     _UNIT_MOVES,
     _UNIT_STRENGTH,
+    ObservationModel,
+    ObservationModelConfig,
 )
-
 
 # ---------------------------------------------------------------------------
 # ObservationModelConfig tests

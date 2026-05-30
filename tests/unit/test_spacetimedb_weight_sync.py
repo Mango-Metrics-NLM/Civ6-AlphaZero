@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
 import torch
 import torch.nn as nn
-
-import pytest
 
 from alpha_zero.spacetimedb.client import SpacetimeDBClient
 from alpha_zero.spacetimedb.config import SpacetimeDBConfig
