@@ -30,19 +30,15 @@ from typing import Any
 
 import torch
 
-from alpha_zero.bridge.config import MapSizeConfig, get_map_config
+from alpha_zero.bridge.config import MapSizeConfig, get_map_config, GameConstants
 from alpha_zero.bridge.protocol import (
     GameStateData,
 )
 from alpha_zero.envs.civ6_encoder import Civ6StateEncoder, EncoderConfig
 
-logger = logging.getLogger(__name__)
+__all__ = ["TerrainMapping", "UnitMapping", "StateConverter"]
 
-# Named constants for victory progress normalization.
-# Base game has ~67 techs; use 70 as a round estimate.
-_ESTIMATED_TOTAL_TECHS: int = 70
-# High score estimate for normalizing score-based victory progress.
-_ESTIMATED_MAX_SCORE: int = 2000
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -211,6 +207,16 @@ class UnitMapping:
         return "melee"
 
 
+class StateConverterError(Exception):
+    """Base exception for StateConverter errors."""
+    pass
+
+
+class GameNotStartedError(StateConverterError):
+    """Raised when the game state indicates the map is empty (e.g. main menu)."""
+    pass
+
+
 class StateConverter:
     """Converts Civ6 Lua mod state to encoder-compatible format.
 
@@ -281,7 +287,7 @@ class StateConverter:
 
         # Validate map size before scaling
         if state.map_data.width <= 0 or state.map_data.height <= 0:
-            raise ValueError(
+            raise GameNotStartedError(
                 f"Invalid map size: {state.map_data.width}x{state.map_data.height}. "
                 "Map dimensions must be positive."
             )
@@ -669,10 +675,10 @@ class StateConverter:
             state: Game state data.
 
         Returns:
-            Player index (0 = AI player, 1 = opponent).
+            Player index.
         """
-        # For the encoder, we always treat the AI as player 0
-        return 0
+        # For the encoder, return the actual player ID from the state.
+        return state.player_id
 
     def _extract_player_data(
         self,
@@ -826,7 +832,7 @@ class StateConverter:
 
         # Science progress (rough estimate based on techs)
         techs = self._extract_technologies(state)
-        progress["science"] = min(1.0, len(techs) / _ESTIMATED_TOTAL_TECHS)
+        progress["science"] = min(1.0, len(techs) / GameConstants.ESTIMATED_TOTAL_TECHS)
 
         # Domination progress (count our cities vs total cities)
         total_cities = len(state.cities)
@@ -839,7 +845,7 @@ class StateConverter:
         # Score progress (normalized by max reasonable score)
         for player in state.players:
             if player.id == state.player_id:
-                progress["score"] = min(1.0, player.score / _ESTIMATED_MAX_SCORE)
+                progress["score"] = min(1.0, player.score / GameConstants.ESTIMATED_MAX_SCORE)
                 break
         else:
             progress["score"] = 0.0

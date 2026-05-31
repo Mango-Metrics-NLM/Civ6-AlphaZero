@@ -476,7 +476,7 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
             GreedyNetworkPolicy,
         )
         from alpha_zero.bridge.config import BridgeConfig
-        from alpha_zero.bridge.file_bridge import FileBridge
+        from alpha_zero.bridge.live_bridge import LiveBridge
         from alpha_zero.bridge.state_converter import StateConverter
     except ImportError as exc:
         logger.error("Bridge module not available: %s", exc)
@@ -491,8 +491,11 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
     logger.info("Connecting to Civ6 bridge at: %s", bridge_cfg.comm_dir)
     logger.info("Start Civilization 6 with the AlphaZeroAI mod to begin.")
 
+    state_converter = StateConverter(board_size=config.board_size)
+    action_converter = ActionConverter(board_size=config.board_size)
+
     # Build the policy network. When a checkpoint is supplied, load it;
-    network = _build_network_for_bridge(config)
+    network = _build_network_for_bridge(config, action_space_size=action_converter.action_space_size)
     if config.use_mcts:
         from alpha_zero.bridge.mcts_policy import Civ6MctsPolicy
         from alpha_zero.core.civ6_mcts import GumbelMCTSConfig
@@ -506,11 +509,10 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
         policy = GreedyNetworkPolicy(network=network, device=config.device)
         logger.info("Bridge using GreedyNetworkPolicy")
 
-    state_converter = StateConverter(board_size=config.board_size)
-    action_converter = ActionConverter(board_size=config.board_size)
     agent_cfg = AgentLoopConfig.from_env()
 
-    bridge = FileBridge(bridge_cfg)
+    log_path = Path(os.getenv("LOCALAPPDATA", "")) / "Firaxis Games" / "Sid Meier's Civilization VI" / "Logs" / "Lua.log"
+    bridge = LiveBridge(bridge_cfg, log_path=log_path)
     
     eval_harness = None
     if config.use_eval_harness:
@@ -546,7 +548,7 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
         return 130
 
 
-def _build_network_for_bridge(config: Civ6LocalConfig) -> Any:
+def _build_network_for_bridge(config: Civ6LocalConfig, action_space_size: int = 381) -> Any:
     """Construct (and optionally load) the policy network for the bridge.
 
     Extracted for testability and to keep ``run_civ6_bridge`` focused on
@@ -562,6 +564,7 @@ def _build_network_for_bridge(config: Civ6LocalConfig) -> Any:
     network = MicroCivNetwork(
         board_size=config.board_size,
         num_players=config.num_players,
+        action_space_size=action_space_size,
     ).to(device)
 
     if config.checkpoint_path:

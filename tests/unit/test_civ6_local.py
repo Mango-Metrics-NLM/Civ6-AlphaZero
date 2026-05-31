@@ -72,15 +72,10 @@ class TestCiv6LocalConfigDefaults:
         assert Civ6LocalConfig().web_port == 8080
 
     def test_bridge_ipc_dir_default(self) -> None:
-        # ``bridge_ipc_dir`` is sourced from ``tempfile.gettempdir()``; the
-        # exact prefix differs by OS (``/tmp`` on Linux, ``C:\Users\...\Temp``
-        # on Windows). Assert the suffix and the parent-dir alignment instead
-        # of hardcoding a POSIX path.
-        import os
-        import tempfile
-
-        expected = os.path.join(tempfile.gettempdir(), "civ6az_bridge")
-        assert Civ6LocalConfig().bridge_ipc_dir == expected
+        # The default is now typically in the Documents folder under
+        # "My Games/Sid Meier's Civilization VI/AlphaZeroAI"
+        cfg = Civ6LocalConfig()
+        assert "AlphaZeroAI" in str(cfg.bridge_ipc_dir)
 
     def test_log_level_default(self) -> None:
         assert Civ6LocalConfig().log_level == "INFO"
@@ -97,6 +92,8 @@ class TestCiv6LocalConfigDefaults:
             "num_players",
             "num_simulations",
             "device",
+            "use_mcts",
+            "use_eval_harness",
             "web_host",
             "web_port",
             "bridge_ipc_dir",
@@ -857,8 +854,8 @@ class TestRunCiv6Bridge:
                     "alpha_zero.bridge.config": MagicMock(
                         BridgeConfig=MagicMock(return_value=MagicMock())
                     ),
-                    "alpha_zero.bridge.file_bridge": MagicMock(
-                        FileBridge=MagicMock(return_value=mock_bridge)
+                    "alpha_zero.bridge.live_bridge": MagicMock(
+                        LiveBridge=MagicMock(return_value=mock_bridge)
                     ),
                     "alpha_zero.bridge.state_converter": MagicMock(
                         StateConverter=MagicMock(return_value=MagicMock())
@@ -903,8 +900,8 @@ class TestRunCiv6Bridge:
                     "alpha_zero.bridge.config": MagicMock(
                         BridgeConfig=MagicMock(return_value=MagicMock())
                     ),
-                    "alpha_zero.bridge.file_bridge": MagicMock(
-                        FileBridge=MagicMock(return_value=mock_bridge)
+                    "alpha_zero.bridge.live_bridge": MagicMock(
+                        LiveBridge=MagicMock(return_value=mock_bridge)
                     ),
                     "alpha_zero.bridge.state_converter": MagicMock(
                         StateConverter=MagicMock(return_value=MagicMock())

@@ -26,6 +26,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+__all__ = ["ActionConverter", "ConversionResult", "InvalidActionError", "NoLegalActionsError"]
+
 import numpy as np
 
 from alpha_zero.bridge.protocol import (
@@ -44,6 +46,7 @@ from alpha_zero.core.civ6_actions import (
     HierarchicalAction,
     UnitActionType,
 )
+from alpha_zero.bridge.config import GameConstants
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +141,7 @@ class CityItemTypes:
 
 # Maximum range for hashed item IDs. Must match ActionSpaceConfig max production
 # items. Civ6 base game has ~170 distinct producible items across all categories.
-_ITEM_HASH_RANGE: int = 200
+# Defined in GameConstants.ITEM_HASH_RANGE
 
 
 def _convert_item_id_to_int(item_id: Any) -> int | None:
@@ -172,7 +175,7 @@ def _convert_item_id_to_int(item_id: Any) -> int | None:
         # Handle Civ6 type name strings by hashing to consistent int
         # Use modulo to keep in reasonable range for action space
         if item_id:
-            return abs(hash(item_id)) % _ITEM_HASH_RANGE
+            return abs(hash(item_id)) % GameConstants.ITEM_HASH_RANGE
 
     # Log unexpected types at debug level
     logger.debug(f"Could not convert item_id '{item_id}' (type: {type(item_id).__name__}) to int")
@@ -185,6 +188,11 @@ class InvalidActionError(Exception):
     def __init__(self, message: str, action_idx: int | None = None) -> None:
         super().__init__(message)
         self.action_idx = action_idx
+
+
+class NoLegalActionsError(InvalidActionError):
+    """Raised when there are no legal actions available to choose from."""
+    pass
 
 
 @dataclass
@@ -439,7 +447,7 @@ class ActionConverter:
         self,
         decoded: HierarchicalAction,
         game_state: dict[str, Any],
-        legal_actions: list | None = None,
+        legal_actions: list[LegalAction | dict] | None = None,
     ) -> LuaCommand:
         """Convert unit action to Lua command.
 
@@ -577,7 +585,7 @@ class ActionConverter:
         self,
         decoded: HierarchicalAction,
         game_state: dict[str, Any],
-        legal_actions: list | None = None,
+        legal_actions: list[LegalAction | dict] | None = None,
     ) -> LuaCommand:
         """Convert city action to Lua command.
 
@@ -616,7 +624,7 @@ class ActionConverter:
                 action_type=ActionType.CITY_PRODUCE,
                 city_id=city_id,
                 item_id=item_id,
-                item_type="unit",
+                item_type=CityItemTypes.UNIT,
             )
 
         elif action_type == CityActionType.PRODUCE_BUILDING:
@@ -624,7 +632,7 @@ class ActionConverter:
                 action_type=ActionType.CITY_PRODUCE,
                 city_id=city_id,
                 item_id=item_id,
-                item_type="building",
+                item_type=CityItemTypes.BUILDING,
             )
 
         elif action_type == CityActionType.PRODUCE_WONDER:
@@ -632,7 +640,7 @@ class ActionConverter:
                 action_type=ActionType.CITY_PRODUCE,
                 city_id=city_id,
                 item_id=item_id,
-                item_type="wonder",
+                item_type=CityItemTypes.WONDER,
             )
 
         elif action_type == CityActionType.PRODUCE_DISTRICT:
@@ -640,7 +648,7 @@ class ActionConverter:
                 action_type=ActionType.CITY_PRODUCE,
                 city_id=city_id,
                 item_id=item_id,
-                item_type="district",
+                item_type=CityItemTypes.DISTRICT,
             )
 
         elif action_type == CityActionType.BUY_UNIT:
@@ -648,7 +656,7 @@ class ActionConverter:
                 action_type=ActionType.CITY_BUY,
                 city_id=city_id,
                 item_id=item_id,
-                item_type="unit",
+                item_type=CityItemTypes.UNIT,
             )
 
         elif action_type == CityActionType.BUY_BUILDING:
@@ -656,7 +664,7 @@ class ActionConverter:
                 action_type=ActionType.CITY_BUY,
                 city_id=city_id,
                 item_id=item_id,
-                item_type="building",
+                item_type=CityItemTypes.BUILDING,
             )
 
         elif action_type == CityActionType.MANAGE_CITIZENS:
@@ -754,7 +762,7 @@ class ActionConverter:
         self,
         decoded: HierarchicalAction,
         game_state: dict[str, Any],
-        legal_actions: list,
+        legal_actions: list[LegalAction | dict],
     ) -> bool:
         """Check if action is in the legal actions list.
 

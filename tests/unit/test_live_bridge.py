@@ -91,8 +91,9 @@ class TestStateReading:
                 _write_line(tmp_log, f'AlphaZeroMain: AZ_STATE:{json.dumps(state)}')
 
             asyncio.create_task(write_state())
+            # wait_for_state returns a GameStateData object (not a dict).
             result = await bridge.wait_for_state(timeout=2.0)
-            assert result["turn_id"] == 5
+            assert result.turn_id == 5
 
     async def test_wait_for_state_timeout(
         self, bridge_config: BridgeConfig, tmp_log: Path
@@ -105,10 +106,12 @@ class TestStateReading:
         self, bridge_config: BridgeConfig, tmp_log: Path
     ) -> None:
         async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
-            # Pre-inject state
-            bridge._tailer._latest_state = {"turn_id": 99}
+            # Pre-inject state. wait_for_state now wraps via StateMessage.from_dict,
+            # so the cached payload must be parseable. The "map" stub is enough
+            # for GameStateData.from_dict to populate MapData with width=height=0.
+            bridge._tailer._latest_state = {"turn_id": 99, "map": {"tiles": []}}
             result = await bridge.wait_for_state(timeout=0.5, require_new=False)
-            assert result["turn_id"] == 99
+            assert result.turn_id == 99
 
 
 # --- Command sending tests ---

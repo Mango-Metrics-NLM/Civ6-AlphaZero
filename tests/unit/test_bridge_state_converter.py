@@ -30,12 +30,12 @@ from alpha_zero.bridge.protocol import (
     UnitData,
 )
 from alpha_zero.bridge.state_converter import (
-    _ESTIMATED_MAX_SCORE,
-    _ESTIMATED_TOTAL_TECHS,
+    GameNotStartedError,
     StateConverter,
     TerrainMapping,
     UnitMapping,
 )
+from alpha_zero.bridge.config import GameConstants
 
 # ---------------------------------------------------------------------------
 # Helpers to build minimal game state data
@@ -464,12 +464,12 @@ class TestStateConverterConvert:
 
     def test_convert_invalid_map_size_raises(self, converter: StateConverter) -> None:
         state = _make_game_state(map_width=0, map_height=20)
-        with pytest.raises(ValueError, match="Invalid map size"):
+        with pytest.raises(GameNotStartedError, match="Invalid map size"):
             converter.convert(state)
 
     def test_convert_negative_map_height_raises(self, converter: StateConverter) -> None:
         state = _make_game_state(map_width=20, map_height=-1)
-        with pytest.raises(ValueError, match="Invalid map size"):
+        with pytest.raises(GameNotStartedError, match="Invalid map size"):
             converter.convert(state)
 
     def test_convert_stores_legal_actions(self, converter: StateConverter) -> None:
@@ -973,13 +973,15 @@ class TestScalePosition:
 class TestNamedConstants:
     """Test module-level constants."""
 
-    def test_estimated_total_techs(self) -> None:
-        assert _ESTIMATED_TOTAL_TECHS == 70
-        assert isinstance(_ESTIMATED_TOTAL_TECHS, int)
+    def test_estimated_total_techs(self):
+        """Test ESTIMATED_TOTAL_TECHS constant."""
+        assert GameConstants.ESTIMATED_TOTAL_TECHS == 70
+        assert isinstance(GameConstants.ESTIMATED_TOTAL_TECHS, int)
 
-    def test_estimated_max_score(self) -> None:
-        assert _ESTIMATED_MAX_SCORE == 2000
-        assert isinstance(_ESTIMATED_MAX_SCORE, int)
+    def test_estimated_max_score(self):
+        """Test ESTIMATED_MAX_SCORE constant."""
+        assert GameConstants.ESTIMATED_MAX_SCORE == 2000
+        assert isinstance(GameConstants.ESTIMATED_MAX_SCORE, int)
 
 
 # ===========================================================================

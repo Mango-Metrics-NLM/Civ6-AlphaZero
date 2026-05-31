@@ -350,6 +350,10 @@ def _validate_dict(
     if value is None:
         return default_factory()
 
+    # In Lua, empty tables {} with no string keys are encoded as [] in JSON.
+    if isinstance(value, list) and len(value) == 0:
+        return default_factory()
+
     if not isinstance(value, dict):
         ctx = f" in {context}" if context else ""
         raise ProtocolValidationError(

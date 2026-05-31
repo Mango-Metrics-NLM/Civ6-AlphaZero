@@ -37,7 +37,7 @@ from typing import Any, Literal, Protocol
 
 import numpy as np
 
-from alpha_zero.bridge.action_converter import ActionConverter, InvalidActionError
+from alpha_zero.bridge.action_converter import ActionConverter, InvalidActionError, NoLegalActionsError
 from alpha_zero.bridge.file_bridge import (
     AckTimeoutError,
     ConnectionLostError,
@@ -54,7 +54,7 @@ from alpha_zero.bridge.protocol import (
     LuaCommand,
     create_end_turn_command,
 )
-from alpha_zero.bridge.state_converter import StateConverter
+from alpha_zero.bridge.state_converter import GameNotStartedError, StateConverter
 from alpha_zero.bridge.utils import extract_scalar_value
 
 logger = logging.getLogger(__name__)
@@ -162,10 +162,8 @@ class GreedyNetworkPolicy:
         # Mask via additive -inf so softmax/argmax both ignore illegal moves.
         masked = np.where(legal_mask > 0, logits, -np.inf)
         if not np.isfinite(masked).any():
-            # Pathological: no legal action. Fall back to first index;
-            # caller is responsible for end_turn safety net.
-            logger.warning("GreedyNetworkPolicy received an empty legal mask; returning action 0")
-            return 0, 0.0
+            # Pathological: no legal action. Fall back to safe end_turn.
+            raise NoLegalActionsError("No legal actions available from the mask")
 
         action_idx = int(np.argmax(masked))
         # Value tensor may be ()/(1,)/(1,1)/(1,N) per the PR #82 invariant;
@@ -494,6 +492,11 @@ class BridgeAgentLoop:
         """Inner body of :meth:`_step_once`; see that method for semantics."""
         try:
             converted_state = self.state_converter.convert(state)
+        except GameNotStartedError as exc:
+            # The game isn't fully started or map is completely empty.
+            # Do not log a traceback and do NOT send end_turn, just wait.
+            logger.debug("Skipping state because game not fully initialized: %s", exc)
+            return
         except Exception as exc:
             self._stats.last_error = f"state_converter: {exc}"
             logger.error("State conversion failed: %s", exc, exc_info=True)
@@ -515,6 +518,11 @@ class BridgeAgentLoop:
             action_idx, diagnostics = await self.policy.select_action(
                 obs, legal_mask, converted_state
             )
+        except NoLegalActionsError as exc:
+            self._stats.invalid_actions += 1
+            logger.warning("No legal actions available for turn %d (%s); safely ending turn", state.turn_id, exc)
+            await self._send_safe_end_turn()
+            return
         except Exception as exc:
             self._stats.last_error = f"policy: {exc}"
             logger.error("Policy selection failed: %s", exc, exc_info=True)

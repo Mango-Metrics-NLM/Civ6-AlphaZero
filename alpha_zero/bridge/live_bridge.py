@@ -34,7 +34,7 @@ from alpha_zero.bridge.log_tailer import (
     LogTailer,
     StateTimeoutError,
 )
-from alpha_zero.bridge.protocol import CommandMessage
+from alpha_zero.bridge.protocol import CommandMessage, GameStateData, StateMessage
 from alpha_zero.bridge.tuner_bridge import TunerBridge
 
 logger = logging.getLogger(__name__)
@@ -100,17 +100,20 @@ class LiveBridge:
 
     # --- State reading (delegates to LogTailer) ---
 
-    async def poll_state(self) -> dict[str, Any] | None:
+    async def poll_state(self) -> GameStateData | None:
         """Poll for new game state (non-blocking).
 
         Returns:
-            Game state dict if a new state is available, None otherwise.
+            Game state if a new state is available, None otherwise.
         """
-        return self._tailer.latest_state
+        raw = self._tailer.latest_state
+        if raw is None:
+            return None
+        return StateMessage.from_dict(raw).state
 
     async def wait_for_state(
         self, timeout: float | None = None, require_new: bool = True
-    ) -> dict[str, Any]:
+    ) -> GameStateData:
         """Wait for game state to arrive.
 
         Args:
@@ -118,7 +121,7 @@ class LiveBridge:
             require_new: If True, waits for a new state even if one exists.
 
         Returns:
-            Game state dictionary.
+            Game state object.
 
         Raises:
             StateTimeoutError: If timeout is exceeded.
@@ -127,9 +130,10 @@ class LiveBridge:
             timeout = self._config.command_timeout_ms / 1000.0
 
         if not require_new and self._tailer.latest_state is not None:
-            return self._tailer.latest_state
+            return StateMessage.from_dict(self._tailer.latest_state).state
 
-        return await self._tailer.wait_for_state(timeout=timeout)
+        raw = await self._tailer.wait_for_state(timeout=timeout)
+        return StateMessage.from_dict(raw).state
 
     def check_heartbeat(self, max_age: float | None = None) -> bool:
         """Check if a recent heartbeat was received.

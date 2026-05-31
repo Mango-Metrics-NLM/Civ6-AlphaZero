@@ -441,21 +441,19 @@ class TestCoordinateScalingRound:
 
 
 class TestItemHashRange:
-    """Tests for _ITEM_HASH_RANGE constant and its usage."""
+    """Tests for GameConstants.ITEM_HASH_RANGE and its usage."""
 
     def test_item_hash_range_constant_exists(self):
-        """Test that _ITEM_HASH_RANGE is importable and positive."""
-        from alpha_zero.bridge.action_converter import _ITEM_HASH_RANGE
+        """Test that ITEM_HASH_RANGE is importable and positive."""
+        from alpha_zero.bridge.config import GameConstants
 
-        assert isinstance(_ITEM_HASH_RANGE, int)
-        assert _ITEM_HASH_RANGE > 0
+        assert isinstance(GameConstants.ITEM_HASH_RANGE, int)
+        assert GameConstants.ITEM_HASH_RANGE > 0
 
     def test_hashed_items_within_range(self):
-        """Test that hashed items stay within _ITEM_HASH_RANGE."""
-        from alpha_zero.bridge.action_converter import (
-            _ITEM_HASH_RANGE,
-            _convert_item_id_to_int,
-        )
+        """Test that hashed items stay within GameConstants.ITEM_HASH_RANGE."""
+        from alpha_zero.bridge.action_converter import _convert_item_id_to_int
+        from alpha_zero.bridge.config import GameConstants
 
         civ6_items = [
             "UNIT_WARRIOR",
@@ -471,8 +469,8 @@ class TestItemHashRange:
             result = _convert_item_id_to_int(item)
             assert result is not None
             assert (
-                0 <= result < _ITEM_HASH_RANGE
-            ), f"Hashed item '{item}' = {result} outside range [0, {_ITEM_HASH_RANGE})"
+                0 <= result < GameConstants.ITEM_HASH_RANGE
+            ), f"Hashed item '{item}' = {result} outside range [0, {GameConstants.ITEM_HASH_RANGE})"
 
     def test_hashed_items_deterministic(self):
         """Test that hashing produces deterministic results."""

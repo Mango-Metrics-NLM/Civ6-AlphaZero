@@ -18,6 +18,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+__all__ = ["BridgeConfig", "MapSizeConfig", "GameConstants", "MAP_SIZES", "get_map_config"]
+
+@dataclass
+class GameConstants:
+    """Constants used for game state conversion and action mapping."""
+    
+    ESTIMATED_TOTAL_TECHS: int = 70
+    ESTIMATED_MAX_SCORE: int = 2000
+    ITEM_HASH_RANGE: int = 200
+
 
 def _get_default_comm_dir() -> Path:
     """Get the default communication directory for Civ6.

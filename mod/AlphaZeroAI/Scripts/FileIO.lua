@@ -303,7 +303,7 @@ function AlphaZeroFileIO.WriteState(state)
     else
         -- Print-based IPC fallback with chunking for large states
         -- Lua.log truncates lines at ~4KB; split into 3500-char chunks
-        local MAX_CHUNK = 3500
+        local MAX_CHUNK = 1800
         local jsonLen = #json
         if jsonLen <= MAX_CHUNK then
             -- Small enough for a single line

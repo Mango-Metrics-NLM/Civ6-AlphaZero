@@ -188,20 +188,16 @@ class TestGreedyNetworkPolicy:
         assert mask[action_idx] == 1.0
 
     @pytest.mark.asyncio
-    async def test_empty_mask_returns_action_zero_and_warns(self, caplog) -> None:
-        """No legal actions -> safe fallback to action 0; warning logged."""
-        import logging
+    async def test_empty_mask_raises_no_legal_actions_error(self) -> None:
+        """No legal actions -> raises NoLegalActionsError."""
+        from alpha_zero.bridge.action_converter import NoLegalActionsError
 
         net = _FakeNetwork(action_space=8, value=0.0)
         policy = GreedyNetworkPolicy(network=net, device="cpu")
         mask = np.zeros(8, dtype=np.float32)
 
-        with caplog.at_level(logging.WARNING, logger="alpha_zero.bridge.agent_loop"):
-            action_idx, diagnostics = await policy.select_action(self._obs(8), mask)
-
-        assert action_idx == 0
-        assert diagnostics["value_estimate"] == 0.0
-        assert any("empty legal mask" in r.message for r in caplog.records)
+        with pytest.raises(NoLegalActionsError, match="No legal actions available from the mask"):
+            await policy.select_action(self._obs(8), mask)
 
 
 # ---------------------------------------------------------------------------
