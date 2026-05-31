@@ -332,6 +332,10 @@ class StateConverter:
             "_legal_actions": state.legal_actions,
             "_map_size": (state.map_data.width, state.map_data.height),
             "_player_id": state.player_id,
+            # Pass-through reference to the original GameStateData so downstream
+            # callers (e.g. agent_loop._build_observation) can re-encode without
+            # re-running convert() on a dict that no longer has the raw schema.
+            "_raw_state": state,
         }
 
     def convert_and_encode(

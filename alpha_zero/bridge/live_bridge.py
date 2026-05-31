@@ -200,6 +200,23 @@ class LiveBridge:
         await self.send_command(command)
         return await self.wait_for_ack(command.msg_id, timeout=timeout)
 
+    async def send_and_wait_with_retry(
+        self,
+        command: CommandMessage,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+    ) -> dict[str, Any]:
+        """FileBridge-API compatibility shim. Delegates to send_and_wait.
+
+        agent_loop calls this method on whatever bridge it's given. FileBridge
+        implements proper exponential-backoff retry here; LiveBridge currently
+        does a single attempt. Add real retry logic if mid-game ack timeouts
+        become a problem in practice — the Lua mod is supposed to ack within
+        one poll cycle, so single-attempt is usually fine.
+        """
+        del max_retries  # Reserved for future retry-loop implementation.
+        return await self.send_and_wait(command, timeout=timeout)
+
     # --- Properties ---
 
     @property
