@@ -1144,10 +1144,27 @@ class MapData:
         """
         _validate_type(data, dict, "data", context="MapData.from_dict")
 
-        width = _validate_int(data.get("width"), "width", context="MapData", default=0, min_val=0)
-        height = _validate_int(
-            data.get("height"), "height", context="MapData", default=0, min_val=0
-        )
+        # Width/height MUST be explicit in the wire payload. Defaulting silently
+        # to 0 masks Lua-side serialization bugs: mid-game, a missing key would
+        # look identical to a legitimate pre-game state, causing the agent loop
+        # to skip the turn and Civ6 to hang waiting for a command. Explicit 0
+        # is still allowed (it's how the mod represents a pre-game frame).
+        if "width" not in data:
+            raise ProtocolValidationError(
+                "MapData.from_dict: missing required field 'width' in payload",
+                field_name="width",
+                expected="int (explicit, may be 0 for pre-game)",
+                actual=None,
+            )
+        if "height" not in data:
+            raise ProtocolValidationError(
+                "MapData.from_dict: missing required field 'height' in payload",
+                field_name="height",
+                expected="int (explicit, may be 0 for pre-game)",
+                actual=None,
+            )
+        width = _validate_int(data["width"], "width", context="MapData", min_val=0)
+        height = _validate_int(data["height"], "height", context="MapData", min_val=0)
 
         raw_tiles = _validate_list(data.get("tiles"), "tiles", context="MapData")
         tiles = []

@@ -478,6 +478,7 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
         from alpha_zero.bridge.config import BridgeConfig
         from alpha_zero.bridge.live_bridge import LiveBridge
         from alpha_zero.bridge.state_converter import StateConverter
+        from alpha_zero.core.civ6_actions import ActionSpaceConfig
     except ImportError as exc:
         logger.error("Bridge module not available: %s", exc)
         return 1
@@ -492,7 +493,24 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
     logger.info("Start Civilization 6 with the AlphaZeroAI mod to begin.")
 
     state_converter = StateConverter(board_size=config.board_size)
-    action_converter = ActionConverter(board_size=config.board_size)
+    # Small-demo action space. ActionSpaceConfig defaults (max_units=100,
+    # max_cities=20, num_production_items=200) produce ~157k actions on a
+    # 16x16 board; the bridge then builds a matching network with random
+    # weights since no trained checkpoint exists at that scale. Shrinking
+    # max_units/max_cities/num_production_items keeps the architecture
+    # consistent (network output dim still tracks the converter) while
+    # bringing the space down to a few thousand actions — bounded enough
+    # for the Steam demo, large enough to still express meaningful play.
+    demo_action_space = ActionSpaceConfig(
+        board_size=config.board_size,
+        max_units=20,
+        max_cities=5,
+        num_production_items=20,
+    )
+    action_converter = ActionConverter(
+        board_size=config.board_size,
+        action_space_config=demo_action_space,
+    )
 
     # Build the policy network. When a checkpoint is supplied, load it;
     network = _build_network_for_bridge(config, action_space_size=action_converter.action_space_size)
@@ -513,7 +531,7 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
 
     log_path = Path(os.getenv("LOCALAPPDATA", "")) / "Firaxis Games" / "Sid Meier's Civilization VI" / "Logs" / "Lua.log"
     bridge = LiveBridge(bridge_cfg, log_path=log_path)
-    
+
     eval_harness = None
     if config.use_eval_harness:
         from alpha_zero.bridge.eval_harness import BridgeEvalHarness

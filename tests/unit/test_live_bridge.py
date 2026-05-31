@@ -87,7 +87,9 @@ class TestStateReading:
         async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
             async def write_state() -> None:
                 await asyncio.sleep(0.1)
-                state = {"turn_id": 5, "map": {"tiles": []}}
+                # width/height are required fields in the wire payload; explicit
+                # zero is the pre-game representation. See MapData.from_dict.
+                state = {"turn_id": 5, "map": {"width": 0, "height": 0, "tiles": []}}
                 _write_line(tmp_log, f'AlphaZeroMain: AZ_STATE:{json.dumps(state)}')
 
             asyncio.create_task(write_state())
@@ -107,9 +109,12 @@ class TestStateReading:
     ) -> None:
         async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
             # Pre-inject state. wait_for_state now wraps via StateMessage.from_dict,
-            # so the cached payload must be parseable. The "map" stub is enough
-            # for GameStateData.from_dict to populate MapData with width=height=0.
-            bridge._tailer._latest_state = {"turn_id": 99, "map": {"tiles": []}}
+            # so the cached payload must be parseable. width/height are required
+            # fields; explicit zero is the pre-game representation.
+            bridge._tailer._latest_state = {
+                "turn_id": 99,
+                "map": {"width": 0, "height": 0, "tiles": []},
+            }
             result = await bridge.wait_for_state(timeout=0.5, require_new=False)
             assert result.turn_id == 99
 

@@ -465,6 +465,38 @@ class TestLegalAction:
         assert data["targets"][0] == {"x": 1, "y": 2}
 
 
+class TestMapData:
+    """Tests for MapData wire-payload parsing."""
+
+    def test_from_dict_accepts_explicit_zero_dimensions(self) -> None:
+        """Pre-game frame: explicit width=0/height=0 is valid (parser accepts;
+        state_converter handles the 0x0 case via GameNotStartedError)."""
+        result = MapData.from_dict({"width": 0, "height": 0, "tiles": []})
+        assert result.width == 0
+        assert result.height == 0
+
+    def test_from_dict_accepts_positive_dimensions(self) -> None:
+        result = MapData.from_dict({"width": 8, "height": 8, "tiles": []})
+        assert result.width == 8
+        assert result.height == 8
+
+    def test_from_dict_missing_width_raises_loud_error(self) -> None:
+        """Regression: a Lua-side bug that drops 'width' from the payload must
+        fail loudly here instead of silently defaulting to 0, which would mid-
+        game look indistinguishable from a pre-game frame and cause the agent
+        loop to skip the turn (leaving Civ6 hanging for a command)."""
+        with pytest.raises(ProtocolValidationError, match="width"):
+            MapData.from_dict({"height": 8, "tiles": []})
+
+    def test_from_dict_missing_height_raises_loud_error(self) -> None:
+        with pytest.raises(ProtocolValidationError, match="height"):
+            MapData.from_dict({"width": 8, "tiles": []})
+
+    def test_from_dict_missing_both_raises_loud_error(self) -> None:
+        with pytest.raises(ProtocolValidationError, match="width"):
+            MapData.from_dict({"tiles": []})
+
+
 class TestStateMessage:
     """Tests for StateMessage dataclass."""
 
