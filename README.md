@@ -33,6 +33,10 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 17b | Training Readiness & Windows Compatibility | ✅ Complete |
 | Phase 18 | Training Bug Fix — load base model for fine-tuning | ✅ Complete |
 | Phase 19 | MLflow Monitoring Layer (PR #78 + PR #79 combined) | ✅ Complete |
+| Phase 20 | v1.5.0 — Convergence validation + MLflow + batch self-play | ✅ Complete |
+| Phase 21 | v1.6.0 — Cloud-deploy prep: Vertex launcher, runbook, GCP OAuth/VM fixes | ✅ Complete |
+| Phase 22 | v1.7.0 — Full-Civ6 local gameplay (`BridgeAgentLoop`) | ✅ Complete |
+| Phase 23 | LLM eval harness (`langfuse-eval-harness`) for `StrategyAdvisor` (`make eval-llm`) | ✅ Complete |
 | Sprint 3 | Convergence, Batch Self-Play, N-Player Foundation | ✅ Complete |
 | Sprint 4 | Type Safety Expansion (envs + evaluation) | ✅ Complete |
 | Sprint 5 | Type Safety — Breadth-First Mypy Stabilization | ✅ Complete |
@@ -1188,9 +1192,13 @@ pytest -k "curriculum" -v
 
 ## Project Structure
 
+> For the authoritative, up-to-date list of all **27 `alpha_zero/` submodules** with file
+> counts and one-line responsibilities, see [`docs/MODULE_REFERENCE.md`](docs/MODULE_REFERENCE.md).
+> The tree below is an illustrative (non-exhaustive) view of the most-used packages.
+
 ```
 Civ6-AlphaZero/
-├── alpha_zero/               # Core AI system (~55,000 LOC)
+├── alpha_zero/               # Core AI system (27 submodules — see docs/MODULE_REFERENCE.md)
 │   ├── orchestrator/         # Unified training orchestrator (Phase 4)
 │   │   ├── __init__.py       # Module exports
 │   │   ├── __main__.py       # CLI entry point

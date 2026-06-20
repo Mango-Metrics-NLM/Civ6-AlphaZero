@@ -3,6 +3,11 @@
 > Complete architectural visualization using C4 model and Mermaid diagrams.
 > Reflects all 6 implementation phases including GCP cloud infrastructure.
 
+> **Last reconciled: 2026-06-20 (v1.7.0).** For the authoritative, up-to-date list of
+> `alpha_zero/` submodules and their responsibilities, see
+> [`MODULE_REFERENCE.md`](MODULE_REFERENCE.md). The phase table and diagrams below are a
+> historical/architectural narrative and may lag the latest module additions.
+
 ## Project Status
 
 | Phase | Description | Status |
