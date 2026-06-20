@@ -318,6 +318,8 @@ When making changes, update the relevant sections below:
 | `pytest tests/unit/test_strategy_advisor_contract.py -v` | StrategyAdvisor output contract gate (dependency-free) |
 | `pytest tests/unit/test_llm_harness_target.py -v` | Eval-harness callable target adapter tests |
 | `pytest tests/unit/test_storage_backend.py -v` | Test storage backends |
+| `pytest tests/unit/test_orchestrator_stagnation.py -v` | Test stagnation config + orchestrator wiring |
+| `pytest tests/cloud/unit/test_evaluator_stagnation.py -v` | Test promotion-stagnation detection |
 | `pytest tests/unit/test_replay_buffer.py -v` | Test replay buffers |
 | `pytest tests/unit/test_simultaneous_mcts.py -v` | Test DUCT algorithm |
 | `pytest tests/unit/test_action_resolution.py -v` | Test action conflict resolution |
@@ -378,16 +380,17 @@ When making changes, update the relevant sections below:
 | 2026-05-21 | TournamentMlflowLogger (PR #78) | Match / round / leaderboard / head-to-head facade for tournament telemetry |
 | 2026-05-21 | Stateless monitoring helpers (PR #78) | `compute_value_correlation`, `compute_elo_spread`, `compute_policy_entropy` (NaN-safe, importable from `alpha_zero.monitoring`) |
 | 2026-05-21 | W&B coexists with MLflow | Phased rollout; both backends can be enabled simultaneously. W&B remains primary in `cloud/`, `pbt/`, `evaluation/`, `optimizations/` pending follow-up sweep. Optional `[monitoring]` extra. |
-| 2026-06-20 | langfuse-eval-harness integration (`[eval]` extra) | `alpha_zero/evaluation/llm_harness/` exposes `StrategyAdvisor` to the harness (github.com/ianshank/Agents) as a `callable` target. Offline default = deterministic stub LLM → contract/serialization regression gate (`make eval-llm`), not LLM-quality. Online (`CIV6AZ_LLM_EVAL_ONLINE=1`) drives a real provider. Dep pinned to a commit SHA; gate degrades to exit 0 when extra absent. |
-| 2026-06-20 | Dual-mode eval gate (analyze + report) | `make eval-llm` now gates BOTH StrategyAdvisor modes: `analyze` (`AnalysisResult`, `configs/eval/strategy_advisor.yaml`) and `report` (`GameReport`, `configs/eval/game_report.yaml`, dataset `data/eval/game_report_cases.jsonl`). `run_llm_eval.py --config` is repeatable and defaults to both; analyze gate gained a `suggestions_non_empty` regex scorer, report gate adds `has_recommendations` + `turns_is_integer`. |
-| 2026-06-20 | Coverage gate unified at 80% | `pyproject.toml` `fail_under` lowered 85→80 to match CI's `--cov-fail-under=80` (CLI flag overrides pyproject). One truthful local==CI gate; re-tighten path documented in the `[tool.coverage]` comment. Docs (SECTION 7) reconciled to the verified 27-submodule inventory + `docs/MODULE_REFERENCE.md`. |
-| 2026-06-20 | Orchestrator `_require()` init guard | Replaced 24 bare `assert self._x is not None` guards (stripped under `python -O`) with `self._x = self._require(self._x, name)` — raises a clear `RuntimeError` and preserves mypy attribute narrowing via a `TypeVar` reassignment. |
+| 2026-05-30 | Training-stagnation detection (harness engineering) | Reuses existing `EloPlateauDetector` in the orchestrator (`StagnationConfig`, opt-in, ELO/win-rate signal — NOT loss) + new `count_consecutive_non_promotions` promotion check in `cloud/evaluator.py`. Addresses §13 zero-promotion failure. Env: `CIV6AZ_STAGNATION_*`, `CIV6_STAGNATION_PATIENCE`. All default OFF. |
+| 2026-05-30 | PreToolUse prohibited-action guard | `.claude/hooks/pretooluse_guard.sh` enforces §3.2 (no commits/pushes to `main`, >1000-game cap) — turns prose into a machine deny. |
+| 2026-05-30 | Pre-PR review in isolated subagent | Pre-PR handoff skill dispatches review to a fresh `Agent`/`code-review` for generator–evaluator separation (independent context). |
 
 ### 5.3 Known Issues
 
 | Issue | Workaround |
 |-------|------------|
 | No GPU in dev environment | Training works on CPU (slower) |
+| torch not installable in restricted web sessions | PyTorch index blocked by network policy; torch-dependent tests run in CI, not locally. Pure logic still verifiable via `python -m py_compile` + `ruff`. |
+| `PostToolUse` ruff `--fix` can strip imports mid-task | If you add an import in one edit and its first use in a later edit, the autofix removes it as unused. Re-add the import after the use exists; see guardrail audit in `docs/HARNESS_ENGINEERING_ANALYSIS.md` §6. |
 | SimpleMCTS random rollout is weak | Use neural network MCTS after initial training |
 | Windows multiprocessing spawn | Use `if __name__ == "__main__"` guard |
 | pytest-xdist not always installed | Tests run without parallel flag if missing |
