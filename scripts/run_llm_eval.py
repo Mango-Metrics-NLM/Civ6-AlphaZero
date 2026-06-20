@@ -61,7 +61,11 @@ def main() -> int:
     else:
         env.pop("CIV6AZ_LLM_EVAL_ONLINE", None)
 
-    cmd = ["eval-harness", "run", "--config", str(config_path)]
+    # Invoke via the current interpreter's ``-m`` rather than the bare
+    # ``eval-harness`` console script: ``sys.executable`` always exists, so this
+    # avoids a FileNotFoundError when the script's bin dir is not on PATH even
+    # though the package is importable (find_spec above already confirmed it is).
+    cmd = [sys.executable, "-m", "eval_harness.cli", "run", "--config", str(config_path)]
     if not args.online:
         # --offline keeps the harness's Langfuse client in-memory (no network).
         cmd.append("--offline")

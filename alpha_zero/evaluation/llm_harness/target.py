@@ -108,20 +108,22 @@ def advisor_target(inputs: dict[str, Any]) -> str:
         deterministic output.
     """
     advisor = _build_advisor()
-    mode = str(inputs.get("mode", "analyze")).strip().lower()
+    # `or <default>` (not `.get(key, default)`) so explicit JSON null values are
+    # coerced to the default instead of crashing dict()/list()/str() with None.
+    mode = str(inputs.get("mode") or "analyze").strip().lower()
 
     # Both branches return a dataclass (AnalysisResult / GameReport) handled
     # uniformly by dataclasses.asdict below.
     result: AnalysisResult | GameReport
     if mode == "report":
         result = advisor.generate_game_report(
-            trajectory=list(inputs.get("trajectory", [])),
-            outcome=str(inputs.get("outcome", "unknown")),
+            trajectory=list(inputs.get("trajectory") or []),
+            outcome=str(inputs.get("outcome") or "unknown"),
             game_id=inputs.get("game_id"),
         )
     else:
         result = advisor.analyze_game_state(
-            state=dict(inputs.get("state", {})),
+            state=dict(inputs.get("state") or {}),
             context=inputs.get("context"),
         )
 

@@ -98,6 +98,20 @@ def test_sparse_states_are_graceful(state):
     assert set(data) == ANALYSIS_KEYS
 
 
+def test_explicit_null_inputs_do_not_crash():
+    # JSON null values present for known keys must coerce to defaults, not raise
+    # TypeError on dict()/list()/str(None).
+    analyze = json.loads(advisor_target({"mode": None, "state": None, "context": None}))
+    assert set(analyze) == ANALYSIS_KEYS
+
+    report = json.loads(
+        advisor_target({"mode": "report", "trajectory": None, "outcome": None, "game_id": None})
+    )
+    assert set(report) == REPORT_KEYS
+    assert report["outcome"] == "unknown"
+    assert report["total_turns"] == 0
+
+
 def test_config_required_keys_are_satisfied():
     """The keys the harness gate requires must all be present in the output."""
     data = json.loads(advisor_target({"state": {"turn": 1}}))
