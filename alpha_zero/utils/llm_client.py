@@ -648,6 +648,31 @@ class LLMClient:
         """Synchronous wrapper for generate."""
         return asyncio.run(self.generate(prompt, system_prompt, messages, **kwargs))
 
+    def complete(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        **kwargs: Any,
+    ) -> str:
+        """Synchronous completion alias returning the plain text content.
+
+        Convenience wrapper around :meth:`generate_sync` for callers that expect a
+        ``complete(prompt) -> str`` interface (e.g.
+        :class:`alpha_zero.orchestrator.strategy_advisor.StrategyAdvisor`, which
+        calls ``llm_client.complete(prompt)``). Without this alias that call path
+        raises ``AttributeError`` against a real client, since the public API is
+        :meth:`generate` / :meth:`generate_sync`.
+
+        Args:
+            prompt: The user prompt to send.
+            system_prompt: Optional system prompt.
+            **kwargs: Additional arguments passed to the provider.
+
+        Returns:
+            The generated text content as a string.
+        """
+        return self.generate_sync(prompt, system_prompt=system_prompt, **kwargs).content
+
 
 def create_llm_client(config: LLMConfig | None = None) -> LLMClient:
     """Create an LLM client.

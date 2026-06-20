@@ -75,6 +75,13 @@ jax = [
 chess = [
     "chess>=1.11.0",
 ]
+# LLM evaluation harness (github.com/ianshank/Agents -> dist "langfuse-eval-harness").
+# Optional; the eval gate (scripts/run_llm_eval.py / `make eval-llm`) degrades
+# gracefully when this is not installed. Pinned to a commit SHA so the grader the
+# gate depends on stays reproducible rather than tracking a moving branch.
+eval = [
+    "langfuse-eval-harness @ git+https://github.com/ianshank/Agents@2cbdbc674d5b533957ca9259ed58c26bd2d8d49b",
+]
 all = [
     "alpha_zero[dev]",
     "alpha_zero[gcp]",
@@ -85,6 +92,7 @@ all = [
     "alpha_zero[jax]",
     "alpha_zero[chess]",
     "alpha_zero[monitoring]",
+    "alpha_zero[eval]",
 ]
 
 
@@ -313,6 +321,8 @@ omit = [
     "alpha_zero/utils/rag_client.py",
     "alpha_zero/rag/processors/embeddings.py",
     "alpha_zero/rag/agents/*",
+    # LLM eval-harness adapter (online branch needs API keys; offline path is unit-tested)
+    "alpha_zero/evaluation/llm_harness/*",
     # Evaluation baselines/reports (require trained models, output formatting)
     "alpha_zero/evaluation/baselines.py",
     "alpha_zero/evaluation/baseline_agents.py",
@@ -381,6 +391,7 @@ omit = [
     "alpha_zero/utils/rag_client.py",
     "alpha_zero/rag/processors/embeddings.py",
     "alpha_zero/rag/agents/*",
+    "alpha_zero/evaluation/llm_harness/*",
     "alpha_zero/evaluation/baselines.py",
     "alpha_zero/evaluation/baseline_agents.py",
     "alpha_zero/evaluation/reports.py",

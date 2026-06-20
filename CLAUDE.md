@@ -275,6 +275,11 @@ When making changes, update the relevant sections below:
 | `python -m alpha_zero.orchestrator --help` | Show orchestrator options |
 | `python -m alpha_zero.orchestrator --preset fast --dry_run` | Fast preset smoke test |
 | `python -m alpha_zero.orchestrator --config configs/orchestrator.yaml --dry_run` | Config file smoke test |
+| `pip install -e '.[eval]'` | Install the LLM eval-harness (langfuse-eval-harness from git) |
+| `make eval-llm` | Run the StrategyAdvisor LLM eval gate (offline, exit-code propagating) |
+| `python scripts/run_llm_eval.py --config configs/eval/strategy_advisor.yaml` | Run the LLM eval gate directly |
+| `python scripts/run_llm_eval.py --online` | Run the eval gate against a real LLM provider (needs API keys) |
+| `eval-harness list-plugins` | List harness scorers/datasets/targets/sinks/judges |
 | `python scripts/launch_50iter_production_monitored.py --dry-run` | MLflow-monitored 50-iter production dry run |
 | `python scripts/launch_50iter_production_monitored.py` | Launch full 50-iter production run with MLflow |
 | `mlflow ui --backend-store-uri ./mlruns --port 5000` | Inspect MLflow runs in the browser |
@@ -310,6 +315,8 @@ When making changes, update the relevant sections below:
 | `pytest tests/unit/test_factories.py -v` | Test component factories |
 | `pytest tests/unit/test_rag_integration.py -v` | Test RAG integration |
 | `pytest tests/unit/test_strategy_advisor.py -v` | Test strategy advisor |
+| `pytest tests/unit/test_strategy_advisor_contract.py -v` | StrategyAdvisor output contract gate (dependency-free) |
+| `pytest tests/unit/test_llm_harness_target.py -v` | Eval-harness callable target adapter tests |
 | `pytest tests/unit/test_storage_backend.py -v` | Test storage backends |
 | `pytest tests/unit/test_replay_buffer.py -v` | Test replay buffers |
 | `pytest tests/unit/test_simultaneous_mcts.py -v` | Test DUCT algorithm |
@@ -371,6 +378,7 @@ When making changes, update the relevant sections below:
 | 2026-05-21 | TournamentMlflowLogger (PR #78) | Match / round / leaderboard / head-to-head facade for tournament telemetry |
 | 2026-05-21 | Stateless monitoring helpers (PR #78) | `compute_value_correlation`, `compute_elo_spread`, `compute_policy_entropy` (NaN-safe, importable from `alpha_zero.monitoring`) |
 | 2026-05-21 | W&B coexists with MLflow | Phased rollout; both backends can be enabled simultaneously. W&B remains primary in `cloud/`, `pbt/`, `evaluation/`, `optimizations/` pending follow-up sweep. Optional `[monitoring]` extra. |
+| 2026-06-20 | langfuse-eval-harness integration (`[eval]` extra) | `alpha_zero/evaluation/llm_harness/` exposes `StrategyAdvisor` to the harness (github.com/ianshank/Agents) as a `callable` target. Offline default = deterministic stub LLM → contract/serialization regression gate (`make eval-llm`), not LLM-quality. Online (`CIV6AZ_LLM_EVAL_ONLINE=1`) drives a real provider. Dep pinned to a commit SHA; gate degrades to exit 0 when extra absent. |
 
 ### 5.3 Known Issues
 
@@ -401,6 +409,7 @@ When making changes, update the relevant sections below:
 | run_baseline_eval hardcoded run_id | Added resolve_run_id() auto-detection; removed production UUID default | 2026-05-21 |
 | EvaluationResult.win_rate type | win_rate is WinRateResult object, not float; fixed access to .win_rate.win_rate | 2026-05-21 |
 | MLflowLogger lifecycle | FAILED vs FINISHED status now set correctly on context manager exit | 2026-05-21 |
+| StrategyAdvisor `.complete()` mismatch | Added `LLMClient.complete()` alias → `generate_sync(prompt).content`; advisor's `llm_client.complete(prompt)` call path no longer `AttributeError`s against a real client | 2026-06-20 |
 
 ### 5.5 Information to Preserve
 
@@ -865,6 +874,36 @@ as fallback.
 Install: `pip install -e '.[monitoring]'`. Launch the 50-iter production
 run via `scripts/launch_50iter_production_monitored.py`. Inspect via
 `mlflow ui --backend-store-uri ./mlruns --port 5000`.
+
+### 9.10 LLM Evaluation Harness
+
+Optional integration of `langfuse-eval-harness` (github.com/ianshank/Agents) to
+evaluate the LLM-driven `StrategyAdvisor`. The harness drives a `callable` target
+that imports `alpha_zero.evaluation.llm_harness.target:advisor_target`, runs the
+advisor, and grades the JSON-serialized result with its scorers.
+
+**What it checks (be honest about scope):** by default the gate runs *offline*
+with a deterministic stub LLM, so it is a **contract / serialization regression
+gate** for the advisor's structured output (`AnalysisResult` keys + suggestion
+content) — it does **not** measure LLM quality. Real quality grading needs the
+online path (`CIV6AZ_LLM_EVAL_ONLINE=1`) with a real judge.
+
+```bash
+pip install -e '.[eval]'                 # langfuse-eval-harness pinned to a SHA
+make eval-llm                            # offline gate; exit 1 on regression
+python scripts/run_llm_eval.py --online  # real provider (needs API keys)
+```
+
+- Config: `configs/eval/strategy_advisor.yaml` (schema: `dataset`/`target`/
+  `scorers`/`judge`/`sinks`/`gate`; scorers carry a `name`, the gate references
+  it). Dataset: `data/eval/strategy_advisor_cases.jsonl`.
+- Runner `scripts/run_llm_eval.py` degrades gracefully (exit 0) when the `[eval]`
+  extra is absent, so it is CI-safe unconditionally; otherwise it propagates the
+  harness exit code (0 = gate pass, 1 = gate fail).
+- Dependency-free core: `tests/unit/test_strategy_advisor_contract.py` keeps the
+  contract-regression coverage even without the harness installed.
+- Env vars: `CIV6AZ_LLM_EVAL_ONLINE` (online switch), `CIV6AZ_EVAL_DATASET`,
+  `CIV6AZ_EVAL_OUT`, `CIV6AZ_EVAL_SAMPLE_RATE`.
 
 ---
 
