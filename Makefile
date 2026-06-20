@@ -50,7 +50,7 @@ help:
 	@echo "  make test-unit         Run unit tests"
 	@echo "  make test-integration  Run integration tests"
 	@echo "  make test-all          Run all tests with coverage"
-	@echo "  make eval-llm          Run LLM eval-harness gate (StrategyAdvisor, offline)"
+	@echo "  make eval-llm          Run LLM eval-harness gate (StrategyAdvisor analyze + report, offline)"
 	@echo ""
 	@echo "Docker:"
 	@echo "  make build-base        Build base image"
@@ -124,7 +124,7 @@ test-storage:
 
 .PHONY: eval-llm
 eval-llm:
-	$(PYTHON) scripts/run_llm_eval.py --config configs/eval/strategy_advisor.yaml
+	$(PYTHON) scripts/run_llm_eval.py
 
 # ============================================================================
 # Docker Build

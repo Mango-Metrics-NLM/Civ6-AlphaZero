@@ -44,6 +44,12 @@ scorers:
       name: has_suggestions
       substring: "suggestion"
       case_sensitive: false
+  # The `suggestions` field must serialize as a non-empty JSON array (at least
+  # one string element) — i.e. the advisor produced actionable items, not [].
+  - type: regex_match
+    params:
+      name: suggestions_non_empty
+      pattern: '"suggestions":\s*\[\s*"'
 
 # Deterministic offline judge (only consulted by llm_judge scorers, none here;
 # declared so the config is complete and ready for an online judge swap later).
@@ -63,3 +69,4 @@ gate:
   rules:
     - { score: structure, metric: mean, min: 1.0 }
     - { score: has_suggestions, metric: pass_rate, min: 1.0 }
+    - { score: suggestions_non_empty, metric: pass_rate, min: 1.0 }

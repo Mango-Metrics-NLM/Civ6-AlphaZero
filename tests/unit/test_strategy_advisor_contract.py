@@ -11,10 +11,27 @@ the ``json_keys`` ``required`` list must be a subset of the analysis output keys
 """
 
 import json
+from pathlib import Path
 
 import pytest
 
 from alpha_zero.evaluation.llm_harness.target import advisor_target
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+ANALYZE_DATASET = _REPO_ROOT / "data" / "eval" / "strategy_advisor_cases.jsonl"
+REPORT_DATASET = _REPO_ROOT / "data" / "eval" / "game_report_cases.jsonl"
+ANALYZE_CONFIG = _REPO_ROOT / "configs" / "eval" / "strategy_advisor.yaml"
+REPORT_CONFIG = _REPO_ROOT / "configs" / "eval" / "game_report.yaml"
+
+
+def _load_jsonl(path: Path) -> list[dict]:
+    with path.open(encoding="utf-8") as fh:
+        return [json.loads(line) for line in fh if line.strip()]
+
+
+def _keys_for_mode(mode: str) -> set[str]:
+    return REPORT_KEYS if mode == "report" else ANALYSIS_KEYS
+
 
 ANALYSIS_KEYS = {"summary", "strengths", "weaknesses", "suggestions", "confidence", "timestamp"}
 REPORT_KEYS = {
@@ -116,3 +133,72 @@ def test_config_required_keys_are_satisfied():
     """The keys the harness gate requires must all be present in the output."""
     data = json.loads(advisor_target({"state": {"turn": 1}}))
     assert all(key in data for key in CONFIG_REQUIRED_KEYS)
+
+
+# --- report mode --------------------------------------------------------------
+
+
+@pytest.mark.parametrize("outcome", ["domination_victory", "loss", "draw", "in_progress"])
+def test_report_mode_preserves_outcome(outcome):
+    out = advisor_target({"mode": "report", "trajectory": [{"turn": 1}], "outcome": outcome})
+    data = json.loads(out)
+    assert set(data) == REPORT_KEYS
+    assert data["outcome"] == outcome
+
+
+@pytest.mark.parametrize("n_turns", [0, 1, 3, 6])
+def test_report_total_turns_tracks_trajectory_length(n_turns):
+    trajectory = [{"turn": i} for i in range(n_turns)]
+    data = json.loads(
+        advisor_target({"mode": "report", "trajectory": trajectory, "outcome": "win"})
+    )
+    assert data["total_turns"] == n_turns
+    assert isinstance(data["total_turns"], int)
+
+
+def test_report_surfaces_recommendations_substring():
+    # The has_recommendations `contains` scorer matches "recommend" case-insensitively.
+    out = advisor_target({"mode": "report", "trajectory": [], "outcome": "win"})
+    assert "recommend" in out.lower()
+
+
+# --- dataset integrity (the files the harness datasets point at) --------------
+
+
+@pytest.mark.parametrize(
+    "dataset_path, mode",
+    [(ANALYZE_DATASET, "analyze"), (REPORT_DATASET, "report")],
+    ids=["analyze_cases", "report_cases"],
+)
+def test_dataset_items_round_trip_through_target(dataset_path, mode):
+    """Every dataset item must drive the adapter and yield the right key set."""
+    items = _load_jsonl(dataset_path)
+    assert items, f"{dataset_path} is empty"
+    for item in items:
+        inputs = item["inputs"]
+        assert inputs.get("mode", "analyze") == mode
+        data = json.loads(advisor_target(inputs))
+        assert set(data) == _keys_for_mode(mode), f"bad keys for {item.get('id')}"
+
+
+# --- config <-> output contract -----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "config_path, mode",
+    [(ANALYZE_CONFIG, "analyze"), (REPORT_CONFIG, "report")],
+    ids=["analyze_config", "report_config"],
+)
+def test_config_gate_and_required_keys_are_consistent(config_path, mode):
+    """Gate rules must reference declared scorers; json_keys must match output."""
+    yaml = pytest.importorskip("yaml")
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+
+    scorer_names = {s["params"]["name"] for s in config["scorers"]}
+    gate_scores = {rule["score"] for rule in config["gate"]["rules"]}
+    assert gate_scores <= scorer_names, "gate references an undeclared scorer name"
+
+    required = next(
+        s["params"]["required"] for s in config["scorers"] if s["params"]["name"] == "structure"
+    )
+    assert set(required) <= _keys_for_mode(mode), "json_keys.required not a subset of output keys"

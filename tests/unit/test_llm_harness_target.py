@@ -79,19 +79,34 @@ class TestAdvisorTarget:
 
 
 @pytest.mark.e2e
-def test_eval_harness_end_to_end(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "config",
+    ["configs/eval/strategy_advisor.yaml", "configs/eval/game_report.yaml"],
+)
+def test_eval_harness_end_to_end(tmp_path, monkeypatch, config):
     """Run the full harness gate via the runner when the extra is installed."""
     pytest.importorskip("eval_harness")
     monkeypatch.setenv("CIV6AZ_EVAL_OUT", str(tmp_path))
     monkeypatch.delenv("CIV6AZ_LLM_EVAL_ONLINE", raising=False)
     result = subprocess.run(
-        [
-            sys.executable,
-            "scripts/run_llm_eval.py",
-            "--config",
-            "configs/eval/strategy_advisor.yaml",
-        ],
+        [sys.executable, "scripts/run_llm_eval.py", "--config", config],
         capture_output=True,
         text=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.e2e
+def test_eval_harness_default_runs_both_modes(tmp_path, monkeypatch):
+    """With no --config the runner gates both analyze and report modes."""
+    pytest.importorskip("eval_harness")
+    monkeypatch.setenv("CIV6AZ_EVAL_OUT", str(tmp_path))
+    monkeypatch.delenv("CIV6AZ_LLM_EVAL_ONLINE", raising=False)
+    result = subprocess.run(
+        [sys.executable, "scripts/run_llm_eval.py"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / "strategy_advisor.json").is_file()
+    assert (tmp_path / "game_report.json").is_file()

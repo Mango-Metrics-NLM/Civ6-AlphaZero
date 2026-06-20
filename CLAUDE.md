@@ -277,7 +277,7 @@ When making changes, update the relevant sections below:
 | `python -m alpha_zero.orchestrator --config configs/orchestrator.yaml --dry_run` | Config file smoke test |
 | `pip install -e '.[eval]'` | Install the LLM eval-harness (langfuse-eval-harness from git) |
 | `make eval-llm` | Run the StrategyAdvisor LLM eval gate (offline, exit-code propagating) |
-| `python scripts/run_llm_eval.py --config configs/eval/strategy_advisor.yaml` | Run the LLM eval gate directly |
+| `python scripts/run_llm_eval.py` | Run the LLM eval gate directly (both analyze + report configs) |
 | `python scripts/run_llm_eval.py --online` | Run the eval gate against a real LLM provider (needs API keys) |
 | `eval-harness list-plugins` | List harness scorers/datasets/targets/sinks/judges |
 | `python scripts/launch_50iter_production_monitored.py --dry-run` | MLflow-monitored 50-iter production dry run |
@@ -379,6 +379,7 @@ When making changes, update the relevant sections below:
 | 2026-05-21 | Stateless monitoring helpers (PR #78) | `compute_value_correlation`, `compute_elo_spread`, `compute_policy_entropy` (NaN-safe, importable from `alpha_zero.monitoring`) |
 | 2026-05-21 | W&B coexists with MLflow | Phased rollout; both backends can be enabled simultaneously. W&B remains primary in `cloud/`, `pbt/`, `evaluation/`, `optimizations/` pending follow-up sweep. Optional `[monitoring]` extra. |
 | 2026-06-20 | langfuse-eval-harness integration (`[eval]` extra) | `alpha_zero/evaluation/llm_harness/` exposes `StrategyAdvisor` to the harness (github.com/ianshank/Agents) as a `callable` target. Offline default = deterministic stub LLM → contract/serialization regression gate (`make eval-llm`), not LLM-quality. Online (`CIV6AZ_LLM_EVAL_ONLINE=1`) drives a real provider. Dep pinned to a commit SHA; gate degrades to exit 0 when extra absent. |
+| 2026-06-20 | Dual-mode eval gate (analyze + report) | `make eval-llm` now gates BOTH StrategyAdvisor modes: `analyze` (`AnalysisResult`, `configs/eval/strategy_advisor.yaml`) and `report` (`GameReport`, `configs/eval/game_report.yaml`, dataset `data/eval/game_report_cases.jsonl`). `run_llm_eval.py --config` is repeatable and defaults to both; analyze gate gained a `suggestions_non_empty` regex scorer, report gate adds `has_recommendations` + `turns_is_integer`. |
 
 ### 5.3 Known Issues
 
@@ -884,26 +885,36 @@ advisor, and grades the JSON-serialized result with its scorers.
 
 **What it checks (be honest about scope):** by default the gate runs *offline*
 with a deterministic stub LLM, so it is a **contract / serialization regression
-gate** for the advisor's structured output (`AnalysisResult` keys + suggestion
-content) — it does **not** measure LLM quality. Real quality grading needs the
-online path (`CIV6AZ_LLM_EVAL_ONLINE=1`) with a real judge.
+gate** for the advisor's structured output — it does **not** measure LLM
+quality. Real quality grading needs the online path
+(`CIV6AZ_LLM_EVAL_ONLINE=1`) with a real judge.
+
+It gates **both** advisor modes:
+- `analyze` → `AnalysisResult` (`configs/eval/strategy_advisor.yaml`,
+  dataset `data/eval/strategy_advisor_cases.jsonl`): scorers `structure`
+  (keys), `has_suggestions` (content), `suggestions_non_empty` (regex).
+- `report` → `GameReport` (`configs/eval/game_report.yaml`, dataset
+  `data/eval/game_report_cases.jsonl`): scorers `structure` (keys),
+  `has_recommendations` (content), `turns_is_integer` (regex).
 
 ```bash
 pip install -e '.[eval]'                 # langfuse-eval-harness pinned to a SHA
-make eval-llm                            # offline gate; exit 1 on regression
+make eval-llm                            # offline gate, BOTH modes; exit 1 on regression
 python scripts/run_llm_eval.py --online  # real provider (needs API keys)
+python scripts/run_llm_eval.py --config configs/eval/game_report.yaml  # one mode
 ```
 
-- Config: `configs/eval/strategy_advisor.yaml` (schema: `dataset`/`target`/
-  `scorers`/`judge`/`sinks`/`gate`; scorers carry a `name`, the gate references
-  it). Dataset: `data/eval/strategy_advisor_cases.jsonl`.
-- Runner `scripts/run_llm_eval.py` degrades gracefully (exit 0) when the `[eval]`
-  extra is absent, so it is CI-safe unconditionally; otherwise it propagates the
-  harness exit code (0 = gate pass, 1 = gate fail).
+- Config schema: `dataset`/`target`/`scorers`/`judge`/`sinks`/`gate`; scorers
+  carry a `name`, the gate references it.
+- Runner `scripts/run_llm_eval.py` takes a repeatable `--config` (defaults to
+  both configs) and degrades gracefully (exit 0) when the `[eval]` extra is
+  absent, so it is CI-safe unconditionally; otherwise it propagates the harness
+  exit code (0 = gate pass, 1 = gate fail), failing fast on the first config.
 - Dependency-free core: `tests/unit/test_strategy_advisor_contract.py` keeps the
-  contract-regression coverage even without the harness installed.
+  contract-regression coverage even without the harness installed (both modes,
+  dataset round-trip, and config↔output key consistency).
 - Env vars: `CIV6AZ_LLM_EVAL_ONLINE` (online switch), `CIV6AZ_EVAL_DATASET`,
-  `CIV6AZ_EVAL_OUT`, `CIV6AZ_EVAL_SAMPLE_RATE`.
+  `CIV6AZ_EVAL_REPORT_DATASET`, `CIV6AZ_EVAL_OUT`, `CIV6AZ_EVAL_SAMPLE_RATE`.
 
 ---
 
