@@ -157,6 +157,55 @@ class TestLLMResponse:
         assert response.total_tokens == 0
 
 
+class TestLLMClientComplete:
+    """Tests for the synchronous complete() alias on LLMClient.
+
+    The StrategyAdvisor calls ``llm_client.complete(prompt)``; this alias makes
+    that call path work against a real client by delegating to generate_sync.
+    We bypass __init__ (which requires API keys) and stub generate_sync.
+    """
+
+    def _make_client(self):
+        from alpha_zero.utils.llm_client import LLMClient
+
+        return LLMClient.__new__(LLMClient)
+
+    def test_complete_returns_content_string(self):
+        """complete() returns the .content of the generate_sync response."""
+        client = self._make_client()
+        captured = {}
+
+        def fake_generate_sync(prompt, system_prompt=None, **kwargs):
+            captured["prompt"] = prompt
+            captured["system_prompt"] = system_prompt
+            return LLMResponse(
+                content="completed text",
+                model="m",
+                provider=LLMProvider.OPENAI,
+            )
+
+        client.generate_sync = fake_generate_sync  # type: ignore[method-assign]
+
+        result = client.complete("a prompt", system_prompt="be terse")
+
+        assert result == "completed text"
+        assert captured == {"prompt": "a prompt", "system_prompt": "be terse"}
+
+    def test_complete_passes_kwargs_through(self):
+        """Extra kwargs are forwarded to generate_sync."""
+        client = self._make_client()
+        captured = {}
+
+        def fake_generate_sync(prompt, system_prompt=None, **kwargs):
+            captured.update(kwargs)
+            return LLMResponse(content="ok", model="m", provider=LLMProvider.OPENAI)
+
+        client.generate_sync = fake_generate_sync  # type: ignore[method-assign]
+
+        assert client.complete("p", temperature=0.1) == "ok"
+        assert captured["temperature"] == 0.1
+
+
 class TestLLMProvider:
     """Tests for LLMProvider enum."""
 

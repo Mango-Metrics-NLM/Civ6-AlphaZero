@@ -1,0 +1,72 @@
+# langfuse-eval-harness config: StrategyAdvisor structure/serialization gate.
+#
+# Run offline (deterministic stub LLM, no API keys) via:
+#   make eval-llm
+#   python scripts/run_llm_eval.py --config configs/eval/strategy_advisor.yaml
+#
+# This validates the STRUCTURE of StrategyAdvisor.analyze_game_state output
+# (an AnalysisResult serialized to JSON). It is a contract/serialization
+# regression gate, not an LLM-quality measurement. For real quality grading,
+# run online (CIV6AZ_LLM_EVAL_ONLINE=1) with a real judge.
+schema_version: "1.0"
+
+run:
+  name: "civ6-strategy-advisor-contract"
+  seed: 7
+  sample_rate: ${CIV6AZ_EVAL_SAMPLE_RATE:-1.0}
+
+dataset:
+  type: jsonl
+  params:
+    path: ${CIV6AZ_EVAL_DATASET:-data/eval/strategy_advisor_cases.jsonl}
+
+target:
+  type: callable
+  params:
+    path: "alpha_zero.evaluation.llm_harness.target:advisor_target"
+    pass_item: false
+
+scorers:
+  # Fraction of required AnalysisResult keys present in the serialized JSON.
+  - type: json_keys
+    params:
+      name: structure
+      required:
+        - summary
+        - strengths
+        - weaknesses
+        - suggestions
+        - confidence
+        - timestamp
+  # Output must surface strategic suggestions (case-insensitive).
+  - type: contains
+    params:
+      name: has_suggestions
+      substring: "suggestion"
+      case_sensitive: false
+  # The `suggestions` field must serialize as a non-empty JSON array (at least
+  # one string element) — i.e. the advisor produced actionable items, not [].
+  - type: regex_match
+    params:
+      name: suggestions_non_empty
+      pattern: '"suggestions":\s*\[\s*"'
+
+# Deterministic offline judge (only consulted by llm_judge scorers, none here;
+# declared so the config is complete and ready for an online judge swap later).
+judge:
+  type: mock
+  params:
+    default_score: 1.0
+
+sinks:
+  - type: console
+    params: { verbose: false }
+  - type: json_file
+    params: { path: "${CIV6AZ_EVAL_OUT:-eval_results}/strategy_advisor.json" }
+
+# Gate references each scorer by its `name`. Non-zero exit if violated.
+gate:
+  rules:
+    - { score: structure, metric: mean, min: 1.0 }
+    - { score: has_suggestions, metric: pass_rate, min: 1.0 }
+    - { score: suggestions_non_empty, metric: pass_rate, min: 1.0 }
