@@ -26,7 +26,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import numpy as np
 import torch
@@ -95,6 +95,9 @@ except ImportError:
     MuZeroTrainingBridge = None  # type: ignore[assignment, misc]
 
 logger = logging.getLogger(__name__)
+
+# Type variable for the _require() initialization guard (see TrainingOrchestrator).
+_T = TypeVar("_T")
 
 
 @dataclass
@@ -304,6 +307,30 @@ class TrainingOrchestrator:
         self._shutdown_requested = False
         signal.signal(signal.SIGINT, self._handle_shutdown)
         signal.signal(signal.SIGTERM, self._handle_shutdown)
+
+    def _require(self, value: _T | None, name: str) -> _T:
+        """Return ``value`` if it is initialized, else raise a clear error.
+
+        Replaces bare ``assert self._x is not None`` guards, which are stripped under
+        ``python -O`` and would surface as opaque ``AttributeError``s on ``None``.
+        Re-binding the attribute to the return value (``self._x = self._require(...)``)
+        also narrows the type for static analysis exactly as the old ``assert`` did.
+
+        Args:
+            value: The lazily-initialized component (set during :meth:`initialize`).
+            name: Human-readable component name for the error message.
+
+        Returns:
+            The non-``None`` ``value``.
+
+        Raises:
+            RuntimeError: If ``value`` is ``None`` (i.e. ``initialize()`` has not run).
+        """
+        if value is None:
+            raise RuntimeError(
+                f"Orchestrator component '{name}' is not initialized; call initialize() first."
+            )
+        return value
 
     def _setup_logging(self) -> None:
         """Configure logging based on config."""
@@ -616,10 +643,10 @@ class TrainingOrchestrator:
 
     def _resume_from_checkpoint(self) -> None:
         """Resume training from latest checkpoint."""
-        assert self._checkpointer is not None
-        assert self._network is not None
-        assert self._optimizer is not None
-        assert self._scheduler is not None
+        self._checkpointer = self._require(self._checkpointer, "checkpointer")
+        self._network = self._require(self._network, "network")
+        self._optimizer = self._require(self._optimizer, "optimizer")
+        self._scheduler = self._require(self._scheduler, "scheduler")
 
         checkpoint = self._checkpointer.load_latest()
 
@@ -673,8 +700,8 @@ class TrainingOrchestrator:
 
     def _training_iteration(self) -> None:
         """Execute a single training iteration."""
-        assert self._scheduler is not None
-        assert self._network is not None
+        self._scheduler = self._require(self._scheduler, "scheduler")
+        self._network = self._require(self._network, "network")
 
         iteration = self.state.iteration
         start_time = time.time()
@@ -753,7 +780,7 @@ class TrainingOrchestrator:
         Returns:
             List of game results.
         """
-        assert self._network is not None
+        self._network = self._require(self._network, "network")
 
         # MuZero self-play path
         if self._training_mode == "muzero" and self._muzero_bridge is not None:
@@ -797,8 +824,8 @@ class TrainingOrchestrator:
         Returns:
             List of game results.
         """
-        assert self._network is not None
-        assert self._muzero_bridge is not None
+        self._network = self._require(self._network, "network")
+        self._muzero_bridge = self._require(self._muzero_bridge, "muzero_bridge")
 
         results = []
         self._network.eval()
@@ -887,7 +914,7 @@ class TrainingOrchestrator:
         Returns:
             Game result with trajectory.
         """
-        assert self._scheduler is not None
+        self._scheduler = self._require(self._scheduler, "scheduler")
 
         # Create environment with optional overrides
         # Always create a fresh environment for each game to ensure clean state
@@ -1234,9 +1261,9 @@ class TrainingOrchestrator:
         Returns:
             Training metrics.
         """
-        assert self._network is not None
-        assert self._optimizer is not None
-        assert self._scheduler is not None
+        self._network = self._require(self._network, "network")
+        self._optimizer = self._require(self._optimizer, "optimizer")
+        self._scheduler = self._require(self._scheduler, "scheduler")
 
         # MuZero training path
         if self._training_mode == "muzero" and self._muzero_bridge is not None:
@@ -1360,9 +1387,9 @@ class TrainingOrchestrator:
         Returns:
             Training metrics dictionary.
         """
-        assert self._network is not None
-        assert self._muzero_bridge is not None
-        assert self._scheduler is not None
+        self._network = self._require(self._network, "network")
+        self._muzero_bridge = self._require(self._muzero_bridge, "muzero_bridge")
+        self._scheduler = self._require(self._scheduler, "scheduler")
 
         self._network.train()
 
@@ -1417,8 +1444,8 @@ class TrainingOrchestrator:
 
     def _update_optimizer_lr(self) -> None:
         """Update optimizer learning rate from scheduler."""
-        assert self._scheduler is not None
-        assert self._optimizer is not None
+        self._scheduler = self._require(self._scheduler, "scheduler")
+        self._optimizer = self._require(self._optimizer, "optimizer")
 
         lr = self._scheduler.get_learning_rate()
         for param_group in self._optimizer.param_groups:
@@ -1430,8 +1457,8 @@ class TrainingOrchestrator:
         Returns:
             Evaluation metrics.
         """
-        assert self._network is not None
-        assert self._checkpointer is not None
+        self._network = self._require(self._network, "network")
+        self._checkpointer = self._require(self._checkpointer, "checkpointer")
 
         logger.info("Running evaluation...")
         self._network.eval()
@@ -1553,10 +1580,10 @@ class TrainingOrchestrator:
 
     def _save_checkpoint(self) -> None:
         """Save training checkpoint."""
-        assert self._network is not None
-        assert self._optimizer is not None
-        assert self._scheduler is not None
-        assert self._checkpointer is not None
+        self._network = self._require(self._network, "network")
+        self._optimizer = self._require(self._optimizer, "optimizer")
+        self._scheduler = self._require(self._scheduler, "scheduler")
+        self._checkpointer = self._require(self._checkpointer, "checkpointer")
 
         checkpoint_data = {
             "model_state_dict": self._network.state_dict(),
