@@ -26,7 +26,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import numpy as np
 import torch
@@ -95,6 +95,9 @@ except ImportError:
     MuZeroTrainingBridge = None  # type: ignore[assignment, misc]
 
 logger = logging.getLogger(__name__)
+
+# Type variable for the _require() initialization guard (see TrainingOrchestrator).
+_T = TypeVar("_T")
 
 
 @dataclass
@@ -296,6 +299,12 @@ class TrainingOrchestrator:
         # Training safeguards (Phase 8)
         self._training_safeguard: Any = None
 
+        # Training-stagnation detector (win-rate / ELO plateau). Opt-in via
+        # config.stagnation; mirrors the safeguard hook but fires at eval time
+        # because the signal (win-rate vs incumbent / ELO) lives there.
+        self._stagnation_detector: Any = None
+        self._stagnation_stopped: bool = False
+
         # MuZero integration (Phase 9)
         self._muzero_bridge: Any = None
         self._training_mode: str = "alphazero"
@@ -304,6 +313,30 @@ class TrainingOrchestrator:
         self._shutdown_requested = False
         signal.signal(signal.SIGINT, self._handle_shutdown)
         signal.signal(signal.SIGTERM, self._handle_shutdown)
+
+    def _require(self, value: _T | None, name: str) -> _T:
+        """Return ``value`` if it is initialized, else raise a clear error.
+
+        Replaces bare ``assert self._x is not None`` guards, which are stripped under
+        ``python -O`` and would surface as opaque ``AttributeError``s on ``None``.
+        Re-binding the attribute to the return value (``self._x = self._require(...)``)
+        also narrows the type for static analysis exactly as the old ``assert`` did.
+
+        Args:
+            value: The lazily-initialized component (set during :meth:`initialize`).
+            name: Human-readable component name for the error message.
+
+        Returns:
+            The non-``None`` ``value``.
+
+        Raises:
+            RuntimeError: If ``value`` is ``None`` (i.e. ``initialize()`` has not run).
+        """
+        if value is None:
+            raise RuntimeError(
+                f"Orchestrator component '{name}' is not initialized; call initialize() first."
+            )
+        return value
 
     def _setup_logging(self) -> None:
         """Configure logging based on config."""
@@ -529,6 +562,25 @@ class TrainingOrchestrator:
                 self._eval_pipeline = None
                 self._elo_system = None
 
+            # Training-stagnation detector (opt-in). Reuses the standalone,
+            # already-tested EloPlateauDetector; keyed on ELO/win-rate (NOT loss,
+            # which can fall while the champion never improves — the v1.2.0 trap).
+            if getattr(self.config, "stagnation", None) and self.config.stagnation.enabled:
+                try:
+                    from alpha_zero.training.elo_plateau_detector import (
+                        EloPlateauDetector,
+                        EloPlateauDetectorConfig,
+                    )
+
+                    self._stagnation_detector = EloPlateauDetector(
+                        EloPlateauDetectorConfig.from_env(),
+                        alert_manager=None,
+                    )
+                    logger.info("Training-stagnation detector enabled (ELO plateau).")
+                except Exception as exc:  # graceful degradation, like safeguards
+                    logger.warning("Stagnation detector unavailable: %s", exc)
+                    self._stagnation_detector = None
+
             # Initialize reflection system (LATS-style learning from failures)
             if self.config.reflection.enabled and REFLECTION_AVAILABLE:
                 try:
@@ -616,10 +668,10 @@ class TrainingOrchestrator:
 
     def _resume_from_checkpoint(self) -> None:
         """Resume training from latest checkpoint."""
-        assert self._checkpointer is not None
-        assert self._network is not None
-        assert self._optimizer is not None
-        assert self._scheduler is not None
+        self._checkpointer = self._require(self._checkpointer, "checkpointer")
+        self._network = self._require(self._network, "network")
+        self._optimizer = self._require(self._optimizer, "optimizer")
+        self._scheduler = self._require(self._scheduler, "scheduler")
 
         checkpoint = self._checkpointer.load_latest()
 
@@ -673,8 +725,8 @@ class TrainingOrchestrator:
 
     def _training_iteration(self) -> None:
         """Execute a single training iteration."""
-        assert self._scheduler is not None
-        assert self._network is not None
+        self._scheduler = self._require(self._scheduler, "scheduler")
+        self._network = self._require(self._network, "network")
 
         iteration = self.state.iteration
         start_time = time.time()
@@ -753,7 +805,7 @@ class TrainingOrchestrator:
         Returns:
             List of game results.
         """
-        assert self._network is not None
+        self._network = self._require(self._network, "network")
 
         # MuZero self-play path
         if self._training_mode == "muzero" and self._muzero_bridge is not None:
@@ -797,8 +849,8 @@ class TrainingOrchestrator:
         Returns:
             List of game results.
         """
-        assert self._network is not None
-        assert self._muzero_bridge is not None
+        self._network = self._require(self._network, "network")
+        self._muzero_bridge = self._require(self._muzero_bridge, "muzero_bridge")
 
         results = []
         self._network.eval()
@@ -887,7 +939,7 @@ class TrainingOrchestrator:
         Returns:
             Game result with trajectory.
         """
-        assert self._scheduler is not None
+        self._scheduler = self._require(self._scheduler, "scheduler")
 
         # Create environment with optional overrides
         # Always create a fresh environment for each game to ensure clean state
@@ -1234,9 +1286,9 @@ class TrainingOrchestrator:
         Returns:
             Training metrics.
         """
-        assert self._network is not None
-        assert self._optimizer is not None
-        assert self._scheduler is not None
+        self._network = self._require(self._network, "network")
+        self._optimizer = self._require(self._optimizer, "optimizer")
+        self._scheduler = self._require(self._scheduler, "scheduler")
 
         # MuZero training path
         if self._training_mode == "muzero" and self._muzero_bridge is not None:
@@ -1360,9 +1412,9 @@ class TrainingOrchestrator:
         Returns:
             Training metrics dictionary.
         """
-        assert self._network is not None
-        assert self._muzero_bridge is not None
-        assert self._scheduler is not None
+        self._network = self._require(self._network, "network")
+        self._muzero_bridge = self._require(self._muzero_bridge, "muzero_bridge")
+        self._scheduler = self._require(self._scheduler, "scheduler")
 
         self._network.train()
 
@@ -1417,8 +1469,8 @@ class TrainingOrchestrator:
 
     def _update_optimizer_lr(self) -> None:
         """Update optimizer learning rate from scheduler."""
-        assert self._scheduler is not None
-        assert self._optimizer is not None
+        self._scheduler = self._require(self._scheduler, "scheduler")
+        self._optimizer = self._require(self._optimizer, "optimizer")
 
         lr = self._scheduler.get_learning_rate()
         for param_group in self._optimizer.param_groups:
@@ -1430,8 +1482,8 @@ class TrainingOrchestrator:
         Returns:
             Evaluation metrics.
         """
-        assert self._network is not None
-        assert self._checkpointer is not None
+        self._network = self._require(self._network, "network")
+        self._checkpointer = self._require(self._checkpointer, "checkpointer")
 
         logger.info("Running evaluation...")
         self._network.eval()
@@ -1476,6 +1528,10 @@ class TrainingOrchestrator:
         # Periodically run the richer EvaluationPipeline (value_correlation +
         # vs-random / vs-heuristic) and update the ELO leaderboard.
         self._run_periodic_full_evaluation(win_rate)
+
+        # Stagnation check (after eval/ELO are fresh). Alerts and, if configured,
+        # requests a graceful stop.
+        self._check_training_stagnation(win_rate)
 
         return {"win_rate": win_rate, "avg_reward": avg_reward}
 
@@ -1542,6 +1598,72 @@ class TrainingOrchestrator:
                     self.state.iteration,
                 )
 
+    def _check_training_stagnation(self, win_rate: float) -> None:
+        """Feed the stagnation detector and act on a detected plateau.
+
+        No-op unless ``config.stagnation.enabled`` created a detector. The signal
+        is ELO when available, else a win-rate-scaled pseudo-rating so the same
+        plateau logic works without the (optional) ELO system. On plateau we log
+        an MLflow alert and, if ``config.stagnation.auto_stop`` is set, request a
+        graceful shutdown (the run loop checkpoints on exit, preserving best).
+        """
+        detector = self._stagnation_detector
+        if detector is None:
+            return
+
+        # Prefer real ELO; otherwise map win-rate into an ELO-like scale so the
+        # detector's point-based improvement threshold stays meaningful
+        # (0.01 win-rate ~= 10 ELO points, the default improvement threshold).
+        if self._elo_system is not None and "current" in self._elo_ratings:
+            rating = float(self._elo_ratings["current"])
+        else:
+            rating = float(win_rate) * 1000.0
+
+        try:
+            detector.record_evaluation(
+                iteration=self.state.iteration,
+                elo_rating=rating,
+                win_rate=float(win_rate),
+                games_played=int(self.config.training.evaluation_games),
+            )
+            plateau = bool(detector.is_plateau())
+            stats = detector.get_statistics()
+        except Exception as exc:  # detector must never crash training
+            logger.warning("Stagnation check failed: %s", exc)
+            return
+
+        stalled_for = int(stats.get("iterations_since_improvement", 0))
+
+        if self.config.stagnation.alert_to_mlflow and self._mlflow_logger is not None:
+            try:
+                self._mlflow_logger.log_metrics(
+                    {
+                        "stagnation/elo_plateau": float(plateau),
+                        "stagnation/iterations_since_improvement": float(stalled_for),
+                    },
+                    step=self.state.iteration,
+                )
+                if plateau and hasattr(self._mlflow_logger, "set_tag"):
+                    self._mlflow_logger.set_tag(
+                        "alert/WARNING/stagnation",
+                        f"ELO/win-rate plateau for {stalled_for} evals at "
+                        f"iteration {self.state.iteration}",
+                    )
+            except Exception as exc:
+                logger.warning("Failed to log stagnation metrics: %s", exc)
+
+        if plateau:
+            logger.warning(
+                "Training stagnation: no win-rate/ELO improvement for %d evaluations "
+                "(iteration %d).",
+                stalled_for,
+                self.state.iteration,
+            )
+            if self.config.stagnation.auto_stop:
+                logger.warning("auto_stop enabled - requesting graceful shutdown.")
+                self._stagnation_stopped = True
+                self._shutdown_requested = True
+
     def _build_elo_leaderboard(self) -> Any:
         """Build a ``RatingLeaderboard`` snapshot from ``self._elo_ratings``."""
         from alpha_zero.tournament.elo import RatingLeaderboard
@@ -1553,10 +1675,10 @@ class TrainingOrchestrator:
 
     def _save_checkpoint(self) -> None:
         """Save training checkpoint."""
-        assert self._network is not None
-        assert self._optimizer is not None
-        assert self._scheduler is not None
-        assert self._checkpointer is not None
+        self._network = self._require(self._network, "network")
+        self._optimizer = self._require(self._optimizer, "optimizer")
+        self._scheduler = self._require(self._scheduler, "scheduler")
+        self._checkpointer = self._require(self._checkpointer, "checkpointer")
 
         checkpoint_data = {
             "model_state_dict": self._network.state_dict(),

@@ -27,10 +27,11 @@ Unciv can reuse this loop by swapping the policy + converter pair.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -213,8 +214,7 @@ class AgentLoopConfig:
             raise ValueError(f"per_turn_timeout_s must be > 0, got {self.per_turn_timeout_s}")
         if self.on_disconnect not in _DISCONNECT_LITERAL:
             raise ValueError(
-                f"on_disconnect must be one of {_DISCONNECT_LITERAL}, "
-                f"got {self.on_disconnect!r}"
+                f"on_disconnect must be one of {_DISCONNECT_LITERAL}, got {self.on_disconnect!r}"
             )
         if self.reconnect_window_s < 0:
             raise ValueError(f"reconnect_window_s must be >= 0, got {self.reconnect_window_s}")
@@ -350,7 +350,7 @@ class BridgeAgentLoop:
         self._stopped = False
 
         logger.debug(
-            "BridgeAgentLoop initialised: max_turns=%d per_turn_timeout_s=%.1f " "on_disconnect=%s",
+            "BridgeAgentLoop initialised: max_turns=%d per_turn_timeout_s=%.1f on_disconnect=%s",
             config.max_turns,
             config.per_turn_timeout_s,
             config.on_disconnect,
@@ -435,6 +435,16 @@ class BridgeAgentLoop:
         turn_start = time.monotonic()
         try:
             await self._step_once_inner(state)
+        except Exception as exc:
+            # Global safety net: any failure not already handled inside
+            # ``_step_once_inner`` (e.g. in mask generation or observation
+            # building) is downgraded to a safe ``end_turn`` so a single bad
+            # turn cannot crash the whole game loop. ``Exception`` (not
+            # ``BaseException``) deliberately lets ``asyncio.CancelledError``
+            # propagate so cancellation still works.
+            self._stats.last_error = f"step_once: {exc}"
+            logger.error("Unhandled exception in turn step: %s", exc, exc_info=True)
+            await self._send_safe_end_turn()
         finally:
             latency_ms = (time.monotonic() - turn_start) * 1000.0
             self._stats.record_turn(latency_ms)
@@ -608,9 +618,12 @@ class BridgeAgentLoop:
                 # beyond what's in converted_state; reuse the dict we built.
                 converted_state.get("_raw_state", converted_state)
             )
+            # Strip the leading batch dim with explicit indexing rather than
+            # ``squeeze(0)``: ``squeeze`` would also collapse a size-1 channel
+            # dimension (C == 1), silently corrupting the observation shape.
             return {
-                "spatial": spatial_t.squeeze(0).cpu().numpy().astype(np.float32),
-                "vector": vector_t.squeeze(0).cpu().numpy().astype(np.float32),
+                "spatial": spatial_t[0].cpu().numpy().astype(np.float32),
+                "vector": vector_t[0].cpu().numpy().astype(np.float32),
                 "action_mask": legal_mask,
             }
         except Exception as exc:
@@ -675,13 +688,46 @@ class BridgeAgentLoop:
             ts = int(time.time() * 1000)
             target = self.config.snapshot_log_dir / f"turn{self._stats.turns_played}_{ts}"
             target.mkdir(parents=True, exist_ok=True)
-            if state is not None:
-                (target / "state.json").write_text(str(state), encoding="utf-8")
-            if command is not None:
-                (target / "commands.json").write_text(command.to_json(), encoding="utf-8")
-            if ack is not None:
-                (target / "ack.json").write_text(str(ack), encoding="utf-8")
+
+            # error.txt first: it only depends on ``exc`` and must always be
+            # recorded, even if a payload below fails to serialise.
             (target / "error.txt").write_text(f"{type(exc).__name__}: {exc}\n", encoding="utf-8")
+
+            def _dump(name: str, obj: Any) -> None:
+                """Write ``obj`` as valid JSON, isolated so one failure can't
+                skip the others. Prefers ``to_json``, then ``asdict`` (dataclass),
+                then a plain ``json.dumps``; skips the payload if none apply (e.g.
+                a test Mock) rather than raising."""
+                text: str | None = None
+                to_json = getattr(obj, "to_json", None)
+                if callable(to_json):
+                    try:
+                        candidate = to_json()
+                        if isinstance(candidate, str):
+                            text = candidate
+                    except Exception:
+                        text = None
+                if text is None:
+                    for attempt in (
+                        lambda: json.dumps(asdict(obj), indent=2, default=str),
+                        lambda: json.dumps(obj, indent=2, default=str),
+                    ):
+                        try:
+                            text = attempt()
+                            break
+                        except TypeError:
+                            continue
+                if text is None:
+                    logger.debug("Snapshot %s skipped (not serialisable)", name)
+                    return
+                (target / name).write_text(text, encoding="utf-8")
+
+            if state is not None:
+                _dump("state.json", state)
+            if command is not None:
+                _dump("commands.json", command)
+            if ack is not None:
+                _dump("ack.json", ack)
             logger.debug("Snapshot written to %s", target)
         except Exception as snap_exc:
             logger.warning("Failed to write debug snapshot: %s", snap_exc)

@@ -24,6 +24,7 @@ import argparse
 import logging
 import os
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -42,6 +43,30 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def count_consecutive_non_promotions(evaluations: Sequence[EvaluationResult]) -> int:
+    """Count trailing consecutive evaluations that did not promote.
+
+    Evaluations are ordered by ``iteration``; the count is taken from the most
+    recent backwards and resets at the first promotion encountered. This is the
+    signal a training run was missing in the v1.2.0 "0 promotions" regression
+    (see CLAUDE.md S13): the loop kept iterating while the champion never moved.
+
+    Args:
+        evaluations: Evaluation results (any order); only ``iteration`` and
+            ``promoted`` are read.
+
+    Returns:
+        Number of consecutive most-recent evaluations with ``promoted is False``.
+    """
+    ordered = sorted(evaluations, key=lambda e: e.iteration)
+    streak = 0
+    for result in reversed(ordered):
+        if result.promoted:
+            break
+        streak += 1
+    return streak
+
+
 @dataclass
 class EvaluatorConfig:
     """Configuration for model evaluator.
@@ -57,6 +82,8 @@ class EvaluatorConfig:
         device: PyTorch device.
         early_stop_threshold: Games to check for early stopping.
         early_stop_margin: Win rate margin for early stopping.
+        stagnation_patience: Consecutive non-promotions that trigger a
+            stagnation warning. ``0`` (default) disables the check.
     """
 
     num_games: int = 400
@@ -69,6 +96,7 @@ class EvaluatorConfig:
     device: str = "cuda"
     early_stop_threshold: int = 200
     early_stop_margin: float = 0.15
+    stagnation_patience: int = 0
 
     @classmethod
     def from_env(cls) -> EvaluatorConfig:
@@ -82,6 +110,7 @@ class EvaluatorConfig:
             max_moves=int(os.environ.get("CIV6_MAX_MOVES", "200")),
             board_size=int(os.environ.get("CIV6_BOARD_SIZE", "8")),
             device=os.environ.get("CIV6_DEVICE", "cuda"),
+            stagnation_patience=int(os.environ.get("CIV6_STAGNATION_PATIENCE", "0")),
         )
 
 
@@ -396,6 +425,10 @@ class CloudEvaluator:
                 f"(< {self.config.promotion_threshold:.2%})"
             )
 
+        # Promotion-stagnation check (reads persisted history, including the
+        # result just saved). Surfaces the "many iterations, 0 promotions" stall.
+        stagnation = self._check_promotion_stagnation()
+
         elapsed = (datetime.now(UTC) - start_time).total_seconds()
 
         return {
@@ -409,9 +442,45 @@ class CloudEvaluator:
             "draws": draws,
             "win_rate": win_rate,
             "promoted": promoted,
+            "stagnation_detected": stagnation["stagnation_detected"],
+            "consecutive_non_promotions": stagnation["consecutive_non_promotions"],
             "elapsed_seconds": elapsed,
             "games_per_hour": total_games / (elapsed / 3600) if elapsed > 0 else 0,
         }
+
+    def _check_promotion_stagnation(self) -> dict[str, Any]:
+        """Detect a run of consecutive non-promotions across iterations.
+
+        Reads ``storage.list_evaluations()`` and counts the trailing streak of
+        non-promotions. When the streak reaches ``config.stagnation_patience``
+        (and patience > 0) a WARNING is logged so an operator/monitor can
+        intervene rather than burning iterations on a stalled champion.
+
+        Returns:
+            Mapping with ``stagnation_detected`` (bool) and
+            ``consecutive_non_promotions`` (int).
+        """
+        patience = self.config.stagnation_patience
+        if patience <= 0:
+            return {"stagnation_detected": False, "consecutive_non_promotions": 0}
+
+        try:
+            evaluations = self.storage.list_evaluations()
+        except Exception as exc:  # storage hiccup must not fail evaluation
+            logger.warning("Stagnation check skipped (could not list evaluations): %s", exc)
+            return {"stagnation_detected": False, "consecutive_non_promotions": 0}
+
+        streak = count_consecutive_non_promotions(evaluations)
+        detected = streak >= patience
+        if detected:
+            logger.warning(
+                "Promotion stagnation detected: %d consecutive evaluations without a "
+                "promotion (patience=%d). Champion has not improved; training may have "
+                "stalled (see CLAUDE.md Section 13).",
+                streak,
+                patience,
+            )
+        return {"stagnation_detected": detected, "consecutive_non_promotions": streak}
 
     def _promote_candidate(self) -> None:
         """Promote candidate model to champion."""

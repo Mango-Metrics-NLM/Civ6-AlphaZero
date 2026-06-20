@@ -967,3 +967,39 @@ class TestEvaluate:
             metrics = orch._evaluate()
         assert "avg_reward" in metrics
         assert metrics["avg_reward"] == pytest.approx(2.0)
+
+
+# ---------------------------------------------------------------------------
+# _require() initialization guard (replaces bare asserts; -O safe)
+# ---------------------------------------------------------------------------
+
+
+class TestRequireGuard:
+    """The _require() helper hardens the old ``assert self._x is not None`` guards."""
+
+    def test_require_passes_through_non_none(self, tmp_path, mocks):
+        config = _make_config(tmp_path)
+        with _patch_factories(mocks):
+            orch = TrainingOrchestrator(config)
+        sentinel = object()
+        assert orch._require(sentinel, "thing") is sentinel
+
+    def test_require_raises_runtimeerror_when_none(self, tmp_path, mocks):
+        config = _make_config(tmp_path)
+        with _patch_factories(mocks):
+            orch = TrainingOrchestrator(config)
+        with pytest.raises(RuntimeError, match=r"network.*not initialized"):
+            orch._require(orch._network, "network")
+
+    def test_entry_method_raises_clear_error_before_setup(self, tmp_path, mocks):
+        """A method needing components must raise RuntimeError (not AttributeError).
+
+        Pre-``initialize()`` the components are ``None``; the old ``assert`` would be
+        stripped under ``python -O`` and surface as an opaque ``AttributeError``.
+        """
+        config = _make_config(tmp_path)
+        with _patch_factories(mocks):
+            orch = TrainingOrchestrator(config)
+        # _resume_from_checkpoint() guards _checkpointer/_network/_optimizer/_scheduler.
+        with pytest.raises(RuntimeError, match="not initialized; call initialize"):
+            orch._resume_from_checkpoint()

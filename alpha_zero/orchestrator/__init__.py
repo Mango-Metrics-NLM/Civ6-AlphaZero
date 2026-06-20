@@ -42,6 +42,7 @@ from alpha_zero.orchestrator.config import (
     ResourceBudget,
     RewardsConfig,
     ScheduleConfig,
+    StagnationConfig,
     StrategyAdvisorConfig,
     TrainingConfig,
     WandbConfig,
@@ -95,6 +96,7 @@ __all__ = [
     "RewardsConfig",
     "ScheduleConfig",
     "SchedulerState",
+    "StagnationConfig",
     # Strategy Advisor
     "StrategyAdvisor",
     "StrategyAdvisorConfig",

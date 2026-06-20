@@ -19,16 +19,22 @@ Read `kb/sessions/dev-sqe.state.json` to understand the current task and progres
 - **DEV-SQE-HANDOFF**: Implementation and tests complete, handing off to Pre-PR.
 - **DESIGN-GAP**: Found an issue requiring Planning input (feedback loop).
 
-### 3. Gather Test Results
+### 3. Gather Test Results (verification gate)
 
-Run and capture results of:
+This is a gate, not a formality: a `DEV-SQE-HANDOFF` must not be emitted unless
+lint and types are clean and the touched tests pass. Run and capture:
 ```bash
 pytest tests/unit/ -v --tb=short 2>&1 | tail -20
 pytest --cov=alpha_zero --cov-report=term-missing 2>&1 | tail -10
 ruff check alpha_zero/ 2>&1
+mypy alpha_zero/ --ignore-missing-imports 2>&1 | tail -20
 ```
 
-Include pass/fail counts and coverage percentage in the handoff.
+For a focused change, also run the specific touched modules
+(`pytest tests/unit/<file>.py -q`) and `mypy` on the changed files. If the
+environment cannot run the suite (e.g. a missing heavy dependency), say so
+explicitly in the handoff and flag that CI must be the gate — do not silently
+claim green. Include pass/fail counts and coverage percentage in the handoff.
 
 ### 4. Write Summary
 

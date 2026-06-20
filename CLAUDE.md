@@ -18,7 +18,7 @@ Monte Carlo Tree Search, and deep neural networks.
 ```
 This succeeds when:
 - [ ] All tests pass: `pytest tests/ -v` exits with code 0
-- [ ] Coverage >= 85%: `pytest --cov=alpha_zero --cov-report=term-missing` shows >= 85%
+- [ ] Coverage >= 80%: `pytest --cov=alpha_zero --cov-report=term-missing` shows >= 80% (gate enforced in CI and `pyproject.toml`; some infra/web modules are intentionally omitted — see `[tool.coverage]`)
 - [ ] Type checking passes: `mypy alpha_zero/` exits with code 0
 - [ ] Linting passes: `ruff check alpha_zero/` exits with code 0
 - [ ] Training smoke test: `python -m alpha_zero.training_civ6 --dry_run` completes
@@ -318,6 +318,8 @@ When making changes, update the relevant sections below:
 | `pytest tests/unit/test_strategy_advisor_contract.py -v` | StrategyAdvisor output contract gate (dependency-free) |
 | `pytest tests/unit/test_llm_harness_target.py -v` | Eval-harness callable target adapter tests |
 | `pytest tests/unit/test_storage_backend.py -v` | Test storage backends |
+| `pytest tests/unit/test_orchestrator_stagnation.py -v` | Test stagnation config + orchestrator wiring |
+| `pytest tests/cloud/unit/test_evaluator_stagnation.py -v` | Test promotion-stagnation detection |
 | `pytest tests/unit/test_replay_buffer.py -v` | Test replay buffers |
 | `pytest tests/unit/test_simultaneous_mcts.py -v` | Test DUCT algorithm |
 | `pytest tests/unit/test_action_resolution.py -v` | Test action conflict resolution |
@@ -378,18 +380,22 @@ When making changes, update the relevant sections below:
 | 2026-05-21 | TournamentMlflowLogger (PR #78) | Match / round / leaderboard / head-to-head facade for tournament telemetry |
 | 2026-05-21 | Stateless monitoring helpers (PR #78) | `compute_value_correlation`, `compute_elo_spread`, `compute_policy_entropy` (NaN-safe, importable from `alpha_zero.monitoring`) |
 | 2026-05-21 | W&B coexists with MLflow | Phased rollout; both backends can be enabled simultaneously. W&B remains primary in `cloud/`, `pbt/`, `evaluation/`, `optimizations/` pending follow-up sweep. Optional `[monitoring]` extra. |
-| 2026-06-20 | langfuse-eval-harness integration (`[eval]` extra) | `alpha_zero/evaluation/llm_harness/` exposes `StrategyAdvisor` to the harness (github.com/ianshank/Agents) as a `callable` target. Offline default = deterministic stub LLM → contract/serialization regression gate (`make eval-llm`), not LLM-quality. Online (`CIV6AZ_LLM_EVAL_ONLINE=1`) drives a real provider. Dep pinned to a commit SHA; gate degrades to exit 0 when extra absent. |
-| 2026-06-20 | Dual-mode eval gate (analyze + report) | `make eval-llm` now gates BOTH StrategyAdvisor modes: `analyze` (`AnalysisResult`, `configs/eval/strategy_advisor.yaml`) and `report` (`GameReport`, `configs/eval/game_report.yaml`, dataset `data/eval/game_report_cases.jsonl`). `run_llm_eval.py --config` is repeatable and defaults to both; analyze gate gained a `suggestions_non_empty` regex scorer, report gate adds `has_recommendations` + `turns_is_integer`. |
+| 2026-05-30 | Training-stagnation detection (harness engineering) | Reuses existing `EloPlateauDetector` in the orchestrator (`StagnationConfig`, opt-in, ELO/win-rate signal — NOT loss) + new `count_consecutive_non_promotions` promotion check in `cloud/evaluator.py`. Addresses §13 zero-promotion failure. Env: `CIV6AZ_STAGNATION_*`, `CIV6_STAGNATION_PATIENCE`. All default OFF. |
+| 2026-05-30 | PreToolUse prohibited-action guard | `.claude/hooks/pretooluse_guard.sh` enforces §3.2 (no commits/pushes to `main`, >1000-game cap) — turns prose into a machine deny. |
+| 2026-05-30 | Pre-PR review in isolated subagent | Pre-PR handoff skill dispatches review to a fresh `Agent`/`code-review` for generator–evaluator separation (independent context). |
 
 ### 5.3 Known Issues
 
 | Issue | Workaround |
 |-------|------------|
 | No GPU in dev environment | Training works on CPU (slower) |
+| torch not installable in restricted web sessions | PyTorch index blocked by network policy; torch-dependent tests run in CI, not locally. Pure logic still verifiable via `python -m py_compile` + `ruff`. |
+| `PostToolUse` ruff `--fix` can strip imports mid-task | If you add an import in one edit and its first use in a later edit, the autofix removes it as unused. Re-add the import after the use exists; see guardrail audit in `docs/HARNESS_ENGINEERING_ANALYSIS.md` §6. |
 | SimpleMCTS random rollout is weak | Use neural network MCTS after initial training |
 | Windows multiprocessing spawn | Use `if __name__ == "__main__"` guard |
 | pytest-xdist not always installed | Tests run without parallel flag if missing |
-| v1.3.0 training convergence unvalidated | Run `scripts/validate_v130_training.py` locally or launch cloud run |
+| `serving/` + `inference/` omitted from coverage gate | They require the `web` extra (fastapi/uvicorn), absent from the default-CI `[dev]` install, so they cannot be imported in CI's coverage job. `serving/` has unit tests (`tests/unit/test_serving/`, `importorskip`-guarded) but stays in the omit list until CI installs the `web` extra. |
+| Coverage instrumentation crashes under nightly numpy 2.4 + coverage C-tracer | Local-only sandbox issue ("cannot load module more than once"); run tests without `--cov`, or use pinned numpy. CI uses pinned versions and is unaffected. |
 | MicroCiv hardcoded for 2 players | Multiplayer module built, but env needs G7/G8/G9 changes |
 | 12 DDP tests xfailed | Need rewrite with `torch.multiprocessing.spawn` |
 | mlruns/ file-store deprecated | Run `scripts/migrate_mlflow_to_sqlite.py` to migrate to `sqlite:///mlflow.db` |
@@ -411,6 +417,8 @@ When making changes, update the relevant sections below:
 | EvaluationResult.win_rate type | win_rate is WinRateResult object, not float; fixed access to .win_rate.win_rate | 2026-05-21 |
 | MLflowLogger lifecycle | FAILED vs FINISHED status now set correctly on context manager exit | 2026-05-21 |
 | StrategyAdvisor `.complete()` mismatch | Added `LLMClient.complete()` alias → `generate_sync(prompt).content`; advisor's `llm_client.complete(prompt)` call path no longer `AttributeError`s against a real client | 2026-06-20 |
+| Orchestrator asserts stripped under `python -O` | 24 `assert self._x is not None` init-guards → `_require()` raising `RuntimeError`; safe under `-O` | 2026-06-20 |
+| `serving/` had zero tests | Added `tests/unit/test_serving/test_inference_server.py` (12 tests, endpoints + `_load_model` paths, fastapi `importorskip`) | 2026-06-20 |
 
 ### 5.5 Information to Preserve
 
@@ -564,19 +572,24 @@ Civ6-AlphaZero/
 │   │   └── muzero_hyperparams.py # MuZero-specific hyperparams
 │   ├── tournament/              # ELO Tournament System (9 files)
 │   ├── web/                     # Web Interface (12 files, FastAPI + WebSocket)
-│   ├── bridge/                  # Civ6 Lua Mod Bridge (7 files, file IPC)
+│   ├── bridge/                  # Civ6 Lua Mod Bridge (9 files, file IPC)
 │   ├── hierarchical/            # Hierarchical Goal Planning (19 files)
-│   ├── training/                # Training integrations
-│   │   ├── muzero_integration.py # MuZero training pipeline
-│   │   └── muzero_trainer.py    # MuZero trainer
-│   ├── interfaces/              # Game interfaces
-│   │   ├── __init__.py
-│   │   └── unciv_interface.py   # Unciv JSON interface
-│   ├── monitoring/              # MLflow Monitoring Layer (NEW)
-│   │   ├── __init__.py
-│   │   ├── config.py            # MLflowMonitoringConfig dataclass
-│   │   ├── mlflow_logger.py     # MLflowLogger: lifecycle + 14-metric evaluation logging
-│   │   └── mlflow_evaluator.py  # AlphaZeroMLflowEvaluator: policy entropy, value MAE, accuracy
+│   ├── training/                # Training integrations (11 files: MuZero trainer,
+│   │                           #   safeguards, diagnostics, convergence monitor)
+│   ├── interfaces/              # Game interfaces (4 files, incl. unciv_interface.py)
+│   ├── mechanics/              # Game mechanics: diplomacy, trade, espionage,
+│   │                           #   religion, government, climate, eras (12 files)
+│   ├── evaluation/             # Evaluation + LLM eval harness, llm_harness/ (12 files)
+│   ├── gameplay/               # Gameplay systems: terrain, fog of war, tech, combat (8)
+│   ├── optimizations/         # Training optimization strategies (9 files)
+│   ├── opponents/             # Opponent types & strategies (4 files)
+│   ├── spacetimedb/           # SpacetimeDB integration (9 files)
+│   ├── inference/             # Inference service: server/client/engine/schemas (5)
+│   ├── serving/               # FastAPI inference server (2 files; web extra,
+│   │                           #   omitted from the default coverage gate — see §B/known issues)
+│   ├── human_interface/       # Human gameplay interface (6 files)
+│   ├── integration/           # Integration bridge / game connector (2 files)
+│   ├── rag/                    # RAG pipeline: stores/processors/agents (22 files; see §11)
 │   ├── utils/                   # Utilities
 │   │   ├── __init__.py
 │   │   ├── logging.py           # Logging infrastructure
@@ -621,6 +634,11 @@ Civ6-AlphaZero/
 ├── docker-compose.yml           # Local testing environment (NEW)
 └── CLAUDE.md                    # This file
 ```
+
+> **Authoritative module list:** `alpha_zero/` has **27 submodules** as of v1.7.0.
+> File counts above are recursive `*.py` counts (excluding `__pycache__`). The
+> single source of truth — one row per submodule with responsibility — lives in
+> [`docs/MODULE_REFERENCE.md`](docs/MODULE_REFERENCE.md); update it when adding/removing modules.
 
 ---
 
@@ -1143,28 +1161,31 @@ python -m infra.vertex_launcher \
 
 ## SECTION 13: NEXT STEPS
 
-### Current: Validate v1.3.0 Training Convergence
-- v1.2.0 production run had **0 model promotions** (training-from-scratch bug)
-- v1.3.0 fixed weight loading but has **not been validated** in production
-- Run `python scripts/validate_v130_training.py` for local validation
+### Current State (v1.7.0)
+Training convergence (the v1.3.0 weight-loading fix) has been validated, and the
+project has since shipped through v1.7.0:
+- **v1.5.0** — convergence validation + MLflow monitoring + batch self-play groundwork
+- **v1.6.0** — cloud-deploy prep: Vertex launcher, runbook, GCP OAuth/VM fixes, 85%→80% CI gate
+- **v1.7.0** — full-Civ6 local gameplay (`BridgeAgentLoop` wires the agent to Civ6) and the
+  `langfuse-eval-harness` LLM eval gate for `StrategyAdvisor` (`make eval-llm`)
 
-### Implemented (not yet listed as "complete")
-These features are already substantially built but were never formally tracked as phases:
-- **PBT**: `alpha_zero/pbt/` (10 files, 4,588 lines)
-- **Tournament**: `alpha_zero/tournament/` (9 files, 5,143 lines)
-- **Web Interface**: `alpha_zero/web/` (12 files)
-- **Civ6 Bridge**: `alpha_zero/bridge/` (7 files)
+### Implemented (substantially built)
+- **PBT**: `alpha_zero/pbt/` (10 files) · **Tournament**: `alpha_zero/tournament/` (9 files)
+- **Web Interface**: `alpha_zero/web/` (12 files) · **Civ6 Bridge**: `alpha_zero/bridge/` (9 files)
 - **Hierarchical Planning**: `alpha_zero/hierarchical/` (19 files)
 - **MuZero**: `alpha_zero/core/muzero_network.py`, `training/muzero_*`
 - **N-Player Multiplayer**: `alpha_zero/multiplayer/` (18 files)
+- **Inference/Serving**: `alpha_zero/inference/` (5 files), `alpha_zero/serving/` (FastAPI server)
 
 ### Genuine Next Steps
-1. **Validate training convergence**: Prove models improve across iterations
-2. **Batch self-play in cloud**: Wire BatchGumbelMCTS into cloud containers (5-10x throughput)
-3. **N-player MicroCiv**: Fix hardcoded 2-player env (gaps G7/G8/G9)
-4. **DDP test fixes**: Fix 12 xfailed distributed tests
-5. **Fog of war**: Information set sampling for partial observability (gap G10)
-6. **Full Civ6 integration**: Scale to real game via Lua mod bridge
+1. **N-player MicroCiv**: Fix hardcoded 2-player env (gaps G7/G8/G9)
+2. **DDP test fixes**: Re-enable the 12 xfailed distributed tests (`tests/unit/test_distributed`)
+3. **Batch self-play in cloud**: Wire BatchGumbelMCTS into cloud containers (5-10x throughput)
+4. **Fog of war**: Information set sampling for partial observability (gap G10)
+5. **Coverage**: Bring omitted modules (`serving/`, `inference/`, cloud infra) under the gate so it
+   can re-tighten 80% → 85%; `serving/` now has unit tests but stays omitted (needs the `web` extra,
+   absent from the default-CI `[dev]` install)
+6. **Full Civ6 integration**: Continue scaling the Lua mod bridge toward the real game
 
 ---
 
@@ -1249,6 +1270,14 @@ ending a session that did meaningful work.
 **Permissions:** Common safe operations (pytest, ruff, mypy, git, pip, make) are pre-approved.
 Dangerous operations (writing .env, force-push, cloud ops) are denied.
 
+> **A note on "agents" and "tools" in this repo.** There is no `.claude/agents/` directory —
+> this project does not define custom Claude Code sub-agents. The word "agents" here refers to
+> two distinct things: (1) the **KB workflow roles** (Planning / DEV-SQE / Pre-PR), implemented
+> as the handoff **skills** under `.claude/skills/` (Section 14); and (2) the in-repo
+> **`alpha_zero/utils/agent_tools.py`** helper library (code-explorer, file-manager,
+> task-tracker, debug utilities) that sub-agents can import — documented in Section 9.4 / 5.2.
+> The harness "tools" are the hooks + permissions in `.claude/settings.json` described above.
+
 ### 15.4 Personal Overrides
 
 Copy and edit `.claude/settings.local.json` for personal settings:
@@ -1265,6 +1294,6 @@ This file is gitignored and never committed.
 
 ---
 
-*Last updated: 2026-03-31*
-*Version: v1.3.0 (training convergence fix, awaiting validation)*
-*Current Focus: Validate training convergence, then batch self-play + N-player MicroCiv*
+*Last updated: 2026-06-20*
+*Version: v1.7.0 (full-Civ6 local gameplay + LLM eval harness)*
+*Current Focus: N-player MicroCiv env, DDP test re-enable, and re-tightening the coverage gate*
