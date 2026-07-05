@@ -298,7 +298,7 @@ class CurrentPlayerValueView(nn.Module):
     ``GumbelMCTS``) expect one value per state, so this thin wrapper reduces the
     vector to its current-player (index 0) component. It holds a reference to
     the wrapped network as a submodule, so parameters are shared and self-play
-    runs on the exact weights being trained. A already-scalar value passes
+    runs on the exact weights being trained. An already-scalar value passes
     through unchanged, keeping the wrapper safe for 2-player networks too.
     """
 
@@ -424,7 +424,7 @@ def self_play_game(
 
 
 def run_self_play(
-    network: torch.nn.Module,
+    network: torch.nn.Module | None,
     config: TrainingConfig,
     num_games: int,
     use_simple_mcts: bool = False,
@@ -432,14 +432,25 @@ def run_self_play(
     """Run multiple self-play games.
 
     Args:
-        network: Neural network.
+        network: Neural network guiding MCTS. May be ``None`` only when
+            ``use_simple_mcts=True`` (SimpleMCTS uses random rollouts and never
+            touches the network); required otherwise.
         config: Training configuration.
         num_games: Number of games to play.
         use_simple_mcts: If True, use SimpleMCTS instead of network-guided MCTS.
 
     Returns:
         List of training examples from all games.
+
+    Raises:
+        ValueError: If ``network`` is ``None`` and ``use_simple_mcts`` is False.
     """
+    if network is None and not use_simple_mcts:
+        raise ValueError(
+            "run_self_play requires a network for network-guided MCTS; "
+            "pass use_simple_mcts=True to run without one."
+        )
+
     examples = []
     env = MicroCivEnv(
         board_size=config.board_size,
@@ -551,6 +562,16 @@ def train_epoch(
                     f"Expected per-player value of shape (B, {config.num_players}) for "
                     f"num_players={config.num_players}, got {tuple(value.shape)}. "
                     "The network is not emitting per-player values (scalar value head?)."
+                )
+            # Mirror the guard on the targets: scalar targets (e.g. stale replay
+            # data or a miswired value_vector) would be silently broadcast from
+            # (B,) to (B, P) by compute_nplayer_value_loss and train on
+            # duplicated values. Fail loudly instead.
+            if target_value.ndim != 2 or target_value.shape[-1] != config.num_players:
+                raise RuntimeError(
+                    f"Expected per-player value targets of shape (B, {config.num_players}) "
+                    f"for num_players={config.num_players}, got {tuple(target_value.shape)}. "
+                    "Self-play must populate TrainingExample.value_vector for N-player runs."
                 )
             p_loss = _masked_policy_loss(policy_logits, target_policy, action_mask)
             v_loss = compute_nplayer_value_loss(value, target_value, config.num_players)

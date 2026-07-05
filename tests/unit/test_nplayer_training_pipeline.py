@@ -264,6 +264,37 @@ class TestTrainEpochNPlayer:
         with pytest.raises(RuntimeError, match="per-player value"):
             train_epoch(scalar_net, opt, dl, cfg)
 
+    def test_scalar_targets_with_nplayer_config_raise(self) -> None:
+        # An N-player network but scalar targets (value_vector=None) must fail
+        # loudly rather than let compute_nplayer_value_loss broadcast (B,)->(B,P).
+        num_players = 4
+        spatial_channels = 3 + 4 * num_players + 2
+        cfg = TrainingConfig(board_size=6, num_players=num_players, batch_size=3, device="cpu")
+        net = MicroCivNetwork(
+            board_size=6,
+            action_space_size=32,
+            num_res_blocks=1,
+            num_filters=8,
+            spatial_channels=spatial_channels,
+            num_players=num_players,
+        )
+        rng = np.random.default_rng(2)
+        examples = [
+            TrainingExample(
+                spatial=rng.standard_normal((spatial_channels, 6, 6)).astype(np.float32),
+                vector=rng.standard_normal(64).astype(np.float32),
+                action_mask=np.ones(32, dtype=np.float32),
+                policy=np.ones(32, dtype=np.float32) / 32,
+                value=0.0,
+                value_vector=None,  # scalar target — the miswiring we guard against
+            )
+            for _ in range(3)
+        ]
+        dl = DataLoader(ReplayDataset(examples), batch_size=3)
+        opt = torch.optim.Adam(net.parameters(), lr=1e-3)
+        with pytest.raises(RuntimeError, match="per-player value targets"):
+            train_epoch(net, opt, dl, cfg)
+
     def test_nplayer_network_emits_per_player_value(self) -> None:
         num_players = 4
         spatial_channels = 3 + 4 * num_players + 2
@@ -354,7 +385,7 @@ class TestRunSelfPlayNPlayer:
         )
         # use_simple_mcts avoids needing a trained network for the smoke path.
         examples = run_self_play(
-            network=None,  # type: ignore[arg-type]
+            network=None,
             config=cfg,
             num_games=1,
             use_simple_mcts=True,
@@ -362,3 +393,10 @@ class TestRunSelfPlayNPlayer:
         assert examples
         assert all(ex.value_vector is not None for ex in examples)
         assert all(ex.value_vector.shape == (4,) for ex in examples)
+
+    def test_run_self_play_requires_network_for_guided_mcts(self) -> None:
+        # network=None is only valid with use_simple_mcts=True; the guided path
+        # must raise a clear ValueError rather than a later AttributeError.
+        cfg = TrainingConfig(board_size=6, num_players=2, num_simulations=3, device="cpu")
+        with pytest.raises(ValueError, match="requires a network"):
+            run_self_play(network=None, config=cfg, num_games=1, use_simple_mcts=False)

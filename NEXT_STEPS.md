@@ -250,6 +250,5 @@ Phase 21: DDP test fixes ─────────────→ Phase 22: Mu
 
 ---
 
-*Updated: 2026-03-01 — partially superseded 2026-07-05 by `docs/NEXT_STEPS_ANALYSIS_2026-07.md`*
-*Version at authoring: v1.3.0. Repo is now v1.7.0 (cloud deploy, full-Civ6 local gameplay, LLM*
-*eval harness, chess/LM-Studio direction). Some priorities below are stale — see the analysis doc.*
+*Updated: 2026-03-01 — partially superseded 2026-07-05 by `docs/NEXT_STEPS_ANALYSIS_2026-07.md`.*
+*Version at authoring: v1.3.0. Repo is now v1.7.0 (cloud deploy, full-Civ6 local gameplay, LLM eval harness, chess/LM-Studio direction). Some priorities below are stale — see the analysis doc.*
