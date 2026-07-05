@@ -91,12 +91,24 @@ class TestRelativeValueVector:
 
 
 class TestScoringMethodResolution:
-    @pytest.mark.parametrize("name", [m.value for m in ScoringMethod])
-    def test_valid_names_resolve(self, name: str) -> None:
+    @pytest.mark.parametrize(
+        "name",
+        [ScoringMethod.WINNER_TAKE_ALL.value, ScoringMethod.LINEAR_RANKING.value],
+    )
+    def test_supported_names_resolve(self, name: str) -> None:
         assert _scoring_method_from_str(name) == ScoringMethod(name)
 
     def test_unknown_falls_back_to_winner_take_all(self) -> None:
         assert _scoring_method_from_str("nonsense-method") == ScoringMethod.WINNER_TAKE_ALL
+
+    def test_unsupported_proportional_falls_back(self) -> None:
+        # proportional needs a per-player score signal this pipeline does not
+        # provide, so it must degrade to winner_take_all rather than silently
+        # train on a score-less fallback.
+        assert (
+            _scoring_method_from_str(ScoringMethod.PROPORTIONAL.value)
+            == ScoringMethod.WINNER_TAKE_ALL
+        )
 
 
 # ---------------------------------------------------------------------------

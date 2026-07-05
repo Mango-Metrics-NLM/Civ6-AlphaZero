@@ -60,9 +60,12 @@ class TrainingConfig:
     # the N-player value pipeline (per-player value head + per-player targets).
     num_players: int = 2
     # How terminal game outcomes are converted to per-player training values.
-    # One of ScoringMethod values ("winner_take_all", "linear_ranking",
-    # "proportional"). "winner_take_all" reproduces the classic
-    # +1 (winner) / -1 (loser) / 0 (draw) targets exactly.
+    # MicroCiv only exposes a winner (no per-player scores), so the supported
+    # methods are the winner-derivable ones in SUPPORTED_SCORING_METHODS:
+    # "winner_take_all" (classic +1/-1/0) and "linear_ranking" (rank-spread).
+    # "proportional" needs a per-player score signal this pipeline does not
+    # provide and would silently fall back to linear_ranking, so it is not
+    # offered here.
     scoring_method: str = "winner_take_all"
 
     # Network
@@ -203,17 +206,37 @@ class ReplayDataset(Dataset):
         }
 
 
-def _scoring_method_from_str(name: str) -> ScoringMethod:
-    """Resolve a scoring-method name to a :class:`ScoringMethod`.
+# Scoring methods this pipeline can honour. MicroCiv exposes only a winner
+# (no per-player scores), so PROPORTIONAL — which needs a score signal — is
+# excluded: it would silently fall back to LINEAR_RANKING inside
+# multiplayer.scoring. Wire a real per-player score signal to add it.
+SUPPORTED_SCORING_METHODS: tuple[ScoringMethod, ...] = (
+    ScoringMethod.WINNER_TAKE_ALL,
+    ScoringMethod.LINEAR_RANKING,
+)
 
-    Unknown names fall back to ``winner_take_all`` (the classic AlphaZero
-    +1/-1/0 targets) with a warning, so a bad config never crashes training.
+
+def _scoring_method_from_str(name: str) -> ScoringMethod:
+    """Resolve a scoring-method name to a supported :class:`ScoringMethod`.
+
+    Names that are unknown *or* unsupported by this winner-only pipeline (e.g.
+    ``proportional``) fall back to ``winner_take_all`` (the classic AlphaZero
+    +1/-1/0 targets) with a warning, so a bad config never crashes training and
+    never silently trains on a degenerate score-less proportional signal.
     """
     try:
-        return ScoringMethod(name)
+        method = ScoringMethod(name)
     except ValueError:
         logger.warning("Unknown scoring_method %r; falling back to 'winner_take_all'", name)
         return ScoringMethod.WINNER_TAKE_ALL
+    if method not in SUPPORTED_SCORING_METHODS:
+        logger.warning(
+            "scoring_method %r needs a per-player score signal this pipeline does "
+            "not provide; falling back to 'winner_take_all'",
+            name,
+        )
+        return ScoringMethod.WINNER_TAKE_ALL
+    return method
 
 
 def compute_absolute_player_values(
@@ -629,7 +652,13 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
     # Initialize environment to get action space size and (crucially) the
     # spatial-channel count, which is dynamic for N-player games
     # (3 + 4 * num_players + 2) — never hardcode it here.
-    env = MicroCivEnv(board_size=config.board_size, num_players=config.num_players)
+    # Match the env config used in self-play/eval (incl. max_turns) so the
+    # inferred action space and spatial-channel count can never desync.
+    env = MicroCivEnv(
+        board_size=config.board_size,
+        max_turns=config.max_turns,
+        num_players=config.num_players,
+    )
     action_space_size = env.action_space.n
     sample_obs, _ = env.reset()
     spatial_channels = int(sample_obs["spatial"].shape[0])
@@ -758,8 +787,9 @@ def main() -> None:
         "--scoring_method",
         type=str,
         default="winner_take_all",
-        choices=[m.value for m in ScoringMethod],
-        help="How terminal outcomes become per-player training values.",
+        choices=[m.value for m in SUPPORTED_SCORING_METHODS],
+        help="How terminal outcomes become per-player training values "
+        "(winner-derivable methods only; 'proportional' needs per-player scores).",
     )
     parser.add_argument("--num_simulations", type=int, default=50)
     parser.add_argument("--num_games", type=int, default=100)
