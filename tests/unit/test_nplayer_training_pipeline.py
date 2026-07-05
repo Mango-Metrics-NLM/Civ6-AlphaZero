@@ -69,11 +69,26 @@ class TestComputeAbsolutePlayerValues:
         assert compute_absolute_player_values(1, 2).tolist() == [-1.0, 1.0]
         assert compute_absolute_player_values(None, 2).tolist() == [0.0, 0.0]
 
-    def test_linear_ranking_spreads_values(self) -> None:
-        values = compute_absolute_player_values(0, 4, method=ScoringMethod.LINEAR_RANKING)
-        # Winner is best; values are bounded to [-1, 1].
+    def test_linear_ranking_is_zero_sum_and_losers_negative(self) -> None:
+        # Winner-only info: losers must be NEGATIVE (a loss must score worse
+        # than a draw at 0.0), and the mapping is zero-sum.
+        num_players = 4
+        values = compute_absolute_player_values(0, num_players, method=ScoringMethod.LINEAR_RANKING)
         assert values[0] == pytest.approx(1.0)
+        losers = values[1:]
+        assert all(v < 0.0 for v in losers)  # loss < draw(0)
+        assert all(v == pytest.approx(-1.0 / (num_players - 1)) for v in losers)
+        assert values.sum() == pytest.approx(0.0, abs=1e-6)  # zero-sum (float32)
         assert values.min() >= -1.0 and values.max() <= 1.0
+
+    def test_linear_ranking_matches_winner_take_all_for_two_players(self) -> None:
+        lin = compute_absolute_player_values(0, 2, method=ScoringMethod.LINEAR_RANKING)
+        wta = compute_absolute_player_values(0, 2, method=ScoringMethod.WINNER_TAKE_ALL)
+        assert lin.tolist() == wta.tolist() == [1.0, -1.0]
+
+    def test_linear_ranking_draw_is_all_zero(self) -> None:
+        values = compute_absolute_player_values(None, 4, method=ScoringMethod.LINEAR_RANKING)
+        assert np.allclose(values, 0.0)
 
 
 class TestRelativeValueVector:

@@ -62,10 +62,10 @@ class TrainingConfig:
     # How terminal game outcomes are converted to per-player training values.
     # MicroCiv only exposes a winner (no per-player scores), so the supported
     # methods are the winner-derivable ones in SUPPORTED_SCORING_METHODS:
-    # "winner_take_all" (classic +1/-1/0) and "linear_ranking" (rank-spread).
-    # "proportional" needs a per-player score signal this pipeline does not
-    # provide and would silently fall back to linear_ranking, so it is not
-    # offered here.
+    # "winner_take_all" (classic +1 winner / -1 loser / 0 draw) and
+    # "linear_ranking" (zero-sum softer penalty: +1 winner, -1/(N-1) per loser,
+    # 0 draw). "proportional" needs a per-player score signal this pipeline does
+    # not provide, so it is not offered here.
     scoring_method: str = "winner_take_all"
 
     # Network
@@ -250,6 +250,14 @@ def compute_absolute_player_values(
     reproduces the classic +1 (winner) / -1 (loser) / 0 (draw) targets exactly,
     so the 2-player pipeline is unchanged.
 
+    MicroCiv exposes only a *winner* (no per-player scores or full rankings), so
+    ``compute_rankings`` ties every non-winner at rank 1. Feeding that to
+    ``linear_ranking`` would (for ``num_players >= 4``) assign losers a
+    *positive* value — making a loss score better than a draw. To keep a sane,
+    zero-sum signal we special-case ``linear_ranking`` here to a softer penalty:
+    winner ``+1``, each of the ``N - 1`` losers ``-1 / (N - 1)`` (draw = 0). For
+    2 players this coincides with ``winner_take_all`` (``+1 / -1``).
+
     Args:
         winner: Winning player index, or ``None`` for a draw.
         num_players: Total number of players (>= 2).
@@ -258,6 +266,18 @@ def compute_absolute_player_values(
     Returns:
         Array of shape ``(num_players,)`` with each value in ``[-1, 1]``.
     """
+    if winner is None:
+        # Draw: every scoring method agrees on all-zero targets.
+        return np.zeros(num_players, dtype=np.float32)
+
+    if method == ScoringMethod.LINEAR_RANKING:
+        # Winner-only zero-sum mapping (see docstring): losers must stay
+        # negative, so we cannot delegate to compute_rankings here.
+        loser_value = -1.0 / (num_players - 1)
+        values_arr = np.full(num_players, loser_value, dtype=np.float32)
+        values_arr[winner] = 1.0
+        return values_arr
+
     rankings = compute_rankings(winner=winner, num_players=num_players)
     values = compute_player_values(rankings, num_players=num_players, method=method)
     return np.array([values[p] for p in range(num_players)], dtype=np.float32)
