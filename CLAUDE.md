@@ -396,8 +396,8 @@ When making changes, update the relevant sections below:
 | pytest-xdist not always installed | Tests run without parallel flag if missing |
 | `serving/` + `inference/` omitted from coverage gate | They require the `web` extra (fastapi/uvicorn), absent from the default-CI `[dev]` install, so they cannot be imported in CI's coverage job. `serving/` has unit tests (`tests/unit/test_serving/`, `importorskip`-guarded) but stays in the omit list until CI installs the `web` extra. |
 | Coverage instrumentation crashes under nightly numpy 2.4 + coverage C-tracer | Local-only sandbox issue ("cannot load module more than once"); run tests without `--cov`, or use pinned numpy. CI uses pinned versions and is unaffected. |
-| MicroCiv hardcoded for 2 players | Multiplayer module built, but env needs G7/G8/G9 changes |
-| 12 DDP tests xfailed | Need rewrite with `torch.multiprocessing.spawn` |
+| ~~MicroCiv hardcoded for 2 players~~ (stale — corrected 2026-07-05) | Env + encoder are now N-player (2–6): `microciv.py` `num_players` param, dynamic encoder channels `3+4·N+2`. **G7/G8 done; only G9** (per-player value in training pipeline) remains. See `docs/NEXT_STEPS_ANALYSIS_2026-07.md`. |
+| ~~12 DDP tests xfailed~~ (stale — corrected 2026-07-05) | DDP tests use CUDA `skipif`, not `xfail`. Repo has exactly one real `xfail` (`test_phase2.py:381`). Real test debt is ~20 statically-skipped suites, mostly the partial W&B→MLflow swap (below). |
 | mlruns/ file-store deprecated | Run `scripts/migrate_mlflow_to_sqlite.py` to migrate to `sqlite:///mlflow.db` |
 | test_deployment_infra.py: 6 failures | Require .env file not present locally; skip with `pytest -m 'not env_required'` |
 | Two divergent `WandbConfig` classes (`orchestrator/config.py` + `utils/wandb_logger.py`) | Unification deferred; `MLflowConfig` is single-source to avoid repeating the issue. |
