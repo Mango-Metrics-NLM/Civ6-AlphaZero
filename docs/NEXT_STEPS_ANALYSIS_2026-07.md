@@ -100,7 +100,7 @@ repro and acceptance criteria:
 ### Track A — Reconcile & unblock (do first; low-risk, high-leverage)
 1. **Docs:** apply the §1 corrections (this doc + CLAUDE.md §5.3 rows + NEXT_STEPS header). _Done in this change._
 2. **PR #72:** review and land the champion-load fix — it gates the stated #1 priority.
-3. **Then** run the existing local convergence gate: `python scripts/validate_v130_training.py --iterations=5 --games=10` (exists) and confirm loss↓ / win-rate↑.
+3. **Then** run the existing local convergence gate: `python scripts/validate_convergence.py --iterations=5 --games=10` (exists; `validate_v130_training.py` is a deprecated shim that delegates to it) and confirm loss↓ / win-rate↑.
 
 ### Track B — Make a shipped feature real (self-contained, verifiable)
 4. Fix `ISSUE_editable_install_submodule_discovery` (packaging) → the chess entry point runs.
@@ -126,7 +126,7 @@ repro and acceptance criteria:
 
 ## Single best next step
 
-If one thing: **land PR #72, then run `validate_v130_training.py`.** Everything downstream
+If one thing: **land PR #72, then run `validate_convergence.py`.** Everything downstream
 (batch self-play, N-player training, MuZero PBT) is premised on training that actually improves
 the champion — and per the project's own history that has never been demonstrated end-to-end.
 Track B is the best *autonomous, self-contained* alternative if the convergence run must wait on
