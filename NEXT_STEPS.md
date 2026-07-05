@@ -129,21 +129,26 @@ python -m infra.vertex_launcher --mode=iteration --iteration=0 --wait
 
 ---
 
-### Phase 20: N-Player MicroCiv Training (Multiplayer Gaps G7-G9)
+### Phase 20: N-Player MicroCiv Training — G9 only (G7/G8 DONE, corrected 2026-07-05)
 
 **Goal**: Enable 3-8 player training using the already-implemented multiplayer module.
 
-**Status**: Multiplayer MCTS/scoring/turns fully implemented (18 files). MicroCiv itself
-is still hardcoded for 2 players.
+**Status (corrected)**: G7 and G8 are **already done** — this section was stale.
+`envs/microciv.py` parameterizes `num_players` (2–6) with N-player turn rotation, victory
+and start placement; `envs/civ6_encoder.py` allocates dynamic channels `3 + 4·N + 2`. Only
+**G9** (per-player value threading in the training pipeline) remains. See
+`docs/NEXT_STEPS_ANALYSIS_2026-07.md`.
 
 **Tasks**:
-1. **G7: N-player MicroCiv** — Parameterize `num_players`, fix turn rotation,
-   victory conditions, starting placement (~50 lines in `microciv.py`)
-2. **G8: N-player encoder** — Dynamic channel allocation per player
-   (~100 lines in `civ6_encoder.py`)
-3. **G9: Training pipeline** — `TrainingExample.value` → per-player values,
-   integrate `compute_nplayer_value_loss()` (already exists)
-4. Train 3-4 player MicroCiv agents
+1. ~~G7: N-player MicroCiv~~ — **DONE** (`microciv.py`, `num_players` 2–6)
+2. ~~G8: N-player encoder~~ — **DONE** (`civ6_encoder.py`, dynamic channels)
+3. ~~G9: Training pipeline~~ — **DONE (2026-07-05)**. `training_civ6.py` threads `num_players`
+   end-to-end: `TrainingExample.value_vector` (per-player, relative order), targets via
+   `multiplayer.scoring`, `compute_nplayer_value_loss` in `train_epoch`, and a
+   `CurrentPlayerValueView` scalar-view adapter for scalar MCTS. 2-player path byte-identical.
+   Tests: `tests/unit/test_nplayer_training_pipeline.py`.
+4. Train 3-4 player MicroCiv agents:
+   `python -m alpha_zero.training_civ6 --num_players 4 --scoring_method linear_ranking`
 
 **Key Files**:
 - `alpha_zero/envs/microciv.py` — hardcoded `1 - self.current_player`
@@ -245,5 +250,5 @@ Phase 21: DDP test fixes ─────────────→ Phase 22: Mu
 
 ---
 
-*Updated: 2026-03-01*
-*Version: v1.3.0 (training convergence fix, awaiting validation)*
+*Updated: 2026-03-01 — partially superseded 2026-07-05 by `docs/NEXT_STEPS_ANALYSIS_2026-07.md`.*
+*Version at authoring: v1.3.0. Repo is now v1.7.0 (cloud deploy, full-Civ6 local gameplay, LLM eval harness, chess/LM-Studio direction). Some priorities below are stale — see the analysis doc.*

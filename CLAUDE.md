@@ -321,6 +321,7 @@ When making changes, update the relevant sections below:
 | `pytest tests/unit/test_orchestrator_stagnation.py -v` | Test stagnation config + orchestrator wiring |
 | `pytest tests/cloud/unit/test_evaluator_stagnation.py -v` | Test promotion-stagnation detection |
 | `pytest tests/unit/test_replay_buffer.py -v` | Test replay buffers |
+| `pytest tests/unit/test_nplayer_training_pipeline.py -v` | Test N-player training pipeline (G9: per-player values) |
 | `pytest tests/unit/test_simultaneous_mcts.py -v` | Test DUCT algorithm |
 | `pytest tests/unit/test_action_resolution.py -v` | Test action conflict resolution |
 | `pytest tests/integration/test_e2e_nplayer_training.py -v` | E2E N-player training |
@@ -383,6 +384,7 @@ When making changes, update the relevant sections below:
 | 2026-05-30 | Training-stagnation detection (harness engineering) | Reuses existing `EloPlateauDetector` in the orchestrator (`StagnationConfig`, opt-in, ELO/win-rate signal — NOT loss) + new `count_consecutive_non_promotions` promotion check in `cloud/evaluator.py`. Addresses §13 zero-promotion failure. Env: `CIV6AZ_STAGNATION_*`, `CIV6_STAGNATION_PATIENCE`. All default OFF. |
 | 2026-05-30 | PreToolUse prohibited-action guard | `.claude/hooks/pretooluse_guard.sh` enforces §3.2 (no commits/pushes to `main`, >1000-game cap) — turns prose into a machine deny. |
 | 2026-05-30 | Pre-PR review in isolated subagent | Pre-PR handoff skill dispatches review to a fresh `Agent`/`code-review` for generator–evaluator separation (independent context). |
+| 2026-07-05 | N-player training pipeline (G9) | `training_civ6.py` threads `num_players` end-to-end: `TrainingExample.value_vector` (per-player, relative order), per-player targets via `multiplayer.scoring` (`ScoringMethod`), `compute_nplayer_value_loss` in `train_epoch`, and `CurrentPlayerValueView` (reduces the per-player value vector to relative-index-0 so scalar `Civ6MCTS`/`GumbelMCTS` can drive an N-player network). Encoder is player-relative, so value targets and the scalar view both key on relative index 0. 2-player path byte-identical; opt-in via `--num_players`/`--scoring_method`. |
 
 ### 5.3 Known Issues
 
@@ -396,8 +398,8 @@ When making changes, update the relevant sections below:
 | pytest-xdist not always installed | Tests run without parallel flag if missing |
 | `serving/` + `inference/` omitted from coverage gate | They require the `web` extra (fastapi/uvicorn), absent from the default-CI `[dev]` install, so they cannot be imported in CI's coverage job. `serving/` has unit tests (`tests/unit/test_serving/`, `importorskip`-guarded) but stays in the omit list until CI installs the `web` extra. |
 | Coverage instrumentation crashes under nightly numpy 2.4 + coverage C-tracer | Local-only sandbox issue ("cannot load module more than once"); run tests without `--cov`, or use pinned numpy. CI uses pinned versions and is unaffected. |
-| MicroCiv hardcoded for 2 players | Multiplayer module built, but env needs G7/G8/G9 changes |
-| 12 DDP tests xfailed | Need rewrite with `torch.multiprocessing.spawn` |
+| ~~MicroCiv hardcoded for 2 players~~ (resolved 2026-07-05) | Env + encoder N-player (2–6); training pipeline now N-player too. **G7/G8/G9 all done**: `training_civ6.py` threads `num_players` (per-player `value_vector`, `compute_nplayer_value_loss`, `CurrentPlayerValueView` scalar-MCTS adapter). 2-player path byte-identical. Tests: `tests/unit/test_nplayer_training_pipeline.py`. Train: `python -m alpha_zero.training_civ6 --num_players 4`. |
+| ~~12 DDP tests xfailed~~ (stale — corrected 2026-07-05) | DDP tests use CUDA `skipif`, not `xfail`. Repo has exactly one real `xfail` (`test_phase2.py:381`). Real test debt is ~20 statically-skipped suites, mostly the partial W&B→MLflow swap (below). |
 | mlruns/ file-store deprecated | Run `scripts/migrate_mlflow_to_sqlite.py` to migrate to `sqlite:///mlflow.db` |
 | test_deployment_infra.py: 6 failures | Require .env file not present locally; skip with `pytest -m 'not env_required'` |
 | Two divergent `WandbConfig` classes (`orchestrator/config.py` + `utils/wandb_logger.py`) | Unification deferred; `MLflowConfig` is single-source to avoid repeating the issue. |
