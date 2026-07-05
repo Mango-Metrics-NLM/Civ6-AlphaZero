@@ -225,6 +225,33 @@ class TestTrainEpochNPlayer:
         assert np.isfinite(losses["value_loss"])
         assert losses["value_loss"] >= 0.0
 
+    def test_scalar_head_with_nplayer_config_raises(self) -> None:
+        # Defense-in-depth: a scalar-head network under an N-player config must
+        # fail loudly rather than silently broadcast a wrong value loss.
+        num_players = 4
+        cfg = TrainingConfig(board_size=6, num_players=num_players, batch_size=3, device="cpu")
+        # A 2-player (scalar value head) network paired with an N-player config.
+        scalar_net = MicroCivNetwork(
+            board_size=6, action_space_size=32, num_res_blocks=1, num_filters=8
+        )
+        examples = []
+        rng = np.random.default_rng(1)
+        for _ in range(3):
+            examples.append(
+                TrainingExample(
+                    spatial=rng.standard_normal((13, 6, 6)).astype(np.float32),
+                    vector=rng.standard_normal(64).astype(np.float32),
+                    action_mask=np.ones(32, dtype=np.float32),
+                    policy=np.ones(32, dtype=np.float32) / 32,
+                    value=0.0,
+                    value_vector=np.zeros(num_players, dtype=np.float32),
+                )
+            )
+        dl = DataLoader(ReplayDataset(examples), batch_size=3)
+        opt = torch.optim.Adam(scalar_net.parameters(), lr=1e-3)
+        with pytest.raises(RuntimeError, match="per-player value"):
+            train_epoch(scalar_net, opt, dl, cfg)
+
     def test_nplayer_network_emits_per_player_value(self) -> None:
         num_players = 4
         spatial_channels = 3 + 4 * num_players + 2

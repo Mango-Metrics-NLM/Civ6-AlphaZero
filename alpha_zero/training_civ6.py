@@ -424,16 +424,16 @@ def run_self_play(
         num_players=config.num_players,
     )
 
-    # N-player networks emit value vectors; wrap so scalar MCTS gets a scalar.
-    mcts_network = _mcts_network(network, config)
-
     if use_simple_mcts:
+        # SimpleMCTS ignores the network entirely (random rollouts), so skip
+        # building the scalar-view wrapper.
         mcts: Civ6MCTS | SimpleMCTS | GumbelMCTS = SimpleMCTS(
             num_simulations=config.num_simulations,
             c_puct=config.c_puct,
         )
     elif config.use_gumbel_mcts:
-        # Use Gumbel MuZero MCTS for efficient search with few simulations
+        # Use Gumbel MuZero MCTS for efficient search with few simulations.
+        # N-player networks emit value vectors; wrap so scalar MCTS gets a scalar.
         gumbel_config = GumbelMCTSConfig(
             num_simulations=config.gumbel_num_simulations,
             num_sampled_actions=config.gumbel_num_sampled_actions,
@@ -442,9 +442,10 @@ def run_self_play(
             temperature=config.temperature,
             temperature_threshold=config.temperature_threshold,
         )
-        mcts = GumbelMCTS(mcts_network, gumbel_config, device=config.device)  # type: ignore[arg-type]
+        mcts = GumbelMCTS(_mcts_network(network, config), gumbel_config, device=config.device)  # type: ignore[arg-type]
         logger.info(f"Using Gumbel MuZero MCTS with {config.gumbel_num_simulations} simulations")
     else:
+        # N-player networks emit value vectors; wrap so scalar MCTS gets a scalar.
         mcts_config = MCTSConfig(
             num_simulations=config.num_simulations,
             c_puct=config.c_puct,
@@ -453,7 +454,7 @@ def run_self_play(
             temperature=config.temperature,
             temperature_threshold=config.temperature_threshold,
         )
-        mcts = Civ6MCTS(mcts_network, mcts_config, device=config.device)  # type: ignore[arg-type]
+        mcts = Civ6MCTS(_mcts_network(network, config), mcts_config, device=config.device)  # type: ignore[arg-type]
 
     for _ in tqdm(range(num_games), desc="Self-play"):
         game_examples = self_play_game(env, mcts, config)
@@ -518,6 +519,16 @@ def train_epoch(
         # (B, P), so use the N-player value loss; the 2-player path is
         # byte-identical to the legacy scalar loss.
         if getattr(config, "num_players", 2) > 2:
+            # Guard against a scalar value head slipping through with a
+            # per-player config (e.g. an NPlayerValueHead import fallback):
+            # compute_nplayer_value_loss would broadcast (B,1) vs (B,P)
+            # silently and train on a wrong signal. Fail loudly instead.
+            if value.ndim != 2 or value.shape[-1] != config.num_players:
+                raise RuntimeError(
+                    f"Expected per-player value of shape (B, {config.num_players}) for "
+                    f"num_players={config.num_players}, got {tuple(value.shape)}. "
+                    "The network is not emitting per-player values (scalar value head?)."
+                )
             p_loss = _masked_policy_loss(policy_logits, target_policy, action_mask)
             v_loss = compute_nplayer_value_loss(value, target_value, config.num_players)
             loss = p_loss + v_loss
