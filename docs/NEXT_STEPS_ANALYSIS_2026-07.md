@@ -107,10 +107,16 @@ repro and acceptance criteria:
 5. Wire MCTS+advisor into `run_chess_training.py` (`ISSUE_chess_advisor_placeholder_game_loop`).
 6. Batch Qwen calls across MCTS leaves (`ISSUE_batch_qwen_calls_across_mcts_leaves`) — ~30× speedup.
 
-### Track C — Close the N-player loop (env/encoder already done → G9 only)
-7. Thread per-player values through the training pipeline (`TrainingExample.value` → vector,
-   wire the already-present `multiplayer.compute_nplayer_value_loss`), then train a 3–4 player
-   MicroCiv agent. Much smaller than the roadmap implies (G7/G8 are complete).
+### Track C — Close the N-player loop (env/encoder already done → G9) ✅ DONE (2026-07-05)
+7. ~~Thread per-player values through the training pipeline~~ — **implemented**. `training_civ6.py`
+   now threads `num_players` end-to-end: `TrainingExample.value_vector` (per-player, relative
+   order), per-player targets via `multiplayer.scoring`, `compute_nplayer_value_loss` in
+   `train_epoch`, and a `CurrentPlayerValueView` scalar adapter so scalar MCTS can drive an
+   N-player network during self-play/eval. `MicroCivNetwork` already swapped in `NPlayerValueHead`
+   for `num_players > 2`. 2-player path is byte-identical (verified: 25 existing training tests
+   pass). New: `tests/unit/test_nplayer_training_pipeline.py` (32 tests). Train an N-player agent
+   with `python -m alpha_zero.training_civ6 --num_players 4 --scoring_method linear_ranking`.
+   Remaining N-player depth (Max-N search backprop, opponent modeling in self-play) is future work.
 
 ### Track D — Test-debt paydown (steady background)
 8. Finish the W&B→MLflow swap in `cloud/`, `pbt/`, `evaluation/`, `optimizations/` and

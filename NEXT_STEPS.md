@@ -142,9 +142,13 @@ and start placement; `envs/civ6_encoder.py` allocates dynamic channels `3 + 4·N
 **Tasks**:
 1. ~~G7: N-player MicroCiv~~ — **DONE** (`microciv.py`, `num_players` 2–6)
 2. ~~G8: N-player encoder~~ — **DONE** (`civ6_encoder.py`, dynamic channels)
-3. **G9: Training pipeline** — `TrainingExample.value` → per-player values,
-   integrate `compute_nplayer_value_loss()` (already exists in `multiplayer/network_heads.py`)
-4. Train 3-4 player MicroCiv agents
+3. ~~G9: Training pipeline~~ — **DONE (2026-07-05)**. `training_civ6.py` threads `num_players`
+   end-to-end: `TrainingExample.value_vector` (per-player, relative order), targets via
+   `multiplayer.scoring`, `compute_nplayer_value_loss` in `train_epoch`, and a
+   `CurrentPlayerValueView` scalar-view adapter for scalar MCTS. 2-player path byte-identical.
+   Tests: `tests/unit/test_nplayer_training_pipeline.py`.
+4. Train 3-4 player MicroCiv agents:
+   `python -m alpha_zero.training_civ6 --num_players 4 --scoring_method linear_ranking`
 
 **Key Files**:
 - `alpha_zero/envs/microciv.py` — hardcoded `1 - self.current_player`
