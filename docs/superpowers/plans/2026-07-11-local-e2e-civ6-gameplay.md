@@ -124,26 +124,39 @@ Expected: exit 0, logs show the resolved civ6-mode config, no gameplay starts. I
 
 **Interfaces:**
 - Consumes: venv from Task 2.
-- Produces: evidence (exit code 0) that the suite is green on this branch. Task 6's "when confident" gate depends on this.
+- Produces: a triaged test verdict and an explicit open/closed decision for the Task 6 gate.
 
-- [ ] **Step 1: Bridge-focused subset first (fast signal)**
+> **Known context (peer review 2026-07-11):** `pytest_failures.txt` at repo root (dated May 30) records 19 failures, 11 of them in bridge-critical files — one day BEFORE the last three bridge-fix commits landed. Nobody has verified whether those commits turned them green. Do NOT assume exit 0; triage what you actually observe.
+
+- [ ] **Step 1: Bridge-critical set first (the files that failed on May 30, plus the mock e2e)**
 
 Run (PowerShell, from repo root):
 ```powershell
+.venv\Scripts\python.exe -m pytest tests/integration/test_civ6_bridge_e2e.py tests/unit/test_live_bridge.py tests/unit/test_action_converter.py tests/unit/test_bridge_state_converter.py tests/unit/test_civ6_local.py -q
+```
+Expected: exit 0. These exercise the exact code path the live game uses (mock agent loop, LiveBridge, converters, entry point). ANY failure here = gate closed, STOP after Step 2 and report with output verbatim.
+
+- [ ] **Step 2: Broader bridge subset**
+
+```powershell
 .venv\Scripts\python.exe -m pytest tests -k bridge -q
 ```
-Expected: exit 0, all bridge tests pass. If any fail, STOP — the e2e run cannot be trusted; report failures with output verbatim.
+Expected: exit 0 (~34 unit files + integration). Same rule: failures here close the gate.
 
-- [ ] **Step 2: Full suite with the Windows deselect list**
+- [ ] **Step 3: Full suite with the Windows deselect list**
 
 ```powershell
 .venv\Scripts\python.exe -m pytest -q --timeout=120 --deselect tests/unit/test_interfaces.py --deselect tests/unit/test_gumbel_mcts.py --deselect tests/unit/test_enhanced_training_wandb.py --deselect tests/cloud/unit/test_training_muzero_dispatch.py
 ```
-Expected: exit 0. This is a 4800+ test suite — allow up to ~30 minutes; run it in the background and poll, don't kill it early. Record the final `N passed, M skipped/xfailed/deselected in Xs` line.
+This is a 4800+ test suite — allow up to ~30 minutes; run in the background with output redirected to a file, poll, don't kill it early. Record the final summary line.
 
-- [ ] **Step 3: Report the confidence gate**
+- [ ] **Step 4: Triage every failure into one of three categories and decide the gate**
 
-No commit (nothing changed). State plainly: bridge subset result, full-suite result, and whether the gate to Task 6 is open. Any failure = gate closed = do not run the live game; report instead.
+1. **Bridge-critical** (any file from Step 1/2) → gate CLOSED.
+2. **New-to-this-branch** (not explainable by environment) → gate CLOSED.
+3. **Environmental/pre-existing** (mlflow-e2e needing a tracking server, DDP multinode, wandb-integration, LM-Studio-dependent LLM tests) → documented as non-blocking for a local gameplay demo; gate stays open.
+
+The report lists each failing test with its category and evidence for the categorization. Nothing is silently ignored. State plainly whether the gate to Task 6 is OPEN or CLOSED.
 
 ---
 
@@ -182,19 +195,31 @@ Expected: no output (empty diff = identical). Any diff lines = the copy failed; 
 - Consumes: venv (Task 2), green tests (Task 3), refreshed mod (Task 4).
 - Produces: confirmation that civ6 mode starts, creates/uses the comm dir, and waits for the game — the last automatable checkpoint before a human must launch Civ6.
 
-- [ ] **Step 1: Start civ6 mode without the game and observe the waiting state**
+- [ ] **Step 1: Pre-check whether a stale Lua.log exists**
 
-Run in the background (PowerShell, repo root) and stop it after ~60 seconds:
 ```powershell
-.venv\Scripts\python.exe -m alpha_zero.civ6_local --mode civ6 --log-level info
+Test-Path "$env:LOCALAPPDATA\Firaxis Games\Sid Meier's Civilization VI\Logs\Lua.log"
 ```
-Expected log lines (order matters):
+Record the result — it determines which outcome Step 2 must expect. (`LiveBridge.start()` → `LogTailer.start()` RAISES `LogTailerError` after 30s if this file doesn't exist; the game last ran May 31 so it should exist.)
+
+- [ ] **Step 2: Start civ6 mode without the game and observe**
+
+Run in the background with unbuffered output captured to a file (Python logging goes to stderr — without `-u`/`PYTHONUNBUFFERED` the log looks empty and gets misread as a hang), stop after ~45 seconds:
+```powershell
+$env:PYTHONUNBUFFERED='1'
+.venv\Scripts\python.exe -u -m alpha_zero.civ6_local --mode civ6 --log-level info *> "$env:TEMP\civ6az_smoke.log"
+```
+Expected, **if Lua.log exists**: log shows
 ```
 Connecting to Civ6 bridge at: C:\Users\iansh\OneDrive\Documents\My Games\Sid Meier's Civilization VI\AlphaZeroAI
 Start Civilization 6 with the AlphaZeroAI mod to begin.
 Bridge using GreedyNetworkPolicy
 ```
-Then it idles polling for state files. No traceback, no `AttributeError`, no import error. Kill the process after confirming (Ctrl-C / stop the background task; exit 130 on Ctrl-C is expected and fine).
+then quiet idle (tailer seeks to end of the stale log). Kill it after confirming; exit 130 on Ctrl-C is fine.
+
+Expected, **if Lua.log is missing**: the same first three lines, then after ~30s a clean `LogTailerError: Log file not found after 30s: ...Lua.log` — that failure path firing correctly IS the pass condition for this scenario.
+
+Either outcome PASSES provided there is no other traceback, no `AttributeError`, no import error.
 
 - [ ] **Step 2: Verify the comm dir exists**
 
@@ -220,15 +245,16 @@ Expected: `True`.
 
 User checklist:
 1. Steam → Sid Meier's Civilization VI → Play.
-2. Main menu → *Additional Content* → enable **AlphaZeroAI** → back (game may prompt to restart mods context — accept).
-3. Single player → Create Game → any small/standard map → Start.
+2. Main menu → *Additional Content* → enable **AlphaZero AI Bridge** (mod id ALPHAZERO_AI_BRIDGE — single-player only, doesn't affect saves) → back (game may prompt to restart mods context — accept).
+3. Single player → Create Game → any single-player map (small/standard fine) → Start.
 4. Tell the agent the game is loaded and at turn 1.
 
 - [ ] **Step 2: Start the agent loop**
 
-Run in the background with output captured (PowerShell, repo root):
+Run in the background with unbuffered output captured to a file (PowerShell, repo root):
 ```powershell
-.venv\Scripts\python.exe -m alpha_zero.civ6_local --mode civ6 --log-level debug
+$env:PYTHONUNBUFFERED='1'
+.venv\Scripts\python.exe -u -m alpha_zero.civ6_local --mode civ6 --log-level debug *> "$env:TEMP\civ6az_live.log"
 ```
 (Greedy policy first. If it plays stably for 10+ turns and the user wants stronger play, restart with `--mcts --num-simulations 16`.)
 
