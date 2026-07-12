@@ -77,9 +77,26 @@ class LiveBridge:
             else config.poll_interval_ms / 1000.0
         )
         self._tailer = LogTailer(log_path, poll_interval=resolved_poll_interval)
-        self._tuner = TunerBridge(config)
+        self._tuner = self._build_tuner(config)
         self._running = False
         self._msg_counter = int(time.time() * 1000)
+
+    @staticmethod
+    def _build_tuner(config: BridgeConfig) -> Any:
+        """Select the command transport from ``config.command_transport``.
+
+        ``"file"`` (default) writes ``commands.json`` for a FireTuner ``.ltp``
+        panel to relay. ``"socket"`` injects commands directly over the
+        FireTuner TCP protocol, removing the file hop and the GUI panel. Both
+        expose the same ``start``/``stop``/``send_command``/``stats`` surface.
+        """
+        if config.command_transport == "socket":
+            # Imported lazily so the socket transport (and its deps) stay
+            # optional for file-transport consumers.
+            from alpha_zero.bridge.tuner_socket_bridge import SocketTunerBridge
+
+            return SocketTunerBridge(config)
+        return TunerBridge(config)
 
     # --- Context manager ---
 
@@ -105,6 +122,19 @@ class LiveBridge:
         await self._tailer.stop()
         await self._tuner.stop()
         logger.info("LiveBridge stopped")
+
+    async def kick_turn(self) -> bool:
+        """Bootstrap a stalled turn when using the socket transport.
+
+        Delegates to :meth:`SocketTunerBridge.kick_end_turn` when the socket
+        transport is active; a no-op (returns False) for the file transport,
+        which has no live connection to inject a kick through.
+        """
+        kick = getattr(self._tuner, "kick_end_turn", None)
+        if kick is None:
+            logger.debug("kick_turn requested but transport has no kick support")
+            return False
+        return await kick()
 
     # --- State reading (delegates to LogTailer) ---
 

@@ -511,13 +511,27 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
         logger.error("Bridge module not available: %s", exc)
         return 1
 
+    # Command transport: "file" (default) writes commands.json for a FireTuner
+    # .ltp panel to relay; "socket" injects commands directly over the FireTuner
+    # TCP protocol (no GUI panel needed). Selected via CIV6_BRIDGE_TRANSPORT.
+    transport = os.getenv("CIV6_BRIDGE_TRANSPORT", "file").lower()
     bridge_cfg = BridgeConfig(
         comm_dir=Path(config.bridge_ipc_dir),
         log_level=config.log_level,
+        command_transport=transport,
+        tuner_host=os.getenv("CIV6_BRIDGE_TUNER_HOST", "127.0.0.1"),
+        tuner_port=int(os.getenv("CIV6_BRIDGE_TUNER_PORT", "4318")),
     )
     bridge_cfg.ensure_comm_dir()
 
     logger.info("Connecting to Civ6 bridge at: %s", bridge_cfg.comm_dir)
+    logger.info("Command transport: %s", transport)
+    if transport == "socket":
+        logger.info(
+            "Injecting commands via FireTuner socket %s:%d (no GUI panel needed).",
+            bridge_cfg.tuner_host,
+            bridge_cfg.tuner_port,
+        )
     logger.info("Start Civilization 6 with the AlphaZeroAI mod to begin.")
 
     state_converter = StateConverter(board_size=config.board_size)
@@ -576,6 +590,14 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
 
     import asyncio
 
+    # Optional startup kick: if the game is idle on the local player's turn
+    # with an expired command window, no fresh state ever arrives. Setting
+    # CIV6_BRIDGE_KICK_START forces one end-turn (socket transport only) so a
+    # new turn-begin export is emitted for the agent to catch.
+    kick_start = os.getenv("CIV6_BRIDGE_KICK_START", "").lower() in (
+        "1", "true", "yes", "on",
+    )
+
     async def _session() -> int:
         # Single event loop wraps both start and stop, fixing the inherited
         # double-asyncio.run bug noted in the sprint plan: previously the
@@ -583,6 +605,9 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
         # cleanup loop could not see async state set during start.
         try:
             await bridge.start()
+            if kick_start:
+                logger.info("Kick-start enabled: forcing one end-turn to un-stall.")
+                await bridge.kick_turn()
             return await agent_loop.run()
         finally:
             await bridge.stop()

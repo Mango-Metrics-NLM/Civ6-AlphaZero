@@ -105,6 +105,9 @@ class BridgeConfig:
     max_actions_per_second: float = 1.0
     multiplayer_mode: bool = False
     player_id_mapping: dict[int, int] | None = None
+    command_transport: str = "file"
+    tuner_host: str = "127.0.0.1"
+    tuner_port: int = 4318
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -129,6 +132,10 @@ class BridgeConfig:
             raise ValueError("num_players must be between 2 and 12")
         if self.max_actions_per_second < 0.0:
             raise ValueError("max_actions_per_second must be non-negative")
+        if self.command_transport not in ("file", "socket"):
+            raise ValueError("command_transport must be 'file' or 'socket'")
+        if not 1 <= self.tuner_port <= 65535:
+            raise ValueError("tuner_port must be between 1 and 65535")
 
     @classmethod
     def from_env(cls) -> BridgeConfig:
@@ -190,6 +197,15 @@ class BridgeConfig:
             kwargs["max_actions_per_second"] = float(max_aps)
 
         kwargs["multiplayer_mode"] = get_bool("CIV6_BRIDGE_MULTIPLAYER_MODE", False)
+
+        if transport := os.environ.get("CIV6_BRIDGE_TRANSPORT"):
+            kwargs["command_transport"] = transport.lower()
+
+        if tuner_host := os.environ.get("CIV6_BRIDGE_TUNER_HOST"):
+            kwargs["tuner_host"] = tuner_host
+
+        if tuner_port := os.environ.get("CIV6_BRIDGE_TUNER_PORT"):
+            kwargs["tuner_port"] = int(tuner_port)
 
         return cls(**kwargs)
 
