@@ -250,8 +250,9 @@ function AlphaZeroBridge.PollCommands()
     end
 
     -- Write heartbeat periodically
+    local heartbeatInterval = (AlphaZeroConfig and AlphaZeroConfig.Get("HEARTBEAT_INTERVAL")) or 1.0
     local now = (os and os.time) and os.time() or 0
-    if now - bridgeState.lastHeartbeatTime >= 1 then
+    if now - bridgeState.lastHeartbeatTime >= heartbeatInterval then
         if AlphaZeroFileIO then
             AlphaZeroFileIO.WriteHeartbeat()
         end

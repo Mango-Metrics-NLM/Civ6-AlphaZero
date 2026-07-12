@@ -28,8 +28,6 @@ local DEFAULT_CONFIG = {
     ERROR_FILE = "errors.json",
 
     -- Polling intervals (in seconds)
-    COMMAND_POLL_INTERVAL = 0.01,  -- 10ms
-    STATE_WRITE_DELAY = 0.001,     -- 1ms delay after write
     HEARTBEAT_INTERVAL = 1.0,      -- Write heartbeat every second
 
     -- Timeouts
@@ -39,9 +37,6 @@ local DEFAULT_CONFIG = {
     -- Feature flags
     ENABLE_LOGGING = true,
     LOG_LEVEL = "INFO",            -- DEBUG, INFO, WARN, ERROR
-    ENABLE_STATE_COMPRESSION = false,
-    ENABLE_DETAILED_UNITS = true,
-    ENABLE_DETAILED_CITIES = true,
     ENABLE_LEGAL_ACTIONS = true,
 
     -- Player configuration
@@ -235,10 +230,6 @@ function AlphaZeroConfig.Validate()
 
     if not currentConfig.COMM_DIR then
         table.insert(errors, "COMM_DIR not set")
-    end
-
-    if currentConfig.COMMAND_POLL_INTERVAL <= 0 then
-        table.insert(errors, "COMMAND_POLL_INTERVAL must be positive")
     end
 
     if currentConfig.MAX_ACTIONS_PER_TURN <= 0 then

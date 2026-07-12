@@ -660,22 +660,33 @@ local function _diplomacyRequest(playerId, targetPlayerId, civ6ActionName, subAc
         return false, ERROR_CODES.EXECUTION_FAILED, "Diplomacy table unavailable"
     end
 
+    local lastError = nil
+
     -- Primary path: GetDiplomacy():DoAction(...). Civ6 expects a string or
     -- int action constant from DiplomaticActions table; pass civ6ActionName.
     if diplomacy.DoAction then
-        local ok = pcall(function() diplomacy:DoAction(civ6ActionName, targetPlayerId) end)
+        local ok, err = pcall(function() diplomacy:DoAction(civ6ActionName, targetPlayerId) end)
         if ok then
             return true, nil, string.format("%s against player %d", subActionName, targetPlayerId)
         end
+        lastError = err
+        if Log then Log.Warn("DoAction failed for %s: %s", subActionName, tostring(err)) end
     end
 
     -- Fallback: UI.RequestDiplomacyMove for older mod contexts.
     if UI and UI.RequestDiplomacyMove then
-        local ok = pcall(function() UI.RequestDiplomacyMove(civ6ActionName, targetPlayerId) end)
+        local ok, err = pcall(function() UI.RequestDiplomacyMove(civ6ActionName, targetPlayerId) end)
         if ok then
             return true, nil, string.format("%s requested via UI (player %d)",
                 subActionName, targetPlayerId)
         end
+        lastError = err
+        if Log then Log.Warn("RequestDiplomacyMove failed for %s: %s", subActionName, tostring(err)) end
+    end
+
+    if lastError then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            string.format("Diplomacy action %s failed: %s", subActionName, tostring(lastError))
     end
 
     return false, ERROR_CODES.EXECUTION_FAILED,
