@@ -333,16 +333,30 @@ class LogTailer:
     def _handle_ack(self, json_str: str) -> None:
         """Parse an ack JSON and notify waiters."""
         data = self._parse_json(json_str)
-        if data is not None:
-            msg_id = data.get("msg_id")
-            self._ack_queue[msg_id] = data
-            self._stats.acks_received += 1
+        if data is None:
+            return
 
-            # Notify any waiter for this msg_id
-            if msg_id in self._ack_events:
-                self._ack_events[msg_id].set()
+        msg_id = data.get("msg_id")
+        # A malformed/truncated ack (e.g. from the same live-write race that
+        # produces partial lines) can be missing msg_id or carry a non-int
+        # value. Filing it under that key would be unreachable to any
+        # waiter, which is keyed by the real integer msg_id in
+        # wait_for_ack(), silently starving the in-flight command until it
+        # times out. Log and drop instead of queuing an unmatchable ack.
+        if not isinstance(msg_id, int) or isinstance(msg_id, bool):
+            logger.warning(
+                "Dropping ack with invalid msg_id=%r: %s", msg_id, data
+            )
+            return
 
-            logger.debug("Ack received: msg_id=%s success=%s", msg_id, data.get("success"))
+        self._ack_queue[msg_id] = data
+        self._stats.acks_received += 1
+
+        # Notify any waiter for this msg_id
+        if msg_id in self._ack_events:
+            self._ack_events[msg_id].set()
+
+        logger.debug("Ack received: msg_id=%s success=%s", msg_id, data.get("success"))
 
     def _parse_json(self, json_str: str) -> dict[str, Any] | None:
         """Parse JSON string with unicode unescape handling.

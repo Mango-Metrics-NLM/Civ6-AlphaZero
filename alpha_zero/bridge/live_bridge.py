@@ -58,17 +58,25 @@ class LiveBridge:
     Args:
         config: Bridge configuration.
         log_path: Path to Civ6 Lua.log file.
-        poll_interval: Log polling interval in seconds.
+        poll_interval: Log polling interval in seconds. Defaults to
+            ``config.poll_interval_ms / 1000.0`` (matching the pattern used
+            for ``command_timeout_ms``), so the ``CIV6_BRIDGE_POLL_MS`` env
+            override applies here too. Pass an explicit value to override.
     """
 
     def __init__(
         self,
         config: BridgeConfig,
         log_path: Path,
-        poll_interval: float = 0.1,
+        poll_interval: float | None = None,
     ) -> None:
         self._config = config
-        self._tailer = LogTailer(log_path, poll_interval=poll_interval)
+        resolved_poll_interval = (
+            poll_interval
+            if poll_interval is not None
+            else config.poll_interval_ms / 1000.0
+        )
+        self._tailer = LogTailer(log_path, poll_interval=resolved_poll_interval)
         self._tuner = TunerBridge(config)
         self._running = False
         self._msg_counter = int(time.time() * 1000)
@@ -245,5 +253,8 @@ class LiveBridge:
         if commands_path.exists():
             try:
                 commands_path.write_text("")
-            except OSError:
-                pass
+            except OSError as e:
+                # Matches FileBridge.clear_files()'s per-file warning: a
+                # locked commands.json (e.g. held by FireTuner or AV) should
+                # be visible in logs rather than silently discarded.
+                logger.debug("Could not clear stale commands file: %s", e)

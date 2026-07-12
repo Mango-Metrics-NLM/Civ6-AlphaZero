@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from pathlib import Path
 from typing import Any
@@ -249,3 +250,56 @@ class TestStats:
             bridge.clear_files()
             content = bridge_config.commands_file.read_text()
             assert content == ""
+
+    async def test_clear_files_logs_oserror(
+        self,
+        bridge_config: BridgeConfig,
+        tmp_log: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """OSError while clearing commands.json is logged, not swallowed silently."""
+        async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
+            await bridge.send_command(create_end_turn_command(1))
+            assert bridge_config.commands_file.exists()
+
+            def _raise_oserror(*args: Any, **kwargs: Any) -> None:
+                raise OSError("file is locked")
+
+            monkeypatch.setattr(Path, "write_text", _raise_oserror)
+
+            with caplog.at_level(
+                logging.DEBUG, logger="alpha_zero.bridge.live_bridge"
+            ):
+                bridge.clear_files()  # Should not raise.
+
+            assert any(
+                "Could not clear" in record.message for record in caplog.records
+            )
+
+
+# --- Poll interval configuration tests ---
+
+
+@pytest.mark.asyncio
+class TestPollIntervalConfig:
+    async def test_default_poll_interval_derived_from_config(
+        self, tmp_path: Path, tmp_log: Path
+    ) -> None:
+        """LiveBridge's default poll interval must honor BridgeConfig.poll_interval_ms.
+
+        Regression test: previously LiveBridge hardcoded poll_interval=0.1 and
+        never consulted config.poll_interval_ms (and thus CIV6_BRIDGE_POLL_MS),
+        even though FileBridge and BridgeConfig document that env override.
+        """
+        config = BridgeConfig(comm_dir=tmp_path, poll_interval_ms=250)
+        bridge = LiveBridge(config, tmp_log)
+        assert bridge._tailer._poll_interval == pytest.approx(0.25)
+
+    async def test_explicit_poll_interval_overrides_config(
+        self, tmp_path: Path, tmp_log: Path
+    ) -> None:
+        """An explicitly passed poll_interval still wins over config."""
+        config = BridgeConfig(comm_dir=tmp_path, poll_interval_ms=250)
+        bridge = LiveBridge(config, tmp_log, poll_interval=0.05)
+        assert bridge._tailer._poll_interval == pytest.approx(0.05)

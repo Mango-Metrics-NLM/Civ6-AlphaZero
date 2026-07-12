@@ -103,6 +103,34 @@ class TestLineParsing:
         assert 42 in tailer._ack_queue
         assert tailer._ack_queue[42]["success"] is True
 
+    def test_parse_ack_missing_msg_id_dropped(
+        self, tailer: LogTailer, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A malformed ack with no msg_id must not be filed under key None.
+
+        Regression test: previously `data.get("msg_id")` could be None, and
+        the ack would be stored as `self._ack_queue[None]`, which no waiter
+        keyed on the real integer msg_id could ever match.
+        """
+        ack = {"success": True}
+        line = f'AlphaZeroMain: AZ_ACK:{json.dumps(ack)}'
+        with caplog.at_level(
+            "WARNING", logger="alpha_zero.bridge.log_tailer"
+        ):
+            tailer._parse_line(line)
+        assert None not in tailer._ack_queue
+        assert tailer._ack_queue == {}
+        assert tailer._stats.acks_received == 0
+        assert any("msg_id" in r.message for r in caplog.records)
+
+    def test_parse_ack_non_int_msg_id_dropped(self, tailer: LogTailer) -> None:
+        """A malformed ack with a non-integer msg_id is dropped, not queued."""
+        ack = {"msg_id": "not-an-int", "success": True}
+        line = f'AlphaZeroMain: AZ_ACK:{json.dumps(ack)}'
+        tailer._parse_line(line)
+        assert "not-an-int" not in tailer._ack_queue
+        assert tailer._stats.acks_received == 0
+
     def test_parse_unknown_prefix_ignored(self, tailer: LogTailer) -> None:
         tailer._parse_line("AlphaZeroMain: Some random log line")
         assert tailer.latest_state is None
