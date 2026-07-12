@@ -7,6 +7,7 @@ train, main (CLI parsing).
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -42,6 +43,28 @@ def _make_example(
         policy=np.ones(action_size, dtype=np.float32) / action_size,
         value=value,
     )
+
+
+def _mock_reset_return(config: TrainingConfig) -> tuple[dict, dict]:
+    """Build a realistic ``MicroCivEnv.reset()`` return for a mocked env.
+
+    ``train()`` calls ``env.reset()`` to discover the *dynamic* spatial
+    channel count (``3 + 4 * num_players + 2``) before constructing the
+    network. A real Gym-style env always returns ``(obs, info)``; a bare
+    ``MagicMock`` returns an empty auto-iterator instead, so tests that
+    replace ``MicroCivEnv`` with a ``MagicMock`` must configure
+    ``reset.return_value`` explicitly or unpacking crashes with
+    ``ValueError: not enough values to unpack``.
+    """
+    spatial_channels = 3 + 4 * config.num_players + 2
+    obs = {
+        "spatial": np.zeros(
+            (spatial_channels, config.board_size, config.board_size), dtype=np.float32
+        ),
+        "vector": np.zeros(64, dtype=np.float32),
+        "action_mask": np.ones(1, dtype=np.float32),
+    }
+    return obs, {}
 
 
 @pytest.fixture
@@ -201,6 +224,11 @@ class TestSelfPlayGame:
 
         env.reset.return_value = (obs, {})
         env.current_player = 0
+        # A real MicroCivEnv always sets num_players (enforced >= 2 in its
+        # constructor). Without this, a bare MagicMock auto-vivifies a child
+        # attribute whose int() resolves to 1, which previously crashed
+        # self_play_game's N-player scoring with "num_players must be >= 2".
+        env.num_players = 2
 
         step_returns = []
         for _i in range(num_steps - 1):
@@ -291,6 +319,7 @@ class TestSelfPlayGame:
         env.reset.return_value = (obs, {})
         env.current_player = 0
         env.turn = 5
+        env.num_players = 2
         env.step.side_effect = [(obs, 0.0, False, True, {"winner": None})]
 
         mcts = self._make_mock_mcts()
@@ -311,6 +340,43 @@ class TestSelfPlayGame:
         # select_action should be called with temperature=0.0 (past threshold)
         call_args = mcts.select_action.call_args
         assert call_args[0][1] == 0.0
+
+    def test_missing_num_players_falls_back_to_two_player_default(self, caplog):
+        """A non-conforming env double without a real ``num_players`` must
+        not crash self-play.
+
+        A real ``MicroCivEnv`` always sets ``num_players`` (enforced >= 2 by
+        its constructor), so this scenario is unreachable with a real env. It
+        only arises from an incompletely configured test double: a bare
+        ``MagicMock`` auto-vivifies a child attribute for ``env.num_players``,
+        and ``int()`` of that attribute resolves to ``1`` -- which used to
+        crash ``self_play_game`` deep inside ``compute_rankings`` with
+        "num_players must be >= 2, got 1". ``self_play_game`` must instead log
+        a warning and fall back to the historical 2-player default.
+        """
+        env = MagicMock()
+        spatial = np.zeros((13, 8, 8), dtype=np.float32)
+        vector = np.zeros(64, dtype=np.float32)
+        action_mask = np.ones(100, dtype=np.float32)
+        obs = {"spatial": spatial, "vector": vector, "action_mask": action_mask}
+        env.reset.return_value = (obs, {})
+        env.current_player = 0
+        env.turn = 5
+        # Intentionally NOT setting env.num_players -- reproduces the bug.
+        env.step.side_effect = [(obs, 0.0, True, False, {"winner": 0})]
+
+        mcts = self._make_mock_mcts()
+        cfg = TrainingConfig()
+
+        with caplog.at_level(logging.WARNING, logger="alpha_zero.training_civ6"):
+            result = self_play_game(env, mcts, cfg)
+
+        assert len(result) == 1
+        # Effective 2-player winner-take-all: player 0 (the only recorded
+        # actor) won, so the classic +1 signal applies.
+        assert result[0].value == 1.0
+        assert result[0].value_vector is None
+        assert any("num_players" in record.message for record in caplog.records)
 
 
 # ---------------------------------------------------------------------------
@@ -596,6 +662,7 @@ class TestTrain:
         with patch("alpha_zero.training_civ6.MicroCivEnv") as mock_env_cls:
             mock_env = MagicMock()
             mock_env.action_space.n = action_size
+            mock_env.reset.return_value = _mock_reset_return(config)
             mock_env_cls.return_value = mock_env
 
             train(config, dry_run=True)
@@ -619,6 +686,7 @@ class TestTrain:
         with patch("alpha_zero.training_civ6.MicroCivEnv") as mock_env_cls:
             mock_env = MagicMock()
             mock_env.action_space.n = action_size
+            mock_env.reset.return_value = _mock_reset_return(config)
             mock_env_cls.return_value = mock_env
 
             train(config, dry_run=True)
@@ -643,6 +711,7 @@ class TestTrain:
         with patch("alpha_zero.training_civ6.MicroCivEnv") as mock_env_cls:
             mock_env = MagicMock()
             mock_env.action_space.n = action_size
+            mock_env.reset.return_value = _mock_reset_return(config)
             mock_env_cls.return_value = mock_env
 
             train(config, dry_run=True)
@@ -673,6 +742,7 @@ class TestTrain:
         with patch("alpha_zero.training_civ6.MicroCivEnv") as mock_env_cls:
             mock_env = MagicMock()
             mock_env.action_space.n = action_size
+            mock_env.reset.return_value = _mock_reset_return(config)
             mock_env_cls.return_value = mock_env
 
             with patch("alpha_zero.training_civ6.train_epoch") as mock_train:
@@ -698,6 +768,7 @@ class TestTrain:
         with patch("alpha_zero.training_civ6.MicroCivEnv") as mock_env_cls:
             mock_env = MagicMock()
             mock_env.action_space.n = action_size
+            mock_env.reset.return_value = _mock_reset_return(config)
             mock_env_cls.return_value = mock_env
 
             with patch("alpha_zero.training_civ6.MicroCivNetwork") as mock_net_cls:
@@ -739,6 +810,7 @@ class TestTrain:
         with patch("alpha_zero.training_civ6.MicroCivEnv") as mock_env_cls:
             mock_env = MagicMock()
             mock_env.action_space.n = action_size
+            mock_env.reset.return_value = _mock_reset_return(config)
             mock_env_cls.return_value = mock_env
 
             with patch("alpha_zero.training_civ6.MicroCivNetwork") as mock_net_cls:
