@@ -55,6 +55,25 @@ def _get_default_bridge_ipc_dir() -> Path:
         return Path(tempfile.gettempdir()) / "civ6az_bridge"
 
 
+def _get_default_civ6_log_path() -> Path:
+    """Return the default path to Civilization VI's ``Lua.log`` file.
+
+    Computed from ``%LOCALAPPDATA%`` on Windows, matching the standard
+    Firaxis install layout: ``Firaxis Games/Sid Meier's Civilization
+    VI/Logs/Lua.log``. Non-default install locations (e.g. Epic Games
+    Store, a redirected ``LOCALAPPDATA``) can override this via
+    ``Civ6LocalConfig.civ6_log_path`` / ``CIV6AZ_LOCAL_LOG_PATH`` /
+    ``--civ6-log-path``.
+    """
+    return (
+        Path(os.getenv("LOCALAPPDATA", ""))
+        / "Firaxis Games"
+        / "Sid Meier's Civilization VI"
+        / "Logs"
+        / "Lua.log"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Configuration dataclass
 # ---------------------------------------------------------------------------
@@ -75,6 +94,8 @@ class Civ6LocalConfig:
         web_host: Bind address for web mode
         web_port: Port for web mode
         bridge_ipc_dir: IPC directory for civ6 bridge mode
+        civ6_log_path: Path to Civilization VI's Lua.log, watched by the
+            bridge in civ6 mode
         log_level: Logging verbosity (DEBUG | INFO | WARNING | ERROR)
         dry_run: Validate config and exit without starting gameplay
     """
@@ -91,6 +112,9 @@ class Civ6LocalConfig:
     web_port: int = 8080
     bridge_ipc_dir: str = field(
         default_factory=lambda: str(_get_default_bridge_ipc_dir())
+    )
+    civ6_log_path: str = field(
+        default_factory=lambda: str(_get_default_civ6_log_path())
     )
     log_level: str = "INFO"
     dry_run: bool = False
@@ -169,6 +193,7 @@ class Civ6LocalConfig:
             CIV6AZ_LOCAL_WEB_HOST          — web server bind address
             CIV6AZ_LOCAL_WEB_PORT          — web server port (int)
             CIV6AZ_LOCAL_BRIDGE_IPC_DIR    — bridge IPC directory
+            CIV6AZ_LOCAL_LOG_PATH          — Civ6 Lua.log path (civ6 mode)
             CIV6AZ_LOCAL_LOG_LEVEL         — logging level
             CIV6AZ_LOCAL_DRY_RUN           — dry run flag (1/true/yes)
 
@@ -211,6 +236,8 @@ class Civ6LocalConfig:
             kwargs["web_port"] = int(v)
         if (v := _get("BRIDGE_IPC_DIR")) is not None:
             kwargs["bridge_ipc_dir"] = v
+        if (v := _get("LOG_PATH")) is not None:
+            kwargs["civ6_log_path"] = v
         if (v := _get("LOG_LEVEL")) is not None:
             kwargs["log_level"] = v
 
@@ -286,6 +313,7 @@ class Civ6LocalConfig:
             "web_host": self.web_host,
             "web_port": self.web_port,
             "bridge_ipc_dir": self.bridge_ipc_dir,
+            "civ6_log_path": self.civ6_log_path,
             "log_level": self.log_level,
             "dry_run": self.dry_run,
         }
@@ -529,7 +557,7 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
 
     agent_cfg = AgentLoopConfig.from_env()
 
-    log_path = Path(os.getenv("LOCALAPPDATA", "")) / "Firaxis Games" / "Sid Meier's Civilization VI" / "Logs" / "Lua.log"
+    log_path = Path(config.civ6_log_path)
     bridge = LiveBridge(bridge_cfg, log_path=log_path)
 
     eval_harness = None
@@ -701,7 +729,8 @@ Modes:
 Environment variables (CIV6AZ_LOCAL_ prefix):
   CIV6AZ_LOCAL_MODE, CIV6AZ_LOCAL_BOARD_SIZE, CIV6AZ_LOCAL_NUM_SIMULATIONS,
   CIV6AZ_LOCAL_DEVICE, CIV6AZ_LOCAL_CHECKPOINT_PATH, CIV6AZ_LOCAL_WEB_HOST,
-  CIV6AZ_LOCAL_WEB_PORT, CIV6AZ_LOCAL_BRIDGE_IPC_DIR, CIV6AZ_LOCAL_LOG_LEVEL
+  CIV6AZ_LOCAL_WEB_PORT, CIV6AZ_LOCAL_BRIDGE_IPC_DIR, CIV6AZ_LOCAL_LOG_PATH,
+  CIV6AZ_LOCAL_LOG_LEVEL
 
 Examples:
   python -m alpha_zero.civ6_local --dry-run
@@ -815,6 +844,17 @@ Examples:
         metavar="DIR",
         help="IPC directory for Civ6 bridge (default: /tmp/civ6az_bridge)",
     )
+    parser.add_argument(
+        "--civ6-log-path",
+        type=str,
+        dest="civ6_log_path",
+        metavar="PATH",
+        help=(
+            "Path to Civilization VI's Lua.log, watched by the bridge in "
+            "civ6 mode (default: %%LOCALAPPDATA%%/Firaxis Games/Sid Meier's "
+            "Civilization VI/Logs/Lua.log)"
+        ),
+    )
 
     # General
     parser.add_argument(
@@ -882,6 +922,8 @@ def build_config(args: argparse.Namespace) -> Civ6LocalConfig:
         overrides["web_port"] = args.web_port
     if args.bridge_ipc_dir is not None:
         overrides["bridge_ipc_dir"] = args.bridge_ipc_dir
+    if args.civ6_log_path is not None:
+        overrides["civ6_log_path"] = args.civ6_log_path
     if args.dry_run:
         overrides["dry_run"] = True
 

@@ -77,6 +77,13 @@ class TestCiv6LocalConfigDefaults:
         cfg = Civ6LocalConfig()
         assert "AlphaZeroAI" in str(cfg.bridge_ipc_dir)
 
+    def test_civ6_log_path_default(self) -> None:
+        # Default points at the Lua.log the Civ6 mod writes to under
+        # %LOCALAPPDATA%/Firaxis Games/Sid Meier's Civilization VI/Logs.
+        cfg = Civ6LocalConfig()
+        assert cfg.civ6_log_path.endswith("Lua.log")
+        assert "Civilization VI" in cfg.civ6_log_path
+
     def test_log_level_default(self) -> None:
         assert Civ6LocalConfig().log_level == "INFO"
 
@@ -97,6 +104,7 @@ class TestCiv6LocalConfigDefaults:
             "web_host",
             "web_port",
             "bridge_ipc_dir",
+            "civ6_log_path",
             "log_level",
             "dry_run",
         }
@@ -247,6 +255,10 @@ class TestCiv6LocalConfigFromEnv:
     def test_bridge_ipc_dir_override(self) -> None:
         cfg = self._run_with_env({"CIV6AZ_LOCAL_BRIDGE_IPC_DIR": "/custom/ipc"})
         assert cfg.bridge_ipc_dir == "/custom/ipc"
+
+    def test_civ6_log_path_override(self) -> None:
+        cfg = self._run_with_env({"CIV6AZ_LOCAL_LOG_PATH": "/custom/Lua.log"})
+        assert cfg.civ6_log_path == "/custom/Lua.log"
 
     def test_log_level_override(self) -> None:
         cfg = self._run_with_env({"CIV6AZ_LOCAL_LOG_LEVEL": "DEBUG"})
@@ -609,6 +621,10 @@ class TestBuildConfigAdditional:
         cfg = self._parse(["--bridge-ipc-dir", "/custom/ipc"])
         assert cfg.bridge_ipc_dir == "/custom/ipc"
 
+    def test_civ6_log_path_override(self) -> None:
+        cfg = self._parse(["--civ6-log-path", "/custom/Lua.log"])
+        assert cfg.civ6_log_path == "/custom/Lua.log"
+
     def test_log_level_override(self) -> None:
         cfg = self._parse(["--log-level", "warning"])
         assert cfg.log_level == "WARNING"
@@ -877,6 +893,54 @@ class TestRunCiv6Bridge:
         mock_bridge.start.assert_awaited_once()
         mock_loop.run.assert_awaited_once()
         mock_bridge.stop.assert_awaited_once()
+
+    def test_run_bridge_uses_configured_log_path(self) -> None:
+        """LiveBridge must be constructed with config.civ6_log_path, not a
+        hardcoded literal, so a custom CIV6AZ_LOCAL_LOG_PATH / --civ6-log-path
+        override actually takes effect."""
+        from alpha_zero.civ6_local import run_civ6_bridge
+
+        custom_log_path = "C:/custom/Lua.log"
+        cfg = Civ6LocalConfig(mode="civ6", civ6_log_path=custom_log_path)
+
+        mock_bridge = MagicMock()
+        mock_bridge.start = AsyncMock()
+        mock_bridge.stop = AsyncMock()
+        mock_loop = MagicMock()
+        mock_loop.run = AsyncMock(return_value=0)
+        mock_network = MagicMock()
+        mock_live_bridge_cls = MagicMock(return_value=mock_bridge)
+
+        with (
+            patch("alpha_zero.civ6_local._build_network_for_bridge", return_value=mock_network),
+            patch.dict(
+                sys.modules,
+                {
+                    "alpha_zero.bridge.config": MagicMock(
+                        BridgeConfig=MagicMock(return_value=MagicMock())
+                    ),
+                    "alpha_zero.bridge.live_bridge": MagicMock(
+                        LiveBridge=mock_live_bridge_cls
+                    ),
+                    "alpha_zero.bridge.state_converter": MagicMock(
+                        StateConverter=MagicMock(return_value=MagicMock())
+                    ),
+                    "alpha_zero.bridge.action_converter": MagicMock(
+                        ActionConverter=MagicMock(return_value=MagicMock())
+                    ),
+                    "alpha_zero.bridge.agent_loop": MagicMock(
+                        AgentLoopConfig=MagicMock(),
+                        BridgeAgentLoop=MagicMock(return_value=mock_loop),
+                        GreedyNetworkPolicy=MagicMock(return_value=MagicMock()),
+                    ),
+                },
+            ),
+        ):
+            rc = run_civ6_bridge(cfg)
+
+        assert rc == 0
+        _, call_kwargs = mock_live_bridge_cls.call_args
+        assert call_kwargs["log_path"] == Path(custom_log_path)
 
     def test_run_bridge_keyboard_interrupt_returns_130(self) -> None:
         """Ctrl-C during the loop returns exit code 130 (POSIX SIGINT)."""
