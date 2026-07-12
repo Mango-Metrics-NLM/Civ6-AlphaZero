@@ -420,6 +420,32 @@ class TestPlayerData:
         assert player.civics_researched == []
         assert player.current_civic is None
 
+    def test_gold_per_turn_default(self) -> None:
+        """Test PlayerData.gold_per_turn defaults to 0.0."""
+        player = PlayerData(id=0, civilization="Rome")
+        assert player.gold_per_turn == 0.0
+
+    def test_gold_per_turn_from_dict(self) -> None:
+        """StateExporter.lua sends gold_per_turn; it must round-trip.
+
+        Regression: PlayerData had no gold_per_turn field, so the real
+        value StateExporter.lua computes (treasury:GetGoldYield()) was
+        silently dropped on the floor.
+        """
+        data = {
+            "id": 0,
+            "civilization": "Rome",
+            "gold_per_turn": 12.5,
+        }
+        player = PlayerData.from_dict(data)
+        assert player.gold_per_turn == 12.5
+
+    def test_gold_per_turn_to_dict(self) -> None:
+        """Test PlayerData.to_dict includes gold_per_turn."""
+        player = PlayerData(id=0, civilization="Rome", gold_per_turn=7.0)
+        data = player.to_dict()
+        assert data["gold_per_turn"] == 7.0
+
 
 class TestLegalAction:
     """Tests for LegalAction dataclass."""
@@ -463,6 +489,75 @@ class TestLegalAction:
         assert data["unit_id"] == 5
         assert len(data["targets"]) == 2
         assert data["targets"][0] == {"x": 1, "y": 2}
+
+    def test_item_types_default_empty(self) -> None:
+        """Test LegalAction.item_types defaults to an empty dict."""
+        action = LegalAction(action_type="produce", city_id=1, items=[1, 2])
+        assert action.item_types == {}
+
+    def test_item_types_from_dict(self) -> None:
+        """StateExporter.lua sends a plural item_types map per production item.
+
+        Regression: LegalAction only exposed a singular `item_type` field
+        that Lua never populates, so per-item production categories (e.g.
+        district vs. unit) were silently dropped, and district production
+        could never be recognized as legal.
+        """
+        data = {
+            "action_type": "produce",
+            "city_id": 1,
+            "items": ["UNIT_WARRIOR", "DISTRICT_CAMPUS"],
+            "item_types": {"UNIT_WARRIOR": "unit", "DISTRICT_CAMPUS": "district"},
+        }
+        action = LegalAction.from_dict(data)
+        assert action.item_types == {"UNIT_WARRIOR": "unit", "DISTRICT_CAMPUS": "district"}
+
+    def test_item_types_round_trip(self) -> None:
+        """Test LegalAction.item_types survives to_dict/from_dict round-trip."""
+        original = LegalAction(
+            action_type="produce",
+            city_id=1,
+            items=["UNIT_WARRIOR"],
+            item_types={"UNIT_WARRIOR": "unit"},
+        )
+        data = original.to_dict()
+        restored = LegalAction.from_dict(data)
+        assert restored.item_types == original.item_types
+
+
+class TestGameStateDataWinnerId:
+    """Tests for GameStateData.from_dict winner_id sentinel handling.
+
+    StateExporter.lua always writes winner_id = -1 as a "no winner yet"
+    sentinel (never omits or nils the key). GameStateData.from_dict must map
+    that sentinel to None so `winner_id is not None` checks downstream
+    (real_civ6_env.py) don't misinterpret "no winner" as "player -1 won".
+    """
+
+    def _base_state_dict(self, **overrides: object) -> dict:
+        data = {
+            "turn_id": 1,
+            "player_id": 0,
+            "map": {"width": 4, "height": 4, "tiles": []},
+            "units": [],
+            "cities": [],
+            "players": [],
+            "legal_actions": [],
+        }
+        data.update(overrides)
+        return data
+
+    def test_winner_id_sentinel_minus_one_maps_to_none(self) -> None:
+        state = GameStateData.from_dict(self._base_state_dict(winner_id=-1))
+        assert state.winner_id is None
+
+    def test_winner_id_absent_stays_none(self) -> None:
+        state = GameStateData.from_dict(self._base_state_dict())
+        assert state.winner_id is None
+
+    def test_winner_id_real_value_preserved(self) -> None:
+        state = GameStateData.from_dict(self._base_state_dict(winner_id=1))
+        assert state.winner_id == 1
 
 
 class TestMapData:

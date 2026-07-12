@@ -256,13 +256,10 @@ class StateConverter:
 
         self._encoder: Civ6StateEncoder | None = None
         if create_encoder:
-            self._encoder = Civ6StateEncoder(
-                EncoderConfig(
-                    board_size=board_size,
-                    spatial_channels=84,
-                    vector_dim=512,
-                )
-            )
+            # spatial_channels/vector_dim intentionally left at EncoderConfig's
+            # own defaults (84/512) rather than re-stated here, to avoid the
+            # two definitions silently drifting apart.
+            self._encoder = Civ6StateEncoder(EncoderConfig(board_size=board_size))
 
         self._map_config: MapSizeConfig | None = None
         self._scale_x: float = 1.0
@@ -538,6 +535,30 @@ class StateConverter:
             "yields": averaged_yields,
         }
 
+    def _resolve_player_index(
+        self, owner_id: int, current_player: int, state_player_id: int
+    ) -> int:
+        """Resolve an owner id to the player index expected by the encoder.
+
+        Args:
+            owner_id: Raw owner id from the Civ6 unit/city data.
+            current_player: Current player index (from _get_current_player_id).
+            state_player_id: The player id the state was captured from
+                (GameStateData.player_id).
+
+        Returns:
+            Player index: in N-player mode (N > 2), the owner_id is used
+            directly (assumes ids were already remapped). In 2-player mode,
+            preserves the backward-compatible binary mapping: the state's
+            own player maps to current_player, everyone else maps to the
+            other slot.
+        """
+        if self.num_players > 2:
+            return owner_id
+        if owner_id == state_player_id:
+            return current_player
+        return 1 if current_player == 0 else 0
+
     def _convert_units(self, state: GameStateData) -> list[dict]:
         """Convert unit data.
 
@@ -554,15 +575,7 @@ class StateConverter:
             scaled_pos = self._scale_coords(unit.x, unit.y)
             unit_type = self.unit_mapping.get_unit_type(unit.unit_type)
 
-            # Determine player index.
-            # In N-player mode, use the owner_id directly (assumes remapped).
-            # In 2-player mode, preserve backward-compatible binary mapping.
-            if self.num_players > 2:
-                player = unit.owner_id
-            elif unit.owner_id == state.player_id:
-                player = current_player
-            else:
-                player = 1 if current_player == 0 else 0
+            player = self._resolve_player_index(unit.owner_id, current_player, state.player_id)
 
             health = unit.health
             if unit.max_health > 0:
@@ -601,15 +614,7 @@ class StateConverter:
         for city in state.cities:
             scaled_pos = self._scale_coords(city.x, city.y)
 
-            # Determine player index.
-            # In N-player mode, use the owner_id directly (assumes remapped).
-            # In 2-player mode, preserve backward-compatible binary mapping.
-            if self.num_players > 2:
-                player = city.owner_id
-            elif city.owner_id == state.player_id:
-                player = current_player
-            else:
-                player = 1 if current_player == 0 else 0
+            player = self._resolve_player_index(city.owner_id, current_player, state.player_id)
 
             cities.append(
                 {
@@ -703,7 +708,7 @@ class StateConverter:
             if player.id == state.player_id:
                 return {
                     "gold": player.gold,
-                    "gold_per_turn": 0,  # Not directly available
+                    "gold_per_turn": player.gold_per_turn,
                     "science_per_turn": player.science_per_turn,
                     "culture_per_turn": player.culture_per_turn,
                     "faith": player.faith,

@@ -758,6 +758,26 @@ class ActionConverter:
 
         return (orig_x, orig_y)
 
+    def _parse_legal_actions(
+        self, legal_actions: list[LegalAction | dict]
+    ) -> list[LegalAction]:
+        """Normalize a legal_actions list to LegalAction instances.
+
+        Args:
+            legal_actions: Legal actions from Lua, as LegalAction instances
+                and/or raw dicts (both forms may be mixed in one call).
+
+        Returns:
+            List of LegalAction instances.
+        """
+        parsed_actions = []
+        for action in legal_actions:
+            if isinstance(action, dict):
+                parsed_actions.append(LegalAction.from_dict(action))
+            else:
+                parsed_actions.append(action)
+        return parsed_actions
+
     def _is_action_legal(
         self,
         decoded: HierarchicalAction,
@@ -774,13 +794,7 @@ class ActionConverter:
         Returns:
             True if action is legal.
         """
-        # Parse legal actions if they're dicts
-        parsed_actions = []
-        for action in legal_actions:
-            if isinstance(action, dict):
-                parsed_actions.append(LegalAction.from_dict(action))
-            else:
-                parsed_actions.append(action)
+        parsed_actions = self._parse_legal_actions(legal_actions)
 
         # END_TURN is always legal if in list
         if decoded.category == ActionCategory.END_TURN:
@@ -856,7 +870,21 @@ class ActionConverter:
             for action in parsed_actions:
                 if action.city_id == city_id and action.action_type == LegalActionTypes.PRODUCE:
                     item_id = decoded.target
-                    if isinstance(item_id, int) and item_id in action.items:
+                    if not isinstance(item_id, int):
+                        continue
+                    # decoded.target is always the hashed/converted int form
+                    # produced by generate_action_mask() via
+                    # _convert_item_id_to_int(). action.items holds the raw,
+                    # unhashed values Lua sent (which may be non-numeric
+                    # strings like "UNIT_WARRIOR"), so it must be hashed the
+                    # same way before comparing — comparing against the raw
+                    # strings directly always fails.
+                    legal_item_ids = {
+                        converted
+                        for raw_item in action.items
+                        if (converted := _convert_item_id_to_int(raw_item)) is not None
+                    }
+                    if item_id in legal_item_ids:
                         return True
             return False
 
@@ -882,13 +910,7 @@ class ActionConverter:
         """
         mask = np.zeros(self.action_space_size, dtype=np.float32)
 
-        # Parse legal actions
-        parsed_actions = []
-        for action in legal_actions:
-            if isinstance(action, dict):
-                parsed_actions.append(LegalAction.from_dict(action))
-            else:
-                parsed_actions.append(action)
+        parsed_actions = self._parse_legal_actions(legal_actions)
 
         # Always check for END_TURN
         for action in parsed_actions:
@@ -932,19 +954,25 @@ class ActionConverter:
                 city_idx = self._find_city_idx(action.city_id, player_cities)
 
                 if city_idx is not None:
-                    for item_id in action.items:
+                    for raw_item_id in action.items:
                         # Convert item_id to int using robust conversion
-                        converted_id = _convert_item_id_to_int(item_id)
+                        converted_id = _convert_item_id_to_int(raw_item_id)
                         if converted_id is None:
                             logger.debug(
-                                f"Skipping unconvertible item_id '{item_id}' "
+                                f"Skipping unconvertible item_id '{raw_item_id}' "
                                 f"for city {action.city_id} production"
                             )
                             continue
                         item_id = converted_id
 
-                        # Determine item type from action metadata if available
-                        item_type = action.item_type
+                        # Determine item type per-item from action.item_types
+                        # (StateExporter.lua's per-item "item_types" map,
+                        # keyed by the raw/unhashed item id), falling back
+                        # to the legacy singular item_type field for
+                        # backwards compatibility with older payloads.
+                        item_type = action.item_types.get(
+                            str(raw_item_id), action.item_type
+                        )
                         if item_type == CityItemTypes.UNIT:
                             self._try_encode_city_action(
                                 mask, city_idx, CityActionType.PRODUCE_UNIT, item_id

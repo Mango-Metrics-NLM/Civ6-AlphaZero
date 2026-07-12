@@ -895,6 +895,7 @@ class PlayerData:
     id: int
     civilization: str
     gold: float = 0.0
+    gold_per_turn: float = 0.0
     science_per_turn: float = 0.0
     culture_per_turn: float = 0.0
     faith: float = 0.0
@@ -916,6 +917,7 @@ class PlayerData:
             "id": self.id,
             "civilization": self.civilization,
             "gold": self.gold,
+            "gold_per_turn": self.gold_per_turn,
             "science_per_turn": self.science_per_turn,
             "culture_per_turn": self.culture_per_turn,
             "faith": self.faith,
@@ -956,6 +958,9 @@ class PlayerData:
             default="UNKNOWN",
         )
         gold = _validate_float(data.get("gold"), "gold", context="PlayerData", default=0.0)
+        gold_per_turn = _validate_float(
+            data.get("gold_per_turn"), "gold_per_turn", context="PlayerData", default=0.0
+        )
         science_per_turn = _validate_float(
             data.get("science_per_turn", data.get("science")),
             "science_per_turn",
@@ -981,6 +986,7 @@ class PlayerData:
             id=player_id,
             civilization=civilization,
             gold=gold,
+            gold_per_turn=gold_per_turn,
             science_per_turn=science_per_turn,
             culture_per_turn=culture_per_turn,
             faith=faith,
@@ -1004,7 +1010,13 @@ class LegalAction:
         city_id: City ID for city-related actions.
         targets: Valid target positions as (x, y) tuples.
         items: Item identifiers (int for production IDs, str for tech/civic names).
-        item_type: Type of item (e.g., "unit", "building", "tech").
+        item_type: Type of item (e.g., "unit", "building", "tech"). Legacy
+            singular field; the Lua mod does not populate this and sends
+            per-item categories in ``item_types`` instead.
+        item_types: Map of each raw item id (as sent in ``items``, stringified)
+            to its category (e.g., "unit", "building", "wonder", "district").
+            Populated by StateExporter.lua's ``collectProducibleItems`` for
+            city production actions.
     """
 
     action_type: str
@@ -1013,6 +1025,7 @@ class LegalAction:
     targets: list[tuple[int, int]] = field(default_factory=list)
     items: list[int | str] = field(default_factory=list)
     item_type: str | None = None
+    item_types: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization.
@@ -1031,6 +1044,8 @@ class LegalAction:
             result["items"] = self.items
         if self.item_type is not None:
             result["item_type"] = self.item_type
+        if self.item_types:
+            result["item_types"] = self.item_types
         return result
 
     @classmethod
@@ -1111,6 +1126,13 @@ class LegalAction:
             default="end_turn",
         )
 
+        # Per-item production categories (StateExporter.lua "item_types" key).
+        # JSON object keys are always strings, so this is keyed by the
+        # stringified raw item id (matching ``items`` before hashing).
+        item_types = _validate_dict(
+            data.get("item_types"), "item_types", context="LegalAction"
+        )
+
         return cls(
             action_type=action_type,
             unit_id=unit_id,
@@ -1118,6 +1140,7 @@ class LegalAction:
             targets=targets,
             items=items,
             item_type=data.get("item_type"),
+            item_types=item_types,
         )
 
 
@@ -1278,10 +1301,16 @@ class GameStateData:
             except ProtocolValidationError as e:
                 logger.warning(f"Skipping invalid legal action at index {i}: {e}")
 
-        # Parse winner_id if present
+        # Parse winner_id if present. StateExporter.lua always writes -1 as a
+        # "no winner yet" sentinel (it never omits or nils the key), so that
+        # sentinel must be mapped back to None here — otherwise every
+        # downstream `winner_id is not None` check (real_civ6_env.py) would
+        # treat "no winner" as "player -1 won" once is_game_over is true.
         winner_id = data.get("winner_id")
         if winner_id is not None:
             winner_id = _validate_int(winner_id, "winner_id", context="GameStateData")
+            if winner_id == -1:
+                winner_id = None
 
         return cls(
             turn_id=turn_id,

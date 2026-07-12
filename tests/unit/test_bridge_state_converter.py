@@ -124,6 +124,7 @@ def _make_player(
     id: int = 0,
     civilization: str = "ROME",
     gold: float = 100.0,
+    gold_per_turn: float = 0.0,
     science_per_turn: float = 10.0,
     culture_per_turn: float = 5.0,
     faith: float = 0.0,
@@ -135,6 +136,7 @@ def _make_player(
         id=id,
         civilization=civilization,
         gold=gold,
+        gold_per_turn=gold_per_turn,
         science_per_turn=science_per_turn,
         culture_per_turn=culture_per_turn,
         faith=faith,
@@ -551,6 +553,22 @@ class TestStateConverterConvert:
         result = converter.convert(state)
         assert result["gold"] == 0
         assert result["score"] == 0
+
+    def test_convert_gold_per_turn_uses_real_value(self, converter: StateConverter) -> None:
+        """gold_per_turn must come from PlayerData, not a hardcoded 0.
+
+        Regression: StateExporter.lua computes and sends a real
+        gold_per_turn (treasury:GetGoldYield()), but PlayerData had no such
+        field and state_converter synthesized a hardcoded 0 with a "not
+        directly available" comment even though the real figure was on the
+        wire all along.
+        """
+        state = _make_game_state(
+            player_id=0,
+            players=[_make_player(id=0, gold_per_turn=15.0)],
+        )
+        result = converter.convert(state)
+        assert result["gold_per_turn"] == 15.0
 
     def test_convert_resources_extraction(self, converter: StateConverter) -> None:
         state = _make_game_state(
