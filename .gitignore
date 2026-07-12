@@ -389,3 +389,6 @@ pytest_*.txt
 
 # KB session state (generated locally, not source of truth)
 kb/sessions/*.state.json
+
+# LLM eval-harness output (scripts/run_llm_eval.py / make eval-llm)
+eval_results/
