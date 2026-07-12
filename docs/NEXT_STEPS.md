@@ -30,11 +30,11 @@ bug.
   - The socket command path itself keeps working (commands are still
     delivered and acknowledged); it is the game's own turn-processing state
     that gets stuck.
-- **`msg_id` int32 overflow.** `LiveBridge.next_msg_id` derives the message id
-  from `int(time.time() * 1000)`, which gets truncated to int32 in the ack
-  (observed as `-2147483648`). Cosmetic today — acks still correlate correctly
-  in practice — but it is a latent correctness bug worth fixing before message
-  ids are relied upon for anything stricter.
+- ~~**`msg_id` int32 overflow.**~~ **RESOLVED.** `seed_msg_counter` /
+  `next_monotonic_msg_id` (`alpha_zero/bridge/utils.py`) now keep every id in
+  `[1, MAX_MSG_ID)` (wrapping with a log before the int32 ceiling), and
+  `LiveBridge` uses those shared helpers, so the ack no longer truncates to a
+  negative value.
 - **Sustained real-move demo still needed.** All live verification so far has
   been short (4 turns, mostly `END_TURN`). A longer run with the agent making
   and executing real (non-end-turn) actions has not yet been demonstrated, and
@@ -52,15 +52,11 @@ bug.
    turn cycle self-sustains instead of stalling in UI limbo between automated
    turns. This is the most likely fix for the turn-cycle stall described
    above.
-3. **Fix `msg_id` to a 32-bit-safe monotonic counter.** Replace the
-   `int(time.time() * 1000)`-based id in `LiveBridge.next_msg_id` with a
-   monotonically increasing counter (or an id scheme that does not overflow
-   int32) so acks are unambiguous.
-4. **Load a trained checkpoint for live play.** Point the live agent at a
+3. **Load a trained checkpoint for live play.** Point the live agent at a
    trained model checkpoint (see the GCS model store, v0-v218+) instead of an
    untrained/random-init network, so live demos reflect actual learned play
    rather than random policy output.
-5. **Optional: retire the file transport once the socket path is
+4. **Optional: retire the file transport once the socket path is
    battle-tested.** `alpha_zero/bridge/tuner_socket_bridge.py`
    (`SocketTunerBridge`) is a drop-in replacement for the file-based
    `TunerBridge`. Once step 1 has been repeated successfully across multiple
