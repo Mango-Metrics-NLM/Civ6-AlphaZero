@@ -55,7 +55,7 @@ from alpha_zero.bridge.protocol import (
     create_end_turn_command,
 )
 from alpha_zero.bridge.state_converter import GameNotStartedError, StateConverter
-from alpha_zero.bridge.utils import extract_scalar_value
+from alpha_zero.bridge.utils import extract_scalar_value, parse_bool_env
 
 logger = logging.getLogger(__name__)
 
@@ -262,7 +262,12 @@ class AgentLoopConfig:
         if (raw := source.get(ENV_PREFIX + "SNAPSHOT_LOG_DIR")) is not None:
             kwargs["snapshot_log_dir"] = Path(raw)
         if (raw := source.get(ENV_PREFIX + "MCTS_IN_THREAD")) is not None:
-            kwargs["mcts_in_thread"] = raw.lower() in ("1", "true", "yes", "on")
+            # Shares vocabulary with BridgeConfig.from_env / Civ6LocalConfig.from_env
+            # (1/true/yes -> True, 0/false/no -> False) via parse_bool_env, so
+            # CIV6_BRIDGE_*, CIV6AZ_LOCAL_*, and CIV6AZ_AGENT_* env vars all agree
+            # on truthy/falsy spelling. Falls back to False for anything else
+            # (matches this flag's prior behaviour for unrecognised strings).
+            kwargs["mcts_in_thread"] = parse_bool_env(raw, default=False)
         if (raw := source.get(ENV_PREFIX + "FALLBACK_SPATIAL_CHANNELS")) is not None:
             kwargs["fallback_spatial_channels"] = int(raw)
         if (raw := source.get(ENV_PREFIX + "FALLBACK_VECTOR_DIM")) is not None:
@@ -282,6 +287,7 @@ class _SessionStats:
     invalid_actions: int = 0
     reconnects: int = 0
     fallback_end_turns: int = 0
+    fallback_zero_observations: int = 0
     turn_latencies_ms: list[float] = field(default_factory=list)
     last_error: str | None = None
 
@@ -300,6 +306,7 @@ class _SessionStats:
             "invalid_actions": self.invalid_actions,
             "reconnects": self.reconnects,
             "fallback_end_turns": self.fallback_end_turns,
+            "fallback_zero_observations": self.fallback_zero_observations,
             "mean_turn_latency_ms": mean,
             "p95_turn_latency_ms": p95,
             "last_error": self.last_error,
@@ -691,6 +698,13 @@ class BridgeAgentLoop:
             # Shapes come from AgentLoopConfig.fallback_* (not hardcoded), and
             # board_size additionally honours the live StateConverter when
             # available so it stays correct after a reconfigure.
+            #
+            # Recorded in _stats (like every other degraded-path in this
+            # class) so a persistently failing StateConverter shows up in
+            # BridgeAgentLoop.stats() / the eval harness instead of reporting
+            # a healthy session while the agent plays blind.
+            self._stats.fallback_zero_observations += 1
+            self._stats.last_error = f"state_encoding: {exc}"
             shapes = self._resolve_fallback_shapes()
             logger.warning(
                 "State encoding failed (%s); using zero observation "

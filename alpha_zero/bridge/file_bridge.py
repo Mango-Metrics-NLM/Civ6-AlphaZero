@@ -48,6 +48,7 @@ from alpha_zero.bridge.protocol import (
     GameStateData,
     StateMessage,
 )
+from alpha_zero.bridge.utils import next_monotonic_msg_id, seed_msg_counter
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +151,7 @@ class FileBridge:
         logger.info(f"Starting file bridge with comm_dir: {self.config.comm_dir}")
         self.config.ensure_comm_dir()
         self._running = True
-        self._msg_counter = int(time.time() * 1000)
+        self._msg_counter = seed_msg_counter()
         self._write_heartbeat()
         logger.info("File bridge started")
 
@@ -170,7 +171,7 @@ class FileBridge:
         method is retained so existing callers (and ``MockFileBridge``
         subclass tests) keep working.
         """
-        self._msg_counter += 1
+        self._msg_counter = next_monotonic_msg_id(self._msg_counter)
         return self._msg_counter
 
     def next_msg_id(self) -> int:
@@ -795,7 +796,7 @@ class MockFileBridge(FileBridge):
         """
         logger.debug("Starting mock file bridge (no file I/O)")
         self._running = True
-        self._msg_counter = int(time.time() * 1000)
+        self._msg_counter = seed_msg_counter()
         # Update heartbeat stats without file I/O
         self._write_heartbeat()
         logger.debug("Mock file bridge started")

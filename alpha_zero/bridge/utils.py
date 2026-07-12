@@ -11,6 +11,7 @@ sites would benefit. This file is **not** a junk drawer.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -84,3 +85,59 @@ def extract_scalar_value(
         )
 
     return scalar
+
+
+def seed_msg_counter() -> int:
+    """Seed a monotonic message-ID counter from the current wall-clock time.
+
+    Shared by :class:`alpha_zero.bridge.file_bridge.FileBridge` and
+    :class:`alpha_zero.bridge.tuner_bridge.TunerBridge` so their message
+    IDs are seeded identically (milliseconds since the epoch), keeping IDs
+    unlikely to collide across process restarts.
+
+    Returns:
+        The current time in integer milliseconds.
+    """
+    return int(time.time() * 1000)
+
+
+def next_monotonic_msg_id(current: int) -> int:
+    """Advance a monotonic message-ID counter by one.
+
+    Callers own the counter's storage (e.g. ``self._msg_counter``) and pass
+    its current value in; this keeps the counter a plain, directly
+    inspectable/settable attribute on the owning bridge (several tests do
+    exactly that) while sharing the increment algorithm itself.
+
+    Args:
+        current: The counter's current value.
+
+    Returns:
+        ``current + 1`` - the new counter value and next message ID.
+    """
+    return current + 1
+
+
+def parse_bool_env(value: str | None, default: bool) -> bool:
+    """Parse a boolean-flavoured environment variable value.
+
+    Recognises the vocabulary shared across the bridge config factories:
+    ``"1"``/``"true"``/``"yes"`` (case-insensitive) are truthy,
+    ``"0"``/``"false"``/``"no"`` are falsy, and anything else - including
+    ``None`` or an unrecognised string - returns ``default``.
+
+    Args:
+        value: Raw environment variable value, or ``None`` if unset.
+        default: Value to return when ``value`` is unset or unrecognised.
+
+    Returns:
+        The parsed boolean.
+    """
+    if value is None:
+        return default
+    normalized = value.lower()
+    if normalized in ("1", "true", "yes"):
+        return True
+    if normalized in ("0", "false", "no"):
+        return False
+    return default

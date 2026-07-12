@@ -75,6 +75,17 @@ class TestAgentLoopConfig:
         cfg = AgentLoopConfig.from_env(env={})
         assert cfg == AgentLoopConfig()
 
+    @pytest.mark.parametrize("raw", ["1", "true", "yes"])
+    def test_mcts_in_thread_truthy_vocabulary(self, raw: str) -> None:
+        """Shares vocabulary with BridgeConfig/Civ6LocalConfig bool parsing."""
+        cfg = AgentLoopConfig.from_env(env={f"{ENV_PREFIX}MCTS_IN_THREAD": raw})
+        assert cfg.mcts_in_thread is True
+
+    @pytest.mark.parametrize("raw", ["0", "false", "no"])
+    def test_mcts_in_thread_falsy_vocabulary(self, raw: str) -> None:
+        cfg = AgentLoopConfig.from_env(env={f"{ENV_PREFIX}MCTS_IN_THREAD": raw})
+        assert cfg.mcts_in_thread is False
+
     def test_from_env_overrides_all_fields(self, tmp_path) -> None:
         env = {
             f"{ENV_PREFIX}MAX_TURNS": "42",
@@ -685,6 +696,53 @@ class TestBridgeAgentLoopErrorPaths:
         # dtype invariant - float32 always.
         assert obs["spatial"].dtype == np.dtype("float32")
         assert obs["vector"].dtype == np.dtype("float32")
+
+    @pytest.mark.asyncio
+    async def test_build_observation_failure_recorded_in_stats(
+        self,
+        mock_bridge: MagicMock,
+        fake_state: MagicMock,
+        fake_state_converter: MagicMock,
+        fake_policy: AsyncMock,
+        fake_action_converter: MagicMock,
+    ) -> None:
+        """A StateConverter re-encode failure must not leave the eval harness blind.
+
+        Regression for the hardening finding: previously the zero-observation
+        fallback in ``_build_observation`` only logged a warning - it never
+        touched ``_stats``, so ``BridgeAgentLoop.stats()`` reported a healthy
+        session even though the agent played the whole turn on an all-zero
+        observation.
+        """
+        from alpha_zero.bridge.agent_loop import BridgeAgentLoop
+
+        fake_state_converter.convert.return_value = {
+            "current_player": 0,
+            "units": [],
+            "cities": [],
+            "_legal_actions": [],
+            "_map_size": (4, 4),
+            # No "_obs" key => loop must go through convert_and_encode.
+        }
+        fake_state_converter.convert_and_encode.side_effect = RuntimeError("encode boom")
+        fake_state_converter.board_size = 4
+
+        mock_bridge.wait_for_state.return_value = fake_state
+
+        loop = BridgeAgentLoop(
+            bridge=mock_bridge,
+            policy=fake_policy,
+            state_converter=fake_state_converter,
+            action_converter=fake_action_converter,
+            config=AgentLoopConfig(max_turns=1, per_turn_timeout_s=0.5),
+        )
+
+        await loop.run()
+
+        stats = loop.stats()
+        assert stats["fallback_zero_observations"] == 1
+        assert stats["last_error"] is not None
+        assert "encode boom" in stats["last_error"]
 
     @pytest.mark.asyncio
     async def test_loop_uses_public_next_msg_id(

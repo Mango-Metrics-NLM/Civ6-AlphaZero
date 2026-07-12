@@ -2,18 +2,27 @@
 
 Covers the shape-normalising ``extract_scalar_value`` helper that is shared
 between :mod:`alpha_zero.bridge.agent_loop` and
-:mod:`alpha_zero.inference.inference_engine` (PR #82 invariant).
+:mod:`alpha_zero.inference.inference_engine` (PR #82 invariant), plus the
+monotonic message-ID and boolean-env-var helpers shared across
+:mod:`alpha_zero.bridge.file_bridge`, :mod:`alpha_zero.bridge.tuner_bridge`,
+and :mod:`alpha_zero.bridge.config`.
 """
 
 from __future__ import annotations
 
 import logging
+import time
 
 import numpy as np
 import pytest
 import torch
 
-from alpha_zero.bridge.utils import extract_scalar_value
+from alpha_zero.bridge.utils import (
+    extract_scalar_value,
+    next_monotonic_msg_id,
+    parse_bool_env,
+    seed_msg_counter,
+)
 
 
 class TestExtractScalarValue:
@@ -89,3 +98,54 @@ class TestExtractScalarValue:
         with caplog.at_level(logging.DEBUG, logger="alpha_zero.bridge.utils"):
             extract_scalar_value(value, log_per_player=True)
         assert not any("per-player value tensor" in r.message for r in caplog.records)
+
+
+class TestSeedMsgCounter:
+    """``seed_msg_counter`` backs the ``FileBridge``/``TunerBridge`` seed."""
+
+    def test_seed_is_wall_clock_milliseconds(self) -> None:
+        before = int(time.time() * 1000)
+        seeded = seed_msg_counter()
+        after = int(time.time() * 1000)
+        assert before <= seeded <= after
+
+    def test_seed_returns_int(self) -> None:
+        assert isinstance(seed_msg_counter(), int)
+
+
+class TestNextMonotonicMsgId:
+    """``next_monotonic_msg_id`` backs ``next_msg_id``/``_next_msg_id``."""
+
+    def test_increments_by_one(self) -> None:
+        assert next_monotonic_msg_id(100) == 101
+
+    def test_repeated_calls_are_monotonic(self) -> None:
+        counter = 0
+        ids = []
+        for _ in range(5):
+            counter = next_monotonic_msg_id(counter)
+            ids.append(counter)
+        assert ids == [1, 2, 3, 4, 5]
+
+
+class TestParseBoolEnv:
+    """``parse_bool_env`` backs ``BridgeConfig``/``AgentLoopConfig`` bool parsing."""
+
+    @pytest.mark.parametrize("raw", ["1", "true", "True", "TRUE", "yes", "Yes"])
+    def test_truthy_values(self, raw: str) -> None:
+        assert parse_bool_env(raw, default=False) is True
+
+    @pytest.mark.parametrize("raw", ["0", "false", "False", "FALSE", "no", "No"])
+    def test_falsy_values(self, raw: str) -> None:
+        assert parse_bool_env(raw, default=True) is False
+
+    def test_none_returns_default(self) -> None:
+        assert parse_bool_env(None, default=True) is True
+        assert parse_bool_env(None, default=False) is False
+
+    def test_unrecognised_value_returns_default(self) -> None:
+        assert parse_bool_env("garbage", default=True) is True
+        assert parse_bool_env("garbage", default=False) is False
+
+    def test_empty_string_returns_default(self) -> None:
+        assert parse_bool_env("", default=True) is True

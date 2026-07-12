@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from alpha_zero.bridge.utils import parse_bool_env
+
 __all__ = ["BridgeConfig", "MapSizeConfig", "GameConstants", "MAP_SIZES", "get_map_config"]
 
 @dataclass
@@ -148,12 +150,10 @@ class BridgeConfig:
         """
 
         def get_bool(key: str, default: bool) -> bool:
-            val = os.environ.get(key, "").lower()
-            if val in ("1", "true", "yes"):
-                return True
-            if val in ("0", "false", "no"):
-                return False
-            return default
+            # Delegates to the shared bridge-wide bool vocabulary so
+            # CIV6_BRIDGE_*, CIV6AZ_LOCAL_*, and CIV6AZ_AGENT_* env vars all
+            # accept the same 1/true/yes/0/false/no spelling.
+            return parse_bool_env(os.environ.get(key), default)
 
         kwargs: dict[str, Any] = {}
 

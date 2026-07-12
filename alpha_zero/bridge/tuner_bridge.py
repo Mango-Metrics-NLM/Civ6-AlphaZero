@@ -38,6 +38,7 @@ from alpha_zero.bridge.protocol import (
     create_end_turn_command,
     create_unit_move_command,
 )
+from alpha_zero.bridge.utils import next_monotonic_msg_id, seed_msg_counter
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ class TunerBridge:
 
     def __init__(self, config: BridgeConfig) -> None:
         self._config = config
-        self._msg_counter = int(time.time() * 1000)
+        self._msg_counter = seed_msg_counter()
         self._running = False
         self._commands_sent = 0
 
@@ -107,7 +108,7 @@ class TunerBridge:
 
     def next_msg_id(self) -> int:
         """Generate a monotonically increasing message ID."""
-        self._msg_counter += 1
+        self._msg_counter = next_monotonic_msg_id(self._msg_counter)
         return self._msg_counter
 
     async def send_command(self, command: CommandMessage) -> bool:
