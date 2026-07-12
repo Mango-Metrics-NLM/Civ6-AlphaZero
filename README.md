@@ -36,11 +36,14 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Sprint 3 | Convergence, Batch Self-Play, N-Player Foundation | ✅ Complete |
 | Sprint 4 | Type Safety Expansion (envs + evaluation) | ✅ Complete |
 | Sprint 5 | Type Safety — Breadth-First Mypy Stabilization | ✅ Complete |
+| v1.8.0 | Headless FireTuner Socket Bridge — Live Civ6 Gameplay | ✅ Complete |
+
+**Live gameplay**: end-to-end command delivery into a running Civilization VI instance is now proven headless via the FireTuner socket transport (`alpha_zero.bridge.tuner_socket_bridge`) — no GUI relay panel required. Verified live: multiple autonomous turns executed and acknowledged by the game over the socket. After the encoder/network channel fix the agent runs its policy network over the demo action space (rather than falling back to end-turn); by default that network uses synthetic weights — supply a trained model with `--checkpoint` for skilled play.
 
 **Codebase Statistics:**
 
 - ~63,000 lines of core implementation
-- 5,200+ tests, all passing (canonical Windows deselect list)
+- 11,800+ tests passing on Linux CI (canonical Windows-local deselect list for SIGALRM-incompatible cases)
 - Docker v1.2.0 on Artifact Registry (`us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v1.2.0`)
 - 269 model versions in GCS (v0-v268), production run v1.2.0 completed
 - GumbelMCTS default: 13× faster than Civ6MCTS — 50-iter production run active (4 workers × 50 games/iter)
@@ -64,7 +67,7 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - **Comprehensive Game Mechanics**: 11 modules covering diplomacy, trade, espionage, religion, and more
 - **W&B Integration**: Full experiment tracking with Weights & Biases
 - **MicroCiv Environment**: Gymnasium-compliant simulation of Civ6 core mechanics (N-player: 2-6)
-- **Real Civ6 Bridge**: File-based IPC bridge for playing actual Civilization VI
+- **Real Civ6 Bridge**: Two transports for playing actual Civilization VI — a file-based IPC relay (`commands.json` + FireTuner GUI panel) and a headless FireTuner socket transport (`tuner_socket_bridge.py`) that speaks the Firaxis FireTuner TCP protocol directly to `127.0.0.1:4318`, no GUI required. Command delivery is proven live end-to-end (bridge modules ~95%+ covered, 25 new socket-transport tests)
 - **Lua Mod Integration**: Complete Civ6 mod for game state export and action execution
 - **RAG Integration**: Retrieval-Augmented Generation for knowledge-enhanced decision making
 - **GCP Vertex AI Pipeline**: Distributed cloud training with selfplay, training, and evaluation phases
@@ -943,6 +946,20 @@ python -m alpha_zero.orchestrator --config configs/orchestrator.yaml
 | `fast` | 10 | 5 | 6x6 | 10 | Quick testing |
 | `balanced` | 100 | 20 | 8x8 | 50 | Experiments |
 | `production` | 1000 | 100 | 16x16 | 200 | Full training |
+
+### Live Civ6 gameplay
+
+Play an actual, running Civilization VI instance headlessly via the FireTuner socket transport — no GUI relay panel needed. The game must be running locally with the AlphaZero Lua mod installed (see `scripts/install_civ6_mod.py`) and FireTuner's listener active on `127.0.0.1:4318`.
+
+```bash
+# Headless socket transport, with a kick-start end-turn to un-stall an idle game
+export CIV6_BRIDGE_TRANSPORT=socket
+export CIV6_BRIDGE_KICK_START=1
+
+python -m alpha_zero.civ6_local --mode civ6
+```
+
+`CIV6_BRIDGE_TRANSPORT` selects `file` (default, GUI relay panel) or `socket` (headless, direct `ExposedMembers.AlphaZeroCommand` delivery). `CIV6_BRIDGE_TUNER_HOST` / `CIV6_BRIDGE_TUNER_PORT` override the FireTuner endpoint if it's not on the default `127.0.0.1:4318`.
 
 ### Cloud Training on Vertex AI
 

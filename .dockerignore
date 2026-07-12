@@ -107,3 +107,11 @@ training_logs_full.txt
 latest_run_log.txt
 debug_selfplay.log
 test_error.log
+
+# Local scratch / session artifacts (not needed in build context)
+pytest_*.txt
+.superpowers/
+
+# Civ6 mod source and superpowers docs (not needed in container image)
+mod/
+docs/superpowers/

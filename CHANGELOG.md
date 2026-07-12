@@ -5,6 +5,59 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] — 2026-07-12 — Live Civilization VI Bridge (Headless Socket Transport)
+
+> **Version note:** Bumped from `1.6.0` to `1.8.0`. This release delivers the headline feature of the `v1.8.x` branch lineage: live, fully headless Civilization VI gameplay end-to-end. Previously the file-based bridge (`commands.json`) plus the FireTuner GUI relay panel never actually delivered a command to the game — the Civ6 Lua sandbox has no `io` library, so the mod can only receive commands via the in-game `ExposedMembers` global that an external tuner client must set. State always flowed out (via `Lua.log`), but commands never reached the mod. This release fixes that.
+
+### Added — Headless FireTuner Socket Transport
+
+- **`alpha_zero/bridge/tuner_socket_bridge.py`** (NEW module) — `FireTunerClient` speaks the reverse-engineered Firaxis FireTuner TCP protocol (the game listens on `127.0.0.1:4318`). It discovers the `GameCore_Tuner` Lua state and executes `ExposedMembers.AlphaZeroCommand = <json>` directly against it — no GUI, no `.ltp` panel, no `commands.json` hop.
+- **`SocketTunerBridge`** — an async drop-in replacement for `TunerBridge` implementing the same `start`/`stop`/`send_command`/`stats` surface, so callers don't need to branch on transport.
+- **Transport selection**: `BridgeConfig.command_transport` (`"file"` default | `"socket"`), plus env vars `CIV6_BRIDGE_TRANSPORT`, `CIV6_BRIDGE_TUNER_HOST`, `CIV6_BRIDGE_TUNER_PORT`.
+- **`CIV6_BRIDGE_KICK_START`** — forces one `END_TURN` to un-stall an idle game at bridge startup.
+- **Tests**: `tests/unit/test_tuner_socket_bridge.py` — 25 new unit tests against an in-process mock tuner TCP server.
+
+### Fixed — Encoder/Network Channel Bug
+
+- **`agent_loop._build_observation`** — a batch-slice bug collapsed the 84-channel observation to 1 channel, and the bridge network defaulted to 13 channels, so the live agent silently fell back to `END_TURN` every turn regardless of policy output. Fixed so the agent runs its actual trained policy (`policy_logits` over the demo action space).
+- **Test**: `tests/unit/test_civ6_bridge_encoding.py`.
+
+### Fixed — Bridge Hardening (debt burn-down, ~80 new coverage tests)
+
+- **City-production legality hashing**: fixed a bug where production actions could never validate (hash mismatch prevented all city-production commands from being marked legal).
+- **Protocol fields wired through**: `item_types`, `gold_per_turn`, and a `winner_id` sentinel now flow end-to-end through the bridge protocol.
+- **`LiveBridge`** now honors `poll_interval_ms` instead of a hardcoded poll cadence.
+- **`log_tailer`**: ack `msg_id` validation added, so stale/duplicate acks are no longer mistaken for the current command's response.
+- **Configurable Civ6 log path**: `--civ6-log-path` CLI flag / `CIV6AZ_LOCAL_LOG_PATH` env var for locating `Lua.log`.
+- **`alpha_zero/bridge/utils.py`** — new shared `parse_bool_env` and msg-id helpers, deduplicated across bridge modules.
+- **Coverage**: bridge modules now at roughly 95-100% line coverage.
+
+### Added — OneDrive-Safe Mod Installer
+
+- **`scripts/install_civ6_mod.py`** — falls back to a SHA256-verified in-place overwrite when `shutil.rmtree` hits a OneDrive file lock (`WinError 5`), instead of failing the install outright.
+- **Test**: `tests/scripts/test_install_civ6_mod.py`.
+
+### Verified Live (2026-07-12)
+
+- 4 autonomous turns delivered and acknowledged over the socket: `'Command received via ExposedMembers'` -> `'Executing: END_TURN'` -> `AZ_ACK`.
+- State decodes correctly every turn — zero regressions of the earlier "missing width" bug.
+
+### Known Limitations
+
+- **Turn-cycle stall**: after a few automated end-turns, the turn cycle can stall between turns (local player `TURN_ACTIVE=false`, no popup). This is a Civ6 UI-automation limbo, not a bridge defect. Needs either a fresh game to retry (now that real moves are being made) or mod-side end-turn robustness.
+- **`LiveBridge.next_msg_id` overflow**: uses `int(time.time()*1000)`, which gets truncated to int32 in the ack (`-2147483648`). Cosmetic, but worth fixing.
+- **Sustained real-move demo**: still needs a fresh single-player game — the socket transport path is proven and the agent now runs its actual policy, but a long, uninterrupted real-move session hasn't been demonstrated yet.
+
+### Changed
+
+- **Version**: `1.6.0` -> `1.8.0` (live bridge is the headline feature; matches the `v1.8.x` branch lineage).
+
+### Test Suite
+
+- Full canonical suite: ~11,800 passing on Linux CI.
+- `ruff` clean on the bridge surface; the new `tuner_socket_bridge.py` module is mypy-clean (repo has pre-existing mypy debt in unrelated files).
+- Windows-only local deselect list: 5 files (SIGALRM unavailable) plus `test_agent_tools` (pre-existing symbol-scan hang) — all pass on Linux CI.
+
 ## [1.6.0] — 2026-05-21 — MLflow Monitoring & Evaluation Analytics
 
 > **Version note:** Bumped from `1.4.0` to `1.6.0` after merging this branch with `origin/main`, which had independently released `1.5.0` (Sprint 5 type safety) on top of an earlier `1.4.0` (Sprint 4). The MLflow monitoring layer is the largest behavioural change of this release line, so it owns the minor bump.
