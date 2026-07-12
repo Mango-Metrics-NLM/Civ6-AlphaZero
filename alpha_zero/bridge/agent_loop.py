@@ -674,21 +674,20 @@ class BridgeAgentLoop:
             return obs
 
         # Real path: re-encode through Civ6StateEncoder via the converter.
-        # convert_and_encode returns (spatial, vector) torch tensors keyed
-        # by the encoder's spatial_channels - we strip the leading batch
-        # dim that convert_and_encode adds.
+        # convert_and_encode returns *unbatched* (spatial, vector) torch
+        # tensors - Civ6StateEncoder.encode()/StateConverter.convert_and_encode()
+        # never add a leading batch dim, so there is nothing to strip here.
+        # (Policy engines such as GreedyNetworkPolicy/Civ6MctsPolicy add the
+        # batch dim themselves via unsqueeze(0) before calling the network.)
         try:
             spatial_t, vector_t = self.state_converter.convert_and_encode(
                 # `_legal_actions` is the only field convert_and_encode needs
                 # beyond what's in converted_state; reuse the dict we built.
                 converted_state.get("_raw_state", converted_state)
             )
-            # Strip the leading batch dim with explicit indexing rather than
-            # ``squeeze(0)``: ``squeeze`` would also collapse a size-1 channel
-            # dimension (C == 1), silently corrupting the observation shape.
             return {
-                "spatial": spatial_t[0].cpu().numpy().astype(np.float32),
-                "vector": vector_t[0].cpu().numpy().astype(np.float32),
+                "spatial": spatial_t.cpu().numpy().astype(np.float32),
+                "vector": vector_t.cpu().numpy().astype(np.float32),
                 "action_mask": legal_mask,
             }
         except Exception as exc:

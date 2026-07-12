@@ -628,14 +628,27 @@ def _build_network_for_bridge(config: Civ6LocalConfig, action_space_size: int = 
     import torch
 
     from alpha_zero.core.civ6_network import MicroCivNetwork
+    from alpha_zero.envs.civ6_encoder import EncoderConfig
 
     device = torch.device(config.device if torch.cuda.is_available() else "cpu")
     # MicroCivNetwork picks the right value head (scalar vs N-player) based
     # on num_players; the bridge currently targets 2-player real Civ6.
+    #
+    # StateConverter (used by BridgeAgentLoop) encodes states through the
+    # full Civ6StateEncoder, which emits EncoderConfig's spatial_channels=84
+    # / vector_dim=512 tensors - NOT MicroCivNetwork's own 13-channel/64-dim
+    # "MicroCiv default". Passing these explicitly here (rather than
+    # changing MicroCivNetwork's defaults, which are still used elsewhere
+    # e.g. the microciv/web training modes) keeps the bridge network's
+    # input dims matched to what StateConverter.convert_and_encode actually
+    # produces.
+    encoder_defaults = EncoderConfig()
     network = MicroCivNetwork(
         board_size=config.board_size,
         num_players=config.num_players,
         action_space_size=action_space_size,
+        spatial_channels=encoder_defaults.spatial_channels,
+        vector_dim=encoder_defaults.vector_dim,
     ).to(device)
 
     if config.checkpoint_path:

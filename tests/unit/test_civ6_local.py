@@ -1075,14 +1075,22 @@ class TestRunCiv6Bridge:
         network = _build_network_for_bridge(cfg)
         # If load succeeded the network has parameters bound to non-default
         # values; we don't assert specific values (random init), only that
-        # the call did not raise and the network is usable.
+        # the call did not raise and the network is usable. Note: the smoke
+        # champion fixture predates the encoder/network channel-match fix
+        # (bridge network now uses spatial_channels=84/vector_dim=512 to
+        # match Civ6StateEncoder - see _build_network_for_bridge), so this
+        # 13-channel checkpoint no longer shape-matches and is expected to
+        # fall back to synthetic weights (already covered by
+        # test_run_bridge_falls_back_to_synthetic_weights); the point of
+        # this test is that the call does not raise and produces a usable
+        # network.
         assert network is not None
         # Smoke: forward pass works.
         import numpy as np
         import torch
 
-        spatial = torch.from_numpy(np.zeros((1, 13, 8, 8), dtype=np.float32))
-        vector = torch.from_numpy(np.zeros((1, 64), dtype=np.float32))
+        spatial = torch.from_numpy(np.zeros((1, 84, 8, 8), dtype=np.float32))
+        vector = torch.from_numpy(np.zeros((1, 512), dtype=np.float32))
         policy, value = network(spatial, vector)
         assert policy.shape[0] == 1
         assert value.shape[0] == 1
