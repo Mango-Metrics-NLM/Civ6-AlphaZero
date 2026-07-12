@@ -1040,8 +1040,12 @@ class TestRunCiv6Bridge:
                     "alpha_zero.bridge.config": MagicMock(
                         BridgeConfig=MagicMock(return_value=MagicMock())
                     ),
-                    "alpha_zero.bridge.file_bridge": MagicMock(
-                        FileBridge=MagicMock(return_value=mock_bridge)
+                    # run_civ6_bridge imports LiveBridge (not FileBridge) since
+                    # the W1.2 migration; mocking file_bridge left the real
+                    # LiveBridge/LogTailer running, which only "passed" on dev
+                    # machines that happen to have a real Lua.log and hung on CI.
+                    "alpha_zero.bridge.live_bridge": MagicMock(
+                        LiveBridge=MagicMock(return_value=mock_bridge)
                     ),
                     "alpha_zero.bridge.state_converter": MagicMock(
                         StateConverter=MagicMock(return_value=MagicMock())
