@@ -16,6 +16,14 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+#: Maximum value a message ID may take. The Civ6 Lua mod / game engine
+#: round-trips the ``msg_id`` through a signed 32-bit integer in the ack
+#: payload, so IDs at or above 2**31 come back negative and never match the
+#: sent command (observed live as ``msg_id=-2147483648``). Keeping every
+#: message ID strictly below this bound guarantees the ack round-trips as a
+#: positive int32. IDs stay in ``[1, MAX_MSG_ID)``.
+MAX_MSG_ID: int = 2_147_483_647  # 2**31 - 1 (signed int32 max)
+
 
 def extract_scalar_value(
     value: Any | None,
@@ -90,15 +98,21 @@ def extract_scalar_value(
 def seed_msg_counter() -> int:
     """Seed a monotonic message-ID counter from the current wall-clock time.
 
-    Shared by :class:`alpha_zero.bridge.file_bridge.FileBridge` and
-    :class:`alpha_zero.bridge.tuner_bridge.TunerBridge` so their message
-    IDs are seeded identically (milliseconds since the epoch), keeping IDs
-    unlikely to collide across process restarts.
+    Shared by :class:`alpha_zero.bridge.file_bridge.FileBridge`,
+    :class:`alpha_zero.bridge.tuner_bridge.TunerBridge`, and
+    :class:`alpha_zero.bridge.live_bridge.LiveBridge` so their message IDs
+    are seeded identically, keeping IDs unlikely to collide across process
+    restarts.
+
+    The millisecond timestamp is reduced modulo :data:`MAX_MSG_ID` so the
+    seed always fits in a signed 32-bit integer; otherwise the raw value
+    (~1.7e12) overflows when the game truncates the ack ``msg_id`` to int32
+    and the ack can never be matched (see :data:`MAX_MSG_ID`).
 
     Returns:
-        The current time in integer milliseconds.
+        A positive integer in ``[0, MAX_MSG_ID)`` derived from wall-clock ms.
     """
-    return int(time.time() * 1000)
+    return int(time.time() * 1000) % MAX_MSG_ID
 
 
 def next_monotonic_msg_id(current: int) -> int:
@@ -109,13 +123,19 @@ def next_monotonic_msg_id(current: int) -> int:
     inspectable/settable attribute on the owning bridge (several tests do
     exactly that) while sharing the increment algorithm itself.
 
+    Wraps back to ``1`` before reaching :data:`MAX_MSG_ID` so the ID always
+    round-trips as a positive signed 32-bit integer through the game's ack
+    payload. In practice a session never emits enough commands to wrap; the
+    guard just makes overflow structurally impossible.
+
     Args:
         current: The counter's current value.
 
     Returns:
-        ``current + 1`` - the new counter value and next message ID.
+        The next message ID in ``[1, MAX_MSG_ID)``.
     """
-    return current + 1
+    nxt = current + 1
+    return nxt if nxt < MAX_MSG_ID else 1
 
 
 def parse_bool_env(value: str | None, default: bool) -> bool:

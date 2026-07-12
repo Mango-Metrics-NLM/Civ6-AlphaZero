@@ -101,13 +101,21 @@ class BridgeMCTSEnv(EnvironmentProtocol):
                 yields=dict(t_dict.get("yields", _DEFAULT_TILE_YIELDS)),
             )
 
+        # Highest valid player index for the env we just created. Civ6 assigns
+        # very high ids to barbarians / city-states (e.g. 63); in N-player mode
+        # StateConverter passes those owner ids through verbatim, so an unclamped
+        # player would index past MicroCivEnv's per-player arrays and raise
+        # IndexError mid-MCTS. Clamp to the last real slot (crash-safe; a no-op
+        # in the 2-player demo where players are already 0/1).
+        max_player_index = num_players - 1
+
         # Units
         self.env.units = []
         for u_dict in converted_state.get("units", []):
             self.env.units.append(
                 Unit(
                     id=u_dict.get("_id", 0),
-                    player=u_dict.get("player", 0),
+                    player=self._clamp_player(u_dict.get("player", 0), max_player_index),
                     unit_type=u_dict.get("type", _DEFAULT_UNIT_TYPE),
                     position=u_dict.get("position", (0, 0)),
                     health=u_dict.get("health", _DEFAULT_UNIT_HEALTH),
@@ -122,7 +130,7 @@ class BridgeMCTSEnv(EnvironmentProtocol):
             self.env.cities.append(
                 City(
                     id=c_dict.get("_id", 0),
-                    player=c_dict.get("player", 0),
+                    player=self._clamp_player(c_dict.get("player", 0), max_player_index),
                     name=c_dict.get("name", _DEFAULT_CITY_NAME),
                     position=c_dict.get("position", (0, 0)),
                     population=c_dict.get("population", _DEFAULT_CITY_POPULATION),
@@ -139,6 +147,34 @@ class BridgeMCTSEnv(EnvironmentProtocol):
             self.env._next_city_id = max(c.id for c in self.env.cities) + 1
 
         self.env.done = False
+
+    @staticmethod
+    def _clamp_player(player: int, max_player_index: int) -> int:
+        """Clamp a player index into ``[0, max_player_index]``.
+
+        Civ6 assigns barbarians / city-states player ids far above the game's
+        civ count (e.g. ``63``); passing those through would index past
+        MicroCivEnv's per-player arrays and raise ``IndexError`` mid-MCTS.
+        Clamping keeps rollouts crash-safe. Emits a debug log when it fires so
+        out-of-range ids are visible without spamming normal 2-player play.
+
+        Args:
+            player: Raw player index from the converted state.
+            max_player_index: Highest valid index (``num_players - 1``).
+
+        Returns:
+            ``player`` clamped into ``[0, max_player_index]``.
+        """
+        if player > max_player_index:
+            logger.debug(
+                "Clamping out-of-range player %d -> %d for MCTS env",
+                player,
+                max_player_index,
+            )
+            return max_player_index
+        if player < 0:
+            return 0
+        return player
 
     # ------------------------------------------------------------------
     # Alternate constructor

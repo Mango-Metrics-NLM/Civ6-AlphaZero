@@ -129,12 +129,14 @@ class TunerBridge:
         try:
             json_str = command.to_json()
 
-            # Atomic write: write to temp, then rename
+            # Atomic write: write to temp, then atomically replace the target
+            # in a single step. Path.replace() (os.replace) overwrites an
+            # existing destination atomically on both Windows and POSIX, so
+            # there is never a window where commands.json is absent (which the
+            # FireTuner relay panel could otherwise poll and miss) and no
+            # command is lost if the swap fails.
             tmp_path.write_text(json_str, encoding="utf-8")
-            # On Windows, need to remove target first if it exists
-            if commands_path.exists():
-                commands_path.unlink()
-            tmp_path.rename(commands_path)
+            tmp_path.replace(commands_path)
 
             self._commands_sent += 1
             logger.info(

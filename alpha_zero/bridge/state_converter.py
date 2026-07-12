@@ -537,29 +537,31 @@ class StateConverter:
             "yields": averaged_yields,
         }
 
-    def _resolve_player_index(
-        self, owner_id: int, current_player: int, state_player_id: int
-    ) -> int:
+    def _resolve_player_index(self, owner_id: int, state_player_id: int) -> int:
         """Resolve an owner id to the player index expected by the encoder.
+
+        The encoder is **ego-centric**: the AI (the player the state was
+        captured from) must always occupy index ``0`` and the opponent index
+        ``1`` in 2-player mode, matching the self-play training convention
+        where the acting player is player 0. Mapping the ego player to its
+        raw ``state.player_id`` instead (e.g. ``1`` when the AI is Player 2 in
+        the game setup) would swap the encoder's own/opponent channels and
+        make the network see its units as the enemy's — so the mapping is
+        deliberately decoupled from ``player_id``.
 
         Args:
             owner_id: Raw owner id from the Civ6 unit/city data.
-            current_player: Current player index (from _get_current_player_id).
             state_player_id: The player id the state was captured from
-                (GameStateData.player_id).
+                (``GameStateData.player_id`` = the ego/AI player).
 
         Returns:
-            Player index: in N-player mode (N > 2), the owner_id is used
-            directly (assumes ids were already remapped). In 2-player mode,
-            preserves the backward-compatible binary mapping: the state's
-            own player maps to current_player, everyone else maps to the
-            other slot.
+            Player index: in N-player mode (N > 2), ``owner_id`` is used
+            directly (ids are assumed already remapped). In 2-player mode,
+            the ego player maps to ``0`` and every other owner to ``1``.
         """
         if self.num_players > 2:
             return owner_id
-        if owner_id == state_player_id:
-            return current_player
-        return 1 if current_player == 0 else 0
+        return 0 if owner_id == state_player_id else 1
 
     def _convert_units(self, state: GameStateData) -> list[dict]:
         """Convert unit data.
@@ -571,13 +573,12 @@ class StateConverter:
             List of unit dictionaries.
         """
         units = []
-        current_player = self._get_current_player_id(state)
 
         for unit in state.units:
             scaled_pos = self._scale_coords(unit.x, unit.y)
             unit_type = self.unit_mapping.get_unit_type(unit.unit_type)
 
-            player = self._resolve_player_index(unit.owner_id, current_player, state.player_id)
+            player = self._resolve_player_index(unit.owner_id, state.player_id)
 
             health = unit.health
             if unit.max_health > 0:
@@ -611,12 +612,11 @@ class StateConverter:
             List of city dictionaries.
         """
         cities = []
-        current_player = self._get_current_player_id(state)
 
         for city in state.cities:
             scaled_pos = self._scale_coords(city.x, city.y)
 
-            player = self._resolve_player_index(city.owner_id, current_player, state.player_id)
+            player = self._resolve_player_index(city.owner_id, state.player_id)
 
             cities.append(
                 {

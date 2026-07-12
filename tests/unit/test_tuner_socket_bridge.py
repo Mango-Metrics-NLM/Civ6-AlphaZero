@@ -201,6 +201,25 @@ class TestParseStates:
         assert FireTunerClient._parse_states(b"") == {}
 
 
+class TestFramePayload:
+    """_frame_payload normalises reply frames so ERR: detection is robust."""
+
+    def test_strips_output_frame_prefix(self) -> None:
+        assert FireTunerClient._frame_payload("O\x00GameCore_Tuner: SET_OK") == "SET_OK"
+
+    def test_bare_error_frame_passes_through(self) -> None:
+        assert FireTunerClient._frame_payload("ERR:Runtime Error: x") == "ERR:Runtime Error: x"
+
+    def test_error_wrapped_in_output_frame_is_extracted(self) -> None:
+        # The reviewer's case: a Lua error surfaced as an output frame must
+        # still expose the ERR: prefix after the context is stripped.
+        assert FireTunerClient._frame_payload("O\x00GameCore_Tuner: ERR: boom").startswith("ERR:")
+
+    def test_normal_output_containing_err_word_is_not_flagged(self) -> None:
+        # Must not false-positive: 'ERROR_CODE' is not an 'ERR:' error marker.
+        assert not FireTunerClient._frame_payload("O\x00ctx: ERROR_CODE").startswith("ERR:")
+
+
 # --- handshake + run_lua against the mock server -----------------------------
 
 

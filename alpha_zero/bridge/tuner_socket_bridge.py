@@ -196,6 +196,29 @@ class FireTunerClient:
         length, tag = struct.unpack(HEADER_FMT, self._recv_exact(HEADER_SIZE))
         return tag, self._recv_exact(length)
 
+    @staticmethod
+    def _frame_payload(text: str) -> str:
+        """Extract the human-readable payload from a decoded reply frame.
+
+        Output frames are shaped ``O\\x00<ctx>: <text>`` (the internal NUL
+        survives the trailing-NUL strip); error and other frames arrive as
+        plain text (e.g. ``ERR:Runtime Error: ...``). This normalises both to
+        just ``<text>`` so error detection (an ``ERR:`` prefix) works whether
+        the game emits a bare ``ERR:`` frame or wraps it in an output frame,
+        without false-positiving on normal output that merely contains "ERR".
+
+        Args:
+            text: The decoded frame body (trailing NULs already stripped).
+
+        Returns:
+            The payload message with any ``O\\x00<ctx>: `` prefix removed.
+        """
+        if not text.startswith("O\x00"):
+            return text
+        after_nul = text.split("\x00", 1)[1] if "\x00" in text else text[2:]
+        ctx_split = after_nul.split(": ", 1)
+        return ctx_split[1] if len(ctx_split) > 1 else after_nul
+
     def _drain(self, quiet: float = 0.4) -> list[tuple[int, bytes]]:
         """Read and return any pending frames until a short quiet timeout."""
         assert self._sock is not None
@@ -311,9 +334,10 @@ class FireTunerClient:
                 if tag == TAG_COMMAND and body == b"":
                     break  # command-complete sentinel
                 text = body.decode("utf-8", "replace")
-                if text.startswith("ERR:") or "] ERR:" in text:
-                    raise FireTunerError(f"Lua error in {context or idx}: {text}")
-                outputs.append(text)
+                payload = self._frame_payload(text)
+                if payload.startswith("ERR:"):
+                    raise FireTunerError(f"Lua error in {context or idx}: {payload}")
+                outputs.append(payload)
         finally:
             self._sock.settimeout(prev)
         return "\n".join(outputs)

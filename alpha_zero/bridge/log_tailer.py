@@ -219,12 +219,19 @@ class LogTailer:
             self._file.seek(0)
             self._file_pos = 0
 
-        # Read new lines
-        for line in self._file:
-            line = line.rstrip("\n\r")
-            if line:
+        # Read new lines with readline() in a loop rather than
+        # ``for line in self._file``: the file-object iterator keeps an
+        # internal read-ahead buffer and caches EOF, so once it first hits the
+        # end of the log it can stop yielding lines appended on later polls —
+        # silently stalling the live tail. readline() re-checks EOF each call.
+        while True:
+            line = self._file.readline()
+            if not line:
+                break
+            stripped = line.rstrip("\n\r")
+            if stripped:
                 self._stats.lines_processed += 1
-                self._parse_line(line)
+                self._parse_line(stripped)
 
         self._file_pos = self._file.tell()
 

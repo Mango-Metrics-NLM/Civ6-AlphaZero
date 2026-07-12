@@ -23,7 +23,6 @@ Usage:
 from __future__ import annotations
 
 import logging
-import time
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +32,7 @@ from alpha_zero.bridge.log_tailer import (
 )
 from alpha_zero.bridge.protocol import CommandMessage, GameStateData, StateMessage
 from alpha_zero.bridge.tuner_bridge import TunerBridge
+from alpha_zero.bridge.utils import next_monotonic_msg_id, seed_msg_counter
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,10 @@ class LiveBridge:
         self._tailer = LogTailer(log_path, poll_interval=resolved_poll_interval)
         self._tuner = self._build_tuner(config)
         self._running = False
-        self._msg_counter = int(time.time() * 1000)
+        # Shared int32-safe seed (see alpha_zero.bridge.utils.MAX_MSG_ID);
+        # matches FileBridge/TunerBridge and avoids the ack-overflow bug where
+        # a >2**31 msg_id came back negative and never matched.
+        self._msg_counter = seed_msg_counter()
 
     @staticmethod
     def _build_tuner(config: BridgeConfig) -> Any:
@@ -185,8 +188,8 @@ class LiveBridge:
     # --- Command sending (delegates to TunerBridge) ---
 
     def next_msg_id(self) -> int:
-        """Generate a monotonically increasing message ID."""
-        self._msg_counter += 1
+        """Generate a monotonically increasing, int32-safe message ID."""
+        self._msg_counter = next_monotonic_msg_id(self._msg_counter)
         return self._msg_counter
 
     async def send_command(self, command: CommandMessage) -> bool:

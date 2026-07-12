@@ -764,6 +764,34 @@ class TestConvertUnits:
         units = converter._convert_units(state)
         assert units[0]["player"] == 1
 
+    def test_ego_mapping_when_ai_is_player_two(self, converter: StateConverter) -> None:
+        """Ego-centric regression: when the AI is Player 2 (state.player_id=1),
+        its own units must still map to index 0 and the opponent to 1.
+
+        Previously the ego player was mapped to ``state.player_id`` (=1),
+        swapping the encoder's own/opponent channels and breaking the network.
+        """
+        state = _make_game_state(
+            player_id=1,  # the AI is Player 2 in the game setup
+            map_width=16,
+            map_height=16,
+            units=[
+                _make_unit(id=1, owner_id=1, x=3, y=3),  # ego (AI) unit
+                _make_unit(id=2, owner_id=0, x=5, y=5),  # opponent unit
+            ],
+            cities=[
+                _make_city(id=10, owner_id=1, x=4, y=4),  # ego city
+                _make_city(id=11, owner_id=0, x=6, y=6),  # opponent city
+            ],
+        )
+        converter._setup_scaling(16, 16)
+        units = {u["_id"]: u["player"] for u in converter._convert_units(state)}
+        cities = {c["_id"]: c["player"] for c in converter._convert_cities(state)}
+        assert units[1] == 0  # ego always index 0
+        assert units[2] == 1  # opponent index 1
+        assert cities[10] == 0
+        assert cities[11] == 1
+
     def test_unit_health_normalized(self, converter: StateConverter) -> None:
         state = _make_game_state(
             map_width=16,

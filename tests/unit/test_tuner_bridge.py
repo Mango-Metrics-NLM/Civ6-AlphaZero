@@ -47,11 +47,17 @@ class TestTunerBridgeConstruction:
         assert not bridge.is_running
         assert bridge.commands_sent == 0
 
-    def test_msg_counter_based_on_time(self, bridge_config: BridgeConfig) -> None:
-        before = int(time.time() * 1000)
+    def test_msg_counter_seeded_int32_safe(self, bridge_config: BridgeConfig) -> None:
+        # Seeded from wall-clock ms reduced modulo MAX_MSG_ID so the ack
+        # msg_id round-trips as a positive signed int32 (not the raw ~1.7e12).
+        from alpha_zero.bridge.utils import MAX_MSG_ID
+
+        before = int(time.time() * 1000) % MAX_MSG_ID
         b = TunerBridge(bridge_config)
-        after = int(time.time() * 1000)
-        assert before <= b._msg_counter <= after
+        after = int(time.time() * 1000) % MAX_MSG_ID
+        assert 0 <= b._msg_counter < MAX_MSG_ID
+        if before <= after:
+            assert before <= b._msg_counter <= after
 
     def test_stats_initial(self, bridge: TunerBridge) -> None:
         stats = bridge.stats

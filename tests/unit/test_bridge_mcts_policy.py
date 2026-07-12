@@ -82,6 +82,34 @@ def test_bridge_mcts_env_init(mock_converted_state: dict) -> None:
     assert env.env._next_city_id == 201
 
 
+def test_high_player_ids_are_clamped(mock_converted_state: dict) -> None:
+    """Barbarians / city-states with player ids >= num_players must be clamped
+    to num_players-1 so MicroCivEnv per-player indexing can't IndexError."""
+    state = dict(mock_converted_state)
+    state["units"] = [
+        {"_id": 1, "player": 0, "type": "warrior", "position": (0, 0), "health": 100},
+        {"_id": 2, "player": 63, "type": "warrior", "position": (2, 2), "health": 100},  # barbarian
+    ]
+    state["cities"] = [
+        {"_id": 10, "player": 1, "name": "A", "position": (1, 1), "population": 1},
+        {"_id": 11, "player": 99, "name": "CityState", "position": (3, 3), "population": 1},
+    ]
+    env = BridgeMCTSEnv(state)  # must not raise
+    max_idx = env.env.num_players - 1
+    assert all(0 <= u.player <= max_idx for u in env.env.units)
+    assert all(0 <= c.player <= max_idx for c in env.env.cities)
+    # The clamped entities land on the last valid slot.
+    assert {u.id: u.player for u in env.env.units}[2] == max_idx
+    assert {c.id: c.player for c in env.env.cities}[11] == max_idx
+
+
+def test_clamp_player_helper() -> None:
+    """The clamp helper is pure and bounds into [0, max]."""
+    assert BridgeMCTSEnv._clamp_player(3, 7) == 3
+    assert BridgeMCTSEnv._clamp_player(63, 7) == 7
+    assert BridgeMCTSEnv._clamp_player(-1, 7) == 0
+
+
 def test_bridge_mcts_env_clone(mock_converted_state: dict) -> None:
     """Test that clone creates a deep copy of the environment."""
     env = BridgeMCTSEnv(mock_converted_state)

@@ -18,6 +18,7 @@ import pytest
 import torch
 
 from alpha_zero.bridge.utils import (
+    MAX_MSG_ID,
     extract_scalar_value,
     next_monotonic_msg_id,
     parse_bool_env,
@@ -103,11 +104,20 @@ class TestExtractScalarValue:
 class TestSeedMsgCounter:
     """``seed_msg_counter`` backs the ``FileBridge``/``TunerBridge`` seed."""
 
-    def test_seed_is_wall_clock_milliseconds(self) -> None:
-        before = int(time.time() * 1000)
+    def test_seed_is_wall_clock_milliseconds_mod_int32(self) -> None:
+        # The seed is the millisecond timestamp reduced modulo MAX_MSG_ID so
+        # it fits in a signed int32 (the game truncates the ack msg_id to
+        # int32). It equals int(time.time()*1000) % MAX_MSG_ID.
+        before = int(time.time() * 1000) % MAX_MSG_ID
         seeded = seed_msg_counter()
-        after = int(time.time() * 1000)
-        assert before <= seeded <= after
+        after = int(time.time() * 1000) % MAX_MSG_ID
+        # No modulo wrap occurred within this fast window unless before>after.
+        if before <= after:
+            assert before <= seeded <= after
+
+    def test_seed_is_int32_safe(self) -> None:
+        for _ in range(50):
+            assert 0 <= seed_msg_counter() < MAX_MSG_ID
 
     def test_seed_returns_int(self) -> None:
         assert isinstance(seed_msg_counter(), int)
@@ -126,6 +136,12 @@ class TestNextMonotonicMsgId:
             counter = next_monotonic_msg_id(counter)
             ids.append(counter)
         assert ids == [1, 2, 3, 4, 5]
+
+    def test_wraps_to_one_before_int32_overflow(self) -> None:
+        # At the ceiling the counter must wrap to 1, never emit MAX_MSG_ID or
+        # above (which would truncate to a negative int32 in the game's ack).
+        assert next_monotonic_msg_id(MAX_MSG_ID - 2) == MAX_MSG_ID - 1
+        assert next_monotonic_msg_id(MAX_MSG_ID - 1) == 1
 
 
 class TestParseBoolEnv:
