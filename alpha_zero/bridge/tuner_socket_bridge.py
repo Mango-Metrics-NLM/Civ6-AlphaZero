@@ -63,6 +63,16 @@ TAG_COMMAND = 3  # execute code / command-complete sentinel
 TAG_QUERY = 4  # APP: / LSQ: handshake queries
 TAG_OUTPUT = -1  # server → client print() output frames
 
+#: Prefix (with an internal NUL) marking a ``tag=-1`` print() output frame:
+#: ``O\x00<ctx>: <text>``. The trailing NUL is stripped before parsing, but
+#: this leading one survives, so it distinguishes wrapped output from a bare
+#: error frame.
+OUTPUT_FRAME_PREFIX = "O\x00"
+
+#: Marker beginning a Lua execution-error message (bare ``ERR:...`` frame or
+#: wrapped as ``O\x00<ctx>: ERR:...``). Detected after prefix normalisation.
+ERROR_PREFIX = "ERR:"
+
 #: Default FireTuner endpoint (the game is the listener).
 DEFAULT_TUNER_HOST = "127.0.0.1"
 DEFAULT_TUNER_PORT = 4318
@@ -213,7 +223,7 @@ class FireTunerClient:
         Returns:
             The payload message with any ``O\\x00<ctx>: `` prefix removed.
         """
-        if not text.startswith("O\x00"):
+        if not text.startswith(OUTPUT_FRAME_PREFIX):
             return text
         after_nul = text.split("\x00", 1)[1] if "\x00" in text else text[2:]
         ctx_split = after_nul.split(": ", 1)
@@ -335,7 +345,7 @@ class FireTunerClient:
                     break  # command-complete sentinel
                 text = body.decode("utf-8", "replace")
                 payload = self._frame_payload(text)
-                if payload.startswith("ERR:"):
+                if payload.startswith(ERROR_PREFIX):
                     raise FireTunerError(f"Lua error in {context or idx}: {payload}")
                 outputs.append(payload)
         finally:

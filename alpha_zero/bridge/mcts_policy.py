@@ -15,6 +15,7 @@ import numpy as np
 from alpha_zero.core.civ6_mcts import GumbelMCTS, GumbelMCTSConfig
 from alpha_zero.core.protocols import EnvironmentProtocol
 from alpha_zero.envs.microciv import City, MicroCivEnv, Tile, Unit
+from alpha_zero.utils.constants import GAME
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +28,9 @@ logger = logging.getLogger(__name__)
 _DEFAULT_MAX_TURNS: int = 500
 
 #: Maximum number of Civ6 players this module will recognise in a single game.
-#: This must not exceed MicroCivEnv's hard limit (currently 8).
-_MAX_CIV_PLAYERS: int = 8
+#: Sourced from the authoritative game constant (also MicroCivEnv's hard limit)
+#: rather than duplicating the literal here.
+_MAX_CIV_PLAYERS: int = GAME.MAX_PLAYERS
 
 #: Minimum number of players (Civ6 always has at least 2, even in singleplayer).
 _MIN_CIV_PLAYERS: int = 2

@@ -105,19 +105,24 @@ class TestSeedMsgCounter:
     """``seed_msg_counter`` backs the ``FileBridge``/``TunerBridge`` seed."""
 
     def test_seed_is_wall_clock_milliseconds_mod_int32(self) -> None:
-        # The seed is the millisecond timestamp reduced modulo MAX_MSG_ID so
+        # The seed is the millisecond timestamp mapped into [1, MAX_MSG_ID) so
         # it fits in a signed int32 (the game truncates the ack msg_id to
-        # int32). It equals int(time.time()*1000) % MAX_MSG_ID.
-        before = int(time.time() * 1000) % MAX_MSG_ID
+        # int32). It equals int(time.time()*1000) % (MAX_MSG_ID - 1) + 1.
+        def expected() -> int:
+            return int(time.time() * 1000) % (MAX_MSG_ID - 1) + 1
+
+        before = expected()
         seeded = seed_msg_counter()
-        after = int(time.time() * 1000) % MAX_MSG_ID
+        after = expected()
         # No modulo wrap occurred within this fast window unless before>after.
         if before <= after:
             assert before <= seeded <= after
 
     def test_seed_is_int32_safe(self) -> None:
         for _ in range(50):
-            assert 0 <= seed_msg_counter() < MAX_MSG_ID
+            # Strictly positive and below the int32 ceiling (never 0, which is
+            # a missing-id sentinel on the Lua side).
+            assert 1 <= seed_msg_counter() < MAX_MSG_ID
 
     def test_seed_returns_int(self) -> None:
         assert isinstance(seed_msg_counter(), int)

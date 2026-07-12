@@ -110,9 +110,10 @@ def seed_msg_counter() -> int:
     and the ack can never be matched (see :data:`MAX_MSG_ID`).
 
     Returns:
-        A positive integer in ``[0, MAX_MSG_ID)`` derived from wall-clock ms.
+        A positive integer in ``[1, MAX_MSG_ID)`` derived from wall-clock ms.
+        Never 0, which some Lua call sites use as a missing-id sentinel.
     """
-    return int(time.time() * 1000) % MAX_MSG_ID
+    return int(time.time() * 1000) % (MAX_MSG_ID - 1) + 1
 
 
 def next_monotonic_msg_id(current: int) -> int:
@@ -135,7 +136,10 @@ def next_monotonic_msg_id(current: int) -> int:
         The next message ID in ``[1, MAX_MSG_ID)``.
     """
     nxt = current + 1
-    return nxt if nxt < MAX_MSG_ID else 1
+    if nxt >= MAX_MSG_ID:
+        logger.warning("msg_id counter reached %d; wrapping back to 1", MAX_MSG_ID)
+        return 1
+    return nxt
 
 
 def parse_bool_env(value: str | None, default: bool) -> bool:
