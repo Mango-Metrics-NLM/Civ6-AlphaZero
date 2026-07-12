@@ -72,10 +72,15 @@ class TestCiv6LocalConfigDefaults:
         assert Civ6LocalConfig().web_port == 8080
 
     def test_bridge_ipc_dir_default(self) -> None:
-        # The default is now typically in the Documents folder under
-        # "My Games/Sid Meier's Civilization VI/AlphaZeroAI"
+        # The default comes from ``_get_default_bridge_ipc_dir()``, which
+        # resolves to the Civ6 comm dir on Windows (``.../AlphaZeroAI``) and a
+        # POSIX fallback (``~/.civ6_alphazero``) elsewhere. Assert it matches
+        # that helper rather than hardcoding a platform-specific marker (the
+        # old ``"AlphaZeroAI" in ...`` check failed on Linux CI).
+        from alpha_zero.civ6_local import _get_default_bridge_ipc_dir
+
         cfg = Civ6LocalConfig()
-        assert "AlphaZeroAI" in str(cfg.bridge_ipc_dir)
+        assert cfg.bridge_ipc_dir == str(_get_default_bridge_ipc_dir())
 
     def test_civ6_log_path_default(self) -> None:
         # Default points at the Lua.log the Civ6 mod writes to under
