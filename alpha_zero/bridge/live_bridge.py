@@ -69,9 +69,7 @@ class LiveBridge:
     ) -> None:
         self._config = config
         resolved_poll_interval = (
-            poll_interval
-            if poll_interval is not None
-            else config.poll_interval_ms / 1000.0
+            poll_interval if poll_interval is not None else config.poll_interval_ms / 1000.0
         )
         self._tailer = LogTailer(log_path, poll_interval=resolved_poll_interval)
         self._tuner = self._build_tuner(config)
@@ -131,7 +129,8 @@ class LiveBridge:
         if kick is None:
             logger.debug("kick_turn requested but transport has no kick support")
             return False
-        return await kick()
+        result: bool = await kick()
+        return result
 
     # --- State reading (delegates to LogTailer) ---
 
@@ -201,9 +200,7 @@ class LiveBridge:
         """
         return await self._tuner.send_command(command)
 
-    async def wait_for_ack(
-        self, msg_id: int, timeout: float | None = None
-    ) -> dict[str, Any]:
+    async def wait_for_ack(self, msg_id: int, timeout: float | None = None) -> dict[str, Any]:
         """Wait for command acknowledgment.
 
         Args:

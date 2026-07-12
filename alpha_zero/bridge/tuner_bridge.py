@@ -184,9 +184,7 @@ class TunerBridge:
         await self.send_command(cmd)
         return msg_id
 
-    async def send_city_produce(
-        self, city_id: int, item_id: int, item_type: str = "unit"
-    ) -> int:
+    async def send_city_produce(self, city_id: int, item_id: int, item_type: str = "unit") -> int:
         """Send a city_produce command.
 
         Args:

@@ -209,11 +209,13 @@ class UnitMapping:
 
 class StateConverterError(Exception):
     """Base exception for StateConverter errors."""
+
     pass
 
 
 class GameNotStartedError(StateConverterError):
     """Raised when the game state indicates the map is empty (e.g. main menu)."""
+
     pass
 
 

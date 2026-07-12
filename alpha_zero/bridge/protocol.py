@@ -1129,9 +1129,7 @@ class LegalAction:
         # Per-item production categories (StateExporter.lua "item_types" key).
         # JSON object keys are always strings, so this is keyed by the
         # stringified raw item id (matching ``items`` before hashing).
-        item_types = _validate_dict(
-            data.get("item_types"), "item_types", context="LegalAction"
-        )
+        item_types = _validate_dict(data.get("item_types"), "item_types", context="LegalAction")
 
         return cls(
             action_type=action_type,

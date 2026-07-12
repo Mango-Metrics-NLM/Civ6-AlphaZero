@@ -136,9 +136,7 @@ class FireTunerClient:
             FireTunerError: If the connection fails.
         """
         try:
-            self._sock = socket.create_connection(
-                (self.host, self.port), timeout=self.timeout
-            )
+            self._sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
         except OSError as exc:
             raise FireTunerError(
                 f"Cannot connect to FireTuner at {self.host}:{self.port}: {exc}. "
@@ -236,9 +234,7 @@ class FireTunerClient:
             Mapping of Lua state name → explicit integer index. The index is
             the number the game pairs with each name, NOT the list position.
         """
-        parts = [
-            p for p in raw.rstrip(b"\x00").decode("utf-8", "replace").split("\x00") if p
-        ]
+        parts = [p for p in raw.rstrip(b"\x00").decode("utf-8", "replace").split("\x00") if p]
         states: dict[str, int] = {}
         for i in range(0, len(parts) - 1, 2):
             num, name = parts[i], parts[i + 1]
@@ -272,9 +268,7 @@ class FireTunerClient:
 
     # --- execution -----------------------------------------------------------
 
-    def run_lua(
-        self, code: str, context: str | None = None, timeout: float = 5.0
-    ) -> str:
+    def run_lua(self, code: str, context: str | None = None, timeout: float = 5.0) -> str:
         """Execute Lua ``code`` in ``context`` and return collected output.
 
         Reads reply frames until the ``tag=3`` completion frame (or timeout).
@@ -362,9 +356,7 @@ class SocketTunerBridge:
         resolved_host = host or getattr(config, "tuner_host", None) or DEFAULT_TUNER_HOST
         resolved_port = port or getattr(config, "tuner_port", None) or DEFAULT_TUNER_PORT
         timeout = max(1.0, config.command_timeout_ms / 1000.0)
-        self._client = FireTunerClient(
-            host=resolved_host, port=resolved_port, timeout=timeout
-        )
+        self._client = FireTunerClient(host=resolved_host, port=resolved_port, timeout=timeout)
         self._running = False
         self._commands_sent = 0
         self._lock = asyncio.Lock()
@@ -383,9 +375,7 @@ class SocketTunerBridge:
         """Close the FireTuner socket."""
         self._running = False
         await asyncio.to_thread(self._client.close)
-        logger.info(
-            "SocketTunerBridge stopped. Commands sent: %d", self._commands_sent
-        )
+        logger.info("SocketTunerBridge stopped. Commands sent: %d", self._commands_sent)
 
     async def __aenter__(self) -> SocketTunerBridge:
         await self.start()

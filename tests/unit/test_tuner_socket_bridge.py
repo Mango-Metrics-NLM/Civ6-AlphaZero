@@ -45,12 +45,18 @@ _LSQ_PAIRS = _frame_raw(
     TAG_QUERY,
     b"\x00".join(
         [
-            b"0", b"Main State",
-            b"1", b"DebugHotloadCache",
-            b"2", b"GameCore_Tuner",
-            b"3", b"WorldInput",
-            b"96", b"InGame",
-            b"97", b"AdvisorPopup",
+            b"0",
+            b"Main State",
+            b"1",
+            b"DebugHotloadCache",
+            b"2",
+            b"GameCore_Tuner",
+            b"3",
+            b"WorldInput",
+            b"96",
+            b"InGame",
+            b"97",
+            b"AdvisorPopup",
         ]
     )
     + b"\x00",
@@ -146,9 +152,7 @@ def error_server():
 
 
 def _client_for(srv: MockTunerServer) -> FireTunerClient:
-    return FireTunerClient(
-        host=srv.host, port=srv.port, timeout=2.0, handshake_quiet=0.15
-    )
+    return FireTunerClient(host=srv.host, port=srv.port, timeout=2.0, handshake_quiet=0.15)
 
 
 # --- lua_longstring ----------------------------------------------------------
@@ -161,7 +165,7 @@ class TestLuaLongstring:
 
     def test_escalates_level_on_collision(self) -> None:
         # Text containing ]] must force a higher = level so it can't close early.
-        out = lua_longstring('x]]y')
+        out = lua_longstring("x]]y")
         assert out.startswith("[=[")
         assert out.endswith("]=]")
         assert "x]]y" in out

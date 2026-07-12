@@ -110,12 +110,8 @@ class Civ6LocalConfig:
     use_eval_harness: bool = False
     web_host: str = "127.0.0.1"
     web_port: int = 8080
-    bridge_ipc_dir: str = field(
-        default_factory=lambda: str(_get_default_bridge_ipc_dir())
-    )
-    civ6_log_path: str = field(
-        default_factory=lambda: str(_get_default_civ6_log_path())
-    )
+    bridge_ipc_dir: str = field(default_factory=lambda: str(_get_default_bridge_ipc_dir()))
+    civ6_log_path: str = field(default_factory=lambda: str(_get_default_civ6_log_path()))
     log_level: str = "INFO"
     dry_run: bool = False
 
@@ -555,10 +551,13 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
     )
 
     # Build the policy network. When a checkpoint is supplied, load it;
-    network = _build_network_for_bridge(config, action_space_size=action_converter.action_space_size)
+    network = _build_network_for_bridge(
+        config, action_space_size=action_converter.action_space_size
+    )
     if config.use_mcts:
         from alpha_zero.bridge.mcts_policy import Civ6MctsPolicy
         from alpha_zero.core.civ6_mcts import GumbelMCTSConfig
+
         gumbel_cfg = GumbelMCTSConfig(
             num_simulations=config.num_simulations,
             num_sampled_actions=min(config.num_simulations, 16),
@@ -577,6 +576,7 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
     eval_harness = None
     if config.use_eval_harness:
         from alpha_zero.bridge.eval_harness import BridgeEvalHarness
+
         eval_harness = BridgeEvalHarness()
 
     agent_loop = BridgeAgentLoop(
@@ -595,7 +595,10 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
     # CIV6_BRIDGE_KICK_START forces one end-turn (socket transport only) so a
     # new turn-begin export is emitted for the agent to catch.
     kick_start = os.getenv("CIV6_BRIDGE_KICK_START", "").lower() in (
-        "1", "true", "yes", "on",
+        "1",
+        "true",
+        "yes",
+        "on",
     )
 
     async def _session() -> int:

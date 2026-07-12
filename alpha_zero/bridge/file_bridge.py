@@ -397,7 +397,9 @@ class FileBridge:
                 last_heartbeat_check = now
                 if not self.check_heartbeat():
                     raise ConnectionLostError()
-            elif not ever_connected and elapsed > 5.0 and now - last_wait_log >= wait_log_interval_s:
+            elif (
+                not ever_connected and elapsed > 5.0 and now - last_wait_log >= wait_log_interval_s
+            ):
                 last_wait_log = now
                 logger.info(
                     "Waiting for Civ6 mod to connect... (%.0fs elapsed). "
@@ -419,7 +421,6 @@ class FileBridge:
 
             # Wait before next poll
             await asyncio.sleep(poll_interval)
-
 
     def get_last_state(self) -> GameStateData | None:
         """Get the last received state.

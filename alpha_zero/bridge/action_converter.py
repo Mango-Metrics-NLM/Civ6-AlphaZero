@@ -192,6 +192,7 @@ class InvalidActionError(Exception):
 
 class NoLegalActionsError(InvalidActionError):
     """Raised when there are no legal actions available to choose from."""
+
     pass
 
 
@@ -758,9 +759,7 @@ class ActionConverter:
 
         return (orig_x, orig_y)
 
-    def _parse_legal_actions(
-        self, legal_actions: list[LegalAction | dict]
-    ) -> list[LegalAction]:
+    def _parse_legal_actions(self, legal_actions: list[LegalAction | dict]) -> list[LegalAction]:
         """Normalize a legal_actions list to LegalAction instances.
 
         Args:
@@ -970,9 +969,7 @@ class ActionConverter:
                         # keyed by the raw/unhashed item id), falling back
                         # to the legacy singular item_type field for
                         # backwards compatibility with older payloads.
-                        item_type = action.item_types.get(
-                            str(raw_item_id), action.item_type
-                        )
+                        item_type = action.item_types.get(str(raw_item_id), action.item_type)
                         if item_type == CityItemTypes.UNIT:
                             self._try_encode_city_action(
                                 mask, city_idx, CityActionType.PRODUCE_UNIT, item_id

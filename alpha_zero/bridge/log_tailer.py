@@ -69,9 +69,7 @@ class AckTimeoutError(LogTailerError):
     def __init__(self, msg_id: int, timeout: float) -> None:
         self.msg_id = msg_id
         self.timeout = timeout
-        super().__init__(
-            f"Timed out waiting for ack (msg_id={msg_id}) after {timeout:.1f}s"
-        )
+        super().__init__(f"Timed out waiting for ack (msg_id={msg_id}) after {timeout:.1f}s")
 
 
 # --- Stats ---
@@ -156,9 +154,7 @@ class LogTailer:
         wait_start = time.monotonic()
         while not self._log_path.exists():
             if time.monotonic() - wait_start > 30.0:
-                raise LogTailerError(
-                    f"Log file not found after 30s: {self._log_path}"
-                )
+                raise LogTailerError(f"Log file not found after 30s: {self._log_path}")
             logger.debug("Waiting for log file: %s", self._log_path)
             await asyncio.sleep(1.0)
 
@@ -169,9 +165,7 @@ class LogTailer:
         self._running = True
 
         # Start poll loop
-        self._poll_task = asyncio.create_task(
-            self._poll_loop(), name="log_tailer_poll"
-        )
+        self._poll_task = asyncio.create_task(self._poll_loop(), name="log_tailer_poll")
         logger.info("LogTailer started on %s (pos=%d)", self._log_path, self._file_pos)
 
     async def stop(self) -> None:
@@ -344,9 +338,7 @@ class LogTailer:
         # wait_for_ack(), silently starving the in-flight command until it
         # times out. Log and drop instead of queuing an unmatchable ack.
         if not isinstance(msg_id, int) or isinstance(msg_id, bool):
-            logger.warning(
-                "Dropping ack with invalid msg_id=%r: %s", msg_id, data
-            )
+            logger.warning("Dropping ack with invalid msg_id=%r: %s", msg_id, data)
             return
 
         self._ack_queue[msg_id] = data
@@ -398,9 +390,7 @@ class LogTailer:
             raise StateTimeoutError(timeout)
         return self._latest_state
 
-    async def wait_for_ack(
-        self, msg_id: int, timeout: float = 10.0
-    ) -> dict[str, Any]:
+    async def wait_for_ack(self, msg_id: int, timeout: float = 10.0) -> dict[str, Any]:
         """Wait for an acknowledgment with a specific message ID.
 
         Args:

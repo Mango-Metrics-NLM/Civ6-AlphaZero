@@ -87,9 +87,7 @@ class BridgeMCTSEnv(EnvironmentProtocol):
             players.add(c.get("player", 0))
         num_players = max(_MIN_CIV_PLAYERS, min(_MAX_CIV_PLAYERS, max(players) + 1))
 
-        self.env = MicroCivEnv(
-            board_size=board_size, max_turns=max_turns, num_players=num_players
-        )
+        self.env = MicroCivEnv(board_size=board_size, max_turns=max_turns, num_players=num_players)
 
         self.env.turn = converted_state.get("turn", 0)
         self.env.current_player = converted_state.get("current_player", 0)
@@ -257,9 +255,7 @@ class Civ6MctsPolicy:
             ValueError: If *converted_state* is ``None``.
         """
         if converted_state is None:
-            raise ValueError(
-                "Civ6MctsPolicy requires converted_state to seed the simulation env."
-            )
+            raise ValueError("Civ6MctsPolicy requires converted_state to seed the simulation env.")
 
         env = BridgeMCTSEnv.from_bridge_state(converted_state, max_turns=self.max_turns)
 

@@ -531,7 +531,11 @@ class BridgeAgentLoop:
             )
         except NoLegalActionsError as exc:
             self._stats.invalid_actions += 1
-            logger.warning("No legal actions available for turn %d (%s); safely ending turn", state.turn_id, exc)
+            logger.warning(
+                "No legal actions available for turn %d (%s); safely ending turn",
+                state.turn_id,
+                exc,
+            )
             await self._send_safe_end_turn()
             return
         except Exception as exc:

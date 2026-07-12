@@ -22,6 +22,7 @@ from alpha_zero.bridge.utils import parse_bool_env
 
 __all__ = ["MAP_SIZES", "BridgeConfig", "GameConstants", "MapSizeConfig", "get_map_config"]
 
+
 @dataclass
 class GameConstants:
     """Constants used for game state conversion and action mapping."""
