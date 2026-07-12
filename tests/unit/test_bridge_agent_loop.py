@@ -883,3 +883,143 @@ class TestBridgeAgentLoopBranchCoverage:
         assert code == BridgeAgentLoop.EXIT_OK
         assert loop.stats()["ack_failures"] == 1
         assert "send" in (loop.stats()["last_error"] or "")
+
+    @pytest.mark.asyncio
+    async def test_eval_harness_lifecycle_hooks_are_called(
+        self,
+        mock_bridge: MagicMock,
+        fake_state: MagicMock,
+        make_loop,
+    ) -> None:
+        """An attached eval harness must receive on_start/on_turn_end/on_stop
+        so external evaluation tooling can track a live session."""
+        mock_bridge.wait_for_state.return_value = fake_state
+        harness = MagicMock(name="EvalHarness")
+
+        loop = BridgeAgentLoop(
+            bridge=mock_bridge,
+            policy=None,
+            state_converter=None,
+            action_converter=None,
+            config=AgentLoopConfig(max_turns=1, per_turn_timeout_s=0.5),
+            eval_harness=harness,
+        )
+        # Wire fakes directly since make_loop() doesn't expose eval_harness.
+        loop.policy = AsyncMock(name="PolicyEngine")
+        loop.policy.select_action.return_value = (0, {"value_estimate": 0.0})
+        loop.state_converter = MagicMock(name="StateConverter")
+        loop.state_converter.convert.return_value = {
+            "current_player": 0,
+            "units": [],
+            "cities": [],
+            "_legal_actions": [],
+            "_map_size": (8, 8),
+            "_obs": {
+                "spatial": np.zeros((13, 8, 8), dtype=np.float32),
+                "vector": np.zeros(64, dtype=np.float32),
+            },
+        }
+        loop.action_converter = MagicMock(name="ActionConverter")
+        loop.action_converter.generate_action_mask.return_value = np.ones(
+            8, dtype=np.float32
+        )
+
+        def _convert(action_idx, _game_state, legal_actions=None, validate=True):
+            from alpha_zero.bridge.protocol import LuaCommand
+
+            return LuaCommand.from_dict({"action_type": "end_turn"})
+
+        loop.action_converter.convert.side_effect = _convert
+
+        code = await loop.run()
+
+        assert code == BridgeAgentLoop.EXIT_OK
+        harness.on_start.assert_called_once()
+        assert harness.on_start.call_args.kwargs["config_dict"]["max_turns"] == 1
+        harness.on_turn_end.assert_called_once()
+        harness.on_stop.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cancelled_error_returns_exit_cancelled(
+        self,
+        mock_bridge: MagicMock,
+        fake_state: MagicMock,
+        make_loop,
+    ) -> None:
+        """A CancelledError raised while awaiting bridge state must propagate
+        out as EXIT_CANCELLED, not be swallowed or re-raised past run()."""
+        mock_bridge.wait_for_state.side_effect = asyncio.CancelledError()
+        loop = make_loop(config=AgentLoopConfig(max_turns=5, per_turn_timeout_s=0.5))
+
+        code = await loop.run()
+
+        assert code == BridgeAgentLoop.EXIT_CANCELLED
+
+    @pytest.mark.asyncio
+    async def test_game_not_started_error_skips_turn_without_end_turn(
+        self,
+        mock_bridge: MagicMock,
+        fake_state: MagicMock,
+        fake_state_converter: MagicMock,
+        make_loop,
+    ) -> None:
+        """GameNotStartedError (pre-game / empty map) must be handled by
+        silently retrying next iteration -- no fallback end_turn is sent and
+        no error is logged as a failure."""
+        from alpha_zero.bridge.state_converter import GameNotStartedError
+
+        mock_bridge.wait_for_state.return_value = fake_state
+        fake_state_converter.convert.side_effect = GameNotStartedError("no map yet")
+        loop = make_loop(config=AgentLoopConfig(max_turns=1, per_turn_timeout_s=0.5))
+
+        code = await loop.run()
+
+        assert code == BridgeAgentLoop.EXIT_OK
+        assert loop.stats()["fallback_end_turns"] == 0
+        mock_bridge.send_and_wait_with_retry.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_state_converter_generic_exception_triggers_safe_end_turn(
+        self,
+        mock_bridge: MagicMock,
+        fake_state: MagicMock,
+        fake_state_converter: MagicMock,
+        make_loop,
+    ) -> None:
+        """A non-GameNotStarted exception from the state converter is caught
+        by the generic branch and downgraded to a safe end_turn."""
+        mock_bridge.wait_for_state.return_value = fake_state
+        fake_state_converter.convert.side_effect = RuntimeError("converter boom")
+        loop = make_loop(config=AgentLoopConfig(max_turns=1, per_turn_timeout_s=0.5))
+
+        code = await loop.run()
+
+        assert code == BridgeAgentLoop.EXIT_OK
+        stats = loop.stats()
+        assert stats["fallback_end_turns"] >= 1
+        assert "state_converter" in (stats["last_error"] or "")
+
+    @pytest.mark.asyncio
+    async def test_no_legal_actions_error_triggers_safe_end_turn(
+        self,
+        mock_bridge: MagicMock,
+        fake_state: MagicMock,
+        fake_policy: AsyncMock,
+        make_loop,
+    ) -> None:
+        """NoLegalActionsError from policy.select_action() is handled
+        distinctly from a generic policy exception: it counts as an invalid
+        action and still safely ends the turn."""
+        from alpha_zero.bridge.action_converter import NoLegalActionsError
+
+        mock_bridge.wait_for_state.return_value = fake_state
+        fake_policy.select_action.side_effect = NoLegalActionsError("mask all zero")
+        loop = make_loop(config=AgentLoopConfig(max_turns=1, per_turn_timeout_s=0.5))
+
+        code = await loop.run()
+
+        assert code == BridgeAgentLoop.EXIT_OK
+        stats = loop.stats()
+        assert stats["invalid_actions"] == 1
+        assert stats["fallback_end_turns"] >= 1
+        mock_bridge.send_command.assert_called()

@@ -389,3 +389,164 @@ class TestExceptions:
     def test_log_tailer_error_base(self) -> None:
         err = LogTailerError("test error")
         assert "test error" in str(err)
+
+
+# --- Additional coverage: parse-failure and lifecycle edge paths ---
+
+
+class TestReadNewLinesEdgeCases:
+    """Direct (synchronous) exercise of `_read_new_lines()` branches that
+    the async end-to-end tests above don't reliably hit."""
+
+    def test_no_open_file_is_a_noop(self, tailer: LogTailer) -> None:
+        """Without an open file handle, reading must return immediately
+        rather than raising an AttributeError on self._file.tell()."""
+        assert tailer._file is None
+        tailer._read_new_lines()  # must not raise
+        assert tailer._stats.lines_processed == 0
+
+    def test_getsize_oserror_is_swallowed(
+        self, tailer: LogTailer, tmp_log: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """If the log file vanishes between polls (os.path.getsize raises
+        OSError), the read is skipped rather than crashing the poll loop."""
+        tailer._file = open(tmp_log, "r", encoding="utf-8")
+        try:
+            def _raise_oserror(path):
+                raise OSError("file vanished")
+
+            monkeypatch.setattr(
+                "alpha_zero.bridge.log_tailer.os.path.getsize", _raise_oserror
+            )
+            tailer._read_new_lines()  # must not raise
+            assert tailer._stats.lines_processed == 0
+        finally:
+            tailer._file.close()
+
+    def test_blank_lines_are_skipped_within_batch(
+        self, tailer: LogTailer, tmp_log: Path
+    ) -> None:
+        """A batch containing a blank line alongside real content must skip
+        the blank line and continue processing the rest of the batch."""
+        with open(tmp_log, "a", encoding="utf-8") as f:
+            f.write("\n")
+            f.write(f'AZ_HB:{json.dumps({"lua_alive": True})}\n')
+
+        tailer._file = open(tmp_log, "r", encoding="utf-8")
+        try:
+            tailer._read_new_lines()
+        finally:
+            tailer._file.close()
+
+        assert tailer._stats.lines_processed == 1
+        assert tailer._stats.heartbeats_received == 1
+
+
+class TestHeartbeatAckParseFailures:
+    """Malformed heartbeat/ack payloads must be dropped, not crash or
+    populate state with garbage."""
+
+    def test_malformed_heartbeat_json_is_dropped(self, tailer: LogTailer) -> None:
+        tailer._handle_heartbeat("{not valid json")
+        assert tailer.latest_heartbeat is None
+        assert tailer._stats.heartbeats_received == 0
+        assert tailer._stats.parse_errors == 1
+
+    def test_malformed_ack_json_is_dropped(self, tailer: LogTailer) -> None:
+        tailer._handle_ack("{not valid json")
+        assert tailer._ack_queue == {}
+        assert tailer._stats.acks_received == 0
+        assert tailer._stats.parse_errors == 1
+
+
+@pytest.mark.asyncio
+class TestLifecycleEdgeCases:
+    async def test_stop_without_start_is_a_noop(self, tmp_log: Path) -> None:
+        """Calling stop() on a tailer that was never started must not raise
+        (no poll task to cancel, no file handle to close)."""
+        tailer = LogTailer(tmp_log, poll_interval=0.05)
+        await tailer.stop()  # must not raise
+        assert not tailer.is_running
+
+    async def test_stop_after_poll_task_already_done(self, tmp_log: Path) -> None:
+        """If the poll task has already finished by the time stop() runs,
+        the cancel-and-await branch is skipped rather than double-awaited."""
+        tailer = LogTailer(tmp_log, poll_interval=0.05)
+        await tailer.start()
+
+        async def _noop() -> None:
+            return None
+
+        # Replace the running task with one that's already finished.
+        tailer._poll_task = asyncio.create_task(_noop())
+        await tailer._poll_task
+        assert tailer._poll_task.done()
+
+        await tailer.stop()  # must not raise
+        assert not tailer.is_running
+
+    async def test_poll_loop_exits_immediately_when_not_running(
+        self, tmp_log: Path
+    ) -> None:
+        """_poll_loop()'s while condition is checked before ever entering the
+        body when _running is already False."""
+        tailer = LogTailer(tmp_log, poll_interval=0.05)
+        tailer._running = False
+        await asyncio.wait_for(tailer._poll_loop(), timeout=1.0)
+        assert tailer._stats.lines_processed == 0
+
+    async def test_poll_loop_survives_read_exception(
+        self, tmp_log: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An unexpected exception from _read_new_lines() inside the poll
+        loop is logged and swallowed, not left to kill the background task."""
+        async with LogTailer(tmp_log, poll_interval=0.05) as tailer:
+            call_count = 0
+            original = tailer._read_new_lines
+
+            def _flaky_read() -> None:
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    raise RuntimeError("boom")
+                original()
+
+            tailer._read_new_lines = _flaky_read
+            await asyncio.sleep(0.2)
+            # The poll loop must still be alive after the injected exception.
+            assert tailer.is_running
+            assert call_count >= 2
+
+    async def test_wait_for_state_raises_if_event_set_without_state(
+        self, tmp_log: Path
+    ) -> None:
+        """Defensive branch: if the state event is set but latest_state is
+        still None (e.g. a race), wait_for_state must still raise rather than
+        returning None to the caller."""
+        async with LogTailer(tmp_log, poll_interval=0.05) as tailer:
+            tailer._state_event.set()
+            assert tailer._latest_state is None
+            with pytest.raises(StateTimeoutError):
+                await tailer.wait_for_state(timeout=0.5)
+
+    async def test_start_raises_after_30s_wait_for_missing_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When the log file never appears, start() raises LogTailerError
+        once the 30s wait budget is exhausted (rather than waiting forever)."""
+        missing = tmp_path / "never_created.log"
+        tailer = LogTailer(missing, poll_interval=0.05)
+
+        # Fast-forward time so the 30s budget is exhausted on the first check.
+        real_monotonic = time.monotonic
+        fake_time = {"t": real_monotonic()}
+
+        def _fake_monotonic() -> float:
+            fake_time["t"] += 40.0
+            return fake_time["t"]
+
+        monkeypatch.setattr(
+            "alpha_zero.bridge.log_tailer.time.monotonic", _fake_monotonic
+        )
+        with pytest.raises(LogTailerError, match="not found after 30s"):
+            await tailer.start()

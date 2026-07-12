@@ -1125,6 +1125,50 @@ class TestMultiplayerHelpers:
         remapped = StateConverter._remap_player_ids(raw_state, mapping)
         assert "winner_id" not in remapped
 
+    def test_remap_ids_not_in_mapping_left_untouched(self) -> None:
+        """A player/unit/city owner ID that isn't in the mapping (e.g. a
+        barbarian owner_id like -1) must pass through unchanged rather than
+        raising a KeyError or being silently dropped."""
+        raw_state: dict[str, Any] = {
+            "player_id": 99,
+            "players": [{"id": 99}],
+            "units": [{"owner_id": 99}],
+            "cities": [{"owner_id": 99}],
+            "winner_id": 99,
+        }
+        mapping: dict[int, int] = {5: 0}  # 99 is not a known player
+        remapped = StateConverter._remap_player_ids(raw_state, mapping)
+        assert remapped["player_id"] == 99
+        assert remapped["players"][0]["id"] == 99
+        assert remapped["units"][0]["owner_id"] == 99
+        assert remapped["cities"][0]["owner_id"] == 99
+        assert remapped["winner_id"] == 99
+
+    def test_remap_missing_players_units_cities_keys(self) -> None:
+        """A raw_state missing the players/units/cities keys entirely (e.g.
+        a minimal pre-game payload) must not raise KeyError."""
+        raw_state: dict[str, Any] = {"player_id": 0}
+        mapping: dict[int, int] = {0: 0}
+        remapped = StateConverter._remap_player_ids(raw_state, mapping)
+        assert remapped["player_id"] == 0
+        assert "players" not in remapped
+        assert "units" not in remapped
+        assert "cities" not in remapped
+
+    def test_remap_entries_with_none_id_are_skipped(self) -> None:
+        """Entries whose id/owner_id is None (malformed Lua payload) must be
+        left untouched rather than raising when compared against the mapping."""
+        raw_state: dict[str, Any] = {
+            "players": [{"id": None}],
+            "units": [{"owner_id": None}],
+            "cities": [{"owner_id": None}],
+        }
+        mapping: dict[int, int] = {0: 0}
+        remapped = StateConverter._remap_player_ids(raw_state, mapping)
+        assert remapped["players"][0]["id"] is None
+        assert remapped["units"][0]["owner_id"] is None
+        assert remapped["cities"][0]["owner_id"] is None
+
 
 # ===========================================================================
 # 13. convert_and_encode

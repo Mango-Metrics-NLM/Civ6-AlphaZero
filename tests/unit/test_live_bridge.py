@@ -303,3 +303,82 @@ class TestPollIntervalConfig:
         config = BridgeConfig(comm_dir=tmp_path, poll_interval_ms=250)
         bridge = LiveBridge(config, tmp_log, poll_interval=0.05)
         assert bridge._tailer._poll_interval == pytest.approx(0.05)
+
+
+# --- Additional coverage: default-argument and compatibility-shim paths ---
+
+
+@pytest.mark.asyncio
+class TestDefaultArgumentPaths:
+    async def test_poll_state_returns_parsed_state_when_available(
+        self, bridge_config: BridgeConfig, tmp_log: Path
+    ) -> None:
+        """poll_state() must return a parsed GameStateData, not just detect
+        presence, once the tailer has cached a raw state payload."""
+        async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
+            bridge._tailer._latest_state = {
+                "turn_id": 7,
+                "map": {"width": 0, "height": 0, "tiles": []},
+            }
+            result = await bridge.poll_state()
+            assert result is not None
+            assert result.turn_id == 7
+
+    async def test_wait_for_state_uses_config_timeout_when_omitted(
+        self, bridge_config: BridgeConfig, tmp_log: Path
+    ) -> None:
+        """Omitting `timeout` must derive it from config.command_timeout_ms
+        rather than blocking forever or raising a TypeError."""
+        bridge_config.command_timeout_ms = 200
+        async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
+            with pytest.raises(StateTimeoutError):
+                await bridge.wait_for_state()
+
+    async def test_check_heartbeat_uses_config_max_age_when_omitted(
+        self, bridge_config: BridgeConfig, tmp_log: Path
+    ) -> None:
+        """Omitting `max_age` must derive it from config.heartbeat_timeout_s."""
+        bridge_config.heartbeat_timeout_s = 5.0
+        async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
+            hb = {"lua_alive": True, "timestamp": int(time.time())}
+            _write_line(tmp_log, f'AZ_HB:{json.dumps(hb)}')
+            await asyncio.sleep(0.15)
+            assert bridge.check_heartbeat() is True
+
+    async def test_wait_for_ack_uses_config_timeout_when_omitted(
+        self, bridge_config: BridgeConfig, tmp_log: Path
+    ) -> None:
+        bridge_config.command_timeout_ms = 200
+        async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
+            with pytest.raises(AckTimeoutError):
+                await bridge.wait_for_ack(msg_id=1)
+
+    async def test_send_and_wait_with_retry_compat_shim(
+        self, bridge_config: BridgeConfig, tmp_log: Path
+    ) -> None:
+        """FileBridge-API compatibility shim: agent_loop calls this method
+        polymorphically regardless of which bridge implementation is active."""
+        async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
+            msg_id = bridge.next_msg_id()
+            cmd = create_end_turn_command(msg_id)
+
+            async def write_ack() -> None:
+                await asyncio.sleep(0.1)
+                ack = {"msg_id": msg_id, "success": True}
+                _write_line(tmp_log, f'AlphaZeroMain: AZ_ACK:{json.dumps(ack)}')
+
+            asyncio.create_task(write_ack())
+            result = await bridge.send_and_wait_with_retry(
+                cmd, timeout=2.0, max_retries=3
+            )
+            assert result["success"] is True
+
+    async def test_clear_files_when_commands_file_missing_is_a_noop(
+        self, bridge_config: BridgeConfig, tmp_log: Path
+    ) -> None:
+        """clear_files() must not attempt to write when commands.json was
+        never created (e.g. bridge started but no command sent yet)."""
+        async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
+            assert not bridge_config.commands_file.exists()
+            bridge.clear_files()  # must not raise
+            assert not bridge_config.commands_file.exists()
