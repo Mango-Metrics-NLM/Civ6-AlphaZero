@@ -3,12 +3,41 @@
   <Name>AlphaZero Bridge</Name>
   <App>Civ6</App>
   <EnterAction>
+    -- NOTE: This .ltp panel is the LEGACY file-transport relay. The headless
+    -- socket transport (alpha_zero.bridge.tuner_socket_bridge) is now the
+    -- recommended path for Python-to-Civ6 communication; this panel remains
+    -- for manual/legacy file-based relay only.
+    --
+    -- Resolve the commands.json path once, with no hardcoded personal
+    -- directories. Mirrors Scripts/Config.lua's getDocumentsPath(): try the
+    -- Civ6 save-game directory via the UI API first (this is what Config.lua
+    -- uses to locate the comm dir, so paths match), then fall back to
+    -- %USERPROFILE%/Documents/My Games/Sid Meier's Civilization VI.
+    local function AZ_ResolveCommandsPath()
+        local base = nil;
+        local ok, saveDir = pcall(function() return UI.GetAppSavegameDirectory(); end);
+        if ok and saveDir and saveDir ~= "" then
+            base = saveDir;
+        elseif os and os.getenv then
+            local profile = os.getenv("USERPROFILE");
+            if profile and profile ~= "" then
+                base = profile .. "/Documents/My Games/Sid Meier's Civilization VI";
+            end
+        end
+        if not base or base == "" then
+            base = ".";
+        end
+        return base .. "/AlphaZeroAI/commands.json";
+    end
+    AZ_COMMANDS_PATH = AZ_ResolveCommandsPath();
+
     -- Initialize relay state
     AZ_RELAY_ACTIVE = true;
     AZ_RELAY_COUNT = 0;
     AZ_LAST_POLL = 0;
     AZ_POLL_INTERVAL = 0.5;
     print("[AlphaZero Panel] Bridge panel loaded");
+    print("[AlphaZero Panel] Commands path: " .. tostring(AZ_COMMANDS_PATH));
   </EnterAction>
   <ExitAction>
     AZ_RELAY_ACTIVE = false;
@@ -23,7 +52,7 @@
       <Name>Relay Commands Now</Name>
       <Action>
         -- Read commands.json and inject into ExposedMembers
-        local COMMANDS_PATH = "C:/Users/iansh/OneDrive/Documents/My Games/Sid Meier's Civilization VI/AlphaZeroAI/commands.json";
+        local COMMANDS_PATH = AZ_COMMANDS_PATH;
         local f = io.open(COMMANDS_PATH, "r");
         if f then
             local content = f:read("*a");
@@ -101,7 +130,7 @@
     <StringControlData>
       <Name>Commands File Path</Name>
       <GetFunction>function()
-  return "C:/Users/iansh/OneDrive/Documents/My Games/Sid Meier's Civilization VI/AlphaZeroAI/commands.json";
+  return AZ_COMMANDS_PATH;
 end</GetFunction>
       <SetFunction>function(value)
   -- Path is informational only for now
@@ -139,7 +168,7 @@ end</SetFunction>
   -- is called on each panel refresh (~1-2 Hz). We use this to
   -- piggyback the auto-relay polling.
   if AZ_RELAY_ACTIVE then
-      local COMMANDS_PATH = "C:/Users/iansh/OneDrive/Documents/My Games/Sid Meier's Civilization VI/AlphaZeroAI/commands.json";
+      local COMMANDS_PATH = AZ_COMMANDS_PATH;
       local f = io.open(COMMANDS_PATH, "r");
       if f then
           local content = f:read("*a");

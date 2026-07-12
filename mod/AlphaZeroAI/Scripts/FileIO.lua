@@ -10,8 +10,16 @@ AlphaZeroFileIO = AlphaZeroFileIO or {}
 
 local Log = nil  -- Will be set after Logger loads
 
--- Path separator: hardcoded for Civ6 Windows/Steam (os.getenv stripped from sandbox)
-local PATH_SEP = "\\"
+-- Default path separator (fallback only). AlphaZeroConfig detects the real
+-- separator from the resolved base path in Init() and stores it as
+-- currentConfig.PATH_SEP; getPathSep() below reuses that value so FileIO
+-- stays consistent with Config across platforms.
+local DEFAULT_PATH_SEP = "\\"
+
+-- Get the path separator to use, preferring the one detected by Config.
+local function getPathSep()
+    return (AlphaZeroConfig and AlphaZeroConfig.Get("PATH_SEP")) or DEFAULT_PATH_SEP
+end
 
 -- Track file content hashes for change detection
 local fileContentHashes = {}
@@ -70,7 +78,7 @@ local function ensureDirectory(path)
 
     local safePath = shellEscape(path)
     local ok = pcall(function()
-        if PATH_SEP == "/" then
+        if getPathSep() == "/" then
             os.execute('mkdir -p "' .. safePath .. '" 2>/dev/null')
         else
             os.execute('mkdir "' .. safePath .. '" 2>nul')
@@ -460,7 +468,7 @@ end
 
 -- Get path separator (for reuse by other modules)
 function AlphaZeroFileIO.GetPathSep()
-    return PATH_SEP
+    return getPathSep()
 end
 
 -- Initialize on load

@@ -25,8 +25,13 @@
     </Files>
 
     <!-- Use AddUserInterfaces (not AddGameplayScripts) so the Lua context
-         has full access to UI, io, and os APIs. The XML wrapper loads
-         Main.lua which then include()s the other modules. -->
+         has full access to UI, io, and os APIs. The XML wrapper
+         (Scripts/AlphaZeroMain.xml) loads Scripts/AlphaZeroMain.lua, the
+         hand-maintained bundle with all modules concatenated into a single
+         file, NOT Main.lua directly. Main.lua and the individual module
+         files (Config.lua, FileIO.lua, etc.) are the readable source; any
+         change affecting runtime behavior must also be applied to the
+         corresponding block inside AlphaZeroMain.lua. -->
     <InGameActions>
         <AddUserInterfaces id="AlphaZeroMainUI">
             <Properties>

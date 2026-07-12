@@ -5,13 +5,15 @@
 -- Fixes: deduplicated events, proper polling handle, graceful shutdown, timeout.
 -- ============================================================================
 
--- Load dependent modules via include() (required in AddUserInterfaces context)
-include("Config")
-include("Logger")
-include("JsonEncoder")
-include("FileIO")
-include("StateExporter")
-include("ActionExecutor")
+-- Load dependent modules via include() (required in AddUserInterfaces context).
+-- Guarded so re-including this file (or loading alongside AlphaZeroMain.lua's
+-- bundled copies) doesn't redefine each module's globals unnecessarily.
+if not AlphaZeroConfig then include("Config") end
+if not AlphaZeroLogger then include("Logger") end
+if not AlphaZeroJson then include("JsonEncoder") end
+if not AlphaZeroFileIO then include("FileIO") end
+if not AlphaZeroStateExporter then include("StateExporter") end
+if not AlphaZeroActionExecutor then include("ActionExecutor") end
 
 AlphaZeroBridge = AlphaZeroBridge or {}
 
@@ -93,39 +95,44 @@ function AlphaZeroBridge.Initialize()
         AlphaZeroActionExecutor.Init()
     end
 
-    -- Diagnostic: dump available APIs to Lua.log
-    local apis = {
-        {"io", io},
-        {"io.open", io and io.open},
-        {"os", os},
-        {"os.time", os and os.time},
-        {"os.clock", os and os.clock},
-        {"os.execute", os and os.execute},
-        {"os.getenv", os and os.getenv},
-        {"os.remove", os and os.remove},
-        {"os.rename", os and os.rename},
-        {"UI", UI},
-        {"UI.GetAppSavegameDirectory", UI and UI.GetAppSavegameDirectory},
-        {"UI.DataError", UI and UI.DataError},
-        {"Modding", Modding},
-        {"Modding.GetUserDataFolder", Modding and Modding.GetUserDataFolder},
-        {"Game", Game},
-        {"Players", Players},
-        {"GameEvents", GameEvents},
-        {"Events", Events},
-        {"ContextPtr", ContextPtr},
-        {"Network", Network},
-        {"loadfile", loadfile},
-        {"dofile", dofile},
-        {"require", require},
-        {"include", include},
-    }
-    print("[AlphaZero] === API AVAILABILITY DIAGNOSTIC ===")
-    for _, entry in ipairs(apis) do
-        local name, val = entry[1], entry[2]
-        print(string.format("[AlphaZero] %s = %s", name, val and "AVAILABLE" or "nil"))
+    -- Diagnostic: dump available APIs to Lua.log. Gated behind DEBUG log
+    -- level -- this ran unconditionally on every init, spamming Lua.log and
+    -- slowing the Python LogTailer. Only emit when LOG_LEVEL=DEBUG (numeric
+    -- level 1; see the levels table in Config.lua's GetLogLevelNum()).
+    if AlphaZeroConfig and AlphaZeroConfig.GetLogLevelNum and AlphaZeroConfig.GetLogLevelNum() <= 1 then
+        local apis = {
+            {"io", io},
+            {"io.open", io and io.open},
+            {"os", os},
+            {"os.time", os and os.time},
+            {"os.clock", os and os.clock},
+            {"os.execute", os and os.execute},
+            {"os.getenv", os and os.getenv},
+            {"os.remove", os and os.remove},
+            {"os.rename", os and os.rename},
+            {"UI", UI},
+            {"UI.GetAppSavegameDirectory", UI and UI.GetAppSavegameDirectory},
+            {"UI.DataError", UI and UI.DataError},
+            {"Modding", Modding},
+            {"Modding.GetUserDataFolder", Modding and Modding.GetUserDataFolder},
+            {"Game", Game},
+            {"Players", Players},
+            {"GameEvents", GameEvents},
+            {"Events", Events},
+            {"ContextPtr", ContextPtr},
+            {"Network", Network},
+            {"loadfile", loadfile},
+            {"dofile", dofile},
+            {"require", require},
+            {"include", include},
+        }
+        print("[AlphaZero] === API AVAILABILITY DIAGNOSTIC ===")
+        for _, entry in ipairs(apis) do
+            local name, val = entry[1], entry[2]
+            print(string.format("[AlphaZero] %s = %s", name, val and "AVAILABLE" or "nil"))
+        end
+        print("[AlphaZero] === END DIAGNOSTIC ===")
     end
-    print("[AlphaZero] === END DIAGNOSTIC ===")
 
     -- Validate configuration
     if AlphaZeroConfig and AlphaZeroConfig.Validate then

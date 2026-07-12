@@ -16,9 +16,13 @@
 
 AlphaZeroConfig = AlphaZeroConfig or {}
 
--- Path separator: Civ6 Lua sandbox strips package and os.getenv, so we
--- hardcode backslash. The mod only runs inside Civ6 (Windows/Steam).
-local PATH_SEP = "\\"
+-- Default path separator: backslash (Windows/Steam, the common case). This
+-- is only a fallback -- AlphaZeroConfig.Init() calls detectPathSep() on the
+-- resolved base path so the mod also works when Civ6 runs natively on
+-- macOS/Linux (UI.GetAppSavegameDirectory returns the OS-correct separator).
+-- The detected value is stored in currentConfig.PATH_SEP so other modules
+-- (e.g. FileIO) reuse it via AlphaZeroConfig.Get("PATH_SEP").
+local DEFAULT_PATH_SEP = "\\"
 
 -- ----------------------------------------------------------------------------
 -- Default Configuration Values
@@ -131,6 +135,16 @@ local function getDocumentsPath()
     return "."
 end
 
+-- Detect the path separator implied by a resolved base path. Returns "/"
+-- when basePath looks like a Unix-style path (contains "/" but no "\\"),
+-- otherwise falls back to DEFAULT_PATH_SEP (backslash).
+local function detectPathSep(basePath)
+    if type(basePath) == "string" and basePath:find("/", 1, true) and not basePath:find("\\", 1, true) then
+        return "/"
+    end
+    return DEFAULT_PATH_SEP
+end
+
 -- ----------------------------------------------------------------------------
 -- Public API
 -- ----------------------------------------------------------------------------
@@ -142,6 +156,8 @@ function AlphaZeroConfig.Init()
 
     -- Set derived paths using detected path separator
     local basePath = getDocumentsPath()
+    local PATH_SEP = detectPathSep(basePath)
+    currentConfig.PATH_SEP = PATH_SEP
     print("[AlphaZero] Config: base path = " .. tostring(basePath))
     currentConfig.COMM_DIR = basePath .. PATH_SEP .. currentConfig.COMM_DIR_NAME
     print("[AlphaZero] Config: COMM_DIR = " .. tostring(currentConfig.COMM_DIR))
@@ -170,6 +186,7 @@ function AlphaZeroConfig.LoadOverrides()
         return
     end
 
+    local PATH_SEP = currentConfig.PATH_SEP or DEFAULT_PATH_SEP
     local configPath = currentConfig.COMM_DIR .. PATH_SEP .. "alphazero_config.json"
     local ok, file = pcall(io.open, configPath, "r")
     if not ok or not file then return end
@@ -258,7 +275,10 @@ end
 
 -- Get path separator (for reuse by other modules)
 function AlphaZeroConfig.GetPathSep()
-    return PATH_SEP
+    if currentConfig and currentConfig.PATH_SEP then
+        return currentConfig.PATH_SEP
+    end
+    return DEFAULT_PATH_SEP
 end
 
 -- Initialize on load
@@ -961,8 +981,16 @@ AlphaZeroFileIO = AlphaZeroFileIO or {}
 
 local Log = nil  -- Will be set after Logger loads
 
--- Path separator: hardcoded for Civ6 Windows/Steam (os.getenv stripped from sandbox)
-local PATH_SEP = "\\"
+-- Default path separator (fallback only). AlphaZeroConfig detects the real
+-- separator from the resolved base path in Init() and stores it as
+-- currentConfig.PATH_SEP; getPathSep() below reuses that value so FileIO
+-- stays consistent with Config across platforms.
+local DEFAULT_PATH_SEP = "\\"
+
+-- Get the path separator to use, preferring the one detected by Config.
+local function getPathSep()
+    return (AlphaZeroConfig and AlphaZeroConfig.Get("PATH_SEP")) or DEFAULT_PATH_SEP
+end
 
 -- Track file content hashes for change detection
 local fileContentHashes = {}
@@ -1021,7 +1049,7 @@ local function ensureDirectory(path)
 
     local safePath = shellEscape(path)
     local ok = pcall(function()
-        if PATH_SEP == "/" then
+        if getPathSep() == "/" then
             os.execute('mkdir -p "' .. safePath .. '" 2>/dev/null')
         else
             os.execute('mkdir "' .. safePath .. '" 2>nul')
@@ -1411,7 +1439,7 @@ end
 
 -- Get path separator (for reuse by other modules)
 function AlphaZeroFileIO.GetPathSep()
-    return PATH_SEP
+    return getPathSep()
 end
 
 -- Initialize on load
@@ -3180,13 +3208,15 @@ print("[AlphaZero] ActionExecutor module loaded")
 -- Fixes: deduplicated events, proper polling handle, graceful shutdown, timeout.
 -- ============================================================================
 
--- Load dependent modules via include() (required in AddUserInterfaces context)
-include("Config")
-include("Logger")
-include("JsonEncoder")
-include("FileIO")
-include("StateExporter")
-include("ActionExecutor")
+-- Load dependent modules via include() (required in AddUserInterfaces context).
+-- Guarded so re-including this file (or loading alongside AlphaZeroMain.lua's
+-- bundled copies) doesn't redefine each module's globals unnecessarily.
+if not AlphaZeroConfig then include("Config") end
+if not AlphaZeroLogger then include("Logger") end
+if not AlphaZeroJson then include("JsonEncoder") end
+if not AlphaZeroFileIO then include("FileIO") end
+if not AlphaZeroStateExporter then include("StateExporter") end
+if not AlphaZeroActionExecutor then include("ActionExecutor") end
 
 AlphaZeroBridge = AlphaZeroBridge or {}
 
@@ -3268,39 +3298,44 @@ function AlphaZeroBridge.Initialize()
         AlphaZeroActionExecutor.Init()
     end
 
-    -- Diagnostic: dump available APIs to Lua.log
-    local apis = {
-        {"io", io},
-        {"io.open", io and io.open},
-        {"os", os},
-        {"os.time", os and os.time},
-        {"os.clock", os and os.clock},
-        {"os.execute", os and os.execute},
-        {"os.getenv", os and os.getenv},
-        {"os.remove", os and os.remove},
-        {"os.rename", os and os.rename},
-        {"UI", UI},
-        {"UI.GetAppSavegameDirectory", UI and UI.GetAppSavegameDirectory},
-        {"UI.DataError", UI and UI.DataError},
-        {"Modding", Modding},
-        {"Modding.GetUserDataFolder", Modding and Modding.GetUserDataFolder},
-        {"Game", Game},
-        {"Players", Players},
-        {"GameEvents", GameEvents},
-        {"Events", Events},
-        {"ContextPtr", ContextPtr},
-        {"Network", Network},
-        {"loadfile", loadfile},
-        {"dofile", dofile},
-        {"require", require},
-        {"include", include},
-    }
-    print("[AlphaZero] === API AVAILABILITY DIAGNOSTIC ===")
-    for _, entry in ipairs(apis) do
-        local name, val = entry[1], entry[2]
-        print(string.format("[AlphaZero] %s = %s", name, val and "AVAILABLE" or "nil"))
+    -- Diagnostic: dump available APIs to Lua.log. Gated behind DEBUG log
+    -- level -- this ran unconditionally on every init, spamming Lua.log and
+    -- slowing the Python LogTailer. Only emit when LOG_LEVEL=DEBUG (numeric
+    -- level 1; see the levels table in Config.lua's GetLogLevelNum()).
+    if AlphaZeroConfig and AlphaZeroConfig.GetLogLevelNum and AlphaZeroConfig.GetLogLevelNum() <= 1 then
+        local apis = {
+            {"io", io},
+            {"io.open", io and io.open},
+            {"os", os},
+            {"os.time", os and os.time},
+            {"os.clock", os and os.clock},
+            {"os.execute", os and os.execute},
+            {"os.getenv", os and os.getenv},
+            {"os.remove", os and os.remove},
+            {"os.rename", os and os.rename},
+            {"UI", UI},
+            {"UI.GetAppSavegameDirectory", UI and UI.GetAppSavegameDirectory},
+            {"UI.DataError", UI and UI.DataError},
+            {"Modding", Modding},
+            {"Modding.GetUserDataFolder", Modding and Modding.GetUserDataFolder},
+            {"Game", Game},
+            {"Players", Players},
+            {"GameEvents", GameEvents},
+            {"Events", Events},
+            {"ContextPtr", ContextPtr},
+            {"Network", Network},
+            {"loadfile", loadfile},
+            {"dofile", dofile},
+            {"require", require},
+            {"include", include},
+        }
+        print("[AlphaZero] === API AVAILABILITY DIAGNOSTIC ===")
+        for _, entry in ipairs(apis) do
+            local name, val = entry[1], entry[2]
+            print(string.format("[AlphaZero] %s = %s", name, val and "AVAILABLE" or "nil"))
+        end
+        print("[AlphaZero] === END DIAGNOSTIC ===")
     end
-    print("[AlphaZero] === END DIAGNOSTIC ===")
 
     -- Validate configuration
     if AlphaZeroConfig and AlphaZeroConfig.Validate then

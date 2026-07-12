@@ -8,9 +8,13 @@
 
 AlphaZeroConfig = AlphaZeroConfig or {}
 
--- Path separator: Civ6 Lua sandbox strips package and os.getenv, so we
--- hardcode backslash. The mod only runs inside Civ6 (Windows/Steam).
-local PATH_SEP = "\\"
+-- Default path separator: backslash (Windows/Steam, the common case). This
+-- is only a fallback -- AlphaZeroConfig.Init() calls detectPathSep() on the
+-- resolved base path so the mod also works when Civ6 runs natively on
+-- macOS/Linux (UI.GetAppSavegameDirectory returns the OS-correct separator).
+-- The detected value is stored in currentConfig.PATH_SEP so other modules
+-- (e.g. FileIO) reuse it via AlphaZeroConfig.Get("PATH_SEP").
+local DEFAULT_PATH_SEP = "\\"
 
 -- ----------------------------------------------------------------------------
 -- Default Configuration Values
@@ -118,6 +122,16 @@ local function getDocumentsPath()
     return "."
 end
 
+-- Detect the path separator implied by a resolved base path. Returns "/"
+-- when basePath looks like a Unix-style path (contains "/" but no "\\"),
+-- otherwise falls back to DEFAULT_PATH_SEP (backslash).
+local function detectPathSep(basePath)
+    if type(basePath) == "string" and basePath:find("/", 1, true) and not basePath:find("\\", 1, true) then
+        return "/"
+    end
+    return DEFAULT_PATH_SEP
+end
+
 -- ----------------------------------------------------------------------------
 -- Public API
 -- ----------------------------------------------------------------------------
@@ -129,6 +143,8 @@ function AlphaZeroConfig.Init()
 
     -- Set derived paths using detected path separator
     local basePath = getDocumentsPath()
+    local PATH_SEP = detectPathSep(basePath)
+    currentConfig.PATH_SEP = PATH_SEP
     print("[AlphaZero] Config: base path = " .. tostring(basePath))
     currentConfig.COMM_DIR = basePath .. PATH_SEP .. currentConfig.COMM_DIR_NAME
     print("[AlphaZero] Config: COMM_DIR = " .. tostring(currentConfig.COMM_DIR))
@@ -157,6 +173,7 @@ function AlphaZeroConfig.LoadOverrides()
         return
     end
 
+    local PATH_SEP = currentConfig.PATH_SEP or DEFAULT_PATH_SEP
     local configPath = currentConfig.COMM_DIR .. PATH_SEP .. "alphazero_config.json"
     local ok, file = pcall(io.open, configPath, "r")
     if not ok or not file then return end
@@ -241,7 +258,10 @@ end
 
 -- Get path separator (for reuse by other modules)
 function AlphaZeroConfig.GetPathSep()
-    return PATH_SEP
+    if currentConfig and currentConfig.PATH_SEP then
+        return currentConfig.PATH_SEP
+    end
+    return DEFAULT_PATH_SEP
 end
 
 -- Initialize on load
