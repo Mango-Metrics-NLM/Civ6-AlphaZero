@@ -17,13 +17,15 @@
 - New branch name: `feature/v1.8.1-local-e2e-validation`, created from current HEAD (`0f335e8`).
 - Do NOT push to origin — this plan is local-only unless the user later asks.
 - Windows pytest: `SIGALRM` timeouts don't exist; keep `--timeout=120` (thread method) and the deselect list below. Two previously-deselected files (`tests/unit/test_batch_inference.py`, `tests/unit/test_civ6_mcts.py`) were DELETED from the repo — do not deselect them.
-- Canonical deselect list (4 files that hang under the thread-method timeout on Windows):
+- Canonical deselect list (5 files that hang under the thread-method timeout on Windows; test_gcs_live added 2026-07-11 — its live-GCS socket hang kills the whole suite because CIV6AZ_GCS_BUCKET is set on this machine, defeating its skip guard):
   ```
   --deselect tests/unit/test_interfaces.py
   --deselect tests/unit/test_gumbel_mcts.py
   --deselect tests/unit/test_enhanced_training_wandb.py
   --deselect tests/cloud/unit/test_training_muzero_dispatch.py
+  --deselect tests/e2e/test_gcs_live.py
   ```
+- `--continue-on-collection-errors` is required for `-k bridge` and full-suite runs on this venv: 10 chess/opponent test files fail collection on `ModuleNotFoundError: No module named 'chess'` (pyproject dev extra, not in requirements.txt; install blocked by a recurring machine-level SSL interception issue).
 - No trained civ6-scale checkpoint exists; `run_civ6_bridge` builds a random-weight network sized to the small-demo action space (`ActionSpaceConfig(board_size, max_units=20, max_cities=5, num_production_items=20)`). That is expected and fine for this validation — do not hunt for a checkpoint.
 - Bridge comm dir (auto-resolved): `C:\Users\iansh\OneDrive\Documents\My Games\Sid Meier's Civilization VI\AlphaZeroAI\`
 - Civ6 Lua log (for debugging the mod side): `%LOCALAPPDATA%\Firaxis Games\Sid Meier's Civilization VI\Logs\Lua.log`
