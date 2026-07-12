@@ -20,12 +20,12 @@ from typing import Any
 
 from alpha_zero.bridge.utils import parse_bool_env
 
-__all__ = ["BridgeConfig", "MapSizeConfig", "GameConstants", "MAP_SIZES", "get_map_config"]
+__all__ = ["MAP_SIZES", "BridgeConfig", "GameConstants", "MapSizeConfig", "get_map_config"]
 
 @dataclass
 class GameConstants:
     """Constants used for game state conversion and action mapping."""
-    
+
     ESTIMATED_TOTAL_TECHS: int = 70
     ESTIMATED_MAX_SCORE: int = 2000
     ITEM_HASH_RANGE: int = 200

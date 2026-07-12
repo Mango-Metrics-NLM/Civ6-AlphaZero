@@ -37,7 +37,11 @@ from typing import Any, Literal, Protocol
 
 import numpy as np
 
-from alpha_zero.bridge.action_converter import ActionConverter, InvalidActionError, NoLegalActionsError
+from alpha_zero.bridge.action_converter import (
+    ActionConverter,
+    InvalidActionError,
+    NoLegalActionsError,
+)
 from alpha_zero.bridge.file_bridge import (
     AckTimeoutError,
     ConnectionLostError,

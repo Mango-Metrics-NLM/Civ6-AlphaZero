@@ -199,7 +199,7 @@ class FireTunerClient:
         try:
             while True:
                 frames.append(self._recv_frame())
-        except (TimeoutError, socket.timeout, FireTunerError, OSError):
+        except (TimeoutError, FireTunerError, OSError):
             pass
         finally:
             self._sock.settimeout(prev)
@@ -303,7 +303,7 @@ class FireTunerClient:
             while True:
                 try:
                     tag, frame = self._recv_frame()
-                except (TimeoutError, socket.timeout):
+                except TimeoutError:
                     break
                 body = frame.rstrip(b"\x00")
                 if tag == TAG_COMMAND and body == b"":

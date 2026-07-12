@@ -30,6 +30,7 @@ __all__ = ["ActionConverter", "ConversionResult", "InvalidActionError", "NoLegal
 
 import numpy as np
 
+from alpha_zero.bridge.config import GameConstants
 from alpha_zero.bridge.protocol import (
     ActionType,
     LegalAction,
@@ -46,7 +47,6 @@ from alpha_zero.core.civ6_actions import (
     HierarchicalAction,
     UnitActionType,
 )
-from alpha_zero.bridge.config import GameConstants
 
 logger = logging.getLogger(__name__)
 

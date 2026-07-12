@@ -71,17 +71,20 @@ __all__ = [
     "ActionType",
     # Config
     "BridgeConfig",
-    # MCTS / policy
-    "BridgeMCTSEnv",
-    "Civ6MctsPolicy",
     # Eval harness
     "BridgeEvalHarness",
+    # MCTS / policy
+    "BridgeMCTSEnv",
     "CityData",
+    "Civ6MctsPolicy",
     "CommandMessage",
     "ErrorCode",
     "ErrorMessage",
     "GameStateData",
     "LegalAction",
+    # Live bridge (log-tailing + command relay)
+    "LiveBridge",
+    "LogTailer",
     "LuaCommand",
     "MapData",
     "MapSizeConfig",
@@ -93,6 +96,7 @@ __all__ = [
     # Protocol - Messages
     "StateMessage",
     "TileData",
+    "TunerBridge",
     "UnitData",
     "create_city_produce_command",
     "create_end_turn_command",
@@ -100,10 +104,6 @@ __all__ = [
     "get_map_config",
     # Protocol - Utilities
     "validate_state_json",
-    # Live bridge (log-tailing + command relay)
-    "LiveBridge",
-    "LogTailer",
-    "TunerBridge",
 ]
 
 

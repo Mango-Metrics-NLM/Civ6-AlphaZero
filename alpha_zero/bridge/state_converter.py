@@ -30,13 +30,13 @@ from typing import Any
 
 import torch
 
-from alpha_zero.bridge.config import MapSizeConfig, get_map_config, GameConstants
+from alpha_zero.bridge.config import GameConstants, MapSizeConfig, get_map_config
 from alpha_zero.bridge.protocol import (
     GameStateData,
 )
 from alpha_zero.envs.civ6_encoder import Civ6StateEncoder, EncoderConfig
 
-__all__ = ["TerrainMapping", "UnitMapping", "StateConverter"]
+__all__ = ["StateConverter", "TerrainMapping", "UnitMapping"]
 
 logger = logging.getLogger(__name__)
 

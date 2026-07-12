@@ -22,7 +22,6 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from pathlib import Path
@@ -30,9 +29,7 @@ from typing import Any
 
 from alpha_zero.bridge.config import BridgeConfig
 from alpha_zero.bridge.log_tailer import (
-    AckTimeoutError,
     LogTailer,
-    StateTimeoutError,
 )
 from alpha_zero.bridge.protocol import CommandMessage, GameStateData, StateMessage
 from alpha_zero.bridge.tuner_bridge import TunerBridge

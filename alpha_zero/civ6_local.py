@@ -48,7 +48,7 @@ def _get_default_bridge_ipc_dir() -> Path:
     importable (e.g., during unit tests that stub out the bridge layer).
     """
     try:
-        from alpha_zero.bridge.config import _get_default_comm_dir  # noqa: PLC0415
+        from alpha_zero.bridge.config import _get_default_comm_dir
 
         return _get_default_comm_dir()
     except Exception:

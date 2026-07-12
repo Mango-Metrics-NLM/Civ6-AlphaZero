@@ -22,17 +22,17 @@ import logging
 import os
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "AckTimeoutError",
     "LogTailer",
     "LogTailerError",
     "StateTimeoutError",
-    "AckTimeoutError",
 ]
 
 # --- Line prefix patterns ---
@@ -163,7 +163,7 @@ class LogTailer:
             await asyncio.sleep(1.0)
 
         # Open and seek to end
-        self._file = open(self._log_path, "r", encoding="utf-8", errors="replace")
+        self._file = open(self._log_path, encoding="utf-8", errors="replace")
         self._file.seek(0, os.SEEK_END)
         self._file_pos = self._file.tell()
         self._running = True
@@ -391,7 +391,7 @@ class LogTailer:
         self._state_event.clear()
         try:
             await asyncio.wait_for(self._state_event.wait(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise StateTimeoutError(timeout) from None
 
         if self._latest_state is None:
@@ -422,7 +422,7 @@ class LogTailer:
         self._ack_events[msg_id] = event
         try:
             await asyncio.wait_for(event.wait(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise AckTimeoutError(msg_id, timeout) from None
         finally:
             self._ack_events.pop(msg_id, None)

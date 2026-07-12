@@ -152,7 +152,7 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         converted_state: dict[str, Any],
         *,
         max_turns: int = _DEFAULT_MAX_TURNS,
-    ) -> "BridgeMCTSEnv":
+    ) -> BridgeMCTSEnv:
         """Named constructor for clarity at call sites.
 
         Equivalent to ``BridgeMCTSEnv(converted_state, max_turns=max_turns)``
@@ -165,12 +165,11 @@ class BridgeMCTSEnv(EnvironmentProtocol):
     # EnvironmentProtocol implementation
     # ------------------------------------------------------------------
 
-    def clone(self) -> "BridgeMCTSEnv":
+    def clone(self) -> BridgeMCTSEnv:
         """Deep-copy this env for MCTS tree expansion.
 
         The cloned instance shares *no* mutable state with the original.
         """
-        import copy  # noqa: PLC0415  (local import, cheap since clone() is hot)
 
         new_env = BridgeMCTSEnv(self._converted_state)
         new_env.env = self.env.clone()
