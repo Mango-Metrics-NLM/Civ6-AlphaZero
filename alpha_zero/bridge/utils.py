@@ -121,10 +121,10 @@ def next_monotonic_msg_id(current: int) -> int:
 def parse_bool_env(value: str | None, default: bool) -> bool:
     """Parse a boolean-flavoured environment variable value.
 
-    Recognises the vocabulary shared across the bridge config factories:
-    ``"1"``/``"true"``/``"yes"`` (case-insensitive) are truthy,
-    ``"0"``/``"false"``/``"no"`` are falsy, and anything else - including
-    ``None`` or an unrecognised string - returns ``default``.
+    Recognises the vocabulary shared across the repo's config parsers:
+    ``"1"``/``"true"``/``"yes"``/``"on"`` (case-insensitive) are truthy,
+    ``"0"``/``"false"``/``"no"``/``"off"`` are falsy, and anything else -
+    including ``None`` or an unrecognised string - returns ``default``.
 
     Args:
         value: Raw environment variable value, or ``None`` if unset.
@@ -136,8 +136,8 @@ def parse_bool_env(value: str | None, default: bool) -> bool:
     if value is None:
         return default
     normalized = value.lower()
-    if normalized in ("1", "true", "yes"):
+    if normalized in ("1", "true", "yes", "on"):
         return True
-    if normalized in ("0", "false", "no"):
+    if normalized in ("0", "false", "no", "off"):
         return False
     return default

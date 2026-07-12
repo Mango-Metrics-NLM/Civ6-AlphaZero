@@ -131,11 +131,11 @@ class TestNextMonotonicMsgId:
 class TestParseBoolEnv:
     """``parse_bool_env`` backs ``BridgeConfig``/``AgentLoopConfig`` bool parsing."""
 
-    @pytest.mark.parametrize("raw", ["1", "true", "True", "TRUE", "yes", "Yes"])
+    @pytest.mark.parametrize("raw", ["1", "true", "True", "TRUE", "yes", "Yes", "on", "On"])
     def test_truthy_values(self, raw: str) -> None:
         assert parse_bool_env(raw, default=False) is True
 
-    @pytest.mark.parametrize("raw", ["0", "false", "False", "FALSE", "no", "No"])
+    @pytest.mark.parametrize("raw", ["0", "false", "False", "FALSE", "no", "No", "off", "Off"])
     def test_falsy_values(self, raw: str) -> None:
         assert parse_bool_env(raw, default=True) is False
 
