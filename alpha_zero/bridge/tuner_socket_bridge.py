@@ -144,7 +144,15 @@ class FireTunerClient:
                 "(e.g. the FireTuner GUI) holding the single connection slot?"
             ) from exc
         self._sock.settimeout(self.timeout)
-        self._handshake()
+        try:
+            self._handshake()
+        except BaseException:
+            # A failed handshake (e.g. the single tuner slot is already held,
+            # or the game drops us mid-LSQ) must not leak the fd — a leaked
+            # socket can occupy the slot until GC and block a legitimate
+            # reconnect. Close before propagating.
+            self.close()
+            raise
         return self
 
     def close(self) -> None:
@@ -321,7 +329,9 @@ class FireTunerClient:
             "if not ExposedMembers then ExposedMembers = {} end; "
             "ExposedMembers.AlphaZeroCommand = " + lua_longstring(command_json)
         )
-        self.run_lua(lua, context=context)
+        # Honor the configured per-command timeout (self.timeout, derived from
+        # BridgeConfig.command_timeout_ms) instead of run_lua's 5s default.
+        self.run_lua(lua, context=context, timeout=self.timeout)
 
     def clear_command(self, context: str | None = None) -> None:
         """Clear ``ExposedMembers.AlphaZeroCommand`` (best effort)."""
@@ -372,9 +382,27 @@ class SocketTunerBridge:
         )
 
     async def stop(self) -> None:
-        """Close the FireTuner socket."""
+        """Close the FireTuner socket.
+
+        Acquires ``self._lock`` before closing so a close cannot interleave
+        with an in-flight ``send_command``/``kick_end_turn`` worker thread
+        operating on the same (non-thread-safe) socket. All socket ops are
+        bounded by the client timeout, so the lock frees promptly; if a stray
+        worker is somehow still holding it, we time out and close anyway
+        rather than hang shutdown.
+        """
         self._running = False
-        await asyncio.to_thread(self._client.close)
+        try:
+            await asyncio.wait_for(self._lock.acquire(), timeout=self._client.timeout + 1.0)
+            locked = True
+        except TimeoutError:
+            locked = False
+            logger.warning("SocketTunerBridge.stop() closing without lock (worker stuck)")
+        try:
+            await asyncio.to_thread(self._client.close)
+        finally:
+            if locked:
+                self._lock.release()
         logger.info("SocketTunerBridge stopped. Commands sent: %d", self._commands_sent)
 
     async def __aenter__(self) -> SocketTunerBridge:

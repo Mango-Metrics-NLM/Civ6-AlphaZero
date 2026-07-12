@@ -86,6 +86,12 @@ class BridgeConfig:
         player_id_mapping: Optional explicit mapping from raw Civ6 player IDs to
             sequential 0-indexed IDs. When None, a mapping is auto-generated from
             the players present in the game state.
+        command_transport: How commands reach the mod — "file" (write
+            commands.json for a FireTuner .ltp relay panel) or "socket"
+            (headless FireTuner TCP injection). Default "file".
+        tuner_host: FireTuner TCP host for the socket transport (default
+            127.0.0.1, the game's local debug listener).
+        tuner_port: FireTuner TCP port for the socket transport (default 4318).
 
     Note:
         The max_retries and retry_delay_s fields are defined for future
@@ -259,6 +265,9 @@ class BridgeConfig:
             "max_actions_per_second": self.max_actions_per_second,
             "multiplayer_mode": self.multiplayer_mode,
             "player_id_mapping": self.player_id_mapping,
+            "command_transport": self.command_transport,
+            "tuner_host": self.tuner_host,
+            "tuner_port": self.tuner_port,
         }
 
 

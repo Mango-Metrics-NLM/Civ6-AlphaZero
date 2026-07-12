@@ -246,6 +246,34 @@ class TestFireTunerClientLive:
         with pytest.raises(FireTunerError, match="not connected"):
             client.run_lua('print("x")')
 
+    def test_connect_closes_socket_when_handshake_fails(self, monkeypatch) -> None:
+        # A handshake failure must not leak the fd (it could hold the single
+        # tuner slot). connect() should close and re-raise, leaving connected=False.
+        client = FireTunerClient(host="127.0.0.1", port=1, timeout=0.5, handshake_quiet=0.05)
+
+        def boom(self_) -> None:
+            raise FireTunerError("handshake exploded")
+
+        # Let the socket "connect" succeed but the handshake blow up.
+        opened = {}
+
+        def fake_create_connection(addr, timeout=None):
+            import socket as _s
+
+            a, b = _s.socketpair()
+            opened["sock"] = a
+            b.close()
+            return a
+
+        monkeypatch.setattr(
+            "alpha_zero.bridge.tuner_socket_bridge.socket.create_connection",
+            fake_create_connection,
+        )
+        monkeypatch.setattr(FireTunerClient, "_handshake", boom)
+        with pytest.raises(FireTunerError, match="handshake exploded"):
+            client.connect()
+        assert client.connected is False  # socket was closed, not leaked
+
 
 # --- SocketTunerBridge async surface -----------------------------------------
 
@@ -256,6 +284,7 @@ class _FakeClient:
     def __init__(self, **_kw) -> None:
         self.host = "127.0.0.1"
         self.port = 4318
+        self.timeout = 5.0
         self.connected = False
         self.commands: list[str] = []
         self.closed = False
