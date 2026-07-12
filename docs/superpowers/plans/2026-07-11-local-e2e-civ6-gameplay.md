@@ -148,7 +148,7 @@ Expected: exit 0 (~34 unit files + integration). Same rule: failures here close 
 - [ ] **Step 3: Full suite with the Windows deselect list**
 
 ```powershell
-.venv\Scripts\python.exe -m pytest -q --timeout=120 --deselect tests/unit/test_interfaces.py --deselect tests/unit/test_gumbel_mcts.py --deselect tests/unit/test_enhanced_training_wandb.py --deselect tests/cloud/unit/test_training_muzero_dispatch.py
+.venv\Scripts\python.exe -m pytest -q --timeout=120 --continue-on-collection-errors --deselect tests/unit/test_interfaces.py --deselect tests/unit/test_gumbel_mcts.py --deselect tests/unit/test_enhanced_training_wandb.py --deselect tests/cloud/unit/test_training_muzero_dispatch.py --deselect tests/e2e/test_gcs_live.py
 ```
 This is a 4800+ test suite — allow up to ~30 minutes; run in the background with output redirected to a file, poll, don't kill it early. Record the final summary line.
 
