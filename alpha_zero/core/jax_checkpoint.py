@@ -28,7 +28,7 @@ import json
 import logging
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -257,7 +257,7 @@ def torch_to_jax_params(
             continue
 
         if _torch_tensor_type is not None and isinstance(torch_tensor, _torch_tensor_type):
-            np_val = torch_tensor.detach().cpu().numpy()
+            np_val = cast(Any, torch_tensor).detach().cpu().numpy()
         else:
             try:
                 np_val = np.asarray(torch_tensor)

@@ -179,14 +179,14 @@ class TestPaddedEnvironmentWrapper:
             False,
             {},
         )
-        obs, reward, terminated, truncated, info = wrapper.step(0)
+        obs, reward, _terminated, _truncated, _info = wrapper.step(0)
         assert obs["spatial"].shape == (13, 16, 16)
         assert reward == 1.0
 
     def test_step_non_dict_obs(self, mock_env):
         wrapper = PaddedEnvironmentWrapper(mock_env, expected_board_size=8, expected_action_size=50)
         mock_env.step.return_value = (np.array([1.0]), 0.5, True, False, {})
-        obs, reward, terminated, truncated, info = wrapper.step(0)
+        obs, _reward, terminated, _truncated, _info = wrapper.step(0)
         assert isinstance(obs, np.ndarray)
         assert terminated is True
 

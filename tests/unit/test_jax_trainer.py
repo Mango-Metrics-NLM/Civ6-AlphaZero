@@ -8,11 +8,10 @@ jnp = pytest.importorskip("jax.numpy")
 eqx = pytest.importorskip("equinox")
 
 try:
-    from alpha_zero.core.jax_network import JaxMicroCivNetwork, JaxNetworkWrapper
+    from alpha_zero.core.jax_network import JaxMicroCivNetwork
     from alpha_zero.core.jax_trainer import (
         JaxDataLoader,
         JaxTrainConfig,
-        JaxTrainState,
         create_train_state,
         jax_compute_loss,
         jax_train_step,
@@ -109,9 +108,7 @@ class TestJaxComputeLoss:
         target_policy = jnp.ones(381) / 381
         target_value = jnp.array(0.5)
 
-        loss, metrics = jax_compute_loss(
-            model, spatial, vector, mask, target_policy, target_value
-        )
+        loss, metrics = jax_compute_loss(model, spatial, vector, mask, target_policy, target_value)
 
         assert jnp.isfinite(loss)
         assert "total_loss" in metrics
@@ -126,9 +123,7 @@ class TestJaxComputeLoss:
         target_policy = jnp.ones(381) / 381
         target_value = jnp.array(0.0)
 
-        loss, metrics = jax_compute_loss(
-            model, spatial, vector, mask, target_policy, target_value
-        )
+        loss, _metrics = jax_compute_loss(model, spatial, vector, mask, target_policy, target_value)
 
         assert float(loss) >= 0
 
@@ -142,9 +137,7 @@ class TestJaxComputeLoss:
         target_policy = jnp.zeros(381).at[:10].set(0.1)
         target_value = jnp.array(0.0)
 
-        loss, _ = jax_compute_loss(
-            model, spatial, vector, mask, target_policy, target_value
-        )
+        loss, _ = jax_compute_loss(model, spatial, vector, mask, target_policy, target_value)
 
         assert jnp.isfinite(loss)
 

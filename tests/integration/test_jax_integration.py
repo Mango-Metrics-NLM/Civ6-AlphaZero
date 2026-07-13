@@ -230,7 +230,7 @@ class TestCrossFrameworkCheckpoint:
         state_dict = jax_to_torch_state_dict(model)
 
         assert len(state_dict) > 0
-        for name, tensor in state_dict.items():
+        for _name, tensor in state_dict.items():
             assert isinstance(tensor, torch.Tensor)
             assert tensor.dtype == torch.float32
 

@@ -28,6 +28,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
+from typing import Any
 
 import chess
 import numpy as np
@@ -78,7 +79,7 @@ class ChessAdvisorConfig:
     #: When True, log the LLM's commentary at INFO level.
     log_commentary: bool = False
     #: Extra keyword arguments forwarded to ``LLMClient.generate``.
-    llm_kwargs: dict[str, object] = field(default_factory=dict)
+    llm_kwargs: dict[str, Any] = field(default_factory=dict)
 
 
 class ChessAdvisor:

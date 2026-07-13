@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 def _try_filter(filter_str: str, page_size: int = 20) -> list[dict]:
     """Run one log query; empty list if non-200 or no entries."""
-    import requests  # noqa: PLC0415
+    import requests
 
     # Cloud Logging entries:list expects ``resourceNames`` in the form
     # ``projects/<project-id>``. The legacy ``projectIds`` field is rejected
@@ -49,7 +49,7 @@ def _try_filter(filter_str: str, page_size: int = 20) -> list[dict]:
 def main(_argv: list[str]) -> int:
     configure_script_logging()
 
-    import requests  # noqa: PLC0415
+    import requests
 
     # Look up the most recent job
     url = f"{VERTEX_API_BASE}/customJobs"

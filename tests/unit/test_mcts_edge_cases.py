@@ -26,7 +26,7 @@ class TestMCTSEdgeCases:
         action_mask[0, 0] = 1.0  # Only action 0 is valid
 
         with torch.no_grad():
-            policy_logits, value = network(spatial, vector, action_mask)
+            policy_logits, _value = network(spatial, vector, action_mask)
             # Apply softmax to get probabilities
             policy_probs = torch.softmax(policy_logits, dim=1)
 

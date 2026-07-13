@@ -58,7 +58,7 @@ class TestBackwardsCompat:
         assert env_2p.num_players == 2
 
     def test_reset_produces_4_units(self, env_2p):
-        """2 players × 2 units each = 4 starting units."""
+        """2 players x 2 units each = 4 starting units."""
         env_2p.reset()
         assert len(env_2p.units) == 4
 
@@ -262,7 +262,7 @@ class TestNPlayerTruncation:
             City(id=2, player=2, name="C", position=(5, 5)),
         ]
 
-        obs, reward, terminated, truncated, info = env.step(0)
+        _obs, _reward, _terminated, _truncated, _info = env.step(0)
         assert env.winner == 2
 
     def test_tie_gives_none(self):
@@ -279,7 +279,7 @@ class TestNPlayerTruncation:
             City(id=2, player=2, name="C", position=(5, 5)),
         ]
 
-        obs, reward, terminated, truncated, info = env.step(0)
+        _obs, _reward, _terminated, _truncated, _info = env.step(0)
         assert env.winner is None
 
 

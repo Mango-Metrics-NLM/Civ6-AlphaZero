@@ -256,7 +256,7 @@ class TestDiplomacyManager:
     def test_can_make_peace(self, manager: DiplomacyManager) -> None:
         """Test peace validation."""
         # Can't make peace if not at war
-        can_peace, reason = manager.can_make_peace(0, 1)
+        can_peace, _reason = manager.can_make_peace(0, 1)
         assert not can_peace
 
         # Can make peace if at war

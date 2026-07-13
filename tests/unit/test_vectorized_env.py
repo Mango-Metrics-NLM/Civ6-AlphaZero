@@ -182,7 +182,7 @@ class TestVectorizedMicroCivEnv:
         vec_env.reset_all()
 
         actions = np.zeros(4, dtype=np.int32)
-        rewards, terminated, truncated, infos = vec_env.step_all(actions)
+        rewards, terminated, truncated, _infos = vec_env.step_all(actions)
 
         # All arrays should have shape (num_envs,)
         assert rewards.shape == (4,)
@@ -343,12 +343,12 @@ class TestVectorizedMicroCivEnv:
         config1 = VectorizedEnvConfig(num_envs=4, board_size=8, max_turns=10, seed_offset=42)
         vec_env1 = VectorizedMicroCivEnv(config1)
         vec_env1.reset_all()
-        spatial1, vector1, mask1 = vec_env1.get_observations()
+        spatial1, vector1, _mask1 = vec_env1.get_observations()
 
         config2 = VectorizedEnvConfig(num_envs=4, board_size=8, max_turns=10, seed_offset=99)
         vec_env2 = VectorizedMicroCivEnv(config2)
         vec_env2.reset_all()
-        spatial2, vector2, mask2 = vec_env2.get_observations()
+        spatial2, vector2, _mask2 = vec_env2.get_observations()
 
         # Different seed should produce different observations
         # (at least one should differ)
@@ -407,7 +407,7 @@ class TestVectorizedMicroCivEnv:
         max_attempts = 50
         for _ in range(max_attempts):
             actions = np.zeros(4, dtype=np.int32)  # Pass action
-            rewards, terminated, truncated, infos = vec_env.step_all(actions)
+            _rewards, terminated, truncated, _infos = vec_env.step_all(actions)
 
             # Check if any environment is done
             if terminated.any() or truncated.any():
@@ -436,7 +436,7 @@ class TestVectorizedMicroCivEnv:
 
         # Step all (env 1 should be skipped)
         actions = np.zeros(4, dtype=np.int32)
-        rewards, terminated, truncated, infos = vec_env.step_all(actions)
+        _rewards, _terminated, _truncated, infos = vec_env.step_all(actions)
 
         # Env 1 should still have same observation (not stepped)
         spatial_after, _, _ = vec_env.get_observations()
@@ -452,7 +452,7 @@ class TestVectorizedMicroCivEnv:
         vec_env.reset_all()
 
         # Get initial observations
-        spatial_before, vector_before, mask_before = vec_env.get_observations()
+        _spatial_before, vector_before, _mask_before = vec_env.get_observations()
         vector_copy = vector_before.copy()
 
         # Step with pass actions
@@ -460,7 +460,7 @@ class TestVectorizedMicroCivEnv:
         vec_env.step_all(actions)
 
         # Observations should be updated in buffers
-        spatial_after, vector_after, mask_after = vec_env.get_observations()
+        _spatial_after, _vector_after, _mask_after = vec_env.get_observations()
 
         # At least vector should change (turn counter increments)
         assert not np.array_equal(vector_before, vector_copy), "Buffers should be updated"

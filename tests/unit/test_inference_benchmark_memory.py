@@ -6,17 +6,17 @@ from alpha_zero.optimizations.inference_benchmark import InferenceMetrics
 
 def _make_metrics(**overrides):
     """Build an InferenceMetrics with sensible defaults for all required fields."""
-    kwargs = dict(
-        name="test",
-        games_per_minute=1.0,
-        moves_per_second=1.0,
-        avg_batch_size=1.0,
-        gpu_utilization_pct=0.0,
-        total_games=1,
-        total_time_seconds=1.0,
-        network_eval_time_pct=50.0,
-        env_step_time_pct=50.0,
-    )
+    kwargs = {
+        "name": "test",
+        "games_per_minute": 1.0,
+        "moves_per_second": 1.0,
+        "avg_batch_size": 1.0,
+        "gpu_utilization_pct": 0.0,
+        "total_games": 1,
+        "total_time_seconds": 1.0,
+        "network_eval_time_pct": 50.0,
+        "env_step_time_pct": 50.0,
+    }
     kwargs.update(overrides)
     return InferenceMetrics(**kwargs)
 

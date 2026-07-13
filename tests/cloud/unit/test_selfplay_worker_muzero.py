@@ -193,7 +193,7 @@ class TestLoadMuZeroModel:
         with torch.no_grad():
             output = model.initial_inference(spatial, vector)
             action = torch.tensor([0])
-            next_hidden, reward, policy, value = model.recurrent_inference(
+            next_hidden, _reward, policy, _value = model.recurrent_inference(
                 output.hidden_state, action
             )
 

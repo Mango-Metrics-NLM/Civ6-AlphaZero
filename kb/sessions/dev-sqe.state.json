@@ -1,22 +1,21 @@
 {
-    "last_session_id": "48dca8d8-7e46-41dc-b7f5-1ecb487c8400",
-    "last_timestamp": "2026-04-02T01:00:00Z",
-    "active_branch": "claude/plan-civ6-roadmap-BU68s",
-    "current_focus": "Handed off to Pre-PR — full-civ6-local-gameplay spec",
+    "last_session_id": "session_01AAR7bMpmkZtman9kFaeqft",
+    "last_timestamp": "2026-07-13T01:06:31Z",
+    "active_branch": "claude/project-charter-template-b4n9fu",
+    "current_focus": "Handed off to Pre-PR \u2014 charter + gap-analysis/tech-debt sweep (PR #91)",
     "resume_pointers": {
-        "current_task": "Pre-PR validation of Phase 8 (civ6_local.py entry point)",
+        "current_task": "Monitor PR #91 CI (coverage gate now 85, big lint/type diff)",
         "blocked_on": [],
         "next_steps": [
-            "Pre-PR: validate ruff/mypy clean on changed files",
-            "Pre-PR: run full test suite with coverage >= 85%",
-            "Pre-PR: confirm python -m alpha_zero.civ6_local --dry-run smoke test",
-            "Phase 0: run scripts/validate_v130_training.py for convergence validation"
+            "Verify CI green on PR #91 (85% coverage gate + revived bridge tests)",
+            "Follow-up debt: W&B->MLflow sweep (cloud/, pbt/, evaluation/, optimizations/)",
+            "Follow-up debt: shrink coverage omit list (serving/, inference/, cloud infra)"
         ]
     },
     "context_files": [
-        "kb/specs/20260402-full-civ6-local-gameplay.md",
-        "kb/handoffs/20260402-devsqe-to-prepr-civ6-local.md",
-        "alpha_zero/civ6_local.py",
-        "tests/unit/test_civ6_local.py"
+        "kb/handoffs/20260713-devsqe-to-prepr-gap-analysis.md",
+        "kb/handoffs/20260713-devsqe-to-prepr-project-charter.md",
+        "PROJECT_CHARTER.md",
+        "ROADMAP.md"
     ]
 }

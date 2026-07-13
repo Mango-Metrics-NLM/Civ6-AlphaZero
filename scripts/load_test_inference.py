@@ -248,7 +248,7 @@ async def run_load_test(config: LoadTestConfig) -> LoadTestResults:
                 asyncio.gather(*tasks, return_exceptions=True),
                 timeout=config.duration_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Expected - stop all games
             stop_event.set()
             await asyncio.gather(*tasks, return_exceptions=True)

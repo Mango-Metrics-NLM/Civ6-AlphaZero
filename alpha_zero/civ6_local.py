@@ -448,7 +448,8 @@ def run_microciv(config: Civ6LocalConfig) -> int:
             float(root_value),
         )
 
-        obs, reward, terminated, truncated, _info = env.step(action)
+        obs, step_reward, terminated, truncated, _info = env.step(action)
+        reward = float(step_reward)
         done = terminated or truncated
 
         if turn % 10 == 0:
@@ -498,6 +499,7 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
             AgentLoopConfig,
             BridgeAgentLoop,
             GreedyNetworkPolicy,
+            PolicyEngine,
         )
         from alpha_zero.bridge.config import BridgeConfig
         from alpha_zero.bridge.live_bridge import LiveBridge
@@ -554,6 +556,7 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
     network = _build_network_for_bridge(
         config, action_space_size=action_converter.action_space_size
     )
+    policy: PolicyEngine
     if config.use_mcts:
         from alpha_zero.bridge.mcts_policy import Civ6MctsPolicy
         from alpha_zero.core.civ6_mcts import GumbelMCTSConfig

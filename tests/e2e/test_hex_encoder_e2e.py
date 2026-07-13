@@ -250,7 +250,7 @@ class TestCrossEncoderSwitching:
             torch.manual_seed(42)
             config = TransformerConfig(encoder_type=encoder_type)
             network = Civ6TransformerNetwork(config=config)
-            probs, value = network.predict(spatial_input, vector_input)
+            probs, _value = network.predict(spatial_input, vector_input)
 
             # Probabilities must be valid
             assert (probs >= 0).all(), f"[{encoder_type}] Negative probs"

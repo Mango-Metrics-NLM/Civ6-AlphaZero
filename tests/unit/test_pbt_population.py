@@ -803,7 +803,7 @@ class TestExploitExploreEdgeCases:
 
         # All replacements should have happened via resampling
         assert len(changes) == pbt_config.get_num_to_replace()
-        for weak_id, strong_id, new_params in changes:
+        for _weak_id, _strong_id, new_params in changes:
             assert isinstance(new_params, dict)
             assert len(new_params) > 0
 
@@ -958,7 +958,7 @@ class TestComputeStatsEdgeCases:
         self, population_manager: PopulationManager
     ) -> None:
         """Test stats tracks total games and steps correctly."""
-        for i, aid in enumerate(population_manager.get_agent_ids()):
+        for _i, aid in enumerate(population_manager.get_agent_ids()):
             population_manager.update_fitness(aid, 0.5, games_played=10, training_steps=100)
 
         stats = population_manager.compute_stats()

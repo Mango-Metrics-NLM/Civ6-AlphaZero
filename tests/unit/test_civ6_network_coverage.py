@@ -246,11 +246,11 @@ class TestCiv6NetworkExtended:
     def test_forward_with_mask(self, net, spatial_8x8, vector_16):
         mask = torch.zeros(2, 32)
         mask[:, :5] = 1.0
-        policy, value = net(spatial_8x8, vector_16, action_mask=mask)
+        policy, _value = net(spatial_8x8, vector_16, action_mask=mask)
         assert torch.all(policy[:, 5:] < -1e8)
 
     def test_predict(self, net, spatial_8x8, vector_16):
-        probs, value = net.predict(spatial_8x8, vector_16)
+        probs, _value = net.predict(spatial_8x8, vector_16)
         assert probs.shape == (2, 32)
         assert torch.allclose(probs.sum(dim=-1), torch.ones(2), atol=1e-5)
 
@@ -326,7 +326,7 @@ class TestMicroCivNetworkExtended:
         net = MicroCivNetwork(board_size=8, action_space_size=100, num_res_blocks=1, num_filters=8)
         s = torch.randn(1, 13, 8, 8)
         v = torch.randn(1, 64)
-        p, val = net(s, v)
+        p, _val = net(s, v)
         assert p.shape == (1, 100)
 
     def test_num_players_property(self):
@@ -347,7 +347,7 @@ class TestMicroCivNetworkExtended:
         # Forward pass should work regardless
         s = torch.randn(2, 13, 8, 8)
         v = torch.randn(2, 64)
-        p, val = net(s, v)
+        p, _val = net(s, v)
         assert p.shape == (2, 50)
 
     def test_with_explicit_config(self):
@@ -364,7 +364,7 @@ class TestMicroCivNetworkExtended:
         net = MicroCivNetwork(config=cfg)
         s = torch.randn(1, 4, 4, 4)
         v = torch.randn(1, 16)
-        p, val = net(s, v)
+        p, _val = net(s, v)
         assert p.shape == (1, 20)
 
     def test_save_load(self, tmp_path):
@@ -375,7 +375,7 @@ class TestMicroCivNetworkExtended:
         # Verify forward pass on loaded model
         s = torch.randn(1, 13, 8, 8)
         v = torch.randn(1, 64)
-        p, val = loaded(s, v)
+        p, _val = loaded(s, v)
         assert p.shape == (1, 50)
 
 
@@ -643,7 +643,7 @@ class TestCiv6NetworkV2:
     def test_forward_with_mask(self, small_v2, spatial_8x8, vector_16):
         mask = torch.zeros(2, 32)
         mask[:, :5] = 1.0
-        policy, value = small_v2(spatial_8x8, vector_16, action_mask=mask)
+        policy, _value = small_v2(spatial_8x8, vector_16, action_mask=mask)
         assert torch.all(policy[:, 5:] < -1e8)
 
     def test_forward_without_attention(self):
@@ -677,14 +677,14 @@ class TestCiv6NetworkV2:
     def test_forward_with_categories_and_mask(self, small_v2, spatial_8x8, vector_16):
         mask = torch.zeros(2, 32)
         mask[:, :5] = 1.0
-        policy, cat_probs, value = small_v2.forward_with_categories(
+        policy, cat_probs, _value = small_v2.forward_with_categories(
             spatial_8x8, vector_16, action_mask=mask,
         )
         assert torch.all(policy[:, 5:] < -1e8)
         assert cat_probs.shape == (2, 9)
 
     def test_predict(self, small_v2, spatial_8x8, vector_16):
-        probs, value = small_v2.predict(spatial_8x8, vector_16)
+        probs, _value = small_v2.predict(spatial_8x8, vector_16)
         assert probs.shape == (2, 32)
         assert torch.allclose(probs.sum(dim=-1), torch.ones(2), atol=1e-5)
 
@@ -725,7 +725,7 @@ class TestCiv6NetworkV2:
         v = torch.randn(16)
         m = torch.ones(32)
         m[10:] = 0
-        probs, cat_probs, val = small_v2.predict_hierarchical(s, v, m)
+        probs, cat_probs, _val = small_v2.predict_hierarchical(s, v, m)
         assert probs.shape == (32,)
         assert cat_probs.shape == (9,)
 
@@ -817,7 +817,7 @@ class TestCiv6NetworkV2:
         # Forward pass should work
         s = torch.randn(1, 4, 8, 8)
         v = torch.randn(1, 16)
-        policy, value = v2(s, v)
+        policy, _value = v2(s, v)
         assert policy.shape == (1, 32)
 
     def test_from_v1_checkpoint_no_attention(self, tmp_path):
@@ -968,7 +968,7 @@ class TestInferenceMode:
         net = MicroCivNetwork(board_size=8, action_space_size=50, num_res_blocks=1, num_filters=8)
         s = torch.randn(13, 8, 8)
         v = torch.randn(64)
-        probs, val = net.predict_single(s, v)
+        probs, _val = net.predict_single(s, v)
         assert not probs.requires_grad
 
     def test_v2_predict_single_no_grad(self):
@@ -982,7 +982,7 @@ class TestInferenceMode:
         _fix_relative_pos_bug(net)
         s = torch.randn(4, 4, 4)
         v = torch.randn(8)
-        probs, val = net.predict_single(s, v)
+        probs, _val = net.predict_single(s, v)
         assert not probs.requires_grad
 
     def test_v2_predict_hierarchical_no_grad(self):
@@ -996,6 +996,6 @@ class TestInferenceMode:
         _fix_relative_pos_bug(net)
         s = torch.randn(4, 4, 4)
         v = torch.randn(8)
-        probs, cat_probs, val = net.predict_hierarchical(s, v)
+        probs, cat_probs, _val = net.predict_hierarchical(s, v)
         assert not probs.requires_grad
         assert not cat_probs.requires_grad

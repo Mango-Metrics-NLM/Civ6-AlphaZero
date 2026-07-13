@@ -228,7 +228,7 @@ class TestCanRecruit:
         self, minimal_manager: GreatPeopleManager
     ) -> None:
         minimal_manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 60.0)
-        can, reason = minimal_manager.can_recruit(0, "test_scientist")
+        can, _reason = minimal_manager.can_recruit(0, "test_scientist")
         assert can is True
 
     def test_cannot_recruit_insufficient_points(
@@ -242,7 +242,7 @@ class TestCanRecruit:
     def test_cannot_recruit_unknown_person(
         self, minimal_manager: GreatPeopleManager
     ) -> None:
-        can, reason = minimal_manager.can_recruit(0, "nobody")
+        can, _reason = minimal_manager.can_recruit(0, "nobody")
         assert can is False
 
     def test_cannot_recruit_already_taken(
@@ -337,14 +337,14 @@ class TestPurchaseWithGold:
     def test_purchase_unknown_person_fails(
         self, minimal_manager: GreatPeopleManager
     ) -> None:
-        person, cost = minimal_manager.purchase_with_gold(0, "nobody", (0, 0), 1000)
+        person, _cost = minimal_manager.purchase_with_gold(0, "nobody", (0, 0), 1000)
         assert person is None
 
     def test_purchase_unavailable_type_fails(
         self, minimal_manager: GreatPeopleManager
     ) -> None:
         # No general defined in minimal_manager
-        person, cost = minimal_manager.purchase_with_gold(
+        person, _cost = minimal_manager.purchase_with_gold(
             0, "sun_tzu", (0, 0), 1000
         )
         assert person is None

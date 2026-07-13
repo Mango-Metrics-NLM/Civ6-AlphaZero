@@ -269,7 +269,7 @@ class TestVectorizedEnhanced:
             if len(valid) > 0:
                 actions[i] = valid[0]
 
-        rewards, terminated, truncated, infos = vec_env.step_all(actions)
+        rewards, terminated, truncated, _infos = vec_env.step_all(actions)
         assert rewards.shape == (num_envs,)
         assert terminated.shape == (num_envs,)
         assert truncated.shape == (num_envs,)

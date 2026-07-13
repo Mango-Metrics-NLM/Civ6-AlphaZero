@@ -51,7 +51,7 @@ class TestGameLength:
         env = MicroCivEnv(board_size=8, max_turns=50)
 
         for _ in range(20):
-            obs, _info = env.reset()
+            _obs, _info = env.reset()
 
             # Immediately after reset, game should not be done
             assert not env.done, "Game is done immediately after reset"
@@ -119,7 +119,7 @@ class TestActionExecutionSuccess:
     def test_info_contains_action_status(self):
         """Step should return action success status in info."""
         env = MicroCivEnv(board_size=8, max_turns=50)
-        obs, _ = env.reset()
+        _obs, _ = env.reset()
 
         # Take an action
         action = 0  # End turn
@@ -199,7 +199,7 @@ class TestTerminationConditions:
     def test_turn_limit_termination(self):
         """Game should terminate at max_turns."""
         env = MicroCivEnv(board_size=8, max_turns=5)
-        obs, _ = env.reset()
+        _obs, _ = env.reset()
 
         # Just end turn repeatedly
         for _ in range(100):

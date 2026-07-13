@@ -222,7 +222,7 @@ class TestPBTCoordinatorInit:
             coord1.population.update_fitness(aid, 0.1 * (i + 1))
         coord1._current_step = 50
 
-        checkpoint_path = tmp_path / "test_checkpoint"
+        tmp_path / "test_checkpoint"
         coord1._save_checkpoint()
 
         # Now load from checkpoint

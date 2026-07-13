@@ -17,7 +17,7 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 
@@ -575,7 +575,7 @@ class OptimizationBenchmark:
             i = idx[0] % len(predictions_list)
             idx[0] += 1
             return calculator.compute_loss(
-                cast(dict[str, np.ndarray], predictions_list[i]),
+                predictions_list[i],
                 targets_list[i],
             )
 

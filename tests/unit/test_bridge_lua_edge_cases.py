@@ -9,30 +9,22 @@ from __future__ import annotations
 
 import asyncio
 import json
-import tempfile
 import time
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from alpha_zero.bridge.config import BridgeConfig
 from alpha_zero.bridge.file_bridge import (
-    AckTimeoutError,
-    ConnectionLostError,
     FileBridge,
     MockFileBridge,
-    StateTimeoutError,
 )
 from alpha_zero.bridge.protocol import (
-    AckMessage,
-    CommandMessage,
-    GameStateData,
-    LuaCommand,
     ActionType,
+    CommandMessage,
+    LuaCommand,
     validate_state_json,
 )
-
 
 # ==============================================================================
 # Fixtures
@@ -179,7 +171,7 @@ class TestStatePollEdgeCases:
         await bridge.start()
         state_data = {"turn_id": 5, "units": [], "cities": [], "legal_actions": []}
         bridge.config.state_file.write_text(json.dumps(state_data))
-        state = await bridge.poll_state()
+        await bridge.poll_state()
         # Should either return None or a state with defaults depending on implementation
         # The key thing is it doesn't crash
 
@@ -248,7 +240,7 @@ class TestAckEdgeCases:
         """Ack without success field should default gracefully."""
         await bridge.start()
         bridge.config.ack_file.write_text(json.dumps({"msg_id": 1}))
-        result = await bridge._poll_ack(1)
+        await bridge._poll_ack(1)
         # Should either return None or an ack with success=False
         # Key: no crash
 
@@ -377,33 +369,33 @@ class TestProtocolValidationEdgeCases:
     """Edge cases for protocol validation — mirrors Lua encoder quirks."""
 
     def test_validate_empty_string(self) -> None:
-        is_valid, error = validate_state_json("")
+        is_valid, _error = validate_state_json("")
         assert not is_valid
 
     def test_validate_null(self) -> None:
-        is_valid, error = validate_state_json("null")
+        is_valid, _error = validate_state_json("null")
         assert not is_valid
 
     def test_validate_array(self) -> None:
-        is_valid, error = validate_state_json("[1, 2]")
+        is_valid, _error = validate_state_json("[1, 2]")
         assert not is_valid
 
     def test_validate_minimal_valid(self) -> None:
         """Minimal valid state with just turn_id and map."""
         data = json.dumps({"turn_id": 1, "map": {"width": 1, "height": 1}})
-        is_valid, error = validate_state_json(data)
+        is_valid, _error = validate_state_json(data)
         assert is_valid
 
     def test_validate_turn_id_zero(self) -> None:
         """Turn 0 is valid (game start)."""
         data = json.dumps({"turn_id": 0, "map": {"width": 1, "height": 1}})
-        is_valid, error = validate_state_json(data)
+        is_valid, _error = validate_state_json(data)
         assert is_valid
 
     def test_validate_negative_turn_id(self) -> None:
         """Negative turn_id (Lua bug) — still has required fields."""
         data = json.dumps({"turn_id": -1, "map": {"width": 1, "height": 1}})
-        is_valid, error = validate_state_json(data)
+        _is_valid, _error = validate_state_json(data)
         # Implementation-dependent: may pass field check even if value is odd
         # Key: no crash
 

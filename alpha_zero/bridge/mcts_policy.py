@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, SupportsFloat
+from typing import Any
 
 import numpy as np
 
@@ -211,13 +211,12 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         new_env.env = self.env.clone()
         return new_env
 
-    def reset(
-        self, *, seed: int | None = None, options: dict[str, Any] | None = None
-    ) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
+    def reset(self, seed: int | None = None) -> dict[str, np.ndarray]:
         """Not supported — raises immediately.
 
         BridgeMCTSEnv represents a live game snapshot and may not be reset.
         Use :meth:`from_bridge_state` to create a fresh env from a new snapshot.
+        Signature matches :class:`~alpha_zero.core.protocols.EnvironmentProtocol`.
         """
         raise NotImplementedError(
             "BridgeMCTSEnv does not support reset(). "
@@ -225,10 +224,9 @@ class BridgeMCTSEnv(EnvironmentProtocol):
             "Call BridgeMCTSEnv.from_bridge_state(new_state) instead."
         )
 
-    def step(
-        self, action: int
-    ) -> tuple[dict[str, np.ndarray], SupportsFloat, bool, bool, dict[str, Any]]:
-        return self.env.step(action)
+    def step(self, action: int) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        return obs, float(reward), terminated, truncated, info
 
     def get_observation(self) -> dict[str, np.ndarray]:
         return self.env.get_observation()
@@ -238,6 +236,11 @@ class BridgeMCTSEnv(EnvironmentProtocol):
 
     def get_valid_actions(self) -> np.ndarray:
         return self.env.get_valid_actions()
+
+    @property
+    def action_space(self) -> Any:
+        """Delegate to the wrapped env (satisfies ``MCTSEnvironment``)."""
+        return self.env.action_space
 
     @property
     def current_player(self) -> int:
@@ -297,11 +300,19 @@ class Civ6MctsPolicy:
 
         env = BridgeMCTSEnv.from_bridge_state(converted_state, max_turns=self.max_turns)
 
-        # Run MCTS search in a thread so we don't block the async bridge heartbeat
-        action_idx, search_stats = await asyncio.to_thread(self.mcts.search, env)
+        # Run MCTS search in a thread so we don't block the async bridge heartbeat.
+        # GumbelMCTS.search returns (policy_probs, root_value) — a probability
+        # vector over the action space (one-hot for the selected action) and the
+        # root value estimate, NOT (action, stats).
+        policy_probs, root_value = await asyncio.to_thread(self.mcts.search, env)
+        action_idx = int(np.argmax(policy_probs))
+
+        logger.debug(
+            "MCTS search complete: action=%d root_value=%.3f", action_idx, float(root_value)
+        )
 
         diagnostics: dict[str, float] = {
-            "value_estimate": float(search_stats.get("root_value", 0.0)),
+            "value_estimate": float(root_value),
             "policy_kind": _POLICY_KIND_MCTS,
             "mcts_sims": float(self.config.num_simulations),
         }

@@ -183,7 +183,7 @@ class TestCheckpointCoordination:
     ) -> None:
         """Test that only rank 0 (is_main=True) is intended to save checkpoints."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            checkpoint_path = Path(tmpdir) / "checkpoint.pt"
+            Path(tmpdir) / "checkpoint.pt"
 
             # Test with world_size=1 (main rank saves)
             config = DDPLearnerConfig(ddp_world_size=1, ddp_rank=0, checkpoint_dir=str(tmpdir))
@@ -218,7 +218,7 @@ class TestCheckpointCoordination:
     ) -> None:
         """Test that all ranks can load the same checkpoint regardless of rank."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            checkpoint_path = Path(tmpdir) / "shared_checkpoint.pt"
+            Path(tmpdir) / "shared_checkpoint.pt"
 
             # Save from main rank (world_size=1 to avoid distributed setup)
             config_main = DDPLearnerConfig(ddp_world_size=1, ddp_rank=0, checkpoint_dir=str(tmpdir))

@@ -216,7 +216,7 @@ class TestNPlayerNetworkAdapter:
         # Default spatial_size=16, vector_dim=256 from fallback defaults
         spatial = torch.randn(2, 13, 16, 16)
         vector = torch.randn(2, 256)
-        policy, values = adapter(spatial, vector)
+        _policy, values = adapter(spatial, vector)
         assert values.shape[0] == 2
         assert values.shape[1] == 3
 
@@ -226,7 +226,7 @@ class TestNPlayerNetworkAdapter:
         spatial = torch.randn(2, 13, 16, 16)
         vector = torch.randn(2, 256)
         mask = torch.ones(2, 10)
-        policy, values = adapter(spatial, vector, action_mask=mask)
+        _policy, values = adapter(spatial, vector, action_mask=mask)
         assert values.shape == (2, 2)
 
     def test_adapter_forward_with_encoders(self):

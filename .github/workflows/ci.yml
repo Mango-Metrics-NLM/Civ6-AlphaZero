@@ -158,7 +158,7 @@ jobs:
             --cov=alpha_zero \
             --cov-report=xml \
             --cov-report=term-missing \
-            --cov-fail-under=80 \
+            --cov-fail-under=85 \
             -m "not slow and not requires_env" \
             --ignore=tests/unit/test_distributed
 

@@ -39,19 +39,19 @@ from alpha_zero.bridge.health_checker import (
 
 def _fast_config(**overrides: Any) -> BridgeHealthConfig:
     """Return a BridgeHealthConfig with fast defaults for unit tests."""
-    defaults: dict[str, Any] = dict(
-        check_interval_seconds=0.1,
-        timeout_seconds=1.0,
-        max_retries=2,
-        retry_delay_seconds=0.01,
-        backoff_multiplier=2.0,
-        max_backoff_seconds=1.0,
-        circuit_breaker_threshold=3,
-        circuit_breaker_timeout_seconds=0.1,
-        success_threshold=2,
-        health_window_size=10,
-        degraded_threshold=0.3,
-    )
+    defaults: dict[str, Any] = {
+        "check_interval_seconds": 0.1,
+        "timeout_seconds": 1.0,
+        "max_retries": 2,
+        "retry_delay_seconds": 0.01,
+        "backoff_multiplier": 2.0,
+        "max_backoff_seconds": 1.0,
+        "circuit_breaker_threshold": 3,
+        "circuit_breaker_timeout_seconds": 0.1,
+        "success_threshold": 2,
+        "health_window_size": 10,
+        "degraded_threshold": 0.3,
+    }
     defaults.update(overrides)
     return BridgeHealthConfig(**defaults)
 
@@ -299,12 +299,12 @@ class TestOperationTimeoutError:
 
 class TestBridgeHealth:
     def _make(self, **kwargs: Any) -> BridgeHealth:
-        defaults: dict[str, Any] = dict(
-            status=HealthStatus.HEALTHY,
-            circuit_state=CircuitState.CLOSED,
-            is_connected=True,
-            last_check_time=1234.5,
-        )
+        defaults: dict[str, Any] = {
+            "status": HealthStatus.HEALTHY,
+            "circuit_state": CircuitState.CLOSED,
+            "is_connected": True,
+            "last_check_time": 1234.5,
+        }
         defaults.update(kwargs)
         return BridgeHealth(**defaults)
 

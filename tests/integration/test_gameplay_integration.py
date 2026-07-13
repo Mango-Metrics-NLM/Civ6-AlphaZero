@@ -197,7 +197,7 @@ class TestEncoderWithGameplaySystems:
                 (2, 0): "unexplored",
             },
         }
-        spatial, vector = encoder.encode(game_state)
+        spatial, _vector = encoder.encode(game_state)
 
         # Channel 11 is the visibility channel
         assert spatial[11, 0, 0].item() == pytest.approx(1.0), "visible -> 1.0"
@@ -313,7 +313,7 @@ class TestGameSimulation:
 
         while not env.done and step_count < max_total_steps:
             action = _pick_valid_action(env, rng)
-            _obs, _reward, terminated, _truncated, _info = env.step(action)
+            _obs, _reward, _terminated, _truncated, _info = env.step(action)
             step_count += 1
 
         assert env.done, (

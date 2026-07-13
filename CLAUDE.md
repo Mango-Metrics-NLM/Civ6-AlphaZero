@@ -18,7 +18,7 @@ Monte Carlo Tree Search, and deep neural networks.
 ```
 This succeeds when:
 - [ ] All tests pass: `pytest tests/ -v` exits with code 0
-- [ ] Coverage >= 80%: `pytest --cov=alpha_zero --cov-report=term-missing` shows >= 80% (gate enforced in CI and `pyproject.toml`; some infra/web modules are intentionally omitted — see `[tool.coverage]`)
+- [ ] Coverage >= 85%: `pytest --cov=alpha_zero --cov-report=term-missing` shows >= 85% (gate enforced in CI and `pyproject.toml`; re-tightened 80→85 on 2026-07-13 at 89.69% measured; some infra/web modules are intentionally omitted — see `[tool.coverage]`)
 - [ ] Type checking passes: `mypy alpha_zero/` exits with code 0
 - [ ] Linting passes: `ruff check alpha_zero/` exits with code 0
 - [ ] Training smoke test: `python -m alpha_zero.training_civ6 --dry_run` completes
@@ -93,7 +93,7 @@ from numerical instability, and race conditions in distributed components.
   - pytest with fixtures
   - Unit tests for all public methods
   - Integration tests for cross-module flows
-  - Coverage >= 80% on core modules
+  - Coverage >= 85% on core modules
 - Logging:
   - Use alpha_zero.utils.logging module
   - Structured logging with MetricsTracker
@@ -245,7 +245,7 @@ ON REPEATED FAILURE (same error 3x):
 ```
 Before reporting completion:
 1. All verification commands pass (lint, type, tests)
-2. Coverage check: pytest --cov=alpha_zero shows >= 80% on changed modules
+2. Coverage check: pytest --cov=alpha_zero shows >= 85% on changed modules
 3. Smoke test: python -m alpha_zero.training_civ6 --dry_run
 4. Import check: python -c "from alpha_zero import <new_module>"
 5. Generate brief summary of changes made
@@ -401,7 +401,7 @@ When making changes, update the relevant sections below:
 | Issue | Workaround |
 |-------|------------|
 | No GPU in dev environment | Training works on CPU (slower) |
-| torch not installable in restricted web sessions | PyTorch index blocked by network policy; torch-dependent tests run in CI, not locally. Pure logic still verifiable via `python -m py_compile` + `ruff`. |
+| download.pytorch.org index blocked in web sessions | Use plain `pip install torch` (PyPI wheel works; verified 2026-07-13 with torch 2.13.0) — only the `--index-url https://download.pytorch.org/...` path is blocked. Full test suite then runs locally. |
 | `PostToolUse` ruff `--fix` can strip imports mid-task | If you add an import in one edit and its first use in a later edit, the autofix removes it as unused. Re-add the import after the use exists; see guardrail audit in `docs/HARNESS_ENGINEERING_ANALYSIS.md` §6. |
 | SimpleMCTS random rollout is weak | Use neural network MCTS after initial training |
 | Windows multiprocessing spawn | Use `if __name__ == "__main__"` guard |
@@ -447,7 +447,7 @@ When making changes, update the relevant sections below:
 ### 6.1 Initial Actions (Always Do First)
 
 ```bash
-# 1. Read this file (CLAUDE.md)
+# 1. Read this file (CLAUDE.md) and PROJECT_CHARTER.md (scope, non-goals, invariants)
 
 # 2. Check environment
 python --version  # Should be 3.10+
@@ -1173,13 +1173,18 @@ python -m infra.vertex_launcher \
 
 ## SECTION 13: NEXT STEPS
 
-### Current State (v1.7.0)
+> Long-term themes: see ROADMAP.md. Scope boundaries and invariants: see PROJECT_CHARTER.md.
+
+### Current State (v1.8.0)
 Training convergence (the v1.3.0 weight-loading fix) has been validated, and the
-project has since shipped through v1.7.0:
+project has since shipped through v1.8.0:
 - **v1.5.0** — convergence validation + MLflow monitoring + batch self-play groundwork
 - **v1.6.0** — cloud-deploy prep: Vertex launcher, runbook, GCP OAuth/VM fixes, 85%→80% CI gate
 - **v1.7.0** — full-Civ6 local gameplay (`BridgeAgentLoop` wires the agent to Civ6) and the
   `langfuse-eval-harness` LLM eval gate for `StrategyAdvisor` (`make eval-llm`)
+- **v1.8.0** — headless FireTuner socket bridge (`tuner_socket_bridge.py`): live Civ6
+  gameplay verified over the socket, no GUI relay needed (coverage gate back to 85%
+  as of 2026-07-13)
 
 ### Implemented (substantially built)
 - **PBT**: `alpha_zero/pbt/` (10 files) · **Tournament**: `alpha_zero/tournament/` (9 files)
@@ -1195,7 +1200,8 @@ project has since shipped through v1.7.0:
 3. **Batch self-play in cloud**: Wire BatchGumbelMCTS into cloud containers (5-10x throughput)
 4. **Fog of war**: Information set sampling for partial observability (gap G10)
 5. **Coverage**: Bring omitted modules (`serving/`, `inference/`, cloud infra) under the gate so it
-   can re-tighten 80% → 85%; `serving/` now has unit tests but stays omitted (needs the `web` extra,
+   can keep tightening (gate re-tightened 80% → 85% on 2026-07-13 at 89.69% measured; omit-list
+   shrink is the remaining work); `serving/` now has unit tests but stays omitted (needs the `web` extra,
    absent from the default-CI `[dev]` install)
 6. **Full Civ6 integration**: Continue scaling the Lua mod bridge toward the real game
 
@@ -1306,6 +1312,6 @@ This file is gitignored and never committed.
 
 ---
 
-*Last updated: 2026-06-20*
-*Version: v1.7.0 (full-Civ6 local gameplay + LLM eval harness)*
-*Current Focus: N-player MicroCiv env, DDP test re-enable, and re-tightening the coverage gate*
+*Last updated: 2026-07-13*
+*Version: v1.8.0 (headless FireTuner socket bridge — live Civ6 gameplay)*
+*Current Focus: M4 (ROADMAP.md) — N-player training runs, batch self-play in cloud, W&B→MLflow sweep, omit-list shrink. Governance: PROJECT_CHARTER.md*

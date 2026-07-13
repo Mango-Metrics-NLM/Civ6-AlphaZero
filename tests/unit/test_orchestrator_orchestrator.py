@@ -307,7 +307,7 @@ class TestPaddedEnvironmentWrapper:
             "action_mask": np.ones(20, dtype=np.float32),
         }
         small_env.reset.return_value = (small_obs, {})
-        obs, info = wrapper.reset()
+        obs, _info = wrapper.reset()
         assert obs["spatial"].shape == (13, 8, 8)
         assert obs["action_mask"].shape == (40,)
 
@@ -318,7 +318,7 @@ class TestPaddedEnvironmentWrapper:
             "action_mask": np.ones(20, dtype=np.float32),
         }
         small_env.reset.return_value = small_obs
-        obs, info = wrapper.reset()
+        obs, _info = wrapper.reset()
         assert obs["spatial"].shape == (13, 8, 8)
 
     def test_step_pads_obs(self, wrapper, small_env):
@@ -326,7 +326,7 @@ class TestPaddedEnvironmentWrapper:
             "spatial": np.zeros((13, 4, 4), dtype=np.float32),
         }
         small_env.step.return_value = (small_obs, 1.0, True, False, {})
-        obs, reward, terminated, truncated, info = wrapper.step(0)
+        obs, _reward, _terminated, _truncated, _info = wrapper.step(0)
         assert obs["spatial"].shape == (13, 8, 8)
 
     def test_clone_returns_wrapper(self, wrapper, small_env):
@@ -463,7 +463,7 @@ class TestCheckpointManagement:
         mocks["checkpointer"].save_final.assert_called_once()
 
     def test_cleanup_closes_rag(self, orchestrator):
-        orch, mocks = orchestrator
+        orch, _mocks = orchestrator
         mock_rag = MagicMock()
         orch._rag = mock_rag
         orch.state.start_time = 0.0
@@ -471,7 +471,7 @@ class TestCheckpointManagement:
         mock_rag.close.assert_called_once()
 
     def test_cleanup_finishes_wandb(self, orchestrator):
-        orch, mocks = orchestrator
+        orch, _mocks = orchestrator
         mock_wandb = MagicMock()
         orch._wandb_logger = mock_wandb
         orch.state.start_time = 0.0

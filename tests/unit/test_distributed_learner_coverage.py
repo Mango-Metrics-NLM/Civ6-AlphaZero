@@ -167,7 +167,7 @@ class TestGradientAccumulator:
         return acc, net, opt
 
     def test_single_step_accumulation_triggers_update(self):
-        acc, net, opt = self._make_accumulator(steps=1)
+        acc, net, _opt = self._make_accumulator(steps=1)
         x = torch.randn(2, 4)
         loss = net(x).sum()
         did_step = acc.accumulate(loss)
@@ -175,7 +175,7 @@ class TestGradientAccumulator:
         assert acc.step_count == 0  # Reset after step
 
     def test_multi_step_no_update_until_threshold(self):
-        acc, net, opt = self._make_accumulator(steps=3)
+        acc, net, _opt = self._make_accumulator(steps=3)
         for _i in range(2):
             x = torch.randn(2, 4)
             loss = net(x).sum()
@@ -189,7 +189,7 @@ class TestGradientAccumulator:
         assert did_step is True
 
     def test_gradient_clip_applied(self):
-        acc, net, opt = self._make_accumulator(steps=1, clip=0.001)
+        acc, net, _opt = self._make_accumulator(steps=1, clip=0.001)
         x = torch.randn(2, 4) * 100  # Large input → large gradients
         loss = net(x).sum()
         acc.accumulate(loss)
@@ -200,7 +200,7 @@ class TestGradientAccumulator:
         assert total_norm <= 0.001 + 1e-6
 
     def test_gradient_clip_zero_skips_clipping(self):
-        acc, net, opt = self._make_accumulator(steps=1, clip=0.0)
+        acc, net, _opt = self._make_accumulator(steps=1, clip=0.0)
         x = torch.randn(2, 4)
         loss = net(x).sum()
         # Should not raise even with clip=0

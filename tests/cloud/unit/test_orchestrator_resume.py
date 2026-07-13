@@ -14,32 +14,32 @@ def _make_args(**overrides) -> argparse.Namespace:
     # gcs_bucket, resume_from.  build_training_extra_args needs the full
     # network/LR set — include sensible defaults so the two arg-builder tests
     # exercise real code, not stray AttributeError paths.
-    base = dict(
-        model_version_start=0,
-        start_iteration=0,
-        gcs_bucket="test-bucket",
-        resume_from=None,
+    base = {
+        "model_version_start": 0,
+        "start_iteration": 0,
+        "gcs_bucket": "test-bucket",
+        "resume_from": None,
         # Network architecture (matches CLI defaults)
-        board_size=8,
-        action_space_size=376,
-        num_res_blocks=6,
-        num_filters=64,
-        num_heads=8,
-        policy_hidden_dim=128,
-        value_head_dim=64,
+        "board_size": 8,
+        "action_space_size": 376,
+        "num_res_blocks": 6,
+        "num_filters": 64,
+        "num_heads": 8,
+        "policy_hidden_dim": 128,
+        "value_head_dim": 64,
         # LR schedule (defaults are no-ops in builder except learning_rate)
-        lr_schedule_type="constant",
-        lr_initial=0.001,
-        lr_final=0.0001,
-        lr_warmup_steps=0,
-        lr_decay_steps=0,
-        weight_decay=0.01,
-        value_lr_multiplier=1.0,
-        policy_lr_multiplier=1.0,
-        learning_rate=0.001,
-        algorithm="alphazero",
-        encoder_type="patch_embed",
-    )
+        "lr_schedule_type": "constant",
+        "lr_initial": 0.001,
+        "lr_final": 0.0001,
+        "lr_warmup_steps": 0,
+        "lr_decay_steps": 0,
+        "weight_decay": 0.01,
+        "value_lr_multiplier": 1.0,
+        "policy_lr_multiplier": 1.0,
+        "learning_rate": 0.001,
+        "algorithm": "alphazero",
+        "encoder_type": "patch_embed",
+    }
     base.update(overrides)
     return argparse.Namespace(**base)
 

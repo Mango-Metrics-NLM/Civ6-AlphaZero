@@ -6,6 +6,8 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+Governance: [PROJECT_CHARTER.md](PROJECT_CHARTER.md) · Long-term themes: [ROADMAP.md](ROADMAP.md) · Day-to-day: [NEXT_STEPS.md](NEXT_STEPS.md)
+
 ## Project Status
 
 | Phase | Description | Status |

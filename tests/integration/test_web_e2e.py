@@ -9,7 +9,7 @@ import pytest
 
 pytest.importorskip("fastapi", reason="fastapi not installed")
 
-from alpha_zero.web.config import WebConfig  # noqa: E402
+from alpha_zero.web.config import WebConfig
 
 
 @pytest.fixture

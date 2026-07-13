@@ -145,7 +145,7 @@ class TestNPlayerMCTS:
     def test_search_returns_valid_probs(self, mcts, env):
         """Search returns valid probability distribution."""
         env.reset()
-        action_probs, values = mcts.search(env)
+        action_probs, _values = mcts.search(env)
         assert action_probs.shape == (env.action_space.n,)
         assert np.all(action_probs >= 0)
         assert action_probs.sum() == pytest.approx(1.0, abs=1e-5)
@@ -275,14 +275,14 @@ class TestNPlayerMCTS:
         mcts = NPlayerMCTS(LegacyNetwork(), config, num_players=2)
 
         env.reset()
-        action_probs, values = mcts.search(env)
+        _action_probs, values = mcts.search(env)
         assert len(values) == 2
 
     def test_multiple_searches_consistent(self, mcts, env):
         """Multiple searches don't corrupt internal state."""
         env.reset()
         for _ in range(5):
-            probs, values = mcts.search(env, add_noise=False)
+            probs, _values = mcts.search(env, add_noise=False)
             assert probs.shape == (4,)
             assert probs.sum() == pytest.approx(1.0, abs=1e-5)
 

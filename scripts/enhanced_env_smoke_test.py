@@ -255,7 +255,7 @@ def test_vectorized_env(board_size: int, max_turns: int, num_envs: int) -> Smoke
             if len(valid) > 0:
                 actions[i] = valid[0]
 
-        rewards, terminated, truncated, infos = vec_env.step_all(actions)
+        rewards, _terminated, _truncated, _infos = vec_env.step_all(actions)
         assert rewards.shape == (num_envs,)
 
         return SmokeResult(

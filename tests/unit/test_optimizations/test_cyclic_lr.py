@@ -32,7 +32,7 @@ class TestCyclicLRConfig:
         """Test validation of max_lr."""
         with pytest.raises(ValueError, match="max_lr must be > 0"):
             CyclicLRConfig(max_lr=0)
-        with pytest.raises(ValueError, match="max_lr.*must be >= base_lr"):
+        with pytest.raises(ValueError, match=r"max_lr.*must be >= base_lr"):
             CyclicLRConfig(base_lr=0.01, max_lr=0.001)
 
     def test_validation_step_size(self):
@@ -47,7 +47,7 @@ class TestCyclicLRConfig:
 
     def test_validation_t_mult(self):
         """Test validation of t_mult."""
-        with pytest.raises(ValueError, match="t_mult must be >= 1.0"):
+        with pytest.raises(ValueError, match=r"t_mult must be >= 1\.0"):
             CyclicLRConfig(t_mult=0.5)
 
     def test_from_dict(self):

@@ -150,6 +150,13 @@ ignore = [
 "alpha_zero/mechanics/__init__.py" = ["E402"]  # Imports after deprecation warning
 "alpha_zero/human_interface/__init__.py" = ["E402"]  # Imports after deprecation warning
 "alpha_zero/integration/__init__.py" = ["E402"]  # Imports after deprecation warning
+"scripts/validate_convergence.py" = ["E402"]  # sys.path bootstrap before alpha_zero imports
+"scripts/benchmark_batch_selfplay.py" = ["E402"]  # sys.path bootstrap before alpha_zero imports
+"scripts/analyze_prod_v1.6.0.py" = ["N999"]  # Versioned script filename is intentional
+"tests/unit/test_jax_*.py" = ["E402"]  # pytest.importorskip guards precede imports
+"tests/unit/test_pbt_dashboarding.py" = ["E402"]  # module-level skip marker precedes imports
+"tests/unit/test_bridge_config.py" = ["E402"]  # platform skip markers precede imports
+"tests/scripts/test_run_baseline_eval.py" = ["E402"]  # sys.path bootstrap before imports
 
 [tool.mypy]
 python_version = "3.11"
@@ -399,12 +406,13 @@ omit = [
     "alpha_zero/distributed/actor.py",
     "alpha_zero/optimizations/config.py",
 ]
-# Coverage gate. CI enforces this via the `--cov-fail-under=80` CLI flag in
-# .github/workflows/ci.yml, which OVERRIDES this value; we set 80 here so local
+# Coverage gate. CI enforces this via the `--cov-fail-under=85` CLI flag in
+# .github/workflows/ci.yml, which OVERRIDES this value; we set 85 here so local
 # `pytest --cov` / `coverage report` runs match CI exactly (a single, truthful
-# gate). 80 was chosen when the broader omit list above was added (PR 79 targeted
-# 85). Re-tighten toward 85 as omitted modules gain tests and leave the omit list.
-fail_under = 80
+# gate). Re-tightened 80 -> 85 on 2026-07-13 after CI measured 89.69% total
+# (run 29214300752), leaving ~4.7pt headroom. Next step: shrink the omit list
+# above so the gate covers serving/, inference/, and cloud infra too.
+fail_under = 85
 show_missing = true
 skip_covered = false
 

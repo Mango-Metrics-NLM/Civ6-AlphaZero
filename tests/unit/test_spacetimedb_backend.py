@@ -100,7 +100,7 @@ class TestModelOperations:
         self, backend: SpacetimeDBStorageBackend, sample_state_dict: dict[str, torch.Tensor],
     ) -> None:
         backend.save_model(sample_state_dict, iteration=1)
-        loaded_dict, metadata = backend.load_model(iteration=1)
+        loaded_dict, _metadata = backend.load_model(iteration=1)
 
         for key in sample_state_dict:
             assert key in loaded_dict
@@ -116,7 +116,7 @@ class TestModelOperations:
         self, backend: SpacetimeDBStorageBackend, sample_state_dict: dict[str, torch.Tensor],
     ) -> None:
         backend.save_model(sample_state_dict, iteration=1)
-        loaded_dict, metadata = backend.load_model_by_version(version=1)
+        loaded_dict, _metadata = backend.load_model_by_version(version=1)
 
         for key in sample_state_dict:
             assert key in loaded_dict
@@ -138,7 +138,7 @@ class TestChampionOperations:
         metadata = ModelMetadata(iteration=1, version=1)
         backend.save_champion(sample_state_dict, metadata)
 
-        loaded_dict, loaded_meta = backend.load_champion()
+        loaded_dict, _loaded_meta = backend.load_champion()
         for key in sample_state_dict:
             assert key in loaded_dict
 
@@ -248,7 +248,7 @@ class TestCheckpointOperations:
         self, backend: SpacetimeDBStorageBackend, checkpoint_data: dict[str, Any],
     ) -> None:
         backend.save_checkpoint(checkpoint_data, iteration=10)
-        loaded_data, metadata = backend.load_checkpoint(iteration=10)
+        loaded_data, _metadata = backend.load_checkpoint(iteration=10)
         assert loaded_data["iteration"] == 10
 
     def test_load_checkpoint_not_found(
@@ -266,7 +266,7 @@ class TestCheckpointOperations:
 
         result = backend.load_latest_checkpoint()
         assert result is not None
-        loaded_data, metadata = result
+        loaded_data, _metadata = result
         assert loaded_data["iteration"] == 10
 
     def test_load_latest_checkpoint_none(

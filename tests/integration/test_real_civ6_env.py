@@ -471,7 +471,7 @@ class TestGameLoopIntegration:
             # Select action (always end_turn for simplicity)
             action = 0 if 0 in valid_actions else valid_actions[0]
 
-            obs, reward, terminated, truncated, info = env.step(action)
+            obs, reward, terminated, truncated, _info = env.step(action)
             total_reward += reward
             steps += 1
 
@@ -522,7 +522,7 @@ class TestGameLoopIntegration:
         episodes_completed = 0
 
         for _ in range(num_episodes):
-            obs, _ = env.reset()
+            _obs, _ = env.reset()
             steps = 0
 
             while steps < 10:

@@ -96,7 +96,7 @@ class TestModelRoundTrip:
         assert path is not None
 
         # Load
-        loaded_dict, metadata = backend.load_model(iteration=1)
+        loaded_dict, _metadata = backend.load_model(iteration=1)
 
         # Verify
         for key in state_dict:
@@ -112,7 +112,7 @@ class TestModelRoundTrip:
         metadata = ModelMetadata(iteration=1, version=1, win_rate=0.6)
 
         backend.save_champion(state_dict, metadata)
-        loaded_dict, loaded_meta = backend.load_champion()
+        loaded_dict, _loaded_meta = backend.load_champion()
 
         for key in state_dict:
             assert torch.allclose(state_dict[key], loaded_dict[key])

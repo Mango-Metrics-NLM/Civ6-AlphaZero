@@ -143,7 +143,7 @@ class TestPrepareDatasetActionMask:
 
         traj = self._make_trajectory(num_steps=2, include_mask=True)
         dataset = prepare_dataset([traj])
-        spatial, vector, action_mask, policies, values = dataset.tensors
+        spatial, vector, action_mask, _policies, values = dataset.tensors
         # Spatial: (N, 13*8*8)
         assert spatial.shape[1] == 13 * 8 * 8
         # Vector: (N, 64)
