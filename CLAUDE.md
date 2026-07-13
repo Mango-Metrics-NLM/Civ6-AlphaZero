@@ -447,7 +447,7 @@ When making changes, update the relevant sections below:
 ### 6.1 Initial Actions (Always Do First)
 
 ```bash
-# 1. Read this file (CLAUDE.md)
+# 1. Read this file (CLAUDE.md) and PROJECT_CHARTER.md (scope, non-goals, invariants)
 
 # 2. Check environment
 python --version  # Should be 3.10+
@@ -1172,6 +1172,8 @@ python -m infra.vertex_launcher \
 ---
 
 ## SECTION 13: NEXT STEPS
+
+> Long-term themes: see ROADMAP.md. Scope boundaries and invariants: see PROJECT_CHARTER.md.
 
 ### Current State (v1.7.0)
 Training convergence (the v1.3.0 weight-loading fix) has been validated, and the
