@@ -433,6 +433,7 @@ def main() -> int:
 
     # Experiment tracking (enablement resolved by MLflowConfig.from_env:
     # CIV6AZ_MLFLOW_ENABLED > MLFLOW_ENABLED > legacy WANDB_ENABLED)
+    wandb_logger = None
     try:
         from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
@@ -461,6 +462,14 @@ def main() -> int:
             )
     except Exception as e:
         logger.warning("Experiment tracking failed (non-fatal): %s", e)
+    finally:
+        # Always close the run so remote tracking servers flush buffered
+        # metrics even when logging above raised.
+        if wandb_logger is not None and wandb_logger.is_initialized:
+            try:
+                wandb_logger.finish()
+            except Exception as e:
+                logger.warning("Tracker finish failed (non-fatal): %s", e)
 
     logger.info("Tournament worker completed successfully")
     return 0

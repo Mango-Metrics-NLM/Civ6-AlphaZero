@@ -657,7 +657,10 @@ def main():
         # SubprocessTrainingObjective in
         # alpha_zero/optimizations/hyperparameter_search.py extracts the
         # optimized metric from this marker.
-        print(f"SWEEP_METRICS_JSON={json.dumps(stats)}")
+        json_safe_stats = {
+            k: (v.item() if hasattr(v, "item") else v) for k, v in stats.items()
+        }
+        print(f"SWEEP_METRICS_JSON={json.dumps(json_safe_stats)}")
     finally:
         if wandb_logger:
             wandb_logger.finish()

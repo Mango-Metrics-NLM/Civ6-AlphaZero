@@ -437,6 +437,15 @@ class HyperparameterSearch:
         study.optimize(_optuna_objective, n_trials=self.config.n_trials)
 
         pruned = len([t for t in study.trials if t.state == optuna.trial.TrialState.PRUNED])
+        completed = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
+        if completed == 0:
+            raise RuntimeError(
+                f"Sweep {self.config.study_name!r} produced no completed trials "
+                f"({pruned} pruned of {len(study.trials)}); every training run "
+                "failed, timed out, or emitted no readable metric. Check the "
+                "trial command, the SWEEP_METRICS_JSON output, and the "
+                f"per-trial timeout ({self.config.trial_timeout_seconds}s)."
+            )
         result = SweepResult(
             best_params=dict(study.best_params),
             best_value=float(study.best_value),

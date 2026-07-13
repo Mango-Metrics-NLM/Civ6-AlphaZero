@@ -43,11 +43,11 @@ gcloud services enable secretmanager.googleapis.com --project="${PROJECT}" 2>/de
 echo "[2/4] Creating secret '${SECRET_NAME}'..."
 if gcloud secrets describe "${SECRET_NAME}" --project="${PROJECT}" &>/dev/null; then
     echo "  Secret already exists — adding new version"
-    echo -n "${SECRET_VALUE}" | gcloud secrets versions add "${SECRET_NAME}" \
+    printf '%s' "${SECRET_VALUE}" | gcloud secrets versions add "${SECRET_NAME}" \
         --project="${PROJECT}" \
         --data-file=-
 else
-    echo -n "${SECRET_VALUE}" | gcloud secrets create "${SECRET_NAME}" \
+    printf '%s' "${SECRET_VALUE}" | gcloud secrets create "${SECRET_NAME}" \
         --project="${PROJECT}" \
         --replication-policy="automatic" \
         --data-file=-

@@ -355,3 +355,34 @@ class TestRunSweepCli:
         assert run_sweep.main(["--n-trials", "2", "--study-name", "cli-study"]) == 0
         assert captured["config"].n_trials == 2
         assert captured["config"].study_name == "cli-study"
+
+
+class TestAllTrialsPruned:
+    def test_all_pruned_raises_actionable_error(self):
+        """Every trial pruned must produce a clear error, not optuna's
+        opaque 'No trials are completed yet' ValueError."""
+
+        def always_fails(params):
+            raise optuna.TrialPruned("simulated systematic failure")
+
+        search = HyperparameterSearch(_quadratic_config(n_trials=3), objective=always_fails)
+        with pytest.raises(RuntimeError, match=r"no completed trials.*3 pruned of 3"):
+            search.run()
+
+
+class TestNumpySafeMetricsMarker:
+    def test_numpy_stats_survive_marker_roundtrip(self):
+        """The run_muzero_training marker coercion pattern must serialize
+        numpy scalars (np.int64 is NOT json-serializable natively)."""
+        np = pytest.importorskip("numpy")
+        import json
+
+        stats = {
+            "total_games": np.int64(40),
+            "total_steps": np.int64(1200),
+            "best_avg_length": np.float64(43.2),
+        }
+        json_safe = {k: (v.item() if hasattr(v, "item") else v) for k, v in stats.items()}
+        line = f"{METRICS_MARKER}{json.dumps(json_safe)}"
+        obj = SubprocessTrainingObjective(command=["x"], metric="best_avg_length")
+        assert obj.extract_metric(line) == pytest.approx(43.2)
