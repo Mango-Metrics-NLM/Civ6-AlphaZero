@@ -48,7 +48,7 @@ This module provides an ELO-based tournament system:
 | `orchestrator.py` | TournamentOrchestrator, Bracket, Matchup, TournamentResult, formats |
 | `history.py` | MatchHistory, MatchRecord, PlayerStatistics |
 | `analysis.py` | TournamentAnalyzer, MetaAnalysis, GenerationComparison, PlayerTrend |
-| `wandb_dashboards.py` | TournamentWandbLogger — W&B visualization |
+| `wandb_dashboards.py` | TournamentWandbLogger — MLflow-backed dashboards (legacy name) |
 
 ---
 
@@ -94,6 +94,6 @@ This module provides an ELO-based tournament system:
 
 ## Dependencies
 
-- **Internal**: `alpha_zero.core.civ6_mcts` (opponent agents), `alpha_zero.utils.wandb_logger`
-- **External**: `numpy`, `wandb` (optional)
+- **Internal**: `alpha_zero.core.civ6_mcts` (opponent agents), `alpha_zero.monitoring.mlflow_logger`
+- **External**: `numpy`, `mlflow` (optional)
 - **Consumed by**: `alpha_zero.evaluation` (ELO updates), `alpha_zero.cloud.gcp` (tournament workers)

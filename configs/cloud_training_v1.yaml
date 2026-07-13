@@ -13,7 +13,7 @@
 #   bash scripts/run_cloud_training.sh
 #
 # Prerequisites:
-#   - WANDB_API_KEY set (optional, for experiment tracking)
+#   - MLFLOW_ENABLED=true set (optional, for experiment tracking)
 #   - gcloud auth configured with hrmtrain project
 #   - Docker image pushed: gcr.io/hrmtrain/civ6az-muzero:latest
 

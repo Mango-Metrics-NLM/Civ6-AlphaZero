@@ -250,7 +250,7 @@ def main() -> int:
     args = parse_args()
     setup_logging()
 
-    # Initialize W&B for evaluation worker (opt-in via WANDB_ENABLED env var)
+    # Initialize tracking for evaluation worker (opt-in via MLFLOW_ENABLED env var)
     wandb_logger: WandbLogger | None = None
     try:
         wandb_logger = WandbLogger.from_env()

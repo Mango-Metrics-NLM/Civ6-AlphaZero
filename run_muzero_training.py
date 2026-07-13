@@ -1,11 +1,11 @@
-"""MuZero Training Script with W&B Integration.
+"""MuZero Training Script with experiment tracking.
 
 This script runs full MuZero training with:
 - Gumbel MuZero MCTS (efficient search with 16 simulations)
 - MuZero network with dynamics model
 - EfficientZero consistency loss
 - Trajectory-based training with multi-step unrolling
-- Weights & Biases experiment tracking
+- MLflow experiment tracking (via the compat adapter)
 
 Usage:
     python run_muzero_training.py --wandb --iterations 10
@@ -16,6 +16,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import time
@@ -41,9 +42,10 @@ from alpha_zero.training.muzero_trainer import (
     TrajectoryBuffer,
 )
 
-# W&B import (optional)
+# MLflow-backed tracker import (optional). Legacy names kept for --wandb.
 try:
-    from alpha_zero.utils.wandb_logger import WandbConfig, WandbLogger
+    from alpha_zero.monitoring.config import MLflowConfig as WandbConfig
+    from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
     WANDB_AVAILABLE = True
 except ImportError:
@@ -622,9 +624,12 @@ def main():
             try:
                 wandb_config = WandbConfig(
                     enabled=True,
-                    project=config.wandb_project,
-                    name=config.wandb_run_name,
-                    tags=["muzero", "gumbel" if config.use_gumbel else "puct"],
+                    experiment_name=config.wandb_project,
+                    run_name=config.wandb_run_name,
+                    tags={
+                        "muzero": "true",
+                        ("gumbel" if config.use_gumbel else "puct"): "true",
+                    },
                 )
                 wandb_logger = WandbLogger(wandb_config)
                 # Pass config dict to init for logging
@@ -647,6 +652,15 @@ def main():
                     "final/best_avg_length": stats["best_avg_length"],
                 }
             )
+
+        # Machine-readable result line for hyperparameter sweeps: the
+        # SubprocessTrainingObjective in
+        # alpha_zero/optimizations/hyperparameter_search.py extracts the
+        # optimized metric from this marker.
+        json_safe_stats = {
+            k: (v.item() if hasattr(v, "item") else v) for k, v in stats.items()
+        }
+        print(f"SWEEP_METRICS_JSON={json.dumps(json_safe_stats)}")
     finally:
         if wandb_logger:
             wandb_logger.finish()

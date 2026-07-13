@@ -5,6 +5,36 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — W&B Retirement Sweep (2026-07-13)
+
+### Changed — Experiment tracking is MLflow-only
+- **Toggle unification**: `resolve_tracker_enabled()` in `alpha_zero/monitoring/config.py` is the single enablement source with precedence `CIV6AZ_MLFLOW_ENABLED` > `MLFLOW_ENABLED` > legacy `WANDB_ENABLED` (deprecated, warns when deciding). All `from_env()` sites — cloud workers, experiment tracker — honor legacy deployment configs transparently.
+- **Config bridge**: orchestrator `WandbConfig` is now an explicit deprecated bridge — `to_mlflow_config()` maps `project→experiment_name`, list tags → dict tags, `entity` → `wandb.entity` tag, `mode=="disabled"` → off. The orchestrator runs a single tracker (mlflow section wins; wandb section bridges with a DeprecationWarning).
+- **BREAKING/behavior**: `--no-wandb` now disables ALL tracking (both `wandb:` and `mlflow:` config sections); new explicit `--no-tracking` alias added. Previously MLflow kept logging when only `--no-wandb` was passed.
+- Deploy configs (`configs/vertex_*_smoke.yaml`, `cloud_training_v1.yaml`) switched from `WANDB_*` env blocks to `MLFLOW_*`.
+
+### Fixed
+- **`run_enhanced_training.py --wandb` / `run_muzero_training.py --wandb` crashed with `TypeError`** — they constructed the legacy config shape against the MLflow-aliased class; migrated to `MLflowConfig` + `WandbCompatAdapter` directly.
+- **`WandbCompatAdapter.log()` silently dropped numpy metrics** (`np.int64`, `np.float32`, 0-d arrays); now coerced via `_coerce_metric_value`, with one level of nested-dict flattening (`parent/child`).
+- **MLflow run-group propagation never worked** — `vertex_orchestrator` read `.name`/`.id` off an MLflow run object (metadata lives under `.info.*`); new `WandbCompatAdapter.run_name` property fixes `MLFLOW_RUN_GROUP`/`group=` tag propagation to worker containers.
+- **`utils/factories.create_wandb_logger` mangled list tags** (`dict(list[str])`); now a deprecated wrapper delegating through `to_mlflow_config()`.
+- `WandbCompatAdapter.alert()` also emits `logger.warning` so alerts are visible when MLflow is disabled; `watch_model()` records a `watch_model_requested` tag.
+
+### Removed (BREAKING for out-of-repo importers)
+- `alpha_zero/utils/wandb_logger.py` deprecation shim (removal was promised for v1.6.0). Last compat surface: lazy `alpha_zero.utils.{WandbLogger,get_wandb_logger,init_wandb}` aliases (emit DeprecationWarning).
+- `vertex_jobs._wandb_env_vars` / `resolve_wandb_key_from_secret_manager` / `ensure_wandb_api_key` and the `CIV6AZ_WANDB_SECRET_*` env pathway (zero consumers; nothing reads `WANDB_API_KEY` anymore).
+- Dead module-skipped W&B test suites (~2,300 lines): `test_wandb_logger`, `test_wandb_baseline_metrics`, `test_pbt_dashboarding`, `test_wandb_integration`, `test_orchestrator_wandb`, plus skipped classes in `test_wandb_coordination` (renamed `test_vertex_coordination`, 9 active tests kept) and `test_orchestrator_muzero_config`. Replacement coverage landed FIRST: numpy/`log_reflection_stats`/`run_name`/alert tests in `test_mlflow_logger_adapter`, `test_tracker_enabled_resolution` (precedence matrix), `test_pbt_mlflow_dashboards`, vertex-orchestrator lifecycle tests in `test_orchestrator_mlflow`, and `test_orchestrator_wandb_bridge`.
+
+### Added — Optuna hyperparameter sweeps (replaces W&B sweeps)
+- `alpha_zero/optimizations/hyperparameter_search.py`: reusable `HyperparameterSearch` component — declarative YAML search spaces, `SweepConfig` with `CIV6AZ_SWEEP_*` env overrides (legacy `SWEEP_TIMEOUT_SECONDS` honored), injectable objective/tracker for testing, MLflow per-trial logging, `SubprocessTrainingObjective` with timeout + prune-on-failure semantics.
+- `run_sweep.py` rewritten as a thin CLI over the component (`--config/--n-trials/--study-name/--storage/--dry-run`); `configs/sweep_muzero.yaml` seeds the search space from the historical W&B sweep results. New `tuning` extra (`pip install -e '.[tuning]'`).
+- `run_muzero_training.py` prints a machine-readable `SWEEP_METRICS_JSON=` result line for subprocess objectives.
+- `scripts/setup_secrets.sh` generalized: provisions any named secret (`CIV6AZ_SECRET_NAME`/`CIV6AZ_SECRET_VALUE`), wandb-api-key default removed.
+- With this, no wandb imports remain in `alpha_zero/` or entry points. Two read-only analysis scripts (`compare_training_runs.py`, `search_efficiency_report.py`) keep lazy `wandb.Api()` readers for W&B-hosted *historical* runs — data MLflow cannot serve — and are documented as deprecated.
+
+### Accepted debt
+- `TournamentWandbLogger` and serialized `wandb_enabled` config fields keep their names for compat.
+
 ## [1.8.0] — 2026-07-12 — Live Civilization VI Bridge (Headless Socket Transport)
 
 > **Version note:** Bumped from `1.6.0` to `1.8.0`. This release delivers the headline feature of the `v1.8.x` branch lineage: live, fully headless Civilization VI gameplay end-to-end. Previously the file-based bridge (`commands.json`) plus the FireTuner GUI relay panel never actually delivered a command to the game — the Civ6 Lua sandbox has no `io` library, so the mod can only receive commands via the in-game `ExposedMembers` global that an external tuner client must set. State always flowed out (via `Lua.log`), but commands never reached the mod. This release fixes that.

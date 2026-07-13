@@ -26,9 +26,6 @@ from alpha_zero.utils.experiment_tracker import get_tracker as _get_tracker
 
 logger = logging.getLogger(__name__)
 
-_WANDB_AVAILABLE = True
-wandb: Any = None  # legacy compatibility; no longer used directly
-
 
 @dataclass
 class BenchmarkConfig:

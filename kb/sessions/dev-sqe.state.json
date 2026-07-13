@@ -1,21 +1,21 @@
 {
     "last_session_id": "session_01AAR7bMpmkZtman9kFaeqft",
-    "last_timestamp": "2026-07-13T01:06:31Z",
+    "last_timestamp": "2026-07-13T02:19:36Z",
     "active_branch": "claude/project-charter-template-b4n9fu",
-    "current_focus": "Handed off to Pre-PR \u2014 charter + gap-analysis/tech-debt sweep (PR #91)",
+    "current_focus": "Handed off to Pre-PR \u2014 W&B retirement sweep (new PR pending)",
     "resume_pointers": {
-        "current_task": "Monitor PR #91 CI (coverage gate now 85, big lint/type diff)",
+        "current_task": "Verify CI green on the W&B retirement PR",
         "blocked_on": [],
         "next_steps": [
-            "Verify CI green on PR #91 (85% coverage gate + revived bridge tests)",
-            "Follow-up debt: W&B->MLflow sweep (cloud/, pbt/, evaluation/, optimizations/)",
-            "Follow-up debt: shrink coverage omit list (serving/, inference/, cloud infra)"
+            "Confirm CI green (85% coverage gate, new tracker tests)",
+            "Follow-up: run_sweep.py Optuna/MLflow-hyperopt port",
+            "Follow-up: scripts/setup_secrets.sh wandb secret cleanup"
         ]
     },
     "context_files": [
-        "kb/handoffs/20260713-devsqe-to-prepr-gap-analysis.md",
-        "kb/handoffs/20260713-devsqe-to-prepr-project-charter.md",
-        "PROJECT_CHARTER.md",
-        "ROADMAP.md"
+        "kb/handoffs/20260713-devsqe-to-prepr-wandb-retirement.md",
+        "alpha_zero/monitoring/config.py",
+        "alpha_zero/monitoring/mlflow_logger.py",
+        "PROJECT_CHARTER.md"
     ]
 }

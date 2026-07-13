@@ -710,7 +710,14 @@ class CurriculumConfig:
 
 @dataclass
 class WandbConfig:
-    """Weights & Biases configuration."""
+    """Legacy Weights & Biases configuration (deprecated bridge).
+
+    W&B is retired; MLflow is the experiment-tracking system of record
+    (PROJECT_CHARTER.md NG-5). This dataclass survives so existing YAML
+    ``wandb:`` sections, presets, ``--no-wandb``, and ``CIV6AZ_WANDB_*``
+    overrides keep parsing. At runtime the orchestrator converts it via
+    :meth:`to_mlflow_config` and drives the MLflow backend.
+    """
 
     enabled: bool = False
     project: str = "civ6-alphazero"
@@ -731,6 +738,29 @@ class WandbConfig:
             log_model=data.get("log_model", True),
             log_code=data.get("log_code", True),
             mode=data.get("mode", "online"),
+        )
+
+    def to_mlflow_config(self) -> Any:
+        """Map this legacy W&B config onto the canonical ``MLflowConfig``.
+
+        Mapping: ``project`` -> ``experiment_name``; list ``tags`` -> the
+        MLflow dict form ``{tag: "true"}``; ``entity`` is preserved as the
+        ``wandb.entity`` tag rather than dropped; ``mode == "disabled"``
+        forces ``enabled=False``; ``log_model`` -> ``log_models``.
+
+        Returns:
+            alpha_zero.monitoring.config.MLflowConfig
+        """
+        from alpha_zero.monitoring.config import MLflowConfig
+
+        tags: dict[str, str] = dict.fromkeys(self.tags or [], "true")
+        if self.entity:
+            tags["wandb.entity"] = self.entity
+        return MLflowConfig(
+            enabled=self.enabled and self.mode != "disabled",
+            experiment_name=self.project,
+            tags=tags,
+            log_models=self.log_model,
         )
 
 
@@ -1055,7 +1085,7 @@ class OrchestratorConfig:
         Examples:
         - CIV6AZ_TRAINING_BATCH_SIZE=512
         - CIV6AZ_MCTS_NUM_SIMULATIONS=200
-        - CIV6AZ_WANDB_ENABLED=true
+        - CIV6AZ_WANDB_ENABLED=true  (deprecated; prefer CIV6AZ_MLFLOW_ENABLED)
 
         Returns:
             Self for method chaining.

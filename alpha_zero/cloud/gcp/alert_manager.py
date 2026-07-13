@@ -165,10 +165,16 @@ class AlertManagerConfig:
     slack: SlackConfig = field(default_factory=SlackConfig)
     email: EmailConfig = field(default_factory=EmailConfig)
 
-    # W&B integration
+    # Experiment-tracker integration (MLflow-backed). Canonical env var is
+    # CIV6AZ_ALERT_TRACKER_ENABLED; the legacy CIV6AZ_ALERT_WANDB_ENABLED
+    # name is honored as a fallback. Field name kept for config compat.
     wandb_enabled: bool = field(
         default_factory=lambda: (
-            os.environ.get("CIV6AZ_ALERT_WANDB_ENABLED", "true").lower() == "true"
+            os.environ.get(
+                "CIV6AZ_ALERT_TRACKER_ENABLED",
+                os.environ.get("CIV6AZ_ALERT_WANDB_ENABLED", "true"),
+            ).lower()
+            == "true"
         )
     )
 

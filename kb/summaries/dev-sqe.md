@@ -1,5 +1,22 @@
 # DEV-SQE Session Log
 
+## 2026-07-13 - Optuna Sweep Port + Secrets Cleanup (PR #92 follow-ups)
+- **Session:** session_01AAR7bMpmkZtman9kFaeqft (fourth batch)
+- **Task:** Port run_sweep.py off the W&B sweep API: new reusable alpha_zero/optimizations/hyperparameter_search.py (SweepConfig YAML + CIV6AZ_SWEEP_* env overrides w/ legacy SWEEP_TIMEOUT_SECONDS, declarative search space, injectable objective/tracker, MLflow per-trial logging, SubprocessTrainingObjective w/ timeout+prune). run_sweep.py = thin CLI; configs/sweep_muzero.yaml seeded from historical W&B results; SWEEP_METRICS_JSON marker in run_muzero_training.py; [tuning] extra (optuna). setup_secrets.sh generalized (CIV6AZ_SECRET_NAME/VALUE, wandb default gone).
+- **Tests:** 35 new (search-space contract, env precedence, deterministic quadratic search, tracker logging, subprocess objective incl. timeout/prune paths, CLI); ruff clean both versions incl. CI 0.8.0 format gate
+- **Honest scope note:** two read-only analysis scripts keep lazy wandb.Api() readers for W&B-hosted HISTORICAL runs (data MLflow cannot serve) — documented as deprecated, not instrumentation.
+- **Status:** complete pending full-suite verification — extends PR #92
+- **Next:** confirm CI green on PR #92
+
+## 2026-07-13 - W&B Retirement Sweep (MLflow-only tracking)
+- **Session:** session_01AAR7bMpmkZtman9kFaeqft (third batch)
+- **Task:** Complete W&B→MLflow migration: toggle unification (resolve_tracker_enabled, legacy WANDB_ENABLED honored+warned), WandbConfig→MLflowConfig bridge, single-tracker orchestrator init, shim + dead-suite deletions (user-approved), 66 gap-filling tests landed before deletions
+- **Live bugs fixed:** run_*.py --wandb TypeError; adapter.log() dropped numpy metrics; MLflow run-group propagation never worked (.name/.id vs .info.*); create_wandb_logger mangled list tags
+- **Files Changed:** 50 (+1,070/−2,674)
+- **Tests:** 66 new/ported; targeted suites green; full CI-equivalent suite + 85% coverage gate run at ship time
+- **Status:** complete — new PR from restarted branch `claude/project-charter-template-b4n9fu`
+- **Next:** Pre-PR: confirm CI green; follow-ups: run_sweep.py Optuna port, setup_secrets.sh cleanup
+
 ## 2026-07-13 - Gap Analysis + Tech-Debt Sweep (coverage 85% gate, ruff-to-zero, mypy semantic fixes)
 - **Session:** session_01AAR7bMpmkZtman9kFaeqft (same session as charter, second batch)
 - **Task:** Branch-wide gap analysis and tech-debt enforcement: coverage gate 80→85 (CI measured 89.69%, local re-verified 88.88%), ruff 292→0 across alpha_zero/tests/scripts/infra, all semantic mypy errors fixed (180→157; rest is version noise), PR #91 review findings addressed
@@ -19,6 +36,7 @@
 - **Status:** complete — on branch `claude/project-charter-template-b4n9fu`
 - **Next:** Pre-PR validation; follow-ups noted in PR: CLAUDE.md v1.7.0 footer drift, pre-existing C420
 
+## 2026-04-02 - Phase 8 Entry Point + Test Suite Fixes
 - **Session:** 48dca8d8-7e46-41dc-b7f5-1ecb487c8400
 - **Task:** Implement `alpha_zero/civ6_local.py` unified local gameplay entry point (Phase 8); fix test regressions for Atari CLI, hierarchical controller, DDP fixtures
 - **Files Changed:**

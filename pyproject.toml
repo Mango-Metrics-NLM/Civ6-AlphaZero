@@ -66,6 +66,9 @@ monitoring = [
 spacetimedb = [
     "spacetimedb-sdk>=0.7.0",
 ]
+tuning = [
+    "optuna>=3.0.0",
+]
 jax = [
     "jax>=0.4.20",
     "jaxlib>=0.4.20",
@@ -89,6 +92,7 @@ all = [
     "alpha_zero[llm]",
     "alpha_zero[web]",
     "alpha_zero[spacetimedb]",
+    "alpha_zero[tuning]",
     "alpha_zero[jax]",
     "alpha_zero[chess]",
     "alpha_zero[monitoring]",

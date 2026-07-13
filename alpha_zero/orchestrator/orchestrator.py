@@ -8,7 +8,7 @@ components for AlphaZero-style training:
 - Enhanced reward shaping
 - RAG-augmented strategy analysis
 - Checkpoint management
-- W&B and TensorBoard logging
+- MLflow experiment tracking
 
 Usage:
     from alpha_zero.orchestrator import TrainingOrchestrator, OrchestratorConfig
@@ -24,6 +24,7 @@ import logging
 import signal
 import sys
 import time
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeVar
@@ -74,7 +75,6 @@ from alpha_zero.utils.factories import (
     create_network,
     create_replay_buffer,
     create_reward_shaper,
-    create_wandb_logger,
 )
 
 # Training safeguards (optional, graceful degradation)
@@ -282,7 +282,6 @@ class TrainingOrchestrator:
         self._reward_shaper: Any = None
         self._rag: RAGIntegration | None = None
         self._strategy_advisor: StrategyAdvisor | None = None
-        self._wandb_logger: Any = None
         self._mlflow_logger: Any = None
         self._elo_system: Any = None
         self._eval_pipeline: Any = None
@@ -495,16 +494,12 @@ class TrainingOrchestrator:
                         self.config.strategy_advisor,
                     )
 
-            # Initialize W&B
-            if self.config.wandb.enabled:
-                self._wandb_logger = create_wandb_logger(
-                    self.config.wandb,
-                    experiment_name=self.config.experiment_name,
-                )
-
-            # Initialize MLflow (runs in parallel with W&B; either or both can be enabled).
-            # The experiment name comes from config.mlflow.experiment_name (set via
-            # YAML or CIV6AZ_MLFLOW_EXPERIMENT_NAME); the top-level
+            # Single experiment tracker (MLflow is the system of record —
+            # PROJECT_CHARTER.md NG-5). The mlflow: section wins; a legacy
+            # wandb: section is bridged through WandbConfig.to_mlflow_config()
+            # with a deprecation warning. The experiment name comes from
+            # config.mlflow.experiment_name (set via YAML or
+            # CIV6AZ_MLFLOW_EXPERIMENT_NAME); the top-level
             # config.experiment_name is used only as a fallback when the mlflow
             # section did not set its own. This keeps CIV6AZ_MLFLOW_EXPERIMENT_NAME
             # authoritative over CIV6AZ_EXPERIMENT_NAME for MLflow specifically.
@@ -516,23 +511,41 @@ class TrainingOrchestrator:
                     self.config.mlflow,
                     experiment_name=mlflow_experiment_name,
                 )
-                if self._mlflow_logger is not None:
-                    hparams: dict[str, Any] = {
-                        "training/batch_size": self.config.training.batch_size,
-                        "training/num_epochs": self.config.training.num_epochs,
-                        "training/games_per_iteration": (self.config.training.games_per_iteration),
-                        "training/full_eval_interval": (self.config.training.full_eval_interval),
-                        "training/num_iterations": self.config.training.num_iterations,
-                        "mcts/num_simulations": self.config.mcts.num_simulations,
-                        "mcts/c_puct": self.config.mcts.c_puct,
-                        "network/num_res_blocks": self.config.network.num_res_blocks,
-                        "network/num_filters": self.config.network.num_filters,
-                        "env/board_size": self.config.environment.board_size,
-                        "env/max_turns": self.config.environment.max_turns,
-                        "lr_schedule/initial": self.config.lr_schedule.initial_value,
-                        "experiment_name": self.config.experiment_name,
-                    }
-                    self._mlflow_logger.init(config_dict=hparams)
+            elif self.config.wandb.enabled:
+                warnings.warn(
+                    "The wandb: config section is deprecated; tracking now runs on "
+                    "MLflow via WandbConfig.to_mlflow_config(). Move settings to the "
+                    "mlflow: section (or CIV6AZ_MLFLOW_* env vars).",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                logger.warning(
+                    "wandb.enabled=True is deprecated — bridging to the MLflow backend "
+                    "(experiment=%s)",
+                    self.config.wandb.project,
+                )
+                self._mlflow_logger = create_mlflow_logger(
+                    self.config.wandb.to_mlflow_config(),
+                    experiment_name=self.config.experiment_name,
+                )
+
+            if self._mlflow_logger is not None:
+                hparams: dict[str, Any] = {
+                    "training/batch_size": self.config.training.batch_size,
+                    "training/num_epochs": self.config.training.num_epochs,
+                    "training/games_per_iteration": (self.config.training.games_per_iteration),
+                    "training/full_eval_interval": (self.config.training.full_eval_interval),
+                    "training/num_iterations": self.config.training.num_iterations,
+                    "mcts/num_simulations": self.config.mcts.num_simulations,
+                    "mcts/c_puct": self.config.mcts.c_puct,
+                    "network/num_res_blocks": self.config.network.num_res_blocks,
+                    "network/num_filters": self.config.network.num_filters,
+                    "env/board_size": self.config.environment.board_size,
+                    "env/max_turns": self.config.environment.max_turns,
+                    "lr_schedule/initial": self.config.lr_schedule.initial_value,
+                    "experiment_name": self.config.experiment_name,
+                }
+                self._mlflow_logger.init(config_dict=hparams)
 
             # Initialize EvaluationPipeline + ELO for value_correlation and elo_spread.
             # These are independent of the MLflow flag so other consumers (e.g.
@@ -1760,23 +1773,8 @@ class TrainingOrchestrator:
                 f"time={iteration_time:.1f}s",
             )
 
-        # Log to W&B
-        if self._wandb_logger and self._scheduler is not None:
-            self._wandb_logger.log(
-                {
-                    "iteration": iteration,
-                    "games": len(game_results),
-                    "win_rate": win_rate,
-                    "avg_turns": avg_turns,
-                    "curriculum_stage": self.state.curriculum_stage,
-                    "learning_rate": self._scheduler.get_learning_rate(),
-                    "batch_size": self._scheduler.get_batch_size(),
-                    "buffer_size": len(self._replay_buffer),
-                    **train_metrics,
-                }
-            )
-
-        # Log to MLflow (parallel to W&B; both can be enabled simultaneously)
+        # Log to MLflow (single tracker — the legacy wandb: section is bridged
+        # onto the same MLflowLogger at initialize()).
         if self._mlflow_logger is not None:
             game_metrics: dict[str, float] = {
                 "game/games": float(len(game_results)),
@@ -1793,9 +1791,17 @@ class TrainingOrchestrator:
                     "train/learning_rate": float(self._scheduler.get_learning_rate()),
                     "train/batch_size": float(self._scheduler.get_batch_size()),
                     "train/buffer_size": float(len(self._replay_buffer)),
-                    "train/curriculum_stage": float(self.state.curriculum_stage),
                     "train/iteration_time_seconds": float(iteration_time),
                 }
+                # Curriculum stages are names ("beginner"), not numbers —
+                # float() on them crashed this path whenever a scheduler was
+                # active. Log numeric stages as a metric, names as a tag.
+                try:
+                    scheduler_metrics["train/curriculum_stage"] = float(self.state.curriculum_stage)
+                except (TypeError, ValueError):
+                    self._mlflow_logger.set_tag(
+                        "curriculum_stage", str(self.state.curriculum_stage)
+                    )
             self._mlflow_logger.log_iteration(
                 iteration=iteration,
                 train_metrics=train_metrics_ns,
@@ -1821,10 +1827,6 @@ class TrainingOrchestrator:
         # Close RAG
         if self._rag:
             self._rag.close()
-
-        # Close W&B
-        if self._wandb_logger and hasattr(self._wandb_logger, "finish"):
-            self._wandb_logger.finish()
 
         # Close MLflow
         if self._mlflow_logger is not None and hasattr(self._mlflow_logger, "finish"):

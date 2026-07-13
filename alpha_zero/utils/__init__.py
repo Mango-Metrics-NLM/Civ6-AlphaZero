@@ -151,18 +151,11 @@ if _LLM_AVAILABLE:
         ]
     )
 
-# Experiment tracker (MLflow-backed; preserves legacy WandbLogger name for
-# downstream callers via the WandbCompatAdapter alias).
+# Experiment tracker (MLflow-backed). log_metrics is the supported generic
+# surface; the W&B-era names (WandbLogger, get_wandb_logger, init_wandb)
+# remain importable as the LAST compat surface but are lazy and emit a
+# DeprecationWarning — see __getattr__ below.
 try:
-    from alpha_zero.monitoring.mlflow_logger import (  # noqa: F401
-        WandbCompatAdapter as WandbLogger,
-    )
-    from alpha_zero.utils.experiment_tracker import (  # noqa: F401
-        get_tracker as get_wandb_logger,
-    )
-    from alpha_zero.utils.experiment_tracker import (  # noqa: F401
-        init_tracker as init_wandb,
-    )
     from alpha_zero.utils.experiment_tracker import (  # noqa: F401
         log_metrics,
     )
@@ -178,6 +171,33 @@ try:
     )
 except ImportError:
     _WANDB_AVAILABLE = False
+
+#: Legacy W&B-era names served lazily with a DeprecationWarning (PEP 562).
+_LEGACY_TRACKER_NAMES = frozenset({"WandbLogger", "get_wandb_logger", "init_wandb"})
+
+
+def __getattr__(name: str):  # noqa: ANN202
+    """Lazy, deprecated aliases for the retired W&B-era tracker names."""
+    if name in _LEGACY_TRACKER_NAMES:
+        import warnings
+
+        warnings.warn(
+            f"alpha_zero.utils.{name} is deprecated; use "
+            "alpha_zero.monitoring.mlflow_logger.WandbCompatAdapter / "
+            "alpha_zero.utils.experiment_tracker instead (W&B is retired).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter
+        from alpha_zero.utils.experiment_tracker import get_tracker, init_tracker
+
+        return {
+            "WandbLogger": WandbCompatAdapter,
+            "get_wandb_logger": get_tracker,
+            "init_wandb": init_tracker,
+        }[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 # RAG Integration (optional - depends on chromadb/sentence-transformers)
 try:

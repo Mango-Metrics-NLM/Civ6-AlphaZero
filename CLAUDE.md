@@ -288,6 +288,9 @@ When making changes, update the relevant sections below:
 | `python -m alpha_zero.civ6_local --mode civ6 --mcts --eval-harness` | Bridge + MCTS + MLflow eval harness |
 | `python scripts/install_civ6_mod.py` | Install AlphaZeroAI mod to default Steam Mods dir |
 | `python scripts/install_civ6_mod.py --mod-dir PATH` | Install mod to custom Civ6 Mods directory |
+| `pip install -e '.[tuning]'` | Install Optuna for hyperparameter sweeps |
+| `python run_sweep.py --dry-run` | Validate sweep config (configs/sweep_muzero.yaml) |
+| `python run_sweep.py --n-trials 20` | Run Optuna sweep (MLflow-logged; CIV6AZ_SWEEP_* env overrides) |
 
 #### Cloud Deployment Commands
 
@@ -395,6 +398,7 @@ When making changes, update the relevant sections below:
 | 2026-05-30 | PreToolUse prohibited-action guard | `.claude/hooks/pretooluse_guard.sh` enforces §3.2 (no commits/pushes to `main`, >1000-game cap) — turns prose into a machine deny. |
 | 2026-05-30 | Pre-PR review in isolated subagent | Pre-PR handoff skill dispatches review to a fresh `Agent`/`code-review` for generator–evaluator separation (independent context). |
 | 2026-07-05 | N-player training pipeline (G9) | `training_civ6.py` threads `num_players` end-to-end: `TrainingExample.value_vector` (per-player, relative order), per-player targets via `multiplayer.scoring` (`ScoringMethod`), `compute_nplayer_value_loss` in `train_epoch`, and `CurrentPlayerValueView` (reduces the per-player value vector to relative-index-0 so scalar `Civ6MCTS`/`GumbelMCTS` can drive an N-player network). Encoder is player-relative, so value targets and the scalar view both key on relative index 0. 2-player path byte-identical; opt-in via `--num_players`/`--scoring_method`. |
+| 2026-07-13 | W&B fully retired; MLflow sole tracker | SDK swap verified complete (zero `import wandb` in `alpha_zero/`). `resolve_tracker_enabled()` unifies enablement (`CIV6AZ_MLFLOW_ENABLED` > `MLFLOW_ENABLED` > legacy `WANDB_ENABLED`, warns). Orchestrator `WandbConfig` = deprecated bridge via `to_mlflow_config()`; `--no-wandb`/`--no-tracking` disable ALL tracking. `utils/wandb_logger.py` shim deleted (lazy `alpha_zero.utils.WandbLogger` alias remains, warns). Adapter hardened: numpy/nested metric coercion, `run_name` property (fixes run-group propagation), `alert()` also warns in logs. |
 
 ### 5.3 Known Issues
 
@@ -412,8 +416,8 @@ When making changes, update the relevant sections below:
 | ~~12 DDP tests xfailed~~ (stale — corrected 2026-07-05) | DDP tests use CUDA `skipif`, not `xfail`. Repo has exactly one real `xfail` (`test_phase2.py:381`). Real test debt is ~20 statically-skipped suites, mostly the partial W&B→MLflow swap (below). |
 | mlruns/ file-store deprecated | Run `scripts/migrate_mlflow_to_sqlite.py` to migrate to `sqlite:///mlflow.db` |
 | test_deployment_infra.py: 6 failures | Require .env file not present locally; skip with `pytest -m 'not env_required'` |
-| Two divergent `WandbConfig` classes (`orchestrator/config.py` + `utils/wandb_logger.py`) | Unification deferred; `MLflowConfig` is single-source to avoid repeating the issue. |
-| W&B -> MLflow swap is partial | `cloud/`, `pbt/`, `evaluation/`, `optimizations/` still call wandb directly. Tracked as a follow-up sweep. |
+| ~~Two divergent `WandbConfig` classes~~ (resolved 2026-07-13) | `utils/wandb_logger.py` shim deleted; orchestrator `WandbConfig` is now an explicit deprecated bridge (`to_mlflow_config()`), `MLflowConfig` single-source. |
+| W&B naming debt (accepted) | The SDK swap is COMPLETE — no `import wandb` anywhere in `alpha_zero/`. Retained for compat: `TournamentWandbLogger` (public, MLflow-backed), worker-local `wandb_logger` vars, serialized `wandb_enabled` config fields, lazy deprecated `alpha_zero.utils.WandbLogger` alias. `run_sweep.py` was ported to Optuna on 2026-07-13 (`alpha_zero/optimizations/hyperparameter_search.py`, `pip install -e '.[tuning]'`) — no wandb imports remain in `alpha_zero/` or entry points; two read-only historical-run readers (`scripts/compare_training_runs.py`, `scripts/search_efficiency_report.py`) keep lazy `wandb.Api()` access to W&B-hosted history, documented as deprecated. Adapter no-ops: histograms/images/`define_metric`. |
 
 ### 5.4 Bug Fixes
 

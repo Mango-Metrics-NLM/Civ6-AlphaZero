@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import os
+import warnings
 from typing import TYPE_CHECKING, Any
 
 import torch
@@ -511,35 +512,29 @@ def create_wandb_logger(
     config: Any,
     experiment_name: str | None = None,
 ) -> Any | None:
-    """Create W&B logger from configuration.
+    """Deprecated: create an MLflow-backed tracker from a legacy W&B config.
+
+    Thin wrapper kept so the ``"wandb"`` factory-registry key and existing
+    callers keep working. Legacy ``WandbConfig`` objects are converted via
+    ``WandbConfig.to_mlflow_config()`` (which maps tags/entity/mode
+    correctly — the old inline ``dict(config.tags)`` mapping mangled list
+    tags); MLflow-shaped configs pass straight through.
 
     Args:
-        config: W&B configuration.
+        config: Legacy ``WandbConfig`` or an ``MLflowConfig``-shaped config.
         experiment_name: Override experiment name.
 
     Returns:
-        Configured W&B logger, or None if disabled.
+        Configured tracker, or None if disabled.
     """
-    if not config.enabled:
-        logger.info("W&B logging disabled")
-        return None
-
-    try:
-        from alpha_zero.monitoring.config import MonitoringConfig
-        from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
-
-        # Legacy W&B config maps onto MonitoringConfig: project -> experiment_name,
-        # tags -> tags dict. entity/mode are W&B-specific and dropped.
-        monitoring_cfg = MonitoringConfig(
-            experiment_name=config.project,
-            tags=dict(config.tags) if config.tags else {},
-        )
-
-        logger.info("Creating MLflow-backed tracker: experiment=%s", config.project)
-        return WandbLogger.from_config(monitoring_cfg)
-    except ImportError:
-        logger.warning("MLflow not available")
-        return None
+    warnings.warn(
+        "create_wandb_logger is deprecated; use create_mlflow_logger with an "
+        "MLflowConfig (W&B is retired — see PROJECT_CHARTER.md NG-5).",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    monitoring_cfg = config.to_mlflow_config() if hasattr(config, "to_mlflow_config") else config
+    return create_mlflow_logger(monitoring_cfg, experiment_name=experiment_name)
 
 
 def create_mlflow_logger(
