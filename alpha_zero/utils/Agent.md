@@ -55,7 +55,6 @@ This module provides the foundational utilities consumed by all other modules:
 | `enhanced_rewards.py` | EnhancedRewardShaper, WinConditionEvaluator |
 | `environment_tuning.py` | TunedEnvironmentWrapper, EarlyTerminationChecker |
 | `training_config_enhanced.py` | EnhancedTrainingConfig, ResourceManager, ParameterSchedule |
-| `wandb_logger.py` | WandbLogger, W&B integration (optional) |
 | `rag_client.py` | RAGClient, thin wrapper for RAG pipeline (optional) |
 | `reward_shaping.py` | RewardShaper for intermediate reward signals |
 | `checkpoint.py` | safe_load_checkpoint for secure deserialization |
@@ -121,5 +120,5 @@ This module provides the foundational utilities consumed by all other modules:
 ## Dependencies
 
 - **Internal**: Minimal — this is a foundation layer consumed by all other modules
-- **External**: `yaml`, `torch`, `numpy`, `openai` (optional), `anthropic` (optional), `wandb` (optional), `chromadb` (optional), `dotenv` (optional)
+- **External**: `yaml`, `torch`, `numpy`, `openai` (optional), `anthropic` (optional), `mlflow` (optional), `chromadb` (optional), `dotenv` (optional)
 - **Consumed by**: Every other `alpha_zero.*` module

@@ -102,5 +102,5 @@ This module provides the unified training entry point:
 ## Dependencies
 
 - **Internal**: `alpha_zero.utils.factories` (component creation), `alpha_zero.core` (network, MCTS), `alpha_zero.envs` (environments), `alpha_zero.distributed` (training), `alpha_zero.training` (safeguards, reflection)
-- **External**: `torch`, `yaml`, `wandb` (optional), `chromadb` (optional)
+- **External**: `torch`, `yaml`, `mlflow` (optional), `chromadb` (optional)
 - **Consumed by**: CLI users, training scripts, cloud workers

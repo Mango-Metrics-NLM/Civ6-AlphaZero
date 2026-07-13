@@ -14,7 +14,7 @@
 # Optional environment variables:
 #   CIV6AZ_VERTEX_REGION - GCP region (default: us-central1)
 #   CIV6AZ_VERTEX_SERVICE_ACCOUNT - Service account email
-#   WANDB_API_KEY - Weights & Biases API key
+#   MLFLOW_TRACKING_URI - Weights & Biases API key
 
 # ============================================================
 # Tier Selection

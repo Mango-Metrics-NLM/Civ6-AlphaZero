@@ -53,9 +53,10 @@ Make N-player training real and self-play fast; pay down debt. *(Active.)*
   (5–10× self-play throughput).
 - Land the champion-load fix on the cloud training path (PR #72) and re-run the
   convergence gate.
-- Finish the W&B → MLflow sweep (`cloud/`, `pbt/`, `evaluation/`, `optimizations/`)
-  and re-enable the disabled suites; add fixtures for the skipped hierarchical /
-  state-extraction / training-smoke tests.
+- ~~Finish the W&B → MLflow sweep~~ *(done 2026-07-13: SDK swap verified complete,
+  configs/toggles unified with legacy env fallback, dead suites replaced by MLflow
+  equivalents; `run_sweep.py`/Optuna port remains)*; add fixtures for the skipped
+  hierarchical / state-extraction / training-smoke tests.
 - Bring omitted modules (`serving/`, `inference/`, cloud infra) under the coverage
   gate (re-tightened 80% → 85% on 2026-07-13; omit-list shrink remains).
 

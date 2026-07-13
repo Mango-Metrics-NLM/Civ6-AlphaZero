@@ -7,10 +7,10 @@ from unittest.mock import MagicMock, Mock
 import numpy as np
 import pytest
 
+from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 from alpha_zero.tournament.config import MatchResult
 from alpha_zero.tournament.elo import RatingLeaderboard
 from alpha_zero.tournament.wandb_dashboards import TournamentWandbLogger
-from alpha_zero.utils.wandb_logger import WandbLogger
 
 
 @pytest.fixture
@@ -306,7 +306,7 @@ class TestIntegrationWithWandbLogger:
     def test_graceful_degradation(self):
         """Test that all methods work when W&B is disabled."""
         # Create disabled WandbLogger
-        from alpha_zero.utils.wandb_logger import WandbConfig
+        from alpha_zero.monitoring.config import MonitoringConfig as WandbConfig
 
         wandb_logger = WandbLogger(WandbConfig(enabled=False))
         tournament_logger = TournamentWandbLogger(wandb_logger)

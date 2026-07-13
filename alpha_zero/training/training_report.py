@@ -81,7 +81,8 @@ class TrainingReportConfig:
             CIV6AZ_REPORT_INTERVAL: Report generation interval (default: 100)
             CIV6AZ_REPORT_SAFEGUARD_EVENTS: Include safeguard events (default: True)
             CIV6AZ_REPORT_HYPERPARAMETERS: Include hyperparameters (default: True)
-            CIV6AZ_REPORT_WANDB_PREFIX: W&B logging prefix (default: training_report/)
+            CIV6AZ_REPORT_METRICS_PREFIX: metric-key prefix (default: training_report/;
+                legacy alias CIV6AZ_REPORT_WANDB_PREFIX honored)
 
         Returns:
             TrainingReportConfig instance.
@@ -94,7 +95,10 @@ class TrainingReportConfig:
             include_hyperparameters=(
                 os.environ.get("CIV6AZ_REPORT_HYPERPARAMETERS", "true").lower() == "true"
             ),
-            wandb_prefix=os.environ.get("CIV6AZ_REPORT_WANDB_PREFIX", "training_report/"),
+            wandb_prefix=os.environ.get(
+                "CIV6AZ_REPORT_METRICS_PREFIX",
+                os.environ.get("CIV6AZ_REPORT_WANDB_PREFIX", "training_report/"),
+            ),
         )
 
 
@@ -151,8 +155,8 @@ class TrainingReportData:
             "timestamp": self.timestamp,
         }
 
-    def to_wandb_dict(self, prefix: str = "training_report/") -> dict[str, Any]:
-        """Convert to flat dictionary for W&B logging.
+    def to_metrics_dict(self, prefix: str = "training_report/") -> dict[str, Any]:
+        """Convert to a flat metrics dictionary for the experiment tracker.
 
         Args:
             prefix: Prefix to prepend to all keys.
@@ -179,6 +183,10 @@ class TrainingReportData:
             wandb_dict[f"{prefix}extra/{metric_name}"] = metric_value
 
         return wandb_dict
+
+    def to_wandb_dict(self, prefix: str = "training_report/") -> dict[str, Any]:
+        """Deprecated alias for :meth:`to_metrics_dict` (W&B is retired)."""
+        return self.to_metrics_dict(prefix=prefix)
 
 
 class TrainingReport:

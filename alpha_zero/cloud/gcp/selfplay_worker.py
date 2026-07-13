@@ -1143,7 +1143,8 @@ def main() -> int:
         args.board_size,
     )
 
-    # Initialize W&B (disabled by default, opt-in via WANDB_ENABLED env var)
+    # Initialize tracking (disabled by default; opt-in via CIV6AZ_MLFLOW_ENABLED /
+    # MLFLOW_ENABLED, legacy WANDB_ENABLED honored)
     wandb_logger = None
     try:
         from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger

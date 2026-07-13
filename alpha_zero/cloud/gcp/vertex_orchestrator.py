@@ -14,7 +14,7 @@ Features:
 - Optional curriculum learning via --curriculum
 - Optional reward shaping via --reward_shaping
 - Optional model evaluation via --evaluation_games
-- W&B logging opt-in via WANDB_ENABLED env var
+- MLflow tracking opt-in via CIV6AZ_MLFLOW_ENABLED / MLFLOW_ENABLED (legacy WANDB_ENABLED honored)
 
 Usage:
     python -m alpha_zero.cloud.gcp.vertex_orchestrator \
@@ -1443,23 +1443,25 @@ def main() -> int:
             # ``MLFLOW_TAGS`` as ``group=<name>`` so MLflow's filter/search
             # UI can use it directly.
             try:
-                run_obj = getattr(wandb_logger, "run", None)
-                if run_obj is not None:
-                    group_name = getattr(run_obj, "name", None) or getattr(run_obj, "id", None)
-                    if group_name:
-                        os.environ["MLFLOW_RUN_GROUP"] = group_name
-                        existing_tags = os.environ.get("MLFLOW_TAGS", "").strip()
-                        group_tag = f"group={group_name}"
-                        if existing_tags:
-                            os.environ["MLFLOW_TAGS"] = f"{existing_tags},{group_tag}"
-                        else:
-                            os.environ["MLFLOW_TAGS"] = group_tag
-                        logger.info("MLflow run group set to: %s", group_name)
+                # MLflow run metadata lives under run.info — the adapter's
+                # run_name property reads it correctly (a W&B-style
+                # run.name/.id never existed on MLflow run objects, so the
+                # old attribute reads silently produced no group).
+                group_name = getattr(wandb_logger, "run_name", None)
+                if group_name:
+                    os.environ["MLFLOW_RUN_GROUP"] = group_name
+                    existing_tags = os.environ.get("MLFLOW_TAGS", "").strip()
+                    group_tag = f"group={group_name}"
+                    if existing_tags:
+                        os.environ["MLFLOW_TAGS"] = f"{existing_tags},{group_tag}"
+                    else:
+                        os.environ["MLFLOW_TAGS"] = group_tag
+                    logger.info("MLflow run group set to: %s", group_name)
             except Exception as _e:
                 logger.debug("Could not set MLFLOW_RUN_GROUP: %s", _e)
-            logger.info("W&B logging enabled for orchestrator")
+            logger.info("Experiment tracking enabled for orchestrator (MLflow)")
     except ImportError:
-        logger.debug("W&B not available")
+        logger.debug("Experiment-tracking backend not available")
 
     logger.info("Civ6 AlphaZero Vertex AI Orchestrator")
     logger.info(

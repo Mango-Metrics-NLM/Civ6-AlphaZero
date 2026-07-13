@@ -431,36 +431,34 @@ def main() -> int:
     # Save results
     save_tournament_results(config, results, dry_run=args.dry_run)
 
-    # W&B logging (if enabled via env vars)
+    # Experiment tracking (enablement resolved by MLflowConfig.from_env:
+    # CIV6AZ_MLFLOW_ENABLED > MLFLOW_ENABLED > legacy WANDB_ENABLED)
     try:
-        import os
+        from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
-        if os.environ.get("WANDB_ENABLED", "").lower() == "true":
-            from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
-
-            wandb_logger = WandbLogger.from_env()
-            if wandb_logger.is_enabled:
-                wandb_logger.init(
-                    config_dict={
-                        "mode": "tournament",
-                        "model_versions": model_versions,
-                        "tournament_games": args.tournament_games,
-                        "mcts_type": args.mcts_type,
-                        "mcts_sims": args.tournament_mcts_sims,
-                        "board_size": args.board_size,
-                    },
-                )
-                elo_ratings = results.get("elo_ratings", {})
-                for player_id, elo in elo_ratings.items():
-                    wandb_logger.log({f"tournament/elo_{player_id}": elo})
-                wandb_logger.log(
-                    {
-                        "tournament/best_model": results.get("best_model", ""),
-                        "tournament/best_elo": results.get("best_elo", 0.0),
-                        "tournament/num_models": len(model_versions),
-                        "tournament/total_matches": len(results.get("matches", [])),
-                    }
-                )
+        wandb_logger = WandbLogger.from_env()
+        if wandb_logger.is_enabled:
+            wandb_logger.init(
+                config_dict={
+                    "mode": "tournament",
+                    "model_versions": model_versions,
+                    "tournament_games": args.tournament_games,
+                    "mcts_type": args.mcts_type,
+                    "mcts_sims": args.tournament_mcts_sims,
+                    "board_size": args.board_size,
+                },
+            )
+            elo_ratings = results.get("elo_ratings", {})
+            for player_id, elo in elo_ratings.items():
+                wandb_logger.log({f"tournament/elo_{player_id}": elo})
+            wandb_logger.log(
+                {
+                    "tournament/best_model": results.get("best_model", ""),
+                    "tournament/best_elo": results.get("best_elo", 0.0),
+                    "tournament/num_models": len(model_versions),
+                    "tournament/total_matches": len(results.get("matches", [])),
+                }
+            )
     except Exception as e:
         logger.warning("W&B logging failed (non-fatal): %s", e)
 

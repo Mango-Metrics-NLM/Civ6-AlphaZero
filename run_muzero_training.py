@@ -41,9 +41,10 @@ from alpha_zero.training.muzero_trainer import (
     TrajectoryBuffer,
 )
 
-# W&B import (optional)
+# MLflow-backed tracker import (optional). Legacy names kept for --wandb.
 try:
-    from alpha_zero.utils.wandb_logger import WandbConfig, WandbLogger
+    from alpha_zero.monitoring.config import MLflowConfig as WandbConfig
+    from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 
     WANDB_AVAILABLE = True
 except ImportError:
@@ -622,9 +623,12 @@ def main():
             try:
                 wandb_config = WandbConfig(
                     enabled=True,
-                    project=config.wandb_project,
-                    name=config.wandb_run_name,
-                    tags=["muzero", "gumbel" if config.use_gumbel else "puct"],
+                    experiment_name=config.wandb_project,
+                    run_name=config.wandb_run_name,
+                    tags={
+                        "muzero": "true",
+                        ("gumbel" if config.use_gumbel else "puct"): "true",
+                    },
                 )
                 wandb_logger = WandbLogger(wandb_config)
                 # Pass config dict to init for logging

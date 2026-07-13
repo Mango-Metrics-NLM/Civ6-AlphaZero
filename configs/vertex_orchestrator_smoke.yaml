@@ -9,7 +9,7 @@
 #       --dry_run
 #
 # For real run:
-#   1. Set WANDB_API_KEY env var
+#   1. Set MLFLOW_TRACKING_URI env var
 #   2. Remove --dry_run
 #   3. Ensure ./configs/gcp_config.yaml is valid
 

@@ -2,13 +2,13 @@
 #
 # Usage:
 #   1. Copy this template to vertex_training_smoke_local.yaml
-#   2. Set WANDB_API_KEY via one of:
+#   2. Optionally set MLFLOW_TRACKING_URI via one of:
 #      a) Google Secret Manager (recommended for production)
 #      b) Environment variable in your local copy
 #   3. The *_local.yaml files are gitignored and safe for real keys
 #
-# For Secret Manager integration, replace the WANDB_API_KEY env block with:
-#   - name: WANDB_API_KEY
+# For Secret Manager integration, replace the MLFLOW_TRACKING_URI env block with:
+#   - name: MLFLOW_TRACKING_URI
 #     valueFrom:
 #       secretKeyRef:
 #         name: 'wandb-api-key'    # Secret Manager secret name
@@ -32,11 +32,11 @@ workerPoolSpecs:
         - "--num_res_blocks=2"
         - "--num_filters=32"
       env:
-        # WANDB_API_KEY: Inject via Secret Manager or local override.
+        # MLFLOW_TRACKING_URI: point at your MLflow server (or omit for file store).
         # DO NOT commit real keys here. See header for setup instructions.
-        - name: WANDB_PROJECT
+        - name: MLFLOW_EXPERIMENT_NAME
           value: "civ6az-muzero-world-model"
-        - name: WANDB_ENABLED
+        - name: MLFLOW_ENABLED
           value: "true"
         - name: CIV6AZ_GCS_BUCKET
           value: "civ6az-muzero-training"

@@ -166,7 +166,7 @@ def _patch_factories(mocks):
         patch(f"{MOD}.create_curriculum_manager", return_value=mocks["curriculum"]),
         patch(f"{MOD}.create_reward_shaper", return_value=mocks["reward_shaper"]),
         patch(f"{MOD}.create_llm_client", return_value=None),
-        patch(f"{MOD}.create_wandb_logger", return_value=None),
+        patch(f"{MOD}.create_mlflow_logger", return_value=None),
         patch(f"{MOD}.CheckpointManager", return_value=mocks["checkpointer"]),
     ):
         yield
@@ -470,13 +470,13 @@ class TestCheckpointManagement:
         orch._cleanup()
         mock_rag.close.assert_called_once()
 
-    def test_cleanup_finishes_wandb(self, orchestrator):
+    def test_cleanup_finishes_tracker(self, orchestrator):
         orch, _mocks = orchestrator
-        mock_wandb = MagicMock()
-        orch._wandb_logger = mock_wandb
+        mock_tracker = MagicMock()
+        orch._mlflow_logger = mock_tracker
         orch.state.start_time = 0.0
         orch._cleanup()
-        mock_wandb.finish.assert_called_once()
+        mock_tracker.finish.assert_called_once()
 
     def test_cleanup_without_network_noop(self, orchestrator):
         orch, mocks = orchestrator
@@ -729,34 +729,34 @@ class TestStrategyAnalysis:
 
 
 class TestLogIteration:
-    def test_wandb_logger_called(self, orchestrator):
+    def test_tracker_log_iteration_called(self, orchestrator):
         orch, _ = orchestrator
-        mock_wandb = MagicMock()
-        orch._wandb_logger = mock_wandb
+        mock_tracker = MagicMock()
+        orch._mlflow_logger = mock_tracker
         orch._scheduler = MagicMock()
         orch._scheduler.get_learning_rate.return_value = 0.001
         orch._scheduler.get_batch_size.return_value = 32
 
         results = [GameResult(trajectory=[], winner=1, total_reward=1.0, turns=5)]
         orch._log_iteration(0, results, {"total_loss": 0.5}, 1.0)
-        mock_wandb.log.assert_called_once()
+        mock_tracker.log_iteration.assert_called_once()
 
-    def test_no_wandb_no_crash(self, orchestrator):
+    def test_no_tracker_no_crash(self, orchestrator):
         orch, _ = orchestrator
-        orch._wandb_logger = None
+        orch._mlflow_logger = None
         results = [GameResult(trajectory=[], winner=0, total_reward=0.0, turns=1)]
         orch._log_iteration(0, results, {}, 0.5)
 
     def test_empty_game_results(self, orchestrator):
         orch, _ = orchestrator
-        orch._wandb_logger = None
+        orch._mlflow_logger = None
         orch._log_iteration(0, [], {}, 0.5)  # Should not raise
 
     def test_win_rate_computed_correctly(self, orchestrator):
-        """W&B log call should include correct win_rate."""
+        """The tracker's game metrics must include the correct win_rate."""
         orch, _ = orchestrator
-        mock_wandb = MagicMock()
-        orch._wandb_logger = mock_wandb
+        mock_tracker = MagicMock()
+        orch._mlflow_logger = mock_tracker
         orch._scheduler = MagicMock()
         orch._scheduler.get_learning_rate.return_value = 0.001
         orch._scheduler.get_batch_size.return_value = 32
@@ -766,8 +766,8 @@ class TestLogIteration:
             GameResult(trajectory=[], winner=-1, total_reward=-1.0, turns=1),
         ]
         orch._log_iteration(0, results, {}, 0.1)
-        logged = mock_wandb.log.call_args[0][0]
-        assert logged["win_rate"] == pytest.approx(0.5)
+        game_metrics = mock_tracker.log_iteration.call_args.kwargs["game_metrics"]
+        assert game_metrics["game/win_rate"] == pytest.approx(0.5)
 
 
 # ---------------------------------------------------------------------------

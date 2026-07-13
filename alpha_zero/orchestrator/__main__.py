@@ -44,7 +44,8 @@ Examples:
         --games-per-iteration 50
 
 Environment Variables:
-    CIV6AZ_WANDB_ENABLED    Enable/disable W&B logging
+    CIV6AZ_MLFLOW_ENABLED   Enable/disable experiment tracking (canonical)
+    CIV6AZ_WANDB_ENABLED    Deprecated: toggles the legacy wandb config section
     CIV6AZ_RANDOM_SEED      Set random seed
     CIV6AZ_DEVICE           Force specific device (cpu/cuda)
 """,
@@ -108,9 +109,14 @@ Environment Variables:
 
     # Feature toggles
     parser.add_argument(
+        "--no-tracking",
+        action="store_true",
+        help="Disable experiment tracking entirely (mlflow + legacy wandb sections)",
+    )
+    parser.add_argument(
         "--no-wandb",
         action="store_true",
-        help="Disable W&B logging",
+        help="Deprecated alias for --no-tracking (W&B is retired; disables all tracking)",
     )
     parser.add_argument(
         "--no-mlflow",
@@ -223,9 +229,12 @@ def load_config(args: argparse.Namespace) -> Any:
     if args.seed is not None:
         config.random_seed = args.seed
 
-    # Apply feature toggles
-    if args.no_wandb:
+    # Apply feature toggles. --no-wandb historically only disabled the wandb
+    # section, letting MLflow keep logging; since W&B is retired both flags
+    # now mean "turn tracking off" (see CHANGELOG).
+    if args.no_wandb or getattr(args, "no_tracking", False):
         config.wandb.enabled = False
+        config.mlflow.enabled = False
 
     # MLflow flags were added by the PR #78/#79 monitoring branch; the
     # ``getattr`` defaults keep ``load_config`` callable from older test

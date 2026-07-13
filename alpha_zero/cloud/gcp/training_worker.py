@@ -796,7 +796,7 @@ def train_epoch(
             and hasattr(wandb_logger, "is_enabled")
             and wandb_logger.is_enabled
         ):
-            wandb_logger.log(report_data.to_wandb_dict())
+            wandb_logger.log(report_data.to_metrics_dict())
 
     return (
         total_loss / max(num_batches, 1),
@@ -905,7 +905,7 @@ def main() -> int:
         args.board_size,
     )
 
-    # Initialize W&B (disabled by default, opt-in via WANDB_ENABLED env var)
+    # Initialize tracking (disabled by default; opt-in via CIV6AZ_MLFLOW_ENABLED / MLFLOW_ENABLED)
     wandb_logger = None
     try:
         from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger

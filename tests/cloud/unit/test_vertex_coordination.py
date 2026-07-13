@@ -1,7 +1,6 @@
 """Tests for W&B group coordination across workers and evaluation worker W&B.
 
 Covers Steps 1, 3, 4, and 5 of the training readiness plan:
-- Step 1: WANDB_GROUP / WANDB_RUN_NAME passthrough in _wandb_env_vars()
            and VertexEvaluationJob.launch()
 - Step 3: W&B integration in evaluation_worker.main()
 - Step 4: DEFAULT_MCTS_TYPE == "gumbel"; --learning_rate forwarding
@@ -12,118 +11,9 @@ Covers Steps 1, 3, 4, and 5 of the training readiness plan:
 from __future__ import annotations
 
 import inspect
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-
-@pytest.mark.skip(
-    reason="W&B env coordination replaced by MLFLOW_* in B3; "
-    "superseded by tests/cloud/unit/test_orchestrator_mlflow.py"
-)
-class TestWandbEnvVars:
-    """Tests for _wandb_env_vars() passthrough function."""
-
-    def test_includes_group_when_set(self) -> None:
-        env = {"WANDB_GROUP": "test-run-123", "WANDB_ENABLED": "true"}
-        with patch.dict(os.environ, env, clear=False):
-            from alpha_zero.cloud.gcp.vertex_jobs import _wandb_env_vars
-
-            result = _wandb_env_vars()
-        assert "WANDB_GROUP" in result
-        assert result["WANDB_GROUP"] == "test-run-123"
-
-    def test_includes_run_name_when_set(self) -> None:
-        env = {"WANDB_RUN_NAME": "selfplay-iter042-w00", "WANDB_ENABLED": "true"}
-        with patch.dict(os.environ, env, clear=False):
-            from alpha_zero.cloud.gcp.vertex_jobs import _wandb_env_vars
-
-            result = _wandb_env_vars()
-        assert "WANDB_RUN_NAME" in result
-        assert result["WANDB_RUN_NAME"] == "selfplay-iter042-w00"
-
-    def test_filters_empty_group(self) -> None:
-        env = {"WANDB_GROUP": "", "WANDB_ENABLED": "true"}
-        with patch.dict(os.environ, env, clear=False):
-            from alpha_zero.cloud.gcp.vertex_jobs import _wandb_env_vars
-
-            result = _wandb_env_vars()
-        assert "WANDB_GROUP" not in result
-
-    def test_filters_empty_run_name(self) -> None:
-        env = {"WANDB_RUN_NAME": ""}
-        with patch.dict(os.environ, env, clear=False):
-            from alpha_zero.cloud.gcp.vertex_jobs import _wandb_env_vars
-
-            result = _wandb_env_vars()
-        assert "WANDB_RUN_NAME" not in result
-
-    def test_group_and_run_name_both_present(self) -> None:
-        env = {
-            "WANDB_GROUP": "my-group",
-            "WANDB_RUN_NAME": "selfplay-iter001",
-            "WANDB_ENABLED": "true",
-        }
-        with patch.dict(os.environ, env, clear=False):
-            from alpha_zero.cloud.gcp.vertex_jobs import _wandb_env_vars
-
-            result = _wandb_env_vars()
-        assert result["WANDB_GROUP"] == "my-group"
-        assert result["WANDB_RUN_NAME"] == "selfplay-iter001"
-
-
-@pytest.mark.skip(
-    reason="W&B env coordination replaced by MLFLOW_* in B3; "
-    "superseded by tests/cloud/unit/test_orchestrator_mlflow.py"
-)
-class TestEvaluationJobWandb:
-    """Tests that VertexEvaluationJob.launch() includes W&B env vars."""
-
-    def test_evaluation_job_includes_wandb_env_vars(self) -> None:
-        """VertexEvaluationJob must pass W&B env vars to container."""
-        env = {
-            "WANDB_GROUP": "run-group-abc",
-            "WANDB_ENABLED": "true",
-            "WANDB_API_KEY": "test-key",
-        }
-        with patch.dict(os.environ, env, clear=False):
-            from alpha_zero.cloud.gcp.vertex_jobs import _wandb_env_vars
-
-            result = _wandb_env_vars()
-        assert "WANDB_GROUP" in result
-        assert result["WANDB_GROUP"] == "run-group-abc"
-
-    def test_eval_job_spec_includes_wandb_on_launch(self) -> None:
-        """Integration: JobSpec env_vars should contain WANDB keys when set."""
-        env = {"WANDB_GROUP": "my-group", "WANDB_ENABLED": "true", "WANDB_API_KEY": "k"}
-        with patch.dict(os.environ, env, clear=False):
-            from alpha_zero.cloud.gcp.vertex_jobs import _wandb_env_vars
-
-            vars_dict = _wandb_env_vars()
-        assert "WANDB_GROUP" in vars_dict
-
-    def test_eval_job_launch_merges_wandb_vars(self) -> None:
-        """VertexEvaluationJob.launch() JobSpec env_vars includes WANDB_GROUP."""
-        from alpha_zero.cloud.gcp.config import GCPConfig
-        from alpha_zero.cloud.gcp.vertex_jobs import VertexEvaluationJob
-
-        config = GCPConfig(
-            project_id="test-proj",
-            bucket="test-bucket",
-            container_image_uri="gcr.io/test/img:latest",
-        )
-        mock_client = MagicMock()
-        mock_client.submit_custom_job.return_value = "projects/test/locations/us/customJobs/99"
-
-        env = {"WANDB_GROUP": "launch-group", "WANDB_ENABLED": "true", "WANDB_API_KEY": "k"}
-        with patch.dict(os.environ, env, clear=False):
-            job = VertexEvaluationJob(config, client=mock_client)
-            job.launch(model_version_new=2, model_version_old=1, iteration=5)
-
-        spec = mock_client.submit_custom_job.call_args[0][0]
-        assert "WANDB_GROUP" in spec.env_vars
-        assert spec.env_vars["WANDB_GROUP"] == "launch-group"
 
 
 class TestDefaultMctsType:

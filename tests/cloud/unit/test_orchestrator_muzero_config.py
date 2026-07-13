@@ -3,13 +3,11 @@ Unit tests for orchestrator MuZero configuration.
 
 Tests that:
 - build_selfplay_extra_args produces --mcts_type=muzero when algorithm=muzero
-- W&B env vars propagate through _wandb_env_vars
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from unittest.mock import patch
 
@@ -78,61 +76,6 @@ class TestBuildSelfplayExtraArgs:
 
 # =============================================================================
 # W&B env var propagation
-# =============================================================================
-
-
-@pytest.mark.skip(
-    reason="W&B env coordination replaced by MLFLOW_* in B3; "
-    "superseded by tests/cloud/unit/test_orchestrator_mlflow.py"
-)
-class TestWandbEnvVarPropagation:
-    """Tests for W&B environment variable propagation to child jobs."""
-
-    def test_wandb_api_key_propagated_when_set(self) -> None:
-        """WANDB_API_KEY should propagate when set in environment."""
-        from alpha_zero.cloud.gcp.vertex_jobs import _wandb_env_vars
-
-        with patch.dict(os.environ, {"WANDB_API_KEY": "test-key-123"}):
-            env_vars = _wandb_env_vars()
-
-        assert "WANDB_API_KEY" in env_vars
-        assert env_vars["WANDB_API_KEY"] == "test-key-123"
-
-    def test_wandb_api_key_excluded_when_empty(self) -> None:
-        """WANDB_API_KEY should NOT be included when empty."""
-        from alpha_zero.cloud.gcp.vertex_jobs import _wandb_env_vars
-
-        env_without_key = {k: v for k, v in os.environ.items() if k != "WANDB_API_KEY"}
-        with patch.dict(os.environ, env_without_key, clear=True):
-            env_vars = _wandb_env_vars()
-
-        assert "WANDB_API_KEY" not in env_vars
-
-    def test_wandb_enabled_defaults_to_false(self) -> None:
-        """WANDB_ENABLED should default to 'false' when not set."""
-        from alpha_zero.cloud.gcp.vertex_jobs import _wandb_env_vars
-
-        env_clean = {k: v for k, v in os.environ.items()
-                     if not k.startswith("WANDB_")}
-        with patch.dict(os.environ, env_clean, clear=True):
-            env_vars = _wandb_env_vars()
-
-        assert env_vars.get("WANDB_ENABLED") == "false"
-
-    def test_wandb_project_defaults_to_civ6_alphazero(self) -> None:
-        """WANDB_PROJECT should default to 'civ6az-muzero-world-model'."""
-        from alpha_zero.cloud.gcp.vertex_jobs import _wandb_env_vars
-
-        env_clean = {k: v for k, v in os.environ.items()
-                     if not k.startswith("WANDB_")}
-        with patch.dict(os.environ, env_clean, clear=True):
-            env_vars = _wandb_env_vars()
-
-        assert env_vars.get("WANDB_PROJECT") == "civ6az-muzero-world-model"
-
-
-# =============================================================================
-# --model_version_start override flag
 # =============================================================================
 
 

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import os
+import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -77,6 +78,43 @@ def _bool_env(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in ("true", "1", "yes", "on")
+
+
+#: Legacy W&B-era enablement variable, honored as the lowest-precedence
+#: fallback by :func:`resolve_tracker_enabled` so pre-migration deployment
+#: configs (e.g. ``configs/vertex_*_smoke.yaml``) keep working.
+LEGACY_ENABLED_ENV: str = "WANDB_ENABLED"
+
+
+def resolve_tracker_enabled(default: bool = False) -> bool:
+    """Resolve experiment-tracking enablement from the environment.
+
+    Single source of truth for the on/off toggle, with three-tier precedence:
+
+    1. ``CIV6AZ_MLFLOW_ENABLED`` (project convention)
+    2. ``MLFLOW_ENABLED`` (standard MLflow-style name)
+    3. ``WANDB_ENABLED`` (legacy; emits a :class:`DeprecationWarning` when it
+       is the *deciding* variable)
+
+    Args:
+        default: Value when none of the variables is set.
+
+    Returns:
+        Whether tracking should be enabled.
+    """
+    if os.environ.get(f"{ENV_PREFIX}ENABLED") is not None:
+        return _bool_env(f"{ENV_PREFIX}ENABLED", default=default)
+    if os.environ.get("MLFLOW_ENABLED") is not None:
+        return _bool_env("MLFLOW_ENABLED", default=default)
+    if os.environ.get(LEGACY_ENABLED_ENV) is not None:
+        warnings.warn(
+            f"{LEGACY_ENABLED_ENV} is deprecated; set CIV6AZ_MLFLOW_ENABLED "
+            "(or MLFLOW_ENABLED) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return _bool_env(LEGACY_ENABLED_ENV, default=default)
+    return default
 
 
 # ---------------------------------------------------------------------------
@@ -224,11 +262,9 @@ class MLflowConfig:
             or os.environ.get("MLFLOW_EXPERIMENT_NAME")
             or DEFAULT_EXPERIMENT_NAME
         )
-        # Allow MLFLOW_ENABLED to opt-in even when CIV6AZ_MLFLOW_ENABLED is unset.
-        if os.environ.get(f"{ENV_PREFIX}ENABLED") is not None:
-            enabled = _bool_env(f"{ENV_PREFIX}ENABLED", default=False)
-        else:
-            enabled = _bool_env("MLFLOW_ENABLED", default=False)
+        # Three-tier precedence incl. the legacy WANDB_ENABLED fallback —
+        # see resolve_tracker_enabled().
+        enabled = resolve_tracker_enabled(default=False)
         return cls(
             enabled=enabled,
             tracking_uri=tracking_uri,

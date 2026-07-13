@@ -928,16 +928,31 @@ class MLflowLogger:
 
 
 class WandbCompatAdapter(MLflowLogger):
-    """Drop-in replacement for ``alpha_zero.utils.wandb_logger.WandbLogger``.
+    """Drop-in replacement for the retired W&B ``WandbLogger``.
 
     Re-exposes every public method of the legacy ``WandbLogger`` so worker
     code can switch the import line and gain MLflow tracking with no other
     changes.  Method signatures mirror ``WandbLogger`` exactly to avoid
     silent breakage at PBT/tournament/eval call sites.
 
-    Anything that cannot be expressed in MLflow (histograms, images, native
-    model artifacts, gradient watching, alerts) degrades to a no-op or a
-    tag/artifact best-effort write.
+    Fidelity map (W&B feature -> adapter behavior):
+
+    ========================  =============================================
+    ``log`` / ``log_*``       full parity (numpy scalars/0-d arrays coerced,
+                              one level of nested dicts flattened)
+    ``alert``                 MLflow tag ``alert/<level>/<title>`` **plus**
+                              ``logger.warning`` so alerts are never silent
+    ``summary``               MLflow tags (stringified)
+    ``log_table``             CSV artifact (rows must be rectangular)
+    ``log_model``             plain file artifact under ``model/``
+    ``watch_model``           accepted no-op: sets ``watch_model_requested``
+                              tag + info log; use ``MLflowConfig.log_grad_norms``
+                              for gradient-norm metrics
+    ``define_metric`` /       accepted no-ops (MLflow has no chart
+    ``define_*_charts``       pre-registration)
+    ``log_histogram`` /       accepted no-ops
+    ``log_image``
+    ========================  =============================================
     """
 
     # ------------------------------------------------------------------
@@ -982,9 +997,51 @@ class WandbCompatAdapter(MLflowLogger):
     def run(self) -> Any | None:
         return self._run
 
+    @property
+    def run_name(self) -> str | None:
+        """Human-readable name of the active run (``None`` before ``init``).
+
+        MLflow keeps run metadata under ``run.info`` — callers must not read
+        ``.name``/``.id`` off the run object directly (they don't exist there,
+        unlike on a W&B ``Run``). Falls back to the run id when the backend
+        assigned no name.
+        """
+        info = getattr(self._run, "info", None)
+        if info is None:
+            return None
+        return getattr(info, "run_name", None) or getattr(info, "run_id", None)
+
     # ------------------------------------------------------------------
     # Generic log()
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _coerce_metric_value(value: Any) -> float | None:
+        """Best-effort coercion of a logged value to an MLflow float metric.
+
+        Accepts Python ints/floats/bools and numpy scalars / 0-d / size-1
+        arrays (via ``.item()``). Returns ``None`` for anything that is not
+        a single numeric value (strings, sequences, larger arrays, ...).
+        """
+        if isinstance(value, bool):
+            return float(value)
+        if isinstance(value, (int, float)):
+            return float(value)
+        # numpy scalars (np.int64, np.float32, np.bool_) and 0-d / size-1
+        # arrays all expose .item(); duck-type so numpy stays optional here.
+        item = getattr(value, "item", None)
+        if callable(item):
+            size = getattr(value, "size", 1)
+            if size == 1:
+                try:
+                    coerced = value.item()
+                except (ValueError, TypeError):
+                    return None
+                if isinstance(coerced, bool):
+                    return float(coerced)
+                if isinstance(coerced, (int, float)):
+                    return float(coerced)
+        return None
 
     def log(
         self,
@@ -994,10 +1051,26 @@ class WandbCompatAdapter(MLflowLogger):
     ) -> None:
         """Mirror ``WandbLogger.log(data, step, commit)``.
 
-        Only numeric values are forwarded to ``log_metrics``; non-numeric
-        entries are silently dropped because MLflow metrics must be floats.
+        Numeric values (including numpy scalars and 0-d/size-1 arrays) are
+        forwarded to ``log_metrics``; one level of nested dicts is flattened
+        as ``parent/child``. Anything else is dropped with a debug log,
+        because MLflow metrics must be floats.
         """
-        numeric = {k: float(v) for k, v in data.items() if isinstance(v, (int, float))}
+        numeric: dict[str, float] = {}
+        for key, value in data.items():
+            if isinstance(value, dict):
+                for sub_key, sub_value in value.items():
+                    coerced = self._coerce_metric_value(sub_value)
+                    if coerced is not None:
+                        numeric[f"{key}/{sub_key}"] = coerced
+                    else:
+                        logger.debug("Dropping non-numeric metric %s/%s", key, sub_key)
+                continue
+            coerced = self._coerce_metric_value(value)
+            if coerced is not None:
+                numeric[key] = coerced
+            else:
+                logger.debug("Dropping non-numeric metric %s (%s)", key, type(value).__name__)
         if numeric:
             self.log_metrics(numeric, step=step)
 
@@ -1223,7 +1296,13 @@ class WandbCompatAdapter(MLflowLogger):
             self.set_tag(f"summary/{k}", str(v))
 
     def alert(self, title: str, text: str, level: str = "INFO") -> None:
-        """Mirror ``WandbLogger.alert`` - write alert as an MLflow tag."""
+        """Mirror ``WandbLogger.alert`` - write alert as an MLflow tag.
+
+        Also emits a ``logger.warning`` so alerts are visible in worker logs
+        even when MLflow is disabled or the tag is later overwritten by a
+        repeat alert with the same level/title.
+        """
+        logger.warning("tracker alert [%s] %s: %s", level, title, text)
         self.set_tag(f"alert/{level}/{title}", text)
 
     def log_table(
@@ -1274,7 +1353,17 @@ class WandbCompatAdapter(MLflowLogger):
     # ------------------------------------------------------------------
 
     def watch_model(self, *args: Any, **kwargs: Any) -> None:
-        """No-op: MLflow has no direct equivalent of ``wandb.watch``."""
+        """Accepted no-op: MLflow has no direct equivalent of ``wandb.watch``.
+
+        Records the request as a tag and an info log so the intent is
+        auditable. For gradient-norm metrics enable
+        ``MLflowConfig.log_grad_norms`` instead.
+        """
+        logger.info(
+            "watch_model() requested; gradient watching is not supported by the "
+            "MLflow backend — enable MLflowConfig.log_grad_norms for grad-norm metrics."
+        )
+        self.set_tag("watch_model_requested", "true")
         return None
 
     def define_metric(self, *args: Any, **kwargs: Any) -> None:

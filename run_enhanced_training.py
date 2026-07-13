@@ -47,9 +47,11 @@ from alpha_zero.utils.environment_tuning import (
     get_default_fast_config,
 )
 
-# Import W&B logger (optional)
+# Import the MLflow-backed tracker (optional). WandbLogger/WandbConfig names
+# are kept so --wandb keeps working; W&B itself is retired (charter NG-5).
 try:
-    from alpha_zero.utils.wandb_logger import WandbConfig, WandbLogger
+    from alpha_zero.monitoring.config import MLflowConfig as WandbConfig
+    from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
     WANDB_AVAILABLE = True
 except ImportError:
     WANDB_AVAILABLE = False
@@ -460,12 +462,12 @@ def run_enhanced_training(
     # Initialize W&B logger
     wandb_logger: WandbLogger | None = None
     if wandb_enabled and WANDB_AVAILABLE:
+        tag_list = wandb_tags or ["enhanced-training", "curriculum", "reward-shaping"]
         wandb_config = WandbConfig(
             enabled=True,
-            project=wandb_project,
-            name=wandb_run_name,
-            tags=wandb_tags or ["enhanced-training", "curriculum", "reward-shaping"],
-            mode="online",
+            experiment_name=wandb_project,
+            run_name=wandb_run_name,
+            tags=dict.fromkeys(tag_list, "true"),
         )
         wandb_logger = WandbLogger(wandb_config)
 
@@ -484,11 +486,14 @@ def run_enhanced_training(
             "use_env_tuning": use_env_tuning,
             "device": device,
         }
-        run = wandb_logger.init(config_dict=config_dict)
-        if run:
-            logger.info(f"W&B run initialized: {run.name}")
+        wandb_logger.init(config_dict=config_dict)
+        if wandb_logger.run_name:
+            logger.info(f"Tracking run initialized: {wandb_logger.run_name}")
     elif wandb_enabled and not WANDB_AVAILABLE:
-        logger.warning("W&B requested but not available. Install with: pip install wandb")
+        logger.warning(
+            "Tracking requested but MLflow backend unavailable. "
+            "Install with: pip install -e '.[monitoring]'"
+        )
 
     logger.info("=" * 60)
     logger.info("ENHANCED TRAINING WITH IMPROVEMENTS")
