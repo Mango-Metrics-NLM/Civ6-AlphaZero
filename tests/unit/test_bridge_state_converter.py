@@ -30,12 +30,12 @@ from alpha_zero.bridge.protocol import (
     UnitData,
 )
 from alpha_zero.bridge.state_converter import (
-    _ESTIMATED_MAX_SCORE,
-    _ESTIMATED_TOTAL_TECHS,
+    GameNotStartedError,
     StateConverter,
     TerrainMapping,
     UnitMapping,
 )
+from alpha_zero.bridge.config import GameConstants
 
 # ---------------------------------------------------------------------------
 # Helpers to build minimal game state data
@@ -124,6 +124,7 @@ def _make_player(
     id: int = 0,
     civilization: str = "ROME",
     gold: float = 100.0,
+    gold_per_turn: float = 0.0,
     science_per_turn: float = 10.0,
     culture_per_turn: float = 5.0,
     faith: float = 0.0,
@@ -135,6 +136,7 @@ def _make_player(
         id=id,
         civilization=civilization,
         gold=gold,
+        gold_per_turn=gold_per_turn,
         science_per_turn=science_per_turn,
         culture_per_turn=culture_per_turn,
         faith=faith,
@@ -464,12 +466,12 @@ class TestStateConverterConvert:
 
     def test_convert_invalid_map_size_raises(self, converter: StateConverter) -> None:
         state = _make_game_state(map_width=0, map_height=20)
-        with pytest.raises(ValueError, match="Invalid map size"):
+        with pytest.raises(GameNotStartedError, match="Invalid map size"):
             converter.convert(state)
 
     def test_convert_negative_map_height_raises(self, converter: StateConverter) -> None:
         state = _make_game_state(map_width=20, map_height=-1)
-        with pytest.raises(ValueError, match="Invalid map size"):
+        with pytest.raises(GameNotStartedError, match="Invalid map size"):
             converter.convert(state)
 
     def test_convert_stores_legal_actions(self, converter: StateConverter) -> None:
@@ -551,6 +553,22 @@ class TestStateConverterConvert:
         result = converter.convert(state)
         assert result["gold"] == 0
         assert result["score"] == 0
+
+    def test_convert_gold_per_turn_uses_real_value(self, converter: StateConverter) -> None:
+        """gold_per_turn must come from PlayerData, not a hardcoded 0.
+
+        Regression: StateExporter.lua computes and sends a real
+        gold_per_turn (treasury:GetGoldYield()), but PlayerData had no such
+        field and state_converter synthesized a hardcoded 0 with a "not
+        directly available" comment even though the real figure was on the
+        wire all along.
+        """
+        state = _make_game_state(
+            player_id=0,
+            players=[_make_player(id=0, gold_per_turn=15.0)],
+        )
+        result = converter.convert(state)
+        assert result["gold_per_turn"] == 15.0
 
     def test_convert_resources_extraction(self, converter: StateConverter) -> None:
         state = _make_game_state(
@@ -745,6 +763,34 @@ class TestConvertUnits:
         converter._setup_scaling(16, 16)
         units = converter._convert_units(state)
         assert units[0]["player"] == 1
+
+    def test_ego_mapping_when_ai_is_player_two(self, converter: StateConverter) -> None:
+        """Ego-centric regression: when the AI is Player 2 (state.player_id=1),
+        its own units must still map to index 0 and the opponent to 1.
+
+        Previously the ego player was mapped to ``state.player_id`` (=1),
+        swapping the encoder's own/opponent channels and breaking the network.
+        """
+        state = _make_game_state(
+            player_id=1,  # the AI is Player 2 in the game setup
+            map_width=16,
+            map_height=16,
+            units=[
+                _make_unit(id=1, owner_id=1, x=3, y=3),  # ego (AI) unit
+                _make_unit(id=2, owner_id=0, x=5, y=5),  # opponent unit
+            ],
+            cities=[
+                _make_city(id=10, owner_id=1, x=4, y=4),  # ego city
+                _make_city(id=11, owner_id=0, x=6, y=6),  # opponent city
+            ],
+        )
+        converter._setup_scaling(16, 16)
+        units = {u["_id"]: u["player"] for u in converter._convert_units(state)}
+        cities = {c["_id"]: c["player"] for c in converter._convert_cities(state)}
+        assert units[1] == 0  # ego always index 0
+        assert units[2] == 1  # opponent index 1
+        assert cities[10] == 0
+        assert cities[11] == 1
 
     def test_unit_health_normalized(self, converter: StateConverter) -> None:
         state = _make_game_state(
@@ -973,13 +1019,15 @@ class TestScalePosition:
 class TestNamedConstants:
     """Test module-level constants."""
 
-    def test_estimated_total_techs(self) -> None:
-        assert _ESTIMATED_TOTAL_TECHS == 70
-        assert isinstance(_ESTIMATED_TOTAL_TECHS, int)
+    def test_estimated_total_techs(self):
+        """Test ESTIMATED_TOTAL_TECHS constant."""
+        assert GameConstants.ESTIMATED_TOTAL_TECHS == 70
+        assert isinstance(GameConstants.ESTIMATED_TOTAL_TECHS, int)
 
-    def test_estimated_max_score(self) -> None:
-        assert _ESTIMATED_MAX_SCORE == 2000
-        assert isinstance(_ESTIMATED_MAX_SCORE, int)
+    def test_estimated_max_score(self):
+        """Test ESTIMATED_MAX_SCORE constant."""
+        assert GameConstants.ESTIMATED_MAX_SCORE == 2000
+        assert isinstance(GameConstants.ESTIMATED_MAX_SCORE, int)
 
 
 # ===========================================================================
@@ -1104,6 +1152,50 @@ class TestMultiplayerHelpers:
         mapping: dict[int, int] = {}
         remapped = StateConverter._remap_player_ids(raw_state, mapping)
         assert "winner_id" not in remapped
+
+    def test_remap_ids_not_in_mapping_left_untouched(self) -> None:
+        """A player/unit/city owner ID that isn't in the mapping (e.g. a
+        barbarian owner_id like -1) must pass through unchanged rather than
+        raising a KeyError or being silently dropped."""
+        raw_state: dict[str, Any] = {
+            "player_id": 99,
+            "players": [{"id": 99}],
+            "units": [{"owner_id": 99}],
+            "cities": [{"owner_id": 99}],
+            "winner_id": 99,
+        }
+        mapping: dict[int, int] = {5: 0}  # 99 is not a known player
+        remapped = StateConverter._remap_player_ids(raw_state, mapping)
+        assert remapped["player_id"] == 99
+        assert remapped["players"][0]["id"] == 99
+        assert remapped["units"][0]["owner_id"] == 99
+        assert remapped["cities"][0]["owner_id"] == 99
+        assert remapped["winner_id"] == 99
+
+    def test_remap_missing_players_units_cities_keys(self) -> None:
+        """A raw_state missing the players/units/cities keys entirely (e.g.
+        a minimal pre-game payload) must not raise KeyError."""
+        raw_state: dict[str, Any] = {"player_id": 0}
+        mapping: dict[int, int] = {0: 0}
+        remapped = StateConverter._remap_player_ids(raw_state, mapping)
+        assert remapped["player_id"] == 0
+        assert "players" not in remapped
+        assert "units" not in remapped
+        assert "cities" not in remapped
+
+    def test_remap_entries_with_none_id_are_skipped(self) -> None:
+        """Entries whose id/owner_id is None (malformed Lua payload) must be
+        left untouched rather than raising when compared against the mapping."""
+        raw_state: dict[str, Any] = {
+            "players": [{"id": None}],
+            "units": [{"owner_id": None}],
+            "cities": [{"owner_id": None}],
+        }
+        mapping: dict[int, int] = {0: 0}
+        remapped = StateConverter._remap_player_ids(raw_state, mapping)
+        assert remapped["players"][0]["id"] is None
+        assert remapped["units"][0]["owner_id"] is None
+        assert remapped["cities"][0]["owner_id"] is None
 
 
 # ===========================================================================

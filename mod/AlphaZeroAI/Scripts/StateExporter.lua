@@ -338,33 +338,53 @@ local function exportUnits(playerId)
                     if canSee then
                         local typeInfo = getUnitTypeInfo(unit:GetUnitType())
 
-                        local unitData = {
-                            id = unit:GetID(),
-                            type_name = typeInfo.type_name,
-                            owner = pid,
-                            x = x,
-                            y = y,
-                            hp = unit:GetDamage() and (100 - unit:GetDamage()) or 100,
-                            max_hp = 100,
-                            damage = unit:GetDamage() or 0,
-                            movement = unit:GetMovementMovesRemaining() or 0,
-                            max_movement = unit:GetMaxMoves() or 2,
-                            combat_strength = unit:GetCombat() or 0,
-                            ranged_strength = unit:GetRangedCombat() or 0,
-                            range = unit:GetRange() or 0,
-                            is_civilian = typeInfo.is_civilian,
-                            can_attack = (unit:GetAttacksRemaining() or 0) > 0,
-                            promotions = {},
-                        }
+                        -- Wrap unit data construction in pcall — some methods
+                        -- may not exist in AddUserInterfaces context
+                        local ok_unit, unitData = pcall(function()
+                            local dmg = unit:GetDamage() or 0
+                            return {
+                                id = unit:GetID(),
+                                type_name = typeInfo.type_name,
+                                owner = pid,
+                                x = x,
+                                y = y,
+                                hp = 100 - dmg,
+                                max_hp = 100,
+                                damage = dmg,
+                                movement = unit:GetMovementMovesRemaining() or 0,
+                                max_movement = unit:GetMaxMoves() or 2,
+                                combat_strength = unit:GetCombat() or 0,
+                                ranged_strength = unit:GetRangedCombat() or 0,
+                                range = unit:GetRange() or 0,
+                                is_civilian = typeInfo.is_civilian,
+                                can_attack = (unit:GetAttacksRemaining() or 0) > 0,
+                                promotions = {},
+                            }
+                        end)
 
-                        -- Get promotions
-                        local unitExp = unit:GetExperience()
-                        if unitExp then
-                            local promotions = unitExp:GetPromotions()
-                            for _, promo in ipairs(promotions or {}) do
-                                table.insert(unitData.promotions, promo)
-                            end
+                        if not ok_unit then
+                            -- Fallback: minimal unit data
+                            unitData = {
+                                id = unit:GetID(), type_name = typeInfo.type_name,
+                                owner = pid, x = x, y = y,
+                                hp = 100, max_hp = 100, damage = 0,
+                                movement = 0, max_movement = 2,
+                                combat_strength = 0, ranged_strength = 0, range = 0,
+                                is_civilian = typeInfo.is_civilian, can_attack = false,
+                                promotions = {},
+                            }
                         end
+
+                        -- Get promotions (best effort)
+                        pcall(function()
+                            local unitExp = unit:GetExperience()
+                            if unitExp then
+                                local promotions = unitExp:GetPromotions()
+                                for _, promo in ipairs(promotions or {}) do
+                                    table.insert(unitData.promotions, promo)
+                                end
+                            end
+                        end)
 
                         table.insert(units, unitData)
                     end
@@ -403,6 +423,10 @@ local function exportCities(playerId)
                     end
 
                     if canSee then
+                        -- pcall wrappers for city methods that may not exist in all contexts
+                        local ok_cap, is_cap = pcall(function() return city:IsCapital() end)
+                        local ok_str, str_val = pcall(function() return city:GetStrengthValue() end)
+
                         local cityData = {
                             id = city:GetID(),
                             name = city:GetName() or "Unknown",
@@ -410,8 +434,8 @@ local function exportCities(playerId)
                             x = x,
                             y = y,
                             population = city:GetPopulation() or 1,
-                            is_capital = city:IsCapital(),
-                            defense_strength = city:GetStrengthValue() or 0,
+                            is_capital = (ok_cap and is_cap) or false,
+                            defense_strength = (ok_str and str_val) or 0,
                             buildings = {},
                             districts = {},
                             current_production = nil,
@@ -421,13 +445,14 @@ local function exportCities(playerId)
 
                         -- Only include detailed info for own cities
                         if pid == playerId then
-                            local buildQueue = city:GetBuildQueue()
-                            if buildQueue then
-                                local currentProduction = buildQueue:CurrentlyBuilding()
-                                if currentProduction then
+                            local ok_bq, buildQueue = pcall(function() return city:GetBuildQueue() end)
+                            if ok_bq and buildQueue then
+                                local ok_cb, currentProduction = pcall(function() return buildQueue:CurrentlyBuilding() end)
+                                if ok_cb and currentProduction then
                                     cityData.current_production = currentProduction
                                 end
-                                cityData.production_progress = buildQueue:GetTurnsLeft() or 0
+                                local ok_tl, turnsLeft = pcall(function() return buildQueue:GetTurnsLeft() end)
+                                cityData.production_progress = (ok_tl and turnsLeft) or 0
                             end
                         end
 
@@ -641,20 +666,21 @@ local function exportLegalActions(playerId)
     end
 
     -- City production actions (with actual available items)
-    local playerCities = player:GetCities()
-    if playerCities then
+    local ok_cities, playerCities = pcall(function() return player:GetCities() end)
+    if ok_cities and playerCities then
         for _, city in playerCities:Members() do
-            local buildQueue = city:GetBuildQueue()
-            if buildQueue then
-                local needsProduction = not buildQueue:CurrentlyBuilding()
+            local ok_bq, buildQueue = pcall(function() return city:GetBuildQueue() end)
+            if ok_bq and buildQueue then
+                local ok_cb, currentlyBuilding = pcall(function() return buildQueue:CurrentlyBuilding() end)
+                local needsProduction = ok_cb and not currentlyBuilding
                 -- Always export available production for each city
                 local items = {}
                 local itemTypes = {}
 
                 if GameInfo then
-                    collectProducibleItems(buildQueue, GameInfo.Units, "UnitType", "unit", items, itemTypes)
-                    collectProducibleItems(buildQueue, GameInfo.Buildings, "BuildingType", "building", items, itemTypes)
-                    collectProducibleItems(buildQueue, GameInfo.Districts, "DistrictType", "district", items, itemTypes)
+                    pcall(collectProducibleItems, buildQueue, GameInfo.Units, "UnitType", "unit", items, itemTypes)
+                    pcall(collectProducibleItems, buildQueue, GameInfo.Buildings, "BuildingType", "building", items, itemTypes)
+                    pcall(collectProducibleItems, buildQueue, GameInfo.Districts, "DistrictType", "district", items, itemTypes)
                 end
 
                 if #items > 0 or needsProduction then
@@ -721,15 +747,28 @@ function AlphaZeroStateExporter.ExportState(playerId)
         end
     end
 
-    -- Export components
-    state.map = exportMap(playerId)
-    state.units = exportUnits(playerId)
-    state.cities = exportCities(playerId)
-    state.player = exportPlayer(playerId)
-    state.players = { state.player }  -- Include at least current player
+    -- Export components (each wrapped in pcall for resilience)
+    local ok, result
+
+    ok, result = pcall(exportMap, playerId)
+    state.map = ok and result or {width = 0, height = 0, tiles = {}}
+
+    ok, result = pcall(exportUnits, playerId)
+    state.units = ok and result or {}
+
+    ok, result = pcall(exportCities, playerId)
+    state.cities = ok and result or {}
+
+    ok, result = pcall(exportPlayer, playerId)
+    state.player = ok and result or {id = playerId}
+    state.players = { state.player }
 
     if AlphaZeroConfig and AlphaZeroConfig.IsEnabled("LEGAL_ACTIONS") then
-        state.legal_actions = exportLegalActions(playerId)
+        ok, result = pcall(exportLegalActions, playerId)
+        state.legal_actions = ok and result or {{action = "end_turn"}}
+        if not ok then
+            print("[AlphaZero] WARN: exportLegalActions failed: " .. tostring(result))
+        end
     end
 
     -- Check game end
@@ -748,10 +787,18 @@ function AlphaZeroStateExporter.ExportState(playerId)
     return state
 end
 
--- Export and write state to file
+-- Export and write state to file (with pcall safety net)
 function AlphaZeroStateExporter.ExportAndWrite(playerId)
-    local state = AlphaZeroStateExporter.ExportState(playerId)
-    return AlphaZeroFileIO.WriteState(state)
+    local ok, state = pcall(AlphaZeroStateExporter.ExportState, playerId)
+    if not ok then
+        print("[AlphaZero] ERROR: ExportState crashed: " .. tostring(state))
+        return false, tostring(state)
+    end
+    local writeOk, writeErr = AlphaZeroFileIO.WriteState(state)
+    if not writeOk then
+        print("[AlphaZero] ERROR: WriteState failed: " .. tostring(writeErr))
+    end
+    return writeOk, writeErr
 end
 
 -- Initialize on load

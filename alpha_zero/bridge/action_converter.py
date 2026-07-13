@@ -26,8 +26,11 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+__all__ = ["ActionConverter", "ConversionResult", "InvalidActionError", "NoLegalActionsError"]
+
 import numpy as np
 
+from alpha_zero.bridge.config import GameConstants
 from alpha_zero.bridge.protocol import (
     ActionType,
     LegalAction,
@@ -35,10 +38,12 @@ from alpha_zero.bridge.protocol import (
     Position,
 )
 from alpha_zero.core.civ6_actions import (
+    BRIDGE_IMPLEMENTED_DIPLOMACY,
     ActionCategory,
     ActionSpace,
     ActionSpaceConfig,
     CityActionType,
+    DiplomacyActionType,
     HierarchicalAction,
     UnitActionType,
 )
@@ -136,7 +141,7 @@ class CityItemTypes:
 
 # Maximum range for hashed item IDs. Must match ActionSpaceConfig max production
 # items. Civ6 base game has ~170 distinct producible items across all categories.
-_ITEM_HASH_RANGE: int = 200
+# Defined in GameConstants.ITEM_HASH_RANGE
 
 
 def _convert_item_id_to_int(item_id: Any) -> int | None:
@@ -170,7 +175,7 @@ def _convert_item_id_to_int(item_id: Any) -> int | None:
         # Handle Civ6 type name strings by hashing to consistent int
         # Use modulo to keep in reasonable range for action space
         if item_id:
-            return abs(hash(item_id)) % _ITEM_HASH_RANGE
+            return abs(hash(item_id)) % GameConstants.ITEM_HASH_RANGE
 
     # Log unexpected types at debug level
     logger.debug(f"Could not convert item_id '{item_id}' (type: {type(item_id).__name__}) to int")
@@ -183,6 +188,12 @@ class InvalidActionError(Exception):
     def __init__(self, message: str, action_idx: int | None = None) -> None:
         super().__init__(message)
         self.action_idx = action_idx
+
+
+class NoLegalActionsError(InvalidActionError):
+    """Raised when there are no legal actions available to choose from."""
+
+    pass
 
 
 @dataclass
@@ -248,6 +259,7 @@ class ActionConverter:
         game_state: dict[str, Any],
         legal_actions: list[LegalAction | dict] | None = None,
         validate: bool = True,
+        strict: bool = True,
     ) -> LuaCommand:
         """Convert action index to Lua command.
 
@@ -257,13 +269,23 @@ class ActionConverter:
             legal_actions: Legal actions from Lua (for validation).
             validate: Whether to validate against legal actions. If True and
                 the action is not in legal_actions, raises InvalidActionError.
+            strict: Default True as of v1.8.0 W2.1 step 3. When True, an
+                action category that has no implemented branch (i.e. one of
+                DIPLOMACY, ESPIONAGE, GOVERNMENT, GREAT_PERSON not yet
+                handled here) raises :class:`InvalidActionError` instead of
+                silently returning an END_TURN placeholder. Set to False to
+                opt into the legacy silent-sink behaviour for backward
+                compatibility with callers that haven't been audited yet
+                (a warning is logged whenever the legacy branch fires).
 
         Returns:
             LuaCommand ready for execution.
 
         Raises:
-            InvalidActionError: If action cannot be converted, or if validate=True
-                and action is not in legal_actions list.
+            InvalidActionError: If action cannot be decoded, or if
+                validate=True and the action is not in legal_actions, or
+                if strict=True and the action category has no implemented
+                branch.
         """
         # Decode the hierarchical action
         try:
@@ -298,12 +320,78 @@ class ActionConverter:
         elif decoded.category == ActionCategory.RESEARCH_CIVIC:
             return self._convert_civic_action(decoded, game_state)
 
+        elif decoded.category == ActionCategory.DIPLOMACY:
+            return self._convert_diplomacy_action(decoded, game_state)
+
         else:
-            # For other categories, create a generic command
+            # Unhandled category. Pre-v1.8.0 this silently returned END_TURN
+            # with metadata.unsupported=True, masking real protocol gaps
+            # (silent-sink fallthrough). v1.8.0 W2.1 step 3 made strict=True
+            # the default; pass strict=False to opt into the legacy path.
+            if strict:
+                raise InvalidActionError(
+                    f"Action {action_idx} (category={decoded.category.name}) "
+                    f"has no implemented converter branch. Pass strict=False to "
+                    f"fall back to the legacy END_TURN placeholder.",
+                    action_idx,
+                )
+            logger.warning(
+                "ActionConverter.convert(strict=False) silent fallback fired "
+                "for action_idx=%d, category=%s — caller should be updated to "
+                "handle the unsupported category explicitly.",
+                action_idx,
+                decoded.category.name,
+            )
             return LuaCommand(
                 action_type=ActionType.END_TURN,
                 metadata={"category": decoded.category.name, "unsupported": True},
             )
+
+    def _convert_diplomacy_action(
+        self,
+        decoded: HierarchicalAction,
+        _game_state: dict[str, Any],
+    ) -> LuaCommand:
+        """Map a hierarchical diplomacy action to a Lua DIPLOMACY command.
+
+        v1.8.0 W2.1 step 3 (hardened in step 3.5): only the 3 sub-actions in
+        :data:`alpha_zero.core.civ6_actions.BRIDGE_IMPLEMENTED_DIPLOMACY`
+        (DECLARE_WAR / MAKE_PEACE / DENOUNCE) get an ``implemented_this_sprint=True``
+        marker. Other sub-actions still emit a DIPLOMACY command so the Lua
+        side can log the deferred sub-action in one place — ``executeDiplomacy``
+        returns ``NOT_IMPLEMENTED`` for them.
+
+        Selector convention: ``decoded.selector`` holds the target player id
+        for diplomacy actions (Level 1 of the action hierarchy). ``decoded.target``
+        is reserved for spatial coordinates / item indices and is NOT a valid
+        player-id field for diplomacy — earlier draft used it by mistake.
+        """
+        # The decoded.action_type for DIPLOMACY is the IntEnum int value.
+        sub_action_int = int(decoded.action_type)
+        try:
+            sub_action = DiplomacyActionType(sub_action_int)
+        except ValueError:
+            # Decoder produced an out-of-range diplomacy id; record metadata
+            # for the Lua side to log but mark unsupported.
+            return LuaCommand(
+                action_type=ActionType.DIPLOMACY,
+                metadata={
+                    "sub_action": sub_action_int,
+                    "unsupported_sub_action": True,
+                },
+            )
+
+        # Level 1 selector encodes the opposing player id for diplomacy.
+        target_player = int(decoded.selector or 0)
+        return LuaCommand(
+            action_type=ActionType.DIPLOMACY,
+            metadata={
+                "sub_action": int(sub_action),
+                "sub_action_name": sub_action.name,
+                "target_player_id": target_player,
+                "implemented_this_sprint": sub_action in BRIDGE_IMPLEMENTED_DIPLOMACY,
+            },
+        )
 
     def convert_with_result(
         self,
@@ -323,7 +411,14 @@ class ActionConverter:
         """
         try:
             decoded = self.action_space.decode(action_idx)
-            command = self.convert(action_idx, game_state, legal_actions, validate=False)
+            # strict=False preserves the legacy silent-sink contract that
+            # `convert_with_result` callers (notably
+            # `alpha_zero.envs.real_civ6_env`) depend on: unsupported
+            # categories return an END_TURN placeholder rather than raising.
+            # The outer wrapper distinguishes via `is_valid` / `validation_error`.
+            command = self.convert(
+                action_idx, game_state, legal_actions, validate=False, strict=False
+            )
 
             # Check if valid
             is_valid = True
@@ -353,7 +448,7 @@ class ActionConverter:
         self,
         decoded: HierarchicalAction,
         game_state: dict[str, Any],
-        legal_actions: list | None = None,
+        legal_actions: list[LegalAction | dict] | None = None,
     ) -> LuaCommand:
         """Convert unit action to Lua command.
 
@@ -447,19 +542,51 @@ class ActionConverter:
                 item_id=target if isinstance(target, int) else 0,
             )
 
+        elif action_type == UnitActionType.SLEEP:
+            # v1.8.0 W2.1 — surface SLEEP as its own command type instead of
+            # silently degrading to SKIP. Lua handler at ActionExecutor.lua:233.
+            return LuaCommand(
+                action_type=ActionType.UNIT_SLEEP,
+                unit_id=unit_id,
+            )
+
+        elif action_type == UnitActionType.PROMOTE:
+            # v1.8.0 W2.1 — Lua handler implemented in step 4. Promotion id
+            # carried in `item_id` so the Lua side can pick the promotion to
+            # apply; defaults to 0 (mod selects the first available promotion).
+            return LuaCommand(
+                action_type=ActionType.UNIT_PROMOTE,
+                unit_id=unit_id,
+                item_id=target if isinstance(target, int) else 0,
+            )
+
+        elif action_type == UnitActionType.DELETE:
+            # v1.8.0 W2.1 — Lua handler implemented in step 4.
+            return LuaCommand(
+                action_type=ActionType.UNIT_DELETE,
+                unit_id=unit_id,
+            )
+
         else:
-            # Default to skip for unsupported action types
+            # Unit action types still without a dedicated converter branch
+            # (ATTACK already handled above as the explicit case; remaining
+            # below-this-line members are RANGED_ATTACK, PILLAGE, REPAIR,
+            # EMBARK, DISEMBARK, HEAL, AIRLIFT, PARADROP — deferred to a
+            # follow-up sprint). Fall back to SKIP and record metadata so
+            # the action-mask invariant test can identify gaps; the agent
+            # loop will report `invalid_actions += 1` when the Lua side
+            # acks NOT_IMPLEMENTED.
             return LuaCommand(
                 action_type=ActionType.UNIT_SKIP,
                 unit_id=unit_id,
-                metadata={"original_action": action_type.name},
+                metadata={"original_action": action_type.name, "unsupported": True},
             )
 
     def _convert_city_action(
         self,
         decoded: HierarchicalAction,
         game_state: dict[str, Any],
-        legal_actions: list | None = None,
+        legal_actions: list[LegalAction | dict] | None = None,
     ) -> LuaCommand:
         """Convert city action to Lua command.
 
@@ -498,7 +625,7 @@ class ActionConverter:
                 action_type=ActionType.CITY_PRODUCE,
                 city_id=city_id,
                 item_id=item_id,
-                item_type="unit",
+                item_type=CityItemTypes.UNIT,
             )
 
         elif action_type == CityActionType.PRODUCE_BUILDING:
@@ -506,7 +633,7 @@ class ActionConverter:
                 action_type=ActionType.CITY_PRODUCE,
                 city_id=city_id,
                 item_id=item_id,
-                item_type="building",
+                item_type=CityItemTypes.BUILDING,
             )
 
         elif action_type == CityActionType.PRODUCE_WONDER:
@@ -514,7 +641,7 @@ class ActionConverter:
                 action_type=ActionType.CITY_PRODUCE,
                 city_id=city_id,
                 item_id=item_id,
-                item_type="wonder",
+                item_type=CityItemTypes.WONDER,
             )
 
         elif action_type == CityActionType.PRODUCE_DISTRICT:
@@ -522,7 +649,7 @@ class ActionConverter:
                 action_type=ActionType.CITY_PRODUCE,
                 city_id=city_id,
                 item_id=item_id,
-                item_type="district",
+                item_type=CityItemTypes.DISTRICT,
             )
 
         elif action_type == CityActionType.BUY_UNIT:
@@ -530,7 +657,7 @@ class ActionConverter:
                 action_type=ActionType.CITY_BUY,
                 city_id=city_id,
                 item_id=item_id,
-                item_type="unit",
+                item_type=CityItemTypes.UNIT,
             )
 
         elif action_type == CityActionType.BUY_BUILDING:
@@ -538,11 +665,26 @@ class ActionConverter:
                 action_type=ActionType.CITY_BUY,
                 city_id=city_id,
                 item_id=item_id,
-                item_type="building",
+                item_type=CityItemTypes.BUILDING,
+            )
+
+        elif action_type == CityActionType.MANAGE_CITIZENS:
+            # v1.8.0 W2.1 — Lua handler implemented in step 4. `item_id`
+            # carries the plot index to toggle; `metadata["lock"]` carries
+            # the desired lock state (True/False) for `SetCitizenLocked`.
+            lock_state = bool(getattr(decoded, "lock_state", False))
+            return LuaCommand(
+                action_type=ActionType.CITY_CITIZEN,
+                city_id=city_id,
+                item_id=item_id,
+                metadata={"lock": lock_state},
             )
 
         else:
-            # Default to no-op for unsupported actions
+            # City action types still without a dedicated converter branch
+            # (CHANGE_PRODUCTION, SELL_BUILDING, SET_FOCUS, RANGED_ATTACK,
+            # PURCHASE_TILE). Fall back to END_TURN and record metadata so
+            # the action-mask invariant test can identify gaps.
             return LuaCommand(
                 action_type=ActionType.END_TURN,
                 metadata={"city_action": action_type.name, "unsupported": True},
@@ -617,11 +759,29 @@ class ActionConverter:
 
         return (orig_x, orig_y)
 
+    def _parse_legal_actions(self, legal_actions: list[LegalAction | dict]) -> list[LegalAction]:
+        """Normalize a legal_actions list to LegalAction instances.
+
+        Args:
+            legal_actions: Legal actions from Lua, as LegalAction instances
+                and/or raw dicts (both forms may be mixed in one call).
+
+        Returns:
+            List of LegalAction instances.
+        """
+        parsed_actions = []
+        for action in legal_actions:
+            if isinstance(action, dict):
+                parsed_actions.append(LegalAction.from_dict(action))
+            else:
+                parsed_actions.append(action)
+        return parsed_actions
+
     def _is_action_legal(
         self,
         decoded: HierarchicalAction,
         game_state: dict[str, Any],
-        legal_actions: list,
+        legal_actions: list[LegalAction | dict],
     ) -> bool:
         """Check if action is in the legal actions list.
 
@@ -633,13 +793,7 @@ class ActionConverter:
         Returns:
             True if action is legal.
         """
-        # Parse legal actions if they're dicts
-        parsed_actions = []
-        for action in legal_actions:
-            if isinstance(action, dict):
-                parsed_actions.append(LegalAction.from_dict(action))
-            else:
-                parsed_actions.append(action)
+        parsed_actions = self._parse_legal_actions(legal_actions)
 
         # END_TURN is always legal if in list
         if decoded.category == ActionCategory.END_TURN:
@@ -715,7 +869,21 @@ class ActionConverter:
             for action in parsed_actions:
                 if action.city_id == city_id and action.action_type == LegalActionTypes.PRODUCE:
                     item_id = decoded.target
-                    if isinstance(item_id, int) and item_id in action.items:
+                    if not isinstance(item_id, int):
+                        continue
+                    # decoded.target is always the hashed/converted int form
+                    # produced by generate_action_mask() via
+                    # _convert_item_id_to_int(). action.items holds the raw,
+                    # unhashed values Lua sent (which may be non-numeric
+                    # strings like "UNIT_WARRIOR"), so it must be hashed the
+                    # same way before comparing — comparing against the raw
+                    # strings directly always fails.
+                    legal_item_ids = {
+                        converted
+                        for raw_item in action.items
+                        if (converted := _convert_item_id_to_int(raw_item)) is not None
+                    }
+                    if item_id in legal_item_ids:
                         return True
             return False
 
@@ -741,13 +909,7 @@ class ActionConverter:
         """
         mask = np.zeros(self.action_space_size, dtype=np.float32)
 
-        # Parse legal actions
-        parsed_actions = []
-        for action in legal_actions:
-            if isinstance(action, dict):
-                parsed_actions.append(LegalAction.from_dict(action))
-            else:
-                parsed_actions.append(action)
+        parsed_actions = self._parse_legal_actions(legal_actions)
 
         # Always check for END_TURN
         for action in parsed_actions:
@@ -791,19 +953,23 @@ class ActionConverter:
                 city_idx = self._find_city_idx(action.city_id, player_cities)
 
                 if city_idx is not None:
-                    for item_id in action.items:
+                    for raw_item_id in action.items:
                         # Convert item_id to int using robust conversion
-                        converted_id = _convert_item_id_to_int(item_id)
+                        converted_id = _convert_item_id_to_int(raw_item_id)
                         if converted_id is None:
                             logger.debug(
-                                f"Skipping unconvertible item_id '{item_id}' "
+                                f"Skipping unconvertible item_id '{raw_item_id}' "
                                 f"for city {action.city_id} production"
                             )
                             continue
                         item_id = converted_id
 
-                        # Determine item type from action metadata if available
-                        item_type = action.item_type
+                        # Determine item type per-item from action.item_types
+                        # (StateExporter.lua's per-item "item_types" map,
+                        # keyed by the raw/unhashed item id), falling back
+                        # to the legacy singular item_type field for
+                        # backwards compatibility with older payloads.
+                        item_type = action.item_types.get(str(raw_item_id), action.item_type)
                         if item_type == CityItemTypes.UNIT:
                             self._try_encode_city_action(
                                 mask, city_idx, CityActionType.PRODUCE_UNIT, item_id

@@ -734,14 +734,14 @@ class TestFileBridge:
     def test_check_heartbeat_fresh(self, bridge):
         """Test heartbeat check with fresh file."""
         bridge.config.ensure_comm_dir()
-        heartbeat = {"timestamp": time.time()}
+        heartbeat = {"timestamp": time.time(), "lua_alive": True}
         bridge.config.heartbeat_file.write_text(json.dumps(heartbeat))
         assert bridge.check_heartbeat()
 
     def test_check_heartbeat_stale(self, bridge):
         """Test heartbeat check with stale file."""
         bridge.config.ensure_comm_dir()
-        heartbeat = {"timestamp": time.time() - 10}  # 10 seconds old
+        heartbeat = {"timestamp": time.time() - 10, "lua_alive": True}  # 10 seconds old
         bridge.config.heartbeat_file.write_text(json.dumps(heartbeat))
         assert not bridge.check_heartbeat()
 

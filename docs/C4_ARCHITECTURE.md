@@ -1763,6 +1763,77 @@ Batch inference optimization and vectorized self-play for throughput scaling.
 
 ---
 
+## Level 3: Component Diagram - Live Civ6 Bridge
+
+Headless bridge to a running Civilization VI process. State flows OUT via log-tailing;
+commands flow IN via a pluggable command transport (file-based FireTuner GUI relay, or
+a direct headless FireTuner socket client). Selected by `BridgeConfig.command_transport`
+(`"file"` default | `"socket"`) and the `CIV6_BRIDGE_TRANSPORT` / `CIV6_BRIDGE_TUNER_HOST` /
+`CIV6_BRIDGE_TUNER_PORT` env vars.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     LIVE CIV6 BRIDGE (state out / commands in)               │
+│                                                                              │
+│   ┌────────────────────────────────────────────────────────────────────┐   │
+│   │                          LiveBridge                                  │   │
+│   │        composes a LogTailer (state) + a CommandTransport (cmds)      │   │
+│   └───────────────────────────┬────────────────────────────────────────┘   │
+│                                │                                            │
+│         ┌──────────────────────┴───────────────────────┐                   │
+│         ▼ STATE OUT (log-tail)                          ▼ COMMANDS IN       │
+│  ┌─────────────────────────┐                    ┌──────────────────────┐   │
+│  │       LogTailer          │                    │  CommandTransport    │   │
+│  │  - tails Civ6 Lua.log    │                    │  (protocol interface)│   │
+│  │  - --civ6-log-path /     │                    └──────────┬────────────┘   │
+│  │    CIV6AZ_LOCAL_LOG_PATH │                               │                │
+│  │  - ack msg_id validation │              ┌────────────────┴────────────┐   │
+│  │  - poll_interval_ms      │              ▼                             ▼   │
+│  └────────────┬──────────────┘   ┌──────────────────────┐  ┌──────────────────────────┐ │
+│               │                  │      TunerBridge      │  │ SocketTunerBridge /      │ │
+│               │                  │      (transport="file")│  │ FireTunerClient          │ │
+│               │                  │                        │  │ (transport="socket")      │ │
+│               │                  │  - writes commands.json│  │ - speaks Firaxis FireTuner│ │
+│               │                  │  - relayed to the game │  │   TCP protocol             │ │
+│               │                  │    via the FireTuner   │  │ - connects 127.0.0.1:4318  │ │
+│               │                  │    GUI .ltp panel       │  │ - discovers GameCore_Tuner │ │
+│               │                  │  - Lua sandbox has no   │  │   Lua state                │ │
+│               │                  │    'io' library — the   │  │ - executes                 │ │
+│               │                  │    mod cannot read files│  │   ExposedMembers.          │ │
+│               │                  │    directly, only via   │  │   AlphaZeroCommand=<json>  │ │
+│               │                  │    ExposedMembers set   │  │   directly — headless,     │ │
+│               │                  │    by the tuner client  │  │   no GUI / .ltp hop        │ │
+│               │                  │  - start/stop/          │  │ - async drop-in for        │ │
+│               │                  │    send_command/stats   │  │   TunerBridge (same API)   │ │
+│               │                  └────────────┬───────────┘  │ - CIV6_BRIDGE_KICK_START   │ │
+│               │                                │              │   forces one end_turn to   │ │
+│               │                                │              │   un-stall an idle game    │ │
+│               │                                │              └────────────┬──────────────┘ │
+│               │                                └────────────┬───────────────┘                │
+│               ▼                                              ▼                                │
+│      ┌──────────────────────────────────────────────────────────────┐                        │
+│      │                     Civ6 Game Process                         │                        │
+│      │  Lua mod ── ExposedMembers.AlphaZeroCommand ── executes cmd    │                        │
+│      │  Lua.log  ── state/AZ_ACK events ── written every game tick    │                        │
+│      └──────────────────────────────────────────────────────────────┘                        │
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────────────┐   │
+│  │                     SHARED BRIDGE UTILITIES                         │   │
+│  │  bridge/utils.py: parse_bool_env(), msg-id helpers                  │   │
+│  │  agent_loop._build_observation(): decodes state to 84-ch spatial +  │   │
+│  │    vector tensors for Civ6NetworkV2 (fixed batch-slice channel bug) │   │
+│  └────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+Legend: STATE OUT flows from the Civ6 process's `Lua.log` through `LogTailer` up to
+`LiveBridge`. COMMANDS IN flow from `LiveBridge` down through whichever `CommandTransport`
+is configured — `TunerBridge` (file: `commands.json` + FireTuner `.ltp` GUI relay panel) or
+`SocketTunerBridge`/`FireTunerClient` (headless FireTuner TCP protocol, port 4318, sets
+`ExposedMembers.AlphaZeroCommand` directly) — and into the Lua mod via `ExposedMembers`.
+
+---
+
 ## Roadmap
 
 ### Completed Phases

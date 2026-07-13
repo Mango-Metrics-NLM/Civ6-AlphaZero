@@ -283,6 +283,11 @@ When making changes, update the relevant sections below:
 | `python scripts/launch_50iter_production_monitored.py --dry-run` | MLflow-monitored 50-iter production dry run |
 | `python scripts/launch_50iter_production_monitored.py` | Launch full 50-iter production run with MLflow |
 | `mlflow ui --backend-store-uri ./mlruns --port 5000` | Inspect MLflow runs in the browser |
+| `python -m alpha_zero.civ6_local --mode civ6 --dry-run` | Validate Civ6 bridge config (no game needed) |
+| `python -m alpha_zero.civ6_local --mode civ6 --mcts` | Start Civ6 bridge with GumbelMCTS policy |
+| `python -m alpha_zero.civ6_local --mode civ6 --mcts --eval-harness` | Bridge + MCTS + MLflow eval harness |
+| `python scripts/install_civ6_mod.py` | Install AlphaZeroAI mod to default Steam Mods dir |
+| `python scripts/install_civ6_mod.py --mod-dir PATH` | Install mod to custom Civ6 Mods directory |
 
 #### Cloud Deployment Commands
 
@@ -381,6 +386,11 @@ When making changes, update the relevant sections below:
 | 2026-05-21 | TournamentMlflowLogger (PR #78) | Match / round / leaderboard / head-to-head facade for tournament telemetry |
 | 2026-05-21 | Stateless monitoring helpers (PR #78) | `compute_value_correlation`, `compute_elo_spread`, `compute_policy_entropy` (NaN-safe, importable from `alpha_zero.monitoring`) |
 | 2026-05-21 | W&B coexists with MLflow | Phased rollout; both backends can be enabled simultaneously. W&B remains primary in `cloud/`, `pbt/`, `evaluation/`, `optimizations/` pending follow-up sweep. Optional `[monitoring]` extra. |
+| 2026-05-24 | BridgeMCTSEnv adapter (W2.2) | Snapshot-seeded `MicroCivEnv` adapter in `alpha_zero/bridge/mcts_env.py`. Seeds from `GameStateData` via `BridgeMCTSEnv.from_bridge_state()`. No `reset()` — each bridge state creates a fresh env; `clone()` pattern for MCTS rollouts. |
+| 2026-05-24 | Civ6MctsPolicy (W2.2) | GumbelMCTS over `BridgeMCTSEnv`; implements `PolicyEngine` protocol. `--mcts` / `--no-mcts` CLI flags in `civ6_local.py`. Lazy import avoids torch overhead in Greedy path. |
+| 2026-05-24 | BridgeEvalHarness (W2.3a) | MLflow-backed telemetry hooks (`on_start`, `on_turn_end`, `on_stop`) wired into `BridgeAgentLoop`. `--eval-harness` flag in `civ6_local.py`; env var `CIV6AZ_LOCAL_USE_EVAL_HARNESS=1`. |
+| 2026-05-24 | install_civ6_mod.py (W2.3b) | `scripts/install_civ6_mod.py` copies `mod/AlphaZeroAI` → `%USERPROFILE%\Documents\My Games\Sid Meier's Civilization VI\Mods\AlphaZeroAI`. Creates dir if absent. Supports `--mod-dir` override. |
+| 2026-05-24 | execute_with_retry wired (W3.1) | `GameBridgeHealthChecker.execute_with_retry` wraps both `wait_for_state` and `send_and_wait_with_retry` in `BridgeAgentLoop` when `health_checker` is supplied. `CircuitBreakerOpenError` maps to `state_timeouts` counter and asyncio.sleep(≥ retry_after). |
 | 2026-05-30 | Training-stagnation detection (harness engineering) | Reuses existing `EloPlateauDetector` in the orchestrator (`StagnationConfig`, opt-in, ELO/win-rate signal — NOT loss) + new `count_consecutive_non_promotions` promotion check in `cloud/evaluator.py`. Addresses §13 zero-promotion failure. Env: `CIV6AZ_STAGNATION_*`, `CIV6_STAGNATION_PATIENCE`. All default OFF. |
 | 2026-05-30 | PreToolUse prohibited-action guard | `.claude/hooks/pretooluse_guard.sh` enforces §3.2 (no commits/pushes to `main`, >1000-game cap) — turns prose into a machine deny. |
 | 2026-05-30 | Pre-PR review in isolated subagent | Pre-PR handoff skill dispatches review to a fresh `Agent`/`code-review` for generator–evaluator separation (independent context). |

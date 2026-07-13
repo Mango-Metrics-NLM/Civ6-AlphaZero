@@ -48,6 +48,7 @@ from alpha_zero.bridge.protocol import (
     GameStateData,
     StateMessage,
 )
+from alpha_zero.bridge.utils import next_monotonic_msg_id, seed_msg_counter
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +151,7 @@ class FileBridge:
         logger.info(f"Starting file bridge with comm_dir: {self.config.comm_dir}")
         self.config.ensure_comm_dir()
         self._running = True
-        self._msg_counter = int(time.time() * 1000)
+        self._msg_counter = seed_msg_counter()
         self._write_heartbeat()
         logger.info("File bridge started")
 
@@ -170,7 +171,7 @@ class FileBridge:
         method is retained so existing callers (and ``MockFileBridge``
         subclass tests) keep working.
         """
-        self._msg_counter += 1
+        self._msg_counter = next_monotonic_msg_id(self._msg_counter)
         return self._msg_counter
 
     def next_msg_id(self) -> int:
@@ -237,36 +238,56 @@ class FileBridge:
         return 2
 
     def _write_heartbeat(self) -> None:
-        """Write heartbeat file to indicate Python is alive."""
+        """Write Python-side heartbeat to indicate the bridge process is alive.
+
+        Written to ``python_heartbeat.txt`` (not ``heartbeat.txt``) so it
+        does not overwrite the Lua mod's liveness signal that Python reads
+        via :meth:`check_heartbeat`.
+        """
         try:
+            python_hb_file = self.config.comm_dir / "python_heartbeat.txt"
             heartbeat = {
                 "timestamp": time.time(),
                 "python_alive": True,
             }
-            self.config.heartbeat_file.write_text(json.dumps(heartbeat))
+            python_hb_file.write_text(json.dumps(heartbeat), encoding="utf-8")
             self.stats.last_heartbeat_time = time.time()
         except Exception as e:
-            logger.warning(f"Failed to write heartbeat: {e}")
+            logger.warning("Failed to write Python heartbeat: %s", e)
 
     def check_heartbeat(self) -> bool:
-        """Check if the game is still alive (recent heartbeat).
+        """Check if the Civ6 Lua mod is still alive (recent lua heartbeat).
+
+        The Lua mod writes ``{"timestamp": os.time(), "lua_alive": true}``
+        every second while a game is running.  Python writes its own
+        presence to ``python_heartbeat.txt`` (separate file) so the two
+        sides never clobber each other's liveness signal.
 
         Returns:
-            True if game heartbeat is recent, False otherwise.
+            True if a fresh Lua heartbeat exists, False otherwise.
         """
         try:
             if not self.config.heartbeat_file.exists():
                 return False
 
-            heartbeat_text = self.config.heartbeat_file.read_text()
+            heartbeat_text = self.config.heartbeat_file.read_text(encoding="utf-8")
             heartbeat = json.loads(heartbeat_text)
-            heartbeat_time: float = float(heartbeat.get("timestamp", 0))
 
+            # Only treat this as a live Lua heartbeat if the Lua side wrote it.
+            # Python's own heartbeat has python_alive=True; ignore those.
+            if not heartbeat.get("lua_alive", False):
+                logger.debug(
+                    "Heartbeat file exists but lua_alive not set — "
+                    "waiting for Civ6 mod to connect"
+                )
+                return False
+
+            heartbeat_time: float = float(heartbeat.get("timestamp", 0))
             age = time.time() - heartbeat_time
             return bool(age < self.config.heartbeat_timeout_s)
 
         except Exception as e:
-            logger.debug(f"Heartbeat check failed: {e}")
+            logger.debug("Heartbeat check failed: %s", e)
             return False
 
     async def poll_state(self) -> GameStateData | None:
@@ -341,35 +362,57 @@ class FileBridge:
 
         Raises:
             StateTimeoutError: If timeout expires without receiving state.
-            ConnectionLostError: If heartbeat times out.
+            ConnectionLostError: If Lua heartbeat goes stale AFTER an initial
+                connection was established (i.e. we've received at least one
+                valid state or heartbeat before).
         """
         timeout = timeout or (self.config.command_timeout_ms / 1000.0)
         poll_interval = self.config.poll_interval_ms / 1000.0
         start_time = time.time()
 
-        logger.debug(f"Waiting for state (timeout={timeout}s, require_new={require_new})")
+        logger.debug("Waiting for state (timeout=%.1fs, require_new=%s)", timeout, require_new)
 
         # Track heartbeat check timing separately
         last_heartbeat_check = start_time
+        last_wait_log = start_time  # throttle "waiting to connect" messages
+        wait_log_interval_s = 10.0
+        # Only raise ConnectionLostError if we had a prior live connection.
+        # On first connect, we simply wait for the Lua mod to start.
+        ever_connected = self.stats.states_received > 0
 
         while True:
             # Check timeout
-            elapsed = time.time() - start_time
+            now = time.time()
+            elapsed = now - start_time
             if elapsed > timeout:
                 raise StateTimeoutError(timeout)
 
-            # Check heartbeat after grace period (allow initial startup time)
-            # Only check periodically to avoid excessive file I/O
-            now = time.time()
-            if elapsed > self.config.heartbeat_timeout_s and now - last_heartbeat_check > 0.5:
+            # Check heartbeat ONLY after we know the Lua mod was alive at least
+            # once, and only after a grace period, and only periodically.
+            if (
+                ever_connected
+                and elapsed > self.config.heartbeat_timeout_s
+                and now - last_heartbeat_check > 0.5
+            ):
                 last_heartbeat_check = now
                 if not self.check_heartbeat():
                     raise ConnectionLostError()
+            elif (
+                not ever_connected and elapsed > 5.0 and now - last_wait_log >= wait_log_interval_s
+            ):
+                last_wait_log = now
+                logger.info(
+                    "Waiting for Civ6 mod to connect... (%.0fs elapsed). "
+                    "Enable AlphaZeroAI mod and start/load a game.",
+                    elapsed,
+                )
 
             # Poll for state
             state = await self.poll_state()
 
             if state is not None:
+                ever_connected = True
+
                 if not require_new or self.stats.states_received > 1:
                     return state
                 # First state is always considered new
@@ -754,7 +797,7 @@ class MockFileBridge(FileBridge):
         """
         logger.debug("Starting mock file bridge (no file I/O)")
         self._running = True
-        self._msg_counter = int(time.time() * 1000)
+        self._msg_counter = seed_msg_counter()
         # Update heartbeat stats without file I/O
         self._write_heartbeat()
         logger.debug("Mock file bridge started")

@@ -8,8 +8,13 @@
 
 AlphaZeroConfig = AlphaZeroConfig or {}
 
--- Cross-platform path separator
-local PATH_SEP = package.config and package.config:sub(1, 1) or "/"
+-- Default path separator: backslash (Windows/Steam, the common case). This
+-- is only a fallback -- AlphaZeroConfig.Init() calls detectPathSep() on the
+-- resolved base path so the mod also works when Civ6 runs natively on
+-- macOS/Linux (UI.GetAppSavegameDirectory returns the OS-correct separator).
+-- The detected value is stored in currentConfig.PATH_SEP so other modules
+-- (e.g. FileIO) reuse it via AlphaZeroConfig.Get("PATH_SEP").
+local DEFAULT_PATH_SEP = "\\"
 
 -- ----------------------------------------------------------------------------
 -- Default Configuration Values
@@ -27,8 +32,6 @@ local DEFAULT_CONFIG = {
     ERROR_FILE = "errors.json",
 
     -- Polling intervals (in seconds)
-    COMMAND_POLL_INTERVAL = 0.01,  -- 10ms
-    STATE_WRITE_DELAY = 0.001,     -- 1ms delay after write
     HEARTBEAT_INTERVAL = 1.0,      -- Write heartbeat every second
 
     -- Timeouts
@@ -38,9 +41,6 @@ local DEFAULT_CONFIG = {
     -- Feature flags
     ENABLE_LOGGING = true,
     LOG_LEVEL = "INFO",            -- DEBUG, INFO, WARN, ERROR
-    ENABLE_STATE_COMPRESSION = false,
-    ENABLE_DETAILED_UNITS = true,
-    ENABLE_DETAILED_CITIES = true,
     ENABLE_LEGAL_ACTIONS = true,
 
     -- Player configuration
@@ -95,22 +95,41 @@ local function mergeTables(a, b)
     return result
 end
 
--- Get the base path for Civ6 documents (cross-platform)
+-- Get the base path for Civ6 documents.
+-- Uses UI.GetAppSavegameDirectory() which is available in the
+-- AddUserInterfaces context (not in AddGameplayScripts).
 local function getDocumentsPath()
-    -- Try to get from environment or use standard path
-    if PATH_SEP == "\\" then
-        -- Windows
-        local userProfile = os.getenv("USERPROFILE")
-        if userProfile then
-            return userProfile .. "\\Documents\\My Games\\Sid Meier's Civilization VI"
+    -- Attempt 1: Civ6 save-game directory via UI API (available in-game).
+    local ok, saveDir = pcall(function()
+        return UI.GetAppSavegameDirectory()
+    end)
+    if ok and saveDir and saveDir ~= "" then
+        print("[AlphaZero] Config: resolved save dir via UI API: " .. saveDir)
+        return saveDir
+    end
+
+    -- Attempt 2: Environment variable (set before launching Civ6).
+    if os.getenv then
+        local envDir = os.getenv("ALPHAZERO_CIV6_IPC_DIR")
+        if envDir and envDir ~= "" then
+            print("[AlphaZero] Config: resolved via env var: " .. envDir)
+            return envDir
         end
     end
-    -- Unix/macOS fallback
-    local home = os.getenv("HOME")
-    if home then
-        return home .. "/Documents/My Games/Sid Meier's Civilization VI"
-    end
+
+    -- Fallback: relative path (for testing)
+    print("[AlphaZero] Config: WARNING - using relative path fallback")
     return "."
+end
+
+-- Detect the path separator implied by a resolved base path. Returns "/"
+-- when basePath looks like a Unix-style path (contains "/" but no "\\"),
+-- otherwise falls back to DEFAULT_PATH_SEP (backslash).
+local function detectPathSep(basePath)
+    if type(basePath) == "string" and basePath:find("/", 1, true) and not basePath:find("\\", 1, true) then
+        return "/"
+    end
+    return DEFAULT_PATH_SEP
 end
 
 -- ----------------------------------------------------------------------------
@@ -124,7 +143,11 @@ function AlphaZeroConfig.Init()
 
     -- Set derived paths using detected path separator
     local basePath = getDocumentsPath()
+    local PATH_SEP = detectPathSep(basePath)
+    currentConfig.PATH_SEP = PATH_SEP
+    print("[AlphaZero] Config: base path = " .. tostring(basePath))
     currentConfig.COMM_DIR = basePath .. PATH_SEP .. currentConfig.COMM_DIR_NAME
+    print("[AlphaZero] Config: COMM_DIR = " .. tostring(currentConfig.COMM_DIR))
     currentConfig.STATE_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.STATE_FILE
     currentConfig.COMMANDS_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.COMMANDS_FILE
     currentConfig.ACK_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ACK_FILE
@@ -144,28 +167,35 @@ function AlphaZeroConfig.LoadOverrides()
         return
     end
 
-    local configPath = currentConfig.COMM_DIR .. PATH_SEP .. "alphazero_config.json"
-    local file = io.open(configPath, "r")
-    if file then
-        local content = file:read("*all")
-        file:close()
+    -- io may not be available at all script loading contexts in Civ6
+    if not io or not io.open then
+        print("[AlphaZero] Config: io not available, skipping override file load")
+        return
+    end
 
-        -- Use JSON decoder (safe, no code execution)
-        if AlphaZeroJson and content and #content > 0 then
-            local overrides, err = AlphaZeroJson.Decode(content)
-            if overrides and type(overrides) == 'table' then
-                currentConfig = mergeTables(currentConfig, overrides)
-                -- Recalculate derived paths if COMM_DIR changed
-                if overrides.COMM_DIR then
-                    currentConfig.STATE_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.STATE_FILE
-                    currentConfig.COMMANDS_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.COMMANDS_FILE
-                    currentConfig.ACK_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ACK_FILE
-                    currentConfig.HEARTBEAT_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.HEARTBEAT_FILE
-                    currentConfig.ERROR_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ERROR_FILE
-                end
-            elseif err then
-                print("[AlphaZero] Config override parse error: " .. tostring(err))
+    local PATH_SEP = currentConfig.PATH_SEP or DEFAULT_PATH_SEP
+    local configPath = currentConfig.COMM_DIR .. PATH_SEP .. "alphazero_config.json"
+    local ok, file = pcall(io.open, configPath, "r")
+    if not ok or not file then return end
+
+    local content = file:read("*all")
+    file:close()
+
+    -- Use JSON decoder (safe, no code execution)
+    if AlphaZeroJson and content and #content > 0 then
+        local overrides, err = AlphaZeroJson.Decode(content)
+        if overrides and type(overrides) == 'table' then
+            currentConfig = mergeTables(currentConfig, overrides)
+            -- Recalculate derived paths if COMM_DIR changed
+            if overrides.COMM_DIR then
+                currentConfig.STATE_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.STATE_FILE
+                currentConfig.COMMANDS_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.COMMANDS_FILE
+                currentConfig.ACK_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ACK_FILE
+                currentConfig.HEARTBEAT_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.HEARTBEAT_FILE
+                currentConfig.ERROR_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ERROR_FILE
             end
+        elseif err then
+            print("[AlphaZero] Config override parse error: " .. tostring(err))
         end
     end
 end
@@ -219,10 +249,6 @@ function AlphaZeroConfig.Validate()
         table.insert(errors, "COMM_DIR not set")
     end
 
-    if currentConfig.COMMAND_POLL_INTERVAL <= 0 then
-        table.insert(errors, "COMMAND_POLL_INTERVAL must be positive")
-    end
-
     if currentConfig.MAX_ACTIONS_PER_TURN <= 0 then
         table.insert(errors, "MAX_ACTIONS_PER_TURN must be positive")
     end
@@ -232,7 +258,10 @@ end
 
 -- Get path separator (for reuse by other modules)
 function AlphaZeroConfig.GetPathSep()
-    return PATH_SEP
+    if currentConfig and currentConfig.PATH_SEP then
+        return currentConfig.PATH_SEP
+    end
+    return DEFAULT_PATH_SEP
 end
 
 -- Initialize on load

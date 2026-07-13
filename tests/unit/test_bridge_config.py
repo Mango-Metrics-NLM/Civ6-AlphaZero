@@ -362,6 +362,9 @@ class TestBridgeConfigMethods:
             "max_actions_per_second",
             "multiplayer_mode",
             "player_id_mapping",
+            "command_transport",
+            "tuner_host",
+            "tuner_port",
         }
         assert set(d.keys()) == expected_keys
 

@@ -39,6 +39,41 @@ VALID_DEVICES = ("cpu", "cuda")
 ENV_PREFIX = "CIV6AZ_LOCAL_"
 
 
+def _get_default_bridge_ipc_dir() -> Path:
+    """Return the default IPC directory for the Civ6 bridge.
+
+    Delegates to ``alpha_zero.bridge.config._get_default_comm_dir`` which
+    already handles OneDrive-redirected *Documents* folders on Windows.
+    Falls back to ``%TEMP%/civ6az_bridge`` when the bridge package is not
+    importable (e.g., during unit tests that stub out the bridge layer).
+    """
+    try:
+        from alpha_zero.bridge.config import _get_default_comm_dir
+
+        return _get_default_comm_dir()
+    except Exception:
+        return Path(tempfile.gettempdir()) / "civ6az_bridge"
+
+
+def _get_default_civ6_log_path() -> Path:
+    """Return the default path to Civilization VI's ``Lua.log`` file.
+
+    Computed from ``%LOCALAPPDATA%`` on Windows, matching the standard
+    Firaxis install layout: ``Firaxis Games/Sid Meier's Civilization
+    VI/Logs/Lua.log``. Non-default install locations (e.g. Epic Games
+    Store, a redirected ``LOCALAPPDATA``) can override this via
+    ``Civ6LocalConfig.civ6_log_path`` / ``CIV6AZ_LOCAL_LOG_PATH`` /
+    ``--civ6-log-path``.
+    """
+    return (
+        Path(os.getenv("LOCALAPPDATA", ""))
+        / "Firaxis Games"
+        / "Sid Meier's Civilization VI"
+        / "Logs"
+        / "Lua.log"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Configuration dataclass
 # ---------------------------------------------------------------------------
@@ -55,9 +90,12 @@ class Civ6LocalConfig:
         num_players: Number of players (2-8, MicroCiv only)
         num_simulations: MCTS simulations per move
         device: PyTorch inference device (cpu | cuda)
+        use_mcts: Use MCTS policy instead of greedy argmax
         web_host: Bind address for web mode
         web_port: Port for web mode
         bridge_ipc_dir: IPC directory for civ6 bridge mode
+        civ6_log_path: Path to Civilization VI's Lua.log, watched by the
+            bridge in civ6 mode
         log_level: Logging verbosity (DEBUG | INFO | WARNING | ERROR)
         dry_run: Validate config and exit without starting gameplay
     """
@@ -68,11 +106,12 @@ class Civ6LocalConfig:
     num_players: int = 2
     num_simulations: int = 50
     device: str = "cpu"
+    use_mcts: bool = False
+    use_eval_harness: bool = False
     web_host: str = "127.0.0.1"
     web_port: int = 8080
-    bridge_ipc_dir: str = field(
-        default_factory=lambda: os.path.join(tempfile.gettempdir(), "civ6az_bridge")
-    )
+    bridge_ipc_dir: str = field(default_factory=lambda: str(_get_default_bridge_ipc_dir()))
+    civ6_log_path: str = field(default_factory=lambda: str(_get_default_civ6_log_path()))
     log_level: str = "INFO"
     dry_run: bool = False
 
@@ -146,9 +185,11 @@ class Civ6LocalConfig:
             CIV6AZ_LOCAL_NUM_PLAYERS       — number of players (int)
             CIV6AZ_LOCAL_NUM_SIMULATIONS   — MCTS simulations (int)
             CIV6AZ_LOCAL_DEVICE            — inference device
+            CIV6AZ_LOCAL_USE_MCTS          — use MCTS for bridge mode (1/true/yes)
             CIV6AZ_LOCAL_WEB_HOST          — web server bind address
             CIV6AZ_LOCAL_WEB_PORT          — web server port (int)
             CIV6AZ_LOCAL_BRIDGE_IPC_DIR    — bridge IPC directory
+            CIV6AZ_LOCAL_LOG_PATH          — Civ6 Lua.log path (civ6 mode)
             CIV6AZ_LOCAL_LOG_LEVEL         — logging level
             CIV6AZ_LOCAL_DRY_RUN           — dry run flag (1/true/yes)
 
@@ -181,12 +222,18 @@ class Civ6LocalConfig:
             kwargs["num_simulations"] = int(v)
         if (v := _get("DEVICE")) is not None:
             kwargs["device"] = v
+        if (v := _get("USE_MCTS")) is not None:
+            kwargs["use_mcts"] = _get_bool("USE_MCTS", False)
+        if (v := _get("USE_EVAL_HARNESS")) is not None:
+            kwargs["use_eval_harness"] = _get_bool("USE_EVAL_HARNESS", False)
         if (v := _get("WEB_HOST")) is not None:
             kwargs["web_host"] = v
         if (v := _get("WEB_PORT")) is not None:
             kwargs["web_port"] = int(v)
         if (v := _get("BRIDGE_IPC_DIR")) is not None:
             kwargs["bridge_ipc_dir"] = v
+        if (v := _get("LOG_PATH")) is not None:
+            kwargs["civ6_log_path"] = v
         if (v := _get("LOG_LEVEL")) is not None:
             kwargs["log_level"] = v
 
@@ -257,9 +304,12 @@ class Civ6LocalConfig:
             "num_players": self.num_players,
             "num_simulations": self.num_simulations,
             "device": self.device,
+            "use_mcts": self.use_mcts,
+            "use_eval_harness": self.use_eval_harness,
             "web_host": self.web_host,
             "web_port": self.web_port,
             "bridge_ipc_dir": self.bridge_ipc_dir,
+            "civ6_log_path": self.civ6_log_path,
             "log_level": self.log_level,
             "dry_run": self.dry_run,
         }
@@ -450,41 +500,106 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
             GreedyNetworkPolicy,
         )
         from alpha_zero.bridge.config import BridgeConfig
-        from alpha_zero.bridge.file_bridge import FileBridge
+        from alpha_zero.bridge.live_bridge import LiveBridge
         from alpha_zero.bridge.state_converter import StateConverter
+        from alpha_zero.core.civ6_actions import ActionSpaceConfig
     except ImportError as exc:
         logger.error("Bridge module not available: %s", exc)
         return 1
 
+    # Command transport: "file" (default) writes commands.json for a FireTuner
+    # .ltp panel to relay; "socket" injects commands directly over the FireTuner
+    # TCP protocol (no GUI panel needed). Selected via CIV6_BRIDGE_TRANSPORT.
+    transport = os.getenv("CIV6_BRIDGE_TRANSPORT", "file").lower()
     bridge_cfg = BridgeConfig(
         comm_dir=Path(config.bridge_ipc_dir),
         log_level=config.log_level,
+        command_transport=transport,
+        tuner_host=os.getenv("CIV6_BRIDGE_TUNER_HOST", "127.0.0.1"),
+        tuner_port=int(os.getenv("CIV6_BRIDGE_TUNER_PORT", "4318")),
     )
     bridge_cfg.ensure_comm_dir()
 
     logger.info("Connecting to Civ6 bridge at: %s", bridge_cfg.comm_dir)
+    logger.info("Command transport: %s", transport)
+    if transport == "socket":
+        logger.info(
+            "Injecting commands via FireTuner socket %s:%d (no GUI panel needed).",
+            bridge_cfg.tuner_host,
+            bridge_cfg.tuner_port,
+        )
     logger.info("Start Civilization 6 with the AlphaZeroAI mod to begin.")
 
-    # Build the policy network. When a checkpoint is supplied, load it;
-    # otherwise log a clear warning and use a synthetic-weights network -
-    # the loop wiring still gets exercised, the agent just plays poorly.
-    network = _build_network_for_bridge(config)
-    policy = GreedyNetworkPolicy(network=network, device=config.device)
-
     state_converter = StateConverter(board_size=config.board_size)
-    action_converter = ActionConverter(board_size=config.board_size)
+    # Small-demo action space. ActionSpaceConfig defaults (max_units=100,
+    # max_cities=20, num_production_items=200) produce ~157k actions on a
+    # 16x16 board; the bridge then builds a matching network with random
+    # weights since no trained checkpoint exists at that scale. Shrinking
+    # max_units/max_cities/num_production_items keeps the architecture
+    # consistent (network output dim still tracks the converter) while
+    # bringing the space down to a few thousand actions — bounded enough
+    # for the Steam demo, large enough to still express meaningful play.
+    demo_action_space = ActionSpaceConfig(
+        board_size=config.board_size,
+        max_units=20,
+        max_cities=5,
+        num_production_items=20,
+    )
+    action_converter = ActionConverter(
+        board_size=config.board_size,
+        action_space_config=demo_action_space,
+    )
+
+    # Build the policy network. When a checkpoint is supplied, load it;
+    network = _build_network_for_bridge(
+        config, action_space_size=action_converter.action_space_size
+    )
+    if config.use_mcts:
+        from alpha_zero.bridge.mcts_policy import Civ6MctsPolicy
+        from alpha_zero.core.civ6_mcts import GumbelMCTSConfig
+
+        gumbel_cfg = GumbelMCTSConfig(
+            num_simulations=config.num_simulations,
+            num_sampled_actions=min(config.num_simulations, 16),
+        )
+        policy = Civ6MctsPolicy(network=network, config=gumbel_cfg, device=config.device)
+        logger.info("Bridge using Civ6MctsPolicy (sims=%d)", config.num_simulations)
+    else:
+        policy = GreedyNetworkPolicy(network=network, device=config.device)
+        logger.info("Bridge using GreedyNetworkPolicy")
+
     agent_cfg = AgentLoopConfig.from_env()
 
-    bridge = FileBridge(bridge_cfg)
+    log_path = Path(config.civ6_log_path)
+    bridge = LiveBridge(bridge_cfg, log_path=log_path)
+
+    eval_harness = None
+    if config.use_eval_harness:
+        from alpha_zero.bridge.eval_harness import BridgeEvalHarness
+
+        eval_harness = BridgeEvalHarness()
+
     agent_loop = BridgeAgentLoop(
         bridge=bridge,
         policy=policy,
         state_converter=state_converter,
         action_converter=action_converter,
         config=agent_cfg,
+        eval_harness=eval_harness,
     )
 
     import asyncio
+
+    # Optional startup kick: if the game is idle on the local player's turn
+    # with an expired command window, no fresh state ever arrives. Setting
+    # CIV6_BRIDGE_KICK_START forces one end-turn (socket transport only) so a
+    # new turn-begin export is emitted for the agent to catch.
+    kick_start = os.getenv("CIV6_BRIDGE_KICK_START", "").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
     async def _session() -> int:
         # Single event loop wraps both start and stop, fixing the inherited
@@ -493,6 +608,9 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
         # cleanup loop could not see async state set during start.
         try:
             await bridge.start()
+            if kick_start:
+                logger.info("Kick-start enabled: forcing one end-turn to un-stall.")
+                await bridge.kick_turn()
             return await agent_loop.run()
         finally:
             await bridge.stop()
@@ -504,7 +622,7 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
         return 130
 
 
-def _build_network_for_bridge(config: Civ6LocalConfig) -> Any:
+def _build_network_for_bridge(config: Civ6LocalConfig, action_space_size: int = 381) -> Any:
     """Construct (and optionally load) the policy network for the bridge.
 
     Extracted for testability and to keep ``run_civ6_bridge`` focused on
@@ -513,13 +631,27 @@ def _build_network_for_bridge(config: Civ6LocalConfig) -> Any:
     import torch
 
     from alpha_zero.core.civ6_network import MicroCivNetwork
+    from alpha_zero.envs.civ6_encoder import EncoderConfig
 
     device = torch.device(config.device if torch.cuda.is_available() else "cpu")
     # MicroCivNetwork picks the right value head (scalar vs N-player) based
     # on num_players; the bridge currently targets 2-player real Civ6.
+    #
+    # StateConverter (used by BridgeAgentLoop) encodes states through the
+    # full Civ6StateEncoder, which emits EncoderConfig's spatial_channels=84
+    # / vector_dim=512 tensors - NOT MicroCivNetwork's own 13-channel/64-dim
+    # "MicroCiv default". Passing these explicitly here (rather than
+    # changing MicroCivNetwork's defaults, which are still used elsewhere
+    # e.g. the microciv/web training modes) keeps the bridge network's
+    # input dims matched to what StateConverter.convert_and_encode actually
+    # produces.
+    encoder_defaults = EncoderConfig()
     network = MicroCivNetwork(
         board_size=config.board_size,
         num_players=config.num_players,
+        action_space_size=action_space_size,
+        spatial_channels=encoder_defaults.spatial_channels,
+        vector_dim=encoder_defaults.vector_dim,
     ).to(device)
 
     if config.checkpoint_path:
@@ -638,7 +770,8 @@ Modes:
 Environment variables (CIV6AZ_LOCAL_ prefix):
   CIV6AZ_LOCAL_MODE, CIV6AZ_LOCAL_BOARD_SIZE, CIV6AZ_LOCAL_NUM_SIMULATIONS,
   CIV6AZ_LOCAL_DEVICE, CIV6AZ_LOCAL_CHECKPOINT_PATH, CIV6AZ_LOCAL_WEB_HOST,
-  CIV6AZ_LOCAL_WEB_PORT, CIV6AZ_LOCAL_BRIDGE_IPC_DIR, CIV6AZ_LOCAL_LOG_LEVEL
+  CIV6AZ_LOCAL_WEB_PORT, CIV6AZ_LOCAL_BRIDGE_IPC_DIR, CIV6AZ_LOCAL_LOG_PATH,
+  CIV6AZ_LOCAL_LOG_LEVEL
 
 Examples:
   python -m alpha_zero.civ6_local --dry-run
@@ -704,6 +837,29 @@ Examples:
         choices=list(VALID_DEVICES),
         help="PyTorch inference device (default: cpu)",
     )
+    mcts_group = parser.add_mutually_exclusive_group()
+    mcts_group.add_argument(
+        "--mcts",
+        action="store_true",
+        dest="use_mcts",
+        default=None,
+        help="Use MCTS policy in civ6 mode (W2.2+)",
+    )
+    mcts_group.add_argument(
+        "--no-mcts",
+        action="store_false",
+        dest="use_mcts",
+        default=None,
+        help="Use Greedy policy in civ6 mode",
+    )
+
+    parser.add_argument(
+        "--eval-harness",
+        action="store_true",
+        dest="use_eval_harness",
+        default=None,
+        help="Enable MLflow-based BridgeEvalHarness for local civ6 play",
+    )
 
     # Web options
     parser.add_argument(
@@ -728,6 +884,17 @@ Examples:
         dest="bridge_ipc_dir",
         metavar="DIR",
         help="IPC directory for Civ6 bridge (default: /tmp/civ6az_bridge)",
+    )
+    parser.add_argument(
+        "--civ6-log-path",
+        type=str,
+        dest="civ6_log_path",
+        metavar="PATH",
+        help=(
+            "Path to Civilization VI's Lua.log, watched by the bridge in "
+            "civ6 mode (default: %%LOCALAPPDATA%%/Firaxis Games/Sid Meier's "
+            "Civilization VI/Logs/Lua.log)"
+        ),
     )
 
     # General
@@ -786,12 +953,18 @@ def build_config(args: argparse.Namespace) -> Civ6LocalConfig:
         overrides["num_simulations"] = args.num_simulations
     if args.device is not None:
         overrides["device"] = args.device
+    if args.use_mcts is not None:
+        overrides["use_mcts"] = args.use_mcts
+    if args.use_eval_harness is not None:
+        overrides["use_eval_harness"] = args.use_eval_harness
     if args.web_host is not None:
         overrides["web_host"] = args.web_host
     if args.web_port is not None:
         overrides["web_port"] = args.web_port
     if args.bridge_ipc_dir is not None:
         overrides["bridge_ipc_dir"] = args.bridge_ipc_dir
+    if args.civ6_log_path is not None:
+        overrides["civ6_log_path"] = args.civ6_log_path
     if args.dry_run:
         overrides["dry_run"] = True
 

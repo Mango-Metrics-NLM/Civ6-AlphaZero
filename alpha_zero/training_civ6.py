@@ -416,6 +416,20 @@ def self_play_game(
     # directly on an N-player env, not only via train().
     winner = info.get("winner")
     num_players = int(getattr(env, "num_players", 2))
+    if num_players < 2:
+        # A real MicroCivEnv always enforces num_players >= 2 (see
+        # MicroCivEnv.__init__), so this branch is unreachable with a real
+        # env. It only triggers for a non-conforming env double (e.g. a test
+        # mock that never set `num_players`, whose auto-vivified attribute
+        # resolves via int() to 1). Fall back to the historical 2-player
+        # default rather than crashing self-play.
+        logger.warning(
+            "self_play_game: env.num_players resolved to %d (<2); defaulting "
+            "to 2-player scoring. This usually means `env` is missing a real "
+            "`num_players` attribute (e.g. an incompletely configured mock).",
+            num_players,
+        )
+        num_players = 2
     method = _scoring_method_from_str(getattr(config, "scoring_method", "winner_take_all"))
     absolute_values = compute_absolute_player_values(winner, num_players, method)
 

@@ -30,19 +30,15 @@ from typing import Any
 
 import torch
 
-from alpha_zero.bridge.config import MapSizeConfig, get_map_config
+from alpha_zero.bridge.config import GameConstants, MapSizeConfig, get_map_config
 from alpha_zero.bridge.protocol import (
     GameStateData,
 )
 from alpha_zero.envs.civ6_encoder import Civ6StateEncoder, EncoderConfig
 
-logger = logging.getLogger(__name__)
+__all__ = ["StateConverter", "TerrainMapping", "UnitMapping"]
 
-# Named constants for victory progress normalization.
-# Base game has ~67 techs; use 70 as a round estimate.
-_ESTIMATED_TOTAL_TECHS: int = 70
-# High score estimate for normalizing score-based victory progress.
-_ESTIMATED_MAX_SCORE: int = 2000
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -211,6 +207,18 @@ class UnitMapping:
         return "melee"
 
 
+class StateConverterError(Exception):
+    """Base exception for StateConverter errors."""
+
+    pass
+
+
+class GameNotStartedError(StateConverterError):
+    """Raised when the game state indicates the map is empty (e.g. main menu)."""
+
+    pass
+
+
 class StateConverter:
     """Converts Civ6 Lua mod state to encoder-compatible format.
 
@@ -250,13 +258,10 @@ class StateConverter:
 
         self._encoder: Civ6StateEncoder | None = None
         if create_encoder:
-            self._encoder = Civ6StateEncoder(
-                EncoderConfig(
-                    board_size=board_size,
-                    spatial_channels=84,
-                    vector_dim=512,
-                )
-            )
+            # spatial_channels/vector_dim intentionally left at EncoderConfig's
+            # own defaults (84/512) rather than re-stated here, to avoid the
+            # two definitions silently drifting apart.
+            self._encoder = Civ6StateEncoder(EncoderConfig(board_size=board_size))
 
         self._map_config: MapSizeConfig | None = None
         self._scale_x: float = 1.0
@@ -281,7 +286,7 @@ class StateConverter:
 
         # Validate map size before scaling
         if state.map_data.width <= 0 or state.map_data.height <= 0:
-            raise ValueError(
+            raise GameNotStartedError(
                 f"Invalid map size: {state.map_data.width}x{state.map_data.height}. "
                 "Map dimensions must be positive."
             )
@@ -326,6 +331,10 @@ class StateConverter:
             "_legal_actions": state.legal_actions,
             "_map_size": (state.map_data.width, state.map_data.height),
             "_player_id": state.player_id,
+            # Pass-through reference to the original GameStateData so downstream
+            # callers (e.g. agent_loop._build_observation) can re-encode without
+            # re-running convert() on a dict that no longer has the raw schema.
+            "_raw_state": state,
         }
 
     def convert_and_encode(
@@ -528,6 +537,32 @@ class StateConverter:
             "yields": averaged_yields,
         }
 
+    def _resolve_player_index(self, owner_id: int, state_player_id: int) -> int:
+        """Resolve an owner id to the player index expected by the encoder.
+
+        The encoder is **ego-centric**: the AI (the player the state was
+        captured from) must always occupy index ``0`` and the opponent index
+        ``1`` in 2-player mode, matching the self-play training convention
+        where the acting player is player 0. Mapping the ego player to its
+        raw ``state.player_id`` instead (e.g. ``1`` when the AI is Player 2 in
+        the game setup) would swap the encoder's own/opponent channels and
+        make the network see its units as the enemy's — so the mapping is
+        deliberately decoupled from ``player_id``.
+
+        Args:
+            owner_id: Raw owner id from the Civ6 unit/city data.
+            state_player_id: The player id the state was captured from
+                (``GameStateData.player_id`` = the ego/AI player).
+
+        Returns:
+            Player index: in N-player mode (N > 2), ``owner_id`` is used
+            directly (ids are assumed already remapped). In 2-player mode,
+            the ego player maps to ``0`` and every other owner to ``1``.
+        """
+        if self.num_players > 2:
+            return owner_id
+        return 0 if owner_id == state_player_id else 1
+
     def _convert_units(self, state: GameStateData) -> list[dict]:
         """Convert unit data.
 
@@ -538,21 +573,12 @@ class StateConverter:
             List of unit dictionaries.
         """
         units = []
-        current_player = self._get_current_player_id(state)
 
         for unit in state.units:
             scaled_pos = self._scale_coords(unit.x, unit.y)
             unit_type = self.unit_mapping.get_unit_type(unit.unit_type)
 
-            # Determine player index.
-            # In N-player mode, use the owner_id directly (assumes remapped).
-            # In 2-player mode, preserve backward-compatible binary mapping.
-            if self.num_players > 2:
-                player = unit.owner_id
-            elif unit.owner_id == state.player_id:
-                player = current_player
-            else:
-                player = 1 if current_player == 0 else 0
+            player = self._resolve_player_index(unit.owner_id, state.player_id)
 
             health = unit.health
             if unit.max_health > 0:
@@ -586,20 +612,11 @@ class StateConverter:
             List of city dictionaries.
         """
         cities = []
-        current_player = self._get_current_player_id(state)
 
         for city in state.cities:
             scaled_pos = self._scale_coords(city.x, city.y)
 
-            # Determine player index.
-            # In N-player mode, use the owner_id directly (assumes remapped).
-            # In 2-player mode, preserve backward-compatible binary mapping.
-            if self.num_players > 2:
-                player = city.owner_id
-            elif city.owner_id == state.player_id:
-                player = current_player
-            else:
-                player = 1 if current_player == 0 else 0
+            player = self._resolve_player_index(city.owner_id, state.player_id)
 
             cities.append(
                 {
@@ -669,10 +686,10 @@ class StateConverter:
             state: Game state data.
 
         Returns:
-            Player index (0 = AI player, 1 = opponent).
+            Player index.
         """
-        # For the encoder, we always treat the AI as player 0
-        return 0
+        # For the encoder, return the actual player ID from the state.
+        return state.player_id
 
     def _extract_player_data(
         self,
@@ -693,7 +710,7 @@ class StateConverter:
             if player.id == state.player_id:
                 return {
                     "gold": player.gold,
-                    "gold_per_turn": 0,  # Not directly available
+                    "gold_per_turn": player.gold_per_turn,
                     "science_per_turn": player.science_per_turn,
                     "culture_per_turn": player.culture_per_turn,
                     "faith": player.faith,
@@ -826,7 +843,7 @@ class StateConverter:
 
         # Science progress (rough estimate based on techs)
         techs = self._extract_technologies(state)
-        progress["science"] = min(1.0, len(techs) / _ESTIMATED_TOTAL_TECHS)
+        progress["science"] = min(1.0, len(techs) / GameConstants.ESTIMATED_TOTAL_TECHS)
 
         # Domination progress (count our cities vs total cities)
         total_cities = len(state.cities)
@@ -839,7 +856,7 @@ class StateConverter:
         # Score progress (normalized by max reasonable score)
         for player in state.players:
             if player.id == state.player_id:
-                progress["score"] = min(1.0, player.score / _ESTIMATED_MAX_SCORE)
+                progress["score"] = min(1.0, player.score / GameConstants.ESTIMATED_MAX_SCORE)
                 break
         else:
             progress["score"] = 0.0
