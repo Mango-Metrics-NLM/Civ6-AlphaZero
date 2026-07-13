@@ -25,8 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `vertex_jobs._wandb_env_vars` / `resolve_wandb_key_from_secret_manager` / `ensure_wandb_api_key` and the `CIV6AZ_WANDB_SECRET_*` env pathway (zero consumers; nothing reads `WANDB_API_KEY` anymore).
 - Dead module-skipped W&B test suites (~2,300 lines): `test_wandb_logger`, `test_wandb_baseline_metrics`, `test_pbt_dashboarding`, `test_wandb_integration`, `test_orchestrator_wandb`, plus skipped classes in `test_wandb_coordination` (renamed `test_vertex_coordination`, 9 active tests kept) and `test_orchestrator_muzero_config`. Replacement coverage landed FIRST: numpy/`log_reflection_stats`/`run_name`/alert tests in `test_mlflow_logger_adapter`, `test_tracker_enabled_resolution` (precedence matrix), `test_pbt_mlflow_dashboards`, vertex-orchestrator lifecycle tests in `test_orchestrator_mlflow`, and `test_orchestrator_wandb_bridge`.
 
+### Added — Optuna hyperparameter sweeps (replaces W&B sweeps)
+- `alpha_zero/optimizations/hyperparameter_search.py`: reusable `HyperparameterSearch` component — declarative YAML search spaces, `SweepConfig` with `CIV6AZ_SWEEP_*` env overrides (legacy `SWEEP_TIMEOUT_SECONDS` honored), injectable objective/tracker for testing, MLflow per-trial logging, `SubprocessTrainingObjective` with timeout + prune-on-failure semantics.
+- `run_sweep.py` rewritten as a thin CLI over the component (`--config/--n-trials/--study-name/--storage/--dry-run`); `configs/sweep_muzero.yaml` seeds the search space from the historical W&B sweep results. New `tuning` extra (`pip install -e '.[tuning]'`).
+- `run_muzero_training.py` prints a machine-readable `SWEEP_METRICS_JSON=` result line for subprocess objectives.
+- `scripts/setup_secrets.sh` generalized: provisions any named secret (`CIV6AZ_SECRET_NAME`/`CIV6AZ_SECRET_VALUE`), wandb-api-key default removed.
+- With this, no wandb imports remain in `alpha_zero/` or entry points. Two read-only analysis scripts (`compare_training_runs.py`, `search_efficiency_report.py`) keep lazy `wandb.Api()` readers for W&B-hosted *historical* runs — data MLflow cannot serve — and are documented as deprecated.
+
 ### Accepted debt
-- `run_sweep.py` remains the one real W&B dependency (sweep primitives have no MLflow 1:1; Optuna port tracked). `TournamentWandbLogger` and serialized `wandb_enabled` config fields keep their names for compat.
+- `TournamentWandbLogger` and serialized `wandb_enabled` config fields keep their names for compat.
 
 ## [1.8.0] — 2026-07-12 — Live Civilization VI Bridge (Headless Socket Transport)
 

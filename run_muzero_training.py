@@ -1,11 +1,11 @@
-"""MuZero Training Script with W&B Integration.
+"""MuZero Training Script with experiment tracking.
 
 This script runs full MuZero training with:
 - Gumbel MuZero MCTS (efficient search with 16 simulations)
 - MuZero network with dynamics model
 - EfficientZero consistency loss
 - Trajectory-based training with multi-step unrolling
-- Weights & Biases experiment tracking
+- MLflow experiment tracking (via the compat adapter)
 
 Usage:
     python run_muzero_training.py --wandb --iterations 10
@@ -16,6 +16,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import time
@@ -651,6 +652,12 @@ def main():
                     "final/best_avg_length": stats["best_avg_length"],
                 }
             )
+
+        # Machine-readable result line for hyperparameter sweeps: the
+        # SubprocessTrainingObjective in
+        # alpha_zero/optimizations/hyperparameter_search.py extracts the
+        # optimized metric from this marker.
+        print(f"SWEEP_METRICS_JSON={json.dumps(stats)}")
     finally:
         if wandb_logger:
             wandb_logger.finish()

@@ -55,7 +55,7 @@ Make N-player training real and self-play fast; pay down debt. *(Active.)*
   convergence gate.
 - ~~Finish the W&B → MLflow sweep~~ *(done 2026-07-13: SDK swap verified complete,
   configs/toggles unified with legacy env fallback, dead suites replaced by MLflow
-  equivalents; `run_sweep.py`/Optuna port remains)*; add fixtures for the skipped
+  equivalents; `run_sweep.py` ported to Optuna)*; add fixtures for the skipped
   hierarchical / state-extraction / training-smoke tests.
 - Bring omitted modules (`serving/`, `inference/`, cloud infra) under the coverage
   gate (re-tightened 80% → 85% on 2026-07-13; omit-list shrink remains).

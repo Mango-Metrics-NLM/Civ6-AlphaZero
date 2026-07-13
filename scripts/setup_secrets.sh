@@ -1,32 +1,35 @@
 #!/usr/bin/env bash
-# Migrate WANDB_API_KEY to GCP Secret Manager
+# Provision a secret in GCP Secret Manager and grant the training service
+# account read access.
+#
+# Generic helper — no secret name or value is hardcoded. The W&B-era default
+# (wandb-api-key) is gone along with the W&B integration; a typical use today
+# is provisioning an MLflow tracking token for a remote tracking server.
 #
 # This script:
-#   1. Creates a Secret Manager secret for the W&B API key
-#   2. Grants the training service account read access
-#   3. Verifies the secret can be read
+#   1. Creates (or versions) the Secret Manager secret
+#   2. Grants the service account read access
+#   3. Verifies the secret can be read back
 #
 # Prerequisites:
 #   - gcloud CLI authenticated
-#   - GOOGLE_CLOUD_PROJECT env var set
-#   - WANDB_API_KEY env var set (the key to migrate)
-#   - Service account email known
 #
 # Usage:
 #   export GOOGLE_CLOUD_PROJECT=your-project-id
-#   export WANDB_API_KEY=your-wandb-key
 #   export CIV6AZ_SERVICE_ACCOUNT=sa@project.iam.gserviceaccount.com
+#   export CIV6AZ_SECRET_NAME=mlflow-tracking-token
+#   export CIV6AZ_SECRET_VALUE=...   # the secret material
 #   bash scripts/setup_secrets.sh
 
 set -euo pipefail
 
-# --- Configuration (from env vars) ---
+# --- Configuration (from env vars; no defaults for secret material) ---
 PROJECT="${GOOGLE_CLOUD_PROJECT:?Set GOOGLE_CLOUD_PROJECT}"
-WANDB_KEY="${WANDB_API_KEY:?Set WANDB_API_KEY}"
 SA_EMAIL="${CIV6AZ_SERVICE_ACCOUNT:?Set CIV6AZ_SERVICE_ACCOUNT}"
-SECRET_NAME="${CIV6AZ_WANDB_SECRET_NAME:-wandb-api-key}"
+SECRET_NAME="${CIV6AZ_SECRET_NAME:?Set CIV6AZ_SECRET_NAME (e.g. mlflow-tracking-token)}"
+SECRET_VALUE="${CIV6AZ_SECRET_VALUE:?Set CIV6AZ_SECRET_VALUE}"
 
-echo "=== Secret Manager Migration ==="
+echo "=== Secret Manager Provisioning ==="
 echo "Project: ${PROJECT}"
 echo "Secret:  ${SECRET_NAME}"
 echo "SA:      ${SA_EMAIL}"
@@ -40,11 +43,11 @@ gcloud services enable secretmanager.googleapis.com --project="${PROJECT}" 2>/de
 echo "[2/4] Creating secret '${SECRET_NAME}'..."
 if gcloud secrets describe "${SECRET_NAME}" --project="${PROJECT}" &>/dev/null; then
     echo "  Secret already exists — adding new version"
-    echo -n "${WANDB_KEY}" | gcloud secrets versions add "${SECRET_NAME}" \
+    echo -n "${SECRET_VALUE}" | gcloud secrets versions add "${SECRET_NAME}" \
         --project="${PROJECT}" \
         --data-file=-
 else
-    echo -n "${WANDB_KEY}" | gcloud secrets create "${SECRET_NAME}" \
+    echo -n "${SECRET_VALUE}" | gcloud secrets create "${SECRET_NAME}" \
         --project="${PROJECT}" \
         --replication-policy="automatic" \
         --data-file=-
@@ -65,7 +68,7 @@ RETRIEVED=$(gcloud secrets versions access latest \
     --secret="${SECRET_NAME}" \
     --project="${PROJECT}" 2>/dev/null)
 
-if [ "${RETRIEVED}" = "${WANDB_KEY}" ]; then
+if [ "${RETRIEVED}" = "${SECRET_VALUE}" ]; then
     echo "  ✅ Secret verified successfully"
 else
     echo "  ❌ Secret verification failed"
@@ -73,11 +76,11 @@ else
 fi
 
 echo ""
-echo "=== Migration complete ==="
+echo "=== Provisioning complete ==="
 echo ""
-echo "To use in Vertex AI jobs, the training code should read:"
+echo "To read the secret at runtime:"
 echo "  from google.cloud import secretmanager"
 echo "  client = secretmanager.SecretManagerServiceClient()"
 echo "  name = f'projects/${PROJECT}/secrets/${SECRET_NAME}/versions/latest'"
 echo "  response = client.access_secret_version(request={'name': name})"
-echo "  wandb_key = response.payload.data.decode('UTF-8')"
+echo "  value = response.payload.data.decode('UTF-8')"

@@ -288,6 +288,9 @@ When making changes, update the relevant sections below:
 | `python -m alpha_zero.civ6_local --mode civ6 --mcts --eval-harness` | Bridge + MCTS + MLflow eval harness |
 | `python scripts/install_civ6_mod.py` | Install AlphaZeroAI mod to default Steam Mods dir |
 | `python scripts/install_civ6_mod.py --mod-dir PATH` | Install mod to custom Civ6 Mods directory |
+| `pip install -e '.[tuning]'` | Install Optuna for hyperparameter sweeps |
+| `python run_sweep.py --dry-run` | Validate sweep config (configs/sweep_muzero.yaml) |
+| `python run_sweep.py --n-trials 20` | Run Optuna sweep (MLflow-logged; CIV6AZ_SWEEP_* env overrides) |
 
 #### Cloud Deployment Commands
 
@@ -414,7 +417,7 @@ When making changes, update the relevant sections below:
 | mlruns/ file-store deprecated | Run `scripts/migrate_mlflow_to_sqlite.py` to migrate to `sqlite:///mlflow.db` |
 | test_deployment_infra.py: 6 failures | Require .env file not present locally; skip with `pytest -m 'not env_required'` |
 | ~~Two divergent `WandbConfig` classes~~ (resolved 2026-07-13) | `utils/wandb_logger.py` shim deleted; orchestrator `WandbConfig` is now an explicit deprecated bridge (`to_mlflow_config()`), `MLflowConfig` single-source. |
-| W&B naming debt (accepted) | The SDK swap is COMPLETE — no `import wandb` anywhere in `alpha_zero/`. Retained for compat: `TournamentWandbLogger` (public, MLflow-backed), worker-local `wandb_logger` vars, serialized `wandb_enabled` config fields, lazy deprecated `alpha_zero.utils.WandbLogger` alias. `run_sweep.py` is the one true W&B remnant (sweep primitives; Optuna port is a follow-up). Adapter no-ops: histograms/images/`define_metric`. |
+| W&B naming debt (accepted) | The SDK swap is COMPLETE — no `import wandb` anywhere in `alpha_zero/`. Retained for compat: `TournamentWandbLogger` (public, MLflow-backed), worker-local `wandb_logger` vars, serialized `wandb_enabled` config fields, lazy deprecated `alpha_zero.utils.WandbLogger` alias. `run_sweep.py` was ported to Optuna on 2026-07-13 (`alpha_zero/optimizations/hyperparameter_search.py`, `pip install -e '.[tuning]'`) — no wandb imports remain in `alpha_zero/` or entry points; two read-only historical-run readers (`scripts/compare_training_runs.py`, `scripts/search_efficiency_report.py`) keep lazy `wandb.Api()` access to W&B-hosted history, documented as deprecated. Adapter no-ops: histograms/images/`define_metric`. |
 
 ### 5.4 Bug Fixes
 

@@ -1,5 +1,13 @@
 # DEV-SQE Session Log
 
+## 2026-07-13 - Optuna Sweep Port + Secrets Cleanup (PR #92 follow-ups)
+- **Session:** session_01AAR7bMpmkZtman9kFaeqft (fourth batch)
+- **Task:** Port run_sweep.py off the W&B sweep API: new reusable alpha_zero/optimizations/hyperparameter_search.py (SweepConfig YAML + CIV6AZ_SWEEP_* env overrides w/ legacy SWEEP_TIMEOUT_SECONDS, declarative search space, injectable objective/tracker, MLflow per-trial logging, SubprocessTrainingObjective w/ timeout+prune). run_sweep.py = thin CLI; configs/sweep_muzero.yaml seeded from historical W&B results; SWEEP_METRICS_JSON marker in run_muzero_training.py; [tuning] extra (optuna). setup_secrets.sh generalized (CIV6AZ_SECRET_NAME/VALUE, wandb default gone).
+- **Tests:** 35 new (search-space contract, env precedence, deterministic quadratic search, tracker logging, subprocess objective incl. timeout/prune paths, CLI); ruff clean both versions incl. CI 0.8.0 format gate
+- **Honest scope note:** two read-only analysis scripts keep lazy wandb.Api() readers for W&B-hosted HISTORICAL runs (data MLflow cannot serve) — documented as deprecated, not instrumentation.
+- **Status:** complete pending full-suite verification — extends PR #92
+- **Next:** confirm CI green on PR #92
+
 ## 2026-07-13 - W&B Retirement Sweep (MLflow-only tracking)
 - **Session:** session_01AAR7bMpmkZtman9kFaeqft (third batch)
 - **Task:** Complete W&B→MLflow migration: toggle unification (resolve_tracker_enabled, legacy WANDB_ENABLED honored+warned), WandbConfig→MLflowConfig bridge, single-tracker orchestrator init, shim + dead-suite deletions (user-approved), 66 gap-filling tests landed before deletions
