@@ -460,7 +460,7 @@ def main() -> int:
                 }
             )
     except Exception as e:
-        logger.warning("W&B logging failed (non-fatal): %s", e)
+        logger.warning("Experiment tracking failed (non-fatal): %s", e)
 
     logger.info("Tournament worker completed successfully")
     return 0

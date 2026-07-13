@@ -1828,8 +1828,6 @@ class TrainingOrchestrator:
         if self._rag:
             self._rag.close()
 
-        # Close W&B
-
         # Close MLflow
         if self._mlflow_logger is not None and hasattr(self._mlflow_logger, "finish"):
             self._mlflow_logger.finish()

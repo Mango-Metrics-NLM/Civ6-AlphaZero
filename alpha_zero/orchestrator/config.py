@@ -753,7 +753,7 @@ class WandbConfig:
         """
         from alpha_zero.monitoring.config import MLflowConfig
 
-        tags: dict[str, str] = dict.fromkeys(self.tags, "true")
+        tags: dict[str, str] = dict.fromkeys(self.tags or [], "true")
         if self.entity:
             tags["wandb.entity"] = self.entity
         return MLflowConfig(
