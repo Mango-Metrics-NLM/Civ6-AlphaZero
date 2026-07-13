@@ -46,7 +46,7 @@ class TestObservationModelConfig:
 
     def test_mismatched_types_weights_raises(self):
         """Mismatched unit_types and unit_weights lengths raise ValueError."""
-        with pytest.raises(ValueError, match="unit_types length.*must match.*unit_weights length"):
+        with pytest.raises(ValueError, match=r"unit_types length.*must match.*unit_weights length"):
             ObservationModelConfig(
                 default_unit_types=("warrior", "archer"),
                 default_unit_weights=(0.5, 0.3, 0.2),

@@ -44,7 +44,7 @@ class IntegrationMockEnv:
         self.num_players = num_players
         self._step_count = 0
         self._max_steps = 15
-        self._scores: dict[int, float] = {i: 0.0 for i in range(num_players)}
+        self._scores: dict[int, float] = dict.fromkeys(range(num_players), 0.0)
 
     def clone(self) -> IntegrationMockEnv:
         cloned = IntegrationMockEnv(self.num_players, self.action_space.n)
@@ -85,7 +85,7 @@ class IntegrationMockEnv:
     def reset(self, seed: int | None = None) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
         self.current_player = 0
         self._step_count = 0
-        self._scores = {i: 0.0 for i in range(self.num_players)}
+        self._scores = dict.fromkeys(range(self.num_players), 0.0)
         return self.get_observation(), {}
 
 
@@ -134,7 +134,7 @@ class TestMCTSWithEnvAdapterIntegration:
 
         # Take the best action
         action = int(np.argmax(action_probs))
-        obs, reward, terminated, truncated, info = adapter.step(action)
+        _obs, _reward, _terminated, _truncated, info = adapter.step(action)
         assert "player_scores" in info
 
     def test_multiple_turns_with_scoring(self):

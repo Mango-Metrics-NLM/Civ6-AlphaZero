@@ -19,7 +19,6 @@ from alpha_zero.bridge.live_bridge import LiveBridge
 from alpha_zero.bridge.log_tailer import AckTimeoutError, StateTimeoutError
 from alpha_zero.bridge.protocol import create_end_turn_command
 
-
 # --- Fixtures ---
 
 
@@ -93,9 +92,10 @@ class TestStateReading:
                 state = {"turn_id": 5, "map": {"width": 0, "height": 0, "tiles": []}}
                 _write_line(tmp_log, f'AlphaZeroMain: AZ_STATE:{json.dumps(state)}')
 
-            asyncio.create_task(write_state())
+            writer = asyncio.create_task(write_state())
             # wait_for_state returns a GameStateData object (not a dict).
             result = await bridge.wait_for_state(timeout=2.0)
+            await writer
             assert result.turn_id == 5
 
     async def test_wait_for_state_timeout(
@@ -161,8 +161,9 @@ class TestAckHandling:
                 ack = {"msg_id": 42, "success": True}
                 _write_line(tmp_log, f'AlphaZeroMain: AZ_ACK:{json.dumps(ack)}')
 
-            asyncio.create_task(write_ack())
+            writer = asyncio.create_task(write_ack())
             result = await bridge.wait_for_ack(msg_id=42, timeout=2.0)
+            await writer
             assert result["success"] is True
 
     async def test_wait_for_ack_timeout(
@@ -184,8 +185,9 @@ class TestAckHandling:
                 ack = {"msg_id": msg_id, "success": True}
                 _write_line(tmp_log, f'AlphaZeroMain: AZ_ACK:{json.dumps(ack)}')
 
-            asyncio.create_task(write_ack())
+            writer = asyncio.create_task(write_ack())
             result = await bridge.send_and_wait(cmd, timeout=2.0)
+            await writer
             assert result["success"] is True
 
 
@@ -367,10 +369,11 @@ class TestDefaultArgumentPaths:
                 ack = {"msg_id": msg_id, "success": True}
                 _write_line(tmp_log, f'AlphaZeroMain: AZ_ACK:{json.dumps(ack)}')
 
-            asyncio.create_task(write_ack())
+            writer = asyncio.create_task(write_ack())
             result = await bridge.send_and_wait_with_retry(
                 cmd, timeout=2.0, max_retries=3
             )
+            await writer
             assert result["success"] is True
 
     async def test_clear_files_when_commands_file_missing_is_a_noop(

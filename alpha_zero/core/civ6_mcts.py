@@ -158,8 +158,15 @@ class MCTSEnvironment(Protocol):
         in new code.
     """
 
-    action_space: ActionSpace
-    current_player: int
+    @property
+    def action_space(self) -> ActionSpace:
+        """Action space with an ``n`` attribute for size (read-only)."""
+        ...
+
+    @property
+    def current_player(self) -> int:
+        """Index of the current player (read-only)."""
+        ...
 
     def clone(self) -> MCTSEnvironment:
         """Create a deep copy of the environment for simulation."""

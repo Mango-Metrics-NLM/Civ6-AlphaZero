@@ -8,7 +8,6 @@ Tests cover:
 """
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -17,14 +16,12 @@ import numpy as np
 import pytest
 
 from alpha_zero.bridge.agent_loop import AgentLoopConfig, BridgeAgentLoop
-from alpha_zero.bridge.file_bridge import AckTimeoutError, ConnectionLostError, StateTimeoutError
+from alpha_zero.bridge.file_bridge import AckTimeoutError
 from alpha_zero.bridge.health_checker import (
-    BridgeHealthConfig,
     CircuitBreakerOpenError,
     GameBridgeHealthChecker,
 )
 from alpha_zero.bridge.protocol import GameStateData
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers

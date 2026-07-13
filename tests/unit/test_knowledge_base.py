@@ -50,7 +50,7 @@ class TestKnowledgeBaseIngest:
         n = kb.ingest_directory(kb_dir, pattern="*.txt")
         assert n == 1
         args, _ = fake_rag.add_documents.call_args
-        documents, metadatas, _ = args
+        _documents, metadatas, _ = args
         assert any(".txt" in m["source"] for m in metadatas)
 
     def test_missing_directory_returns_zero(self, fake_rag: MagicMock) -> None:

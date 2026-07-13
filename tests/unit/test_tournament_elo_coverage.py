@@ -80,7 +80,7 @@ class TestProcessGameResult:
         assert player2.draws == 1
 
     def test_with_tournament_config(self, elo_system, player1, player2, tournament_config):
-        u1, u2 = elo_system.process_game_result(
+        _u1, _u2 = elo_system.process_game_result(
             player1, player2, MatchOutcome.WIN, config=tournament_config
         )
         # Player stats should be updated including tier
@@ -247,13 +247,13 @@ class TestProcessMatchBounds:
         config = ELOConfig(rating_floor=100, rating_ceiling=3000, k_factor_base=200)
         system = ELORatingSystem(config)
         # Very low rated player loses to high rated player with huge K
-        u1, u2 = system.process_match("low", "high", 105, 2900, 0.0, 1.0)
+        u1, _u2 = system.process_match("low", "high", 105, 2900, 0.0, 1.0)
         assert u1.rating_after >= 100
 
     def test_rating_clamped_at_ceiling(self):
         config = ELOConfig(rating_floor=100, rating_ceiling=3000, k_factor_base=200)
         system = ELORatingSystem(config)
-        u1, u2 = system.process_match("high", "low", 2995, 200, 1.0, 0.0)
+        u1, _u2 = system.process_match("high", "low", 2995, 200, 1.0, 0.0)
         assert u1.rating_after <= 3000
 
 

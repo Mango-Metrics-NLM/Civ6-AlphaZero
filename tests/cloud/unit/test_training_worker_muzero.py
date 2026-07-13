@@ -209,7 +209,7 @@ class TestTrainMuZeroEpoch:
 
         # Returns (total_loss, policy_loss, value_loss, reward_loss, num_batches)
         assert len(result) == 5
-        total_loss, policy_loss, value_loss, reward_loss, num_batches = result
+        total_loss, policy_loss, _value_loss, _reward_loss, num_batches = result
         assert num_batches == 1
         assert total_loss > 0
         assert policy_loss > 0

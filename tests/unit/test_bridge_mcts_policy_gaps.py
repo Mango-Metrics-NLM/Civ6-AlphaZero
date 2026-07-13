@@ -8,13 +8,15 @@ Covers:
 - Civ6MctsPolicy with max_turns kwarg
 - Default field values applied when keys absent
 """
+
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
+import numpy as np
 import pytest
 
 from alpha_zero.bridge.mcts_policy import (
-    BridgeMCTSEnv,
-    Civ6MctsPolicy,
     _DEFAULT_CITY_DEFENSE,
     _DEFAULT_CITY_NAME,
     _DEFAULT_CITY_POPULATION,
@@ -28,11 +30,10 @@ from alpha_zero.bridge.mcts_policy import (
     _MAX_CIV_PLAYERS,
     _MIN_CIV_PLAYERS,
     _POLICY_KIND_MCTS,
+    BridgeMCTSEnv,
+    Civ6MctsPolicy,
 )
 from alpha_zero.core.civ6_mcts import GumbelMCTSConfig
-from unittest.mock import MagicMock
-import numpy as np
-
 
 # ---------------------------------------------------------------------------
 # Constants sanity
@@ -221,7 +222,8 @@ async def test_policy_uses_max_turns_when_searching() -> None:
 
     def fake_search(env: BridgeMCTSEnv):
         seen_envs.append(env)
-        return 0, {"root_value": 0.0}
+        # Mirror the real GumbelMCTS.search contract: (policy_probs, root_value)
+        return np.zeros(64, dtype=np.float32), 0.0
 
     policy.mcts.search = fake_search  # type: ignore
 

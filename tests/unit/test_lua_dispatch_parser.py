@@ -101,7 +101,7 @@ class TestRealLuaFile:
     def test_v1_8_0_actions_have_real_handlers(self) -> None:
         """The 5 W2.1 actions (4 non-diplomacy + DIPLOMACY) must NOT route
         to executeNotImplemented after W2.1 steps 4-5 land."""
-        types, handlers = load_dispatch_from_file(REAL_LUA)
+        _types, handlers = load_dispatch_from_file(REAL_LUA)
         for key in ("CITY_BUY", "CITY_CITIZEN", "UNIT_PROMOTE", "UNIT_DELETE", "DIPLOMACY"):
             assert key in handlers, f"{key} missing from ACTION_HANDLERS"
             assert (

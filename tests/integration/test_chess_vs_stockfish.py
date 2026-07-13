@@ -40,7 +40,7 @@ def test_short_game_vs_stockfish_completes() -> None:
                 action = int(rng.choice(legal))
             else:
                 action = opponent.get_action(env, mask)
-            obs, _, terminated, truncated, info = env.step(action)
+            obs, _, terminated, truncated, _info = env.step(action)
             if terminated or truncated:
                 break
 

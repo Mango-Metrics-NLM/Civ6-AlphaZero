@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, call, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from alpha_zero.bridge.eval_harness import (
-    BridgeEvalHarness,
     _DEFAULT_EXPERIMENT_NAME,
+    BridgeEvalHarness,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -23,6 +23,7 @@ Usage:
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -257,7 +258,7 @@ class ActionConverter:
         self,
         action_idx: int,
         game_state: dict[str, Any],
-        legal_actions: list[LegalAction | dict] | None = None,
+        legal_actions: Sequence[LegalAction | dict] | None = None,
         validate: bool = True,
         strict: bool = True,
     ) -> LuaCommand:
@@ -397,7 +398,7 @@ class ActionConverter:
         self,
         action_idx: int,
         game_state: dict[str, Any],
-        legal_actions: list[LegalAction | dict] | None = None,
+        legal_actions: Sequence[LegalAction | dict] | None = None,
     ) -> ConversionResult:
         """Convert action with detailed result.
 
@@ -448,7 +449,7 @@ class ActionConverter:
         self,
         decoded: HierarchicalAction,
         game_state: dict[str, Any],
-        legal_actions: list[LegalAction | dict] | None = None,
+        legal_actions: Sequence[LegalAction | dict] | None = None,
     ) -> LuaCommand:
         """Convert unit action to Lua command.
 
@@ -586,7 +587,7 @@ class ActionConverter:
         self,
         decoded: HierarchicalAction,
         game_state: dict[str, Any],
-        legal_actions: list[LegalAction | dict] | None = None,
+        legal_actions: Sequence[LegalAction | dict] | None = None,
     ) -> LuaCommand:
         """Convert city action to Lua command.
 
@@ -759,7 +760,9 @@ class ActionConverter:
 
         return (orig_x, orig_y)
 
-    def _parse_legal_actions(self, legal_actions: list[LegalAction | dict]) -> list[LegalAction]:
+    def _parse_legal_actions(
+        self, legal_actions: Sequence[LegalAction | dict]
+    ) -> list[LegalAction]:
         """Normalize a legal_actions list to LegalAction instances.
 
         Args:
@@ -781,7 +784,7 @@ class ActionConverter:
         self,
         decoded: HierarchicalAction,
         game_state: dict[str, Any],
-        legal_actions: list[LegalAction | dict],
+        legal_actions: Sequence[LegalAction | dict],
     ) -> bool:
         """Check if action is in the legal actions list.
 
@@ -892,7 +895,7 @@ class ActionConverter:
 
     def generate_action_mask(
         self,
-        legal_actions: list[LegalAction | dict],
+        legal_actions: Sequence[LegalAction | dict],
         game_state: dict[str, Any],
     ) -> np.ndarray:
         """Generate action mask from legal actions.

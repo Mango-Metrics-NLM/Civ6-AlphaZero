@@ -128,7 +128,7 @@ def get_access_token(timeout: float = 15.0) -> str:
     """
     # Local import: requests must be imported AFTER force_ipv4_only() runs,
     # which it does at module-import time above.
-    import requests  # noqa: PLC0415
+    import requests
 
     adc_file = _adc_path()
     if not adc_file.exists():

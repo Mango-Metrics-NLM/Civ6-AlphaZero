@@ -144,7 +144,7 @@ class TestBridgeConfigDefaults:
 class TestBridgeConfigValidation:
     """Each __post_init__ guard should raise ValueError with a meaningful message."""
 
-    _base: dict[str, Any] = dict(comm_dir=Path("/tmp/az"))
+    _base: dict[str, Any] = {"comm_dir": Path("/tmp/az")}
 
     def _make(self, **overrides: Any) -> BridgeConfig:
         return BridgeConfig(**{**self._base, **overrides})

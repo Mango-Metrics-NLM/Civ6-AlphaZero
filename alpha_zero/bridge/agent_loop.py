@@ -45,7 +45,6 @@ from alpha_zero.bridge.action_converter import (
 from alpha_zero.bridge.file_bridge import (
     AckTimeoutError,
     ConnectionLostError,
-    FileBridge,
     StateTimeoutError,
 )
 from alpha_zero.bridge.health_checker import (
@@ -110,6 +109,46 @@ class PolicyEngine(Protocol):
             and forwarded to the eval harness (W2.3a) but is not
             interpreted by the loop itself.
         """
+        ...
+
+
+class GameBridge(Protocol):
+    """Transport interface required by :class:`BridgeAgentLoop`.
+
+    Structural protocol capturing exactly the surface the loop uses, so any
+    transport (``FileBridge`` file IPC, ``LiveBridge`` FireTuner socket, or a
+    test double) can drive the loop without inheriting from ``FileBridge``.
+    New transports implement this protocol; the loop is never edited per
+    transport (charter Invariant 1).
+    """
+
+    def next_msg_id(self) -> int:
+        """Return the next monotonically increasing command message id."""
+        ...
+
+    def check_heartbeat(self) -> bool:
+        """Return True while the game-side mod is alive."""
+        ...
+
+    async def wait_for_state(
+        self,
+        timeout: float | None = None,
+        require_new: bool = True,
+    ) -> GameStateData:
+        """Block until a (new) game state arrives or *timeout* elapses."""
+        ...
+
+    async def send_command(self, command: CommandMessage) -> bool:
+        """Fire-and-forget command send; True if written."""
+        ...
+
+    async def send_and_wait_with_retry(
+        self,
+        command: CommandMessage,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+    ) -> Any:
+        """Send a command and await its acknowledgment with retry/backoff."""
         ...
 
 
@@ -349,7 +388,7 @@ class BridgeAgentLoop:
 
     def __init__(
         self,
-        bridge: FileBridge,
+        bridge: GameBridge,
         policy: PolicyEngine,
         state_converter: StateConverter,
         action_converter: ActionConverter,
@@ -407,7 +446,7 @@ class BridgeAgentLoop:
 
                 try:
                     if self.health_checker is not None:
-                        state = await self.health_checker.execute_with_retry(
+                        state: GameStateData = await self.health_checker.execute_with_retry(
                             self.bridge.wait_for_state,
                             timeout=self.config.per_turn_timeout_s,
                             require_new=True,
@@ -584,7 +623,7 @@ class BridgeAgentLoop:
 
         try:
             if self.health_checker is not None:
-                ack = await self.health_checker.execute_with_retry(
+                ack: Any = await self.health_checker.execute_with_retry(
                     self.bridge.send_and_wait_with_retry,
                     command,
                 )

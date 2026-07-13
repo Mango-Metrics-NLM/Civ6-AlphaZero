@@ -1,7 +1,6 @@
 """Unit tests for the Bridge MCTS policy adapter."""
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -17,7 +16,11 @@ def mock_converted_state() -> dict:
         "current_player": 1,
         "_map_size": (8, 8),
         "terrain": {
-            (0, 0): {"type": "grassland", "features": ["forest"], "yields": {"food": 2, "production": 1}},
+            (0, 0): {
+                "type": "grassland",
+                "features": ["forest"],
+                "yields": {"food": 2, "production": 1},
+            },
             (1, 1): {"type": "plains", "features": [], "yields": {"food": 1, "production": 1}},
         },
         "units": [
@@ -167,9 +170,12 @@ async def test_civ6_mcts_policy_select_action(mock_converted_state: dict) -> Non
     config = GumbelMCTSConfig(num_simulations=2)
     policy = Civ6MctsPolicy(network=MagicMock(), config=config)
 
-    # Mock the internal MCTS search to avoid actual network/tree expansion
-    mock_search_stats = {"root_value": 0.75}
-    policy.mcts.search = MagicMock(return_value=(42, mock_search_stats))  # type: ignore
+    # Mock the internal MCTS search to avoid actual network/tree expansion.
+    # GumbelMCTS.search returns (policy_probs, root_value) — mirror the real
+    # contract so this test catches unpack drift in select_action.
+    mock_policy_probs = np.zeros(64, dtype=np.float32)
+    mock_policy_probs[42] = 1.0
+    policy.mcts.search = MagicMock(return_value=(mock_policy_probs, 0.75))  # type: ignore
 
     obs = {"spatial": np.zeros((13, 8, 8)), "vector": np.zeros(64)}
     mask = np.ones(10)

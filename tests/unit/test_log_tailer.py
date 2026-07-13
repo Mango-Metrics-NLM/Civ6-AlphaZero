@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import tempfile
 import time
 from pathlib import Path
 
@@ -21,7 +19,6 @@ from alpha_zero.bridge.log_tailer import (
     LogTailerError,
     StateTimeoutError,
 )
-
 
 # --- Fixtures ---
 
@@ -287,8 +284,9 @@ class TestAsyncOperations:
                 state = {"turn_id": 15, "map": {"tiles": []}}
                 _write_line(tmp_log, f'AlphaZeroMain: AZ_STATE:{json.dumps(state)}')
 
-            asyncio.create_task(write_state())
+            writer = asyncio.create_task(write_state())
             result = await tailer.wait_for_state(timeout=2.0)
+            await writer
             assert result["turn_id"] == 15
 
     async def test_wait_for_ack_timeout(self, tmp_log: Path) -> None:
@@ -304,8 +302,9 @@ class TestAsyncOperations:
                 ack = {"msg_id": 42, "success": True}
                 _write_line(tmp_log, f'AlphaZeroMain: AZ_ACK:{json.dumps(ack)}')
 
-            asyncio.create_task(write_ack())
+            writer = asyncio.create_task(write_ack())
             result = await tailer.wait_for_ack(msg_id=42, timeout=2.0)
+            await writer
             assert result["success"] is True
 
     async def test_wait_for_ack_already_received(self, tmp_log: Path) -> None:
@@ -353,8 +352,9 @@ class TestAsyncOperations:
                 _write_line(tmp_log, f"AlphaZeroMain: AZ_STATE_CHUNK:2/2:{full_json[mid:]}")
                 _write_line(tmp_log, "AlphaZeroMain: AZ_STATE_END:2")
 
-            asyncio.create_task(write_chunks())
+            writer = asyncio.create_task(write_chunks())
             result = await tailer.wait_for_state(timeout=2.0)
+            await writer
             assert result["turn_id"] == 77
 
     async def test_mixed_lines_processed(self, tmp_log: Path) -> None:
@@ -410,7 +410,7 @@ class TestReadNewLinesEdgeCases:
     ) -> None:
         """If the log file vanishes between polls (os.path.getsize raises
         OSError), the read is skipped rather than crashing the poll loop."""
-        tailer._file = open(tmp_log, "r", encoding="utf-8")
+        tailer._file = open(tmp_log, encoding="utf-8")
         try:
             def _raise_oserror(path):
                 raise OSError("file vanished")
@@ -432,7 +432,7 @@ class TestReadNewLinesEdgeCases:
             f.write("\n")
             f.write(f'AZ_HB:{json.dumps({"lua_alive": True})}\n')
 
-        tailer._file = open(tmp_log, "r", encoding="utf-8")
+        tailer._file = open(tmp_log, encoding="utf-8")
         try:
             tailer._read_new_lines()
         finally:

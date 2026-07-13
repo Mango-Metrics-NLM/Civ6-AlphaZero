@@ -242,7 +242,7 @@ class TestTournamentRobustness:
         p2 = PlayerStats(player_id="weak", rating=500)
 
         # Process match - strong player wins
-        update1, update2 = elo.process_game_result(p1, p2, MatchOutcome.WIN, config)
+        update1, _update2 = elo.process_game_result(p1, p2, MatchOutcome.WIN, config)
 
         # Changes should be small (expected win)
         assert abs(update1.rating_change) < 5

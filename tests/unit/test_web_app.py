@@ -18,11 +18,11 @@ import pytest
 
 pytest.importorskip("fastapi", reason="fastapi not installed")
 
-from fastapi import FastAPI  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
-from alpha_zero.web.config import WebConfig  # noqa: E402
-from alpha_zero.web.routes.replay import create_replay_router  # noqa: E402
+from alpha_zero.web.config import WebConfig
+from alpha_zero.web.routes.replay import create_replay_router
 
 # ---------------------------------------------------------------------------
 # Fixtures

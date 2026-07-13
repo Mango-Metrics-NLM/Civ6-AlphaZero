@@ -1,19 +1,19 @@
 {
     "last_session_id": "session_01AAR7bMpmkZtman9kFaeqft",
-    "last_timestamp": "2026-07-13T00:20:20Z",
+    "last_timestamp": "2026-07-13T01:06:31Z",
     "active_branch": "claude/project-charter-template-b4n9fu",
-    "current_focus": "Handed off to Pre-PR — project charter instantiation (docs-only)",
+    "current_focus": "Handed off to Pre-PR \u2014 charter + gap-analysis/tech-debt sweep (PR #91)",
     "resume_pointers": {
-        "current_task": "Pre-PR validation of PROJECT_CHARTER.md + ROADMAP.md + template",
+        "current_task": "Monitor PR #91 CI (coverage gate now 85, big lint/type diff)",
         "blocked_on": [],
         "next_steps": [
-            "Pre-PR: confirm CI green on the docs-only PR (no code touched)",
-            "Follow-up: reconcile CLAUDE.md v1.7.0 footer with v1.8.0 CHANGELOG/README",
-            "Follow-up: fix pre-existing ruff C420 in alpha_zero/multiplayer/mcts.py:310"
+            "Verify CI green on PR #91 (85% coverage gate + revived bridge tests)",
+            "Follow-up debt: W&B->MLflow sweep (cloud/, pbt/, evaluation/, optimizations/)",
+            "Follow-up debt: shrink coverage omit list (serving/, inference/, cloud infra)"
         ]
     },
     "context_files": [
-        "kb/specs/20260713-project-charter.md",
+        "kb/handoffs/20260713-devsqe-to-prepr-gap-analysis.md",
         "kb/handoffs/20260713-devsqe-to-prepr-project-charter.md",
         "PROJECT_CHARTER.md",
         "ROADMAP.md"

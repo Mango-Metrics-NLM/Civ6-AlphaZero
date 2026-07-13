@@ -1,5 +1,16 @@
 # DEV-SQE Session Log
 
+## 2026-07-13 - Gap Analysis + Tech-Debt Sweep (coverage 85% gate, ruff-to-zero, mypy semantic fixes)
+- **Session:** session_01AAR7bMpmkZtman9kFaeqft (same session as charter, second batch)
+- **Task:** Branch-wide gap analysis and tech-debt enforcement: coverage gate 80→85 (CI measured 89.69%, local re-verified 88.88%), ruff 292→0 across alpha_zero/tests/scripts/infra, all semantic mypy errors fixed (180→157; rest is version noise), PR #91 review findings addressed
+- **Real bugs found & fixed:** (1) `Civ6MctsPolicy.select_action` unpacked `GumbelMCTS.search` as `(action, stats_dict)` but real contract is `(policy_probs, root_value)` — guaranteed AttributeError on the live `--mcts` bridge path; both test files had drifted mocks hiding it. (2) `tests/unit/test_bridge_file_bridge.py` duplicate `TestSendCommandWithRetry` class shadowed 14 tests (never ran; all pass revived). (3) `train_epoch` profiler annotated as `TrainingProfiler` but real API is `PerformanceProfiler`. (4) 7 dangling asyncio tasks in bridge tests.
+- **API improvements:** `GameBridge` Protocol in agent_loop.py (loop now transport-agnostic: FileBridge/LiveBridge/test doubles); `ActionConverter` accepts `Sequence` (covariance); `MCTSEnvironment.action_space`/`current_player` now read-only properties (backwards compatible).
+- **Key discovery:** torch IS installable in web sessions via plain PyPI (`pip install torch`) — only the download.pytorch.org index is blocked; CLAUDE.md §5.3 corrected. Full suite now runs locally.
+- **Tests:** 11,690 passed, 159 skipped, 1 xfailed, coverage 88.88% (85% gate green); 1 failure found in drifted mock, fixed, re-verified
+- **Lint/format:** ruff 0 errors (both 0.15.8 local and CI-pinned 0.8.0); `ruff format --check alpha_zero/` green under 0.8.0 (do NOT format file_bridge.py/transformer_network.py with newer ruff — version skew)
+- **Status:** complete — on branch `claude/project-charter-template-b4n9fu` (PR #91, now ready-for-review)
+- **Next:** monitor PR #91 CI; remaining debt: W&B→MLflow sweep, omit-list shrink, unused-ignore noise under newer mypy
+
 ## 2026-07-13 - Project Charter Instantiation (docs-only)
 - **Session:** session_01AAR7bMpmkZtman9kFaeqft
 - **Task:** Instantiate PROJECT_CHARTER.md (7 non-goals NG-1..NG-7, 7 enforced invariants, carve-out amendment protocol), add templates/PROJECT_CHARTER_TEMPLATE.md and ROADMAP.md (M1–M5 themes), pointer edits to CLAUDE.md (§6.1, §13) and README.md

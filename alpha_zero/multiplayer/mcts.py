@@ -307,7 +307,7 @@ class NPlayerMCTS:
             # Initialise all players to opponent value, then override current.
             # For >2 players, a scalar legacy network cannot distinguish
             # between opponents, so we share the negated value uniformly.
-            player_values = {p: -scalar_value for p in range(self.num_players)}
+            player_values = dict.fromkeys(range(self.num_players), -scalar_value)
             player_values[current_player] = scalar_value
         else:
             # Vector of per-player values

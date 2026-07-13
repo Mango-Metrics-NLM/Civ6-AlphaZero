@@ -121,14 +121,14 @@ reviewer — human or agent — can mechanically check compliance. Carve-outs ma
 scope; they may never relax an invariant.)*
 
 1. **Extensibility** — new MCTS variants, encoders, and storage backends are added
-   through the existing factory/registry seams (`create_mcts(...)` in
-   `alpha_zero/utils/factories.py`, the encoder registry,
+   through the existing factory/registry seams (the `create_mcts(...)` variant
+   registry in `alpha_zero/core/mcts_factory.py`, the encoder registry,
    `alpha_zero/storage/factory.py` against the abstract `StorageBackend`); callers are
    not edited per addition and do not branch on concrete component types.
 2. **Compatibility** — every code path runs on CPU-only Python ≥ 3.10 with Linux CI
    green; the documented Windows deselect list is the only permitted platform
    divergence.
-3. **Testability** — the full suite stays green with line coverage ≥ 80%, enforced by
+3. **Testability** — the full suite stays green with line coverage ≥ 85%, enforced by
    `fail_under` in `pyproject.toml` and the CI gate; new modules ship with tests, and
    the documented `[tool.coverage]` omit list is the only permitted exclusion.
 4. **Layering** — `alpha_zero/envs/` and the MCTS action-selection path perform no

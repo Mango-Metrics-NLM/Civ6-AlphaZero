@@ -472,7 +472,7 @@ class TestHexEncoderIntegration:
 
         # Forward with mask (first 100 actions valid, rest masked)
         with torch.no_grad():
-            policy_logits, value = network(spatial_input, vector_input, action_mask)
+            policy_logits, _value = network(spatial_input, vector_input, action_mask)
 
         # Check masked positions have very negative logits
         masked_logits = policy_logits[:, 100:]  # Actions 100-375 are masked

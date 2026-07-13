@@ -27,7 +27,7 @@ class TestPlayoutCapConfig:
 
     def test_validation_max_playouts(self):
         """Test validation of max_playouts."""
-        with pytest.raises(ValueError, match="max_playouts.*must be >= min_playouts"):
+        with pytest.raises(ValueError, match=r"max_playouts.*must be >= min_playouts"):
             PlayoutCapConfig(min_playouts=100, max_playouts=50)
 
     def test_validation_geometric_p(self):

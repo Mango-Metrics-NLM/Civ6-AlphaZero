@@ -930,7 +930,7 @@ class TestCivRealmWrapper:
 
     def test_wrapper_info_includes_turn(self, wrapper):
         """Test info dict includes turn info."""
-        obs, info = wrapper.reset()
+        _obs, info = wrapper.reset()
 
         assert "turn" in info
         assert "task" in info
@@ -1031,7 +1031,7 @@ class TestIntegration:
         )
         env = CivRealmWrapper(config)
 
-        obs, _info = env.reset()
+        _obs, _info = env.reset()
         total_reward = 0.0
         steps = 0
 
@@ -1040,7 +1040,7 @@ class TestIntegration:
             valid_actions = np.where(mask > 0)[0]
             action = np.random.choice(valid_actions)
 
-            _obs, reward, terminated, truncated, info = env.step(action)
+            _obs, reward, terminated, truncated, _info = env.step(action)
             total_reward += reward
             steps += 1
 
@@ -1058,13 +1058,13 @@ class TestIntegration:
 
         # Play several episodes
         for _ in range(3):
-            obs, _info = env.reset()
+            _obs, _info = env.reset()
 
             # Quick game
             for _ in range(5):
                 mask = env.get_valid_actions()
                 action = np.argmax(mask)  # Just pick first valid
-                _obs, _reward, terminated, truncated, info = env.step(action)
+                _obs, _reward, terminated, truncated, _info = env.step(action)
                 if terminated or truncated:
                     break
 

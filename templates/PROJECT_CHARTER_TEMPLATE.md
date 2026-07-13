@@ -12,7 +12,7 @@
 > **Status: STABLE / SLOW-CHANGING.** This document is the north-star that humans and AI
 > agents (and sub-agents) read first to stay on track. It changes rarely and only by
 > deliberate decision — not per task. Day-to-day, changeable work lives in
-> `NEXTSTEPS.md`; architecture detail in `C4.md` / `ARCHITECTURE.md`. If a task seems to
+> `NEXT_STEPS.md`; architecture detail in `C4.md` / `ARCHITECTURE.md`. If a task seems to
 > require changing this charter, **stop and raise it explicitly** rather than editing it
 > in passing.
 >
@@ -31,7 +31,7 @@ it will not cross, and the current amendment posture.)*
 > {PROJECT_NAME} is a {one-line system description} for {primary user/operator}. It does
 > {core capability} and deliberately does **not** do {hardest non-goal}. The charter has
 > {N} active carve-outs against a budget of {B}; the last full charter review was
-> {DATE}. Execution detail lives in NEXTSTEPS.md; this document defines intent,
+> {DATE}. Execution detail lives in NEXT_STEPS.md; this document defines intent,
 > boundaries, and invariants only.
 
 ---
@@ -106,7 +106,7 @@ scope; they may never relax an invariant.)*
 
 - Read this **before** planning a task; keep changes consistent with §3 scope and §4
   invariants.
-- Put concrete, changeable to-dos in `NEXTSTEPS.md`, not here.
+- Put concrete, changeable to-dos in `NEXT_STEPS.md`, not here.
 - When a change would violate an invariant or expand scope, **surface it for a human
   decision** — do not implement first and ratify later.
 - Agents must treat the §7 budgets as hard constraints: if a proposed task requires a

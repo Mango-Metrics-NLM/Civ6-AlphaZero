@@ -344,7 +344,7 @@ def plot_loss_curves(summary: RunSummary, output_path: Path, labels: tuple[str, 
         output_path: Path to save plot
         labels: Tuple of (label_a, label_b) for legend
     """
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    _fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 
     metrics_a = summary.run_a_metrics
     metrics_b = summary.run_b_metrics
@@ -392,7 +392,7 @@ def plot_win_rates(summary: RunSummary, output_path: Path, labels: tuple[str, st
         output_path: Path to save plot
         labels: Tuple of (label_a, label_b) for legend
     """
-    fig, ax = plt.subplots(figsize=(10, 6))
+    _fig, ax = plt.subplots(figsize=(10, 6))
 
     metrics_a = summary.run_a_metrics
     metrics_b = summary.run_b_metrics
@@ -440,7 +440,7 @@ def plot_cost_comparison(summary: RunSummary, output_path: Path, labels: tuple[s
         output_path: Path to save plot
         labels: Tuple of (label_a, label_b) for legend
     """
-    fig, ax = plt.subplots(figsize=(10, 6))
+    _fig, ax = plt.subplots(figsize=(10, 6))
 
     metrics_a = summary.run_a_metrics
     metrics_b = summary.run_b_metrics
@@ -488,7 +488,7 @@ def plot_iteration_duration(
         output_path: Path to save plot
         labels: Tuple of (label_a, label_b) for legend
     """
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    _fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
     metrics_a = summary.run_a_metrics
     metrics_b = summary.run_b_metrics
@@ -576,7 +576,7 @@ def plot_elo_comparison(summary: RunSummary, output_path: Path, labels: tuple[st
         return False
 
     ncols = 2 if (has_a and has_b) else 1
-    fig, axes = plt.subplots(1, ncols, figsize=(7 * ncols, 6))
+    _fig, axes = plt.subplots(1, ncols, figsize=(7 * ncols, 6))
     if ncols == 1:
         axes = [axes]
 

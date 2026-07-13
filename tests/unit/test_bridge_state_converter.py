@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 
+from alpha_zero.bridge.config import GameConstants
 from alpha_zero.bridge.protocol import (
     CityData,
     GameStateData,
@@ -35,7 +36,6 @@ from alpha_zero.bridge.state_converter import (
     TerrainMapping,
     UnitMapping,
 )
-from alpha_zero.bridge.config import GameConstants
 
 # ---------------------------------------------------------------------------
 # Helpers to build minimal game state data

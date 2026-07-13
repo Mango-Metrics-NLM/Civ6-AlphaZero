@@ -27,7 +27,7 @@ def fetch_worker_logs(job_id: str, page_size: int = 50) -> int:
     Returns the count of entries printed (0 if no entries were found
     under either the ``ml_job`` resource filter or the broad text search).
     """
-    import requests  # noqa: PLC0415
+    import requests
 
     body = {
         "resourceNames": [f"projects/{PROJECT}"],

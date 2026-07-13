@@ -541,7 +541,10 @@ class HierarchicalMCTS:
             while node.is_expanded:
                 if self.config.use_options and node.option_children:
                     # Option selection at higher levels
-                    _opt_id, node = node.select_option_child(self.config.c_puct)
+                    _opt_id, option_child = node.select_option_child(self.config.c_puct)
+                    if option_child is None:
+                        break
+                    node = option_child
                 else:
                     # Action selection
                     _, child = node.select_child(self.config.c_puct)
@@ -619,7 +622,10 @@ class HierarchicalMCTS:
 
             # Selection
             while node.is_expanded and node.option_children:
-                _opt_id, node = node.select_option_child(self.config.c_puct)
+                _opt_id, option_child = node.select_option_child(self.config.c_puct)
+                if option_child is None:
+                    break
+                node = option_child
                 node.virtual_loss += self.config.virtual_loss
                 depth += 1
 

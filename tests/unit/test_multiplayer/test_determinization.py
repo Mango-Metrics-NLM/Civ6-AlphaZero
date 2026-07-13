@@ -84,7 +84,7 @@ def _make_base_mcts(
         mock.search.side_effect = RuntimeError("MCTS exploded")
     else:
         probs = np.ones(action_size) / action_size
-        values = {p: 0.0 for p in range(num_players)}
+        values = dict.fromkeys(range(num_players), 0.0)
         mock.search.return_value = (probs, values)
     return mock
 
@@ -731,7 +731,7 @@ class TestDeterminizedMCTSSearch:
         env = _make_env(action_size=action_size, num_players=2)
 
         det = DeterminizedMCTS(base_mcts, cfg, sampler)
-        probs, values = det.search(env, game_state, player=0, fog_manager=fog_manager)
+        probs, _values = det.search(env, game_state, player=0, fog_manager=fog_manager)
 
         # Max = [0.8, 0.8, 0.1]; sum=1.7; normalized
         expected = np.array([0.8, 0.8, 0.1])

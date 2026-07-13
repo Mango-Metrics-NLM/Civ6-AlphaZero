@@ -30,7 +30,6 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 from pathlib import Path
@@ -42,6 +41,7 @@ import pytest_asyncio  # noqa: F401 – imported to ensure marker registration
 
 from alpha_zero.bridge.config import BridgeConfig
 from alpha_zero.bridge.file_bridge import (
+    _MAX_RETRY_BACKOFF_SECONDS,
     AckTimeoutError,
     BridgeStats,
     ConnectionLostError,
@@ -49,16 +49,13 @@ from alpha_zero.bridge.file_bridge import (
     FileBridgeError,
     MockFileBridge,
     StateTimeoutError,
-    _MAX_RETRY_BACKOFF_SECONDS,
 )
 from alpha_zero.bridge.protocol import (
     ActionType,
-    AckMessage,
     CommandMessage,
     ErrorCode,
     LuaCommand,
     Position,
-    StateMessage,
     create_city_produce_command,
     create_end_turn_command,
     create_unit_move_command,
@@ -826,7 +823,7 @@ class TestValidateStateJson:
     def test_accepts_turn_alias(self) -> None:
         """validate_state_json should accept 'turn' as an alias for 'turn_id'."""
         data = {"turn": 2, "map": {"width": 10, "height": 10}}
-        ok, err = validate_state_json(json.dumps(data))
+        ok, _err = validate_state_json(json.dumps(data))
         assert ok is True
 
 
@@ -859,8 +856,8 @@ class TestBridgeStats:
 # ---------------------------------------------------------------------------
 
 
-class TestSendCommandWithRetry:
-    """Tests for FileBridge.send_command_with_retry()."""
+class TestSendCommandWithRetryIntegration:
+    """Integration tests for FileBridge.send_command_with_retry()."""
 
     @pytest.mark.asyncio
     async def test_success_on_first_attempt(self, bridge: FileBridge) -> None:

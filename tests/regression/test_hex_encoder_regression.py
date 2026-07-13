@@ -186,7 +186,7 @@ class TestPatchEmbedUnchanged:
         vector_input: torch.Tensor,
     ) -> None:
         network = Civ6TransformerNetwork(config=patch_embed_config)
-        probs, value = network.predict(spatial_input, vector_input)
+        probs, _value = network.predict(spatial_input, vector_input)
 
         assert probs.shape == (4, 376)
         # Must sum to ~1 per sample

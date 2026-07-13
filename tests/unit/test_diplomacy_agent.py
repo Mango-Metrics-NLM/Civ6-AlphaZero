@@ -464,7 +464,7 @@ class TestDiplomacyAgentWithMockedLLM:
                 "rationale": "Mutual benefit",
             }
         )
-        agent, mock = self._make_agent_with_mock(gen_response=response_json)
+        agent, _mock = self._make_agent_with_mock(gen_response=response_json)
         result = asyncio.run(agent.generate_proposal(_make_game_state(), player_id=0, target_id=1))
 
         assert result is not None

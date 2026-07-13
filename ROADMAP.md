@@ -8,11 +8,11 @@
 
 | Theme | Name | Status |
 |-------|------|--------|
-| [M1](#m1--learning-core) | Learning Core | ✅ Delivered |
-| [M2](#m2--scale--observability) | Scale & Observability | ✅ Delivered |
-| [M3](#m3--live-game-bridge) | Live Game Bridge | ✅ Delivered |
-| [M4](#m4--multiplayer--throughput) | Multiplayer & Throughput | 🔄 Active |
-| [M5](#m5--full-civ6-mastery) | Full Civ6 Mastery | ⏳ Future |
+| M1 | Learning Core | ✅ Delivered |
+| M2 | Scale & Observability | ✅ Delivered |
+| M3 | Live Game Bridge | ✅ Delivered |
+| M4 | Multiplayer & Throughput | 🔄 Active |
+| M5 | Full Civ6 Mastery | ⏳ Future |
 
 ## M1 — Learning Core
 
@@ -57,7 +57,7 @@ Make N-player training real and self-play fast; pay down debt. *(Active.)*
   and re-enable the disabled suites; add fixtures for the skipped hierarchical /
   state-extraction / training-smoke tests.
 - Bring omitted modules (`serving/`, `inference/`, cloud infra) under the coverage
-  gate and re-tighten 80% → 85%.
+  gate (re-tightened 80% → 85% on 2026-07-13; omit-list shrink remains).
 
 ## M5 — Full Civ6 Mastery
 

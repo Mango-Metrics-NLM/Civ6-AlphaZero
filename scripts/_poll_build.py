@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 def poll(build_id: str) -> int:
     """Print build status / steps / log URL. Returns 0 on success."""
-    import requests  # noqa: PLC0415
+    import requests
 
     url = f"{CLOUDBUILD_API_BASE}/builds/{build_id}"
     resp = requests.get(url, headers=auth_headers(), timeout=15)

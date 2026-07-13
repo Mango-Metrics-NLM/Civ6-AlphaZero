@@ -239,8 +239,8 @@ class TestBatchGumbelMCTS:
         mcts = BatchGumbelMCTS(mock_network, config=config)
 
         # Should not raise even though add_noise is ignored
-        action_probs1, value1 = mcts.search(test_env, add_noise=True)
-        action_probs2, value2 = mcts.search(test_env, add_noise=False)
+        action_probs1, _value1 = mcts.search(test_env, add_noise=True)
+        action_probs2, _value2 = mcts.search(test_env, add_noise=False)
 
         # Both should return valid results
         assert action_probs1.shape == (test_env.action_space.n,)
@@ -291,7 +291,7 @@ class TestBatchGumbelMCTS:
 
         # Empty list causes max() on empty iterable in sequential halving
         with pytest.raises(
-            ValueError, match="max\\(\\) (arg is an empty sequence|iterable argument is empty)"
+            ValueError, match=r"max\(\) (arg is an empty sequence|iterable argument is empty)"
         ):
             mcts.batch_search([])
 
@@ -303,7 +303,7 @@ class TestBatchGumbelMCTS:
         results = mcts.batch_search([test_env])
 
         assert len(results) == 1
-        action_probs, root_value = results[0]
+        action_probs, _root_value = results[0]
         assert action_probs.shape == (test_env.action_space.n,)
         assert np.isclose(action_probs.sum(), 1.0, atol=1e-6)
 
@@ -416,7 +416,7 @@ class TestBatchGumbelMCTS:
         )
         mcts = BatchGumbelMCTS(mock_network, config=config)
 
-        action_probs, root_value = mcts.search(test_env)
+        action_probs, _root_value = mcts.search(test_env)
 
         assert action_probs.shape == (test_env.action_space.n,)
         assert np.isclose(action_probs.sum(), 1.0, atol=1e-6)
@@ -429,7 +429,7 @@ class TestBatchGumbelMCTS:
         )
         mcts = BatchGumbelMCTS(mock_network, config=config)
 
-        action_probs, root_value = mcts.search(test_env)
+        action_probs, _root_value = mcts.search(test_env)
 
         assert action_probs.shape == (test_env.action_space.n,)
         assert np.isclose(action_probs.sum(), 1.0, atol=1e-6)

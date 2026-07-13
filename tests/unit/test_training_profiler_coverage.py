@@ -302,7 +302,7 @@ class TestTrainingProfiler:
         # Record enough steps with moderate diminishing returns
         for i in range(50):
             prof.record_step(step=i, iteration=0, loss=1.0 - i * 0.003)
-        stop, reason = prof.should_stop_early()
+        stop, _reason = prof.should_stop_early()
         # May or may not stop depending on exact rates
         assert isinstance(stop, bool)
 

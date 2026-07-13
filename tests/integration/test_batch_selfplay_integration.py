@@ -96,7 +96,7 @@ class TestVectorizedEnvLifecycle:
             valid = np.where(action_mask[i] > 0)[0]
             actions[i] = valid[0] if len(valid) > 0 else 0
 
-        rewards, terminated, truncated, infos = vec_env.step_all(actions)
+        rewards, terminated, truncated, _infos = vec_env.step_all(actions)
         assert rewards.shape == (4,)
         assert terminated.shape == (4,)
         assert truncated.shape == (4,)

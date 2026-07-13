@@ -316,7 +316,7 @@ class TestFullGameSimulation:
 
     def test_complete_game_with_simple_mcts(self, small_env, simple_mcts):
         """Play a full game using SimpleMCTS until termination."""
-        obs, _ = small_env.reset()
+        _obs, _ = small_env.reset()
         steps = 0
         max_steps = 500  # Prevent infinite loop
 
@@ -339,7 +339,7 @@ class TestFullGameSimulation:
 
     def test_complete_game_with_neural_mcts(self, small_env, small_network, neural_mcts):
         """Play a full game using neural network MCTS."""
-        obs, _ = small_env.reset()
+        _obs, _ = small_env.reset()
         steps = 0
         max_steps = 200  # Reduced for speed
 
@@ -365,7 +365,7 @@ class TestFullGameSimulation:
 
     def test_game_produces_winner_or_draw(self, small_env, simple_mcts):
         """Verify games end with valid outcome."""
-        obs, _ = small_env.reset()
+        _obs, _ = small_env.reset()
         max_steps = 500
 
         for _ in range(max_steps):
