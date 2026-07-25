@@ -168,7 +168,7 @@ mlflow ui --backend-store-uri ./mlruns --port 5000   # inspect training runs
 make test            # unit tests
 make test-all        # full suite with coverage
 make lint            # ruff
-make typecheck       # mypy (advisory)
+make typecheck       # mypy (blocking in CI)
 make validate        # governance validators (openspec, kb, skills)
 make eval-llm        # LLM eval gate (offline)
 make hooks-install   # install the git pre-commit / pre-push hooks

@@ -1198,22 +1198,45 @@ project has since shipped through v1.8.0:
 
 ### Implemented (substantially built)
 - **PBT**: `alpha_zero/pbt/` (10 files) · **Tournament**: `alpha_zero/tournament/` (9 files)
-- **Web Interface**: `alpha_zero/web/` (12 files) · **Civ6 Bridge**: `alpha_zero/bridge/` (9 files)
+- **Web Interface**: `alpha_zero/web/` (12 files) · **Civ6 Bridge**: `alpha_zero/bridge/` (15 files)
 - **Hierarchical Planning**: `alpha_zero/hierarchical/` (19 files)
 - **MuZero**: `alpha_zero/core/muzero_network.py`, `training/muzero_*`
 - **N-Player Multiplayer**: `alpha_zero/multiplayer/` (18 files)
 - **Inference/Serving**: `alpha_zero/inference/` (4 files), `alpha_zero/serving/` (FastAPI server)
 
 ### Genuine Next Steps
-1. **N-player MicroCiv**: Fix hardcoded 2-player env (gaps G7/G8/G9)
-2. **DDP test fixes**: Re-enable the 12 xfailed distributed tests (`tests/unit/test_distributed`)
-3. **Batch self-play in cloud**: Wire BatchGumbelMCTS into cloud containers (5-10x throughput)
-4. **Fog of war**: Information set sampling for partial observability (gap G10)
-5. **Coverage**: Bring omitted modules (`serving/`, `inference/`, cloud infra) under the gate so it
+
+> Two previously-listed items were deleted on 2026-07-25 as untrue. **N-player
+> MicroCiv** (former item 1) landed on 2026-07-05 — `training_civ6.py` threads
+> `num_players` end-to-end, covered by `tests/unit/test_nplayer_training_pipeline.py`
+> and two integration suites; §5.3 already recorded this and §13 had not been
+> updated in lockstep. **"12 xfailed DDP tests"** (former item 2) never existed:
+> `tests/unit/test_distributed/` is not a directory, the DDP suites are flat
+> `tests/unit/test_distributed_*.py` files, and the repo contains exactly one
+> `xfail` (`tests/integration/test_phase2.py:381`) plus one CUDA `skipif`.
+
+1. **Batch self-play in cloud**: ~70% done, not unstarted. `BatchGumbelMCTS`
+   (`core/batch_mcts.py`) + `VectorizedMicroCivEnv` are fully wired into
+   `cloud/gcp/selfplay_worker.py:run_batch_selfplay()` and tested. What remains:
+   no config sets `mcts_type: batch_gumbel`, `dockerfiles/Dockerfile.selfplay`
+   entrypoints the *other* worker (`cloud/selfplay_worker.py`, which hardcodes
+   `SimpleMCTS`), and the claimed 5-10x has no benchmark artifact.
+2. **Fog of war** (gap G10): partly done. Fog is implemented in `MicroCivEnv`
+   (flag, default off) and the encoder; `DeterminizedMCTS`
+   (`multiplayer/determinization.py`) is written and tested but has **zero call
+   sites**. Remaining: wire it into self-play, expose a fog flag from
+   `training_civ6.py`, and fix the action-mask information leak
+   (`envs/microciv.py:843-848` masks the observation but recomputes the mask
+   from unmasked state).
+3. **Coverage**: Bring omitted modules (`serving/`, `inference/`, cloud infra) under the gate so it
    can keep tightening (gate re-tightened 80% → 85% on 2026-07-13 at 89.69% measured; omit-list
    shrink is the remaining work); `serving/` now has unit tests but stays omitted (needs the `web` extra,
    absent from the default-CI `[dev]` install)
-6. **Full Civ6 integration**: Continue scaling the Lua mod bridge toward the real game
+4. **Full Civ6 integration**: the bridge is the most complete subsystem here
+   (15 files / 9,127 Python lines + 7,355 Lua, all 17 action types implemented,
+   no TODOs) — not "continue scaling" from scratch. Remaining: sustained
+   multi-turn live validation (only 4 turns verified, on random weights) and
+   the `UncivInterface.parse_multiplayer_save` stub.
 
 ---
 
