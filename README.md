@@ -138,9 +138,8 @@ python -m alpha_zero.training_civ6 --dry_run   # MicroCiv training smoke test
 | `run_sweep.py` | Optuna hyperparameter sweep |
 | `run_muzero_training.py` | MuZero training (Gumbel MCTS, learned dynamics) |
 | `run_enhanced_training.py` | Training with tuned rewards |
-| `run_debug_selfplay.py` | Short self-play session with debug output |
 | `run_civ6_ai.py` | Launcher wrapper |
-| `inspect_db.py` | Inspect the tournament database |
+| `scripts/inspect_db.py` | Inspect the tournament database |
 
 ### Live Civilization VI
 

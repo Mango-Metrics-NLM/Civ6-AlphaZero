@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed — Dead-code deletions, hygiene sweep (2026-07-25)
+- `alpha_zero/cloud/gcp/cost_optimization.py` (644 ln) and
+  `alpha_zero/cloud/gcp/lifecycle_cli.py` (570 ln) — zero importers; the former
+  overlapped `gcp/cost.py`/`gcp/cost_monitor.py`.
+- `alpha_zero/inference/api_server.py` (326 ln) — unused duplicate of
+  `alpha_zero/serving/inference_server.py`; docs re-pointed at the real server.
+- `run_debug_selfplay.py` (1,432 ln) — untested, unreferenced root runner.
+- `scripts/analyze_training_run.py` — hardcoded-path throwaway that shadowed the
+  maintained `scripts/analyse_training_run.py` by near-identical name.
+- `scripts/validate_v130_training.py` — v1.3.0-era shim already superseded by
+  `scripts/validate_convergence.py`.
+- Two long-skipped `--model_version` test classes in
+  `tests/cloud/unit/test_training_worker.py` (6 tests) whose own docstrings said
+  "can be deleted in v1.7.0" (project is at v1.8.0); superseded by
+  `tests/integration/test_training_resume_continuity.py`.
+- `inspect_db.py` moved to `scripts/inspect_db.py` (kept; was misplaced at root).
+
 ### Changed — Code hygiene sweep (2026-07-25)
 - **Config truth**: dropped the orphaned per-file-ignore for deleted
   `tests/unit/test_pbt_dashboarding.py` and the stale coverage-omit glob

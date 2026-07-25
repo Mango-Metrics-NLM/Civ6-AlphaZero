@@ -101,7 +101,7 @@ repro and acceptance criteria:
 ### Track A — Reconcile & unblock (do first; low-risk, high-leverage)
 1. **Docs:** apply the §1 corrections (this doc + CLAUDE.md §5.3 rows + NEXT_STEPS header). _Done in this change._
 2. **PR #72:** review and land the champion-load fix — it gates the stated #1 priority.
-3. **Then** run the existing local convergence gate: `python scripts/validate_convergence.py --iterations=5 --games=10` (exists; `validate_v130_training.py` is a deprecated shim that delegates to it) and confirm loss↓ / win-rate↑.
+3. **Then** run the existing local convergence gate: `python scripts/validate_convergence.py --iterations=5 --games=10` (exists; the `validate_v130_training.py` shim that delegated to it was deleted 2026-07-25) and confirm loss↓ / win-rate↑.
 
 ### Track B — Make a shipped feature real (self-contained, verifiable)
 4. Fix `ISSUE_editable_install_submodule_discovery` (packaging) → the chess entry point runs.
