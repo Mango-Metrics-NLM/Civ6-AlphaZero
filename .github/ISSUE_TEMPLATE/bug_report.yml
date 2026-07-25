@@ -1,0 +1,35 @@
+name: Bug report
+description: Report a defect in Civ6 AlphaZero
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, including the expected vs actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal commands or steps that trigger the bug.
+      placeholder: |
+        1. python -m alpha_zero.orchestrator --preset fast --dry_run
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `python -c "import alpha_zero; print(alpha_zero.__version__)"`.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment & config
+      description: OS, Python version, relevant config/preset, and any traceback.
+    validations:
+      required: false
