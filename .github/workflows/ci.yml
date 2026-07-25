@@ -44,8 +44,10 @@ jobs:
       - name: Run ruff formatter check
         run: ruff format --check .
 
+      # Blocking since 2026-07-25 (harden-lint-and-type-gates): errors were
+      # burned down 130 -> 0 and the advisory step ran green in this exact
+      # environment (run 30169685310) before the flip.
       - name: Run mypy type checker
-        continue-on-error: true
         run: mypy alpha_zero/ --show-error-codes
 
   test:

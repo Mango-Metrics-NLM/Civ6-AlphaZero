@@ -30,8 +30,8 @@
       >300 stop and report)
 - [x] 3.3 (M) Burn down mechanical errors (`unused-ignore`, bare ignores)
 - [x] 3.4 (M) Burn down semantic errors per package, tests run per commit
-- [ ] 3.5 (S) Remove `continue-on-error: true` from the mypy step after one
-      green advisory CI run; update CLAUDE.md §4.1 invocation
+- [x] 3.5 (S) Removed `continue-on-error: true` after the advisory step ran
+      green in the canonical env (CI run 30169685310); CLAUDE.md §4.1 updated
 
 ## 4. Test-scope + eval-harness (measured)
 
