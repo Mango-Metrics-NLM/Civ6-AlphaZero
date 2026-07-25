@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — Code hygiene sweep (2026-07-25)
+- **Config truth**: dropped the orphaned per-file-ignore for deleted
+  `tests/unit/test_pbt_dashboarding.py` and the stale coverage-omit glob
+  `alpha_zero/orchestrator/reflection_*.py` (matched nothing) from both omit
+  lists; added the missing `mlflow<3.0` upper bound to the `monitoring` extra
+  (its comment always promised 2.x); corrected the `UP038` ignore comment (the
+  rule is still active at the pinned ruff 0.8.0 — 27 violations — so the ignore
+  stays until the pin upgrade).
+- **Doc truth**: corrected CLAUDE.md §5.3's static-skip figure (~20 W&B-related →
+  measured 11 skip sites / 17 tests, none W&B-related).
+
 ### Added — Enterprise documentation overhaul & governance gates (2026-07-25)
 - **OpenSpec adoption**: `openspec/` spec-driven change directory (project.md,
   AGENTS.md, baseline specs for `agent-harness` / `kb-workflow`, and the
