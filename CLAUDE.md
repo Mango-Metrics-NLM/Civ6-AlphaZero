@@ -606,7 +606,7 @@ Civ6-AlphaZero/
 │   ├── optimizations/         # Training optimization strategies (9 files)
 │   ├── opponents/             # Opponent types & strategies (4 files)
 │   ├── spacetimedb/           # SpacetimeDB integration (9 files)
-│   ├── inference/             # Inference service: server/client/engine/schemas (5)
+│   ├── inference/             # Inference service: client/engine/schemas (4)
 │   ├── serving/               # FastAPI inference server (2 files; web extra,
 │   │                           #   omitted from the default coverage gate — see §B/known issues)
 │   ├── human_interface/       # Human gameplay interface (6 files)
@@ -1202,7 +1202,7 @@ project has since shipped through v1.8.0:
 - **Hierarchical Planning**: `alpha_zero/hierarchical/` (19 files)
 - **MuZero**: `alpha_zero/core/muzero_network.py`, `training/muzero_*`
 - **N-Player Multiplayer**: `alpha_zero/multiplayer/` (18 files)
-- **Inference/Serving**: `alpha_zero/inference/` (5 files), `alpha_zero/serving/` (FastAPI server)
+- **Inference/Serving**: `alpha_zero/inference/` (4 files), `alpha_zero/serving/` (FastAPI server)
 
 ### Genuine Next Steps
 1. **N-player MicroCiv**: Fix hardcoded 2-player env (gaps G7/G8/G9)

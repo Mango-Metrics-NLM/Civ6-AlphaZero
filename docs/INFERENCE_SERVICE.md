@@ -41,7 +41,7 @@ The inference service provides real-time MCTS-based predictions for Civ6 gamepla
 
 ### Components
 
-1. **FastAPI Server** (`api_server.py`)
+1. **FastAPI Server** (`alpha_zero/serving/inference_server.py`)
    - RESTful API endpoints
    - Async request handling
    - Health checks and metrics
@@ -497,7 +497,7 @@ print(f"Current version: {health.model_version}")
 Add API key authentication:
 
 ```python
-# Server side (add to api_server.py)
+# Server side (add to alpha_zero/serving/inference_server.py)
 from fastapi.security import HTTPBearer
 
 security = HTTPBearer()

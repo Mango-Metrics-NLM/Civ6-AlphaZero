@@ -45,8 +45,9 @@ The entire `alpha_zero/` tree has only:
   deferred to "Phase 3+"). This is the real gap for live multiplayer connection.
 - **1 intentional redirect:** `hierarchical/goals/goal_node.py:384` (`from_dict` → "use
   `GoalHierarchy.from_dict`"). Not missing work.
-- **3 placeholder telemetry values:** `inference/api_server.py:142/143/179`
-  (`active_sessions=0`, `cache_hit_rate=0.0`, `mcts_time_ms=total_time`).
+- ~~**3 placeholder telemetry values:** `inference/api_server.py:142/143/179`~~
+  (resolved 2026-07-25: `api_server.py` was an unused duplicate of
+  `serving/inference_server.py` and was deleted in the hygiene sweep).
 - **1 TODO:** `cloud/gcp/vertex_jobs.py:824` (multi-node rendezvous args, when needed).
 
 Everything else that pattern-matches as a "stub" (`...` bodies, `pass`) is legitimate
