@@ -22,8 +22,8 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "pytest-xdist>=3.0.0",
     "pytest-timeout>=2.2.0",
-    "mypy==1.13.0",
-    "ruff==0.8.0",
+    "mypy==1.19.1",
+    "ruff==0.15.8",
     "tqdm>=4.65.0",
     "types-tqdm>=4.65.0",
     "bandit>=1.7.0",
@@ -139,7 +139,6 @@ ignore = [
     "E501",    # Line length handled separately
     "ANN401",  # Any type allowed for duck typing with cloud SDKs
     "S101",    # Use of assert (needed for tests)
-    "UP038",   # isinstance(x, (A, B)) form kept; rule removed in ruff 0.15+ — drop this ignore with the pin upgrade
     "UP042",   # Prefer StrEnum over (str, Enum) — deferred refactor
 ]
 

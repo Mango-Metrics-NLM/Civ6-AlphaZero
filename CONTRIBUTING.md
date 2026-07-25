@@ -21,7 +21,7 @@ make hooks-install          # installs the pre-commit and pre-push git hooks
 ## Development loop
 
 ```bash
-make lint          # ruff (0.8.0, 100-char lines)
+make lint          # ruff (0.15.8, 100-char lines)
 make typecheck     # mypy (advisory)
 make test          # unit tests
 make test-all      # full suite with coverage

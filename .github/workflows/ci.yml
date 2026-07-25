@@ -23,7 +23,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install linting tools
-        run: pip install ruff==0.8.0 mypy==1.13.0 bandit==1.8.0
+        run: pip install ruff==0.15.8 mypy==1.19.1 bandit==1.8.0
 
       - name: Run ruff linter
         run: ruff check alpha_zero/ --output-format=github
@@ -146,7 +146,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install governance tools
-        run: pip install ruff==0.8.0 pytest
+        run: pip install ruff==0.15.8 pytest
 
       - name: Lint governance code
         run: >-

@@ -277,8 +277,7 @@ class FileBridge:
             # Python's own heartbeat has python_alive=True; ignore those.
             if not heartbeat.get("lua_alive", False):
                 logger.debug(
-                    "Heartbeat file exists but lua_alive not set — "
-                    "waiting for Civ6 mod to connect"
+                    "Heartbeat file exists but lua_alive not set — waiting for Civ6 mod to connect"
                 )
                 return False
 
