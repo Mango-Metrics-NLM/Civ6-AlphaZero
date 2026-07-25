@@ -48,3 +48,6 @@ kept for context, not actively updated; archived material lives in
 | [`../openspec/project.md`](../openspec/project.md) | OpenSpec project context | Current |
 | [`../openspec/AGENTS.md`](../openspec/AGENTS.md) | OpenSpec change workflow | Current |
 | [`../kb/README.md`](../kb/README.md) | Knowledge-base / handoff protocol | Current |
+| [`architecture/adr/README.md`](architecture/adr/README.md) | Architecture Decision Records | Reference |
+| [`prd/README.md`](prd/README.md) | Historical PRDs (superseded by OpenSpec) | Historical |
+| [`archive/README.md`](archive/README.md) | Archived / superseded documents | Historical |

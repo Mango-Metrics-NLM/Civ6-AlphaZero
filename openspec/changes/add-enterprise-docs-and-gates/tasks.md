@@ -43,9 +43,9 @@ active at that point.
 
 ## 5. Phase E — Enterprise files + Agent.md + archive sweep
 
-- [ ] 5.1 (M) E1: LICENSE, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, SUPPORT, CODEOWNERS, PR/issue templates, dependabot, 3 Agent.md, NAMING rebrand
-- [ ] 5.2 (M) E2: ``prd/README.md``, ``adr/`` index + ADR renames, runbook rename
-- [ ] 5.3 (L) E3: inbound-link grep; convert ISSUE_*.md to real issues; archive sweep + ``docs/archive/README.md`` + index relink
+- [x] 5.1 (M) E1: LICENSE (Phase D), CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, SUPPORT, CODEOWNERS, PR/issue templates, dependabot, 3 Agent.md
+- [x] 5.2 (M) E2: architecture consolidation (canonical + stubs + README), ``adr/`` index + numbered renames, ``prd/README.md``, GCP_INFRA + NEXT_STEPS consolidation
+- [x] 5.3 (L) E3: archive sweep (~19 files git mv → ``docs/archive/``) + ``docs/archive/README.md`` + docs index relink
 
 ## 6. Phase F — Close-out
 
