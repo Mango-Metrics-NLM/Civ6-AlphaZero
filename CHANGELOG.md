@@ -5,6 +5,28 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added — Enterprise documentation overhaul & governance gates (2026-07-25)
+- **OpenSpec adoption**: `openspec/` spec-driven change directory (project.md,
+  AGENTS.md, baseline specs for `agent-harness` / `kb-workflow`, and the
+  `add-enterprise-docs-and-gates` change with capability deltas).
+- **Deterministic validators** (stdlib-only, 0/1/2 exit contract, tested in
+  `tests/governance/`): `validate_openspec.py`, `validate_kb.py`,
+  `validate_skills.py`, `check_doc_sync.py`. Wired into Claude Code hooks,
+  `.pre-commit-config.yaml`, and a new CI `governance` job.
+- **Harness fixes**: deny `.env` edits and force-pushes; hook scripts replace the
+  fragile inline commands; the PostToolUse autofix now defers F401 **and** RUF100
+  so intentional `# noqa: F401` directives are preserved.
+- **Skills**: handoff skills gained YAML frontmatter and a validation gate; new
+  `openspec-propose`, `openspec-archive`, `doc-sync`, and `release` skills.
+- **Docs**: README rewritten to match the application (MLflow, Optuna, real
+  extras, `python -m` entry points, 85% gate); MIT `LICENSE`, `CONTRIBUTING.md`,
+  `SECURITY.md`, `CODE_OF_CONDUCT.md`, `SUPPORT.md`, `CODEOWNERS`, PR/issue
+  templates, and `dependabot.yml` added; `docs/` reorganized with an index,
+  numbered ADRs, a PRD status index, and ~19 stale artifacts moved to
+  `docs/archive/`. Version aligned to 1.8.0 across packaging and the package.
+
 ## [Unreleased] — W&B Retirement Sweep (2026-07-13)
 
 ### Changed — Experiment tracking is MLflow-only

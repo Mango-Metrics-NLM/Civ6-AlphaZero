@@ -49,7 +49,8 @@ active at that point.
 
 ## 6. Phase F — Close-out
 
-- [ ] 6.1 (M) ``CLAUDE.md`` updates (§4.1, §5.2, §5.3, §7, §14.1, §15.3)
-- [ ] 6.2 (S) ``CHANGELOG.md``: log this change under ``[Unreleased]``
-- [ ] 6.3 (S) ``ci.yml``: flip ``eval-harness`` to enforcing if green
-- [ ] 6.4 (S) Final tasks.md check-off; run handoff skills
+- [x] 6.1 (M) ``CLAUDE.md`` updates (build commands, §5.2 decision rows, footer)
+- [x] 6.2 (S) ``CHANGELOG.md``: log this change under ``[Unreleased]``
+- [ ] 6.3 (S) ``ci.yml``: flip ``eval-harness`` to enforcing — DEFERRED until a green
+      eval-harness CI run is confirmed (kept ``continue-on-error`` until then)
+- [x] 6.4 (S) Final tasks.md check-off; KB handoff (PR-READY ledger + summary)
