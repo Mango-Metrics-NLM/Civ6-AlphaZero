@@ -38,7 +38,9 @@
       "Bash(gsutil:*)",
       "Bash(kubectl:*)",
       "Edit(.env)",
-      "Edit(.env.local)"
+      "Edit(.env.local)",
+      "Write(.env)",
+      "Write(.env.local)"
     ]
   },
   "hooks": {

@@ -1296,7 +1296,13 @@ and git diff stats into the compacted context. Ensures workflow continuity acros
 ending a session that did meaningful work.
 
 **Permissions:** Common safe operations (pytest, ruff, mypy, git, pip, make) are pre-approved.
-Dangerous operations (writing .env, force-push, cloud ops) are denied.
+Dangerous operations are denied: `.env`/`.env.local` writes via the file tools
+(`Edit(.env)`+`Write(.env)` — `Edit` rules already cover the Write tool, and the
+explicit `Write` entries make the intent unambiguous), force-push (via
+`pretooluse_guard.sh`, allowing `--force-with-lease`), and cloud ops
+(gcloud/gsutil/kubectl/docker push). Note: a Bash-mediated write to `.env`
+(e.g. `echo > .env`) is not pattern-blocked; it is covered by convention and the
+guard's heuristic scope, not a sandbox.
 
 > **A note on "agents" and "tools" in this repo.** There is no `.claude/agents/` directory —
 > this project does not define custom Claude Code sub-agents. The word "agents" here refers to

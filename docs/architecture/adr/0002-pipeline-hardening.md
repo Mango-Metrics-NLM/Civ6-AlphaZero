@@ -1,6 +1,6 @@
 # ADR: Pipeline Hardening — Retry, Validation, and Observability
 
-**Status**: Proposed  
+**Status**: Accepted (shipped; recorded 2026-07-25)  
 **Date**: 2026-02-20  
 **Epics**: 2 (Backoff), 3 (Validation), 4 (Tests)
 

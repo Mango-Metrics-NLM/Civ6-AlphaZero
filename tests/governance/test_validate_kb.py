@@ -147,6 +147,10 @@ def test_path_mode_validates_single_ledger(tmp_path, monkeypatch, capsys):
     assert "K1" in capsys.readouterr().err
 
 
-def test_real_repo_ledger_is_grandfathered():
-    # The 12 historical lines must pass under the frozen grandfathering rules.
-    assert vk.main(["--no-git", "--quiet"]) == 0
+def test_pre_cutoff_legacy_entry_without_session_id_passes(tmp_path, monkeypatch):
+    # Grandfathering: a pre-cutoff entry may use a legacy event and omit session_id.
+    # (Covers what the removed real-repo smoke test asserted, without coupling to
+    # the live, growing ledger — CI's `validate_kb.py --git` covers the real repo.)
+    _point_at(monkeypatch, tmp_path)
+    _write_ledger(tmp_path, '{"event": "PLAN-LOCKED", "timestamp": "2026-02-08T13:10:31"}')
+    assert vk.main(["--no-git"]) == 0
