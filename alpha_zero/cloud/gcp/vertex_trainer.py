@@ -255,7 +255,8 @@ class VertexTrainer:
             timeout=timeout_seconds,
         )
 
-        return job.resource_name
+        # aiplatform SDK is untyped; resource_name is a str at runtime.
+        return str(job.resource_name)
 
     def get_job_status(self, job_id: str) -> TrainingJobInfo:
         """Get the current status of a training job.

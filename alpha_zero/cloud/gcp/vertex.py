@@ -310,7 +310,8 @@ class VertexAITrainer:
 
             self._jobs[job.resource_name] = job
             logger.info("Submitted Vertex AI job: %s", job.resource_name)
-            return job.resource_name
+            # aiplatform SDK is untyped; resource_name is a str at runtime.
+            return str(job.resource_name)
 
         except Exception as e:
             raise CloudConnectionError(

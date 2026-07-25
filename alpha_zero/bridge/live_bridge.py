@@ -201,7 +201,8 @@ class LiveBridge:
         Returns:
             True if the command was written successfully.
         """
-        return await self._tuner.send_command(command)
+        # The tuner backend is duck-typed (Any); send_command returns bool.
+        return bool(await self._tuner.send_command(command))
 
     async def wait_for_ack(self, msg_id: int, timeout: float | None = None) -> dict[str, Any]:
         """Wait for command acknowledgment.

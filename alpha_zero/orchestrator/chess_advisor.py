@@ -152,7 +152,7 @@ class ChessAdvisor:
             except (ValueError, AssertionError):
                 continue
             prior[action] = max(prior[action], float(weight))
-        total = prior.sum()
+        total = float(prior.sum())
         if total <= 0:
             return None
         return prior / total

@@ -682,7 +682,8 @@ class Civ6MCTS:
         blended_sum = blended.sum()
         if blended_sum <= 0:
             return network_policy
-        return (blended / blended_sum).astype(network_policy.dtype)
+        renormalised: np.ndarray = (blended / blended_sum).astype(network_policy.dtype)
+        return renormalised
 
     def _get_action_probs(
         self,

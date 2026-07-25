@@ -33,8 +33,9 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import NamedTuple, Protocol, runtime_checkable
+from typing import Any, NamedTuple, Protocol, cast, runtime_checkable
 
 import torch
 import torch.nn as nn
@@ -1146,7 +1147,8 @@ class MuZeroLossCalculator:
         logger.debug("Using MuZero network interface")
 
         # Initial inference - duck-typed method call
-        initial_output = network.initial_inference(
+        initial_inference = cast(Callable[..., Any], network.initial_inference)
+        initial_output = initial_inference(
             batch.observations_spatial[0],
             batch.observations_vector[0],
             batch.action_masks[0] if batch.action_masks else None,
@@ -1180,7 +1182,8 @@ class MuZeroLossCalculator:
             logger.debug("Unrolling dynamics step %d", k)
 
             # Recurrent inference - duck-typed method call
-            recurrent_output = network.recurrent_inference(
+            recurrent_inference = cast(Callable[..., Any], network.recurrent_inference)
+            recurrent_output = recurrent_inference(
                 current_hidden,
                 batch.actions[k],
                 batch.action_masks[k + 1] if batch.action_masks else None,
@@ -1309,7 +1312,8 @@ class MuZeroLossCalculator:
     def _get_projection(self, network: nn.Module, hidden_state: torch.Tensor) -> torch.Tensor:
         """Get projection from hidden state for consistency loss."""
         if hasattr(network, "project"):
-            return network.project(hidden_state)
+            project = cast(Callable[[torch.Tensor], torch.Tensor], network.project)
+            return project(hidden_state)
         else:
             logger.warning("Network doesn't have project method, using identity")
             return hidden_state.mean(dim=(2, 3)) if hidden_state.dim() == 4 else hidden_state
@@ -1322,7 +1326,10 @@ class MuZeroLossCalculator:
     ) -> torch.Tensor:
         """Get representation from observation."""
         if hasattr(network, "representation"):
-            return network.representation(spatial, vector)
+            representation = cast(
+                Callable[[torch.Tensor, torch.Tensor], torch.Tensor], network.representation
+            )
+            return representation(spatial, vector)
         else:
             logger.warning("Network doesn't have representation method")
             return spatial
@@ -1334,7 +1341,10 @@ class MuZeroLossCalculator:
     ) -> torch.Tensor:
         """Get value prefix prediction from hidden state."""
         if hasattr(network, "predict_value_prefix"):
-            return network.predict_value_prefix(hidden_state)
+            predict_value_prefix = cast(
+                Callable[[torch.Tensor], torch.Tensor], network.predict_value_prefix
+            )
+            return predict_value_prefix(hidden_state)
         else:
             logger.warning("Network doesn't have predict_value_prefix method")
             batch_size = hidden_state.size(0)

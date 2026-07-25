@@ -207,8 +207,10 @@ class FAISSVectorStore(VectorStore):
         index = self._index  # Capture for closures
 
         async with self._lock:
-            # Prepare embeddings
-            embeddings = np.vstack([doc.embedding for doc in documents]).astype(np.float32)
+            # Prepare embeddings (_validate_documents guarantees embeddings are set)
+            embeddings: np.ndarray = np.vstack(
+                [emb for doc in documents if (emb := doc.embedding) is not None]
+            ).astype(np.float32)
 
             # Normalize for cosine similarity
             if self.distance_metric == "cosine":

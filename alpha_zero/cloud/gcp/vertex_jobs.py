@@ -231,7 +231,8 @@ class VertexAIClient:
             job.submit(**submit_kwargs)
 
             logger.info("Submitted job: %s (resource: %s)", spec.display_name, job.resource_name)
-            return job.resource_name
+            # aiplatform SDK is untyped; resource_name is a str at runtime.
+            return str(job.resource_name)
 
         except Exception as e:
             error_msg = str(e).lower()
@@ -344,7 +345,8 @@ class VertexAIClient:
                 spec.display_name,
                 tuning_job.resource_name,
             )
-            return tuning_job.resource_name
+            # aiplatform SDK is untyped; resource_name is a str at runtime.
+            return str(tuning_job.resource_name)
 
         except Exception as e:
             raise VertexJobError(

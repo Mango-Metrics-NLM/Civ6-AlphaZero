@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 import torch
 import torch.nn as nn
@@ -422,7 +422,7 @@ class MultiHeadAttention(nn.Module):
             attn = self._standard_attention(q, k, v, mask)
 
         # Reshape and project
-        out = attn.transpose(1, 2).reshape(b, n, self.embed_dim)
+        out: torch.Tensor = attn.transpose(1, 2).reshape(b, n, self.embed_dim)
         out = self.proj(out)
         out = self.dropout(out)
 
@@ -446,7 +446,7 @@ class MultiHeadAttention(nn.Module):
         Returns:
             Attention output (B, H, N, D).
         """
-        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn: torch.Tensor = (q @ k.transpose(-2, -1)) * self.scale
 
         if mask is not None:
             attn = attn.masked_fill(mask == 0, float("-inf"))
@@ -533,9 +533,9 @@ class FeedForward(nn.Module):
         """
         if self.use_glu:
             # SwiGLU: gate * up
-            return self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x)))
+            return cast(torch.Tensor, self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x))))
         else:
-            return self.dropout(self.fc2(F.gelu(self.fc1(x))))
+            return cast(torch.Tensor, self.dropout(self.fc2(F.gelu(self.fc1(x)))))
 
 
 class MixtureOfExperts(nn.Module):
@@ -980,7 +980,7 @@ class TransformerPolicyHead(nn.Module):
         Returns:
             Policy logits (B, A).
         """
-        return self.mlp(x)
+        return cast(torch.Tensor, self.mlp(x))
 
 
 class TransformerValueHead(nn.Module):
@@ -1027,7 +1027,7 @@ class TransformerValueHead(nn.Module):
         Returns:
             Value estimate (B, 1).
         """
-        return self.mlp(x)
+        return cast(torch.Tensor, self.mlp(x))
 
 
 class Civ6TransformerNetwork(nn.Module):

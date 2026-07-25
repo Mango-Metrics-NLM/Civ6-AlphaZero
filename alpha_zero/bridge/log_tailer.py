@@ -24,7 +24,7 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -366,7 +366,8 @@ class LogTailer:
         if not json_str:
             return None
         try:
-            return json.loads(json_str)
+            # json.loads returns Any; bridge messages are always JSON objects.
+            return cast("dict[str, Any]", json.loads(json_str))
         except json.JSONDecodeError as e:
             # Try to handle truncated JSON gracefully
             logger.warning("JSON parse error (len=%d): %s", len(json_str), e)

@@ -256,7 +256,7 @@ class DefaultStateEncoder:
             norms = np.linalg.norm(self._projection_matrix, axis=0, keepdims=True)
             self._projection_matrix /= np.maximum(norms, 1e-8)
 
-        projected = features @ self._projection_matrix
+        projected: np.ndarray = features @ self._projection_matrix
 
         # L2 normalize
         norm = np.linalg.norm(projected)

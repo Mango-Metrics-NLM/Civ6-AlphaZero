@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter, defaultdict
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -170,7 +170,7 @@ class OpponentModel:
         # Mask to valid actions
         counts = counts * valid_actions
 
-        total = counts.sum()
+        total = float(counts.sum())
         if total < _EPSILON:
             return self._uniform_distribution(valid_actions)
 
@@ -187,11 +187,12 @@ class OpponentModel:
         blended = confidence * predicted + (1.0 - confidence) * uniform
 
         # Renormalize
-        blend_sum = blended.sum()
+        blend_sum = float(blended.sum())
         if blend_sum > _EPSILON:
             blended = blended / blend_sum
 
-        return blended
+        # ndarray arithmetic on dtype[Any] is typed Any by the numpy stubs.
+        return cast(np.ndarray, blended)
 
     def get_most_likely_action(
         self,

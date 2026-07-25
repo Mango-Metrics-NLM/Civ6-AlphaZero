@@ -24,7 +24,7 @@ import logging
 import math
 import sys
 import time
-from typing import Any
+from typing import Any, cast
 
 import torch
 
@@ -923,6 +923,7 @@ def run_batch_selfplay(
     import numpy as np
 
     from alpha_zero.core.batch_mcts import BatchGumbelMCTS, BatchMCTSConfig
+    from alpha_zero.core.civ6_mcts import MCTSNetwork
     from alpha_zero.envs.vectorized_env import VectorizedEnvConfig, VectorizedMicroCivEnv
 
     logger.info(
@@ -950,7 +951,9 @@ def run_batch_selfplay(
         num_parallel_envs=num_parallel_games,
     )
     batch_mcts = BatchGumbelMCTS(
-        network=model,
+        # ``model`` is typed as a generic nn.Module; the concrete networks
+        # implement the MCTSNetwork protocol (predict/eval) at runtime.
+        network=cast(MCTSNetwork, model),
         config=mcts_config,
         device=device,
     )
