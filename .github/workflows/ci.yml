@@ -161,6 +161,9 @@ jobs:
       - name: Validate KB workflow
         run: python scripts/validate_kb.py --git
 
+      - name: Validate skills
+        run: python scripts/validate_skills.py
+
       - name: Run governance tests
         run: >-
           pytest -c tests/governance/pytest.ini

@@ -1,3 +1,9 @@
+---
+name: planning-handoff
+description: Run at the end of every Planning session that did meaningful work — updates the summary, appends a ledger event, writes any cross-role handoff document, and rewrites the session state. Gated by scripts/validate_kb.py.
+allowed-tools: Read, Write, Edit, Bash
+---
+
 # Planning Handoff Skill
 
 Run this skill at the end of every Planning session that does meaningful work.
@@ -95,3 +101,14 @@ Update `kb/sessions/planning.state.json` with:
 2. Handoff files in `kb/handoffs/` are immutable once created.
 3. All JSONL entries must be valid JSON — validate after writing.
 4. Summary entries are capped at 20 (remove oldest from bottom).
+
+## Final gate
+
+This handoff is not complete until the KB validator exits 0:
+
+```bash
+python scripts/validate_kb.py
+```
+
+If it fails, fix the reported ledger or session-state issue before ending the
+session.

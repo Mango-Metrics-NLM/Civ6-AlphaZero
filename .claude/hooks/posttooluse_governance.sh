@@ -21,6 +21,8 @@ case "$rel" in
   kb/*)
     python3 scripts/validate_kb.py --path "$rel" --quiet || exit 2
     ;;
-  # The .claude/skills/* route is added in Phase C, once the skills carry frontmatter.
+  .claude/skills/*)
+    python3 scripts/validate_skills.py --path "$rel" --quiet || exit 2
+    ;;
 esac
 exit 0

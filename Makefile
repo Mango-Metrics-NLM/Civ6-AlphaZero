@@ -130,6 +130,7 @@ test: test-unit
 validate:
 	$(PYTHON) scripts/validate_openspec.py
 	$(PYTHON) scripts/validate_kb.py
+	$(PYTHON) scripts/validate_skills.py
 
 .PHONY: hooks-install
 hooks-install:

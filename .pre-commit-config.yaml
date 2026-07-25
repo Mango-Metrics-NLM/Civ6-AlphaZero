@@ -48,6 +48,12 @@ repos:
         language: system
         files: ^kb/
         pass_filenames: false
+      - id: validate-skills
+        name: validate skills
+        entry: python scripts/validate_skills.py
+        language: system
+        files: ^\.claude/skills/
+        pass_filenames: false
       - id: pytest-check
         name: pytest quick check
         entry: pytest tests/unit/ -x -q --tb=no

@@ -27,9 +27,9 @@ active at that point.
 
 ## 3. Phase C — Skills
 
-- [ ] 3.1 (M) Retrofit ``planning/dev-sqe/pre-pr`` handoff skills (frontmatter, 85%, gate)
-- [ ] 3.2 (M) New skills: ``openspec-propose``, ``openspec-archive``, ``doc-sync``, ``release``
-- [ ] 3.3 (S) Wire skills route into hook, pre-commit, CI, Makefile
+- [x] 3.1 (M) Retrofit ``planning/dev-sqe/pre-pr`` handoff skills (frontmatter, 85%, gate)
+- [x] 3.2 (M) New skills: ``openspec-propose``, ``openspec-archive``, ``doc-sync``, ``release``
+- [x] 3.3 (S) Wire skills route into hook, pre-commit, CI, Makefile
 
 ## 4. Phase D — README + core accuracy
 
