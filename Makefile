@@ -95,17 +95,17 @@ install-cloud: install
 
 .PHONY: lint
 lint:
-	ruff check alpha_zero/ tests/ --fix
-	ruff format alpha_zero/ tests/
+	ruff check . --fix
+	ruff format .
 
 .PHONY: lint-check
 lint-check:
-	ruff check alpha_zero/ tests/
-	ruff format --check alpha_zero/ tests/
+	ruff check .
+	ruff format --check .
 
 .PHONY: typecheck
 typecheck:
-	mypy alpha_zero/ --ignore-missing-imports
+	mypy alpha_zero/
 
 .PHONY: test-unit
 test-unit:

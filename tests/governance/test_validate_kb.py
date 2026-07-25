@@ -154,3 +154,30 @@ def test_pre_cutoff_legacy_entry_without_session_id_passes(tmp_path, monkeypatch
     _point_at(monkeypatch, tmp_path)
     _write_ledger(tmp_path, '{"event": "PLAN-LOCKED", "timestamp": "2026-02-08T13:10:31"}')
     assert vk.main(["--no-git"]) == 0
+
+
+def test_k5_archived_openspec_change_resolves(tmp_path, monkeypatch):
+    """A spec_file recorded pre-archive stays valid after the change directory
+    moves to openspec/changes/archive/<date>-<id>/ (the ledger is append-only)."""
+    _point_at(monkeypatch, tmp_path)
+    archived = tmp_path / "openspec" / "changes" / "archive" / "2026-07-25-add-thing"
+    archived.mkdir(parents=True)
+    (archived / "proposal.md").write_text("# p\n", encoding="utf-8")
+    _write_ledger(
+        tmp_path,
+        '{"event": "PR-READY", "timestamp": "2026-08-01T00:00:00Z", '
+        '"session_id": "s", "spec_file": "openspec/changes/add-thing/proposal.md"}',
+    )
+    assert vk.main(["--no-git"]) == 0
+
+
+def test_k5_unarchived_missing_openspec_change_still_fails(tmp_path, monkeypatch, capsys):
+    _point_at(monkeypatch, tmp_path)
+    (tmp_path / "openspec" / "changes" / "archive").mkdir(parents=True)
+    _write_ledger(
+        tmp_path,
+        '{"event": "PR-READY", "timestamp": "2026-08-01T00:00:00Z", '
+        '"session_id": "s", "spec_file": "openspec/changes/never-existed/proposal.md"}',
+    )
+    assert vk.main(["--no-git"]) == 1
+    assert "K5" in capsys.readouterr().err

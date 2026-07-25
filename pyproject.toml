@@ -136,13 +136,15 @@ target-version = "py311"
 # Unmaintained fringe (demos, scaffolding templates, experimental server modules)
 # is outside the lint/format gate; the maintained set is everything else.
 # force-exclude makes pre-commit (which passes explicit filenames) honour this too.
+# The "./" prefix anchors each pattern to the repo root — a bare name would also
+# match nested dirs like alpha_zero/interfaces/ and silently de-gate them.
 extend-exclude = [
-    "demos",
-    "examples",
-    "templates",
-    "server-module",
-    "interfaces",
-    "spacetimedb_module",
+    "./demos",
+    "./examples",
+    "./templates",
+    "./server-module",
+    "./interfaces",
+    "./spacetimedb_module",
 ]
 force-exclude = true
 

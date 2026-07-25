@@ -7,7 +7,10 @@ Checks (error codes are stable and referenced by ``tests/governance/``):
   K2  every entry has an ``event`` and an ISO-8601 ``timestamp``
   K3  ``event`` is in the current set, or in the legacy set for a pre-cutoff entry
   K4  ``session_id`` is present on post-cutoff entries (optional before the cutoff)
-  K5  any ``spec_file`` / ``pr_draft`` path referenced by an entry exists
+  K5  any ``spec_file`` / ``pr_draft`` path referenced by an entry exists;
+      an ``openspec/changes/<id>/...`` path also resolves through the archive
+      (``openspec/changes/archive/<date>-<id>/...``), since the ledger is
+      append-only and archiving a merged change moves its directory
   K6  every ``kb/sessions/*.state.json`` file parses as JSON
   K7  no commit reachable from HEAD modifies, deletes, or renames a file under
       ``kb/handoffs/`` (immutability), except entries in ``ALLOWED_AMENDMENTS``
@@ -87,6 +90,23 @@ def _relpath(path: Path) -> Path:
         return path
 
 
+def _ref_exists(ref: str) -> bool:
+    """K5 existence check, tolerant of archived OpenSpec changes.
+
+    The ledger is append-only, so a ``spec_file`` recorded as
+    ``openspec/changes/<id>/...`` must stay valid after the merged change is
+    archived to ``openspec/changes/archive/<date>-<id>/...``.
+    """
+    if (REPO_ROOT / ref).exists():
+        return True
+    parts = Path(ref).parts
+    if len(parts) >= 4 and parts[:2] == ("openspec", "changes") and parts[2] != "archive":
+        change_id, rest = parts[2], Path(*parts[3:])
+        archive_dir = REPO_ROOT / "openspec" / "changes" / "archive"
+        return any((candidate / rest).exists() for candidate in archive_dir.glob(f"*-{change_id}"))
+    return False
+
+
 def _parse_timestamp(value: str) -> datetime | None:
     text = value.strip()
     if text.endswith("Z"):
@@ -144,7 +164,7 @@ def _validate_ledger_entry(
     if cross_file:
         for key in _PATH_KEYS:
             ref = entry.get(key)
-            if ref and not (REPO_ROOT / ref).exists():
+            if ref and not _ref_exists(ref):
                 issues.append(Issue("K5", f"referenced {key} '{ref}' does not exist", path, lineno))
 
 

@@ -187,8 +187,8 @@ PROHIBITED (do not attempt):
 ```bash
 # After writing code, run in this order:
 
-# 1. Lint check
-ruff check alpha_zero/
+# 1. Lint check (whole repo — CI gate scope as of 2026-07-25)
+ruff check .
 
 # 2. Type check
 mypy alpha_zero/  # exits 0 as of 2026-07-25; flag-free — config lives in pyproject
