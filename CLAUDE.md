@@ -270,6 +270,10 @@ When making changes, update the relevant sections below:
 | `pytest tests/ -v --cov=alpha_zero` | Run tests with coverage |
 | `ruff check alpha_zero/` | Lint Python code |
 | `mypy alpha_zero/` | Type check |
+| `make validate` | Run governance validators (openspec, kb, skills, doc-sync) |
+| `make hooks-install` | Install git pre-commit / pre-push hooks |
+| `python scripts/check_doc_sync.py` | Documentation-drift gate (version/counts/links/extras) |
+| `python scripts/validate_openspec.py` | Validate the `openspec/` change directory |
 | `python -m alpha_zero.training_civ6 --dry_run` | Training smoke test |
 | `python -m alpha_zero.distributed.coordinator --dry_run` | Distributed smoke test |
 | `python -m alpha_zero.orchestrator --help` | Show orchestrator options |
@@ -399,6 +403,8 @@ When making changes, update the relevant sections below:
 | 2026-05-30 | Pre-PR review in isolated subagent | Pre-PR handoff skill dispatches review to a fresh `Agent`/`code-review` for generator–evaluator separation (independent context). |
 | 2026-07-05 | N-player training pipeline (G9) | `training_civ6.py` threads `num_players` end-to-end: `TrainingExample.value_vector` (per-player, relative order), per-player targets via `multiplayer.scoring` (`ScoringMethod`), `compute_nplayer_value_loss` in `train_epoch`, and `CurrentPlayerValueView` (reduces the per-player value vector to relative-index-0 so scalar `Civ6MCTS`/`GumbelMCTS` can drive an N-player network). Encoder is player-relative, so value targets and the scalar view both key on relative index 0. 2-player path byte-identical; opt-in via `--num_players`/`--scoring_method`. |
 | 2026-07-13 | W&B fully retired; MLflow sole tracker | SDK swap verified complete (zero `import wandb` in `alpha_zero/`). `resolve_tracker_enabled()` unifies enablement (`CIV6AZ_MLFLOW_ENABLED` > `MLFLOW_ENABLED` > legacy `WANDB_ENABLED`, warns). Orchestrator `WandbConfig` = deprecated bridge via `to_mlflow_config()`; `--no-wandb`/`--no-tracking` disable ALL tracking. `utils/wandb_logger.py` shim deleted (lazy `alpha_zero.utils.WandbLogger` alias remains, warns). Adapter hardened: numpy/nested metric coercion, `run_name` property (fixes run-group propagation), `alert()` also warns in logs. |
+| 2026-07-25 | OpenSpec governance + deterministic validators | Enterprise docs overhaul managed as one OpenSpec change (`openspec/`). Four stdlib-only validators (`scripts/validate_openspec.py`, `validate_kb.py`, `validate_skills.py`, `check_doc_sync.py`; exit 0/1/2; tests in `tests/governance/`) enforced by Claude hooks, `.pre-commit-config.yaml` (ruff pinned to CI's 0.8.0), and a CI `governance` job. `check_doc_sync.py` blocks doc drift (version triple, MODULE_REFERENCE counts, README forbidden patterns, unknown extras, links, changelog-version). Skills gained frontmatter + validation gates; added `openspec-propose`/`openspec-archive`/`doc-sync`/`release`. Stale docs archived to `docs/archive/` (archive-not-delete). |
+| 2026-07-25 | PostToolUse autofix defers F401 **and** RUF100 | `--extend-ignore F401` alone made existing `# noqa: F401` directives look unused, so RUF100 `--fix` stripped them and re-exposed the imports to CI's F401 gate. Deferring both keeps intentional availability-probe imports intact (`.claude/hooks/posttooluse_lint.sh`). |
 
 ### 5.3 Known Issues
 
@@ -1025,7 +1031,7 @@ alpha_zero/rag/
 |---------|---------|
 | `pytest tests/unit/test_rag/ -v` | Run RAG unit tests |
 | `pytest tests/integration/test_rag/ -v` | Run RAG integration tests |
-| `pip install -e ".[rag]"` | Install with RAG dependencies |
+| `pip install chromadb faiss-cpu sentence-transformers` | Install RAG dependencies (not a packaged extra) |
 | `pip install -e ".[all]"` | Install all dependencies |
 
 ### 11.4 RAG Usage Example
@@ -1290,7 +1296,13 @@ and git diff stats into the compacted context. Ensures workflow continuity acros
 ending a session that did meaningful work.
 
 **Permissions:** Common safe operations (pytest, ruff, mypy, git, pip, make) are pre-approved.
-Dangerous operations (writing .env, force-push, cloud ops) are denied.
+Dangerous operations are denied: `.env`/`.env.local` writes via the file tools
+(`Edit(.env)`+`Write(.env)` — `Edit` rules already cover the Write tool, and the
+explicit `Write` entries make the intent unambiguous), force-push (via
+`pretooluse_guard.sh`, allowing `--force-with-lease`), and cloud ops
+(gcloud/gsutil/kubectl/docker push). Note: a Bash-mediated write to `.env`
+(e.g. `echo > .env`) is not pattern-blocked; it is covered by convention and the
+guard's heuristic scope, not a sandbox.
 
 > **A note on "agents" and "tools" in this repo.** There is no `.claude/agents/` directory —
 > this project does not define custom Claude Code sub-agents. The word "agents" here refers to
@@ -1316,6 +1328,6 @@ This file is gitignored and never committed.
 
 ---
 
-*Last updated: 2026-07-13*
-*Version: v1.8.0 (headless FireTuner socket bridge — live Civ6 gameplay)*
+*Last updated: 2026-07-25*
+*Version: v1.8.0 (enterprise docs overhaul + OpenSpec governance gates)*
 *Current Focus: M4 (ROADMAP.md) — N-player training runs, batch self-play in cloud, W&B→MLflow sweep, omit-list shrink. Governance: PROJECT_CHARTER.md*

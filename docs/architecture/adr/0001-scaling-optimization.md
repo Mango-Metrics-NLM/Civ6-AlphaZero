@@ -1,7 +1,7 @@
 # ADR: Scaling & Optimization Architecture
 
 **Date**: 2026-03-04
-**Status**: Proposed
+**Status**: Accepted (shipped; recorded 2026-07-25)
 **Author**: AI Agent
 
 ## Context

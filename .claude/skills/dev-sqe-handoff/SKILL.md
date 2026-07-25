@@ -1,3 +1,9 @@
+---
+name: dev-sqe-handoff
+description: Run at the end of every DEV-SQE session that did meaningful work — runs the verification gate (tests, coverage, lint, types), updates the summary, appends a ledger event, writes any cross-role handoff document, and rewrites the session state. Gated by scripts/validate_kb.py.
+allowed-tools: Read, Write, Edit, Bash
+---
+
 # DEV-SQE Handoff Skill
 
 Run this skill at the end of every DEV-SQE session that does meaningful work.
@@ -122,3 +128,14 @@ Update `kb/sessions/dev-sqe.state.json` with:
 3. All JSONL entries must be valid JSON — validate after writing.
 4. Summary entries are capped at 20 (remove oldest from bottom).
 5. Always include test results and coverage in handoff documents.
+
+## Final gate
+
+This handoff is not complete until the KB validator exits 0:
+
+```bash
+python scripts/validate_kb.py
+```
+
+If it fails, fix the reported ledger or session-state issue before ending the
+session.

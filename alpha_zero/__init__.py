@@ -23,7 +23,7 @@ Usage:
     from alpha_zero import Civ6MCTS, ActionSpace, MicroCivEnv
 """
 
-__version__ = "0.14.0"
+__version__ = "1.8.0"
 
 # Python <3.11 compatibility: patch datetime.UTC before anything imports it
 import alpha_zero._compat  # noqa: F401  # isort: skip

@@ -4,7 +4,7 @@
 referenced by `README.md` and `CLAUDE.md` SECTION 7. Update it whenever a submodule is added
 or removed.
 
-- **As of:** v1.7.0, 2026-06-20
+- **As of:** v1.8.0, 2026-07-25
 - **Submodule count:** 27
 - **Counting method:** recursive `*.py` files, excluding `__pycache__`
   (`find alpha_zero/<mod> -name '*.py' -not -path '*__pycache__*' | wc -l`).
@@ -12,7 +12,7 @@ or removed.
 | Module | Files | Responsibility |
 |--------|------:|----------------|
 | `core` | 30 | Neural networks (ResNet/transformer), MCTS variants (Gumbel/DUCT/MuZero), action space |
-| `utils` | 27 | Logging, config, LLM client, factories, test runner, `agent_tools`, `.env` loader |
+| `utils` | 26 | Logging, config, LLM client, factories, test runner, `agent_tools`, `.env` loader |
 | `rag` | 22 | Retrieval-augmented generation pipeline: vector stores, processors, agent integration (§11) |
 | `hierarchical` | 19 | Hierarchical goal planning: decomposition, controllers, encoders |
 | `multiplayer` | 18 | N-player MCTS (Max-N/Paranoid/Best-Reply), turn manager, opponent modeling, scoring |
@@ -23,9 +23,9 @@ or removed.
 | `cloud` | 48 | Cloud-native workers (self-play/trainer/evaluator) + `gcp/` Vertex AI orchestration |
 | `orchestrator` | 10 | `TrainingOrchestrator`, scheduler, checkpointer, RAG integration, strategy advisor |
 | `pbt` | 10 | Population-based training: population manager, mutation, fitness, MuZero hyperparams |
-| `bridge` | 9 | Civ6 Lua mod bridge: file-based IPC protocol |
+| `bridge` | 15 | Civ6 Lua mod bridge: file IPC + headless FireTuner socket transport |
 | `distributed` | 9 | Process-based distributed training: actor, learner, coordinator, shared storage |
-| `optimizations` | 9 | Training optimization strategies |
+| `optimizations` | 10 | Training optimization strategies + Optuna hyperparameter search |
 | `spacetimedb` | 9 | SpacetimeDB integration |
 | `storage` | 9 | Storage backends (local/GCS), streaming replay buffer, factory |
 | `tournament` | 9 | ELO rating, matchmaking, analysis, tournament telemetry |
@@ -51,4 +51,4 @@ CI `[dev]` install does not provide:
 - **`inference/`, `cloud/`, `web/routes/`, `spacetimedb/`, RAG/LLM infra** — likewise gated on
   optional extras (gcp, web, spacetimedb, llm) or live services.
 
-The gate (80%) re-tightens toward 85% as these modules are brought under coverage.
+The gate (85%) re-tightens as these modules are brought under coverage.

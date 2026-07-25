@@ -1,6 +1,6 @@
 # ADR: GCP Resource Deployment for MuZero-World-Model
 
-> **Status**: Proposed | **Date**: 2026-02-20
+> **Status**: Accepted (shipped) | **Date**: 2026-02-20 (recorded 2026-07-25)
 > **Deciders**: ianshank (ML Engineer)
 
 ---
