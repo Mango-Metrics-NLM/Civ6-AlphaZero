@@ -36,7 +36,9 @@
       "Bash(docker push:*)",
       "Bash(gcloud:*)",
       "Bash(gsutil:*)",
-      "Bash(kubectl:*)"
+      "Bash(kubectl:*)",
+      "Edit(.env)",
+      "Edit(.env.local)"
     ]
   },
   "hooks": {
@@ -58,8 +60,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -c \"import sys; exit(0 if sys.version_info >= (3, 11) else 1)\" && pip install -e '.[dev]' -q 2>/dev/null; echo '{\"systemMessage\": \"Environment: Python '$(python --version 2>&1 | cut -d\" \" -f2)' | ruff '$(ruff --version 2>/dev/null | cut -d\" \" -f2 || echo N/A)' | pytest ready\"}'",
-            "timeout": 60,
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/sessionstart_bootstrap.sh",
+            "timeout": 180,
             "statusMessage": "Bootstrapping environment..."
           }
         ]
@@ -71,9 +73,15 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.tool_response.filePath // .tool_input.file_path' | { read -r f; echo \"$f\" | grep -qE '\\.py$' && ruff check --fix --quiet \"$f\" && ruff format --quiet \"$f\"; } 2>/dev/null || true",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/posttooluse_lint.sh",
             "timeout": 15,
             "statusMessage": "Linting..."
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/posttooluse_governance.sh",
+            "timeout": 15,
+            "statusMessage": "Validating governance..."
           }
         ]
       }
@@ -83,7 +91,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "KB=$(cat kb/sessions/planning.state.json 2>/dev/null; cat kb/sessions/dev-sqe.state.json 2>/dev/null; cat kb/sessions/pre-pr.state.json 2>/dev/null) && LEDGER=$(tail -10 kb/ledger/ledger.jsonl 2>/dev/null) && GIT=$(git diff --stat HEAD 2>/dev/null | tail -5) && printf '{\"hookSpecificOutput\": {\"hookEventName\": \"PreCompact\", \"additionalContext\": \"KB_STATE: %s RECENT_LEDGER: %s GIT_STATUS: %s\"}}' \"$KB\" \"$LEDGER\" \"$GIT\"",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/precompact_state.sh",
             "timeout": 10
           }
         ]

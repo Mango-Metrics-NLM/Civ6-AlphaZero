@@ -53,6 +53,17 @@ while IFS= read -r seg; do
       deny "CLAUDE.md S3.2: runs with >1000 games require confirmation (requested ${games})."
     fi
   fi
+
+  # 3) No force-pushes, in any argument position (--force-with-lease is allowed).
+  #    Deny bare --force / -f / a +refspec. The deny list's Bash prefix rules only
+  #    catch the flag directly after `push`, so this regex is the real backstop.
+  if printf '%s' "$seg" | grep -qE "${env_prefix}git[[:space:]]+push\b"; then
+    if printf '%s' "$seg" | grep -qE -- '--force([[:space:]]|=|$)' \
+       || printf '%s' "$seg" | grep -qE -- '(^|[[:space:]])-f([[:space:]]|$)' \
+       || printf '%s' "$seg" | grep -qE -- '[[:space:]]\+[A-Za-z0-9_/.-]+(:|[[:space:]]|$)'; then
+      deny "CLAUDE.md S3.2: force-pushes are prohibited (use --force-with-lease if truly needed)."
+    fi
+  fi
 done <<EOF
 $segments
 EOF

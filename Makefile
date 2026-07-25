@@ -129,6 +129,12 @@ test: test-unit
 .PHONY: validate
 validate:
 	$(PYTHON) scripts/validate_openspec.py
+	$(PYTHON) scripts/validate_kb.py
+
+.PHONY: hooks-install
+hooks-install:
+	pre-commit install --install-hooks
+	pre-commit install --hook-type pre-push
 
 .PHONY: eval-llm
 eval-llm:

@@ -149,15 +149,55 @@ jobs:
         run: pip install ruff==0.8.0 pytest
 
       - name: Lint governance code
-        run: ruff check scripts/validate_openspec.py tests/governance/
+        run: >-
+          ruff check
+          scripts/validate_openspec.py scripts/validate_kb.py
+          scripts/validate_skills.py scripts/check_doc_sync.py
+          tests/governance/
 
       - name: Validate OpenSpec structure
         run: python scripts/validate_openspec.py
+
+      - name: Validate KB workflow
+        run: python scripts/validate_kb.py --git
 
       - name: Run governance tests
         run: >-
           pytest -c tests/governance/pytest.ini
           --confcutdir=tests/governance -p no:cacheprovider tests/governance
+
+  eval-harness:
+    name: LLM Eval Harness
+    runs-on: ubuntu-latest
+    # Observation window: kept non-blocking across phases B-E while runtime and
+    # provider reachability are observed; flipped to enforcing in the final phase.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-eval-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-eval-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[eval]"
+
+      - name: Probe eval-harness import (distinguishes deps-broke from gate-failed)
+        run: python -c "import eval_harness; print('eval_harness importable')"
+
+      - name: Run LLM eval gate
+        run: make eval-llm
 
   coverage:
     name: Coverage Report

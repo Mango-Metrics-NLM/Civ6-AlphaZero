@@ -6,24 +6,24 @@ active at that point.
 
 ## 1. Phase A — OpenSpec bootstrap + CI-trigger fix
 
-- [ ] 1.1 (M) ``openspec/project.md`` + ``openspec/AGENTS.md``
-- [ ] 1.2 (M) Baseline specs: ``agent-harness``, ``kb-workflow``
-- [ ] 1.3 (M) Change dir: ``proposal.md``, ``tasks.md``, ``design.md``
-- [ ] 1.4 (M) Four delta specs: ``documentation``, ``validation-gates``, ``agent-harness``, ``kb-workflow``
-- [ ] 1.5 (L) ``scripts/validate_openspec.py`` + ``tests/governance/test_validate_openspec.py`` + ``pytest.ini``
-- [ ] 1.6 (S) ``Makefile``: ``validate`` + ``test`` alias
-- [ ] 1.7 (S) ``ci.yml``: ``claude/**`` trigger, ``concurrency`` group, ``governance`` job
-- [ ] 1.8 (S) Push; open draft PR; subscribe to PR activity
+- [x] 1.1 (M) ``openspec/project.md`` + ``openspec/AGENTS.md``
+- [x] 1.2 (M) Baseline specs: ``agent-harness``, ``kb-workflow``
+- [x] 1.3 (M) Change dir: ``proposal.md``, ``tasks.md``, ``design.md``
+- [x] 1.4 (M) Four delta specs: ``documentation``, ``validation-gates``, ``agent-harness``, ``kb-workflow``
+- [x] 1.5 (L) ``scripts/validate_openspec.py`` + ``tests/governance/test_validate_openspec.py`` + ``pytest.ini``
+- [x] 1.6 (S) ``Makefile``: ``validate`` + ``test`` alias
+- [x] 1.7 (S) ``ci.yml``: ``claude/**`` trigger, ``concurrency`` group, ``governance`` job
+- [x] 1.8 (S) Push; open draft PR (#93); subscribe to PR activity
 
 ## 2. Phase B — Validators, harness hooks, git hooks
 
-- [ ] 2.1 (L) ``validate_kb.py``, ``validate_skills.py``, ``check_doc_sync.py`` + governance tests
-- [ ] 2.2 (M) ``.claude/settings.json``: deny ``.env`` edits; repoint hooks at scripts; governance hook
-- [ ] 2.3 (M) Hook scripts: guard force-push, ``posttooluse_lint``, ``precompact_state``, ``posttooluse_governance``, ``sessionstart_bootstrap``
-- [ ] 2.4 (M) ``.pre-commit-config.yaml``: ruff 0.8.0, scoped hooks, local validators
-- [ ] 2.5 (S) ``Makefile``: ``hooks-install``
-- [ ] 2.6 (S) ``ci.yml``: governance += kb; ``eval-harness`` job (continue-on-error)
-- [ ] 2.7 (S) ``kb/README.md`` + ``kb/summaries/pre-pr.md`` seed
+- [x] 2.1 (L) ``validate_kb.py``, ``validate_skills.py``, ``check_doc_sync.py`` + governance tests
+- [x] 2.2 (M) ``.claude/settings.json``: deny ``.env`` edits; repoint hooks at scripts; governance hook
+- [x] 2.3 (M) Hook scripts: guard force-push, ``posttooluse_lint``, ``precompact_state``, ``posttooluse_governance``, ``sessionstart_bootstrap``
+- [x] 2.4 (M) ``.pre-commit-config.yaml``: ruff 0.8.0, scoped hooks, local validators
+- [x] 2.5 (S) ``Makefile``: ``hooks-install``
+- [x] 2.6 (S) ``ci.yml``: governance += kb; ``eval-harness`` job (continue-on-error)
+- [x] 2.7 (S) ``kb/README.md`` + ``kb/summaries/pre-pr.md`` seed
 
 ## 3. Phase C — Skills
 
