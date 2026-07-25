@@ -35,6 +35,7 @@ from alpha_zero.core.mcts_constants import (
     GREEDY_THRESHOLD,
 )
 from alpha_zero.utils.constants import MCTS
+from alpha_zero.utils.device import place_network
 
 # Module-level logger
 logger = logging.getLogger(__name__)
@@ -447,7 +448,10 @@ class Civ6MCTS:
         """
         self.network = network
         self.config = config or MCTSConfig()
-        self.device = device
+        # Resolve the request and place the network in one step: storing an
+        # unresolved "cuda" here while the network sat on cpu was a real
+        # source of mixed-device RuntimeErrors.
+        self.device = place_network(network, device)
         self._reflection_memory = reflection_memory
         if not 0.0 <= llm_prior_weight <= 1.0:
             raise ValueError(f"llm_prior_weight must be in [0, 1]; got {llm_prior_weight}")
@@ -1160,7 +1164,10 @@ class GumbelMCTS:
         """
         self.network = network
         self.config = config or GumbelMCTSConfig()
-        self.device = device
+        # Resolve the request and place the network in one step: storing an
+        # unresolved "cuda" here while the network sat on cpu was a real
+        # source of mixed-device RuntimeErrors.
+        self.device = place_network(network, device)
 
     def search(
         self,
@@ -1715,7 +1722,10 @@ class MuZeroMCTS:
         """
         self.network = network
         self.config = config or MuZeroMCTSConfig()
-        self.device = device
+        # Resolve the request and place the network in one step: storing an
+        # unresolved "cuda" here while the network sat on cpu was a real
+        # source of mixed-device RuntimeErrors.
+        self.device = place_network(network, device)
 
     @classmethod
     def from_network(

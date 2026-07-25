@@ -52,7 +52,7 @@ class CheckpointLoadResult:
 
 def safe_load_checkpoint(
     path: str | Path,
-    map_location: str | torch.device | None = None,
+    map_location: str | torch.device | None = "cpu",
     strict_security: bool = False,
     allow_unsafe_fallback: bool = True,
 ) -> CheckpointLoadResult:
@@ -64,7 +64,12 @@ def safe_load_checkpoint(
 
     Args:
         path: Path to the checkpoint file.
-        map_location: Device to map tensors to (e.g., "cpu", "cuda").
+        map_location: Device to map tensors to (e.g., "cpu", "cuda"). Defaults
+            to ``"cpu"``, matching :func:`alpha_zero.core.checkpoint_utils.
+            load_checkpoint`. Passing ``None`` restores tensors to whatever
+            device they were saved from, which makes a GPU-trained checkpoint
+            unloadable on a CPU-only machine — the caller must opt into that
+            explicitly rather than get it by default.
         strict_security: If True, never fall back to unsafe loading.
             Raises an error if safe loading fails.
         allow_unsafe_fallback: If True (default), fall back to unsafe loading
@@ -138,7 +143,7 @@ def safe_load_checkpoint(
 
 def load_model_state(
     path: str | Path,
-    map_location: str | torch.device | None = None,
+    map_location: str | torch.device | None = "cpu",
 ) -> dict[str, Any]:
     """Load only model state dict from checkpoint (always safe).
 
@@ -147,7 +152,8 @@ def load_model_state(
 
     Args:
         path: Path to the checkpoint file.
-        map_location: Device to map tensors to.
+        map_location: Device to map tensors to. Defaults to ``"cpu"`` so a
+            GPU-trained checkpoint stays loadable on a CPU-only machine.
 
     Returns:
         The model state dict.

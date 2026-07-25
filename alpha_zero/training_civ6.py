@@ -39,6 +39,7 @@ from alpha_zero.multiplayer.scoring import (
     compute_player_values,
     compute_rankings,
 )
+from alpha_zero.utils.device import resolve_device_str
 
 # Configure logging
 logging.basicConfig(
@@ -105,8 +106,15 @@ class TrainingConfig:
     log_dir: str = "logs/civ6"
     save_interval: int = 10
 
-    # Device
-    device: str = "cuda" if torch.cuda.is_available() else "cpu"
+    # Device. "auto" is resolved to a concrete device in __post_init__ rather
+    # than probed at import time, so constructing a TrainingConfig on a GPU box
+    # inside a test no longer silently selects cuda.
+    device: str = "auto"
+
+    def __post_init__(self) -> None:
+        # Resolve rather than merely warn: an unresolved "cuda" on a CPU-only
+        # host would otherwise crash later inside .to().
+        self.device = resolve_device_str(self.device)
 
 
 @dataclass
@@ -872,7 +880,7 @@ def main() -> None:
         num_res_blocks=args.num_res_blocks,
         num_filters=args.num_filters,
         checkpoint_dir=args.checkpoint_dir,
-        device=args.device or ("cuda" if torch.cuda.is_available() else "cpu"),
+        device=args.device or "auto",
     )
 
     train(config, dry_run=args.dry_run)

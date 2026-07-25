@@ -23,6 +23,7 @@ from typing import Any
 import yaml
 
 from alpha_zero.human_interface.config import BoardTheme, HumanInterfaceConfig
+from alpha_zero.utils.device import resolve_device_str
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +161,11 @@ class WebConfig:
             valid = [t.value for t in BoardTheme]
             msg = f"Invalid board_theme: {self.board_theme}. Must be one of {valid}"
             raise ValueError(msg) from err
+
+        # Resolve the device rather than only validating it. Leaving an
+        # unresolved "cuda" here would surface as a RuntimeError deep inside
+        # the first neural game instead of at startup.
+        self.device = resolve_device_str(self.device)
 
         if self.checkpoint_path is not None:
             path = Path(self.checkpoint_path)

@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from alpha_zero.web.serializers import (
     decode_action_readable,
@@ -46,13 +46,16 @@ def create_pages_router(session_manager: Any, templates: Any) -> APIRouter:
     async def index(request: Request) -> HTMLResponse:
         """Render the lobby / new game page."""
         sessions = session_manager.list_sessions()
-        return templates.TemplateResponse(
-            request,
-            "index.html",
-            {
-                "sessions": sessions,
-                "active_count": session_manager.active_count,
-            },
+        return cast(
+            HTMLResponse,
+            templates.TemplateResponse(
+                request,
+                "index.html",
+                {
+                    "sessions": sessions,
+                    "active_count": session_manager.active_count,
+                },
+            ),
         )
 
     @router.post("/game/new")
@@ -61,7 +64,7 @@ def create_pages_router(session_manager: Any, templates: Any) -> APIRouter:
         human_player: int = Form(default=0),
         opponent_type: str = Form(default="random"),
         board_size: int = Form(default=16),
-    ) -> RedirectResponse:
+    ) -> Response:
         """Handle new game form submission."""
         try:
             session = session_manager.create_session(
@@ -71,15 +74,18 @@ def create_pages_router(session_manager: Any, templates: Any) -> APIRouter:
             )
         except (RuntimeError, ValueError) as e:
             logger.error("Failed to create game: %s", e)
-            return templates.TemplateResponse(
-                request,
-                "index.html",
-                {
-                    "error": str(e),
-                    "sessions": session_manager.list_sessions(),
-                    "active_count": session_manager.active_count,
-                },
-                status_code=400,
+            return cast(
+                Response,
+                templates.TemplateResponse(
+                    request,
+                    "index.html",
+                    {
+                        "error": str(e),
+                        "sessions": session_manager.list_sessions(),
+                        "active_count": session_manager.active_count,
+                    },
+                    status_code=400,
+                ),
             )
 
         logger.info("Game created via form: %s", session.session_id)
@@ -114,24 +120,27 @@ def create_pages_router(session_manager: Any, templates: Any) -> APIRouter:
             for idx in state.valid_actions
         ]
 
-        return templates.TemplateResponse(
-            request,
-            "game.html",
-            {
-                "session_id": session_id,
-                "phase": state.phase.value,
-                "turn_number": state.turn_number,
-                "current_player": state.current_player,
-                "human_player": session.human_player,
-                "is_human_turn": session.controller.is_human_turn,
-                "is_game_over": session.controller.is_game_over,
-                "board": board,
-                "history": history,
-                "valid_actions": valid_actions,
-                "confidence": last_confidence,
-                "opponent_type": session.opponent_type,
-                "config": session.config.to_dict(),
-            },
+        return cast(
+            HTMLResponse,
+            templates.TemplateResponse(
+                request,
+                "game.html",
+                {
+                    "session_id": session_id,
+                    "phase": state.phase.value,
+                    "turn_number": state.turn_number,
+                    "current_player": state.current_player,
+                    "human_player": session.human_player,
+                    "is_human_turn": session.controller.is_human_turn,
+                    "is_game_over": session.controller.is_game_over,
+                    "board": board,
+                    "history": history,
+                    "valid_actions": valid_actions,
+                    "confidence": last_confidence,
+                    "opponent_type": session.opponent_type,
+                    "config": session.config.to_dict(),
+                },
+            ),
         )
 
     @router.post("/htmx/game/{session_id}/move", response_class=HTMLResponse)
