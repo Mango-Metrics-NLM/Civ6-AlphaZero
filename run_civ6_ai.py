@@ -1,4 +1,3 @@
-
 import argparse
 import subprocess
 import sys
@@ -27,7 +26,7 @@ def main():
         "-m",
         "alpha_zero.training_civ6",
         "--num_games=100",
-        "--num_iterations=100"
+        "--num_iterations=100",
     ]
 
     # Add optional flags
@@ -63,6 +62,7 @@ def main():
     except Exception as e:
         print(f"Unexpected error: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

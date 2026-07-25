@@ -103,15 +103,17 @@ def main() -> int:
         )
         speedup = batch.games_per_minute / max(single.games_per_minute, 1e-8)
         speedup_moves = batch.moves_per_second / max(single.moves_per_second, 1e-8)
-        ml.log_metrics({
-            "benchmark/single_games_per_minute": single.games_per_minute,
-            "benchmark/batch_games_per_minute": batch.games_per_minute,
-            "benchmark/speedup": speedup,
-            "benchmark/speedup_moves": speedup_moves,
-            "benchmark/parallel_envs": float(args.num_parallel_games),
-            "benchmark/single_moves_per_second": single.moves_per_second,
-            "benchmark/batch_moves_per_second": batch.moves_per_second,
-        })
+        ml.log_metrics(
+            {
+                "benchmark/single_games_per_minute": single.games_per_minute,
+                "benchmark/batch_games_per_minute": batch.games_per_minute,
+                "benchmark/speedup": speedup,
+                "benchmark/speedup_moves": speedup_moves,
+                "benchmark/parallel_envs": float(args.num_parallel_games),
+                "benchmark/single_moves_per_second": single.moves_per_second,
+                "benchmark/batch_moves_per_second": batch.moves_per_second,
+            }
+        )
         if single.peak_gpu_memory_mb is not None:
             ml.log_metric("benchmark/single_peak_gpu_memory_mb", single.peak_gpu_memory_mb)
         if batch.peak_gpu_memory_mb is not None:
@@ -120,7 +122,9 @@ def main() -> int:
         # Print comparison table to stdout for human-readable summary.
         print("")
         print("=" * 72)
-        print(f"{'Variant':<12} {'games/min':>12} {'moves/sec':>12} {'avg_batch':>12} {'peak_mb':>12}")
+        print(
+            f"{'Variant':<12} {'games/min':>12} {'moves/sec':>12} {'avg_batch':>12} {'peak_mb':>12}"
+        )
         print("-" * 72)
         for label, m in (("sequential", single), ("batched", batch)):
             mem = f"{m.peak_gpu_memory_mb:.0f}" if m.peak_gpu_memory_mb is not None else "n/a"

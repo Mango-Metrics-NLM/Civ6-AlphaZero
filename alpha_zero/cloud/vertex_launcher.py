@@ -415,7 +415,7 @@ class VertexJobLauncher:
         self._jobs[job_id] = custom_job
 
         logger.info(f"Submitted job: {display_name} (id={job_id})")
-        return job_id  # type: ignore[no-any-return]
+        return job_id
 
     def submit_from_config(
         self,

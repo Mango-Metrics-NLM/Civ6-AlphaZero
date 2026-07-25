@@ -37,9 +37,7 @@ def bridge_config(tmp_path: Path) -> BridgeConfig:
 
 
 @pytest.fixture
-def live_bridge(
-    bridge_config: BridgeConfig, tmp_log: Path
-) -> LiveBridge:
+def live_bridge(bridge_config: BridgeConfig, tmp_log: Path) -> LiveBridge:
     """Create a LiveBridge instance (not started)."""
     return LiveBridge(bridge_config, tmp_log, poll_interval=0.05)
 
@@ -55,9 +53,7 @@ def _write_line(log_path: Path, line: str) -> None:
 
 @pytest.mark.asyncio
 class TestLifecycle:
-    async def test_context_manager(
-        self, bridge_config: BridgeConfig, tmp_log: Path
-    ) -> None:
+    async def test_context_manager(self, bridge_config: BridgeConfig, tmp_log: Path) -> None:
         async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
             assert bridge._running
         assert not bridge._running
@@ -81,16 +77,15 @@ class TestStateReading:
             result = await bridge.poll_state()
             assert result is None
 
-    async def test_wait_for_state_success(
-        self, bridge_config: BridgeConfig, tmp_log: Path
-    ) -> None:
+    async def test_wait_for_state_success(self, bridge_config: BridgeConfig, tmp_log: Path) -> None:
         async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
+
             async def write_state() -> None:
                 await asyncio.sleep(0.1)
                 # width/height are required fields in the wire payload; explicit
                 # zero is the pre-game representation. See MapData.from_dict.
                 state = {"turn_id": 5, "map": {"width": 0, "height": 0, "tiles": []}}
-                _write_line(tmp_log, f'AlphaZeroMain: AZ_STATE:{json.dumps(state)}')
+                _write_line(tmp_log, f"AlphaZeroMain: AZ_STATE:{json.dumps(state)}")
 
             writer = asyncio.create_task(write_state())
             # wait_for_state returns a GameStateData object (not a dict).
@@ -98,9 +93,7 @@ class TestStateReading:
             await writer
             assert result.turn_id == 5
 
-    async def test_wait_for_state_timeout(
-        self, bridge_config: BridgeConfig, tmp_log: Path
-    ) -> None:
+    async def test_wait_for_state_timeout(self, bridge_config: BridgeConfig, tmp_log: Path) -> None:
         async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
             with pytest.raises(StateTimeoutError):
                 await bridge.wait_for_state(timeout=0.2)
@@ -138,9 +131,7 @@ class TestCommandSending:
             data = json.loads(content)
             assert data["msg_id"] == msg_id
 
-    async def test_msg_id_monotonic(
-        self, bridge_config: BridgeConfig, tmp_log: Path
-    ) -> None:
+    async def test_msg_id_monotonic(self, bridge_config: BridgeConfig, tmp_log: Path) -> None:
         async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
             ids = [bridge.next_msg_id() for _ in range(5)]
             assert ids == sorted(ids)
@@ -152,30 +143,25 @@ class TestCommandSending:
 
 @pytest.mark.asyncio
 class TestAckHandling:
-    async def test_wait_for_ack_success(
-        self, bridge_config: BridgeConfig, tmp_log: Path
-    ) -> None:
+    async def test_wait_for_ack_success(self, bridge_config: BridgeConfig, tmp_log: Path) -> None:
         async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
+
             async def write_ack() -> None:
                 await asyncio.sleep(0.1)
                 ack = {"msg_id": 42, "success": True}
-                _write_line(tmp_log, f'AlphaZeroMain: AZ_ACK:{json.dumps(ack)}')
+                _write_line(tmp_log, f"AlphaZeroMain: AZ_ACK:{json.dumps(ack)}")
 
             writer = asyncio.create_task(write_ack())
             result = await bridge.wait_for_ack(msg_id=42, timeout=2.0)
             await writer
             assert result["success"] is True
 
-    async def test_wait_for_ack_timeout(
-        self, bridge_config: BridgeConfig, tmp_log: Path
-    ) -> None:
+    async def test_wait_for_ack_timeout(self, bridge_config: BridgeConfig, tmp_log: Path) -> None:
         async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
             with pytest.raises(AckTimeoutError):
                 await bridge.wait_for_ack(msg_id=999, timeout=0.2)
 
-    async def test_send_and_wait(
-        self, bridge_config: BridgeConfig, tmp_log: Path
-    ) -> None:
+    async def test_send_and_wait(self, bridge_config: BridgeConfig, tmp_log: Path) -> None:
         async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
             msg_id = bridge.next_msg_id()
             cmd = create_end_turn_command(msg_id)
@@ -183,7 +169,7 @@ class TestAckHandling:
             async def write_ack() -> None:
                 await asyncio.sleep(0.15)
                 ack = {"msg_id": msg_id, "success": True}
-                _write_line(tmp_log, f'AlphaZeroMain: AZ_ACK:{json.dumps(ack)}')
+                _write_line(tmp_log, f"AlphaZeroMain: AZ_ACK:{json.dumps(ack)}")
 
             writer = asyncio.create_task(write_ack())
             result = await bridge.send_and_wait(cmd, timeout=2.0)
@@ -207,7 +193,7 @@ class TestHeartbeat:
     ) -> None:
         async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
             hb = {"lua_alive": True, "timestamp": int(time.time())}
-            _write_line(tmp_log, f'AlphaZeroMain: AZ_HB:{json.dumps(hb)}')
+            _write_line(tmp_log, f"AlphaZeroMain: AZ_HB:{json.dumps(hb)}")
             await asyncio.sleep(0.15)
             assert bridge.is_connected
 
@@ -217,15 +203,13 @@ class TestHeartbeat:
 
 @pytest.mark.asyncio
 class TestStats:
-    async def test_combined_stats(
-        self, bridge_config: BridgeConfig, tmp_log: Path
-    ) -> None:
+    async def test_combined_stats(self, bridge_config: BridgeConfig, tmp_log: Path) -> None:
         async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
             # Send a command
             await bridge.send_command(create_end_turn_command(1))
 
             # Write a heartbeat
-            _write_line(tmp_log, f'AZ_HB:{json.dumps({"lua_alive": True})}')
+            _write_line(tmp_log, f"AZ_HB:{json.dumps({'lua_alive': True})}")
             await asyncio.sleep(0.15)
 
             stats = bridge.stats
@@ -233,16 +217,12 @@ class TestStats:
             assert stats["heartbeats_received"] >= 1
             assert stats["running"] is True
 
-    async def test_get_stats_compat(
-        self, bridge_config: BridgeConfig, tmp_log: Path
-    ) -> None:
+    async def test_get_stats_compat(self, bridge_config: BridgeConfig, tmp_log: Path) -> None:
         async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
             stats = bridge.get_stats()
             assert isinstance(stats, dict)
 
-    async def test_clear_files(
-        self, bridge_config: BridgeConfig, tmp_log: Path
-    ) -> None:
+    async def test_clear_files(self, bridge_config: BridgeConfig, tmp_log: Path) -> None:
         async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
             # Write a command
             await bridge.send_command(create_end_turn_command(1))
@@ -270,14 +250,10 @@ class TestStats:
 
             monkeypatch.setattr(Path, "write_text", _raise_oserror)
 
-            with caplog.at_level(
-                logging.DEBUG, logger="alpha_zero.bridge.live_bridge"
-            ):
+            with caplog.at_level(logging.DEBUG, logger="alpha_zero.bridge.live_bridge"):
                 bridge.clear_files()  # Should not raise.
 
-            assert any(
-                "Could not clear" in record.message for record in caplog.records
-            )
+            assert any("Could not clear" in record.message for record in caplog.records)
 
 
 # --- Poll interval configuration tests ---
@@ -343,7 +319,7 @@ class TestDefaultArgumentPaths:
         bridge_config.heartbeat_timeout_s = 5.0
         async with LiveBridge(bridge_config, tmp_log, poll_interval=0.05) as bridge:
             hb = {"lua_alive": True, "timestamp": int(time.time())}
-            _write_line(tmp_log, f'AZ_HB:{json.dumps(hb)}')
+            _write_line(tmp_log, f"AZ_HB:{json.dumps(hb)}")
             await asyncio.sleep(0.15)
             assert bridge.check_heartbeat() is True
 
@@ -367,12 +343,10 @@ class TestDefaultArgumentPaths:
             async def write_ack() -> None:
                 await asyncio.sleep(0.1)
                 ack = {"msg_id": msg_id, "success": True}
-                _write_line(tmp_log, f'AlphaZeroMain: AZ_ACK:{json.dumps(ack)}')
+                _write_line(tmp_log, f"AlphaZeroMain: AZ_ACK:{json.dumps(ack)}")
 
             writer = asyncio.create_task(write_ack())
-            result = await bridge.send_and_wait_with_retry(
-                cmd, timeout=2.0, max_retries=3
-            )
+            result = await bridge.send_and_wait_with_retry(cmd, timeout=2.0, max_retries=3)
             await writer
             assert result["success"] is True
 

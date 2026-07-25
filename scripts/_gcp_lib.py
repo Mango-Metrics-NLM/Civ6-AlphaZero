@@ -93,6 +93,7 @@ force_ipv4_only()
 # ADC token helper
 # ---------------------------------------------------------------------------
 
+
 def _adc_path() -> pathlib.Path:
     """Resolve the Application Default Credentials JSON path.
 
@@ -166,6 +167,7 @@ def auth_headers() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # Logging bootstrap
 # ---------------------------------------------------------------------------
+
 
 def configure_script_logging(level: int = logging.INFO) -> None:
     """Configure a simple stderr logger for utility scripts.

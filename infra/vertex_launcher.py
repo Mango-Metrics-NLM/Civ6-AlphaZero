@@ -92,9 +92,7 @@ class JobConfig:
             container_spec["args"] = self.args
 
         if self.env_vars:
-            container_spec["env"] = [
-                {"name": k, "value": v} for k, v in self.env_vars.items()
-            ]
+            container_spec["env"] = [{"name": k, "value": v} for k, v in self.env_vars.items()]
 
         return {
             "machine_spec": machine_spec,
@@ -155,8 +153,7 @@ class VertexAILauncher:
         )
 
         logger.info(
-            f"VertexAILauncher initialized "
-            f"(project={self.project_id}, region={self.region})"
+            f"VertexAILauncher initialized (project={self.project_id}, region={self.region})"
         )
 
     def _get_container_uri(self, component: str) -> str:
@@ -200,13 +197,15 @@ class VertexAILauncher:
         machine = get_machine_profile(profile)
 
         env_vars = self._get_base_env_vars(iteration)
-        env_vars.update({
-            "CIV6_WORKER_ID": str(worker_id),
-            "CIV6_NUM_GAMES": str(num_games),
-            "CIV6_NUM_SIMULATIONS": str(num_simulations),
-            "CIV6_BOARD_SIZE": str(board_size),
-            "CIV6_DEVICE": "cuda" if machine.accelerator_count > 0 else "cpu",
-        })
+        env_vars.update(
+            {
+                "CIV6_WORKER_ID": str(worker_id),
+                "CIV6_NUM_GAMES": str(num_games),
+                "CIV6_NUM_SIMULATIONS": str(num_simulations),
+                "CIV6_BOARD_SIZE": str(board_size),
+                "CIV6_DEVICE": "cuda" if machine.accelerator_count > 0 else "cpu",
+            }
+        )
 
         job_config = JobConfig(
             display_name=f"civ6-selfplay-iter{iteration}-worker{worker_id}",
@@ -301,15 +300,17 @@ class VertexAILauncher:
         machine = get_machine_profile(profile)
 
         env_vars = self._get_base_env_vars(iteration)
-        env_vars.update({
-            "CIV6_TRAINING_STEPS": str(training_steps),
-            "CIV6_BATCH_SIZE": str(batch_size),
-            "CIV6_LEARNING_RATE": str(learning_rate),
-            "CIV6_REPLAY_WINDOW": str(replay_window),
-            "CIV6_BOARD_SIZE": str(board_size),
-            "CIV6_DEVICE": "cuda" if machine.accelerator_count > 0 else "cpu",
-            "CIV6_USE_AMP": "true" if machine.accelerator_count > 0 else "false",
-        })
+        env_vars.update(
+            {
+                "CIV6_TRAINING_STEPS": str(training_steps),
+                "CIV6_BATCH_SIZE": str(batch_size),
+                "CIV6_LEARNING_RATE": str(learning_rate),
+                "CIV6_REPLAY_WINDOW": str(replay_window),
+                "CIV6_BOARD_SIZE": str(board_size),
+                "CIV6_DEVICE": "cuda" if machine.accelerator_count > 0 else "cpu",
+                "CIV6_USE_AMP": "true" if machine.accelerator_count > 0 else "false",
+            }
+        )
 
         job_config = JobConfig(
             display_name=f"civ6-trainer-iter{iteration}",
@@ -363,13 +364,15 @@ class VertexAILauncher:
         machine = get_machine_profile(profile)
 
         env_vars = self._get_base_env_vars(iteration)
-        env_vars.update({
-            "CIV6_EVAL_GAMES": str(num_games),
-            "CIV6_NUM_SIMULATIONS": str(num_simulations),
-            "CIV6_PROMOTION_THRESHOLD": str(promotion_threshold),
-            "CIV6_BOARD_SIZE": str(board_size),
-            "CIV6_DEVICE": "cuda" if machine.accelerator_count > 0 else "cpu",
-        })
+        env_vars.update(
+            {
+                "CIV6_EVAL_GAMES": str(num_games),
+                "CIV6_NUM_SIMULATIONS": str(num_simulations),
+                "CIV6_PROMOTION_THRESHOLD": str(promotion_threshold),
+                "CIV6_BOARD_SIZE": str(board_size),
+                "CIV6_DEVICE": "cuda" if machine.accelerator_count > 0 else "cpu",
+            }
+        )
 
         job_config = JobConfig(
             display_name=f"civ6-evaluator-iter{iteration}",

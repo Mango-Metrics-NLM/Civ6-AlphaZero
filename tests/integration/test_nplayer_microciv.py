@@ -167,8 +167,7 @@ class TestNPlayerTurnCycling:
         for cycle in range(2):  # 2 full cycles
             for expected_player in range(n):
                 assert env_np.current_player == expected_player, (
-                    f"Cycle {cycle}, expected player {expected_player}, "
-                    f"got {env_np.current_player}"
+                    f"Cycle {cycle}, expected player {expected_player}, got {env_np.current_player}"
                 )
                 env_np._end_turn()
 

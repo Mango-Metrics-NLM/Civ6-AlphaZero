@@ -239,9 +239,7 @@ class TestOrchestratorStatePersistence:
         mock_config.project_id = "test-project"
         mock_config.bucket = "test-bucket"
 
-        with patch(
-            "alpha_zero.cloud.gcp.storage.GCSBackend"
-        ) as mock_backend_cls:
+        with patch("alpha_zero.cloud.gcp.storage.GCSBackend") as mock_backend_cls:
             mock_backend = MagicMock()
             mock_backend_cls.return_value = mock_backend
             uri = state.save(mock_config)
@@ -269,9 +267,7 @@ class TestOrchestratorStatePersistence:
         mock_config.project_id = "test-project"
         mock_config.bucket = "test-bucket"
 
-        with patch(
-            "alpha_zero.cloud.gcp.storage.GCSBackend"
-        ) as mock_backend_cls:
+        with patch("alpha_zero.cloud.gcp.storage.GCSBackend") as mock_backend_cls:
             mock_backend = MagicMock()
             mock_backend.download_blob.return_value = json.dumps(state_dict).encode()
             mock_backend_cls.return_value = mock_backend
@@ -288,9 +284,7 @@ class TestOrchestratorStatePersistence:
         mock_config.project_id = "test-project"
         mock_config.bucket = "test-bucket"
 
-        with patch(
-            "alpha_zero.cloud.gcp.storage.GCSBackend"
-        ) as mock_backend_cls:
+        with patch("alpha_zero.cloud.gcp.storage.GCSBackend") as mock_backend_cls:
             mock_backend = MagicMock()
             mock_backend.download_blob.side_effect = Exception("Not found")
             mock_backend_cls.return_value = mock_backend
@@ -311,9 +305,7 @@ class TestOrchestratorStatePersistence:
         mock_config.project_id = "test-project"
         mock_config.bucket = "test-bucket"
 
-        with patch(
-            "alpha_zero.cloud.gcp.storage.GCSBackend"
-        ) as mock_backend_cls:
+        with patch("alpha_zero.cloud.gcp.storage.GCSBackend") as mock_backend_cls:
             mock_backend = MagicMock()
             mock_backend.upload_blob.side_effect = Exception("Upload failed")
             mock_backend_cls.return_value = mock_backend

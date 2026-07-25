@@ -30,8 +30,8 @@ Invocation is via ``python -m`` — there are **no** installed console scripts.
 - ``python -m alpha_zero.orchestrator`` — unified training orchestrator.
 - ``python -m alpha_zero.web`` — Human-vs-AI web interface.
 - ``python -m alpha_zero.cloud.gcp`` — Vertex AI job launcher.
-- Top-level runners: ``run_sweep.py``, ``run_civ6_ai.py``, ``run_debug_selfplay.py``,
-  ``run_enhanced_training.py``, ``run_muzero_training.py``, ``inspect_db.py``.
+- Top-level runners: ``run_sweep.py``, ``run_civ6_ai.py``,
+  ``run_enhanced_training.py``, ``run_muzero_training.py``.
 
 ## Conventions
 

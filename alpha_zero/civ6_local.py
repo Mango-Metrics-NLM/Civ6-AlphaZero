@@ -22,7 +22,7 @@ import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -365,7 +365,7 @@ def run_microciv(config: Civ6LocalConfig) -> int:
     import numpy as np
     import torch
 
-    from alpha_zero.core.civ6_mcts import GumbelMCTS, GumbelMCTSConfig
+    from alpha_zero.core.civ6_mcts import GumbelMCTS, GumbelMCTSConfig, MCTSEnvironment
     from alpha_zero.core.civ6_network import MicroCivNetwork
     from alpha_zero.envs.microciv import MicroCivEnv
 
@@ -405,6 +405,10 @@ def run_microciv(config: Civ6LocalConfig) -> int:
     turn = 0
     reward = 0.0
 
+    # MicroCivEnv satisfies the MCTSEnvironment protocol at runtime, but its
+    # gym ``Discrete`` action_space keeps it from matching structurally.
+    mcts_env = cast(MCTSEnvironment, env)
+
     logger.info(
         "Starting MicroCiv game: board=%dx%d, sims=%d (MCTS enabled)",
         config.board_size,
@@ -417,7 +421,7 @@ def run_microciv(config: Civ6LocalConfig) -> int:
         # W1.3 (sprint v1.7.0): use MCTS for action selection instead of the
         # previous greedy-only fallback. GumbelMCTS.search() needs the env
         # itself for tree expansion via clone()/step().
-        action_probs, root_value = mcts.search(env, add_noise=(turn < 30))
+        action_probs, root_value = mcts.search(mcts_env, add_noise=(turn < 30))
 
         # Re-mask defensively in case mcts returns probability on an action
         # that has since become illegal (env may have advanced inside search).

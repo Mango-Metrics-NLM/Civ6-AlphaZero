@@ -33,9 +33,7 @@ except ImportError:
     torch = None  # type: ignore[assignment]
     _TORCH_AVAILABLE = False
 
-requires_torch = pytest.mark.skipif(
-    not _TORCH_AVAILABLE, reason="torch not installed"
-)
+requires_torch = pytest.mark.skipif(not _TORCH_AVAILABLE, reason="torch not installed")
 
 # ---------------------------------------------------------------------------
 # Guard: skip if the monitoring module doesn't exist yet
@@ -102,9 +100,7 @@ class TestComputePolicyEntropy:
         result = compute_policy_entropy(logits)
 
         expected = math.log(n_actions)
-        assert abs(result - expected) < 1e-4, (
-            f"Expected entropy={expected:.4f}, got {result:.4f}"
-        )
+        assert abs(result - expected) < 1e-4, f"Expected entropy={expected:.4f}, got {result:.4f}"
 
     def test_one_hot_distribution_entropy_near_zero(self) -> None:
         """Near-one-hot policy → entropy close to 0 nats."""
@@ -301,9 +297,7 @@ class TestComputeActionDiversity:
         # 1 unique action out of batch positions
         expected_max = 1.0 / batch
         # Allow slightly above due to fraction definition differences
-        assert result <= expected_max + 1e-5, (
-            f"Expected diversity ≤ {expected_max}, got {result}"
-        )
+        assert result <= expected_max + 1e-5, f"Expected diversity ≤ {expected_max}, got {result}"
 
     def test_all_different_actions_high_diversity(self) -> None:
         """Each position has a unique top-1 action → diversity = 1.0."""
@@ -370,6 +364,7 @@ class TestAlphaZeroMLflowEvaluator:
         Returns:
             MagicMock that behaves like a nn.Module.
         """
+
         def fake_forward(spatial: Any, vector: Any) -> tuple:
             """Fake forward: return uniform logits and zero values as tuple."""
             batch = spatial.shape[0] if hasattr(spatial, "shape") else 1
@@ -492,9 +487,7 @@ class TestAlphaZeroMLflowEvaluator:
     ) -> None:
         """Calling compute_metrics with device='cpu' must not raise on CI."""
         # Should complete without CUDA errors
-        result = evaluator.compute_metrics(
-            mock_model, sample_eval_positions, device="cpu"
-        )
+        result = evaluator.compute_metrics(mock_model, sample_eval_positions, device="cpu")
 
         assert isinstance(result, dict)
 

@@ -5,6 +5,7 @@ what happens when the Civ6 Lua mod writes files with various issues:
 corrupted JSON, missing fields, partial writes, stale heartbeats,
 OneDrive-redirected paths, and IPC directory edge cases.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -201,7 +202,10 @@ class TestStatePollEdgeCases:
         state_data = {
             "turn_id": 100,
             "map": {"width": 80, "height": 60, "tiles": tiles},
-            "units": [{"id": i, "type_name": "UNIT_WARRIOR", "owner": 0, "x": i, "y": 0} for i in range(50)],
+            "units": [
+                {"id": i, "type_name": "UNIT_WARRIOR", "owner": 0, "x": i, "y": 0}
+                for i in range(50)
+            ],
             "cities": [],
             "legal_actions": [{"action": "end_turn"}],
         }
@@ -349,8 +353,24 @@ class TestMockBridgeEdgeCases:
         """Setting multiple mock states only keeps the last one."""
         bridge = MockFileBridge()
         await bridge.start()
-        bridge.set_mock_state({"turn_id": 1, "map": {"width": 1, "height": 1}, "units": [], "cities": [], "legal_actions": []})
-        bridge.set_mock_state({"turn_id": 2, "map": {"width": 1, "height": 1}, "units": [], "cities": [], "legal_actions": []})
+        bridge.set_mock_state(
+            {
+                "turn_id": 1,
+                "map": {"width": 1, "height": 1},
+                "units": [],
+                "cities": [],
+                "legal_actions": [],
+            }
+        )
+        bridge.set_mock_state(
+            {
+                "turn_id": 2,
+                "map": {"width": 1, "height": 1},
+                "units": [],
+                "cities": [],
+                "legal_actions": [],
+            }
+        )
         state = await bridge.poll_state()
         assert state.turn_id == 2
 

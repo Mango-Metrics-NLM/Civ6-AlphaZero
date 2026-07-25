@@ -27,9 +27,7 @@ class TestChannelCountFormula:
         ],
     )
     def test_channel_count(self, num_players: int, expected_channels: int) -> None:
-        encoder = MicroCivEncoder(
-            board_size=TestDefaults.SMALL_BOARD_SIZE, num_players=num_players
-        )
+        encoder = MicroCivEncoder(board_size=TestDefaults.SMALL_BOARD_SIZE, num_players=num_players)
         assert encoder.total_channels == expected_channels
 
     @pytest.mark.parametrize(
@@ -42,9 +40,7 @@ class TestChannelCountFormula:
             (8, 37),
         ],
     )
-    def test_microciv_channels_helper(
-        self, num_players: int, expected_channels: int
-    ) -> None:
+    def test_microciv_channels_helper(self, num_players: int, expected_channels: int) -> None:
         assert microciv_channels(num_players) == expected_channels
 
     def test_test_defaults_constants(self) -> None:
@@ -149,8 +145,7 @@ class TestPlayerRelativeEncoding:
         """Each of 4 players occupies distinct unit channel blocks."""
         encoder = MicroCivEncoder(board_size=board_size, num_players=4)
         units = [
-            {"player": p, "type": "warrior", "position": (p, 0), "health": 100}
-            for p in range(4)
+            {"player": p, "type": "warrior", "position": (p, 0), "health": 100} for p in range(4)
         ]
         state = self._make_state(current_player=0, units=units, num_players=4)
         spatial, _ = encoder.encode(state)

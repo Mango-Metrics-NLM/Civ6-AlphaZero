@@ -215,7 +215,7 @@ class ModelEvaluator:
         if self.config.diversity.enabled:
             self.diversity_tracker = DiversityTracker(self.config.diversity)
         else:
-            self.diversity_tracker = None  # type: ignore[assignment]
+            self.diversity_tracker = None
 
     def _create_environment(self) -> MicroCivEnv:
         """Create evaluation environment."""

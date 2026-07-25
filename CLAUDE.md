@@ -187,11 +187,11 @@ PROHIBITED (do not attempt):
 ```bash
 # After writing code, run in this order:
 
-# 1. Lint check
-ruff check alpha_zero/
+# 1. Lint check (whole repo — CI gate scope as of 2026-07-25)
+ruff check .
 
 # 2. Type check
-mypy alpha_zero/ --ignore-missing-imports
+mypy alpha_zero/  # exits 0 as of 2026-07-25; flag-free — config lives in pyproject
 
 # 3. Unit tests (fast feedback)
 pytest tests/unit/ -v --tb=short
@@ -403,7 +403,7 @@ When making changes, update the relevant sections below:
 | 2026-05-30 | Pre-PR review in isolated subagent | Pre-PR handoff skill dispatches review to a fresh `Agent`/`code-review` for generator–evaluator separation (independent context). |
 | 2026-07-05 | N-player training pipeline (G9) | `training_civ6.py` threads `num_players` end-to-end: `TrainingExample.value_vector` (per-player, relative order), per-player targets via `multiplayer.scoring` (`ScoringMethod`), `compute_nplayer_value_loss` in `train_epoch`, and `CurrentPlayerValueView` (reduces the per-player value vector to relative-index-0 so scalar `Civ6MCTS`/`GumbelMCTS` can drive an N-player network). Encoder is player-relative, so value targets and the scalar view both key on relative index 0. 2-player path byte-identical; opt-in via `--num_players`/`--scoring_method`. |
 | 2026-07-13 | W&B fully retired; MLflow sole tracker | SDK swap verified complete (zero `import wandb` in `alpha_zero/`). `resolve_tracker_enabled()` unifies enablement (`CIV6AZ_MLFLOW_ENABLED` > `MLFLOW_ENABLED` > legacy `WANDB_ENABLED`, warns). Orchestrator `WandbConfig` = deprecated bridge via `to_mlflow_config()`; `--no-wandb`/`--no-tracking` disable ALL tracking. `utils/wandb_logger.py` shim deleted (lazy `alpha_zero.utils.WandbLogger` alias remains, warns). Adapter hardened: numpy/nested metric coercion, `run_name` property (fixes run-group propagation), `alert()` also warns in logs. |
-| 2026-07-25 | OpenSpec governance + deterministic validators | Enterprise docs overhaul managed as one OpenSpec change (`openspec/`). Four stdlib-only validators (`scripts/validate_openspec.py`, `validate_kb.py`, `validate_skills.py`, `check_doc_sync.py`; exit 0/1/2; tests in `tests/governance/`) enforced by Claude hooks, `.pre-commit-config.yaml` (ruff pinned to CI's 0.8.0), and a CI `governance` job. `check_doc_sync.py` blocks doc drift (version triple, MODULE_REFERENCE counts, README forbidden patterns, unknown extras, links, changelog-version). Skills gained frontmatter + validation gates; added `openspec-propose`/`openspec-archive`/`doc-sync`/`release`. Stale docs archived to `docs/archive/` (archive-not-delete). |
+| 2026-07-25 | OpenSpec governance + deterministic validators | Enterprise docs overhaul managed as one OpenSpec change (`openspec/`). Four stdlib-only validators (`scripts/validate_openspec.py`, `validate_kb.py`, `validate_skills.py`, `check_doc_sync.py`; exit 0/1/2; tests in `tests/governance/`) enforced by Claude hooks, `.pre-commit-config.yaml` (ruff pinned to CI's version — 0.15.8 as of 2026-07-25), and a CI `governance` job. `check_doc_sync.py` blocks doc drift (version triple, MODULE_REFERENCE counts, README forbidden patterns, unknown extras, links, changelog-version). Skills gained frontmatter + validation gates; added `openspec-propose`/`openspec-archive`/`doc-sync`/`release`. Stale docs archived to `docs/archive/` (archive-not-delete). |
 | 2026-07-25 | PostToolUse autofix defers F401 **and** RUF100 | `--extend-ignore F401` alone made existing `# noqa: F401` directives look unused, so RUF100 `--fix` stripped them and re-exposed the imports to CI's F401 gate. Deferring both keeps intentional availability-probe imports intact (`.claude/hooks/posttooluse_lint.sh`). |
 
 ### 5.3 Known Issues
@@ -419,7 +419,7 @@ When making changes, update the relevant sections below:
 | `serving/` + `inference/` omitted from coverage gate | They require the `web` extra (fastapi/uvicorn), absent from the default-CI `[dev]` install, so they cannot be imported in CI's coverage job. `serving/` has unit tests (`tests/unit/test_serving/`, `importorskip`-guarded) but stays in the omit list until CI installs the `web` extra. |
 | Coverage instrumentation crashes under nightly numpy 2.4 + coverage C-tracer | Local-only sandbox issue ("cannot load module more than once"); run tests without `--cov`, or use pinned numpy. CI uses pinned versions and is unaffected. |
 | ~~MicroCiv hardcoded for 2 players~~ (resolved 2026-07-05) | Env + encoder N-player (2–6); training pipeline now N-player too. **G7/G8/G9 all done**: `training_civ6.py` threads `num_players` (per-player `value_vector`, `compute_nplayer_value_loss`, `CurrentPlayerValueView` scalar-MCTS adapter). 2-player path byte-identical. Tests: `tests/unit/test_nplayer_training_pipeline.py`. Train: `python -m alpha_zero.training_civ6 --num_players 4`. |
-| ~~12 DDP tests xfailed~~ (stale — corrected 2026-07-05) | DDP tests use CUDA `skipif`, not `xfail`. Repo has exactly one real `xfail` (`test_phase2.py:381`). Real test debt is ~20 statically-skipped suites, mostly the partial W&B→MLflow swap (below). |
+| ~~12 DDP tests xfailed~~ (stale — corrected 2026-07-05) | DDP tests use CUDA `skipif`, not `xfail`. Repo has exactly one real `xfail` (`test_phase2.py:381`). Real static-skip debt (re-measured 2026-07-25): 11 skip sites / 17 tests, none W&B-related — the W&B skips vanished with the 2026-07-13 retirement. Remaining skips: planned-API stubs, full-game-state suites, and one flaky concurrency test (`test_buffer_edge_cases.py`). |
 | mlruns/ file-store deprecated | Run `scripts/migrate_mlflow_to_sqlite.py` to migrate to `sqlite:///mlflow.db` |
 | test_deployment_infra.py: 6 failures | Require .env file not present locally; skip with `pytest -m 'not env_required'` |
 | ~~Two divergent `WandbConfig` classes~~ (resolved 2026-07-13) | `utils/wandb_logger.py` shim deleted; orchestrator `WandbConfig` is now an explicit deprecated bridge (`to_mlflow_config()`), `MLflowConfig` single-source. |
@@ -606,7 +606,7 @@ Civ6-AlphaZero/
 │   ├── optimizations/         # Training optimization strategies (9 files)
 │   ├── opponents/             # Opponent types & strategies (4 files)
 │   ├── spacetimedb/           # SpacetimeDB integration (9 files)
-│   ├── inference/             # Inference service: server/client/engine/schemas (5)
+│   ├── inference/             # Inference service: client/engine/schemas (4)
 │   ├── serving/               # FastAPI inference server (2 files; web extra,
 │   │                           #   omitted from the default coverage gate — see §B/known issues)
 │   ├── human_interface/       # Human gameplay interface (6 files)
@@ -1202,7 +1202,7 @@ project has since shipped through v1.8.0:
 - **Hierarchical Planning**: `alpha_zero/hierarchical/` (19 files)
 - **MuZero**: `alpha_zero/core/muzero_network.py`, `training/muzero_*`
 - **N-Player Multiplayer**: `alpha_zero/multiplayer/` (18 files)
-- **Inference/Serving**: `alpha_zero/inference/` (5 files), `alpha_zero/serving/` (FastAPI server)
+- **Inference/Serving**: `alpha_zero/inference/` (4 files), `alpha_zero/serving/` (FastAPI server)
 
 ### Genuine Next Steps
 1. **N-player MicroCiv**: Fix hardcoded 2-player env (gaps G7/G8/G9)

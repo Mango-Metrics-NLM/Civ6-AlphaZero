@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 try:
     import torch
@@ -31,7 +31,8 @@ except ImportError:
         class Module:
             pass
 
-    nn = _DummyNn  # type: ignore[misc,assignment]
+    # Shadow the module name with the stub; cast keeps mypy's module type intact.
+    nn = cast(Any, _DummyNn)
 
 
 from alpha_zero.hierarchical.config import HierarchyLevel

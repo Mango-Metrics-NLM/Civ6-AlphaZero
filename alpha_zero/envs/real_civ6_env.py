@@ -630,7 +630,7 @@ class RealCiv6Env(gym.Env):
             logger.debug(f"Async operation error: {e}")
             raise
 
-    def render(self) -> np.ndarray | None:  # type: ignore[override]
+    def render(self) -> np.ndarray | None:
         """Render the environment.
 
         Currently only supports "human" mode which prints state info.

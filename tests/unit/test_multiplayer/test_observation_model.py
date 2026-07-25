@@ -149,17 +149,23 @@ class TestPredictHiddenUnits:
 
     def test_zero_hidden_units_returns_empty(self, model, visible_state, candidate_tiles):
         """num_hidden_units=0 returns empty list immediately."""
-        result = model.predict_hidden_units(visible_state, player=0, num_hidden_units=0, candidate_tiles=candidate_tiles)
+        result = model.predict_hidden_units(
+            visible_state, player=0, num_hidden_units=0, candidate_tiles=candidate_tiles
+        )
         assert result == []
 
     def test_negative_hidden_units_returns_empty(self, model, visible_state, candidate_tiles):
         """Negative num_hidden_units returns empty list."""
-        result = model.predict_hidden_units(visible_state, player=0, num_hidden_units=-5, candidate_tiles=candidate_tiles)
+        result = model.predict_hidden_units(
+            visible_state, player=0, num_hidden_units=-5, candidate_tiles=candidate_tiles
+        )
         assert result == []
 
     def test_empty_candidates_returns_empty(self, model, visible_state):
         """Empty candidate_tiles returns empty list."""
-        result = model.predict_hidden_units(visible_state, player=0, num_hidden_units=3, candidate_tiles=[])
+        result = model.predict_hidden_units(
+            visible_state, player=0, num_hidden_units=3, candidate_tiles=[]
+        )
         assert result == []
 
     def test_correct_number_of_units(self, model, visible_state, candidate_tiles):
@@ -216,7 +222,10 @@ class TestPredictHiddenUnits:
     def test_positions_without_replacement(self, model, visible_state, candidate_tiles):
         """Positions are sampled without replacement (no duplicates)."""
         result = model.predict_hidden_units(
-            visible_state, player=0, num_hidden_units=len(candidate_tiles), candidate_tiles=candidate_tiles
+            visible_state,
+            player=0,
+            num_hidden_units=len(candidate_tiles),
+            candidate_tiles=candidate_tiles,
         )
         positions = [unit["position"] for unit in result]
         assert len(positions) == len(set(positions))
@@ -245,7 +254,9 @@ class TestPredictHiddenUnits:
             default_unit_types=("catapult",),
             default_unit_weights=(1.0,),
         )
-        model = ObservationModel(board_size=8, num_players=2, config=config, rng=np.random.default_rng(0))
+        model = ObservationModel(
+            board_size=8, num_players=2, config=config, rng=np.random.default_rng(0)
+        )
         result = model.predict_hidden_units(
             {"num_players": 2}, player=0, num_hidden_units=1, candidate_tiles=[(3, 3)]
         )
@@ -266,8 +277,12 @@ class TestPredictHiddenUnits:
         model_a = ObservationModel(board_size=16, num_players=2, rng=np.random.default_rng(999))
         model_b = ObservationModel(board_size=16, num_players=2, rng=np.random.default_rng(999))
 
-        result_a = model_a.predict_hidden_units(visible_state, player=0, num_hidden_units=3, candidate_tiles=candidate_tiles)
-        result_b = model_b.predict_hidden_units(visible_state, player=0, num_hidden_units=3, candidate_tiles=candidate_tiles)
+        result_a = model_a.predict_hidden_units(
+            visible_state, player=0, num_hidden_units=3, candidate_tiles=candidate_tiles
+        )
+        result_b = model_b.predict_hidden_units(
+            visible_state, player=0, num_hidden_units=3, candidate_tiles=candidate_tiles
+        )
 
         assert result_a == result_b
 
@@ -277,7 +292,9 @@ class TestPredictHiddenUnits:
             default_unit_types=("warrior", "settler"),
             default_unit_weights=(0.8, 0.2),
         )
-        model = ObservationModel(board_size=8, num_players=2, config=config, rng=np.random.default_rng(42))
+        model = ObservationModel(
+            board_size=8, num_players=2, config=config, rng=np.random.default_rng(42)
+        )
         tiles = [(i, j) for i in range(8) for j in range(8)]
 
         counts: dict[str, int] = {"warrior": 0, "settler": 0}
@@ -414,7 +431,9 @@ class TestObservationModelIntegration:
         tiles = [(r, c) for r in range(4) for c in range(4)]
         state = {"num_players": 3}
 
-        units = model.predict_hidden_units(state, player=1, num_hidden_units=5, candidate_tiles=tiles)
+        units = model.predict_hidden_units(
+            state, player=1, num_hidden_units=5, candidate_tiles=tiles
+        )
         assert len(units) == 5
         for u in units:
             assert u["player"] in (0, 2)  # not player 1
@@ -431,7 +450,9 @@ class TestObservationModelIntegration:
         tiles = [(0, 0), (1, 1), (2, 2), (3, 3)]
         state = {"num_players": num_players}
 
-        units = model.predict_hidden_units(state, player=0, num_hidden_units=2, candidate_tiles=tiles)
+        units = model.predict_hidden_units(
+            state, player=0, num_hidden_units=2, candidate_tiles=tiles
+        )
         assert len(units) == 2
         for u in units:
             assert u["player"] != 0
@@ -443,6 +464,8 @@ class TestObservationModelIntegration:
         model = ObservationModel(board_size=8, num_players=2, rng=np.random.default_rng(0))
         state = {"num_players": 2}
 
-        units = model.predict_hidden_units(state, player=0, num_hidden_units=3, candidate_tiles=tiles)
+        units = model.predict_hidden_units(
+            state, player=0, num_hidden_units=3, candidate_tiles=tiles
+        )
         positions = {u["position"] for u in units}
         assert positions == set(tiles)

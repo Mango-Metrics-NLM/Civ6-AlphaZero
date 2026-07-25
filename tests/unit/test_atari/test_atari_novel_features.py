@@ -112,8 +112,14 @@ class TestAtariStateEncoder:
 
     def test_different_obs_different_embeddings(self):
         encoder = AtariStateEncoder(embedding_dim=32)
-        obs1 = {"spatial": np.zeros((4, 84, 84), dtype=np.float32), "vector": np.zeros(32, dtype=np.float32)}
-        obs2 = {"spatial": np.ones((4, 84, 84), dtype=np.float32), "vector": np.ones(32, dtype=np.float32)}
+        obs1 = {
+            "spatial": np.zeros((4, 84, 84), dtype=np.float32),
+            "vector": np.zeros(32, dtype=np.float32),
+        }
+        obs2 = {
+            "spatial": np.ones((4, 84, 84), dtype=np.float32),
+            "vector": np.ones(32, dtype=np.float32),
+        }
         emb1 = encoder.encode_state(obs1)
         emb2 = encoder.encode_state(obs2)
         assert not np.allclose(emb1, emb2)
@@ -175,7 +181,9 @@ class TestAtariReflectionMemory:
         assert memory.size == 1
 
     def test_max_entries(self):
-        cfg = NovelFeaturesConfig(reflection_enabled=True, reflection_max_entries=3, embedding_dimension=32)
+        cfg = NovelFeaturesConfig(
+            reflection_enabled=True, reflection_max_entries=3, embedding_dimension=32
+        )
         memory = AtariReflectionMemory(cfg)
         for i in range(10):
             traj = _make_trajectory(steps=5, bad_step=i % 5)
@@ -345,9 +353,7 @@ class TestAtariRAGAdvisor:
 
     def test_get_policy_boost_with_knowledge(self, enabled_config, dummy_obs):
         advisor = AtariRAGAdvisor(enabled_config)
-        advisor.ingest_knowledge(
-            "Move up to track ball", action_hints=[2], source="test"
-        )
+        advisor.ingest_knowledge("Move up to track ball", action_hints=[2], source="test")
         boost = advisor.get_policy_boost(dummy_obs, num_actions=6)
         assert boost.shape == (6,)
         # Action 2 should have received a boost
@@ -367,9 +373,7 @@ class TestAtariRAGAdvisor:
 
     def test_knowledge_entry_fields(self, enabled_config):
         advisor = AtariRAGAdvisor(enabled_config)
-        advisor.ingest_knowledge(
-            "Test text", source="wiki", game_name="Pong", action_hints=[1, 2]
-        )
+        advisor.ingest_knowledge("Test text", source="wiki", game_name="Pong", action_hints=[1, 2])
         entry = advisor._knowledge[0]
         assert entry.text == "Test text"
         assert entry.source == "wiki"

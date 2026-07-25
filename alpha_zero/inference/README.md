@@ -81,7 +81,6 @@ Client → Load Balancer → Inference Pod (GPU) → GCS (Models)
 ## Files
 
 - `api_schemas.py` - Request/response models
-- `api_server.py` - FastAPI application
 - `inference_engine.py` - Core inference logic
 - `client.py` - Python SDK
 - `README.md` - This file

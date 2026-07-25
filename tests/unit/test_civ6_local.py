@@ -924,9 +924,7 @@ class TestRunCiv6Bridge:
                     "alpha_zero.bridge.config": MagicMock(
                         BridgeConfig=MagicMock(return_value=MagicMock())
                     ),
-                    "alpha_zero.bridge.live_bridge": MagicMock(
-                        LiveBridge=mock_live_bridge_cls
-                    ),
+                    "alpha_zero.bridge.live_bridge": MagicMock(LiveBridge=mock_live_bridge_cls),
                     "alpha_zero.bridge.state_converter": MagicMock(
                         StateConverter=MagicMock(return_value=MagicMock())
                     ),

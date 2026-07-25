@@ -6,6 +6,7 @@ Tests cover:
 - Snapshot log written to configured dir on policy error
 - Health checker execute_with_retry called (not bypassed) for each state fetch
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -124,9 +125,7 @@ class TestCircuitBreakerOnStateWait:
         health_checker = MagicMock(spec=GameBridgeHealthChecker)
         # First call raises CircuitBreakerOpenError; second call succeeds with game-over state
         cb_err = CircuitBreakerOpenError("open", retry_after=0.0)
-        health_checker.execute_with_retry = AsyncMock(
-            side_effect=[cb_err, state]
-        )
+        health_checker.execute_with_retry = AsyncMock(side_effect=[cb_err, state])
 
         loop = _make_loop(bridge, _make_policy(), health_checker=health_checker, max_turns=5)
 
@@ -264,9 +263,7 @@ class TestSnapshotLog:
         bridge.wait_for_state = AsyncMock(side_effect=[state, game_over])
 
         policy = AsyncMock()
-        policy.select_action = AsyncMock(
-            side_effect=[ValueError("bad_obs"), (0, {})]
-        )
+        policy.select_action = AsyncMock(side_effect=[ValueError("bad_obs"), (0, {})])
 
         loop = _make_loop(bridge, policy, max_turns=5, snapshot_log_dir=tmp_path)
         await loop.run()

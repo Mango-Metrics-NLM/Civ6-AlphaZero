@@ -55,9 +55,11 @@ def _fix_relative_pos_bug(module: torch.nn.Module) -> None:
             ):
                 del m.relative_position_index
 
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def small_config():
@@ -94,6 +96,7 @@ def vector_16():
 # NetworkConfig
 # ---------------------------------------------------------------------------
 
+
 class TestNetworkConfig:
     def test_defaults(self):
         cfg = NetworkConfig()
@@ -121,6 +124,7 @@ class TestNetworkConfig:
 # SpatialEncoder
 # ---------------------------------------------------------------------------
 
+
 class TestSpatialEncoder:
     def test_output_shape(self):
         enc = SpatialEncoder(in_channels=4, num_filters=8, num_res_blocks=2)
@@ -146,6 +150,7 @@ class TestSpatialEncoder:
 # VectorEncoder
 # ---------------------------------------------------------------------------
 
+
 class TestVectorEncoder:
     def test_output_shape(self):
         enc = VectorEncoder(input_dim=16, hidden_dim=32, output_dim=8)
@@ -168,6 +173,7 @@ class TestVectorEncoder:
 # ---------------------------------------------------------------------------
 # PolicyHead
 # ---------------------------------------------------------------------------
+
 
 class TestPolicyHead:
     def test_output_shape(self):
@@ -201,6 +207,7 @@ class TestPolicyHead:
 # ValueHead
 # ---------------------------------------------------------------------------
 
+
 class TestValueHead:
     def test_output_shape(self):
         head = ValueHead(spatial_filters=8, spatial_size=8, vector_dim=16, hidden_dim=8)
@@ -221,6 +228,7 @@ class TestValueHead:
 # ---------------------------------------------------------------------------
 # Civ6Network (extended)
 # ---------------------------------------------------------------------------
+
 
 class TestCiv6NetworkExtended:
     @pytest.fixture
@@ -285,9 +293,7 @@ class TestCiv6NetworkExtended:
         assert loaded.config.spatial_channels == net.config.spatial_channels
         assert loaded.config.action_space_size == net.config.action_space_size
         # Check weights match
-        for (_, p1), (_, p2) in zip(
-            net.named_parameters(), loaded.named_parameters(), strict=True
-        ):
+        for (_, p1), (_, p2) in zip(net.named_parameters(), loaded.named_parameters(), strict=True):
             assert torch.allclose(p1, p2)
 
     def test_save_load_device(self, net, tmp_path):
@@ -314,6 +320,7 @@ class TestCiv6NetworkExtended:
 # ---------------------------------------------------------------------------
 # MicroCivNetwork (extended)
 # ---------------------------------------------------------------------------
+
 
 class TestMicroCivNetworkExtended:
     def test_default_params(self):
@@ -383,6 +390,7 @@ class TestMicroCivNetworkExtended:
 # PositionalEncoding2D
 # ---------------------------------------------------------------------------
 
+
 class TestPositionalEncoding2D:
     def test_learned_encoding_shape(self):
         pe = PositionalEncoding2D(num_channels=8, max_size=16, learned=True)
@@ -428,16 +436,22 @@ class TestPositionalEncoding2D:
 # SpatialSelfAttention
 # ---------------------------------------------------------------------------
 
+
 class TestSpatialSelfAttention:
     def test_output_shape(self):
-        attn = SpatialSelfAttention(num_channels=8, num_heads=2, dropout=0.0, use_relative_pos=False)
+        attn = SpatialSelfAttention(
+            num_channels=8, num_heads=2, dropout=0.0, use_relative_pos=False
+        )
         x = torch.randn(2, 8, 4, 4)
         out = attn(x)
         assert out.shape == x.shape
 
     def test_with_relative_pos(self):
         attn = SpatialSelfAttention(
-            num_channels=8, num_heads=2, dropout=0.0, use_relative_pos=True,
+            num_channels=8,
+            num_heads=2,
+            dropout=0.0,
+            use_relative_pos=True,
         )
         _fix_relative_pos_bug(attn)
         x = torch.randn(2, 8, 4, 4)
@@ -446,7 +460,10 @@ class TestSpatialSelfAttention:
 
     def test_without_relative_pos(self):
         attn = SpatialSelfAttention(
-            num_channels=8, num_heads=2, dropout=0.0, use_relative_pos=False,
+            num_channels=8,
+            num_heads=2,
+            dropout=0.0,
+            use_relative_pos=False,
         )
         x = torch.randn(2, 8, 4, 4)
         out = attn(x)
@@ -456,7 +473,10 @@ class TestSpatialSelfAttention:
         for size in [3, 4, 6]:
             # Fresh instance per size to avoid register_buffer conflict
             attn = SpatialSelfAttention(
-                num_channels=8, num_heads=2, dropout=0.0, use_relative_pos=True,
+                num_channels=8,
+                num_heads=2,
+                dropout=0.0,
+                use_relative_pos=True,
             )
             _fix_relative_pos_bug(attn)
             x = torch.randn(1, 8, size, size)
@@ -465,7 +485,10 @@ class TestSpatialSelfAttention:
 
     def test_relative_pos_reinit_on_size_change(self):
         attn = SpatialSelfAttention(
-            num_channels=8, num_heads=2, dropout=0.0, use_relative_pos=True,
+            num_channels=8,
+            num_heads=2,
+            dropout=0.0,
+            use_relative_pos=True,
         )
         _fix_relative_pos_bug(attn)
         x4 = torch.randn(1, 8, 4, 4)
@@ -479,7 +502,9 @@ class TestSpatialSelfAttention:
         assert attn._spatial_size == 9  # 3*3
 
     def test_gradient_flow(self):
-        attn = SpatialSelfAttention(num_channels=8, num_heads=2, dropout=0.0, use_relative_pos=False)
+        attn = SpatialSelfAttention(
+            num_channels=8, num_heads=2, dropout=0.0, use_relative_pos=False
+        )
         x = torch.randn(1, 8, 4, 4, requires_grad=True)
         out = attn(x)
         out.sum().backward()
@@ -490,10 +515,14 @@ class TestSpatialSelfAttention:
 # CrossModalAttention
 # ---------------------------------------------------------------------------
 
+
 class TestCrossModalAttention:
     def test_output_shapes(self):
         cma = CrossModalAttention(
-            spatial_channels=8, vector_dim=16, num_heads=2, dropout=0.0,
+            spatial_channels=8,
+            vector_dim=16,
+            num_heads=2,
+            dropout=0.0,
         )
         spatial = torch.randn(2, 8, 4, 4)
         vector = torch.randn(2, 16)
@@ -504,7 +533,10 @@ class TestCrossModalAttention:
     def test_residual_connection(self):
         """Output includes residual, so it should differ from zero input only by residual."""
         cma = CrossModalAttention(
-            spatial_channels=8, vector_dim=16, num_heads=2, dropout=0.0,
+            spatial_channels=8,
+            vector_dim=16,
+            num_heads=2,
+            dropout=0.0,
         )
         spatial = torch.randn(1, 8, 4, 4)
         vector = torch.randn(1, 16)
@@ -516,7 +548,10 @@ class TestCrossModalAttention:
 
     def test_gradient_flow(self):
         cma = CrossModalAttention(
-            spatial_channels=8, vector_dim=16, num_heads=2, dropout=0.0,
+            spatial_channels=8,
+            vector_dim=16,
+            num_heads=2,
+            dropout=0.0,
         )
         spatial = torch.randn(1, 8, 4, 4, requires_grad=True)
         vector = torch.randn(1, 16, requires_grad=True)
@@ -530,6 +565,7 @@ class TestCrossModalAttention:
 # ---------------------------------------------------------------------------
 # AttentionSpatialEncoder
 # ---------------------------------------------------------------------------
+
 
 class TestAttentionSpatialEncoder:
     def test_output_shape(self):
@@ -581,6 +617,7 @@ class TestAttentionSpatialEncoder:
 # HierarchicalPolicyHead
 # ---------------------------------------------------------------------------
 
+
 class TestHierarchicalPolicyHead:
     @pytest.fixture
     def head(self):
@@ -628,6 +665,7 @@ class TestHierarchicalPolicyHead:
 # Civ6NetworkV2
 # ---------------------------------------------------------------------------
 
+
 class TestCiv6NetworkV2:
     @pytest.fixture
     def small_v2(self, small_config):
@@ -668,7 +706,8 @@ class TestCiv6NetworkV2:
 
     def test_forward_with_categories(self, small_v2, spatial_8x8, vector_16):
         policy, cat_probs, value = small_v2.forward_with_categories(
-            spatial_8x8, vector_16,
+            spatial_8x8,
+            vector_16,
         )
         assert policy.shape == (2, 32)
         assert cat_probs.shape == (2, 9)
@@ -678,7 +717,9 @@ class TestCiv6NetworkV2:
         mask = torch.zeros(2, 32)
         mask[:, :5] = 1.0
         policy, cat_probs, _value = small_v2.forward_with_categories(
-            spatial_8x8, vector_16, action_mask=mask,
+            spatial_8x8,
+            vector_16,
+            action_mask=mask,
         )
         assert torch.all(policy[:, 5:] < -1e8)
         assert cat_probs.shape == (2, 9)
@@ -737,9 +778,14 @@ class TestCiv6NetworkV2:
 
     def test_kwargs_override(self):
         net = Civ6NetworkV2(
-            spatial_channels=4, spatial_size=4, vector_dim=8,
-            num_res_blocks=1, num_filters=8, fc_hidden_dim=8,
-            action_space_size=10, value_head_hidden=8,
+            spatial_channels=4,
+            spatial_size=4,
+            vector_dim=8,
+            num_res_blocks=1,
+            num_filters=8,
+            fc_hidden_dim=8,
+            action_space_size=10,
+            value_head_hidden=8,
             num_attention_heads=2,
         )
         assert net.config.spatial_channels == 4
@@ -881,6 +927,7 @@ class TestCiv6NetworkV2:
 # compute_loss (extended)
 # ---------------------------------------------------------------------------
 
+
 class TestComputeLossExtended:
     def test_deprecation_warning(self):
         policy_logits = torch.randn(4, 20)
@@ -903,7 +950,10 @@ class TestComputeLossExtended:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)
             total, policy_loss, value_loss = compute_loss(
-                policy_logits, value, target_policy, target_value,
+                policy_logits,
+                value,
+                target_policy,
+                target_value,
             )
         assert not torch.isnan(total)
         assert not torch.isnan(policy_loss)
@@ -920,7 +970,11 @@ class TestComputeLossExtended:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)
             total, _, _ = compute_loss(
-                policy_logits, value, target_policy, target_value, mask,
+                policy_logits,
+                value,
+                target_policy,
+                target_value,
+                mask,
             )
         assert not torch.isnan(total)
 
@@ -933,7 +987,10 @@ class TestComputeLossExtended:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)
             total, policy_loss, value_loss = compute_loss(
-                policy_logits, value, target_policy, target_value,
+                policy_logits,
+                value,
+                target_policy,
+                target_value,
             )
         assert torch.allclose(total, policy_loss + value_loss, atol=1e-6)
 
@@ -941,6 +998,7 @@ class TestComputeLossExtended:
 # ---------------------------------------------------------------------------
 # ResidualBlock (extended)
 # ---------------------------------------------------------------------------
+
 
 class TestResidualBlockExtended:
     def test_different_filter_sizes(self):
@@ -962,6 +1020,7 @@ class TestResidualBlockExtended:
 # Inference mode tests
 # ---------------------------------------------------------------------------
 
+
 class TestInferenceMode:
     def test_predict_single_no_grad(self):
         """predict_single should not accumulate gradients."""
@@ -973,9 +1032,14 @@ class TestInferenceMode:
 
     def test_v2_predict_single_no_grad(self):
         cfg = NetworkConfig(
-            spatial_channels=4, spatial_size=4, vector_dim=8,
-            num_res_blocks=1, num_filters=8, fc_hidden_dim=8,
-            action_space_size=10, value_head_hidden=8,
+            spatial_channels=4,
+            spatial_size=4,
+            vector_dim=8,
+            num_res_blocks=1,
+            num_filters=8,
+            fc_hidden_dim=8,
+            action_space_size=10,
+            value_head_hidden=8,
             num_attention_heads=2,
         )
         net = Civ6NetworkV2(config=cfg)
@@ -987,9 +1051,14 @@ class TestInferenceMode:
 
     def test_v2_predict_hierarchical_no_grad(self):
         cfg = NetworkConfig(
-            spatial_channels=4, spatial_size=4, vector_dim=8,
-            num_res_blocks=1, num_filters=8, fc_hidden_dim=8,
-            action_space_size=10, value_head_hidden=8,
+            spatial_channels=4,
+            spatial_size=4,
+            vector_dim=8,
+            num_res_blocks=1,
+            num_filters=8,
+            fc_hidden_dim=8,
+            action_space_size=10,
+            value_head_hidden=8,
             num_attention_heads=2,
         )
         net = Civ6NetworkV2(config=cfg)

@@ -74,10 +74,8 @@ This module provides cloud-native training infrastructure:
 | `gcp/worker_autoscaler.py` | WorkerAutoscaler, ScalingAction, ScalingDecision |
 | `gcp/pipeline_cache.py` | PipelineCache, ComponentSignature, ComponentType |
 | `gcp/lifecycle.py` | GCSLifecycleManager, LifecycleConfig, LifecycleRule, RetentionPolicyConfig |
-| `gcp/lifecycle_cli.py` | CLI for lifecycle management operations |
 | `gcp/cost.py` | CostEstimator — per-job cost computation |
 | `gcp/cost_monitor.py` | CostMonitor — budget tracking and alerting |
-| `gcp/cost_optimization.py` | CostOptimizationManager — optimization recommendations |
 | `gcp/preemption.py` | Preemption detection utilities |
 | `gcp/preemption_handler.py` | PreemptionHandler — graceful shutdown on Spot VM preemption |
 | `gcp/monitoring.py` | Cloud Monitoring metrics export |

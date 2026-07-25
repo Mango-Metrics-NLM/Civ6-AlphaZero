@@ -160,21 +160,15 @@ class TestGreatPersonInstance:
 
 
 class TestManagerInit:
-    def test_manager_initializes_available(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_manager_initializes_available(self, minimal_manager: GreatPeopleManager) -> None:
         defn = minimal_manager.get_available_for_recruitment(GreatPersonType.GREAT_SCIENTIST)
         assert defn is not None
         assert defn.person_id == "test_scientist"
 
-    def test_manager_loads_default_definitions(
-        self, manager: GreatPeopleManager
-    ) -> None:
+    def test_manager_loads_default_definitions(self, manager: GreatPeopleManager) -> None:
         assert len(manager._definitions) == len(DEFAULT_GREAT_PEOPLE)
 
-    def test_unavailable_type_returns_none(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_unavailable_type_returns_none(self, minimal_manager: GreatPeopleManager) -> None:
         # Only scientist defined, no general available
         defn = minimal_manager.get_available_for_recruitment(GreatPersonType.GREAT_GENERAL)
         assert defn is None
@@ -224,30 +218,22 @@ class TestPoints:
 
 
 class TestCanRecruit:
-    def test_can_recruit_with_enough_points(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_can_recruit_with_enough_points(self, minimal_manager: GreatPeopleManager) -> None:
         minimal_manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 60.0)
         can, _reason = minimal_manager.can_recruit(0, "test_scientist")
         assert can is True
 
-    def test_cannot_recruit_insufficient_points(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_cannot_recruit_insufficient_points(self, minimal_manager: GreatPeopleManager) -> None:
         minimal_manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 30.0)
         can, reason = minimal_manager.can_recruit(0, "test_scientist")
         assert can is False
         assert "Insufficient" in reason
 
-    def test_cannot_recruit_unknown_person(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_cannot_recruit_unknown_person(self, minimal_manager: GreatPeopleManager) -> None:
         can, _reason = minimal_manager.can_recruit(0, "nobody")
         assert can is False
 
-    def test_cannot_recruit_already_taken(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_cannot_recruit_already_taken(self, minimal_manager: GreatPeopleManager) -> None:
         minimal_manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 60.0)
         minimal_manager.recruit(0, "test_scientist", (0, 0))
         can, reason = minimal_manager.can_recruit(1, "test_scientist")
@@ -261,39 +247,29 @@ class TestCanRecruit:
 
 
 class TestRecruit:
-    def test_recruit_returns_great_person(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_recruit_returns_great_person(self, minimal_manager: GreatPeopleManager) -> None:
         minimal_manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 60.0)
         person = minimal_manager.recruit(0, "test_scientist", (5, 5))
         assert person is not None
         assert person.owner_id == 0
         assert person.position == (5, 5)
 
-    def test_recruit_marks_definition_recruited(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_recruit_marks_definition_recruited(self, minimal_manager: GreatPeopleManager) -> None:
         minimal_manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 60.0)
         minimal_manager.recruit(0, "test_scientist", (0, 0))
         assert "test_scientist" in minimal_manager._recruited_definitions
 
-    def test_recruit_deducts_points(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_recruit_deducts_points(self, minimal_manager: GreatPeopleManager) -> None:
         minimal_manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 100.0)
         minimal_manager.recruit(0, "test_scientist", (0, 0))
         remaining = minimal_manager.get_points(0, GreatPersonType.GREAT_SCIENTIST)
         assert remaining == pytest.approx(40.0)  # 100 - 60
 
-    def test_recruit_fails_without_points(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_recruit_fails_without_points(self, minimal_manager: GreatPeopleManager) -> None:
         person = minimal_manager.recruit(0, "test_scientist", (0, 0))
         assert person is None
 
-    def test_recruit_advances_available(
-        self, manager: GreatPeopleManager
-    ) -> None:
+    def test_recruit_advances_available(self, manager: GreatPeopleManager) -> None:
         manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 200.0)
         first = manager.get_available_for_recruitment(GreatPersonType.GREAT_SCIENTIST)
         assert first is not None
@@ -310,43 +286,31 @@ class TestRecruit:
 
 
 class TestPurchaseWithGold:
-    def test_purchase_with_gold_success(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_purchase_with_gold_success(self, minimal_manager: GreatPeopleManager) -> None:
         # No points → cost = 60 * 0.5 = 30 gold
         person, cost = minimal_manager.purchase_with_gold(0, "test_scientist", (0, 0), 100)
         assert person is not None
         assert cost == 30
 
-    def test_purchase_cost_reduces_with_points(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_purchase_cost_reduces_with_points(self, minimal_manager: GreatPeopleManager) -> None:
         minimal_manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 30.0)
         # Needs 30 more points → 30 * 0.5 = 15 gold
         person, cost = minimal_manager.purchase_with_gold(0, "test_scientist", (0, 0), 50)
         assert person is not None
         assert cost == 15
 
-    def test_purchase_insufficient_gold_fails(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_purchase_insufficient_gold_fails(self, minimal_manager: GreatPeopleManager) -> None:
         person, cost = minimal_manager.purchase_with_gold(0, "test_scientist", (0, 0), 5)
         assert person is None
         assert cost == 0
 
-    def test_purchase_unknown_person_fails(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_purchase_unknown_person_fails(self, minimal_manager: GreatPeopleManager) -> None:
         person, _cost = minimal_manager.purchase_with_gold(0, "nobody", (0, 0), 1000)
         assert person is None
 
-    def test_purchase_unavailable_type_fails(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_purchase_unavailable_type_fails(self, minimal_manager: GreatPeopleManager) -> None:
         # No general defined in minimal_manager
-        person, _cost = minimal_manager.purchase_with_gold(
-            0, "sun_tzu", (0, 0), 1000
-        )
+        person, _cost = minimal_manager.purchase_with_gold(0, "sun_tzu", (0, 0), 1000)
         assert person is None
 
 
@@ -362,46 +326,34 @@ class TestActivateAbility:
         assert person is not None
         return person
 
-    def test_activate_returns_effects(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_activate_returns_effects(self, minimal_manager: GreatPeopleManager) -> None:
         person = self._get_person(minimal_manager)
         effects = minimal_manager.activate_ability(person.instance_id)
         assert effects is not None
         assert "science_boost" in effects
 
-    def test_activate_retire_deactivates_person(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_activate_retire_deactivates_person(self, minimal_manager: GreatPeopleManager) -> None:
         person = self._get_person(minimal_manager)
         minimal_manager.activate_ability(person.instance_id)
         assert person.is_active is False
 
-    def test_activate_consumes_charge(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_activate_consumes_charge(self, minimal_manager: GreatPeopleManager) -> None:
         person = self._get_person(minimal_manager)
         assert person.charges_remaining == 1
         minimal_manager.activate_ability(person.instance_id)
         assert person.charges_remaining == 0
 
-    def test_activate_inactive_person_fails(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_activate_inactive_person_fails(self, minimal_manager: GreatPeopleManager) -> None:
         person = self._get_person(minimal_manager)
         person.is_active = False
         result = minimal_manager.activate_ability(person.instance_id)
         assert result is None
 
-    def test_activate_unknown_instance_fails(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_activate_unknown_instance_fails(self, minimal_manager: GreatPeopleManager) -> None:
         result = minimal_manager.activate_ability("ghost_gp")
         assert result is None
 
-    def test_activate_requires_target_when_needed(
-        self, config: GreatPeopleConfig
-    ) -> None:
+    def test_activate_requires_target_when_needed(self, config: GreatPeopleConfig) -> None:
         ability = GreatPersonAbility(
             ability_id="target_ability",
             name="Targeted",
@@ -437,9 +389,7 @@ class TestActivateAbility:
 
 
 class TestPassiveEffects:
-    def test_passive_effects_from_recruited(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_passive_effects_from_recruited(self, minimal_manager: GreatPeopleManager) -> None:
         minimal_manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 60.0)
         minimal_manager.recruit(0, "test_scientist", (0, 0))
         effects = minimal_manager.get_passive_effects(0)
@@ -462,9 +412,7 @@ class TestPassiveEffects:
         effects = minimal_manager.get_passive_effects(0)
         assert effects == {}
 
-    def test_passive_effects_independent_per_player(
-        self, manager: GreatPeopleManager
-    ) -> None:
+    def test_passive_effects_independent_per_player(self, manager: GreatPeopleManager) -> None:
         effects_p1 = manager.get_passive_effects(1)
         assert effects_p1 == {}
 
@@ -481,9 +429,7 @@ class TestGetPlayerGreatPeople:
         people = minimal_manager.get_player_great_people(0)
         assert len(people) == 1
 
-    def test_inactive_excluded_by_default(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_inactive_excluded_by_default(self, minimal_manager: GreatPeopleManager) -> None:
         minimal_manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 60.0)
         person = minimal_manager.recruit(0, "test_scientist", (0, 0))
         assert person is not None
@@ -491,9 +437,7 @@ class TestGetPlayerGreatPeople:
         people = minimal_manager.get_player_great_people(0)
         assert len(people) == 0
 
-    def test_inactive_included_when_flag_false(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_inactive_included_when_flag_false(self, minimal_manager: GreatPeopleManager) -> None:
         minimal_manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 60.0)
         person = minimal_manager.recruit(0, "test_scientist", (0, 0))
         assert person is not None
@@ -510,27 +454,19 @@ class TestGetPlayerGreatPeople:
 class TestRecruitmentProgress:
     def test_returns_progress_dict(self, minimal_manager: GreatPeopleManager) -> None:
         minimal_manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 30.0)
-        progress = minimal_manager.get_recruitment_progress(
-            GreatPersonType.GREAT_SCIENTIST, 0
-        )
+        progress = minimal_manager.get_recruitment_progress(GreatPersonType.GREAT_SCIENTIST, 0)
         assert progress is not None
         assert progress["player_points"] == pytest.approx(30.0)
         assert progress["cost"] == 60
 
-    def test_returns_none_for_unavailable_type(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
-        progress = minimal_manager.get_recruitment_progress(
-            GreatPersonType.GREAT_GENERAL, 0
-        )
+    def test_returns_none_for_unavailable_type(self, minimal_manager: GreatPeopleManager) -> None:
+        progress = minimal_manager.get_recruitment_progress(GreatPersonType.GREAT_GENERAL, 0)
         assert progress is None
 
     def test_leader_tracking(self, minimal_manager: GreatPeopleManager) -> None:
         minimal_manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 40.0)
         minimal_manager.add_points(1, GreatPersonType.GREAT_SCIENTIST, 50.0)
-        progress = minimal_manager.get_recruitment_progress(
-            GreatPersonType.GREAT_SCIENTIST, 0
-        )
+        progress = minimal_manager.get_recruitment_progress(GreatPersonType.GREAT_SCIENTIST, 0)
         assert progress is not None
         assert progress["leader_player_id"] == 1
         assert progress["leader_points"] == pytest.approx(50.0)
@@ -542,17 +478,13 @@ class TestRecruitmentProgress:
 
 
 class TestProcessTurn:
-    def test_turns_available_increments(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_turns_available_increments(self, minimal_manager: GreatPeopleManager) -> None:
         minimal_manager.process_turn()
         progress = minimal_manager._available.get(GreatPersonType.GREAT_SCIENTIST)
         assert progress is not None
         assert progress.turns_available == 1
 
-    def test_turns_alive_increments(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_turns_alive_increments(self, minimal_manager: GreatPeopleManager) -> None:
         minimal_manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 60.0)
         person = minimal_manager.recruit(0, "test_scientist", (0, 0))
         assert person is not None
@@ -590,9 +522,7 @@ class TestEncodeForState:
 
 
 class TestReset:
-    def test_reset_clears_recruited(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_reset_clears_recruited(self, minimal_manager: GreatPeopleManager) -> None:
         minimal_manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 60.0)
         minimal_manager.recruit(0, "test_scientist", (0, 0))
         minimal_manager.reset()
@@ -601,13 +531,9 @@ class TestReset:
     def test_reset_clears_points(self, minimal_manager: GreatPeopleManager) -> None:
         minimal_manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 60.0)
         minimal_manager.reset()
-        assert minimal_manager.get_points(0, GreatPersonType.GREAT_SCIENTIST) == pytest.approx(
-            0.0
-        )
+        assert minimal_manager.get_points(0, GreatPersonType.GREAT_SCIENTIST) == pytest.approx(0.0)
 
-    def test_reset_reinitializes_available(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_reset_reinitializes_available(self, minimal_manager: GreatPeopleManager) -> None:
         minimal_manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 60.0)
         minimal_manager.recruit(0, "test_scientist", (0, 0))
         minimal_manager.reset()
@@ -615,9 +541,7 @@ class TestReset:
         defn = minimal_manager.get_available_for_recruitment(GreatPersonType.GREAT_SCIENTIST)
         assert defn is not None
 
-    def test_reset_clears_recruited_definitions(
-        self, minimal_manager: GreatPeopleManager
-    ) -> None:
+    def test_reset_clears_recruited_definitions(self, minimal_manager: GreatPeopleManager) -> None:
         minimal_manager.add_points(0, GreatPersonType.GREAT_SCIENTIST, 60.0)
         minimal_manager.recruit(0, "test_scientist", (0, 0))
         minimal_manager.reset()

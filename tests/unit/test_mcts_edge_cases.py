@@ -31,9 +31,9 @@ class TestMCTSEdgeCases:
             policy_probs = torch.softmax(policy_logits, dim=1)
 
         # The single valid action should have probability ~1.0
-        assert (
-            policy_probs[0, 0].item() > 0.99
-        ), f"Single valid action should dominate: {policy_probs[0, 0].item()}"
+        assert policy_probs[0, 0].item() > 0.99, (
+            f"Single valid action should dominate: {policy_probs[0, 0].item()}"
+        )
         # All other actions should have near-zero probability
         assert policy_probs[0, 1:].sum().item() < 0.01
 

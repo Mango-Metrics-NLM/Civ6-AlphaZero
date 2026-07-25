@@ -81,7 +81,9 @@ class TestConnectionLifecycle:
     """Test connection lifecycle methods."""
 
     def test_connect_with_mock(
-        self, config: SpacetimeDBConfig, mock_sdk: MockSpacetimeDBClient,
+        self,
+        config: SpacetimeDBConfig,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         client = SpacetimeDBClient(config)
         assert not client.is_connected
@@ -106,7 +108,9 @@ class TestWeightOperations:
     """Test weight publish/get operations."""
 
     def test_publish_weights_sync(
-        self, client: SpacetimeDBClient, mock_sdk: MockSpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         result = client.publish_weights_sync(
             iteration=1,
@@ -119,7 +123,9 @@ class TestWeightOperations:
         assert client.current_version == 1
 
     def test_publish_weights_champion(
-        self, client: SpacetimeDBClient, mock_sdk: MockSpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         result = client.publish_weights_sync(
             iteration=1,
@@ -132,61 +138,80 @@ class TestWeightOperations:
         assert client.champion_version == 1
 
     def test_publish_weights_fires_event(
-        self, client: SpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
     ) -> None:
         versions_received: list[int] = []
         client.subscribe_model_versions(lambda v: versions_received.append(v))
 
         client.publish_weights_sync(
-            iteration=1, version=5, weights_bytes=b"w", metadata={},
+            iteration=1,
+            version=5,
+            weights_bytes=b"w",
+            metadata={},
         )
         assert versions_received == [5]
 
     def test_publish_weights_size_limit(
-        self, client: SpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
     ) -> None:
         # Config has max_weight_blob_mb=10
         large_blob = b"x" * (11 * 1024 * 1024)  # 11 MB
         with pytest.raises(SpacetimeDBSerializationError, match="exceeds"):
             client.publish_weights_sync(
-                iteration=1, version=1,
-                weights_bytes=large_blob, metadata={},
+                iteration=1,
+                version=1,
+                weights_bytes=large_blob,
+                metadata={},
             )
 
     def test_publish_weights_not_connected(
-        self, config: SpacetimeDBConfig,
+        self,
+        config: SpacetimeDBConfig,
     ) -> None:
         client = SpacetimeDBClient(config)
         with pytest.raises(SpacetimeDBConnectionError, match="Not connected"):
             client.publish_weights_sync(
-                iteration=1, version=1,
-                weights_bytes=b"w", metadata={},
+                iteration=1,
+                version=1,
+                weights_bytes=b"w",
+                metadata={},
             )
 
     def test_get_latest_weights_sync(
-        self, client: SpacetimeDBClient, mock_sdk: MockSpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         # Publish first
         mock_sdk.publish_weights_sync(
-            iteration=1, version=1,
-            weights_bytes=b"latest_weights", metadata={"iter": 1},
+            iteration=1,
+            version=1,
+            weights_bytes=b"latest_weights",
+            metadata={"iter": 1},
         )
         result = client.get_latest_weights_sync()
         assert result is not None
         assert result[0] == b"latest_weights"
 
     def test_get_latest_weights_empty(
-        self, client: SpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
     ) -> None:
         result = client.get_latest_weights_sync()
         assert result is None
 
     def test_get_champion_weights_sync(
-        self, client: SpacetimeDBClient, mock_sdk: MockSpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         mock_sdk.publish_weights_sync(
-            iteration=1, version=1,
-            weights_bytes=b"champ", metadata={},
+            iteration=1,
+            version=1,
+            weights_bytes=b"champ",
+            metadata={},
             is_champion=True,
         )
         result = client.get_champion_weights_sync()
@@ -194,30 +219,42 @@ class TestWeightOperations:
         assert result[0] == b"champ"
 
     def test_get_weights_by_version_sync(
-        self, client: SpacetimeDBClient, mock_sdk: MockSpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         mock_sdk.publish_weights_sync(
-            iteration=1, version=3,
-            weights_bytes=b"v3_weights", metadata={},
+            iteration=1,
+            version=3,
+            weights_bytes=b"v3_weights",
+            metadata={},
         )
         result = client.get_weights_by_version_sync(3)
         assert result is not None
         assert result[0] == b"v3_weights"
 
     def test_get_weights_by_version_not_found(
-        self, client: SpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
     ) -> None:
         result = client.get_weights_by_version_sync(999)
         assert result is None
 
     def test_version_tracks_max(
-        self, client: SpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
     ) -> None:
         client.publish_weights_sync(
-            iteration=1, version=3, weights_bytes=b"w", metadata={},
+            iteration=1,
+            version=3,
+            weights_bytes=b"w",
+            metadata={},
         )
         client.publish_weights_sync(
-            iteration=2, version=1, weights_bytes=b"w", metadata={},
+            iteration=2,
+            version=1,
+            weights_bytes=b"w",
+            metadata={},
         )
         # Should track the max version
         assert client.current_version == 3
@@ -227,7 +264,9 @@ class TestTrajectoryOperations:
     """Test trajectory submit operations."""
 
     def test_submit_trajectory_sync(
-        self, client: SpacetimeDBClient, mock_sdk: MockSpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         result = client.submit_trajectory_sync(
             iteration=1,
@@ -240,26 +279,34 @@ class TestTrajectoryOperations:
         assert mock_sdk.call_counts["submit_trajectory"] == 1
 
     def test_submit_trajectory_fires_event(
-        self, client: SpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
     ) -> None:
         trajectories_received: list[str] = []
         client.subscribe_trajectories(lambda tid: trajectories_received.append(tid))
 
         client.submit_trajectory_sync(
-            iteration=1, worker_id=0, game_id="g1",
-            trajectory_bytes=b"data", num_examples=5,
+            iteration=1,
+            worker_id=0,
+            game_id="g1",
+            trajectory_bytes=b"data",
+            num_examples=5,
         )
         assert len(trajectories_received) == 1
         assert "1_0_g1" in trajectories_received[0]
 
     def test_submit_trajectory_not_connected(
-        self, config: SpacetimeDBConfig,
+        self,
+        config: SpacetimeDBConfig,
     ) -> None:
         client = SpacetimeDBClient(config)
         with pytest.raises(SpacetimeDBConnectionError, match="Not connected"):
             client.submit_trajectory_sync(
-                iteration=1, worker_id=0, game_id="g1",
-                trajectory_bytes=b"data", num_examples=5,
+                iteration=1,
+                worker_id=0,
+                game_id="g1",
+                trajectory_bytes=b"data",
+                num_examples=5,
             )
 
 
@@ -267,7 +314,9 @@ class TestMetricsOperations:
     """Test metrics logging operations."""
 
     def test_log_metrics_sync(
-        self, client: SpacetimeDBClient, mock_sdk: MockSpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         result = client.log_metrics_sync(
             step=100,
@@ -277,7 +326,8 @@ class TestMetricsOperations:
         assert mock_sdk.call_counts["log_metrics"] == 1
 
     def test_log_metrics_fires_event(
-        self, client: SpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
     ) -> None:
         metrics_received: list[tuple[int, dict[str, float]]] = []
         client.subscribe_metrics(
@@ -293,14 +343,18 @@ class TestEvaluationOperations:
     """Test evaluation save operations."""
 
     def test_save_evaluation_sync(
-        self, client: SpacetimeDBClient, mock_sdk: MockSpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
-        result = client.save_evaluation_sync({
-            "iteration": 5,
-            "win_rate": 0.55,
-            "games_played": 100,
-            "promoted": True,
-        })
+        result = client.save_evaluation_sync(
+            {
+                "iteration": 5,
+                "win_rate": 0.55,
+                "games_played": 100,
+                "promoted": True,
+            }
+        )
         assert result is True
         assert mock_sdk.call_counts["save_evaluation"] == 1
 
@@ -309,7 +363,9 @@ class TestCheckpointOperations:
     """Test checkpoint save operations."""
 
     def test_save_checkpoint_sync(
-        self, client: SpacetimeDBClient, mock_sdk: MockSpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         result = client.save_checkpoint_sync(
             iteration=10,
@@ -324,7 +380,9 @@ class TestConfigOperations:
     """Test config save operations."""
 
     def test_save_config_sync(
-        self, client: SpacetimeDBClient, mock_sdk: MockSpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         result = client.save_config_sync(
             iteration=1,
@@ -338,14 +396,17 @@ class TestWorkerOperations:
     """Test worker registration and heartbeat."""
 
     def test_register_worker_sync(
-        self, client: SpacetimeDBClient, mock_sdk: MockSpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         result = client.register_worker_sync("selfplay", "worker_0")
         assert result is True
         assert mock_sdk.call_counts["register_worker"] == 1
 
     def test_register_worker_fires_event(
-        self, client: SpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
     ) -> None:
         statuses: list[tuple[str, str]] = []
         client.subscribe_worker_status(
@@ -356,7 +417,9 @@ class TestWorkerOperations:
         assert statuses == [("w1", "running")]
 
     def test_heartbeat_sync(
-        self, client: SpacetimeDBClient, mock_sdk: MockSpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         client.register_worker_sync("selfplay", "w1")
         result = client.heartbeat_sync("w1", games_completed=5)
@@ -364,7 +427,8 @@ class TestWorkerOperations:
         assert mock_sdk.call_counts["heartbeat"] == 1
 
     def test_heartbeat_not_connected(
-        self, config: SpacetimeDBConfig,
+        self,
+        config: SpacetimeDBConfig,
     ) -> None:
         client = SpacetimeDBClient(config)
         # Heartbeat should not raise, just return False
@@ -376,14 +440,17 @@ class TestTrainingState:
     """Test training state operations."""
 
     def test_request_stop_sync(
-        self, client: SpacetimeDBClient, mock_sdk: MockSpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         result = client.request_stop_sync()
         assert result is True
         assert mock_sdk.call_counts["request_stop"] == 1
 
     def test_request_stop_fires_event(
-        self, client: SpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
     ) -> None:
         states_received: list[dict[str, Any]] = []
         client.subscribe_training_state(
@@ -435,7 +502,10 @@ class TestSubscriptions:
         client.subscribe_model_versions(cb2)
 
         client.publish_weights_sync(
-            iteration=1, version=1, weights_bytes=b"w", metadata={},
+            iteration=1,
+            version=1,
+            weights_bytes=b"w",
+            metadata={},
         )
         cb1.assert_called_once_with(1)
         cb2.assert_called_once_with(1)
@@ -450,8 +520,10 @@ class TestFailureSimulation:
         client.connect_with_mock(mock)
 
         result = client.publish_weights_sync(
-            iteration=1, version=1,
-            weights_bytes=b"w", metadata={},
+            iteration=1,
+            version=1,
+            weights_bytes=b"w",
+            metadata={},
         )
         assert result is False
 
@@ -461,8 +533,11 @@ class TestFailureSimulation:
         client.connect_with_mock(mock)
 
         result = client.submit_trajectory_sync(
-            iteration=1, worker_id=0, game_id="g1",
-            trajectory_bytes=b"data", num_examples=5,
+            iteration=1,
+            worker_id=0,
+            game_id="g1",
+            trajectory_bytes=b"data",
+            num_examples=5,
         )
         assert result is False
 
@@ -480,34 +555,43 @@ class TestAsyncOperations:
 
     @pytest.mark.asyncio
     async def test_publish_weights_async(
-        self, client: SpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
     ) -> None:
         result = await client.publish_weights(
-            iteration=1, version=1,
-            weights_bytes=b"w", metadata={},
+            iteration=1,
+            version=1,
+            weights_bytes=b"w",
+            metadata={},
         )
         assert result is True
 
     @pytest.mark.asyncio
     async def test_submit_trajectory_async(
-        self, client: SpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
     ) -> None:
         result = await client.submit_trajectory(
-            iteration=1, worker_id=0, game_id="g1",
-            trajectory_bytes=b"data", num_examples=5,
+            iteration=1,
+            worker_id=0,
+            game_id="g1",
+            trajectory_bytes=b"data",
+            num_examples=5,
         )
         assert result is True
 
     @pytest.mark.asyncio
     async def test_log_metrics_async(
-        self, client: SpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
     ) -> None:
         result = await client.log_metrics(step=1, metrics={"loss": 0.1})
         assert result is True
 
     @pytest.mark.asyncio
     async def test_disconnect_async(
-        self, client: SpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
     ) -> None:
         assert client.is_connected
         await client.disconnect()
@@ -518,7 +602,9 @@ class TestEndToEndWorkflow:
     """Test complete workflows."""
 
     def test_full_training_cycle(
-        self, client: SpacetimeDBClient, mock_sdk: MockSpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         """Simulate a complete training iteration cycle."""
         # Register worker
@@ -536,18 +622,24 @@ class TestEndToEndWorkflow:
 
         # Publish weights
         client.publish_weights_sync(
-            iteration=1, version=1,
-            weights_bytes=b"new_weights", metadata={"loss": 0.3},
+            iteration=1,
+            version=1,
+            weights_bytes=b"new_weights",
+            metadata={"loss": 0.3},
         )
 
         # Log metrics
         client.log_metrics_sync(step=100, metrics={"total_loss": 0.3})
 
         # Save evaluation
-        client.save_evaluation_sync({
-            "iteration": 1, "win_rate": 0.55,
-            "games_played": 50, "promoted": True,
-        })
+        client.save_evaluation_sync(
+            {
+                "iteration": 1,
+                "win_rate": 0.55,
+                "games_played": 50,
+                "promoted": True,
+            }
+        )
 
         # Heartbeat
         client.heartbeat_sync("worker_0", games_completed=3)
@@ -561,7 +653,8 @@ class TestEndToEndWorkflow:
         assert mock_sdk.call_counts["heartbeat"] == 1
 
     def test_version_subscription_workflow(
-        self, client: SpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
     ) -> None:
         """Test that version subscriptions work through full workflow."""
         versions: list[int] = []
@@ -569,8 +662,10 @@ class TestEndToEndWorkflow:
 
         for v in range(1, 4):
             client.publish_weights_sync(
-                iteration=v, version=v,
-                weights_bytes=b"w", metadata={},
+                iteration=v,
+                version=v,
+                weights_bytes=b"w",
+                metadata={},
             )
 
         assert versions == [1, 2, 3]

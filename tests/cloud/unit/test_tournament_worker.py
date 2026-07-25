@@ -407,6 +407,7 @@ class TestVertexTournamentJob:
         with pytest.raises(VertexJobError, match="container_image_uri"):
             job.launch(model_versions=[0, 1])
 
+
 class TestRunTournament:
     """Tests for run_tournament() in tournament_worker."""
 

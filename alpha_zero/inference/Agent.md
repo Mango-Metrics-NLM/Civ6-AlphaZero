@@ -19,9 +19,11 @@ efficiency, `torch.no_grad()` in hot paths, and a stable API contract. See
 This module provides the inference service split into clear layers:
 
 - **api_schemas**: request/response data contracts.
-- **api_server**: the inference HTTP server.
 - **inference_engine**: batched network inference with action masking.
 - **client**: a client SDK for calling the service.
+
+The HTTP server itself lives in `alpha_zero/serving/inference_server.py`
+(the former `api_server.py` here was an unused duplicate, removed 2026-07-25).
 
 Like `serving/`, it depends on optional extras and is omitted from the default
 coverage gate (see `docs/MODULE_REFERENCE.md` coverage notes).
@@ -42,7 +44,6 @@ coverage gate (see `docs/MODULE_REFERENCE.md` coverage notes).
 ## Key Files
 
 - `api_schemas.py` — request/response schemas.
-- `api_server.py` — inference server.
 - `inference_engine.py` — batched inference with masking.
 - `client.py` — client SDK.
 - `README.md` — quick start.

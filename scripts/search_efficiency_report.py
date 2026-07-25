@@ -298,9 +298,8 @@ def generate_markdown_report(
         f"{mz.avg_search_time_ms / max(az.avg_search_time_ms, 0.001):.2f}x |",
         f"| Games per Minute | {az.games_per_minute:.1f} | "
         f"{mz.games_per_minute:.1f} | {speed_ratio:.2f}x |",
-        f"| Win Rate | {az.win_rate:.2%} | "
-        f"{mz.win_rate:.2%} | {mz.win_rate - az.win_rate:+.2%} |",
-        f"| Avg Game Length | {az.avg_game_length:.1f} | " f"{mz.avg_game_length:.1f} | - |",
+        f"| Win Rate | {az.win_rate:.2%} | {mz.win_rate:.2%} | {mz.win_rate - az.win_rate:+.2%} |",
+        f"| Avg Game Length | {az.avg_game_length:.1f} | {mz.avg_game_length:.1f} | - |",
         "",
         "## Key Insight",
         "",
@@ -308,8 +307,7 @@ def generate_markdown_report(
         "tree search. Each MCTS simulation step uses a forward pass through the",
         "learned dynamics network instead of cloning the environment state.",
         "",
-        f"- **AlphaZero**: {az.total_env_clones:,} environment clones across "
-        f"{az.num_games} games",
+        f"- **AlphaZero**: {az.total_env_clones:,} environment clones across {az.num_games} games",
         f"- **MuZero**: {mz.total_dynamics_calls:,} dynamics model forward passes "
         f"across {mz.num_games} games",
         f"- **Efficiency ratio**: {efficiency_ratio:.2f}x",

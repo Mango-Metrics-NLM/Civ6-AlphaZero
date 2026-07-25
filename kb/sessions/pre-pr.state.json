@@ -1,6 +1,21 @@
 {
-    "last_session_id": "session-20260208-PRE-PR",
-    "target_branch": "feat/phase-5-cost-optimization",
-    "validation_status": "completed",
-    "pr_draft": "kb/pr-drafts/20260208-phase-5-cost-optimization.md"
+    "last_session_id": "session_018npcgPmnuoRAww3eMeffk7",
+    "last_timestamp": "2026-07-25T18:45:00Z",
+    "current_focus": "PR #104 (code hygiene sweep) awaiting CI green + human review",
+    "resume_pointers": {
+        "current_task": "Watch PR #104: post-fix CI run must show governance green and blocking mypy green; then merge",
+        "blocked_on": [],
+        "next_steps": [
+            "Post-merge: run openspec-archive for harden-lint-and-type-gates",
+            "Follow-up PR: dependency reconciliation (requirements.txt vs pyproject, Dockerfile.base)",
+            "Follow-up PR: W&B naming sweep (user-approved 2026-07-25)",
+            "Follow-up PR: module merges (TimeoutConfig pair, compat pair, preemption 3-way, selfplay_worker pair)",
+            "Follow-up PR: prints->logging, except-pass debug logs, S301 pickle review, mypy strict expansion"
+        ]
+    },
+    "context_files": [
+        "kb/pr-drafts/20260725-code-hygiene-sweep.md",
+        "openspec/changes/harden-lint-and-type-gates/tasks.md",
+        "CHANGELOG.md"
+    ]
 }

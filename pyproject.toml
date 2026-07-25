@@ -22,12 +22,13 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "pytest-xdist>=3.0.0",
     "pytest-timeout>=2.2.0",
-    "mypy==1.13.0",
-    "ruff==0.8.0",
+    "mypy==1.19.1",
+    "ruff==0.15.8",
     "tqdm>=4.65.0",
     "types-tqdm>=4.65.0",
     "bandit>=1.7.0",
     "types-PyYAML>=6.0.0",
+    "types-requests>=2.31.0",
     "psutil>=5.9.0",
     "httpx>=0.25.0",
     # Test-only dependencies (previously missing; caused 8 test files to fail collection)
@@ -61,7 +62,7 @@ web = [
 # when mlflow is not installed. Upper bound: mlflow 3.x reshuffles MlflowClient
 # APIs and is in active dev — pin to 2.x for now.
 monitoring = [
-    "mlflow>=2.12.0",
+    "mlflow>=2.12.0,<3.0",
 ]
 spacetimedb = [
     "spacetimedb-sdk>=0.7.0",
@@ -132,6 +133,20 @@ exclude = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Unmaintained fringe (demos, scaffolding templates, experimental server modules)
+# is outside the lint/format gate; the maintained set is everything else.
+# force-exclude makes pre-commit (which passes explicit filenames) honour this too.
+# The "./" prefix anchors each pattern to the repo root — a bare name would also
+# match nested dirs like alpha_zero/interfaces/ and silently de-gate them.
+extend-exclude = [
+    "./demos",
+    "./examples",
+    "./templates",
+    "./server-module",
+    "./interfaces",
+    "./spacetimedb_module",
+]
+force-exclude = true
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "C4", "UP", "N", "ANN", "S", "RUF"]
@@ -139,7 +154,6 @@ ignore = [
     "E501",    # Line length handled separately
     "ANN401",  # Any type allowed for duck typing with cloud SDKs
     "S101",    # Use of assert (needed for tests)
-    "UP038",   # isinstance(x, (A, B)) is faster than isinstance(x, A | B) — deprecated in ruff 0.9+
     "UP042",   # Prefer StrEnum over (str, Enum) — deferred refactor
 ]
 
@@ -150,6 +164,7 @@ ignore = [
 "alpha_zero/cloud/gcp/container_validator.py" = ["S603"]  # Internal subprocess call with validated input
 "alpha_zero/cloud/preemption.py" = ["S310"]  # GCE metadata URL is intentional
 "run_*.py" = ["ANN"]  # Skip annotations in run scripts
+"run_civ6_ai.py" = ["S603"]  # Launcher wrapper: subprocess runs a fixed python -m module
 "alpha_zero/utils/reward_shaping.py" = ["RUF002"]  # Greek math symbols (γ, Φ) in formulas
 "alpha_zero/mechanics/__init__.py" = ["E402"]  # Imports after deprecation warning
 "alpha_zero/human_interface/__init__.py" = ["E402"]  # Imports after deprecation warning
@@ -158,7 +173,6 @@ ignore = [
 "scripts/benchmark_batch_selfplay.py" = ["E402"]  # sys.path bootstrap before alpha_zero imports
 "scripts/analyze_prod_v1.6.0.py" = ["N999"]  # Versioned script filename is intentional
 "tests/unit/test_jax_*.py" = ["E402"]  # pytest.importorskip guards precede imports
-"tests/unit/test_pbt_dashboarding.py" = ["E402"]  # module-level skip marker precedes imports
 "tests/unit/test_bridge_config.py" = ["E402"]  # platform skip markers precede imports
 "tests/scripts/test_run_baseline_eval.py" = ["E402"]  # sys.path bootstrap before imports
 
@@ -326,7 +340,6 @@ omit = [
     "alpha_zero/tournament/*",
     # Reflection generator requires async LLM client + persistent vector store
     "alpha_zero/core/reflection_generator.py",
-    "alpha_zero/orchestrator/reflection_*.py",
     # LLM / RAG infrastructure (requires API keys, embedding models, vector stores)
     "alpha_zero/utils/llm_client.py",
     "alpha_zero/utils/rag_client.py",
@@ -397,7 +410,6 @@ omit = [
     "alpha_zero/hierarchical/*",
     "alpha_zero/tournament/*",
     "alpha_zero/core/reflection_generator.py",
-    "alpha_zero/orchestrator/reflection_*.py",
     "alpha_zero/utils/llm_client.py",
     "alpha_zero/utils/rag_client.py",
     "alpha_zero/rag/processors/embeddings.py",

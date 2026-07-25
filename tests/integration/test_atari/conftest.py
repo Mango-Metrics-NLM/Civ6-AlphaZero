@@ -27,10 +27,12 @@ def mock_gymnasium(monkeypatch):
 
     Uses random rewards ([-1, 0, 1]) for more realistic integration testing.
     """
+
     def _make(*_args, **_kwargs):
         return FakeAtariGym(
             reward_fn=lambda _s: float(np.random.choice([-1, 0, 1])),
         )
+
     monkeypatch.setattr(gym, "make", _make)
 
 

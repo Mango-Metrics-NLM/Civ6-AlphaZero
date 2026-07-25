@@ -45,8 +45,9 @@ The entire `alpha_zero/` tree has only:
   deferred to "Phase 3+"). This is the real gap for live multiplayer connection.
 - **1 intentional redirect:** `hierarchical/goals/goal_node.py:384` (`from_dict` → "use
   `GoalHierarchy.from_dict`"). Not missing work.
-- **3 placeholder telemetry values:** `inference/api_server.py:142/143/179`
-  (`active_sessions=0`, `cache_hit_rate=0.0`, `mcts_time_ms=total_time`).
+- ~~**3 placeholder telemetry values:** `inference/api_server.py:142/143/179`~~
+  (resolved 2026-07-25: `api_server.py` was an unused duplicate of
+  `serving/inference_server.py` and was deleted in the hygiene sweep).
 - **1 TODO:** `cloud/gcp/vertex_jobs.py:824` (multi-node rendezvous args, when needed).
 
 Everything else that pattern-matches as a "stub" (`...` bodies, `pass`) is legitimate
@@ -100,7 +101,7 @@ repro and acceptance criteria:
 ### Track A — Reconcile & unblock (do first; low-risk, high-leverage)
 1. **Docs:** apply the §1 corrections (this doc + CLAUDE.md §5.3 rows + NEXT_STEPS header). _Done in this change._
 2. **PR #72:** review and land the champion-load fix — it gates the stated #1 priority.
-3. **Then** run the existing local convergence gate: `python scripts/validate_convergence.py --iterations=5 --games=10` (exists; `validate_v130_training.py` is a deprecated shim that delegates to it) and confirm loss↓ / win-rate↑.
+3. **Then** run the existing local convergence gate: `python scripts/validate_convergence.py --iterations=5 --games=10` (exists; the `validate_v130_training.py` shim that delegated to it was deleted 2026-07-25) and confirm loss↓ / win-rate↑.
 
 ### Track B — Make a shipped feature real (self-contained, verifiable)
 4. Fix `ISSUE_editable_install_submodule_discovery` (packaging) → the chess entry point runs.

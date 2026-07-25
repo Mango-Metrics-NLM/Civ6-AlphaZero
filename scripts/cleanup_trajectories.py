@@ -126,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.list_only:
         stats = storage.list_iteration_stats(iterations)
         for entry in stats:
-            print(f"  iter_{entry['iteration']:03d}: " f"{entry['blob_count']} blob(s)")
+            print(f"  iter_{entry['iteration']:03d}: {entry['blob_count']} blob(s)")
             for blob in entry["blob_paths"]:
                 print(f"    gs://{config.bucket}/{blob}")
         total = sum(e["blob_count"] for e in stats)

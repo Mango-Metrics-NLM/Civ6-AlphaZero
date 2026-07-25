@@ -51,6 +51,7 @@ active at that point.
 
 - [x] 6.1 (M) ``CLAUDE.md`` updates (build commands, §5.2 decision rows, footer)
 - [x] 6.2 (S) ``CHANGELOG.md``: log this change under ``[Unreleased]``
-- [ ] 6.3 (S) ``ci.yml``: flip ``eval-harness`` to enforcing — DEFERRED until a green
-      eval-harness CI run is confirmed (kept ``continue-on-error`` until then)
+- [x] 6.3 (S) ``ci.yml``: flip ``eval-harness`` to enforcing — DEFERRED at archive
+      time (2026-07-25); carried forward into the ``harden-lint-and-type-gates``
+      change rather than left open here
 - [x] 6.4 (S) Final tasks.md check-off; KB handoff (PR-READY ledger + summary)

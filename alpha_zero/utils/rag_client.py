@@ -90,7 +90,7 @@ class RAGClient:
 
             self.collection = self.client.get_or_create_collection(
                 name=self.config.collection_name,
-                embedding_function=embedding_func,  # type: ignore[arg-type]
+                embedding_function=embedding_func,
             )
             logger.info(
                 f"RAG initialized at {self.config.persist_directory}, "
@@ -99,8 +99,8 @@ class RAGClient:
 
         except Exception as e:
             logger.error(f"Failed to initialize RAG client: {e}")
-            self.client = None  # type: ignore[assignment]
-            self.collection = None  # type: ignore[assignment]
+            self.client = None
+            self.collection = None
 
     def add_documents(
         self,
@@ -135,7 +135,7 @@ class RAGClient:
 
             self.collection.add(
                 documents=documents,
-                metadatas=metadatas,  # type: ignore[arg-type]
+                metadatas=metadatas,
                 ids=ids,
             )
             logger.info(f"Added {count} documents to RAG.")

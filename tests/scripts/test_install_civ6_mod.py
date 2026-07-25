@@ -21,9 +21,7 @@ import pytest
 # Module loader - the script is not a package, so import it by file path.
 # ---------------------------------------------------------------------------
 
-SCRIPT_PATH = (
-    Path(__file__).resolve().parent.parent.parent / "scripts" / "install_civ6_mod.py"
-)
+SCRIPT_PATH = Path(__file__).resolve().parent.parent.parent / "scripts" / "install_civ6_mod.py"
 
 
 def _load_installer():
@@ -241,9 +239,7 @@ def test_get_default_mod_dir_prefers_onedrive_when_present(
     assert result == onedrive_civ6 / "Mods"
 
 
-def test_get_default_mod_dir_falls_back_to_bare_documents(
-    installer, tmp_path, monkeypatch
-) -> None:
+def test_get_default_mod_dir_falls_back_to_bare_documents(installer, tmp_path, monkeypatch) -> None:
     """When only the bare-Documents Civ6 folder exists, it is used."""
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     bare_civ6 = tmp_path / "Documents" / "My Games" / "Sid Meier's Civilization VI"
@@ -271,9 +267,7 @@ def test_get_default_mod_dir_defaults_to_onedrive_when_neither_exists(
     assert "Civ6 user-data directory not found" in caplog.text
 
 
-def test_get_default_mod_dir_warns_on_non_windows(
-    installer, tmp_path, monkeypatch, caplog
-) -> None:
+def test_get_default_mod_dir_warns_on_non_windows(installer, tmp_path, monkeypatch, caplog) -> None:
     """On non-Windows platforms a warning directs the user to --mod-dir, but
     the same path-resolution logic still runs and returns a usable path."""
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
@@ -313,9 +307,7 @@ def test_get_default_mod_dir_uses_expanduser_when_userprofile_unset(
 def test_main_returns_1_when_source_dir_missing(installer, tmp_path, monkeypatch) -> None:
     """An invalid --source-dir is rejected before any filesystem mutation."""
     missing_source = tmp_path / "does-not-exist"
-    monkeypatch.setattr(
-        sys, "argv", ["install_civ6_mod.py", "--source-dir", str(missing_source)]
-    )
+    monkeypatch.setattr(sys, "argv", ["install_civ6_mod.py", "--source-dir", str(missing_source)])
 
     result = installer.main()
 
@@ -326,9 +318,7 @@ def test_main_returns_1_when_source_dir_is_a_file(installer, tmp_path, monkeypat
     """A --source-dir that resolves to a file (not a directory) is rejected."""
     source_file = tmp_path / "not_a_dir.txt"
     source_file.write_text("x", encoding="utf-8")
-    monkeypatch.setattr(
-        sys, "argv", ["install_civ6_mod.py", "--source-dir", str(source_file)]
-    )
+    monkeypatch.setattr(sys, "argv", ["install_civ6_mod.py", "--source-dir", str(source_file)])
 
     result = installer.main()
 
@@ -392,9 +382,7 @@ def test_main_returns_1_when_mods_directory_creation_fails(
     assert result == 1
 
 
-def test_main_end_to_end_success_with_explicit_mod_dir(
-    installer, tmp_path, monkeypatch
-) -> None:
+def test_main_end_to_end_success_with_explicit_mod_dir(installer, tmp_path, monkeypatch) -> None:
     """Full happy path: explicit --source-dir and --mod-dir, target already
     exists, main() delegates to install_mod() and returns 0."""
     source = tmp_path / "source"
@@ -430,9 +418,7 @@ def test_main_uses_get_default_mod_dir_when_mod_dir_not_passed(
     default_mods_dir = tmp_path / "auto-detected" / "Mods"
     default_mods_dir.mkdir(parents=True)
 
-    monkeypatch.setattr(
-        sys, "argv", ["install_civ6_mod.py", "--source-dir", str(source)]
-    )
+    monkeypatch.setattr(sys, "argv", ["install_civ6_mod.py", "--source-dir", str(source)])
     monkeypatch.setattr(installer, "get_default_mod_dir", lambda: default_mods_dir)
 
     result = installer.main()

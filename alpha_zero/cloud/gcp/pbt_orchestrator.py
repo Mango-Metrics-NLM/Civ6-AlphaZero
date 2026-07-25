@@ -752,7 +752,9 @@ def _local_arena_runner(
         net_config = NetworkConfig()
 
         def _prepare_model(agent: AgentState) -> torch.nn.Module:
-            model = create_network(
+            # create_network is typed Any (framework-dependent); torch path
+            # always returns an nn.Module.
+            model: torch.nn.Module = create_network(
                 config=net_config,
                 board_size=board_size,
                 action_space_size=action_space_size,

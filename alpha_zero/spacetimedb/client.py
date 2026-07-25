@@ -12,8 +12,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable, Coroutine
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from alpha_zero.spacetimedb.connection import ConnectionManager
 from alpha_zero.spacetimedb.events import (
@@ -36,6 +36,8 @@ if TYPE_CHECKING:
     from alpha_zero.spacetimedb.config import SpacetimeDBConfig
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 
 class SpacetimeDBClient:
@@ -268,7 +270,9 @@ class SpacetimeDBClient:
         self._check_connected()
         sdk = self._connection.sdk_client
         if hasattr(sdk, "get_latest_weights"):
-            return await self._call_async_or_sync(sdk.get_latest_weights)
+            # SDK is untyped; trust its documented (weights, metadata) shape.
+            result = await self._call_async_or_sync(sdk.get_latest_weights)
+            return cast(tuple[bytes, dict[str, Any]] | None, result)
         return None
 
     def get_latest_weights_sync(self) -> tuple[bytes, dict[str, Any]] | None:
@@ -287,7 +291,8 @@ class SpacetimeDBClient:
         self._check_connected()
         sdk = self._connection.sdk_client
         if hasattr(sdk, "get_champion_weights"):
-            return await self._call_async_or_sync(sdk.get_champion_weights)
+            result = await self._call_async_or_sync(sdk.get_champion_weights)
+            return cast(tuple[bytes, dict[str, Any]] | None, result)
         return None
 
     def get_champion_weights_sync(self) -> tuple[bytes, dict[str, Any]] | None:
@@ -312,7 +317,8 @@ class SpacetimeDBClient:
         self._check_connected()
         sdk = self._connection.sdk_client
         if hasattr(sdk, "get_weights_by_version"):
-            return await self._call_async_or_sync(sdk.get_weights_by_version, version)
+            result = await self._call_async_or_sync(sdk.get_weights_by_version, version)
+            return cast(tuple[bytes, dict[str, Any]] | None, result)
         return None
 
     def get_weights_by_version_sync(
@@ -344,10 +350,11 @@ class SpacetimeDBClient:
         self._check_connected()
         sdk = self._connection.sdk_client
         if hasattr(sdk, "get_model_by_iteration"):
-            return await self._call_async_or_sync(
+            result = await self._call_async_or_sync(
                 sdk.get_model_by_iteration,
                 iteration,
             )
+            return cast(tuple[bytes, dict[str, Any]] | None, result)
         return None
 
     def get_model_by_iteration_sync(
@@ -555,7 +562,8 @@ class SpacetimeDBClient:
         try:
             sdk = self._connection.sdk_client
             if hasattr(sdk, "save_evaluation"):
-                return await self._call_async_or_sync(sdk.save_evaluation, result)
+                # SDK is untyped; trust its documented bool success flag.
+                return cast(bool, await self._call_async_or_sync(sdk.save_evaluation, result))
 
             evaluation_id = result.get(
                 "evaluation_id",
@@ -613,11 +621,14 @@ class SpacetimeDBClient:
         try:
             sdk = self._connection.sdk_client
             if hasattr(sdk, "save_checkpoint"):
-                return await self._call_async_or_sync(
-                    sdk.save_checkpoint,
-                    iteration,
-                    data,
-                    metadata,
+                return cast(
+                    bool,
+                    await self._call_async_or_sync(
+                        sdk.save_checkpoint,
+                        iteration,
+                        data,
+                        metadata,
+                    ),
                 )
             return self._call_reducer(
                 "save_checkpoint",
@@ -663,10 +674,13 @@ class SpacetimeDBClient:
         try:
             sdk = self._connection.sdk_client
             if hasattr(sdk, "save_config"):
-                return await self._call_async_or_sync(
-                    sdk.save_config,
-                    iteration,
-                    config_json,
+                return cast(
+                    bool,
+                    await self._call_async_or_sync(
+                        sdk.save_config,
+                        iteration,
+                        config_json,
+                    ),
                 )
             return self._call_reducer(
                 "save_config",
@@ -954,7 +968,7 @@ class SpacetimeDBClient:
             return await result
         return result
 
-    def _run_sync(self, coro: Any) -> Any:
+    def _run_sync(self, coro: Coroutine[Any, Any, T]) -> T:
         """Run an async coroutine synchronously.
 
         Uses asyncio.run() for sync wrapper pattern (following llm_client.py).

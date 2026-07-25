@@ -296,7 +296,7 @@ def check_update_check_setting() -> CheckResult:
     return CheckResult(
         name="update_check_disabled",
         status=CheckStatus.WARN,
-        message=(f"{_GCLOUD_UPDATE_CHECK_ENV} is not set — " "gcloud may hang on update checks"),
+        message=(f"{_GCLOUD_UPDATE_CHECK_ENV} is not set — gcloud may hang on update checks"),
         details={
             "recommendation": f"Set {_GCLOUD_UPDATE_CHECK_ENV}=1",
         },
@@ -328,7 +328,7 @@ def check_vertex_api() -> CheckResult:
         return CheckResult(
             name="vertex_api",
             status=CheckStatus.OK,
-            message=(f"Vertex AI API accessible " f"({len(jobs)} jobs, {elapsed:.1f}s)"),
+            message=(f"Vertex AI API accessible ({len(jobs)} jobs, {elapsed:.1f}s)"),
             details={
                 "project": project,
                 "region": region,
@@ -370,7 +370,7 @@ def check_gcs_connectivity() -> CheckResult:
         return CheckResult(
             name="gcs_connectivity",
             status=CheckStatus.OK if exists else CheckStatus.FAIL,
-            message=(f"Bucket '{bucket_name}' " f"{'exists' if exists else 'NOT found'}"),
+            message=(f"Bucket '{bucket_name}' {'exists' if exists else 'NOT found'}"),
             details={"bucket": bucket_name, "exists": exists},
         )
     except ImportError:
@@ -499,7 +499,7 @@ def print_report(
             print(f"    -> {rec}")
 
     overall_icon = status_icons.get(report.overall_status, "?")
-    print(f"\n  Overall: {overall_icon} " f"{report.overall_status.value.upper()}")
+    print(f"\n  Overall: {overall_icon} {report.overall_status.value.upper()}")
     print("=" * 60 + "\n")
 
 

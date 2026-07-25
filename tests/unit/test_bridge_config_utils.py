@@ -54,9 +54,7 @@ class TestGetDefaultCommDir:
         assert "AlphaZeroAI" in str(result)
         assert "OneDrive" in str(result)
 
-    def test_windows_falls_back_to_documents_when_civ6_exists_there(
-        self, tmp_path: Path
-    ) -> None:
+    def test_windows_falls_back_to_documents_when_civ6_exists_there(self, tmp_path: Path) -> None:
         """On Windows without OneDrive civ6 path, uses regular Documents if Civ6 is there."""
         docs = tmp_path / "Documents"
         civ6_path = docs / "My Games" / "Sid Meier's Civilization VI"
@@ -72,9 +70,7 @@ class TestGetDefaultCommDir:
         assert "AlphaZeroAI" in str(result)
         assert "Documents" in str(result)
 
-    def test_windows_defaults_to_documents_when_neither_exists(
-        self, tmp_path: Path
-    ) -> None:
+    def test_windows_defaults_to_documents_when_neither_exists(self, tmp_path: Path) -> None:
         """On Windows with no Civ6 folder anywhere, defaults to regular Documents."""
         with (
             patch("os.name", "nt"),
@@ -245,16 +241,12 @@ class TestBridgeConfigFromEnv:
         assert cfg.poll_interval_ms == 25
 
     def test_command_timeout_from_env(self) -> None:
-        with patch.dict(
-            "os.environ", {"CIV6_BRIDGE_COMMAND_TIMEOUT_MS": "8000"}, clear=False
-        ):
+        with patch.dict("os.environ", {"CIV6_BRIDGE_COMMAND_TIMEOUT_MS": "8000"}, clear=False):
             cfg = BridgeConfig.from_env()
         assert cfg.command_timeout_ms == 8000
 
     def test_heartbeat_timeout_from_env(self) -> None:
-        with patch.dict(
-            "os.environ", {"CIV6_BRIDGE_HEARTBEAT_TIMEOUT_S": "5.0"}, clear=False
-        ):
+        with patch.dict("os.environ", {"CIV6_BRIDGE_HEARTBEAT_TIMEOUT_S": "5.0"}, clear=False):
             cfg = BridgeConfig.from_env()
         assert cfg.heartbeat_timeout_s == 5.0
 
@@ -264,9 +256,7 @@ class TestBridgeConfigFromEnv:
         assert cfg.max_retries == 10
 
     def test_retry_delay_from_env(self) -> None:
-        with patch.dict(
-            "os.environ", {"CIV6_BRIDGE_RETRY_DELAY_S": "2.5"}, clear=False
-        ):
+        with patch.dict("os.environ", {"CIV6_BRIDGE_RETRY_DELAY_S": "2.5"}, clear=False):
             cfg = BridgeConfig.from_env()
         assert cfg.retry_delay_s == 2.5
 
@@ -311,9 +301,7 @@ class TestBridgeConfigFromEnv:
         assert cfg.debug_mode is False
 
     def test_num_players_from_env(self) -> None:
-        with patch.dict(
-            "os.environ", {"CIV6_BRIDGE_NUM_PLAYERS": "4"}, clear=False
-        ):
+        with patch.dict("os.environ", {"CIV6_BRIDGE_NUM_PLAYERS": "4"}, clear=False):
             cfg = BridgeConfig.from_env()
         assert cfg.num_players == 4
 
@@ -327,16 +315,12 @@ class TestBridgeConfigFromEnv:
         assert cfg.max_actions_per_second == 2.5
 
     def test_multiplayer_mode_true_from_env(self) -> None:
-        with patch.dict(
-            "os.environ", {"CIV6_BRIDGE_MULTIPLAYER_MODE": "yes"}, clear=False
-        ):
+        with patch.dict("os.environ", {"CIV6_BRIDGE_MULTIPLAYER_MODE": "yes"}, clear=False):
             cfg = BridgeConfig.from_env()
         assert cfg.multiplayer_mode is True
 
     def test_multiplayer_mode_false_from_env_no(self) -> None:
-        with patch.dict(
-            "os.environ", {"CIV6_BRIDGE_MULTIPLAYER_MODE": "no"}, clear=False
-        ):
+        with patch.dict("os.environ", {"CIV6_BRIDGE_MULTIPLAYER_MODE": "no"}, clear=False):
             cfg = BridgeConfig.from_env()
         assert cfg.multiplayer_mode is False
 
@@ -669,9 +653,7 @@ class TestExtractScalarValueNumpy:
         with caplog.at_level(logging.DEBUG, logger="alpha_zero.bridge.utils"):
             result = extract_scalar_value(arr, log_per_player=True)
         assert result == pytest.approx(0.9, abs=1e-5)
-        assert any(
-            "per-player value tensor" in record.message for record in caplog.records
-        )
+        assert any("per-player value tensor" in record.message for record in caplog.records)
 
     def test_multi_element_log_per_player_false_no_debug_log(
         self, caplog: pytest.LogCaptureFixture
@@ -679,13 +661,9 @@ class TestExtractScalarValueNumpy:
         arr = np.array([0.9, 0.1], dtype=np.float32)
         with caplog.at_level(logging.DEBUG, logger="alpha_zero.bridge.utils"):
             extract_scalar_value(arr, log_per_player=False)
-        assert not any(
-            "per-player value tensor" in record.message for record in caplog.records
-        )
+        assert not any("per-player value tensor" in record.message for record in caplog.records)
 
-    def test_1d_shape_in_log_message(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_1d_shape_in_log_message(self, caplog: pytest.LogCaptureFixture) -> None:
         arr = np.array([0.6, 0.4], dtype=np.float32)
         with caplog.at_level(logging.DEBUG, logger="alpha_zero.bridge.utils"):
             extract_scalar_value(arr, log_per_player=True)
@@ -743,9 +721,7 @@ class TestExtractScalarValueTorchLike:
         with caplog.at_level(logging.DEBUG, logger="alpha_zero.bridge.utils"):
             result = extract_scalar_value(t, log_per_player=True)
         assert result == pytest.approx(0.6, abs=1e-4)
-        assert any(
-            "per-player value tensor" in r.message for r in caplog.records
-        )
+        assert any("per-player value tensor" in r.message for r in caplog.records)
 
     def test_empty_torch_like_returns_default(self) -> None:
         """A mock tensor where numel() returns 0 should yield the default."""

@@ -290,7 +290,7 @@ def run_self_play(
         total_turns += len(trajectory.actions)
 
     logger.info(
-        f"Self-play complete: {num_games} games, avg length: {total_turns/num_games:.1f} turns"
+        f"Self-play complete: {num_games} games, avg length: {total_turns / num_games:.1f} turns"
     )
     return trajectories
 
@@ -335,7 +335,7 @@ def run_self_play_parallel(
 
     total_turns = sum(len(t.actions) for t in trajectories)
     logger.info(
-        f"Parallel self-play complete: {num_games} games, avg length: {total_turns/num_games:.1f} turns"
+        f"Parallel self-play complete: {num_games} games, avg length: {total_turns / num_games:.1f} turns"
     )
     return trajectories
 
@@ -391,9 +391,9 @@ def train(config: MuZeroRunConfig, wandb_logger: Any = None) -> dict[str, float]
 
     # Training loop
     for iteration in range(config.num_iterations):
-        logger.info(f"\n{'='*60}")
+        logger.info(f"\n{'=' * 60}")
         logger.info(f"Iteration {iteration + 1}/{config.num_iterations}")
-        logger.info(f"{'='*60}")
+        logger.info(f"{'=' * 60}")
 
         # Self-play
         start_time = time.time()
@@ -487,7 +487,7 @@ def train(config: MuZeroRunConfig, wandb_logger: Any = None) -> dict[str, float]
 
         # Checkpointing
         if (iteration + 1) % config.save_interval == 0:
-            checkpoint_path = Path(config.checkpoint_dir) / f"muzero_iter_{iteration+1}.pt"
+            checkpoint_path = Path(config.checkpoint_dir) / f"muzero_iter_{iteration + 1}.pt"
             torch.save(
                 {
                     "iteration": iteration + 1,
@@ -501,15 +501,15 @@ def train(config: MuZeroRunConfig, wandb_logger: Any = None) -> dict[str, float]
             logger.info(f"Saved checkpoint: {checkpoint_path}")
 
             if wandb_logger:
-                wandb_logger.log_model(str(checkpoint_path), f"muzero_iter_{iteration+1}")
+                wandb_logger.log_model(str(checkpoint_path), f"muzero_iter_{iteration + 1}")
 
     # Final summary
-    logger.info(f"\n{'='*60}")
+    logger.info(f"\n{'=' * 60}")
     logger.info("Training Complete!")
     logger.info(f"Total games: {training_stats['total_games']}")
     logger.info(f"Total training steps: {training_stats['total_steps']}")
     logger.info(f"Best avg game length: {training_stats['best_avg_length']:.1f}")
-    logger.info(f"{'='*60}")
+    logger.info(f"{'=' * 60}")
 
     return training_stats
 
@@ -657,9 +657,7 @@ def main():
         # SubprocessTrainingObjective in
         # alpha_zero/optimizations/hyperparameter_search.py extracts the
         # optimized metric from this marker.
-        json_safe_stats = {
-            k: (v.item() if hasattr(v, "item") else v) for k, v in stats.items()
-        }
+        json_safe_stats = {k: (v.item() if hasattr(v, "item") else v) for k, v in stats.items()}
         print(f"SWEEP_METRICS_JSON={json.dumps(json_safe_stats)}")
     finally:
         if wandb_logger:

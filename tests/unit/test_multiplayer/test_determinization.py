@@ -31,10 +31,8 @@ def _make_visibility_grid(
     All tiles default to UNEXPLORED. Tiles in *visible_tiles* are set to
     VISIBLE.
     """
-    grid = np.full(
-        (board_size, board_size), VisibilityState.UNEXPLORED, dtype=np.int8
-    )
-    for x, y in (visible_tiles or []):
+    grid = np.full((board_size, board_size), VisibilityState.UNEXPLORED, dtype=np.int8)
+    for x, y in visible_tiles or []:
         grid[y, x] = VisibilityState.VISIBLE
     return grid
 
@@ -239,9 +237,7 @@ class TestWorldSampler:
                 f"Unit placed on mountain or visible tile: {u['position']}"
             )
 
-    def test_sample_world_all_tiles_visible_returns_unchanged(
-        self, board_size: int
-    ):
+    def test_sample_world_all_tiles_visible_returns_unchanged(self, board_size: int):
         """When all tiles are visible, no hidden units are placed."""
         sampler = WorldSampler(board_size=board_size, num_players=2)
 
@@ -259,9 +255,7 @@ class TestWorldSampler:
         opponent_units = [u for u in world["units"] if u["player"] == 1]
         assert len(opponent_units) == 0
 
-    def test_sample_world_empty_candidates_after_own_position_filter(
-        self, board_size: int
-    ):
+    def test_sample_world_empty_candidates_after_own_position_filter(self, board_size: int):
         """If all candidate tiles are occupied by own units, return early."""
         # Board is 1x1 so only tile is (0,0) which is both visible -> no
         # candidates initially. But let's use board_size=2 with 3 visible and
@@ -469,13 +463,27 @@ class TestDeterminizedMCTSInjectWorld:
 
         world: dict[str, Any] = {
             "units": [
-                {"id": 1, "player": 0, "type": "warrior", "position": (2, 3),
-                 "health": 100, "moves_remaining": 2, "strength": 20},
+                {
+                    "id": 1,
+                    "player": 0,
+                    "type": "warrior",
+                    "position": (2, 3),
+                    "health": 100,
+                    "moves_remaining": 2,
+                    "strength": 20,
+                },
             ],
             "cities": [
-                {"id": 10, "player": 0, "name": "TestCity", "position": (1, 1),
-                 "population": 3, "production": 5, "producing": "warrior",
-                 "defense": 25},
+                {
+                    "id": 10,
+                    "player": 0,
+                    "name": "TestCity",
+                    "position": (1, 1),
+                    "population": 3,
+                    "production": 5,
+                    "producing": "warrior",
+                    "defense": 25,
+                },
             ],
         }
 
@@ -506,8 +514,15 @@ class TestDeterminizedMCTSInjectWorld:
 
         world: dict[str, Any] = {
             "units": [
-                {"id": 1, "player": 0, "type": "archer", "position": (0, 0),
-                 "health": 80, "moves_remaining": 1, "strength": 15},
+                {
+                    "id": 1,
+                    "player": 0,
+                    "type": "archer",
+                    "position": (0, 0),
+                    "health": 80,
+                    "moves_remaining": 1,
+                    "strength": 15,
+                },
             ],
             "cities": [],
         }
@@ -582,7 +597,9 @@ class TestDeterminizedMCTSSearch:
 
         calls = base_mcts.search.call_args_list
         # First call: add_noise=True
-        assert calls[0][1].get("add_noise") is True or (calls[0][0] == (env.clone.return_value,) and calls[0][1].get("add_noise") is True)
+        assert calls[0][1].get("add_noise") is True or (
+            calls[0][0] == (env.clone.return_value,) and calls[0][1].get("add_noise") is True
+        )
         # Remaining calls: add_noise=False
         for call in calls[1:]:
             assert call[1].get("add_noise") is False

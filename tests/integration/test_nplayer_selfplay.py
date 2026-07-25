@@ -495,12 +495,8 @@ class TestNPlayerEndToEnd:
         assert len(examples) > 0
 
         # Verify network can process these examples
-        spatial_batch = torch.stack(
-            [torch.from_numpy(ex.spatial).float() for ex in examples]
-        )
-        vector_batch = torch.stack(
-            [torch.from_numpy(ex.vector).float() for ex in examples]
-        )
+        spatial_batch = torch.stack([torch.from_numpy(ex.spatial).float() for ex in examples])
+        vector_batch = torch.stack([torch.from_numpy(ex.vector).float() for ex in examples])
 
         with torch.no_grad():
             policy_logits, values = net(spatial_batch, vector_batch)
@@ -551,9 +547,7 @@ class TestNPlayerEndToEnd:
         _policy_logits, pred_values = net(spatial, vector)
         assert pred_values.shape == (batch_size, num_players)
 
-        loss = compute_nplayer_value_loss(
-            pred_values, target_values, num_players=num_players
-        )
+        loss = compute_nplayer_value_loss(pred_values, target_values, num_players=num_players)
         assert loss.item() > 0
         assert loss.requires_grad
 

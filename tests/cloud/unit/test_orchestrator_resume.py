@@ -1,4 +1,5 @@
 """Resume-from-checkpoint token resolution for the Vertex orchestrator."""
+
 from __future__ import annotations
 
 import argparse
@@ -50,9 +51,7 @@ def test_resolve_returns_none_when_no_incumbent_checkpoint():
     fake_ckpt_storage.load_checkpoint.return_value = None  # no latest
     args = _make_args()
 
-    result = vo._resolve_resume_token(
-        args, iteration=0, checkpoint_storage=fake_ckpt_storage
-    )
+    result = vo._resolve_resume_token(args, iteration=0, checkpoint_storage=fake_ckpt_storage)
 
     assert result is None
 
@@ -63,9 +62,7 @@ def test_resolve_returns_latest_when_incumbent_exists():
     fake_ckpt_storage.load_checkpoint.return_value = {"step": 500}
     args = _make_args()
 
-    result = vo._resolve_resume_token(
-        args, iteration=3, checkpoint_storage=fake_ckpt_storage
-    )
+    result = vo._resolve_resume_token(args, iteration=3, checkpoint_storage=fake_ckpt_storage)
 
     assert result == "latest"
 
@@ -74,9 +71,7 @@ def test_explicit_args_resume_from_overrides_auto_resolution():
     """When --resume_from is set on the CLI, it wins."""
     fake_ckpt_storage = MagicMock()
     args = _make_args(resume_from="42")
-    result = vo._resolve_resume_token(
-        args, iteration=3, checkpoint_storage=fake_ckpt_storage
-    )
+    result = vo._resolve_resume_token(args, iteration=3, checkpoint_storage=fake_ckpt_storage)
     assert result == "42"
     fake_ckpt_storage.load_checkpoint.assert_not_called()
 
@@ -89,9 +84,7 @@ def test_resolve_returns_none_on_gcs_storage_error():
     fake_ckpt_storage.load_checkpoint.side_effect = GCSStorageError("not found")
     args = _make_args()
 
-    result = vo._resolve_resume_token(
-        args, iteration=3, checkpoint_storage=fake_ckpt_storage
-    )
+    result = vo._resolve_resume_token(args, iteration=3, checkpoint_storage=fake_ckpt_storage)
     assert result is None
 
 
@@ -108,9 +101,7 @@ def test_resolve_reraises_unexpected_exceptions():
     args = _make_args()
 
     with pytest.raises(RuntimeError, match="torch deser failure"):
-        vo._resolve_resume_token(
-            args, iteration=3, checkpoint_storage=fake_ckpt_storage
-        )
+        vo._resolve_resume_token(args, iteration=3, checkpoint_storage=fake_ckpt_storage)
 
 
 def test_build_training_extra_args_emits_resume_when_provided():
@@ -162,9 +153,7 @@ def test_resolve_resume_honors_cli_bucket_override(monkeypatch):
 
     # Patch the name as imported in vertex_orchestrator (module-level)
     monkeypatch.setattr(vo, "GCPConfig", _FakeGCPConfig)
-    monkeypatch.setattr(
-        "alpha_zero.cloud.gcp.storage.GCSCheckpointStorage", _FakeCkptStorage
-    )
+    monkeypatch.setattr("alpha_zero.cloud.gcp.storage.GCSCheckpointStorage", _FakeCkptStorage)
 
     args = _make_args(gcs_bucket="cli-bucket-override")
     # Add the optional CLI fields the helper reads via getattr

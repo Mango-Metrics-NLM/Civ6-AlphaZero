@@ -29,7 +29,7 @@ import logging
 import warnings
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -508,7 +508,7 @@ class JaxNetworkWrapper:
 
         # Count parameters and compute actual memory footprint
         leaves = jax.tree.leaves(eqx.filter(model, eqx.is_array))
-        self._param_count = sum(leaf.size for leaf in leaves)
+        self._param_count: int = sum(leaf.size for leaf in leaves)
         total_bytes = sum(
             leaf.size * leaf.dtype.itemsize for leaf in leaves if hasattr(leaf, "dtype")
         )
@@ -528,7 +528,7 @@ class JaxNetworkWrapper:
     @property
     def config(self) -> JaxNetworkConfig:
         """The network architecture configuration."""
-        return self._model.config
+        return cast(JaxNetworkConfig, self._model.config)
 
     @property
     def param_count(self) -> int:

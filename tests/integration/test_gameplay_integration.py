@@ -117,9 +117,9 @@ class TestGameplaySystemInteractions:
         # The combat system should be initialized with terrain defense bonuses
         assert env.combat_system is not None
         combat_cfg = env.combat_system.config
-        assert (
-            combat_cfg.terrain_defense_bonuses.get("hills", 0) > 0
-        ), "Expected a positive defense bonus for hills terrain"
+        assert combat_cfg.terrain_defense_bonuses.get("hills", 0) > 0, (
+            "Expected a positive defense bonus for hills terrain"
+        )
 
     def test_city_growth_affects_production(self) -> None:
         """Higher city population produces more via the city growth system."""
@@ -133,9 +133,9 @@ class TestGameplaySystemInteractions:
         # A city with population 1 should have less production bonus than pop 5
         bonus_pop1 = env.city_growth.get_production_bonus(1)
         bonus_pop5 = env.city_growth.get_production_bonus(5)
-        assert (
-            bonus_pop5 > bonus_pop1
-        ), f"Expected pop-5 production bonus ({bonus_pop5}) > pop-1 ({bonus_pop1})"
+        assert bonus_pop5 > bonus_pop1, (
+            f"Expected pop-5 production bonus ({bonus_pop5}) > pop-1 ({bonus_pop1})"
+        )
 
     def test_economy_and_city_growth_interact(self) -> None:
         """Gold from cities and maintenance from units both tracked over time."""
@@ -254,9 +254,9 @@ class TestEncoderWithGameplaySystems:
         spatial, vector = encoder.encode(game_state)
 
         # Channel 11 should be all 1.0 (backward compat: all tiles visible)
-        assert np.all(
-            spatial[11].numpy() == 1.0
-        ), "Without visibility data, all tiles should be marked as visible"
+        assert np.all(spatial[11].numpy() == 1.0), (
+            "Without visibility data, all tiles should be marked as visible"
+        )
 
         # Gold defaults to 0
         assert vector[8].item() == pytest.approx(0.0)
@@ -430,6 +430,6 @@ class TestGameSimulation:
         # It is extremely unlikely that both spatial and vector remain identical
         # after 10 steps with different random seeds.  If the clone was truly
         # independent, the observations should have diverged.
-        assert not (
-            spatial_same and vector_same
-        ), "After divergent play, cloned environments should not remain identical"
+        assert not (spatial_same and vector_same), (
+            "After divergent play, cloned environments should not remain identical"
+        )

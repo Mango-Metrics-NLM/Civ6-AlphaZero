@@ -202,12 +202,8 @@ class TestMultiplayerMatchupCreation:
     """Tests for matchup creation in MultiplayerPBTEvaluator."""
 
     @pytest.mark.parametrize("num_players", [2, 3, 4])
-    def test_matchups_cover_all_agents(
-        self, num_players: int, agents_6: list[AgentState]
-    ) -> None:
-        evaluator = MultiplayerPBTEvaluator(
-            num_players=num_players, games_per_eval=2
-        )
+    def test_matchups_cover_all_agents(self, num_players: int, agents_6: list[AgentState]) -> None:
+        evaluator = MultiplayerPBTEvaluator(num_players=num_players, games_per_eval=2)
         agent_ids = [a.agent_id for a in agents_6]
         matchups = evaluator._create_matchups(agent_ids)
 
@@ -240,13 +236,9 @@ class TestMultiplayerMatchupCreation:
         assert matchups == []
 
     @pytest.mark.parametrize("num_players", [2, 3, 4])
-    def test_equal_games_per_agent(
-        self, num_players: int, agents_6: list[AgentState]
-    ) -> None:
+    def test_equal_games_per_agent(self, num_players: int, agents_6: list[AgentState]) -> None:
         """All agents should appear in a similar number of matchups."""
-        evaluator = MultiplayerPBTEvaluator(
-            num_players=num_players, games_per_eval=1
-        )
+        evaluator = MultiplayerPBTEvaluator(num_players=num_players, games_per_eval=1)
         agent_ids = [a.agent_id for a in agents_6]
         matchups = evaluator._create_matchups(agent_ids)
 
@@ -275,9 +267,7 @@ class TestMultiplayerEvaluation:
         agents_6: list[AgentState],
         mock_runner: MockNPlayerArenaRunner,
     ) -> None:
-        evaluator = MultiplayerPBTEvaluator(
-            num_players=3, games_per_eval=2
-        )
+        evaluator = MultiplayerPBTEvaluator(num_players=3, games_per_eval=2)
         fitness = evaluator.evaluate_population(agents_6, mock_runner)
 
         assert len(fitness) == 6
@@ -291,9 +281,7 @@ class TestMultiplayerEvaluation:
     ) -> None:
         """Agent at index 0 always wins -> should have highest fitness."""
         runner = MockNPlayerArenaRunner(winner_index=0)
-        evaluator = MultiplayerPBTEvaluator(
-            num_players=2, games_per_eval=4
-        )
+        evaluator = MultiplayerPBTEvaluator(num_players=2, games_per_eval=4)
         fitness = evaluator.evaluate_population(agents_4, runner)
 
         # a0 should be the highest or tied for highest
@@ -306,9 +294,7 @@ class TestMultiplayerEvaluation:
         rotating_runner: RotatingWinnerRunner,
     ) -> None:
         """With rotating winners, all agents should have similar fitness."""
-        evaluator = MultiplayerPBTEvaluator(
-            num_players=2, games_per_eval=100
-        )
+        evaluator = MultiplayerPBTEvaluator(num_players=2, games_per_eval=100)
         fitness = evaluator.evaluate_population(agents_4, rotating_runner)
 
         values = list(fitness.values())
@@ -327,20 +313,14 @@ class TestMultiplayerEvaluation:
         agents_4: list[AgentState],
         mock_runner: MockNPlayerArenaRunner,
     ) -> None:
-        evaluator = MultiplayerPBTEvaluator(
-            num_players=2, games_per_eval=1
-        )
+        evaluator = MultiplayerPBTEvaluator(num_players=2, games_per_eval=1)
         evaluator.evaluate_population(agents_4, mock_runner)
         assert mock_runner.call_count > 0
 
     @pytest.mark.parametrize("num_players", [2, 3, 4])
-    def test_various_num_players(
-        self, num_players: int, agents_6: list[AgentState]
-    ) -> None:
+    def test_various_num_players(self, num_players: int, agents_6: list[AgentState]) -> None:
         runner = MockNPlayerArenaRunner(winner_index=0)
-        evaluator = MultiplayerPBTEvaluator(
-            num_players=num_players, games_per_eval=2
-        )
+        evaluator = MultiplayerPBTEvaluator(num_players=num_players, games_per_eval=2)
         fitness = evaluator.evaluate_population(agents_6, runner)
         assert len(fitness) == 6
         assert all(0.0 <= v <= 1.0 for v in fitness.values())
@@ -380,16 +360,12 @@ class TestPolicyDiversityTracker:
         diversity_tracker.record_actions("agent_1", [0, 1, 2, 0, 1])
         assert "agent_1" in diversity_tracker.tracked_agents
 
-    def test_record_multiple_agents(
-        self, diversity_tracker: PolicyDiversityTracker
-    ) -> None:
+    def test_record_multiple_agents(self, diversity_tracker: PolicyDiversityTracker) -> None:
         diversity_tracker.record_actions("a1", [0, 1])
         diversity_tracker.record_actions("a2", [3, 4])
         assert len(diversity_tracker.tracked_agents) == 2
 
-    def test_accumulates_actions(
-        self, diversity_tracker: PolicyDiversityTracker
-    ) -> None:
+    def test_accumulates_actions(self, diversity_tracker: PolicyDiversityTracker) -> None:
         diversity_tracker.record_actions("a1", [0, 0, 0])
         diversity_tracker.record_actions("a1", [1, 1])
         dist = diversity_tracker._get_distribution("a1")
@@ -397,9 +373,7 @@ class TestPolicyDiversityTracker:
         assert dist[0] == pytest.approx(0.6)
         assert dist[1] == pytest.approx(0.4)
 
-    def test_out_of_range_actions_ignored(
-        self, diversity_tracker: PolicyDiversityTracker
-    ) -> None:
+    def test_out_of_range_actions_ignored(self, diversity_tracker: PolicyDiversityTracker) -> None:
         diversity_tracker.record_actions("a1", [0, 100, -1, 5])
         dist = diversity_tracker._get_distribution("a1")
         total = dist.sum()
@@ -631,9 +605,7 @@ class TestEvolveMultiplayer:
         # Generation should have incremented
         assert manager.generation >= 1
 
-    def test_evolve_with_diversity_tracker(
-        self, multiplayer_config: PBTConfig
-    ) -> None:
+    def test_evolve_with_diversity_tracker(self, multiplayer_config: PBTConfig) -> None:
         manager = PopulationManager(multiplayer_config, rng=np.random.default_rng(42))
         manager.initialize()
 
@@ -643,9 +615,7 @@ class TestEvolveMultiplayer:
             tracker.record_actions(aid, list(range(10)))
 
         runner = MockNPlayerArenaRunner(winner_index=0)
-        changes = manager.evolve_multiplayer(
-            arena_runner=runner, diversity_tracker=tracker
-        )
+        changes = manager.evolve_multiplayer(arena_runner=runner, diversity_tracker=tracker)
         assert isinstance(changes, list)
 
     def test_evolve_empty_population(self, multiplayer_config: PBTConfig) -> None:
@@ -666,9 +636,7 @@ class TestEvolveMultiplayer:
         all_agents = manager.get_all_agents()
         assert any(a.fitness_score != 0.0 for a in all_agents)
 
-    def test_evolve_preserves_population_size(
-        self, multiplayer_config: PBTConfig
-    ) -> None:
+    def test_evolve_preserves_population_size(self, multiplayer_config: PBTConfig) -> None:
         manager = PopulationManager(multiplayer_config, rng=np.random.default_rng(42))
         manager.initialize()
         initial_size = manager.population_size
@@ -678,9 +646,7 @@ class TestEvolveMultiplayer:
 
         assert manager.population_size == initial_size
 
-    def test_evolve_without_diversity_tracker(
-        self, multiplayer_config: PBTConfig
-    ) -> None:
+    def test_evolve_without_diversity_tracker(self, multiplayer_config: PBTConfig) -> None:
         """Should work fine without a diversity tracker."""
         manager = PopulationManager(multiplayer_config, rng=np.random.default_rng(42))
         manager.initialize()
@@ -756,17 +722,13 @@ class TestNormalisation:
     """Tests for score normalisation."""
 
     def test_normalise_spread(self) -> None:
-        result = MultiplayerPBTEvaluator._normalise_scores(
-            {"a": -1.0, "b": 0.0, "c": 1.0}
-        )
+        result = MultiplayerPBTEvaluator._normalise_scores({"a": -1.0, "b": 0.0, "c": 1.0})
         assert result["a"] == pytest.approx(0.0)
         assert result["b"] == pytest.approx(0.5)
         assert result["c"] == pytest.approx(1.0)
 
     def test_normalise_all_equal(self) -> None:
-        result = MultiplayerPBTEvaluator._normalise_scores(
-            {"a": 0.5, "b": 0.5, "c": 0.5}
-        )
+        result = MultiplayerPBTEvaluator._normalise_scores({"a": 0.5, "b": 0.5, "c": 0.5})
         assert all(v == pytest.approx(0.5) for v in result.values())
 
     def test_normalise_empty(self) -> None:

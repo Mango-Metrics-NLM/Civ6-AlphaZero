@@ -20,7 +20,7 @@ or removed.
 | `envs` | 12 | MicroCiv environment, vectorized env, state→tensor encoders |
 | `mechanics` | 12 | Game mechanics: diplomacy, trade, espionage, religion, government, climate, eras |
 | `training` | 11 | MuZero trainer/integration, training safeguards, diagnostics, convergence monitor |
-| `cloud` | 48 | Cloud-native workers (self-play/trainer/evaluator) + `gcp/` Vertex AI orchestration |
+| `cloud` | 46 | Cloud-native workers (self-play/trainer/evaluator) + `gcp/` Vertex AI orchestration |
 | `orchestrator` | 10 | `TrainingOrchestrator`, scheduler, checkpointer, RAG integration, strategy advisor |
 | `pbt` | 10 | Population-based training: population manager, mutation, fitness, MuZero hyperparams |
 | `bridge` | 15 | Civ6 Lua mod bridge: file IPC + headless FireTuner socket transport |
@@ -33,7 +33,7 @@ or removed.
 | `gameplay` | 8 | Gameplay systems: terrain, fog of war, tech tree, combat |
 | `human_interface` | 6 | Human gameplay interface |
 | `monitoring` | 6 | MLflow experiment tracking: `MLflowConfig`, `MLflowLogger`, metric helpers, dashboards |
-| `inference` | 5 | Inference service: API server, client, engine, schemas |
+| `inference` | 4 | Inference service: client, engine, schemas (HTTP server lives in `serving/`) |
 | `interfaces` | 4 | Game interface contracts + Unciv JSON interface |
 | `opponents` | 4 | Opponent types & strategies |
 | `integration` | 2 | Integration bridge / game connector |

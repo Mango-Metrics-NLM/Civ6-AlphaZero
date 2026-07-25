@@ -56,7 +56,9 @@ logger = logging.getLogger(__name__)
 _ADC_PATH = pathlib.Path(
     os.environ.get(
         "GOOGLE_APPLICATION_CREDENTIALS",
-        os.path.join(os.environ.get("APPDATA", ""), "gcloud", "application_default_credentials.json"),
+        os.path.join(
+            os.environ.get("APPDATA", ""), "gcloud", "application_default_credentials.json"
+        ),
     )
 )
 

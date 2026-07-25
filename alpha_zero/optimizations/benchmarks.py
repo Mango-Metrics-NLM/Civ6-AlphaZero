@@ -534,7 +534,8 @@ class OptimizationBenchmark:
         calculator = AuxiliaryLossCalculator(config)
 
         # Generate sample predictions and targets
-        predictions_list = []
+        # (values mix arrays and floats, matching what compute_loss consumes)
+        predictions_list: list[dict[str, Any]] = []
         targets_list = []
 
         for _ in range(num_iterations):

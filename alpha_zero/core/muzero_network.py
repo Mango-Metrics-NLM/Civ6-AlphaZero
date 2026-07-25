@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 import torch
 import torch.nn as nn
@@ -158,7 +158,7 @@ class ActionEmbedding(nn.Module):
             Spatially broadcast embeddings of shape (B, embedding_dim, H, W).
         """
         # Get embedding: (B,) -> (B, embedding_dim)
-        embed = self.embedding(actions)
+        embed: torch.Tensor = self.embedding(actions)
 
         # Broadcast spatially: (B, embedding_dim) -> (B, embedding_dim, H, W)
         embed = embed.unsqueeze(-1).unsqueeze(-1)
@@ -328,7 +328,7 @@ class RewardHead(nn.Module):
         """
         x = F.relu(self.bn(self.conv(hidden_state)))
         x = x.view(x.size(0), -1)
-        reward = self.fc(x)
+        reward: torch.Tensor = self.fc(x)
 
         if not self.use_categorical:
             reward = reward.squeeze(-1)
@@ -382,7 +382,7 @@ class ProjectionHead(nn.Module):
         x = F.relu(self.bn(self.conv(hidden_state)))
         x = self.pool(x)
         x = x.view(x.size(0), -1)
-        return self.fc(x)
+        return cast(torch.Tensor, self.fc(x))
 
 
 class PredictionHead(nn.Module):
@@ -419,7 +419,7 @@ class PredictionHead(nn.Module):
         Returns:
             Predicted embedding (B, projection_dim).
         """
-        return self.net(projection)
+        return cast(torch.Tensor, self.net(projection))
 
 
 class ValuePrefixHead(nn.Module):
@@ -472,7 +472,7 @@ class ValuePrefixHead(nn.Module):
         """
         x = F.relu(self.bn(self.conv(hidden_state)))
         x = x.view(x.size(0), -1)
-        prefix = self.fc(x)
+        prefix: torch.Tensor = self.fc(x)
 
         if not self.use_categorical:
             prefix = prefix.squeeze(-1)
@@ -626,7 +626,7 @@ class MuZeroNetwork(nn.Module):
         vector_spatial = vector_spatial.expand_as(spatial_features)
 
         # Combine (residual addition)
-        hidden_state = spatial_features + 0.1 * vector_spatial
+        hidden_state: torch.Tensor = spatial_features + 0.1 * vector_spatial
 
         return hidden_state
 
@@ -807,7 +807,7 @@ class MuZeroNetwork(nn.Module):
         """
         if self.projection_head is None:
             raise ValueError("Consistency loss not enabled in config")
-        return self.projection_head(hidden_state)
+        return cast(torch.Tensor, self.projection_head(hidden_state))
 
     def predict_projection(self, projection: torch.Tensor) -> torch.Tensor:
         """Predict target embedding from projection.
@@ -823,7 +823,7 @@ class MuZeroNetwork(nn.Module):
         """
         if self.prediction_head is None:
             raise ValueError("Consistency loss not enabled in config")
-        return self.prediction_head(projection)
+        return cast(torch.Tensor, self.prediction_head(projection))
 
     def predict_value_prefix(self, hidden_state: torch.Tensor) -> torch.Tensor:
         """Predict cumulative future rewards (value prefix).
@@ -839,7 +839,7 @@ class MuZeroNetwork(nn.Module):
         """
         if self.value_prefix_head is None:
             raise ValueError("Value prefix not enabled in config")
-        return self.value_prefix_head(hidden_state)
+        return cast(torch.Tensor, self.value_prefix_head(hidden_state))
 
     # =========================================================================
     # Utility methods

@@ -468,9 +468,7 @@ class TestSimultaneousNodeActionProbs:
             0: ChildStats(visit_count=10, value_sum=5.0, prior=1.0),
         }
 
-        probs = node.get_action_probabilities_for_player(
-            player_id=5, action_space_size=3
-        )
+        probs = node.get_action_probabilities_for_player(player_id=5, action_space_size=3)
         assert probs.shape == (3,)
         assert probs.sum() == 0.0
 
@@ -577,9 +575,7 @@ class TestDecoupledUCTEvaluate:
         env = _make_env(num_players=4, action_space_size=5)
         # Network returns only 2 values for 4 players
         value_arr = np.array([0.3, -0.3])
-        network = _make_network(
-            num_players=4, action_space_size=5, value_override=value_arr
-        )
+        network = _make_network(num_players=4, action_space_size=5, value_override=value_arr)
 
         _policies, values = duct._evaluate(env, network)
 
@@ -634,28 +630,20 @@ class TestDecoupledUCTDirichletNoise:
 
     def test_no_noise_when_epsilon_zero(self):
         """With dirichlet_epsilon=0, priors are unchanged."""
-        config = SimultaneousMCTSConfig(
-            num_simulations=1, dirichlet_epsilon=0.0
-        )
+        config = SimultaneousMCTSConfig(num_simulations=1, dirichlet_epsilon=0.0)
         duct = DecoupledUCT(config, num_players=1, action_space_size=3)
 
         node = SimultaneousNode(num_players=1)
         policy = np.array([0.2, 0.3, 0.5])
         mask = np.ones(3)
-        node.expand_simultaneous(
-            policies={0: policy}, action_masks={0: mask}
-        )
+        node.expand_simultaneous(policies={0: policy}, action_masks={0: mask})
 
-        original_priors = [
-            node.per_player_children[0][a].prior for a in [0, 1, 2]
-        ]
+        original_priors = [node.per_player_children[0][a].prior for a in [0, 1, 2]]
 
         np.random.seed(42)
         duct._add_dirichlet_noise(node, active_players=[0])
 
-        new_priors = [
-            node.per_player_children[0][a].prior for a in [0, 1, 2]
-        ]
+        new_priors = [node.per_player_children[0][a].prior for a in [0, 1, 2]]
 
         for orig, new in zip(original_priors, new_priors, strict=False):
             assert abs(orig - new) < 1e-10
@@ -670,18 +658,14 @@ class TestDecoupledUCTDirichletNoise:
         node = SimultaneousNode(num_players=1)
         policy = np.array([0.2, 0.3, 0.5])
         mask = np.ones(3)
-        node.expand_simultaneous(
-            policies={0: policy}, action_masks={0: mask}
-        )
+        node.expand_simultaneous(policies={0: policy}, action_masks={0: mask})
 
         np.random.seed(42)
         noise = np.random.dirichlet([0.3] * 3)
 
         # Reset node and re-expand to apply fresh noise
         node2 = SimultaneousNode(num_players=1)
-        node2.expand_simultaneous(
-            policies={0: policy.copy()}, action_masks={0: mask.copy()}
-        )
+        node2.expand_simultaneous(policies={0: policy.copy()}, action_masks={0: mask.copy()})
 
         np.random.seed(42)
         duct._add_dirichlet_noise(node2, active_players=[0])
@@ -692,18 +676,14 @@ class TestDecoupledUCTDirichletNoise:
 
     def test_noise_skips_player_without_stats(self):
         """Dirichlet noise skips players with no action stats."""
-        config = SimultaneousMCTSConfig(
-            num_simulations=1, dirichlet_epsilon=0.5
-        )
+        config = SimultaneousMCTSConfig(num_simulations=1, dirichlet_epsilon=0.5)
         duct = DecoupledUCT(config, num_players=2, action_space_size=3)
 
         node = SimultaneousNode(num_players=2)
         # Only expand player 0
         policy = np.array([0.5, 0.5, 0.0])
         mask = np.array([1, 1, 0])
-        node.expand_simultaneous(
-            policies={0: policy}, action_masks={0: mask}
-        )
+        node.expand_simultaneous(policies={0: policy}, action_masks={0: mask})
 
         # Should not raise even though player 1 has no stats
         duct._add_dirichlet_noise(node, active_players=[0, 1])
@@ -735,9 +715,7 @@ class TestDecoupledUCTTerminalValues:
         config = SimultaneousMCTSConfig(num_simulations=1)
         duct = DecoupledUCT(config, num_players=3, action_space_size=5)
 
-        values = duct._extract_terminal_values(
-            {"winner": 2}, active_players=[0, 1, 2]
-        )
+        values = duct._extract_terminal_values({"winner": 2}, active_players=[0, 1, 2])
         assert values[0] == -1.0
         assert values[1] == -1.0
         assert values[2] == 1.0
@@ -747,9 +725,7 @@ class TestDecoupledUCTTerminalValues:
         config = SimultaneousMCTSConfig(num_simulations=1)
         duct = DecoupledUCT(config, num_players=2, action_space_size=5)
 
-        values = duct._extract_terminal_values(
-            {}, active_players=[0, 1]
-        )
+        values = duct._extract_terminal_values({}, active_players=[0, 1])
         assert values[0] == 0.0
         assert values[1] == 0.0
 
@@ -759,9 +735,7 @@ class TestDecoupledUCTTerminalValues:
         duct = DecoupledUCT(config, num_players=3, action_space_size=5)
 
         info = {"player_scores": {0: 1.0}}  # Only player 0
-        values = duct._extract_terminal_values(
-            info, active_players=[0, 1, 2]
-        )
+        values = duct._extract_terminal_values(info, active_players=[0, 1, 2])
         assert values[0] == 1.0
         assert values[1] == 0.0
         assert values[2] == 0.0
@@ -825,9 +799,7 @@ class TestDecoupledUCTBackpropagate:
         root = SimultaneousNode(num_players=2)
         policy = np.array([0.5, 0.5, 0.0])
         mask = np.array([1, 1, 0])
-        root.expand_simultaneous(
-            policies={0: policy}, action_masks={0: mask}
-        )
+        root.expand_simultaneous(policies={0: policy}, action_masks={0: mask})
 
         duct._backpropagate([root], [], {0: 1.0})
         assert root.visit_count == 1
@@ -859,9 +831,7 @@ class TestDecoupledUCTStepEnv:
             {"winner": 0},
         )
 
-        is_terminal, info = duct._step_env_with_resolution(
-            env, {0: 1, 1: 2}, active_players=[0, 1]
-        )
+        is_terminal, info = duct._step_env_with_resolution(env, {0: 1, 1: 2}, active_players=[0, 1])
         assert is_terminal
         assert info["winner"] == 0
 
@@ -881,25 +851,19 @@ class TestDecoupledUCTStepEnv:
             {},
         )
 
-        is_terminal, _ = duct._step_env_with_resolution(
-            env, {0: 1, 1: 2}, active_players=[0, 1]
-        )
+        is_terminal, _ = duct._step_env_with_resolution(env, {0: 1, 1: 2}, active_players=[0, 1])
         assert is_terminal
 
     def test_fallback_when_resolver_returns_empty(self):
         """When resolver returns empty list, falls back to first active player."""
-        config = SimultaneousMCTSConfig(
-            num_simulations=1, action_resolution="simultaneous_apply"
-        )
+        config = SimultaneousMCTSConfig(num_simulations=1, action_resolution="simultaneous_apply")
         duct = DecoupledUCT(config, num_players=2, action_space_size=5)
 
         env = _make_env(num_players=2, action_space_size=5)
 
         # Both players target the same action -> simultaneous_apply cancels both
         joint_action = {0: 3, 1: 3}
-        _is_terminal, _ = duct._step_env_with_resolution(
-            env, joint_action, active_players=[0, 1]
-        )
+        _is_terminal, _ = duct._step_env_with_resolution(env, joint_action, active_players=[0, 1])
 
         # env.step should still be called (with fallback action)
         env.step.assert_called_once()
@@ -1085,9 +1049,7 @@ class TestDecoupledUCTSearch:
         env = _make_env(num_players=8, action_space_size=4)
         network = _make_network(num_players=8, action_space_size=4)
 
-        result = duct.search(
-            env, network, active_players=list(range(8))
-        )
+        result = duct.search(env, network, active_players=list(range(8)))
 
         assert len(result) == 8
         for pid in range(8):
@@ -1127,9 +1089,7 @@ class TestDecoupledUCTSearch:
         env = _make_env(num_players=2, action_space_size=5)
         network = _make_network(num_players=2, action_space_size=5)
 
-        result = duct.search(
-            env, network, active_players=[0, 1], turn_number=15
-        )
+        result = duct.search(env, network, active_players=[0, 1], turn_number=15)
 
         for pid in [0, 1]:
             assert result[pid].max() == 1.0
@@ -1156,9 +1116,7 @@ class TestDecoupledUCTSearch:
         duct = DecoupledUCT(config, num_players=2, action_space_size=5)
 
         env = _make_env(num_players=2, action_space_size=5)
-        network = _make_network(
-            num_players=2, action_space_size=5, scalar_value=True
-        )
+        network = _make_network(num_players=2, action_space_size=5, scalar_value=True)
 
         result = duct.search(env, network, active_players=[0, 1])
 
@@ -1236,9 +1194,7 @@ class TestDecoupledUCTSearch:
         """Search works with all action resolution strategies."""
         for strategy in ["independent", "priority", "random", "simultaneous_apply"]:
             np.random.seed(42)
-            config = SimultaneousMCTSConfig(
-                num_simulations=5, action_resolution=strategy
-            )
+            config = SimultaneousMCTSConfig(num_simulations=5, action_resolution=strategy)
             duct = DecoupledUCT(config, num_players=2, action_space_size=3)
 
             env = _make_env(num_players=2, action_space_size=3)
@@ -1264,9 +1220,7 @@ class TestDecoupledUCTSearch:
         network = _make_network(num_players=2, action_space_size=3)
 
         # Exactly at threshold
-        result = duct.search(
-            env, network, active_players=[0, 1], turn_number=5
-        )
+        result = duct.search(env, network, active_players=[0, 1], turn_number=5)
 
         for pid in [0, 1]:
             assert result[pid].max() == 1.0

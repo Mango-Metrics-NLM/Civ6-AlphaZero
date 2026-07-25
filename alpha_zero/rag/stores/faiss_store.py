@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
@@ -207,8 +207,11 @@ class FAISSVectorStore(VectorStore):
         index = self._index  # Capture for closures
 
         async with self._lock:
-            # Prepare embeddings
-            embeddings = np.vstack([doc.embedding for doc in documents]).astype(np.float32)
+            # Prepare embeddings (_validate_documents guarantees embeddings are set;
+            # cast keeps that fail-fast contract instead of silently filtering)
+            embeddings: np.ndarray = np.vstack(
+                [cast("np.ndarray", doc.embedding) for doc in documents]
+            ).astype(np.float32)
 
             # Normalize for cosine similarity
             if self.distance_metric == "cosine":

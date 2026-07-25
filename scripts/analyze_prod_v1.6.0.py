@@ -233,7 +233,7 @@ def evaluate_targets(
     passed_promo = summary.num_promotions >= TARGET_MIN_PROMOTIONS
     checks["promotions"] = (
         passed_promo,
-        f"{summary.num_promotions} promotion(s) " f"(target: >= {TARGET_MIN_PROMOTIONS})",
+        f"{summary.num_promotions} promotion(s) (target: >= {TARGET_MIN_PROMOTIONS})",
     )
 
     # Batch speedup

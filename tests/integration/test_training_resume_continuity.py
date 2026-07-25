@@ -5,6 +5,7 @@ Locks the contract underlying vertex_orchestrator._resolve_resume_token:
 - load_checkpoint(step=None) reads the latest pointer
 - weights round-trip bit-exact
 """
+
 from __future__ import annotations
 
 import torch

@@ -353,9 +353,7 @@ class TestNPlayerStateConversion:
         explicit_mapping = {0: 0, 5: 1, 10: 2}
         converter = StateConverter(board_size=16, num_players=3, create_encoder=False)
 
-        result = converter.convert_multiplayer_state(
-            raw_state, player_mapping=explicit_mapping
-        )
+        result = converter.convert_multiplayer_state(raw_state, player_mapping=explicit_mapping)
 
         assert result["_player_mapping"] == explicit_mapping
         assert result["_num_players"] == 3
@@ -380,9 +378,7 @@ class TestNPlayerStateConversion:
         """Test that N-player mode preserves per-player unit ownership."""
         num_players = 4
         raw_state = _make_raw_state(num_players=num_players)
-        converter = StateConverter(
-            board_size=16, num_players=num_players, create_encoder=False
-        )
+        converter = StateConverter(board_size=16, num_players=num_players, create_encoder=False)
 
         result = converter.convert_multiplayer_state(raw_state)
 
@@ -394,9 +390,7 @@ class TestNPlayerStateConversion:
         """Test that N-player mode preserves per-player city ownership."""
         num_players = 4
         raw_state = _make_raw_state(num_players=num_players)
-        converter = StateConverter(
-            board_size=16, num_players=num_players, create_encoder=False
-        )
+        converter = StateConverter(board_size=16, num_players=num_players, create_encoder=False)
 
         result = converter.convert_multiplayer_state(raw_state)
 
@@ -504,25 +498,17 @@ class TestMultiplayerStateDetection:
 
     def test_detect_4_player(self) -> None:
         """Test detecting 4-player game."""
-        state_data = {
-            "players": [{"id": i} for i in range(4)]
-        }
+        state_data = {"players": [{"id": i} for i in range(4)]}
         assert FileBridge.detect_multiplayer_state(state_data) == 4
 
     def test_detect_6_player(self) -> None:
         """Test detecting 6-player game."""
-        state_data = {
-            "players": [{"id": i} for i in range(6)]
-        }
+        state_data = {"players": [{"id": i} for i in range(6)]}
         assert FileBridge.detect_multiplayer_state(state_data) == 6
 
     def test_detect_from_nested_state(self) -> None:
         """Test detecting players from nested 'state' object."""
-        state_data = {
-            "state": {
-                "players": [{"id": i} for i in range(3)]
-            }
-        }
+        state_data = {"state": {"players": [{"id": i} for i in range(3)]}}
         assert FileBridge.detect_multiplayer_state(state_data) == 3
 
     def test_detect_default_no_players(self) -> None:
@@ -553,16 +539,18 @@ class TestUncivMultiplayerSaveParsing:
         civs = []
         for i in range(num_players):
             civ_name = f"TestCiv_{i}"
-            civs.append({
-                "civName": civ_name,
-                "playerType": "Human" if i == 0 else "AI",
-                "gold": 100 + i * 50,
-                "isDefeated": False,
-                "cities": [],
-                "units": [],
-                "tech": {"techsResearched": []},
-                "policies": {"adoptedPolicies": []},
-            })
+            civs.append(
+                {
+                    "civName": civ_name,
+                    "playerType": "Human" if i == 0 else "AI",
+                    "gold": 100 + i * 50,
+                    "isDefeated": False,
+                    "cities": [],
+                    "units": [],
+                    "tech": {"techsResearched": []},
+                    "policies": {"adoptedPolicies": []},
+                }
+            )
 
         return {
             "version": {"number": "4.0.0"},
@@ -584,9 +572,7 @@ class TestUncivMultiplayerSaveParsing:
 
         save_data = self._make_unciv_save(num_players)
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(save_data, f)
             save_path = f.name
 
@@ -614,9 +600,7 @@ class TestUncivMultiplayerSaveParsing:
 
         save_data = self._make_unciv_save(2)
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(save_data, f)
             save_path = f.name
 
@@ -636,9 +620,7 @@ class TestUncivMultiplayerSaveParsing:
         save_data = self._make_unciv_save(4)
         save_data["currentPlayer"] = "TestCiv_2"
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(save_data, f)
             save_path = f.name
 

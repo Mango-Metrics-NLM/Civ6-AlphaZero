@@ -28,9 +28,7 @@ class TestBatchModeDetection:
             dry_run=False,
         )
         use_batch = (
-            args.num_parallel_games > 1
-            and args.mcts_type == "batch_gumbel"
-            and not args.dry_run
+            args.num_parallel_games > 1 and args.mcts_type == "batch_gumbel" and not args.dry_run
         )
         assert use_batch is True
 
@@ -42,9 +40,7 @@ class TestBatchModeDetection:
             dry_run=False,
         )
         use_batch = (
-            args.num_parallel_games > 1
-            and args.mcts_type == "batch_gumbel"
-            and not args.dry_run
+            args.num_parallel_games > 1 and args.mcts_type == "batch_gumbel" and not args.dry_run
         )
         assert use_batch is False
 
@@ -56,9 +52,7 @@ class TestBatchModeDetection:
             dry_run=False,
         )
         use_batch = (
-            args.num_parallel_games > 1
-            and args.mcts_type == "batch_gumbel"
-            and not args.dry_run
+            args.num_parallel_games > 1 and args.mcts_type == "batch_gumbel" and not args.dry_run
         )
         assert use_batch is False
 
@@ -70,9 +64,7 @@ class TestBatchModeDetection:
             dry_run=True,
         )
         use_batch = (
-            args.num_parallel_games > 1
-            and args.mcts_type == "batch_gumbel"
-            and not args.dry_run
+            args.num_parallel_games > 1 and args.mcts_type == "batch_gumbel" and not args.dry_run
         )
         assert use_batch is False
 
@@ -84,9 +76,7 @@ class TestBatchModeDetection:
             dry_run=False,
         )
         use_batch = (
-            args.num_parallel_games > 1
-            and args.mcts_type == "batch_gumbel"
-            and not args.dry_run
+            args.num_parallel_games > 1 and args.mcts_type == "batch_gumbel" and not args.dry_run
         )
         assert use_batch is False
 
@@ -164,8 +154,11 @@ class TestComputeTemperature:
         from alpha_zero.cloud.gcp.selfplay_worker import compute_temperature
 
         temp = compute_temperature(
-            turn=5, max_turns=30, temperature=1.0,
-            temperature_threshold=15, schedule="threshold",
+            turn=5,
+            max_turns=30,
+            temperature=1.0,
+            temperature_threshold=15,
+            schedule="threshold",
         )
         assert temp == 1.0
 
@@ -174,8 +167,11 @@ class TestComputeTemperature:
         from alpha_zero.cloud.gcp.selfplay_worker import compute_temperature
 
         temp = compute_temperature(
-            turn=15, max_turns=30, temperature=1.0,
-            temperature_threshold=15, schedule="threshold",
+            turn=15,
+            max_turns=30,
+            temperature=1.0,
+            temperature_threshold=15,
+            schedule="threshold",
         )
         assert temp == 0.0
 
@@ -184,12 +180,18 @@ class TestComputeTemperature:
         from alpha_zero.cloud.gcp.selfplay_worker import compute_temperature
 
         temp_start = compute_temperature(
-            turn=0, max_turns=30, temperature=1.0,
-            temperature_threshold=15, schedule="linear",
+            turn=0,
+            max_turns=30,
+            temperature=1.0,
+            temperature_threshold=15,
+            schedule="linear",
         )
         temp_mid = compute_temperature(
-            turn=15, max_turns=30, temperature=1.0,
-            temperature_threshold=15, schedule="linear",
+            turn=15,
+            max_turns=30,
+            temperature=1.0,
+            temperature_threshold=15,
+            schedule="linear",
         )
         assert temp_start == 1.0
         assert 0.4 < temp_mid < 0.6  # ~0.5 at midpoint
@@ -199,8 +201,11 @@ class TestComputeTemperature:
         from alpha_zero.cloud.gcp.selfplay_worker import compute_temperature
 
         temp = compute_temperature(
-            turn=15, max_turns=30, temperature=1.0,
-            temperature_threshold=15, schedule="cosine",
+            turn=15,
+            max_turns=30,
+            temperature=1.0,
+            temperature_threshold=15,
+            schedule="cosine",
         )
         assert 0.0 <= temp <= 1.0
 
@@ -209,8 +214,11 @@ class TestComputeTemperature:
         from alpha_zero.cloud.gcp.selfplay_worker import compute_temperature
 
         temp = compute_temperature(
-            turn=15, max_turns=30, temperature=0.7,
-            temperature_threshold=15, schedule="unknown_schedule",
+            turn=15,
+            max_turns=30,
+            temperature=0.7,
+            temperature_threshold=15,
+            schedule="unknown_schedule",
         )
         assert temp == 0.7
 
@@ -227,16 +235,19 @@ class TestParseArgs:
         """CLI parser accepts batch-related arguments."""
         from alpha_zero.cloud.gcp.selfplay_worker import parse_args
 
-        with patch("sys.argv", [
-            "selfplay_worker",
-            "--worker_id=0",
-            "--model_version=1",
-            "--iteration=1",
-            "--games=10",
-            "--mcts_type=batch_gumbel",
-            "--num_parallel_games=4",
-            "--max_batch_size=32",
-        ]):
+        with patch(
+            "sys.argv",
+            [
+                "selfplay_worker",
+                "--worker_id=0",
+                "--model_version=1",
+                "--iteration=1",
+                "--games=10",
+                "--mcts_type=batch_gumbel",
+                "--num_parallel_games=4",
+                "--max_batch_size=32",
+            ],
+        ):
             args = parse_args()
 
         assert args.num_parallel_games == 4
@@ -247,12 +258,15 @@ class TestParseArgs:
         """Default batch args are sane."""
         from alpha_zero.cloud.gcp.selfplay_worker import parse_args
 
-        with patch("sys.argv", [
-            "selfplay_worker",
-            "--worker_id=0",
-            "--model_version=1",
-            "--iteration=1",
-        ]):
+        with patch(
+            "sys.argv",
+            [
+                "selfplay_worker",
+                "--worker_id=0",
+                "--model_version=1",
+                "--iteration=1",
+            ],
+        ):
             args = parse_args()
 
         assert args.num_parallel_games == 1  # default: sequential

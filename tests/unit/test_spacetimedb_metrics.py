@@ -40,7 +40,9 @@ def client(config: SpacetimeDBConfig, mock_sdk: MockSpacetimeDBClient) -> Spacet
 def sink(client: SpacetimeDBClient) -> SpacetimeDBMetricsSink:
     """Create metrics sink with small batch size for testing."""
     return SpacetimeDBMetricsSink(
-        client, batch_size=3, flush_interval=0.01,
+        client,
+        batch_size=3,
+        flush_interval=0.01,
     )
 
 
@@ -58,14 +60,16 @@ class TestLogMetrics:
     """Test metric logging."""
 
     def test_log_single_metric(
-        self, sink: SpacetimeDBMetricsSink,
+        self,
+        sink: SpacetimeDBMetricsSink,
     ) -> None:
         sink.log_metrics(step=1, metrics={"loss": 0.5})
         assert sink.total_metrics_logged == 1
         assert sink.pending_count == 1
 
     def test_log_multiple_metrics(
-        self, sink: SpacetimeDBMetricsSink,
+        self,
+        sink: SpacetimeDBMetricsSink,
     ) -> None:
         sink.log_metrics(step=1, metrics={"loss": 0.5, "accuracy": 0.8})
         sink.log_metrics(step=2, metrics={"loss": 0.4})
@@ -73,7 +77,9 @@ class TestLogMetrics:
         assert sink.pending_count == 2
 
     def test_auto_flush_on_batch_size(
-        self, sink: SpacetimeDBMetricsSink, mock_sdk: MockSpacetimeDBClient,
+        self,
+        sink: SpacetimeDBMetricsSink,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         """Buffer auto-flushes when batch_size is reached."""
         # batch_size=3 in fixture
@@ -87,10 +93,12 @@ class TestLogMetrics:
         assert mock_sdk.call_counts["log_metrics"] == 3
 
     def test_log_metrics_with_labels(
-        self, sink: SpacetimeDBMetricsSink,
+        self,
+        sink: SpacetimeDBMetricsSink,
     ) -> None:
         sink.log_metrics(
-            step=1, metrics={"loss": 0.5},
+            step=1,
+            metrics={"loss": 0.5},
             labels={"worker": "actor_0"},
         )
         assert sink.total_metrics_logged == 1
@@ -100,22 +108,26 @@ class TestLogEvent:
     """Test event logging."""
 
     def test_log_info_event(
-        self, sink: SpacetimeDBMetricsSink,
+        self,
+        sink: SpacetimeDBMetricsSink,
     ) -> None:
         sink.log_event("INFO", "Training started")
         assert sink.total_events_logged == 1
 
     def test_log_error_event(
-        self, sink: SpacetimeDBMetricsSink,
+        self,
+        sink: SpacetimeDBMetricsSink,
     ) -> None:
         sink.log_event("ERROR", "Connection lost", payload={"host": "localhost"})
         assert sink.total_events_logged == 1
 
     def test_log_event_with_labels(
-        self, sink: SpacetimeDBMetricsSink,
+        self,
+        sink: SpacetimeDBMetricsSink,
     ) -> None:
         sink.log_event(
-            "WARNING", "High memory usage",
+            "WARNING",
+            "High memory usage",
             labels={"component": "replay_buffer"},
         )
         assert sink.total_events_logged == 1
@@ -125,7 +137,9 @@ class TestFlush:
     """Test flush behavior."""
 
     def test_explicit_flush(
-        self, sink: SpacetimeDBMetricsSink, mock_sdk: MockSpacetimeDBClient,
+        self,
+        sink: SpacetimeDBMetricsSink,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         sink.log_metrics(step=1, metrics={"loss": 0.5})
         sink.log_metrics(step=2, metrics={"loss": 0.4})
@@ -137,13 +151,16 @@ class TestFlush:
         assert mock_sdk.call_counts["log_metrics"] == 2
 
     def test_flush_empty_buffer(
-        self, sink: SpacetimeDBMetricsSink,
+        self,
+        sink: SpacetimeDBMetricsSink,
     ) -> None:
         sink.flush()
         assert sink.flush_count == 1
 
     def test_multiple_flushes(
-        self, sink: SpacetimeDBMetricsSink, mock_sdk: MockSpacetimeDBClient,
+        self,
+        sink: SpacetimeDBMetricsSink,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         sink.log_metrics(step=1, metrics={"loss": 0.5})
         sink.flush()
@@ -158,12 +175,14 @@ class TestShouldFlush:
     """Test should_flush logic."""
 
     def test_should_flush_empty(
-        self, sink: SpacetimeDBMetricsSink,
+        self,
+        sink: SpacetimeDBMetricsSink,
     ) -> None:
         assert not sink.should_flush()
 
     def test_should_flush_batch_size(
-        self, sink: SpacetimeDBMetricsSink,
+        self,
+        sink: SpacetimeDBMetricsSink,
     ) -> None:
         # Don't trigger auto-flush, check should_flush
         sink._buffer.append((1, {"loss": 0.5}, None))
@@ -172,7 +191,8 @@ class TestShouldFlush:
         assert sink.should_flush()
 
     def test_should_flush_interval(
-        self, sink: SpacetimeDBMetricsSink,
+        self,
+        sink: SpacetimeDBMetricsSink,
     ) -> None:
         sink.log_metrics(step=1, metrics={"loss": 0.5})
         # Set last flush time far in the past
@@ -206,7 +226,9 @@ class TestEndToEnd:
     """Test complete metrics workflows."""
 
     def test_training_loop_metrics(
-        self, sink: SpacetimeDBMetricsSink, mock_sdk: MockSpacetimeDBClient,
+        self,
+        sink: SpacetimeDBMetricsSink,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         """Simulate a training loop publishing metrics."""
         for step in range(10):
@@ -225,7 +247,8 @@ class TestEndToEnd:
         assert mock_sdk.call_counts["log_metrics"] == 10
 
     def test_mixed_metrics_and_events(
-        self, sink: SpacetimeDBMetricsSink,
+        self,
+        sink: SpacetimeDBMetricsSink,
     ) -> None:
         sink.log_metrics(step=1, metrics={"loss": 0.5})
         sink.log_event("INFO", "Checkpoint saved")

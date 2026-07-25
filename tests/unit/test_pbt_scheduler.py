@@ -1077,10 +1077,7 @@ class TestSelectionEdgeCases:
 
     def test_truncation_all_same_fitness(self, rng: np.random.Generator) -> None:
         """Test truncation when all agents have same fitness."""
-        agents = [
-            AgentState(agent_id=f"agent_{i}", fitness_score=0.5)
-            for i in range(5)
-        ]
+        agents = [AgentState(agent_id=f"agent_{i}", fitness_score=0.5) for i in range(5)]
         for a in agents:
             a.fitness_history = [0.5]
 
@@ -1090,10 +1087,7 @@ class TestSelectionEdgeCases:
 
     def test_steady_state_all_same_fitness(self, rng: np.random.Generator) -> None:
         """Test steady state when all agents have same fitness."""
-        agents = [
-            AgentState(agent_id=f"agent_{i}", fitness_score=0.5)
-            for i in range(5)
-        ]
+        agents = [AgentState(agent_id=f"agent_{i}", fitness_score=0.5) for i in range(5)]
         for a in agents:
             a.fitness_history = [0.5]
 

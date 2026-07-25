@@ -10,9 +10,10 @@ import logging
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
+    import numpy as np
     import torch.nn as nn
 
 try:
@@ -20,7 +21,8 @@ try:
 
     TORCH_AVAILABLE = True
 except ImportError:
-    torch = None
+    # Optional-dependency sentinel; guarded everywhere by TORCH_AVAILABLE.
+    torch = None  # type: ignore[assignment]
     TORCH_AVAILABLE = False
 
 import yaml
@@ -228,15 +230,16 @@ class MuZeroTrainingBridge:
             )
 
         # Create MuZeroMCTS directly with config object
-        from alpha_zero.core.civ6_mcts import MuZeroMCTS, MuZeroMCTSConfig
+        from alpha_zero.core.civ6_mcts import MuZeroMCTS, MuZeroMCTSConfig, MuZeroNetworkProtocol
 
         mcts_config = MuZeroMCTSConfig(
             num_simulations=num_simulations,
             c_puct=c_puct,
             discount=self.config.discount,
         )
+        # Duck-typed: callers pass a MuZero network satisfying the protocol.
         mcts = MuZeroMCTS(
-            network=network,
+            network=cast(MuZeroNetworkProtocol, network),
             config=mcts_config,
             device=device,
         )
@@ -360,13 +363,14 @@ class MuZeroTrainingBridge:
             f"final_reward={rewards[-1] if rewards else 0.0}"
         )
 
-        # Create and return trajectory
+        # Create and return trajectory. GameTrajectory declares ndarray fields but
+        # accepts sequences at runtime; cast keeps the existing (list) behaviour.
         trajectory = GameTrajectory(
             observations=observations,
-            actions=actions,
-            rewards=rewards,
-            policies=policies,
-            values=values,
+            actions=cast("np.ndarray", actions),
+            rewards=cast("np.ndarray", rewards),
+            policies=cast("np.ndarray", policies),
+            values=cast("np.ndarray", values),
         )
 
         return trajectory

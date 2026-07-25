@@ -661,18 +661,14 @@ class TestExecuteWithRetry:
 
     @pytest.mark.asyncio
     async def test_raises_circuit_breaker_error_when_open(self) -> None:
-        checker = _make_checker(
-            circuit_breaker_threshold=1, circuit_breaker_timeout_seconds=30.0
-        )
+        checker = _make_checker(circuit_breaker_threshold=1, circuit_breaker_timeout_seconds=30.0)
         checker.record_failure("force open")
         with pytest.raises(CircuitBreakerOpenError):
             await checker.execute_with_retry(AsyncMock())
 
     @pytest.mark.asyncio
     async def test_retry_after_positive_when_circuit_open(self) -> None:
-        checker = _make_checker(
-            circuit_breaker_threshold=1, circuit_breaker_timeout_seconds=30.0
-        )
+        checker = _make_checker(circuit_breaker_threshold=1, circuit_breaker_timeout_seconds=30.0)
         checker.record_failure("force open")
         with pytest.raises(CircuitBreakerOpenError) as exc_info:
             await checker.execute_with_retry(AsyncMock())

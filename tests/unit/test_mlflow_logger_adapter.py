@@ -4,6 +4,7 @@ These guard the v1.5.0 MLflow-replaces-W&B migration: the adapter must
 preserve the exact public signatures of ``alpha_zero.utils.wandb_logger.WandbLogger``
 so worker code can switch trackers with a one-line import change.
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -245,9 +246,7 @@ def test_adapter_log_coerces_numpy_scalars():
         },
         step=3,
     )
-    assert calls == [
-        ({"int64": 7.0, "float32": 0.5, "bool_": 1.0, "plain_bool": 0.0}, 3)
-    ]
+    assert calls == [({"int64": 7.0, "float32": 0.5, "bool_": 1.0, "plain_bool": 0.0}, 3)]
 
 
 def test_adapter_log_coerces_zero_d_and_size_one_arrays():

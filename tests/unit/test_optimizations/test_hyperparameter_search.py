@@ -182,14 +182,10 @@ def _quadratic_config(n_trials: int = 12) -> SweepConfig:
 
 class TestHyperparameterSearch:
     def test_finds_minimum_of_quadratic(self):
-        search = HyperparameterSearch(
-            _quadratic_config(), objective=lambda p: (p["x"] - 3.0) ** 2
-        )
+        search = HyperparameterSearch(_quadratic_config(), objective=lambda p: (p["x"] - 3.0) ** 2)
         result = search.run()
         assert result.n_trials == 12
-        assert result.best_value == pytest.approx(
-            (result.best_params["x"] - 3.0) ** 2
-        )
+        assert result.best_value == pytest.approx((result.best_params["x"] - 3.0) ** 2)
         # Random sampling over [-10, 10] with 12 seeded trials lands near 3.
         assert abs(result.best_params["x"] - 3.0) < 5.0
 
@@ -261,8 +257,8 @@ class TestSubprocessTrainingObjective:
 
     def test_extract_metric_uses_last_marker_line(self):
         stdout = (
-            f"progress...\n{METRICS_MARKER}{{\"loss\": 9.0}}\n"
-            f"more...\n{METRICS_MARKER}{{\"loss\": 1.5}}\n"
+            f'progress...\n{METRICS_MARKER}{{"loss": 9.0}}\n'
+            f'more...\n{METRICS_MARKER}{{"loss": 1.5}}\n'
         )
         obj = SubprocessTrainingObjective(command=["x"], metric="loss")
         assert obj.extract_metric(stdout) == 1.5
@@ -275,7 +271,7 @@ class TestSubprocessTrainingObjective:
     def test_extract_metric_missing_key_raises(self):
         obj = SubprocessTrainingObjective(command=["x"], metric="loss")
         with pytest.raises(ValueError, match="not in reported metrics"):
-            obj.extract_metric(f"{METRICS_MARKER}{{\"other\": 1.0}}")
+            obj.extract_metric(f'{METRICS_MARKER}{{"other": 1.0}}')
 
     def test_end_to_end_with_stub_script(self, tmp_path):
         script = _stub_training_script(

@@ -1,4 +1,5 @@
 """Public experiment-tracker import surface."""
+
 from __future__ import annotations
 
 import warnings
@@ -6,6 +7,7 @@ import warnings
 
 def test_experiment_tracker_get_returns_adapter():
     from alpha_zero.utils import experiment_tracker
+
     experiment_tracker.reset_tracker_for_tests()
     tracker = experiment_tracker.get_tracker()
     assert hasattr(tracker, "log_training_step")

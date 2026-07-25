@@ -107,9 +107,9 @@ class TestHexEncoderIntegration:
         assert torch.isfinite(value).all(), "Value contains NaN/Inf"
 
         # Check value is in reasonable range (tanh output)
-        assert (value >= -1.0).all() and (
-            value <= 1.0
-        ).all(), f"Value should be in [-1, 1], got range [{value.min()}, {value.max()}]"
+        assert (value >= -1.0).all() and (value <= 1.0).all(), (
+            f"Value should be in [-1, 1], got range [{value.min()}, {value.max()}]"
+        )
 
     def test_full_forward_pass_with_patch_embed_regression(
         self,
@@ -193,9 +193,9 @@ class TestHexEncoderIntegration:
             network2.eval()
 
             # Verify config preserved
-            assert (
-                network2.config.encoder_type == "hex_crystalline"
-            ), f"Expected encoder_type='hex_crystalline', got '{network2.config.encoder_type}'"
+            assert network2.config.encoder_type == "hex_crystalline", (
+                f"Expected encoder_type='hex_crystalline', got '{network2.config.encoder_type}'"
+            )
 
             # Run loaded network
             with torch.no_grad():
@@ -306,9 +306,9 @@ class TestHexEncoderIntegration:
         config = TransformerConfig(**config_dict)
 
         # Should default to patch_embed
-        assert (
-            config.encoder_type == "patch_embed"
-        ), f"Expected default encoder_type='patch_embed', got '{config.encoder_type}'"
+        assert config.encoder_type == "patch_embed", (
+            f"Expected default encoder_type='patch_embed', got '{config.encoder_type}'"
+        )
 
         # Network should create successfully
         network = Civ6TransformerNetwork(config=config)
@@ -435,9 +435,9 @@ class TestHexEncoderIntegration:
         assert (policy_probs >= 0).all(), "Found negative probabilities"
 
         # Value should be in [-1, 1]
-        assert (value >= -1.0).all() and (
-            value <= 1.0
-        ).all(), f"Value should be in [-1, 1], got range [{value.min()}, {value.max()}]"
+        assert (value >= -1.0).all() and (value <= 1.0).all(), (
+            f"Value should be in [-1, 1], got range [{value.min()}, {value.max()}]"
+        )
 
     def test_action_masking_with_hex_encoder(
         self,
@@ -476,15 +476,15 @@ class TestHexEncoderIntegration:
 
         # Check masked positions have very negative logits
         masked_logits = policy_logits[:, 100:]  # Actions 100-375 are masked
-        assert (
-            masked_logits < -1e8
-        ).all(), f"Masked logits should be < -1e8, got max {masked_logits.max()}"
+        assert (masked_logits < -1e8).all(), (
+            f"Masked logits should be < -1e8, got max {masked_logits.max()}"
+        )
 
         # Check valid positions have reasonable logits
         valid_logits = policy_logits[:, :100]  # Actions 0-99 are valid
-        assert (
-            valid_logits > -1e8
-        ).all(), f"Valid logits should be > -1e8, got min {valid_logits.min()}"
+        assert (valid_logits > -1e8).all(), (
+            f"Valid logits should be > -1e8, got min {valid_logits.min()}"
+        )
 
         # Test predict() with mask
         with torch.no_grad():
@@ -492,9 +492,9 @@ class TestHexEncoderIntegration:
 
         # Masked positions should have near-zero probability
         masked_probs = policy_probs[:, 100:]
-        assert (
-            masked_probs < 1e-6
-        ).all(), f"Masked probabilities should be near zero, got max {masked_probs.max()}"
+        assert (masked_probs < 1e-6).all(), (
+            f"Masked probabilities should be near zero, got max {masked_probs.max()}"
+        )
 
         # Valid positions should sum to ~1.0
         valid_prob_sums = policy_probs[:, :100].sum(dim=-1)
@@ -545,12 +545,12 @@ class TestHexEncoderIntegration:
         params_hex = network_hex.get_num_parameters()
 
         # Check both are under 10M params
-        assert (
-            params_patch["total"] < 10_000_000
-        ), f"PatchEmbed network has too many params: {params_patch['total']}"
-        assert (
-            params_hex["total"] < 10_000_000
-        ), f"Hex network has too many params: {params_hex['total']}"
+        assert params_patch["total"] < 10_000_000, (
+            f"PatchEmbed network has too many params: {params_patch['total']}"
+        )
+        assert params_hex["total"] < 10_000_000, (
+            f"Hex network has too many params: {params_hex['total']}"
+        )
 
         # Check hex is within 2x of PatchEmbed
         ratio = params_hex["total"] / params_patch["total"]

@@ -98,7 +98,9 @@ class TestAtariNetwork:
         loss = logits.mean() + value.mean()
         loss.backward()
         # Check at least one param has grad
-        has_grad = any(p.grad is not None and p.grad.abs().sum() > 0 for p in small_network.parameters())
+        has_grad = any(
+            p.grad is not None and p.grad.abs().sum() > 0 for p in small_network.parameters()
+        )
         assert has_grad
 
     def test_save_and_load(self, small_network, tmp_path):
@@ -136,7 +138,9 @@ class TestAtariNetwork:
         from alpha_zero.core.civ6_network import ResidualBlock
 
         config = NetConfig(num_res_blocks=2, num_filters=8, fc_hidden_dim=16, value_head_hidden=8)
-        net = AtariNetwork(config=config, num_actions=4, spatial_size=(84, 84), spatial_channels=4, vector_dim=16)
+        net = AtariNetwork(
+            config=config, num_actions=4, spatial_size=(84, 84), spatial_channels=4, vector_dim=16
+        )
         # The res_tower should contain ResidualBlock instances
         for module in net.res_tower:
             assert isinstance(module, ResidualBlock)

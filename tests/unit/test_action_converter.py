@@ -468,9 +468,9 @@ class TestItemHashRange:
         for item in civ6_items:
             result = _convert_item_id_to_int(item)
             assert result is not None
-            assert (
-                0 <= result < GameConstants.ITEM_HASH_RANGE
-            ), f"Hashed item '{item}' = {result} outside range [0, {GameConstants.ITEM_HASH_RANGE})"
+            assert 0 <= result < GameConstants.ITEM_HASH_RANGE, (
+                f"Hashed item '{item}' = {result} outside range [0, {GameConstants.ITEM_HASH_RANGE})"
+            )
 
     def test_hashed_items_deterministic(self):
         """Test that hashing produces deterministic results."""
