@@ -307,7 +307,7 @@ class DDPLearnerConfig(LearnerConfig):
             mapped_kwargs[canonical] = v
 
         env_values.update(mapped_kwargs)
-        return cls(**env_values)  # type: ignore[arg-type]
+        return cls(**env_values)
 
 
 class DDPLearner(Learner):

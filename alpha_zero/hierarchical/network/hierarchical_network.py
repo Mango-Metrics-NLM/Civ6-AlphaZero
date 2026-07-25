@@ -31,7 +31,7 @@ except ImportError:
         class Module:
             pass
 
-    nn = _DummyNn  # type: ignore[misc,assignment]
+    nn = _DummyNn
 
 
 from alpha_zero.hierarchical.config import HierarchyLevel

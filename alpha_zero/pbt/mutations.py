@@ -470,7 +470,7 @@ class CrossoverMutation(BaseMutation):
         if param_range.discrete:
             new_value = round(new_value)
 
-        return new_value  # type: ignore[no-any-return]
+        return new_value
 
     def _blend_crossover(
         self,

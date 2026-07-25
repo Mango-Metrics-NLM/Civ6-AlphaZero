@@ -26,8 +26,8 @@ try:
 
     VERTEX_AVAILABLE = True
 except ImportError:
-    aiplatform = None  # type: ignore[assignment]
-    CustomJob = None  # type: ignore[assignment, misc]
+    aiplatform = None
+    CustomJob = None
 
 
 class JobStatus(Enum):

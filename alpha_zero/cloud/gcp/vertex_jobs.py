@@ -337,7 +337,7 @@ class VertexAIClient:
                 parallel_trial_count=parallel_trial_count,
             )
 
-            tuning_job.submit(service_account=spec.service_account)  # type: ignore[attr-defined]
+            tuning_job.submit(service_account=spec.service_account)
 
             logger.info(
                 "Submitted tuning job: %s (resource: %s)",

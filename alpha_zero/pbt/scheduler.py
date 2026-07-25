@@ -132,7 +132,7 @@ class TournamentSelection(SelectionStrategy):
             tournament = rng.choice(
                 agents,
                 size=min(self.tournament_size, len(agents)),
-                replace=False,  # type: ignore[arg-type]
+                replace=False,
             )
             winner = max(tournament, key=lambda a: a.get_smoothed_fitness())
             selected.append(winner)

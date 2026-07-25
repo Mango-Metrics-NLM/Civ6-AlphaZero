@@ -157,7 +157,7 @@ class ChessAdvisor:
             return None
         return prior / total
 
-    def mcts_callback(self):  # type: ignore[no-untyped-def]  # noqa: ANN201
+    def mcts_callback(self):  # noqa: ANN201
         """Return a callable suitable for ``Civ6MCTS(llm_prior_fn=...)``.
 
         The returned function accepts ``(env, action_mask)`` and returns a
