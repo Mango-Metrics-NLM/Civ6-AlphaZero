@@ -12,6 +12,8 @@ import numpy as np
 import pytest
 import torch
 
+pytest.importorskip("pydantic", reason="inference schemas require the 'web' extra (pydantic)")
+
 from alpha_zero.cloud.gcp.storage import ModelMetadata
 from alpha_zero.inference.api_schemas import GameState, InferenceRequest, MCTSType
 from alpha_zero.inference.inference_engine import (

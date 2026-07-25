@@ -191,7 +191,7 @@ PROHIBITED (do not attempt):
 ruff check alpha_zero/
 
 # 2. Type check
-mypy alpha_zero/ --ignore-missing-imports
+mypy alpha_zero/  # exits 0 as of 2026-07-25; flag-free — config lives in pyproject
 
 # 3. Unit tests (fast feedback)
 pytest tests/unit/ -v --tb=short

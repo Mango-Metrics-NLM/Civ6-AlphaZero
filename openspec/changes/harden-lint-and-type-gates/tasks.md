@@ -22,25 +22,29 @@
 
 ## 3. Mypy gate
 
-- [ ] 3.1 (S) ci.yml lint job installs `-e ".[dev]"`; add `types-requests` to
+- [x] 3.1 (S) ci.yml lint job installs `-e ".[dev]"`; add `types-requests` to
       the dev extra; drop the `--ignore-missing-imports` CLI flag (pyproject
       global covers it)
-- [ ] 3.2 (M) Measure `mypy alpha_zero/` at the new pin in the canonical env;
+- [x] 3.2 (M) Measure `mypy alpha_zero/` at the new pin in the canonical env;
       apply the decision gate (≤150 burn down fully / 150–300 mechanical first /
       >300 stop and report)
-- [ ] 3.3 (M) Burn down mechanical errors (`unused-ignore`, bare ignores)
-- [ ] 3.4 (M) Burn down semantic errors per package, tests run per commit
+- [x] 3.3 (M) Burn down mechanical errors (`unused-ignore`, bare ignores)
+- [x] 3.4 (M) Burn down semantic errors per package, tests run per commit
 - [ ] 3.5 (S) Remove `continue-on-error: true` from the mypy step after one
       green advisory CI run; update CLAUDE.md §4.1 invocation
 
 ## 4. Test-scope + eval-harness (measured)
 
-- [ ] 4.1 (S) Measure `tests/e2e tests/inference tests/regression tests/scripts
+- [x] 4.1 (S) Measure `tests/e2e tests/inference tests/regression tests/scripts
       tests/smoke` locally; record runtime and pass state
-- [ ] 4.2 (S) If green and fast: add advisory `extended-tests` CI job with a
-      dated observation window; else document and defer
-- [ ] 4.3 (S) Check eval-harness job pass rate; flip to enforcing if
+- [x] 4.2 (S) Measured 2026-07-25: 263 passed / 12 failed / 18 skipped in
+      2m03s under the [dev] install. All 12 failures are environment-dependent
+      (need .env, GCP ADC, or MLflow run history — test_deployment_infra 6,
+      test_gcp_diagnose 1, test_run_baseline_eval 3, +2), not code bugs.
+      Wiring into CI therefore needs env_required-style markers on those
+      suites first — DEFERRED to a follow-up; no CI job added
+- [x] 4.3 (S) Check eval-harness job pass rate; flip to enforcing if
       consistently green (carried from add-enterprise-docs-and-gates task 6.3);
       else document why not
-- [ ] 4.4 (S) Update the flaky `test_concurrent_submit_and_sample` skip reason
+- [x] 4.4 (S) Update the flaky `test_concurrent_submit_and_sample` skip reason
       with a tracking pointer

@@ -22,8 +22,21 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install linting tools
-        run: pip install ruff==0.15.8 mypy==1.19.1 bandit==1.8.0
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-lint-${{ hashFiles('**/pyproject.toml', '**/requirements.txt', '**/setup.py') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-lint-
+
+      # The dev extra pins ruff/mypy (same versions as .pre-commit-config.yaml)
+      # and installs the project itself, so mypy sees real dependencies instead
+      # of treating every third-party import as Any.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
 
       - name: Run ruff linter
         run: ruff check . --output-format=github
@@ -33,7 +46,7 @@ jobs:
 
       - name: Run mypy type checker
         continue-on-error: true
-        run: mypy alpha_zero/ --ignore-missing-imports --show-error-codes
+        run: mypy alpha_zero/ --show-error-codes
 
   test:
     name: Test (Python ${{ matrix.python-version }})
@@ -175,9 +188,10 @@ jobs:
   eval-harness:
     name: LLM Eval Harness
     runs-on: ubuntu-latest
-    # Observation window: kept non-blocking across phases B-E while runtime and
-    # provider reachability are observed; flipped to enforcing in the final phase.
-    continue-on-error: true
+    # Enforcing since 2026-07-25 (harden-lint-and-type-gates): the observation
+    # window closed with consecutive green runs, e.g. run 30156956859 on the
+    # PR #93 merge commit (gate step green, ~6 s). The offline gate is
+    # deterministic (stub LLM), so failures here are real contract regressions.
     steps:
       - uses: actions/checkout@v4
 

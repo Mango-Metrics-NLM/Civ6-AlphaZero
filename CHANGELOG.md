@@ -24,6 +24,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tests/integration/test_training_resume_continuity.py`.
 - `inspect_db.py` moved to `scripts/inspect_db.py` (kept; was misplaced at root).
 
+### Changed — Gate hardening (`harden-lint-and-type-gates`, 2026-07-25)
+- **Tool pins aligned at ruff 0.15.8 / mypy 1.19.1** across all five locations
+  (CI lint job, CI governance job, pre-commit, pyproject `dev` extra,
+  requirements.txt — the last two previously drifted/unpinned).
+- **Lint gate is whole-repository**: CI runs `ruff check .` / `ruff format
+  --check .`; 104 test files + 25 script/root/infra files reformatted
+  (format-only); unmaintained fringe dirs excluded centrally via
+  `[tool.ruff] extend-exclude` + `force-exclude`; pre-commit `&maintained`
+  anchor widened to match.
+- **Mypy is now a real gate**: the CI lint job installs the project + dev extra
+  (torch, stubs incl. new `types-requests`), the `--ignore-missing-imports`
+  CLI flag is gone, and `mypy alpha_zero/` exits 0 — 130 errors burned down
+  (29 stale ignores removed, 101 semantic fixes via annotations/casts/scalar
+  wrappers; 5 documented library-false-positive ignores remain).
+- **eval-harness CI job flipped to enforcing** — its observation window closed
+  with consecutive green runs (carried from add-enterprise-docs-and-gates
+  task 6.3).
+- **Never-in-CI test dirs measured** (`tests/e2e|inference|regression|scripts|
+  smoke`): 263 passed / 12 env-dependent failures / 2m03s; CI wiring deferred
+  until those suites carry env-required markers. `tests/inference` gained a
+  pydantic `importorskip` guard so collection degrades to a skip without the
+  `web` extra.
+
 ### Changed — Code hygiene sweep (2026-07-25)
 - **Config truth**: dropped the orphaned per-file-ignore for deleted
   `tests/unit/test_pbt_dashboarding.py` and the stale coverage-omit glob

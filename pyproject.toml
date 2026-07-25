@@ -28,6 +28,7 @@ dev = [
     "types-tqdm>=4.65.0",
     "bandit>=1.7.0",
     "types-PyYAML>=6.0.0",
+    "types-requests>=2.31.0",
     "psutil>=5.9.0",
     "httpx>=0.25.0",
     # Test-only dependencies (previously missing; caused 8 test files to fail collection)
