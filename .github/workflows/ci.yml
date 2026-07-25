@@ -26,10 +26,10 @@ jobs:
         run: pip install ruff==0.15.8 mypy==1.19.1 bandit==1.8.0
 
       - name: Run ruff linter
-        run: ruff check alpha_zero/ --output-format=github
+        run: ruff check . --output-format=github
 
       - name: Run ruff formatter check
-        run: ruff format --check alpha_zero/
+        run: ruff format --check .
 
       - name: Run mypy type checker
         continue-on-error: true

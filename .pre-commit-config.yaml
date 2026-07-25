@@ -1,8 +1,9 @@
 # Install with `make hooks-install` (installs both pre-commit and pre-push stages).
 # The mutating hooks (whitespace, EOF, ruff) are scoped to the maintained code
-# paths that CI already keeps clean (alpha_zero/ + the governance validators);
-# repo-wide reformatting of scripts/, docs/, and root runners is out of scope
-# (see openspec/changes/add-enterprise-docs-and-gates/design.md, non-goals).
+# paths that CI keeps clean: alpha_zero/, tests/, scripts/, infra/, and root
+# *.py runners (widened 2026-07-25 by the harden-lint-and-type-gates change;
+# unmaintained fringe dirs are excluded centrally via [tool.ruff]
+# extend-exclude + force-exclude in pyproject.toml).
 # kb/handoffs/ is excluded because those files are immutable once created.
 default_install_hook_types: [pre-commit, pre-push]
 
@@ -14,7 +15,7 @@ repos:
       # global `files:` default, which would AND with the local hooks' own
       # patterns and disable them) and aliased onto the other mutating hooks.
       - id: trailing-whitespace
-        files: &maintained '^(alpha_zero/|tests/governance/|scripts/(validate_openspec|validate_kb|validate_skills|check_doc_sync)\.py)'
+        files: &maintained '^(alpha_zero/|tests/|scripts/|infra/|[^/]+\.py$)'
         exclude: ^kb/handoffs/
       - id: end-of-file-fixer
         files: *maintained

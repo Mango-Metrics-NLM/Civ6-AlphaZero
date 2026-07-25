@@ -2,22 +2,23 @@
 
 ## 1. Pin alignment (measured)
 
-- [ ] 1.1 (S) Bump `ruff==0.8.0` → `ruff==0.15.8` and `mypy==1.13.0` →
+- [x] 1.1 (S) Bump `ruff==0.8.0` → `ruff==0.15.8` and `mypy==1.13.0` →
       `mypy==1.19.1` in ci.yml lint job, ci.yml governance job,
       `.pre-commit-config.yaml`, pyproject `dev` extra, and `requirements.txt`
       (pin the currently-unpinned entries) — one commit
-- [ ] 1.2 (S) Measure `ruff check` / `ruff format --check` on `alpha_zero/` at
+- [x] 1.2 (S) Measure `ruff check` / `ruff format --check` on `alpha_zero/` at
       0.15.8; fix surfaced violations; drop the then-dead `UP038` ignore
 
 ## 2. Lint scope expansion
 
-- [ ] 2.1 (M) `ruff format` + `ruff check --fix` the drifted files under
+- [x] 2.1 (M) `ruff format` + `ruff check --fix` the drifted files under
       `tests/` (logic-free commits, ≤20 files each)
-- [ ] 2.2 (M) Same for `scripts/` and root runners
-- [ ] 2.3 (S) ci.yml lint job → `ruff check .` / `ruff format --check .`;
+- [x] 2.2 (M) Same for `scripts/` and root runners
+- [x] 2.3 (S) ci.yml lint job → `ruff check .` / `ruff format --check .`;
       widen the pre-commit `&maintained` anchor to match
-- [ ] 2.4 (S) Convert genuine `__init__.py` re-export `noqa: F401`s to
-      `__all__`; keep availability-probe noqas
+- [x] 2.4 (S) Measured: all 12 remaining `__init__.py` `noqa: F401`s are
+      availability probes inside try/except ImportError blocks (or side-effect
+      imports) — none are plain re-exports, so all are kept as-is
 
 ## 3. Mypy gate
 

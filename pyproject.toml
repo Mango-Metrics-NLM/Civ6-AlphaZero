@@ -132,6 +132,18 @@ exclude = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Unmaintained fringe (demos, scaffolding templates, experimental server modules)
+# is outside the lint/format gate; the maintained set is everything else.
+# force-exclude makes pre-commit (which passes explicit filenames) honour this too.
+extend-exclude = [
+    "demos",
+    "examples",
+    "templates",
+    "server-module",
+    "interfaces",
+    "spacetimedb_module",
+]
+force-exclude = true
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "C4", "UP", "N", "ANN", "S", "RUF"]
