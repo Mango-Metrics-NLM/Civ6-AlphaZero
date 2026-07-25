@@ -1027,11 +1027,6 @@ class TestSendCommandWithRetry:
         # Make command file unwritable (it's a directory)
         bridge.config.commands_file.mkdir(parents=True)
         cmd = CommandMessage.create_single(2, LuaCommand(action_type=ActionType.END_TURN))
-        with patch(
-            "asyncio.sleep",
-            new_callable=lambda: lambda *a, **k: __import__("asyncio").coroutine(lambda: None)(),
-        ):
-            pass
 
         # patch sleep to avoid real delay
         async def fast_sleep(_t: float) -> None:
