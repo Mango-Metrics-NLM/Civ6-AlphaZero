@@ -65,6 +65,14 @@ class NetworkConfig:
     action_space_size: int = 381  # MicroCiv default
     value_head_hidden: int = 128
 
+    # Number of players. Load-bearing for the *shape* of the value head:
+    # MicroCivNetwork swaps in an NPlayerValueHead when this exceeds 2. It
+    # lives on the config so a saved checkpoint can be reconstructed without
+    # the caller having to remember how it was trained — omitting it made
+    # every N-player checkpoint fail load_state_dict against a scalar head.
+    # Defaulted, so checkpoints written before this field still load.
+    num_players: int = 2
+
     # Regularization
     dropout: float = 0.0
 
@@ -555,8 +563,6 @@ class MicroCivNetwork(Civ6Network):
             config: Optional network configuration.
             **kwargs: Additional arguments passed to Civ6Network.
         """
-        self._num_players = num_players
-
         if config is None:
             config = NetworkConfig(
                 spatial_channels=spatial_channels,
@@ -567,7 +573,16 @@ class MicroCivNetwork(Civ6Network):
                 fc_hidden_dim=128,
                 action_space_size=action_space_size,
                 value_head_hidden=64,
+                num_players=num_players,
             )
+        else:
+            # An explicit config wins over the keyword: reconstructing from a
+            # checkpoint passes config only, and silently keeping the default
+            # num_players=2 there is what built a scalar head for an N-player
+            # checkpoint and broke load_state_dict.
+            num_players = config.num_players
+
+        self._num_players = num_players
         super().__init__(config=config, **kwargs)
 
         # Replace the value head with an N-player variant when needed
