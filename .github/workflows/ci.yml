@@ -2,9 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main, "feature/*", "next-steps-*"]
+    branches: [main, "feature/*", "next-steps-*", "claude/**"]
   pull_request:
     branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint:
@@ -125,6 +129,35 @@ jobs:
         with:
           name: bandit-report
           path: bandit-report.json
+
+  governance:
+    name: Governance Gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so validate_kb.py's handoff-immutability check (added in a
+          # later phase) can resolve origin/main on push events.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install governance tools
+        run: pip install ruff==0.8.0 pytest
+
+      - name: Lint governance code
+        run: ruff check scripts/validate_openspec.py tests/governance/
+
+      - name: Validate OpenSpec structure
+        run: python scripts/validate_openspec.py
+
+      - name: Run governance tests
+        run: >-
+          pytest -c tests/governance/pytest.ini
+          --confcutdir=tests/governance -p no:cacheprovider tests/governance
 
   coverage:
     name: Coverage Report

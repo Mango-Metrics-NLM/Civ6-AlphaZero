@@ -50,6 +50,7 @@ help:
 	@echo "  make test-unit         Run unit tests"
 	@echo "  make test-integration  Run integration tests"
 	@echo "  make test-all          Run all tests with coverage"
+	@echo "  make validate          Run governance validators (openspec, kb, skills, doc-sync)"
 	@echo "  make eval-llm          Run LLM eval-harness gate (StrategyAdvisor analyze + report, offline)"
 	@echo ""
 	@echo "Docker:"
@@ -121,6 +122,13 @@ test-all:
 .PHONY: test-storage
 test-storage:
 	pytest tests/unit/test_storage_backend.py tests/unit/test_replay_buffer.py -v
+
+.PHONY: test
+test: test-unit
+
+.PHONY: validate
+validate:
+	$(PYTHON) scripts/validate_openspec.py
 
 .PHONY: eval-llm
 eval-llm:
