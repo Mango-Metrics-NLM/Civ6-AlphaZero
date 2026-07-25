@@ -4,6 +4,10 @@
 # commit-time gates (pre-commit / CI) so that an in-progress multi-edit change is
 # not broken mid-sequence -- see docs/HARNESS_ENGINEERING_ANALYSIS.md section 6,
 # which documents ruff --fix stripping a not-yet-used import between edits.
+# RUF100 is deferred alongside F401: with F401 disabled the existing `# noqa: F401`
+# directives look "unused", and RUF100 --fix would strip them, re-exposing the
+# imports to the commit-time F401 gate. Deferring both keeps intentional
+# availability-probe imports intact.
 set -uo pipefail
 
 input="$(cat)"
@@ -14,7 +18,7 @@ f="$(printf '%s' "$input" | python3 -c \
 
 case "$f" in
   *.py)
-    ruff check --fix --quiet --extend-ignore F401 "$f" 2>/dev/null || true
+    ruff check --fix --quiet --extend-ignore F401,RUF100 "$f" 2>/dev/null || true
     ruff format --quiet "$f" 2>/dev/null || true
     ;;
 esac

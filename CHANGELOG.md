@@ -88,6 +88,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ruff` clean on the bridge surface; the new `tuner_socket_bridge.py` module is mypy-clean (repo has pre-existing mypy debt in unrelated files).
 - Windows-only local deselect list: 5 files (SIGALRM unavailable) plus `test_agent_tools` (pre-existing symbol-scan hang) — all pass on Linux CI.
 
+## [1.7.0] — 2026-06-20 — Full-Civ6 Local Gameplay & LLM Eval Gate
+
+> Reconstructed from git history — this release was shipped between 1.6.0 and
+> 1.8.0 but had no dedicated changelog section (no git tags exist).
+
+### Added
+
+- **Full-Civ6 local gameplay**: `BridgeAgentLoop` wires the trained agent to
+  Civilization VI through the file-based bridge, with a `Civ6MctsPolicy` driving
+  a `GumbelMCTS` over a snapshot-seeded `BridgeMCTSEnv`.
+- **LLM eval gate**: integration of `langfuse-eval-harness` to evaluate the
+  `StrategyAdvisor` structured output (`make eval-llm`, `configs/eval/`), gating
+  both the `analyze` and `report` advisor modes.
+- **BridgeEvalHarness** MLflow telemetry hooks and the `install_civ6_mod.py`
+  mod installer.
+
 ## [1.6.0] — 2026-05-21 — MLflow Monitoring & Evaluation Analytics
 
 > **Version note:** Bumped from `1.4.0` to `1.6.0` after merging this branch with `origin/main`, which had independently released `1.5.0` (Sprint 5 type safety) on top of an earlier `1.4.0` (Sprint 4). The MLflow monitoring layer is the largest behavioural change of this release line, so it owns the minor bump.
@@ -293,7 +309,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.3.0] — 2026-02-23
+## [1.3.0] — 2026-02-23 — Training Worker Fine-Tuning (earlier 1.3.0 point release)
+
+> Note: two releases carried the `1.3.0` number (this fine-tuning fix and the
+> 2026-03-04 "Sprint 3" entry above). Both are retained for historical accuracy.
 
 ### Fixed — Training Worker Loads Base Model for Fine-Tuning
 
@@ -1031,7 +1050,7 @@ After this fix, training iterations will:
 
 ---
 
-## [Unreleased]
+## [Historical — pre-0.8.0 notes]
 
 ### Added
 

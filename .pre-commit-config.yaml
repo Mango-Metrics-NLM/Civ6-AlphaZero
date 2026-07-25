@@ -54,6 +54,12 @@ repos:
         language: system
         files: ^\.claude/skills/
         pass_filenames: false
+      - id: check-doc-sync
+        name: check doc sync
+        entry: python scripts/check_doc_sync.py
+        language: system
+        files: ^(README\.md|CLAUDE\.md|CONTRIBUTING\.md|docs/|pyproject\.toml|alpha_zero/__init__\.py|setup\.py|CHANGELOG\.md)
+        pass_filenames: false
       - id: pytest-check
         name: pytest quick check
         entry: pytest tests/unit/ -x -q --tb=no

@@ -22,7 +22,7 @@ Phase 1 focuses on immediate validation of:
 2. **Install dependencies**:
 
    ```bash
-   pip install -e ".[dev,cloud]"
+   pip install -e ".[dev,gcp]"
    ```
 
 3. **GCP Authentication** (for E2E tests):

@@ -33,12 +33,13 @@ active at that point.
 
 ## 4. Phase D — README + core accuracy
 
-- [ ] 4.1 (L) README rewrite (~400 lines)
-- [ ] 4.2 (L) ``docs/README.md`` index + architecture consolidation + stubs
-- [ ] 4.3 (M) ``MODULE_REFERENCE.md``, ``CHANGELOG.md`` repair, ``.env.template``
-- [ ] 4.4 (S) ``alpha_zero/__init__.py`` → 1.8.0; ``setup.py`` shim
-- [ ] 4.5 (M) ``NEXT_STEPS.md`` + ``GCP_INFRA.md`` consolidation; ``CLAUDE.md`` §11.3
-- [ ] 4.6 (S) Enable ``check_doc_sync.py`` in CI + pre-commit
+- [x] 4.1 (L) README rewrite (~230 lines; old README archived to docs/archive/); LICENSE (MIT)
+- [x] 4.2 (M) ``docs/README.md`` index (architecture consolidation + stubs → Phase E doc-reorg)
+- [x] 4.3 (M) ``MODULE_REFERENCE.md``, ``CHANGELOG.md`` repair (add 1.7.0, dedupe 1.3.0, orphan), ``.env.template``
+- [x] 4.4 (S) ``alpha_zero/__init__.py`` → 1.8.0; ``setup.py`` shim
+- [x] 4.5 (S) ``CLAUDE.md`` §11.3 phantom extra (``NEXT_STEPS``/``GCP_INFRA`` consolidation → Phase E)
+- [x] 4.6 (S) Enable ``check_doc_sync.py`` in CI + pre-commit + Makefile
+- [x] 4.7 (S) Fix posttooluse_lint hook: defer RUF100 too (was stripping ``# noqa: F401``)
 
 ## 5. Phase E — Enterprise files + Agent.md + archive sweep
 

@@ -164,6 +164,9 @@ jobs:
       - name: Validate skills
         run: python scripts/validate_skills.py
 
+      - name: Check documentation sync
+        run: python scripts/check_doc_sync.py
+
       - name: Run governance tests
         run: >-
           pytest -c tests/governance/pytest.ini

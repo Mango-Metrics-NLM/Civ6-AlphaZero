@@ -1025,7 +1025,7 @@ alpha_zero/rag/
 |---------|---------|
 | `pytest tests/unit/test_rag/ -v` | Run RAG unit tests |
 | `pytest tests/integration/test_rag/ -v` | Run RAG integration tests |
-| `pip install -e ".[rag]"` | Install with RAG dependencies |
+| `pip install chromadb faiss-cpu sentence-transformers` | Install RAG dependencies (not a packaged extra) |
 | `pip install -e ".[all]"` | Install all dependencies |
 
 ### 11.4 RAG Usage Example

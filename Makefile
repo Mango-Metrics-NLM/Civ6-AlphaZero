@@ -131,6 +131,7 @@ validate:
 	$(PYTHON) scripts/validate_openspec.py
 	$(PYTHON) scripts/validate_kb.py
 	$(PYTHON) scripts/validate_skills.py
+	$(PYTHON) scripts/check_doc_sync.py
 
 .PHONY: hooks-install
 hooks-install:
