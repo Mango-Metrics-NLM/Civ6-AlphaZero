@@ -2,7 +2,12 @@
 
 ## Purpose
 
-TBD.
+Defines the deterministic quality gates that guard the repository: the
+stdlib-only governance validators and their exit-code contract, OpenSpec
+structural validity, the CI governance job, the lint/format and type-check
+gates, and the installable git hooks whose tool pins mirror CI. The intent is
+that every gate is reproducible locally, versioned with the code, and cannot
+drift silently from what CI enforces.
 
 ## Requirements
 

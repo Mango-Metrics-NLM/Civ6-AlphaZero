@@ -2,7 +2,12 @@
 
 ## Purpose
 
-TBD.
+Keeps the project's documentation mechanically truthful: the README, module
+inventory, version strings, changelog, and documentation index must match the
+code they describe, enforced by the ``check_doc_sync.py`` gate rather than by
+convention. Covers accuracy requirements for the README, version consistency
+across files, module-inventory counts, the docs index, and release/changelog
+agreement.
 
 ## Requirements
 

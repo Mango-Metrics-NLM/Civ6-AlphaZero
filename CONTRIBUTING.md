@@ -21,8 +21,8 @@ make hooks-install          # installs the pre-commit and pre-push git hooks
 ## Development loop
 
 ```bash
-make lint          # ruff (0.15.8, 100-char lines)
-make typecheck     # mypy (advisory)
+make lint          # ruff check/format, whole repo (0.15.8, 100-char lines)
+make typecheck     # mypy (blocking in CI; must exit 0)
 make test          # unit tests
 make test-all      # full suite with coverage
 make validate      # governance validators (openspec, kb, skills, doc-sync)
@@ -36,8 +36,11 @@ and a quick unit-test pass on push.
 
 - **Coverage:** CI enforces **85%** on `alpha_zero/` (`--cov-fail-under=85`,
   matching `pyproject.toml` `fail_under`). Keep new code covered.
-- **Lint:** ruff must pass on `alpha_zero/`. Line length is 100.
-- **Types:** mypy runs in CI as advisory; several packages
+- **Lint:** ruff check + format must pass on the **whole repository** (tests/,
+  scripts/, infra/, and root runners included; unmaintained fringe dirs are
+  excluded centrally in `pyproject.toml`). Line length is 100.
+- **Types:** mypy is a **blocking** CI gate as of 2026-07-25 — `mypy alpha_zero/`
+  must exit 0 in the dev-extra environment; several packages
   (`alpha_zero.core/cloud/training/tournament/pbt/web/evaluation/envs`) are held
   to stricter settings — keep them clean.
 - **Security:** bandit runs in CI on `alpha_zero/`.
