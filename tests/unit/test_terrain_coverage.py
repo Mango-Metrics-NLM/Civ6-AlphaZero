@@ -171,9 +171,9 @@ class TestFeatureYieldModifiers:
 
         for resource in base:
             expected = max(0, base[resource] + modifier.get(resource, 0))
-            assert (
-                result[resource] == expected
-            ), f"Mismatch on {resource}: expected {expected}, got {result[resource]}"
+            assert result[resource] == expected, (
+                f"Mismatch on {resource}: expected {expected}, got {result[resource]}"
+            )
 
     def test_forest_modifier_on_hills(self, default_system: TerrainSystem):
         """Forest on hills should adjust yields correctly."""

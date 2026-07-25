@@ -74,28 +74,28 @@ class TestLogTailerConstruction:
 class TestLineParsing:
     def test_parse_state_line(self, tailer: LogTailer) -> None:
         state = {"turn_id": 5, "map": {"tiles": []}}
-        line = f'AlphaZeroMain: AZ_STATE:{json.dumps(state)}'
+        line = f"AlphaZeroMain: AZ_STATE:{json.dumps(state)}"
         tailer._parse_line(line)
         assert tailer.latest_state is not None
         assert tailer.latest_state["turn_id"] == 5
 
     def test_parse_state_without_context_prefix(self, tailer: LogTailer) -> None:
         state = {"turn_id": 10}
-        line = f'AZ_STATE:{json.dumps(state)}'
+        line = f"AZ_STATE:{json.dumps(state)}"
         tailer._parse_line(line)
         assert tailer.latest_state is not None
         assert tailer.latest_state["turn_id"] == 10
 
     def test_parse_heartbeat(self, tailer: LogTailer) -> None:
         hb = {"lua_alive": True, "timestamp": 12345, "turn": 3}
-        line = f'AlphaZeroMain: AZ_HB:{json.dumps(hb)}'
+        line = f"AlphaZeroMain: AZ_HB:{json.dumps(hb)}"
         tailer._parse_line(line)
         assert tailer.latest_heartbeat is not None
         assert tailer.latest_heartbeat["lua_alive"] is True
 
     def test_parse_ack(self, tailer: LogTailer) -> None:
         ack = {"msg_id": 42, "success": True}
-        line = f'AlphaZeroMain: AZ_ACK:{json.dumps(ack)}'
+        line = f"AlphaZeroMain: AZ_ACK:{json.dumps(ack)}"
         tailer._parse_line(line)
         assert 42 in tailer._ack_queue
         assert tailer._ack_queue[42]["success"] is True
@@ -110,10 +110,8 @@ class TestLineParsing:
         keyed on the real integer msg_id could ever match.
         """
         ack = {"success": True}
-        line = f'AlphaZeroMain: AZ_ACK:{json.dumps(ack)}'
-        with caplog.at_level(
-            "WARNING", logger="alpha_zero.bridge.log_tailer"
-        ):
+        line = f"AlphaZeroMain: AZ_ACK:{json.dumps(ack)}"
+        with caplog.at_level("WARNING", logger="alpha_zero.bridge.log_tailer"):
             tailer._parse_line(line)
         assert None not in tailer._ack_queue
         assert tailer._ack_queue == {}
@@ -123,7 +121,7 @@ class TestLineParsing:
     def test_parse_ack_non_int_msg_id_dropped(self, tailer: LogTailer) -> None:
         """A malformed ack with a non-integer msg_id is dropped, not queued."""
         ack = {"msg_id": "not-an-int", "success": True}
-        line = f'AlphaZeroMain: AZ_ACK:{json.dumps(ack)}'
+        line = f"AlphaZeroMain: AZ_ACK:{json.dumps(ack)}"
         tailer._parse_line(line)
         assert "not-an-int" not in tailer._ack_queue
         assert tailer._stats.acks_received == 0
@@ -152,9 +150,9 @@ class TestLineParsing:
 
     def test_stats_increment_on_parse(self, tailer: LogTailer) -> None:
         state = {"turn_id": 1}
-        tailer._parse_line(f'AZ_STATE:{json.dumps(state)}')
-        tailer._parse_line(f'AZ_HB:{json.dumps({"lua_alive": True})}')
-        tailer._parse_line(f'AZ_ACK:{json.dumps({"msg_id": 1})}')
+        tailer._parse_line(f"AZ_STATE:{json.dumps(state)}")
+        tailer._parse_line(f"AZ_HB:{json.dumps({'lua_alive': True})}")
+        tailer._parse_line(f"AZ_ACK:{json.dumps({'msg_id': 1})}")
         assert tailer._stats.states_received == 1
         assert tailer._stats.heartbeats_received == 1
         assert tailer._stats.acks_received == 1
@@ -187,7 +185,7 @@ class TestChunkReassembly:
             start = i * chunk_size
             end = min((i + 1) * chunk_size, len(full_json))
             chunk = full_json[start:end]
-            tailer._parse_line(f"AZ_STATE_CHUNK:{i+1}/3:{chunk}")
+            tailer._parse_line(f"AZ_STATE_CHUNK:{i + 1}/3:{chunk}")
 
         tailer._parse_line("AZ_STATE_END:3")
         assert tailer.latest_state is not None
@@ -196,7 +194,7 @@ class TestChunkReassembly:
     def test_single_chunk_state(self, tailer: LogTailer) -> None:
         """Small state that fits in one line uses AZ_STATE: prefix directly."""
         state = {"turn_id": 1}
-        tailer._parse_line(f'AZ_STATE:{json.dumps(state)}')
+        tailer._parse_line(f"AZ_STATE:{json.dumps(state)}")
         assert tailer.latest_state["turn_id"] == 1
         assert tailer._stats.chunks_received == 0
 
@@ -235,12 +233,12 @@ class TestHeartbeat:
 
     def test_check_heartbeat_fresh(self, tailer: LogTailer) -> None:
         hb = {"lua_alive": True, "timestamp": int(time.time())}
-        tailer._parse_line(f'AZ_HB:{json.dumps(hb)}')
+        tailer._parse_line(f"AZ_HB:{json.dumps(hb)}")
         assert tailer.check_heartbeat(max_age=5.0) is True
 
     def test_check_heartbeat_stale(self, tailer: LogTailer) -> None:
         hb = {"lua_alive": True, "timestamp": int(time.time())}
-        tailer._parse_line(f'AZ_HB:{json.dumps(hb)}')
+        tailer._parse_line(f"AZ_HB:{json.dumps(hb)}")
         # Fake old heartbeat time
         tailer._heartbeat_time = time.monotonic() - 10.0
         assert tailer.check_heartbeat(max_age=5.0) is False
@@ -282,7 +280,7 @@ class TestAsyncOperations:
             async def write_state() -> None:
                 await asyncio.sleep(0.1)
                 state = {"turn_id": 15, "map": {"tiles": []}}
-                _write_line(tmp_log, f'AlphaZeroMain: AZ_STATE:{json.dumps(state)}')
+                _write_line(tmp_log, f"AlphaZeroMain: AZ_STATE:{json.dumps(state)}")
 
             writer = asyncio.create_task(write_state())
             result = await tailer.wait_for_state(timeout=2.0)
@@ -297,10 +295,11 @@ class TestAsyncOperations:
 
     async def test_wait_for_ack_success(self, tmp_log: Path) -> None:
         async with LogTailer(tmp_log, poll_interval=0.05) as tailer:
+
             async def write_ack() -> None:
                 await asyncio.sleep(0.1)
                 ack = {"msg_id": 42, "success": True}
-                _write_line(tmp_log, f'AlphaZeroMain: AZ_ACK:{json.dumps(ack)}')
+                _write_line(tmp_log, f"AlphaZeroMain: AZ_ACK:{json.dumps(ack)}")
 
             writer = asyncio.create_task(write_ack())
             result = await tailer.wait_for_ack(msg_id=42, timeout=2.0)
@@ -318,7 +317,7 @@ class TestAsyncOperations:
         """When log file is truncated, tailer resets position."""
         async with LogTailer(tmp_log, poll_interval=0.05) as tailer:
             # Write some data
-            _write_line(tmp_log, f'AZ_STATE:{json.dumps({"turn_id": 1})}')
+            _write_line(tmp_log, f"AZ_STATE:{json.dumps({'turn_id': 1})}")
             await asyncio.sleep(0.15)
             assert tailer.latest_state is not None
 
@@ -327,7 +326,7 @@ class TestAsyncOperations:
             await asyncio.sleep(0.15)
 
             # Write new data
-            _write_line(tmp_log, f'AZ_STATE:{json.dumps({"turn_id": 2})}')
+            _write_line(tmp_log, f"AZ_STATE:{json.dumps({'turn_id': 2})}")
             await asyncio.sleep(0.15)
             assert tailer.latest_state["turn_id"] == 2
 
@@ -362,7 +361,7 @@ class TestAsyncOperations:
         async with LogTailer(tmp_log, poll_interval=0.05) as tailer:
             _write_line(tmp_log, "TutorialUIRoot: Tutorial loaded")
             _write_line(tmp_log, "LoadScreen: OnLoadGameViewStateDone")
-            _write_line(tmp_log, f'AlphaZeroMain: AZ_HB:{json.dumps({"lua_alive": True})}')
+            _write_line(tmp_log, f"AlphaZeroMain: AZ_HB:{json.dumps({'lua_alive': True})}")
             _write_line(tmp_log, "Some other log line")
             await asyncio.sleep(0.15)
             assert tailer._stats.lines_processed >= 3
@@ -412,25 +411,22 @@ class TestReadNewLinesEdgeCases:
         OSError), the read is skipped rather than crashing the poll loop."""
         tailer._file = open(tmp_log, encoding="utf-8")
         try:
+
             def _raise_oserror(path):
                 raise OSError("file vanished")
 
-            monkeypatch.setattr(
-                "alpha_zero.bridge.log_tailer.os.path.getsize", _raise_oserror
-            )
+            monkeypatch.setattr("alpha_zero.bridge.log_tailer.os.path.getsize", _raise_oserror)
             tailer._read_new_lines()  # must not raise
             assert tailer._stats.lines_processed == 0
         finally:
             tailer._file.close()
 
-    def test_blank_lines_are_skipped_within_batch(
-        self, tailer: LogTailer, tmp_log: Path
-    ) -> None:
+    def test_blank_lines_are_skipped_within_batch(self, tailer: LogTailer, tmp_log: Path) -> None:
         """A batch containing a blank line alongside real content must skip
         the blank line and continue processing the rest of the batch."""
         with open(tmp_log, "a", encoding="utf-8") as f:
             f.write("\n")
-            f.write(f'AZ_HB:{json.dumps({"lua_alive": True})}\n')
+            f.write(f"AZ_HB:{json.dumps({'lua_alive': True})}\n")
 
         tailer._file = open(tmp_log, encoding="utf-8")
         try:
@@ -485,9 +481,7 @@ class TestLifecycleEdgeCases:
         await tailer.stop()  # must not raise
         assert not tailer.is_running
 
-    async def test_poll_loop_exits_immediately_when_not_running(
-        self, tmp_log: Path
-    ) -> None:
+    async def test_poll_loop_exits_immediately_when_not_running(self, tmp_log: Path) -> None:
         """_poll_loop()'s while condition is checked before ever entering the
         body when _running is already False."""
         tailer = LogTailer(tmp_log, poll_interval=0.05)
@@ -517,9 +511,7 @@ class TestLifecycleEdgeCases:
             assert tailer.is_running
             assert call_count >= 2
 
-    async def test_wait_for_state_raises_if_event_set_without_state(
-        self, tmp_log: Path
-    ) -> None:
+    async def test_wait_for_state_raises_if_event_set_without_state(self, tmp_log: Path) -> None:
         """Defensive branch: if the state event is set but latest_state is
         still None (e.g. a race), wait_for_state must still raise rather than
         returning None to the caller."""
@@ -545,8 +537,6 @@ class TestLifecycleEdgeCases:
             fake_time["t"] += 40.0
             return fake_time["t"]
 
-        monkeypatch.setattr(
-            "alpha_zero.bridge.log_tailer.time.monotonic", _fake_monotonic
-        )
+        monkeypatch.setattr("alpha_zero.bridge.log_tailer.time.monotonic", _fake_monotonic)
         with pytest.raises(LogTailerError, match="not found after 30s"):
             await tailer.start()

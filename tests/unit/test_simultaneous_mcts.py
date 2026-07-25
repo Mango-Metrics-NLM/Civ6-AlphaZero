@@ -34,6 +34,7 @@ def _make_mock_env(
     Each call to env.clone() returns a fresh mock with the same
     configuration, preventing mutations from leaking across simulations.
     """
+
     def _build_env() -> MagicMock:
         env = MagicMock()
         env.num_players = num_players
@@ -145,9 +146,7 @@ class TestSimultaneousNode:
             assert 3 in node.per_player_children[pid]
 
         # Priors should be normalized over valid actions
-        p0_priors = [
-            node.per_player_children[0][a].prior for a in [0, 1, 3]
-        ]
+        p0_priors = [node.per_player_children[0][a].prior for a in [0, 1, 3]]
         assert abs(sum(p0_priors) - 1.0) < 1e-6
 
     def test_ucb_selection_exploration(self) -> None:
@@ -291,9 +290,7 @@ class TestSimultaneousNode:
     def test_empty_player_stats(self) -> None:
         """get_action_probabilities returns zeros for unknown player."""
         node = SimultaneousNode(num_players=2)
-        probs = node.get_action_probabilities_for_player(
-            player_id=0, action_space_size=5
-        )
+        probs = node.get_action_probabilities_for_player(player_id=0, action_space_size=5)
         assert probs.shape == (5,)
         assert probs.sum() == 0.0
 
@@ -441,18 +438,14 @@ class TestDecoupledUCT:
         )
 
         # Store original priors
-        original_priors_p0 = [
-            root.per_player_children[0][a].prior for a in range(5)
-        ]
+        original_priors_p0 = [root.per_player_children[0][a].prior for a in range(5)]
 
         # Apply noise
         np.random.seed(42)
         duct._add_dirichlet_noise(root, active_players=[0, 1])
 
         # Priors should be modified
-        new_priors_p0 = [
-            root.per_player_children[0][a].prior for a in range(5)
-        ]
+        new_priors_p0 = [root.per_player_children[0][a].prior for a in range(5)]
         assert original_priors_p0 != new_priors_p0
         # Should still be valid distribution (approximately)
         assert abs(sum(new_priors_p0) - 1.0) < 1e-5
@@ -609,9 +602,7 @@ class TestDecoupledUCTExtended:
         config = SimultaneousMCTSConfig(num_simulations=5)
         duct = DecoupledUCT(config, num_players=2, action_space_size=5)
 
-        values = duct._extract_terminal_values(
-            info={}, active_players=[0, 1]
-        )
+        values = duct._extract_terminal_values(info={}, active_players=[0, 1])
         assert values == {0: 0.0, 1: 0.0}
 
     def test_extract_terminal_values_winner(self) -> None:
@@ -619,9 +610,7 @@ class TestDecoupledUCTExtended:
         config = SimultaneousMCTSConfig(num_simulations=5)
         duct = DecoupledUCT(config, num_players=3, action_space_size=5)
 
-        values = duct._extract_terminal_values(
-            info={"winner": 1}, active_players=[0, 1, 2]
-        )
+        values = duct._extract_terminal_values(info={"winner": 1}, active_players=[0, 1, 2])
         assert values[1] == 1.0
         assert values[0] == -1.0
         assert values[2] == -1.0
@@ -660,17 +649,13 @@ class TestDecoupledUCTExtended:
 
     def test_step_env_with_resolution_calls_resolver(self) -> None:
         """_step_env_with_resolution invokes ActionResolver and env.step."""
-        config = SimultaneousMCTSConfig(
-            num_simulations=5, action_resolution="priority"
-        )
+        config = SimultaneousMCTSConfig(num_simulations=5, action_resolution="priority")
         duct = DecoupledUCT(config, num_players=2, action_space_size=5)
 
         env = _make_mock_env(num_players=2, action_space_size=5)
         joint_action = {0: 2, 1: 3}
 
-        is_terminal, info = duct._step_env_with_resolution(
-            env, joint_action, active_players=[0, 1]
-        )
+        is_terminal, info = duct._step_env_with_resolution(env, joint_action, active_players=[0, 1])
 
         # env.step should have been called exactly once
         env.step.assert_called_once()

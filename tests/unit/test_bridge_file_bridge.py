@@ -929,9 +929,7 @@ class TestWaitForState:
     """Tests for FileBridge.wait_for_state()."""
 
     @pytest.mark.asyncio
-    async def test_returns_state_immediately_when_file_present(
-        self, bridge: FileBridge
-    ) -> None:
+    async def test_returns_state_immediately_when_file_present(self, bridge: FileBridge) -> None:
         await bridge.start()
         bridge.config.state_file.write_text(json.dumps(_MINIMAL_STATE_WRAPPED))
         state = await bridge.wait_for_state(timeout=2.0, require_new=False)
@@ -939,18 +937,14 @@ class TestWaitForState:
         assert state.turn_id == 1
 
     @pytest.mark.asyncio
-    async def test_raises_state_timeout_error_when_no_file(
-        self, bridge: FileBridge
-    ) -> None:
+    async def test_raises_state_timeout_error_when_no_file(self, bridge: FileBridge) -> None:
         await bridge.start()
         # No state file written — should time out immediately
         with pytest.raises(StateTimeoutError):
             await bridge.wait_for_state(timeout=0.05, require_new=False)
 
     @pytest.mark.asyncio
-    async def test_wait_for_state_uses_default_timeout_when_none(
-        self, bridge: FileBridge
-    ) -> None:
+    async def test_wait_for_state_uses_default_timeout_when_none(self, bridge: FileBridge) -> None:
         """Passing timeout=None should fall back to config.command_timeout_ms."""
         await bridge.start()
         bridge.config.state_file.write_text(json.dumps(_MINIMAL_STATE_WRAPPED))
@@ -1033,8 +1027,12 @@ class TestSendCommandWithRetry:
         # Make command file unwritable (it's a directory)
         bridge.config.commands_file.mkdir(parents=True)
         cmd = CommandMessage.create_single(2, LuaCommand(action_type=ActionType.END_TURN))
-        with patch("asyncio.sleep", new_callable=lambda: lambda *a, **k: __import__("asyncio").coroutine(lambda: None)()):
+        with patch(
+            "asyncio.sleep",
+            new_callable=lambda: lambda *a, **k: __import__("asyncio").coroutine(lambda: None)(),
+        ):
             pass
+
         # patch sleep to avoid real delay
         async def fast_sleep(_t: float) -> None:
             pass

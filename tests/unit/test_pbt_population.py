@@ -939,9 +939,7 @@ class TestSelectionMethodVariants:
 class TestComputeStatsEdgeCases:
     """Edge case tests for compute_stats."""
 
-    def test_compute_stats_records_to_history(
-        self, population_manager: PopulationManager
-    ) -> None:
+    def test_compute_stats_records_to_history(self, population_manager: PopulationManager) -> None:
         """Test that compute_stats appends to stats_history."""
         for aid in population_manager.get_agent_ids():
             population_manager.update_fitness(aid, 0.5)

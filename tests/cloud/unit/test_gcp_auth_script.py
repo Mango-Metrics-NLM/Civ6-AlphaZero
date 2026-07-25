@@ -77,17 +77,17 @@ class TestGCPAuthScript:
         """Verify script checks for gcloud CLI."""
         content = SETUP_SCRIPT.read_text()
 
-        assert (
-            "Test-GcloudInstalled" in content or "Get-Command gcloud" in content
-        ), "Script should check for gcloud installation"
+        assert "Test-GcloudInstalled" in content or "Get-Command gcloud" in content, (
+            "Script should check for gcloud installation"
+        )
 
     def test_script_handles_adc_configuration(self) -> None:
         """Verify script handles Application Default Credentials."""
         content = SETUP_SCRIPT.read_text()
 
-        assert (
-            "application-default" in content.lower() or "adc" in content.lower()
-        ), "Script should handle ADC configuration"
+        assert "application-default" in content.lower() or "adc" in content.lower(), (
+            "Script should handle ADC configuration"
+        )
 
     @pytest.mark.skipif(
         sys.platform != "win32" or not POWERSHELL_AVAILABLE,
@@ -204,9 +204,9 @@ class TestScriptModularity:
         ]
 
         for pattern in hardcoded_patterns:
-            assert (
-                pattern.lower() not in content.lower()
-            ), f"Script should not contain hardcoded value: {pattern}"
+            assert pattern.lower() not in content.lower(), (
+                f"Script should not contain hardcoded value: {pattern}"
+            )
 
     def test_script_has_main_function(self) -> None:
         """Verify script uses Main function pattern."""

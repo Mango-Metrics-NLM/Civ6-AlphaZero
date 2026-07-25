@@ -920,9 +920,7 @@ class TestBridgeAgentLoopBranchCoverage:
             },
         }
         loop.action_converter = MagicMock(name="ActionConverter")
-        loop.action_converter.generate_action_mask.return_value = np.ones(
-            8, dtype=np.float32
-        )
+        loop.action_converter.generate_action_mask.return_value = np.ones(8, dtype=np.float32)
 
         def _convert(action_idx, _game_state, legal_actions=None, validate=True):
             from alpha_zero.bridge.protocol import LuaCommand

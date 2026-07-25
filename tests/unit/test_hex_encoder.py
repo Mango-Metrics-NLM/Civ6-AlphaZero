@@ -56,7 +56,7 @@ class TestShapeMatching:
 
         # Check shapes match
         assert patch_out.shape == hex_out.shape, (
-            f"Shape mismatch: PatchEmbed {patch_out.shape} vs " f"HexEncoder {hex_out.shape}"
+            f"Shape mismatch: PatchEmbed {patch_out.shape} vs HexEncoder {hex_out.shape}"
         )
         assert hex_out.shape == (
             batch_size,

@@ -119,9 +119,9 @@ class TestSelectModelVersions:
     @pytest.mark.parametrize(
         ("start", "end", "stride", "expected_len_min"),
         [
-            (0, 100, 10, 11),   # 0,10,20,...,100 → 11 versions
-            (1, 1, 1, 1),        # single model
-            (0, 9, 3, 4),        # 0,3,6,9 → 4 versions
+            (0, 100, 10, 11),  # 0,10,20,...,100 → 11 versions
+            (1, 1, 1, 1),  # single model
+            (0, 9, 3, 4),  # 0,3,6,9 → 4 versions
         ],
     )
     def test_result_length_parametrized(
@@ -160,8 +160,7 @@ class TestLogEloResultsToMlflow:
 
         # At minimum, one call per model (individual or batch)
         total_metric_calls = (
-            mock_ml_logger.log_metric.call_count
-            + mock_ml_logger.log_metrics.call_count
+            mock_ml_logger.log_metric.call_count + mock_ml_logger.log_metrics.call_count
         )
         assert total_metric_calls >= 1
 
@@ -278,7 +277,12 @@ class TestLogEvalResultsToMlflow:
         """
         return {
             "random": {"win_rate": 0.95, "draw_rate": 0.03, "loss_rate": 0.02, "total_games": 20.0},
-            "heuristic": {"win_rate": 0.72, "draw_rate": 0.10, "loss_rate": 0.18, "total_games": 20.0},
+            "heuristic": {
+                "win_rate": 0.72,
+                "draw_rate": 0.10,
+                "loss_rate": 0.18,
+                "total_games": 20.0,
+            },
         }
 
     def test_logs_win_rate(
@@ -359,8 +363,5 @@ class TestLogEvalResultsToMlflow:
         """Valid rate combinations must all log without error."""
         log_eval_results_to_mlflow(mock_ml_logger, eval_results)
 
-        total_calls = (
-            mock_ml_logger.log_metric.call_count
-            + mock_ml_logger.log_metrics.call_count
-        )
+        total_calls = mock_ml_logger.log_metric.call_count + mock_ml_logger.log_metrics.call_count
         assert total_calls >= 1

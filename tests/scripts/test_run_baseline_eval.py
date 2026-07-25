@@ -138,18 +138,30 @@ class TestParseArgs:
 
     def test_all_options_parsed(self) -> None:
         """All CLI options should be parsed without error."""
-        args = parse_args([
-            "--model_version", "57",
-            "--run_id", "deadbeef",
-            "--experiment", "my-exp",
-            "--tracking_uri", "sqlite:///test.db",
-            "--n_games", "10",
-            "--board_size", "16",
-            "--max_turns", "60",
-            "--mcts_sims", "50",
-            "--device", "cpu",
-            "--log_level", "DEBUG",
-        ])
+        args = parse_args(
+            [
+                "--model_version",
+                "57",
+                "--run_id",
+                "deadbeef",
+                "--experiment",
+                "my-exp",
+                "--tracking_uri",
+                "sqlite:///test.db",
+                "--n_games",
+                "10",
+                "--board_size",
+                "16",
+                "--max_turns",
+                "60",
+                "--mcts_sims",
+                "50",
+                "--device",
+                "cpu",
+                "--log_level",
+                "DEBUG",
+            ]
+        )
         assert args.model_version == 57
         assert args.run_id == "deadbeef"
         assert args.experiment == "my-exp"
@@ -398,15 +410,19 @@ class TestMain:
         with patch("alpha_zero.utils.env_loader.load_civ6az_env", return_value={}):
             with patch("mlflow.set_tracking_uri"):
                 with patch("mlflow.set_experiment"):
-                    with patch("mlflow.start_run", return_value=MagicMock(info=MagicMock(run_id="mock-run"))):
+                    with patch(
+                        "mlflow.start_run",
+                        return_value=MagicMock(info=MagicMock(run_id="mock-run")),
+                    ):
                         with patch("mlflow.end_run"):
                             with patch(
                                 "alpha_zero.cloud.gcp.evaluation_worker.load_model",
                                 side_effect=RuntimeError("No GCS access"),
                             ):
-                                result = sut.main(["--model_version", "99", "--run_id", "fake-run-id"])
+                                result = sut.main(
+                                    ["--model_version", "99", "--run_id", "fake-run-id"]
+                                )
                                 assert result == 1
-
 
     def test_sqlite_flag_overrides_tracking_uri(self) -> None:
         """When --sqlite is set, tracking_uri should be the SQLite URI."""

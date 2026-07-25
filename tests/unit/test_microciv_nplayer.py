@@ -88,8 +88,7 @@ class TestNPlayerStartingPositions:
         for player in range(num_players):
             player_units = [u for u in env.units if u.player == player]
             assert len(player_units) >= 2, (
-                f"Player {player} should have at least 2 starting units, "
-                f"got {len(player_units)}"
+                f"Player {player} should have at least 2 starting units, got {len(player_units)}"
             )
             unit_types = {u.unit_type for u in player_units}
             assert "settler" in unit_types, f"Player {player} missing settler"

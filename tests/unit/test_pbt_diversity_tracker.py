@@ -670,9 +670,7 @@ class TestEndToEnd:
 
         metrics = tracker.compute_diversity()
 
-        h_uniform = PolicyDiversityTracker._entropy(
-            tracker._get_distribution("uniform")
-        )
+        h_uniform = PolicyDiversityTracker._entropy(tracker._get_distribution("uniform"))
         h_deterministic = PolicyDiversityTracker._entropy(
             tracker._get_distribution("deterministic")
         )

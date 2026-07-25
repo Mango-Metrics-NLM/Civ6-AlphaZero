@@ -86,9 +86,7 @@ class TestJaxVectorEncoder:
         return jax.random.PRNGKey(42)
 
     def test_output_shape(self, key):
-        encoder = JaxVectorEncoder(
-            input_dim=64, hidden_dim=128, output_dim=128, key=key
-        )
+        encoder = JaxVectorEncoder(input_dim=64, hidden_dim=128, output_dim=128, key=key)
         x = jax.random.normal(key, (64,))
         y = encoder(x, inference=True)
         assert y.shape == (128,)
@@ -334,9 +332,7 @@ class TestJaxNetworkWrapperValidation:
     def test_residual_block_indivisible_raises(self):
         """num_filters not divisible by num_groups should raise."""
         with pytest.raises(ValueError, match="divisible"):
-            JaxResidualBlock(
-                num_filters=7, num_groups=8, key=jax.random.PRNGKey(0)
-            )
+            JaxResidualBlock(num_filters=7, num_groups=8, key=jax.random.PRNGKey(0))
 
 
 class TestJaxNetworkWrapperJIT:
@@ -345,8 +341,11 @@ class TestJaxNetworkWrapperJIT:
     def test_jit_single_matches_nojit(self):
         """JIT-compiled single predict should match non-JIT."""
         model = JaxMicroCivNetwork(
-            board_size=16, action_space_size=381,
-            num_res_blocks=2, num_filters=32, num_groups=8,
+            board_size=16,
+            action_space_size=381,
+            num_res_blocks=2,
+            num_filters=32,
+            num_groups=8,
             key=jax.random.PRNGKey(42),
         )
         wrapper_nojit = JaxNetworkWrapper(model, seed=42, jit_enabled=False)
@@ -365,8 +364,11 @@ class TestJaxNetworkWrapperJIT:
     def test_jit_batched_matches_nojit(self):
         """JIT-compiled batched predict should match non-JIT."""
         model = JaxMicroCivNetwork(
-            board_size=16, action_space_size=381,
-            num_res_blocks=2, num_filters=32, num_groups=8,
+            board_size=16,
+            action_space_size=381,
+            num_res_blocks=2,
+            num_filters=32,
+            num_groups=8,
             key=jax.random.PRNGKey(42),
         )
         wrapper_nojit = JaxNetworkWrapper(model, seed=42, jit_enabled=False)
@@ -398,7 +400,5 @@ class TestCreateJaxNetwork:
         from alpha_zero.core.civ6_network import NetworkConfig
 
         config = NetworkConfig(spatial_channels=84)
-        wrapper = create_jax_network(
-            config, board_size=44, action_space_size=10000, seed=123
-        )
+        wrapper = create_jax_network(config, board_size=44, action_space_size=10000, seed=123)
         assert isinstance(wrapper, JaxNetworkWrapper)

@@ -328,9 +328,7 @@ class TestMCTSConfigValidation:
         mcts = MuZeroMCTS.from_network(fake_network, config=user_config)
 
         # Every field of base_config must round-trip into the synced config.
-        assert mcts.config.temperature_threshold == 99, (
-            "from_network dropped temperature_threshold"
-        )
+        assert mcts.config.temperature_threshold == 99, "from_network dropped temperature_threshold"
         assert mcts.config.temperature == 0.5
         assert mcts.config.num_simulations == 33
         # Reward settings come from the network when present.
@@ -575,9 +573,9 @@ class TestPathConstants:
 
         class_default = TrainingConfig().games_per_iteration
         from_empty = TrainingConfig.from_dict({}).games_per_iteration
-        assert (
-            class_default == from_empty
-        ), f"games_per_iteration drift: class={class_default!r} from_dict={from_empty!r}"
+        assert class_default == from_empty, (
+            f"games_per_iteration drift: class={class_default!r} from_dict={from_empty!r}"
+        )
 
 
 class TestGlobalInstances:
@@ -633,9 +631,9 @@ class TestConstantsConsistency:
             for j, (start_j, end_j) in enumerate(ranges):
                 if i != j:
                     # Ranges should not overlap
-                    assert (
-                        end_i <= start_j or end_j <= start_i
-                    ), f"Ranges {ranges[i]} and {ranges[j]} overlap"
+                    assert end_i <= start_j or end_j <= start_i, (
+                        f"Ranges {ranges[i]} and {ranges[j]} overlap"
+                    )
 
     def test_normalization_factors_reasonable(self) -> None:
         """Test normalization factors have reasonable values."""

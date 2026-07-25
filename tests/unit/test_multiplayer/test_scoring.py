@@ -44,9 +44,7 @@ class TestComputeRankings:
         assert rankings[2] == 2
 
     def test_eliminated_players_ranked_last(self):
-        rankings = compute_rankings(
-            winner=0, eliminated={2}, num_players=3
-        )
+        rankings = compute_rankings(winner=0, eliminated={2}, num_players=3)
         assert rankings[0] == 0
         assert rankings[1] == 1
         assert rankings[2] >= 2
@@ -102,9 +100,7 @@ class TestComputePlayerValues:
 
     def test_draw_value(self):
         rankings = {0: 0, 1: 0, 2: 0}
-        values = compute_player_values(
-            rankings, num_players=3, draw_value=0.5
-        )
+        values = compute_player_values(rankings, num_players=3, draw_value=0.5)
         assert all(v == pytest.approx(0.5) for v in values.values())
 
     def test_proportional_scoring(self):
@@ -135,9 +131,7 @@ class TestComputePlayerValues:
     def test_elimination_penalty(self):
         rankings = {0: 0, 1: 1, 2: 2}
         values_no_penalty = compute_player_values(rankings, num_players=3)
-        values_penalty = compute_player_values(
-            rankings, num_players=3, elimination_penalty=0.2
-        )
+        values_penalty = compute_player_values(rankings, num_players=3, elimination_penalty=0.2)
         # Last place should be penalized more
         assert values_penalty[2] <= values_no_penalty[2]
 

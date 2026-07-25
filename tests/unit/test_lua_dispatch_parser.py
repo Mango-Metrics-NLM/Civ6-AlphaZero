@@ -59,11 +59,13 @@ class TestParseActionTypes:
             parse_action_types(text)
         # Multi-line table: '--' on one entry drops just that entry; if it
         # was the only entry, the parser raises "no entries".
-        multi = '\n'.join([
-            "local ACTION_TYPES = {",
-            '    OPTION = "foo--bar",',
-            "}",
-        ])
+        multi = "\n".join(
+            [
+                "local ACTION_TYPES = {",
+                '    OPTION = "foo--bar",',
+                "}",
+            ]
+        )
         with pytest.raises(LuaParseError, match="no entries"):
             parse_action_types(multi)
 
@@ -104,9 +106,9 @@ class TestRealLuaFile:
         _types, handlers = load_dispatch_from_file(REAL_LUA)
         for key in ("CITY_BUY", "CITY_CITIZEN", "UNIT_PROMOTE", "UNIT_DELETE", "DIPLOMACY"):
             assert key in handlers, f"{key} missing from ACTION_HANDLERS"
-            assert (
-                handlers[key] != NOT_IMPLEMENTED_HANDLER
-            ), f"{key} still routes to {NOT_IMPLEMENTED_HANDLER} — W2.1 not done"
+            assert handlers[key] != NOT_IMPLEMENTED_HANDLER, (
+                f"{key} still routes to {NOT_IMPLEMENTED_HANDLER} — W2.1 not done"
+            )
 
     def test_keys_match_between_action_types_and_handlers(self) -> None:
         """Every ACTION_TYPES entry must have a corresponding ACTION_HANDLERS

@@ -91,18 +91,18 @@ class TestEvaluationRetry:
         from alpha_zero.cloud.gcp.vertex_orchestrator import run_evaluation_phase
 
         sig = inspect.signature(run_evaluation_phase)
-        assert (
-            "max_retries" in sig.parameters
-        ), "run_evaluation_phase must have max_retries parameter"
+        assert "max_retries" in sig.parameters, (
+            "run_evaluation_phase must have max_retries parameter"
+        )
         assert sig.parameters["max_retries"].default == 2
 
     def test_eval_machine_type_constant_exists(self) -> None:
         """_EVAL_MACHINE_TYPE constant should exist for cost estimation."""
         import alpha_zero.cloud.gcp.vertex_orchestrator as orch
 
-        assert hasattr(
-            orch, "_EVAL_MACHINE_TYPE"
-        ), "vertex_orchestrator must have _EVAL_MACHINE_TYPE constant"
+        assert hasattr(orch, "_EVAL_MACHINE_TYPE"), (
+            "vertex_orchestrator must have _EVAL_MACHINE_TYPE constant"
+        )
         assert orch._EVAL_MACHINE_TYPE == "n1-standard-4"
 
     def test_run_evaluation_phase_skips_when_zero_games(self) -> None:

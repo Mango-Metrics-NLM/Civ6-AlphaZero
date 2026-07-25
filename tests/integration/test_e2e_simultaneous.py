@@ -64,7 +64,9 @@ class TestDUCTEndToEnd:
         env.reset()
 
         config = SimultaneousMCTSConfig(num_simulations=10)
-        duct = DecoupledUCT(config=config, num_players=num_players, action_space_size=env.action_space.n)
+        duct = DecoupledUCT(
+            config=config, num_players=num_players, action_space_size=env.action_space.n
+        )
         active_players = list(range(num_players))
         result = duct.search(env, net, active_players)
 
@@ -98,7 +100,9 @@ class TestDUCTEndToEnd:
         env.reset()
 
         config = SimultaneousMCTSConfig(num_simulations=10)
-        duct = DecoupledUCT(config=config, num_players=num_players, action_space_size=env.action_space.n)
+        duct = DecoupledUCT(
+            config=config, num_players=num_players, action_space_size=env.action_space.n
+        )
         active_players = list(range(num_players))
         result = duct.search(env, net, active_players)
 
@@ -130,7 +134,9 @@ class TestDUCTEndToEnd:
         env.reset()
 
         config = SimultaneousMCTSConfig(num_simulations=10)
-        duct = DecoupledUCT(config=config, num_players=num_players, action_space_size=env.action_space.n)
+        duct = DecoupledUCT(
+            config=config, num_players=num_players, action_space_size=env.action_space.n
+        )
         active_players = list(range(num_players))
         result = duct.search(env, net, active_players)
 

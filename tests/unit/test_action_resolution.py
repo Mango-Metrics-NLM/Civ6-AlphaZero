@@ -66,9 +66,7 @@ class TestActionResolver:
 
     def test_independent_strategy_preserves_all(self) -> None:
         """Independent strategy preserves all actions, ordered by player ID."""
-        resolver = ActionResolver(
-            ActionResolutionConfig(strategy="independent")
-        )
+        resolver = ActionResolver(ActionResolutionConfig(strategy="independent"))
         actions = {0: 5, 1: 10, 2: 3}
         result = resolver.resolve(actions)
 
@@ -77,9 +75,7 @@ class TestActionResolver:
 
     def test_priority_strategy_orders_by_player_id(self) -> None:
         """Priority strategy orders by player ID (lower = higher priority)."""
-        resolver = ActionResolver(
-            ActionResolutionConfig(strategy="priority")
-        )
+        resolver = ActionResolver(ActionResolutionConfig(strategy="priority"))
         actions = {2: 3, 0: 5, 1: 10}
         result = resolver.resolve(actions)
 
@@ -89,9 +85,7 @@ class TestActionResolver:
 
     def test_random_strategy_all_included(self) -> None:
         """Random strategy includes all actions (order varies)."""
-        resolver = ActionResolver(
-            ActionResolutionConfig(strategy="random")
-        )
+        resolver = ActionResolver(ActionResolutionConfig(strategy="random"))
         actions = {0: 5, 1: 10, 2: 3}
         result = resolver.resolve(actions)
 
@@ -105,9 +99,7 @@ class TestActionResolver:
 
     def test_simultaneous_apply_cancels_conflicts(self) -> None:
         """Simultaneous apply cancels conflicting actions."""
-        resolver = ActionResolver(
-            ActionResolutionConfig(strategy="simultaneous_apply")
-        )
+        resolver = ActionResolver(ActionResolutionConfig(strategy="simultaneous_apply"))
         # Players 0 and 1 target same tile (action 5)
         actions = {0: 5, 1: 5, 2: 3}
         result = resolver.resolve(actions)
@@ -118,9 +110,7 @@ class TestActionResolver:
 
     def test_simultaneous_apply_with_target_tiles(self) -> None:
         """Simultaneous apply uses target_tiles mapping for conflict detection."""
-        resolver = ActionResolver(
-            ActionResolutionConfig(strategy="simultaneous_apply")
-        )
+        resolver = ActionResolver(ActionResolutionConfig(strategy="simultaneous_apply"))
         # Different action indices but same target tile
         actions = {0: 5, 1: 10, 2: 3}
         env_state = {"target_tiles": {5: 42, 10: 42, 3: 99}}
@@ -173,9 +163,7 @@ class TestActionResolver:
 
     def test_single_player_no_conflicts(self) -> None:
         """Single player action never conflicts."""
-        resolver = ActionResolver(
-            ActionResolutionConfig(strategy="simultaneous_apply")
-        )
+        resolver = ActionResolver(ActionResolutionConfig(strategy="simultaneous_apply"))
         actions = {0: 5}
         result = resolver.resolve(actions)
         assert result == [(0, 5)]
@@ -188,9 +176,7 @@ class TestActionResolver:
 
     def test_three_way_conflict(self) -> None:
         """Three-way conflict cancels all three players."""
-        resolver = ActionResolver(
-            ActionResolutionConfig(strategy="simultaneous_apply")
-        )
+        resolver = ActionResolver(ActionResolutionConfig(strategy="simultaneous_apply"))
         actions = {0: 5, 1: 5, 2: 5, 3: 10}
         result = resolver.resolve(actions)
 
@@ -200,9 +186,7 @@ class TestActionResolver:
 
     def test_multiple_conflict_groups(self) -> None:
         """Multiple independent conflict groups."""
-        resolver = ActionResolver(
-            ActionResolutionConfig(strategy="simultaneous_apply")
-        )
+        resolver = ActionResolver(ActionResolutionConfig(strategy="simultaneous_apply"))
         actions = {0: 5, 1: 5, 2: 10, 3: 10}
         result = resolver.resolve(actions)
         # Both conflict groups cancel

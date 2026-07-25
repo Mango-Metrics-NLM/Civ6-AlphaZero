@@ -65,7 +65,8 @@ def storage_config(config: SpacetimeDBConfig) -> StorageConfig:
 
 @pytest.fixture
 def backend(
-    storage_config: StorageConfig, mock_sdk: MockSpacetimeDBClient,
+    storage_config: StorageConfig,
+    mock_sdk: MockSpacetimeDBClient,
 ) -> SpacetimeDBStorageBackend:
     """Create connected storage backend."""
     backend = SpacetimeDBStorageBackend(storage_config)
@@ -85,7 +86,8 @@ class TestModelRoundTrip:
     """Test model save → load round-trip through SpacetimeDB."""
 
     def test_save_and_load_model(
-        self, backend: SpacetimeDBStorageBackend,
+        self,
+        backend: SpacetimeDBStorageBackend,
     ) -> None:
         """Save model weights and load them back, verifying equality."""
         model = SimpleModel()
@@ -104,7 +106,8 @@ class TestModelRoundTrip:
             assert torch.allclose(state_dict[key], loaded_dict[key])
 
     def test_champion_round_trip(
-        self, backend: SpacetimeDBStorageBackend,
+        self,
+        backend: SpacetimeDBStorageBackend,
     ) -> None:
         """Save as champion and load champion, verifying equality."""
         model = SimpleModel()
@@ -122,14 +125,18 @@ class TestWeightSyncWorkflow:
     """Test the weight publish → subscribe → sync workflow."""
 
     def test_publish_and_sync(
-        self, client: SpacetimeDBClient, mock_sdk: MockSpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         """Publish weights through client and sync to a model via subscription."""
         model = SimpleModel()
         original_weights = model.conv.weight.clone()
 
         sync = SpacetimeDBWeightSynchronizer(
-            client, update_interval=0.01, compress=False,
+            client,
+            update_interval=0.01,
+            compress=False,
         )
 
         # Publish through client (fires events that sync subscribes to)
@@ -138,7 +145,8 @@ class TestWeightSyncWorkflow:
         weights_bytes = serialize_state_dict(new_state, compress=False)
 
         client.publish_weights_sync(
-            iteration=1, version=1,
+            iteration=1,
+            version=1,
             weights_bytes=weights_bytes,
             metadata={"version": 1},
         )
@@ -150,12 +158,16 @@ class TestWeightSyncWorkflow:
         assert not torch.equal(model.conv.weight, original_weights)
 
     def test_multiple_version_sync(
-        self, client: SpacetimeDBClient, mock_sdk: MockSpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         """Multiple version publishes, sync always gets latest."""
         model = SimpleModel()
         sync = SpacetimeDBWeightSynchronizer(
-            client, update_interval=0.01, compress=False,
+            client,
+            update_interval=0.01,
+            compress=False,
         )
 
         for v in range(1, 4):
@@ -163,7 +175,8 @@ class TestWeightSyncWorkflow:
             state["fc.weight"] = torch.randn_like(state["fc.weight"]) * v
             bytes_data = serialize_state_dict(state, compress=False)
             client.publish_weights_sync(
-                iteration=v, version=v,
+                iteration=v,
+                version=v,
                 weights_bytes=bytes_data,
                 metadata={"version": v},
             )
@@ -178,7 +191,9 @@ class TestMetricsWorkflow:
     """Test metrics logging through the full pipeline."""
 
     def test_metrics_pipeline(
-        self, client: SpacetimeDBClient, mock_sdk: MockSpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         """Log metrics through sink and verify they reach the mock."""
         sink = SpacetimeDBMetricsSink(client, batch_size=5)
@@ -200,7 +215,8 @@ class TestMetricsWorkflow:
         assert mock_sdk.call_counts["log_metrics"] == 10
 
     def test_protocol_compliance(
-        self, client: SpacetimeDBClient,
+        self,
+        client: SpacetimeDBClient,
     ) -> None:
         """Verify CloudMonitoringProtocol compliance."""
         from alpha_zero.cloud.protocols import CloudMonitoringProtocol
@@ -213,7 +229,9 @@ class TestFullTrainingIteration:
     """Test a complete training iteration workflow."""
 
     def test_full_iteration(
-        self, backend: SpacetimeDBStorageBackend, mock_sdk: MockSpacetimeDBClient,
+        self,
+        backend: SpacetimeDBStorageBackend,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         """Simulate a complete training iteration.
 
@@ -240,7 +258,10 @@ class TestFullTrainingIteration:
             traj.examples = list(range(10))
             traj.game_length = 20
             backend.save_trajectory(
-                traj, iteration=1, worker_id=0, game_id=f"game_{i}",
+                traj,
+                iteration=1,
+                worker_id=0,
+                game_id=f"game_{i}",
             )
 
         assert backend.count_trajectories(iteration=1) == 3
@@ -251,7 +272,8 @@ class TestFullTrainingIteration:
 
         # 4. Log metrics via client
         backend.client.log_metrics_sync(
-            step=100, metrics={"total_loss": 0.3, "policy_loss": 0.2},
+            step=100,
+            metrics={"total_loss": 0.3, "policy_loss": 0.2},
         )
 
         # 5. Save evaluation

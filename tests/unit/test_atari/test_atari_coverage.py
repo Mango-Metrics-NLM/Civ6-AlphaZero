@@ -68,11 +68,7 @@ class TestConfigYAML:
     def test_yaml_with_atari_key(self, tmp_path):
         """YAML files can wrap config under an 'atari' key."""
         yaml_file = tmp_path / "wrapped.yaml"
-        yaml_file.write_text(
-            "atari:\n"
-            "  environment:\n"
-            "    game_name: TestGame\n"
-        )
+        yaml_file.write_text("atari:\n  environment:\n    game_name: TestGame\n")
         cfg = AtariConfig.from_yaml(yaml_file)
         assert cfg.environment.game_name == "TestGame"
 
@@ -307,7 +303,9 @@ class TestAtariEnvBranches:
         """Test __str__ method."""
         from demos.atari.atari_env import AtariEnv
 
-        env_cfg = AtariEnvConfig(game_name="TestGame", frame_height=42, frame_width=42, frame_stack=2)
+        env_cfg = AtariEnvConfig(
+            game_name="TestGame", frame_height=42, frame_width=42, frame_stack=2
+        )
         env = AtariEnv(env_cfg)
         s = str(env)
         assert "TestGame" in s
@@ -327,9 +325,7 @@ class TestHierarchicalBranches:
             AtariStrategicGoal,
         )
 
-        cfg = AtariHierarchicalConfig(
-            enabled=True, strategic_update_freq=1, tactical_update_freq=1
-        )
+        cfg = AtariHierarchicalConfig(enabled=True, strategic_update_freq=1, tactical_update_freq=1)
         adapter = AtariHierarchicalAdapter(cfg, num_actions=4)
         dummy_obs = {
             "spatial": np.random.rand(4, 84, 84).astype(np.float32),
@@ -353,9 +349,7 @@ class TestHierarchicalBranches:
             AtariStrategicGoal,
         )
 
-        cfg = AtariHierarchicalConfig(
-            enabled=True, strategic_update_freq=1, tactical_update_freq=1
-        )
+        cfg = AtariHierarchicalConfig(enabled=True, strategic_update_freq=1, tactical_update_freq=1)
         adapter = AtariHierarchicalAdapter(cfg, num_actions=4)
         dummy_obs = {
             "spatial": np.random.rand(4, 84, 84).astype(np.float32),
@@ -381,7 +375,9 @@ class TestHierarchicalBranches:
         )
 
         cfg = AtariHierarchicalConfig(
-            enabled=True, strategic_update_freq=10000, tactical_update_freq=1,
+            enabled=True,
+            strategic_update_freq=10000,
+            tactical_update_freq=1,
             max_active_goals_per_level=10,
         )
         adapter = AtariHierarchicalAdapter(cfg, num_actions=4)
@@ -441,7 +437,9 @@ class TestEvaluateFunction:
         )
         env = AtariEnv(env_cfg)
         net = AtariNetwork(
-            config=AtariNetworkConfig(num_res_blocks=1, num_filters=8, fc_hidden_dim=16, value_head_hidden=8),
+            config=AtariNetworkConfig(
+                num_res_blocks=1, num_filters=8, fc_hidden_dim=16, value_head_hidden=8
+            ),
             num_actions=env.action_space.n,
             spatial_size=env_cfg.spatial_size,
             spatial_channels=env_cfg.spatial_channels,
@@ -468,7 +466,9 @@ class TestEvaluateFunction:
         )
         env = AtariEnv(env_cfg)
         net = AtariNetwork(
-            config=AtariNetworkConfig(num_res_blocks=1, num_filters=8, fc_hidden_dim=16, value_head_hidden=8),
+            config=AtariNetworkConfig(
+                num_res_blocks=1, num_filters=8, fc_hidden_dim=16, value_head_hidden=8
+            ),
             num_actions=env.action_space.n,
             spatial_size=env_cfg.spatial_size,
             spatial_channels=env_cfg.spatial_channels,

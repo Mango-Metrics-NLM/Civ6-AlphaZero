@@ -201,9 +201,9 @@ class TestSecuritySanity:
             pytest.skip(".gitignore not found")
 
         content = gitignore_path.read_text(encoding="utf-8")
-        assert re.search(
-            r"service_account.*\.json", content, re.IGNORECASE
-        ), "service_account*.json should be in .gitignore"
+        assert re.search(r"service_account.*\.json", content, re.IGNORECASE), (
+            "service_account*.json should be in .gitignore"
+        )
 
     def test_no_credentials_json_committed(self) -> None:
         """Verify no credentials.json or service_account.json in the source tree."""

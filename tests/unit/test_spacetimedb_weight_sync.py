@@ -60,7 +60,9 @@ def model() -> SimpleNet:
 def sync(client: SpacetimeDBClient) -> SpacetimeDBWeightSynchronizer:
     """Create weight synchronizer."""
     return SpacetimeDBWeightSynchronizer(
-        client, update_interval=0.01, compress=False,
+        client,
+        update_interval=0.01,
+        compress=False,
     )
 
 
@@ -81,27 +83,38 @@ class TestSubscriptionNotification:
     """Test push-based version notifications."""
 
     def test_version_notification(
-        self, sync: SpacetimeDBWeightSynchronizer, client: SpacetimeDBClient,
+        self,
+        sync: SpacetimeDBWeightSynchronizer,
+        client: SpacetimeDBClient,
     ) -> None:
         """Publishing weights triggers version notification via subscription."""
         client.publish_weights_sync(
-            iteration=1, version=1, weights_bytes=b"w", metadata={},
+            iteration=1,
+            version=1,
+            weights_bytes=b"w",
+            metadata={},
         )
         assert sync.latest_available_version == 1
         assert sync.should_update()
 
     def test_multiple_versions(
-        self, sync: SpacetimeDBWeightSynchronizer, client: SpacetimeDBClient,
+        self,
+        sync: SpacetimeDBWeightSynchronizer,
+        client: SpacetimeDBClient,
     ) -> None:
         """Multiple publishes update to highest version."""
         for v in range(1, 4):
             client.publish_weights_sync(
-                iteration=v, version=v, weights_bytes=b"w", metadata={},
+                iteration=v,
+                version=v,
+                weights_bytes=b"w",
+                metadata={},
             )
         assert sync.latest_available_version == 3
 
     def test_older_version_ignored(
-        self, sync: SpacetimeDBWeightSynchronizer,
+        self,
+        sync: SpacetimeDBWeightSynchronizer,
     ) -> None:
         """Older version notifications don't regress."""
         sync._on_version_changed(5)
@@ -113,18 +126,22 @@ class TestShouldUpdate:
     """Test should_update logic."""
 
     def test_no_update_initially(
-        self, sync: SpacetimeDBWeightSynchronizer,
+        self,
+        sync: SpacetimeDBWeightSynchronizer,
     ) -> None:
         assert not sync.should_update()
 
     def test_update_after_notification(
-        self, sync: SpacetimeDBWeightSynchronizer,
+        self,
+        sync: SpacetimeDBWeightSynchronizer,
     ) -> None:
         sync._on_version_changed(1)
         assert sync.should_update()
 
     def test_polling_fallback(
-        self, sync: SpacetimeDBWeightSynchronizer, client: SpacetimeDBClient,
+        self,
+        sync: SpacetimeDBWeightSynchronizer,
+        client: SpacetimeDBClient,
         mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         """When server version changes without subscription, polling detects it."""
@@ -139,7 +156,8 @@ class TestUpdateModel:
     """Test model weight updating."""
 
     def test_update_model_with_weights(
-        self, sync: SpacetimeDBWeightSynchronizer,
+        self,
+        sync: SpacetimeDBWeightSynchronizer,
         client: SpacetimeDBClient,
         mock_sdk: MockSpacetimeDBClient,
         model: SimpleNet,
@@ -154,7 +172,8 @@ class TestUpdateModel:
         weights_bytes = serialize_state_dict(new_state, compress=False)
 
         mock_sdk.publish_weights_sync(
-            iteration=1, version=1,
+            iteration=1,
+            version=1,
             weights_bytes=weights_bytes,
             metadata={"version": 1},
         )
@@ -166,14 +185,17 @@ class TestUpdateModel:
         assert not torch.equal(model.linear.weight, original_weights)
 
     def test_update_model_no_weights(
-        self, sync: SpacetimeDBWeightSynchronizer, model: SimpleNet,
+        self,
+        sync: SpacetimeDBWeightSynchronizer,
+        model: SimpleNet,
     ) -> None:
         """Update returns False when no weights available."""
         updated = sync.update_model(model)
         assert updated is False
 
     def test_update_clears_pending(
-        self, sync: SpacetimeDBWeightSynchronizer,
+        self,
+        sync: SpacetimeDBWeightSynchronizer,
         client: SpacetimeDBClient,
         mock_sdk: MockSpacetimeDBClient,
         model: SimpleNet,
@@ -182,7 +204,8 @@ class TestUpdateModel:
         state = model.state_dict()
         weights_bytes = serialize_state_dict(state, compress=False)
         mock_sdk.publish_weights_sync(
-            iteration=1, version=1,
+            iteration=1,
+            version=1,
             weights_bytes=weights_bytes,
             metadata={"version": 1},
         )
@@ -198,14 +221,17 @@ class TestUpdateIfAvailable:
     """Test the combined check-and-update method."""
 
     def test_no_update_when_current(
-        self, sync: SpacetimeDBWeightSynchronizer, model: SimpleNet,
+        self,
+        sync: SpacetimeDBWeightSynchronizer,
+        model: SimpleNet,
     ) -> None:
         updated, version = sync.update_if_available(model)
         assert updated is False
         assert version == 0
 
     def test_update_when_available(
-        self, sync: SpacetimeDBWeightSynchronizer,
+        self,
+        sync: SpacetimeDBWeightSynchronizer,
         client: SpacetimeDBClient,
         mock_sdk: MockSpacetimeDBClient,
         model: SimpleNet,
@@ -213,7 +239,8 @@ class TestUpdateIfAvailable:
         state = model.state_dict()
         weights_bytes = serialize_state_dict(state, compress=False)
         mock_sdk.publish_weights_sync(
-            iteration=1, version=1,
+            iteration=1,
+            version=1,
             weights_bytes=weights_bytes,
             metadata={"version": 1},
         )
@@ -226,7 +253,8 @@ class TestUpdateIfAvailable:
         assert version == 1
 
     def test_sequential_updates(
-        self, sync: SpacetimeDBWeightSynchronizer,
+        self,
+        sync: SpacetimeDBWeightSynchronizer,
         client: SpacetimeDBClient,
         mock_sdk: MockSpacetimeDBClient,
         model: SimpleNet,
@@ -237,7 +265,8 @@ class TestUpdateIfAvailable:
             state["linear.weight"] = torch.randn_like(state["linear.weight"])
             weights_bytes = serialize_state_dict(state, compress=False)
             mock_sdk.publish_weights_sync(
-                iteration=v, version=v,
+                iteration=v,
+                version=v,
                 weights_bytes=weights_bytes,
                 metadata={"version": v},
             )

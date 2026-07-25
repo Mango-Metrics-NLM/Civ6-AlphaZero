@@ -197,9 +197,7 @@ class TestWorldSampler:
         for unit in world["units"]:
             pos = tuple(unit["position"])
             tile = terrain.get(pos, {})
-            assert tile.get("type", "plains") != "mountain", (
-                f"Unit placed on mountain at {pos}"
-            )
+            assert tile.get("type", "plains") != "mountain", f"Unit placed on mountain at {pos}"
 
     def test_sampled_world_no_candidates(
         self, sampler: WorldSampler, fog_manager: FogOfWarManager
@@ -274,11 +272,7 @@ class TestDeterminizedMCTS:
         det = DeterminizedMCTS(mcts, config, sampler)
 
         game_state: dict[str, Any] = {
-            "terrain": {
-                (x, y): {"type": "plains"}
-                for x in range(8)
-                for y in range(8)
-            },
+            "terrain": {(x, y): {"type": "plains"} for x in range(8) for y in range(8)},
             "units": [{"player": 0, "position": (1, 1), "type": "warrior"}],
             "cities": [],
             "current_player": 0,
@@ -306,11 +300,7 @@ class TestDeterminizedMCTS:
         det = DeterminizedMCTS(mcts, config, sampler)
 
         game_state: dict[str, Any] = {
-            "terrain": {
-                (x, y): {"type": "plains"}
-                for x in range(8)
-                for y in range(8)
-            },
+            "terrain": {(x, y): {"type": "plains"} for x in range(8) for y in range(8)},
             "units": [{"player": 0, "position": (1, 1), "type": "warrior"}],
             "cities": [],
             "current_player": 0,
@@ -347,11 +337,7 @@ class TestDeterminizedMCTS:
         det = DeterminizedMCTS(mcts, config, sampler)
 
         game_state: dict[str, Any] = {
-            "terrain": {
-                (x, y): {"type": "plains"}
-                for x in range(8)
-                for y in range(8)
-            },
+            "terrain": {(x, y): {"type": "plains"} for x in range(8) for y in range(8)},
             "units": [{"player": 0, "position": (1, 1), "type": "warrior"}],
             "cities": [],
             "current_player": 0,
@@ -381,11 +367,7 @@ class TestDeterminizedMCTS:
         det = DeterminizedMCTS(mcts, config, sampler)
 
         game_state: dict[str, Any] = {
-            "terrain": {
-                (x, y): {"type": "plains"}
-                for x in range(8)
-                for y in range(8)
-            },
+            "terrain": {(x, y): {"type": "plains"} for x in range(8) for y in range(8)},
             "units": [{"player": 0, "position": (1, 1), "type": "warrior"}],
             "cities": [],
             "current_player": 0,
@@ -473,9 +455,7 @@ class TestObservationModel:
         )
         assert len(units) == 0
 
-    def test_predict_hidden_units_positions_unique(
-        self, model: ObservationModel
-    ) -> None:
+    def test_predict_hidden_units_positions_unique(self, model: ObservationModel) -> None:
         candidates = [(x, y) for x in range(5) for y in range(5)]
         units = model.predict_hidden_units(
             visible_state={"num_players": 2},
@@ -486,9 +466,7 @@ class TestObservationModel:
         positions = [tuple(u["position"]) for u in units]
         assert len(positions) == len(set(positions)), "Positions should be unique"
 
-    def test_predict_hidden_units_are_opponents(
-        self, model: ObservationModel
-    ) -> None:
+    def test_predict_hidden_units_are_opponents(self, model: ObservationModel) -> None:
         candidates = [(x, y) for x in range(3, 8) for y in range(3, 8)]
         units = model.predict_hidden_units(
             visible_state={"num_players": 3},
@@ -500,9 +478,7 @@ class TestObservationModel:
             assert unit["player"] != 0, "Hidden units should be opponents"
             assert unit["player"] in (1, 2)
 
-    def test_predict_hidden_units_valid_types(
-        self, model: ObservationModel
-    ) -> None:
+    def test_predict_hidden_units_valid_types(self, model: ObservationModel) -> None:
         candidates = [(x, y) for x in range(3, 8) for y in range(3, 8)]
         units = model.predict_hidden_units(
             visible_state={"num_players": 2},

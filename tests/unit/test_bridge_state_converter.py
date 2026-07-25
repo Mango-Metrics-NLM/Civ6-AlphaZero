@@ -475,19 +475,13 @@ class TestStateConverterConvert:
             converter.convert(state)
 
     def test_convert_stores_legal_actions(self, converter: StateConverter) -> None:
-        state = _make_game_state(
-            legal_actions=[LegalAction(action_type="end_turn")]
-        )
+        state = _make_game_state(legal_actions=[LegalAction(action_type="end_turn")])
         result = converter.convert(state)
         assert len(result["_legal_actions"]) == 1
 
     def test_convert_extracts_technologies(self, converter: StateConverter) -> None:
         state = _make_game_state(
-            players=[
-                _make_player(
-                    id=0, techs_researched=["TECH_POTTERY", "TECH_MINING"]
-                )
-            ]
+            players=[_make_player(id=0, techs_researched=["TECH_POTTERY", "TECH_MINING"])]
         )
         result = converter.convert(state)
         assert "pottery" in result["technologies"]
@@ -495,11 +489,7 @@ class TestStateConverterConvert:
 
     def test_convert_extracts_civics(self, converter: StateConverter) -> None:
         state = _make_game_state(
-            players=[
-                _make_player(
-                    id=0, civics_researched=["CIVIC_CODE_OF_LAWS"]
-                )
-            ]
+            players=[_make_player(id=0, civics_researched=["CIVIC_CODE_OF_LAWS"])]
         )
         result = converter.convert(state)
         assert "code_of_laws" in result["civics"]
@@ -542,9 +532,7 @@ class TestStateConverterConvert:
         result = converter.convert(state)
         assert result["victory_progress"]["complete"] == -1.0
 
-    def test_convert_default_player_data_when_not_found(
-        self, converter: StateConverter
-    ) -> None:
+    def test_convert_default_player_data_when_not_found(self, converter: StateConverter) -> None:
         """When player not found in players list, defaults to zeros."""
         state = _make_game_state(
             player_id=0,
@@ -646,9 +634,7 @@ class TestConvertTerrain:
 
     def test_default_terrain_is_plains(self, converter: StateConverter) -> None:
         """Tiles not covered by map data default to plains."""
-        state = _make_game_state(
-            map_width=16, map_height=16, tiles=[]
-        )
+        state = _make_game_state(map_width=16, map_height=16, tiles=[])
         converter._setup_scaling(16, 16)
         terrain = converter._convert_terrain(state)
         # Every position should default to plains
@@ -679,11 +665,7 @@ class TestConvertTerrain:
         state = _make_game_state(
             map_width=16,
             map_height=16,
-            tiles=[
-                _make_tile(
-                    x=1, y=1, terrain="TERRAIN_GRASS", features=["FEATURE_FOREST"]
-                )
-            ],
+            tiles=[_make_tile(x=1, y=1, terrain="TERRAIN_GRASS", features=["FEATURE_FOREST"])],
         )
         converter._setup_scaling(16, 16)
         terrain = converter._convert_terrain(state)
@@ -708,9 +690,7 @@ class TestConvertTerrain:
             _make_tile(x=0, y=1, terrain="TERRAIN_PLAINS"),
             _make_tile(x=1, y=1, terrain="TERRAIN_PLAINS"),
         ]
-        state = _make_game_state(
-            map_width=16, map_height=16, tiles=tiles
-        )
+        state = _make_game_state(map_width=16, map_height=16, tiles=tiles)
         converter_8._setup_scaling(16, 16)
         terrain = converter_8._convert_terrain(state)
         # All 4 tiles map to (0, 0). 2 grass + 2 plains is a tie.

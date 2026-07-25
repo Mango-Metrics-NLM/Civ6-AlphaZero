@@ -1,4 +1,5 @@
 """peak_gpu_memory_mb field on InferenceMetrics."""
+
 from __future__ import annotations
 
 from alpha_zero.optimizations.inference_benchmark import InferenceMetrics

@@ -567,9 +567,7 @@ class TestScoreResult:
             rankings={"a": 1, "b": 2},
             scores={"a": 1.0, "b": 0.0},
         )
-        with patch(
-            "alpha_zero.pbt.multiplayer_evaluator._HAS_MULTIPLAYER", False
-        ):
+        with patch("alpha_zero.pbt.multiplayer_evaluator._HAS_MULTIPLAYER", False):
             values = ev._score_result(result)
         assert values["a"] == pytest.approx(1.0)
         assert values["b"] == pytest.approx(-1.0)
@@ -685,16 +683,12 @@ class TestNormaliseScores:
         assert MultiplayerPBTEvaluator._normalise_scores({}) == {}
 
     def test_equal_scores_return_half(self) -> None:
-        result = MultiplayerPBTEvaluator._normalise_scores(
-            {"a": 0.5, "b": 0.5, "c": 0.5}
-        )
+        result = MultiplayerPBTEvaluator._normalise_scores({"a": 0.5, "b": 0.5, "c": 0.5})
         for v in result.values():
             assert v == pytest.approx(0.5)
 
     def test_different_scores_normalised_to_0_1(self) -> None:
-        result = MultiplayerPBTEvaluator._normalise_scores(
-            {"low": -1.0, "mid": 0.0, "high": 1.0}
-        )
+        result = MultiplayerPBTEvaluator._normalise_scores({"low": -1.0, "mid": 0.0, "high": 1.0})
         assert result["low"] == pytest.approx(0.0)
         assert result["mid"] == pytest.approx(0.5)
         assert result["high"] == pytest.approx(1.0)
@@ -705,9 +699,7 @@ class TestNormaliseScores:
         assert result["b"] == pytest.approx(1.0)
 
     def test_negative_scores(self) -> None:
-        result = MultiplayerPBTEvaluator._normalise_scores(
-            {"a": -5.0, "b": -3.0, "c": -1.0}
-        )
+        result = MultiplayerPBTEvaluator._normalise_scores({"a": -5.0, "b": -3.0, "c": -1.0})
         assert result["a"] == pytest.approx(0.0)
         assert result["c"] == pytest.approx(1.0)
 
@@ -717,9 +709,7 @@ class TestNormaliseScores:
 
     def test_very_close_scores_return_half(self) -> None:
         """Scores within 1e-9 of each other should all map to 0.5."""
-        result = MultiplayerPBTEvaluator._normalise_scores(
-            {"a": 1.0, "b": 1.0 + 1e-12}
-        )
+        result = MultiplayerPBTEvaluator._normalise_scores({"a": 1.0, "b": 1.0 + 1e-12})
         for v in result.values():
             assert v == pytest.approx(0.5)
 

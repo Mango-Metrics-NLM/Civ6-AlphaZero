@@ -404,7 +404,9 @@ class TestGetDedicationEffects:
     def test_multiple_dedications_stack(self, manager: EraManager) -> None:
         progress = manager._get_progress(0)
         progress.age_type = AgeType.NORMAL
-        progress.dedications.extend([DedicationType.FREE_INQUIRY, DedicationType.REFORM_THE_COINAGE])
+        progress.dedications.extend(
+            [DedicationType.FREE_INQUIRY, DedicationType.REFORM_THE_COINAGE]
+        )
         effects = manager.get_dedication_effects(0)
         assert "commercial_harbor_science" in effects
         assert "city_gold_bonus" in effects

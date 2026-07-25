@@ -47,7 +47,9 @@ class TestGetMuzeroCustomParams:
     def test_all_values_are_hyperparameter_ranges(self) -> None:
         params = get_muzero_custom_params()
         for name, param_range in params.items():
-            assert isinstance(param_range, HyperparameterRange), f"{name} is not HyperparameterRange"
+            assert isinstance(param_range, HyperparameterRange), (
+                f"{name} is not HyperparameterRange"
+            )
 
     def test_unroll_steps_is_discrete(self) -> None:
         params = get_muzero_custom_params()
@@ -167,9 +169,7 @@ class TestMergeWithBaseSpace:
     def test_preserves_base_custom_params(self) -> None:
         base = HyperparameterSpace(
             custom_params={
-                "my_param": HyperparameterRange(
-                    name="my_param", min_value=0.0, max_value=1.0
-                )
+                "my_param": HyperparameterRange(name="my_param", min_value=0.0, max_value=1.0)
             }
         )
         merged = merge_with_base_space(base)

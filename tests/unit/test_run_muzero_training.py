@@ -196,9 +196,9 @@ class TestSelfPlayGame:
                 continue
 
             # Non-terminal states should have valid probability distribution
-            assert np.isclose(
-                policy_sum, 1.0, atol=1e-4
-            ), f"Policy {i} sum {policy_sum} not close to 1.0 (done={done})"
+            assert np.isclose(policy_sum, 1.0, atol=1e-4), (
+                f"Policy {i} sum {policy_sum} not close to 1.0 (done={done})"
+            )
 
     def test_actions_are_valid(self, small_env, small_mcts, small_config):
         """Actions are within valid range."""

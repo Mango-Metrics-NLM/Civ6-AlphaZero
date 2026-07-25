@@ -100,9 +100,9 @@ class TestPrepareDatasetActionMask:
 
         traj = self._make_trajectory(include_mask=True)
         dataset = prepare_dataset([traj])
-        assert (
-            len(dataset.tensors) == 5
-        ), "Expected 5 tensors: spatial, vector, action_mask, policy, value"
+        assert len(dataset.tensors) == 5, (
+            "Expected 5 tensors: spatial, vector, action_mask, policy, value"
+        )
 
     def test_returns_five_tensors_without_mask_legacy(self) -> None:
         """Legacy trajectories without action_masks get all-ones mask."""
@@ -159,6 +159,6 @@ class TestTrajectoryDatasetRemoved:
         """TrajectoryDataset was dead code and should be removed."""
         import alpha_zero.cloud.gcp.training_worker as tw
 
-        assert not hasattr(
-            tw, "TrajectoryDataset"
-        ), "TrajectoryDataset class should have been removed as dead code"
+        assert not hasattr(tw, "TrajectoryDataset"), (
+            "TrajectoryDataset class should have been removed as dead code"
+        )

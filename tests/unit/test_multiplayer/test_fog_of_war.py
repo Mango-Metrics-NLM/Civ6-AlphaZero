@@ -348,49 +348,31 @@ class TestVisibilityDemotion:
     def test_seen_stays_seen_not_unexplored(self, manager_8x8: FogOfWarManager) -> None:
         """SEEN tiles do not revert to UNEXPLORED on subsequent updates."""
         # Turn 1: unit at (1,1)
-        manager_8x8.compute_visibility(
-            [{"player": 0, "position": (1, 1), "type": "warrior"}], []
-        )
+        manager_8x8.compute_visibility([{"player": 0, "position": (1, 1), "type": "warrior"}], [])
         # Turn 2: unit moves away
-        manager_8x8.compute_visibility(
-            [{"player": 0, "position": (6, 6), "type": "warrior"}], []
-        )
+        manager_8x8.compute_visibility([{"player": 0, "position": (6, 6), "type": "warrior"}], [])
         # Turn 3: unit moves further away
-        manager_8x8.compute_visibility(
-            [{"player": 0, "position": (6, 1), "type": "warrior"}], []
-        )
+        manager_8x8.compute_visibility([{"player": 0, "position": (6, 1), "type": "warrior"}], [])
 
         grid = manager_8x8.get_visibility(0)
         # (1,1) was visible in turn 1 and should still be SEEN
         assert grid[1, 1] == VisibilityState.SEEN
 
-    def test_tile_reverts_to_visible_when_unit_returns(
-        self, manager_8x8: FogOfWarManager
-    ) -> None:
+    def test_tile_reverts_to_visible_when_unit_returns(self, manager_8x8: FogOfWarManager) -> None:
         """A SEEN tile becomes VISIBLE again when a unit returns."""
         # Turn 1: unit at (3,3)
-        manager_8x8.compute_visibility(
-            [{"player": 0, "position": (3, 3), "type": "warrior"}], []
-        )
+        manager_8x8.compute_visibility([{"player": 0, "position": (3, 3), "type": "warrior"}], [])
         # Turn 2: unit moves away
-        manager_8x8.compute_visibility(
-            [{"player": 0, "position": (7, 7), "type": "warrior"}], []
-        )
+        manager_8x8.compute_visibility([{"player": 0, "position": (7, 7), "type": "warrior"}], [])
         assert manager_8x8.get_visibility(0)[3, 3] == VisibilityState.SEEN
 
         # Turn 3: unit returns
-        manager_8x8.compute_visibility(
-            [{"player": 0, "position": (3, 3), "type": "warrior"}], []
-        )
+        manager_8x8.compute_visibility([{"player": 0, "position": (3, 3), "type": "warrior"}], [])
         assert manager_8x8.get_visibility(0)[3, 3] == VisibilityState.VISIBLE
 
-    def test_no_units_all_visible_demoted_to_seen(
-        self, manager_8x8: FogOfWarManager
-    ) -> None:
+    def test_no_units_all_visible_demoted_to_seen(self, manager_8x8: FogOfWarManager) -> None:
         """If no units/cities remain, all VISIBLE tiles become SEEN."""
-        manager_8x8.compute_visibility(
-            [{"player": 0, "position": (3, 3), "type": "warrior"}], []
-        )
+        manager_8x8.compute_visibility([{"player": 0, "position": (3, 3), "type": "warrior"}], [])
         visible_count = np.sum(manager_8x8.get_visibility(0) == VisibilityState.VISIBLE)
         assert visible_count > 0
 
@@ -450,9 +432,7 @@ class TestGetVisibility:
 
     def test_get_visibility_dict_structure(self, manager_8x8: FogOfWarManager) -> None:
         """get_visibility_dict returns correct string labels."""
-        manager_8x8.compute_visibility(
-            [{"player": 0, "position": (0, 0), "type": "warrior"}], []
-        )
+        manager_8x8.compute_visibility([{"player": 0, "position": (0, 0), "type": "warrior"}], [])
         vd = manager_8x8.get_visibility_dict(0)
         assert isinstance(vd, dict)
         assert len(vd) == 64  # 8*8
@@ -462,26 +442,16 @@ class TestGetVisibility:
     def test_get_visibility_dict_seen_label(self, manager_8x8: FogOfWarManager) -> None:
         """SEEN tiles produce 'seen' string."""
         # Turn 1: reveal around (1,1)
-        manager_8x8.compute_visibility(
-            [{"player": 0, "position": (1, 1), "type": "warrior"}], []
-        )
+        manager_8x8.compute_visibility([{"player": 0, "position": (1, 1), "type": "warrior"}], [])
         # Turn 2: move away
-        manager_8x8.compute_visibility(
-            [{"player": 0, "position": (7, 7), "type": "warrior"}], []
-        )
+        manager_8x8.compute_visibility([{"player": 0, "position": (7, 7), "type": "warrior"}], [])
         vd = manager_8x8.get_visibility_dict(0)
         assert vd[(1, 1)] == "seen"
 
-    def test_get_visibility_dict_all_states_present(
-        self, manager_8x8: FogOfWarManager
-    ) -> None:
+    def test_get_visibility_dict_all_states_present(self, manager_8x8: FogOfWarManager) -> None:
         """After two turns, all three visibility strings appear."""
-        manager_8x8.compute_visibility(
-            [{"player": 0, "position": (1, 1), "type": "warrior"}], []
-        )
-        manager_8x8.compute_visibility(
-            [{"player": 0, "position": (6, 6), "type": "warrior"}], []
-        )
+        manager_8x8.compute_visibility([{"player": 0, "position": (1, 1), "type": "warrior"}], [])
+        manager_8x8.compute_visibility([{"player": 0, "position": (6, 6), "type": "warrior"}], [])
         vd = manager_8x8.get_visibility_dict(0)
         values = set(vd.values())
         assert "visible" in values
@@ -668,9 +638,7 @@ class TestFogOfWarParametrized:
         assert mgr.board_size == board_size
         assert mgr.num_players == num_players
 
-    def test_compute_and_mask_round_trip(
-        self, board_size: int, num_players: int
-    ) -> None:
+    def test_compute_and_mask_round_trip(self, board_size: int, num_players: int) -> None:
         config = FogOfWarConfig(enabled=True)
         mgr = FogOfWarManager(config, board_size=board_size, num_players=num_players)
 
@@ -695,9 +663,7 @@ class TestFogOfWarParametrized:
     def test_reset_round_trip(self, board_size: int, num_players: int) -> None:
         config = FogOfWarConfig(enabled=True)
         mgr = FogOfWarManager(config, board_size=board_size, num_players=num_players)
-        mgr.compute_visibility(
-            [{"player": 0, "position": (0, 0), "type": "warrior"}], []
-        )
+        mgr.compute_visibility([{"player": 0, "position": (0, 0), "type": "warrior"}], [])
         mgr.reset()
         for p in range(num_players):
             assert (mgr.get_visibility(p) == VisibilityState.UNEXPLORED).all()
