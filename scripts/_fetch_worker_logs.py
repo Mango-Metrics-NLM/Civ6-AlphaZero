@@ -42,9 +42,7 @@ def fetch_worker_logs(job_id: str, page_size: int = 50) -> int:
         logger.info("No ml_job entries for %s — broadening filter", job_id)
         body["filter"] = f'"{job_id}"'
         body["pageSize"] = 30
-        resp = requests.post(
-            LOGGING_ENTRIES_URL, headers=auth_headers(), json=body, timeout=30
-        )
+        resp = requests.post(LOGGING_ENTRIES_URL, headers=auth_headers(), json=body, timeout=30)
         entries = resp.json().get("entries", []) if resp.status_code == 200 else []
 
     if not entries:

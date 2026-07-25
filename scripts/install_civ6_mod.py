@@ -96,7 +96,6 @@ def get_default_mod_dir() -> Path:
     return base / "OneDrive" / "Documents" / civ6_rel / _MODS_SUBFOLDER
 
 
-
 def _sha256(path: Path) -> str:
     """Stream a file's SHA256 hex digest."""
     digest = hashlib.sha256()
@@ -139,9 +138,7 @@ def overwrite_in_place(source: Path, target: Path) -> None:
 
     # Stale directories are pruned best-effort: an empty leftover folder is
     # harmless, and OneDrive may still hold a lock on the directory itself.
-    for directory in sorted(
-        (path for path in target.rglob("*") if path.is_dir()), reverse=True
-    ):
+    for directory in sorted((path for path in target.rglob("*") if path.is_dir()), reverse=True):
         if not (source / directory.relative_to(target)).is_dir():
             try:
                 directory.rmdir()
@@ -178,8 +175,7 @@ def install_mod(source_path: Path, target_path: Path) -> int:
             shutil.rmtree(target_path)
         except OSError as err:
             logger.warning(
-                "Could not remove existing mod (%s); "
-                "falling back to in-place overwrite.",
+                "Could not remove existing mod (%s); falling back to in-place overwrite.",
                 err,
             )
             try:
@@ -203,9 +199,7 @@ def install_mod(source_path: Path, target_path: Path) -> int:
 
 def _log_success() -> None:
     logger.info("Mod installed successfully.")
-    logger.info(
-        "Please enable 'AlphaZeroAI' in the Civilization VI Additional Content menu."
-    )
+    logger.info("Please enable 'AlphaZeroAI' in the Civilization VI Additional Content menu.")
 
 
 def main() -> int:

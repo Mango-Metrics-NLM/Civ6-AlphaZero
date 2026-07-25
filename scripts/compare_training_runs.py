@@ -759,7 +759,7 @@ def generate_report(summary: RunSummary, output_path: Path, labels: tuple[str, s
         f"({metrics_a.final_value_loss:.4f} vs {metrics_b.final_value_loss:.4f})",
         f"- **Win Rate**: {label_a} best win rate was {metrics_a.best_eval_win_rate:.1%} vs "
         f"{label_b} {metrics_b.best_eval_win_rate:.1%} "
-        f"({(metrics_a.best_eval_win_rate - metrics_b.best_eval_win_rate)*100:+.1f}pp)",
+        f"({(metrics_a.best_eval_win_rate - metrics_b.best_eval_win_rate) * 100:+.1f}pp)",
         "",
         "### Resource Efficiency",
         "",
@@ -832,13 +832,13 @@ def generate_report(summary: RunSummary, output_path: Path, labels: tuple[str, s
     if metrics_a.best_eval_win_rate > metrics_b.best_eval_win_rate + 0.1:
         report_lines.append(
             f"- **{label_a} shows stronger play**: Win rate advantage of "
-            f"{(metrics_a.best_eval_win_rate - metrics_b.best_eval_win_rate)*100:.1f}pp "
+            f"{(metrics_a.best_eval_win_rate - metrics_b.best_eval_win_rate) * 100:.1f}pp "
             f"suggests better generalization."
         )
 
     if cost_efficiency < 0.8:  # 20%+ cost savings
         report_lines.append(
-            f"- **{label_a} is more cost-efficient**: {(1-cost_efficiency)*100:.0f}% cost reduction "
+            f"- **{label_a} is more cost-efficient**: {(1 - cost_efficiency) * 100:.0f}% cost reduction "
             f"with comparable or better performance."
         )
 

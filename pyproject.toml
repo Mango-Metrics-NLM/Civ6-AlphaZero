@@ -149,6 +149,7 @@ ignore = [
 "alpha_zero/cloud/gcp/container_validator.py" = ["S603"]  # Internal subprocess call with validated input
 "alpha_zero/cloud/preemption.py" = ["S310"]  # GCE metadata URL is intentional
 "run_*.py" = ["ANN"]  # Skip annotations in run scripts
+"run_civ6_ai.py" = ["S603"]  # Launcher wrapper: subprocess runs a fixed python -m module
 "alpha_zero/utils/reward_shaping.py" = ["RUF002"]  # Greek math symbols (γ, Φ) in formulas
 "alpha_zero/mechanics/__init__.py" = ["E402"]  # Imports after deprecation warning
 "alpha_zero/human_interface/__init__.py" = ["E402"]  # Imports after deprecation warning

@@ -1,4 +1,5 @@
 """Quick script to check Vertex AI job status."""
+
 import json
 import os
 import pathlib
@@ -12,8 +13,12 @@ adc_path = pathlib.Path(os.environ["APPDATA"], "gcloud", "application_default_cr
 adc = json.loads(adc_path.read_text(encoding="utf-8"))
 tok = requests.post(
     "https://oauth2.googleapis.com/token",
-    data={"client_id": adc["client_id"], "client_secret": adc["client_secret"],
-          "refresh_token": adc["refresh_token"], "grant_type": "refresh_token"},
+    data={
+        "client_id": adc["client_id"],
+        "client_secret": adc["client_secret"],
+        "refresh_token": adc["refresh_token"],
+        "grant_type": "refresh_token",
+    },
     timeout=10,
 ).json()["access_token"]
 
@@ -22,7 +27,9 @@ region = "us-central1"
 
 # List recent jobs
 url = f"https://{region}-aiplatform.googleapis.com/v1/projects/{project}/locations/{region}/customJobs"
-r = requests.get(url, headers={"Authorization": f"Bearer {tok}"}, params={"pageSize": 5}, timeout=15)
+r = requests.get(
+    url, headers={"Authorization": f"Bearer {tok}"}, params={"pageSize": 5}, timeout=15
+)
 data = r.json()
 
 for job in data.get("customJobs", []):

@@ -52,6 +52,7 @@ from alpha_zero.utils.environment_tuning import (
 try:
     from alpha_zero.monitoring.config import MLflowConfig as WandbConfig
     from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
+
     WANDB_AVAILABLE = True
 except ImportError:
     WANDB_AVAILABLE = False
@@ -69,6 +70,7 @@ logger = get_logger(__name__)
 @dataclass
 class TrainingExample:
     """Single training example."""
+
     spatial: np.ndarray
     vector: np.ndarray
     action_mask: np.ndarray
@@ -90,7 +92,9 @@ class ReplayBuffer:
             self.add(example)
 
     def sample(self, batch_size: int) -> list[TrainingExample]:
-        indices = np.random.choice(len(self.buffer), size=min(batch_size, len(self.buffer)), replace=False)
+        indices = np.random.choice(
+            len(self.buffer), size=min(batch_size, len(self.buffer)), replace=False
+        )
         return [self.buffer[i] for i in indices]
 
     def __len__(self) -> int:
@@ -147,7 +151,7 @@ def self_play_game_enhanced(
 
     # Hard step limit to prevent infinite loops (e.g. if agent never ends turn)
     # Use max_turns if available, otherwise default to a safe value
-    max_turns = getattr(env, 'max_turns', 100) or 100
+    max_turns = getattr(env, "max_turns", 100) or 100
     max_steps = max_turns * 20
 
     while True:
@@ -159,23 +163,23 @@ def self_play_game_enhanced(
 
         # Get MCTS policy
         # Use underlying environment for MCTS
-        underlying_env = env.env if hasattr(env, 'env') else env
+        underlying_env = env.env if hasattr(env, "env") else env
         action_probs, _ = mcts.search(underlying_env)
 
         # Store state and policy
-        game_history.append({
-            "spatial": obs["spatial"].copy(),
-            "vector": obs["vector"].copy(),
-            "action_mask": obs["action_mask"].copy(),
-            "policy": action_probs.copy(),
-            "player": underlying_env.current_player,
-        })
+        game_history.append(
+            {
+                "spatial": obs["spatial"].copy(),
+                "vector": obs["vector"].copy(),
+                "action_mask": obs["action_mask"].copy(),
+                "policy": action_probs.copy(),
+                "player": underlying_env.current_player,
+            }
+        )
 
         # Select action with temperature and action mask enforcement
         temp = temperature if underlying_env.turn < temperature_threshold else 0.0
-        action = mcts.select_action(
-            action_probs, temp, action_mask=obs["action_mask"]
-        )
+        action = mcts.select_action(action_probs, temp, action_mask=obs["action_mask"])
 
         # Take action
         obs, base_reward, terminated, truncated, info = env.step(action)
@@ -207,13 +211,15 @@ def self_play_game_enhanced(
         else:
             value = -1.0
 
-        examples.append(TrainingExample(
-            spatial=hist["spatial"],
-            vector=hist["vector"],
-            action_mask=hist["action_mask"],
-            policy=hist["policy"],
-            value=value,
-        ))
+        examples.append(
+            TrainingExample(
+                spatial=hist["spatial"],
+                vector=hist["vector"],
+                action_mask=hist["action_mask"],
+                policy=hist["policy"],
+                value=value,
+            )
+        )
 
     game_stats = {
         "steps": step_count,
@@ -250,7 +256,9 @@ def run_self_play_enhanced(
     # Override env config with curriculum settings
     env_config.board_size = curriculum_params.get("board_size", env_config.board_size)
     env_config.max_turns = curriculum_params.get("max_turns", env_config.max_turns)
-    env_config.fog_of_war_enabled = curriculum_params.get("fog_of_war_enabled", env_config.fog_of_war_enabled)
+    env_config.fog_of_war_enabled = curriculum_params.get(
+        "fog_of_war_enabled", env_config.fog_of_war_enabled
+    )
 
     # Create tuned environment
     env = create_tuned_environment(env_config, board_size=env_config.board_size)
@@ -273,7 +281,9 @@ def run_self_play_enhanced(
     wins = 0
     for _ in tqdm(range(num_games), desc="Self-play"):
         examples, stats = self_play_game_enhanced(
-            env, mcts, reward_shaper,
+            env,
+            mcts,
+            reward_shaper,
             temperature=1.0,
             temperature_threshold=30,
         )
@@ -286,7 +296,7 @@ def run_self_play_enhanced(
         if won:
             wins += 1
 
-    logger.info(f"Self-play: {wins}/{num_games} wins ({100*wins/num_games:.1f}%)")
+    logger.info(f"Self-play: {wins}/{num_games} wins ({100 * wins / num_games:.1f}%)")
 
     return all_examples, all_stats
 
@@ -379,7 +389,7 @@ def evaluate_network(
         while steps < max_steps_per_game:
             if env.current_player == network_player:
                 # Network's turn
-                underlying_env = env.env if hasattr(env, 'env') else env
+                underlying_env = env.env if hasattr(env, "env") else env
                 action_probs, _ = mcts.search(underlying_env, add_noise=False)
                 action = mcts.select_action(
                     action_probs, temperature=0.0, action_mask=obs["action_mask"]
@@ -502,7 +512,9 @@ def run_enhanced_training(
     logger.info(f"Iterations: {num_iterations}")
     logger.info(f"Games/iteration: {games_per_iteration}")
     logger.info(f"Board size: {board_size}, Max turns: {max_turns}")
-    logger.info(f"Curriculum: {use_curriculum}, Reward shaping: {use_reward_shaping}, Env tuning: {use_env_tuning}")
+    logger.info(
+        f"Curriculum: {use_curriculum}, Reward shaping: {use_reward_shaping}, Env tuning: {use_env_tuning}"
+    )
     logger.info("=" * 60)
 
     # Initialize curriculum
@@ -516,9 +528,7 @@ def run_enhanced_training(
         logger.info(f"Curriculum: {len(curriculum_config.stages)} stages")
     else:
         # Create dummy curriculum that doesn't change
-        curriculum_config = CurriculumConfig(
-            stages=[CurriculumConfig._default_stages()[0]]
-        )
+        curriculum_config = CurriculumConfig(stages=[CurriculumConfig._default_stages()[0]])
         curriculum_config.stages[0].board_size = board_size
         curriculum_config.stages[0].max_turns = max_turns
         curriculum = CurriculumManager(curriculum_config)
@@ -588,7 +598,7 @@ def run_enhanced_training(
     for iteration in range(num_iterations):
         iter_start = time.time()
 
-        logger.info(f"\n{'='*50}")
+        logger.info(f"\n{'=' * 50}")
         logger.info(f"Iteration {iteration + 1}/{num_iterations}")
 
         # Check curriculum progress
@@ -634,15 +644,18 @@ def run_enhanced_training(
                 samples_generated=len(examples),
                 win_rate=wins / len(game_stats),
                 avg_game_length=avg_steps,
-                step=iteration # Explicitly set step to iteration
+                step=iteration,  # Explicitly set step to iteration
             )
             # Log curriculum progress
-            wandb_logger.log({
-                "curriculum/stage": progress["current_level"],
-                "curriculum/stage_name": progress["current_stage"],
-                "curriculum/win_rate": progress["win_rate"],
-                "curriculum/total_games": progress["total_games"],
-            }, step=iteration)
+            wandb_logger.log(
+                {
+                    "curriculum/stage": progress["current_level"],
+                    "curriculum/stage_name": progress["current_stage"],
+                    "curriculum/win_rate": progress["win_rate"],
+                    "curriculum/total_games": progress["total_games"],
+                },
+                step=iteration,
+            )
 
         # Training
         if len(replay_buffer) >= batch_size:
@@ -704,7 +717,7 @@ def run_enhanced_training(
                     games_played=10,
                     average_reward=eval_metrics["win_rate"] * 2 - 1,  # Map to [-1, 1]
                     average_turns=eval_metrics["avg_game_length"],
-                    step=iteration # Use current iteration as step
+                    step=iteration,  # Use current iteration as step
                 )
 
             # Save checkpoint
@@ -768,14 +781,16 @@ def run_enhanced_training(
         )
 
         # Update summary
-        wandb_logger.summary({
-            "final_win_rate": final_metrics["win_rate"],
-            "final_avg_game_length": final_metrics["avg_game_length"],
-            "total_iterations": num_iterations,
-            "total_games": curriculum_progress["total_games"],
-            "final_curriculum_stage": curriculum_progress["current_stage"],
-            "final_curriculum_level": curriculum_progress["current_level"],
-        })
+        wandb_logger.summary(
+            {
+                "final_win_rate": final_metrics["win_rate"],
+                "final_avg_game_length": final_metrics["avg_game_length"],
+                "total_iterations": num_iterations,
+                "total_games": curriculum_progress["total_games"],
+                "final_curriculum_stage": curriculum_progress["current_stage"],
+                "final_curriculum_level": curriculum_progress["current_level"],
+            }
+        )
 
         # Log final model
         wandb_logger.log_model(
@@ -797,8 +812,12 @@ def run_enhanced_training(
 def main():
     setup_logging(log_dir="logs", level="INFO")
     parser = argparse.ArgumentParser(description="Enhanced Civ6 AlphaZero Training")
-    parser.add_argument("--preset", choices=["fast", "balanced", "full"], default="fast",
-                        help="Training preset (fast=quick test, balanced=medium, full=production)")
+    parser.add_argument(
+        "--preset",
+        choices=["fast", "balanced", "full"],
+        default="fast",
+        help="Training preset (fast=quick test, balanced=medium, full=production)",
+    )
     parser.add_argument("--iterations", type=int, default=None, help="Override num iterations")
     parser.add_argument("--games", type=int, default=None, help="Override games per iteration")
     parser.add_argument("--batch_size", type=int, default=None, help="Override batch size")
@@ -811,11 +830,13 @@ def main():
     parser.add_argument("--no-env-tuning", action="store_true", help="Disable environment tuning")
     # W&B arguments
     parser.add_argument("--wandb", action="store_true", help="Enable Weights & Biases logging")
-    parser.add_argument("--wandb-project", type=str, default="civ6-alphazero-enhanced",
-                        help="W&B project name")
+    parser.add_argument(
+        "--wandb-project", type=str, default="civ6-alphazero-enhanced", help="W&B project name"
+    )
     parser.add_argument("--wandb-run-name", type=str, default=None, help="W&B run name")
-    parser.add_argument("--wandb-tags", type=str, nargs="*", default=None,
-                        help="W&B tags for the run")
+    parser.add_argument(
+        "--wandb-tags", type=str, nargs="*", default=None, help="W&B tags for the run"
+    )
     args = parser.parse_args()
 
     # Preset configurations
