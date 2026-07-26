@@ -247,3 +247,108 @@ class TestMCTSConfig:
         assert config.num_simulations == 100
         assert config.c_puct == 2.0
         assert config.dirichlet_alpha == 0.5
+
+
+class TestValueBackupRespectsTurnStructure:
+    """Sign flips must follow the acting player, not the ply count.
+
+    MCTS backed up with an unconditional ``value = -value`` per ply. That is
+    right for a game with one ply per turn, but MicroCiv rotates
+    ``current_player`` only inside ``_end_turn`` — a player moves every unit
+    first. So the search treated a player's own follow-up moves as an
+    opponent's, corrupting visit counts (the policy target) and the search
+    itself. Value *targets* are unaffected on the training path: they come from
+    the game outcome, not from the root value.
+    """
+
+    def test_same_player_chain_does_not_alternate(self):
+        """A player's own consecutive moves keep one sign."""
+        from alpha_zero.core.civ6_mcts import MCTSNode
+
+        root = MCTSNode(to_play=0)
+        mid = MCTSNode(to_play=0, parent=root)
+        leaf = MCTSNode(to_play=0, parent=mid)
+
+        leaf.backpropagate(1.0)
+
+        assert [leaf.value_sum, mid.value_sum, root.value_sum] == [1.0, 1.0, 1.0]
+
+    def test_sign_flips_only_across_a_player_change(self):
+        from alpha_zero.core.civ6_mcts import MCTSNode
+
+        root = MCTSNode(to_play=0)
+        same_turn = MCTSNode(to_play=0, parent=root)
+        after_end_turn = MCTSNode(to_play=1, parent=same_turn)
+
+        after_end_turn.backpropagate(1.0)
+
+        assert after_end_turn.value_sum == 1.0
+        assert same_turn.value_sum == -1.0
+        assert root.value_sum == -1.0
+
+    def test_unknown_to_play_keeps_legacy_alternation(self):
+        """Callers that never set to_play must behave exactly as before."""
+        from alpha_zero.core.civ6_mcts import MCTSNode
+
+        root = MCTSNode()
+        mid = MCTSNode(parent=root)
+        leaf = MCTSNode(parent=mid)
+
+        leaf.backpropagate(1.0)
+
+        assert [leaf.value_sum, mid.value_sum, root.value_sum] == [1.0, -1.0, 1.0]
+
+    def test_selection_does_not_negate_same_player_children(self):
+        """PUCT must not prefer the child minimising the mover's own value.
+
+        A to_play-aware backup paired with unconditional negamax selection
+        would be worse than the original self-consistent error.
+        """
+        from alpha_zero.core.civ6_mcts import MCTSNode
+
+        parent = MCTSNode(to_play=0, visit_count=4)
+        good = MCTSNode(to_play=0, parent=parent, prior=0.5, visit_count=1, value_sum=1.0)
+        bad = MCTSNode(to_play=0, parent=parent, prior=0.5, visit_count=1, value_sum=-1.0)
+        parent.children = {1: good, 2: bad}
+
+        action, chosen = parent.select_child(c_puct=0.1)
+
+        assert action == 1 and chosen is good
+
+    def test_selection_still_negates_across_a_player_change(self):
+        from alpha_zero.core.civ6_mcts import MCTSNode
+
+        parent = MCTSNode(to_play=0, visit_count=4)
+        # From player 1's perspective these are their own values; the parent
+        # (player 0) should prefer the one that is worst for player 1.
+        opp_good = MCTSNode(to_play=1, parent=parent, prior=0.5, visit_count=1, value_sum=1.0)
+        opp_bad = MCTSNode(to_play=1, parent=parent, prior=0.5, visit_count=1, value_sum=-1.0)
+        parent.children = {1: opp_good, 2: opp_bad}
+
+        action, chosen = parent.select_child(c_puct=0.1)
+
+        assert action == 2 and chosen is opp_bad
+
+    def test_search_tracks_to_play_on_a_real_env(self):
+        """End to end: the root records the env's acting player."""
+        import numpy as np
+
+        from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig
+        from alpha_zero.envs.microciv import MicroCivEnv
+
+        env = MicroCivEnv(board_size=8, seed=3)
+        env.reset()
+
+        from alpha_zero.core.civ6_network import MicroCivNetwork
+
+        network = MicroCivNetwork(
+            board_size=8,
+            action_space_size=int(env.action_space.n),
+            num_res_blocks=1,
+            num_filters=4,
+        )
+        mcts = Civ6MCTS(network, MCTSConfig(num_simulations=4), device="cpu")
+        probs, _ = mcts.search(env, add_noise=False)
+
+        assert np.isfinite(probs).all()
+        assert probs.shape == (int(env.action_space.n),)
