@@ -65,11 +65,12 @@ def safe_load_checkpoint(
     Args:
         path: Path to the checkpoint file.
         map_location: Device to map tensors to (e.g., "cpu", "cuda"). Defaults
-            to ``"cpu"``, matching :func:`alpha_zero.core.checkpoint_utils.
-            load_checkpoint`. Passing ``None`` restores tensors to whatever
-            device they were saved from, which makes a GPU-trained checkpoint
-            unloadable on a CPU-only machine — the caller must opt into that
-            explicitly rather than get it by default.
+            to ``"cpu"``, matching
+            :func:`alpha_zero.core.checkpoint_utils.load_checkpoint`.
+            Passing ``None`` restores tensors to whatever device they were
+            saved from, which makes a GPU-trained checkpoint unloadable on a
+            CPU-only machine — the caller must opt into that explicitly rather
+            than get it by default.
         strict_security: If True, never fall back to unsafe loading.
             Raises an error if safe loading fails.
         allow_unsafe_fallback: If True (default), fall back to unsafe loading
@@ -167,9 +168,25 @@ def load_model_state(
         strict_security=False,
         allow_unsafe_fallback=True,
     )
+    return extract_state_dict(result.data)
 
-    # Look for common state dict keys
-    data = result.data
+
+def extract_state_dict(data: dict[str, Any]) -> dict[str, Any]:
+    """Pull the model state dict out of already-loaded checkpoint data.
+
+    Split out of :func:`load_model_state` so callers that already hold the
+    loaded blob — :func:`load_network` needs the config from the same blob —
+    can reuse the key dispatch without reading the file a second time.
+
+    Args:
+        data: Deserialized checkpoint contents.
+
+    Returns:
+        The model state dict.
+
+    Raises:
+        KeyError: If no recognised state dict is present.
+    """
     for key in ["model_state_dict", "network_state_dict", "state_dict"]:
         if key in data:
             return data[key]  # type: ignore[no-any-return]
@@ -287,9 +304,11 @@ def load_network(
     from alpha_zero.utils.device import resolve_device_str
 
     resolved = resolve_device_str(device)
-    state_dict = load_model_state(path, map_location=resolved)
 
+    # Read the file once: the weights and the architecture config both come out
+    # of the same blob, and web session startup pays this latency directly.
     result = safe_load_checkpoint(path, map_location=resolved)
+    state_dict = extract_state_dict(result.data)
     raw_config = result.data.get("config") if isinstance(result.data, dict) else None
 
     if network_cls is None:

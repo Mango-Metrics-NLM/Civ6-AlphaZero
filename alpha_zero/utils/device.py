@@ -139,17 +139,15 @@ def place_network(network: object, requested: str | None = None) -> str:
     inputs. Doing both here makes the two agree by construction.
 
     Test doubles that stand in for a network need not implement ``.to``; those
-    are left untouched rather than being forced to grow one.
+    are left untouched rather than being forced to grow one. A network that
+    *does* have ``.to`` but fails to move — CUDA OOM, an invalid device — raises
+    here rather than being swallowed: the alternative is a mixed-device
+    RuntimeError surfacing much further from the cause.
     """
     name = _resolve_name(requested)
     mover = getattr(network, "to", None)
     if callable(mover):
-        try:
-            mover(name)
-        except Exception:  # pragma: no cover - stub networks with odd .to()
-            logger.debug(
-                "Could not move %r to %s; leaving placement to caller", type(network), name
-            )
+        mover(name)
     return name
 
 
