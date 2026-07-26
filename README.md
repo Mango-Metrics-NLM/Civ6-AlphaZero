@@ -149,9 +149,10 @@ Then open the UI, start a game against **Neural Network (Hard)**, and play.
 
 | | Observed |
 |---|---|
-| Iteration 1 | ~6 min — it uses random-rollout `SimpleMCTS`, so it is much slower than the rest |
-| Iterations 2+ | ~1 min each |
-| Win rate vs random | 10%, then 5%, then 5% |
+| Total wall clock | 683 s (~11 min) |
+| Iteration 1 | ~6 min — it uses random-rollout `SimpleMCTS`, so it dominates the total |
+| Iterations 2–6 | ~1 min each |
+| Win rate vs random, by iteration | 10% → 5% → 5% → 5% → 0% → 5% |
 
 **A run this short does not produce a model that beats random**, and the numbers
 above are not cherry-picked — they are what it does. The point of the quickstart
