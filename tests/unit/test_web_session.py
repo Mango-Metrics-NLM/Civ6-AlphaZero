@@ -325,58 +325,88 @@ class TestNeuralAgentCreation:
 class TestGetSharedNetwork:
     """Tests for network caching in _get_shared_network."""
 
-    def test_shared_network_cached(self, web_config):
+    @staticmethod
+    def _write_checkpoint(tmp_path, board_size: int = 8):
+        """Write a real, deliberately non-default checkpoint.
+
+        Small on purpose (2 blocks / 8 filters) to stay well inside the global
+        --timeout=120, and non-default so a loader that quietly built the
+        6-block/64-filter default would fail rather than coincidentally pass.
+        """
+        from alpha_zero.core.civ6_actions import MicroCivActionSpace
+        from alpha_zero.core.civ6_network import MicroCivNetwork
+
+        network = MicroCivNetwork(
+            board_size=board_size,
+            action_space_size=MicroCivActionSpace(board_size=board_size).total_size,
+            num_res_blocks=2,
+            num_filters=8,
+        )
+        path = tmp_path / "checkpoint.pt"
+        network.save(str(path))
+        return path, network
+
+    def test_shared_network_cached(self, web_config, tmp_path):
         """Calling _get_shared_network twice returns same object."""
-        from unittest.mock import MagicMock
-        from unittest.mock import patch as mock_patch
-
-        config = WebConfig(**{**web_config.to_dict(), "checkpoint_path": "/tmp/fake_checkpoint.pt"})
+        path, _ = self._write_checkpoint(tmp_path)
+        config = WebConfig(
+            **{**web_config.to_dict(), "checkpoint_path": str(path), "board_size": 8}
+        )
         manager = GameSessionManager(config)
 
-        mock_network = MagicMock()
-        mock_network.eval.return_value = None
-        mock_network.to.return_value = None
+        net1 = manager._get_shared_network()
+        net2 = manager._get_shared_network()
+        assert net1 is net2
 
-        mock_state_dict = {"model_state_dict": {}}
-        with (
-            mock_patch(
-                "alpha_zero.utils.checkpoint.safe_load_checkpoint",
-                return_value=mock_state_dict,
-            ),
-            mock_patch(
-                "alpha_zero.core.civ6_network.MicroCivNetwork",
-                return_value=mock_network,
-            ),
-        ):
-            net1 = manager._get_shared_network()
-            net2 = manager._get_shared_network()
-            assert net1 is net2
+    def test_shared_network_loads_real_weights(self, web_config, tmp_path):
+        """The loaded network must carry the checkpoint's weights.
 
-    def test_shared_network_loads_state_dict(self, web_config):
-        """Network loads weights from checkpoint dict."""
-        from unittest.mock import MagicMock
-        from unittest.mock import patch as mock_patch
+        This is the regression guard for the bug that made the web UI's
+        "neural" opponent play with random weights: _get_shared_network read a
+        `.state_dict` attribute that CheckpointLoadResult does not have (the
+        field is `.data`), so no weights were ever loaded and it still logged
+        success. The old version of this test patched safe_load_checkpoint to
+        return a plain dict — a type the real function never produces — so the
+        mock exercised a branch the production path could not reach.
+        """
+        from alpha_zero.utils.checkpoint import compute_weight_checksum
 
-        config = WebConfig(**{**web_config.to_dict(), "checkpoint_path": "/tmp/fake_checkpoint.pt"})
+        path, saved = self._write_checkpoint(tmp_path)
+        config = WebConfig(
+            **{**web_config.to_dict(), "checkpoint_path": str(path), "board_size": 8}
+        )
         manager = GameSessionManager(config)
 
-        mock_network = MagicMock()
-        mock_state_dict = {"layer.weight": [1, 2, 3]}
+        loaded = manager._get_shared_network()
 
-        with (
-            mock_patch(
-                "alpha_zero.utils.checkpoint.safe_load_checkpoint",
-                return_value=mock_state_dict,
-            ),
-            mock_patch(
-                "alpha_zero.core.civ6_network.MicroCivNetwork",
-                return_value=mock_network,
-            ),
-        ):
+        assert compute_weight_checksum(loaded) == pytest.approx(
+            compute_weight_checksum(saved), rel=1e-6
+        )
+        assert not loaded.training, "network must be in eval mode for inference"
+
+    def test_shared_network_respects_checkpoint_architecture(self, web_config, tmp_path):
+        """The architecture comes from the checkpoint, not from defaults."""
+        path, _ = self._write_checkpoint(tmp_path)
+        config = WebConfig(
+            **{**web_config.to_dict(), "checkpoint_path": str(path), "board_size": 8}
+        )
+
+        loaded = GameSessionManager(config)._get_shared_network()
+
+        assert loaded.config.num_res_blocks == 2
+        assert loaded.config.num_filters == 8
+        assert loaded.config.spatial_size == 8
+
+    def test_board_size_mismatch_is_rejected(self, web_config, tmp_path):
+        """A board-size mismatch must fail loudly, not mid-game."""
+        path, _ = self._write_checkpoint(tmp_path, board_size=8)
+        config = WebConfig(
+            **{**web_config.to_dict(), "checkpoint_path": str(path), "board_size": 16}
+        )
+        manager = GameSessionManager(config)
+
+        with pytest.raises(ValueError, match="board_size"):
             manager._get_shared_network()
-            mock_network.load_state_dict.assert_called_once_with(mock_state_dict)
-            mock_network.eval.assert_called_once()
-            mock_network.to.assert_called_once()
 
     def test_shared_network_no_checkpoint_raises(self, web_config):
         """_get_shared_network raises when checkpoint_path is None."""

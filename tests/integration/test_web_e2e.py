@@ -308,3 +308,127 @@ class TestHTMXFlow:
 
         response = client.post(f"/htmx/game/{session_id}/resign")
         assert response.status_code == 200
+
+
+@pytest.fixture
+def neural_web_config(tmp_path):
+    """Web config wired to a real, tiny trained-shape checkpoint.
+
+    Deliberately small on every axis so a game genuinely reaches game over
+    inside the suite's timeout: MicroCiv only advances ``turn`` when the player
+    index wraps, so a 200-turn board needs 400+ end_turn actions before it can
+    terminate on its own.
+    """
+    from alpha_zero.core.civ6_actions import MicroCivActionSpace
+    from alpha_zero.core.civ6_network import MicroCivNetwork
+    from alpha_zero.web.config import WebConfig
+
+    board_size = 8
+    network = MicroCivNetwork(
+        board_size=board_size,
+        action_space_size=MicroCivActionSpace(board_size=board_size).total_size,
+        num_res_blocks=2,
+        num_filters=8,
+    )
+    checkpoint = tmp_path / "tiny.pt"
+    network.save(str(checkpoint))
+
+    return WebConfig(
+        board_size=board_size,
+        max_turns=3,
+        default_thinking_time=0.01,
+        max_concurrent_sessions=2,
+        session_timeout_seconds=300.0,
+        use_mcts=True,
+        mcts_simulations=2,
+        default_opponent="neural",
+        checkpoint_path=str(checkpoint),
+        device="cpu",
+    )
+
+
+@pytest.fixture
+def neural_client(neural_web_config):
+    from starlette.testclient import TestClient
+
+    from alpha_zero.web.app import create_app
+
+    return TestClient(create_app(neural_web_config))
+
+
+@pytest.mark.integration
+class TestNeuralOpponentAcceptance:
+    """End-to-end acceptance for playing a trained model in the browser.
+
+    This is the test the product claim rests on. Before the checkpoint-loader
+    fix the "neural" opponent silently played random weights, and before the
+    turn-ownership fix neither side controlled its own units — yet every
+    existing e2e test still passed, because they only asserted status codes.
+    """
+
+    def test_neural_opponent_uses_the_checkpoint_weights(self, neural_web_config):
+        """The session's network must match the checkpoint on disk."""
+        from alpha_zero.utils.checkpoint import compute_weight_checksum, load_network
+        from alpha_zero.web.session import GameSessionManager
+
+        manager = GameSessionManager(neural_web_config)
+        expected = load_network(neural_web_config.checkpoint_path, device="cpu")
+
+        loaded = manager._get_shared_network()
+
+        assert compute_weight_checksum(loaded) == pytest.approx(
+            compute_weight_checksum(expected), rel=1e-6
+        )
+
+    def test_play_a_complete_game_against_the_neural_opponent(self, neural_client):
+        """Play to a real game over, asserting turn ownership every step."""
+        import numpy as np
+
+        rng = np.random.default_rng(7)
+
+        resp = neural_client.post(
+            "/api/game/new",
+            json={"human_player": 0, "opponent_type": "neural", "board_size": 8, "seed": 7},
+        )
+        assert resp.status_code == 200, resp.text
+        session_id = resp.json()["session_id"]
+
+        reached_game_over = False
+        for _ in range(400):
+            state = neural_client.get(f"/api/game/{session_id}").json()["state"]
+            if state["game_over"]:
+                reached_game_over = True
+                break
+
+            # Whenever the server says it is our turn, it must also agree that
+            # the acting player is the human. Disagreement is the ownership bug.
+            if state["phase"] == "human_turn":
+                assert state["current_player"] == 0, (
+                    "server offered the human a turn as the wrong player"
+                )
+
+            valid = state["valid_actions"]
+            if not valid:
+                break
+
+            action = valid[rng.integers(len(valid))]["index"]
+            move = neural_client.post(f"/api/game/{session_id}/move", json={"action": action})
+            assert move.status_code == 200, move.text
+
+        assert reached_game_over, "game never terminated; the acceptance path is not exercised"
+
+    def test_action_groups_expose_city_actions(self, neural_client):
+        """Founding a city must be reachable from the rendered page."""
+        resp = neural_client.post(
+            "/api/game/new",
+            json={"human_player": 0, "opponent_type": "neural", "board_size": 8, "seed": 7},
+        )
+        session_id = resp.json()["session_id"]
+
+        page = neural_client.get(f"/game/{session_id}")
+
+        assert page.status_code == 200
+        assert "Found City" in page.text, (
+            "Found City missing from the page; it sits at action index 341+ and "
+            "the old flat valid_actions[:20] cut hid it"
+        )

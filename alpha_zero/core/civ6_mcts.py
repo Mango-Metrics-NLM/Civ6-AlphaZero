@@ -35,6 +35,7 @@ from alpha_zero.core.mcts_constants import (
     GREEDY_THRESHOLD,
 )
 from alpha_zero.utils.constants import MCTS
+from alpha_zero.utils.device import place_network
 
 # Module-level logger
 logger = logging.getLogger(__name__)
@@ -275,6 +276,16 @@ class GumbelMCTSConfig:
             )
 
 
+def _env_current_player(env: object) -> int | None:
+    """Return the env's acting player, or None when it does not expose one.
+
+    Stub environments in tests often have no current_player; those keep the
+    historical per-ply alternation.
+    """
+    player = getattr(env, "current_player", None)
+    return None if player is None else int(player)
+
+
 @dataclass(slots=True)
 class MCTSNode:
     """Node in the MCTS tree.
@@ -287,6 +298,10 @@ class MCTSNode:
         parent: Parent node.
         action: Action that led to this node.
         virtual_loss: Virtual loss for parallel MCTS (threads in flight).
+        to_play: Player to move in this node's state, or None when the caller
+            does not track it. Values are stored from the acting player's own
+            perspective, so a sign flip is correct only across a change of
+            player — and in MicroCiv a player makes many moves per turn.
     """
 
     prior: float = 0.0
@@ -296,6 +311,7 @@ class MCTSNode:
     parent: MCTSNode | None = None
     action: int | None = None
     virtual_loss: int = 0
+    to_play: int | None = None
 
     @property
     def value(self) -> float:
@@ -355,12 +371,23 @@ class MCTSNode:
         )
 
         for action, child in self.children.items():
+            # Negate only when the child is a different player's decision.
+            # Unconditional negation would pair badly with the to_play-aware
+            # backup: across a same-player edge it would make PUCT prefer the
+            # child that *minimises* the mover's own value.
+            same_player = (
+                self.to_play is not None
+                and child.to_play is not None
+                and child.to_play == self.to_play
+            )
+            sign = 1.0 if same_player else -1.0
+
             # PUCT formula with optional virtual loss
             if use_virtual_loss:
-                q_value = -child.effective_value  # Use virtual-loss-adjusted value
+                q_value = sign * child.effective_value  # Use virtual-loss-adjusted value
                 effective_visits = child.visit_count + child.virtual_loss
             else:
-                q_value = -child.value  # Negamax: child's value is opponent's
+                q_value = sign * child.value
                 effective_visits = child.visit_count
             u_value = c_puct * child.prior * sqrt_parent_visits / (1 + effective_visits)
             score = q_value + u_value
@@ -396,16 +423,28 @@ class MCTSNode:
             )
 
     def backpropagate(self, value: float) -> None:
-        """Backpropagate value through tree.
+        """Backpropagate ``value`` (from this node's perspective) to the root.
+
+        The sign flips only where the acting player changes. Flipping on every
+        edge is correct in a game with one ply per turn, but wrong in MicroCiv,
+        where a player moves each unit before ending their turn.
+
+        Nodes with an unknown ``to_play`` fall back to per-ply alternation so
+        callers that never set it keep their previous behaviour.
 
         Args:
-            value: Value to propagate.
+            value: Value from this node's perspective.
         """
         node: MCTSNode | None = self
+        reference = self.to_play
         while node is not None:
+            if reference is None or node.to_play is None:
+                signed = value
+                value = -value
+            else:
+                signed = value if node.to_play == reference else -value
             node.visit_count += 1
-            node.value_sum += value
-            value = -value  # Flip value for opponent
+            node.value_sum += signed
             node = node.parent
 
 
@@ -447,7 +486,10 @@ class Civ6MCTS:
         """
         self.network = network
         self.config = config or MCTSConfig()
-        self.device = device
+        # Resolve the request and place the network in one step: storing an
+        # unresolved "cuda" here while the network sat on cpu was a real
+        # source of mixed-device RuntimeErrors.
+        self.device = place_network(network, device)
         self._reflection_memory = reflection_memory
         if not 0.0 <= llm_prior_weight <= 1.0:
             raise ValueError(f"llm_prior_weight must be in [0, 1]; got {llm_prior_weight}")
@@ -491,8 +533,23 @@ class Civ6MCTS:
             },
         )
 
-        # Create root node
-        root = MCTSNode()
+        # A single scalar value cannot express a >2-player game: "flip when the
+        # acting player changes" would hand a third player +v after two flips,
+        # modelling them as the first player's ally. Rather than raise - N-player
+        # training legitimately drives this class through CurrentPlayerValueView
+        # - fall back to the historical per-ply alternation there by leaving
+        # to_play unset. That keeps >2-player behaviour byte-identical to before
+        # this fix while the 2-player product path gets the correct backup.
+        # alpha_zero.multiplayer.mcts.NPlayerMCTS keeps a real per-player vector.
+        track_to_play = int(getattr(env, "num_players", 2) or 2) <= 2
+        if not track_to_play:
+            logger.debug(
+                "Civ6MCTS: num_players > 2, using legacy per-ply value alternation; "
+                "prefer NPlayerMCTS for a correct multiplayer backup"
+            )
+
+        # Create root node. Its to_play anchors every sign decision below.
+        root = MCTSNode(to_play=_env_current_player(env) if track_to_play else None)
 
         # Get initial policy and value from network
         obs = env.get_observation()
@@ -525,6 +582,10 @@ class Civ6MCTS:
 
                 # Take action in environment
                 _, _, terminated, truncated, _ = sim_env.step(action)
+                # Record who moves *after* the step. Reading current_player
+                # before stepping would capture the parent's mover and invert
+                # every sign decision downstream.
+                node.to_play = _env_current_player(sim_env) if track_to_play else None
                 if terminated or truncated:
                     break
 
@@ -554,11 +615,19 @@ class Civ6MCTS:
                 # Expand leaf node
                 node.expand(policy, action_mask)
 
-            # Backpropagation
+            # Backpropagation. `value` is from the perspective of whoever
+            # moves at the leaf, so the sign flips only where the acting player
+            # changes - not on every ply. MicroCiv rotates current_player only
+            # in _end_turn, so a player makes many moves per turn.
+            leaf_to_play = search_path[-1].to_play
             for node in reversed(search_path):
+                if leaf_to_play is None or node.to_play is None:
+                    signed = value
+                    value = -value
+                else:
+                    signed = value if node.to_play == leaf_to_play else -value
                 node.visit_count += 1
-                node.value_sum += value
-                value = -value  # Flip for opponent
+                node.value_sum += signed
 
             # Explicit cleanup to prevent memory accumulation
             del sim_env
@@ -1160,7 +1229,10 @@ class GumbelMCTS:
         """
         self.network = network
         self.config = config or GumbelMCTSConfig()
-        self.device = device
+        # Resolve the request and place the network in one step: storing an
+        # unresolved "cuda" here while the network sat on cpu was a real
+        # source of mixed-device RuntimeErrors.
+        self.device = place_network(network, device)
 
     def search(
         self,
@@ -1715,7 +1787,10 @@ class MuZeroMCTS:
         """
         self.network = network
         self.config = config or MuZeroMCTSConfig()
-        self.device = device
+        # Resolve the request and place the network in one step: storing an
+        # unresolved "cuda" here while the network sat on cpu was a real
+        # source of mixed-device RuntimeErrors.
+        self.device = place_network(network, device)
 
     @classmethod
     def from_network(

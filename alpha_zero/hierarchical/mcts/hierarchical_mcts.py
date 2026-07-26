@@ -713,7 +713,7 @@ class HierarchicalMCTS:
             policy_logits, value = self.network(spatial, vector, goal_emb, action_mask)
 
             # Convert to numpy
-            policy = torch.softmax(policy_logits, dim=-1).squeeze(0).numpy()
+            policy = torch.softmax(policy_logits, dim=-1).squeeze(0).cpu().numpy()
             value = value.item()
 
         return policy, value

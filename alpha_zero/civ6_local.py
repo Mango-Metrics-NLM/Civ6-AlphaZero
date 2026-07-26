@@ -26,6 +26,10 @@ from typing import Any, cast
 
 import yaml
 
+# Safe to import at module scope: alpha_zero.utils.device defers its own torch
+# import, so --help still works without paying for torch.
+from alpha_zero.utils.device import resolve_device, resolve_device_str
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -34,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 VALID_MODES = ("microciv", "civ6", "web")
 VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
-VALID_DEVICES = ("cpu", "cuda")
+VALID_DEVICES = ("auto", "cpu", "cuda")  # "cuda:N" also accepted; see resolve_device_str
 
 ENV_PREFIX = "CIV6AZ_LOCAL_"
 
@@ -125,8 +129,12 @@ class Civ6LocalConfig:
             raise ValueError(f"num_players must be 2-8, got {self.num_players}")
         if self.num_simulations < 1:
             raise ValueError(f"num_simulations must be >= 1, got {self.num_simulations}")
-        if self.device not in VALID_DEVICES:
-            raise ValueError(f"device must be one of {VALID_DEVICES}, got {self.device!r}")
+        # Resolve to a concrete device here so every downstream consumer sees
+        # the same value. Previously validate() warned about falling back to
+        # cpu without mutating self.device, so run_civ6_bridge kept handing the
+        # unresolved "cuda" to the policy and WebConfig while the network had
+        # already been placed on cpu.
+        self.device = resolve_device_str(self.device)
         if self.web_port < 1 or self.web_port > 65535:
             raise ValueError(f"web_port must be 1-65535, got {self.web_port}")
         log_level_upper = self.log_level.upper()
@@ -340,10 +348,8 @@ class Civ6LocalConfig:
                 "web_host is 0.0.0.0 — server will accept connections from any interface"
             )
 
-        import torch
-
-        if self.device == "cuda" and not torch.cuda.is_available():
-            warnings.append("device=cuda requested but CUDA is not available — falling back to cpu")
+        # Device fallback is handled in __post_init__, which resolves and
+        # reports it rather than warning here and leaving self.device stale.
 
         return warnings
 
@@ -369,7 +375,7 @@ def run_microciv(config: Civ6LocalConfig) -> int:
     from alpha_zero.core.civ6_network import MicroCivNetwork
     from alpha_zero.envs.microciv import MicroCivEnv
 
-    device = torch.device(config.device if torch.cuda.is_available() else "cpu")
+    device = resolve_device(config.device)
 
     env = MicroCivEnv(board_size=config.board_size)
     # ``Discrete.n`` may surface as numpy int / float depending on gym version;
@@ -640,7 +646,7 @@ def _build_network_for_bridge(config: Civ6LocalConfig, action_space_size: int = 
     from alpha_zero.core.civ6_network import MicroCivNetwork
     from alpha_zero.envs.civ6_encoder import EncoderConfig
 
-    device = torch.device(config.device if torch.cuda.is_available() else "cpu")
+    device = resolve_device(config.device)
     # MicroCivNetwork picks the right value head (scalar vs N-player) based
     # on num_players; the bridge currently targets 2-player real Civ6.
     #
@@ -841,7 +847,6 @@ Examples:
     parser.add_argument(
         "--device",
         type=str,
-        choices=list(VALID_DEVICES),
         help="PyTorch inference device (default: cpu)",
     )
     mcts_group = parser.add_mutually_exclusive_group()

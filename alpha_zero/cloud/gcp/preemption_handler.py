@@ -266,7 +266,11 @@ class PreemptionHandler:
         # On job startup - check for resume
         resume_state = handler.get_resume_state(job_name)
         if resume_state:
-            model.load_state_dict(torch.load(resume_state.checkpoint_path))
+            # map_location="cpu" keeps a GPU-written checkpoint loadable on a
+            # CPU-only replacement worker after preemption.
+            model.load_state_dict(
+                torch.load(resume_state.checkpoint_path, map_location="cpu")
+            )
     """
 
     def __init__(

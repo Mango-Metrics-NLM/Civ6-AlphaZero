@@ -37,6 +37,7 @@ from typing import Any, cast
 
 import torch
 
+from alpha_zero.utils.checkpoint import _config_to_primitives
 from alpha_zero.utils.compat import UTC
 
 logger = logging.getLogger(__name__)
@@ -172,6 +173,7 @@ class CheckpointManager:
 
         checkpoint_data = {
             "model_state_dict": model.state_dict(),
+            "config": self._model_architecture(model),
             "metrics": metrics,
             "timestamp": self._get_timestamp(),
             "_checkpoint_info": {
@@ -213,6 +215,7 @@ class CheckpointManager:
 
         checkpoint_data = {
             "model_state_dict": model.state_dict(),
+            "config": self._model_architecture(model),
             "metrics": metrics,
             "timestamp": self._get_timestamp(),
             "_checkpoint_info": {
@@ -446,6 +449,19 @@ class CheckpointManager:
         """Save metadata to file."""
         with open(self._metadata_path, "w", encoding="utf-8") as f:
             json.dump(self._metadata, f, indent=2)
+
+    @staticmethod
+    def _model_architecture(model: torch.nn.Module) -> Any:
+        """Return a primitive copy of the model's own architecture config.
+
+        Recording it makes the checkpoint self-describing, so a reader can
+        rebuild the network without being told how it was trained. Networks
+        that carry no config simply contribute nothing.
+        """
+        config = getattr(model, "config", None)
+        if config is None:
+            return None
+        return _config_to_primitives(config)
 
     def _get_timestamp(self) -> str:
         """Get current timestamp string in ISO format."""

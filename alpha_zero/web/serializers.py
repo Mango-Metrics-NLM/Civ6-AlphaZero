@@ -7,6 +7,7 @@ data formatting for API responses and template rendering.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -89,6 +90,81 @@ def decode_action_readable(
         return f"Produce {label} (City {city_idx})"
 
     return f"{action_type} (Action {action_idx})"
+
+
+# Display order for action groups. "found_city" and "produce" are the two
+# mechanics that decide a MicroCiv game (victory is most cities), yet they sit
+# at the high end of the action index range — found_city at 341-360, produce at
+# 361-375, versus move at 1-160. A flat "first 20 by index" cut therefore hid
+# them behind a dead "+N more" label whenever a few units could move, making the
+# game unwinnable through the UI. Grouping keeps every category reachable.
+ACTION_GROUP_ORDER: tuple[tuple[str, str], ...] = (
+    ("found_city", "Found City"),
+    ("produce", "Production"),
+    ("attack", "Attack"),
+    ("move", "Movement"),
+    ("skip", "Skip"),
+    ("end_turn", "Turn"),
+)
+
+# Per-group cap. Movement can legitimately be large; capping per group rather
+# than globally means a long move list can never crowd out a city founding.
+MAX_ACTIONS_PER_GROUP = 12
+
+
+def group_valid_actions(
+    action_indices: Iterable[int],
+    action_space: MicroCivActionSpace,
+    max_per_group: int = MAX_ACTIONS_PER_GROUP,
+) -> list[dict[str, Any]]:
+    """Group action indices by category for display.
+
+    Args:
+        action_indices: Legal action indices.
+        action_space: Action space handler used to decode each index.
+        max_per_group: Maximum actions rendered per group before overflow.
+
+    Returns:
+        A list of groups in ``ACTION_GROUP_ORDER``, each
+        ``{"key", "label", "actions": [{"index", "label"}], "overflow": int}``.
+        Empty groups are omitted.
+    """
+    buckets: dict[str, list[dict[str, Any]]] = {key: [] for key, _ in ACTION_GROUP_ORDER}
+    extras: list[dict[str, Any]] = []
+
+    for idx in action_indices:
+        entry = {"index": idx, "label": decode_action_readable(idx, action_space)}
+        try:
+            action_type = action_space.decode_action(idx).get("type", "unknown")
+        except (IndexError, ValueError):
+            action_type = "unknown"
+        buckets.get(action_type, extras).append(entry)
+
+    groups: list[dict[str, Any]] = []
+    for key, label in ACTION_GROUP_ORDER:
+        entries = buckets[key]
+        if not entries:
+            continue
+        groups.append(
+            {
+                "key": key,
+                "label": label,
+                "actions": entries[:max_per_group],
+                "overflow": max(0, len(entries) - max_per_group),
+            }
+        )
+
+    if extras:
+        groups.append(
+            {
+                "key": "other",
+                "label": "Other",
+                "actions": extras[:max_per_group],
+                "overflow": max(0, len(extras) - max_per_group),
+            }
+        )
+
+    return groups
 
 
 def serialize_game_state(

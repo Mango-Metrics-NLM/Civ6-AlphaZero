@@ -397,6 +397,91 @@ class TestGameController:
         assert summary["human_moves"] == 1
 
 
+class TestTurnOwnership:
+    """The controller must agree with the game about whose turn it is.
+
+    GameController used to flip ``current_player`` after every action
+    (``1 - current_player``). That is right for a game with one ply per turn,
+    but MicroCiv rotates ``current_player`` only inside ``_end_turn`` — a
+    player moves every unit first. So after the human moved one unit the web
+    layer believed it was the AI's turn and let the AI spend the human's
+    remaining units as player 0; the human then issued actions for the AI's
+    civ. Neither side ever controlled its own units.
+    """
+
+    @staticmethod
+    def _controller():
+        from alpha_zero.envs.microciv import MicroCivEnv
+        from alpha_zero.human_interface.config import HumanInterfaceConfig
+        from alpha_zero.human_interface.game_controller import GameController
+        from alpha_zero.web.adapter import MicroCivGameAdapter
+
+        adapter = MicroCivGameAdapter(MicroCivEnv(board_size=8, seed=42))
+        controller = GameController(config=HumanInterfaceConfig(), game_interface=adapter)
+        controller.start_game(human_player=0)
+        return controller, adapter
+
+    def test_controller_tracks_env_current_player(self):
+        """Across a whole turn, the two must never disagree."""
+        controller, adapter = self._controller()
+
+        for _ in range(8):
+            valid = adapter.get_valid_actions()
+            if not valid:
+                break
+            # Prefer a non-end-turn action so we stay inside one player's turn,
+            # which is exactly where the old alternation broke down.
+            action = next((a for a in valid if a != 0), valid[0])
+            result = controller._execute_move(action, controller.current_state.current_player, 0.0)
+            if result is None or result.game_over:
+                break
+
+            assert controller.current_state.current_player == adapter.current_player, (
+                "controller and env disagree about the acting player"
+            )
+
+    def test_turn_does_not_change_on_a_non_end_turn_action(self):
+        """Moving a unit must not hand the turn over."""
+        controller, adapter = self._controller()
+        before = adapter.current_player
+
+        valid = adapter.get_valid_actions()
+        move = next((a for a in valid if a != 0), None)
+        if move is None:
+            pytest.skip("no non-end-turn action available from the initial state")
+        controller._execute_move(move, before, 0.0)
+
+        assert adapter.current_player == before, "env rotated on a plain move"
+        assert controller.current_state.current_player == before
+
+    def test_end_turn_hands_over(self):
+        """end_turn (action 0) is what actually rotates the player."""
+        controller, adapter = self._controller()
+        before = adapter.current_player
+
+        controller._execute_move(0, before, 0.0)
+
+        assert adapter.current_player != before
+        assert controller.current_state.current_player == adapter.current_player
+
+    def test_falls_back_to_alternation_without_current_player(self):
+        """Interfaces that report no current player keep the old behaviour."""
+        from alpha_zero.human_interface.config import HumanInterfaceConfig
+        from alpha_zero.human_interface.game_controller import GameController
+
+        interface = MagicMock(spec=["reset", "step", "get_valid_actions", "action_space_size"])
+        interface.reset.return_value = np.zeros(4)
+        interface.step.return_value = (np.zeros(4), 0.0, False, False, {})
+        interface.get_valid_actions.return_value = [0, 1]
+        interface.action_space_size = 2
+
+        controller = GameController(config=HumanInterfaceConfig(), game_interface=interface)
+        controller.start_game(human_player=0)
+        controller._execute_move(1, 0, 0.0)
+
+        assert controller.current_state.current_player == 1
+
+
 class TestStateVisualizer:
     """Tests for StateVisualizer."""
 

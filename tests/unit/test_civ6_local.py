@@ -8,6 +8,7 @@ Covers:
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
@@ -166,9 +167,37 @@ class TestCiv6LocalConfigValidation:
             assert cfg.mode == mode
 
     def test_valid_devices(self) -> None:
+        """Accepted device requests resolve to something concrete.
+
+        The config no longer echoes the request back: it resolves it, so
+        "auto" and an unavailable "cuda" both land on a real device. That is
+        the point — previously validate() warned about falling back while
+        self.device kept saying "cuda", and downstream consumers used the
+        stale value.
+        """
+        import torch
+
         for device in VALID_DEVICES:
             cfg = Civ6LocalConfig(device=device)
-            assert cfg.device == device
+            assert cfg.device in {"cpu", "cuda", "mps"} or cfg.device.startswith("cuda:")
+            if device == "cpu" or not torch.cuda.is_available():
+                assert cfg.device == "cpu"
+
+    def test_unavailable_cuda_resolves_to_cpu(self) -> None:
+        """The NG-4 path: requesting CUDA without CUDA must not crash later."""
+        import torch
+
+        if torch.cuda.is_available():
+            pytest.skip("requires a CPU-only host")
+        assert Civ6LocalConfig(device="cuda").device == "cpu"
+
+    def test_indexed_cuda_is_accepted(self) -> None:
+        """'cuda:0' used to be rejected here while training accepted it."""
+        assert Civ6LocalConfig(device="cuda:0").device in {"cpu", "cuda:0"}
+
+    def test_invalid_device_still_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Invalid device"):
+            Civ6LocalConfig(device="tpu")
 
     def test_log_level_normalised_to_upper(self) -> None:
         cfg = Civ6LocalConfig(log_level="info")
@@ -553,11 +582,22 @@ class TestValidateMethod:
         warnings = cfg.validate()
         assert any("checkpoint" in w.lower() for w in warnings)
 
-    def test_cuda_not_available_warns(self) -> None:
-        with patch("torch.cuda.is_available", return_value=False):
+    def test_cuda_not_available_resolves_and_logs(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Unavailable CUDA is resolved away, not just mentioned in a warning.
+
+        This used to return a warning string from validate() while leaving
+        self.device == "cuda", so run_civ6_bridge handed the stale value to the
+        policy and WebConfig after the network had already been placed on cpu.
+        Now the fallback is applied at construction and reported in the log.
+        """
+        with (
+            patch("torch.cuda.is_available", return_value=False),
+            caplog.at_level(logging.WARNING, logger="alpha_zero.utils.device"),
+        ):
             cfg = Civ6LocalConfig(device="cuda")
-            warnings = cfg.validate()
-        assert any("cuda" in w.lower() for w in warnings)
+
+        assert cfg.device == "cpu"
+        assert any("CUDA is unavailable" in r.getMessage() for r in caplog.records)
 
     def test_civ6_mode_missing_bridge_dir_warns(self, tmp_path: Path) -> None:
         missing = str(tmp_path / "no_such_dir")

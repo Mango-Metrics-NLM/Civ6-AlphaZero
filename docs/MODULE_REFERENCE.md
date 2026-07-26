@@ -12,7 +12,7 @@ or removed.
 | Module | Files | Responsibility |
 |--------|------:|----------------|
 | `core` | 30 | Neural networks (ResNet/transformer), MCTS variants (Gumbel/DUCT/MuZero), action space |
-| `utils` | 26 | Logging, config, LLM client, factories, test runner, `agent_tools`, `.env` loader |
+| `utils` | 27 | Logging, config, LLM client, factories, test runner, `agent_tools`, `.env` loader, device resolution |
 | `rag` | 22 | Retrieval-augmented generation pipeline: vector stores, processors, agent integration (§11) |
 | `hierarchical` | 19 | Hierarchical goal planning: decomposition, controllers, encoders |
 | `multiplayer` | 18 | N-player MCTS (Max-N/Paranoid/Best-Reply), turn manager, opponent modeling, scoring |

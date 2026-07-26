@@ -8,6 +8,7 @@ import pytest
 from alpha_zero.core.civ6_actions import MicroCivActionSpace
 from alpha_zero.web.serializers import (
     decode_action_readable,
+    group_valid_actions,
     serialize_board_for_template,
     serialize_confidence,
     serialize_move_history,
@@ -19,6 +20,85 @@ from alpha_zero.web.serializers import (
 def action_space():
     """Create action space for testing."""
     return MicroCivActionSpace(board_size=8)
+
+
+class TestGroupValidActions:
+    """Grouping keeps every action category reachable in the UI.
+
+    The template used to render ``valid_actions[:20]`` in ascending index
+    order. MicroCiv puts move at 1-160 but found_city at 341-360 and produce
+    at 361-375, and victory is decided by city count — so once a handful of
+    units could move, the two actions that actually win the game fell behind a
+    non-interactive "+N more actions" label.
+    """
+
+    def test_found_city_survives_a_long_move_list(self, action_space):
+        """The regression: many moves must not crowd out Found City."""
+        valid = [*range(1, 40), 341, 361, 0]
+
+        groups = group_valid_actions(valid, action_space)
+        keys = [g["key"] for g in groups]
+
+        assert "found_city" in keys
+        assert "produce" in keys
+        # And it would not have survived the old flat cut:
+        old_slice_types = {action_space.decode_action(i)["type"] for i in sorted(valid)[:20]}
+        assert "found_city" not in old_slice_types
+
+    def test_groups_follow_display_order(self, action_space):
+        """Decisive actions are listed before bulk movement."""
+        groups = group_valid_actions([1, 2, 341, 361, 0], action_space)
+
+        assert [g["key"] for g in groups] == ["found_city", "produce", "move", "end_turn"]
+
+    def test_empty_groups_are_omitted(self, action_space):
+        groups = group_valid_actions([0], action_space)
+
+        assert [g["key"] for g in groups] == ["end_turn"]
+
+    def test_overflow_is_reported_per_group(self, action_space):
+        """Capping is per group, so one big group cannot hide another."""
+        groups = group_valid_actions([*range(1, 40), 341], action_space, max_per_group=5)
+        by_key = {g["key"]: g for g in groups}
+
+        assert len(by_key["move"]["actions"]) == 5
+        assert by_key["move"]["overflow"] == 34
+        assert by_key["found_city"]["overflow"] == 0
+
+    def test_actions_carry_index_and_label(self, action_space):
+        groups = group_valid_actions([0], action_space)
+        entry = groups[0]["actions"][0]
+
+        assert entry["index"] == 0
+        assert entry["label"] == "End Turn"
+
+    def test_empty_input_yields_no_groups(self, action_space):
+        assert group_valid_actions([], action_space) == []
+
+    def test_out_of_range_index_is_not_dropped(self, action_space):
+        """No index may vanish silently, however odd.
+
+        Note MicroCivActionSpace.decode_action does not validate its input —
+        it decodes 10**9 as a "produce" action with a nonsense city index
+        rather than raising. Grouping must still surface it rather than
+        discarding it.
+        """
+        groups = group_valid_actions([10**9], action_space)
+
+        surfaced = [a["index"] for g in groups for a in g["actions"]]
+        assert surfaced == [10**9]
+
+    def test_unknown_action_type_falls_into_other(self):
+        """Types outside the display order still get rendered."""
+
+        class _WeirdSpace:
+            def decode_action(self, idx):
+                return {"type": "teleport"}
+
+        groups = group_valid_actions([7], _WeirdSpace())
+
+        assert [g["key"] for g in groups] == ["other"]
+        assert groups[0]["actions"][0]["index"] == 7
 
 
 class TestDecodeActionReadable:

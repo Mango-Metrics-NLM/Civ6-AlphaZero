@@ -1,21 +1,36 @@
 {
-    "last_session_id": "session_01AAR7bMpmkZtman9kFaeqft",
-    "last_timestamp": "2026-07-13T02:19:36Z",
-    "active_branch": "claude/project-charter-template-b4n9fu",
-    "current_focus": "Handed off to Pre-PR \u2014 W&B retirement sweep (new PR pending)",
+    "last_session_id": "session_01TKcb8crWZ1n1aB4XfvCnfn",
+    "last_timestamp": "2026-07-26T18:47:08Z",
+    "active_branch": "claude/product-roadmap-review-tebhg9",
+    "current_focus": "PR #105 open (draft) - train->evaluate->play loop fixed; 4 planned phases remain",
     "resume_pointers": {
-        "current_task": "Verify CI green on the W&B retirement PR",
+        "current_task": "Finish the remaining phases on PR #105",
         "blocked_on": [],
         "next_steps": [
-            "Confirm CI green (85% coverage gate, new tracker tests)",
-            "Follow-up: run_sweep.py Optuna/MLflow-hyperopt port",
-            "Follow-up: scripts/setup_secrets.sh wandb secret cleanup"
+            "Local eval with a random-init CONTROL arm (python -m alpha_zero.evaluation.local): 'trained beats random' proves nothing because a random net under MCTS also beats a random agent. Use MCTSAgentWrapper (evaluation/baseline_agents.py:321) + EvaluationPipeline, NOT run_baseline_evaluation(mcts) - Civ6MCTS has no reset()/select_action(env, obs).",
+            "Measure the MCTS backup fix before/after on a frozen checkpoint using that eval",
+            "Delete run_civ6_ai.py (DOA: passes --log_dir and --debug, which training_civ6 never registers) plus its 4 coupled edits: tests/unit/test_run_script.py, pyproject.toml:167, README.md:141, openspec/project.md:33",
+            "README quickstart with measured numbers (6-iteration run measured: iter 1 ~6 min via random-rollout SimpleMCTS, iters 2+ ~1 min; win rate vs random 10% then 5% - a short run does NOT beat random)",
+            "requirements.txt: bump torch>=1.13.0 to >=2.0.0 only - do NOT gut it, Dockerfile.base:41-44 installs from it",
+            "Scaffold the umbrella OpenSpec change (openspec-propose) for the shipped capability",
+            "Forward-looking CLAUDE.md 13 rewrite describing what actually shipped"
         ]
     },
     "context_files": [
-        "kb/handoffs/20260713-devsqe-to-prepr-wandb-retirement.md",
-        "alpha_zero/monitoring/config.py",
-        "alpha_zero/monitoring/mlflow_logger.py",
-        "PROJECT_CHARTER.md"
+        "alpha_zero/utils/device.py",
+        "alpha_zero/utils/checkpoint.py",
+        "alpha_zero/core/civ6_mcts.py",
+        "alpha_zero/human_interface/game_controller.py",
+        "alpha_zero/web/serializers.py",
+        "tests/unit/test_checkpoint_contract.py",
+        "CHANGELOG.md"
+    ],
+    "known_issues": [
+        "Coverage gate not verifiable locally: numpy 2.4 + coverage C-tracer crash (CLAUDE.md:420). CI is the gate.",
+        "Encoder transfer gap: the Civ6 bridge builds at 84 channels (EncoderConfig) while all training produces 13, so no checkpoint this repo can produce will drive the bridge.",
+        "Fog action-mask leak at envs/microciv.py:843-848 (observation masked, mask recomputed from full state).",
+        "DeterminizedMCTS (multiplayer/determinization.py) is written and tested but has zero call sites.",
+        "orchestrator/orchestrator.py:1200 applies per-ply value alternation directly to training value targets.",
+        "Civ6MCTS keeps legacy per-ply alternation for num_players > 2 by design; NPlayerMCTS is correct there."
     ]
 }

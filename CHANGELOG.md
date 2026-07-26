@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Train → evaluate → play loop (2026-07-26)
+
+Found while checking CLAUDE.md §13 against the code. Each defect was invisible
+because the test covering it asserted the wrong thing.
+
+- **The web UI's neural opponent never used trained weights.**
+  `GameSessionManager._get_shared_network` read `result.state_dict`, but
+  `safe_load_checkpoint` returns `CheckpointLoadResult` whose payload field is
+  `.data` — both fallback branches were skipped, no weights loaded, and it
+  logged success anyway. The two covering tests patched `safe_load_checkpoint`
+  to return a plain dict, a type the real function never produces.
+- **Two further blockers behind that one:** `session.py` looked for
+  `"model_state_dict"` while `training_civ6` writes `"state_dict"`, and the
+  network was rebuilt with hardcoded 6-block/64-filter defaults, so a
+  checkpoint trained at any other size could not load regardless. New
+  `utils.checkpoint.load_network` is now the single reader for every shape.
+- **N-player checkpoints were unloadable.** `MicroCivNetwork` swaps in an
+  `NPlayerValueHead` when `num_players > 2`, but `NetworkConfig` never recorded
+  `num_players`, so reconstruction built a scalar head and `load_state_dict`
+  failed on `value_head.fc2.weight`. Now a defaulted config field, so older
+  checkpoints still load as 2-player.
+- **A GPU-trained checkpoint could not be loaded on a CPU-only machine.**
+  `safe_load_checkpoint`/`load_model_state` defaulted `map_location=None`, so
+  `torch.load` restored tensors to the save-time device — a direct break of
+  charter NG-4. Both now default to `"cpu"`.
+- **Neither player controlled its own units in the web UI.** `GameController`
+  flipped `current_player` after every action, but MicroCiv rotates it only in
+  `_end_turn`. Measured on a seeded game: controller and env disagreed on 3 of
+  6 plies before, 0 after. The route had the mirror bug, playing a single AI
+  ply per human move.
+- **The actions that win the game were unreachable.** The template rendered
+  `valid_actions[:20]` in index order; `found_city` (341-360) and `produce`
+  (361-375) sit above `move` (1-160), so a realistic 42-action mid-game state
+  hid both behind a dead "+N more actions" label. Actions are now grouped by
+  category with a per-group cap.
+- **MCTS flipped the value sign on every ply** (`core/civ6_mcts.py`) while a
+  MicroCiv player takes many plies per turn, corrupting visit counts (the
+  policy target) and the search. Backup and PUCT selection are now `to_play`
+  aware, with `to_play` recorded *after* the simulation step. Value targets on
+  the training path were unaffected — they come from the game outcome.
+  `>2`-player behaviour is unchanged by design; `NPlayerMCTS` remains correct
+  there.
+
+### Added
+- `alpha_zero/utils/device.py` — `resolve_device` / `resolve_device_str` /
+  `place_network`, the single source of truth replacing ~30 ad-hoc
+  `torch.cuda.is_available()` sites across three incompatible idioms. Configs
+  now *resolve* a device rather than warning and carrying on with a stale one.
+- `--max_turns` and `--save_interval` on `training_civ6` — both already existed
+  as config fields with no way to set them, which made a short run impossible
+  to evaluate (`save_interval=10` means a 6-iteration run prints no win rate).
+- Cross-device checkpoint round-trip test and a repo-wide guard against
+  `.numpy()` without a preceding `.cpu()`.
+
+### Changed
+- CLAUDE.md §13 rewritten against the code: the N-player item was already done
+  (2026-07-05) and the "12 xfailed DDP tests in `tests/unit/test_distributed`"
+  item referenced a directory that does not exist. §13 had been contradicting
+  §5.3 in the same file.
+
 ### Removed — Dead-code deletions, hygiene sweep (2026-07-25)
 - `alpha_zero/cloud/gcp/cost_optimization.py` (644 ln) and
   `alpha_zero/cloud/gcp/lifecycle_cli.py` (570 ln) — zero importers; the former
