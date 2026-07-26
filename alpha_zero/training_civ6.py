@@ -840,6 +840,25 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train Civ6 AlphaZero")
     parser.add_argument("--board_size", type=int, default=16)
     parser.add_argument(
+        "--max_turns",
+        type=int,
+        default=200,
+        help=(
+            "Turn limit per self-play game. MicroCiv only advances `turn` when the "
+            "player index wraps, so the default 200 needs 400+ end-turn actions plus "
+            "every unit ply — use a small value (e.g. 20) for a quick run."
+        ),
+    )
+    parser.add_argument(
+        "--save_interval",
+        type=int,
+        default=10,
+        help=(
+            "Evaluate and checkpoint every N iterations. The default means a run "
+            "shorter than 10 iterations reports no win rate at all."
+        ),
+    )
+    parser.add_argument(
         "--num_players",
         type=int,
         default=2,
@@ -880,6 +899,8 @@ def main() -> None:
         num_res_blocks=args.num_res_blocks,
         num_filters=args.num_filters,
         checkpoint_dir=args.checkpoint_dir,
+        max_turns=args.max_turns,
+        save_interval=args.save_interval,
         device=args.device or "auto",
     )
 
