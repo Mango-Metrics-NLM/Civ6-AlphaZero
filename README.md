@@ -123,6 +123,50 @@ Presets (defined in `alpha_zero/orchestrator/config.py`):
 | `balanced` | 500 | 50 | 50 | 128 | Standard training |
 | `production` | 500000 | 200 | 200 | 512 | Long production runs |
 
+### Train a model and play against it
+
+The full loop on CPU. Keep `board_size` identical across all three steps — the
+web UI rejects a checkpoint trained at a different board size rather than
+failing mid-game.
+
+```bash
+pip install -e '.[dev,web]'          # the web extra is required for the UI
+
+python -m alpha_zero.training_civ6 \
+    --board_size 8 --max_turns 20 --num_simulations 10 \
+    --num_iterations 6 --num_games 10 \
+    --num_res_blocks 2 --num_filters 16 \
+    --save_interval 1 --device cpu
+
+CIV6AZ_WEB_BOARD_SIZE=8 \
+CIV6AZ_WEB_CHECKPOINT=checkpoints/civ6/latest.pt \
+    python -m alpha_zero.web
+```
+
+Then open the UI, start a game against **Neural Network (Hard)**, and play.
+
+**What to expect, measured on this configuration (CPU, 2-core container):**
+
+| | Observed |
+|---|---|
+| Iteration 1 | ~6 min — it uses random-rollout `SimpleMCTS`, so it is much slower than the rest |
+| Iterations 2+ | ~1 min each |
+| Win rate vs random | 10%, then 5%, then 5% |
+
+**A run this short does not produce a model that beats random**, and the numbers
+above are not cherry-picked — they are what it does. The point of the quickstart
+is to exercise the whole loop end to end, not to produce a strong agent. Treat
+it as a smoke test with a real artifact at the end; scale
+`--num_iterations`/`--num_games` up substantially before drawing any conclusion
+about strength, and compare against a random-initialised control rather than
+against the random agent alone (a random network under MCTS also beats a random
+agent, so "beats random" on its own proves nothing).
+
+`--max_turns` matters: MicroCiv only advances its turn counter when the player
+index wraps, so at the default 200 a single game needs 400+ end-turn actions
+plus every unit ply. `--save_interval` matters too — at its default of 10, a
+6-iteration run never reaches the evaluation block and reports no win rate.
+
 ### Other entry points
 
 ```bash
