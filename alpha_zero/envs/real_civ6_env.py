@@ -197,6 +197,7 @@ class RealCiv6Env(gym.Env):
         super().__init__()
 
         self.bridge_config = bridge_config or BridgeConfig()
+        self.bridge_config.ensure_comm_dir()
         self.board_size = board_size
         self.render_mode = render_mode
         self.state_timeout = state_timeout

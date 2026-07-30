@@ -5,6 +5,28 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] — 2026-07-30 — Dynamic Lua Path Resolution & Atomic IPC Bridge
+
+### Added — Dynamic Path Discovery & Atomic File IPC Bridge
+
+#### Lua Mod Interface (`mod/AlphaZeroAI/`)
+- **`mod/AlphaZeroAI/Scripts/Config.lua`** — Replaced hardcoded user paths with a dynamic multi-strategy path resolution pipeline (`GeneratedPaths.lua` -> OneDrive Documents -> User Documents -> AppData -> Local relative path).
+- **`mod/AlphaZeroAI/Scripts/FileIO.lua`** — Upgraded `AlphaZeroFileIO.Write()` to perform atomic writes using temporary `.tmp` file handles and `os.rename` swaps.
+- **`mod/AlphaZeroAI/Scripts/GeneratedPaths.lua`** — Created dynamic template module for Python bridge pre-flight path injection.
+
+#### Python Bridge & Orchestration (`alpha_zero/bridge/`)
+- **`alpha_zero/bridge/config.py`** — Added `generate_lua_path_config()` to `BridgeConfig` for automated pre-flight creation of `GeneratedPaths.lua` in the mod directory.
+- **`alpha_zero/bridge/file_bridge.py`** — Added short backoff retry in `poll_state()` on `json.JSONDecodeError` to handle asynchronous file flushes safely.
+- **`alpha_zero/envs/real_civ6_env.py`** — Integrated pre-flight comm directory creation and path generation into `RealCiv6Env.__init__()`.
+
+#### Testing & Test Infrastructure (`tests/`)
+- **`tests/conftest.py`** — Added `ignore_cleanup_errors=True` to `tempfile.TemporaryDirectory` fixtures to eliminate Windows file-locking `PermissionError` hangs.
+- **`pytest.ini`** — Configured pytest markers (`unit`, `integration`, `functional`, `e2e`, `user_journey`, `security`, `sanity`) and strict coverage settings.
+- **`tests/unit/test_ipc_atomic.py`** — Added unit test suite verifying `GeneratedPaths.lua` creation, `BridgeConfig` resolution, and `poll_state()` decode retries.
+- **`tests/security/test_security_sanitization.py`** — Added security test suite verifying path traversal immunity.
+
+---
+
 ## [1.6.0] — 2026-05-21 — MLflow Monitoring & Evaluation Analytics
 
 > **Version note:** Bumped from `1.4.0` to `1.6.0` after merging this branch with `origin/main`, which had independently released `1.5.0` (Sprint 5 type safety) on top of an earlier `1.4.0` (Sprint 4). The MLflow monitoring layer is the largest behavioural change of this release line, so it owns the minor bump.

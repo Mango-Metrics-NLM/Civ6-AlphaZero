@@ -155,7 +155,7 @@ def temp_checkpoint_dir() -> Generator[Path, None, None]:
     Yields:
         Path to temporary directory.
     """
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
         yield Path(tmpdir)
 
 
@@ -313,7 +313,7 @@ def bridge_config() -> Generator[Path, None, None]:
     """
     from alpha_zero.bridge.config import BridgeConfig
 
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
         yield BridgeConfig(
             comm_dir=Path(tmpdir),
             poll_interval_ms=10,

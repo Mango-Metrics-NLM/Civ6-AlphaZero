@@ -95,21 +95,30 @@ local function mergeTables(a, b)
     return result
 end
 
--- Get the base path for Civ6 documents (cross-platform)
 local function getDocumentsPath()
-    -- Try to get from environment or use standard path
-    if PATH_SEP == "\\" then
-        -- Windows
-        local userProfile = os.getenv("USERPROFILE")
-        if userProfile then
-            return userProfile .. "\\Documents\\My Games\\Sid Meier's Civilization VI"
-        end
+    -- 1. Try loading Python pre-flight generated paths
+    local hasGen, genPaths = pcall(require, "GeneratedPaths")
+    if hasGen and genPaths and genPaths.COMM_DIR and #genPaths.COMM_DIR > 0 then
+        return genPaths.COMM_DIR
     end
-    -- Unix/macOS fallback
-    local home = os.getenv("HOME")
-    if home then
-        return home .. "/Documents/My Games/Sid Meier's Civilization VI"
+
+    -- 2. Dynamic candidate probe fallback (cross-platform & multi-user safe)
+    local subPath = PATH_SEP .. "My Games" .. PATH_SEP .. "Sid Meier's Civilization VI"
+    local userProfile = os.getenv and (os.getenv("USERPROFILE") or os.getenv("HOME"))
+
+    if userProfile and #userProfile > 0 then
+        -- Candidate 1: OneDrive Documents
+        local oneDrive = userProfile .. PATH_SEP .. "OneDrive" .. PATH_SEP .. "Documents" .. subPath
+        local f1 = io.open(oneDrive, "r")
+        if f1 then f1:close(); return oneDrive end
+
+        -- Candidate 2: Standard User Documents
+        local standardDocs = userProfile .. PATH_SEP .. "Documents" .. subPath
+        local f2 = io.open(standardDocs, "r")
+        if f2 then f2:close(); return standardDocs end
     end
+
+    -- Candidate 3: Current directory / relative fallback
     return "."
 end
 
@@ -124,7 +133,12 @@ function AlphaZeroConfig.Init()
 
     -- Set derived paths using detected path separator
     local basePath = getDocumentsPath()
-    currentConfig.COMM_DIR = basePath .. PATH_SEP .. currentConfig.COMM_DIR_NAME
+    -- If getDocumentsPath returned a full COMM_DIR from GeneratedPaths, use it directly
+    if basePath:sub(-#currentConfig.COMM_DIR_NAME) == currentConfig.COMM_DIR_NAME then
+        currentConfig.COMM_DIR = basePath
+    else
+        currentConfig.COMM_DIR = basePath .. PATH_SEP .. currentConfig.COMM_DIR_NAME
+    end
     currentConfig.STATE_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.STATE_FILE
     currentConfig.COMMANDS_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.COMMANDS_FILE
     currentConfig.ACK_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ACK_FILE

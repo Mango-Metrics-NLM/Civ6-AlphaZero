@@ -30,6 +30,9 @@ env
 # Testing and coverage
 tests/
 .pytest_cache
+pytest_*.txt
+.claude/
+mod/AlphaZeroAI/Scripts/GeneratedPaths.lua
 .coverage
 htmlcov/
 .mypy_cache

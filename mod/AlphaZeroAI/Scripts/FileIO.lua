@@ -129,12 +129,23 @@ function AlphaZeroFileIO.Read(path)
     return content, nil
 end
 
--- Write content to a file
+-- Write content to a file (atomic via .tmp swap)
 function AlphaZeroFileIO.Write(path, content)
-    local file, err = io.open(path, "w")
+    local tmpPath = path .. ".tmp"
+    local file, err = io.open(tmpPath, "w")
     if not file then
-        if Log then Log.Error("Could not open file for writing: %s - %s", path, tostring(err)) end
-        return false, "Could not open file: " .. tostring(err)
+        -- Fallback to direct write if .tmp cannot be opened
+        file, err = io.open(path, "w")
+        if not file then
+            if Log then Log.Error("Could not open file for writing: %s - %s", path, tostring(err)) end
+            return false, "Could not open file: " .. tostring(err)
+        end
+        local ok, writeErr = file:write(content)
+        file:close()
+        if not ok then
+            return false, "Write failed: " .. tostring(writeErr)
+        end
+        return true, nil
     end
 
     local ok, writeErr = file:write(content)
@@ -142,11 +153,26 @@ function AlphaZeroFileIO.Write(path, content)
 
     if not ok then
         if Log then Log.Error("Write failed: %s", tostring(writeErr)) end
+        os.remove(tmpPath)
         return false, "Write failed: " .. tostring(writeErr)
     end
 
-    if Log then Log.Debug("Wrote %d bytes to %s", #content, path) end
-    return true, nil
+    -- Atomic rename/swap
+    os.remove(path)
+    local renamed, renameErr = os.rename(tmpPath, path)
+    if not renamed then
+        -- Fallback if os.rename fails: copy/write directly
+        local directFile = io.open(path, "w")
+        if directFile then
+            directFile:write(content)
+            directFile:close()
+            os.remove(tmpPath)
+            renamed = true
+        end
+    end
+
+    if Log then Log.Debug("Wrote %d bytes (atomic) to %s", #content, path) end
+    return renamed or false, renameErr
 end
 
 -- Append content to a file

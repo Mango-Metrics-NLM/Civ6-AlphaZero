@@ -33,14 +33,15 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 | Phase 17b | Training Readiness & Windows Compatibility | ✅ Complete |
 | Phase 18 | Training Bug Fix — load base model for fine-tuning | ✅ Complete |
 | Phase 19 | MLflow Monitoring Layer (PR #78 + PR #79 combined) | ✅ Complete |
+| Phase 20 | Live Gameplay Dynamic Path Resolution & Atomic IPC | ✅ Complete |
 | Sprint 3 | Convergence, Batch Self-Play, N-Player Foundation | ✅ Complete |
 | Sprint 4 | Type Safety Expansion (envs + evaluation) | ✅ Complete |
 | Sprint 5 | Type Safety — Breadth-First Mypy Stabilization | ✅ Complete |
 
 **Codebase Statistics:**
 
-- ~63,000 lines of core implementation
-- 5,200+ tests, all passing (canonical Windows deselect list)
+- ~65,000 lines of core implementation
+- 11,760+ tests collected (unit, integration, functional, e2e, user journey, security, sanity)
 - Docker v1.2.0 on Artifact Registry (`us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v1.2.0`)
 - 269 model versions in GCS (v0-v268), production run v1.2.0 completed
 - GumbelMCTS default: 13× faster than Civ6MCTS — 50-iter production run active (4 workers × 50 games/iter)

@@ -317,8 +317,20 @@ class FileBridge:
                     return state_msg.state
 
                 except json.JSONDecodeError as e:
-                    logger.warning(f"Invalid JSON in state file: {e}")
-                    return None
+                    # File might be mid-write; perform short retry backoff
+                    await asyncio.sleep(0.01)
+                    try:
+                        content = state_file.read_text(encoding="utf-8")
+                        data = json.loads(content)
+                        state_msg = StateMessage.from_dict(data)
+                        self._last_state = state_msg.state
+                        self._last_state_mtime = mtime
+                        self.stats.states_received += 1
+                        self.stats.last_state_time = time.time()
+                        return state_msg.state
+                    except Exception:
+                        logger.warning(f"Invalid JSON in state file after retry: {e}")
+                        return None
 
         except Exception as e:
             logger.error(f"Error polling state: {e}")

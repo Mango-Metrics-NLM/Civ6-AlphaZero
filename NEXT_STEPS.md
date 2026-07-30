@@ -1,20 +1,15 @@
-## Phase 19: MLflow Monitoring Layer (COMPLETE — 2026-05-21)
+## Phase 20: Dynamic Path Resolution & Live Gameplay IPC Hardening (COMPLETE — 2026-07-30)
 
 ### Delivered
-- `alpha_zero/monitoring/` package: MLflowLogger, MLflowMonitoringConfig, AlphaZeroMLflowEvaluator
-- `alpha_zero/utils/env_loader.py`: zero-dependency .env loading
-- 5 evaluation/analysis scripts in scripts/
-- 81 new tests (217 total passing)
-- SQLite MLflow migration tool
-- P0 bug fixes: EvaluationPipeline API, EvaluationResult type access
+- **Dynamic Lua Path Resolution**: Cross-platform pre-flight path generation (`GeneratedPaths.lua`) + candidate fallback probes in Lua.
+- **Atomic IPC Bridge**: `.tmp` file writes & atomic renames in `FileIO.lua` + short backoff JSON decode retries in `file_bridge.py`.
+- **Test Lock Stabilization**: Patched `tempfile.TemporaryDirectory` with `ignore_cleanup_errors=True` in `conftest.py`.
+- **Test & Security Coverage**: Added `test_ipc_atomic.py` and `test_security_sanitization.py` with pytest markers (`unit`, `integration`, `security`, `sanity`).
 
-### Next Steps (Phase 20)
-1. **MLflow Dashboard Integration** — Wire analyse_training_run.py output into MLflow custom charts
-2. **Automated Regression Suite** — Schedule post_run_evaluation.py as CI step on model checkpoint
-3. **Coverage to 90%** — Add integration tests for monitoring ↔ evaluation pipeline
-4. **ELO Dashboard** — Log ELO time-series to MLflow; create heatmap of model matchup results
-5. **GCS Model Registry** — Replace manual version tracking with MLflow Model Registry
-6. **Training Alert System** — Use log_evaluation_result() to trigger Slack/email alerts on regression
+### Next Steps (Phase 21)
+1. **Live Gameplay Match Evaluation** — Run full self-play match against Civ6 AI on Steam via `alpha_zero.orchestrator`.
+2. **Multi-Agent Subagent Tuning** — Calibrate Strategic/Tactical/Operational subagent re-evaluation intervals during full gameplay.
+3. **MLflow Live Game Tracking** — Track turn evaluation metrics and policy distribution during real-time game execution.
 
 ---
 
