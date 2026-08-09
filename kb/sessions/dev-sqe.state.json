@@ -1,36 +1,35 @@
 {
-    "last_session_id": "session_01TKcb8crWZ1n1aB4XfvCnfn",
-    "last_timestamp": "2026-07-26T18:47:08Z",
-    "active_branch": "claude/product-roadmap-review-tebhg9",
-    "current_focus": "PR #105 open (draft) - train->evaluate->play loop fixed; 4 planned phases remain",
+    "last_session_id": "session_011aLW3xW6HK5PeY8q4YFtZS",
+    "last_timestamp": "2026-08-09T23:40:00Z",
+    "active_branch": "claude/grid-crystal-mapping-search-q9wwne",
+    "current_focus": "PR #107 open (draft): hex-crystalline encoder packaged as a torch-only subpackage with Hub support and an A/B evidence pipeline. Arena run unfinished.",
     "resume_pointers": {
-        "current_task": "Finish the remaining phases on PR #105",
-        "blocked_on": [],
+        "current_task": "Finish the 150-game arena, commit the evidence, then decide on Hub publication",
+        "blocked_on": [
+            "Arena run was still in flight when the session ended; docs/evidence/hexcrystal_ab/ is empty"
+        ],
         "next_steps": [
-            "Local eval with a random-init CONTROL arm (python -m alpha_zero.evaluation.local): 'trained beats random' proves nothing because a random net under MCTS also beats a random agent. Use MCTSAgentWrapper (evaluation/baseline_agents.py:321) + EvaluationPipeline, NOT run_baseline_evaluation(mcts) - Civ6MCTS has no reset()/select_action(env, obs).",
-            "Measure the MCTS backup fix before/after on a frozen checkpoint using that eval",
-            "Delete run_civ6_ai.py (DOA: passes --log_dir and --debug, which training_civ6 never registers) plus its 4 coupled edits: tests/unit/test_run_script.py, pyproject.toml:167, README.md:141, openspec/project.md:33",
-            "README quickstart with measured numbers (6-iteration run measured: iter 1 ~6 min via random-rollout SimpleMCTS, iters 2+ ~1 min; win rate vs random 10% then 5% - a short run does NOT beat random)",
-            "requirements.txt: bump torch>=1.13.0 to >=2.0.0 only - do NOT gut it, Dockerfile.base:41-44 installs from it",
-            "Scaffold the umbrella OpenSpec change (openspec-propose) for the shipped capability",
-            "Forward-looking CLAUDE.md 13 rewrite describing what actually shipped"
+            "python scripts/run_encoder_ab.py arena --num_games 150 --mcts-sims 25 --max-turns 30  (checkpoints already exist in checkpoints/encoder_ab/; ~20 s/game on 4 vCPU)",
+            "python scripts/run_encoder_ab.py report  -> writes docs/evidence/hexcrystal_ab/{ab_report,summary_table}.md; commit as an artifact-only commit",
+            "At 150 games the Wilson interval is ~+/-8 points, so expect 'does not distinguish'; use 800 games if a 5-point edge needs resolving",
+            "Re-run test_enhanced_training_tracking.py::test_training_runs_without_wandb and test_gumbel_mcts.py::test_performance_better_than_random on an idle machine to close out the two timeouts",
+            "Publication is a deliberate human step: HF_TOKEN=... python scripts/upload_encoder_to_hub.py --checkpoint checkpoints/encoder_ab/hex_crystalline.pt --repo-id <owner>/civ6-hexcrystal-encoder --publish  (dry run already verified end to end)",
+            "After merge, run the openspec-archive skill for hexcrystal-encoder-package as a separate PR"
         ]
     },
     "context_files": [
-        "alpha_zero/utils/device.py",
-        "alpha_zero/utils/checkpoint.py",
-        "alpha_zero/core/civ6_mcts.py",
-        "alpha_zero/human_interface/game_controller.py",
-        "alpha_zero/web/serializers.py",
-        "tests/unit/test_checkpoint_contract.py",
-        "CHANGELOG.md"
+        "openspec/changes/hexcrystal-encoder-package/design.md",
+        "kb/handoffs/20260809-devsqe-to-prepr-hexcrystal-encoder-package.md",
+        "alpha_zero/hexcrystal/Agent.md",
+        "scripts/run_encoder_ab.py",
+        "scripts/upload_encoder_to_hub.py",
+        "docs/model_cards/hexcrystal_encoder.md"
     ],
     "known_issues": [
         "Coverage gate not verifiable locally: numpy 2.4 + coverage C-tracer crash (CLAUDE.md:420). CI is the gate.",
-        "Encoder transfer gap: the Civ6 bridge builds at 84 channels (EncoderConfig) while all training produces 13, so no checkpoint this repo can produce will drive the bridge.",
-        "Fog action-mask leak at envs/microciv.py:843-848 (observation masked, mask recomputed from full state).",
-        "DeterminizedMCTS (multiplayer/determinization.py) is written and tested but has zero call sites.",
-        "orchestrator/orchestrator.py:1200 applies per-ply value alternation directly to training value targets.",
-        "Civ6MCTS keeps legacy per-ply alternation for num_players > 2 by design; NPlayerMCTS is correct there."
+        "mypy alpha_zero/ reports 101 errors in this sandbox (missing type stubs CI installs); unchanged by this work, and CI's blocking Lint & Type Check job is green.",
+        "test_training_runs_without_wandb and test_performance_better_than_random exceed pytest-timeout under CPU contention; both are slow, not broken (reproduced on the base commit).",
+        "alpha_zero.__all__ no longer lists RealCiv6Env/RewardConfig -- deliberate, both remain resolvable attributes; only `import *` is affected.",
+        "Encoder transfer gap (carried forward): the Civ6 bridge builds at 84 channels while all training produces 13, so no checkpoint this repo produces will drive the bridge."
     ]
 }
