@@ -378,7 +378,9 @@ When making changes, update the relevant sections below:
 | 2026-02-17 | N-player MCTS (Max-N, Paranoid, Best-Reply) | Multiplayer support for 2-8 players, per-player value vectors |
 | 2026-02-17 | Opponent modeling | Frequency-based prediction with exponential decay, Bayesian blending |
 | 2026-02-17 | Turn manager (Sequential/Simultaneous/Dynamic) | Civ6-style dynamic turn modes |
-| 2026-02-18 | Hex crystalline encoder | Hex-topology-aware spatial encoder, axial coordinates, ring-distance PE |
+| 2026-02-18 | Hex crystalline encoder | Hex-topology-aware spatial encoder: **even-q offset** 7-tap gather convolution (centre + 6 neighbours) → AdaptiveAvgPool token bottleneck → linear tokenization → optional crystalline lattice layer combining learned symmetry transforms across the *transform* axis. Corrected 2026-08-09: there are **no** axial coordinates, **no** ring-distance PE, and no spatial attention — position comes from the transformer's own `pos_embed`. |
+| 2026-08-09 | Hex encoder extracted to `alpha_zero/hexcrystal/` | Torch-only subpackage (no numpy/gymnasium) so the encoder is reusable outside this repo and publishable to the HF Hub. Re-export shims keep every `alpha_zero.core.*` path working; `state_dict` keys unchanged (`encoder.patch_embed.*`). |
+| 2026-08-09 | Root package uses PEP 562 lazy imports | `import alpha_zero` no longer pulls numpy/gymnasium (1,600 ms → 6.5 ms). `__all__` is now static and omits `RealCiv6Env`/`RewardConfig`, which remain resolvable attributes. |
 | 2026-02-21 | GumbelMCTS as default | `DEFAULT_MCTS_TYPE` changed from `civ6` to `gumbel` |
 | 2026-02-21 | Action mask in training pipeline | 5-tensor dataset: spatial, vector, mask, policy, value |
 | 2026-02-23 | Training worker fine-tuning fix | `--model_version` loads incumbent from GCS before training |
@@ -657,7 +659,7 @@ Civ6-AlphaZero/
 └── CLAUDE.md                    # This file
 ```
 
-> **Authoritative module list:** `alpha_zero/` has **27 submodules** as of v1.7.0.
+> **Authoritative module list:** `alpha_zero/` has **28 submodules** as of v1.8.0.
 > File counts above are recursive `*.py` counts (excluding `__pycache__`). The
 > single source of truth — one row per submodule with responsibility — lives in
 > [`docs/MODULE_REFERENCE.md`](docs/MODULE_REFERENCE.md); update it when adding/removing modules.

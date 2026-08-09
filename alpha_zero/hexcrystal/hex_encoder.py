@@ -10,9 +10,11 @@ output shape: (B, num_tokens, embed_dim).
 
 from __future__ import annotations
 
+import json
 import logging
 import math
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass, fields
 from typing import Any
 
 import torch.nn as nn
@@ -34,13 +36,20 @@ class HexEncoderConfig:
         spatial_size: Size of spatial grid (height and width).
         hex_hidden_dim: Hidden dimension for hexagonal convolution stack.
         hex_conv_layers: Number of hexagonal convolution layers.
-        lattice_type: Type of crystalline lattice ("hexagonal", "square", etc.).
+        lattice_type: Symmetry group for the crystalline layer — one of
+            ``"hexagonal"``, ``"cubic"``, ``"tetrahedral"``.
         num_output_tokens: Number of output tokens (must match PatchEmbed.num_patches).
         dropout: Dropout probability.
-        offset_type: Hex coordinate offset type ("even-q", "odd-q", etc.).
+        offset_type: Hex coordinate offset system. Only ``"even-q"`` is
+            implemented; any other value raises ``ValueError`` when the
+            adjacency table is built.
         activation: Activation function name.
         use_batch_norm: Whether to use batch normalization in hex convolutions.
         use_crystalline: Whether to use crystalline lattice layer.
+
+    Every field is a JSON primitive, so instances round-trip losslessly through
+    :meth:`to_dict` / :meth:`to_json`. That is what allows the encoder to publish
+    a flat ``config.json`` alongside safetensors weights.
     """
 
     in_channels: int = 13
@@ -55,6 +64,58 @@ class HexEncoderConfig:
     activation: str = "gelu"
     use_batch_norm: bool = True
     use_crystalline: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the configuration as a JSON-serializable dict.
+
+        Returns:
+            A new dict of primitive values, safe to pass to :func:`json.dumps`.
+        """
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> HexEncoderConfig:
+        """Build a configuration from a mapping, ignoring unknown keys.
+
+        Unknown keys are logged and dropped rather than raising, so a config
+        written by a newer version of this package still loads here.
+
+        Args:
+            data: Mapping of field names to values.
+
+        Returns:
+            A new :class:`HexEncoderConfig`.
+        """
+        known = {f.name for f in fields(cls)}
+        unknown = set(data) - known
+        if unknown:
+            logger.warning(
+                "Ignoring unknown HexEncoderConfig fields: %s", ", ".join(sorted(unknown))
+            )
+        return cls(**{k: v for k, v in data.items() if k in known})
+
+    def to_json(self, **dumps_kwargs: Any) -> str:
+        """Serialize the configuration to a JSON string.
+
+        Args:
+            **dumps_kwargs: Passed through to :func:`json.dumps`.
+
+        Returns:
+            The JSON representation.
+        """
+        return json.dumps(self.to_dict(), **dumps_kwargs)
+
+    @classmethod
+    def from_json(cls, payload: str) -> HexEncoderConfig:
+        """Build a configuration from a JSON string.
+
+        Args:
+            payload: JSON object produced by :meth:`to_json`.
+
+        Returns:
+            A new :class:`HexEncoderConfig`.
+        """
+        return cls.from_dict(json.loads(payload))
 
 
 class SpatialToTokens(nn.Module):
