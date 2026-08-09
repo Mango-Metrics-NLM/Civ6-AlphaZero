@@ -23,6 +23,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
 
+# PatchEmbed now lives in the dependency-light `hexcrystal` subpackage alongside
+# the encoder registry that constructs it. Re-exported here so that the
+# historical `from alpha_zero.core.transformer_network import PatchEmbed` path
+# keeps resolving to the same class.
+from alpha_zero.hexcrystal.patch_embed import PatchEmbed  # noqa: F401
+
 # Module-level logger
 logger = logging.getLogger(__name__)
 
@@ -731,50 +737,6 @@ class DropPath(nn.Module):
         return x.div(keep_prob) * random_tensor
 
 
-class PatchEmbed(nn.Module):
-    """Patch embedding for Vision Transformer style input processing."""
-
-    def __init__(
-        self,
-        in_channels: int,
-        embed_dim: int,
-        patch_size: int,
-        spatial_size: int,
-    ) -> None:
-        """Initialize patch embedding.
-
-        Args:
-            in_channels: Number of input channels.
-            embed_dim: Embedding dimension.
-            patch_size: Size of each patch.
-            spatial_size: Size of spatial input.
-        """
-        super().__init__()
-        self.patch_size = patch_size
-        self.num_patches = (spatial_size // patch_size) ** 2
-        self.proj = nn.Conv2d(
-            in_channels,
-            embed_dim,
-            kernel_size=patch_size,
-            stride=patch_size,
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Convert spatial input to patch embeddings.
-
-        Args:
-            x: Input tensor (B, C, H, W).
-
-        Returns:
-            Patch embeddings (B, num_patches, embed_dim).
-        """
-        # (B, C, H, W) -> (B, embed_dim, H/P, W/P)
-        x = self.proj(x)
-        # Flatten spatial dimensions
-        x = x.flatten(2).transpose(1, 2)  # (B, num_patches, embed_dim)
-        return x
-
-
 class VectorProjection(nn.Module):
     """Project vector features to token format."""
 
@@ -821,7 +783,7 @@ class TransformerEncoder(nn.Module):
         self.config = config
 
         # Spatial encoder (patch_embed attribute name preserved for state_dict compat)
-        from alpha_zero.core.encoder_registry import create_spatial_encoder
+        from alpha_zero.hexcrystal.encoder_registry import create_spatial_encoder
 
         self.patch_embed = create_spatial_encoder(
             encoder_type=config.encoder_type,

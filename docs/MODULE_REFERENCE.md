@@ -4,8 +4,8 @@
 referenced by `README.md` and `CLAUDE.md` SECTION 7. Update it whenever a submodule is added
 or removed.
 
-- **As of:** v1.8.0, 2026-07-25
-- **Submodule count:** 27
+- **As of:** v1.8.0, 2026-08-09
+- **Submodule count:** 28
 - **Counting method:** recursive `*.py` files, excluding `__pycache__`
   (`find alpha_zero/<mod> -name '*.py' -not -path '*__pycache__*' | wc -l`).
 
@@ -17,6 +17,7 @@ or removed.
 | `hierarchical` | 19 | Hierarchical goal planning: decomposition, controllers, encoders |
 | `multiplayer` | 18 | N-player MCTS (Max-N/Paranoid/Best-Reply), turn manager, opponent modeling, scoring |
 | `evaluation` | 12 | MCTS evaluation + `llm_harness/` callable target for the LLM eval gate |
+| `hexcrystal` | 6 | Hex-topology spatial encoders + encoder registry — torch-only, standalone-reusable |
 | `envs` | 12 | MicroCiv environment, vectorized env, state→tensor encoders |
 | `mechanics` | 12 | Game mechanics: diplomacy, trade, espionage, religion, government, climate, eras |
 | `training` | 11 | MuZero trainer/integration, training safeguards, diagnostics, convergence monitor |
