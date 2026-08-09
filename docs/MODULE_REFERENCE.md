@@ -17,7 +17,7 @@ or removed.
 | `hierarchical` | 19 | Hierarchical goal planning: decomposition, controllers, encoders |
 | `multiplayer` | 18 | N-player MCTS (Max-N/Paranoid/Best-Reply), turn manager, opponent modeling, scoring |
 | `evaluation` | 12 | MCTS evaluation + `llm_harness/` callable target for the LLM eval gate |
-| `hexcrystal` | 6 | Hex-topology spatial encoders + encoder registry — torch-only, standalone-reusable |
+| `hexcrystal` | 7 | Hex-topology spatial encoders + encoder registry — torch-only, standalone-reusable; optional Hub mixin (`hub` extra) |
 | `envs` | 12 | MicroCiv environment, vectorized env, state→tensor encoders |
 | `mechanics` | 12 | Game mechanics: diplomacy, trade, espionage, religion, government, climate, eras |
 | `training` | 11 | MuZero trainer/integration, training safeguards, diagnostics, convergence monitor |
