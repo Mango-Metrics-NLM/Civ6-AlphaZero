@@ -1046,8 +1046,7 @@ def main() -> None:
         "--project",
         type=str,
         default=DEFAULT_WANDB_PROJECT,
-        help="W&B project path (default: $CIV6AZ_WANDB_PROJECT, else "
-        f"{DEFAULT_WANDB_PROJECT})",
+        help=f"W&B project path (default: $CIV6AZ_WANDB_PROJECT, else {DEFAULT_WANDB_PROJECT})",
     )
 
     # Log-file mode
