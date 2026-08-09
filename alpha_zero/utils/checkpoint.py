@@ -400,11 +400,85 @@ def compute_weight_checksum(network: torch.nn.Module) -> float:
 # Module exports
 # =============================================================================
 
+
+class EncoderMismatchError(RuntimeError):
+    """Raised when a model's weights do not match the expected spatial encoder."""
+
+
+#: Substrings that appear in ``state_dict`` keys only for the hex encoder.
+_HEX_ENCODER_KEY_MARKERS = ("hex_conv", "crystalline", "spatial_to_tokens")
+
+
+def validate_encoder_state(
+    model: torch.nn.Module,
+    expected_encoder_type: str,
+    *,
+    strict: bool = True,
+) -> bool:
+    """Check that a model's weights belong to the expected spatial encoder.
+
+    Networks load their weights with ``strict=False`` in several places, which
+    means a checkpoint trained with one encoder loaded into a network built for
+    the other produces *warnings* rather than an error, leaving a partially
+    randomly-initialised model that silently evaluates as a weak player. That
+    failure is invisible in aggregate metrics, so it has to be caught at load
+    time.
+
+    Detection is structural: the hex encoder contributes convolution and
+    lattice weights whose key names have no counterpart in patch embedding.
+
+    Args:
+        model: The model to inspect, after weights have been loaded.
+        expected_encoder_type: Either ``"patch_embed"`` or ``"hex_crystalline"``.
+        strict: If True, raise on mismatch. If False, log an error and return
+            False so a caller can decide.
+
+    Returns:
+        True when the weights match the expected encoder.
+
+    Raises:
+        ValueError: If *expected_encoder_type* is not a known encoder.
+        EncoderMismatchError: If ``strict`` and the weights do not match.
+    """
+    known = {"patch_embed", "hex_crystalline"}
+    if expected_encoder_type not in known:
+        raise ValueError(
+            f"Unknown encoder type {expected_encoder_type!r}; expected one of {sorted(known)}"
+        )
+
+    keys = list(model.state_dict())
+    hex_keys = [k for k in keys if any(marker in k for marker in _HEX_ENCODER_KEY_MARKERS)]
+    found_encoder_type = "hex_crystalline" if hex_keys else "patch_embed"
+
+    if found_encoder_type == expected_encoder_type:
+        logger.debug(
+            "Encoder validation passed: %s (%d encoder-specific keys)",
+            expected_encoder_type,
+            len(hex_keys),
+        )
+        return True
+
+    message = (
+        f"Encoder mismatch: expected {expected_encoder_type!r} but the loaded weights "
+        f"look like {found_encoder_type!r}. "
+        f"Found {len(hex_keys)} hex-specific keys among {len(keys)} total. "
+        "Loading a checkpoint into the wrong architecture leaves parameters "
+        "randomly initialised without raising, so this is treated as fatal."
+    )
+    if strict:
+        raise EncoderMismatchError(message)
+
+    logger.error(message)
+    return False
+
+
 __all__ = [
     "CheckpointLoadResult",
+    "EncoderMismatchError",
     "compute_weight_checksum",
     "load_model_state",
     "load_network",
     "safe_load_checkpoint",
     "save_checkpoint",
+    "validate_encoder_state",
 ]

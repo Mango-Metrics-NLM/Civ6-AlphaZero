@@ -444,6 +444,7 @@ def run_selfplay(
     device: str = "cpu",
     temperature_schedule: str = "threshold",
     gameplay_preset: str = "default",
+    seed: int | None = None,
 ) -> list[dict]:
     """Run self-play games and collect trajectories.
 
@@ -459,6 +460,15 @@ def run_selfplay(
             (c_puct, dirichlet_alpha, dirichlet_epsilon, temperature, temperature_threshold).
         dry_run: If True, create dummy trajectories without running games.
         device: Device for neural network inference (e.g., "cuda" or "cpu").
+        seed: Base seed for environment generation. Each game ``i`` is seeded
+            with ``seed + i``, so a run is reproducible while games still
+            differ from one another. ``None`` (the default) leaves environments
+            unseeded, preserving historical behavior.
+
+            Note that seeding the global RNGs is not sufficient on its own:
+            ``MicroCivEnv`` holds its own ``numpy`` generator, so without this
+            argument the game stream varies between runs even under a fixed
+            global seed.
 
     Returns:
         List of trajectory dictionaries, each containing:
@@ -519,6 +529,7 @@ def run_selfplay(
             board_size=board_size,
             max_turns=max_turns,
             gameplay_preset=gameplay_preset,
+            seed=None if seed is None else seed + game_idx,
         )
 
         # Build variant-aware MCTS kwargs to avoid passing invalid params

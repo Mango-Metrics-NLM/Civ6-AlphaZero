@@ -26,16 +26,28 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import logging
+import os
 import re
 import sys
 from pathlib import Path
 
-import matplotlib
+# Optional plotting support. matplotlib ships with the `monitoring` extra, not
+# with `dev`, so the import must be guarded: without this, merely importing this
+# module (as the unit tests do) fails in a default CI environment. When it is
+# absent the script still produces its tables and JSON — only the figures are
+# skipped, which `--no_plots` also does deliberately.
+try:
+    import matplotlib
 
-matplotlib.use("Agg")  # Headless backend
-import matplotlib.pyplot as plt
+    matplotlib.use("Agg")  # Headless backend
+    import matplotlib.pyplot as plt
 
-# Optional W&B support
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:  # pragma: no cover - depends on the installed extras
+    MATPLOTLIB_AVAILABLE = False
+    plt = None
+
+# Optional W&B support (deprecated; retained to read historical runs)
 try:
     import wandb
 
@@ -43,6 +55,32 @@ try:
 except ImportError:
     WANDB_AVAILABLE = False
     wandb = None
+
+# Optional MLflow support. Imported lazily inside the fetch functions as well,
+# so this module stays importable — and unit-testable with a mocked client —
+# without the `monitoring` extra installed.
+try:
+    import mlflow  # noqa: F401
+
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    MLFLOW_AVAILABLE = False
+
+#: Default W&B project. Overridable so the entity is not baked into the source.
+DEFAULT_WANDB_PROJECT = os.environ.get("CIV6AZ_WANDB_PROJECT", "ianshank-none/civ6-alphazero")
+
+#: Default promotion threshold drawn on win-rate plots.
+DEFAULT_PROMOTION_THRESHOLD = float(os.environ.get("CIV6AZ_PROMOTION_THRESHOLD", "0.55"))
+
+#: MLflow metric keys, in preference order, for each series we chart.
+MLFLOW_METRIC_KEYS: dict[str, tuple[str, ...]] = {
+    "policy_loss": ("iter/avg_policy_loss", "train/policy_loss"),
+    "value_loss": ("iter/avg_value_loss", "train/value_loss"),
+    "total_loss": ("iter/avg_loss", "train/loss", "train/total_loss"),
+    "eval_win_rate": ("orchestrator/eval_win_rate", "eval/win_rate"),
+    "cumulative_cost": ("orchestrator/cumulative_cost",),
+    "iteration_duration_min": ("orchestrator/iteration_duration_min", "iter/elapsed_minutes"),
+}
 
 
 @dataclasses.dataclass
@@ -94,7 +132,98 @@ def setup_logging() -> None:
     )
 
 
-def fetch_wandb_metrics(run_id: str, project: str = "ianshank-none/civ6-alphazero") -> RunMetrics:
+def fetch_mlflow_metrics(
+    run_id: str,
+    tracking_uri: str | None = None,
+    client: object | None = None,
+) -> RunMetrics:
+    """Fetch metrics for one run from MLflow.
+
+    MLflow has been this project's only experiment tracker since v1.7.0, but
+    this comparator could previously read only deprecated W&B runs or
+    regex-parsed log files — the module docstring has requested this port since
+    then. Metric keys are resolved through :data:`MLFLOW_METRIC_KEYS`, taking the
+    first key present on the run, because orchestrator runs and local training
+    runs publish the same series under different names.
+
+    Args:
+        run_id: MLflow run identifier.
+        tracking_uri: Tracking URI. Defaults to ``MLFLOW_TRACKING_URI`` or the
+            local ``mlruns`` store.
+        client: Optional pre-built client, primarily for testing.
+
+    Returns:
+        Populated :class:`RunMetrics`.
+
+    Raises:
+        ImportError: If MLflow is unavailable and no client was supplied.
+    """
+    if client is None:
+        try:
+            from mlflow.tracking import MlflowClient
+        except ImportError as exc:  # pragma: no cover - depends on extras
+            raise ImportError(
+                "Reading MLflow runs requires the 'monitoring' extra. "
+                "Install it with:  pip install -e '.[monitoring]'"
+            ) from exc
+        client = MlflowClient(tracking_uri=tracking_uri or os.environ.get("MLFLOW_TRACKING_URI"))
+
+    def _history(keys: tuple[str, ...]) -> list[float]:
+        for key in keys:
+            try:
+                points = client.get_metric_history(run_id, key)  # type: ignore[attr-defined]
+            except Exception as exc:
+                logging.debug("MLflow metric %s unavailable for %s: %s", key, run_id, exc)
+                continue
+            if points:
+                logging.debug("Using MLflow metric %s (%d points)", key, len(points))
+                return [p.value for p in sorted(points, key=lambda p: p.step)]
+        return []
+
+    series = {attribute: _history(keys) for attribute, keys in MLFLOW_METRIC_KEYS.items()}
+    longest = max((len(v) for v in series.values()), default=0)
+
+    metrics = RunMetrics(
+        iterations=list(range(longest)),
+        policy_loss=series["policy_loss"],
+        value_loss=series["value_loss"],
+        total_loss=series["total_loss"],
+        eval_win_rate=series["eval_win_rate"],
+        cumulative_cost=series["cumulative_cost"],
+        iteration_duration_min=series["iteration_duration_min"],
+        model_versions=[],
+    )
+    metrics.total_iterations = longest
+    metrics.final_policy_loss = series["policy_loss"][-1] if series["policy_loss"] else 0.0
+    metrics.final_value_loss = series["value_loss"][-1] if series["value_loss"] else 0.0
+    metrics.best_eval_win_rate = max(series["eval_win_rate"], default=0.0)
+    metrics.total_cost = series["cumulative_cost"][-1] if series["cumulative_cost"] else 0.0
+    metrics.total_duration_min = sum(series["iteration_duration_min"])
+
+    try:
+        run = client.get_run(run_id)  # type: ignore[attr-defined]
+    except Exception as exc:
+        logging.warning("Could not read MLflow run metadata for %s: %s", run_id, exc)
+        return metrics
+
+    params = dict(getattr(run.data, "params", {}) or {})
+    metrics.encoder_type = params.get("encoder_type", "Unknown")
+    if "param_count" in params:
+        try:
+            metrics.param_count = int(params["param_count"])
+        except (TypeError, ValueError):
+            logging.debug("Ignoring non-numeric param_count for %s", run_id)
+
+    run_metrics = dict(getattr(run.data, "metrics", {}) or {})
+    metrics.tournament_elos = {
+        key.split("elo_", 1)[1]: value
+        for key, value in run_metrics.items()
+        if "elo_" in key and isinstance(value, (int, float))
+    }
+    return metrics
+
+
+def fetch_wandb_metrics(run_id: str, project: str = DEFAULT_WANDB_PROJECT) -> RunMetrics:
     """Fetch metrics from W&B API.
 
     Args:
@@ -416,7 +545,13 @@ def plot_win_rates(summary: RunSummary, output_path: Path, labels: tuple[str, st
     )
 
     # Add promotion threshold line
-    ax.axhline(y=0.55, color="r", linestyle="--", alpha=0.5, label="Promotion Threshold (55%)")
+    ax.axhline(
+        y=DEFAULT_PROMOTION_THRESHOLD,
+        color="r",
+        linestyle="--",
+        alpha=0.5,
+        label=f"Promotion Threshold ({DEFAULT_PROMOTION_THRESHOLD:.0%})",
+    )
 
     ax.set_xlabel("Iteration")
     ax.set_ylabel("Win Rate")
@@ -884,11 +1019,35 @@ def main() -> None:
         type=str,
         help="W&B run ID for run B (e.g., 'sunny-fog-469')",
     )
+    # MLflow mode (preferred: the project's only active tracker)
+    parser.add_argument(
+        "--mlflow_run_a",
+        type=str,
+        help="MLflow run ID for run A (preferred over the deprecated W&B mode)",
+    )
+    parser.add_argument(
+        "--mlflow_run_b",
+        type=str,
+        help="MLflow run ID for run B",
+    )
+    parser.add_argument(
+        "--mlflow_tracking_uri",
+        type=str,
+        default=None,
+        help="MLflow tracking URI (default: $MLFLOW_TRACKING_URI, else the local mlruns store)",
+    )
+    parser.add_argument(
+        "--no_plots",
+        action="store_true",
+        help="Skip figures and emit only the tables and report (also implied when "
+        "matplotlib is unavailable)",
+    )
     parser.add_argument(
         "--project",
         type=str,
-        default="ianshank-none/civ6-alphazero",
-        help="W&B project path (default: hrmtrain/civ6-alphazero)",
+        default=DEFAULT_WANDB_PROJECT,
+        help="W&B project path (default: $CIV6AZ_WANDB_PROJECT, else "
+        f"{DEFAULT_WANDB_PROJECT})",
     )
 
     # Log-file mode
@@ -920,13 +1079,16 @@ def main() -> None:
     setup_logging()
     logger = logging.getLogger(__name__)
 
-    # Determine mode
-    use_wandb = args.run_a and args.run_b
-    use_logs = args.log_a and args.log_b
+    # Determine mode. MLflow is preferred: it is the project's only active
+    # tracker, and the W&B path reads historical runs only.
+    use_mlflow = bool(getattr(args, "mlflow_run_a", None) and getattr(args, "mlflow_run_b", None))
+    use_wandb = bool(args.run_a and args.run_b) and not use_mlflow
+    use_logs = bool(args.log_a and args.log_b) and not use_mlflow and not use_wandb
 
-    if not use_wandb and not use_logs:
+    if not use_mlflow and not use_wandb and not use_logs:
         parser.error(
-            "Must provide either (--run_a, --run_b) for W&B mode or "
+            "Must provide one of: (--mlflow_run_a, --mlflow_run_b) for MLflow mode, "
+            "(--run_a, --run_b) for the deprecated W&B mode, or "
             "(--log_a, --log_b) for log-file mode"
         )
 
@@ -939,8 +1101,14 @@ def main() -> None:
 
     # Fetch metrics
     try:
-        if use_wandb:
-            logger.info("Using W&B mode")
+        if use_mlflow:
+            logger.info("Using MLflow mode")
+            metrics_a = fetch_mlflow_metrics(args.mlflow_run_a, args.mlflow_tracking_uri)
+            metrics_b = fetch_mlflow_metrics(args.mlflow_run_b, args.mlflow_tracking_uri)
+            run_a_name = args.mlflow_run_a
+            run_b_name = args.mlflow_run_b
+        elif use_wandb:
+            logger.info("Using W&B mode (deprecated; reads historical runs only)")
             metrics_a = fetch_wandb_metrics(args.run_a, args.project)
             metrics_b = fetch_wandb_metrics(args.run_b, args.project)
             run_a_name = args.run_a
@@ -975,13 +1143,24 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Output directory: {args.output_dir}")
 
-    # Generate outputs
+    # Generate outputs. Figures are optional; the tables are the deliverable.
+    plots_enabled = MATPLOTLIB_AVAILABLE and not args.no_plots
+    if not plots_enabled:
+        reason = "--no_plots was given" if args.no_plots else "matplotlib is not installed"
+        logging.warning(
+            "Skipping figures (%s); writing tables and report only. "
+            "Install plotting support with:  pip install -e '.[monitoring]'",
+            reason,
+        )
+
+    has_elo = False
     try:
-        plot_loss_curves(summary, args.output_dir / "loss_curves.png", labels)
-        plot_win_rates(summary, args.output_dir / "win_rates.png", labels)
-        plot_cost_comparison(summary, args.output_dir / "cost_comparison.png", labels)
-        plot_iteration_duration(summary, args.output_dir / "iteration_duration.png", labels)
-        has_elo = plot_elo_comparison(summary, args.output_dir / "elo_comparison.png", labels)
+        if plots_enabled:
+            plot_loss_curves(summary, args.output_dir / "loss_curves.png", labels)
+            plot_win_rates(summary, args.output_dir / "win_rates.png", labels)
+            plot_cost_comparison(summary, args.output_dir / "cost_comparison.png", labels)
+            plot_iteration_duration(summary, args.output_dir / "iteration_duration.png", labels)
+            has_elo = plot_elo_comparison(summary, args.output_dir / "elo_comparison.png", labels)
         generate_summary_table(summary, args.output_dir / "summary_table.md", labels)
         generate_report(summary, args.output_dir / "report.md", labels)
     except Exception as e:
