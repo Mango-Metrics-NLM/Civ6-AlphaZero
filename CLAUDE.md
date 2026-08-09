@@ -295,6 +295,12 @@ When making changes, update the relevant sections below:
 | `pip install -e '.[tuning]'` | Install Optuna for hyperparameter sweeps |
 | `python run_sweep.py --dry-run` | Validate sweep config (configs/sweep_muzero.yaml) |
 | `python run_sweep.py --n-trials 20` | Run Optuna sweep (MLflow-logged; CIV6AZ_SWEEP_* env overrides) |
+| `pip install -e '.[hub]'` | Install Hugging Face Hub support for the encoder |
+| `python scripts/run_encoder_ab.py train` | Train both encoder arms locally (device auto-detected, seeded) |
+| `python scripts/run_encoder_ab.py arena --num_games 800` | Head-to-head arena; writes counts + Wilson 95% CI |
+| `python scripts/run_encoder_ab.py report` | Render committable A/B evidence to `docs/evidence/hexcrystal_ab/` |
+| `python scripts/compare_training_runs.py --mlflow_run_a A --mlflow_run_b B` | Compare two MLflow runs (add `--no_plots` without matplotlib) |
+| `python scripts/upload_encoder_to_hub.py --checkpoint P --repo-id R` | Stage the encoder for the Hub (dry run; `--publish` uploads) |
 
 #### Cloud Deployment Commands
 

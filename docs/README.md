@@ -23,6 +23,7 @@ kept for context, not actively updated; archived material lives in
 | [`MODULE_REFERENCE.md`](MODULE_REFERENCE.md) | Authoritative `alpha_zero/` module inventory | Reference |
 | [`architecture/C4_ARCHITECTURE.md`](architecture/C4_ARCHITECTURE.md) | C4 architecture model | Reference |
 | [`NAMING_CONVENTIONS.md`](NAMING_CONVENTIONS.md) | Env vars, image tags, GCS paths | Reference |
+| [`model_cards/hexcrystal_encoder.md`](model_cards/hexcrystal_encoder.md) | Model card for the published hex-crystalline encoder | Reference |
 
 ## Guides & operations
 

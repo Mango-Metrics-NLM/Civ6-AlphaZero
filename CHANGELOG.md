@@ -24,6 +24,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   loads. Every field is a JSON primitive, which is what lets the encoder publish a
   flat `config.json` next to safetensors weights.
 
+### Added — Reproducible local encoder A/B and Hub publication (2026-08-09)
+
+- **`scripts/run_encoder_ab.py`** — trains both encoder arms from identical code,
+  seed, and budget, plays them head to head, and writes committable evidence to
+  `docs/evidence/hexcrystal_ab/`. It composes the existing cloud workers
+  (`create_model` already accepts `encoder_type`; `run_selfplay` needs no cloud
+  storage or credentials; `run_arena` accepts two independently-configured
+  models) rather than adding another training path.
+- **Self-play is now seedable.** `run_selfplay` gained an optional `seed` that
+  threads into environment construction. Seeding the global RNGs was never
+  sufficient — `MicroCivEnv` holds its own generator — so game streams varied
+  between runs under a fixed seed. The default (`None`) preserves the previous
+  behavior, and a test asserts the unseeded case still varies so the rationale
+  cannot silently rot.
+- **`validate_encoder_state`** (`alpha_zero/utils/checkpoint.py`) — several load
+  paths use `strict=False`, so a checkpoint loaded into the wrong architecture
+  leaves the encoder randomly initialised and still plays, which is invisible in
+  aggregate metrics and fatal precisely during an encoder comparison. Validation
+  is structural and names both the expected and found encoder.
+- **Evidence carries a Wilson 95% interval**, and the report prints an explicit
+  warning whenever that interval spans 0.5. A consistency gate refuses to render
+  a report whose counts, rate, interval, and significance flag disagree.
+- **`scripts/upload_encoder_to_hub.py`** — stages the encoder for the Hub as
+  safetensors plus a flat `config.json`, dry-run by default. Publishing requires
+  an explicit `--publish` and a `HF_TOKEN`; pickled weights and non-hex
+  checkpoints are refused. `docs/model_cards/hexcrystal_encoder.md` documents the
+  architecture as implemented and states the evaluation's limits.
+- **`--encoder_type`** added to `scripts/local_training_run.py` and recorded in
+  its logged parameters.
+
+### Changed — Training-run comparator reads MLflow (2026-08-09)
+
+- `scripts/compare_training_runs.py` gained an MLflow source with per-key
+  fallback, which its own docstring had requested since v1.5.0: MLflow has been
+  the only tracker since v1.7.0, yet the script could read only deprecated W&B
+  runs or regex-parsed logs.
+- Its `matplotlib` import is now guarded, with `--no_plots` degradation.
+  matplotlib was imported at module scope while being declared in no dependency
+  list, so the script could not run in a default environment; it is now declared
+  in the `monitoring` extra.
+- The hardcoded promotion threshold and W&B project default are parameterised
+  (`CIV6AZ_PROMOTION_THRESHOLD`, `CIV6AZ_WANDB_PROJECT`). W&B and log-file modes
+  are unchanged.
+
 ### Changed — Root package resolves its exports lazily (2026-08-09)
 
 - `alpha_zero/__init__.py` uses PEP 562 `__getattr__` instead of eager imports.
