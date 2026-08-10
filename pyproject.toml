@@ -33,6 +33,11 @@ dev = [
     # Test-only dependencies (previously missing; caused 8 test files to fail collection)
     "chess>=1.10.0",
     "hypothesis>=6.0.0",
+    # Mirrors the `hub` extra. Kept in `dev` so CI actually exercises and measures
+    # the Hugging Face round-trip; without it the test importorskips away and
+    # alpha_zero/hexcrystal/hub_mixin.py reports as uncovered.
+    "huggingface_hub>=0.26,<1.0",
+    "safetensors>=0.4",
 ]
 gcp = [
     "google-cloud-aiplatform>=1.40.0",
@@ -75,6 +80,20 @@ jax = [
 chess = [
     "chess>=1.11.0",
 ]
+# Hugging Face Hub integration. Opt-in; the hexcrystal encoder and other models
+# use PyTorchModelHubMixin for save_pretrained / from_pretrained support.
+hub = [
+    "huggingface_hub>=0.26,<1.0",
+    "safetensors>=0.4",
+]
+# Dataset export to Hugging Face Hub.
+datasets = [
+    "datasets>=2.18.0",
+]
+# Gradio Spaces for interactive demos.
+spaces = [
+    "gradio>=4.20.0",
+]
 all = [
     "alpha_zero[dev]",
     "alpha_zero[gcp]",
@@ -85,6 +104,8 @@ all = [
     "alpha_zero[jax]",
     "alpha_zero[chess]",
     "alpha_zero[monitoring]",
+    "alpha_zero[hub]",
+    "alpha_zero[datasets]",
 ]
 
 
@@ -134,6 +155,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "ANN", "N803", "S108", "S603", "S607", "S310", "N806", "N812", "RUF012", "S110", "S104", "B017", "RUF003"]
 "**/tests/*" = ["S101", "ANN", "N803", "S108", "S603", "S607", "S310", "N806", "N812", "RUF012", "S110", "S104", "B017", "RUF003"]
+"tests/unit/test_hexcrystal_hub_mixin.py" = ["E402"]  # pytest.importorskip guards precede imports
 "scripts/*" = ["ANN", "S603", "S607", "S310", "S105", "E741"]  # Scripts use subprocess, URL calls, and short var names
 "alpha_zero/cloud/gcp/container_validator.py" = ["S603"]  # Internal subprocess call with validated input
 "alpha_zero/cloud/preemption.py" = ["S310"]  # GCE metadata URL is intentional
@@ -214,6 +236,15 @@ module = ["jax.*", "jaxlib.*", "equinox.*", "optax.*", "jaxtyping.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = ["huggingface_hub.*", "safetensors.*", "datasets.*", "gradio.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "alpha_zero.hub.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
 
@@ -247,6 +278,7 @@ markers = [
     "smoke: marks smoke tests for quick validation (select with '-m smoke')",
     "requires_spacetimedb: marks tests requiring running SpacetimeDB instance",
     "requires_jax: marks tests requiring JAX installation (install with pip install -e '.[jax]')",
+    "requires_hub: marks tests requiring Hugging Face Hub (install with pip install -e '.[hub]')",
 ]
 
 [tool.coverage.run]

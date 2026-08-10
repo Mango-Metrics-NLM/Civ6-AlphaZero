@@ -121,6 +121,18 @@ test-all:
 test-storage:
 	pytest tests/unit/test_storage_backend.py tests/unit/test_replay_buffer.py -v
 
+.PHONY: test-hub
+test-hub:
+	pytest tests/unit/test_hub_*.py tests/unit/test_transformer_hub_mixin.py tests/unit/test_muzero_hub_mixin.py tests/integration/test_hub_publish_pipeline.py -v
+
+.PHONY: upload-hub
+upload-hub:
+	$(PYTHON) scripts/upload_to_hub.py --model-type $(MODEL_TYPE) $(UPLOAD_ARGS)
+
+.PHONY: export-datasets
+export-datasets:
+	$(PYTHON) scripts/export_dataset.py --type $(DATASET_TYPE) --source-path $(SOURCE_PATH) $(EXPORT_ARGS)
+
 # ============================================================================
 # Docker Build
 # ============================================================================
