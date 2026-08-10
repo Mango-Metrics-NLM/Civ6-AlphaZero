@@ -26,6 +26,9 @@ _TOP_LEVEL_PACKAGE = "alpha_zero"
 _OPTIONAL_MODULES: frozenset[str] = frozenset(
     {
         "alpha_zero.envs.real_civ6_env",
+        # Requires the `hub` extra (mirrored into `dev`, so normally importable
+        # in CI); raises a clean ImportError naming the extra when absent.
+        "alpha_zero.hexcrystal.hub_mixin",
         "alpha_zero.bridge.civ6_bridge",
         "alpha_zero.bridge.lua_ipc",
         "alpha_zero.rag.embeddings.openai_embeddings",

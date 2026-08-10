@@ -7,6 +7,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Hex-crystalline encoder is a standalone, publishable subpackage (2026-08-09)
+
+- **`alpha_zero/hexcrystal/`** — the hex encoder, crystalline lattice layer, patch
+  embedding, and encoder registry now live in a subpackage whose only third-party
+  dependency is torch. It was always torch-only *by source*, but importing it ran
+  the root package's eager chain into numpy and gymnasium, so it could not be
+  reused outside this repository. `tests/unit/test_hexcrystal_isolation.py` pins
+  the contract by importing the package in a subprocess with both blocked.
+- **Backwards compatibility is total for existing callers.** Re-export shims
+  remain at all five historical import paths and resolve to the same objects;
+  checkpoint keys are unchanged (`encoder.patch_embed.*` for both encoder types),
+  verified against a key-set snapshot captured before the move.
+- **`HexEncoderConfig` gained `to_dict`/`from_dict`/`to_json`/`from_json`.**
+  Unknown fields are logged and dropped so a config from a newer version still
+  loads. Every field is a JSON primitive, which is what lets the encoder publish a
+  flat `config.json` next to safetensors weights.
+
+### Added — Reproducible local encoder A/B and Hub publication (2026-08-09)
+
+- **`scripts/run_encoder_ab.py`** — trains both encoder arms from identical code,
+  seed, and budget, plays them head to head, and writes committable evidence to
+  `docs/evidence/hexcrystal_ab/`. It composes the existing cloud workers
+  (`create_model` already accepts `encoder_type`; `run_selfplay` needs no cloud
+  storage or credentials; `run_arena` accepts two independently-configured
+  models) rather than adding another training path.
+- **Self-play is now seedable.** `run_selfplay` gained an optional `seed` that
+  threads into environment construction. Seeding the global RNGs was never
+  sufficient — `MicroCivEnv` holds its own generator — so game streams varied
+  between runs under a fixed seed. The default (`None`) preserves the previous
+  behavior, and a test asserts the unseeded case still varies so the rationale
+  cannot silently rot.
+- **`validate_encoder_state`** (`alpha_zero/utils/checkpoint.py`) — several load
+  paths use `strict=False`, so a checkpoint loaded into the wrong architecture
+  leaves the encoder randomly initialised and still plays, which is invisible in
+  aggregate metrics and fatal precisely during an encoder comparison. Validation
+  is structural and names both the expected and found encoder.
+- **Evidence carries a Wilson 95% interval**, and the report prints an explicit
+  warning whenever that interval spans 0.5. A consistency gate refuses to render
+  a report whose counts, rate, interval, and significance flag disagree.
+- **`scripts/upload_encoder_to_hub.py`** — stages the encoder for the Hub as
+  safetensors plus a flat `config.json`, dry-run by default. Publishing requires
+  an explicit `--publish` and a `HF_TOKEN`; pickled weights and non-hex
+  checkpoints are refused. `docs/model_cards/hexcrystal_encoder.md` documents the
+  architecture as implemented and states the evaluation's limits.
+- **`--encoder_type`** added to `scripts/local_training_run.py` and recorded in
+  its logged parameters.
+
+### Changed — Training-run comparator reads MLflow (2026-08-09)
+
+- `scripts/compare_training_runs.py` gained an MLflow source with per-key
+  fallback, which its own docstring had requested since v1.5.0: MLflow has been
+  the only tracker since v1.7.0, yet the script could read only deprecated W&B
+  runs or regex-parsed logs.
+- Its `matplotlib` import is now guarded, with `--no_plots` degradation.
+  matplotlib was imported at module scope while being declared in no dependency
+  list, so the script could not run in a default environment; it is now declared
+  in the `monitoring` extra.
+- The hardcoded promotion threshold and W&B project default are parameterised
+  (`CIV6AZ_PROMOTION_THRESHOLD`, `CIV6AZ_WANDB_PROJECT`). W&B and log-file modes
+  are unchanged.
+
+### Changed — Root package resolves its exports lazily (2026-08-09)
+
+- `alpha_zero/__init__.py` uses PEP 562 `__getattr__` instead of eager imports.
+  Measured: `import alpha_zero` 1,600 ms → 6.5 ms. `from alpha_zero import X` is
+  unaffected.
+- **One deliberate surface change:** `__all__` is now static and no longer lists
+  `RealCiv6Env`/`RewardConfig`. Both remain resolvable attributes; only
+  `from alpha_zero import *` stops pulling them in. Deciding their availability
+  eagerly would have required performing the very import being deferred.
+
+### Fixed — Hex encoder architecture documentation (2026-08-09)
+
+The living documentation described an encoder that was never implemented.
+Corrected in `CLAUDE.md` §5.2 and the affected docstrings; the historical v0.14.1
+changelog entry below is left as-is as a record of what was claimed at the time.
+
+- **Claimed** axial coordinates; **implemented** even-q offset only —
+  `HexAdjacency` raises `ValueError` for any other system. The
+  `HexEncoderConfig.offset_type` docstring advertised an `"odd-q"` value that
+  fails at runtime.
+- **Claimed** ring-distance positional encoding; **implemented** none at all —
+  position reaches the model solely through the transformer's learned `pos_embed`.
+- **Claimed** multi-scale convolutions and a configurable ring radius;
+  **implemented** a flat same-resolution stack with a fixed 7-tap kernel. The
+  registry docstring advertised a `num_scales` kwarg that was silently discarded.
+- **Claimed** classes `HexConv2d`, `CrystallineAttention`, `EncoderRegistry`;
+  **implemented** `HexConvolution`, `CrystallineLatticeLayer`, and a module-level
+  registry dict. The crystalline layer combines transforms across the *transform*
+  axis, not spatially — there is no hex-neighbour attention masking.
+- Newly documented: the `AdaptiveAvgPool2d` token bottleneck discards fine
+  spatial structure. This is the encoder's most consequential undocumented
+  property and is now stated in the module docstring and `Agent.md`.
+
 ### Fixed — Train → evaluate → play loop (2026-07-26)
 
 Found while checking CLAUDE.md §13 against the code. Each defect was invisible

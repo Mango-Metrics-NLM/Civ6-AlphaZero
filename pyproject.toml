@@ -34,6 +34,15 @@ dev = [
     # Test-only dependencies (previously missing; caused 8 test files to fail collection)
     "chess>=1.10.0",
     "hypothesis>=6.0.0",
+    # Mirrors the `hub` extra. Kept in `dev` so CI actually exercises and measures
+    # the Hugging Face round-trip; without it the test importorskips away and
+    # alpha_zero/hexcrystal/hub_mixin.py reports as uncovered.
+    "huggingface_hub>=0.26,<1.0",
+    "safetensors>=0.4",
+]
+hub = [
+    "huggingface_hub>=0.26,<1.0",
+    "safetensors>=0.4",
 ]
 gcp = [
     "google-cloud-aiplatform>=1.40.0",
@@ -98,6 +107,7 @@ all = [
     "alpha_zero[chess]",
     "alpha_zero[monitoring]",
     "alpha_zero[eval]",
+    "alpha_zero[hub]",
 ]
 
 
@@ -173,6 +183,7 @@ ignore = [
 "scripts/benchmark_batch_selfplay.py" = ["E402"]  # sys.path bootstrap before alpha_zero imports
 "scripts/analyze_prod_v1.6.0.py" = ["N999"]  # Versioned script filename is intentional
 "tests/unit/test_jax_*.py" = ["E402"]  # pytest.importorskip guards precede imports
+"tests/unit/test_hexcrystal_hub_mixin.py" = ["E402"]  # pytest.importorskip guards precede imports
 "tests/unit/test_bridge_config.py" = ["E402"]  # platform skip markers precede imports
 "tests/scripts/test_run_baseline_eval.py" = ["E402"]  # sys.path bootstrap before imports
 

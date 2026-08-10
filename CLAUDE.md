@@ -295,6 +295,12 @@ When making changes, update the relevant sections below:
 | `pip install -e '.[tuning]'` | Install Optuna for hyperparameter sweeps |
 | `python run_sweep.py --dry-run` | Validate sweep config (configs/sweep_muzero.yaml) |
 | `python run_sweep.py --n-trials 20` | Run Optuna sweep (MLflow-logged; CIV6AZ_SWEEP_* env overrides) |
+| `pip install -e '.[hub]'` | Install Hugging Face Hub support for the encoder |
+| `python scripts/run_encoder_ab.py train` | Train both encoder arms locally (device auto-detected, seeded) |
+| `python scripts/run_encoder_ab.py arena --num_games 800` | Head-to-head arena; writes counts + Wilson 95% CI |
+| `python scripts/run_encoder_ab.py report` | Render committable A/B evidence to `docs/evidence/hexcrystal_ab/` |
+| `python scripts/compare_training_runs.py --mlflow_run_a A --mlflow_run_b B` | Compare two MLflow runs (add `--no_plots` without matplotlib) |
+| `python scripts/upload_encoder_to_hub.py --checkpoint P --repo-id R` | Stage the encoder for the Hub (dry run; `--publish` uploads) |
 
 #### Cloud Deployment Commands
 
@@ -378,7 +384,9 @@ When making changes, update the relevant sections below:
 | 2026-02-17 | N-player MCTS (Max-N, Paranoid, Best-Reply) | Multiplayer support for 2-8 players, per-player value vectors |
 | 2026-02-17 | Opponent modeling | Frequency-based prediction with exponential decay, Bayesian blending |
 | 2026-02-17 | Turn manager (Sequential/Simultaneous/Dynamic) | Civ6-style dynamic turn modes |
-| 2026-02-18 | Hex crystalline encoder | Hex-topology-aware spatial encoder, axial coordinates, ring-distance PE |
+| 2026-02-18 | Hex crystalline encoder | Hex-topology-aware spatial encoder: **even-q offset** 7-tap gather convolution (centre + 6 neighbours) → AdaptiveAvgPool token bottleneck → linear tokenization → optional crystalline lattice layer combining learned symmetry transforms across the *transform* axis. Corrected 2026-08-09: there are **no** axial coordinates, **no** ring-distance PE, and no spatial attention — position comes from the transformer's own `pos_embed`. |
+| 2026-08-09 | Hex encoder extracted to `alpha_zero/hexcrystal/` | Torch-only subpackage (no numpy/gymnasium) so the encoder is reusable outside this repo and publishable to the HF Hub. Re-export shims keep every `alpha_zero.core.*` path working; `state_dict` keys unchanged (`encoder.patch_embed.*`). |
+| 2026-08-09 | Root package uses PEP 562 lazy imports | `import alpha_zero` no longer pulls numpy/gymnasium (1,600 ms → 6.5 ms). `__all__` is now static and omits `RealCiv6Env`/`RewardConfig`, which remain resolvable attributes. |
 | 2026-02-21 | GumbelMCTS as default | `DEFAULT_MCTS_TYPE` changed from `civ6` to `gumbel` |
 | 2026-02-21 | Action mask in training pipeline | 5-tensor dataset: spatial, vector, mask, policy, value |
 | 2026-02-23 | Training worker fine-tuning fix | `--model_version` loads incumbent from GCS before training |
@@ -417,7 +425,7 @@ When making changes, update the relevant sections below:
 | Windows multiprocessing spawn | Use `if __name__ == "__main__"` guard |
 | pytest-xdist not always installed | Tests run without parallel flag if missing |
 | `serving/` + `inference/` omitted from coverage gate | They require the `web` extra (fastapi/uvicorn), absent from the default-CI `[dev]` install, so they cannot be imported in CI's coverage job. `serving/` has unit tests (`tests/unit/test_serving/`, `importorskip`-guarded) but stays in the omit list until CI installs the `web` extra. |
-| Coverage instrumentation crashes under nightly numpy 2.4 + coverage C-tracer | Local-only sandbox issue ("cannot load module more than once"); run tests without `--cov`, or use pinned numpy. CI uses pinned versions and is unaffected. |
+| Coverage instrumentation crashes under nightly numpy 2.4 + coverage C-tracer | Local-only sandbox issue ("cannot load module more than once"); run tests without `--cov`, or use pinned numpy. CI uses pinned versions and is unaffected. **Partial workaround (2026-08-09):** `COVERAGE_CORE=pytrace` selects coverage's pure-Python tracer and avoids the crash — but only for `--cov` targets that do **not** import numpy. `COVERAGE_CORE=pytrace pytest tests/unit/test_hexcrystal_*.py --cov=alpha_zero.hexcrystal` works (measured 87.10%); `--cov=alpha_zero.utils.checkpoint` still crashes, because coverage importing a numpy-dependent module on top of conftest's import is the double load. CI remains the gate for numpy-importing modules. |
 | ~~MicroCiv hardcoded for 2 players~~ (resolved 2026-07-05) | Env + encoder N-player (2–6); training pipeline now N-player too. **G7/G8/G9 all done**: `training_civ6.py` threads `num_players` (per-player `value_vector`, `compute_nplayer_value_loss`, `CurrentPlayerValueView` scalar-MCTS adapter). 2-player path byte-identical. Tests: `tests/unit/test_nplayer_training_pipeline.py`. Train: `python -m alpha_zero.training_civ6 --num_players 4`. |
 | ~~12 DDP tests xfailed~~ (stale — corrected 2026-07-05) | DDP tests use CUDA `skipif`, not `xfail`. Repo has exactly one real `xfail` (`test_phase2.py:381`). Real static-skip debt (re-measured 2026-07-25): 11 skip sites / 17 tests, none W&B-related — the W&B skips vanished with the 2026-07-13 retirement. Remaining skips: planned-API stubs, full-game-state suites, and one flaky concurrency test (`test_buffer_edge_cases.py`). |
 | mlruns/ file-store deprecated | Run `scripts/migrate_mlflow_to_sqlite.py` to migrate to `sqlite:///mlflow.db` |
@@ -657,7 +665,7 @@ Civ6-AlphaZero/
 └── CLAUDE.md                    # This file
 ```
 
-> **Authoritative module list:** `alpha_zero/` has **27 submodules** as of v1.7.0.
+> **Authoritative module list:** `alpha_zero/` has **28 submodules** as of v1.8.0.
 > File counts above are recursive `*.py` counts (excluding `__pycache__`). The
 > single source of truth — one row per submodule with responsibility — lives in
 > [`docs/MODULE_REFERENCE.md`](docs/MODULE_REFERENCE.md); update it when adding/removing modules.

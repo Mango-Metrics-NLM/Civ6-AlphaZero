@@ -15,13 +15,24 @@ All values are configurable - no hardcoded parameters.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from collections.abc import Mapping
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from typing import Any, cast
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
+
+# PatchEmbed now lives in the dependency-light `hexcrystal` subpackage alongside
+# the encoder registry that constructs it. Re-exported here so that the
+# historical `from alpha_zero.core.transformer_network import PatchEmbed` path
+# keeps resolving to the same class.
+from alpha_zero.hexcrystal.patch_embed import PatchEmbed  # noqa: F401
+
+#: Config fields computed in ``__post_init__``; present in a serialized config
+#: but rejected by the constructor, so readers must drop them.
+_DERIVED_CONFIG_FIELDS = ("_num_patches", "_head_dim")
 
 # Module-level logger
 logger = logging.getLogger(__name__)
@@ -129,6 +140,78 @@ class TransformerConfig:
     # Derived properties (computed from other fields)
     _num_patches: int = field(init=False, default=0)
     _head_dim: int = field(init=False, default=0)
+
+    @classmethod
+    def normalize_saved_dict(cls, data: Mapping[str, Any]) -> dict[str, Any]:
+        """Return a serialized config as constructor-ready keyword arguments.
+
+        The same normalisation :meth:`from_saved_dict` performs, but stopping
+        short of construction so callers that still need to patch the mapping —
+        the cloud workers infer head dimensions from the ``state_dict`` for
+        older checkpoints — can reuse it instead of re-implementing it.
+
+        Args:
+            data: A ``model_config`` mapping as written by the trainers.
+
+        Returns:
+            A new mapping with enums re-hydrated and derived fields removed.
+
+        Raises:
+            ValueError: If an enum-valued field holds an unrecognised value.
+        """
+        config_dict = dict(data)
+
+        for field_name, enum_cls in (("norm_type", NormType), ("attention_type", AttentionType)):
+            value = config_dict.get(field_name)
+            if isinstance(value, str):
+                try:
+                    config_dict[field_name] = enum_cls(value)
+                except ValueError as exc:
+                    valid = [member.value for member in enum_cls]
+                    raise ValueError(
+                        f"Unknown {field_name}={value!r}; expected one of {valid}"
+                    ) from exc
+
+        for derived in _DERIVED_CONFIG_FIELDS:
+            config_dict.pop(derived, None)
+
+        return config_dict
+
+    @classmethod
+    def from_saved_dict(cls, data: Mapping[str, Any]) -> TransformerConfig:
+        """Rebuild a config from a serialized ``model_config`` payload.
+
+        Checkpoints store this config as primitives: enums are flattened to
+        their string values, and the derived ``_num_patches``/``_head_dim``
+        fields are included by ``asdict`` even though they are ``init=False``
+        and would be rejected by the constructor.
+
+        Every reader therefore has to re-hydrate the enums and drop the derived
+        fields. That dance was duplicated across the cloud self-play worker, the
+        evaluation worker, and two scripts; this is the one implementation, so a
+        future ``init=False`` field only has to be handled here.
+
+        Args:
+            data: A ``model_config`` mapping as written by the trainers.
+
+        Returns:
+            The reconstructed config.
+
+        Raises:
+            ValueError: If an enum-valued field holds an unrecognised value.
+        """
+        config_dict = cls.normalize_saved_dict(data)
+
+        unknown = set(config_dict) - {f.name for f in fields(cls)}
+        if unknown:
+            logger.warning(
+                "Ignoring unknown TransformerConfig field(s) in checkpoint: %s",
+                ", ".join(sorted(unknown)),
+            )
+            for key in unknown:
+                config_dict.pop(key)
+
+        return cls(**config_dict)
 
     @classmethod
     def from_network_config(cls, net_config: Any) -> TransformerConfig:
@@ -731,50 +814,6 @@ class DropPath(nn.Module):
         return x.div(keep_prob) * random_tensor
 
 
-class PatchEmbed(nn.Module):
-    """Patch embedding for Vision Transformer style input processing."""
-
-    def __init__(
-        self,
-        in_channels: int,
-        embed_dim: int,
-        patch_size: int,
-        spatial_size: int,
-    ) -> None:
-        """Initialize patch embedding.
-
-        Args:
-            in_channels: Number of input channels.
-            embed_dim: Embedding dimension.
-            patch_size: Size of each patch.
-            spatial_size: Size of spatial input.
-        """
-        super().__init__()
-        self.patch_size = patch_size
-        self.num_patches = (spatial_size // patch_size) ** 2
-        self.proj = nn.Conv2d(
-            in_channels,
-            embed_dim,
-            kernel_size=patch_size,
-            stride=patch_size,
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Convert spatial input to patch embeddings.
-
-        Args:
-            x: Input tensor (B, C, H, W).
-
-        Returns:
-            Patch embeddings (B, num_patches, embed_dim).
-        """
-        # (B, C, H, W) -> (B, embed_dim, H/P, W/P)
-        x = self.proj(x)
-        # Flatten spatial dimensions
-        x = x.flatten(2).transpose(1, 2)  # (B, num_patches, embed_dim)
-        return x
-
-
 class VectorProjection(nn.Module):
     """Project vector features to token format."""
 
@@ -821,7 +860,7 @@ class TransformerEncoder(nn.Module):
         self.config = config
 
         # Spatial encoder (patch_embed attribute name preserved for state_dict compat)
-        from alpha_zero.core.encoder_registry import create_spatial_encoder
+        from alpha_zero.hexcrystal.encoder_registry import create_spatial_encoder
 
         self.patch_embed = create_spatial_encoder(
             encoder_type=config.encoder_type,

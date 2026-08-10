@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import warnings
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, fields, is_dataclass
 from pathlib import Path
 from typing import Any
@@ -400,11 +401,160 @@ def compute_weight_checksum(network: torch.nn.Module) -> float:
 # Module exports
 # =============================================================================
 
+
+class EncoderMismatchError(RuntimeError):
+    """Raised when a model's weights do not match the expected spatial encoder."""
+
+
+#: Substrings that appear only in hex-encoder ``state_dict`` keys.
+_HEX_ENCODER_KEY_MARKERS = ("hex_conv", "crystalline", "spatial_to_tokens")
+
+#: Prefix under which the spatial encoder's weights live, for both encoder
+#: types — the consuming network assigns the encoder to ``self.patch_embed``
+#: regardless of which one it built, to keep checkpoint keys stable.
+_ENCODER_KEY_PREFIX = "encoder.patch_embed."
+
+#: Encoder identifiers this module knows how to discriminate.
+KNOWN_ENCODER_TYPES = ("patch_embed", "hex_crystalline")
+
+
+def _encoder_keys(keys: Iterable[str]) -> list[str]:
+    """Return the subset of *keys* belonging to the spatial encoder.
+
+    Scoped to the encoder subtree so an unrelated module whose name happens to
+    contain one of the markers cannot trigger a false positive. Keys that carry
+    no prefix at all (a bare encoder ``state_dict``) are all considered
+    in-scope.
+    """
+    keys = list(keys)
+    scoped = [k for k in keys if k.startswith(_ENCODER_KEY_PREFIX)]
+    return scoped if scoped else keys
+
+
+def classify_encoder_keys(keys: Iterable[str]) -> str:
+    """Infer which spatial encoder a set of ``state_dict`` keys belongs to.
+
+    Args:
+        keys: ``state_dict`` key names.
+
+    Returns:
+        ``"hex_crystalline"`` if hex-specific weights are present, else
+        ``"patch_embed"``.
+    """
+    scoped = _encoder_keys(keys)
+    has_hex = any(marker in k for k in scoped for marker in _HEX_ENCODER_KEY_MARKERS)
+    return "hex_crystalline" if has_hex else "patch_embed"
+
+
+def validate_encoder_state(
+    model: torch.nn.Module,
+    expected_encoder_type: str,
+    *,
+    checkpoint_keys: Iterable[str] | None = None,
+    strict: bool = True,
+) -> bool:
+    """Check that a model carries the weights of the expected spatial encoder.
+
+    Several load paths use ``load_state_dict(strict=False)``, which turns an
+    architecture mismatch into a warning: the encoder is left randomly
+    initialised, the model still runs, and the damage is invisible in aggregate
+    metrics — worst of all during an evaluation whose whole purpose is comparing
+    encoders.
+
+    Catching that requires comparing the *checkpoint* against the model. A
+    model's own ``state_dict`` keys are a property of the module tree that was
+    constructed, not of whatever was loaded into it, so inspecting the model
+    alone can only confirm what the caller already asked for. Pass
+    ``checkpoint_keys`` to get the real check; without it this degrades to a
+    build-time assertion, which is why the argument is strongly recommended
+    wherever a checkpoint is involved.
+
+    Args:
+        model: The model to inspect, after weights have been loaded.
+        expected_encoder_type: One of :data:`KNOWN_ENCODER_TYPES`.
+        checkpoint_keys: ``state_dict`` keys from the checkpoint that was
+            loaded. When given, the checkpoint's encoder identity is compared
+            against both the expectation and the model, so a ``strict=False``
+            cross-load is detected.
+        strict: If True, raise on mismatch. If False, log an error and return
+            False so the caller can decide.
+
+    Returns:
+        True when the model — and the checkpoint, when supplied — match
+        *expected_encoder_type*.
+
+    Raises:
+        ValueError: If *expected_encoder_type* is not a known encoder.
+        EncoderMismatchError: If ``strict`` and a mismatch is found.
+    """
+    if expected_encoder_type not in KNOWN_ENCODER_TYPES:
+        raise ValueError(
+            f"Unknown encoder type {expected_encoder_type!r}; "
+            f"expected one of {sorted(KNOWN_ENCODER_TYPES)}"
+        )
+
+    model_keys = list(model.state_dict())
+    model_type = classify_encoder_keys(model_keys)
+
+    problems: list[str] = []
+    if model_type != expected_encoder_type:
+        problems.append(
+            f"the model was built as {model_type!r}, not the expected {expected_encoder_type!r}"
+        )
+
+    if checkpoint_keys is not None:
+        checkpoint_keys = list(checkpoint_keys)
+        checkpoint_type = classify_encoder_keys(checkpoint_keys)
+        if checkpoint_type != expected_encoder_type:
+            problems.append(
+                f"the checkpoint holds {checkpoint_type!r} weights, not the expected "
+                f"{expected_encoder_type!r}"
+            )
+
+        # The decisive check: encoder weights present in the model but absent
+        # from the checkpoint were left randomly initialised by a lenient load.
+        missing = sorted(set(_encoder_keys(model_keys)) - set(checkpoint_keys))
+        if missing:
+            preview = ", ".join(missing[:4])
+            suffix = f" (+{len(missing) - 4} more)" if len(missing) > 4 else ""
+            problems.append(
+                f"{len(missing)} encoder weight(s) are absent from the checkpoint and "
+                f"remain randomly initialised: {preview}{suffix}"
+            )
+    else:
+        logger.debug(
+            "validate_encoder_state called without checkpoint_keys; this only confirms "
+            "how the model was built, not what was loaded into it."
+        )
+
+    if not problems:
+        logger.debug("Encoder validation passed: %s", expected_encoder_type)
+        return True
+
+    message = (
+        "Encoder mismatch: "
+        + "; ".join(problems)
+        + (
+            ". Loading a checkpoint into the wrong architecture leaves parameters "
+            "randomly initialised without raising, so this is treated as fatal."
+        )
+    )
+    if strict:
+        raise EncoderMismatchError(message)
+
+    logger.error(message)
+    return False
+
+
 __all__ = [
+    "KNOWN_ENCODER_TYPES",
     "CheckpointLoadResult",
+    "EncoderMismatchError",
+    "classify_encoder_keys",
     "compute_weight_checksum",
     "load_model_state",
     "load_network",
     "safe_load_checkpoint",
     "save_checkpoint",
+    "validate_encoder_state",
 ]
