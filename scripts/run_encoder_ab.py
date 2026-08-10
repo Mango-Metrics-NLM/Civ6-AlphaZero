@@ -1219,7 +1219,9 @@ def _command_report(args: argparse.Namespace) -> int:
         )
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    (args.output_dir / "ab_report.md").write_text(render_report(arena, arms, training_provenance), encoding="utf-8")
+    (args.output_dir / "ab_report.md").write_text(
+        render_report(arena, arms, training_provenance), encoding="utf-8"
+    )
     (args.output_dir / "summary_table.md").write_text(render_summary_table(arena), encoding="utf-8")
     logger.info("Wrote %s and summary_table.md", args.output_dir / "ab_report.md")
     return 0
