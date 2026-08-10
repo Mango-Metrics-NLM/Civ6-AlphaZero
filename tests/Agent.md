@@ -97,7 +97,7 @@ tests/
 3. Integration tests may use temp directories but clean up after
 4. Cloud tests are gated on credentials — skip gracefully when absent
 5. No test imports from `__pycache__` or site-packages
-6. Coverage target: >= 80% on all core modules
+6. Coverage target: >= 85% on all core modules
 
 ---
 
