@@ -12,7 +12,7 @@ Generated 2026-08-10T11:44:12.220492+00:00 from commit `b14534a5ad84050f8c2583f8
 | Win / Draw / Loss | 142 / 588 / 70 |
 | Score rate (draws = 0.5) | 0.545 |
 | Wilson 95% CI | [0.510, 0.579] |
-| CI half-width | ±0.034 |
+| CI half-width | Â±0.034 |
 | Elo difference | +31.4 |
 | Significant at 95% | yes |
 
