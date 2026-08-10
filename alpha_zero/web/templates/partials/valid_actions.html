@@ -1,23 +1,30 @@
 <div class="valid-actions">
     <h3>Available Actions</h3>
-    <div class="actions-list">
-        {% for action in valid_actions[:20] %}
-        <form action="/htmx/game/{{ session_id }}/move" method="post"
-              hx-post="/htmx/game/{{ session_id }}/move"
-              hx-target="#game-container"
-              hx-swap="outerHTML"
-              class="action-form">
-            <input type="hidden" name="action" value="{{ action.index }}">
-            <button type="submit" class="btn btn-action"
-                    title="Action {{ action.index }}">
-                {{ action.label }}
-            </button>
-        </form>
-        {% endfor %}
-        {% if valid_actions|length > 20 %}
+    {% for group in action_groups %}
+    <div class="action-group" data-group="{{ group.key }}">
+        <h4 class="action-group-title">{{ group.label }}</h4>
+        <div class="actions-list">
+            {% for action in group.actions %}
+            <form action="/htmx/game/{{ session_id }}/move" method="post"
+                  hx-post="/htmx/game/{{ session_id }}/move"
+                  hx-target="#game-container"
+                  hx-swap="outerHTML"
+                  class="action-form">
+                <input type="hidden" name="action" value="{{ action.index }}">
+                <button type="submit" class="btn btn-action"
+                        title="Action {{ action.index }}">
+                    {{ action.label }}
+                </button>
+            </form>
+            {% endfor %}
+        </div>
+        {% if group.overflow %}
         <div class="actions-overflow">
-            +{{ valid_actions|length - 20 }} more actions
+            +{{ group.overflow }} more {{ group.label|lower }} action{{ 's' if group.overflow != 1 else '' }}
         </div>
         {% endif %}
     </div>
+    {% else %}
+    <p class="no-actions">No actions available.</p>
+    {% endfor %}
 </div>

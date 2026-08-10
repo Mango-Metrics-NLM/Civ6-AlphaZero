@@ -73,9 +73,7 @@ class LoadTestResults:
     @property
     def error_rate(self) -> float:
         """Error rate (0-1)."""
-        return (
-            self.failed_requests / self.total_requests if self.total_requests > 0 else 0.0
-        )
+        return self.failed_requests / self.total_requests if self.total_requests > 0 else 0.0
 
     @property
     def p50_latency_ms(self) -> float:
@@ -248,7 +246,7 @@ async def run_load_test(config: LoadTestConfig) -> LoadTestResults:
                 asyncio.gather(*tasks, return_exceptions=True),
                 timeout=config.duration_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Expected - stop all games
             stop_event.set()
             await asyncio.gather(*tasks, return_exceptions=True)

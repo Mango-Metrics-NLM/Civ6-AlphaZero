@@ -203,9 +203,9 @@ class TestForwardSmoke:
         out_patch = patch_encoder(x)
         out_hex = hex_encoder(x)
 
-        assert (
-            out_patch.shape == out_hex.shape
-        ), f"Shape mismatch: patch={out_patch.shape}, hex={out_hex.shape}"
+        assert out_patch.shape == out_hex.shape, (
+            f"Shape mismatch: patch={out_patch.shape}, hex={out_hex.shape}"
+        )
         assert out_patch.shape == (2, 4, 64)
         assert torch.isfinite(out_hex).all()
 

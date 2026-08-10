@@ -210,7 +210,7 @@ class MLPHead(nn.Module):
         Returns:
             Output of shape (B, output_dim).
         """
-        return self.mlp(x)
+        return cast(torch.Tensor, self.mlp(x))
 
 
 @dataclass
@@ -539,4 +539,4 @@ class _CNNHead(nn.Module):
         """
         spatial = self.spatial_preprocessor(spatial_features)
         combined = self.combiner(spatial, vector_features)
-        return self.mlp(combined)
+        return cast(torch.Tensor, self.mlp(combined))

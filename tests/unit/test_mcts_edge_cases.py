@@ -26,14 +26,14 @@ class TestMCTSEdgeCases:
         action_mask[0, 0] = 1.0  # Only action 0 is valid
 
         with torch.no_grad():
-            policy_logits, value = network(spatial, vector, action_mask)
+            policy_logits, _value = network(spatial, vector, action_mask)
             # Apply softmax to get probabilities
             policy_probs = torch.softmax(policy_logits, dim=1)
 
         # The single valid action should have probability ~1.0
-        assert (
-            policy_probs[0, 0].item() > 0.99
-        ), f"Single valid action should dominate: {policy_probs[0, 0].item()}"
+        assert policy_probs[0, 0].item() > 0.99, (
+            f"Single valid action should dominate: {policy_probs[0, 0].item()}"
+        )
         # All other actions should have near-zero probability
         assert policy_probs[0, 1:].sum().item() < 0.01
 

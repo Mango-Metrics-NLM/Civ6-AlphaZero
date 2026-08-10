@@ -1,16 +1,15 @@
-"""Backwards-compatibility shim: alpha_zero.core.encoder_registry.
+"""Backwards-compatible re-exports for the spatial encoder registry.
 
-The implementation has moved to :mod:`alpha_zero.hexcrystal.encoder_registry`.
-This module re-exports the entire public surface so that existing callers
-are unaffected by the refactoring.
+The implementation moved to :mod:`alpha_zero.hexcrystal.encoder_registry` so that
+it can be imported without pulling in the rest of ``alpha_zero`` (and therefore
+numpy and gymnasium). This module re-exports the public names so historical
+import paths keep working.
 
-.. deprecated::
-    Import from ``alpha_zero.hexcrystal.encoder_registry`` directly.
+The registry itself is a single module-level dict living in the new location, so
+an encoder registered through either import path is visible through both.
 """
 
 from __future__ import annotations
-
-import logging
 
 from alpha_zero.hexcrystal.encoder_registry import (
     EncoderFactory,
@@ -27,9 +26,3 @@ __all__ = [
     "get_registered_encoders",
     "register_encoder",
 ]
-
-_log = logging.getLogger(__name__)
-_log.debug(
-    "alpha_zero.core.encoder_registry is a backwards-compat shim; "
-    "use alpha_zero.hexcrystal.encoder_registry"
-)

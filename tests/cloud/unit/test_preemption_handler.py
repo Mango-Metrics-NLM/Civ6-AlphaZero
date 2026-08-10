@@ -141,7 +141,7 @@ class TestPreemptionHandlerConfig:
 
     def test_backoff_multiplier_validation(self) -> None:
         """Test validation of backoff multiplier."""
-        with pytest.raises(ConfigurationError, match="at least 1.0"):
+        with pytest.raises(ConfigurationError, match=r"at least 1\.0"):
             PreemptionHandlerConfig(backoff_multiplier=0.5)
 
 

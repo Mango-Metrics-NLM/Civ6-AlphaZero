@@ -138,9 +138,7 @@ class TestTrajectorySerialization:
         data = serialize_trajectory(sample_trajectory, compress=False)
         result = deserialize_trajectory(data, compressed=False)
 
-        for orig, restored in zip(
-            sample_trajectory.examples, result.examples, strict=True
-        ):
+        for orig, restored in zip(sample_trajectory.examples, result.examples, strict=True):
             np.testing.assert_array_almost_equal(orig.spatial, restored.spatial)
             np.testing.assert_array_almost_equal(orig.vector, restored.vector)
             np.testing.assert_array_almost_equal(orig.policy, restored.policy)

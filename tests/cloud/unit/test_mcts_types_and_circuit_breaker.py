@@ -50,9 +50,9 @@ class TestValidMCTSTypesConstant:
 
         factory_variants = list_variants()
         for mcts_type in VALID_MCTS_TYPES:
-            assert (
-                mcts_type in factory_variants
-            ), f"'{mcts_type}' is in VALID_MCTS_TYPES but not in mcts_factory"
+            assert mcts_type in factory_variants, (
+                f"'{mcts_type}' is in VALID_MCTS_TYPES but not in mcts_factory"
+            )
 
     def test_default_mcts_type_is_gumbel(self) -> None:
         """DEFAULT_MCTS_TYPE should be 'gumbel' (updated from 'civ6' in Step 4)."""

@@ -17,7 +17,7 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 
@@ -534,7 +534,8 @@ class OptimizationBenchmark:
         calculator = AuxiliaryLossCalculator(config)
 
         # Generate sample predictions and targets
-        predictions_list = []
+        # (values mix arrays and floats, matching what compute_loss consumes)
+        predictions_list: list[dict[str, Any]] = []
         targets_list = []
 
         for _ in range(num_iterations):
@@ -575,7 +576,7 @@ class OptimizationBenchmark:
             i = idx[0] % len(predictions_list)
             idx[0] += 1
             return calculator.compute_loss(
-                cast(dict[str, np.ndarray], predictions_list[i]),
+                predictions_list[i],
                 targets_list[i],
             )
 

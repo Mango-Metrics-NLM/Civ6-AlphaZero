@@ -237,9 +237,7 @@ class TestEvaluationReport:
         """Each instance should have independent mutable defaults."""
         r1 = EvaluationReport()
         r2 = EvaluationReport()
-        r1.matchups.append(
-            MatchResult("a", "b", 0.5, 0.0, 0.5, 10)
-        )
+        r1.matchups.append(MatchResult("a", "b", 0.5, 0.0, 0.5, 10))
         assert len(r2.matchups) == 0
 
 
@@ -266,9 +264,7 @@ class TestPBTEvaluatorInit:
     def test_init_with_baselines(
         self, pbt_config: PBTConfig, baseline_agents: list[AgentState]
     ) -> None:
-        evaluator = PBTEvaluator(
-            pbt_config, baseline_agents=baseline_agents
-        )
+        evaluator = PBTEvaluator(pbt_config, baseline_agents=baseline_agents)
         assert len(evaluator._baseline_agents) == 2
         assert evaluator._baseline_agents[0].agent_id == "baseline_random"
 
@@ -316,9 +312,7 @@ class TestArenaRunnerProperty:
         assert evaluator.arena_runner is runner
 
     def test_returns_mock_runner(self, pbt_config: PBTConfig) -> None:
-        mock_runner = MagicMock(
-            return_value=MatchResult("a", "b", 0.5, 0.0, 0.5, 10)
-        )
+        mock_runner = MagicMock(return_value=MatchResult("a", "b", 0.5, 0.0, 0.5, 10))
         evaluator = PBTEvaluator(pbt_config, arena_runner=mock_runner)
         assert evaluator.arena_runner is mock_runner
 
@@ -331,9 +325,7 @@ class TestArenaRunnerProperty:
 class TestGenerateMatchups:
     """Tests for _generate_matchups strategy dispatch."""
 
-    def test_round_robin_4_agents(
-        self, pbt_config: PBTConfig, agents: list[AgentState]
-    ) -> None:
+    def test_round_robin_4_agents(self, pbt_config: PBTConfig, agents: list[AgentState]) -> None:
         evaluator = PBTEvaluator(pbt_config)
         matchups = evaluator._generate_matchups(agents)
         assert len(matchups) == 6  # C(4,2)
@@ -549,9 +541,7 @@ class TestComputeFitness:
         report = evaluator._compute_fitness(agents, results, generation=1)
         assert report.matchups is results
 
-    def test_unknown_agent_in_results_uses_initial_rating(
-        self, pbt_config: PBTConfig
-    ) -> None:
+    def test_unknown_agent_in_results_uses_initial_rating(self, pbt_config: PBTConfig) -> None:
         """If a result references an agent not in the population, use initial rating."""
         evaluator = PBTEvaluator(pbt_config)
         agents = [AgentState(agent_id="a1", elo_rating=1200.0)]
@@ -659,9 +649,7 @@ class TestEvaluatePopulation:
             elif agent_old.agent_id == "winner":
                 return MatchResult(agent_new.agent_id, "winner", 0.0, 0.0, 1.0, num_games)
             else:
-                return MatchResult(
-                    agent_new.agent_id, agent_old.agent_id, 0.5, 0.0, 0.5, num_games
-                )
+                return MatchResult(agent_new.agent_id, agent_old.agent_id, 0.5, 0.0, 0.5, num_games)
 
         evaluator = PBTEvaluator(pbt_config, arena_runner=asymmetric_runner)
         report = evaluator.evaluate_population(agents_3, generation=1)
@@ -711,15 +699,11 @@ class TestEvaluatePopulation:
         assert len(report.matchups) == 3
         assert report.generation == 1
 
-    def test_fewer_than_two_agents_returns_empty_report(
-        self, pbt_config: PBTConfig
-    ) -> None:
+    def test_fewer_than_two_agents_returns_empty_report(self, pbt_config: PBTConfig) -> None:
         evaluator = PBTEvaluator(pbt_config, arena_runner=_make_arena_runner())
 
         # Single agent
-        report = evaluator.evaluate_population(
-            [AgentState(agent_id="solo")], generation=1
-        )
+        report = evaluator.evaluate_population([AgentState(agent_id="solo")], generation=1)
         assert len(report.matchups) == 0
         assert report.generation == 1
         assert report.elo_ratings == {}
@@ -770,9 +754,7 @@ class TestEvaluatePopulation:
 class TestRunBaselineBenchmarks:
     """Tests for run_baseline_benchmarks method."""
 
-    def test_interval_zero_skips(
-        self, baseline_agents: list[AgentState]
-    ) -> None:
+    def test_interval_zero_skips(self, baseline_agents: list[AgentState]) -> None:
         config = PBTConfig(population_size=4, baseline_interval=0)
         runner = _make_arena_runner()
         evaluator = PBTEvaluator(
@@ -785,9 +767,7 @@ class TestRunBaselineBenchmarks:
         results = evaluator.run_baseline_benchmarks(agents, generation=5)
         assert results == []
 
-    def test_interval_mismatch_skips(
-        self, baseline_agents: list[AgentState]
-    ) -> None:
+    def test_interval_mismatch_skips(self, baseline_agents: list[AgentState]) -> None:
         config = PBTConfig(population_size=4, baseline_interval=5)
         runner = _make_arena_runner()
         evaluator = PBTEvaluator(
@@ -814,9 +794,7 @@ class TestRunBaselineBenchmarks:
         results = evaluator.run_baseline_benchmarks(agents, generation=5)
         assert results == []
 
-    def test_no_runner_skips(
-        self, baseline_agents: list[AgentState]
-    ) -> None:
+    def test_no_runner_skips(self, baseline_agents: list[AgentState]) -> None:
         config = PBTConfig(population_size=4, baseline_interval=1)
         evaluator = PBTEvaluator(
             config,
@@ -828,9 +806,7 @@ class TestRunBaselineBenchmarks:
         results = evaluator.run_baseline_benchmarks(agents, generation=1)
         assert results == []
 
-    def test_successful_benchmarks(
-        self, baseline_agents: list[AgentState]
-    ) -> None:
+    def test_successful_benchmarks(self, baseline_agents: list[AgentState]) -> None:
         config = PBTConfig(population_size=4, baseline_interval=5)
         runner = _make_arena_runner(win_rate=0.7, draw_rate=0.1, loss_rate=0.2)
         evaluator = PBTEvaluator(
@@ -849,9 +825,7 @@ class TestRunBaselineBenchmarks:
         # 3 agents x 2 baselines = 6 matches
         assert len(results) == 6
 
-    def test_successful_benchmarks_gen_zero(
-        self, baseline_agents: list[AgentState]
-    ) -> None:
+    def test_successful_benchmarks_gen_zero(self, baseline_agents: list[AgentState]) -> None:
         """Generation 0 should match interval since 0 % N == 0."""
         config = PBTConfig(population_size=4, baseline_interval=5)
         runner = _make_arena_runner()
@@ -866,9 +840,7 @@ class TestRunBaselineBenchmarks:
         # 1 agent x 2 baselines = 2 matches
         assert len(results) == 2
 
-    def test_error_handling_continues(
-        self, baseline_agents: list[AgentState]
-    ) -> None:
+    def test_error_handling_continues(self, baseline_agents: list[AgentState]) -> None:
         """If a baseline match fails, it is skipped and others continue."""
         config = PBTConfig(population_size=4, baseline_interval=1)
 
@@ -903,9 +875,7 @@ class TestRunBaselineBenchmarks:
         results = evaluator.run_baseline_benchmarks(agents, generation=1)
         assert len(results) == 3
 
-    def test_override_runner_in_benchmarks(
-        self, baseline_agents: list[AgentState]
-    ) -> None:
+    def test_override_runner_in_benchmarks(self, baseline_agents: list[AgentState]) -> None:
         """arena_runner kwarg should override the instance runner."""
         config = PBTConfig(population_size=4, baseline_interval=1)
         override_runner = _make_arena_runner(win_rate=0.9)
@@ -1038,9 +1008,7 @@ class TestEdgeCases:
         assert "a1" in report.elo_ratings
         assert "a2" in report.elo_ratings
 
-    def test_multiple_evaluations_accumulate_elo(
-        self, pbt_config: PBTConfig
-    ) -> None:
+    def test_multiple_evaluations_accumulate_elo(self, pbt_config: PBTConfig) -> None:
         """Running evaluate_population multiple times should keep accumulating."""
         agents = [
             AgentState(agent_id="winner", elo_rating=1200.0),
@@ -1066,9 +1034,7 @@ class TestEdgeCases:
         # Winner's ELO should keep increasing
         assert elo_after_gen2 > elo_after_gen1 > 1200.0
 
-    def test_agent_elo_not_updated_if_not_in_report(
-        self, pbt_config: PBTConfig
-    ) -> None:
+    def test_agent_elo_not_updated_if_not_in_report(self, pbt_config: PBTConfig) -> None:
         """Agent not in report should keep original ELO."""
         agents = [
             AgentState(agent_id="a1", elo_rating=1200.0),
@@ -1103,9 +1069,7 @@ class TestEdgeCases:
         def loser_is_new_runner(
             agent_new: AgentState, agent_old: AgentState, num_games: int
         ) -> MatchResult:
-            return MatchResult(
-                agent_new.agent_id, agent_old.agent_id, 0.0, 0.0, 1.0, num_games
-            )
+            return MatchResult(agent_new.agent_id, agent_old.agent_id, 0.0, 0.0, 1.0, num_games)
 
         evaluator = PBTEvaluator(pbt_config, arena_runner=loser_is_new_runner)
         report = evaluator.evaluate_population(agents, generation=1)

@@ -37,22 +37,28 @@ from typing import Any, Literal, Protocol
 
 import numpy as np
 
-from alpha_zero.bridge.action_converter import ActionConverter, InvalidActionError
+from alpha_zero.bridge.action_converter import (
+    ActionConverter,
+    InvalidActionError,
+    NoLegalActionsError,
+)
 from alpha_zero.bridge.file_bridge import (
     AckTimeoutError,
     ConnectionLostError,
-    FileBridge,
     StateTimeoutError,
 )
-from alpha_zero.bridge.health_checker import GameBridgeHealthChecker
+from alpha_zero.bridge.health_checker import (
+    CircuitBreakerOpenError,
+    GameBridgeHealthChecker,
+)
 from alpha_zero.bridge.protocol import (
     CommandMessage,
     GameStateData,
     LuaCommand,
     create_end_turn_command,
 )
-from alpha_zero.bridge.state_converter import StateConverter
-from alpha_zero.bridge.utils import extract_scalar_value
+from alpha_zero.bridge.state_converter import GameNotStartedError, StateConverter
+from alpha_zero.bridge.utils import extract_scalar_value, parse_bool_env
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +93,7 @@ class PolicyEngine(Protocol):
         self,
         obs: dict[str, np.ndarray],
         legal_mask: np.ndarray,
+        converted_state: dict[str, Any] | None = None,
     ) -> tuple[int, dict[str, float]]:
         """Choose an action index given an observation and legal mask.
 
@@ -94,12 +101,54 @@ class PolicyEngine(Protocol):
             obs: Encoder observation dict (``spatial``, ``vector``, ...).
             legal_mask: ``(action_space_size,)`` float32 mask;
                 ``1.0`` = legal, ``0.0`` = illegal.
+            converted_state: Full converted state dict from the bridge,
+                required by MCTS-based policies to seed their simulation env.
 
         Returns:
             ``(action_idx, diagnostics)``. The diagnostics dict is logged
             and forwarded to the eval harness (W2.3a) but is not
             interpreted by the loop itself.
         """
+        ...
+
+
+class GameBridge(Protocol):
+    """Transport interface required by :class:`BridgeAgentLoop`.
+
+    Structural protocol capturing exactly the surface the loop uses, so any
+    transport (``FileBridge`` file IPC, ``LiveBridge`` FireTuner socket, or a
+    test double) can drive the loop without inheriting from ``FileBridge``.
+    New transports implement this protocol; the loop is never edited per
+    transport (charter Invariant 1).
+    """
+
+    def next_msg_id(self) -> int:
+        """Return the next monotonically increasing command message id."""
+        ...
+
+    def check_heartbeat(self) -> bool:
+        """Return True while the game-side mod is alive."""
+        ...
+
+    async def wait_for_state(
+        self,
+        timeout: float | None = None,
+        require_new: bool = True,
+    ) -> GameStateData:
+        """Block until a (new) game state arrives or *timeout* elapses."""
+        ...
+
+    async def send_command(self, command: CommandMessage) -> bool:
+        """Fire-and-forget command send; True if written."""
+        ...
+
+    async def send_and_wait_with_retry(
+        self,
+        command: CommandMessage,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+    ) -> Any:
+        """Send a command and await its acknowledgment with retry/backoff."""
         ...
 
 
@@ -125,6 +174,7 @@ class GreedyNetworkPolicy:
         self,
         obs: dict[str, np.ndarray],
         legal_mask: np.ndarray,
+        converted_state: dict[str, Any] | None = None,
     ) -> tuple[int, dict[str, float]]:
         """Run network inference in a worker thread and return masked argmax."""
         # Import torch lazily - module-level import would force the heavy
@@ -155,10 +205,8 @@ class GreedyNetworkPolicy:
         # Mask via additive -inf so softmax/argmax both ignore illegal moves.
         masked = np.where(legal_mask > 0, logits, -np.inf)
         if not np.isfinite(masked).any():
-            # Pathological: no legal action. Fall back to first index;
-            # caller is responsible for end_turn safety net.
-            logger.warning("GreedyNetworkPolicy received an empty legal mask; returning action 0")
-            return 0, 0.0
+            # Pathological: no legal action. Fall back to safe end_turn.
+            raise NoLegalActionsError("No legal actions available from the mask")
 
         action_idx = int(np.argmax(masked))
         # Value tensor may be ()/(1,)/(1,1)/(1,N) per the PR #82 invariant;
@@ -257,7 +305,12 @@ class AgentLoopConfig:
         if (raw := source.get(ENV_PREFIX + "SNAPSHOT_LOG_DIR")) is not None:
             kwargs["snapshot_log_dir"] = Path(raw)
         if (raw := source.get(ENV_PREFIX + "MCTS_IN_THREAD")) is not None:
-            kwargs["mcts_in_thread"] = raw.lower() in ("1", "true", "yes", "on")
+            # Shares vocabulary with BridgeConfig.from_env / Civ6LocalConfig.from_env
+            # (1/true/yes -> True, 0/false/no -> False) via parse_bool_env, so
+            # CIV6_BRIDGE_*, CIV6AZ_LOCAL_*, and CIV6AZ_AGENT_* env vars all agree
+            # on truthy/falsy spelling. Falls back to False for anything else
+            # (matches this flag's prior behaviour for unrecognised strings).
+            kwargs["mcts_in_thread"] = parse_bool_env(raw, default=False)
         if (raw := source.get(ENV_PREFIX + "FALLBACK_SPATIAL_CHANNELS")) is not None:
             kwargs["fallback_spatial_channels"] = int(raw)
         if (raw := source.get(ENV_PREFIX + "FALLBACK_VECTOR_DIM")) is not None:
@@ -277,6 +330,7 @@ class _SessionStats:
     invalid_actions: int = 0
     reconnects: int = 0
     fallback_end_turns: int = 0
+    fallback_zero_observations: int = 0
     turn_latencies_ms: list[float] = field(default_factory=list)
     last_error: str | None = None
 
@@ -295,6 +349,7 @@ class _SessionStats:
             "invalid_actions": self.invalid_actions,
             "reconnects": self.reconnects,
             "fallback_end_turns": self.fallback_end_turns,
+            "fallback_zero_observations": self.fallback_zero_observations,
             "mean_turn_latency_ms": mean,
             "p95_turn_latency_ms": p95,
             "last_error": self.last_error,
@@ -333,12 +388,13 @@ class BridgeAgentLoop:
 
     def __init__(
         self,
-        bridge: FileBridge,
+        bridge: GameBridge,
         policy: PolicyEngine,
         state_converter: StateConverter,
         action_converter: ActionConverter,
         config: AgentLoopConfig,
         health_checker: GameBridgeHealthChecker | None = None,
+        eval_harness: Any | None = None,
     ) -> None:
         self.bridge = bridge
         self.policy = policy
@@ -346,6 +402,7 @@ class BridgeAgentLoop:
         self.action_converter = action_converter
         self.config = config
         self.health_checker = health_checker
+        self.eval_harness = eval_harness
         self._stats = _SessionStats()
         self._stopped = False
 
@@ -372,6 +429,15 @@ class BridgeAgentLoop:
             for the full list.
         """
         logger.info("BridgeAgentLoop.run() starting")
+        if self.eval_harness:
+            self.eval_harness.on_start(
+                config_dict={
+                    "max_turns": self.config.max_turns,
+                    "per_turn_timeout_s": self.config.per_turn_timeout_s,
+                    "mcts_in_thread": self.config.mcts_in_thread,
+                }
+            )
+
         try:
             while not self._stopped:
                 if self.config.max_turns and self._stats.turns_played >= self.config.max_turns:
@@ -379,10 +445,17 @@ class BridgeAgentLoop:
                     return self.EXIT_OK
 
                 try:
-                    state = await self.bridge.wait_for_state(
-                        timeout=self.config.per_turn_timeout_s,
-                        require_new=True,
-                    )
+                    if self.health_checker is not None:
+                        state: GameStateData = await self.health_checker.execute_with_retry(
+                            self.bridge.wait_for_state,
+                            timeout=self.config.per_turn_timeout_s,
+                            require_new=True,
+                        )
+                    else:
+                        state = await self.bridge.wait_for_state(
+                            timeout=self.config.per_turn_timeout_s,
+                            require_new=True,
+                        )
                 except StateTimeoutError as exc:
                     self._stats.state_timeouts += 1
                     self._stats.last_error = str(exc)
@@ -393,6 +466,15 @@ class BridgeAgentLoop:
                     )
                     # Retry on next loop iteration; do NOT abort the whole session
                     # for a single missed state - Civ6 can pause for animations.
+                    continue
+                except CircuitBreakerOpenError as exc:
+                    self._stats.state_timeouts += 1
+                    self._stats.last_error = str(exc)
+                    logger.warning(
+                        "Circuit breaker open; sleeping %.1fs before retry",
+                        exc.retry_after,
+                    )
+                    await asyncio.sleep(max(exc.retry_after, 1.0))
                     continue
                 except ConnectionLostError as exc:
                     recovered = await self._handle_disconnect(exc)
@@ -406,13 +488,14 @@ class BridgeAgentLoop:
                         state.winner_id,
                     )
                     return self.EXIT_OK
-
                 await self._step_once(state)
 
         except asyncio.CancelledError:
             logger.info("BridgeAgentLoop cancelled")
             return self.EXIT_CANCELLED
         finally:
+            if self.eval_harness:
+                self.eval_harness.on_stop(self.stats())
             logger.info(
                 "BridgeAgentLoop finished: turns=%d ack_failures=%d reconnects=%d",
                 self._stats.turns_played,
@@ -459,6 +542,11 @@ class BridgeAgentLoop:
         """Inner body of :meth:`_step_once`; see that method for semantics."""
         try:
             converted_state = self.state_converter.convert(state)
+        except GameNotStartedError as exc:
+            # The game isn't fully started or map is completely empty.
+            # Do not log a traceback and do NOT send end_turn, just wait.
+            logger.debug("Skipping state because game not fully initialized: %s", exc)
+            return
         except Exception as exc:
             self._stats.last_error = f"state_converter: {exc}"
             logger.error("State conversion failed: %s", exc, exc_info=True)
@@ -477,7 +565,18 @@ class BridgeAgentLoop:
         obs = self._build_observation(converted_state, legal_mask)
 
         try:
-            action_idx, diagnostics = await self.policy.select_action(obs, legal_mask)
+            action_idx, diagnostics = await self.policy.select_action(
+                obs, legal_mask, converted_state
+            )
+        except NoLegalActionsError as exc:
+            self._stats.invalid_actions += 1
+            logger.warning(
+                "No legal actions available for turn %d (%s); safely ending turn",
+                state.turn_id,
+                exc,
+            )
+            await self._send_safe_end_turn()
+            return
         except Exception as exc:
             self._stats.last_error = f"policy: {exc}"
             logger.error("Policy selection failed: %s", exc, exc_info=True)
@@ -491,6 +590,8 @@ class BridgeAgentLoop:
             action_idx,
             diagnostics,
         )
+        if self.eval_harness:
+            self.eval_harness.on_turn_end(state.turn_id, diagnostics)
 
         # Convert action -> Lua command, falling back to end_turn on invalid.
         try:
@@ -521,7 +622,18 @@ class BridgeAgentLoop:
         )
 
         try:
-            ack = await self.bridge.send_and_wait_with_retry(command)
+            if self.health_checker is not None:
+                ack: Any = await self.health_checker.execute_with_retry(
+                    self.bridge.send_and_wait_with_retry,
+                    command,
+                )
+            else:
+                ack = await self.bridge.send_and_wait_with_retry(command)
+        except CircuitBreakerOpenError as exc:
+            self._stats.ack_failures += 1
+            self._stats.last_error = f"circuit_open: {exc}"
+            logger.warning("Circuit breaker open on send (%s); skipping ack", exc)
+            self._maybe_log_snapshot(state, command, None, exc)
         except (AckTimeoutError, ConnectionLostError) as exc:
             self._stats.ack_failures += 1
             self._stats.last_error = f"ack: {exc}"
@@ -609,21 +721,20 @@ class BridgeAgentLoop:
             return obs
 
         # Real path: re-encode through Civ6StateEncoder via the converter.
-        # convert_and_encode returns (spatial, vector) torch tensors keyed
-        # by the encoder's spatial_channels - we strip the leading batch
-        # dim that convert_and_encode adds.
+        # convert_and_encode returns *unbatched* (spatial, vector) torch
+        # tensors - Civ6StateEncoder.encode()/StateConverter.convert_and_encode()
+        # never add a leading batch dim, so there is nothing to strip here.
+        # (Policy engines such as GreedyNetworkPolicy/Civ6MctsPolicy add the
+        # batch dim themselves via unsqueeze(0) before calling the network.)
         try:
             spatial_t, vector_t = self.state_converter.convert_and_encode(
                 # `_legal_actions` is the only field convert_and_encode needs
                 # beyond what's in converted_state; reuse the dict we built.
                 converted_state.get("_raw_state", converted_state)
             )
-            # Strip the leading batch dim with explicit indexing rather than
-            # ``squeeze(0)``: ``squeeze`` would also collapse a size-1 channel
-            # dimension (C == 1), silently corrupting the observation shape.
             return {
-                "spatial": spatial_t[0].cpu().numpy().astype(np.float32),
-                "vector": vector_t[0].cpu().numpy().astype(np.float32),
+                "spatial": spatial_t.cpu().numpy().astype(np.float32),
+                "vector": vector_t.cpu().numpy().astype(np.float32),
                 "action_mask": legal_mask,
             }
         except Exception as exc:
@@ -633,6 +744,13 @@ class BridgeAgentLoop:
             # Shapes come from AgentLoopConfig.fallback_* (not hardcoded), and
             # board_size additionally honours the live StateConverter when
             # available so it stays correct after a reconfigure.
+            #
+            # Recorded in _stats (like every other degraded-path in this
+            # class) so a persistently failing StateConverter shows up in
+            # BridgeAgentLoop.stats() / the eval harness instead of reporting
+            # a healthy session while the agent plays blind.
+            self._stats.fallback_zero_observations += 1
+            self._stats.last_error = f"state_encoding: {exc}"
             shapes = self._resolve_fallback_shapes()
             logger.warning(
                 "State encoding failed (%s); using zero observation "

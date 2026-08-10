@@ -36,7 +36,7 @@ class HexEncoderConfig:
         spatial_size: Size of spatial grid (height and width).
         hex_hidden_dim: Hidden dimension for hexagonal convolution stack.
         hex_conv_layers: Number of hexagonal convolution layers.
-        lattice_type: Symmetry group for the crystalline layer ΓÇö one of
+        lattice_type: Symmetry group for the crystalline layer — one of
             ``"hexagonal"``, ``"cubic"``, ``"tetrahedral"``.
         num_output_tokens: Number of output tokens (must match PatchEmbed.num_patches).
         dropout: Dropout probability.
@@ -175,16 +175,16 @@ class SpatialToTokens(nn.Module):
         """
         batch_size = x.shape[0]
 
-        # Pool to fixed grid: (B, C, H, W) ΓåÆ (B, C, pool_h, pool_w)
+        # Pool to fixed grid: (B, C, H, W) → (B, C, pool_h, pool_w)
         x = self.adaptive_pool(x)
 
-        # Flatten spatial: (B, C, pool_h, pool_w) ΓåÆ (B, C * pool_h * pool_w)
+        # Flatten spatial: (B, C, pool_h, pool_w) → (B, C * pool_h * pool_w)
         x = x.flatten(1)
 
-        # Project to tokens: (B, C * pool_h * pool_w) ΓåÆ (B, num_tokens * embed_dim)
+        # Project to tokens: (B, C * pool_h * pool_w) → (B, num_tokens * embed_dim)
         x = self.projection(x)
 
-        # Reshape to token sequence: (B, num_tokens * embed_dim) ΓåÆ (B, num_tokens, embed_dim)
+        # Reshape to token sequence: (B, num_tokens * embed_dim) → (B, num_tokens, embed_dim)
         x = x.view(batch_size, self.num_tokens, self.embed_dim)
 
         return x
@@ -313,10 +313,10 @@ class HexSpatialEncoder(nn.Module):
         Returns:
             Output tensor of shape (B, num_tokens, embed_dim).
         """
-        # Apply hexagonal convolution stack: (B, C, H, W) ΓåÆ (B, hex_hidden_dim, H, W)
+        # Apply hexagonal convolution stack: (B, C, H, W) → (B, hex_hidden_dim, H, W)
         x = self.hex_conv_stack(x)
 
-        # Convert to tokens: (B, hex_hidden_dim, H, W) ΓåÆ (B, num_tokens, embed_dim)
+        # Convert to tokens: (B, hex_hidden_dim, H, W) → (B, num_tokens, embed_dim)
         x = self.spatial_to_tokens(x)
 
         # Apply crystalline lattice symmetry if enabled
@@ -366,7 +366,7 @@ def create_hex_encoder(
     }
 
     logger.debug(
-        f"create_hex_encoder: patch_size={patch_size} ΓåÆ num_output_tokens={num_output_tokens}"
+        f"create_hex_encoder: patch_size={patch_size} → num_output_tokens={num_output_tokens}"
     )
 
     return HexSpatialEncoder(config=HexEncoderConfig(**factory_kwargs))

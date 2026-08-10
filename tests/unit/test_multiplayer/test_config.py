@@ -198,9 +198,7 @@ class TestMultiplayerConfig:
 
     def test_env_override_nested(self):
         config = MultiplayerConfig()
-        with mock.patch.dict(
-            os.environ, {"CIV6AZ_MP_SEARCH_STRATEGY": "paranoid"}
-        ):
+        with mock.patch.dict(os.environ, {"CIV6AZ_MP_SEARCH_STRATEGY": "paranoid"}):
             config.apply_env_overrides()
         assert config.mcts.search_strategy == "paranoid"
 

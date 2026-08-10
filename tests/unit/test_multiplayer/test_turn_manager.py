@@ -45,7 +45,7 @@ class TestTurnManagerSequential:
             manager.end_turn()
 
     def test_submit_action(self, manager):
-        state = manager.begin_turn()
+        manager.begin_turn()
         result = manager.submit_action(0, action=42)
         assert result is True
 

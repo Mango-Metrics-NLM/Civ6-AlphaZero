@@ -130,9 +130,11 @@ class TournamentSelection(SelectionStrategy):
         for _ in range(num_to_select):
             # Random tournament
             tournament = rng.choice(
-                agents,
+                # numpy stubs only accept array-like scalars, but Generator.choice
+                # supports arbitrary object sequences at runtime.
+                agents,  # type: ignore[arg-type]
                 size=min(self.tournament_size, len(agents)),
-                replace=False,  # type: ignore[arg-type]
+                replace=False,
             )
             winner = max(tournament, key=lambda a: a.get_smoothed_fitness())
             selected.append(winner)

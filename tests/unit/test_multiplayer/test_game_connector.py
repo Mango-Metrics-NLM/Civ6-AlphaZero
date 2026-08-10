@@ -224,9 +224,7 @@ class TestCreateGameConnector:
         assert isinstance(conn, MockGameConnector)
 
     def test_create_unciv(self, tmp_path):
-        config = GameConnectorConfig(
-            connector_type="unciv", save_dir=str(tmp_path)
-        )
+        config = GameConnectorConfig(connector_type="unciv", save_dir=str(tmp_path))
         conn = create_game_connector(config)
         assert isinstance(conn, UncivMultiplayerConnector)
 

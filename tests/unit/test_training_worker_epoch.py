@@ -36,13 +36,15 @@ def test_train_epoch_reduces_loss_on_overfit_batch() -> None:
     )
 
     total_first, _p_first, _v_first, _n = train_epoch(
-        model, loader, optimizer, device,
+        model,
+        loader,
+        optimizer,
+        device,
     )
     total_last = total_first
     for _ in range(10):
         total_last, _p, _v, _n = train_epoch(model, loader, optimizer, device)
 
     assert total_last < total_first, (
-        f"train_epoch did not reduce loss: first={total_first:.4f}, "
-        f"last={total_last:.4f}"
+        f"train_epoch did not reduce loss: first={total_first:.4f}, last={total_last:.4f}"
     )

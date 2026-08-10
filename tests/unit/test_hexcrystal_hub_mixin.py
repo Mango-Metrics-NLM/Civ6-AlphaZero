@@ -1,4 +1,4 @@
-﻿"""Hugging Face Hub round-trip for the hex-crystalline encoder.
+"""Hugging Face Hub round-trip for the hex-crystalline encoder.
 
 Everything here runs offline against a temporary directory. A published model is
 only as good as its reload path, so these tests assert the three properties a
@@ -6,7 +6,7 @@ consumer actually depends on: the artifact set is exactly what the Hub expects,
 the configuration survives as readable JSON, and the reloaded weights reproduce
 the original outputs numerically.
 
-The final test covers the negative path ΓÇö importing the module without the extra
+The final test covers the negative path — importing the module without the extra
 installed must fail with a message naming the extra, not with an obscure
 ``NameError`` further down.
 """

@@ -211,7 +211,7 @@ class MockSpacetimeDBClient:
         """Synchronous get model by iteration."""
         self._track("get_model_by_iteration", iteration)
         with self._lock:
-            for version, (weights, meta) in self._models.items():
+            for _version, (weights, meta) in self._models.items():
                 if meta.get("iteration") == iteration:
                     return weights, meta
             return None

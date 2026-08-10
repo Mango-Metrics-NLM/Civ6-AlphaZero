@@ -125,10 +125,25 @@ def create_source_tarball(project_root: pathlib.Path) -> pathlib.Path:
 
     # Patterns to exclude from the tarball (save upload time & space)
     exclude_patterns = {
-        ".git", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache",
-        ".hypothesis", "node_modules", ".venv", "venv", "wandb", "mlruns",
-        "checkpoints", ".tox", "dist", "*.egg-info", ".coverage",
-        "htmlcov", "training_data", "models",
+        ".git",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".hypothesis",
+        "node_modules",
+        ".venv",
+        "venv",
+        "wandb",
+        "mlruns",
+        "checkpoints",
+        ".tox",
+        "dist",
+        "*.egg-info",
+        ".coverage",
+        "htmlcov",
+        "training_data",
+        "models",
     }
 
     tar_path = pathlib.Path(tempfile.gettempdir()) / "muzero_cloud_build_source.tar.gz"
@@ -215,8 +230,10 @@ def submit_cloud_build(
                 "name": "gcr.io/cloud-builders/docker",
                 "args": [
                     "build",
-                    "-t", image_uri,
-                    "-f", "dockerfiles/Dockerfile.vertex",
+                    "-t",
+                    image_uri,
+                    "-f",
+                    "dockerfiles/Dockerfile.vertex",
                     ".",
                 ],
             },
@@ -253,8 +270,11 @@ def submit_cloud_build(
     result = resp.json()
     build_id = result.get("metadata", {}).get("build", {}).get("id", "unknown")
     logger.info("Cloud Build submitted! Build ID: %s", build_id)
-    logger.info("Monitor: https://console.cloud.google.com/cloud-build/builds/%s?project=%s",
-                build_id, project)
+    logger.info(
+        "Monitor: https://console.cloud.google.com/cloud-build/builds/%s?project=%s",
+        build_id,
+        project,
+    )
 
     return {"image_uri": image_uri, "build_id": build_id, "status": "SUBMITTED"}
 
@@ -320,11 +340,15 @@ def update_configs(image_uri: str) -> None:
 
 def main() -> int:
     """Main entry point."""
-    parser = argparse.ArgumentParser(description="Build MuZero World Model container via Cloud Build")
+    parser = argparse.ArgumentParser(
+        description="Build MuZero World Model container via Cloud Build"
+    )
     parser.add_argument("--tag", default=DEFAULT_TAG, help=f"Image tag (default: {DEFAULT_TAG})")
     parser.add_argument("--dry-run", action="store_true", help="Show config without submitting")
     parser.add_argument("--no-wait", action="store_true", help="Submit and exit without waiting")
-    parser.add_argument("--no-update-configs", action="store_true", help="Skip updating YAML configs")
+    parser.add_argument(
+        "--no-update-configs", action="store_true", help="Skip updating YAML configs"
+    )
     args = parser.parse_args()
 
     cfg = resolve_config()
@@ -348,14 +372,20 @@ def main() -> int:
     if not args.dry_run:
         logger.info("Step 2b: Uploading source to GCS...")
         source_bucket, source_object = upload_source_to_gcs(
-            token, cfg["project"], tar_path,
+            token,
+            cfg["project"],
+            tar_path,
         )
 
     # Step 3: Submit Cloud Build
     logger.info("Step 3: Submitting Cloud Build...")
     result = submit_cloud_build(
-        token, cfg["project"], cfg["region"], args.tag,
-        source_bucket, source_object,
+        token,
+        cfg["project"],
+        cfg["region"],
+        args.tag,
+        source_bucket,
+        source_object,
         dry_run=args.dry_run,
     )
 

@@ -1,10 +1,10 @@
-﻿"""Direct tests for the encoder's less-travelled branches.
+"""Direct tests for the encoder's less-travelled branches.
 
 The existing suites reach these layers through the full encoder, which leaves
 the alternative symmetry groups, the attention combination mode, the error
 paths, and ``PatchEmbed.forward`` covered only incidentally or not at all. Since
 the subpackage is published for reuse, a caller may pick any of these
-combinations on day one ΓÇö so each is exercised directly here.
+combinations on day one — so each is exercised directly here.
 """
 
 from __future__ import annotations

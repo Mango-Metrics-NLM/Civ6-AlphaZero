@@ -9,6 +9,7 @@ show a different org (e.g., 'Zscaler', 'Palo Alto Networks', etc.).
 Usage:
     python scripts/run_cert_check.py
 """
+
 from __future__ import annotations
 
 import json

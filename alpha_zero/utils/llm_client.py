@@ -41,8 +41,8 @@ try:
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
-    AsyncOpenAI = None  # type: ignore[misc,assignment]
-    OpenAI = None  # type: ignore[misc,assignment]
+    AsyncOpenAI = None  # type: ignore[assignment,misc]
+    OpenAI = None  # type: ignore[assignment,misc]
 
 try:
     from anthropic import Anthropic, AsyncAnthropic
@@ -50,8 +50,9 @@ try:
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
-    AsyncAnthropic = None  # type: ignore[misc,assignment]
-    Anthropic = None  # type: ignore[misc,assignment]
+    AsyncAnthropic = None  # type: ignore[assignment,misc]
+    Anthropic = None  # type: ignore[assignment,misc]
+
 
 # Load environment variables from .env file if available
 try:
@@ -647,6 +648,31 @@ class LLMClient:
     ) -> LLMResponse:
         """Synchronous wrapper for generate."""
         return asyncio.run(self.generate(prompt, system_prompt, messages, **kwargs))
+
+    def complete(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        **kwargs: Any,
+    ) -> str:
+        """Synchronous completion alias returning the plain text content.
+
+        Convenience wrapper around :meth:`generate_sync` for callers that expect a
+        ``complete(prompt) -> str`` interface (e.g.
+        :class:`alpha_zero.orchestrator.strategy_advisor.StrategyAdvisor`, which
+        calls ``llm_client.complete(prompt)``). Without this alias that call path
+        raises ``AttributeError`` against a real client, since the public API is
+        :meth:`generate` / :meth:`generate_sync`.
+
+        Args:
+            prompt: The user prompt to send.
+            system_prompt: Optional system prompt.
+            **kwargs: Additional arguments passed to the provider.
+
+        Returns:
+            The generated text content as a string.
+        """
+        return self.generate_sync(prompt, system_prompt=system_prompt, **kwargs).content
 
 
 def create_llm_client(config: LLMConfig | None = None) -> LLMClient:

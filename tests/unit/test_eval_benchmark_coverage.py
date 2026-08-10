@@ -432,15 +432,21 @@ class TestAlphaZeroVsMuZeroBenchmark:
         assert "Key Insights" in md
 
     # -- log_to_wandb --
-    def test_log_to_wandb_not_available(self, benchmark):
-        """When wandb is unavailable, should log warning and return."""
+    def test_log_to_wandb_tracker_disabled(self, benchmark):
+        """When the tracker reports disabled, should skip without raising."""
         report = ComparisonReport(
             config=benchmark.config,
             alphazero_result=BenchmarkResult(algorithm="alphazero"),
             muzero_result=BenchmarkResult(algorithm="muzero"),
         )
-        with patch("alpha_zero.evaluation.muzero_vs_alphazero_benchmark._WANDB_AVAILABLE", False):
+        disabled_tracker = MagicMock()
+        disabled_tracker.is_enabled = False
+        with patch(
+            "alpha_zero.evaluation.muzero_vs_alphazero_benchmark._get_tracker",
+            return_value=disabled_tracker,
+        ):
             benchmark.log_to_wandb(report)  # should not raise
+        disabled_tracker.init.assert_not_called()
 
     def test_log_to_wandb_disabled(self, benchmark):
         """When wandb_enabled is False, should skip."""
@@ -450,8 +456,7 @@ class TestAlphaZeroVsMuZeroBenchmark:
             alphazero_result=BenchmarkResult(algorithm="alphazero"),
             muzero_result=BenchmarkResult(algorithm="muzero"),
         )
-        with patch("alpha_zero.evaluation.muzero_vs_alphazero_benchmark._WANDB_AVAILABLE", True):
-            benchmark.log_to_wandb(report)  # should not raise
+        benchmark.log_to_wandb(report)  # config-disabled: returns before tracker use
 
     def test_log_to_wandb_success(self, benchmark):
         """When tracker is enabled, log_to_wandb calls init/log/log_table/finish.

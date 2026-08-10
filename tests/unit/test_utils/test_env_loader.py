@@ -39,9 +39,7 @@ def _clean_env() -> None:
 
 def _write_dotenv(content: str) -> Path:
     """Write a .env file in a temp directory and return its path."""
-    tmp = tempfile.NamedTemporaryFile(
-        mode="w", suffix=".env", delete=False, encoding="utf-8"
-    )
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False, encoding="utf-8")
     tmp.write(content)
     tmp.close()
     return Path(tmp.name)
@@ -77,7 +75,7 @@ class TestParseDotenv:
 
     def test_strips_quotes(self) -> None:
         """Quoted values should have their quotes stripped."""
-        path = _write_dotenv('FOO="quoted"\nBAR=\'single\'\n')
+        path = _write_dotenv("FOO=\"quoted\"\nBAR='single'\n")
         result = _parse_dotenv(path)
         assert result["FOO"] == "quoted"
         assert result["BAR"] == "single"
@@ -113,10 +111,7 @@ class TestLoadCiv6azEnv:
 
     def test_loads_from_explicit_path(self) -> None:
         """Should load variables from an explicit .env path."""
-        path = _write_dotenv(
-            "CIV6AZ_GCS_BUCKET=civ6az-training\n"
-            "CIV6AZ_VERTEX_PROJECT=hrmtrain\n"
-        )
+        path = _write_dotenv("CIV6AZ_GCS_BUCKET=civ6az-training\nCIV6AZ_VERTEX_PROJECT=hrmtrain\n")
         result = load_civ6az_env(dotenv_path=path, warn_missing=False)
         assert result["CIV6AZ_GCS_BUCKET"] == "civ6az-training"
         assert result["CIV6AZ_VERTEX_PROJECT"] == "hrmtrain"
@@ -136,9 +131,7 @@ class TestLoadCiv6azEnv:
         load_civ6az_env(dotenv_path=path, override=True, warn_missing=False)
         assert os.environ["CIV6AZ_GCS_BUCKET"] == "new-bucket"
 
-    def test_warns_on_missing_required_vars(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_warns_on_missing_required_vars(self, caplog: pytest.LogCaptureFixture) -> None:
         """Should log a warning when required variables are missing."""
         import logging
 
@@ -148,9 +141,7 @@ class TestLoadCiv6azEnv:
         warning_messages = " ".join(r.message for r in caplog.records)
         assert "CIV6AZ_GCS_BUCKET" in warning_messages or "Missing" in warning_messages
 
-    def test_no_warning_when_warn_missing_false(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_no_warning_when_warn_missing_false(self, caplog: pytest.LogCaptureFixture) -> None:
         """Should not warn when warn_missing=False."""
         import logging
 
@@ -163,17 +154,12 @@ class TestLoadCiv6azEnv:
     def test_no_dotenv_file_no_error(self) -> None:
         """Should not raise when no .env file is found."""
         # Point to a nonexistent directory
-        result = load_civ6az_env(
-            dotenv_path="/nonexistent/path/.env", warn_missing=False
-        )
+        result = load_civ6az_env(dotenv_path="/nonexistent/path/.env", warn_missing=False)
         assert isinstance(result, dict)
 
     def test_returns_resolved_dict(self) -> None:
         """Should return a dict containing required and optional vars."""
-        path = _write_dotenv(
-            "CIV6AZ_GCS_BUCKET=mybucket\n"
-            "CIV6AZ_VERTEX_PROJECT=myproject\n"
-        )
+        path = _write_dotenv("CIV6AZ_GCS_BUCKET=mybucket\nCIV6AZ_VERTEX_PROJECT=myproject\n")
         result = load_civ6az_env(dotenv_path=path, warn_missing=False)
         assert "CIV6AZ_GCS_BUCKET" in result
         assert "CIV6AZ_VERTEX_PROJECT" in result
@@ -184,9 +170,7 @@ class TestLoadCiv6azEnv:
         # CIV6AZ_VERTEX_REGION has a default of us-central1
         assert "CIV6AZ_VERTEX_REGION" in result
 
-    def test_invalid_dotenv_file_does_not_raise(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_invalid_dotenv_file_does_not_raise(self, caplog: pytest.LogCaptureFixture) -> None:
         """OSError reading .env should be logged as warning, not raised."""
         import logging
 
@@ -211,10 +195,7 @@ class TestRequireCiv6azEnv:
 
     def test_does_not_raise_when_all_required_set(self) -> None:
         """Should not raise when all required vars are set."""
-        path = _write_dotenv(
-            "CIV6AZ_GCS_BUCKET=civ6az-training\n"
-            "CIV6AZ_VERTEX_PROJECT=hrmtrain\n"
-        )
+        path = _write_dotenv("CIV6AZ_GCS_BUCKET=civ6az-training\nCIV6AZ_VERTEX_PROJECT=hrmtrain\n")
         result = require_civ6az_env(dotenv_path=path)
         assert result["CIV6AZ_GCS_BUCKET"] == "civ6az-training"
 
@@ -222,15 +203,13 @@ class TestRequireCiv6azEnv:
         """Error message should include the missing variable name."""
         with pytest.raises(RuntimeError) as exc_info:
             require_civ6az_env(dotenv_path=None)
-        assert "CIV6AZ_GCS_BUCKET" in str(exc_info.value) or \
-               "CIV6AZ_VERTEX_PROJECT" in str(exc_info.value)
+        assert "CIV6AZ_GCS_BUCKET" in str(exc_info.value) or "CIV6AZ_VERTEX_PROJECT" in str(
+            exc_info.value
+        )
 
     def test_loads_from_env_file(self) -> None:
         """Should load from .env file and return without raising."""
-        path = _write_dotenv(
-            "CIV6AZ_GCS_BUCKET=testbucket\n"
-            "CIV6AZ_VERTEX_PROJECT=testproject\n"
-        )
+        path = _write_dotenv("CIV6AZ_GCS_BUCKET=testbucket\nCIV6AZ_VERTEX_PROJECT=testproject\n")
         result = require_civ6az_env(dotenv_path=path)
         assert result["CIV6AZ_GCS_BUCKET"] == "testbucket"
         assert result["CIV6AZ_VERTEX_PROJECT"] == "testproject"

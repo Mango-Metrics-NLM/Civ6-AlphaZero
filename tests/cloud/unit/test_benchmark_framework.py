@@ -265,7 +265,7 @@ class TestBenchmarkClass:
         vector = torch.randn(1, 64)
         model.eval()
         with torch.no_grad():
-            policy, value = model(spatial, vector)
+            policy, _value = model(spatial, vector)
         assert policy.shape[1] == 376
 
     def test_create_muzero_model(self) -> None:
@@ -291,7 +291,7 @@ class TestBenchmarkClass:
         vector = torch.randn(1, 64)
         model.eval()
         with torch.no_grad():
-            policy, value = model(spatial, vector)
+            policy, _value = model(spatial, vector)
         assert policy.shape[1] == 376
 
     def test_create_model_unknown_algorithm_falls_back(self) -> None:

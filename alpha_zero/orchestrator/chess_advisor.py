@@ -28,6 +28,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
+from typing import Any
 
 import chess
 import numpy as np
@@ -78,7 +79,7 @@ class ChessAdvisorConfig:
     #: When True, log the LLM's commentary at INFO level.
     log_commentary: bool = False
     #: Extra keyword arguments forwarded to ``LLMClient.generate``.
-    llm_kwargs: dict[str, object] = field(default_factory=dict)
+    llm_kwargs: dict[str, Any] = field(default_factory=dict)
 
 
 class ChessAdvisor:
@@ -151,12 +152,12 @@ class ChessAdvisor:
             except (ValueError, AssertionError):
                 continue
             prior[action] = max(prior[action], float(weight))
-        total = prior.sum()
+        total = float(prior.sum())
         if total <= 0:
             return None
         return prior / total
 
-    def mcts_callback(self):  # type: ignore[no-untyped-def]  # noqa: ANN201
+    def mcts_callback(self):  # noqa: ANN201
         """Return a callable suitable for ``Civ6MCTS(llm_prior_fn=...)``.
 
         The returned function accepts ``(env, action_mask)`` and returns a

@@ -132,6 +132,28 @@ class TestOldCheckpointCompatibility:
                 atol=1e-6,
             )
 
+    def test_lenient_load_regression(self) -> None:
+        """Verify validate_encoder_state detects mismatches on state_dict loading."""
+        from alpha_zero.utils.checkpoint import validate_encoder_state
+
+        # Built a hex_crystalline model but loaded patch_embed weights
+        patch_embed_model = Civ6TransformerNetwork(
+            config=TransformerConfig(encoder_type="patch_embed")
+        )
+        hex_model = Civ6TransformerNetwork(config=TransformerConfig(encoder_type="hex_crystalline"))
+
+        # This is what load_state_dict(strict=False) does internally
+        hex_model.load_state_dict(patch_embed_model.state_dict(), strict=False)
+
+        # Verify that validate_encoder_state flags this mismatch
+        checkpoint_keys = list(patch_embed_model.state_dict().keys())
+        assert (
+            validate_encoder_state(
+                hex_model, "hex_crystalline", checkpoint_keys=checkpoint_keys, strict=False
+            )
+            is False
+        )
+
     def test_checkpoint_with_encoder_type_preserves_it(
         self, spatial_input: torch.Tensor, vector_input: torch.Tensor
     ) -> None:
@@ -186,7 +208,7 @@ class TestPatchEmbedUnchanged:
         vector_input: torch.Tensor,
     ) -> None:
         network = Civ6TransformerNetwork(config=patch_embed_config)
-        probs, value = network.predict(spatial_input, vector_input)
+        probs, _value = network.predict(spatial_input, vector_input)
 
         assert probs.shape == (4, 376)
         # Must sum to ~1 per sample
@@ -226,9 +248,9 @@ class TestPatchEmbedUnchanged:
 
         # All masked actions should have near-zero probability
         masked_probs = probs[:, 150:]
-        assert (
-            masked_probs < 1e-6
-        ).all(), f"Masked action probs not near zero, max={masked_probs.max():.2e}"
+        assert (masked_probs < 1e-6).all(), (
+            f"Masked action probs not near zero, max={masked_probs.max():.2e}"
+        )
 
     def test_patch_embed_training_step(
         self,
@@ -274,9 +296,9 @@ class TestStateDictKeyCompat:
 
         # Encoder keys should start with encoder.patch_embed
         encoder_keys = [k for k in keys if "patch_embed" in k]
-        assert (
-            len(encoder_keys) > 0
-        ), f"No 'patch_embed' keys found in state_dict. Keys: {keys[:10]}..."
+        assert len(encoder_keys) > 0, (
+            f"No 'patch_embed' keys found in state_dict. Keys: {keys[:10]}..."
+        )
 
     def test_patch_embed_and_hex_share_key_prefix(self) -> None:
         """Both encoder types should use same key prefix in state_dict."""
@@ -434,7 +456,7 @@ class TestActionMaskingParity:
         masked_positions = action_mask == 0
         masked_probs = probs[masked_positions]
         assert (masked_probs < 1e-6).all(), (
-            f"[{encoder_type}] Masked action probs not near zero: " f"max={masked_probs.max():.2e}"
+            f"[{encoder_type}] Masked action probs not near zero: max={masked_probs.max():.2e}"
         )
 
     @pytest.mark.parametrize("encoder_type", ["patch_embed", "hex_crystalline"])
@@ -491,9 +513,9 @@ class TestGradientFlowParity:
                     encoder_has_grad = True
                     break
 
-        assert (
-            encoder_has_grad
-        ), f"[{encoder_type}] No encoder parameters received non-zero gradients"
+        assert encoder_has_grad, (
+            f"[{encoder_type}] No encoder parameters received non-zero gradients"
+        )
 
 
 # ============================================================================
@@ -542,9 +564,9 @@ class TestParameterCountRegression:
 
         # Known param count from comparison script: 494,137
         # Allow small tolerance for future minor changes
-        assert (
-            450_000 < params["total"] < 600_000
-        ), f"PatchEmbed param count changed significantly: {params['total']:,}"
+        assert 450_000 < params["total"] < 600_000, (
+            f"PatchEmbed param count changed significantly: {params['total']:,}"
+        )
 
     def test_hex_encoder_param_count_within_expected_range(self) -> None:
         """Guard against hex encoder param count drifting too far."""
@@ -553,9 +575,9 @@ class TestParameterCountRegression:
         params = network.get_num_parameters()
 
         # Known param count: ~553,663 (about 12% more than PatchEmbed)
-        assert (
-            450_000 < params["total"] < 700_000
-        ), f"Hex encoder param count outside expected range: {params['total']:,}"
+        assert 450_000 < params["total"] < 700_000, (
+            f"Hex encoder param count outside expected range: {params['total']:,}"
+        )
 
     def test_hex_to_patch_param_ratio_reasonable(self) -> None:
         """Hex encoder shouldn't be wildly larger than PatchEmbed."""

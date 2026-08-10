@@ -30,6 +30,8 @@ from typing import Any
 
 import yaml
 
+from alpha_zero.utils.device import resolve_device_str
+
 
 class BaselineType(str, Enum):
     """Types of baseline opponents for evaluation."""
@@ -268,6 +270,9 @@ class EvaluationConfig:
         if self.env_max_turns < 1:
             raise ValueError(f"env_max_turns must be at least 1, got {self.env_max_turns}")
 
+        # Resolve rather than warn, so an unavailable "cuda" cannot reach .to().
+        self.device = resolve_device_str(self.device)
+
         # Convert diversity dict to DiversityConfig if needed
         if isinstance(self.diversity, dict):
             self.diversity = DiversityConfig.from_dict(self.diversity)
@@ -357,7 +362,7 @@ class EvaluationConfig:
             env_key = f"{prefix}{env_suffix}"
             if env_key in os.environ:
                 try:
-                    value = converter(os.environ[env_key])  # type: ignore[operator]
+                    value = converter(os.environ[env_key])
                     setattr(config, attr, value)
                 except (ValueError, TypeError) as e:
                     raise ValueError(f"Invalid value for {env_key}: {os.environ[env_key]}") from e

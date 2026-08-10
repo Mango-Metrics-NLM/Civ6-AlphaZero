@@ -407,26 +407,6 @@ class TestVertexTournamentJob:
         with pytest.raises(VertexJobError, match="container_image_uri"):
             job.launch(model_versions=[0, 1])
 
-    @pytest.mark.skip(
-        reason="W&B env coordination replaced by MLFLOW_* in B3; "
-        "superseded by tests/cloud/unit/test_orchestrator_mlflow.py"
-    )
-    def test_launch_includes_wandb_env_vars(self, config):
-        """W&B env vars are included in job env when set."""
-        import os
-
-        client = MockVertexAIClient()
-        job = VertexTournamentJob(config, client)
-        with patch.dict(os.environ, {"WANDB_ENABLED": "true", "WANDB_API_KEY": "test-key"}):
-            job.launch(model_versions=[0, 1])
-        submitted_spec = next(iter(client._jobs.values()))["spec"]
-        assert "WANDB_ENABLED" in submitted_spec.env_vars
-
-
-# =============================================================================
-# TestRunTournament
-# =============================================================================
-
 
 class TestRunTournament:
     """Tests for run_tournament() in tournament_worker."""

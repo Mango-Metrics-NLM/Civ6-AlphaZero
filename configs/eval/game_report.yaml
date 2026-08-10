@@ -1,0 +1,73 @@
+# langfuse-eval-harness config: StrategyAdvisor game-report structure gate.
+#
+# Companion to strategy_advisor.yaml. Where that config grades the `analyze`
+# mode (AnalysisResult), this one grades the `report` mode
+# (StrategyAdvisor.generate_game_report -> GameReport). Run offline (no API
+# keys) via:
+#   make eval-llm                                  # runs both configs
+#   python scripts/run_llm_eval.py --config configs/eval/game_report.yaml
+#
+# Like its companion, this is a contract/serialization regression gate over the
+# GameReport JSON shape, not an LLM-quality measurement.
+schema_version: "1.0"
+
+run:
+  name: "civ6-strategy-advisor-report-contract"
+  seed: 7
+  sample_rate: ${CIV6AZ_EVAL_SAMPLE_RATE:-1.0}
+
+dataset:
+  type: jsonl
+  params:
+    path: ${CIV6AZ_EVAL_REPORT_DATASET:-data/eval/game_report_cases.jsonl}
+
+target:
+  type: callable
+  params:
+    path: "alpha_zero.evaluation.llm_harness.target:advisor_target"
+    pass_item: false
+
+scorers:
+  # Fraction of required GameReport keys present in the serialized JSON.
+  - type: json_keys
+    params:
+      name: structure
+      required:
+        - game_id
+        - outcome
+        - total_turns
+        - key_moments
+        - strategy_assessment
+        - learning_points
+        - recommendations
+        - metrics
+  # The report must surface actionable recommendations (case-insensitive).
+  - type: contains
+    params:
+      name: has_recommendations
+      substring: "recommend"
+      case_sensitive: false
+  # total_turns must serialize as an integer (derived from the trajectory length).
+  - type: regex_match
+    params:
+      name: turns_is_integer
+      pattern: '"total_turns":\s*\d+'
+
+# Deterministic offline judge (declared for a future online judge swap).
+judge:
+  type: mock
+  params:
+    default_score: 1.0
+
+sinks:
+  - type: console
+    params: { verbose: false }
+  - type: json_file
+    params: { path: "${CIV6AZ_EVAL_OUT:-eval_results}/game_report.json" }
+
+# Gate references each scorer by its `name`. Non-zero exit if violated.
+gate:
+  rules:
+    - { score: structure, metric: mean, min: 1.0 }
+    - { score: has_recommendations, metric: pass_rate, min: 1.0 }
+    - { score: turns_is_integer, metric: pass_rate, min: 1.0 }

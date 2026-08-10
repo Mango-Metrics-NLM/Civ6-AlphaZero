@@ -44,7 +44,7 @@ class TestAuxiliaryTargetsConfig:
         """Test validation of phase_thresholds."""
         with pytest.raises(ValueError, match="phase_thresholds must have exactly 2"):
             AuxiliaryTargetsConfig(phase_thresholds=(10,))
-        with pytest.raises(ValueError, match="phase_thresholds.*must be <"):
+        with pytest.raises(ValueError, match=r"phase_thresholds.*must be <"):
             AuxiliaryTargetsConfig(phase_thresholds=(50, 20))
 
     def test_validation_attention_blur_sigma(self):

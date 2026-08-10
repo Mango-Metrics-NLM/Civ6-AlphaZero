@@ -85,9 +85,7 @@ class TestSaveLoadRoundtrip:
         orig_policy, orig_value = model(sp, vec, mask)
         loaded_policy, loaded_value = loaded(sp, vec, mask)
 
-        np.testing.assert_allclose(
-            np.asarray(orig_policy), np.asarray(loaded_policy), atol=1e-5
-        )
+        np.testing.assert_allclose(np.asarray(orig_policy), np.asarray(loaded_policy), atol=1e-5)
         assert abs(float(orig_value) - float(loaded_value)) < 1e-5
 
     def test_metadata_preserved(self, model, tmp_path):
@@ -157,7 +155,9 @@ class TestWrapperSaveLoad:
     def test_wrapper_roundtrip(self, tmp_path, test_input):
         wrapper = JaxNetworkWrapper(
             JaxMicroCivNetwork(
-                num_res_blocks=2, num_filters=16, num_groups=4,
+                num_res_blocks=2,
+                num_filters=16,
+                num_groups=4,
                 key=jax.random.PRNGKey(42),
             ),
             seed=42,
@@ -189,7 +189,8 @@ class TestReservedCheckpointKeys:
 
         path = str(tmp_path / "checkpoint")
         save_jax_checkpoint(
-            model, path,
+            model,
+            path,
             metadata={"framework": "pytorch", "custom_key": "value"},
         )
 
@@ -204,7 +205,10 @@ class TestTorchToJaxConversion:
     def test_skips_non_tensor_entries(self, key):
         """Non-tensor state_dict entries (dicts, strings, etc.) should be skipped."""
         template = JaxMicroCivNetwork(
-            num_res_blocks=2, num_filters=32, num_groups=8, key=key,
+            num_res_blocks=2,
+            num_filters=32,
+            num_groups=8,
+            key=key,
         )
         state_dict = {
             "metadata": {"version": 1},
@@ -226,7 +230,9 @@ class TestTorchToJaxConversion:
         # Convert to PyTorch state_dict and back
         state_dict = jax_to_torch_state_dict(model)
         template = JaxMicroCivNetwork(
-            num_res_blocks=2, num_filters=32, num_groups=8,
+            num_res_blocks=2,
+            num_filters=32,
+            num_groups=8,
             key=jax.random.PRNGKey(99),  # Different key → different params
         )
         restored = torch_to_jax_params(state_dict, template)
@@ -234,6 +240,8 @@ class TestTorchToJaxConversion:
         # Forward pass with restored model should match
         rest_policy, rest_value = restored(sp, vec, mask)
         np.testing.assert_allclose(
-            np.asarray(orig_policy), np.asarray(rest_policy), atol=1e-5,
+            np.asarray(orig_policy),
+            np.asarray(rest_policy),
+            atol=1e-5,
         )
         assert abs(float(orig_value) - float(rest_value)) < 1e-5

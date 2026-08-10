@@ -413,7 +413,7 @@ class TestEncodeForState:
         assert enc["total_missions_completed"] == 0
 
     def test_encode_with_spy(self, manager_with_spy: tuple) -> None:
-        manager, spy = manager_with_spy
+        manager, _spy = manager_with_spy
         enc = manager.encode_for_state(0)
         assert enc["num_spies"] == 1
         assert enc["spies_available"] == 1
@@ -433,7 +433,7 @@ class TestEncodeForState:
 
 class TestReset:
     def test_reset_clears_state(self, manager_with_spy: tuple) -> None:
-        manager, spy = manager_with_spy
+        manager, _spy = manager_with_spy
         manager.reset()
         assert manager.get_player_spies(0) == []
         assert manager._spy_counter == 0

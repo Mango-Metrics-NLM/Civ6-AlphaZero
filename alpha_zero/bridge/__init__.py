@@ -1,7 +1,11 @@
-"""Civ6 Bridge - File-based IPC for real game communication.
+"""Civ6 Bridge - IPC for real game communication.
 
 This package provides the bridge system for communication between
 the Python AlphaZero agent and the Civilization VI game via a Lua mod.
+
+Supports two bridge backends:
+- FileBridge: File-based IPC (polling) for when Lua has io access.
+- LiveBridge: Log-tailing + file-relay for when Lua uses print-based IPC.
 
 The bridge uses file-based IPC (polling) instead of TCP sockets because
 Civ6's Lua runtime is sandboxed and blocks external libraries.
@@ -67,12 +71,20 @@ __all__ = [
     "ActionType",
     # Config
     "BridgeConfig",
+    # Eval harness
+    "BridgeEvalHarness",
+    # MCTS / policy
+    "BridgeMCTSEnv",
     "CityData",
+    "Civ6MctsPolicy",
     "CommandMessage",
     "ErrorCode",
     "ErrorMessage",
     "GameStateData",
     "LegalAction",
+    # Live bridge (log-tailing + command relay)
+    "LiveBridge",
+    "LogTailer",
     "LuaCommand",
     "MapData",
     "MapSizeConfig",
@@ -84,6 +96,7 @@ __all__ = [
     # Protocol - Messages
     "StateMessage",
     "TileData",
+    "TunerBridge",
     "UnitData",
     "create_city_produce_command",
     "create_end_turn_command",
@@ -128,4 +141,28 @@ def __getattr__(name: str) -> Any:
         from alpha_zero.bridge.action_converter import ActionConverter
 
         return ActionConverter
+    if name == "BridgeMCTSEnv":
+        from alpha_zero.bridge.mcts_policy import BridgeMCTSEnv
+
+        return BridgeMCTSEnv
+    if name == "Civ6MctsPolicy":
+        from alpha_zero.bridge.mcts_policy import Civ6MctsPolicy
+
+        return Civ6MctsPolicy
+    if name == "BridgeEvalHarness":
+        from alpha_zero.bridge.eval_harness import BridgeEvalHarness
+
+        return BridgeEvalHarness
+    if name == "LiveBridge":
+        from alpha_zero.bridge.live_bridge import LiveBridge
+
+        return LiveBridge
+    if name == "LogTailer":
+        from alpha_zero.bridge.log_tailer import LogTailer
+
+        return LogTailer
+    if name == "TunerBridge":
+        from alpha_zero.bridge.tuner_bridge import TunerBridge
+
+        return TunerBridge
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -93,7 +93,9 @@ class TestBufferEdgeCases:
         reason="Flaky on CI: pytest-timeout 120s exceeded on the linux runners. "
         "Buffer concurrency is exercised by tests/unit/test_replay_buffer.py + "
         "the distributed integration tests. Re-enable after diagnosing the "
-        "thread-join hang (likely _drain_buffer_queue under feeder backpressure)."
+        "thread-join hang (likely _drain_buffer_queue under feeder backpressure). "
+        "Tracked: CLAUDE.md §5.3 known-issues (static-skip inventory, 2026-07-25); "
+        "the concurrency fix itself is out of scope for the hygiene sweep."
     )
     def test_concurrent_submit_and_sample(self):
         """Thread safety: submit and sample concurrently should not crash."""

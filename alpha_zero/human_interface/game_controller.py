@@ -429,8 +429,15 @@ class GameController:
                 )  # Or maybe type: ignore
 
         else:
-            # Switch player
-            self._state.current_player = 1 - self._state.current_player
+            # Ask the game who moves next rather than assuming strict
+            # alternation. In MicroCiv a player takes many plies per turn — the
+            # env only rotates current_player inside _end_turn — so flipping on
+            # every action handed control away mid-turn. The practical effect
+            # was that after the human moved one unit, the AI spent the rest of
+            # the human's units as player 0, and the human then issued actions
+            # for the AI's civ. Interfaces that do not report a current player
+            # keep the old two-player alternation.
+            self._state.current_player = self._next_player()
             self._update_valid_actions()
 
             if self._state.current_player == self._state.human_player:
@@ -443,6 +450,18 @@ class GameController:
             self._on_turn_complete(result)
 
         return result
+
+    def _next_player(self) -> int:
+        """Return whose turn it is now, preferring the game's own answer.
+
+        Falls back to two-player alternation for interfaces that expose no
+        ``current_player`` (test doubles, and simple turn-per-ply games where
+        alternation is in fact correct).
+        """
+        reported = getattr(self._game_interface, "current_player", None)
+        if reported is not None:
+            return int(reported)
+        return 1 - self._state.current_player
 
     def undo_move(self) -> bool:
         """Undo the last move.

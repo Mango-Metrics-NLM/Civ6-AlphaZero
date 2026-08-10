@@ -1,8 +1,8 @@
-﻿"""Standalone weight round-trip and device behaviour for the hex encoder.
+"""Standalone weight round-trip and device behaviour for the hex encoder.
 
 Existing suites exercise the encoder only through ``Civ6TransformerNetwork``.
 For the encoder to be publishable on its own, it has to be saveable and
-loadable on its own too ΓÇö which means a strict ``load_state_dict`` between two
+loadable on its own too — which means a strict ``load_state_dict`` between two
 independently-constructed instances must reproduce identical outputs.
 
 The adjacency tests cover a subtler property: ``HexAdjacency`` indices are

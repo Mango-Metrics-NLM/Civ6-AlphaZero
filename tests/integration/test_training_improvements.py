@@ -39,7 +39,7 @@ class TestTunedEnvironmentTraining:
 
         env = create_tuned_environment(config, board_size=8)
 
-        obs, _info = env.reset()
+        _obs, _info = env.reset()
 
         total_reward = 0.0
         steps = 0

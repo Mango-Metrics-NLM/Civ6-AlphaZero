@@ -14,8 +14,7 @@ import google.auth
 import google.auth.transport.requests
 
 warnings.warn(
-    "check_build.py is deprecated — use monitor_build.py for polling and "
-    "step-count verification.",
+    "check_build.py is deprecated — use monitor_build.py for polling and step-count verification.",
     DeprecationWarning,
     stacklevel=1,
 )

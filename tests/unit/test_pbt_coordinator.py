@@ -200,7 +200,9 @@ class TestPBTCoordinatorInit:
 
         assert coord.wandb_logger is mock_logger
 
-    def test_initialize_fresh_population(self, pbt_config: PBTConfig, rng: np.random.Generator) -> None:
+    def test_initialize_fresh_population(
+        self, pbt_config: PBTConfig, rng: np.random.Generator
+    ) -> None:
         """Test initializing with a fresh population."""
         coord = PBTCoordinator(pbt_config, rng=rng)
         coord.initialize()
@@ -222,7 +224,7 @@ class TestPBTCoordinatorInit:
             coord1.population.update_fitness(aid, 0.1 * (i + 1))
         coord1._current_step = 50
 
-        checkpoint_path = tmp_path / "test_checkpoint"
+        tmp_path / "test_checkpoint"
         coord1._save_checkpoint()
 
         # Now load from checkpoint
@@ -568,7 +570,9 @@ class TestTrainingLoop:
         # Should have stopped when reaching max_generations
         assert results["total_generations"] <= 2
 
-    def test_run_auto_initializes(self, pbt_config: PBTConfig, rng: np.random.Generator, tmp_path: Path) -> None:
+    def test_run_auto_initializes(
+        self, pbt_config: PBTConfig, rng: np.random.Generator, tmp_path: Path
+    ) -> None:
         """Test that run initializes population if not already done."""
         pbt_config.checkpoint_dir = str(tmp_path / "ckpt")
         coord = PBTCoordinator(pbt_config, rng=rng)
@@ -775,7 +779,9 @@ class TestLogging:
             max_fitness=0.5,
             min_fitness=0.5,
             std_fitness=0.0,
-            hyperparameter_stats={"lr": {"mean": 0.001, "std": 0.0001, "min": 0.0005, "max": 0.002}},
+            hyperparameter_stats={
+                "lr": {"mean": 0.001, "std": 0.0001, "min": 0.0005, "max": 0.002}
+            },
         )
 
         with patch.dict("sys.modules", {"wandb": MagicMock()}):
@@ -856,7 +862,9 @@ class TestCreatePBTCoordinator:
 class TestCoordinatorIntegration:
     """Integration tests for coordinator workflow."""
 
-    def test_full_workflow(self, pbt_config: PBTConfig, rng: np.random.Generator, tmp_path: Path) -> None:
+    def test_full_workflow(
+        self, pbt_config: PBTConfig, rng: np.random.Generator, tmp_path: Path
+    ) -> None:
         """Test a complete PBT workflow: init -> train -> evaluate -> exploit/explore."""
         pbt_config.checkpoint_dir = str(tmp_path / "ckpt")
         pbt_config.evaluation_interval = 2
@@ -910,9 +918,7 @@ class TestCoordinatorIntegration:
 
         # Manual evaluation
         eval_fn = make_evaluate_fn(fitness=0.7)
-        coordinator.set_training_callbacks(
-            train_step_fn=train_fn, evaluate_fn=eval_fn
-        )
+        coordinator.set_training_callbacks(train_step_fn=train_fn, evaluate_fn=eval_fn)
         coordinator._run_evaluation()
 
         # Manual exploit/explore

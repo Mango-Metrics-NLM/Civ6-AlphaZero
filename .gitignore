@@ -377,3 +377,18 @@ out/
 
 # Ruff auto-fix backups
 *.ruff_bak
+
+# ===========================================
+# Local scratch / session artifacts
+# ===========================================
+# Root-level pytest output logs
+pytest_*.txt
+
+# SDD progress ledger scratch
+.superpowers/
+
+# KB session state (generated locally, not source of truth)
+kb/sessions/*.state.json
+
+# LLM eval-harness output (scripts/run_llm_eval.py / make eval-llm)
+eval_results/

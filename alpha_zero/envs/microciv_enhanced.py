@@ -593,8 +593,8 @@ class EnhancedMicroCivEnv(MicroCivEnv):
         action_mask = self.action_space_handler.get_valid_mask(game_state)
 
         return {
-            "spatial": spatial.numpy(),
-            "vector": vector.numpy(),
+            "spatial": spatial.cpu().numpy(),
+            "vector": vector.cpu().numpy(),
             "action_mask": action_mask,
         }
 

@@ -344,7 +344,7 @@ class MCTSNode:
                 best_action = action
                 best_child = child
 
-        return best_action, best_child  # type: ignore[return-value]
+        return best_action, best_child
 
     def select_option_child(self, c_puct: float) -> tuple[str, MCTSNode | None]:
         """Select option child with highest UCB score.
@@ -366,7 +366,7 @@ class MCTSNode:
                 best_id = opt_id
                 best_child = child
 
-        return best_id, best_child  # type: ignore[return-value]
+        return best_id, best_child
 
     def expand(
         self,
@@ -541,7 +541,10 @@ class HierarchicalMCTS:
             while node.is_expanded:
                 if self.config.use_options and node.option_children:
                     # Option selection at higher levels
-                    _opt_id, node = node.select_option_child(self.config.c_puct)
+                    _opt_id, option_child = node.select_option_child(self.config.c_puct)
+                    if option_child is None:
+                        break
+                    node = option_child
                 else:
                     # Action selection
                     _, child = node.select_child(self.config.c_puct)
@@ -619,7 +622,10 @@ class HierarchicalMCTS:
 
             # Selection
             while node.is_expanded and node.option_children:
-                _opt_id, node = node.select_option_child(self.config.c_puct)
+                _opt_id, option_child = node.select_option_child(self.config.c_puct)
+                if option_child is None:
+                    break
+                node = option_child
                 node.virtual_loss += self.config.virtual_loss
                 depth += 1
 
@@ -707,7 +713,7 @@ class HierarchicalMCTS:
             policy_logits, value = self.network(spatial, vector, goal_emb, action_mask)
 
             # Convert to numpy
-            policy = torch.softmax(policy_logits, dim=-1).squeeze(0).numpy()
+            policy = torch.softmax(policy_logits, dim=-1).squeeze(0).cpu().numpy()
             value = value.item()
 
         return policy, value

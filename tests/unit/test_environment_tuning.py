@@ -322,7 +322,7 @@ class TestEliminationConditions:
         checker = EarlyTerminationChecker(config)
 
         # Turn 7 is not on interval - advantage should NOT trigger
-        should_terminate, winner, reason = checker.check(
+        should_terminate, winner, _reason = checker.check(
             turn=7,
             player_units=10,
             player_cities=5,

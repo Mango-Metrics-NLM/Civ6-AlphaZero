@@ -281,9 +281,9 @@ class TestEnhancedMicroCivFogOfWar:
         # With fog active, not all tiles should have the same value.
         unique_values = np.unique(visibility_channel)
         # There should be at least two distinct values (visible / not visible)
-        assert (
-            len(unique_values) >= 2
-        ), "Visibility channel should have both visible and non-visible tiles"
+        assert len(unique_values) >= 2, (
+            "Visibility channel should have both visible and non-visible tiles"
+        )
 
     def test_render_shows_fog_markers(self):
         """ANSI rendering should include '?' for unexplored tiles."""
@@ -420,7 +420,7 @@ class TestEnhancedMicroCivCombat:
         dir_idx = env.action_space_handler.directions.index((1, 0))
         action_idx = attack_start + 0 * 8 + dir_idx  # unit 0, direction right
 
-        obs, reward, terminated, truncated, info = env.step(action_idx)
+        _obs, _reward, _terminated, _truncated, _info = env.step(action_idx)
         # At least one unit should have taken damage
         _ = [u for u in env.units if u.health > 0]  # verify units exist
         total_hp = sum(u.health for u in env.units)
@@ -589,7 +589,7 @@ class TestEnhancedMicroCivGameplay:
             if len(valid) == 0:
                 break
             action = int(np.random.choice(valid))
-            obs, reward, terminated, truncated, info = env.step(action)
+            obs, _reward, _terminated, _truncated, _info = env.step(action)
             step_count += 1
 
             # Validate observation structure at every step
@@ -615,7 +615,7 @@ class TestEnhancedMicroCivGameplay:
             if len(valid) == 0:
                 break
             action = int(np.random.choice(valid))
-            obs, reward, terminated, truncated, info = env.step(action)
+            _obs, _reward, _terminated, _truncated, _info = env.step(action)
             step_count += 1
 
         assert env.done or step_count >= max_steps
@@ -773,7 +773,7 @@ class TestEnhancedMicroCivGameplay:
         """Multiple resets should not cause errors or state leaks."""
         env = _make_env(gameplay_config=_enhanced_config())
         for _ in range(5):
-            obs, info = env.reset()
+            obs, _info = env.reset()
             assert obs["spatial"].shape == (13, BOARD_SIZE, BOARD_SIZE)
             assert not env.done
             assert env.turn == 0
@@ -793,7 +793,7 @@ class TestEnhancedMicroCivGameplay:
 
         # Step again after done
         end_turn_idx = env.action_space_handler.end_turn_offset
-        obs, reward, terminated, truncated, info = env.step(end_turn_idx)
+        _obs, reward, terminated, _truncated, _info = env.step(end_turn_idx)
         assert terminated
         assert reward == 0.0
 

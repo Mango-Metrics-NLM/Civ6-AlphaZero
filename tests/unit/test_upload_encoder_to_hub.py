@@ -1,7 +1,7 @@
-﻿"""Tests for the Hugging Face upload tool.
+"""Tests for the Hugging Face upload tool.
 
-Publishing is irreversible in practice ΓÇö once weights are publicly fetched you
-cannot unring that bell ΓÇö so the safety properties matter more than the happy
+Publishing is irreversible in practice — once weights are publicly fetched you
+cannot unring that bell — so the safety properties matter more than the happy
 path and are tested first: nothing uploads without an explicit flag, nothing
 uploads without a credential, and nothing pickled ever ships.
 

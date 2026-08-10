@@ -122,9 +122,7 @@ class TestFogOfWarManager:
             for dx in range(-2, 3):
                 x, y = 4 + dx, 4 + dy
                 if 0 <= x < 8 and 0 <= y < 8:
-                    assert grid[y, x] == VisibilityState.VISIBLE, (
-                        f"({x},{y}) should be visible"
-                    )
+                    assert grid[y, x] == VisibilityState.VISIBLE, f"({x},{y}) should be visible"
 
         # Tile at distance 3 should NOT be visible
         assert grid[4, 7] == VisibilityState.UNEXPLORED
@@ -203,9 +201,7 @@ class TestFogOfWarManager:
 
     # ----- Observation masking -----
 
-    def test_mask_observation_removes_hidden_enemy(
-        self, manager: FogOfWarManager
-    ) -> None:
+    def test_mask_observation_removes_hidden_enemy(self, manager: FogOfWarManager) -> None:
         """Enemy units on non-visible tiles are removed from observation."""
         units = [
             {"player": 0, "position": (1, 1), "type": "warrior"},
@@ -227,13 +223,9 @@ class TestFogOfWarManager:
         # Own unit kept
         assert any(u["player"] == 0 for u in masked_units)
         # Enemy at (7,7) removed (not visible)
-        assert not any(
-            u["player"] == 1 and u["position"] == (7, 7) for u in masked_units
-        )
+        assert not any(u["player"] == 1 and u["position"] == (7, 7) for u in masked_units)
 
-    def test_mask_observation_keeps_visible_enemy(
-        self, manager: FogOfWarManager
-    ) -> None:
+    def test_mask_observation_keeps_visible_enemy(self, manager: FogOfWarManager) -> None:
         """Enemy units on visible tiles are kept."""
         units = [
             {"player": 0, "position": (3, 3), "type": "warrior"},
@@ -253,9 +245,7 @@ class TestFogOfWarManager:
         # Both units should be present
         assert len(masked["units"]) == 2
 
-    def test_mask_observation_hides_enemy_city(
-        self, manager: FogOfWarManager
-    ) -> None:
+    def test_mask_observation_hides_enemy_city(self, manager: FogOfWarManager) -> None:
         """Enemy cities on non-visible tiles are removed."""
         units = [{"player": 0, "position": (1, 1), "type": "warrior"}]
         cities = [{"player": 1, "position": (7, 7)}]
@@ -273,9 +263,7 @@ class TestFogOfWarManager:
         # Enemy city at (7,7) should be hidden (player 0 can't see it)
         assert len(masked["cities"]) == 0
 
-    def test_mask_observation_injects_visibility(
-        self, manager: FogOfWarManager
-    ) -> None:
+    def test_mask_observation_injects_visibility(self, manager: FogOfWarManager) -> None:
         """Masked state includes a 'visibility' dict."""
         units = [{"player": 0, "position": (3, 3), "type": "warrior"}]
         manager.compute_visibility(units, [])
@@ -292,17 +280,13 @@ class TestFogOfWarManager:
         assert "visibility" in masked
         assert masked["visibility"][(3, 3)] == "visible"
 
-    def test_mask_observation_disabled_passthrough(
-        self, disabled_manager: FogOfWarManager
-    ) -> None:
+    def test_mask_observation_disabled_passthrough(self, disabled_manager: FogOfWarManager) -> None:
         """When disabled, mask_observation returns the state unchanged."""
         game_state = {"units": [{"player": 1}], "cities": []}
         result = disabled_manager.mask_observation(game_state, player=0)
         assert result is game_state  # same object
 
-    def test_mask_observation_does_not_mutate_original(
-        self, manager: FogOfWarManager
-    ) -> None:
+    def test_mask_observation_does_not_mutate_original(self, manager: FogOfWarManager) -> None:
         """Masking must not mutate the original game state."""
         units = [
             {"player": 0, "position": (1, 1), "type": "warrior"},
@@ -366,10 +350,8 @@ class TestFogOfWarParametrized:
 
         game_state = {
             "terrain": {},
-            "units": units + [
-                {"player": p, "position": (7, 7), "type": "warrior"}
-                for p in range(1, num_players)
-            ],
+            "units": units
+            + [{"player": p, "position": (7, 7), "type": "warrior"} for p in range(1, num_players)],
             "cities": [],
             "current_player": 0,
             "num_players": num_players,

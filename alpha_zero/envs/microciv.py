@@ -848,8 +848,8 @@ class MicroCivEnv(gym.Env):
         )
 
         return {
-            "spatial": spatial.numpy(),
-            "vector": vector.numpy(),
+            "spatial": spatial.cpu().numpy(),
+            "vector": vector.cpu().numpy(),
             "action_mask": action_mask,
         }
 
@@ -919,7 +919,7 @@ class MicroCivEnv(gym.Env):
                 f"{len(self._get_player_cities(p))} cities"
             )
 
-        return "\n".join(lines)
+        return "\n".join(lines)  # type: ignore[return-value]
 
     def _update_fog_visibility(self) -> None:
         """Recompute fog of war visibility from current units and cities."""

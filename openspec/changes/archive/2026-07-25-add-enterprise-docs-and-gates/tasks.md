@@ -1,0 +1,57 @@
+# Tasks: add-enterprise-docs-and-gates
+
+Sizing key: **S** ≤ 1 file / mechanical · **M** a few files · **L** judgment work.
+Each phase is one or more commits, each ≤ 20 files, each green under the gates
+active at that point.
+
+## 1. Phase A — OpenSpec bootstrap + CI-trigger fix
+
+- [x] 1.1 (M) ``openspec/project.md`` + ``openspec/AGENTS.md``
+- [x] 1.2 (M) Baseline specs: ``agent-harness``, ``kb-workflow``
+- [x] 1.3 (M) Change dir: ``proposal.md``, ``tasks.md``, ``design.md``
+- [x] 1.4 (M) Four delta specs: ``documentation``, ``validation-gates``, ``agent-harness``, ``kb-workflow``
+- [x] 1.5 (L) ``scripts/validate_openspec.py`` + ``tests/governance/test_validate_openspec.py`` + ``pytest.ini``
+- [x] 1.6 (S) ``Makefile``: ``validate`` + ``test`` alias
+- [x] 1.7 (S) ``ci.yml``: ``claude/**`` trigger, ``concurrency`` group, ``governance`` job
+- [x] 1.8 (S) Push; open draft PR (#93); subscribe to PR activity
+
+## 2. Phase B — Validators, harness hooks, git hooks
+
+- [x] 2.1 (L) ``validate_kb.py``, ``validate_skills.py``, ``check_doc_sync.py`` + governance tests
+- [x] 2.2 (M) ``.claude/settings.json``: deny ``.env`` edits; repoint hooks at scripts; governance hook
+- [x] 2.3 (M) Hook scripts: guard force-push, ``posttooluse_lint``, ``precompact_state``, ``posttooluse_governance``, ``sessionstart_bootstrap``
+- [x] 2.4 (M) ``.pre-commit-config.yaml``: ruff 0.8.0, scoped hooks, local validators
+- [x] 2.5 (S) ``Makefile``: ``hooks-install``
+- [x] 2.6 (S) ``ci.yml``: governance += kb; ``eval-harness`` job (continue-on-error)
+- [x] 2.7 (S) ``kb/README.md`` + ``kb/summaries/pre-pr.md`` seed
+
+## 3. Phase C — Skills
+
+- [x] 3.1 (M) Retrofit ``planning/dev-sqe/pre-pr`` handoff skills (frontmatter, 85%, gate)
+- [x] 3.2 (M) New skills: ``openspec-propose``, ``openspec-archive``, ``doc-sync``, ``release``
+- [x] 3.3 (S) Wire skills route into hook, pre-commit, CI, Makefile
+
+## 4. Phase D — README + core accuracy
+
+- [x] 4.1 (L) README rewrite (~230 lines; old README archived to docs/archive/); LICENSE (MIT)
+- [x] 4.2 (M) ``docs/README.md`` index (architecture consolidation + stubs → Phase E doc-reorg)
+- [x] 4.3 (M) ``MODULE_REFERENCE.md``, ``CHANGELOG.md`` repair (add 1.7.0, dedupe 1.3.0, orphan), ``.env.template``
+- [x] 4.4 (S) ``alpha_zero/__init__.py`` → 1.8.0; ``setup.py`` shim
+- [x] 4.5 (S) ``CLAUDE.md`` §11.3 phantom extra (``NEXT_STEPS``/``GCP_INFRA`` consolidation → Phase E)
+- [x] 4.6 (S) Enable ``check_doc_sync.py`` in CI + pre-commit + Makefile
+- [x] 4.7 (S) Fix posttooluse_lint hook: defer RUF100 too (was stripping ``# noqa: F401``)
+
+## 5. Phase E — Enterprise files + Agent.md + archive sweep
+
+- [x] 5.1 (M) E1: LICENSE (Phase D), CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, SUPPORT, CODEOWNERS, PR/issue templates, dependabot, 3 Agent.md
+- [x] 5.2 (M) E2: architecture consolidation (canonical + stubs + README), ``adr/`` index + numbered renames, ``prd/README.md``, GCP_INFRA + NEXT_STEPS consolidation
+- [x] 5.3 (L) E3: archive sweep (~19 files git mv → ``docs/archive/``) + ``docs/archive/README.md`` + docs index relink
+
+## 6. Phase F — Close-out
+
+- [x] 6.1 (M) ``CLAUDE.md`` updates (build commands, §5.2 decision rows, footer)
+- [x] 6.2 (S) ``CHANGELOG.md``: log this change under ``[Unreleased]``
+- [x] 6.3 (S) ``ci.yml``: flip ``eval-harness`` to enforcing — DEFERRED at archive
+      time (2026-07-25); carried forward into the ``harden-lint-and-type-gates``
+      change rather than left open here
+- [x] 6.4 (S) Final tasks.md check-off; KB handoff (PR-READY ledger + summary)

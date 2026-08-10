@@ -72,7 +72,7 @@ def sample_game_state() -> dict[str, Any]:
         "turn_id": 10,
         "player_id": 0,
         "era": "ancient",
-        "map_data": {
+        "map": {
             "width": 84,
             "height": 54,
             "tiles": [],

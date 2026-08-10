@@ -50,8 +50,11 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["HEX_ENCODER_HUB_TAGS", "HUB_LIBRARY_NAME", "HexSpatialEncoderForHub"]
 
-# Hub metadata exported so the model card and upload tool share one source.
-# Tags are immutable — model-specific extras are appended by callers.
+# Hub metadata. Deliberately *not* passed as class keyword arguments to the
+# mixin: those only populate the placeholder README that `save_pretrained`
+# writes, which publishing tools overwrite with a real model card anyway, and
+# they do not type-check against the mixin's `__init_subclass__` signature.
+# Exported here so the model card and the upload tool share one source.
 HEX_ENCODER_HUB_TAGS = (
     "pytorch",
     "hexagonal-grid",
@@ -59,17 +62,14 @@ HEX_ENCODER_HUB_TAGS = (
     "reinforcement-learning",
 )
 
-#: Backwards-compatible alias for :data:`alpha_zero.hub.constants.LIBRARY_NAME`.
-#: New code should import ``LIBRARY_NAME`` directly from
-#: ``alpha_zero.hub.constants``.
 HUB_LIBRARY_NAME: str = LIBRARY_NAME
 
 
 class HexSpatialEncoderForHub(HexSpatialEncoder, PyTorchModelHubMixin):
     """A :class:`HexSpatialEncoder` that can be saved to and loaded from the Hub.
 
-    Behaviourally identical to its parent ΓÇö same layers, same forward pass, same
-    ``state_dict`` keys ΓÇö so weights transfer between the two classes in either
+    Behaviourally identical to its parent — same layers, same forward pass, same
+    ``state_dict`` keys — so weights transfer between the two classes in either
     direction. The only additions are ``save_pretrained`` and ``from_pretrained``,
     inherited from the mixin, which serialize weights as safetensors and the
     constructor arguments as ``config.json``.
@@ -80,7 +80,7 @@ class HexSpatialEncoderForHub(HexSpatialEncoder, PyTorchModelHubMixin):
         spatial_size: Size of the (square) spatial grid.
         hex_hidden_dim: Hidden dimension of the hexagonal convolution stack.
         hex_conv_layers: Number of hexagonal convolution layers.
-        lattice_type: Symmetry group ΓÇö ``"hexagonal"``, ``"cubic"``, or
+        lattice_type: Symmetry group — ``"hexagonal"``, ``"cubic"``, or
             ``"tetrahedral"``.
         num_output_tokens: Number of output tokens.
         dropout: Dropout probability.

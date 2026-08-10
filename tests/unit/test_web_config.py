@@ -93,7 +93,9 @@ class TestWebConfigDefaults:
         assert config.use_mcts is False
         assert config.mcts_simulations == 25
         assert config.ai_temperature == 0.5
-        assert config.device == "cuda"
+        # device is resolved against the host, so a CUDA request on a
+        # CPU-only machine lands on cpu rather than failing later.
+        assert config.device in {"cuda", "cpu"}
         assert config.default_opponent == "heuristic"
         assert config.board_theme == "dark"
         assert config.show_ai_evaluation is False
@@ -455,7 +457,8 @@ class TestWebConfigFromYaml:
         assert config.use_mcts is False
         assert config.mcts_simulations == 200
         assert config.ai_temperature == 1.0
-        assert config.device == "cuda:0"
+        # Resolved against the host; see WebConfig._validate.
+        assert config.device in {"cuda:0", "cpu"}
         assert config.default_opponent == "neural"
         assert config.board_theme == "dark"
         assert config.show_ai_evaluation is False
@@ -630,12 +633,22 @@ class TestWebConfigFromEnv:
         assert config.ai_temperature == 0.8
 
     def test_from_env_device(self, monkeypatch):
-        """Test that CIV6AZ_WEB_DEVICE overrides device."""
+        """CIV6AZ_WEB_DEVICE is honoured, then resolved against the host.
+
+        WebConfig resolves ``device`` in _validate rather than storing the raw
+        request, so an unavailable CUDA device falls back at startup instead of
+        raising inside the first neural game.
+        """
+        import torch
+
         monkeypatch.setenv("CIV6AZ_WEB_DEVICE", "cuda:1")
 
         config = WebConfig.from_env()
 
-        assert config.device == "cuda:1"
+        if torch.cuda.is_available() and torch.cuda.device_count() > 1:
+            assert config.device == "cuda:1"
+        else:
+            assert config.device == "cpu"
 
     def test_from_env_default_opponent(self, monkeypatch):
         """Test that CIV6AZ_WEB_DEFAULT_OPPONENT overrides opponent."""
@@ -1129,10 +1142,15 @@ class TestWebConfigEdgeCases:
         assert config.workers == 64
 
     def test_device_strings(self):
-        """Test various device string values."""
-        for device in ("cpu", "cuda", "cuda:0", "cuda:1", "mps"):
+        """Every accepted device string resolves to something usable."""
+        for device in ("cpu", "cuda", "cuda:0", "cuda:1", "mps", "auto"):
             config = WebConfig(device=device)
-            assert config.device == device
+            assert config.device in {"cpu", "cuda", "mps"} or config.device.startswith("cuda:")
+
+    def test_invalid_device_is_rejected(self):
+        """device used to be the only unvalidated field on WebConfig."""
+        with pytest.raises(ValueError, match="Invalid device"):
+            WebConfig(device="tpu")
 
     def test_from_preset_then_to_dict_round_trip(self):
         """Test that preset -> to_dict -> WebConfig round trip works."""

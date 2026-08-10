@@ -18,6 +18,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from alpha_zero.bridge.utils import parse_bool_env
+
+__all__ = ["MAP_SIZES", "BridgeConfig", "GameConstants", "MapSizeConfig", "get_map_config"]
+
+
+@dataclass
+class GameConstants:
+    """Constants used for game state conversion and action mapping."""
+
+    ESTIMATED_TOTAL_TECHS: int = 70
+    ESTIMATED_MAX_SCORE: int = 2000
+    ITEM_HASH_RANGE: int = 200
+
 
 def _get_default_comm_dir() -> Path:
     """Get the default communication directory for Civ6.
@@ -73,6 +86,12 @@ class BridgeConfig:
         player_id_mapping: Optional explicit mapping from raw Civ6 player IDs to
             sequential 0-indexed IDs. When None, a mapping is auto-generated from
             the players present in the game state.
+        command_transport: How commands reach the mod — "file" (write
+            commands.json for a FireTuner .ltp relay panel) or "socket"
+            (headless FireTuner TCP injection). Default "file".
+        tuner_host: FireTuner TCP host for the socket transport (default
+            127.0.0.1, the game's local debug listener).
+        tuner_port: FireTuner TCP port for the socket transport (default 4318).
 
     Note:
         The max_retries and retry_delay_s fields are defined for future
@@ -93,6 +112,9 @@ class BridgeConfig:
     max_actions_per_second: float = 1.0
     multiplayer_mode: bool = False
     player_id_mapping: dict[int, int] | None = None
+    command_transport: str = "file"
+    tuner_host: str = "127.0.0.1"
+    tuner_port: int = 4318
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -117,6 +139,10 @@ class BridgeConfig:
             raise ValueError("num_players must be between 2 and 12")
         if self.max_actions_per_second < 0.0:
             raise ValueError("max_actions_per_second must be non-negative")
+        if self.command_transport not in ("file", "socket"):
+            raise ValueError("command_transport must be 'file' or 'socket'")
+        if not 1 <= self.tuner_port <= 65535:
+            raise ValueError("tuner_port must be between 1 and 65535")
 
     @classmethod
     def from_env(cls) -> BridgeConfig:
@@ -138,12 +164,10 @@ class BridgeConfig:
         """
 
         def get_bool(key: str, default: bool) -> bool:
-            val = os.environ.get(key, "").lower()
-            if val in ("1", "true", "yes"):
-                return True
-            if val in ("0", "false", "no"):
-                return False
-            return default
+            # Delegates to the shared bridge-wide bool vocabulary so
+            # CIV6_BRIDGE_*, CIV6AZ_LOCAL_*, and CIV6AZ_AGENT_* env vars all
+            # accept the same 1/true/yes/0/false/no spelling.
+            return parse_bool_env(os.environ.get(key), default)
 
         kwargs: dict[str, Any] = {}
 
@@ -180,6 +204,15 @@ class BridgeConfig:
             kwargs["max_actions_per_second"] = float(max_aps)
 
         kwargs["multiplayer_mode"] = get_bool("CIV6_BRIDGE_MULTIPLAYER_MODE", False)
+
+        if transport := os.environ.get("CIV6_BRIDGE_TRANSPORT"):
+            kwargs["command_transport"] = transport.lower()
+
+        if tuner_host := os.environ.get("CIV6_BRIDGE_TUNER_HOST"):
+            kwargs["tuner_host"] = tuner_host
+
+        if tuner_port := os.environ.get("CIV6_BRIDGE_TUNER_PORT"):
+            kwargs["tuner_port"] = int(tuner_port)
 
         return cls(**kwargs)
 
@@ -232,6 +265,9 @@ class BridgeConfig:
             "max_actions_per_second": self.max_actions_per_second,
             "multiplayer_mode": self.multiplayer_mode,
             "player_id_mapping": self.player_id_mapping,
+            "command_transport": self.command_transport,
+            "tuner_host": self.tuner_host,
+            "tuner_port": self.tuner_port,
         }
 
 

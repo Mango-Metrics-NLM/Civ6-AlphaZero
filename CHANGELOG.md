@@ -5,6 +5,339 @@ All notable changes to the Civ6 AlphaZero project will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added — Checkpoint validation wiring, GPU A/B evidence, and 100% mypy stabilization (2026-08-10)
+
+- **Wired `validate_encoder_state` into production GCP worker load sites**: Integration into `evaluation_worker.py` (after load_state_dict) and `selfplay_worker.py` (both Transformer and MuZero paths) ensures checkpoint mismatches are logged as warnings rather than silently degrading training/eval metrics.
+- **Completed 800-game local GPU A/B arena**: Ran controlled A/B training and arena evaluation of `patch_embed` versus `hex_crystalline` on MicroCiv (8x8 grid). Results show a statistically significant edge for `hex_crystalline` (+31.4 Elo, 142W/588D/70L, 95% CI [0.510, 0.579]).
+- **Published to Hugging Face**: Released the extracted hex-crystalline encoder subpackage to Hugging Face under `ianshank/civ6-hexcrystal-encoder` with safetensors and config.json.
+- **100% clean mypy type safety**: Fixed 33 remaining mypy errors across the entire repository, achieving zero type-checking errors in all 350 files.
+
+### Added — Hex-crystalline encoder is a standalone, publishable subpackage (2026-08-09)
+
+- **`alpha_zero/hexcrystal/`** — the hex encoder, crystalline lattice layer, patch
+  embedding, and encoder registry now live in a subpackage whose only third-party
+  dependency is torch. It was always torch-only *by source*, but importing it ran
+  the root package's eager chain into numpy and gymnasium, so it could not be
+  reused outside this repository. `tests/unit/test_hexcrystal_isolation.py` pins
+  the contract by importing the package in a subprocess with both blocked.
+- **Backwards compatibility is total for existing callers.** Re-export shims
+  remain at all five historical import paths and resolve to the same objects;
+  checkpoint keys are unchanged (`encoder.patch_embed.*` for both encoder types),
+  verified against a key-set snapshot captured before the move.
+- **`HexEncoderConfig` gained `to_dict`/`from_dict`/`to_json`/`from_json`.**
+  Unknown fields are logged and dropped so a config from a newer version still
+  loads. Every field is a JSON primitive, which is what lets the encoder publish a
+  flat `config.json` next to safetensors weights.
+
+### Added — Reproducible local encoder A/B and Hub publication (2026-08-09)
+
+- **`scripts/run_encoder_ab.py`** — trains both encoder arms from identical code,
+  seed, and budget, plays them head to head, and writes committable evidence to
+  `docs/evidence/hexcrystal_ab/`. It composes the existing cloud workers
+  (`create_model` already accepts `encoder_type`; `run_selfplay` needs no cloud
+  storage or credentials; `run_arena` accepts two independently-configured
+  models) rather than adding another training path.
+- **Self-play is now seedable.** `run_selfplay` gained an optional `seed` that
+  threads into environment construction. Seeding the global RNGs was never
+  sufficient — `MicroCivEnv` holds its own generator — so game streams varied
+  between runs under a fixed seed. The default (`None`) preserves the previous
+  behavior, and a test asserts the unseeded case still varies so the rationale
+  cannot silently rot.
+- **`validate_encoder_state`** (`alpha_zero/utils/checkpoint.py`) — several load
+  paths use `strict=False`, so a checkpoint loaded into the wrong architecture
+  leaves the encoder randomly initialised and still plays, which is invisible in
+  aggregate metrics and fatal precisely during an encoder comparison. Validation
+  is structural and names both the expected and found encoder.
+- **Evidence carries a Wilson 95% interval**, and the report prints an explicit
+  warning whenever that interval spans 0.5. A consistency gate refuses to render
+  a report whose counts, rate, interval, and significance flag disagree.
+- **`scripts/upload_encoder_to_hub.py`** — stages the encoder for the Hub as
+  safetensors plus a flat `config.json`, dry-run by default. Publishing requires
+  an explicit `--publish` and a `HF_TOKEN`; pickled weights and non-hex
+  checkpoints are refused. `docs/model_cards/hexcrystal_encoder.md` documents the
+  architecture as implemented and states the evaluation's limits.
+- **`--encoder_type`** added to `scripts/local_training_run.py` and recorded in
+  its logged parameters.
+
+### Changed — Training-run comparator reads MLflow (2026-08-09)
+
+- `scripts/compare_training_runs.py` gained an MLflow source with per-key
+  fallback, which its own docstring had requested since v1.5.0: MLflow has been
+  the only tracker since v1.7.0, yet the script could read only deprecated W&B
+  runs or regex-parsed logs.
+- Its `matplotlib` import is now guarded, with `--no_plots` degradation.
+  matplotlib was imported at module scope while being declared in no dependency
+  list, so the script could not run in a default environment; it is now declared
+  in the `monitoring` extra.
+- The hardcoded promotion threshold and W&B project default are parameterised
+  (`CIV6AZ_PROMOTION_THRESHOLD`, `CIV6AZ_WANDB_PROJECT`). W&B and log-file modes
+  are unchanged.
+
+### Changed — Root package resolves its exports lazily (2026-08-09)
+
+- `alpha_zero/__init__.py` uses PEP 562 `__getattr__` instead of eager imports.
+  Measured: `import alpha_zero` 1,600 ms → 6.5 ms. `from alpha_zero import X` is
+  unaffected.
+- **One deliberate surface change:** `__all__` is now static and no longer lists
+  `RealCiv6Env`/`RewardConfig`. Both remain resolvable attributes; only
+  `from alpha_zero import *` stops pulling them in. Deciding their availability
+  eagerly would have required performing the very import being deferred.
+
+### Fixed — Hex encoder architecture documentation (2026-08-09)
+
+The living documentation described an encoder that was never implemented.
+Corrected in `CLAUDE.md` §5.2 and the affected docstrings; the historical v0.14.1
+changelog entry below is left as-is as a record of what was claimed at the time.
+
+- **Claimed** axial coordinates; **implemented** even-q offset only —
+  `HexAdjacency` raises `ValueError` for any other system. The
+  `HexEncoderConfig.offset_type` docstring advertised an `"odd-q"` value that
+  fails at runtime.
+- **Claimed** ring-distance positional encoding; **implemented** none at all —
+  position reaches the model solely through the transformer's learned `pos_embed`.
+- **Claimed** multi-scale convolutions and a configurable ring radius;
+  **implemented** a flat same-resolution stack with a fixed 7-tap kernel. The
+  registry docstring advertised a `num_scales` kwarg that was silently discarded.
+- **Claimed** classes `HexConv2d`, `CrystallineAttention`, `EncoderRegistry`;
+  **implemented** `HexConvolution`, `CrystallineLatticeLayer`, and a module-level
+  registry dict. The crystalline layer combines transforms across the *transform*
+  axis, not spatially — there is no hex-neighbour attention masking.
+- Newly documented: the `AdaptiveAvgPool2d` token bottleneck discards fine
+  spatial structure. This is the encoder's most consequential undocumented
+  property and is now stated in the module docstring and `Agent.md`.
+
+### Fixed — Train → evaluate → play loop (2026-07-26)
+
+Found while checking CLAUDE.md §13 against the code. Each defect was invisible
+because the test covering it asserted the wrong thing.
+
+- **The web UI's neural opponent never used trained weights.**
+  `GameSessionManager._get_shared_network` read `result.state_dict`, but
+  `safe_load_checkpoint` returns `CheckpointLoadResult` whose payload field is
+  `.data` — both fallback branches were skipped, no weights loaded, and it
+  logged success anyway. The two covering tests patched `safe_load_checkpoint`
+  to return a plain dict, a type the real function never produces.
+- **Two further blockers behind that one:** `session.py` looked for
+  `"model_state_dict"` while `training_civ6` writes `"state_dict"`, and the
+  network was rebuilt with hardcoded 6-block/64-filter defaults, so a
+  checkpoint trained at any other size could not load regardless. New
+  `utils.checkpoint.load_network` is now the single reader for every shape.
+- **N-player checkpoints were unloadable.** `MicroCivNetwork` swaps in an
+  `NPlayerValueHead` when `num_players > 2`, but `NetworkConfig` never recorded
+  `num_players`, so reconstruction built a scalar head and `load_state_dict`
+  failed on `value_head.fc2.weight`. Now a defaulted config field, so older
+  checkpoints still load as 2-player.
+- **A GPU-trained checkpoint could not be loaded on a CPU-only machine.**
+  `safe_load_checkpoint`/`load_model_state` defaulted `map_location=None`, so
+  `torch.load` restored tensors to the save-time device — a direct break of
+  charter NG-4. Both now default to `"cpu"`.
+- **Neither player controlled its own units in the web UI.** `GameController`
+  flipped `current_player` after every action, but MicroCiv rotates it only in
+  `_end_turn`. Measured on a seeded game: controller and env disagreed on 3 of
+  6 plies before, 0 after. The route had the mirror bug, playing a single AI
+  ply per human move.
+- **The actions that win the game were unreachable.** The template rendered
+  `valid_actions[:20]` in index order; `found_city` (341-360) and `produce`
+  (361-375) sit above `move` (1-160), so a realistic 42-action mid-game state
+  hid both behind a dead "+N more actions" label. Actions are now grouped by
+  category with a per-group cap.
+- **MCTS flipped the value sign on every ply** (`core/civ6_mcts.py`) while a
+  MicroCiv player takes many plies per turn, corrupting visit counts (the
+  policy target) and the search. Backup and PUCT selection are now `to_play`
+  aware, with `to_play` recorded *after* the simulation step. Value targets on
+  the training path were unaffected — they come from the game outcome.
+  `>2`-player behaviour is unchanged by design; `NPlayerMCTS` remains correct
+  there.
+
+### Added
+- `alpha_zero/utils/device.py` — `resolve_device` / `resolve_device_str` /
+  `place_network`, the single source of truth replacing ~30 ad-hoc
+  `torch.cuda.is_available()` sites across three incompatible idioms. Configs
+  now *resolve* a device rather than warning and carrying on with a stale one.
+- `--max_turns` and `--save_interval` on `training_civ6` — both already existed
+  as config fields with no way to set them, which made a short run impossible
+  to evaluate (`save_interval=10` means a 6-iteration run prints no win rate).
+- Cross-device checkpoint round-trip test and a repo-wide guard against
+  `.numpy()` without a preceding `.cpu()`.
+
+### Changed
+- CLAUDE.md §13 rewritten against the code: the N-player item was already done
+  (2026-07-05) and the "12 xfailed DDP tests in `tests/unit/test_distributed`"
+  item referenced a directory that does not exist. §13 had been contradicting
+  §5.3 in the same file.
+
+### Removed — Dead-code deletions, hygiene sweep (2026-07-25)
+- `alpha_zero/cloud/gcp/cost_optimization.py` (644 ln) and
+  `alpha_zero/cloud/gcp/lifecycle_cli.py` (570 ln) — zero importers; the former
+  overlapped `gcp/cost.py`/`gcp/cost_monitor.py`.
+- `alpha_zero/inference/api_server.py` (326 ln) — unused duplicate of
+  `alpha_zero/serving/inference_server.py`; docs re-pointed at the real server.
+- `run_debug_selfplay.py` (1,432 ln) — untested, unreferenced root runner.
+- `scripts/analyze_training_run.py` — hardcoded-path throwaway that shadowed the
+  maintained `scripts/analyse_training_run.py` by near-identical name.
+- `scripts/validate_v130_training.py` — v1.3.0-era shim already superseded by
+  `scripts/validate_convergence.py`.
+- Two long-skipped `--model_version` test classes in
+  `tests/cloud/unit/test_training_worker.py` (6 tests) whose own docstrings said
+  "can be deleted in v1.7.0" (project is at v1.8.0); superseded by
+  `tests/integration/test_training_resume_continuity.py`.
+- `inspect_db.py` moved to `scripts/inspect_db.py` (kept; was misplaced at root).
+
+### Changed — Gate hardening (`harden-lint-and-type-gates`, 2026-07-25)
+- **Tool pins aligned at ruff 0.15.8 / mypy 1.19.1** across all five locations
+  (CI lint job, CI governance job, pre-commit, pyproject `dev` extra,
+  requirements.txt — the last two previously drifted/unpinned).
+- **Lint gate is whole-repository**: CI runs `ruff check .` / `ruff format
+  --check .`; 104 test files + 25 script/root/infra files reformatted
+  (format-only); unmaintained fringe dirs excluded centrally via
+  `[tool.ruff] extend-exclude` + `force-exclude`; pre-commit `&maintained`
+  anchor widened to match.
+- **Mypy is now a real gate**: the CI lint job installs the project + dev extra
+  (torch, stubs incl. new `types-requests`), the `--ignore-missing-imports`
+  CLI flag is gone, and `mypy alpha_zero/` exits 0 — 130 errors burned down
+  (29 stale ignores removed, 101 semantic fixes via annotations/casts/scalar
+  wrappers; 5 documented library-false-positive ignores remain).
+- **eval-harness CI job flipped to enforcing** — its observation window closed
+  with consecutive green runs (carried from add-enterprise-docs-and-gates
+  task 6.3).
+- **Never-in-CI test dirs measured** (`tests/e2e|inference|regression|scripts|
+  smoke`): 263 passed / 12 env-dependent failures / 2m03s; CI wiring deferred
+  until those suites carry env-required markers. `tests/inference` gained a
+  pydantic `importorskip` guard so collection degrades to a skip without the
+  `web` extra.
+
+### Changed — Code hygiene sweep (2026-07-25)
+- **Config truth**: dropped the orphaned per-file-ignore for deleted
+  `tests/unit/test_pbt_dashboarding.py` and the stale coverage-omit glob
+  `alpha_zero/orchestrator/reflection_*.py` (matched nothing) from both omit
+  lists; added the missing `mlflow<3.0` upper bound to the `monitoring` extra
+  (its comment always promised 2.x); corrected the `UP038` ignore comment (the
+  rule is still active at the pinned ruff 0.8.0 — 27 violations — so the ignore
+  stays until the pin upgrade).
+- **Doc truth**: corrected CLAUDE.md §5.3's static-skip figure (~20 W&B-related →
+  measured 11 skip sites / 17 tests, none W&B-related).
+
+### Added — Enterprise documentation overhaul & governance gates (2026-07-25)
+- **OpenSpec adoption**: `openspec/` spec-driven change directory (project.md,
+  AGENTS.md, baseline specs for `agent-harness` / `kb-workflow`, and the
+  `add-enterprise-docs-and-gates` change with capability deltas).
+- **Deterministic validators** (stdlib-only, 0/1/2 exit contract, tested in
+  `tests/governance/`): `validate_openspec.py`, `validate_kb.py`,
+  `validate_skills.py`, `check_doc_sync.py`. Wired into Claude Code hooks,
+  `.pre-commit-config.yaml`, and a new CI `governance` job.
+- **Harness fixes**: deny `.env` edits and force-pushes; hook scripts replace the
+  fragile inline commands; the PostToolUse autofix now defers F401 **and** RUF100
+  so intentional `# noqa: F401` directives are preserved.
+- **Skills**: handoff skills gained YAML frontmatter and a validation gate; new
+  `openspec-propose`, `openspec-archive`, `doc-sync`, and `release` skills.
+- **Docs**: README rewritten to match the application (MLflow, Optuna, real
+  extras, `python -m` entry points, 85% gate); MIT `LICENSE`, `CONTRIBUTING.md`,
+  `SECURITY.md`, `CODE_OF_CONDUCT.md`, `SUPPORT.md`, `CODEOWNERS`, PR/issue
+  templates, and `dependabot.yml` added; `docs/` reorganized with an index,
+  numbered ADRs, a PRD status index, and ~19 stale artifacts moved to
+  `docs/archive/`. Version aligned to 1.8.0 across packaging and the package.
+
+## [Unreleased] — W&B Retirement Sweep (2026-07-13)
+
+### Changed — Experiment tracking is MLflow-only
+- **Toggle unification**: `resolve_tracker_enabled()` in `alpha_zero/monitoring/config.py` is the single enablement source with precedence `CIV6AZ_MLFLOW_ENABLED` > `MLFLOW_ENABLED` > legacy `WANDB_ENABLED` (deprecated, warns when deciding). All `from_env()` sites — cloud workers, experiment tracker — honor legacy deployment configs transparently.
+- **Config bridge**: orchestrator `WandbConfig` is now an explicit deprecated bridge — `to_mlflow_config()` maps `project→experiment_name`, list tags → dict tags, `entity` → `wandb.entity` tag, `mode=="disabled"` → off. The orchestrator runs a single tracker (mlflow section wins; wandb section bridges with a DeprecationWarning).
+- **BREAKING/behavior**: `--no-wandb` now disables ALL tracking (both `wandb:` and `mlflow:` config sections); new explicit `--no-tracking` alias added. Previously MLflow kept logging when only `--no-wandb` was passed.
+- Deploy configs (`configs/vertex_*_smoke.yaml`, `cloud_training_v1.yaml`) switched from `WANDB_*` env blocks to `MLFLOW_*`.
+
+### Fixed
+- **`run_enhanced_training.py --wandb` / `run_muzero_training.py --wandb` crashed with `TypeError`** — they constructed the legacy config shape against the MLflow-aliased class; migrated to `MLflowConfig` + `WandbCompatAdapter` directly.
+- **`WandbCompatAdapter.log()` silently dropped numpy metrics** (`np.int64`, `np.float32`, 0-d arrays); now coerced via `_coerce_metric_value`, with one level of nested-dict flattening (`parent/child`).
+- **MLflow run-group propagation never worked** — `vertex_orchestrator` read `.name`/`.id` off an MLflow run object (metadata lives under `.info.*`); new `WandbCompatAdapter.run_name` property fixes `MLFLOW_RUN_GROUP`/`group=` tag propagation to worker containers.
+- **`utils/factories.create_wandb_logger` mangled list tags** (`dict(list[str])`); now a deprecated wrapper delegating through `to_mlflow_config()`.
+- `WandbCompatAdapter.alert()` also emits `logger.warning` so alerts are visible when MLflow is disabled; `watch_model()` records a `watch_model_requested` tag.
+
+### Removed (BREAKING for out-of-repo importers)
+- `alpha_zero/utils/wandb_logger.py` deprecation shim (removal was promised for v1.6.0). Last compat surface: lazy `alpha_zero.utils.{WandbLogger,get_wandb_logger,init_wandb}` aliases (emit DeprecationWarning).
+- `vertex_jobs._wandb_env_vars` / `resolve_wandb_key_from_secret_manager` / `ensure_wandb_api_key` and the `CIV6AZ_WANDB_SECRET_*` env pathway (zero consumers; nothing reads `WANDB_API_KEY` anymore).
+- Dead module-skipped W&B test suites (~2,300 lines): `test_wandb_logger`, `test_wandb_baseline_metrics`, `test_pbt_dashboarding`, `test_wandb_integration`, `test_orchestrator_wandb`, plus skipped classes in `test_wandb_coordination` (renamed `test_vertex_coordination`, 9 active tests kept) and `test_orchestrator_muzero_config`. Replacement coverage landed FIRST: numpy/`log_reflection_stats`/`run_name`/alert tests in `test_mlflow_logger_adapter`, `test_tracker_enabled_resolution` (precedence matrix), `test_pbt_mlflow_dashboards`, vertex-orchestrator lifecycle tests in `test_orchestrator_mlflow`, and `test_orchestrator_wandb_bridge`.
+
+### Added — Optuna hyperparameter sweeps (replaces W&B sweeps)
+- `alpha_zero/optimizations/hyperparameter_search.py`: reusable `HyperparameterSearch` component — declarative YAML search spaces, `SweepConfig` with `CIV6AZ_SWEEP_*` env overrides (legacy `SWEEP_TIMEOUT_SECONDS` honored), injectable objective/tracker for testing, MLflow per-trial logging, `SubprocessTrainingObjective` with timeout + prune-on-failure semantics.
+- `run_sweep.py` rewritten as a thin CLI over the component (`--config/--n-trials/--study-name/--storage/--dry-run`); `configs/sweep_muzero.yaml` seeds the search space from the historical W&B sweep results. New `tuning` extra (`pip install -e '.[tuning]'`).
+- `run_muzero_training.py` prints a machine-readable `SWEEP_METRICS_JSON=` result line for subprocess objectives.
+- `scripts/setup_secrets.sh` generalized: provisions any named secret (`CIV6AZ_SECRET_NAME`/`CIV6AZ_SECRET_VALUE`), wandb-api-key default removed.
+- With this, no wandb imports remain in `alpha_zero/` or entry points. Two read-only analysis scripts (`compare_training_runs.py`, `search_efficiency_report.py`) keep lazy `wandb.Api()` readers for W&B-hosted *historical* runs — data MLflow cannot serve — and are documented as deprecated.
+
+### Accepted debt
+- `TournamentWandbLogger` and serialized `wandb_enabled` config fields keep their names for compat.
+
+## [1.8.0] — 2026-07-12 — Live Civilization VI Bridge (Headless Socket Transport)
+
+> **Version note:** Bumped from `1.6.0` to `1.8.0`. This release delivers the headline feature of the `v1.8.x` branch lineage: live, fully headless Civilization VI gameplay end-to-end. Previously the file-based bridge (`commands.json`) plus the FireTuner GUI relay panel never actually delivered a command to the game — the Civ6 Lua sandbox has no `io` library, so the mod can only receive commands via the in-game `ExposedMembers` global that an external tuner client must set. State always flowed out (via `Lua.log`), but commands never reached the mod. This release fixes that.
+
+### Added — Headless FireTuner Socket Transport
+
+- **`alpha_zero/bridge/tuner_socket_bridge.py`** (NEW module) — `FireTunerClient` speaks the reverse-engineered Firaxis FireTuner TCP protocol (the game listens on `127.0.0.1:4318`). It discovers the `GameCore_Tuner` Lua state and executes `ExposedMembers.AlphaZeroCommand = <json>` directly against it — no GUI, no `.ltp` panel, no `commands.json` hop.
+- **`SocketTunerBridge`** — an async drop-in replacement for `TunerBridge` implementing the same `start`/`stop`/`send_command`/`stats` surface, so callers don't need to branch on transport.
+- **Transport selection**: `BridgeConfig.command_transport` (`"file"` default | `"socket"`), plus env vars `CIV6_BRIDGE_TRANSPORT`, `CIV6_BRIDGE_TUNER_HOST`, `CIV6_BRIDGE_TUNER_PORT`.
+- **`CIV6_BRIDGE_KICK_START`** — forces one `END_TURN` to un-stall an idle game at bridge startup.
+- **Tests**: `tests/unit/test_tuner_socket_bridge.py` — 25 new unit tests against an in-process mock tuner TCP server.
+
+### Fixed — Encoder/Network Channel Bug
+
+- **`agent_loop._build_observation`** — a batch-slice bug collapsed the 84-channel observation to 1 channel, and the bridge network defaulted to 13 channels, so the live agent silently fell back to `END_TURN` every turn regardless of policy output. Fixed so the agent runs its actual trained policy (`policy_logits` over the demo action space).
+- **Test**: `tests/unit/test_civ6_bridge_encoding.py`.
+
+### Fixed — Bridge Hardening (debt burn-down, ~80 new coverage tests)
+
+- **City-production legality hashing**: fixed a bug where production actions could never validate (hash mismatch prevented all city-production commands from being marked legal).
+- **Protocol fields wired through**: `item_types`, `gold_per_turn`, and a `winner_id` sentinel now flow end-to-end through the bridge protocol.
+- **`LiveBridge`** now honors `poll_interval_ms` instead of a hardcoded poll cadence.
+- **`log_tailer`**: ack `msg_id` validation added, so stale/duplicate acks are no longer mistaken for the current command's response.
+- **Configurable Civ6 log path**: `--civ6-log-path` CLI flag / `CIV6AZ_LOCAL_LOG_PATH` env var for locating `Lua.log`.
+- **`alpha_zero/bridge/utils.py`** — new shared `parse_bool_env` and msg-id helpers, deduplicated across bridge modules.
+- **Coverage**: bridge modules now at roughly 95-100% line coverage.
+
+### Added — OneDrive-Safe Mod Installer
+
+- **`scripts/install_civ6_mod.py`** — falls back to a SHA256-verified in-place overwrite when `shutil.rmtree` hits a OneDrive file lock (`WinError 5`), instead of failing the install outright.
+- **Test**: `tests/scripts/test_install_civ6_mod.py`.
+
+### Verified Live (2026-07-12)
+
+- 4 autonomous turns delivered and acknowledged over the socket: `'Command received via ExposedMembers'` -> `'Executing: END_TURN'` -> `AZ_ACK`.
+- State decodes correctly every turn — zero regressions of the earlier "missing width" bug.
+
+### Known Limitations
+
+- **Turn-cycle stall**: after a few automated end-turns, the turn cycle can stall between turns (local player `TURN_ACTIVE=false`, no popup). This is a Civ6 UI-automation limbo, not a bridge defect. Needs either a fresh game to retry (now that real moves are being made) or mod-side end-turn robustness.
+- **`LiveBridge.next_msg_id` overflow**: uses `int(time.time()*1000)`, which gets truncated to int32 in the ack (`-2147483648`). Cosmetic, but worth fixing.
+- **Sustained real-move demo**: still needs a fresh single-player game — the socket transport path is proven and the agent now runs its actual policy, but a long, uninterrupted real-move session hasn't been demonstrated yet.
+
+### Changed
+
+- **Version**: `1.6.0` -> `1.8.0` (live bridge is the headline feature; matches the `v1.8.x` branch lineage).
+
+### Test Suite
+
+- Full canonical suite: ~11,800 passing on Linux CI.
+- `ruff` clean on the bridge surface; the new `tuner_socket_bridge.py` module is mypy-clean (repo has pre-existing mypy debt in unrelated files).
+- Windows-only local deselect list: 5 files (SIGALRM unavailable) plus `test_agent_tools` (pre-existing symbol-scan hang) — all pass on Linux CI.
+
+## [1.7.0] — 2026-06-20 — Full-Civ6 Local Gameplay & LLM Eval Gate
+
+> Reconstructed from git history — this release was shipped between 1.6.0 and
+> 1.8.0 but had no dedicated changelog section (no git tags exist).
+
+### Added
+
+- **Full-Civ6 local gameplay**: `BridgeAgentLoop` wires the trained agent to
+  Civilization VI through the file-based bridge, with a `Civ6MctsPolicy` driving
+  a `GumbelMCTS` over a snapshot-seeded `BridgeMCTSEnv`.
+- **LLM eval gate**: integration of `langfuse-eval-harness` to evaluate the
+  `StrategyAdvisor` structured output (`make eval-llm`, `configs/eval/`), gating
+  both the `analyze` and `report` advisor modes.
+- **BridgeEvalHarness** MLflow telemetry hooks and the `install_civ6_mod.py`
+  mod installer.
+
 ## [1.6.0] — 2026-05-21 — MLflow Monitoring & Evaluation Analytics
 
 > **Version note:** Bumped from `1.4.0` to `1.6.0` after merging this branch with `origin/main`, which had independently released `1.5.0` (Sprint 5 type safety) on top of an earlier `1.4.0` (Sprint 4). The MLflow monitoring layer is the largest behavioural change of this release line, so it owns the minor bump.
@@ -210,7 +543,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.3.0] — 2026-02-23
+## [1.3.0] — 2026-02-23 — Training Worker Fine-Tuning (earlier 1.3.0 point release)
+
+> Note: two releases carried the `1.3.0` number (this fine-tuning fix and the
+> 2026-03-04 "Sprint 3" entry above). Both are retained for historical accuracy.
 
 ### Fixed — Training Worker Loads Base Model for Fine-Tuning
 
@@ -948,7 +1284,7 @@ After this fix, training iterations will:
 
 ---
 
-## [Unreleased]
+## [Historical — pre-0.8.0 notes]
 
 ### Added
 

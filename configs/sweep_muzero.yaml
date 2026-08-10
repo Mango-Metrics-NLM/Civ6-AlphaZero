@@ -1,0 +1,52 @@
+# MuZero hyperparameter sweep (Optuna-backed; replaces the W&B sweep).
+#
+# Run:      python run_sweep.py --config configs/sweep_muzero.yaml
+# Persist:  CIV6AZ_SWEEP_STORAGE=sqlite:///sweeps.db python run_sweep.py ...
+# Env overrides: CIV6AZ_SWEEP_N_TRIALS, CIV6AZ_SWEEP_TRIAL_TIMEOUT_SECONDS
+#   (legacy SWEEP_TIMEOUT_SECONDS still honored), CIV6AZ_SWEEP_STUDY_NAME,
+#   CIV6AZ_SWEEP_METRIC, CIV6AZ_SWEEP_STORAGE.
+#
+# Ranges seeded from the historical W&B sweep results recorded in
+# configs/optimal_muzero_config.yaml (best runs: lr 0.0027-0.0059,
+# batch 64-256, res_blocks 2-4, filters 32-64).
+
+study_name: civ6az-muzero-sweep
+direction: maximize
+metric: best_avg_length
+n_trials: 20
+sampler: tpe
+
+# {python} expands to the current interpreter; {name} placeholders expand
+# to each trial's suggested parameter values.
+command:
+  - "{python}"
+  - run_muzero_training.py
+  - --quick
+  - --small
+  - "--lr={lr}"
+  - "--batch-size={batch_size}"
+  - "--simulations={simulations}"
+  - "--res-blocks={res_blocks}"
+  - "--filters={filters}"
+
+search_space:
+  lr:
+    type: float
+    low: 1.0e-4
+    high: 1.0e-2
+    log: true
+  batch_size:
+    type: categorical
+    choices: [64, 128, 256]
+  simulations:
+    type: int
+    low: 8
+    high: 32
+    step: 8
+  res_blocks:
+    type: int
+    low: 2
+    high: 6
+  filters:
+    type: categorical
+    choices: [32, 64, 128]

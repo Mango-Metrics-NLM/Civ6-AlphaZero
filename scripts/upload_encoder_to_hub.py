@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Publish the hex-crystalline encoder to the Hugging Face Hub.
 
 **This tool does not publish by default.** Uploading is a side-effecting call to
@@ -6,7 +6,7 @@ an external service, so it runs as a dry run unless ``--publish`` is passed
 explicitly: it stages the artifacts locally, prints the manifest, and stops. Run
 the dry run, read the manifest, then publish deliberately.
 
-What gets published is the *encoder*, extracted from a trained network ΓÇö not the
+What gets published is the *encoder*, extracted from a trained network — not the
 whole game-playing model. The encoder is the reusable piece: it depends only on
 torch and applies to any hexagonal-grid problem, whereas the surrounding network
 is specific to this game. Weights ship as safetensors; a pickled ``.pt`` is never
@@ -130,7 +130,7 @@ def stage_artifacts(
     """Write the upload payload to *staging_dir*.
 
     ``save_pretrained`` emits a placeholder README, which is overwritten with the
-    real model card when one is supplied ΓÇö an unedited placeholder on a public
+    real model card when one is supplied — an unedited placeholder on a public
     model page is worse than no page.
 
     Args:
@@ -147,7 +147,7 @@ def stage_artifacts(
         if not (staging_dir / _STAGING_MARKER).exists() and any(staging_dir.iterdir()):
             raise UploadError(
                 f"{staging_dir} is not empty and was not created by this tool "
-                f"(no {_STAGING_MARKER} marker). Refusing to delete it ΓÇö point "
+                f"(no {_STAGING_MARKER} marker). Refusing to delete it — point "
                 "--staging-dir at a new or previously-staged directory."
             )
         shutil.rmtree(staging_dir)
@@ -351,7 +351,7 @@ def main(argv: list[str] | None = None, api: Any | None = None) -> int:
 
     if not args.publish:
         print(
-            "\nDry run ΓÇö nothing was uploaded.\n"
+            "\nDry run — nothing was uploaded.\n"
             f"To publish:  HF_TOKEN=... {Path(sys.argv[0]).name} "
             f"--checkpoint {args.checkpoint} --repo-id {args.repo_id} --publish\n"
         )

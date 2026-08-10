@@ -107,6 +107,11 @@ def state_message_dict(
         state = minimal_state(turn_id=turn_id, player_id=player_id, board_size=board_size)
 
     state_payload = asdict(state)
+    # GameStateData.from_dict reads the map under "map" (the Lua mod's
+    # wire-format name); asdict produces the dataclass field name "map_data".
+    # Rename so the round-trip preserves width/height instead of silently
+    # defaulting to 0x0 and tripping GameNotStartedError downstream.
+    state_payload["map"] = state_payload.pop("map_data")
     # The StateMessage schema expects a ``player`` summary block alongside
     # the ``players`` list - mirror what the Lua mod actually exports.
     state_payload["player"] = {

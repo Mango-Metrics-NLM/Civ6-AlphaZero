@@ -123,15 +123,20 @@ def log_elo_results_to_mlflow(
     else:
         elo_spread = 0.0
 
-    ml_logger.log_metrics({
-        "tournament/best_elo": best_elo,
-        "tournament/elo_spread": elo_spread,
-        "tournament/num_models": float(len(elo_ratings)),
-    })
+    ml_logger.log_metrics(
+        {
+            "tournament/best_elo": best_elo,
+            "tournament/elo_spread": elo_spread,
+            "tournament/num_models": float(len(elo_ratings)),
+        }
+    )
     ml_logger.set_tag("tournament/best_model", best_model)
     logger.info(
         "Logged ELO results: best=%s (%.1f), spread=%.1f, models=%d",
-        best_model, best_elo, elo_spread, len(elo_ratings),
+        best_model,
+        best_elo,
+        elo_spread,
+        len(elo_ratings),
     )
 
 
@@ -193,7 +198,9 @@ def run_local_tournament(
 
     logger.info(
         "Running tournament: %d models, %d games/pair, %d sims",
-        len(model_versions), tournament_games, mcts_sims,
+        len(model_versions),
+        tournament_games,
+        mcts_sims,
     )
     return run_tournament(
         config=config,
@@ -239,10 +246,16 @@ def run_baseline_eval(
         logger.info("[dry-run] Returning synthetic baseline eval results")
         return {
             "random": {
-                "win_rate": 0.9, "draw_rate": 0.05, "loss_rate": 0.05, "total_games": n_games,
+                "win_rate": 0.9,
+                "draw_rate": 0.05,
+                "loss_rate": 0.05,
+                "total_games": n_games,
             },
             "heuristic": {
-                "win_rate": 0.6, "draw_rate": 0.1, "loss_rate": 0.3, "total_games": n_games,
+                "win_rate": 0.6,
+                "draw_rate": 0.1,
+                "loss_rate": 0.3,
+                "total_games": n_games,
             },
         }
 
@@ -269,7 +282,6 @@ def run_baseline_eval(
         _network: Any = model  # nn.Module satisfies MCTSNetwork at runtime; cast for mypy
         mcts_agent = Civ6MCTS(network=_network, config=mcts_cfg, device=device)
 
-
         pipeline = EvaluationPipeline(board_size=board_size, max_turns=60)
 
         results: dict[str, dict[str, float]] = {}
@@ -282,7 +294,7 @@ def run_baseline_eval(
             eval_result = method(mcts_agent, n_games=n_games)
             wr = eval_result.win_rate
             results[name] = {
-                "win_rate": float(wr.win_rate) / 100.0,   # normalise to 0-1
+                "win_rate": float(wr.win_rate) / 100.0,  # normalise to 0-1
                 "draw_rate": float(wr.draw_rate) / 100.0,
                 "loss_rate": float(wr.loss_rate) / 100.0,
                 "total_games": float(wr.total_games),
@@ -294,7 +306,11 @@ def run_baseline_eval(
             }
             logger.info(
                 "vs %s: W=%d D=%d L=%d (%.1f%% win)",
-                name, wr.wins, wr.draws, wr.losses, wr.win_rate,
+                name,
+                wr.wins,
+                wr.draws,
+                wr.losses,
+                wr.win_rate,
             )
         return results
 
@@ -321,8 +337,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--tracking_uri", default=os.environ.get("MLFLOW_TRACKING_URI", "mlruns"))
     p.add_argument("--experiment", default="civ6az-local-50iter")
     p.add_argument("--run_id", default=None, help="Training run ID to attach eval results to")
-    p.add_argument("--create_child_run", action="store_true",
-                   help="Create a sibling eval run instead of logging to training run")
+    p.add_argument(
+        "--create_child_run",
+        action="store_true",
+        help="Create a sibling eval run instead of logging to training run",
+    )
     # GCS / model selection
     p.add_argument("--gcs_bucket", default=os.environ.get("CIV6AZ_GCS_BUCKET", "civ6az-training"))
     p.add_argument("--gcp_project", default=os.environ.get("CIV6AZ_VERTEX_PROJECT", "hrmtrain"))
@@ -339,8 +358,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--skip_baseline_eval", action="store_true")
     p.add_argument("--skip_tournament", action="store_true")
     p.add_argument("--dry_run", action="store_true")
-    p.add_argument("--log_level", default="INFO",
-                   choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    p.add_argument("--log_level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return p.parse_args(argv)
 
 
@@ -366,7 +384,8 @@ def main(argv: list[str] | None = None) -> int:
     model_versions = select_model_versions(args.model_start, args.model_end, args.model_stride)
     logger.info(
         "Selected %d model versions for evaluation: %s",
-        len(model_versions), model_versions,
+        len(model_versions),
+        model_versions,
     )
 
     run_name = f"post-eval-{args.model_start}-{args.model_end}-stride{args.model_stride}-{int(time.time())}"
@@ -397,16 +416,18 @@ def main(argv: list[str] | None = None) -> int:
     start_time = time.time()
 
     with ml:
-        ml.log_params({
-            "eval/model_start": args.model_start,
-            "eval/model_end": args.model_end,
-            "eval/model_stride": args.model_stride,
-            "eval/tournament_games": args.tournament_games,
-            "eval/mcts_sims": args.mcts_sims,
-            "eval/board_size": args.board_size,
-            "eval/action_space_size": args.action_space_size,
-            "eval/num_selected_models": len(model_versions),
-        })
+        ml.log_params(
+            {
+                "eval/model_start": args.model_start,
+                "eval/model_end": args.model_end,
+                "eval/model_stride": args.model_stride,
+                "eval/tournament_games": args.tournament_games,
+                "eval/mcts_sims": args.mcts_sims,
+                "eval/board_size": args.board_size,
+                "eval/action_space_size": args.action_space_size,
+                "eval/num_selected_models": len(model_versions),
+            }
+        )
 
         # ---------------------------------------------------------------
         # 1. Tournament
@@ -433,6 +454,7 @@ def main(argv: list[str] | None = None) -> int:
                 if not args.dry_run:
                     try:
                         from alpha_zero.cloud.gcp.tournament_worker import save_tournament_results
+
                         save_tournament_results(config, tournament_results, dry_run=False)
                         logger.info("Tournament results saved to GCS")
                     except Exception as e:
@@ -461,10 +483,12 @@ def main(argv: list[str] | None = None) -> int:
         # 3. Final summary metrics
         # ---------------------------------------------------------------
         elapsed = time.time() - start_time
-        ml.log_metrics({
-            "eval/total_elapsed_seconds": elapsed,
-            "eval/models_evaluated": float(len(model_versions)),
-        })
+        ml.log_metrics(
+            {
+                "eval/total_elapsed_seconds": elapsed,
+                "eval/models_evaluated": float(len(model_versions)),
+            }
+        )
         logger.info("Post-run evaluation complete in %.1fs", elapsed)
 
     return 0

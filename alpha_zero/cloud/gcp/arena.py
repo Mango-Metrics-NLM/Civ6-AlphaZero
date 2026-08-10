@@ -73,6 +73,7 @@ def run_arena(
     device: torch.device | None = None,
     num_parallel_games: int = 1,
     gameplay_preset: str = "default",
+    seed: int | None = None,
 ) -> ArenaResult:
     """Play model_a vs. model_b in an arena.
 
@@ -92,6 +93,12 @@ def run_arena(
         num_parallel_games: Number of parallel games (accepted for API consistency
             with selfplay_worker; arena currently runs games sequentially).
         gameplay_preset: Environment preset ("default" or "enhanced").
+        seed: Base seed for environment generation; game ``i`` is seeded with
+            ``seed + i``, so a match is reproducible while its games stay
+            distinct. ``None`` (the default) leaves environments unseeded,
+            preserving historical behavior. Seeding the global RNGs does not
+            cover this: the environment owns a private generator, so an
+            unseeded arena varies between runs even under a fixed global seed.
 
     Returns:
         ArenaResult with wins/losses/draws from model_a's perspective.
@@ -129,6 +136,7 @@ def run_arena(
             board_size=board_size,
             max_turns=max_turns,
             gameplay_preset=gameplay_preset,
+            seed=None if seed is None else seed + game_idx,
         )
         mcts_a = create_mcts(
             variant=mcts_type,

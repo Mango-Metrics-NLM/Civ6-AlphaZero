@@ -16,7 +16,7 @@ from typing import Any
 from alpha_zero.core.civ6_actions import MicroCivActionSpace
 from alpha_zero.human_interface.game_controller import GameController
 from alpha_zero.utils.compat import UTC
-from alpha_zero.web import CHECKPOINT_MODEL_KEY, SESSION_ID_LENGTH
+from alpha_zero.web import SESSION_ID_LENGTH
 from alpha_zero.web.adapter import BaselineAgentAdapter, MCTSAIAgent, MicroCivGameAdapter
 from alpha_zero.web.config import VALID_OPPONENT_TYPES, WebConfig
 
@@ -396,8 +396,7 @@ class GameSessionManager:
             logger.debug("Returning cached shared network")
             return self._shared_network
 
-        from alpha_zero.core.civ6_network import MicroCivNetwork
-        from alpha_zero.utils.checkpoint import safe_load_checkpoint
+        from alpha_zero.utils.checkpoint import compute_weight_checksum, load_network
 
         checkpoint_path = self._config.checkpoint_path
         if checkpoint_path is None:
@@ -406,25 +405,23 @@ class GameSessionManager:
 
         logger.info("Loading neural network from: %s", checkpoint_path)
 
-        # Load checkpoint
-        result = safe_load_checkpoint(checkpoint_path, map_location=self._config.device)
-        state_dict = result.state_dict if hasattr(result, "state_dict") else result
-
-        # Create network
-        network = MicroCivNetwork(
-            board_size=self._config.board_size,
-            action_space_size=MicroCivActionSpace(board_size=self._config.board_size).total_size,
+        # load_network reconstructs the architecture from the checkpoint's own
+        # config, which is what makes this work at all. The previous code read
+        # a non-existent `.state_dict` attribute off CheckpointLoadResult (the
+        # field is `.data`), so both isinstance branches were skipped and the
+        # opponent silently played with randomly initialised weights while
+        # logging success. It also built a fixed 6-block/64-filter network,
+        # which could not have accepted a checkpoint trained at any other size.
+        network = load_network(
+            checkpoint_path,
+            device=self._config.device,
+            expected_board_size=self._config.board_size,
         )
 
-        # Load weights
-        if isinstance(state_dict, dict) and CHECKPOINT_MODEL_KEY in state_dict:
-            network.load_state_dict(state_dict[CHECKPOINT_MODEL_KEY])
-        elif isinstance(state_dict, dict):
-            network.load_state_dict(state_dict)
-
-        network.eval()
-        network.to(self._config.device)
-
         self._shared_network = network
-        logger.info("Neural network loaded successfully")
+        logger.info(
+            "Neural network loaded from %s (checksum %.4f)",
+            checkpoint_path,
+            compute_weight_checksum(network),
+        )
         return network

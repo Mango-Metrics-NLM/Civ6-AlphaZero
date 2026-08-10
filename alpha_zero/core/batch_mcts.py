@@ -51,6 +51,7 @@ from alpha_zero.core.mcts_constants import (
 from alpha_zero.core.mcts_constants import (
     GREEDY_THRESHOLD as _GREEDY_THRESHOLD,
 )
+from alpha_zero.utils.device import place_network
 from alpha_zero.utils.experiment_tracker import log_metrics
 
 if TYPE_CHECKING:
@@ -155,7 +156,10 @@ class BatchGumbelMCTS:
         """
         self.network = network
         self.config = config or BatchMCTSConfig()
-        self.device = device
+        # Resolve the request and place the network in one step: storing an
+        # unresolved "cuda" here while the network sat on cpu was a real
+        # source of mixed-device RuntimeErrors.
+        self.device = place_network(network, device)
 
         # Metrics tracking for W&B logging
         self._search_count = 0

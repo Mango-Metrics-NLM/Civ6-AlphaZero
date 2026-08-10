@@ -27,7 +27,7 @@ try:
     VERTEX_AVAILABLE = True
 except ImportError:
     aiplatform = None  # type: ignore[assignment]
-    CustomJob = None  # type: ignore[assignment, misc]
+    CustomJob = None  # type: ignore[assignment,misc]
 
 
 class JobStatus(Enum):
@@ -295,14 +295,14 @@ class VertexAITrainer:
                 job_config=job_config,
             )
 
-            job = CustomJob(
+            job = CustomJob(  # type: ignore[assignment]
                 display_name=job_spec["display_name"],
                 worker_pool_specs=job_spec["workerPoolSpecs"],
                 base_output_dir=job_spec["base_output_dir"],
                 labels=job_spec["labels"],
             )
 
-            job.run(
+            job.run(  # type: ignore[attr-defined]
                 service_account=job_config.service_account or None,
                 enable_web_access=job_config.enable_web_access,
                 sync=False,  # Non-blocking
@@ -310,7 +310,8 @@ class VertexAITrainer:
 
             self._jobs[job.resource_name] = job
             logger.info("Submitted Vertex AI job: %s", job.resource_name)
-            return job.resource_name
+            # aiplatform SDK is untyped; resource_name is a str at runtime.
+            return str(job.resource_name)
 
         except Exception as e:
             raise CloudConnectionError(
@@ -426,8 +427,8 @@ class VertexAITrainer:
             if filter_display_name:
                 filter_str = f'display_name="{filter_display_name}"'
 
-            jobs = aiplatform.CustomJob.list(filter=filter_str)
-            return [job.resource_name for job in jobs[:max_results]]
+            sdk_jobs = aiplatform.CustomJob.list(filter=filter_str)
+            return [job.resource_name for job in sdk_jobs[:max_results]]
         except Exception as e:
             logger.warning("Failed to list jobs: %s", e)
             return []

@@ -126,19 +126,9 @@ def load_model(
         logger.info("Using model config from checkpoint for v%d", version)
         config_copy = model_config_dict.copy()
 
-        # Convert string enums to actual enum values
-        if "norm_type" in config_copy and isinstance(config_copy["norm_type"], str):
-            from alpha_zero.core.transformer_network import NormType
-
-            config_copy["norm_type"] = NormType(config_copy["norm_type"])
-        if "attention_type" in config_copy and isinstance(config_copy["attention_type"], str):
-            from alpha_zero.core.transformer_network import AttentionType
-
-            config_copy["attention_type"] = AttentionType(config_copy["attention_type"])
-
-        # Remove computed fields that shouldn't be passed to constructor
-        config_copy.pop("_num_patches", None)
-        config_copy.pop("_head_dim", None)
+        # Enum re-hydration and dropping the init=False derived fields is shared
+        # with the other checkpoint readers; see TransformerConfig.from_saved_dict.
+        config_copy = TransformerConfig.normalize_saved_dict(config_copy)
 
         # Infer head dimensions from state_dict if not in saved config
         # (older models saved config without policy_hidden_dim/value_head_dim)
@@ -192,6 +182,19 @@ def load_model(
         logger.warning("Missing keys in state_dict: %s", incompatible.missing_keys[:5])
     if incompatible.unexpected_keys:
         logger.warning("Unexpected keys in state_dict: %s", incompatible.unexpected_keys[:5])
+
+    # Detect silently cross-loaded encoder weights (PR #107 follow-up).
+    # The eval worker doesn't thread encoder_type, so we infer the expected
+    # type from the checkpoint itself and verify the model agrees.
+    from alpha_zero.utils.checkpoint import classify_encoder_keys, validate_encoder_state
+
+    expected_encoder = classify_encoder_keys(state_dict.keys())
+    validate_encoder_state(
+        model,
+        expected_encoder,
+        checkpoint_keys=state_dict.keys(),
+        strict=False,  # warn, don't crash — operator decides
+    )
 
     model.eval()
     logger.info("Loaded model v%d from GCS", version)
@@ -250,7 +253,7 @@ def main() -> int:
     args = parse_args()
     setup_logging()
 
-    # Initialize W&B for evaluation worker (opt-in via WANDB_ENABLED env var)
+    # Initialize tracking for evaluation worker (opt-in via MLFLOW_ENABLED env var)
     wandb_logger: WandbLogger | None = None
     try:
         wandb_logger = WandbLogger.from_env()

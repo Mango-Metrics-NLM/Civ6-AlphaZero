@@ -17,12 +17,16 @@ creds_path = os.path.join(os.environ["APPDATA"], "gcloud", "application_default_
 with open(creds_path) as f:
     creds = json.load(f)
 
-token = requests.post("https://oauth2.googleapis.com/token", data={
-    "client_id": creds["client_id"],
-    "client_secret": creds["client_secret"],
-    "refresh_token": creds["refresh_token"],
-    "grant_type": "refresh_token",
-}, timeout=15).json()["access_token"]
+token = requests.post(
+    "https://oauth2.googleapis.com/token",
+    data={
+        "client_id": creds["client_id"],
+        "client_secret": creds["client_secret"],
+        "refresh_token": creds["refresh_token"],
+        "grant_type": "refresh_token",
+    },
+    timeout=15,
+).json()["access_token"]
 
 print("=== Service Accounts ===")
 r = requests.get(

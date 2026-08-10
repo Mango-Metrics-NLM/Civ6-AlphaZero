@@ -1,22 +1,35 @@
 {
-    "last_session_id": "48dca8d8-7e46-41dc-b7f5-1ecb487c8400",
-    "last_timestamp": "2026-04-02T01:00:00Z",
-    "active_branch": "claude/plan-civ6-roadmap-BU68s",
-    "current_focus": "Handed off to Pre-PR — full-civ6-local-gameplay spec",
+    "last_session_id": "session_011aLW3xW6HK5PeY8q4YFtZS",
+    "last_timestamp": "2026-08-09T23:40:00Z",
+    "active_branch": "claude/grid-crystal-mapping-search-q9wwne",
+    "current_focus": "PR #107 open (draft): hex-crystalline encoder packaged as a torch-only subpackage with Hub support and an A/B evidence pipeline. Arena run unfinished.",
     "resume_pointers": {
-        "current_task": "Pre-PR validation of Phase 8 (civ6_local.py entry point)",
-        "blocked_on": [],
+        "current_task": "Finish the 150-game arena, commit the evidence, then decide on Hub publication",
+        "blocked_on": [
+            "Arena run was still in flight when the session ended; docs/evidence/hexcrystal_ab/ is empty"
+        ],
         "next_steps": [
-            "Pre-PR: validate ruff/mypy clean on changed files",
-            "Pre-PR: run full test suite with coverage >= 85%",
-            "Pre-PR: confirm python -m alpha_zero.civ6_local --dry-run smoke test",
-            "Phase 0: run scripts/validate_v130_training.py for convergence validation"
+            "python scripts/run_encoder_ab.py arena --num_games 150 --mcts-sims 25 --max-turns 30  (checkpoints already exist in checkpoints/encoder_ab/; ~20 s/game on 4 vCPU)",
+            "python scripts/run_encoder_ab.py report  -> writes docs/evidence/hexcrystal_ab/{ab_report,summary_table}.md; commit as an artifact-only commit",
+            "At 150 games the Wilson interval is ~+/-8 points, so expect 'does not distinguish'; use 800 games if a 5-point edge needs resolving",
+            "Re-run test_enhanced_training_tracking.py::test_training_runs_without_wandb and test_gumbel_mcts.py::test_performance_better_than_random on an idle machine to close out the two timeouts",
+            "Publication is a deliberate human step: HF_TOKEN=... python scripts/upload_encoder_to_hub.py --checkpoint checkpoints/encoder_ab/hex_crystalline.pt --repo-id <owner>/civ6-hexcrystal-encoder --publish  (dry run already verified end to end)",
+            "After merge, run the openspec-archive skill for hexcrystal-encoder-package as a separate PR"
         ]
     },
     "context_files": [
-        "kb/specs/20260402-full-civ6-local-gameplay.md",
-        "kb/handoffs/20260402-devsqe-to-prepr-civ6-local.md",
-        "alpha_zero/civ6_local.py",
-        "tests/unit/test_civ6_local.py"
+        "openspec/changes/hexcrystal-encoder-package/design.md",
+        "kb/handoffs/20260809-devsqe-to-prepr-hexcrystal-encoder-package.md",
+        "alpha_zero/hexcrystal/Agent.md",
+        "scripts/run_encoder_ab.py",
+        "scripts/upload_encoder_to_hub.py",
+        "docs/model_cards/hexcrystal_encoder.md"
+    ],
+    "known_issues": [
+        "Coverage gate not verifiable locally: numpy 2.4 + coverage C-tracer crash (CLAUDE.md:420). CI is the gate.",
+        "mypy alpha_zero/ reports 101 errors in this sandbox (missing type stubs CI installs); unchanged by this work, and CI's blocking Lint & Type Check job is green.",
+        "test_training_runs_without_wandb and test_performance_better_than_random exceed pytest-timeout under CPU contention; both are slow, not broken (reproduced on the base commit).",
+        "alpha_zero.__all__ no longer lists RealCiv6Env/RewardConfig -- deliberate, both remain resolvable attributes; only `import *` is affected.",
+        "Encoder transfer gap (carried forward): the Civ6 bridge builds at 84 channels while all training produces 13, so no checkpoint this repo produces will drive the bridge."
     ]
 }

@@ -117,7 +117,7 @@ class TestJaxMCTSAdapterWithSimpleMCTS:
         env.reset()
 
         mcts = SimpleMCTS(num_simulations=5, c_puct=1.5)
-        action_probs, root_value = mcts.search(env)
+        action_probs, _root_value = mcts.search(env)
 
         assert action_probs.shape[0] > 0
         assert abs(action_probs.sum() - 1.0) < 1e-5 or action_probs.sum() == 0

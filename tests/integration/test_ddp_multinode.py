@@ -170,7 +170,6 @@ class TestWeightSynchronization:
             learner.cleanup()
 
 
-
 @pytest.mark.integration
 class TestCheckpointCoordination:
     """Tests for checkpoint coordination across simulated ranks."""
@@ -183,7 +182,7 @@ class TestCheckpointCoordination:
     ) -> None:
         """Test that only rank 0 (is_main=True) is intended to save checkpoints."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            checkpoint_path = Path(tmpdir) / "checkpoint.pt"
+            Path(tmpdir) / "checkpoint.pt"
 
             # Test with world_size=1 (main rank saves)
             config = DDPLearnerConfig(ddp_world_size=1, ddp_rank=0, checkpoint_dir=str(tmpdir))
@@ -201,7 +200,11 @@ class TestCheckpointCoordination:
             # Verify worker ranks have is_main=False
             for rank in [1, 2, 3]:
                 config_worker = DDPLearnerConfig(ddp_enabled=True, ddp_world_size=4, ddp_rank=rank)
-                with mock_ddp_context(world_size=4, rank=rank, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"):
+                with mock_ddp_context(
+                    world_size=4,
+                    rank=rank,
+                    ddp_module_path="alpha_zero.distributed.ddp_learner.DDP",
+                ):
                     learner_worker = DDPLearner(
                         config=config_worker,
                         shared_storage=mock_storage,
@@ -218,7 +221,7 @@ class TestCheckpointCoordination:
     ) -> None:
         """Test that all ranks can load the same checkpoint regardless of rank."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            checkpoint_path = Path(tmpdir) / "shared_checkpoint.pt"
+            Path(tmpdir) / "shared_checkpoint.pt"
 
             # Save from main rank (world_size=1 to avoid distributed setup)
             config_main = DDPLearnerConfig(ddp_world_size=1, ddp_rank=0, checkpoint_dir=str(tmpdir))
@@ -237,7 +240,9 @@ class TestCheckpointCoordination:
                 replay_buffer=mock_buffer,
                 network=ToyModel(),
             )
-            loaded_checkpoint = learner_loader.load_checkpoint(str(Path(tmpdir) / "checkpoint_42.pt"))
+            loaded_checkpoint = learner_loader.load_checkpoint(
+                str(Path(tmpdir) / "checkpoint_42.pt")
+            )
             assert loaded_checkpoint["step"] == 42
 
 
@@ -330,6 +335,7 @@ class TestMixedDeviceScenarios:
                 world_size=2, rank=0, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
             ):
                 from alpha_zero.distributed.ddp_config import DDPConfig
+
                 learner = DDPLearner(
                     config=config,
                     shared_storage=mock_storage,

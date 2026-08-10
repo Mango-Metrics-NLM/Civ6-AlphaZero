@@ -247,9 +247,9 @@ class TestFindValidPosition:
 
         from alpha_zero.envs.microciv import Tile
 
-        assert (
-            env.terrain.get(pos, Tile()).terrain_type != "mountain"
-        ), f"Fallback returned mountain tile {pos}, violating spawn invariant"
+        assert env.terrain.get(pos, Tile()).terrain_type != "mountain", (
+            f"Fallback returned mountain tile {pos}, violating spawn invariant"
+        )
         assert pos == (5, 5)
 
     def test_raises_when_no_passable_tile_exists(self):

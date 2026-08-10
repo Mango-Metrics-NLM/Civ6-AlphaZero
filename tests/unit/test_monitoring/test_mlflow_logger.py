@@ -241,9 +241,7 @@ def test_init_opens_run_and_logs_params(mock_mlflow: Any) -> None:
     logger.init(config_dict={"lr": 0.001, "batch_size": 64})
     assert logger.is_initialized is True
     assert logger.run is not None
-    mock_mlflow["mlflow"].set_tracking_uri.assert_called_once_with(
-        "file:///tmp/mlruns_unit"
-    )
+    mock_mlflow["mlflow"].set_tracking_uri.assert_called_once_with("file:///tmp/mlruns_unit")
     mock_mlflow["client"].create_experiment.assert_called_once()
     mock_mlflow["mlflow"].set_experiment.assert_called_once_with("unit_test")
     mock_mlflow["mlflow"].start_run.assert_called_once()
@@ -297,8 +295,7 @@ def test_init_warns_when_artifact_location_dropped_on_client_failure(
     with caplog.at_level(logging.WARNING):
         logger.init()
     assert any(
-        "artifact_location" in r.message and "NOT be honored" in r.message
-        for r in caplog.records
+        "artifact_location" in r.message and "NOT be honored" in r.message for r in caplog.records
     )
 
 
@@ -310,9 +307,7 @@ def test_init_does_not_warn_when_artifact_location_unset(
     logger = MLflowLogger(_enabled_config(fail_silently=True))
     with caplog.at_level(logging.WARNING):
         logger.init()
-    assert not any(
-        "artifact_location" in r.message for r in caplog.records
-    )
+    assert not any("artifact_location" in r.message for r in caplog.records)
 
 
 def test_run_id_property(active_logger: MLflowLogger) -> None:
@@ -388,14 +383,10 @@ def test_log_metrics_raises_when_fail_silently_false(mock_mlflow: Any) -> None:
 
 def test_log_metric_single(active_logger: MLflowLogger, mock_mlflow: Any) -> None:
     active_logger.log_metric("val_loss", 0.5, step=10)
-    mock_mlflow["mlflow"].log_metrics.assert_called_with(
-        {"val_loss": 0.5}, step=10
-    )
+    mock_mlflow["mlflow"].log_metrics.assert_called_with({"val_loss": 0.5}, step=10)
 
 
-def test_step_context_attaches_implicit_step(
-    active_logger: MLflowLogger, mock_mlflow: Any
-) -> None:
+def test_step_context_attaches_implicit_step(active_logger: MLflowLogger, mock_mlflow: Any) -> None:
     with active_logger.step_context(step=42):
         active_logger.log_metric("loss", 1.0)
     mock_mlflow["mlflow"].log_metrics.assert_called_with({"loss": 1.0}, step=42)
@@ -447,10 +438,7 @@ def test_log_iteration_emits_parent_and_nested_runs(mock_mlflow: Any) -> None:
         game_metrics={"game/win_rate": 0.6},
         scheduler_metrics={"train/learning_rate": 0.001},
     )
-    keys_logged = [
-        kwargs["key"]
-        for _, kwargs in mock_mlflow["client"].log_metric.call_args_list
-    ]
+    keys_logged = [kwargs["key"] for _, kwargs in mock_mlflow["client"].log_metric.call_args_list]
     assert "train/loss" in keys_logged
     assert "game/win_rate" in keys_logged
     assert "train/learning_rate" in keys_logged
@@ -520,10 +508,7 @@ def test_log_evaluation_emits_per_opponent_metrics(mock_mlflow: Any) -> None:
         "heuristic": _eval_result_with_winrate(win_rate=0.55, value_corr=0.3),
     }
     logger.log_evaluation(results, iteration=5)
-    keys = [
-        kwargs["key"]
-        for _, kwargs in mock_mlflow["client"].log_metric.call_args_list
-    ]
+    keys = [kwargs["key"] for _, kwargs in mock_mlflow["client"].log_metric.call_args_list]
     assert "eval/random/win_rate" in keys
     assert "eval/random/value_correlation" in keys
     assert "eval/heuristic/win_rate" in keys
@@ -546,10 +531,7 @@ def test_log_evaluation_handles_plain_float_win_rate(mock_mlflow: Any) -> None:
     res.value_correlation = 0.0
     res.avg_game_length = 30
     logger.log_evaluation({"opp": res}, iteration=1)
-    keys = [
-        kwargs["key"]
-        for _, kwargs in mock_mlflow["client"].log_metric.call_args_list
-    ]
+    keys = [kwargs["key"] for _, kwargs in mock_mlflow["client"].log_metric.call_args_list]
     assert "eval/opp/win_rate" in keys
 
 
@@ -561,25 +543,19 @@ def test_log_evaluation_handles_plain_float_win_rate(mock_mlflow: Any) -> None:
 class TestLogEvaluationResult:
     """``log_evaluation_result`` normalises rates to 0-1 and logs 14 metrics."""
 
-    def test_logs_all_14_metrics(
-        self, active_logger: MLflowLogger, mock_mlflow: Any
-    ) -> None:
+    def test_logs_all_14_metrics(self, active_logger: MLflowLogger, mock_mlflow: Any) -> None:
         result = _make_eval_result()
         logged = active_logger.log_evaluation_result(result, prefix="baseline/random")
         assert len(logged) == 14
         mock_mlflow["mlflow"].log_metrics.assert_called()
 
-    def test_win_rate_normalised_to_fraction(
-        self, active_logger: MLflowLogger
-    ) -> None:
+    def test_win_rate_normalised_to_fraction(self, active_logger: MLflowLogger) -> None:
         result = _make_eval_result(wins=10, losses=10, draws=0, total_games=20)
         logged = active_logger.log_evaluation_result(result, prefix="x")
         assert 0.0 <= logged["x/win_rate"] <= 1.0
         assert abs(logged["x/win_rate"] - 0.5) < 1e-9
 
-    def test_win_counts_are_integers_as_float(
-        self, active_logger: MLflowLogger
-    ) -> None:
+    def test_win_counts_are_integers_as_float(self, active_logger: MLflowLogger) -> None:
         result = _make_eval_result(wins=4, losses=14, draws=2, total_games=20)
         logged = active_logger.log_evaluation_result(result, prefix="x")
         assert logged["x/wins"] == 4.0
@@ -609,9 +585,7 @@ class TestLogEvaluationResult:
         call_args = mock_mlflow["mlflow"].log_metrics.call_args
         assert call_args.kwargs.get("step") == 50
 
-    def test_disabled_logger_returns_empty(
-        self, disabled_logger: MLflowLogger
-    ) -> None:
+    def test_disabled_logger_returns_empty(self, disabled_logger: MLflowLogger) -> None:
         result = _make_eval_result()
         logged = disabled_logger.log_evaluation_result(result, prefix="x")
         assert logged == {}
@@ -635,9 +609,7 @@ class TestLogEvaluationResult:
 
     def test_custom_prefix_applied(self, active_logger: MLflowLogger) -> None:
         result = _make_eval_result()
-        logged = active_logger.log_evaluation_result(
-            result, prefix="eval/v091/heuristic"
-        )
+        logged = active_logger.log_evaluation_result(result, prefix="eval/v091/heuristic")
         for key in logged:
             assert key.startswith("eval/v091/heuristic/"), f"Bad key: {key}"
 
@@ -683,10 +655,7 @@ def test_log_elo_update(mock_mlflow: Any) -> None:
     update.rating_change = 20.0
     leaderboard = _FakeLeaderboard({"current": 1520.0, "previous_best": 1480.0})
     logger.log_elo_update([update], leaderboard, iteration=3)
-    keys = [
-        kwargs["key"]
-        for _, kwargs in mock_mlflow["client"].log_metric.call_args_list
-    ]
+    keys = [kwargs["key"] for _, kwargs in mock_mlflow["client"].log_metric.call_args_list]
     assert "elo/current/rating" in keys
     assert "elo/current/rating_change" in keys
     assert "elo/spread" in keys
@@ -727,9 +696,7 @@ def test_log_artifact_skipped_when_disabled_flag(mock_mlflow: Any) -> None:
     mock_mlflow["mlflow"].log_artifact.assert_not_called()
 
 
-def test_log_model_checkpoint_missing_file_skips(
-    tmp_path: Path, mock_mlflow: Any
-) -> None:
+def test_log_model_checkpoint_missing_file_skips(tmp_path: Path, mock_mlflow: Any) -> None:
     logger = MLflowLogger(_enabled_config())
     logger.init()
     mock_mlflow["mlflow"].log_artifact.reset_mock()
@@ -795,9 +762,7 @@ def test_start_run_returns_handle(mock_mlflow: Any) -> None:
     assert logger.start_run("nested", nested=True) is not None
 
 
-def test_start_run_refuses_before_init(
-    mock_mlflow: Any, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_start_run_refuses_before_init(mock_mlflow: Any, caplog: pytest.LogCaptureFixture) -> None:
     """``start_run(run_name=...)`` without ``init()`` must NOT open an orphan run."""
     logger = MLflowLogger(_enabled_config())
     mock_mlflow["mlflow"].start_run.reset_mock()

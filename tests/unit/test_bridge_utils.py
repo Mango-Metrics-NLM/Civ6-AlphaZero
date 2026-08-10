@@ -2,18 +2,28 @@
 
 Covers the shape-normalising ``extract_scalar_value`` helper that is shared
 between :mod:`alpha_zero.bridge.agent_loop` and
-:mod:`alpha_zero.inference.inference_engine` (PR #82 invariant).
+:mod:`alpha_zero.inference.inference_engine` (PR #82 invariant), plus the
+monotonic message-ID and boolean-env-var helpers shared across
+:mod:`alpha_zero.bridge.file_bridge`, :mod:`alpha_zero.bridge.tuner_bridge`,
+and :mod:`alpha_zero.bridge.config`.
 """
 
 from __future__ import annotations
 
 import logging
+import time
 
 import numpy as np
 import pytest
 import torch
 
-from alpha_zero.bridge.utils import extract_scalar_value
+from alpha_zero.bridge.utils import (
+    MAX_MSG_ID,
+    extract_scalar_value,
+    next_monotonic_msg_id,
+    parse_bool_env,
+    seed_msg_counter,
+)
 
 
 class TestExtractScalarValue:
@@ -89,3 +99,74 @@ class TestExtractScalarValue:
         with caplog.at_level(logging.DEBUG, logger="alpha_zero.bridge.utils"):
             extract_scalar_value(value, log_per_player=True)
         assert not any("per-player value tensor" in r.message for r in caplog.records)
+
+
+class TestSeedMsgCounter:
+    """``seed_msg_counter`` backs the ``FileBridge``/``TunerBridge`` seed."""
+
+    def test_seed_is_wall_clock_milliseconds_mod_int32(self) -> None:
+        # The seed is the millisecond timestamp mapped into [1, MAX_MSG_ID) so
+        # it fits in a signed int32 (the game truncates the ack msg_id to
+        # int32). It equals int(time.time()*1000) % (MAX_MSG_ID - 1) + 1.
+        def expected() -> int:
+            return int(time.time() * 1000) % (MAX_MSG_ID - 1) + 1
+
+        before = expected()
+        seeded = seed_msg_counter()
+        after = expected()
+        # No modulo wrap occurred within this fast window unless before>after.
+        if before <= after:
+            assert before <= seeded <= after
+
+    def test_seed_is_int32_safe(self) -> None:
+        for _ in range(50):
+            # Strictly positive and below the int32 ceiling (never 0, which is
+            # a missing-id sentinel on the Lua side).
+            assert 1 <= seed_msg_counter() < MAX_MSG_ID
+
+    def test_seed_returns_int(self) -> None:
+        assert isinstance(seed_msg_counter(), int)
+
+
+class TestNextMonotonicMsgId:
+    """``next_monotonic_msg_id`` backs ``next_msg_id``/``_next_msg_id``."""
+
+    def test_increments_by_one(self) -> None:
+        assert next_monotonic_msg_id(100) == 101
+
+    def test_repeated_calls_are_monotonic(self) -> None:
+        counter = 0
+        ids = []
+        for _ in range(5):
+            counter = next_monotonic_msg_id(counter)
+            ids.append(counter)
+        assert ids == [1, 2, 3, 4, 5]
+
+    def test_wraps_to_one_before_int32_overflow(self) -> None:
+        # At the ceiling the counter must wrap to 1, never emit MAX_MSG_ID or
+        # above (which would truncate to a negative int32 in the game's ack).
+        assert next_monotonic_msg_id(MAX_MSG_ID - 2) == MAX_MSG_ID - 1
+        assert next_monotonic_msg_id(MAX_MSG_ID - 1) == 1
+
+
+class TestParseBoolEnv:
+    """``parse_bool_env`` backs ``BridgeConfig``/``AgentLoopConfig`` bool parsing."""
+
+    @pytest.mark.parametrize("raw", ["1", "true", "True", "TRUE", "yes", "Yes", "on", "On"])
+    def test_truthy_values(self, raw: str) -> None:
+        assert parse_bool_env(raw, default=False) is True
+
+    @pytest.mark.parametrize("raw", ["0", "false", "False", "FALSE", "no", "No", "off", "Off"])
+    def test_falsy_values(self, raw: str) -> None:
+        assert parse_bool_env(raw, default=True) is False
+
+    def test_none_returns_default(self) -> None:
+        assert parse_bool_env(None, default=True) is True
+        assert parse_bool_env(None, default=False) is False
+
+    def test_unrecognised_value_returns_default(self) -> None:
+        assert parse_bool_env("garbage", default=True) is True
+        assert parse_bool_env("garbage", default=False) is False
+
+    def test_empty_string_returns_default(self) -> None:
+        assert parse_bool_env("", default=True) is True

@@ -579,6 +579,6 @@ class TestSelfplayActionMaskStorage:
 
         # Check that 'action_masks' appears in the run_selfplay source code
         src = inspect.getsource(sw.run_selfplay)
-        assert (
-            "action_masks" in src
-        ), "run_selfplay must initialize and store action_masks in trajectory dict"
+        assert "action_masks" in src, (
+            "run_selfplay must initialize and store action_masks in trajectory dict"
+        )

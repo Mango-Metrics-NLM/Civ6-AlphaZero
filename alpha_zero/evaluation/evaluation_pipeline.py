@@ -208,7 +208,7 @@ class EvaluationPipeline:
         """
         return self._run_evaluation(
             agent,
-            checkpoint_agent,  # type: ignore[arg-type]
+            checkpoint_agent,
             n_games,
             log_interval,
             opponent_name="Checkpoint",

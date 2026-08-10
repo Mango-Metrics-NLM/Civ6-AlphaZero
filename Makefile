@@ -50,6 +50,8 @@ help:
 	@echo "  make test-unit         Run unit tests"
 	@echo "  make test-integration  Run integration tests"
 	@echo "  make test-all          Run all tests with coverage"
+	@echo "  make validate          Run governance validators (openspec, kb, skills, doc-sync)"
+	@echo "  make eval-llm          Run LLM eval-harness gate (StrategyAdvisor analyze + report, offline)"
 	@echo ""
 	@echo "Docker:"
 	@echo "  make build-base        Build base image"
@@ -93,17 +95,17 @@ install-cloud: install
 
 .PHONY: lint
 lint:
-	ruff check alpha_zero/ tests/ --fix
-	ruff format alpha_zero/ tests/
+	ruff check . --fix
+	ruff format .
 
 .PHONY: lint-check
 lint-check:
-	ruff check alpha_zero/ tests/
-	ruff format --check alpha_zero/ tests/
+	ruff check .
+	ruff format --check .
 
 .PHONY: typecheck
 typecheck:
-	mypy alpha_zero/ --ignore-missing-imports
+	mypy alpha_zero/
 
 .PHONY: test-unit
 test-unit:
@@ -120,6 +122,25 @@ test-all:
 .PHONY: test-storage
 test-storage:
 	pytest tests/unit/test_storage_backend.py tests/unit/test_replay_buffer.py -v
+
+.PHONY: test
+test: test-unit
+
+.PHONY: validate
+validate:
+	$(PYTHON) scripts/validate_openspec.py
+	$(PYTHON) scripts/validate_kb.py
+	$(PYTHON) scripts/validate_skills.py
+	$(PYTHON) scripts/check_doc_sync.py
+
+.PHONY: hooks-install
+hooks-install:
+	pre-commit install --install-hooks
+	pre-commit install --hook-type pre-push
+
+.PHONY: eval-llm
+eval-llm:
+	$(PYTHON) scripts/run_llm_eval.py
 
 .PHONY: test-hub
 test-hub:

@@ -111,7 +111,7 @@ class RunSummary:
         return max(vals)
 
 
-def _load_mlflow_client(mlruns_dir: Path) -> "MlflowClient":  # noqa: F821
+def _load_mlflow_client(mlruns_dir: Path) -> MlflowClient:  # noqa: F821
     """Construct an MlflowClient pointed at *mlruns_dir*.
 
     Imported lazily so the script is usable for ``--help`` without mlflow
@@ -132,7 +132,7 @@ def _load_mlflow_client(mlruns_dir: Path) -> "MlflowClient":  # noqa: F821
 
 
 def _collect_iteration_metrics(
-    client: "MlflowClient",  # noqa: F821
+    client: MlflowClient,  # noqa: F821
     experiment_name: str,
 ) -> list[IterationMetrics]:
     """Aggregate metrics across every MLflow run in *experiment_name*.
@@ -192,7 +192,7 @@ def _collect_iteration_metrics(
     return [by_iter[k] for k in sorted(by_iter)]
 
 
-def _extract_iteration(run: "Run") -> int | None:  # noqa: F821
+def _extract_iteration(run: Run) -> int | None:  # noqa: F821
     """Best-effort iteration index extraction from an MLflow Run.
 
     Order of preference:
@@ -233,7 +233,7 @@ def evaluate_targets(
     passed_promo = summary.num_promotions >= TARGET_MIN_PROMOTIONS
     checks["promotions"] = (
         passed_promo,
-        f"{summary.num_promotions} promotion(s) " f"(target: >= {TARGET_MIN_PROMOTIONS})",
+        f"{summary.num_promotions} promotion(s) (target: >= {TARGET_MIN_PROMOTIONS})",
     )
 
     # Batch speedup

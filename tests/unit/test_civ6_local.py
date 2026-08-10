@@ -8,6 +8,7 @@ Covers:
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
@@ -72,15 +73,22 @@ class TestCiv6LocalConfigDefaults:
         assert Civ6LocalConfig().web_port == 8080
 
     def test_bridge_ipc_dir_default(self) -> None:
-        # ``bridge_ipc_dir`` is sourced from ``tempfile.gettempdir()``; the
-        # exact prefix differs by OS (``/tmp`` on Linux, ``C:\Users\...\Temp``
-        # on Windows). Assert the suffix and the parent-dir alignment instead
-        # of hardcoding a POSIX path.
-        import os
-        import tempfile
+        # The default comes from ``_get_default_bridge_ipc_dir()``, which
+        # resolves to the Civ6 comm dir on Windows (``.../AlphaZeroAI``) and a
+        # POSIX fallback (``~/.civ6_alphazero``) elsewhere. Assert it matches
+        # that helper rather than hardcoding a platform-specific marker (the
+        # old ``"AlphaZeroAI" in ...`` check failed on Linux CI).
+        from alpha_zero.civ6_local import _get_default_bridge_ipc_dir
 
-        expected = os.path.join(tempfile.gettempdir(), "civ6az_bridge")
-        assert Civ6LocalConfig().bridge_ipc_dir == expected
+        cfg = Civ6LocalConfig()
+        assert cfg.bridge_ipc_dir == str(_get_default_bridge_ipc_dir())
+
+    def test_civ6_log_path_default(self) -> None:
+        # Default points at the Lua.log the Civ6 mod writes to under
+        # %LOCALAPPDATA%/Firaxis Games/Sid Meier's Civilization VI/Logs.
+        cfg = Civ6LocalConfig()
+        assert cfg.civ6_log_path.endswith("Lua.log")
+        assert "Civilization VI" in cfg.civ6_log_path
 
     def test_log_level_default(self) -> None:
         assert Civ6LocalConfig().log_level == "INFO"
@@ -97,9 +105,12 @@ class TestCiv6LocalConfigDefaults:
             "num_players",
             "num_simulations",
             "device",
+            "use_mcts",
+            "use_eval_harness",
             "web_host",
             "web_port",
             "bridge_ipc_dir",
+            "civ6_log_path",
             "log_level",
             "dry_run",
         }
@@ -156,9 +167,37 @@ class TestCiv6LocalConfigValidation:
             assert cfg.mode == mode
 
     def test_valid_devices(self) -> None:
+        """Accepted device requests resolve to something concrete.
+
+        The config no longer echoes the request back: it resolves it, so
+        "auto" and an unavailable "cuda" both land on a real device. That is
+        the point — previously validate() warned about falling back while
+        self.device kept saying "cuda", and downstream consumers used the
+        stale value.
+        """
+        import torch
+
         for device in VALID_DEVICES:
             cfg = Civ6LocalConfig(device=device)
-            assert cfg.device == device
+            assert cfg.device in {"cpu", "cuda", "mps"} or cfg.device.startswith("cuda:")
+            if device == "cpu" or not torch.cuda.is_available():
+                assert cfg.device == "cpu"
+
+    def test_unavailable_cuda_resolves_to_cpu(self) -> None:
+        """The NG-4 path: requesting CUDA without CUDA must not crash later."""
+        import torch
+
+        if torch.cuda.is_available():
+            pytest.skip("requires a CPU-only host")
+        assert Civ6LocalConfig(device="cuda").device == "cpu"
+
+    def test_indexed_cuda_is_accepted(self) -> None:
+        """'cuda:0' used to be rejected here while training accepted it."""
+        assert Civ6LocalConfig(device="cuda:0").device in {"cpu", "cuda:0"}
+
+    def test_invalid_device_still_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Invalid device"):
+            Civ6LocalConfig(device="tpu")
 
     def test_log_level_normalised_to_upper(self) -> None:
         cfg = Civ6LocalConfig(log_level="info")
@@ -250,6 +289,10 @@ class TestCiv6LocalConfigFromEnv:
     def test_bridge_ipc_dir_override(self) -> None:
         cfg = self._run_with_env({"CIV6AZ_LOCAL_BRIDGE_IPC_DIR": "/custom/ipc"})
         assert cfg.bridge_ipc_dir == "/custom/ipc"
+
+    def test_civ6_log_path_override(self) -> None:
+        cfg = self._run_with_env({"CIV6AZ_LOCAL_LOG_PATH": "/custom/Lua.log"})
+        assert cfg.civ6_log_path == "/custom/Lua.log"
 
     def test_log_level_override(self) -> None:
         cfg = self._run_with_env({"CIV6AZ_LOCAL_LOG_LEVEL": "DEBUG"})
@@ -539,11 +582,22 @@ class TestValidateMethod:
         warnings = cfg.validate()
         assert any("checkpoint" in w.lower() for w in warnings)
 
-    def test_cuda_not_available_warns(self) -> None:
-        with patch("torch.cuda.is_available", return_value=False):
+    def test_cuda_not_available_resolves_and_logs(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Unavailable CUDA is resolved away, not just mentioned in a warning.
+
+        This used to return a warning string from validate() while leaving
+        self.device == "cuda", so run_civ6_bridge handed the stale value to the
+        policy and WebConfig after the network had already been placed on cpu.
+        Now the fallback is applied at construction and reported in the log.
+        """
+        with (
+            patch("torch.cuda.is_available", return_value=False),
+            caplog.at_level(logging.WARNING, logger="alpha_zero.utils.device"),
+        ):
             cfg = Civ6LocalConfig(device="cuda")
-            warnings = cfg.validate()
-        assert any("cuda" in w.lower() for w in warnings)
+
+        assert cfg.device == "cpu"
+        assert any("CUDA is unavailable" in r.getMessage() for r in caplog.records)
 
     def test_civ6_mode_missing_bridge_dir_warns(self, tmp_path: Path) -> None:
         missing = str(tmp_path / "no_such_dir")
@@ -611,6 +665,10 @@ class TestBuildConfigAdditional:
     def test_bridge_ipc_dir_override(self) -> None:
         cfg = self._parse(["--bridge-ipc-dir", "/custom/ipc"])
         assert cfg.bridge_ipc_dir == "/custom/ipc"
+
+    def test_civ6_log_path_override(self) -> None:
+        cfg = self._parse(["--civ6-log-path", "/custom/Lua.log"])
+        assert cfg.civ6_log_path == "/custom/Lua.log"
 
     def test_log_level_override(self) -> None:
         cfg = self._parse(["--log-level", "warning"])
@@ -857,8 +915,8 @@ class TestRunCiv6Bridge:
                     "alpha_zero.bridge.config": MagicMock(
                         BridgeConfig=MagicMock(return_value=MagicMock())
                     ),
-                    "alpha_zero.bridge.file_bridge": MagicMock(
-                        FileBridge=MagicMock(return_value=mock_bridge)
+                    "alpha_zero.bridge.live_bridge": MagicMock(
+                        LiveBridge=MagicMock(return_value=mock_bridge)
                     ),
                     "alpha_zero.bridge.state_converter": MagicMock(
                         StateConverter=MagicMock(return_value=MagicMock())
@@ -880,6 +938,52 @@ class TestRunCiv6Bridge:
         mock_bridge.start.assert_awaited_once()
         mock_loop.run.assert_awaited_once()
         mock_bridge.stop.assert_awaited_once()
+
+    def test_run_bridge_uses_configured_log_path(self) -> None:
+        """LiveBridge must be constructed with config.civ6_log_path, not a
+        hardcoded literal, so a custom CIV6AZ_LOCAL_LOG_PATH / --civ6-log-path
+        override actually takes effect."""
+        from alpha_zero.civ6_local import run_civ6_bridge
+
+        custom_log_path = "C:/custom/Lua.log"
+        cfg = Civ6LocalConfig(mode="civ6", civ6_log_path=custom_log_path)
+
+        mock_bridge = MagicMock()
+        mock_bridge.start = AsyncMock()
+        mock_bridge.stop = AsyncMock()
+        mock_loop = MagicMock()
+        mock_loop.run = AsyncMock(return_value=0)
+        mock_network = MagicMock()
+        mock_live_bridge_cls = MagicMock(return_value=mock_bridge)
+
+        with (
+            patch("alpha_zero.civ6_local._build_network_for_bridge", return_value=mock_network),
+            patch.dict(
+                sys.modules,
+                {
+                    "alpha_zero.bridge.config": MagicMock(
+                        BridgeConfig=MagicMock(return_value=MagicMock())
+                    ),
+                    "alpha_zero.bridge.live_bridge": MagicMock(LiveBridge=mock_live_bridge_cls),
+                    "alpha_zero.bridge.state_converter": MagicMock(
+                        StateConverter=MagicMock(return_value=MagicMock())
+                    ),
+                    "alpha_zero.bridge.action_converter": MagicMock(
+                        ActionConverter=MagicMock(return_value=MagicMock())
+                    ),
+                    "alpha_zero.bridge.agent_loop": MagicMock(
+                        AgentLoopConfig=MagicMock(),
+                        BridgeAgentLoop=MagicMock(return_value=mock_loop),
+                        GreedyNetworkPolicy=MagicMock(return_value=MagicMock()),
+                    ),
+                },
+            ),
+        ):
+            rc = run_civ6_bridge(cfg)
+
+        assert rc == 0
+        _, call_kwargs = mock_live_bridge_cls.call_args
+        assert call_kwargs["log_path"] == Path(custom_log_path)
 
     def test_run_bridge_keyboard_interrupt_returns_130(self) -> None:
         """Ctrl-C during the loop returns exit code 130 (POSIX SIGINT)."""
@@ -903,8 +1007,8 @@ class TestRunCiv6Bridge:
                     "alpha_zero.bridge.config": MagicMock(
                         BridgeConfig=MagicMock(return_value=MagicMock())
                     ),
-                    "alpha_zero.bridge.file_bridge": MagicMock(
-                        FileBridge=MagicMock(return_value=mock_bridge)
+                    "alpha_zero.bridge.live_bridge": MagicMock(
+                        LiveBridge=MagicMock(return_value=mock_bridge)
                     ),
                     "alpha_zero.bridge.state_converter": MagicMock(
                         StateConverter=MagicMock(return_value=MagicMock())
@@ -974,8 +1078,12 @@ class TestRunCiv6Bridge:
                     "alpha_zero.bridge.config": MagicMock(
                         BridgeConfig=MagicMock(return_value=MagicMock())
                     ),
-                    "alpha_zero.bridge.file_bridge": MagicMock(
-                        FileBridge=MagicMock(return_value=mock_bridge)
+                    # run_civ6_bridge imports LiveBridge (not FileBridge) since
+                    # the W1.2 migration; mocking file_bridge left the real
+                    # LiveBridge/LogTailer running, which only "passed" on dev
+                    # machines that happen to have a real Lua.log and hung on CI.
+                    "alpha_zero.bridge.live_bridge": MagicMock(
+                        LiveBridge=MagicMock(return_value=mock_bridge)
                     ),
                     "alpha_zero.bridge.state_converter": MagicMock(
                         StateConverter=MagicMock(return_value=MagicMock())
@@ -1014,14 +1122,22 @@ class TestRunCiv6Bridge:
         network = _build_network_for_bridge(cfg)
         # If load succeeded the network has parameters bound to non-default
         # values; we don't assert specific values (random init), only that
-        # the call did not raise and the network is usable.
+        # the call did not raise and the network is usable. Note: the smoke
+        # champion fixture predates the encoder/network channel-match fix
+        # (bridge network now uses spatial_channels=84/vector_dim=512 to
+        # match Civ6StateEncoder - see _build_network_for_bridge), so this
+        # 13-channel checkpoint no longer shape-matches and is expected to
+        # fall back to synthetic weights (already covered by
+        # test_run_bridge_falls_back_to_synthetic_weights); the point of
+        # this test is that the call does not raise and produces a usable
+        # network.
         assert network is not None
         # Smoke: forward pass works.
         import numpy as np
         import torch
 
-        spatial = torch.from_numpy(np.zeros((1, 13, 8, 8), dtype=np.float32))
-        vector = torch.from_numpy(np.zeros((1, 64), dtype=np.float32))
+        spatial = torch.from_numpy(np.zeros((1, 84, 8, 8), dtype=np.float32))
+        vector = torch.from_numpy(np.zeros((1, 512), dtype=np.float32))
         policy, value = network(spatial, vector)
         assert policy.shape[0] == 1
         assert value.shape[0] == 1

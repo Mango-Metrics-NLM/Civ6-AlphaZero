@@ -18,7 +18,7 @@ Monte Carlo Tree Search, and deep neural networks.
 ```
 This succeeds when:
 - [ ] All tests pass: `pytest tests/ -v` exits with code 0
-- [ ] Coverage >= 85%: `pytest --cov=alpha_zero --cov-report=term-missing` shows >= 85%
+- [ ] Coverage >= 85%: `pytest --cov=alpha_zero --cov-report=term-missing` shows >= 85% (gate enforced in CI and `pyproject.toml`; re-tightened 80→85 on 2026-07-13 at 89.69% measured; some infra/web modules are intentionally omitted — see `[tool.coverage]`)
 - [ ] Type checking passes: `mypy alpha_zero/` exits with code 0
 - [ ] Linting passes: `ruff check alpha_zero/` exits with code 0
 - [ ] Training smoke test: `python -m alpha_zero.training_civ6 --dry_run` completes
@@ -93,7 +93,7 @@ from numerical instability, and race conditions in distributed components.
   - pytest with fixtures
   - Unit tests for all public methods
   - Integration tests for cross-module flows
-  - Coverage >= 80% on core modules
+  - Coverage >= 85% on core modules
 - Logging:
   - Use alpha_zero.utils.logging module
   - Structured logging with MetricsTracker
@@ -187,11 +187,11 @@ PROHIBITED (do not attempt):
 ```bash
 # After writing code, run in this order:
 
-# 1. Lint check
-ruff check alpha_zero/
+# 1. Lint check (whole repo — CI gate scope as of 2026-07-25)
+ruff check .
 
 # 2. Type check
-mypy alpha_zero/ --ignore-missing-imports
+mypy alpha_zero/  # exits 0 as of 2026-07-25; flag-free — config lives in pyproject
 
 # 3. Unit tests (fast feedback)
 pytest tests/unit/ -v --tb=short
@@ -245,7 +245,7 @@ ON REPEATED FAILURE (same error 3x):
 ```
 Before reporting completion:
 1. All verification commands pass (lint, type, tests)
-2. Coverage check: pytest --cov=alpha_zero shows >= 80% on changed modules
+2. Coverage check: pytest --cov=alpha_zero shows >= 85% on changed modules
 3. Smoke test: python -m alpha_zero.training_civ6 --dry_run
 4. Import check: python -c "from alpha_zero import <new_module>"
 5. Generate brief summary of changes made
@@ -270,14 +270,37 @@ When making changes, update the relevant sections below:
 | `pytest tests/ -v --cov=alpha_zero` | Run tests with coverage |
 | `ruff check alpha_zero/` | Lint Python code |
 | `mypy alpha_zero/` | Type check |
+| `make validate` | Run governance validators (openspec, kb, skills, doc-sync) |
+| `make hooks-install` | Install git pre-commit / pre-push hooks |
+| `python scripts/check_doc_sync.py` | Documentation-drift gate (version/counts/links/extras) |
+| `python scripts/validate_openspec.py` | Validate the `openspec/` change directory |
 | `python -m alpha_zero.training_civ6 --dry_run` | Training smoke test |
 | `python -m alpha_zero.distributed.coordinator --dry_run` | Distributed smoke test |
 | `python -m alpha_zero.orchestrator --help` | Show orchestrator options |
 | `python -m alpha_zero.orchestrator --preset fast --dry_run` | Fast preset smoke test |
 | `python -m alpha_zero.orchestrator --config configs/orchestrator.yaml --dry_run` | Config file smoke test |
+| `pip install -e '.[eval]'` | Install the LLM eval-harness (langfuse-eval-harness from git) |
+| `make eval-llm` | Run the StrategyAdvisor LLM eval gate (offline, exit-code propagating) |
+| `python scripts/run_llm_eval.py` | Run the LLM eval gate directly (both analyze + report configs) |
+| `python scripts/run_llm_eval.py --online` | Run the eval gate against a real LLM provider (needs API keys) |
+| `eval-harness list-plugins` | List harness scorers/datasets/targets/sinks/judges |
 | `python scripts/launch_50iter_production_monitored.py --dry-run` | MLflow-monitored 50-iter production dry run |
 | `python scripts/launch_50iter_production_monitored.py` | Launch full 50-iter production run with MLflow |
 | `mlflow ui --backend-store-uri ./mlruns --port 5000` | Inspect MLflow runs in the browser |
+| `python -m alpha_zero.civ6_local --mode civ6 --dry-run` | Validate Civ6 bridge config (no game needed) |
+| `python -m alpha_zero.civ6_local --mode civ6 --mcts` | Start Civ6 bridge with GumbelMCTS policy |
+| `python -m alpha_zero.civ6_local --mode civ6 --mcts --eval-harness` | Bridge + MCTS + MLflow eval harness |
+| `python scripts/install_civ6_mod.py` | Install AlphaZeroAI mod to default Steam Mods dir |
+| `python scripts/install_civ6_mod.py --mod-dir PATH` | Install mod to custom Civ6 Mods directory |
+| `pip install -e '.[tuning]'` | Install Optuna for hyperparameter sweeps |
+| `python run_sweep.py --dry-run` | Validate sweep config (configs/sweep_muzero.yaml) |
+| `python run_sweep.py --n-trials 20` | Run Optuna sweep (MLflow-logged; CIV6AZ_SWEEP_* env overrides) |
+| `pip install -e '.[hub]'` | Install Hugging Face Hub support for the encoder |
+| `python scripts/run_encoder_ab.py train` | Train both encoder arms locally (device auto-detected, seeded) |
+| `python scripts/run_encoder_ab.py arena --num_games 800` | Head-to-head arena; writes counts + Wilson 95% CI |
+| `python scripts/run_encoder_ab.py report` | Render committable A/B evidence to `docs/evidence/hexcrystal_ab/` |
+| `python scripts/compare_training_runs.py --mlflow_run_a A --mlflow_run_b B` | Compare two MLflow runs (add `--no_plots` without matplotlib) |
+| `python scripts/upload_encoder_to_hub.py --checkpoint P --repo-id R` | Stage the encoder for the Hub (dry run; `--publish` uploads) |
 
 #### Cloud Deployment Commands
 
@@ -310,10 +333,13 @@ When making changes, update the relevant sections below:
 | `pytest tests/unit/test_factories.py -v` | Test component factories |
 | `pytest tests/unit/test_rag_integration.py -v` | Test RAG integration |
 | `pytest tests/unit/test_strategy_advisor.py -v` | Test strategy advisor |
+| `pytest tests/unit/test_strategy_advisor_contract.py -v` | StrategyAdvisor output contract gate (dependency-free) |
+| `pytest tests/unit/test_llm_harness_target.py -v` | Eval-harness callable target adapter tests |
 | `pytest tests/unit/test_storage_backend.py -v` | Test storage backends |
 | `pytest tests/unit/test_orchestrator_stagnation.py -v` | Test stagnation config + orchestrator wiring |
 | `pytest tests/cloud/unit/test_evaluator_stagnation.py -v` | Test promotion-stagnation detection |
 | `pytest tests/unit/test_replay_buffer.py -v` | Test replay buffers |
+| `pytest tests/unit/test_nplayer_training_pipeline.py -v` | Test N-player training pipeline (G9: per-player values) |
 | `pytest tests/unit/test_simultaneous_mcts.py -v` | Test DUCT algorithm |
 | `pytest tests/unit/test_action_resolution.py -v` | Test action conflict resolution |
 | `pytest tests/integration/test_e2e_nplayer_training.py -v` | E2E N-player training |
@@ -358,7 +384,9 @@ When making changes, update the relevant sections below:
 | 2026-02-17 | N-player MCTS (Max-N, Paranoid, Best-Reply) | Multiplayer support for 2-8 players, per-player value vectors |
 | 2026-02-17 | Opponent modeling | Frequency-based prediction with exponential decay, Bayesian blending |
 | 2026-02-17 | Turn manager (Sequential/Simultaneous/Dynamic) | Civ6-style dynamic turn modes |
-| 2026-02-18 | Hex crystalline encoder | Hex-topology-aware spatial encoder, axial coordinates, ring-distance PE |
+| 2026-02-18 | Hex crystalline encoder | Hex-topology-aware spatial encoder: **even-q offset** 7-tap gather convolution (centre + 6 neighbours) → AdaptiveAvgPool token bottleneck → linear tokenization → optional crystalline lattice layer combining learned symmetry transforms across the *transform* axis. Corrected 2026-08-09: there are **no** axial coordinates, **no** ring-distance PE, and no spatial attention — position comes from the transformer's own `pos_embed`. |
+| 2026-08-09 | Hex encoder extracted to `alpha_zero/hexcrystal/` | Torch-only subpackage (no numpy/gymnasium) so the encoder is reusable outside this repo and publishable to the HF Hub. Re-export shims keep every `alpha_zero.core.*` path working; `state_dict` keys unchanged (`encoder.patch_embed.*`). |
+| 2026-08-09 | Root package uses PEP 562 lazy imports | `import alpha_zero` no longer pulls numpy/gymnasium (1,600 ms → 6.5 ms). `__all__` is now static and omits `RealCiv6Env`/`RewardConfig`, which remain resolvable attributes. |
 | 2026-02-21 | GumbelMCTS as default | `DEFAULT_MCTS_TYPE` changed from `civ6` to `gumbel` |
 | 2026-02-21 | Action mask in training pipeline | 5-tensor dataset: spatial, vector, mask, policy, value |
 | 2026-02-23 | Training worker fine-tuning fix | `--model_version` loads incumbent from GCS before training |
@@ -373,27 +401,37 @@ When making changes, update the relevant sections below:
 | 2026-05-21 | TournamentMlflowLogger (PR #78) | Match / round / leaderboard / head-to-head facade for tournament telemetry |
 | 2026-05-21 | Stateless monitoring helpers (PR #78) | `compute_value_correlation`, `compute_elo_spread`, `compute_policy_entropy` (NaN-safe, importable from `alpha_zero.monitoring`) |
 | 2026-05-21 | W&B coexists with MLflow | Phased rollout; both backends can be enabled simultaneously. W&B remains primary in `cloud/`, `pbt/`, `evaluation/`, `optimizations/` pending follow-up sweep. Optional `[monitoring]` extra. |
+| 2026-05-24 | BridgeMCTSEnv adapter (W2.2) | Snapshot-seeded `MicroCivEnv` adapter in `alpha_zero/bridge/mcts_env.py`. Seeds from `GameStateData` via `BridgeMCTSEnv.from_bridge_state()`. No `reset()` — each bridge state creates a fresh env; `clone()` pattern for MCTS rollouts. |
+| 2026-05-24 | Civ6MctsPolicy (W2.2) | GumbelMCTS over `BridgeMCTSEnv`; implements `PolicyEngine` protocol. `--mcts` / `--no-mcts` CLI flags in `civ6_local.py`. Lazy import avoids torch overhead in Greedy path. |
+| 2026-05-24 | BridgeEvalHarness (W2.3a) | MLflow-backed telemetry hooks (`on_start`, `on_turn_end`, `on_stop`) wired into `BridgeAgentLoop`. `--eval-harness` flag in `civ6_local.py`; env var `CIV6AZ_LOCAL_USE_EVAL_HARNESS=1`. |
+| 2026-05-24 | install_civ6_mod.py (W2.3b) | `scripts/install_civ6_mod.py` copies `mod/AlphaZeroAI` → `%USERPROFILE%\Documents\My Games\Sid Meier's Civilization VI\Mods\AlphaZeroAI`. Creates dir if absent. Supports `--mod-dir` override. |
+| 2026-05-24 | execute_with_retry wired (W3.1) | `GameBridgeHealthChecker.execute_with_retry` wraps both `wait_for_state` and `send_and_wait_with_retry` in `BridgeAgentLoop` when `health_checker` is supplied. `CircuitBreakerOpenError` maps to `state_timeouts` counter and asyncio.sleep(≥ retry_after). |
 | 2026-05-30 | Training-stagnation detection (harness engineering) | Reuses existing `EloPlateauDetector` in the orchestrator (`StagnationConfig`, opt-in, ELO/win-rate signal — NOT loss) + new `count_consecutive_non_promotions` promotion check in `cloud/evaluator.py`. Addresses §13 zero-promotion failure. Env: `CIV6AZ_STAGNATION_*`, `CIV6_STAGNATION_PATIENCE`. All default OFF. |
 | 2026-05-30 | PreToolUse prohibited-action guard | `.claude/hooks/pretooluse_guard.sh` enforces §3.2 (no commits/pushes to `main`, >1000-game cap) — turns prose into a machine deny. |
 | 2026-05-30 | Pre-PR review in isolated subagent | Pre-PR handoff skill dispatches review to a fresh `Agent`/`code-review` for generator–evaluator separation (independent context). |
+| 2026-07-05 | N-player training pipeline (G9) | `training_civ6.py` threads `num_players` end-to-end: `TrainingExample.value_vector` (per-player, relative order), per-player targets via `multiplayer.scoring` (`ScoringMethod`), `compute_nplayer_value_loss` in `train_epoch`, and `CurrentPlayerValueView` (reduces the per-player value vector to relative-index-0 so scalar `Civ6MCTS`/`GumbelMCTS` can drive an N-player network). Encoder is player-relative, so value targets and the scalar view both key on relative index 0. 2-player path byte-identical; opt-in via `--num_players`/`--scoring_method`. |
+| 2026-07-13 | W&B fully retired; MLflow sole tracker | SDK swap verified complete (zero `import wandb` in `alpha_zero/`). `resolve_tracker_enabled()` unifies enablement (`CIV6AZ_MLFLOW_ENABLED` > `MLFLOW_ENABLED` > legacy `WANDB_ENABLED`, warns). Orchestrator `WandbConfig` = deprecated bridge via `to_mlflow_config()`; `--no-wandb`/`--no-tracking` disable ALL tracking. `utils/wandb_logger.py` shim deleted (lazy `alpha_zero.utils.WandbLogger` alias remains, warns). Adapter hardened: numpy/nested metric coercion, `run_name` property (fixes run-group propagation), `alert()` also warns in logs. |
+| 2026-07-25 | OpenSpec governance + deterministic validators | Enterprise docs overhaul managed as one OpenSpec change (`openspec/`). Four stdlib-only validators (`scripts/validate_openspec.py`, `validate_kb.py`, `validate_skills.py`, `check_doc_sync.py`; exit 0/1/2; tests in `tests/governance/`) enforced by Claude hooks, `.pre-commit-config.yaml` (ruff pinned to CI's version — 0.15.8 as of 2026-07-25), and a CI `governance` job. `check_doc_sync.py` blocks doc drift (version triple, MODULE_REFERENCE counts, README forbidden patterns, unknown extras, links, changelog-version). Skills gained frontmatter + validation gates; added `openspec-propose`/`openspec-archive`/`doc-sync`/`release`. Stale docs archived to `docs/archive/` (archive-not-delete). |
+| 2026-07-25 | PostToolUse autofix defers F401 **and** RUF100 | `--extend-ignore F401` alone made existing `# noqa: F401` directives look unused, so RUF100 `--fix` stripped them and re-exposed the imports to CI's F401 gate. Deferring both keeps intentional availability-probe imports intact (`.claude/hooks/posttooluse_lint.sh`). |
 
 ### 5.3 Known Issues
 
 | Issue | Workaround |
 |-------|------------|
 | No GPU in dev environment | Training works on CPU (slower) |
-| torch not installable in restricted web sessions | PyTorch index blocked by network policy; torch-dependent tests run in CI, not locally. Pure logic still verifiable via `python -m py_compile` + `ruff`. |
+| download.pytorch.org index blocked in web sessions | Use plain `pip install torch` (PyPI wheel works; verified 2026-07-13 with torch 2.13.0) — only the `--index-url https://download.pytorch.org/...` path is blocked. Full test suite then runs locally. |
 | `PostToolUse` ruff `--fix` can strip imports mid-task | If you add an import in one edit and its first use in a later edit, the autofix removes it as unused. Re-add the import after the use exists; see guardrail audit in `docs/HARNESS_ENGINEERING_ANALYSIS.md` §6. |
 | SimpleMCTS random rollout is weak | Use neural network MCTS after initial training |
 | Windows multiprocessing spawn | Use `if __name__ == "__main__"` guard |
 | pytest-xdist not always installed | Tests run without parallel flag if missing |
-| v1.3.0 training convergence unvalidated | Run `scripts/validate_v130_training.py` locally or launch cloud run |
-| MicroCiv hardcoded for 2 players | Multiplayer module built, but env needs G7/G8/G9 changes |
-| 12 DDP tests xfailed | Need rewrite with `torch.multiprocessing.spawn` |
+| `serving/` + `inference/` omitted from coverage gate | They require the `web` extra (fastapi/uvicorn), absent from the default-CI `[dev]` install, so they cannot be imported in CI's coverage job. `serving/` has unit tests (`tests/unit/test_serving/`, `importorskip`-guarded) but stays in the omit list until CI installs the `web` extra. |
+| Coverage instrumentation crashes under nightly numpy 2.4 + coverage C-tracer | Local-only sandbox issue ("cannot load module more than once"); run tests without `--cov`, or use pinned numpy. CI uses pinned versions and is unaffected. **Partial workaround (2026-08-09):** `COVERAGE_CORE=pytrace` selects coverage's pure-Python tracer and avoids the crash — but only for `--cov` targets that do **not** import numpy. `COVERAGE_CORE=pytrace pytest tests/unit/test_hexcrystal_*.py --cov=alpha_zero.hexcrystal` works (measured 87.10%); `--cov=alpha_zero.utils.checkpoint` still crashes, because coverage importing a numpy-dependent module on top of conftest's import is the double load. CI remains the gate for numpy-importing modules. |
+| ~~MicroCiv hardcoded for 2 players~~ (resolved 2026-07-05) | Env + encoder N-player (2–6); training pipeline now N-player too. **G7/G8/G9 all done**: `training_civ6.py` threads `num_players` (per-player `value_vector`, `compute_nplayer_value_loss`, `CurrentPlayerValueView` scalar-MCTS adapter). 2-player path byte-identical. Tests: `tests/unit/test_nplayer_training_pipeline.py`. Train: `python -m alpha_zero.training_civ6 --num_players 4`. |
+| ~~12 DDP tests xfailed~~ (stale — corrected 2026-07-05) | DDP tests use CUDA `skipif`, not `xfail`. Repo has exactly one real `xfail` (`test_phase2.py:381`). Real static-skip debt (re-measured 2026-07-25): 11 skip sites / 17 tests, none W&B-related — the W&B skips vanished with the 2026-07-13 retirement. Remaining skips: planned-API stubs, full-game-state suites, and one flaky concurrency test (`test_buffer_edge_cases.py`). |
 | mlruns/ file-store deprecated | Run `scripts/migrate_mlflow_to_sqlite.py` to migrate to `sqlite:///mlflow.db` |
 | test_deployment_infra.py: 6 failures | Require .env file not present locally; skip with `pytest -m 'not env_required'` |
-| Two divergent `WandbConfig` classes (`orchestrator/config.py` + `utils/wandb_logger.py`) | Unification deferred; `MLflowConfig` is single-source to avoid repeating the issue. |
-| W&B -> MLflow swap is partial | `cloud/`, `pbt/`, `evaluation/`, `optimizations/` still call wandb directly. Tracked as a follow-up sweep. |
+| ~~Two divergent `WandbConfig` classes~~ (resolved 2026-07-13) | `utils/wandb_logger.py` shim deleted; orchestrator `WandbConfig` is now an explicit deprecated bridge (`to_mlflow_config()`), `MLflowConfig` single-source. |
+| W&B naming debt (accepted) | The SDK swap is COMPLETE — no `import wandb` anywhere in `alpha_zero/`. Retained for compat: `TournamentWandbLogger` (public, MLflow-backed), worker-local `wandb_logger` vars, serialized `wandb_enabled` config fields, lazy deprecated `alpha_zero.utils.WandbLogger` alias. `run_sweep.py` was ported to Optuna on 2026-07-13 (`alpha_zero/optimizations/hyperparameter_search.py`, `pip install -e '.[tuning]'`) — no wandb imports remain in `alpha_zero/` or entry points; two read-only historical-run readers (`scripts/compare_training_runs.py`, `scripts/search_efficiency_report.py`) keep lazy `wandb.Api()` access to W&B-hosted history, documented as deprecated. Adapter no-ops: histograms/images/`define_metric`. |
 
 ### 5.4 Bug Fixes
 
@@ -408,6 +446,9 @@ When making changes, update the relevant sections below:
 | run_baseline_eval hardcoded run_id | Added resolve_run_id() auto-detection; removed production UUID default | 2026-05-21 |
 | EvaluationResult.win_rate type | win_rate is WinRateResult object, not float; fixed access to .win_rate.win_rate | 2026-05-21 |
 | MLflowLogger lifecycle | FAILED vs FINISHED status now set correctly on context manager exit | 2026-05-21 |
+| StrategyAdvisor `.complete()` mismatch | Added `LLMClient.complete()` alias → `generate_sync(prompt).content`; advisor's `llm_client.complete(prompt)` call path no longer `AttributeError`s against a real client | 2026-06-20 |
+| Orchestrator asserts stripped under `python -O` | 24 `assert self._x is not None` init-guards → `_require()` raising `RuntimeError`; safe under `-O` | 2026-06-20 |
+| `serving/` had zero tests | Added `tests/unit/test_serving/test_inference_server.py` (12 tests, endpoints + `_load_model` paths, fastapi `importorskip`) | 2026-06-20 |
 
 ### 5.5 Information to Preserve
 
@@ -424,7 +465,7 @@ When making changes, update the relevant sections below:
 ### 6.1 Initial Actions (Always Do First)
 
 ```bash
-# 1. Read this file (CLAUDE.md)
+# 1. Read this file (CLAUDE.md) and PROJECT_CHARTER.md (scope, non-goals, invariants)
 
 # 2. Check environment
 python --version  # Should be 3.10+
@@ -561,19 +602,24 @@ Civ6-AlphaZero/
 │   │   └── muzero_hyperparams.py # MuZero-specific hyperparams
 │   ├── tournament/              # ELO Tournament System (9 files)
 │   ├── web/                     # Web Interface (12 files, FastAPI + WebSocket)
-│   ├── bridge/                  # Civ6 Lua Mod Bridge (7 files, file IPC)
+│   ├── bridge/                  # Civ6 Lua Mod Bridge (9 files, file IPC)
 │   ├── hierarchical/            # Hierarchical Goal Planning (19 files)
-│   ├── training/                # Training integrations
-│   │   ├── muzero_integration.py # MuZero training pipeline
-│   │   └── muzero_trainer.py    # MuZero trainer
-│   ├── interfaces/              # Game interfaces
-│   │   ├── __init__.py
-│   │   └── unciv_interface.py   # Unciv JSON interface
-│   ├── monitoring/              # MLflow Monitoring Layer (NEW)
-│   │   ├── __init__.py
-│   │   ├── config.py            # MLflowMonitoringConfig dataclass
-│   │   ├── mlflow_logger.py     # MLflowLogger: lifecycle + 14-metric evaluation logging
-│   │   └── mlflow_evaluator.py  # AlphaZeroMLflowEvaluator: policy entropy, value MAE, accuracy
+│   ├── training/                # Training integrations (11 files: MuZero trainer,
+│   │                           #   safeguards, diagnostics, convergence monitor)
+│   ├── interfaces/              # Game interfaces (4 files, incl. unciv_interface.py)
+│   ├── mechanics/              # Game mechanics: diplomacy, trade, espionage,
+│   │                           #   religion, government, climate, eras (12 files)
+│   ├── evaluation/             # Evaluation + LLM eval harness, llm_harness/ (12 files)
+│   ├── gameplay/               # Gameplay systems: terrain, fog of war, tech, combat (8)
+│   ├── optimizations/         # Training optimization strategies (9 files)
+│   ├── opponents/             # Opponent types & strategies (4 files)
+│   ├── spacetimedb/           # SpacetimeDB integration (9 files)
+│   ├── inference/             # Inference service: client/engine/schemas (4)
+│   ├── serving/               # FastAPI inference server (2 files; web extra,
+│   │                           #   omitted from the default coverage gate — see §B/known issues)
+│   ├── human_interface/       # Human gameplay interface (6 files)
+│   ├── integration/           # Integration bridge / game connector (2 files)
+│   ├── rag/                    # RAG pipeline: stores/processors/agents (22 files; see §11)
 │   ├── utils/                   # Utilities
 │   │   ├── __init__.py
 │   │   ├── logging.py           # Logging infrastructure
@@ -618,6 +664,11 @@ Civ6-AlphaZero/
 ├── docker-compose.yml           # Local testing environment (NEW)
 └── CLAUDE.md                    # This file
 ```
+
+> **Authoritative module list:** `alpha_zero/` has **28 submodules** as of v1.8.0.
+> File counts above are recursive `*.py` counts (excluding `__pycache__`). The
+> single source of truth — one row per submodule with responsibility — lives in
+> [`docs/MODULE_REFERENCE.md`](docs/MODULE_REFERENCE.md); update it when adding/removing modules.
 
 ---
 
@@ -873,6 +924,46 @@ Install: `pip install -e '.[monitoring]'`. Launch the 50-iter production
 run via `scripts/launch_50iter_production_monitored.py`. Inspect via
 `mlflow ui --backend-store-uri ./mlruns --port 5000`.
 
+### 9.10 LLM Evaluation Harness
+
+Optional integration of `langfuse-eval-harness` (github.com/ianshank/Agents) to
+evaluate the LLM-driven `StrategyAdvisor`. The harness drives a `callable` target
+that imports `alpha_zero.evaluation.llm_harness.target:advisor_target`, runs the
+advisor, and grades the JSON-serialized result with its scorers.
+
+**What it checks (be honest about scope):** by default the gate runs *offline*
+with a deterministic stub LLM, so it is a **contract / serialization regression
+gate** for the advisor's structured output — it does **not** measure LLM
+quality. Real quality grading needs the online path
+(`CIV6AZ_LLM_EVAL_ONLINE=1`) with a real judge.
+
+It gates **both** advisor modes:
+- `analyze` → `AnalysisResult` (`configs/eval/strategy_advisor.yaml`,
+  dataset `data/eval/strategy_advisor_cases.jsonl`): scorers `structure`
+  (keys), `has_suggestions` (content), `suggestions_non_empty` (regex).
+- `report` → `GameReport` (`configs/eval/game_report.yaml`, dataset
+  `data/eval/game_report_cases.jsonl`): scorers `structure` (keys),
+  `has_recommendations` (content), `turns_is_integer` (regex).
+
+```bash
+pip install -e '.[eval]'                 # langfuse-eval-harness pinned to a SHA
+make eval-llm                            # offline gate, BOTH modes; exit 1 on regression
+python scripts/run_llm_eval.py --online  # real provider (needs API keys)
+python scripts/run_llm_eval.py --config configs/eval/game_report.yaml  # one mode
+```
+
+- Config schema: `dataset`/`target`/`scorers`/`judge`/`sinks`/`gate`; scorers
+  carry a `name`, the gate references it.
+- Runner `scripts/run_llm_eval.py` takes a repeatable `--config` (defaults to
+  both configs) and degrades gracefully (exit 0) when the `[eval]` extra is
+  absent, so it is CI-safe unconditionally; otherwise it propagates the harness
+  exit code (0 = gate pass, 1 = gate fail), failing fast on the first config.
+- Dependency-free core: `tests/unit/test_strategy_advisor_contract.py` keeps the
+  contract-regression coverage even without the harness installed (both modes,
+  dataset round-trip, and config↔output key consistency).
+- Env vars: `CIV6AZ_LLM_EVAL_ONLINE` (online switch), `CIV6AZ_EVAL_DATASET`,
+  `CIV6AZ_EVAL_REPORT_DATASET`, `CIV6AZ_EVAL_OUT`, `CIV6AZ_EVAL_SAMPLE_RATE`.
+
 ---
 
 ## SECTION 10: DEBUG COMMANDS
@@ -948,7 +1039,7 @@ alpha_zero/rag/
 |---------|---------|
 | `pytest tests/unit/test_rag/ -v` | Run RAG unit tests |
 | `pytest tests/integration/test_rag/ -v` | Run RAG integration tests |
-| `pip install -e ".[rag]"` | Install with RAG dependencies |
+| `pip install chromadb faiss-cpu sentence-transformers` | Install RAG dependencies (not a packaged extra) |
 | `pip install -e ".[all]"` | Install all dependencies |
 
 ### 11.4 RAG Usage Example
@@ -1100,28 +1191,60 @@ python -m infra.vertex_launcher \
 
 ## SECTION 13: NEXT STEPS
 
-### Current: Validate v1.3.0 Training Convergence
-- v1.2.0 production run had **0 model promotions** (training-from-scratch bug)
-- v1.3.0 fixed weight loading but has **not been validated** in production
-- Run `python scripts/validate_v130_training.py` for local validation
+> Long-term themes: see ROADMAP.md. Scope boundaries and invariants: see PROJECT_CHARTER.md.
 
-### Implemented (not yet listed as "complete")
-These features are already substantially built but were never formally tracked as phases:
-- **PBT**: `alpha_zero/pbt/` (10 files, 4,588 lines)
-- **Tournament**: `alpha_zero/tournament/` (9 files, 5,143 lines)
-- **Web Interface**: `alpha_zero/web/` (12 files)
-- **Civ6 Bridge**: `alpha_zero/bridge/` (7 files)
+### Current State (v1.8.0)
+Training convergence (the v1.3.0 weight-loading fix) has been validated, and the
+project has since shipped through v1.8.0:
+- **v1.5.0** — convergence validation + MLflow monitoring + batch self-play groundwork
+- **v1.6.0** — cloud-deploy prep: Vertex launcher, runbook, GCP OAuth/VM fixes, 85%→80% CI gate
+- **v1.7.0** — full-Civ6 local gameplay (`BridgeAgentLoop` wires the agent to Civ6) and the
+  `langfuse-eval-harness` LLM eval gate for `StrategyAdvisor` (`make eval-llm`)
+- **v1.8.0** — headless FireTuner socket bridge (`tuner_socket_bridge.py`): live Civ6
+  gameplay verified over the socket, no GUI relay needed (coverage gate back to 85%
+  as of 2026-07-13)
+
+### Implemented (substantially built)
+- **PBT**: `alpha_zero/pbt/` (10 files) · **Tournament**: `alpha_zero/tournament/` (9 files)
+- **Web Interface**: `alpha_zero/web/` (12 files) · **Civ6 Bridge**: `alpha_zero/bridge/` (15 files)
 - **Hierarchical Planning**: `alpha_zero/hierarchical/` (19 files)
 - **MuZero**: `alpha_zero/core/muzero_network.py`, `training/muzero_*`
 - **N-Player Multiplayer**: `alpha_zero/multiplayer/` (18 files)
+- **Inference/Serving**: `alpha_zero/inference/` (4 files), `alpha_zero/serving/` (FastAPI server)
 
 ### Genuine Next Steps
-1. **Validate training convergence**: Prove models improve across iterations
-2. **Batch self-play in cloud**: Wire BatchGumbelMCTS into cloud containers (5-10x throughput)
-3. **N-player MicroCiv**: Fix hardcoded 2-player env (gaps G7/G8/G9)
-4. **DDP test fixes**: Fix 12 xfailed distributed tests
-5. **Fog of war**: Information set sampling for partial observability (gap G10)
-6. **Full Civ6 integration**: Scale to real game via Lua mod bridge
+
+> Two previously-listed items were deleted on 2026-07-25 as untrue. **N-player
+> MicroCiv** (former item 1) landed on 2026-07-05 — `training_civ6.py` threads
+> `num_players` end-to-end, covered by `tests/unit/test_nplayer_training_pipeline.py`
+> and two integration suites; §5.3 already recorded this and §13 had not been
+> updated in lockstep. **"12 xfailed DDP tests"** (former item 2) never existed:
+> `tests/unit/test_distributed/` is not a directory, the DDP suites are flat
+> `tests/unit/test_distributed_*.py` files, and the repo contains exactly one
+> `xfail` (`tests/integration/test_phase2.py:381`) plus one CUDA `skipif`.
+
+1. **Batch self-play in cloud**: ~70% done, not unstarted. `BatchGumbelMCTS`
+   (`core/batch_mcts.py`) + `VectorizedMicroCivEnv` are fully wired into
+   `cloud/gcp/selfplay_worker.py:run_batch_selfplay()` and tested. What remains:
+   no config sets `mcts_type: batch_gumbel`, `dockerfiles/Dockerfile.selfplay`
+   entrypoints the *other* worker (`cloud/selfplay_worker.py`, which hardcodes
+   `SimpleMCTS`), and the claimed 5-10x has no benchmark artifact.
+2. **Fog of war** (gap G10): partly done. Fog is implemented in `MicroCivEnv`
+   (flag, default off) and the encoder; `DeterminizedMCTS`
+   (`multiplayer/determinization.py`) is written and tested but has **zero call
+   sites**. Remaining: wire it into self-play, expose a fog flag from
+   `training_civ6.py`, and fix the action-mask information leak
+   (`envs/microciv.py:843-848` masks the observation but recomputes the mask
+   from unmasked state).
+3. **Coverage**: Bring omitted modules (`serving/`, `inference/`, cloud infra) under the gate so it
+   can keep tightening (gate re-tightened 80% → 85% on 2026-07-13 at 89.69% measured; omit-list
+   shrink is the remaining work); `serving/` now has unit tests but stays omitted (needs the `web` extra,
+   absent from the default-CI `[dev]` install)
+4. **Full Civ6 integration**: the bridge is the most complete subsystem here
+   (15 files / 9,127 Python lines + 7,355 Lua, all 17 action types implemented,
+   no TODOs) — not "continue scaling" from scratch. Remaining: sustained
+   multi-turn live validation (only 4 turns verified, on random weights) and
+   the `UncivInterface.parse_multiplayer_save` stub.
 
 ---
 
@@ -1204,7 +1327,21 @@ and git diff stats into the compacted context. Ensures workflow continuity acros
 ending a session that did meaningful work.
 
 **Permissions:** Common safe operations (pytest, ruff, mypy, git, pip, make) are pre-approved.
-Dangerous operations (writing .env, force-push, cloud ops) are denied.
+Dangerous operations are denied: `.env`/`.env.local` writes via the file tools
+(`Edit(.env)`+`Write(.env)` — `Edit` rules already cover the Write tool, and the
+explicit `Write` entries make the intent unambiguous), force-push (via
+`pretooluse_guard.sh`, allowing `--force-with-lease`), and cloud ops
+(gcloud/gsutil/kubectl/docker push). Note: a Bash-mediated write to `.env`
+(e.g. `echo > .env`) is not pattern-blocked; it is covered by convention and the
+guard's heuristic scope, not a sandbox.
+
+> **A note on "agents" and "tools" in this repo.** There is no `.claude/agents/` directory —
+> this project does not define custom Claude Code sub-agents. The word "agents" here refers to
+> two distinct things: (1) the **KB workflow roles** (Planning / DEV-SQE / Pre-PR), implemented
+> as the handoff **skills** under `.claude/skills/` (Section 14); and (2) the in-repo
+> **`alpha_zero/utils/agent_tools.py`** helper library (code-explorer, file-manager,
+> task-tracker, debug utilities) that sub-agents can import — documented in Section 9.4 / 5.2.
+> The harness "tools" are the hooks + permissions in `.claude/settings.json` described above.
 
 ### 15.4 Personal Overrides
 
@@ -1222,6 +1359,6 @@ This file is gitignored and never committed.
 
 ---
 
-*Last updated: 2026-03-31*
-*Version: v1.3.0 (training convergence fix, awaiting validation)*
-*Current Focus: Validate training convergence, then batch self-play + N-player MicroCiv*
+*Last updated: 2026-07-25*
+*Version: v1.8.0 (enterprise docs overhaul + OpenSpec governance gates)*
+*Current Focus: M4 (ROADMAP.md) — N-player training runs, batch self-play in cloud, W&B→MLflow sweep, omit-list shrink. Governance: PROJECT_CHARTER.md*

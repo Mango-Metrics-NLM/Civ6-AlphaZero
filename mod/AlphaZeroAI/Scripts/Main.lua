@@ -5,7 +5,18 @@
 -- Fixes: deduplicated events, proper polling handle, graceful shutdown, timeout.
 -- ============================================================================
 
+-- Load dependent modules via include() (required in AddUserInterfaces context).
+-- Guarded so re-including this file (or loading alongside AlphaZeroMain.lua's
+-- bundled copies) doesn't redefine each module's globals unnecessarily.
+if not AlphaZeroConfig then include("Config") end
+if not AlphaZeroLogger then include("Logger") end
+if not AlphaZeroJson then include("JsonEncoder") end
+if not AlphaZeroFileIO then include("FileIO") end
+if not AlphaZeroStateExporter then include("StateExporter") end
+if not AlphaZeroActionExecutor then include("ActionExecutor") end
+
 AlphaZeroBridge = AlphaZeroBridge or {}
+
 
 local Log = nil  -- Will be set after Logger initializes
 
@@ -84,6 +95,45 @@ function AlphaZeroBridge.Initialize()
         AlphaZeroActionExecutor.Init()
     end
 
+    -- Diagnostic: dump available APIs to Lua.log. Gated behind DEBUG log
+    -- level -- this ran unconditionally on every init, spamming Lua.log and
+    -- slowing the Python LogTailer. Only emit when LOG_LEVEL=DEBUG (numeric
+    -- level 1; see the levels table in Config.lua's GetLogLevelNum()).
+    if AlphaZeroConfig and AlphaZeroConfig.GetLogLevelNum and AlphaZeroConfig.GetLogLevelNum() <= 1 then
+        local apis = {
+            {"io", io},
+            {"io.open", io and io.open},
+            {"os", os},
+            {"os.time", os and os.time},
+            {"os.clock", os and os.clock},
+            {"os.execute", os and os.execute},
+            {"os.getenv", os and os.getenv},
+            {"os.remove", os and os.remove},
+            {"os.rename", os and os.rename},
+            {"UI", UI},
+            {"UI.GetAppSavegameDirectory", UI and UI.GetAppSavegameDirectory},
+            {"UI.DataError", UI and UI.DataError},
+            {"Modding", Modding},
+            {"Modding.GetUserDataFolder", Modding and Modding.GetUserDataFolder},
+            {"Game", Game},
+            {"Players", Players},
+            {"GameEvents", GameEvents},
+            {"Events", Events},
+            {"ContextPtr", ContextPtr},
+            {"Network", Network},
+            {"loadfile", loadfile},
+            {"dofile", dofile},
+            {"require", require},
+            {"include", include},
+        }
+        print("[AlphaZero] === API AVAILABILITY DIAGNOSTIC ===")
+        for _, entry in ipairs(apis) do
+            local name, val = entry[1], entry[2]
+            print(string.format("[AlphaZero] %s = %s", name, val and "AVAILABLE" or "nil"))
+        end
+        print("[AlphaZero] === END DIAGNOSTIC ===")
+    end
+
     -- Validate configuration
     if AlphaZeroConfig and AlphaZeroConfig.Validate then
         local valid, errors = AlphaZeroConfig.Validate()
@@ -133,7 +183,7 @@ function AlphaZeroBridge.OnTurnStart(playerId)
     bridgeState.isMyTurn = true
     bridgeState.actionsThisTurn = 0
     bridgeState.waitingForCommand = true
-    bridgeState.turnStartTime = os.time()
+    bridgeState.turnStartTime = (os and os.time) and os.time() or 0
 
     -- Export and write current state
     local success, err = AlphaZeroStateExporter.ExportAndWrite(playerId)
@@ -199,7 +249,7 @@ function AlphaZeroBridge.PollCommands()
 
     -- Command timeout check
     local timeout = (AlphaZeroConfig and AlphaZeroConfig.Get("COMMAND_TIMEOUT")) or 30.0
-    local elapsed = os.time() - bridgeState.turnStartTime
+    local elapsed = ((os and os.time) and os.time() or 0) - bridgeState.turnStartTime
     if elapsed > timeout then
         if Log then Log.Warn("Command timeout after %ds, stopping poll", elapsed) end
         bridgeState.waitingForCommand = false
@@ -207,8 +257,9 @@ function AlphaZeroBridge.PollCommands()
     end
 
     -- Write heartbeat periodically
-    local now = os.time()
-    if now - bridgeState.lastHeartbeatTime >= 1 then
+    local heartbeatInterval = (AlphaZeroConfig and AlphaZeroConfig.Get("HEARTBEAT_INTERVAL")) or 1.0
+    local now = (os and os.time) and os.time() or 0
+    if now - bridgeState.lastHeartbeatTime >= heartbeatInterval then
         if AlphaZeroFileIO then
             AlphaZeroFileIO.WriteHeartbeat()
         end

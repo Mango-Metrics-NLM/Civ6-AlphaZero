@@ -489,8 +489,8 @@ class RealCiv6Env(gym.Env):
         )
 
         return {
-            "spatial": spatial.numpy(),
-            "vector": vector.numpy(),
+            "spatial": spatial.cpu().numpy(),
+            "vector": vector.cpu().numpy(),
             "action_mask": action_mask,
         }
 

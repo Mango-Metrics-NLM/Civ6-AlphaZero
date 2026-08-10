@@ -171,9 +171,7 @@ class TestTrainingProfilerConfig:
         path.unlink()
 
     def test_from_dict(self):
-        config = TrainingProfilerConfig.from_dict(
-            {"window_size": 30, "early_stop_enabled": False}
-        )
+        config = TrainingProfilerConfig.from_dict({"window_size": 30, "early_stop_enabled": False})
         assert config.window_size == 30
         assert config.early_stop_enabled is False
 
@@ -302,7 +300,7 @@ class TestTrainingProfiler:
         # Record enough steps with moderate diminishing returns
         for i in range(50):
             prof.record_step(step=i, iteration=0, loss=1.0 - i * 0.003)
-        stop, reason = prof.should_stop_early()
+        stop, _reason = prof.should_stop_early()
         # May or may not stop depending on exact rates
         assert isinstance(stop, bool)
 
@@ -318,9 +316,7 @@ class TestTrainingProfiler:
         assert steps == profiler.config.default_steps_per_iteration
 
     def test_get_recommended_steps_custom_default(self, profiler):
-        steps = profiler.get_recommended_steps(
-            iteration=0, total_iterations=100, default_steps=200
-        )
+        steps = profiler.get_recommended_steps(iteration=0, total_iterations=100, default_steps=200)
         assert steps == 200
 
     def test_get_recommended_steps_with_prev_severe(self, profiler):
@@ -353,15 +349,11 @@ class TestTrainingProfiler:
         assert result <= profiler.config.max_steps_per_iteration
 
     def test_calculate_recommended_steps_moderate(self, profiler):
-        result = profiler._calculate_recommended_steps(
-            50, 0.003, DiminishingReturnsLevel.MODERATE
-        )
+        result = profiler._calculate_recommended_steps(50, 0.003, DiminishingReturnsLevel.MODERATE)
         assert result > 50
 
     def test_calculate_recommended_steps_severe(self, profiler):
-        result = profiler._calculate_recommended_steps(
-            50, 0.0005, DiminishingReturnsLevel.SEVERE
-        )
+        result = profiler._calculate_recommended_steps(50, 0.0005, DiminishingReturnsLevel.SEVERE)
         assert result == 50
 
     def test_build_reason_all_levels(self, profiler):
@@ -371,10 +363,7 @@ class TestTrainingProfiler:
             assert len(reason) > 0
 
     def test_calculate_confidence(self, profiler):
-        metrics = [
-            TrainingStepMetrics(step=i, iteration=0, loss=1.0 - i * 0.01)
-            for i in range(30)
-        ]
+        metrics = [TrainingStepMetrics(step=i, iteration=0, loss=1.0 - i * 0.01) for i in range(30)]
         conf = profiler._calculate_confidence(metrics, 0.01)
         assert 0 <= conf <= 1
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict, dataclass
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 import torch
 import torch.nn as nn
@@ -64,6 +64,14 @@ class NetworkConfig:
     # Output dimensions
     action_space_size: int = 381  # MicroCiv default
     value_head_hidden: int = 128
+
+    # Number of players. Load-bearing for the *shape* of the value head:
+    # MicroCivNetwork swaps in an NPlayerValueHead when this exceeds 2. It
+    # lives on the config so a saved checkpoint can be reconstructed without
+    # the caller having to remember how it was trained — omitting it made
+    # every N-player checkpoint fail load_state_dict against a scalar head.
+    # Defaulted, so checkpoints written before this field still load.
+    num_players: int = 2
 
     # Regularization
     dropout: float = 0.0
@@ -180,7 +188,7 @@ class VectorEncoder(nn.Module):
         Returns:
             Output tensor of shape (B, output_dim).
         """
-        out = F.relu(self.fc1(x))
+        out: torch.Tensor = F.relu(self.fc1(x))
         out = self.dropout(out)
         out = self.fc2(out)
         return out
@@ -248,7 +256,7 @@ class PolicyHead(nn.Module):
         combined = torch.cat([s, vector_features], dim=1)
 
         # Output
-        out = F.relu(self.fc1(combined))
+        out: torch.Tensor = F.relu(self.fc1(combined))
         out = self.fc2(out)
         return out
 
@@ -371,8 +379,8 @@ class Civ6Network(nn.Module):
             hidden_dim=config.fc_hidden_dim,
         )
 
-        # Value head
-        self.value_head = ValueHead(
+        # Value head (typed as nn.Module so subclasses may swap in e.g. NPlayerValueHead)
+        self.value_head: nn.Module = ValueHead(
             spatial_filters=config.num_filters,
             spatial_size=config.spatial_size,
             vector_dim=config.fc_hidden_dim,
@@ -555,8 +563,6 @@ class MicroCivNetwork(Civ6Network):
             config: Optional network configuration.
             **kwargs: Additional arguments passed to Civ6Network.
         """
-        self._num_players = num_players
-
         if config is None:
             config = NetworkConfig(
                 spatial_channels=spatial_channels,
@@ -567,7 +573,16 @@ class MicroCivNetwork(Civ6Network):
                 fc_hidden_dim=128,
                 action_space_size=action_space_size,
                 value_head_hidden=64,
+                num_players=num_players,
             )
+        else:
+            # An explicit config wins over the keyword: reconstructing from a
+            # checkpoint passes config only, and silently keeping the default
+            # num_players=2 there is what built a scalar head for an N-player
+            # checkpoint and broke load_state_dict.
+            num_players = config.num_players
+
+        self._num_players = num_players
         super().__init__(config=config, **kwargs)
 
         # Replace the value head with an N-player variant when needed
@@ -705,8 +720,8 @@ class PositionalEncoding2D(nn.Module):
             )  # (H, W, C)
             pos_enc = pos_enc.permute(2, 0, 1).unsqueeze(0)  # (1, C, H, W)
         else:
-            # pos_encoding is a registered buffer
-            pos_enc = self.pos_encoding[:, :h, :w].unsqueeze(0)  # (1, C, H, W)
+            # pos_encoding is a registered buffer (torch types buffers as Tensor | Module)
+            pos_enc = cast(torch.Tensor, self.pos_encoding)[:, :h, :w].unsqueeze(0)  # (1, C, H, W)
 
         return x + pos_enc.to(x.device)
 
@@ -848,7 +863,7 @@ class SpatialSelfAttention(nn.Module):
         attn = self.dropout(attn)
 
         # Apply attention to values
-        out = (attn @ v).transpose(1, 2).reshape(b, n, c)  # (B, N, C)
+        out: torch.Tensor = (attn @ v).transpose(1, 2).reshape(b, n, c)  # (B, N, C)
 
         # Project and reshape back
         out = self.proj(out)
@@ -1064,7 +1079,7 @@ class AttentionSpatialEncoder(nn.Module):
             Output tensor of shape (B, num_filters, H, W).
         """
         # Initial convolution
-        out = F.relu(self.bn_in(self.conv_in(x)))
+        out: torch.Tensor = F.relu(self.bn_in(self.conv_in(x)))
 
         # Add positional encoding
         out = self.pos_encoding(out)

@@ -26,6 +26,9 @@ _TOP_LEVEL_PACKAGE = "alpha_zero"
 _OPTIONAL_MODULES: frozenset[str] = frozenset(
     {
         "alpha_zero.envs.real_civ6_env",
+        # Requires the `hub` extra (mirrored into `dev`, so normally importable
+        # in CI); raises a clean ImportError naming the extra when absent.
+        "alpha_zero.hexcrystal.hub_mixin",
         "alpha_zero.bridge.civ6_bridge",
         "alpha_zero.bridge.lua_ipc",
         "alpha_zero.rag.embeddings.openai_embeddings",
@@ -87,9 +90,9 @@ class TestImportSanity:
             from packaging.version import Version
 
             ver = Version(alpha_zero.__version__)
-            assert (
-                ver.release is not None
-            ), f"Version '{alpha_zero.__version__}' has no release segment"
+            assert ver.release is not None, (
+                f"Version '{alpha_zero.__version__}' has no release segment"
+            )
             assert len(ver.release) >= 3, (
                 f"Version '{alpha_zero.__version__}' should have at least "
                 f"3 release segments (X.Y.Z), got {len(ver.release)}"
@@ -150,5 +153,5 @@ class TestImportSanity:
                 logger.info("Optional module %s skipped (not installed)", mod_name)
             except Exception as exc:
                 pytest.fail(
-                    f"Optional module {mod_name} raised unexpected " f"{type(exc).__name__}: {exc}"
+                    f"Optional module {mod_name} raised unexpected {type(exc).__name__}: {exc}"
                 )

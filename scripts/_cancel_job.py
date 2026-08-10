@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 def cancel_job(job_id: str) -> bool:
     """Cancel a single Vertex job. Returns True on HTTP 200, False otherwise."""
-    import requests  # noqa: PLC0415
+    import requests
 
     url = (
         f"https://{REGION}-aiplatform.googleapis.com/v1/projects/{PROJECT}"

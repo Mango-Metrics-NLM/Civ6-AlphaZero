@@ -1,16 +1,12 @@
-"""Backwards-compatibility shim: alpha_zero.core.hex_encoder.
+"""Backwards-compatible re-exports for the hexagonal spatial encoder.
 
-The implementation has moved to :mod:`alpha_zero.hexcrystal.hex_encoder`.
-This module re-exports the entire public surface so that existing callers
-are unaffected by the refactoring.
-
-.. deprecated::
-    Import from ``alpha_zero.hexcrystal.hex_encoder`` directly.
+The implementation moved to :mod:`alpha_zero.hexcrystal.hex_encoder` so that it
+can be imported without pulling in the rest of ``alpha_zero`` (and therefore
+numpy and gymnasium). This module re-exports the public names so historical
+import paths keep working; both paths resolve to the same objects.
 """
 
 from __future__ import annotations
-
-import logging
 
 from alpha_zero.hexcrystal.hex_encoder import (
     HexEncoderConfig,
@@ -25,8 +21,3 @@ __all__ = [
     "SpatialToTokens",
     "create_hex_encoder",
 ]
-
-_log = logging.getLogger(__name__)
-_log.debug(
-    "alpha_zero.core.hex_encoder is a backwards-compat shim; use alpha_zero.hexcrystal.hex_encoder"
-)

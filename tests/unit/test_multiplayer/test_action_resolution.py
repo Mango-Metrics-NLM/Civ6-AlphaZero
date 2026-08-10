@@ -42,9 +42,7 @@ def priority_resolver() -> ActionResolver:
 
 @pytest.fixture()
 def priority_resolver_allow_same() -> ActionResolver:
-    return ActionResolver(
-        ActionResolutionConfig(strategy="priority", allow_same_target=True)
-    )
+    return ActionResolver(ActionResolutionConfig(strategy="priority", allow_same_target=True))
 
 
 @pytest.fixture()
@@ -343,16 +341,12 @@ class TestSimultaneousApplyStrategy:
         assert len(result) == 3
         assert result == [(0, 1), (1, 2), (2, 3)]
 
-    def test_two_player_conflict_cancels_both(
-        self, simultaneous_resolver: ActionResolver
-    ) -> None:
+    def test_two_player_conflict_cancels_both(self, simultaneous_resolver: ActionResolver) -> None:
         actions = {0: 5, 1: 5}
         result = simultaneous_resolver.resolve(actions)
         assert result == []
 
-    def test_two_player_conflict_with_survivor(
-        self, simultaneous_resolver: ActionResolver
-    ) -> None:
+    def test_two_player_conflict_with_survivor(self, simultaneous_resolver: ActionResolver) -> None:
         actions = {0: 5, 1: 5, 2: 3}
         result = simultaneous_resolver.resolve(actions)
         assert len(result) == 1
@@ -371,9 +365,7 @@ class TestSimultaneousApplyStrategy:
         result = simultaneous_resolver.resolve(actions)
         assert result == []
 
-    def test_target_tiles_conflict_detection(
-        self, simultaneous_resolver: ActionResolver
-    ) -> None:
+    def test_target_tiles_conflict_detection(self, simultaneous_resolver: ActionResolver) -> None:
         """Different action indices but same target tile causes cancellation."""
         actions = {0: 1, 1: 2, 2: 3}
         env_state = {"target_tiles": {1: 42, 2: 42, 3: 99}}
@@ -391,9 +383,7 @@ class TestSimultaneousApplyStrategy:
         result = simultaneous_resolver.resolve({0: 42})
         assert result == [(0, 42)]
 
-    def test_result_ordered_by_player_id(
-        self, simultaneous_resolver: ActionResolver
-    ) -> None:
+    def test_result_ordered_by_player_id(self, simultaneous_resolver: ActionResolver) -> None:
         """Non-conflicting actions are ordered by player ID."""
         actions = {3: 30, 1: 10, 0: 0, 2: 20}
         result = simultaneous_resolver.resolve(actions)
@@ -438,9 +428,7 @@ class TestDetectConflicts:
 
     def test_no_target_tiles_key(self, independent_resolver: ActionResolver) -> None:
         """Without target_tiles, actions themselves are used as targets."""
-        conflicts = independent_resolver.detect_conflicts(
-            {0: 5, 1: 5}, env_state={}
-        )
+        conflicts = independent_resolver.detect_conflicts({0: 5, 1: 5}, env_state={})
         assert conflicts == [(0, 1)]
 
     def test_none_env_state(self, independent_resolver: ActionResolver) -> None:
@@ -448,9 +436,7 @@ class TestDetectConflicts:
         conflicts = independent_resolver.detect_conflicts({0: 5, 1: 5}, env_state=None)
         assert conflicts == [(0, 1)]
 
-    def test_partial_target_tiles_fallback(
-        self, independent_resolver: ActionResolver
-    ) -> None:
+    def test_partial_target_tiles_fallback(self, independent_resolver: ActionResolver) -> None:
         """Actions not in target_tiles fall back to action index as target."""
         actions = {0: 1, 1: 2}
         env_state = {"target_tiles": {1: 50}}  # Only action 1 is mapped
@@ -458,9 +444,7 @@ class TestDetectConflicts:
         # Action 0 targets tile 50, action 1 targets tile 2 (unmapped)
         assert conflicts == []
 
-    def test_conflicts_sorted_by_player_id(
-        self, independent_resolver: ActionResolver
-    ) -> None:
+    def test_conflicts_sorted_by_player_id(self, independent_resolver: ActionResolver) -> None:
         """Conflict pairs are always (lower_id, higher_id)."""
         conflicts = independent_resolver.detect_conflicts({3: 5, 1: 5, 0: 5})
         for p1, p2 in conflicts:
@@ -501,17 +485,13 @@ class TestInvalidStrategyBranch:
 class TestEnvStateHandling:
     """Tests for how env_state is used across strategies."""
 
-    def test_independent_ignores_env_state(
-        self, independent_resolver: ActionResolver
-    ) -> None:
+    def test_independent_ignores_env_state(self, independent_resolver: ActionResolver) -> None:
         actions = {0: 5, 1: 5}
         result_no_state = independent_resolver.resolve(actions)
         result_with_state = independent_resolver.resolve(actions, {"target_tiles": {5: 99}})
         assert result_no_state == result_with_state
 
-    def test_priority_uses_env_state_for_conflict(
-        self, priority_resolver: ActionResolver
-    ) -> None:
+    def test_priority_uses_env_state_for_conflict(self, priority_resolver: ActionResolver) -> None:
         """Priority strategy uses target_tiles for conflict detection."""
         actions = {0: 1, 1: 2}
         # Without env_state: different actions = no conflict
@@ -522,9 +502,7 @@ class TestEnvStateHandling:
         result2 = priority_resolver.resolve(actions, {"target_tiles": {1: 50, 2: 50}})
         assert len(result2) == 1  # player 1 dropped
 
-    def test_simultaneous_uses_env_state(
-        self, simultaneous_resolver: ActionResolver
-    ) -> None:
+    def test_simultaneous_uses_env_state(self, simultaneous_resolver: ActionResolver) -> None:
         actions = {0: 1, 1: 2}
         # Different actions, no conflict by default
         result1 = simultaneous_resolver.resolve(actions)

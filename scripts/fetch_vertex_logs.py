@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 def get_job_details(job_id: str) -> dict[str, Any]:
     """Get full job details including error info."""
-    import requests  # noqa: PLC0415
+    import requests
 
     url = f"{VERTEX_API_BASE}/customJobs/{job_id}"
     resp = requests.get(url, headers=auth_headers(), timeout=15)
@@ -36,7 +36,7 @@ def get_job_details(job_id: str) -> dict[str, Any]:
 
 def list_recent_jobs(count: int = 5) -> list[dict[str, Any]]:
     """List recent jobs (newest first)."""
-    import requests  # noqa: PLC0415
+    import requests
 
     url = f"{VERTEX_API_BASE}/customJobs?pageSize={count}"
     resp = requests.get(url, headers=auth_headers(), timeout=15)
@@ -46,7 +46,7 @@ def list_recent_jobs(count: int = 5) -> list[dict[str, Any]]:
 
 def get_job_logs(job_id: str, max_entries: int = 100) -> list[dict[str, Any]]:
     """Fetch Cloud Logging entries for a specific Vertex AI job."""
-    import requests  # noqa: PLC0415
+    import requests
 
     filter_str = (
         f'resource.type="ml_job" '

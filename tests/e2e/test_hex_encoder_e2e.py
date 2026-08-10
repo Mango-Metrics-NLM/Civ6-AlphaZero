@@ -250,7 +250,7 @@ class TestCrossEncoderSwitching:
             torch.manual_seed(42)
             config = TransformerConfig(encoder_type=encoder_type)
             network = Civ6TransformerNetwork(config=config)
-            probs, value = network.predict(spatial_input, vector_input)
+            probs, _value = network.predict(spatial_input, vector_input)
 
             # Probabilities must be valid
             assert (probs >= 0).all(), f"[{encoder_type}] Negative probs"
@@ -461,9 +461,9 @@ class TestPredictAPIContracts:
 
         # Masked actions should have near-zero probability
         masked_probs = probs[:, 100:]  # Mask is 0 from index 100 onward
-        assert (
-            masked_probs < 1e-6
-        ).all(), f"[{encoder_type}] Masked probs not near zero: max={masked_probs.max():.2e}"
+        assert (masked_probs < 1e-6).all(), (
+            f"[{encoder_type}] Masked probs not near zero: max={masked_probs.max():.2e}"
+        )
 
         # Unmasked probs should still sum to ~1
         torch.testing.assert_close(probs.sum(dim=-1), torch.ones(8), rtol=1e-4, atol=1e-5)
@@ -618,9 +618,9 @@ class TestSymmetryTypeVariants:
             out = encoder(x)
 
         assert out.shape == (2, 4, 64)
-        assert torch.isfinite(
-            out
-        ).all(), f"Symmetry type '{symmetry_type}' produced non-finite output"
+        assert torch.isfinite(out).all(), (
+            f"Symmetry type '{symmetry_type}' produced non-finite output"
+        )
 
 
 # ============================================================================

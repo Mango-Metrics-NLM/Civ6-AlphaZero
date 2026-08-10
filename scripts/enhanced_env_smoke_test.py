@@ -79,13 +79,13 @@ def test_env_creation(board_size: int, max_turns: int) -> SmokeResult:
             )
             if preset == "default":
                 assert isinstance(env, MicroCivEnv), f"Expected MicroCivEnv, got {type(env)}"
-                assert not isinstance(
-                    env, EnhancedMicroCivEnv
-                ), "Default should not be EnhancedMicroCivEnv"
+                assert not isinstance(env, EnhancedMicroCivEnv), (
+                    "Default should not be EnhancedMicroCivEnv"
+                )
             elif preset == "enhanced":
-                assert isinstance(
-                    env, EnhancedMicroCivEnv
-                ), f"Expected EnhancedMicroCivEnv, got {type(env)}"
+                assert isinstance(env, EnhancedMicroCivEnv), (
+                    f"Expected EnhancedMicroCivEnv, got {type(env)}"
+                )
 
         # Unknown preset should raise
         try:
@@ -120,15 +120,15 @@ def test_observation_shapes(board_size: int, max_turns: int) -> SmokeResult:
             )
             env.reset()
             obs = env.get_observation()
-            assert (
-                obs["spatial"].shape == expected_spatial
-            ), f"{preset}: spatial {obs['spatial'].shape} != {expected_spatial}"
-            assert (
-                obs["vector"].shape == expected_vector
-            ), f"{preset}: vector {obs['vector'].shape} != {expected_vector}"
-            assert (
-                obs["action_mask"].shape == expected_mask
-            ), f"{preset}: mask {obs['action_mask'].shape} != {expected_mask}"
+            assert obs["spatial"].shape == expected_spatial, (
+                f"{preset}: spatial {obs['spatial'].shape} != {expected_spatial}"
+            )
+            assert obs["vector"].shape == expected_vector, (
+                f"{preset}: vector {obs['vector'].shape} != {expected_vector}"
+            )
+            assert obs["action_mask"].shape == expected_mask, (
+                f"{preset}: mask {obs['action_mask'].shape} != {expected_mask}"
+            )
 
         return SmokeResult(
             "observation_shapes",
@@ -239,9 +239,9 @@ def test_vectorized_env(board_size: int, max_turns: int, num_envs: int) -> Smoke
 
         # All sub-envs should be EnhancedMicroCivEnv
         for i in range(num_envs):
-            assert isinstance(
-                vec_env.get_env(i), EnhancedMicroCivEnv
-            ), f"Env {i} is {type(vec_env.get_env(i))}"
+            assert isinstance(vec_env.get_env(i), EnhancedMicroCivEnv), (
+                f"Env {i} is {type(vec_env.get_env(i))}"
+            )
 
         spatial, vector, mask = vec_env.get_observations()
         assert spatial.shape == (num_envs, 13, board_size, board_size)
@@ -255,7 +255,7 @@ def test_vectorized_env(board_size: int, max_turns: int, num_envs: int) -> Smoke
             if len(valid) > 0:
                 actions[i] = valid[0]
 
-        rewards, terminated, truncated, infos = vec_env.step_all(actions)
+        rewards, _terminated, _truncated, _infos = vec_env.step_all(actions)
         assert rewards.shape == (num_envs,)
 
         return SmokeResult(

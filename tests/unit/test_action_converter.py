@@ -441,21 +441,19 @@ class TestCoordinateScalingRound:
 
 
 class TestItemHashRange:
-    """Tests for _ITEM_HASH_RANGE constant and its usage."""
+    """Tests for GameConstants.ITEM_HASH_RANGE and its usage."""
 
     def test_item_hash_range_constant_exists(self):
-        """Test that _ITEM_HASH_RANGE is importable and positive."""
-        from alpha_zero.bridge.action_converter import _ITEM_HASH_RANGE
+        """Test that ITEM_HASH_RANGE is importable and positive."""
+        from alpha_zero.bridge.config import GameConstants
 
-        assert isinstance(_ITEM_HASH_RANGE, int)
-        assert _ITEM_HASH_RANGE > 0
+        assert isinstance(GameConstants.ITEM_HASH_RANGE, int)
+        assert GameConstants.ITEM_HASH_RANGE > 0
 
     def test_hashed_items_within_range(self):
-        """Test that hashed items stay within _ITEM_HASH_RANGE."""
-        from alpha_zero.bridge.action_converter import (
-            _ITEM_HASH_RANGE,
-            _convert_item_id_to_int,
-        )
+        """Test that hashed items stay within GameConstants.ITEM_HASH_RANGE."""
+        from alpha_zero.bridge.action_converter import _convert_item_id_to_int
+        from alpha_zero.bridge.config import GameConstants
 
         civ6_items = [
             "UNIT_WARRIOR",
@@ -470,9 +468,9 @@ class TestItemHashRange:
         for item in civ6_items:
             result = _convert_item_id_to_int(item)
             assert result is not None
-            assert (
-                0 <= result < _ITEM_HASH_RANGE
-            ), f"Hashed item '{item}' = {result} outside range [0, {_ITEM_HASH_RANGE})"
+            assert 0 <= result < GameConstants.ITEM_HASH_RANGE, (
+                f"Hashed item '{item}' = {result} outside range [0, {GameConstants.ITEM_HASH_RANGE})"
+            )
 
     def test_hashed_items_deterministic(self):
         """Test that hashing produces deterministic results."""
@@ -852,6 +850,146 @@ class TestActionLegalityChecking:
         decoded = HierarchicalAction(category=ActionCategory.END_TURN)
         legal_dicts = [{"action_type": "end_turn"}]
         assert converter._is_action_legal(decoded, {}, legal_dicts)
+
+    def test_city_action_legal_with_string_item_id(self, converter):
+        """Test city production is legal when items are raw string type names.
+
+        StateExporter.lua exports non-numeric production item ids (e.g.
+        "UNIT_WARRIOR") as strings. generate_action_mask() hashes those
+        strings via _convert_item_id_to_int() before encoding them into the
+        mask, so decoded.target on the policy-chosen action is always the
+        hashed int. _is_action_legal() must hash action.items the same way
+        before comparing, or legal string-keyed production is never
+        recognized as legal (regression for the always-False bug).
+        """
+        from alpha_zero.bridge.action_converter import _convert_item_id_to_int
+
+        hashed_item_id = _convert_item_id_to_int("UNIT_WARRIOR")
+        state = {
+            "current_player": 0,
+            "cities": [{"_id": 10, "player": 0}],
+        }
+        decoded = HierarchicalAction(
+            category=ActionCategory.CITY_ACTION,
+            selector=0,
+            action_type=CityActionType.PRODUCE_UNIT.value,
+            target=hashed_item_id,
+        )
+        legal = [LegalAction(action_type="produce", city_id=10, items=["UNIT_WARRIOR"])]
+        assert converter._is_action_legal(decoded, state, legal)
+
+
+class TestCityProductionStringItemRoundTrip:
+    """Regression coverage for string-keyed production items through convert().
+
+    Reproduces the reported bug: generate_action_mask() encodes hashed
+    string item ids into the mask, but _is_action_legal() (used by
+    convert(validate=True)) compared the hashed int against the raw,
+    unhashed string items list and always returned False, so every
+    policy-chosen city-production action raised InvalidActionError.
+    """
+
+    @pytest.fixture
+    def converter(self):
+        config = ActionSpaceConfig(board_size=16, max_units=100, max_cities=20)
+        return ActionConverter(board_size=16, action_space_config=config)
+
+    @pytest.fixture
+    def state(self):
+        return {
+            "current_player": 0,
+            "units": [],
+            "cities": [
+                {"id": 1, "_id": 1, "player": 0, "name": "Capital", "position": (8, 8)},
+            ],
+        }
+
+    def test_policy_chosen_production_survives_validated_convert(self, converter, state):
+        """A production action legal via string items must pass convert(validate=True)."""
+        legal_actions = [
+            LegalAction(
+                action_type="produce",
+                city_id=1,
+                items=["UNIT_WARRIOR"],
+                item_type="unit",
+            ),
+            LegalAction(action_type="end_turn"),
+        ]
+
+        mask = converter.generate_action_mask(legal_actions, state)
+        legal_indices = np.nonzero(mask)[0]
+        assert len(legal_indices) > 0
+
+        # Find the encoded PRODUCE_UNIT action among the legal indices.
+        produce_idx = None
+        for idx in legal_indices:
+            decoded = converter.action_space.decode(int(idx))
+            if (
+                decoded.category == ActionCategory.CITY_ACTION
+                and decoded.action_type == CityActionType.PRODUCE_UNIT.value
+            ):
+                produce_idx = int(idx)
+                break
+        assert produce_idx is not None, "Expected a PRODUCE_UNIT action in the mask"
+
+        # This must NOT raise InvalidActionError.
+        cmd = converter.convert(produce_idx, state, legal_actions, validate=True)
+        assert cmd.action_type == ActionType.CITY_PRODUCE
+        assert cmd.item_type == "unit"
+
+
+class TestGenerateActionMaskItemTypes:
+    """Regression coverage for LegalAction.item_types (per-item production type).
+
+    StateExporter.lua emits a plural `item_types` dict mapping each raw item
+    id to its category ("unit"/"building"/"wonder"/"district"), but the
+    LegalAction dataclass historically only exposed a singular `item_type`
+    that Lua never populates. Without item_types, generate_action_mask()
+    falls into the "try unit and building only" branch and can never mark a
+    district as legal.
+    """
+
+    @pytest.fixture
+    def converter(self):
+        config = ActionSpaceConfig(board_size=16, max_units=100, max_cities=20)
+        return ActionConverter(board_size=16, action_space_config=config)
+
+    @pytest.fixture
+    def state(self):
+        return {
+            "current_player": 0,
+            "units": [],
+            "cities": [
+                {"id": 1, "_id": 1, "player": 0, "name": "Capital", "position": (8, 8)},
+            ],
+        }
+
+    def test_district_item_marked_legal_via_item_types(self, converter, state):
+        """A district item id must be encoded as PRODUCE_DISTRICT in the mask."""
+        legal_actions = [
+            LegalAction.from_dict(
+                {
+                    "action_type": "produce",
+                    "city_id": 1,
+                    "items": ["DISTRICT_CAMPUS"],
+                    "item_types": {"DISTRICT_CAMPUS": "district"},
+                }
+            )
+        ]
+
+        mask = converter.generate_action_mask(legal_actions, state)
+        legal_indices = np.nonzero(mask)[0]
+
+        found_district = False
+        for idx in legal_indices:
+            decoded = converter.action_space.decode(int(idx))
+            if (
+                decoded.category == ActionCategory.CITY_ACTION
+                and decoded.action_type == CityActionType.PRODUCE_DISTRICT.value
+            ):
+                found_district = True
+                break
+        assert found_district, "Expected item_types to mark the item as a legal district"
 
 
 class TestFindUnitCityIdx:

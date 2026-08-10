@@ -350,6 +350,10 @@ def _validate_dict(
     if value is None:
         return default_factory()
 
+    # In Lua, empty tables {} with no string keys are encoded as [] in JSON.
+    if isinstance(value, list) and len(value) == 0:
+        return default_factory()
+
     if not isinstance(value, dict):
         ctx = f" in {context}" if context else ""
         raise ProtocolValidationError(
@@ -373,7 +377,14 @@ class MessageType(str, Enum):
 
 
 class ActionType(str, Enum):
-    """Supported action types for Lua commands."""
+    """Supported action types for Lua commands.
+
+    Values MUST match the keys in ``mod/AlphaZeroAI/Scripts/ActionExecutor.lua``
+    ``ACTION_HANDLERS`` table (and the ``ACTION_TYPES`` constants there).
+    See ``tests/unit/test_bridge_action_invariant.py`` for the runtime check
+    that the Python enum and the Lua dispatch table stay in sync (v1.8.0
+    W2.1 step 6).
+    """
 
     END_TURN = "end_turn"
     UNIT_MOVE = "unit_move"
@@ -381,12 +392,17 @@ class ActionType(str, Enum):
     UNIT_RANGED_ATTACK = "unit_ranged_attack"
     UNIT_FORTIFY = "unit_fortify"
     UNIT_SKIP = "unit_skip"
+    UNIT_SLEEP = "unit_sleep"
     UNIT_FOUND_CITY = "unit_found_city"
     UNIT_BUILD = "unit_build"
+    UNIT_PROMOTE = "unit_promote"  # v1.8.0 W2.1
+    UNIT_DELETE = "unit_delete"  # v1.8.0 W2.1
     CITY_PRODUCE = "city_produce"
     CITY_BUY = "city_buy"
+    CITY_CITIZEN = "city_citizen"  # v1.8.0 W2.1
     RESEARCH_TECH = "research_tech"
     RESEARCH_CIVIC = "research_civic"
+    DIPLOMACY = "diplomacy"  # v1.8.0 W2.1 (dispatcher; sub-action in metadata)
 
 
 @dataclass
@@ -879,6 +895,7 @@ class PlayerData:
     id: int
     civilization: str
     gold: float = 0.0
+    gold_per_turn: float = 0.0
     science_per_turn: float = 0.0
     culture_per_turn: float = 0.0
     faith: float = 0.0
@@ -900,6 +917,7 @@ class PlayerData:
             "id": self.id,
             "civilization": self.civilization,
             "gold": self.gold,
+            "gold_per_turn": self.gold_per_turn,
             "science_per_turn": self.science_per_turn,
             "culture_per_turn": self.culture_per_turn,
             "faith": self.faith,
@@ -940,6 +958,9 @@ class PlayerData:
             default="UNKNOWN",
         )
         gold = _validate_float(data.get("gold"), "gold", context="PlayerData", default=0.0)
+        gold_per_turn = _validate_float(
+            data.get("gold_per_turn"), "gold_per_turn", context="PlayerData", default=0.0
+        )
         science_per_turn = _validate_float(
             data.get("science_per_turn", data.get("science")),
             "science_per_turn",
@@ -965,6 +986,7 @@ class PlayerData:
             id=player_id,
             civilization=civilization,
             gold=gold,
+            gold_per_turn=gold_per_turn,
             science_per_turn=science_per_turn,
             culture_per_turn=culture_per_turn,
             faith=faith,
@@ -988,7 +1010,13 @@ class LegalAction:
         city_id: City ID for city-related actions.
         targets: Valid target positions as (x, y) tuples.
         items: Item identifiers (int for production IDs, str for tech/civic names).
-        item_type: Type of item (e.g., "unit", "building", "tech").
+        item_type: Type of item (e.g., "unit", "building", "tech"). Legacy
+            singular field; the Lua mod does not populate this and sends
+            per-item categories in ``item_types`` instead.
+        item_types: Map of each raw item id (as sent in ``items``, stringified)
+            to its category (e.g., "unit", "building", "wonder", "district").
+            Populated by StateExporter.lua's ``collectProducibleItems`` for
+            city production actions.
     """
 
     action_type: str
@@ -997,6 +1025,7 @@ class LegalAction:
     targets: list[tuple[int, int]] = field(default_factory=list)
     items: list[int | str] = field(default_factory=list)
     item_type: str | None = None
+    item_types: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization.
@@ -1015,6 +1044,8 @@ class LegalAction:
             result["items"] = self.items
         if self.item_type is not None:
             result["item_type"] = self.item_type
+        if self.item_types:
+            result["item_types"] = self.item_types
         return result
 
     @classmethod
@@ -1095,6 +1126,11 @@ class LegalAction:
             default="end_turn",
         )
 
+        # Per-item production categories (StateExporter.lua "item_types" key).
+        # JSON object keys are always strings, so this is keyed by the
+        # stringified raw item id (matching ``items`` before hashing).
+        item_types = _validate_dict(data.get("item_types"), "item_types", context="LegalAction")
+
         return cls(
             action_type=action_type,
             unit_id=unit_id,
@@ -1102,6 +1138,7 @@ class LegalAction:
             targets=targets,
             items=items,
             item_type=data.get("item_type"),
+            item_types=item_types,
         )
 
 
@@ -1128,10 +1165,27 @@ class MapData:
         """
         _validate_type(data, dict, "data", context="MapData.from_dict")
 
-        width = _validate_int(data.get("width"), "width", context="MapData", default=0, min_val=0)
-        height = _validate_int(
-            data.get("height"), "height", context="MapData", default=0, min_val=0
-        )
+        # Width/height MUST be explicit in the wire payload. Defaulting silently
+        # to 0 masks Lua-side serialization bugs: mid-game, a missing key would
+        # look identical to a legitimate pre-game state, causing the agent loop
+        # to skip the turn and Civ6 to hang waiting for a command. Explicit 0
+        # is still allowed (it's how the mod represents a pre-game frame).
+        if "width" not in data:
+            raise ProtocolValidationError(
+                "MapData.from_dict: missing required field 'width' in payload",
+                field_name="width",
+                expected="int (explicit, may be 0 for pre-game)",
+                actual=None,
+            )
+        if "height" not in data:
+            raise ProtocolValidationError(
+                "MapData.from_dict: missing required field 'height' in payload",
+                field_name="height",
+                expected="int (explicit, may be 0 for pre-game)",
+                actual=None,
+            )
+        width = _validate_int(data["width"], "width", context="MapData", min_val=0)
+        height = _validate_int(data["height"], "height", context="MapData", min_val=0)
 
         raw_tiles = _validate_list(data.get("tiles"), "tiles", context="MapData")
         tiles = []
@@ -1245,10 +1299,16 @@ class GameStateData:
             except ProtocolValidationError as e:
                 logger.warning(f"Skipping invalid legal action at index {i}: {e}")
 
-        # Parse winner_id if present
+        # Parse winner_id if present. StateExporter.lua always writes -1 as a
+        # "no winner yet" sentinel (it never omits or nils the key), so that
+        # sentinel must be mapped back to None here — otherwise every
+        # downstream `winner_id is not None` check (real_civ6_env.py) would
+        # treat "no winner" as "player -1 won" once is_game_over is true.
         winner_id = data.get("winner_id")
         if winner_id is not None:
             winner_id = _validate_int(winner_id, "winner_id", context="GameStateData")
+            if winner_id == -1:
+                winner_id = None
 
         return cls(
             turn_id=turn_id,

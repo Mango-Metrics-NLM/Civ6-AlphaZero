@@ -107,7 +107,7 @@ def _copy_run(
         dst_client.log_param(dst_run_id, key, value)
 
     # Metrics (full history)
-    for key in (run.data.metrics or {}):
+    for key in run.data.metrics or {}:
         history = src_client.get_metric_history(run_id, key)
         for point in history:
             dst_client.log_metric(
@@ -126,7 +126,9 @@ def _copy_run(
         "RUNNING": mlflow.entities.RunStatus.RUNNING,
     }
     terminal_status = status_map.get(run.info.status, mlflow.entities.RunStatus.FINISHED)
-    dst_client.set_terminated(dst_run_id, status=mlflow.entities.RunStatus.to_string(terminal_status))
+    dst_client.set_terminated(
+        dst_run_id, status=mlflow.entities.RunStatus.to_string(terminal_status)
+    )
 
     return True
 

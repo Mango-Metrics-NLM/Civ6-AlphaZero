@@ -176,7 +176,7 @@ class TestLocalTrainingSmoke:
 
         while not done and step_count < max_steps:
             action = env.action_space.sample()
-            obs, reward, terminated, truncated, info = env.step(action)
+            _obs, _reward, terminated, truncated, _info = env.step(action)
             done = terminated or truncated
             step_count += 1
 

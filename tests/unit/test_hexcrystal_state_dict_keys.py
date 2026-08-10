@@ -1,7 +1,7 @@
-﻿"""Checkpoint key-namespace regression guard for the hexcrystal extraction.
+"""Checkpoint key-namespace regression guard for the hexcrystal extraction.
 
 Every checkpoint ever written by this repository stores encoder weights under
-``encoder.patch_embed.*`` ΓÇö the attribute name is deliberately preserved for both
+``encoder.patch_embed.*`` — the attribute name is deliberately preserved for both
 encoder types (see the comment in ``TransformerEncoder.__init__``). Moving the
 encoder modules must not perturb that namespace, or every existing checkpoint
 becomes unloadable.

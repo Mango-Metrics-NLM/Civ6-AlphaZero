@@ -19,7 +19,7 @@ import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -156,10 +156,12 @@ class UniformMutation(BaseMutation):
         """Apply uniform mutation."""
         if param_range.scale == "categorical":
             if rng.random() < strength:
-                new_value = rng.choice(param_range.categories)
-                if isinstance(new_value, np.generic):
-                    new_value = new_value.item()
-                return new_value
+                chosen = rng.choice(param_range.categories)
+                if isinstance(chosen, np.generic):
+                    chosen = chosen.item()
+                # ``categories`` is an untyped list, so rng.choice returns Any;
+                # categorical values are numeric here.
+                return cast("float | int", chosen)
             return value
 
         if param_range.scale == "log":
@@ -207,10 +209,12 @@ class PolynomialMutation(BaseMutation):
         """Apply polynomial mutation."""
         if param_range.scale == "categorical":
             if rng.random() < strength:
-                new_value = rng.choice(param_range.categories)
-                if isinstance(new_value, np.generic):
-                    new_value = new_value.item()
-                return new_value
+                chosen = rng.choice(param_range.categories)
+                if isinstance(chosen, np.generic):
+                    chosen = chosen.item()
+                # ``categories`` is an untyped list, so rng.choice returns Any;
+                # categorical values are numeric here.
+                return cast("float | int", chosen)
             return value
 
         # Normalize value to [0, 1]
@@ -282,10 +286,12 @@ class DifferentialMutation(BaseMutation):
         """Apply differential mutation."""
         if param_range.scale == "categorical":
             if rng.random() < strength:
-                new_value = rng.choice(param_range.categories)
-                if isinstance(new_value, np.generic):
-                    new_value = new_value.item()
-                return new_value
+                chosen = rng.choice(param_range.categories)
+                if isinstance(chosen, np.generic):
+                    chosen = chosen.item()
+                # ``categories`` is an untyped list, so rng.choice returns Any;
+                # categorical values are numeric here.
+                return cast("float | int", chosen)
             return value
 
         if len(self._candidates) < 3:
@@ -311,7 +317,7 @@ class DifferentialMutation(BaseMutation):
         if param_range.discrete:
             new_value = round(new_value)
 
-        return new_value  # type: ignore[no-any-return]
+        return new_value
 
 
 class AdaptiveMutation(BaseMutation):
@@ -470,7 +476,7 @@ class CrossoverMutation(BaseMutation):
         if param_range.discrete:
             new_value = round(new_value)
 
-        return new_value  # type: ignore[no-any-return]
+        return new_value
 
     def _blend_crossover(
         self,

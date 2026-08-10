@@ -1,4 +1,4 @@
-﻿"""Dependency-isolation guard for the hexcrystal subpackage.
+"""Dependency-isolation guard for the hexcrystal subpackage.
 
 ``alpha_zero.hexcrystal`` promises to depend on torch and the standard library
 and nothing else, so it can be vendored or reused outside this repository. That
@@ -82,7 +82,7 @@ def test_subpackage_imports_without_numpy_or_gymnasium() -> None:
 def test_forward_pass_without_numpy_or_gymnasium() -> None:
     """A real forward pass runs in the isolated environment.
 
-    Importing is not enough ΓÇö a lazily-imported dependency would only surface
+    Importing is not enough — a lazily-imported dependency would only surface
     when tensors actually flow through the module.
     """
     result = _run_isolated(

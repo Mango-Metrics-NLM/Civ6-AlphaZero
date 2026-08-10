@@ -1,4 +1,4 @@
-﻿"""Backwards-compatibility guarantees for the hexcrystal extraction.
+"""Backwards-compatibility guarantees for the hexcrystal extraction.
 
 The encoder implementation moved from ``alpha_zero.core.*`` to
 ``alpha_zero.hexcrystal.*``. Shim modules remain at the historical paths. These

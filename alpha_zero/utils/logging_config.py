@@ -342,7 +342,8 @@ try:
     TENSORBOARD_AVAILABLE = True
 except ImportError:
     TENSORBOARD_AVAILABLE = False
-    SummaryWriter = None
+    # Sentinel for the optional dependency; guarded by TENSORBOARD_AVAILABLE.
+    SummaryWriter = None  # type: ignore[assignment, misc]
 
 # Type variable for decorator
 F = TypeVar("F", bound=Callable[..., Any])

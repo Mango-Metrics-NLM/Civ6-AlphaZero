@@ -8,7 +8,7 @@ components for AlphaZero-style training:
 - Enhanced reward shaping
 - RAG-augmented strategy analysis
 - Checkpoint management
-- W&B and TensorBoard logging
+- MLflow experiment tracking
 
 Usage:
     from alpha_zero.orchestrator import TrainingOrchestrator, OrchestratorConfig
@@ -24,9 +24,10 @@ import logging
 import signal
 import sys
 import time
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import numpy as np
 import torch
@@ -74,7 +75,6 @@ from alpha_zero.utils.factories import (
     create_network,
     create_replay_buffer,
     create_reward_shaper,
-    create_wandb_logger,
 )
 
 # Training safeguards (optional, graceful degradation)
@@ -95,6 +95,9 @@ except ImportError:
     MuZeroTrainingBridge = None  # type: ignore[assignment, misc]
 
 logger = logging.getLogger(__name__)
+
+# Type variable for the _require() initialization guard (see TrainingOrchestrator).
+_T = TypeVar("_T")
 
 
 @dataclass
@@ -279,7 +282,6 @@ class TrainingOrchestrator:
         self._reward_shaper: Any = None
         self._rag: RAGIntegration | None = None
         self._strategy_advisor: StrategyAdvisor | None = None
-        self._wandb_logger: Any = None
         self._mlflow_logger: Any = None
         self._elo_system: Any = None
         self._eval_pipeline: Any = None
@@ -310,6 +312,30 @@ class TrainingOrchestrator:
         self._shutdown_requested = False
         signal.signal(signal.SIGINT, self._handle_shutdown)
         signal.signal(signal.SIGTERM, self._handle_shutdown)
+
+    def _require(self, value: _T | None, name: str) -> _T:
+        """Return ``value`` if it is initialized, else raise a clear error.
+
+        Replaces bare ``assert self._x is not None`` guards, which are stripped under
+        ``python -O`` and would surface as opaque ``AttributeError``s on ``None``.
+        Re-binding the attribute to the return value (``self._x = self._require(...)``)
+        also narrows the type for static analysis exactly as the old ``assert`` did.
+
+        Args:
+            value: The lazily-initialized component (set during :meth:`initialize`).
+            name: Human-readable component name for the error message.
+
+        Returns:
+            The non-``None`` ``value``.
+
+        Raises:
+            RuntimeError: If ``value`` is ``None`` (i.e. ``initialize()`` has not run).
+        """
+        if value is None:
+            raise RuntimeError(
+                f"Orchestrator component '{name}' is not initialized; call initialize() first."
+            )
+        return value
 
     def _setup_logging(self) -> None:
         """Configure logging based on config."""
@@ -468,16 +494,12 @@ class TrainingOrchestrator:
                         self.config.strategy_advisor,
                     )
 
-            # Initialize W&B
-            if self.config.wandb.enabled:
-                self._wandb_logger = create_wandb_logger(
-                    self.config.wandb,
-                    experiment_name=self.config.experiment_name,
-                )
-
-            # Initialize MLflow (runs in parallel with W&B; either or both can be enabled).
-            # The experiment name comes from config.mlflow.experiment_name (set via
-            # YAML or CIV6AZ_MLFLOW_EXPERIMENT_NAME); the top-level
+            # Single experiment tracker (MLflow is the system of record —
+            # PROJECT_CHARTER.md NG-5). The mlflow: section wins; a legacy
+            # wandb: section is bridged through WandbConfig.to_mlflow_config()
+            # with a deprecation warning. The experiment name comes from
+            # config.mlflow.experiment_name (set via YAML or
+            # CIV6AZ_MLFLOW_EXPERIMENT_NAME); the top-level
             # config.experiment_name is used only as a fallback when the mlflow
             # section did not set its own. This keeps CIV6AZ_MLFLOW_EXPERIMENT_NAME
             # authoritative over CIV6AZ_EXPERIMENT_NAME for MLflow specifically.
@@ -489,23 +511,41 @@ class TrainingOrchestrator:
                     self.config.mlflow,
                     experiment_name=mlflow_experiment_name,
                 )
-                if self._mlflow_logger is not None:
-                    hparams: dict[str, Any] = {
-                        "training/batch_size": self.config.training.batch_size,
-                        "training/num_epochs": self.config.training.num_epochs,
-                        "training/games_per_iteration": (self.config.training.games_per_iteration),
-                        "training/full_eval_interval": (self.config.training.full_eval_interval),
-                        "training/num_iterations": self.config.training.num_iterations,
-                        "mcts/num_simulations": self.config.mcts.num_simulations,
-                        "mcts/c_puct": self.config.mcts.c_puct,
-                        "network/num_res_blocks": self.config.network.num_res_blocks,
-                        "network/num_filters": self.config.network.num_filters,
-                        "env/board_size": self.config.environment.board_size,
-                        "env/max_turns": self.config.environment.max_turns,
-                        "lr_schedule/initial": self.config.lr_schedule.initial_value,
-                        "experiment_name": self.config.experiment_name,
-                    }
-                    self._mlflow_logger.init(config_dict=hparams)
+            elif self.config.wandb.enabled:
+                warnings.warn(
+                    "The wandb: config section is deprecated; tracking now runs on "
+                    "MLflow via WandbConfig.to_mlflow_config(). Move settings to the "
+                    "mlflow: section (or CIV6AZ_MLFLOW_* env vars).",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                logger.warning(
+                    "wandb.enabled=True is deprecated — bridging to the MLflow backend "
+                    "(experiment=%s)",
+                    self.config.wandb.project,
+                )
+                self._mlflow_logger = create_mlflow_logger(
+                    self.config.wandb.to_mlflow_config(),
+                    experiment_name=self.config.experiment_name,
+                )
+
+            if self._mlflow_logger is not None:
+                hparams: dict[str, Any] = {
+                    "training/batch_size": self.config.training.batch_size,
+                    "training/num_epochs": self.config.training.num_epochs,
+                    "training/games_per_iteration": (self.config.training.games_per_iteration),
+                    "training/full_eval_interval": (self.config.training.full_eval_interval),
+                    "training/num_iterations": self.config.training.num_iterations,
+                    "mcts/num_simulations": self.config.mcts.num_simulations,
+                    "mcts/c_puct": self.config.mcts.c_puct,
+                    "network/num_res_blocks": self.config.network.num_res_blocks,
+                    "network/num_filters": self.config.network.num_filters,
+                    "env/board_size": self.config.environment.board_size,
+                    "env/max_turns": self.config.environment.max_turns,
+                    "lr_schedule/initial": self.config.lr_schedule.initial_value,
+                    "experiment_name": self.config.experiment_name,
+                }
+                self._mlflow_logger.init(config_dict=hparams)
 
             # Initialize EvaluationPipeline + ELO for value_correlation and elo_spread.
             # These are independent of the MLflow flag so other consumers (e.g.
@@ -641,10 +681,10 @@ class TrainingOrchestrator:
 
     def _resume_from_checkpoint(self) -> None:
         """Resume training from latest checkpoint."""
-        assert self._checkpointer is not None
-        assert self._network is not None
-        assert self._optimizer is not None
-        assert self._scheduler is not None
+        self._checkpointer = self._require(self._checkpointer, "checkpointer")
+        self._network = self._require(self._network, "network")
+        self._optimizer = self._require(self._optimizer, "optimizer")
+        self._scheduler = self._require(self._scheduler, "scheduler")
 
         checkpoint = self._checkpointer.load_latest()
 
@@ -698,8 +738,8 @@ class TrainingOrchestrator:
 
     def _training_iteration(self) -> None:
         """Execute a single training iteration."""
-        assert self._scheduler is not None
-        assert self._network is not None
+        self._scheduler = self._require(self._scheduler, "scheduler")
+        self._network = self._require(self._network, "network")
 
         iteration = self.state.iteration
         start_time = time.time()
@@ -778,7 +818,7 @@ class TrainingOrchestrator:
         Returns:
             List of game results.
         """
-        assert self._network is not None
+        self._network = self._require(self._network, "network")
 
         # MuZero self-play path
         if self._training_mode == "muzero" and self._muzero_bridge is not None:
@@ -822,8 +862,8 @@ class TrainingOrchestrator:
         Returns:
             List of game results.
         """
-        assert self._network is not None
-        assert self._muzero_bridge is not None
+        self._network = self._require(self._network, "network")
+        self._muzero_bridge = self._require(self._muzero_bridge, "muzero_bridge")
 
         results = []
         self._network.eval()
@@ -912,7 +952,7 @@ class TrainingOrchestrator:
         Returns:
             Game result with trajectory.
         """
-        assert self._scheduler is not None
+        self._scheduler = self._require(self._scheduler, "scheduler")
 
         # Create environment with optional overrides
         # Always create a fresh environment for each game to ensure clean state
@@ -1259,9 +1299,9 @@ class TrainingOrchestrator:
         Returns:
             Training metrics.
         """
-        assert self._network is not None
-        assert self._optimizer is not None
-        assert self._scheduler is not None
+        self._network = self._require(self._network, "network")
+        self._optimizer = self._require(self._optimizer, "optimizer")
+        self._scheduler = self._require(self._scheduler, "scheduler")
 
         # MuZero training path
         if self._training_mode == "muzero" and self._muzero_bridge is not None:
@@ -1385,9 +1425,9 @@ class TrainingOrchestrator:
         Returns:
             Training metrics dictionary.
         """
-        assert self._network is not None
-        assert self._muzero_bridge is not None
-        assert self._scheduler is not None
+        self._network = self._require(self._network, "network")
+        self._muzero_bridge = self._require(self._muzero_bridge, "muzero_bridge")
+        self._scheduler = self._require(self._scheduler, "scheduler")
 
         self._network.train()
 
@@ -1442,8 +1482,8 @@ class TrainingOrchestrator:
 
     def _update_optimizer_lr(self) -> None:
         """Update optimizer learning rate from scheduler."""
-        assert self._scheduler is not None
-        assert self._optimizer is not None
+        self._scheduler = self._require(self._scheduler, "scheduler")
+        self._optimizer = self._require(self._optimizer, "optimizer")
 
         lr = self._scheduler.get_learning_rate()
         for param_group in self._optimizer.param_groups:
@@ -1455,8 +1495,8 @@ class TrainingOrchestrator:
         Returns:
             Evaluation metrics.
         """
-        assert self._network is not None
-        assert self._checkpointer is not None
+        self._network = self._require(self._network, "network")
+        self._checkpointer = self._require(self._checkpointer, "checkpointer")
 
         logger.info("Running evaluation...")
         self._network.eval()
@@ -1648,10 +1688,10 @@ class TrainingOrchestrator:
 
     def _save_checkpoint(self) -> None:
         """Save training checkpoint."""
-        assert self._network is not None
-        assert self._optimizer is not None
-        assert self._scheduler is not None
-        assert self._checkpointer is not None
+        self._network = self._require(self._network, "network")
+        self._optimizer = self._require(self._optimizer, "optimizer")
+        self._scheduler = self._require(self._scheduler, "scheduler")
+        self._checkpointer = self._require(self._checkpointer, "checkpointer")
 
         checkpoint_data = {
             "model_state_dict": self._network.state_dict(),
@@ -1733,23 +1773,8 @@ class TrainingOrchestrator:
                 f"time={iteration_time:.1f}s",
             )
 
-        # Log to W&B
-        if self._wandb_logger and self._scheduler is not None:
-            self._wandb_logger.log(
-                {
-                    "iteration": iteration,
-                    "games": len(game_results),
-                    "win_rate": win_rate,
-                    "avg_turns": avg_turns,
-                    "curriculum_stage": self.state.curriculum_stage,
-                    "learning_rate": self._scheduler.get_learning_rate(),
-                    "batch_size": self._scheduler.get_batch_size(),
-                    "buffer_size": len(self._replay_buffer),
-                    **train_metrics,
-                }
-            )
-
-        # Log to MLflow (parallel to W&B; both can be enabled simultaneously)
+        # Log to MLflow (single tracker — the legacy wandb: section is bridged
+        # onto the same MLflowLogger at initialize()).
         if self._mlflow_logger is not None:
             game_metrics: dict[str, float] = {
                 "game/games": float(len(game_results)),
@@ -1766,9 +1791,17 @@ class TrainingOrchestrator:
                     "train/learning_rate": float(self._scheduler.get_learning_rate()),
                     "train/batch_size": float(self._scheduler.get_batch_size()),
                     "train/buffer_size": float(len(self._replay_buffer)),
-                    "train/curriculum_stage": float(self.state.curriculum_stage),
                     "train/iteration_time_seconds": float(iteration_time),
                 }
+                # Curriculum stages are names ("beginner"), not numbers —
+                # float() on them crashed this path whenever a scheduler was
+                # active. Log numeric stages as a metric, names as a tag.
+                try:
+                    scheduler_metrics["train/curriculum_stage"] = float(self.state.curriculum_stage)
+                except (TypeError, ValueError):
+                    self._mlflow_logger.set_tag(
+                        "curriculum_stage", str(self.state.curriculum_stage)
+                    )
             self._mlflow_logger.log_iteration(
                 iteration=iteration,
                 train_metrics=train_metrics_ns,
@@ -1794,10 +1827,6 @@ class TrainingOrchestrator:
         # Close RAG
         if self._rag:
             self._rag.close()
-
-        # Close W&B
-        if self._wandb_logger and hasattr(self._wandb_logger, "finish"):
-            self._wandb_logger.finish()
 
         # Close MLflow
         if self._mlflow_logger is not None and hasattr(self._mlflow_logger, "finish"):

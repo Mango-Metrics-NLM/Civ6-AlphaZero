@@ -45,7 +45,8 @@ try:
 
     TORCH_AVAILABLE = True
 except ImportError:
-    torch = None
+    # Sentinel for the optional dependency; guarded by TORCH_AVAILABLE.
+    torch = None  # type: ignore[assignment]
     TORCH_AVAILABLE = False
 
 # Try to import psutil for CPU memory tracking
@@ -54,7 +55,7 @@ try:
 
     PSUTIL_AVAILABLE = True
 except ImportError:
-    psutil = None
+    psutil = None  # type: ignore[assignment]
     PSUTIL_AVAILABLE = False
 
 

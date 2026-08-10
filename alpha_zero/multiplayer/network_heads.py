@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any, cast
 
 import torch
 import torch.nn as nn
@@ -172,10 +173,12 @@ class NPlayerNetworkAdapter(nn.Module):
 
         # Extract config from base network
         if hasattr(base_network, "config"):
-            config = base_network.config
-            spatial_filters = config.num_filters
-            spatial_size = config.spatial_size
-            vector_dim = getattr(config, "fc_hidden_dim", 256)
+            # nn.Module.__getattr__ types dynamic attributes as Tensor | Module;
+            # ``config`` is actually a plain config object with int fields.
+            config = cast(Any, base_network.config)
+            spatial_filters = int(config.num_filters)
+            spatial_size = int(config.spatial_size)
+            vector_dim = int(getattr(config, "fc_hidden_dim", 256))
         else:
             # Fallback defaults — base_network has no config attribute
             spatial_filters = 64
@@ -243,8 +246,10 @@ class NPlayerNetworkAdapter(nn.Module):
         if hasattr(self.base_network, "spatial_encoder") and hasattr(
             self.base_network, "vector_encoder"
         ):
-            spatial_features = self.base_network.spatial_encoder(spatial)
-            vector_features = self.base_network.vector_encoder(vector)
+            # nn.Module.__getattr__ types submodules as Tensor | Module; these
+            # attributes are callable encoder modules on the base network.
+            spatial_features = cast(nn.Module, self.base_network.spatial_encoder)(spatial)
+            vector_features = cast(nn.Module, self.base_network.vector_encoder)(vector)
         else:
             # Fallback: run full forward and extract features
             policy_logits, _ = self.base_network(spatial, vector, action_mask)
@@ -255,8 +260,10 @@ class NPlayerNetworkAdapter(nn.Module):
             value = self.nplayer_value_head(spatial_proxy, vector)
             return policy_logits, value
 
-        # Policy from base network's policy head
-        policy_logits = self.base_network.policy_head(spatial_features, vector_features)
+        # Policy from base network's policy head (submodule typed Tensor | Module)
+        policy_logits = cast(nn.Module, self.base_network.policy_head)(
+            spatial_features, vector_features
+        )
 
         # Action masking
         if action_mask is not None:

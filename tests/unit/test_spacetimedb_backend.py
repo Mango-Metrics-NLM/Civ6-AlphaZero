@@ -47,7 +47,8 @@ def mock_sdk() -> MockSpacetimeDBClient:
 
 @pytest.fixture
 def backend(
-    storage_config: StorageConfig, mock_sdk: MockSpacetimeDBClient,
+    storage_config: StorageConfig,
+    mock_sdk: MockSpacetimeDBClient,
 ) -> SpacetimeDBStorageBackend:
     """Create SpacetimeDB storage backend connected with mock."""
     backend = SpacetimeDBStorageBackend(storage_config)
@@ -70,14 +71,18 @@ class TestModelOperations:
     """Test model save/load operations."""
 
     def test_save_model(
-        self, backend: SpacetimeDBStorageBackend, sample_state_dict: dict[str, torch.Tensor],
+        self,
+        backend: SpacetimeDBStorageBackend,
+        sample_state_dict: dict[str, torch.Tensor],
     ) -> None:
         path = backend.save_model(sample_state_dict, iteration=1)
         assert path.startswith("spacetimedb://models/")
         assert "1" in path
 
     def test_save_model_increments_version(
-        self, backend: SpacetimeDBStorageBackend, sample_state_dict: dict[str, torch.Tensor],
+        self,
+        backend: SpacetimeDBStorageBackend,
+        sample_state_dict: dict[str, torch.Tensor],
     ) -> None:
         backend.save_model(sample_state_dict, iteration=1)
         backend.save_model(sample_state_dict, iteration=2)
@@ -85,7 +90,9 @@ class TestModelOperations:
         assert backend.client._connection.sdk_client.call_counts["publish_weights"] == 2
 
     def test_save_model_with_metadata(
-        self, backend: SpacetimeDBStorageBackend, sample_state_dict: dict[str, torch.Tensor],
+        self,
+        backend: SpacetimeDBStorageBackend,
+        sample_state_dict: dict[str, torch.Tensor],
     ) -> None:
         metadata = ModelMetadata(
             iteration=5,
@@ -97,26 +104,31 @@ class TestModelOperations:
         assert "5" in path
 
     def test_load_model(
-        self, backend: SpacetimeDBStorageBackend, sample_state_dict: dict[str, torch.Tensor],
+        self,
+        backend: SpacetimeDBStorageBackend,
+        sample_state_dict: dict[str, torch.Tensor],
     ) -> None:
         backend.save_model(sample_state_dict, iteration=1)
-        loaded_dict, metadata = backend.load_model(iteration=1)
+        loaded_dict, _metadata = backend.load_model(iteration=1)
 
         for key in sample_state_dict:
             assert key in loaded_dict
             assert torch.allclose(sample_state_dict[key], loaded_dict[key])
 
     def test_load_model_not_found(
-        self, backend: SpacetimeDBStorageBackend,
+        self,
+        backend: SpacetimeDBStorageBackend,
     ) -> None:
         with pytest.raises(FileNotFoundError, match="No model found"):
             backend.load_model(iteration=999)
 
     def test_load_model_by_version(
-        self, backend: SpacetimeDBStorageBackend, sample_state_dict: dict[str, torch.Tensor],
+        self,
+        backend: SpacetimeDBStorageBackend,
+        sample_state_dict: dict[str, torch.Tensor],
     ) -> None:
         backend.save_model(sample_state_dict, iteration=1)
-        loaded_dict, metadata = backend.load_model_by_version(version=1)
+        loaded_dict, _metadata = backend.load_model_by_version(version=1)
 
         for key in sample_state_dict:
             assert key in loaded_dict
@@ -126,30 +138,37 @@ class TestChampionOperations:
     """Test champion model operations."""
 
     def test_save_champion(
-        self, backend: SpacetimeDBStorageBackend, sample_state_dict: dict[str, torch.Tensor],
+        self,
+        backend: SpacetimeDBStorageBackend,
+        sample_state_dict: dict[str, torch.Tensor],
     ) -> None:
         metadata = ModelMetadata(iteration=1, version=1)
         path = backend.save_champion(sample_state_dict, metadata)
         assert "champion" in path
 
     def test_load_champion(
-        self, backend: SpacetimeDBStorageBackend, sample_state_dict: dict[str, torch.Tensor],
+        self,
+        backend: SpacetimeDBStorageBackend,
+        sample_state_dict: dict[str, torch.Tensor],
     ) -> None:
         metadata = ModelMetadata(iteration=1, version=1)
         backend.save_champion(sample_state_dict, metadata)
 
-        loaded_dict, loaded_meta = backend.load_champion()
+        loaded_dict, _loaded_meta = backend.load_champion()
         for key in sample_state_dict:
             assert key in loaded_dict
 
     def test_load_champion_not_found(
-        self, backend: SpacetimeDBStorageBackend,
+        self,
+        backend: SpacetimeDBStorageBackend,
     ) -> None:
         with pytest.raises(FileNotFoundError, match="No champion"):
             backend.load_champion()
 
     def test_champion_exists(
-        self, backend: SpacetimeDBStorageBackend, sample_state_dict: dict[str, torch.Tensor],
+        self,
+        backend: SpacetimeDBStorageBackend,
+        sample_state_dict: dict[str, torch.Tensor],
     ) -> None:
         assert not backend.champion_exists()
         metadata = ModelMetadata(iteration=1, version=1)
@@ -157,7 +176,9 @@ class TestChampionOperations:
         assert backend.champion_exists()
 
     def test_get_champion_version(
-        self, backend: SpacetimeDBStorageBackend, sample_state_dict: dict[str, torch.Tensor],
+        self,
+        backend: SpacetimeDBStorageBackend,
+        sample_state_dict: dict[str, torch.Tensor],
     ) -> None:
         assert backend.get_champion_version() == 0
         metadata = ModelMetadata(iteration=1, version=3)
@@ -180,15 +201,22 @@ class TestTrajectoryOperations:
         return traj
 
     def test_save_trajectory(
-        self, backend: SpacetimeDBStorageBackend, mock_trajectory: Any,
+        self,
+        backend: SpacetimeDBStorageBackend,
+        mock_trajectory: Any,
     ) -> None:
         path = backend.save_trajectory(
-            mock_trajectory, iteration=1, worker_id=0, game_id="g1",
+            mock_trajectory,
+            iteration=1,
+            worker_id=0,
+            game_id="g1",
         )
         assert "trajectories" in path
 
     def test_list_trajectories(
-        self, backend: SpacetimeDBStorageBackend, mock_trajectory: Any,
+        self,
+        backend: SpacetimeDBStorageBackend,
+        mock_trajectory: Any,
     ) -> None:
         backend.save_trajectory(mock_trajectory, iteration=1, worker_id=0, game_id="g1")
         backend.save_trajectory(mock_trajectory, iteration=1, worker_id=1, game_id="g2")
@@ -197,7 +225,9 @@ class TestTrajectoryOperations:
         assert len(all_trajs) == 2
 
     def test_list_trajectories_by_iteration(
-        self, backend: SpacetimeDBStorageBackend, mock_trajectory: Any,
+        self,
+        backend: SpacetimeDBStorageBackend,
+        mock_trajectory: Any,
     ) -> None:
         backend.save_trajectory(mock_trajectory, iteration=1, worker_id=0, game_id="g1")
         backend.save_trajectory(mock_trajectory, iteration=2, worker_id=0, game_id="g2")
@@ -207,7 +237,9 @@ class TestTrajectoryOperations:
         assert iter1[0].iteration == 1
 
     def test_list_trajectories_by_worker(
-        self, backend: SpacetimeDBStorageBackend, mock_trajectory: Any,
+        self,
+        backend: SpacetimeDBStorageBackend,
+        mock_trajectory: Any,
     ) -> None:
         backend.save_trajectory(mock_trajectory, iteration=1, worker_id=0, game_id="g1")
         backend.save_trajectory(mock_trajectory, iteration=1, worker_id=1, game_id="g2")
@@ -217,7 +249,9 @@ class TestTrajectoryOperations:
         assert worker0[0].worker_id == 0
 
     def test_count_trajectories(
-        self, backend: SpacetimeDBStorageBackend, mock_trajectory: Any,
+        self,
+        backend: SpacetimeDBStorageBackend,
+        mock_trajectory: Any,
     ) -> None:
         assert backend.count_trajectories() == 0
         backend.save_trajectory(mock_trajectory, iteration=1, worker_id=0, game_id="g1")
@@ -239,26 +273,33 @@ class TestCheckpointOperations:
         }
 
     def test_save_checkpoint(
-        self, backend: SpacetimeDBStorageBackend, checkpoint_data: dict[str, Any],
+        self,
+        backend: SpacetimeDBStorageBackend,
+        checkpoint_data: dict[str, Any],
     ) -> None:
         path = backend.save_checkpoint(checkpoint_data, iteration=10)
         assert "checkpoints" in path
 
     def test_load_checkpoint(
-        self, backend: SpacetimeDBStorageBackend, checkpoint_data: dict[str, Any],
+        self,
+        backend: SpacetimeDBStorageBackend,
+        checkpoint_data: dict[str, Any],
     ) -> None:
         backend.save_checkpoint(checkpoint_data, iteration=10)
-        loaded_data, metadata = backend.load_checkpoint(iteration=10)
+        loaded_data, _metadata = backend.load_checkpoint(iteration=10)
         assert loaded_data["iteration"] == 10
 
     def test_load_checkpoint_not_found(
-        self, backend: SpacetimeDBStorageBackend,
+        self,
+        backend: SpacetimeDBStorageBackend,
     ) -> None:
         with pytest.raises(FileNotFoundError):
             backend.load_checkpoint(iteration=999)
 
     def test_load_latest_checkpoint(
-        self, backend: SpacetimeDBStorageBackend, checkpoint_data: dict[str, Any],
+        self,
+        backend: SpacetimeDBStorageBackend,
+        checkpoint_data: dict[str, Any],
     ) -> None:
         backend.save_checkpoint(checkpoint_data, iteration=5)
         checkpoint_data["iteration"] = 10
@@ -266,17 +307,20 @@ class TestCheckpointOperations:
 
         result = backend.load_latest_checkpoint()
         assert result is not None
-        loaded_data, metadata = result
+        loaded_data, _metadata = result
         assert loaded_data["iteration"] == 10
 
     def test_load_latest_checkpoint_none(
-        self, backend: SpacetimeDBStorageBackend,
+        self,
+        backend: SpacetimeDBStorageBackend,
     ) -> None:
         result = backend.load_latest_checkpoint()
         assert result is None
 
     def test_list_checkpoints(
-        self, backend: SpacetimeDBStorageBackend, checkpoint_data: dict[str, Any],
+        self,
+        backend: SpacetimeDBStorageBackend,
+        checkpoint_data: dict[str, Any],
     ) -> None:
         backend.save_checkpoint(checkpoint_data, iteration=5)
         backend.save_checkpoint(checkpoint_data, iteration=10)
@@ -306,13 +350,17 @@ class TestEvaluationOperations:
         )
 
     def test_save_evaluation(
-        self, backend: SpacetimeDBStorageBackend, eval_result: EvaluationResult,
+        self,
+        backend: SpacetimeDBStorageBackend,
+        eval_result: EvaluationResult,
     ) -> None:
         path = backend.save_evaluation(eval_result)
         assert "evaluations" in path
 
     def test_load_evaluation(
-        self, backend: SpacetimeDBStorageBackend, eval_result: EvaluationResult,
+        self,
+        backend: SpacetimeDBStorageBackend,
+        eval_result: EvaluationResult,
     ) -> None:
         backend.save_evaluation(eval_result)
         loaded = backend.load_evaluation(iteration=5)
@@ -320,13 +368,15 @@ class TestEvaluationOperations:
         assert loaded.promoted is True
 
     def test_load_evaluation_not_found(
-        self, backend: SpacetimeDBStorageBackend,
+        self,
+        backend: SpacetimeDBStorageBackend,
     ) -> None:
         with pytest.raises(FileNotFoundError):
             backend.load_evaluation(iteration=999)
 
     def test_list_evaluations(
-        self, backend: SpacetimeDBStorageBackend,
+        self,
+        backend: SpacetimeDBStorageBackend,
     ) -> None:
         for i in range(3):
             result = EvaluationResult(
@@ -352,14 +402,16 @@ class TestConfigOperations:
     """Test config save/load operations."""
 
     def test_save_config(
-        self, backend: SpacetimeDBStorageBackend,
+        self,
+        backend: SpacetimeDBStorageBackend,
     ) -> None:
         config = {"learning_rate": 0.001, "batch_size": 256}
         path = backend.save_config(config, iteration=1)
         assert "configs" in path
 
     def test_load_config(
-        self, backend: SpacetimeDBStorageBackend,
+        self,
+        backend: SpacetimeDBStorageBackend,
     ) -> None:
         config = {"learning_rate": 0.001, "batch_size": 256}
         backend.save_config(config, iteration=1)
@@ -368,7 +420,8 @@ class TestConfigOperations:
         assert loaded["batch_size"] == 256
 
     def test_load_config_not_found(
-        self, backend: SpacetimeDBStorageBackend,
+        self,
+        backend: SpacetimeDBStorageBackend,
     ) -> None:
         with pytest.raises(FileNotFoundError):
             backend.load_config(iteration=999)
@@ -378,24 +431,30 @@ class TestUtilityOperations:
     """Test utility methods."""
 
     def test_exists_model(
-        self, backend: SpacetimeDBStorageBackend, sample_state_dict: dict[str, torch.Tensor],
+        self,
+        backend: SpacetimeDBStorageBackend,
+        sample_state_dict: dict[str, torch.Tensor],
     ) -> None:
         assert not backend.exists("spacetimedb://models/1")
         backend.save_model(sample_state_dict, iteration=1)
         assert backend.exists("spacetimedb://models/1")
 
     def test_exists_unknown_path(
-        self, backend: SpacetimeDBStorageBackend,
+        self,
+        backend: SpacetimeDBStorageBackend,
     ) -> None:
         assert not backend.exists("unknown://path")
 
     def test_delete_returns_false(
-        self, backend: SpacetimeDBStorageBackend,
+        self,
+        backend: SpacetimeDBStorageBackend,
     ) -> None:
         assert backend.delete("spacetimedb://models/1") is False
 
     def test_list_files_models(
-        self, backend: SpacetimeDBStorageBackend, sample_state_dict: dict[str, torch.Tensor],
+        self,
+        backend: SpacetimeDBStorageBackend,
+        sample_state_dict: dict[str, torch.Tensor],
     ) -> None:
         backend.save_model(sample_state_dict, iteration=1)
         backend.save_model(sample_state_dict, iteration=2)
@@ -403,13 +462,16 @@ class TestUtilityOperations:
         assert len(files) == 2
 
     def test_close(
-        self, backend: SpacetimeDBStorageBackend,
+        self,
+        backend: SpacetimeDBStorageBackend,
     ) -> None:
         backend.close()
         assert not backend.client.is_connected
 
     def test_context_manager(
-        self, storage_config: StorageConfig, mock_sdk: MockSpacetimeDBClient,
+        self,
+        storage_config: StorageConfig,
+        mock_sdk: MockSpacetimeDBClient,
     ) -> None:
         with SpacetimeDBStorageBackend(storage_config) as backend:
             backend.connect(mock_client=mock_sdk)

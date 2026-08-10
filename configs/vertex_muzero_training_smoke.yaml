@@ -34,9 +34,9 @@ workerPoolSpecs:
         - "--algorithm=muzero"
         - "--agent_id=muzero-smoke"
       env:
-        - name: WANDB_PROJECT
+        - name: MLFLOW_EXPERIMENT_NAME
           value: "civ6az-muzero-world-model"
-        - name: WANDB_ENABLED
+        - name: MLFLOW_ENABLED
           value: "true"
         - name: CIV6AZ_GCS_BUCKET
           value: "civ6az-muzero-training"

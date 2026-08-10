@@ -19,15 +19,11 @@ class TestNPlayerValueHead:
 
     @pytest.fixture
     def head_2p(self):
-        return NPlayerValueHead(
-            spatial_filters=64, spatial_size=16, vector_dim=256, num_players=2
-        )
+        return NPlayerValueHead(spatial_filters=64, spatial_size=16, vector_dim=256, num_players=2)
 
     @pytest.fixture
     def head_4p(self):
-        return NPlayerValueHead(
-            spatial_filters=64, spatial_size=16, vector_dim=256, num_players=4
-        )
+        return NPlayerValueHead(spatial_filters=64, spatial_size=16, vector_dim=256, num_players=4)
 
     @pytest.fixture
     def spatial_features(self):
@@ -59,9 +55,7 @@ class TestNPlayerValueHead:
 
     def test_batch_size_1(self):
         """Works with batch size 1."""
-        head = NPlayerValueHead(
-            spatial_filters=32, spatial_size=8, vector_dim=64, num_players=3
-        )
+        head = NPlayerValueHead(spatial_filters=32, spatial_size=8, vector_dim=64, num_players=3)
         spatial = torch.randn(1, 32, 8, 8)
         vector = torch.randn(1, 64)
         output = head(spatial, vector)
@@ -89,9 +83,7 @@ class TestNPlayerValueHead:
 
     def test_single_player_degenerate_case(self):
         """num_players=1 works (single-player evaluation)."""
-        head = NPlayerValueHead(
-            spatial_filters=32, spatial_size=8, vector_dim=64, num_players=1
-        )
+        head = NPlayerValueHead(spatial_filters=32, spatial_size=8, vector_dim=64, num_players=1)
         spatial = torch.randn(2, 32, 8, 8)
         vector = torch.randn(2, 64)
         output = head(spatial, vector)
@@ -99,9 +91,7 @@ class TestNPlayerValueHead:
 
     def test_large_player_count(self):
         """Works with 8 players (Civ6 max)."""
-        head = NPlayerValueHead(
-            spatial_filters=32, spatial_size=8, vector_dim=64, num_players=8
-        )
+        head = NPlayerValueHead(spatial_filters=32, spatial_size=8, vector_dim=64, num_players=8)
         spatial = torch.randn(2, 32, 8, 8)
         vector = torch.randn(2, 64)
         output = head(spatial, vector)
@@ -216,7 +206,7 @@ class TestNPlayerNetworkAdapter:
         # Default spatial_size=16, vector_dim=256 from fallback defaults
         spatial = torch.randn(2, 13, 16, 16)
         vector = torch.randn(2, 256)
-        policy, values = adapter(spatial, vector)
+        _policy, values = adapter(spatial, vector)
         assert values.shape[0] == 2
         assert values.shape[1] == 3
 
@@ -226,7 +216,7 @@ class TestNPlayerNetworkAdapter:
         spatial = torch.randn(2, 13, 16, 16)
         vector = torch.randn(2, 256)
         mask = torch.ones(2, 10)
-        policy, values = adapter(spatial, vector, action_mask=mask)
+        _policy, values = adapter(spatial, vector, action_mask=mask)
         assert values.shape == (2, 2)
 
     def test_adapter_forward_with_encoders(self):
@@ -235,7 +225,9 @@ class TestNPlayerNetworkAdapter:
         class MockNetworkWithEncoders(nn.Module):
             def __init__(self):
                 super().__init__()
-                self.config = type("C", (), {"num_filters": 32, "spatial_size": 8, "fc_hidden_dim": 64})()
+                self.config = type(
+                    "C", (), {"num_filters": 32, "spatial_size": 8, "fc_hidden_dim": 64}
+                )()
                 self.spatial_encoder = nn.Conv2d(13, 32, 3, padding=1)
                 self.vector_encoder = nn.Linear(64, 64)
                 self.policy_head = self._make_policy_head()
@@ -245,6 +237,7 @@ class TestNPlayerNetworkAdapter:
                     def forward(self, spatial_feat, vector_feat):
                         b = spatial_feat.shape[0]
                         return torch.randn(b, 10)
+
                 return PolicyHead()
 
             def forward(self, spatial, vector, action_mask=None):

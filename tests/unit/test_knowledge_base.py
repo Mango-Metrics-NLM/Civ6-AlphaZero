@@ -43,14 +43,12 @@ class TestKnowledgeBaseIngest:
         # The .txt file should be excluded by the default **/*.md pattern.
         assert not any(".txt" in m["source"] for m in metadatas)
 
-    def test_ingests_via_custom_pattern(
-        self, fake_rag: MagicMock, kb_dir: Path
-    ) -> None:
+    def test_ingests_via_custom_pattern(self, fake_rag: MagicMock, kb_dir: Path) -> None:
         kb = KnowledgeBase(fake_rag)
         n = kb.ingest_directory(kb_dir, pattern="*.txt")
         assert n == 1
         args, _ = fake_rag.add_documents.call_args
-        documents, metadatas, _ = args
+        _documents, metadatas, _ = args
         assert any(".txt" in m["source"] for m in metadatas)
 
     def test_missing_directory_returns_zero(self, fake_rag: MagicMock) -> None:
@@ -70,18 +68,14 @@ class TestKnowledgeBaseIngest:
             assert "chunk_index" in m
             assert m["chunk_index"] >= 0
 
-    def test_chunk_ids_are_unique(
-        self, fake_rag: MagicMock, kb_dir: Path
-    ) -> None:
+    def test_chunk_ids_are_unique(self, fake_rag: MagicMock, kb_dir: Path) -> None:
         kb = KnowledgeBase(fake_rag)
         kb.ingest_directory(kb_dir)
         args, _ = fake_rag.add_documents.call_args
         _, _, ids = args
         assert len(ids) == len(set(ids))
 
-    def test_handles_read_errors_gracefully(
-        self, fake_rag: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_handles_read_errors_gracefully(self, fake_rag: MagicMock, tmp_path: Path) -> None:
         """If a file becomes unreadable mid-walk, the error is logged and
         the rest of the batch still ingests."""
         good = tmp_path / "good.md"
@@ -130,9 +124,7 @@ class TestKnowledgeBaseChunker:
         assert list(kb._chunk_text("")) == []
         assert list(kb._chunk_text("\n\n\n\n")) == []
 
-    def test_chunks_pack_paragraphs_under_chunk_size(
-        self, fake_rag: MagicMock
-    ) -> None:
+    def test_chunks_pack_paragraphs_under_chunk_size(self, fake_rag: MagicMock) -> None:
         kb = KnowledgeBase(fake_rag)
         # Three small paragraphs that should pack into one chunk
         text = "alpha\n\nbeta\n\ngamma"

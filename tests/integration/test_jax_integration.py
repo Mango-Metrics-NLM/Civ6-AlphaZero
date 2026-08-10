@@ -45,9 +45,7 @@ class TestFactoryJaxCreation:
         from alpha_zero.utils.factories import create_network
 
         config = NetworkConfig()
-        net = create_network(
-            config, board_size=16, action_space_size=381, framework="jax"
-        )
+        net = create_network(config, board_size=16, action_space_size=381, framework="jax")
         assert isinstance(net, JaxNetworkWrapper)
 
     def test_create_network_with_env_var(self, monkeypatch):
@@ -144,7 +142,9 @@ class TestJaxMCTSIntegration:
             valid_actions = np.where(action_probs > 0)[0]
             if len(valid_actions) == 0:
                 break
-            action = np.random.choice(valid_actions, p=action_probs[valid_actions] / action_probs[valid_actions].sum())
+            action = np.random.choice(
+                valid_actions, p=action_probs[valid_actions] / action_probs[valid_actions].sum()
+            )
             _, _, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
             steps += 1
@@ -196,7 +196,9 @@ class TestCrossFrameworkCheckpoint:
         """Save JAX model, load it, verify identical outputs."""
         wrapper = JaxNetworkWrapper(
             JaxMicroCivNetwork(
-                num_res_blocks=2, num_filters=16, num_groups=4,
+                num_res_blocks=2,
+                num_filters=16,
+                num_groups=4,
                 key=jax.random.PRNGKey(42),
             ),
             seed=42,
@@ -223,14 +225,16 @@ class TestCrossFrameworkCheckpoint:
         from alpha_zero.core.jax_checkpoint import jax_to_torch_state_dict
 
         model = JaxMicroCivNetwork(
-            num_res_blocks=2, num_filters=16, num_groups=4,
+            num_res_blocks=2,
+            num_filters=16,
+            num_groups=4,
             key=jax.random.PRNGKey(42),
         )
 
         state_dict = jax_to_torch_state_dict(model)
 
         assert len(state_dict) > 0
-        for name, tensor in state_dict.items():
+        for _name, tensor in state_dict.items():
             assert isinstance(tensor, torch.Tensor)
             assert tensor.dtype == torch.float32
 

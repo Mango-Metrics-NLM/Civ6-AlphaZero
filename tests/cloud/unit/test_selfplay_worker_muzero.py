@@ -193,7 +193,7 @@ class TestLoadMuZeroModel:
         with torch.no_grad():
             output = model.initial_inference(spatial, vector)
             action = torch.tensor([0])
-            next_hidden, reward, policy, value = model.recurrent_inference(
+            next_hidden, _reward, policy, _value = model.recurrent_inference(
                 output.hidden_state, action
             )
 
@@ -535,9 +535,7 @@ class TestArchitectureMismatchFallback:
         fake_metadata = ModelMetadata(version=999, iteration=0, elo=None)
         fake_cfg_dict = self._muzero_config_dict_from_kwargs(kwargs)
 
-        with patch.object(
-            selfplay_worker, "GCSModelStorage"
-        ) as MockStorage:
+        with patch.object(selfplay_worker, "GCSModelStorage") as MockStorage:
             MockStorage.return_value.load_model.return_value = (
                 fake_state,
                 fake_metadata,
@@ -592,9 +590,7 @@ class TestArchitectureMismatchFallback:
         fake_metadata = ModelMetadata(version=42, iteration=0, elo=None)
         fake_cfg_dict = self._muzero_config_dict_from_kwargs(kwargs)
 
-        with patch.object(
-            selfplay_worker, "GCSModelStorage"
-        ) as MockStorage:
+        with patch.object(selfplay_worker, "GCSModelStorage") as MockStorage:
             MockStorage.return_value.load_model.return_value = (
                 real_state,
                 fake_metadata,
@@ -670,7 +666,8 @@ class TestMCTSSearchAPI:
         # signature — the legacy Civ6 path correctly calls ``mcts.search(env)``.
         # Scope the AST search to functions named ``run_muzero_selfplay``.
         muzero_funcs = [
-            n for n in ast.walk(tree)
+            n
+            for n in ast.walk(tree)
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
             and n.name == "run_muzero_selfplay"
         ]
@@ -697,4 +694,3 @@ class TestMCTSSearchAPI:
                 f"mcts.search in run_muzero_selfplay should be called with 2 args "
                 f"(obs, action_mask), got {len(call.args)} args at line {call.lineno}"
             )
-

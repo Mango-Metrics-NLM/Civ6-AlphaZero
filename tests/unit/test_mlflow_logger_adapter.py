@@ -4,6 +4,7 @@ These guard the v1.5.0 MLflow-replaces-W&B migration: the adapter must
 preserve the exact public signatures of ``alpha_zero.utils.wandb_logger.WandbLogger``
 so worker code can switch trackers with a one-line import change.
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -213,3 +214,163 @@ def test_adapter_from_env(monkeypatch):
     adapter = WandbCompatAdapter.from_env()
     assert isinstance(adapter, WandbCompatAdapter)
     assert adapter.enabled is False
+
+
+# ---------------------------------------------------------------------------
+# WandbCompatAdapter.log() — numpy / nested-dict coercion contract
+# (ports the _clean_data guarantees of the retired WandbLogger)
+# ---------------------------------------------------------------------------
+
+
+def _adapter_with_metric_spy() -> tuple[WandbCompatAdapter, list[tuple[dict, int | None]]]:
+    """Disabled adapter whose log_metrics calls are recorded."""
+    adapter = _disabled_adapter()
+    calls: list[tuple[dict, int | None]] = []
+
+    def _spy(metrics, step=None):
+        calls.append((dict(metrics), step))
+
+    adapter.log_metrics = _spy  # type: ignore[method-assign]
+    return adapter, calls
+
+
+def test_adapter_log_coerces_numpy_scalars():
+    np = pytest.importorskip("numpy")
+    adapter, calls = _adapter_with_metric_spy()
+    adapter.log(
+        {
+            "int64": np.int64(7),
+            "float32": np.float32(0.5),
+            "bool_": np.bool_(True),
+            "plain_bool": False,
+        },
+        step=3,
+    )
+    assert calls == [({"int64": 7.0, "float32": 0.5, "bool_": 1.0, "plain_bool": 0.0}, 3)]
+
+
+def test_adapter_log_coerces_zero_d_and_size_one_arrays():
+    np = pytest.importorskip("numpy")
+    adapter, calls = _adapter_with_metric_spy()
+    adapter.log({"zero_d": np.array(2.5), "size_one": np.array([4])})
+    assert calls[0][0] == {"zero_d": 2.5, "size_one": 4.0}
+
+
+def test_adapter_log_drops_oversized_arrays_and_strings():
+    np = pytest.importorskip("numpy")
+    adapter, calls = _adapter_with_metric_spy()
+    adapter.log({"big": np.ones(8), "label": "hello", "ok": 1})
+    assert calls == [({"ok": 1.0}, None)]
+
+
+def test_adapter_log_flattens_one_level_of_nested_dicts():
+    adapter, calls = _adapter_with_metric_spy()
+    adapter.log({"train": {"loss": 1.5, "note": "skip-me"}, "top": 2})
+    assert calls == [({"train/loss": 1.5, "top": 2.0}, None)]
+
+
+def test_adapter_log_empty_after_filtering_makes_no_call():
+    adapter, calls = _adapter_with_metric_spy()
+    adapter.log({"label": "only-strings"})
+    assert calls == []
+
+
+# ---------------------------------------------------------------------------
+# log_reflection_stats — previously covered only by the retired W&B suite
+# ---------------------------------------------------------------------------
+
+
+def test_adapter_log_reflection_stats_full_payload():
+    adapter, calls = _adapter_with_metric_spy()
+    adapter.log_reflection_stats(
+        total_entries=12,
+        unique_patterns=4,
+        recent_additions=2,
+        avg_critique_length=87.5,
+        iteration=9,
+    )
+    assert calls == [
+        (
+            {
+                "reflection/total_entries": 12.0,
+                "reflection/unique_patterns": 4.0,
+                "reflection/recent_additions": 2.0,
+                "reflection/avg_critique_length": 87.5,
+            },
+            9,
+        )
+    ]
+
+
+def test_adapter_log_reflection_stats_optional_fields_omitted():
+    adapter, calls = _adapter_with_metric_spy()
+    adapter.log_reflection_stats(total_entries=3)
+    assert calls == [({"reflection/total_entries": 3.0}, None)]
+
+
+# ---------------------------------------------------------------------------
+# run_name property — hardened accessor for run-group propagation
+# ---------------------------------------------------------------------------
+
+
+def test_adapter_run_name_none_before_init():
+    adapter = _disabled_adapter()
+    assert adapter.run_name is None
+
+
+def test_adapter_run_name_reads_info_run_name():
+    adapter = _disabled_adapter()
+    adapter._run = SimpleNamespace(info=SimpleNamespace(run_name="iter-5", run_id="abc123"))
+    assert adapter.run_name == "iter-5"
+
+
+def test_adapter_run_name_falls_back_to_run_id():
+    adapter = _disabled_adapter()
+    adapter._run = SimpleNamespace(info=SimpleNamespace(run_name=None, run_id="abc123"))
+    assert adapter.run_name == "abc123"
+
+
+# ---------------------------------------------------------------------------
+# alert() / watch_model() fidelity — visible even when MLflow is disabled
+# ---------------------------------------------------------------------------
+
+
+def test_adapter_alert_emits_warning_log(caplog):
+    adapter = _disabled_adapter()
+    with caplog.at_level("WARNING", logger="alpha_zero.monitoring.mlflow_logger"):
+        adapter.alert("BudgetExceeded", "cost above cap", level="ERROR")
+    assert any(
+        "BudgetExceeded" in rec.message and "cost above cap" in rec.message
+        for rec in caplog.records
+    )
+
+
+def test_adapter_watch_model_sets_request_tag():
+    adapter = _disabled_adapter()
+    tags: list[tuple[str, str]] = []
+    adapter.set_tag = lambda k, v: tags.append((k, str(v)))  # type: ignore[method-assign]
+    adapter.watch_model(object(), log="gradients", log_freq=100)
+    assert ("watch_model_requested", "true") in tags
+
+
+# ---------------------------------------------------------------------------
+# log_baseline_evaluation — per-opponent metric fan-out (ported from the
+# retired test_wandb_baseline_metrics suite)
+# ---------------------------------------------------------------------------
+
+
+def test_adapter_log_baseline_evaluation_per_opponent_prefixes():
+    adapter = _disabled_adapter()
+    seen: list[tuple[object, str, int | None]] = []
+
+    def _spy(result, prefix="eval", step=None):
+        seen.append((result, prefix, step))
+        return {f"{prefix}/win_rate": 0.5}
+
+    adapter.log_evaluation_result = _spy  # type: ignore[method-assign]
+    combined = adapter.log_baseline_evaluation(
+        {"random": object(), "heuristic": object()}, iteration=7
+    )
+    assert [s[1] for s in seen] == ["eval/random", "eval/heuristic"]
+    assert all(s[2] == 7 for s in seen)
+    assert set(combined) == {"eval/random/win_rate", "eval/heuristic/win_rate"}

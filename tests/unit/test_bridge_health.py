@@ -166,7 +166,7 @@ bridge_health:
 
     def test_backoff_multiplier_validation(self) -> None:
         """Test backoff_multiplier validation."""
-        with pytest.raises(ValueError, match="backoff_multiplier must be >= 1.0"):
+        with pytest.raises(ValueError, match=r"backoff_multiplier must be >= 1\.0"):
             BridgeHealthConfig(backoff_multiplier=0.5)
 
     def test_circuit_threshold_validation(self) -> None:

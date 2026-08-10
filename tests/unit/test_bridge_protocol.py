@@ -28,7 +28,13 @@ from alpha_zero.bridge.protocol import (
     StateMessage,
     TileData,
     UnitData,
+    _parse_era,
+    _validate_dict,
+    _validate_float,
+    _validate_int,
+    _validate_list,
     _validate_required,
+    _validate_string,
     _validate_type,
 )
 
@@ -420,6 +426,32 @@ class TestPlayerData:
         assert player.civics_researched == []
         assert player.current_civic is None
 
+    def test_gold_per_turn_default(self) -> None:
+        """Test PlayerData.gold_per_turn defaults to 0.0."""
+        player = PlayerData(id=0, civilization="Rome")
+        assert player.gold_per_turn == 0.0
+
+    def test_gold_per_turn_from_dict(self) -> None:
+        """StateExporter.lua sends gold_per_turn; it must round-trip.
+
+        Regression: PlayerData had no gold_per_turn field, so the real
+        value StateExporter.lua computes (treasury:GetGoldYield()) was
+        silently dropped on the floor.
+        """
+        data = {
+            "id": 0,
+            "civilization": "Rome",
+            "gold_per_turn": 12.5,
+        }
+        player = PlayerData.from_dict(data)
+        assert player.gold_per_turn == 12.5
+
+    def test_gold_per_turn_to_dict(self) -> None:
+        """Test PlayerData.to_dict includes gold_per_turn."""
+        player = PlayerData(id=0, civilization="Rome", gold_per_turn=7.0)
+        data = player.to_dict()
+        assert data["gold_per_turn"] == 7.0
+
 
 class TestLegalAction:
     """Tests for LegalAction dataclass."""
@@ -463,6 +495,107 @@ class TestLegalAction:
         assert data["unit_id"] == 5
         assert len(data["targets"]) == 2
         assert data["targets"][0] == {"x": 1, "y": 2}
+
+    def test_item_types_default_empty(self) -> None:
+        """Test LegalAction.item_types defaults to an empty dict."""
+        action = LegalAction(action_type="produce", city_id=1, items=[1, 2])
+        assert action.item_types == {}
+
+    def test_item_types_from_dict(self) -> None:
+        """StateExporter.lua sends a plural item_types map per production item.
+
+        Regression: LegalAction only exposed a singular `item_type` field
+        that Lua never populates, so per-item production categories (e.g.
+        district vs. unit) were silently dropped, and district production
+        could never be recognized as legal.
+        """
+        data = {
+            "action_type": "produce",
+            "city_id": 1,
+            "items": ["UNIT_WARRIOR", "DISTRICT_CAMPUS"],
+            "item_types": {"UNIT_WARRIOR": "unit", "DISTRICT_CAMPUS": "district"},
+        }
+        action = LegalAction.from_dict(data)
+        assert action.item_types == {"UNIT_WARRIOR": "unit", "DISTRICT_CAMPUS": "district"}
+
+    def test_item_types_round_trip(self) -> None:
+        """Test LegalAction.item_types survives to_dict/from_dict round-trip."""
+        original = LegalAction(
+            action_type="produce",
+            city_id=1,
+            items=["UNIT_WARRIOR"],
+            item_types={"UNIT_WARRIOR": "unit"},
+        )
+        data = original.to_dict()
+        restored = LegalAction.from_dict(data)
+        assert restored.item_types == original.item_types
+
+
+class TestGameStateDataWinnerId:
+    """Tests for GameStateData.from_dict winner_id sentinel handling.
+
+    StateExporter.lua always writes winner_id = -1 as a "no winner yet"
+    sentinel (never omits or nils the key). GameStateData.from_dict must map
+    that sentinel to None so `winner_id is not None` checks downstream
+    (real_civ6_env.py) don't misinterpret "no winner" as "player -1 won".
+    """
+
+    def _base_state_dict(self, **overrides: object) -> dict:
+        data = {
+            "turn_id": 1,
+            "player_id": 0,
+            "map": {"width": 4, "height": 4, "tiles": []},
+            "units": [],
+            "cities": [],
+            "players": [],
+            "legal_actions": [],
+        }
+        data.update(overrides)
+        return data
+
+    def test_winner_id_sentinel_minus_one_maps_to_none(self) -> None:
+        state = GameStateData.from_dict(self._base_state_dict(winner_id=-1))
+        assert state.winner_id is None
+
+    def test_winner_id_absent_stays_none(self) -> None:
+        state = GameStateData.from_dict(self._base_state_dict())
+        assert state.winner_id is None
+
+    def test_winner_id_real_value_preserved(self) -> None:
+        state = GameStateData.from_dict(self._base_state_dict(winner_id=1))
+        assert state.winner_id == 1
+
+
+class TestMapData:
+    """Tests for MapData wire-payload parsing."""
+
+    def test_from_dict_accepts_explicit_zero_dimensions(self) -> None:
+        """Pre-game frame: explicit width=0/height=0 is valid (parser accepts;
+        state_converter handles the 0x0 case via GameNotStartedError)."""
+        result = MapData.from_dict({"width": 0, "height": 0, "tiles": []})
+        assert result.width == 0
+        assert result.height == 0
+
+    def test_from_dict_accepts_positive_dimensions(self) -> None:
+        result = MapData.from_dict({"width": 8, "height": 8, "tiles": []})
+        assert result.width == 8
+        assert result.height == 8
+
+    def test_from_dict_missing_width_raises_loud_error(self) -> None:
+        """Regression: a Lua-side bug that drops 'width' from the payload must
+        fail loudly here instead of silently defaulting to 0, which would mid-
+        game look indistinguishable from a pre-game frame and cause the agent
+        loop to skip the turn (leaving Civ6 hanging for a command)."""
+        with pytest.raises(ProtocolValidationError, match="width"):
+            MapData.from_dict({"height": 8, "tiles": []})
+
+    def test_from_dict_missing_height_raises_loud_error(self) -> None:
+        with pytest.raises(ProtocolValidationError, match="height"):
+            MapData.from_dict({"width": 8, "tiles": []})
+
+    def test_from_dict_missing_both_raises_loud_error(self) -> None:
+        with pytest.raises(ProtocolValidationError, match="width"):
+            MapData.from_dict({"tiles": []})
 
 
 class TestStateMessage:
@@ -795,3 +928,290 @@ class TestSerializationRoundTrip:
         restored = CommandMessage.from_json(json_str)
         assert restored.msg_id == original.msg_id
         assert len(restored.commands) == len(original.commands)
+
+
+class TestValidateIntErrorPaths:
+    """Tests for _validate_int() error and boundary branches."""
+
+    def test_none_without_default_raises(self) -> None:
+        with pytest.raises(ProtocolValidationError) as exc_info:
+            _validate_int(None, "field")
+        assert "field" in str(exc_info.value)
+
+    def test_none_with_default_returns_default(self) -> None:
+        assert _validate_int(None, "field", default=7) == 7
+
+    def test_non_convertible_value_raises(self) -> None:
+        """A value that cannot be coerced to int (e.g. non-numeric string)
+        must raise rather than silently defaulting or crashing uncaught."""
+        with pytest.raises(ProtocolValidationError) as exc_info:
+            _validate_int("not-a-number", "health", context="UnitData")
+        assert "health" in str(exc_info.value)
+        assert "UnitData" in str(exc_info.value)
+
+    def test_list_value_raises_type_error_path(self) -> None:
+        """A value like a list (TypeError from int()) is also caught."""
+        with pytest.raises(ProtocolValidationError):
+            _validate_int([1, 2], "field")
+
+    def test_below_min_val_raises(self) -> None:
+        with pytest.raises(ProtocolValidationError) as exc_info:
+            _validate_int(-5, "health", min_val=0)
+        assert "health" in str(exc_info.value)
+
+    def test_above_max_val_raises(self) -> None:
+        with pytest.raises(ProtocolValidationError) as exc_info:
+            _validate_int(999, "width", max_val=100)
+        assert "width" in str(exc_info.value)
+
+    def test_within_bounds_passes(self) -> None:
+        assert _validate_int(50, "field", min_val=0, max_val=100) == 50
+
+
+class TestValidateFloatErrorPaths:
+    """Tests for _validate_float() error branches."""
+
+    def test_none_without_default_raises(self) -> None:
+        with pytest.raises(ProtocolValidationError) as exc_info:
+            _validate_float(None, "moves_remaining")
+        assert "moves_remaining" in str(exc_info.value)
+
+    def test_none_with_default_returns_default(self) -> None:
+        assert _validate_float(None, "field", default=1.5) == 1.5
+
+    def test_non_convertible_value_raises(self) -> None:
+        with pytest.raises(ProtocolValidationError) as exc_info:
+            _validate_float("not-a-float", "moves_remaining", context="UnitData")
+        assert "moves_remaining" in str(exc_info.value)
+        assert "UnitData" in str(exc_info.value)
+
+    def test_list_value_raises_type_error_path(self) -> None:
+        with pytest.raises(ProtocolValidationError):
+            _validate_float([1, 2], "field")
+
+
+class TestValidateStringErrorPaths:
+    """Tests for _validate_string() error branches."""
+
+    def test_none_without_default_raises(self) -> None:
+        with pytest.raises(ProtocolValidationError) as exc_info:
+            _validate_string(None, "unit_type")
+        assert "unit_type" in str(exc_info.value)
+
+    def test_none_with_default_returns_default(self) -> None:
+        assert _validate_string(None, "field", default="DEFAULT") == "DEFAULT"
+
+    def test_value_not_in_allowed_set_raises(self) -> None:
+        with pytest.raises(ProtocolValidationError) as exc_info:
+            _validate_string(
+                "PURPLE", "terrain", allowed_values=["TERRAIN_GRASS", "TERRAIN_PLAINS"]
+            )
+        assert "terrain" in str(exc_info.value)
+
+    def test_value_in_allowed_set_passes(self) -> None:
+        result = _validate_string(
+            "TERRAIN_GRASS", "terrain", allowed_values=["TERRAIN_GRASS", "TERRAIN_PLAINS"]
+        )
+        assert result == "TERRAIN_GRASS"
+
+
+class TestValidateListErrorPaths:
+    """Tests for _validate_list() error branches."""
+
+    def test_none_returns_default_factory_result(self) -> None:
+        assert _validate_list(None, "features") == []
+
+    def test_non_list_raises(self) -> None:
+        with pytest.raises(ProtocolValidationError) as exc_info:
+            _validate_list({"not": "a list"}, "features", context="TileData")
+        assert "features" in str(exc_info.value)
+        assert "TileData" in str(exc_info.value)
+
+    def test_list_passes_through(self) -> None:
+        assert _validate_list([1, 2, 3], "field") == [1, 2, 3]
+
+
+class TestValidateDictErrorPaths:
+    """Tests for _validate_dict() error branches."""
+
+    def test_none_returns_default_factory_result(self) -> None:
+        assert _validate_dict(None, "yields") == {}
+
+    def test_empty_list_treated_as_empty_dict(self) -> None:
+        """Lua encodes empty tables as JSON [] rather than {}."""
+        assert _validate_dict([], "yields") == {}
+
+    def test_non_dict_non_list_raises(self) -> None:
+        with pytest.raises(ProtocolValidationError) as exc_info:
+            _validate_dict("not-a-dict", "yields", context="TileData")
+        assert "yields" in str(exc_info.value)
+        assert "TileData" in str(exc_info.value)
+
+    def test_nonempty_list_raises(self) -> None:
+        """A non-empty list is not a valid empty-table encoding either."""
+        with pytest.raises(ProtocolValidationError):
+            _validate_dict([1, 2], "yields")
+
+
+class TestValidateTypeAllowNone:
+    """Test the allow_none short-circuit branch of _validate_type()."""
+
+    def test_allow_none_with_none_value_returns_none(self) -> None:
+        assert _validate_type(None, dict, "target", allow_none=True) is None
+
+    def test_allow_none_false_with_none_still_raises(self) -> None:
+        with pytest.raises(ProtocolValidationError):
+            _validate_type(None, dict, "target", allow_none=False)
+
+
+class TestParseEraFallback:
+    """Tests for _parse_era() including the final fallback branch."""
+
+    def test_none_returns_default(self) -> None:
+        assert _parse_era(None, default=3) == 3
+
+    def test_int_passthrough(self) -> None:
+        assert _parse_era(5) == 5
+
+    def test_known_string_name(self) -> None:
+        assert _parse_era("ERA_ANCIENT") == 0
+
+    def test_unknown_string_name_returns_default(self) -> None:
+        assert _parse_era("ERA_NOT_REAL", default=9) == 9
+
+    def test_unsupported_type_returns_default(self) -> None:
+        """A value that is neither None, int, nor str (e.g. a list) falls
+        through to the final return-default branch rather than raising."""
+        assert _parse_era([1, 2, 3], default=2) == 2
+
+
+class TestLuaCommandInvalidActionType:
+    """LuaCommand.from_dict must reject unknown action_type values."""
+
+    def test_unknown_action_type_raises(self) -> None:
+        with pytest.raises(ProtocolValidationError) as exc_info:
+            LuaCommand.from_dict({"action_type": "TOTALLY_NOT_A_REAL_ACTION"})
+        assert "action_type" in str(exc_info.value)
+
+    def test_empty_target_dict_is_skipped(self) -> None:
+        """An empty (falsy) target dict does not attempt Position.from_dict."""
+        cmd = LuaCommand.from_dict({"action_type": "unit_move", "target": {}})
+        assert cmd.target is None
+
+    def test_optional_ids_are_coerced_to_int(self) -> None:
+        cmd = LuaCommand.from_dict(
+            {
+                "action_type": "unit_move",
+                "unit_id": "7",
+                "city_id": "3",
+                "item_id": "9",
+            }
+        )
+        assert cmd.unit_id == 7
+        assert cmd.city_id == 3
+        assert cmd.item_id == 9
+
+
+class TestGameStateDataResilientParsing:
+    """GameStateData.from_dict must skip individually-invalid nested entries
+    (malformed tiles/units/cities/players/legal_actions) rather than letting
+    one bad Lua-side record abort parsing of the entire game state."""
+
+    def _base_state(self) -> dict:
+        return {
+            "turn_id": 5,
+            "player_id": 0,
+            "map": {"width": 2, "height": 2, "tiles": []},
+            "units": [],
+            "cities": [],
+            "players": [],
+            "legal_actions": [],
+        }
+
+    def test_invalid_tile_is_skipped_not_fatal(self) -> None:
+        data = self._base_state()
+        data["map"] = {
+            "width": 1,
+            "height": 1,
+            # Second tile is not a dict at all -> TileData.from_dict raises,
+            # must be skipped rather than propagating.
+            "tiles": [{"x": 0, "y": 0, "terrain": "TERRAIN_GRASS"}, "not-a-tile"],
+        }
+        state = GameStateData.from_dict(data)
+        assert len(state.map_data.tiles) == 1
+        assert state.map_data.tiles[0].terrain == "TERRAIN_GRASS"
+
+    def test_invalid_unit_is_skipped_not_fatal(self) -> None:
+        data = self._base_state()
+        data["units"] = [
+            {"id": 1, "unit_type": "UNIT_WARRIOR", "x": 0, "y": 0},
+            "not-a-unit",
+        ]
+        state = GameStateData.from_dict(data)
+        assert len(state.units) == 1
+        assert state.units[0].id == 1
+
+    def test_invalid_city_is_skipped_not_fatal(self) -> None:
+        data = self._base_state()
+        data["cities"] = [
+            {"id": 1, "name": "Rome", "x": 0, "y": 0},
+            "not-a-city",
+        ]
+        state = GameStateData.from_dict(data)
+        assert len(state.cities) == 1
+        assert state.cities[0].name == "Rome"
+
+    def test_invalid_player_is_skipped_not_fatal(self) -> None:
+        data = self._base_state()
+        data["players"] = [
+            {"id": 0, "civ_type": "CIVILIZATION_ROME"},
+            "not-a-player",
+        ]
+        state = GameStateData.from_dict(data)
+        assert len(state.players) == 1
+
+    def test_invalid_legal_action_is_skipped_not_fatal(self) -> None:
+        data = self._base_state()
+        data["legal_actions"] = [
+            {"action_type": "unit_move", "unit_id": 1, "targets": [[1, 2]]},
+            "not-a-legal-action",
+        ]
+        state = GameStateData.from_dict(data)
+        assert len(state.legal_actions) == 1
+
+
+class TestJSONDecodeFailurePaths:
+    """from_json() on each message type must translate a JSONDecodeError
+    into the domain-specific ProtocolValidationError, not let raw JSON
+    exceptions leak to callers."""
+
+    def test_state_message_invalid_json_raises_protocol_error(self) -> None:
+        with pytest.raises(ProtocolValidationError) as exc_info:
+            StateMessage.from_json("{not valid json")
+        assert "Invalid JSON" in str(exc_info.value)
+
+    def test_command_message_invalid_json_raises_protocol_error(self) -> None:
+        with pytest.raises(ProtocolValidationError) as exc_info:
+            CommandMessage.from_json("{not valid json")
+        assert "Invalid JSON" in str(exc_info.value)
+
+    def test_ack_message_invalid_json_raises_protocol_error(self) -> None:
+        with pytest.raises(ProtocolValidationError) as exc_info:
+            AckMessage.from_json("{not valid json")
+        assert "Invalid JSON" in str(exc_info.value)
+
+    def test_command_message_skips_invalid_command_entries(self) -> None:
+        """A malformed command inside the commands list is skipped with a
+        warning; the rest of the batch still parses."""
+        payload = json.dumps(
+            {
+                "msg_id": 1,
+                "commands": [
+                    {"action_type": "unit_move", "unit_id": 1, "target": {"x": 1, "y": 1}},
+                    {"action_type": "NOT_A_REAL_ACTION"},
+                ],
+            }
+        )
+        msg = CommandMessage.from_json(payload)
+        assert len(msg.commands) == 1
+        assert msg.commands[0].unit_id == 1

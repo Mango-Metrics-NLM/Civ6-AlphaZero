@@ -904,7 +904,6 @@ class TestAgentStateEdgeCases:
     def test_update_fitness_sets_last_updated(self):
         """Test update_fitness updates the last_updated timestamp."""
         agent = AgentState()
-        original_updated = agent.last_updated
 
         agent.update_fitness(0.7)
         # Timestamp should be different (or at least not error)

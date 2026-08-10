@@ -262,13 +262,13 @@ class TestUpdateModel:
         ps.set_weights(_tiny_state_dict())
         net = MagicMock()
         # min_version == current version → should not update
-        updated, version = ps.update_model(net, min_version=1)
+        updated, _version = ps.update_model(net, min_version=1)
         assert updated is False
 
     def test_update_model_no_weights(self):
         ps = ParameterServer()
         net = MagicMock()
-        updated, version = ps.update_model(net)
+        updated, _version = ps.update_model(net)
         assert updated is False
 
     def test_update_model_load_state_dict_error(self):
@@ -276,7 +276,7 @@ class TestUpdateModel:
         ps.set_weights(_tiny_state_dict())
         net = MagicMock()
         net.load_state_dict.side_effect = RuntimeError("incompatible")
-        updated, version = ps.update_model(net)
+        updated, _version = ps.update_model(net)
         assert updated is False
 
 

@@ -171,9 +171,7 @@ class TestNPlayerTrainingLoop:
         spatial = torch.randn(batch_size, channels, BOARD_SIZE, BOARD_SIZE)
         vector = torch.randn(batch_size, TestDefaults.VECTOR_DIM)
         action_mask = torch.ones(batch_size, env.action_space.n)
-        target_policy = torch.softmax(
-            torch.randn(batch_size, env.action_space.n), dim=-1
-        )
+        target_policy = torch.softmax(torch.randn(batch_size, env.action_space.n), dim=-1)
         target_values = torch.zeros(batch_size, num_players)
 
         optimizer = torch.optim.Adam(net.parameters(), lr=0.01)
@@ -266,21 +264,11 @@ class TestNPlayerTrainingLoop:
 
         # --- Train ---
         optimizer = torch.optim.Adam(net.parameters(), lr=0.005)
-        spatial_batch = torch.stack(
-            [torch.from_numpy(e.spatial).float() for e in all_examples]
-        )
-        vector_batch = torch.stack(
-            [torch.from_numpy(e.vector).float() for e in all_examples]
-        )
-        mask_batch = torch.stack(
-            [torch.from_numpy(e.action_mask).float() for e in all_examples]
-        )
-        policy_batch = torch.stack(
-            [torch.from_numpy(e.policy).float() for e in all_examples]
-        )
-        value_batch = torch.stack(
-            [torch.from_numpy(e.value).float() for e in all_examples]
-        )
+        spatial_batch = torch.stack([torch.from_numpy(e.spatial).float() for e in all_examples])
+        vector_batch = torch.stack([torch.from_numpy(e.vector).float() for e in all_examples])
+        mask_batch = torch.stack([torch.from_numpy(e.action_mask).float() for e in all_examples])
+        policy_batch = torch.stack([torch.from_numpy(e.policy).float() for e in all_examples])
+        value_batch = torch.stack([torch.from_numpy(e.value).float() for e in all_examples])
 
         initial_loss = None
         final_loss = None
@@ -369,9 +357,9 @@ class TestNPlayerMCTSSearch:
         # Only valid actions should have nonzero probability
         invalid_actions = np.where(action_mask == 0)[0]
         for idx in invalid_actions:
-            assert probs[idx] == pytest.approx(
-                0.0, abs=1e-6
-            ), f"Invalid action {idx} has prob {probs[idx]}"
+            assert probs[idx] == pytest.approx(0.0, abs=1e-6), (
+                f"Invalid action {idx} has prob {probs[idx]}"
+            )
 
 
 # ===========================================================================

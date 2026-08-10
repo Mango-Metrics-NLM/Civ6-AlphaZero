@@ -32,9 +32,9 @@ class MemoryStoreState:
 
         self.ids = list(self.documents.keys())
         embeddings_list = [
-            self.documents[doc_id].embedding
+            embedding
             for doc_id in self.ids
-            if self.documents[doc_id].embedding is not None
+            if (embedding := self.documents[doc_id].embedding) is not None
         ]
 
         if embeddings_list:
@@ -260,7 +260,8 @@ class MemoryVectorStore(VectorStore):
         embeddings_norms = np.where(embeddings_norms == 0, 1, embeddings_norms)
         embeddings_normalized = embeddings / embeddings_norms
 
-        return np.dot(embeddings_normalized, query_normalized)
+        similarities: np.ndarray = np.dot(embeddings_normalized, query_normalized)
+        return similarities
 
     def _compute_euclidean_distances(
         self,
@@ -276,4 +277,5 @@ class MemoryVectorStore(VectorStore):
         Returns:
             Array of distances
         """
-        return np.linalg.norm(embeddings - query, axis=1)
+        distances: np.ndarray = np.linalg.norm(embeddings - query, axis=1)
+        return distances

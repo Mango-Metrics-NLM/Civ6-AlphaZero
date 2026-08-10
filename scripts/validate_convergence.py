@@ -7,6 +7,7 @@ Replaces validate_v130_training.py. Reuses the real production training path
 Tracks every run to MLflow (file backend by default, ``MLFLOW_TRACKING_URI``
 override). Exit code 0 on pass, 1 on failure.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -82,7 +83,9 @@ def _network_action(
 
 
 def _build_synthetic_trajectories(
-    model: torch.nn.Module, cfg: ValidationConfig, device: torch.device,
+    model: torch.nn.Module,
+    cfg: ValidationConfig,
+    device: torch.device,
 ) -> TensorDataset:
     """Generate (spatial, vector, action_mask, policy, value) tensors via
     softmax-sampled self-play with the current network. Bounded by max_turns.
@@ -102,13 +105,15 @@ def _build_synthetic_trajectories(
             action, probs = _network_action(model, obs, device)
             if action < 0:
                 break
-            traj.append({
-                "spatial": obs["spatial"].copy(),
-                "vector": obs["vector"].copy(),
-                "action_mask": obs["action_mask"].copy(),
-                "policy": probs,
-                "player": env.current_player,
-            })
+            traj.append(
+                {
+                    "spatial": obs["spatial"].copy(),
+                    "vector": obs["vector"].copy(),
+                    "action_mask": obs["action_mask"].copy(),
+                    "policy": probs,
+                    "player": env.current_player,
+                }
+            )
             obs, _r, terminated, truncated, info = env.step(action)
             turn += 1
             if terminated or truncated:
@@ -121,21 +126,25 @@ def _build_synthetic_trajectories(
                 value = 1.0
             else:
                 value = -1.0
-            rows.append((
-                torch.tensor(step["spatial"], dtype=torch.float32).flatten(),
-                torch.tensor(step["vector"], dtype=torch.float32),
-                torch.tensor(step["action_mask"], dtype=torch.float32),
-                torch.tensor(step["policy"], dtype=torch.float32),
-                torch.tensor(value, dtype=torch.float32),
-            ))
+            rows.append(
+                (
+                    torch.tensor(step["spatial"], dtype=torch.float32).flatten(),
+                    torch.tensor(step["vector"], dtype=torch.float32),
+                    torch.tensor(step["action_mask"], dtype=torch.float32),
+                    torch.tensor(step["policy"], dtype=torch.float32),
+                    torch.tensor(value, dtype=torch.float32),
+                )
+            )
     if not rows:
-        rows.append((
-            torch.zeros(13 * cfg.board_size * cfg.board_size),
-            torch.zeros(64),
-            torch.ones(376),
-            torch.full((376,), 1.0 / 376),
-            torch.tensor(0.0),
-        ))
+        rows.append(
+            (
+                torch.zeros(13 * cfg.board_size * cfg.board_size),
+                torch.zeros(64),
+                torch.ones(376),
+                torch.full((376,), 1.0 / 376),
+                torch.tensor(0.0),
+            )
+        )
     spatial = torch.stack([r[0] for r in rows])
     vector = torch.stack([r[1] for r in rows])
     mask = torch.stack([r[2] for r in rows])
@@ -199,30 +208,34 @@ def run(cfg: ValidationConfig) -> int:
     monitoring.run_name = monitoring.run_name or "validate_convergence"
 
     with MLflowLogger.from_config(monitoring) as ml:
-        ml.log_params({
-            "iterations": cfg.iterations,
-            "games_per_iter": cfg.games_per_iter,
-            "epochs_per_iter": cfg.epochs_per_iter,
-            "max_turns": cfg.max_turns,
-            "board_size": cfg.board_size,
-            "num_res_blocks": cfg.num_res_blocks,
-            "num_filters": cfg.num_filters,
-            "learning_rate": cfg.learning_rate,
-            "device": cfg.device,
-        })
+        ml.log_params(
+            {
+                "iterations": cfg.iterations,
+                "games_per_iter": cfg.games_per_iter,
+                "epochs_per_iter": cfg.epochs_per_iter,
+                "max_turns": cfg.max_turns,
+                "board_size": cfg.board_size,
+                "num_res_blocks": cfg.num_res_blocks,
+                "num_filters": cfg.num_filters,
+                "learning_rate": cfg.learning_rate,
+                "device": cfg.device,
+            }
+        )
 
         global_step = 0
         for it in range(cfg.iterations):
             logger.info("=== iteration %d/%d ===", it + 1, cfg.iterations)
             data = _build_synthetic_trajectories(model, cfg, device)
-            loader = DataLoader(
-                data, batch_size=min(32, len(data)), shuffle=True
-            )
+            loader = DataLoader(data, batch_size=min(32, len(data)), shuffle=True)
 
             avg_total = avg_policy = avg_value = 0.0
             for _ep in range(cfg.epochs_per_iter):
                 total_l, policy_l, value_l, n_batches = train_epoch(
-                    model, loader, optimizer, device, global_step=global_step,
+                    model,
+                    loader,
+                    optimizer,
+                    device,
+                    global_step=global_step,
                 )
                 global_step += n_batches
                 avg_total += total_l / cfg.epochs_per_iter
@@ -239,15 +252,20 @@ def run(cfg: ValidationConfig) -> int:
             win_rate = _evaluate_vs_random(model, cfg, device)
             iteration_win_rates.append(win_rate)
 
-            ml.log_metrics({
-                "validation/policy_loss": avg_policy,
-                "validation/value_loss": avg_value,
-                "validation/total_loss": avg_total,
-                "validation/win_rate_vs_random": win_rate,
-            }, step=it)
+            ml.log_metrics(
+                {
+                    "validation/policy_loss": avg_policy,
+                    "validation/value_loss": avg_value,
+                    "validation/total_loss": avg_total,
+                    "validation/win_rate_vs_random": win_rate,
+                },
+                step=it,
+            )
             logger.info(
                 "  policy_loss=%.4f value_loss=%.4f win_rate=%.1f%%",
-                avg_policy, avg_value, win_rate * 100,
+                avg_policy,
+                avg_value,
+                win_rate * 100,
             )
 
         # Convergence gates.
@@ -262,25 +280,31 @@ def run(cfg: ValidationConfig) -> int:
             first = sum(iteration_losses[: n // 2]) / max(n // 2, 1)
             second = sum(iteration_losses[n // 2 :]) / max(n - n // 2, 1)
             ok_loss = second <= first * 1.05
-            ml.log_metrics({
-                "validation/loss_first_half": first,
-                "validation/loss_second_half": second,
-                "validation/loss_ratio": second / max(first, 1e-8),
-            })
+            ml.log_metrics(
+                {
+                    "validation/loss_first_half": first,
+                    "validation/loss_second_half": second,
+                    "validation/loss_ratio": second / max(first, 1e-8),
+                }
+            )
         ok_wr = True
         if len(iteration_win_rates) >= 4:
             ok_wr = iteration_win_rates[-1] >= iteration_win_rates[0] - 0.05
-            ml.log_metrics({
-                "validation/win_rate_first": iteration_win_rates[0],
-                "validation/win_rate_last": iteration_win_rates[-1],
-            })
+            ml.log_metrics(
+                {
+                    "validation/win_rate_first": iteration_win_rates[0],
+                    "validation/win_rate_last": iteration_win_rates[-1],
+                }
+            )
 
         ml.set_tag("validation/result", "PASS" if (ok_loss and ok_wr) else "FAIL")
         if ok_loss and ok_wr:
             logger.info("convergence validation PASSED")
             return 0
         logger.error(
-            "convergence validation FAILED (ok_loss=%s, ok_wr=%s)", ok_loss, ok_wr,
+            "convergence validation FAILED (ok_loss=%s, ok_wr=%s)",
+            ok_loss,
+            ok_wr,
         )
         return 1
 
@@ -303,10 +327,16 @@ def parse_args() -> ValidationConfig:
     p.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
     a = p.parse_args()
     return ValidationConfig(
-        iterations=a.iterations, games_per_iter=a.games, epochs_per_iter=a.epochs,
-        eval_games=a.eval_games, max_turns=a.max_turns, board_size=a.board_size,
-        num_res_blocks=a.num_res_blocks, num_filters=a.num_filters,
-        learning_rate=a.learning_rate, device=a.device,
+        iterations=a.iterations,
+        games_per_iter=a.games,
+        epochs_per_iter=a.epochs,
+        eval_games=a.eval_games,
+        max_turns=a.max_turns,
+        board_size=a.board_size,
+        num_res_blocks=a.num_res_blocks,
+        num_filters=a.num_filters,
+        learning_rate=a.learning_rate,
+        device=a.device,
     )
 
 

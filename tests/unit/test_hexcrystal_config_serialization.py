@@ -1,4 +1,4 @@
-﻿"""Serialization contract for the hexcrystal configuration objects.
+"""Serialization contract for the hexcrystal configuration objects.
 
 ``HexEncoderConfig`` is the schema behind the published ``config.json``, so its
 round-trip behaviour is a compatibility surface, not an implementation detail.
@@ -7,7 +7,7 @@ JSON form contains only primitives, and a config written by a future version
 (carrying fields this version does not know) still loads.
 
 ``SymmetryType`` is covered here too because it is the one enum in the stack, and
-the crystalline layer accepts either the enum or its string value ΓÇö a JSON round
+the crystalline layer accepts either the enum or its string value — a JSON round
 trip must not change which layer you get.
 """
 
@@ -76,7 +76,7 @@ def test_json_round_trip_is_lossless() -> None:
 
 
 def test_to_json_emits_a_flat_object() -> None:
-    """The JSON form is a flat object ΓÇö required for a hub ``config.json``."""
+    """The JSON form is a flat object — required for a hub ``config.json``."""
     payload = json.loads(HexEncoderConfig().to_json())
 
     assert isinstance(payload, dict)
@@ -138,7 +138,7 @@ def test_symmetry_type_survives_json_round_trip(symmetry: SymmetryType) -> None:
 def test_config_drives_an_equivalent_encoder_after_round_trip() -> None:
     """A round-tripped config builds a structurally identical encoder.
 
-    Equality of the dataclass is necessary but not sufficient ΓÇö this asserts the
+    Equality of the dataclass is necessary but not sufficient — this asserts the
     config is actually *sufficient* to rebuild the module.
     """
     original = HexEncoderConfig(in_channels=13, spatial_size=8, embed_dim=64, num_output_tokens=4)

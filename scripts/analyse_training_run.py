@@ -579,7 +579,7 @@ def main(argv: list[str] | None = None) -> int:
     print("--- Policy Loss ---")
     print(f"  First -> Last : {policy.first_loss:.4f} -> {policy.last_loss:.4f}")
     print(
-        f"  Reduction    : {policy.total_reduction:.4f} ({policy.total_reduction/policy.first_loss*100:.1f}%)"
+        f"  Reduction    : {policy.total_reduction:.4f} ({policy.total_reduction / policy.first_loss * 100:.1f}%)"
     )
     print(f"  Slope        : {policy.slope:.6f}  R²={policy.r_squared:.4f}")
     print(

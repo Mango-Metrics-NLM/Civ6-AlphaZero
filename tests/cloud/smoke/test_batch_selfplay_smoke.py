@@ -33,7 +33,10 @@ def test_selfplay_worker_batch_dry_run(tmp_path):
 
     result = subprocess.run(
         [
-            sys.executable, "-u", "-m", "alpha_zero.cloud.gcp.selfplay_worker",
+            sys.executable,
+            "-u",
+            "-m",
+            "alpha_zero.cloud.gcp.selfplay_worker",
             "--dry_run",
             "--worker_id=0",
             "--model_version=1",
@@ -52,6 +55,4 @@ def test_selfplay_worker_batch_dry_run(tmp_path):
         timeout=110,
         env=env,
     )
-    assert result.returncode == 0, (
-        f"stderr:\n{result.stderr}\nstdout:\n{result.stdout}"
-    )
+    assert result.returncode == 0, f"stderr:\n{result.stderr}\nstdout:\n{result.stdout}"

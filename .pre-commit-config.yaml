@@ -1,23 +1,66 @@
+# Install with `make hooks-install` (installs both pre-commit and pre-push stages).
+# The mutating hooks (whitespace, EOF, ruff) are scoped to the maintained code
+# paths that CI keeps clean: alpha_zero/, tests/, scripts/, infra/, and root
+# *.py runners (widened 2026-07-25 by the harden-lint-and-type-gates change;
+# unmaintained fringe dirs are excluded centrally via [tool.ruff]
+# extend-exclude + force-exclude in pyproject.toml).
+# kb/handoffs/ is excluded because those files are immutable once created.
+default_install_hook_types: [pre-commit, pre-push]
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.5.0
     hooks:
+      # `&maintained`: the code paths CI keeps clean. Anchored here (not as a
+      # global `files:` default, which would AND with the local hooks' own
+      # patterns and disable them) and aliased onto the other mutating hooks.
       - id: trailing-whitespace
+        files: &maintained '^(alpha_zero/|tests/|scripts/|infra/|[^/]+\.py$)'
+        exclude: ^kb/handoffs/
       - id: end-of-file-fixer
+        files: *maintained
+        exclude: ^kb/handoffs/
       - id: check-yaml
+        args: ["--allow-multiple-documents"]  # k8s manifests use --- separators
       - id: check-added-large-files
         args: ["--maxkb=1000"]
       - id: check-merge-conflict
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.1.9
+    rev: v0.15.8
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
+        files: *maintained
       - id: ruff-format
+        files: *maintained
 
   - repo: local
     hooks:
+      - id: validate-openspec
+        name: validate openspec
+        entry: python scripts/validate_openspec.py
+        language: system
+        files: ^openspec/
+        pass_filenames: false
+      - id: validate-kb
+        name: validate kb
+        entry: python scripts/validate_kb.py
+        language: system
+        files: ^kb/
+        pass_filenames: false
+      - id: validate-skills
+        name: validate skills
+        entry: python scripts/validate_skills.py
+        language: system
+        files: ^\.claude/skills/
+        pass_filenames: false
+      - id: check-doc-sync
+        name: check doc sync
+        entry: python scripts/check_doc_sync.py
+        language: system
+        files: ^(README\.md|CLAUDE\.md|CONTRIBUTING\.md|docs/|pyproject\.toml|alpha_zero/__init__\.py|setup\.py|CHANGELOG\.md)
+        pass_filenames: false
       - id: pytest-check
         name: pytest quick check
         entry: pytest tests/unit/ -x -q --tb=no

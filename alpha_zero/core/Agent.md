@@ -28,7 +28,7 @@ This module provides the core AlphaZero building blocks:
 | **Factory** | `mcts_factory.py`, `network_heads.py` — HeadFactory | Create MCTS/network variants from config |
 | **Protocol** | `protocols.py` — NetworkProtocol; `losses.py` — AlphaZeroNetworkProtocol, MuZeroNetworkProtocol; `civ6_mcts.py` — MuZeroNetworkProtocol | Structural typing for network contracts at multiple levels |
 | **Composite** | `civ6_network.py` — encoder + heads assembled via config | Network built from composable spatial encoder, policy head, value head |
-| **Registry** | `encoder_registry.py` | Register and look up state encoders by name |
+| **Registry** | `encoder_registry.py` (re-export shim; implementation in `alpha_zero/hexcrystal/`) | Register and look up state encoders by name |
 | **Builder** | `civ6_network.py` — `NetworkConfig` dataclass → network construction | Config-driven network assembly |
 | **Mixin** | `mixins.py` | Reusable behaviors mixed into network classes |
 | **Template Method** | MCTS `search()` → `_select_simulation_action()` → `_expand_leaf()`/`_expand_node()` → `_backpropagate()` | Fixed search skeleton with variant-specific steps |
@@ -48,8 +48,7 @@ This module provides the core AlphaZero building blocks:
 | `network_heads.py` | MLPHead, HeadFactory, SpatialPreprocessor |
 | `protocols.py` | Protocol classes for type-safe network contracts |
 | `config.py` | Core configuration dataclasses |
-| `hex_conv.py`, `hex_encoder.py` | Hexagonal convolution for Civ6 hex grids |
-| `crystalline_layers.py` | Advanced neural network layers |
+| `hex_conv.py`, `hex_encoder.py`, `crystalline_layers.py`, `encoder_registry.py` | Re-export shims only — the implementation moved to `alpha_zero/hexcrystal/` (torch-only, standalone-reusable). Import from either path; both resolve to the same objects. |
 | `batch_mcts.py` | Batched MCTS for throughput optimization |
 | `action_pruning.py` | Intelligent action space reduction |
 | `mcts_constants.py` | Shared MCTS hyperparameter defaults |

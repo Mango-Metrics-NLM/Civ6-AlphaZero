@@ -24,7 +24,7 @@ import logging
 import math
 import sys
 import time
-from typing import Any
+from typing import Any, cast
 
 import torch
 
@@ -33,7 +33,7 @@ try:
 
     _PSUTIL_AVAILABLE = True
 except ImportError:
-    psutil = None
+    psutil = None  # type: ignore[assignment]
     _PSUTIL_AVAILABLE = False
 
 from alpha_zero.cloud.gcp.config import (
@@ -214,19 +214,9 @@ def load_model(
         # Handle enum conversions if needed
         config_copy = model_config_dict.copy()
 
-        # Convert string enums to actual enum values
-        if "norm_type" in config_copy and isinstance(config_copy["norm_type"], str):
-            from alpha_zero.core.transformer_network import NormType
-
-            config_copy["norm_type"] = NormType(config_copy["norm_type"])
-        if "attention_type" in config_copy and isinstance(config_copy["attention_type"], str):
-            from alpha_zero.core.transformer_network import AttentionType
-
-            config_copy["attention_type"] = AttentionType(config_copy["attention_type"])
-
-        # Remove computed fields that shouldn't be passed to constructor
-        config_copy.pop("_num_patches", None)
-        config_copy.pop("_head_dim", None)
+        # Enum re-hydration and dropping the init=False derived fields is shared
+        # with the other checkpoint readers; see TransformerConfig.from_saved_dict.
+        config_copy = TransformerConfig.normalize_saved_dict(config_copy)
 
         try:
             transformer_config = TransformerConfig(**config_copy)
@@ -273,6 +263,17 @@ def load_model(
             logger.warning("Missing keys in state_dict: %s", incompatible.missing_keys[:5])
         if incompatible.unexpected_keys:
             logger.warning("Unexpected keys in state_dict: %s", incompatible.unexpected_keys[:5])
+
+        # Detect silently cross-loaded encoder weights (PR #107 follow-up).
+        from alpha_zero.utils.checkpoint import validate_encoder_state
+
+        expected_encoder = getattr(transformer_config, "encoder_type", "patch_embed")
+        validate_encoder_state(
+            model,
+            expected_encoder,
+            checkpoint_keys=state_dict.keys(),
+            strict=False,  # warn, don't crash — operator decides
+        )
 
     except RuntimeError as e:
         if "size mismatch" in str(e):
@@ -385,6 +386,19 @@ def load_muzero_model(
                 "Unexpected keys in MuZero state_dict: %s",
                 incompatible.unexpected_keys[:5],
             )
+
+        # MuZero uses CNN, not hex encoder — but still validate that encoder
+        # weights were actually loaded, not left randomly initialised.
+        from alpha_zero.utils.checkpoint import classify_encoder_keys, validate_encoder_state
+
+        ckpt_encoder = classify_encoder_keys(state_dict.keys())
+        validate_encoder_state(
+            model,
+            ckpt_encoder,
+            checkpoint_keys=state_dict.keys(),
+            strict=False,  # warn, don't crash
+        )
+
     except RuntimeError as e:
         if "size mismatch" in str(e):
             logger.error(
@@ -444,6 +458,7 @@ def run_selfplay(
     device: str = "cpu",
     temperature_schedule: str = "threshold",
     gameplay_preset: str = "default",
+    seed: int | None = None,
 ) -> list[dict]:
     """Run self-play games and collect trajectories.
 
@@ -459,6 +474,15 @@ def run_selfplay(
             (c_puct, dirichlet_alpha, dirichlet_epsilon, temperature, temperature_threshold).
         dry_run: If True, create dummy trajectories without running games.
         device: Device for neural network inference (e.g., "cuda" or "cpu").
+        seed: Base seed for environment generation. Each game ``i`` is seeded
+            with ``seed + i``, so a run is reproducible while games still
+            differ from one another. ``None`` (the default) leaves environments
+            unseeded, preserving historical behavior.
+
+            Note that seeding the global RNGs is not sufficient on its own:
+            ``MicroCivEnv`` holds its own ``numpy`` generator, so without this
+            argument the game stream varies between runs even under a fixed
+            global seed.
 
     Returns:
         List of trajectory dictionaries, each containing:
@@ -519,6 +543,7 @@ def run_selfplay(
             board_size=board_size,
             max_turns=max_turns,
             gameplay_preset=gameplay_preset,
+            seed=None if seed is None else seed + game_idx,
         )
 
         # Build variant-aware MCTS kwargs to avoid passing invalid params
@@ -923,6 +948,7 @@ def run_batch_selfplay(
     import numpy as np
 
     from alpha_zero.core.batch_mcts import BatchGumbelMCTS, BatchMCTSConfig
+    from alpha_zero.core.civ6_mcts import MCTSNetwork
     from alpha_zero.envs.vectorized_env import VectorizedEnvConfig, VectorizedMicroCivEnv
 
     logger.info(
@@ -950,7 +976,9 @@ def run_batch_selfplay(
         num_parallel_envs=num_parallel_games,
     )
     batch_mcts = BatchGumbelMCTS(
-        network=model,
+        # ``model`` is typed as a generic nn.Module; the concrete networks
+        # implement the MCTSNetwork protocol (predict/eval) at runtime.
+        network=cast(MCTSNetwork, model),
         config=mcts_config,
         device=device,
     )
@@ -1143,7 +1171,8 @@ def main() -> int:
         args.board_size,
     )
 
-    # Initialize W&B (disabled by default, opt-in via WANDB_ENABLED env var)
+    # Initialize tracking (disabled by default; opt-in via CIV6AZ_MLFLOW_ENABLED /
+    # MLFLOW_ENABLED, legacy WANDB_ENABLED honored)
     wandb_logger = None
     try:
         from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger

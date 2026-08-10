@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 def fetch_logs(job_id: str, page_size: int = 50) -> int:
     """Print log lines (chronological) for ``job_id``. Returns entry count."""
-    import requests  # noqa: PLC0415
+    import requests
 
     body = {
         "resourceNames": [f"projects/{PROJECT}"],

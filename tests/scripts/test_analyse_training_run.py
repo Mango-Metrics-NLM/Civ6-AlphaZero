@@ -138,15 +138,11 @@ class TestAnalysePolicyLoss:
         assert len(result.smoothed) == len(values)
         assert all(math.isfinite(v) for v in result.smoothed)
 
-    def test_single_data_point(
-        self, mock_mlflow_client: MagicMock, sample_run_id: str
-    ) -> None:
+    def test_single_data_point(self, mock_mlflow_client: MagicMock, sample_run_id: str) -> None:
         """Single data point must be handled gracefully without raising."""
         mock_mlflow_client.get_metric_history.return_value = make_metric_history([0.5])
 
-        result: PolicyLossTrend = analyse_policy_loss(
-            mock_mlflow_client, sample_run_id
-        )
+        result: PolicyLossTrend = analyse_policy_loss(mock_mlflow_client, sample_run_id)
 
         assert len(result.iterations) == 1
         assert math.isfinite(result.slope)
@@ -154,8 +150,8 @@ class TestAnalysePolicyLoss:
     @pytest.mark.parametrize(
         ("threshold", "values", "expected_converged"),
         [
-            (0.001, [1.0, 0.5, 0.1, 0.05, 0.02], False),   # steep decline
-            (1.0,   [1.0, 0.5, 0.1, 0.05, 0.02], True),    # very lax threshold
+            (0.001, [1.0, 0.5, 0.1, 0.05, 0.02], False),  # steep decline
+            (1.0, [1.0, 0.5, 0.1, 0.05, 0.02], True),  # very lax threshold
             # The 4-point tail [0.5001, 0.5, 0.4999, 0.5] has |slope| ~4e-5 < 0.0001 → converged
             (0.0001, [0.5001, 0.5000, 0.4999, 0.5000], True),  # tiny slope within threshold
         ],
@@ -224,9 +220,7 @@ class TestAnalyseValueStability:
         values = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35]
         mock_mlflow_client.get_metric_history.return_value = make_metric_history(values)
 
-        result: ValueHeadStability = analyse_value_stability(
-            mock_mlflow_client, sample_run_id
-        )
+        result: ValueHeadStability = analyse_value_stability(mock_mlflow_client, sample_run_id)
 
         # CV = std/mean; for tightly spaced ascending values this should be < 1
         assert result.cv < 1.0
@@ -239,9 +233,7 @@ class TestAnalyseValueStability:
         values = [0.1, 0.2, 0.3, 0.4, 0.5]
         mock_mlflow_client.get_metric_history.return_value = make_metric_history(values)
 
-        result: ValueHeadStability = analyse_value_stability(
-            mock_mlflow_client, sample_run_id
-        )
+        result: ValueHeadStability = analyse_value_stability(mock_mlflow_client, sample_run_id)
 
         assert result.monotone_increasing is True
 
@@ -252,9 +244,7 @@ class TestAnalyseValueStability:
         values = [0.01, 10.0, 0.01, 10.0, 0.01, 10.0]
         mock_mlflow_client.get_metric_history.return_value = make_metric_history(values)
 
-        result: ValueHeadStability = analyse_value_stability(
-            mock_mlflow_client, sample_run_id
-        )
+        result: ValueHeadStability = analyse_value_stability(mock_mlflow_client, sample_run_id)
 
         # CV should be considerably > 1 for such variance
         assert result.cv > 0.5
@@ -266,9 +256,7 @@ class TestAnalyseValueStability:
         values = [0.1, 0.2, 0.15, 0.3]  # 0.15 < 0.2 → not monotone
         mock_mlflow_client.get_metric_history.return_value = make_metric_history(values)
 
-        result: ValueHeadStability = analyse_value_stability(
-            mock_mlflow_client, sample_run_id
-        )
+        result: ValueHeadStability = analyse_value_stability(mock_mlflow_client, sample_run_id)
 
         assert result.monotone_increasing is False
 
@@ -281,9 +269,7 @@ class TestAnalyseValueStability:
         values = [1.0, 2.0, 3.0, 4.0, 5.0]
         mock_mlflow_client.get_metric_history.return_value = make_metric_history(values)
 
-        result: ValueHeadStability = analyse_value_stability(
-            mock_mlflow_client, sample_run_id
-        )
+        result: ValueHeadStability = analyse_value_stability(mock_mlflow_client, sample_run_id)
 
         expected_mean = float(np.mean(values))
         expected_std = float(np.std(values))
@@ -298,22 +284,16 @@ class TestAnalyseValueStability:
         values = [2.0, 3.0, 4.0, 5.0]
         mock_mlflow_client.get_metric_history.return_value = make_metric_history(values)
 
-        result: ValueHeadStability = analyse_value_stability(
-            mock_mlflow_client, sample_run_id
-        )
+        result: ValueHeadStability = analyse_value_stability(mock_mlflow_client, sample_run_id)
 
         expected_cv = result.std / result.mean if result.mean != 0 else 0.0
         assert abs(result.cv - expected_cv) < 1e-6
 
-    def test_single_point_graceful(
-        self, mock_mlflow_client: MagicMock, sample_run_id: str
-    ) -> None:
+    def test_single_point_graceful(self, mock_mlflow_client: MagicMock, sample_run_id: str) -> None:
         """Single data point must not raise and std must be 0."""
         mock_mlflow_client.get_metric_history.return_value = make_metric_history([0.42])
 
-        result: ValueHeadStability = analyse_value_stability(
-            mock_mlflow_client, sample_run_id
-        )
+        result: ValueHeadStability = analyse_value_stability(mock_mlflow_client, sample_run_id)
 
         assert result.std == 0.0 or math.isfinite(result.std)
 
@@ -372,9 +352,7 @@ class TestBuildTrainingSummary:
         sample_run_id: str,
     ) -> None:
         """build_training_summary must return a plain dict."""
-        result = build_training_summary(
-            sample_policy_trend, sample_value_stability, sample_run_id
-        )
+        result = build_training_summary(sample_policy_trend, sample_value_stability, sample_run_id)
 
         assert isinstance(result, dict)
 
@@ -385,9 +363,7 @@ class TestBuildTrainingSummary:
         sample_run_id: str,
     ) -> None:
         """Summary dict must contain expected top-level keys."""
-        result = build_training_summary(
-            sample_policy_trend, sample_value_stability, sample_run_id
-        )
+        result = build_training_summary(sample_policy_trend, sample_value_stability, sample_run_id)
 
         # build_training_summary uses "policy_loss" and "value_loss" as sub-dict keys
         expected_keys = {"run_id", "policy_loss", "value_loss"}
@@ -402,9 +378,7 @@ class TestBuildTrainingSummary:
         sample_run_id: str,
     ) -> None:
         """Policy sub-dictionary must include slope and converged fields."""
-        result = build_training_summary(
-            sample_policy_trend, sample_value_stability, sample_run_id
-        )
+        result = build_training_summary(sample_policy_trend, sample_value_stability, sample_run_id)
 
         # build_training_summary uses "policy_loss" key
         policy_section = result.get("policy_loss", result)
@@ -422,9 +396,7 @@ class TestBuildTrainingSummary:
         sample_run_id: str,
     ) -> None:
         """The run_id passed in must be present in the returned summary."""
-        result = build_training_summary(
-            sample_policy_trend, sample_value_stability, sample_run_id
-        )
+        result = build_training_summary(sample_policy_trend, sample_value_stability, sample_run_id)
 
         assert result.get("run_id") == sample_run_id
 
@@ -462,9 +434,7 @@ class TestBuildTrainingSummary:
         """Summary dict must be JSON-serialisable (no numpy scalars etc.)."""
         import json
 
-        result = build_training_summary(
-            sample_policy_trend, sample_value_stability, sample_run_id
-        )
+        result = build_training_summary(sample_policy_trend, sample_value_stability, sample_run_id)
 
         # Should not raise
         json.dumps(result)

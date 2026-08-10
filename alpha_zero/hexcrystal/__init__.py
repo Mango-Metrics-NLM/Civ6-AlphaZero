@@ -1,4 +1,4 @@
-"""Hex-topology spatial encoders ΓÇö a torch-only, standalone-reusable subpackage.
+"""Hex-topology spatial encoders — a torch-only, standalone-reusable subpackage.
 
 This package implements a spatial encoder for hexagonal game boards represented
 on a rectangular grid, plus the encoder registry that selects between it and the
@@ -7,7 +7,7 @@ conventional Vision-Transformer patch embedding.
 **Dependency contract.** Everything in this package depends on ``torch`` and the
 Python standard library and nothing else. It deliberately does not import numpy,
 gymnasium, or any other part of ``alpha_zero``, so it can be vendored or reused
-outside this repository ΓÇö for hex-lattice problems in games, telescope arrays, or
+outside this repository — for hex-lattice problems in games, telescope arrays, or
 molecular grids. ``tests/unit/test_hexcrystal_isolation.py`` enforces this by
 importing the package in a subprocess with numpy and gymnasium blocked.
 

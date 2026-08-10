@@ -166,7 +166,7 @@ def _patch_factories(mocks):
         patch(f"{MOD}.create_curriculum_manager", return_value=mocks["curriculum"]),
         patch(f"{MOD}.create_reward_shaper", return_value=mocks["reward_shaper"]),
         patch(f"{MOD}.create_llm_client", return_value=None),
-        patch(f"{MOD}.create_wandb_logger", return_value=None),
+        patch(f"{MOD}.create_mlflow_logger", return_value=None),
         patch(f"{MOD}.CheckpointManager", return_value=mocks["checkpointer"]),
     ):
         yield
@@ -307,7 +307,7 @@ class TestPaddedEnvironmentWrapper:
             "action_mask": np.ones(20, dtype=np.float32),
         }
         small_env.reset.return_value = (small_obs, {})
-        obs, info = wrapper.reset()
+        obs, _info = wrapper.reset()
         assert obs["spatial"].shape == (13, 8, 8)
         assert obs["action_mask"].shape == (40,)
 
@@ -318,7 +318,7 @@ class TestPaddedEnvironmentWrapper:
             "action_mask": np.ones(20, dtype=np.float32),
         }
         small_env.reset.return_value = small_obs
-        obs, info = wrapper.reset()
+        obs, _info = wrapper.reset()
         assert obs["spatial"].shape == (13, 8, 8)
 
     def test_step_pads_obs(self, wrapper, small_env):
@@ -326,7 +326,7 @@ class TestPaddedEnvironmentWrapper:
             "spatial": np.zeros((13, 4, 4), dtype=np.float32),
         }
         small_env.step.return_value = (small_obs, 1.0, True, False, {})
-        obs, reward, terminated, truncated, info = wrapper.step(0)
+        obs, _reward, _terminated, _truncated, _info = wrapper.step(0)
         assert obs["spatial"].shape == (13, 8, 8)
 
     def test_clone_returns_wrapper(self, wrapper, small_env):
@@ -463,20 +463,20 @@ class TestCheckpointManagement:
         mocks["checkpointer"].save_final.assert_called_once()
 
     def test_cleanup_closes_rag(self, orchestrator):
-        orch, mocks = orchestrator
+        orch, _mocks = orchestrator
         mock_rag = MagicMock()
         orch._rag = mock_rag
         orch.state.start_time = 0.0
         orch._cleanup()
         mock_rag.close.assert_called_once()
 
-    def test_cleanup_finishes_wandb(self, orchestrator):
-        orch, mocks = orchestrator
-        mock_wandb = MagicMock()
-        orch._wandb_logger = mock_wandb
+    def test_cleanup_finishes_tracker(self, orchestrator):
+        orch, _mocks = orchestrator
+        mock_tracker = MagicMock()
+        orch._mlflow_logger = mock_tracker
         orch.state.start_time = 0.0
         orch._cleanup()
-        mock_wandb.finish.assert_called_once()
+        mock_tracker.finish.assert_called_once()
 
     def test_cleanup_without_network_noop(self, orchestrator):
         orch, mocks = orchestrator
@@ -729,34 +729,34 @@ class TestStrategyAnalysis:
 
 
 class TestLogIteration:
-    def test_wandb_logger_called(self, orchestrator):
+    def test_tracker_log_iteration_called(self, orchestrator):
         orch, _ = orchestrator
-        mock_wandb = MagicMock()
-        orch._wandb_logger = mock_wandb
+        mock_tracker = MagicMock()
+        orch._mlflow_logger = mock_tracker
         orch._scheduler = MagicMock()
         orch._scheduler.get_learning_rate.return_value = 0.001
         orch._scheduler.get_batch_size.return_value = 32
 
         results = [GameResult(trajectory=[], winner=1, total_reward=1.0, turns=5)]
         orch._log_iteration(0, results, {"total_loss": 0.5}, 1.0)
-        mock_wandb.log.assert_called_once()
+        mock_tracker.log_iteration.assert_called_once()
 
-    def test_no_wandb_no_crash(self, orchestrator):
+    def test_no_tracker_no_crash(self, orchestrator):
         orch, _ = orchestrator
-        orch._wandb_logger = None
+        orch._mlflow_logger = None
         results = [GameResult(trajectory=[], winner=0, total_reward=0.0, turns=1)]
         orch._log_iteration(0, results, {}, 0.5)
 
     def test_empty_game_results(self, orchestrator):
         orch, _ = orchestrator
-        orch._wandb_logger = None
+        orch._mlflow_logger = None
         orch._log_iteration(0, [], {}, 0.5)  # Should not raise
 
     def test_win_rate_computed_correctly(self, orchestrator):
-        """W&B log call should include correct win_rate."""
+        """The tracker's game metrics must include the correct win_rate."""
         orch, _ = orchestrator
-        mock_wandb = MagicMock()
-        orch._wandb_logger = mock_wandb
+        mock_tracker = MagicMock()
+        orch._mlflow_logger = mock_tracker
         orch._scheduler = MagicMock()
         orch._scheduler.get_learning_rate.return_value = 0.001
         orch._scheduler.get_batch_size.return_value = 32
@@ -766,8 +766,8 @@ class TestLogIteration:
             GameResult(trajectory=[], winner=-1, total_reward=-1.0, turns=1),
         ]
         orch._log_iteration(0, results, {}, 0.1)
-        logged = mock_wandb.log.call_args[0][0]
-        assert logged["win_rate"] == pytest.approx(0.5)
+        game_metrics = mock_tracker.log_iteration.call_args.kwargs["game_metrics"]
+        assert game_metrics["game/win_rate"] == pytest.approx(0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -967,3 +967,39 @@ class TestEvaluate:
             metrics = orch._evaluate()
         assert "avg_reward" in metrics
         assert metrics["avg_reward"] == pytest.approx(2.0)
+
+
+# ---------------------------------------------------------------------------
+# _require() initialization guard (replaces bare asserts; -O safe)
+# ---------------------------------------------------------------------------
+
+
+class TestRequireGuard:
+    """The _require() helper hardens the old ``assert self._x is not None`` guards."""
+
+    def test_require_passes_through_non_none(self, tmp_path, mocks):
+        config = _make_config(tmp_path)
+        with _patch_factories(mocks):
+            orch = TrainingOrchestrator(config)
+        sentinel = object()
+        assert orch._require(sentinel, "thing") is sentinel
+
+    def test_require_raises_runtimeerror_when_none(self, tmp_path, mocks):
+        config = _make_config(tmp_path)
+        with _patch_factories(mocks):
+            orch = TrainingOrchestrator(config)
+        with pytest.raises(RuntimeError, match=r"network.*not initialized"):
+            orch._require(orch._network, "network")
+
+    def test_entry_method_raises_clear_error_before_setup(self, tmp_path, mocks):
+        """A method needing components must raise RuntimeError (not AttributeError).
+
+        Pre-``initialize()`` the components are ``None``; the old ``assert`` would be
+        stripped under ``python -O`` and surface as an opaque ``AttributeError``.
+        """
+        config = _make_config(tmp_path)
+        with _patch_factories(mocks):
+            orch = TrainingOrchestrator(config)
+        # _resume_from_checkpoint() guards _checkpointer/_network/_optimizer/_scheduler.
+        with pytest.raises(RuntimeError, match="not initialized; call initialize"):
+            orch._resume_from_checkpoint()

@@ -10,8 +10,16 @@ AlphaZeroFileIO = AlphaZeroFileIO or {}
 
 local Log = nil  -- Will be set after Logger loads
 
--- Cross-platform path separator
-local PATH_SEP = package.config and package.config:sub(1, 1) or "/"
+-- Default path separator (fallback only). AlphaZeroConfig detects the real
+-- separator from the resolved base path in Init() and stores it as
+-- currentConfig.PATH_SEP; getPathSep() below reuses that value so FileIO
+-- stays consistent with Config across platforms.
+local DEFAULT_PATH_SEP = "\\"
+
+-- Get the path separator to use, preferring the one detected by Config.
+local function getPathSep()
+    return (AlphaZeroConfig and AlphaZeroConfig.Get("PATH_SEP")) or DEFAULT_PATH_SEP
+end
 
 -- Track file content hashes for change detection
 local fileContentHashes = {}
@@ -57,6 +65,11 @@ end
 
 -- Ensure directory exists (cross-platform)
 local function ensureDirectory(path)
+    -- os.execute may be stripped in Civ6 sandbox; skip if unavailable
+    if not os or not os.execute then
+        return
+    end
+
     local safe, err = isPathSafe(path)
     if not safe then
         if Log then Log.Error("Security warning: %s: %s", err, path) end
@@ -64,17 +77,21 @@ local function ensureDirectory(path)
     end
 
     local safePath = shellEscape(path)
-    if PATH_SEP == "/" then
-        -- Unix/macOS
-        os.execute('mkdir -p "' .. safePath .. '" 2>/dev/null')
-    else
-        -- Windows
-        os.execute('mkdir "' .. safePath .. '" 2>nul')
+    local ok = pcall(function()
+        if getPathSep() == "/" then
+            os.execute('mkdir -p "' .. safePath .. '" 2>/dev/null')
+        else
+            os.execute('mkdir "' .. safePath .. '" 2>nul')
+        end
+    end)
+    if not ok then
+        print("[AlphaZero] FileIO: could not create directory (os.execute sandboxed)")
     end
 end
 
 -- Check if file exists
 local function fileExists(path)
+    if not io or not io.open then return false end
     local file = io.open(path, "r")
     if file then
         file:close()
@@ -93,6 +110,13 @@ function AlphaZeroFileIO.Init()
         Log = AlphaZeroLogger.CreateLogger("FileIO")
     end
 
+    -- Diagnostic: check io availability
+    if io and io.open then
+        print("[AlphaZero] FileIO: io.open is AVAILABLE")
+    else
+        print("[AlphaZero] FileIO: WARNING - io.open is NOT available, file I/O will fail")
+    end
+
     -- Load configurable max read size
     if AlphaZeroConfig then
         MAX_READ_BYTES = AlphaZeroConfig.Get("MAX_FILE_READ_BYTES") or MAX_READ_BYTES
@@ -102,12 +126,15 @@ function AlphaZeroFileIO.Init()
     local commDir = AlphaZeroConfig and AlphaZeroConfig.Get("COMM_DIR")
     if commDir then
         ensureDirectory(commDir)
-        if Log then Log.Info("Comm directory: %s", commDir) end
+        print("[AlphaZero] FileIO: Comm directory: " .. commDir)
     end
 end
 
 -- Read a file and return contents (with size limit)
 function AlphaZeroFileIO.Read(path)
+    if not io or not io.open then
+        return nil, "io not available in this Lua context"
+    end
     local file, err = io.open(path, "r")
     if not file then
         if Log then Log.Debug("Could not open file for reading: %s", path) end
@@ -131,6 +158,9 @@ end
 
 -- Write content to a file
 function AlphaZeroFileIO.Write(path, content)
+    if not io or not io.open then
+        return false, "io not available in this Lua context"
+    end
     local file, err = io.open(path, "w")
     if not file then
         if Log then Log.Error("Could not open file for writing: %s - %s", path, tostring(err)) end
@@ -151,6 +181,9 @@ end
 
 -- Append content to a file
 function AlphaZeroFileIO.Append(path, content)
+    if not io or not io.open then
+        return false, "io not available in this Lua context"
+    end
     local file, err = io.open(path, "a")
     if not file then
         if Log then Log.Error("Could not open file for appending: %s", path) end
@@ -169,8 +202,9 @@ end
 
 -- Delete a file
 function AlphaZeroFileIO.Delete(path)
-    local ok, err = os.remove(path)
-    if not ok and fileExists(path) then
+    if not os or not os.remove then return true, nil end
+    local ok, err = pcall(os.remove, path)
+    if not ok then
         if Log then Log.Warn("Could not delete file: %s", path) end
         return false, err
     end
@@ -240,147 +274,205 @@ function AlphaZeroFileIO.WriteJson(path, data, pretty)
 end
 
 -- Write state to state file
-function AlphaZeroFileIO.WriteState(state)
-    local path = AlphaZeroConfig and AlphaZeroConfig.Get("STATE_PATH")
-    if not path then
-        return false, "STATE_PATH not configured"
-    end
+-- ============================================================================
+-- Print-based IPC fallback (used when io.open is nil in Civ6 sandbox)
+-- Protocol: Lua prints "AZ_STATE:{json}" etc. to Lua.log
+--           Python tails Lua.log for these prefixed lines
+--           Python sets ExposedMembers.AlphaZeroCommand for commands
+-- ============================================================================
 
-    local ok, err = AlphaZeroFileIO.WriteJson(path, state, false)
-    if ok and Log then
-        Log.Info("State written: turn=%s, units=%d, cities=%d",
-            tostring(state.turn_id),
-            state.units and #state.units or 0,
-            state.cities and #state.cities or 0)
-    end
-    return ok, err
+local HAS_IO = (io ~= nil and io.open ~= nil)
+
+-- Safe timestamp helper (os.time may be stripped)
+local function safeTimestamp()
+    return (os and os.time) and os.time() or 0
 end
 
--- Read commands from commands file
+-- Get current game turn
+local function currentTurn()
+    return (Game and Game.GetCurrentGameTurn) and Game.GetCurrentGameTurn() or 0
+end
+
+function AlphaZeroFileIO.WriteState(state)
+    if not AlphaZeroJson then
+        return false, "JSON encoder not available"
+    end
+
+    local json, err = AlphaZeroJson.Encode(state, false)
+    if not json then
+        return false, err
+    end
+
+    if HAS_IO then
+        -- File-based IPC
+        local path = AlphaZeroConfig and AlphaZeroConfig.Get("STATE_PATH")
+        if not path then return false, "STATE_PATH not configured" end
+        return AlphaZeroFileIO.Write(path, json)
+    else
+        -- Print-based IPC fallback with chunking for large states
+        -- Lua.log truncates lines at ~4KB; split into 3500-char chunks
+        local MAX_CHUNK = 1800
+        local jsonLen = #json
+        if jsonLen <= MAX_CHUNK then
+            -- Small enough for a single line
+            print("AZ_STATE:" .. json)
+        else
+            -- Chunked output: AZ_STATE_CHUNK:seq/total:data
+            local totalChunks = math.ceil(jsonLen / MAX_CHUNK)
+            for i = 1, totalChunks do
+                local startPos = (i - 1) * MAX_CHUNK + 1
+                local endPos = math.min(i * MAX_CHUNK, jsonLen)
+                local chunk = json:sub(startPos, endPos)
+                print("AZ_STATE_CHUNK:" .. i .. "/" .. totalChunks .. ":" .. chunk)
+            end
+            print("AZ_STATE_END:" .. totalChunks)
+        end
+        return true, nil
+    end
+end
+
+-- Read commands from either file or ExposedMembers
 function AlphaZeroFileIO.ReadCommands()
-    local path = AlphaZeroConfig and AlphaZeroConfig.Get("COMMANDS_PATH")
-    if not path then
-        return nil, "COMMANDS_PATH not configured"
-    end
+    if HAS_IO then
+        -- File-based IPC
+        local path = AlphaZeroConfig and AlphaZeroConfig.Get("COMMANDS_PATH")
+        if not path then return nil, "COMMANDS_PATH not configured" end
+        if not AlphaZeroFileIO.HasChanged(path) then return nil, nil end
+        return AlphaZeroFileIO.ReadJson(path)
+    else
+        -- ExposedMembers-based IPC fallback
+        if ExposedMembers and ExposedMembers.AlphaZeroCommand then
+            local cmdJson = ExposedMembers.AlphaZeroCommand
+            ExposedMembers.AlphaZeroCommand = nil  -- Consume command
 
-    -- Check if file changed
-    if not AlphaZeroFileIO.HasChanged(path) then
-        return nil, nil  -- No new commands
+            if AlphaZeroJson and AlphaZeroJson.Decode then
+                local data, err = AlphaZeroJson.Decode(cmdJson)
+                if data then
+                    print("[AlphaZero] Command received via ExposedMembers")
+                    return data, nil
+                else
+                    return nil, "JSON decode error: " .. tostring(err)
+                end
+            end
+        end
+        return nil, nil  -- No commands available
     end
-
-    local data, err = AlphaZeroFileIO.ReadJson(path)
-    if err then
-        return nil, err
-    end
-
-    if data and Log then
-        Log.Info("Commands received: msg_id=%s, count=%d",
-            tostring(data.msg_id),
-            data.commands and #data.commands or 0)
-    end
-
-    return data, nil
 end
 
 -- Write acknowledgment
 function AlphaZeroFileIO.WriteAck(msgId, success, errorCode, errorMessage, executed)
-    local path = AlphaZeroConfig and AlphaZeroConfig.Get("ACK_PATH")
-    if not path then
-        return false, "ACK_PATH not configured"
-    end
-
     local ack = {
         msg_id = msgId,
-        timestamp = os.time(),
+        timestamp = safeTimestamp(),
         success = success,
         error_code = errorCode,
         error_message = errorMessage,
         executed = executed or {},
     }
 
-    local ok, err = AlphaZeroFileIO.WriteJson(path, ack, false)
-    if ok and Log then
-        Log.Debug("Ack written: msg_id=%d, success=%s", msgId, tostring(success))
+    if not AlphaZeroJson then return false, "JSON encoder not available" end
+    local json, err = AlphaZeroJson.Encode(ack, false)
+    if not json then return false, err end
+
+    if HAS_IO then
+        local path = AlphaZeroConfig and AlphaZeroConfig.Get("ACK_PATH")
+        if not path then return false, "ACK_PATH not configured" end
+        return AlphaZeroFileIO.Write(path, json)
+    else
+        -- Print-based fallback + ExposedMembers
+        print("AZ_ACK:" .. json)
+        if ExposedMembers then
+            ExposedMembers.AlphaZeroAck = json
+        end
+        return true, nil
     end
-    return ok, err
 end
 
 -- Write heartbeat
 function AlphaZeroFileIO.WriteHeartbeat()
-    local path = AlphaZeroConfig and AlphaZeroConfig.Get("HEARTBEAT_PATH")
-    if not path then
-        return false, "HEARTBEAT_PATH not configured"
-    end
-
     local heartbeat = {
-        timestamp = os.time(),
+        timestamp = safeTimestamp(),
         lua_alive = true,
-        turn = 0,
+        turn = currentTurn(),
     }
 
-    if Game then
-        heartbeat.turn = Game.GetCurrentGameTurn() or 0
-    end
+    if not AlphaZeroJson then return false, "JSON encoder not available" end
+    local json, err = AlphaZeroJson.Encode(heartbeat, false)
+    if not json then return false, err end
 
-    return AlphaZeroFileIO.WriteJson(path, heartbeat, false)
+    if HAS_IO then
+        local path = AlphaZeroConfig and AlphaZeroConfig.Get("HEARTBEAT_PATH")
+        if not path then return false, "HEARTBEAT_PATH not configured" end
+        return AlphaZeroFileIO.Write(path, json)
+    else
+        -- Print-based fallback + ExposedMembers
+        print("AZ_HB:" .. json)
+        if ExposedMembers then
+            ExposedMembers.AlphaZeroHeartbeat = json
+        end
+        return true, nil
+    end
 end
 
--- Write error to error file
+-- Write error
 function AlphaZeroFileIO.WriteError(code, message, context)
-    local path = AlphaZeroConfig and AlphaZeroConfig.Get("ERROR_PATH")
-    if not path then
-        return false, "ERROR_PATH not configured"
-    end
-
     local errorData = {
-        timestamp = os.time(),
+        timestamp = safeTimestamp(),
         code = code,
         message = message,
         context = context,
+        turn = currentTurn(),
     }
 
-    if Game then
-        errorData.turn = Game.GetCurrentGameTurn() or 0
-    end
+    if not AlphaZeroJson then return false, "JSON encoder not available" end
+    local json, err = AlphaZeroJson.Encode(errorData, false)
+    if not json then return false, err end
 
-    if not AlphaZeroJson then
-        return false, "JSON encoder not available"
+    if HAS_IO then
+        local path = AlphaZeroConfig and AlphaZeroConfig.Get("ERROR_PATH")
+        if not path then return false, "ERROR_PATH not configured" end
+        return AlphaZeroFileIO.Append(path, json .. "\n")
+    else
+        print("AZ_ERR:" .. json)
+        return true, nil
     end
-
-    -- Append to error file
-    local json, encodeErr = AlphaZeroJson.Encode(errorData, false)
-    if not json then
-        return false, encodeErr
-    end
-
-    return AlphaZeroFileIO.Append(path, json .. "\n")
 end
 
--- Clear all communication files
+-- Clear all communication files / ExposedMembers
 function AlphaZeroFileIO.ClearAll()
-    local files = {
-        AlphaZeroConfig and AlphaZeroConfig.Get("STATE_PATH"),
-        AlphaZeroConfig and AlphaZeroConfig.Get("COMMANDS_PATH"),
-        AlphaZeroConfig and AlphaZeroConfig.Get("ACK_PATH"),
-        AlphaZeroConfig and AlphaZeroConfig.Get("ERROR_PATH"),
-    }
-
-    for _, path in ipairs(files) do
-        if path then
-            AlphaZeroFileIO.Delete(path)
-            AlphaZeroFileIO.ResetChangeTracking(path)
+    if HAS_IO then
+        local files = {
+            AlphaZeroConfig and AlphaZeroConfig.Get("STATE_PATH"),
+            AlphaZeroConfig and AlphaZeroConfig.Get("COMMANDS_PATH"),
+            AlphaZeroConfig and AlphaZeroConfig.Get("ACK_PATH"),
+            AlphaZeroConfig and AlphaZeroConfig.Get("ERROR_PATH"),
+        }
+        for _, path in ipairs(files) do
+            if path then
+                AlphaZeroFileIO.Delete(path)
+                AlphaZeroFileIO.ResetChangeTracking(path)
+            end
         end
     end
 
-    if Log then Log.Info("Cleared all communication files") end
+    -- Clear ExposedMembers regardless
+    if ExposedMembers then
+        ExposedMembers.AlphaZeroState = nil
+        ExposedMembers.AlphaZeroCommand = nil
+        ExposedMembers.AlphaZeroAck = nil
+        ExposedMembers.AlphaZeroHeartbeat = nil
+    end
+
+    print("[AlphaZero] Cleared all communication channels")
 end
 
 -- Get path separator (for reuse by other modules)
 function AlphaZeroFileIO.GetPathSep()
-    return PATH_SEP
+    return getPathSep()
 end
 
 -- Initialize on load
 AlphaZeroFileIO.Init()
 
-print("[AlphaZero] FileIO module loaded")
+print("[AlphaZero] FileIO module loaded (io=" .. (HAS_IO and "file" or "print") .. " mode)")
+

@@ -12,6 +12,8 @@ import numpy as np
 import pytest
 import torch
 
+pytest.importorskip("pydantic", reason="inference schemas require the 'web' extra (pydantic)")
+
 from alpha_zero.cloud.gcp.storage import ModelMetadata
 from alpha_zero.inference.api_schemas import GameState, InferenceRequest, MCTSType
 from alpha_zero.inference.inference_engine import (
@@ -339,9 +341,7 @@ class TestApplyPolicyPostprocessing:
     def test_greedy_temperature_selects_argmax(self, engine) -> None:
         logits = torch.tensor([[0.0, 10.0, 0.0, 0.0]])
         mask = np.ones(4, dtype=np.float32)
-        probs, _ = engine._apply_policy_postprocessing(
-            logits, mask, temperature=0.0, value=None
-        )
+        probs, _ = engine._apply_policy_postprocessing(logits, mask, temperature=0.0, value=None)
         assert int(np.argmax(probs)) == 1
         assert probs[1] == pytest.approx(1.0)
 

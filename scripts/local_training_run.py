@@ -79,6 +79,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--num_filters", type=int, default=64, help="Embed dim")
     p.add_argument("--num_heads", type=int, default=8, help="Attention heads")
     p.add_argument(
+        "--encoder_type",
+        default="patch_embed",
+        choices=["patch_embed", "hex_crystalline"],
+        help="Spatial encoder (default: patch_embed). Recorded in the checkpoint's "
+        "model_config, so the choice survives save/load.",
+    )
+    p.add_argument(
         "--trajectories_per_iter",
         type=int,
         default=3,
@@ -177,6 +184,7 @@ def main() -> int:
                 "num_res_blocks": args.num_res_blocks,
                 "num_filters": args.num_filters,
                 "num_heads": args.num_heads,
+                "encoder_type": args.encoder_type,
                 "trajectories_per_iter": args.trajectories_per_iter,
                 "device": str(device),
                 "fresh_start": args.fresh_start,
@@ -200,6 +208,7 @@ def main() -> int:
             num_res_blocks=args.num_res_blocks,
             num_filters=args.num_filters,
             num_heads=args.num_heads,
+            encoder_type=args.encoder_type,
         )
 
         # Fine-tune from GCS champion unless --fresh_start

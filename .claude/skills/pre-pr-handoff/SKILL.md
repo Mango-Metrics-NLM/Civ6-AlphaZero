@@ -1,3 +1,9 @@
+---
+name: pre-pr-handoff
+description: Run at the end of every Pre-PR session that did meaningful work — runs full verification, dispatches an independent review, writes the PR draft and ledger event, and rewrites session state. Gated by scripts/validate_kb.py.
+allowed-tools: Read, Write, Edit, Bash, Agent
+---
+
 # Pre-PR Handoff Skill
 
 Run this skill at the end of every Pre-PR session that does meaningful work.
@@ -116,7 +122,7 @@ Create a PR draft document at `kb/pr-drafts/YYYYMMDD-<slug>.md`:
 ## Test Results
 - **Unit Tests:** X pass, Y fail
 - **Integration Tests:** X pass, Y fail
-- **Coverage:** Z% (target: 80%)
+- **Coverage:** Z% (target: 85%)
 - **Lint:** clean
 - **Type Check:** clean
 - **Smoke Tests:** [pass/fail per test]
@@ -126,7 +132,7 @@ Create a PR draft document at `kb/pr-drafts/YYYYMMDD-<slug>.md`:
 
 ## Checklist
 - [ ] All verification commands pass
-- [ ] Coverage >= 80% on changed modules
+- [ ] Coverage >= 85% on changed modules
 - [ ] CLAUDE.md updated if needed
 - [ ] No hardcoded values (API keys, paths, magic numbers)
 - [ ] Type hints on all new public interfaces
@@ -158,3 +164,14 @@ Update `kb/sessions/pre-pr.state.json` with:
 4. All JSONL entries must be valid JSON — validate after writing.
 5. Summary entries are capped at 20 (remove oldest from bottom).
 6. All verification commands MUST pass before marking PR-READY.
+
+## Final gate
+
+This handoff is not complete until the KB validator exits 0:
+
+```bash
+python scripts/validate_kb.py
+```
+
+If it fails, fix the reported ledger or session-state issue before ending the
+session.
