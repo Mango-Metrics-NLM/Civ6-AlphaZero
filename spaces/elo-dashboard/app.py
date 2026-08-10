@@ -10,8 +10,14 @@ from __future__ import annotations
 
 import os
 
+try:
+    from alpha_zero.hub.constants import HF_ORG
+except ImportError:
+    # Standalone Space context: alpha_zero package not installed.
+    HF_ORG = os.environ.get("HF_ORG", "Mango-Metrics-NLM")
+
 DATASET_REPO_ID = os.environ.get(
-    "HF_DATASET_REPO", "Mango-Metrics-NLM/civ6-elo-tournament",
+    "HF_DATASET_REPO", f"{HF_ORG}/civ6-elo-tournament",
 )
 TITLE = "📊 Civ6 AlphaZero — ELO Dashboard"
 DESCRIPTION = """

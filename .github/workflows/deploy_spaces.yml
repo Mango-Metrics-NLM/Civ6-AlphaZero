@@ -1,0 +1,144 @@
+name: Deploy Gradio Spaces
+
+on:
+  workflow_dispatch:
+    inputs:
+      space:
+        description: 'Space to deploy (microciv-explorer | elo-dashboard | all)'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - microciv-explorer
+          - elo-dashboard
+  push:
+    branches:
+      - main
+    paths:
+      - 'spaces/**'
+
+concurrency:
+  group: deploy-spaces-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HF_ORG: ${{ vars.HF_ORG || 'Mango-Metrics-NLM' }}
+
+jobs:
+  # ------------------------------------------------------------------
+  # Gate: only deploy if hub extra is installable (validation)
+  # ------------------------------------------------------------------
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install hub extra
+        run: pip install -e '.[hub]'
+      - name: Validate Space apps import cleanly
+        run: |
+          python -m pytest tests/smoke/test_spaces_import.py -v --tb=short
+      - name: Ruff check Space apps
+        run: |
+          pip install ruff
+          python -m ruff check spaces/
+
+  # ------------------------------------------------------------------
+  # Deploy microciv-explorer
+  # ------------------------------------------------------------------
+  deploy-microciv-explorer:
+    needs: validate
+    runs-on: ubuntu-latest
+    if: >
+      github.event.inputs.space == 'microciv-explorer' ||
+      github.event.inputs.space == 'all' ||
+      github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: false
+
+      - name: Push microciv-explorer to HF Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          pip install huggingface_hub
+          python - <<'EOF'
+          import os
+          from huggingface_hub import HfApi
+
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          hf_org = os.environ.get("HF_ORG", "Mango-Metrics-NLM")
+          repo_id = f"{hf_org}/microciv-explorer"
+
+          # Create the Space if it doesn't exist
+          api.create_repo(
+              repo_id=repo_id,
+              repo_type="space",
+              space_sdk="gradio",
+              exist_ok=True,
+              private=False,
+          )
+
+          # Upload the app folder
+          api.upload_folder(
+              folder_path="spaces/microciv-explorer",
+              repo_id=repo_id,
+              repo_type="space",
+              commit_message=f"Deploy from commit {os.environ.get('GITHUB_SHA', 'local')[:8]}",
+              ignore_patterns=["__pycache__", "*.pyc", ".pytest_cache"],
+          )
+          print(f"Deployed: https://huggingface.co/spaces/{repo_id}")
+          EOF
+
+  # ------------------------------------------------------------------
+  # Deploy elo-dashboard
+  # ------------------------------------------------------------------
+  deploy-elo-dashboard:
+    needs: validate
+    runs-on: ubuntu-latest
+    if: >
+      github.event.inputs.space == 'elo-dashboard' ||
+      github.event.inputs.space == 'all' ||
+      github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: false
+
+      - name: Push elo-dashboard to HF Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          pip install huggingface_hub
+          python - <<'EOF'
+          import os
+          from huggingface_hub import HfApi
+
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          hf_org = os.environ.get("HF_ORG", "Mango-Metrics-NLM")
+          repo_id = f"{hf_org}/elo-dashboard"
+
+          api.create_repo(
+              repo_id=repo_id,
+              repo_type="space",
+              space_sdk="gradio",
+              exist_ok=True,
+              private=False,
+          )
+
+          api.upload_folder(
+              folder_path="spaces/elo-dashboard",
+              repo_id=repo_id,
+              repo_type="space",
+              commit_message=f"Deploy from commit {os.environ.get('GITHUB_SHA', 'local')[:8]}",
+              ignore_patterns=["__pycache__", "*.pyc", ".pytest_cache"],
+          )
+          print(f"Deployed: https://huggingface.co/spaces/{repo_id}")
+          EOF

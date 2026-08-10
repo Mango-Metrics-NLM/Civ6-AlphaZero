@@ -1,4 +1,4 @@
-﻿"""Hugging Face Hub integration for the hex-crystalline spatial encoder.
+"""Hugging Face Hub integration for the hex-crystalline spatial encoder.
 
 This module is **opt-in**. Importing it requires the ``hub`` extra::
 
@@ -36,6 +36,7 @@ from __future__ import annotations
 import logging
 
 from alpha_zero.hexcrystal.hex_encoder import HexEncoderConfig, HexSpatialEncoder
+from alpha_zero.hub.constants import LIBRARY_NAME
 
 try:
     from huggingface_hub import PyTorchModelHubMixin
@@ -49,18 +50,19 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["HEX_ENCODER_HUB_TAGS", "HUB_LIBRARY_NAME", "HexSpatialEncoderForHub"]
 
-# Hub metadata. Deliberately *not* passed as class keyword arguments to the
-# mixin: those only populate the placeholder README that `save_pretrained`
-# writes, which publishing tools overwrite with a real model card anyway, and
-# they do not type-check against the mixin's `__init_subclass__` signature.
-# Exported here so the model card and the upload tool share one source.
-HUB_LIBRARY_NAME = "alpha-zero-hexcrystal"
+# Hub metadata exported so the model card and upload tool share one source.
+# Tags are immutable — model-specific extras are appended by callers.
 HEX_ENCODER_HUB_TAGS = (
     "pytorch",
     "hexagonal-grid",
     "spatial-encoder",
     "reinforcement-learning",
 )
+
+#: Backwards-compatible alias for :data:`alpha_zero.hub.constants.LIBRARY_NAME`.
+#: New code should import ``LIBRARY_NAME`` directly from
+#: ``alpha_zero.hub.constants``.
+HUB_LIBRARY_NAME: str = LIBRARY_NAME
 
 
 class HexSpatialEncoderForHub(HexSpatialEncoder, PyTorchModelHubMixin):

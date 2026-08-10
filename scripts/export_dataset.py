@@ -28,6 +28,19 @@ import os
 import sys
 from pathlib import Path
 
+try:
+    from alpha_zero.hub.constants import HF_ORG
+    from alpha_zero.hub.datasets import (
+        DatasetExportConfig,
+        EloDatasetExporter,
+        ReplayDatasetExporter,
+    )
+
+    _HUB_AVAILABLE = True
+except ImportError:
+    _HUB_AVAILABLE = False
+    HF_ORG = os.environ.get("HF_ORG", "Mango-Metrics-NLM")
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -100,8 +113,7 @@ def main() -> int:
         print(f"ERROR: Source path not found: {args.source_path}")
         return 1
 
-    hf_org = os.environ.get("HF_ORG", "Mango-Metrics-NLM")
-    repo_id = args.repo_id or f"{hf_org}/civ6-{args.dataset_type}-dataset"
+    repo_id = args.repo_id or f"{HF_ORG}/civ6-{args.dataset_type}-dataset"
     description = args.description or _DATASET_TYPES[args.dataset_type]["description"]
 
     print("=" * 60)
@@ -114,11 +126,13 @@ def main() -> int:
     print(f"  Publish:        {args.publish}")
     print()
 
-    from alpha_zero.hub.datasets import DatasetExportConfig, EloDatasetExporter, ReplayDatasetExporter
+    if not _HUB_AVAILABLE:
+        print("ERROR: Hub extra not installed. Run: pip install -e '.[hub]'")
+        return 1
 
     config = DatasetExportConfig(
         source_dir=args.source_path,
-        output_dir=args.output_dir or Path("./dataset-export"),
+        output_dir=args.output_dir or Path.cwd() / "dataset-export",
         repo_id=repo_id,
         dry_run=not args.publish,
         max_samples=args.max_samples,
@@ -126,7 +140,7 @@ def main() -> int:
     )
 
     # Use registry to select exporter.
-    exporter_map = {
+    exporter_map: dict[str, type] = {
         "elo": EloDatasetExporter,
         "replay": ReplayDatasetExporter,
     }

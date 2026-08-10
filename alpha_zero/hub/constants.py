@@ -15,6 +15,7 @@ from pathlib import Path
 
 __all__ = [
     "CARD_TEMPLATE_PATH",
+    "DEFAULT_DATASET_DESCRIPTION",
     "DEFAULT_LICENSE",
     "DEFAULT_MODEL_TAGS",
     "HF_ORG",
@@ -45,4 +46,8 @@ CARD_TEMPLATE_PATH: Path = Path(
         "HF_CARD_TEMPLATE",
         str(Path(__file__).parent / "templates" / "model_card.md.template"),
     )
+)
+#: Default description for published datasets.
+DEFAULT_DATASET_DESCRIPTION: str = os.environ.get(
+    "HF_DATASET_DESCRIPTION", "Civ6 AlphaZero dataset"
 )

@@ -5,6 +5,12 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![HF Model — Encoder](https://img.shields.io/badge/%F0%9F%A4%97%20Hub-Hex%20Encoder-yellow)](https://huggingface.co/Mango-Metrics-NLM/civ6-hexcrystal-encoder)
+[![HF Model — Transformer](https://img.shields.io/badge/%F0%9F%A4%97%20Hub-Transformer-yellow)](https://huggingface.co/Mango-Metrics-NLM/civ6-alphazero-transformer)
+[![HF Model — MuZero](https://img.shields.io/badge/%F0%9F%A4%97%20Hub-MuZero-yellow)](https://huggingface.co/Mango-Metrics-NLM/civ6-muzero)
+[![HF Space — Explorer](https://img.shields.io/badge/%F0%9F%A4%97%20Space-MicroCiv%20Explorer-blue)](https://huggingface.co/spaces/Mango-Metrics-NLM/microciv-explorer)
+[![HF Space — ELO](https://img.shields.io/badge/%F0%9F%A4%97%20Space-ELO%20Dashboard-blue)](https://huggingface.co/spaces/Mango-Metrics-NLM/elo-dashboard)
+[![HF Dataset — ELO](https://img.shields.io/badge/%F0%9F%A4%97%20Dataset-ELO%20Tournament-green)](https://huggingface.co/datasets/Mango-Metrics-NLM/civ6-elo-tournament)
 
 ## Project Status
 
@@ -51,6 +57,38 @@ A high-performance implementation of the AlphaZero algorithm tailored for a simp
 - Action-masked cross-entropy training, W&B group coordination, eval retry with backoff
 - Civ6 Lua mod fully integrated with Python bridge (245 bridge tests, 50 integration tests)
 - 8 remaining xfail tests (7 DDP multinode + 1 hierarchical — deferred)
+
+## 🤗 Hugging Face Hub
+
+> **Status**: Hub integration complete — Spaces scaffold deployed.
+> Model repos activate once training checkpoints are published.
+
+| Resource | Type | Link |
+| --- | --- | --- |
+| Hex-Crystalline Encoder | Model | [Mango-Metrics-NLM/civ6-hexcrystal-encoder](https://huggingface.co/Mango-Metrics-NLM/civ6-hexcrystal-encoder) |
+| Transformer Policy/Value | Model | [Mango-Metrics-NLM/civ6-alphazero-transformer](https://huggingface.co/Mango-Metrics-NLM/civ6-alphazero-transformer) |
+| MuZero World Model | Model | [Mango-Metrics-NLM/civ6-muzero](https://huggingface.co/Mango-Metrics-NLM/civ6-muzero) |
+| MicroCiv Explorer | Space | [Mango-Metrics-NLM/microciv-explorer](https://huggingface.co/spaces/Mango-Metrics-NLM/microciv-explorer) |
+| ELO Dashboard | Space | [Mango-Metrics-NLM/elo-dashboard](https://huggingface.co/spaces/Mango-Metrics-NLM/elo-dashboard) |
+| ELO Tournament Dataset | Dataset | [Mango-Metrics-NLM/civ6-elo-tournament](https://huggingface.co/datasets/Mango-Metrics-NLM/civ6-elo-tournament) |
+
+### Publishing
+
+```bash
+# Dry-run (default) — stage and review before publishing
+python scripts/upload_to_hub.py --model-type encoder
+
+# Publish encoder checkpoint
+HF_TOKEN=... python scripts/upload_to_hub.py \
+    --model-type encoder \
+    --checkpoint checkpoints/hex_crystalline.pt \
+    --publish
+
+# Export ELO dataset
+python scripts/export_dataset.py --type elo --source-path ./results
+```
+
+See [`docs/HF_PUBLISHING.md`](docs/HF_PUBLISHING.md) for the full publishing guide.
 
 ## Key Features
 

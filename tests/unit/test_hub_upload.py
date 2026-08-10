@@ -76,13 +76,14 @@ class TestUploadModelDryRun:
 
     def test_dry_run_does_not_call_hf_api(self, tmp_path):
         model = _FakeModel()
-        with mock.patch("alpha_zero.hub.upload.HfApi") as mock_api:
+        with mock.patch("huggingface_hub.HfApi") as mock_api:
             upload_model_to_hub(
                 model=model,
                 repo_id="org/repo",
                 dry_run=True,
                 save_directory=tmp_path / "out",
             )
+            # HfApi should never be instantiated during a dry run.
             mock_api.assert_not_called()
 
     def test_auto_metadata_when_none(self, tmp_path):
@@ -138,7 +139,7 @@ class TestUploadPublish:
 
     def test_publish_calls_hf_api(self, tmp_path):
         model = _FakeModel()
-        with mock.patch("alpha_zero.hub.upload.HfApi") as MockApi:
+        with mock.patch("huggingface_hub.HfApi") as MockApi:
             mock_instance = MockApi.return_value
             upload_model_to_hub(
                 model=model,
@@ -153,7 +154,7 @@ class TestUploadPublish:
 
     def test_publish_private_repo(self, tmp_path):
         model = _FakeModel()
-        with mock.patch("alpha_zero.hub.upload.HfApi") as MockApi:
+        with mock.patch("huggingface_hub.HfApi") as MockApi:
             mock_instance = MockApi.return_value
             upload_model_to_hub(
                 model=model,
@@ -168,7 +169,7 @@ class TestUploadPublish:
 
     def test_publish_custom_commit_message(self, tmp_path):
         model = _FakeModel()
-        with mock.patch("alpha_zero.hub.upload.HfApi") as MockApi:
+        with mock.patch("huggingface_hub.HfApi") as MockApi:
             mock_instance = MockApi.return_value
             upload_model_to_hub(
                 model=model,
@@ -179,3 +180,69 @@ class TestUploadPublish:
             )
             call_kwargs = mock_instance.upload_folder.call_args
             assert call_kwargs[1]["commit_message"] == "custom message"
+
+    def test_auto_temp_dir_created_when_save_directory_none(self, tmp_path):
+        """When save_directory=None, a temp dir must be created and returned."""
+        model = _FakeModel()
+        result = upload_model_to_hub(
+            model=model,
+            repo_id="org/repo",
+            dry_run=True,
+            save_directory=None,
+        )
+        # Should be an absolute path that exists (dry-run keeps it).
+        assert result.is_absolute()
+        assert result.exists()
+
+    def test_auto_temp_dir_cleaned_up_after_publish(self, tmp_path):
+        """When save_directory=None and dry_run=False, temp dir is cleaned after upload."""
+        model = _FakeModel()
+        captured: list[Path] = []
+
+        original_save = model.save_pretrained
+
+        def capturing_save(path: str) -> None:
+            captured.append(Path(path))
+            original_save(path)
+
+        model.save_pretrained = capturing_save  # type: ignore[method-assign]
+
+        with mock.patch("huggingface_hub.HfApi") as MockApi:
+            mock_instance = MockApi.return_value
+            result = upload_model_to_hub(
+                model=model,
+                repo_id="org/repo",
+                dry_run=False,
+                save_directory=None,  # auto-creates temp dir
+            )
+            mock_instance.create_repo.assert_called_once()
+            mock_instance.upload_folder.assert_called_once()
+
+        # After successful publish, the auto-created dir should be gone.
+        assert not result.exists(), (
+            "Auto-created temp dir should be removed after successful upload"
+        )
+
+
+class TestHubUploadableProtocol:
+    """HubUploadable protocol is importable without the hub extra installed."""
+
+    def test_protocol_importable(self):
+        """Import guard on HfApi must not block protocol import."""
+        # This was M2 — HfApi used to be at module level.
+        from alpha_zero.hub.upload import HubUploadable
+
+        assert HubUploadable is not None
+
+    def test_isinstance_check(self):
+        class GoodModel:
+            def save_pretrained(self, save_directory: str, **kw) -> None:
+                pass
+
+        class BadModel:
+            pass
+
+        from alpha_zero.hub.upload import HubUploadable
+
+        assert isinstance(GoodModel(), HubUploadable)
+        assert not isinstance(BadModel(), HubUploadable)

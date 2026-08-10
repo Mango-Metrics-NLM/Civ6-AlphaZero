@@ -23,22 +23,13 @@ Example::
 from __future__ import annotations
 
 import logging
+import shutil
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from alpha_zero.hub.model_card import ModelCardMetadata, write_model_card
 
-try:
-    from huggingface_hub import HfApi
-except ImportError as exc:  # pragma: no cover
-    raise ImportError(
-        "alpha_zero.hub.upload requires the 'hub' extra. "
-        "Install with:  pip install -e '.[hub]'"
-    ) from exc
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +96,7 @@ def upload_model_to_hub(
         raise ValueError(msg)
 
     # Resolve save directory.
+    _auto_created_tmpdir = save_directory is None
     if save_directory is None:
         save_directory = Path(tempfile.mkdtemp(prefix="hf_upload_"))
     save_directory = save_directory.resolve()
@@ -132,7 +124,17 @@ def upload_model_to_hub(
         )
         return save_directory
 
-    # Upload to Hub.
+    # Upload to Hub — import guard deferred so the protocol is importable
+    # without the hub extra being installed.
+    try:
+        from huggingface_hub import HfApi
+    except ImportError as exc:  # pragma: no cover
+        raise ImportError(
+            "alpha_zero.hub.upload requires the 'hub' extra. "
+            "Install with:  pip install -e '.[hub]'"
+        ) from exc
+
+    _auto_tmpdir = save_directory == Path(tempfile.gettempdir())
     api = HfApi(token=token)
     api.create_repo(repo_id=repo_id, exist_ok=True, private=private)
     api.upload_folder(
@@ -142,4 +144,9 @@ def upload_model_to_hub(
         token=token,
     )
     logger.info("Model uploaded to https://huggingface.co/%s", repo_id)
+
+    # Clean up auto-created temp dir — it served its purpose after upload.
+    if _auto_created_tmpdir:
+        shutil.rmtree(save_directory, ignore_errors=True)
+
     return save_directory

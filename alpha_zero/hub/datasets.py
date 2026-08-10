@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from alpha_zero.hub.constants import DEFAULT_DATASET_DESCRIPTION
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -45,14 +47,18 @@ class DatasetExportConfig:
         dry_run: If True, export locally but don't push.
         max_samples: Maximum number of samples to include (None = all).
         description: Human-readable dataset description.
+        elo_scan_patterns: Glob base-name patterns to find ELO files.
+        replay_scan_patterns: Glob base-name patterns to find replay files.
     """
 
     source_dir: Path = field(default_factory=lambda: Path("."))
-    output_dir: Path = field(default_factory=lambda: Path("./dataset-export"))
+    output_dir: Path = field(default_factory=lambda: Path.cwd() / "dataset-export")
     repo_id: str = ""
     dry_run: bool = True
     max_samples: int | None = None
-    description: str = "Civ6 AlphaZero dataset"
+    description: str = field(default_factory=lambda: DEFAULT_DATASET_DESCRIPTION)
+    elo_scan_patterns: tuple[str, ...] = ("*elo*", "*tournament*", "*rating*")
+    replay_scan_patterns: tuple[str, ...] = ("*replay*", "*trajectory*", "*episode*")
 
 
 class EloDatasetExporter:
@@ -72,9 +78,8 @@ class EloDatasetExporter:
 
     def _scan_elo_files(self) -> list[Path]:
         """Find ELO result files in the source directory."""
-        patterns = ("*elo*", "*tournament*", "*rating*")
         files: list[Path] = []
-        for pattern in patterns:
+        for pattern in self.config.elo_scan_patterns:
             files.extend(self.config.source_dir.glob(f"**/{pattern}.json"))
             files.extend(self.config.source_dir.glob(f"**/{pattern}.csv"))
         return sorted(set(files))
@@ -201,10 +206,9 @@ class ReplayDatasetExporter:
         """Find replay files in the source directory."""
         extensions = (".pt", ".json", ".pkl", ".jsonl")
         files: list[Path] = []
-        for ext in extensions:
-            files.extend(self.config.source_dir.glob(f"**/*replay*{ext}"))
-            files.extend(self.config.source_dir.glob(f"**/*trajectory*{ext}"))
-            files.extend(self.config.source_dir.glob(f"**/*episode*{ext}"))
+        for pattern in self.config.replay_scan_patterns:
+            for ext in extensions:
+                files.extend(self.config.source_dir.glob(f"**/{pattern}{ext}"))
         return sorted(set(files))
 
     def export_to_dir(self, output_dir: Path | None = None) -> Path:
@@ -256,3 +260,42 @@ class ReplayDatasetExporter:
 
         logger.info("Exported %d replay records to %s", len(all_records), out)
         return out
+
+    def push_to_hub(self, repo_id: str | None = None) -> None:
+        """Export and push the replay dataset to the Hugging Face Hub.
+
+        Args:
+            repo_id: Override Hub repo ID.
+
+        Raises:
+            ImportError: If the ``datasets`` library is not installed.
+            ValueError: If no repo_id is configured.
+        """
+        try:
+            from datasets import Dataset
+        except ImportError as exc:
+            raise ImportError(
+                "Pushing to Hub requires the 'datasets' extra. "
+                "Install with:  pip install -e '.[datasets]'"
+            ) from exc
+
+        out = self.export_to_dir()
+        jsonl_path = out / "replays.jsonl"
+
+        records: list[dict[str, Any]] = []
+        with jsonl_path.open(encoding="utf-8") as fp:
+            for line in fp:
+                records.append(json.loads(line))
+
+        ds = Dataset.from_list(records)
+        target = repo_id or self.config.repo_id
+        if not target:
+            msg = "repo_id must be set for push_to_hub"
+            raise ValueError(msg)
+
+        if self.config.dry_run:
+            logger.info("[DRY RUN] Would push %d records to %s", len(records), target)
+            return
+
+        ds.push_to_hub(target)
+        logger.info("Pushed %d records to %s", len(records), target)

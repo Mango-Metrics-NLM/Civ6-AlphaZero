@@ -11,8 +11,14 @@ from __future__ import annotations
 
 import os
 
+try:
+    from alpha_zero.hub.constants import HF_ORG
+except ImportError:
+    # Standalone Space context: alpha_zero package not installed.
+    HF_ORG = os.environ.get("HF_ORG", "Mango-Metrics-NLM")
+
 MODEL_REPO_ID = os.environ.get(
-    "HF_MODEL_REPO", "Mango-Metrics-NLM/civ6-alphazero-transformer",
+    "HF_MODEL_REPO", f"{HF_ORG}/civ6-alphazero-transformer",
 )
 TITLE = "🏛️ MicroCiv Explorer — Civ6 AlphaZero"
 DESCRIPTION = """

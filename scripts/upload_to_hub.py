@@ -27,12 +27,13 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import sys
 from pathlib import Path
 from typing import Any
 
 import torch
+
+from alpha_zero.hub.constants import DEFAULT_MODEL_TAGS, HF_ORG
 
 logging.basicConfig(
     level=logging.INFO,
@@ -181,9 +182,8 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    # Resolve repo ID.
-    hf_org = os.environ.get("HF_ORG", "Mango-Metrics-NLM")
-    repo_id = args.repo_id or f"{hf_org}/civ6-{args.model_type}"
+    # Resolve repo ID — uses HF_ORG from constants (env-overridable).
+    repo_id = args.repo_id or f"{HF_ORG}/civ6-{args.model_type}"
 
     print("=" * 60)
     print(f"  Model Upload: {_MODEL_REGISTRY[args.model_type]['description']}")
@@ -230,9 +230,10 @@ def main() -> int:
         import_path=entry["module"],
         class_name=entry["class"],
         repo_id=repo_id,
+        # Only add tags not already in DEFAULT_MODEL_TAGS to avoid duplication.
         tags=tuple(
             tag for tag in (args.model_type, "civ6")
-            if tag not in ("pytorch", "reinforcement-learning", "game-ai", "civilization-vi")
+            if tag not in DEFAULT_MODEL_TAGS
         ),
     )
 
