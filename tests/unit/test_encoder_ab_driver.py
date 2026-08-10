@@ -323,3 +323,115 @@ class TestReporting:
 
         assert "Wilson 95% CI" in table
         assert "W/D/L" in table
+
+
+# ---------------------------------------------------------------------------
+# Environment overrides
+# ---------------------------------------------------------------------------
+
+
+class TestEnvironmentCoercion:
+    """Env overrides are cast from the field's runtime type.
+
+    Annotation-based dispatch does not work here: ``from __future__ import
+    annotations`` turns every field type into a string, so a naive
+    implementation silently casts everything one way.
+    """
+
+    def test_int_field_is_cast(self) -> None:
+        assert driver._coerce_env_value("50", 20) == 50
+
+    def test_float_field_is_cast(self) -> None:
+        assert driver._coerce_env_value("0.5", 1e-3) == pytest.approx(0.5)
+
+    def test_string_field_is_left_alone(self) -> None:
+        assert driver._coerce_env_value("cuda", "auto") == "cuda"
+
+    @pytest.mark.parametrize("raw", ["true", "TRUE", "1", "yes", "on"])
+    def test_truthy_bools(self, raw: str) -> None:
+        assert driver._coerce_env_value(raw, False) is True
+
+    @pytest.mark.parametrize("raw", ["false", "0", "no", "off"])
+    def test_falsey_bools(self, raw: str) -> None:
+        assert driver._coerce_env_value(raw, True) is False
+
+    def test_bool_is_not_parsed_as_int(self) -> None:
+        """``bool`` subclasses ``int``; the bool branch must come first."""
+        assert driver._coerce_env_value("true", True) is True
+
+    def test_invalid_value_raises(self) -> None:
+        with pytest.raises(ValueError):
+            driver._coerce_env_value("not-a-number", 20)
+
+    def test_env_override_applies_to_any_field(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Fields with no CLI flag are still reachable, and correctly typed."""
+        monkeypatch.setenv("CIV6AZ_AB_MCTS_SIMS", "77")
+        args = driver.build_parser().parse_args(["train"])
+
+        assert driver._config_from_args(args).mcts_sims == 77
+
+    def test_cli_flag_beats_the_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CIV6AZ_AB_ITERATIONS", "99")
+        args = driver.build_parser().parse_args(["train", "--iterations", "3"])
+
+        assert driver._config_from_args(args).iterations == 3
+
+    def test_bad_env_value_names_the_variable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CIV6AZ_AB_MCTS_SIMS", "12.5")
+        args = driver.build_parser().parse_args(["train"])
+
+        with pytest.raises(ValueError, match="CIV6AZ_AB_MCTS_SIMS"):
+            driver._config_from_args(args)
+
+
+# ---------------------------------------------------------------------------
+# Controlled-comparison verification
+# ---------------------------------------------------------------------------
+
+
+class TestArmProvenanceComparison:
+    """The report may not claim a controlled comparison without checking."""
+
+    def _provenance(self, **config: Any) -> dict[str, Any]:
+        base = {"iterations": 6, "seed": 42, "mcts_sims": 25}
+        return {"git_revision": "abc123", "config": {**base, **config}}
+
+    def test_identical_arms_report_no_divergence(self) -> None:
+        provenances = {"patch_embed": self._provenance(), "hex_crystalline": self._provenance()}
+
+        assert driver.compare_arm_provenance(provenances) == []
+
+    def test_differing_budget_is_reported(self) -> None:
+        provenances = {
+            "patch_embed": self._provenance(iterations=5),
+            "hex_crystalline": self._provenance(iterations=50),
+        }
+
+        divergence = driver.compare_arm_provenance(provenances)
+
+        assert any("iterations" in d for d in divergence)
+
+    def test_differing_code_revision_is_reported(self) -> None:
+        """The historical A/B failed exactly this way — mismatched images."""
+        provenances = {
+            "patch_embed": self._provenance(),
+            "hex_crystalline": {"git_revision": "def456", "config": self._provenance()["config"]},
+        }
+
+        assert "code revision" in driver.compare_arm_provenance(provenances)
+
+    def test_a_single_arm_cannot_diverge(self) -> None:
+        assert driver.compare_arm_provenance({"patch_embed": self._provenance()}) == []
+
+    def test_report_warns_when_arms_diverged(self) -> None:
+        """A divergent run must not be described as a controlled comparison."""
+        text = driver.render_report(_arena(), None, None, ["iterations (a=5, b=50)"])
+
+        assert "NOT trained under identical settings" in text
+        assert "differ only in encoder type" not in text
+
+    def test_report_claims_control_only_when_verified(self) -> None:
+        text = driver.render_report(_arena(), None, None, [])
+
+        assert "differ only in encoder type" in text
+        assert "Verified by comparing" in text

@@ -58,6 +58,20 @@ def hex_checkpoint(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def ready_card(tmp_path: Path) -> Path:
+    """A model card with no unsubstituted evidence placeholder.
+
+    The repository's real card intentionally carries the placeholder until an
+    A/B run fills it, and ``verify_staged`` refuses to publish that. These tests
+    are about the tool's behaviour, not the card's current state, so they supply
+    their own.
+    """
+    card = tmp_path / "ready_card.md"
+    card.write_text("# Hex encoder\n\nResults: 100 games, 50% score rate.\n")
+    return card
+
+
+@pytest.fixture
 def fake_api() -> MagicMock:
     """A stand-in Hub API that records calls and reaches no network."""
     return MagicMock()
@@ -72,7 +86,7 @@ class TestPublicationSafety:
     """Uploading must be deliberate, credentialed, and never pickled."""
 
     def test_dry_run_is_the_default(
-        self, hex_checkpoint: Path, tmp_path: Path, fake_api: MagicMock
+        self, hex_checkpoint: Path, ready_card: Path, tmp_path: Path, fake_api: MagicMock
     ) -> None:
         exit_code = uploader.main(
             [
@@ -82,6 +96,8 @@ class TestPublicationSafety:
                 "someone/whatever",
                 "--staging-dir",
                 str(tmp_path / "staging"),
+                "--model-card",
+                str(ready_card),
             ],
             api=fake_api,
         )
@@ -90,7 +106,7 @@ class TestPublicationSafety:
         assert (tmp_path / "staging" / "model.safetensors").exists()
 
     def test_dry_run_makes_no_api_calls(
-        self, hex_checkpoint: Path, tmp_path: Path, fake_api: MagicMock
+        self, hex_checkpoint: Path, ready_card: Path, tmp_path: Path, fake_api: MagicMock
     ) -> None:
         """The absence of the flag must mean the absence of network effects."""
         uploader.main(
@@ -101,6 +117,8 @@ class TestPublicationSafety:
                 "someone/whatever",
                 "--staging-dir",
                 str(tmp_path / "staging"),
+                "--model-card",
+                str(ready_card),
             ],
             api=fake_api,
         )
@@ -111,6 +129,7 @@ class TestPublicationSafety:
     def test_publish_without_a_token_fails_before_staging(
         self,
         hex_checkpoint: Path,
+        ready_card: Path,
         tmp_path: Path,
         fake_api: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
@@ -126,6 +145,8 @@ class TestPublicationSafety:
                 "someone/whatever",
                 "--staging-dir",
                 str(tmp_path / "staging"),
+                "--model-card",
+                str(ready_card),
                 "--publish",
             ],
             api=fake_api,
@@ -138,6 +159,7 @@ class TestPublicationSafety:
     def test_publish_with_a_token_uploads_once(
         self,
         hex_checkpoint: Path,
+        ready_card: Path,
         tmp_path: Path,
         fake_api: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
@@ -152,6 +174,8 @@ class TestPublicationSafety:
                 "someone/whatever",
                 "--staging-dir",
                 str(tmp_path / "staging"),
+                "--model-card",
+                str(ready_card),
                 "--publish",
             ],
             api=fake_api,
@@ -164,6 +188,7 @@ class TestPublicationSafety:
     def test_repo_creation_is_idempotent(
         self,
         hex_checkpoint: Path,
+        ready_card: Path,
         tmp_path: Path,
         fake_api: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
@@ -179,6 +204,8 @@ class TestPublicationSafety:
                 "someone/whatever",
                 "--staging-dir",
                 str(tmp_path / "staging"),
+                "--model-card",
+                str(ready_card),
                 "--publish",
             ],
             api=fake_api,
@@ -228,7 +255,9 @@ class TestEncoderExtraction:
 
     def test_extracted_weights_match_the_checkpoint(self, hex_checkpoint: Path) -> None:
         """Extraction must carry the trained weights, not re-initialise them."""
-        payload = torch.load(hex_checkpoint, map_location="cpu", weights_only=False)
+        # weights_only=True: the payload is tensors plus a primitive model_config,
+        # so there is no reason to permit arbitrary unpickling here.
+        payload = torch.load(hex_checkpoint, map_location="cpu", weights_only=True)
         encoder = uploader.extract_encoder(hex_checkpoint)
 
         prefix = "encoder.patch_embed."
@@ -318,8 +347,54 @@ class TestStaging:
         """A stale file from a previous run must not be republished."""
         staging = tmp_path / "s"
         staging.mkdir()
+        (staging / uploader._STAGING_MARKER).touch()
         (staging / "leftover.txt").write_text("stale")
 
         uploader.stage_artifacts(encoder, staging, None, None)
 
         assert not (staging / "leftover.txt").exists()
+
+    def test_staging_refuses_a_directory_it_does_not_own(
+        self, encoder: Any, tmp_path: Path
+    ) -> None:
+        """A populated directory without our marker is never deleted.
+
+        Guards against ``--staging-dir docs`` (or ``.``) destroying real work:
+        the rmtree runs on the default path, before --publish is considered.
+        """
+        precious = tmp_path / "precious"
+        precious.mkdir()
+        (precious / "important.txt").write_text("do not delete")
+
+        with pytest.raises(uploader.UploadError, match="not empty"):
+            uploader.stage_artifacts(encoder, precious, None, None)
+
+        assert (precious / "important.txt").exists()
+
+    def test_unsubstituted_evidence_placeholder_blocks_publication(
+        self, encoder: Any, tmp_path: Path
+    ) -> None:
+        """A card still holding the A/B marker must not be published.
+
+        Otherwise the public page asserts an evaluation with no numbers.
+        """
+        card = tmp_path / "card.md"
+        card.write_text("Results:\n\n<!-- AB_SUMMARY_TABLE -->\n")
+        staging = tmp_path / "s"
+
+        uploader.stage_artifacts(encoder, staging, card, None)
+
+        with pytest.raises(uploader.UploadError, match="placeholder"):
+            uploader.verify_staged(staging)
+
+    def test_nested_pickle_is_refused(self, tmp_path: Path) -> None:
+        """A pickle one directory down is still caught."""
+        staging = tmp_path / "s"
+        (staging / "nested").mkdir(parents=True)
+        (staging / "model.safetensors").write_bytes(b"x")
+        (staging / "config.json").write_text('{"embed_dim": 64}')
+        (staging / "README.md").write_text("card")
+        (staging / "nested" / "sneaky.ckpt").write_bytes(b"pickle")
+
+        with pytest.raises(uploader.UploadError, match="pickled"):
+            uploader.verify_staged(staging)

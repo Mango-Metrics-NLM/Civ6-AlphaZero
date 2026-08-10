@@ -141,3 +141,86 @@ def test_unseeded_calls_still_work(model: torch.nn.Module) -> None:
     trajectories = run_selfplay(model=model, **_SELFPLAY_KWARGS)
 
     assert len(trajectories) == _SELFPLAY_KWARGS["num_games"]
+
+
+class TestArenaSeeding:
+    """The arena needs the same treatment self-play got.
+
+    ``run_head_to_head`` records the seed in ``arena_result.json``, so an
+    unseeded arena would publish a reproducibility claim the artifact cannot
+    honour — the environment holds its own generator.
+    """
+
+    def test_run_arena_accepts_a_seed(self) -> None:
+        from alpha_zero.cloud.gcp.arena import run_arena
+
+        parameters = inspect.signature(run_arena).parameters
+
+        assert "seed" in parameters
+        assert parameters["seed"].default is None
+
+    def test_seed_reaches_environment_construction(self) -> None:
+        """Each game gets a distinct, derived seed."""
+        from unittest.mock import MagicMock, patch
+
+        from alpha_zero.cloud.gcp.arena import run_arena
+
+        with (
+            patch("alpha_zero.envs.env_factory.create_game_env") as factory,
+            patch("alpha_zero.core.mcts_factory.create_mcts") as mcts_factory,
+        ):
+            env = MagicMock()
+            env.current_player = 0
+            env.winner = None
+            env.reset.return_value = (None, None)
+            env.step.return_value = (None, 0.0, True, False, {})
+            factory.return_value = env
+
+            mcts = MagicMock()
+            mcts.search.return_value = ([0.5, 0.5], 0.0)
+            mcts.select_action.return_value = 0
+            mcts_factory.return_value = mcts
+
+            run_arena(
+                model_a=MagicMock(spec=torch.nn.Module),
+                model_b=MagicMock(spec=torch.nn.Module),
+                num_games=3,
+                board_size=6,
+                max_turns=4,
+                seed=500,
+            )
+
+        seeds = [call.kwargs["seed"] for call in factory.call_args_list]
+        assert seeds == [500, 501, 502], f"expected derived per-game seeds, got {seeds}"
+
+    def test_unseeded_arena_leaves_environments_unseeded(self) -> None:
+        """The default preserves the historical behaviour."""
+        from unittest.mock import MagicMock, patch
+
+        from alpha_zero.cloud.gcp.arena import run_arena
+
+        with (
+            patch("alpha_zero.envs.env_factory.create_game_env") as factory,
+            patch("alpha_zero.core.mcts_factory.create_mcts") as mcts_factory,
+        ):
+            env = MagicMock()
+            env.current_player = 0
+            env.winner = None
+            env.reset.return_value = (None, None)
+            env.step.return_value = (None, 0.0, True, False, {})
+            factory.return_value = env
+
+            mcts = MagicMock()
+            mcts.search.return_value = ([0.5, 0.5], 0.0)
+            mcts.select_action.return_value = 0
+            mcts_factory.return_value = mcts
+
+            run_arena(
+                model_a=MagicMock(spec=torch.nn.Module),
+                model_b=MagicMock(spec=torch.nn.Module),
+                num_games=2,
+                board_size=6,
+                max_turns=4,
+            )
+
+        assert all(call.kwargs["seed"] is None for call in factory.call_args_list)

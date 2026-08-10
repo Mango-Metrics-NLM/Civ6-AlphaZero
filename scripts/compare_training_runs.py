@@ -72,15 +72,33 @@ DEFAULT_WANDB_PROJECT = os.environ.get("CIV6AZ_WANDB_PROJECT", "ianshank-none/ci
 #: Default promotion threshold drawn on win-rate plots.
 DEFAULT_PROMOTION_THRESHOLD = float(os.environ.get("CIV6AZ_PROMOTION_THRESHOLD", "0.55"))
 
-#: MLflow metric keys, in preference order, for each series we chart.
+#: MLflow metric keys, in preference order, for each series we chart. Multiple
+#: producers publish the same series under different names (the orchestrator,
+#: the local trainer, and the A/B driver), so each entry is a fallback chain.
 MLFLOW_METRIC_KEYS: dict[str, tuple[str, ...]] = {
     "policy_loss": ("iter/avg_policy_loss", "train/policy_loss"),
     "value_loss": ("iter/avg_value_loss", "train/value_loss"),
     "total_loss": ("iter/avg_loss", "train/loss", "train/total_loss"),
     "eval_win_rate": ("orchestrator/eval_win_rate", "eval/win_rate"),
     "cumulative_cost": ("orchestrator/cumulative_cost",),
-    "iteration_duration_min": ("orchestrator/iteration_duration_min", "iter/elapsed_minutes"),
+    "iteration_duration_min": ("orchestrator/iteration_duration_min",),
 }
+
+#: Seconds-valued series converted to minutes on read, so the duration column is
+#: populated for producers that log elapsed time in seconds.
+MLFLOW_SECONDS_KEYS: dict[str, tuple[str, ...]] = {
+    "iteration_duration_min": ("iter/elapsed_seconds",),
+}
+
+#: Matches this repository's per-player ELO metric, ``elo/<player>/rating``.
+#: Deliberately excludes the ``elo/leaderboard/...`` family and scalar
+#: aggregates such as ``elo/spread``, neither of which names a player. The older
+#: ``tournament/elo_<player>`` form is the W&B convention and is matched too, so
+#: historical runs keep working.
+MLFLOW_ELO_PATTERNS: tuple[str, ...] = (
+    r"^elo/(?!leaderboard/)(?P<player>[^/]+)/rating$",
+    r"^tournament/elo_(?P<player>.+)$",
+)
 
 
 @dataclasses.dataclass
@@ -181,7 +199,16 @@ def fetch_mlflow_metrics(
         return []
 
     series = {attribute: _history(keys) for attribute, keys in MLFLOW_METRIC_KEYS.items()}
+    for attribute, keys in MLFLOW_SECONDS_KEYS.items():
+        if not series.get(attribute):
+            series[attribute] = [v / 60.0 for v in _history(keys)]
+
     longest = max((len(v) for v in series.values()), default=0)
+    # Pad to a common length. Plotting pairs each series against `iterations`,
+    # so a short series raises "x and y must have same first dimension" -- and
+    # because the plots and the tables share one try/except in main(), that
+    # kills the tables too. The W&B path zero-fills for the same reason.
+    series = {k: v + [0.0] * (longest - len(v)) for k, v in series.items()}
 
     metrics = RunMetrics(
         iterations=list(range(longest)),
@@ -215,11 +242,16 @@ def fetch_mlflow_metrics(
             logging.debug("Ignoring non-numeric param_count for %s", run_id)
 
     run_metrics = dict(getattr(run.data, "metrics", {}) or {})
-    metrics.tournament_elos = {
-        key.split("elo_", 1)[1]: value
-        for key, value in run_metrics.items()
-        if "elo_" in key and isinstance(value, (int, float))
-    }
+    elos: dict[str, float] = {}
+    for key, value in run_metrics.items():
+        if not isinstance(value, (int, float)):
+            continue
+        for pattern in MLFLOW_ELO_PATTERNS:
+            match = re.match(pattern, key)
+            if match:
+                elos[match.group("player")] = float(value)
+                break
+    metrics.tournament_elos = elos
     return metrics
 
 
@@ -1167,10 +1199,11 @@ def main() -> None:
         sys.exit(1)
 
     logger.info(f"Comparison complete! Results saved to {args.output_dir.absolute()}")
-    logger.info("  - loss_curves.png")
-    logger.info("  - win_rates.png")
-    logger.info("  - cost_comparison.png")
-    logger.info("  - iteration_duration.png")
+    if plots_enabled:
+        logger.info("  - loss_curves.png")
+        logger.info("  - win_rates.png")
+        logger.info("  - cost_comparison.png")
+        logger.info("  - iteration_duration.png")
     if has_elo:
         logger.info("  - elo_comparison.png")
     logger.info("  - summary_table.md")

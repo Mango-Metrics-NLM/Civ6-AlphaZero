@@ -133,7 +133,9 @@ class TestMetricFetching:
 
         result = comparator.fetch_mlflow_metrics("run", client=client)
 
-        assert result.policy_loss == []
+        # Zero-filled rather than left short: every series must share a length,
+        # or the first plot raises and takes the tables down with it.
+        assert result.policy_loss == [0.0]
         assert result.value_loss == [1.0]
 
     def test_a_failing_primary_key_falls_back_to_the_secondary(self) -> None:
@@ -250,3 +252,112 @@ class TestCommandLine:
         assert "--run_a" in source
         assert "--log_a" in source
         assert isinstance(argparse.ArgumentParser(), argparse.ArgumentParser)
+
+
+class TestRaggedSeriesPadding:
+    """All series must come back the same length.
+
+    Plotting pairs each series against ``iterations``; a short one raises
+    "x and y must have same first dimension". Because the plots and the tables
+    share a single try/except in ``main()``, that failure also destroys the
+    tables — the outputs the ``--no_plots`` path exists to guarantee. The W&B
+    reader zero-fills for exactly this reason.
+    """
+
+    def test_series_of_unequal_length_are_padded(self) -> None:
+        client = _client(
+            {
+                "iter/avg_loss": [_point(1.0, i) for i in range(10)],
+                "orchestrator/eval_win_rate": [_point(0.5, i) for i in range(3)],
+            }
+        )
+
+        result = comparator.fetch_mlflow_metrics("run", client=client)
+
+        lengths = {
+            len(result.iterations),
+            len(result.policy_loss),
+            len(result.value_loss),
+            len(result.total_loss),
+            len(result.eval_win_rate),
+            len(result.cumulative_cost),
+            len(result.iteration_duration_min),
+        }
+        assert lengths == {10}, f"ragged series would crash the first plot: {lengths}"
+
+    def test_padding_preserves_real_values(self) -> None:
+        client = _client(
+            {
+                "iter/avg_loss": [_point(9.0, i) for i in range(4)],
+                "iter/avg_policy_loss": [_point(1.0, 0), _point(2.0, 1)],
+            }
+        )
+
+        result = comparator.fetch_mlflow_metrics("run", client=client)
+
+        assert result.policy_loss[:2] == [1.0, 2.0]
+        assert result.policy_loss[2:] == [0.0, 0.0]
+
+    def test_all_empty_yields_empty_series(self) -> None:
+        result = comparator.fetch_mlflow_metrics("run", client=_client())
+
+        assert result.iterations == []
+        assert result.policy_loss == []
+
+    def test_seconds_are_converted_to_minutes(self) -> None:
+        """The A/B driver logs elapsed seconds; the report column is minutes."""
+        client = _client({"iter/elapsed_seconds": [_point(120.0, 0), _point(60.0, 1)]})
+
+        result = comparator.fetch_mlflow_metrics("run", client=client)
+
+        assert result.iteration_duration_min == [2.0, 1.0]
+
+
+class TestEloKeyConvention:
+    """ELO extraction must match the keys this repository actually writes."""
+
+    def test_per_player_rating_is_extracted(self) -> None:
+        client = _client(metrics={"elo/v001/rating": 1520.0})
+
+        assert comparator.fetch_mlflow_metrics("run", client=client).tournament_elos == {
+            "v001": 1520.0
+        }
+
+    def test_scalar_aggregates_are_not_players(self) -> None:
+        """``elo/spread`` is a statistic, not a competitor."""
+        client = _client(metrics={"elo/spread": 120.0, "elo/max": 1600.0})
+
+        assert comparator.fetch_mlflow_metrics("run", client=client).tournament_elos == {}
+
+    def test_pbt_aggregates_are_not_players(self) -> None:
+        """``pbt/elo_mean`` previously became a phantom player called "mean"."""
+        client = _client(metrics={"pbt/elo_mean": 1500.0})
+
+        assert comparator.fetch_mlflow_metrics("run", client=client).tournament_elos == {}
+
+    def test_leaderboard_entries_are_excluded(self) -> None:
+        client = _client(metrics={"elo/leaderboard/v001/rating": 1520.0})
+
+        assert comparator.fetch_mlflow_metrics("run", client=client).tournament_elos == {}
+
+    def test_legacy_wandb_convention_still_reads(self) -> None:
+        """Historical runs used ``tournament/elo_<player>``."""
+        client = _client(metrics={"tournament/elo_v007": 1480.0})
+
+        assert comparator.fetch_mlflow_metrics("run", client=client).tournament_elos == {
+            "v007": 1480.0
+        }
+
+    def test_mixed_families_extract_only_real_players(self) -> None:
+        client = _client(
+            metrics={
+                "elo/spread": 120.0,
+                "elo/v001/rating": 1520.0,
+                "pbt/elo_mean": 1500.0,
+                "train/loss": 1.0,
+            }
+        )
+
+        assert comparator.fetch_mlflow_metrics("run", client=client).tournament_elos == {
+            "v001": 1520.0
+        }

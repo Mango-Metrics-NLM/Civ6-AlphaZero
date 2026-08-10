@@ -52,6 +52,19 @@ REQUIRED_ENCODER_TYPE = "hex_crystalline"
 #: Files the staged directory is expected to contain before upload.
 EXPECTED_ARTIFACTS = ("model.safetensors", "config.json", "README.md")
 
+#: Weight formats that must never be published: loading a pickle executes
+#: arbitrary code on the consumer's machine.
+PICKLED_WEIGHT_SUFFIXES = (".pt", ".pth", ".bin", ".pkl", ".ckpt", ".h5", ".msgpack")
+
+#: Written into the staging directory so the tool can recognise a tree it owns
+#: before deleting it. Without this, --staging-dir pointed at a real directory
+#: would silently destroy it.
+_STAGING_MARKER = ".hub_staging"
+
+#: Placeholder the model card uses for the A/B table; publishing it unsubstituted
+#: would put an evaluation claim online with no numbers behind it.
+_EVIDENCE_PLACEHOLDER = "<!-- AB_SUMMARY_TABLE -->"
+
 DEFAULT_MODEL_CARD = Path("docs/model_cards/hexcrystal_encoder.md")
 DEFAULT_EVIDENCE_DIR = Path("docs/evidence/hexcrystal_ab")
 
@@ -76,12 +89,7 @@ def extract_encoder(checkpoint_path: Path, device: str = "cpu") -> Any:
     """
     import torch
 
-    from alpha_zero.core.transformer_network import (
-        AttentionType,
-        Civ6TransformerNetwork,
-        NormType,
-        TransformerConfig,
-    )
+    from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
     from alpha_zero.hexcrystal.hub_mixin import HexSpatialEncoderForHub
 
     payload = torch.load(checkpoint_path, map_location=device, weights_only=False)
@@ -99,14 +107,7 @@ def extract_encoder(checkpoint_path: Path, device: str = "cpu") -> Any:
             f"publishes {REQUIRED_ENCODER_TYPE!r} only. Point it at the hex arm."
         )
 
-    if isinstance(config_dict.get("norm_type"), str):
-        config_dict["norm_type"] = NormType(config_dict["norm_type"])
-    if isinstance(config_dict.get("attention_type"), str):
-        config_dict["attention_type"] = AttentionType(config_dict["attention_type"])
-    for derived in ("_num_patches", "_head_dim"):
-        config_dict.pop(derived, None)
-
-    network = Civ6TransformerNetwork(TransformerConfig(**config_dict))
+    network = Civ6TransformerNetwork(TransformerConfig.from_saved_dict(config_dict))
     network.load_state_dict(payload["state_dict"], strict=True)
 
     inner = network.encoder.patch_embed
@@ -143,8 +144,15 @@ def stage_artifacts(
         The staged files, sorted by name.
     """
     if staging_dir.exists():
+        if not (staging_dir / _STAGING_MARKER).exists() and any(staging_dir.iterdir()):
+            raise UploadError(
+                f"{staging_dir} is not empty and was not created by this tool "
+                f"(no {_STAGING_MARKER} marker). Refusing to delete it — point "
+                "--staging-dir at a new or previously-staged directory."
+            )
         shutil.rmtree(staging_dir)
     staging_dir.mkdir(parents=True)
+    (staging_dir / _STAGING_MARKER).touch()
 
     encoder.save_pretrained(staging_dir)
 
@@ -152,7 +160,13 @@ def stage_artifacts(
         card_text = model_card.read_text()
         summary = (evidence_dir / "summary_table.md") if evidence_dir else None
         if summary is not None and summary.exists():
-            card_text = card_text.replace("<!-- AB_SUMMARY_TABLE -->", summary.read_text())
+            card_text = card_text.replace(_EVIDENCE_PLACEHOLDER, summary.read_text())
+        elif _EVIDENCE_PLACEHOLDER in card_text:
+            logger.warning(
+                "No A/B summary table at %s; the model card's evidence placeholder "
+                "cannot be filled. verify_staged() will refuse to publish it.",
+                summary,
+            )
         (staging_dir / "README.md").write_text(card_text)
         logger.info("Model card written from %s", model_card)
     else:
@@ -181,11 +195,25 @@ def verify_staged(staging_dir: Path) -> None:
     if missing:
         raise UploadError(f"Staged payload is missing {missing}; refusing to upload.")
 
-    pickled = sorted(n for n in present if n.endswith((".pt", ".pth", ".bin", ".pkl")))
+    # rglob, not iterdir: a pickle nested one level down would still be uploaded.
+    pickled = sorted(
+        str(p.relative_to(staging_dir))
+        for p in staging_dir.rglob("*")
+        if p.suffix in PICKLED_WEIGHT_SUFFIXES
+    )
     if pickled:
         raise UploadError(
             f"Refusing to publish pickled weights {pickled}: loading them executes "
             "arbitrary code. Publish safetensors only."
+        )
+
+    card = (staging_dir / "README.md").read_text()
+    if _EVIDENCE_PLACEHOLDER in card:
+        raise UploadError(
+            "The model card still contains the unsubstituted evidence placeholder "
+            f"{_EVIDENCE_PLACEHOLDER!r}. Publishing it would assert an evaluation "
+            "with no numbers behind it. Run the A/B report first, or remove the "
+            "placeholder and the surrounding claim from the card."
         )
 
     config = json.loads((staging_dir / "config.json").read_text())

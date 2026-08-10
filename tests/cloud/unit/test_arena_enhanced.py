@@ -44,11 +44,12 @@ class TestArenaGameplayPreset:
                 max_turns=10,
             )
 
-            # Should use default preset
+            # Should use default preset, and stay unseeded unless asked.
             mock_factory.assert_called_with(
                 board_size=6,
                 max_turns=10,
                 gameplay_preset="default",
+                seed=None,
             )
             assert isinstance(result, ArenaResult)
 
@@ -85,10 +86,11 @@ class TestArenaGameplayPreset:
             # Should call factory twice (once per game) with enhanced preset
             assert mock_factory.call_count == 2
             for call_args in mock_factory.call_args_list:
-                assert call_args == (
-                    (),
-                    {"board_size": 6, "max_turns": 10, "gameplay_preset": "enhanced"},
-                )
+                assert call_args.kwargs["board_size"] == 6
+                assert call_args.kwargs["max_turns"] == 10
+                assert call_args.kwargs["gameplay_preset"] == "enhanced"
+                # Unseeded unless the caller asks, preserving prior behaviour.
+                assert call_args.kwargs["seed"] is None
             assert isinstance(result, ArenaResult)
             assert result.total_games == 2
 

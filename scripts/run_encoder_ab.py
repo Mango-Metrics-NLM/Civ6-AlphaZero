@@ -68,7 +68,12 @@ DEFAULT_OUTPUT_DIR = Path("docs/evidence/hexcrystal_ab")
 #: Local (uncommitted) checkpoint destination; ``*.pt`` is gitignored by design.
 DEFAULT_CHECKPOINT_DIR = Path("checkpoints/encoder_ab")
 
+#: Prefix for environment overrides of any ABRunConfig field, e.g.
+#: ``CIV6AZ_AB_ITERATIONS=50``. Documented in the CLI epilog.
 _ENV_PREFIX = "CIV6AZ_AB_"
+
+#: Fallback MLflow experiment when the environment names none.
+DEFAULT_EXPERIMENT_NAME = "civ6az-encoder-ab"
 
 
 # ---------------------------------------------------------------------------
@@ -460,7 +465,7 @@ def train_arm(
 # ---------------------------------------------------------------------------
 
 
-def load_arm_checkpoint(path: Path, device: str) -> tuple[Any, str]:
+def load_arm_checkpoint(path: Path, device: str) -> tuple[Any, str, dict[str, Any]]:
     """Load an A/B checkpoint and rebuild its network.
 
     Mirrors the cloud evaluator's reconstruction: enum fields are rehydrated
@@ -472,7 +477,8 @@ def load_arm_checkpoint(path: Path, device: str) -> tuple[Any, str]:
         device: Device string to map tensors onto.
 
     Returns:
-        ``(model, encoder_type)``.
+        ``(model, encoder_type, architecture)`` where *architecture* carries the
+        board size and action-space size the checkpoint was trained with.
 
     Raises:
         ValueError: If the checkpoint carries no ``model_config``, which would
@@ -480,12 +486,7 @@ def load_arm_checkpoint(path: Path, device: str) -> tuple[Any, str]:
     """
     import torch
 
-    from alpha_zero.core.transformer_network import (
-        AttentionType,
-        Civ6TransformerNetwork,
-        NormType,
-        TransformerConfig,
-    )
+    from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
     from alpha_zero.utils.checkpoint import validate_encoder_state
 
     payload = torch.load(path, map_location=device, weights_only=False)
@@ -499,23 +500,20 @@ def load_arm_checkpoint(path: Path, device: str) -> tuple[Any, str]:
     config_dict = dict(payload["model_config"])
     encoder_type = config_dict.get("encoder_type", "patch_embed")
 
-    if isinstance(config_dict.get("norm_type"), str):
-        config_dict["norm_type"] = NormType(config_dict["norm_type"])
-    if isinstance(config_dict.get("attention_type"), str):
-        config_dict["attention_type"] = AttentionType(config_dict["attention_type"])
-    for derived in ("_num_patches", "_head_dim"):
-        config_dict.pop(derived, None)
-
-    model = Civ6TransformerNetwork(TransformerConfig(**config_dict))
+    model = Civ6TransformerNetwork(TransformerConfig.from_saved_dict(config_dict))
     model.load_state_dict(payload["state_dict"], strict=True)
     model.to(device).eval()
 
-    # strict=True above already guarantees the shapes line up; this additionally
-    # asserts the architecture matches what the checkpoint claims.
-    validate_encoder_state(model, encoder_type)
+    # Pass the checkpoint's own keys: without them this could only confirm how
+    # the model was built, which is the value we just read out of the same dict.
+    validate_encoder_state(model, encoder_type, checkpoint_keys=payload["state_dict"].keys())
 
-    logger.info("Loaded %s (%s)", path, encoder_type)
-    return model, encoder_type
+    architecture = {
+        "spatial_size": config_dict.get("spatial_size"),
+        "action_space_size": config_dict.get("action_space_size"),
+    }
+    logger.info("Loaded %s (%s, board=%s)", path, encoder_type, architecture["spatial_size"])
+    return model, encoder_type, architecture
 
 
 def run_head_to_head(
@@ -540,8 +538,26 @@ def run_head_to_head(
     from alpha_zero.cloud.gcp.arena import run_arena
 
     device_str = config.resolved_device()
-    model_a, encoder_a = load_arm_checkpoint(checkpoint_a, device_str)
-    model_b, encoder_b = load_arm_checkpoint(checkpoint_b, device_str)
+    model_a, encoder_a, arch_a = load_arm_checkpoint(checkpoint_a, device_str)
+    model_b, encoder_b, arch_b = load_arm_checkpoint(checkpoint_b, device_str)
+
+    if arch_a != arch_b:
+        raise ValueError(
+            f"The two checkpoints disagree on architecture ({arch_a} vs {arch_b}); "
+            "they cannot be compared head to head."
+        )
+
+    # Board size comes from the checkpoints, not from this subcommand's own
+    # defaults. `arena` is a separate invocation from `train`, so trusting its
+    # flags would silently play the models on a board they were never trained
+    # for -- the same class of mistake as reporting the arena's training budget.
+    board_size = arch_a["spatial_size"] or config.board_size
+    if board_size != config.board_size:
+        logger.info(
+            "Using board_size=%d from the checkpoints (subcommand default was %d)",
+            board_size,
+            config.board_size,
+        )
 
     set_global_seed(config.seed)
     started = time.time()
@@ -562,10 +578,11 @@ def run_head_to_head(
         mcts_type=config.mcts_type,
         mcts_sims=config.mcts_sims,
         gumbel_num_actions=config.gumbel_num_actions,
-        board_size=config.board_size,
+        board_size=board_size,
         max_turns=config.max_turns,
         device=torch.device(device_str),
         gameplay_preset=config.gameplay_preset,
+        seed=config.seed,
     )
 
     wins, draws, losses = result.wins, result.draws, result.losses
@@ -577,6 +594,7 @@ def run_head_to_head(
     summary: dict[str, Any] = {
         "model_a": {"encoder_type": encoder_a, "checkpoint": str(checkpoint_a)},
         "model_b": {"encoder_type": encoder_b, "checkpoint": str(checkpoint_b)},
+        "architecture": arch_a,
         "num_games": total,
         "wins": wins,
         "draws": draws,
@@ -610,10 +628,52 @@ def run_head_to_head(
 # ---------------------------------------------------------------------------
 
 
+def compare_arm_provenance(provenances: dict[str, dict[str, Any]]) -> list[str]:
+    """Return the settings on which the arms' training runs disagree.
+
+    The report asserts that the arms differ only in encoder type. Nothing
+    enforces that: ``--encoder-types`` exists so arms can be trained in separate
+    invocations, and the environment overrides can change the budget between
+    them. An unverified claim of a controlled comparison is worse than no claim,
+    so it is checked.
+
+    Args:
+        provenances: Encoder type mapped to that arm's recorded provenance.
+
+    Returns:
+        Human-readable descriptions of each divergence; empty when the arms
+        agree or when fewer than two provenances were supplied.
+    """
+    if len(provenances) < 2:
+        return []
+
+    divergences: list[str] = []
+    arms = sorted(provenances)
+    reference_name = arms[0]
+    reference = provenances[reference_name]
+
+    for other_name in arms[1:]:
+        other = provenances[other_name]
+        if reference.get("git_revision") != other.get("git_revision"):
+            divergences.append("code revision")
+
+        ref_config = reference.get("config", {})
+        other_config = other.get("config", {})
+        for key in sorted(set(ref_config) | set(other_config)):
+            if ref_config.get(key) != other_config.get(key):
+                divergences.append(
+                    f"{key} ({reference_name}={ref_config.get(key)}, "
+                    f"{other_name}={other_config.get(key)})"
+                )
+
+    return divergences
+
+
 def render_report(
     arena: dict[str, Any],
     arms: dict[str, Any] | None,
     training_provenance: dict[str, Any] | None = None,
+    budget_divergence: list[str] | None = None,
 ) -> str:
     """Render the committable markdown evidence report.
 
@@ -684,12 +744,22 @@ def render_report(
             )
         lines.append("")
 
+    lines += ["## Budget", ""]
+    if budget_divergence:
+        lines += [
+            "> **The two arms were NOT trained under identical settings.** They differ "
+            f"in: {', '.join(budget_divergence)}. A head-to-head result between arms "
+            "trained differently does not isolate the encoder, so the comparison below "
+            "should not be read as an encoder comparison.",
+            "",
+        ]
+    else:
+        lines += [
+            "Both arms were trained from the same code, seed, and budget; they differ "
+            "only in encoder type. (Verified by comparing the two arms' sidecars.)",
+            "",
+        ]
     lines += [
-        "## Budget",
-        "",
-        "Both arms were trained from the same code, seed, and budget; they differ "
-        "only in encoder type.",
-        "",
         "| Setting | Value |",
         "|---------|-------|",
     ]
@@ -752,8 +822,29 @@ def check_consistency(arena: dict[str, Any]) -> list[str]:
     An empty list means the artifact is self-consistent. Used as a gate before
     committing evidence, so a malformed result cannot be published.
     """
+    required = (
+        "wins",
+        "draws",
+        "losses",
+        "num_games",
+        "score",
+        "score_rate",
+        "score_rate_ci95",
+        "elo_difference",
+        "significant_at_95pct",
+    )
+    missing = [key for key in required if key not in arena]
+    if missing:
+        # Report rather than raise: this runs on arbitrary JSON read off disk,
+        # and a truncated file should reach the "refusing to report" path, not
+        # produce a KeyError traceback.
+        return [f"result is missing required field(s): {', '.join(missing)}"]
+
     problems: list[str] = []
     total = arena["wins"] + arena["draws"] + arena["losses"]
+
+    if total <= 0:
+        problems.append("result contains no games; there is nothing to report")
 
     if total != arena["num_games"]:
         problems.append(f"W+D+L={total} does not equal num_games={arena['num_games']}")
@@ -772,6 +863,21 @@ def check_consistency(arena: dict[str, Any]) -> list[str]:
         problems.append("score_rate lies outside its own confidence interval")
     if not (0.0 <= low <= 1.0 and 0.0 <= high <= 1.0):
         problems.append("confidence interval escapes [0, 1]")
+
+    if "ci95_half_width" in arena:
+        expected_half_width = (high - low) / 2.0
+        if abs(expected_half_width - arena["ci95_half_width"]) > 1e-9:
+            problems.append("ci95_half_width does not match the interval")
+
+    # The Elo figure is the most eye-catching number in both the report and the
+    # model card, so it gets checked rather than trusted.
+    if total > 0:
+        expected_elo = elo_difference(expected_score / total)
+        if abs(expected_elo - arena["elo_difference"]) > 1e-6:
+            problems.append(
+                f"elo_difference {arena['elo_difference']:.3f} does not match the "
+                f"score rate (expected {expected_elo:.3f})"
+            )
 
     claimed = arena["significant_at_95pct"]
     actual = low > 0.5 or high < 0.5
@@ -794,29 +900,36 @@ def make_tracker(encoder_type: str, config: ABRunConfig) -> Any | None:
     disk regardless — so a missing tracker warns rather than failing a run that
     may already have cost hours.
     """
-    if os.environ.get("CIV6AZ_MLFLOW_ENABLED", "").lower() not in {"1", "true", "yes"}:
-        logger.info("MLflow disabled (set CIV6AZ_MLFLOW_ENABLED=true to enable)")
-        return None
-
     try:
         from alpha_zero.monitoring import MLflowConfig, MLflowLogger
+        from alpha_zero.monitoring.config import resolve_tracker_enabled
     except ImportError as exc:
         logger.warning(
-            "MLflow requested but unavailable (%s); continuing without tracking. "
-            "Install it with: pip install -e '.[monitoring]'",
+            "MLflow unavailable (%s); continuing without tracking. Checkpoints and "
+            "evidence are written regardless. Install with: pip install -e '.[monitoring]'",
             exc,
         )
         return None
 
-    tracker = MLflowLogger(
-        MLflowConfig(
-            enabled=True,
-            experiment_name=os.environ.get(f"{_ENV_PREFIX}EXPERIMENT", "civ6az-encoder-ab"),
-            run_name=f"ab-{encoder_type}-seed{config.seed}",
-            tags={"encoder_type": encoder_type, "seed": str(config.seed)},
-        )
-    )
-    tracker.init(config_dict=config.to_dict())
+    # resolve_tracker_enabled is the project's single source of truth for this
+    # decision (CIV6AZ_MLFLOW_ENABLED > MLFLOW_ENABLED > legacy WANDB_ENABLED).
+    # Re-implementing the check here would silently ignore two of the three.
+    if not resolve_tracker_enabled():
+        logger.info("Experiment tracking disabled (set CIV6AZ_MLFLOW_ENABLED=true to enable)")
+        return None
+
+    mlflow_config = MLflowConfig.from_env()
+    mlflow_config.enabled = True
+    mlflow_config.run_name = f"ab-{encoder_type}-seed{config.seed}"
+    mlflow_config.tags = {**(mlflow_config.tags or {}), "encoder_type": encoder_type}
+    if not mlflow_config.experiment_name:
+        mlflow_config.experiment_name = DEFAULT_EXPERIMENT_NAME
+
+    tracker = MLflowLogger(mlflow_config)
+    # encoder_type goes in the *params*, not only the tags: the run comparator
+    # reads it from params, so tagging alone would make both arms read back as
+    # "Unknown" and the two halves of this feature would not interoperate.
+    tracker.init(config_dict={**config.to_dict(), "encoder_type": encoder_type})
     return tracker
 
 
@@ -825,23 +938,60 @@ def make_tracker(encoder_type: str, config: ABRunConfig) -> Any | None:
 # ---------------------------------------------------------------------------
 
 
+def _coerce_env_value(raw: str, default_value: Any) -> Any:
+    """Coerce an environment string to the type of *default_value*.
+
+    Args:
+        raw: The environment variable's value.
+        default_value: The field default, whose runtime type drives the cast.
+
+    Returns:
+        The coerced value.
+
+    Raises:
+        ValueError: If *raw* cannot be parsed as the target type.
+    """
+    if isinstance(default_value, bool):
+        lowered = raw.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off"}:
+            return False
+        raise ValueError(f"{raw!r} is not a boolean")
+    if isinstance(default_value, int):
+        return int(raw)
+    if isinstance(default_value, float):
+        return float(raw)
+    return raw
+
+
 def _config_from_args(args: argparse.Namespace) -> ABRunConfig:
     """Build a run config from parsed arguments, honoring env overrides."""
+    defaults = ABRunConfig()
     overrides: dict[str, Any] = {}
+
     for f in dataclasses.fields(ABRunConfig):
         value = getattr(args, f.name, None)
         if value is not None:
             overrides[f.name] = value
             continue
+
         env_value = os.environ.get(f"{_ENV_PREFIX}{f.name.upper()}")
-        if env_value is not None:
-            caster: Any = f.type if not isinstance(f.type, str) else None
-            if f.name in {"learning_rate"}:
-                overrides[f.name] = float(env_value)
-            elif f.name in {"device", "mcts_type", "gameplay_preset"}:
-                overrides[f.name] = env_value
-            else:
-                overrides[f.name] = int(env_value) if caster is not str else env_value
+        if env_value is None:
+            continue
+
+        # Dispatch on the default's runtime type rather than the annotation:
+        # `from __future__ import annotations` makes every field type a string,
+        # so annotation-based dispatch silently degrades to one branch.
+        default_value = getattr(defaults, f.name)
+        try:
+            overrides[f.name] = _coerce_env_value(env_value, default_value)
+        except ValueError as exc:
+            raise ValueError(
+                f"{_ENV_PREFIX}{f.name.upper()}={env_value!r} is not a valid "
+                f"{type(default_value).__name__}"
+            ) from exc
+
     return ABRunConfig(**overrides)
 
 
@@ -1040,14 +1190,26 @@ def _command_report(args: argparse.Namespace) -> int:
         return 1
 
     arms: dict[str, Any] = {}
+    provenances: dict[str, dict[str, Any]] = {}
     training_provenance: dict[str, Any] | None = None
     for encoder_type in ENCODER_ARMS:
         sidecar = args.checkpoint_dir / f"{encoder_type}.metadata.json"
         if sidecar.exists():
             payload = json.loads(sidecar.read_text())
             arms[encoder_type] = payload.get("arm", {})
-            # The budget belongs to training, not to the arena invocation.
-            training_provenance = training_provenance or payload.get("provenance")
+            provenance = payload.get("provenance")
+            if provenance:
+                provenances[encoder_type] = provenance
+                # The budget belongs to training, not to the arena invocation.
+                training_provenance = training_provenance or provenance
+
+    budget_divergence = compare_arm_provenance(provenances)
+    if budget_divergence:
+        logger.warning(
+            "The arms were not trained identically (%s); the report will say so "
+            "rather than claim a controlled comparison.",
+            "; ".join(budget_divergence),
+        )
 
     if training_provenance is None:
         logger.warning(
