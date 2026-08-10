@@ -1,4 +1,4 @@
-﻿"""Hexagonal topology-aware convolution for Civ6 AlphaZero.
+"""Hexagonal topology-aware convolution for Civ6 AlphaZero.
 
 Civ6 uses hexagonal tiles represented on a rectangular grid using "even-q" offset
 coordinates. This module implements proper hexagonal convolution that respects the

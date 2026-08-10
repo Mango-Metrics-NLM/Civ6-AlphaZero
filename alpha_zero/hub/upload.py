@@ -30,7 +30,6 @@ from typing import Any, Protocol, runtime_checkable
 
 from alpha_zero.hub.model_card import ModelCardMetadata, write_model_card
 
-
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -90,9 +89,7 @@ def upload_model_to_hub(
         raise TypeError(msg)
 
     if "/" not in repo_id:
-        msg = (
-            f"repo_id must be in 'org/repo' format, got {repo_id!r}."
-        )
+        msg = f"repo_id must be in 'org/repo' format, got {repo_id!r}."
         raise ValueError(msg)
 
     # Resolve save directory.
@@ -130,8 +127,7 @@ def upload_model_to_hub(
         from huggingface_hub import HfApi
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
-            "alpha_zero.hub.upload requires the 'hub' extra. "
-            "Install with:  pip install -e '.[hub]'"
+            "alpha_zero.hub.upload requires the 'hub' extra. Install with:  pip install -e '.[hub]'"
         ) from exc
 
     _auto_tmpdir = save_directory == Path(tempfile.gettempdir())

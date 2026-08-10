@@ -1,4 +1,4 @@
-﻿"""Crystalline lattice layer for symmetry-aware neural network transformations.
+"""Crystalline lattice layer for symmetry-aware neural network transformations.
 
 This module implements a crystalline lattice layer that applies learned geometric
 transformations based on mathematical symmetry groups (hexagonal, cubic, tetrahedral).

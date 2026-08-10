@@ -1,4 +1,4 @@
-﻿"""Vision-Transformer style patch embedding.
+"""Vision-Transformer style patch embedding.
 
 This module hosts :class:`PatchEmbed`, the default spatial encoder for
 :class:`~alpha_zero.core.transformer_network.Civ6TransformerNetwork`. It lives in

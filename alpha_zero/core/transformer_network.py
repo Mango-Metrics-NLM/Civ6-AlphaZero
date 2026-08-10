@@ -23,6 +23,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
 
+# Re-export PatchEmbed from the canonical hexcrystal package.
+# Preserves backwards-compat: ``from alpha_zero.core.transformer_network import PatchEmbed``
+# must resolve to the same object as ``alpha_zero.hexcrystal.patch_embed.PatchEmbed``.
+try:
+    from alpha_zero.hexcrystal.patch_embed import PatchEmbed
+except ImportError:  # pragma: no cover — only triggers if hexcrystal pkg removed
+    PatchEmbed = None  # type: ignore[assignment,misc]
+
 # Module-level logger
 logger = logging.getLogger(__name__)
 
@@ -159,14 +167,48 @@ class TransformerConfig:
             encoder_type=getattr(net_config, "encoder_type", "patch_embed"),
         )
 
+    @classmethod
+    def from_saved_dict(cls, config_dict: dict[str, Any]) -> TransformerConfig:
+        """Reconstruct a :class:`TransformerConfig` from a serialised config dict.
+
+        Checkpoints produced by :func:`torch.save` store the model config as a
+        plain ``dict[str, Any]`` where :class:`~enum.Enum` values have been
+        reduced to their ``str`` value (e.g. ``"rms_norm"`` instead of
+        ``NormType.RMS_NORM``).  This factory handles the necessary coercions so
+        callers do not need to know the internal representation.
+
+        Args:
+            config_dict: The raw ``model_config`` dict loaded from a checkpoint.
+
+        Returns:
+            A fully-initialised :class:`TransformerConfig`.
+
+        Raises:
+            KeyError: If *config_dict* is missing a required field with no default.
+        """
+        import dataclasses
+
+        # Collect only the field names that TransformerConfig accepts so that
+        # stale / unknown keys in the checkpoint do not cause a TypeError.
+        valid_fields = {f.name for f in dataclasses.fields(cls) if f.init}
+        filtered = {k: v for k, v in config_dict.items() if k in valid_fields}
+
+        # Coerce Enum fields from their serialised string values.
+        if "norm_type" in filtered:
+            filtered["norm_type"] = NormType(filtered["norm_type"])
+        if "attention_type" in filtered:
+            filtered["attention_type"] = AttentionType(filtered["attention_type"])
+
+        return cls(**filtered)
+
     def __post_init__(self) -> None:
         """Compute derived properties and validate configuration."""
         self._num_patches = (self.spatial_size // self.patch_size) ** 2
         self._head_dim = self.embed_dim // self.num_heads
 
-        assert (
-            self.embed_dim % self.num_heads == 0
-        ), f"embed_dim ({self.embed_dim}) must be divisible by num_heads ({self.num_heads})"
+        assert self.embed_dim % self.num_heads == 0, (
+            f"embed_dim ({self.embed_dim}) must be divisible by num_heads ({self.num_heads})"
+        )
 
         # Warn about known incorrect defaults that may indicate stale config
         if self.action_space_size == 381:
@@ -729,50 +771,6 @@ class DropPath(nn.Module):
         random_tensor.floor_()
 
         return x.div(keep_prob) * random_tensor
-
-
-class PatchEmbed(nn.Module):
-    """Patch embedding for Vision Transformer style input processing."""
-
-    def __init__(
-        self,
-        in_channels: int,
-        embed_dim: int,
-        patch_size: int,
-        spatial_size: int,
-    ) -> None:
-        """Initialize patch embedding.
-
-        Args:
-            in_channels: Number of input channels.
-            embed_dim: Embedding dimension.
-            patch_size: Size of each patch.
-            spatial_size: Size of spatial input.
-        """
-        super().__init__()
-        self.patch_size = patch_size
-        self.num_patches = (spatial_size // patch_size) ** 2
-        self.proj = nn.Conv2d(
-            in_channels,
-            embed_dim,
-            kernel_size=patch_size,
-            stride=patch_size,
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Convert spatial input to patch embeddings.
-
-        Args:
-            x: Input tensor (B, C, H, W).
-
-        Returns:
-            Patch embeddings (B, num_patches, embed_dim).
-        """
-        # (B, C, H, W) -> (B, embed_dim, H/P, W/P)
-        x = self.proj(x)
-        # Flatten spatial dimensions
-        x = x.flatten(2).transpose(1, 2)  # (B, num_patches, embed_dim)
-        return x
 
 
 class VectorProjection(nn.Module):

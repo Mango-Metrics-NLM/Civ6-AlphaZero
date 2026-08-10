@@ -1,4 +1,4 @@
-﻿"""Hex-topology spatial encoders ΓÇö a torch-only, standalone-reusable subpackage.
+"""Hex-topology spatial encoders ΓÇö a torch-only, standalone-reusable subpackage.
 
 This package implements a spatial encoder for hexagonal game boards represented
 on a rectangular grid, plus the encoder registry that selects between it and the

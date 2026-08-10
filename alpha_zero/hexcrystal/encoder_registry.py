@@ -1,4 +1,4 @@
-﻿"""Encoder registry and factory for spatial encoders.
+"""Encoder registry and factory for spatial encoders.
 
 This module provides a registry pattern for selecting between different spatial
 encoder implementations (PatchEmbed, HexSpatialEncoder, etc.) based on a string

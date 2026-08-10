@@ -1,4 +1,4 @@
-﻿"""Hexagonal spatial encoder for transformer networks.
+"""Hexagonal spatial encoder for transformer networks.
 
 This module provides a hexagon-aware spatial encoder that replaces PatchEmbed
 in the Civ6TransformerNetwork. It uses hexagonal convolutions and optional

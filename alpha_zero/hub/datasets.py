@@ -88,7 +88,7 @@ class EloDatasetExporter:
         """Load records from a JSON file (list or dict format)."""
         data = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(data, list):
-            return data  # type: ignore[return-value]
+            return data
         if isinstance(data, dict):
             # Wrap single-record dicts or extract known keys.
             if "results" in data:
@@ -143,7 +143,8 @@ class EloDatasetExporter:
             "source_files": [str(f) for f in files],
         }
         (out / "dataset_info.json").write_text(
-            json.dumps(meta, indent=2), encoding="utf-8",
+            json.dumps(meta, indent=2),
+            encoding="utf-8",
         )
 
         logger.info("Exported %d ELO records to %s", len(all_records), out)
@@ -255,7 +256,8 @@ class ReplayDatasetExporter:
             "source_files": [str(f) for f in files],
         }
         (out / "dataset_info.json").write_text(
-            json.dumps(meta, indent=2), encoding="utf-8",
+            json.dumps(meta, indent=2),
+            encoding="utf-8",
         )
 
         logger.info("Exported %d replay records to %s", len(all_records), out)
