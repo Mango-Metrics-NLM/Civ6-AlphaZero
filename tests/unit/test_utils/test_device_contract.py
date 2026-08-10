@@ -45,7 +45,7 @@ class TestNoBareNumpyConversions:
     def test_no_bare_numpy_calls(self) -> None:
         offenders: list[str] = []
         for source in _iter_package_sources():
-            for lineno, line in enumerate(source.read_text().splitlines(), start=1):
+            for lineno, line in enumerate(source.read_text(encoding="utf-8").splitlines(), start=1):
                 if _BARE_NUMPY.search(line):
                     rel = source.relative_to(REPO_ROOT)
                     offenders.append(f"{rel}:{lineno}: {line.strip()}")
