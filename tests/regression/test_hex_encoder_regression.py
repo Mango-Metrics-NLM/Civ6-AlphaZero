@@ -132,6 +132,20 @@ class TestOldCheckpointCompatibility:
                 atol=1e-6,
             )
 
+    def test_lenient_load_regression(self) -> None:
+        """Verify validate_encoder_state detects mismatches on state_dict loading."""
+        from alpha_zero.utils.checkpoint import validate_encoder_state
+        # Built a hex_crystalline model but loaded patch_embed weights
+        patch_embed_model = Civ6TransformerNetwork(config=TransformerConfig(encoder_type="patch_embed"))
+        hex_model = Civ6TransformerNetwork(config=TransformerConfig(encoder_type="hex_crystalline"))
+
+        # This is what load_state_dict(strict=False) does internally
+        hex_model.load_state_dict(patch_embed_model.state_dict(), strict=False)
+
+        # Verify that validate_encoder_state flags this mismatch
+        checkpoint_keys = list(patch_embed_model.state_dict().keys())
+        assert validate_encoder_state(hex_model, "hex_crystalline", checkpoint_keys=checkpoint_keys, strict=False) is False
+
     def test_checkpoint_with_encoder_type_preserves_it(
         self, spatial_input: torch.Tensor, vector_input: torch.Tensor
     ) -> None:
