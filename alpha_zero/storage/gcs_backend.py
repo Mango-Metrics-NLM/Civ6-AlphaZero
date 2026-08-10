@@ -51,8 +51,8 @@ try:
 except ImportError:
     HAS_GCS = False
     gcs = None
-    gcs_exceptions = None
-    gcs_retry = None
+    gcs_exceptions = None  # type: ignore[assignment]
+    gcs_retry = None  # type: ignore[assignment]
 
 
 class GCSStorageBackend(StorageBackend):

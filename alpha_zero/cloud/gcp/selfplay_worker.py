@@ -33,7 +33,7 @@ try:
 
     _PSUTIL_AVAILABLE = True
 except ImportError:
-    psutil = None
+    psutil = None  # type: ignore[assignment]
     _PSUTIL_AVAILABLE = False
 
 from alpha_zero.cloud.gcp.config import (

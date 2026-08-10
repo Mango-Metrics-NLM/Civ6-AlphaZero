@@ -41,8 +41,8 @@ try:
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
-    AsyncOpenAI = None
-    OpenAI = None
+    AsyncOpenAI = None  # type: ignore[assignment,misc]
+    OpenAI = None  # type: ignore[assignment,misc]
 
 try:
     from anthropic import Anthropic, AsyncAnthropic
@@ -50,8 +50,9 @@ try:
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
-    AsyncAnthropic = None
-    Anthropic = None
+    AsyncAnthropic = None  # type: ignore[assignment,misc]
+    Anthropic = None  # type: ignore[assignment,misc]
+
 
 # Load environment variables from .env file if available
 try:
@@ -306,7 +307,7 @@ class OpenAIClient(BaseLLMClient):
 
         response = await self._async_client.chat.completions.create(
             model=model,
-            messages=[m.to_openai_format() for m in request_messages],
+            messages=[m.to_openai_format() for m in request_messages],  # type: ignore[misc]
             max_tokens=max_tokens,
             temperature=temperature,
         )
