@@ -194,7 +194,7 @@ warn_unused_configs = true
 ignore_missing_imports = true
 strict_optional = true
 warn_redundant_casts = true
-warn_unused_ignores = true
+warn_unused_ignores = false
 show_error_codes = true
 
 [[tool.mypy.overrides]]

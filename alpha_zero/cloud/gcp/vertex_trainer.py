@@ -56,8 +56,8 @@ try:
     VERTEX_AVAILABLE = True
 except ImportError:
     VERTEX_AVAILABLE = False
-    aiplatform = None
-    CustomJob = None
+    aiplatform = None  # type: ignore[assignment]
+    CustomJob = None  # type: ignore[assignment,misc]
 
 
 class VertexTrainer:

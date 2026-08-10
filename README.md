@@ -98,6 +98,7 @@ Optional extras (installable individually or together with `.[all]`):
 | `web` | FastAPI + uvicorn for the web interface and serving |
 | `monitoring` | MLflow experiment tracking |
 | `spacetimedb` | SpacetimeDB integration |
+| `hub` | Hugging Face Hub integration (for encoder publishing) |
 | `tuning` | Optuna hyperparameter search |
 | `jax` | JAX backend (optional) |
 | `chess` | Chess benchmarking harness |
@@ -185,6 +186,8 @@ python -m alpha_zero.training_civ6 --dry_run   # MicroCiv training smoke test
 | `run_enhanced_training.py` | Training with tuned rewards |
 | `run_civ6_ai.py` | Launcher wrapper |
 | `scripts/inspect_db.py` | Inspect the tournament database |
+| `scripts/run_encoder_ab.py` | Local, device-agnostic A/B comparison of spatial encoders |
+| `scripts/upload_encoder_to_hub.py` | Publish the hex-crystalline encoder to Hugging Face Hub |
 
 ### Live Civilization VI
 

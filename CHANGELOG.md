@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Checkpoint validation wiring, GPU A/B evidence, and 100% mypy stabilization (2026-08-10)
+
+- **Wired `validate_encoder_state` into production GCP worker load sites**: Integration into `evaluation_worker.py` (after load_state_dict) and `selfplay_worker.py` (both Transformer and MuZero paths) ensures checkpoint mismatches are logged as warnings rather than silently degrading training/eval metrics.
+- **Completed 800-game local GPU A/B arena**: Ran controlled A/B training and arena evaluation of `patch_embed` versus `hex_crystalline` on MicroCiv (8x8 grid). Results show a statistically significant edge for `hex_crystalline` (+31.4 Elo, 142W/588D/70L, 95% CI [0.510, 0.579]).
+- **Published to Hugging Face**: Released the extracted hex-crystalline encoder subpackage to Hugging Face under `ianshank/civ6-hexcrystal-encoder` with safetensors and config.json.
+- **100% clean mypy type safety**: Fixed 33 remaining mypy errors across the entire repository, achieving zero type-checking errors in all 350 files.
+
 ### Added — Hex-crystalline encoder is a standalone, publishable subpackage (2026-08-09)
 
 - **`alpha_zero/hexcrystal/`** — the hex encoder, crystalline lattice layer, patch

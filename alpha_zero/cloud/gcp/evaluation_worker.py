@@ -183,6 +183,19 @@ def load_model(
     if incompatible.unexpected_keys:
         logger.warning("Unexpected keys in state_dict: %s", incompatible.unexpected_keys[:5])
 
+    # Detect silently cross-loaded encoder weights (PR #107 follow-up).
+    # The eval worker doesn't thread encoder_type, so we infer the expected
+    # type from the checkpoint itself and verify the model agrees.
+    from alpha_zero.utils.checkpoint import classify_encoder_keys, validate_encoder_state
+
+    expected_encoder = classify_encoder_keys(state_dict.keys())
+    validate_encoder_state(
+        model,
+        expected_encoder,
+        checkpoint_keys=state_dict.keys(),
+        strict=False,  # warn, don't crash — operator decides
+    )
+
     model.eval()
     logger.info("Loaded model v%d from GCS", version)
     return model

@@ -1,0 +1,54 @@
+{
+  "architecture": {
+    "action_space_size": 376,
+    "spatial_size": 8
+  },
+  "ci95_half_width": 0.034425108182248865,
+  "draws": 588,
+  "elo_difference": 31.354042247812043,
+  "losses": 70,
+  "model_a": {
+    "checkpoint": "checkpoints\\encoder_ab\\hex_crystalline.pt",
+    "encoder_type": "hex_crystalline"
+  },
+  "model_b": {
+    "checkpoint": "checkpoints\\encoder_ab\\patch_embed.pt",
+    "encoder_type": "patch_embed"
+  },
+  "num_games": 800,
+  "provenance": {
+    "config": {
+      "action_space_size": 376,
+      "batch_size": 32,
+      "board_size": 8,
+      "device": "auto",
+      "embed_dim": 64,
+      "epochs_per_iter": 2,
+      "gameplay_preset": "default",
+      "games_per_iter": 14,
+      "gumbel_num_actions": 16,
+      "iterations": 20,
+      "learning_rate": 0.001,
+      "max_turns": 30,
+      "mcts_sims": 25,
+      "mcts_type": "gumbel",
+      "num_heads": 8,
+      "num_layers": 6,
+      "seed": 42
+    },
+    "device": "cuda",
+    "git_revision": "b14534a5ad84050f8c2583f8f3246643a25d4380",
+    "python_version": "3.11.9",
+    "timestamp_utc": "2026-08-10T11:44:12.220492+00:00",
+    "torch_version": "2.11.0+cu128"
+  },
+  "score": 436.0,
+  "score_rate": 0.545,
+  "score_rate_ci95": [
+    0.5103598423884957,
+    0.5792100587529935
+  ],
+  "significant_at_95pct": true,
+  "wall_clock_seconds": 17180.10834121704,
+  "wins": 142
+}
