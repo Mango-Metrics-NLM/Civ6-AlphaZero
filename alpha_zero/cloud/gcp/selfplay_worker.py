@@ -264,6 +264,17 @@ def load_model(
         if incompatible.unexpected_keys:
             logger.warning("Unexpected keys in state_dict: %s", incompatible.unexpected_keys[:5])
 
+        # Detect silently cross-loaded encoder weights (PR #107 follow-up).
+        from alpha_zero.utils.checkpoint import validate_encoder_state
+
+        expected_encoder = getattr(transformer_config, "encoder_type", "patch_embed")
+        validate_encoder_state(
+            model,
+            expected_encoder,
+            checkpoint_keys=state_dict.keys(),
+            strict=False,  # warn, don't crash — operator decides
+        )
+
     except RuntimeError as e:
         if "size mismatch" in str(e):
             logger.error(
@@ -375,6 +386,19 @@ def load_muzero_model(
                 "Unexpected keys in MuZero state_dict: %s",
                 incompatible.unexpected_keys[:5],
             )
+
+        # MuZero uses CNN, not hex encoder — but still validate that encoder
+        # weights were actually loaded, not left randomly initialised.
+        from alpha_zero.utils.checkpoint import classify_encoder_keys, validate_encoder_state
+
+        ckpt_encoder = classify_encoder_keys(state_dict.keys())
+        validate_encoder_state(
+            model,
+            ckpt_encoder,
+            checkpoint_keys=state_dict.keys(),
+            strict=False,  # warn, don't crash
+        )
+
     except RuntimeError as e:
         if "size mismatch" in str(e):
             logger.error(
