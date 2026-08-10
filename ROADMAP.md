@@ -46,6 +46,8 @@ A trained agent plays a real, unmodified Civilization VI. *(Delivered: v1.7.0–
 
 Make N-player training real and self-play fast; pay down debt. *(Active.)*
 
+- Wire `validate_encoder_state` into the cloud workers to prevent silent architecture cross-loading (done 2026-08-10).
+- Complete 800-game local GPU A/B arena comparison and publish the hex-crystalline encoder to the Hugging Face Hub (done 2026-08-10).
 - Run and validate 3–4 player training (pipeline landed 2026-07-05:
   `--num_players` / `--scoring_method`; Max-N backprop and opponent modeling in
   self-play remain).
@@ -59,6 +61,7 @@ Make N-player training real and self-play fast; pay down debt. *(Active.)*
   hierarchical / state-extraction / training-smoke tests.
 - Bring omitted modules (`serving/`, `inference/`, cloud infra) under the coverage
   gate (re-tightened 80% → 85% on 2026-07-13; omit-list shrink remains).
+- Achieve 100% clean mypy type safety across all 350 files (done 2026-08-10).
 
 ## M5 — Full Civ6 Mastery
 

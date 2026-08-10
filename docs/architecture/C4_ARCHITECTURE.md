@@ -227,5 +227,45 @@ flowchart TD
 
 ---
 
-*Generated: 2026-05-21*
-*Architecture version: Phase 19 (MLflow Monitoring Layer)*
+## Checkpoint Validation & Hub Publishing
+
+```mermaid
+flowchart TD
+    classDef storage fill:#067D26,color:#fff,stroke:#055E1C
+    classDef logic fill:#1168BD,color:#fff,stroke:#0E5EA8
+    classDef external fill:#999,color:#fff,stroke:#6B6B6B
+
+    GCS["☁️ GCS Checkpoints"]:::storage
+    HF["🤗 Hugging Face Hub"]:::external
+
+    subgraph LoadPath["Worker Load Path (evaluation_worker / selfplay_worker)"]
+        Load["load_state_dict(strict=False)"]:::logic
+        Classify["classify_encoder_keys()"]:::logic
+        Validate["validate_encoder_state()"]:::logic
+        Warn["Log mismatch warning / error"]:::logic
+        
+        Load --> Classify
+        Classify --> Validate
+        Validate -->|"mismatch detected"| Warn
+    end
+
+    subgraph ExportPath["Export & Publish (upload_encoder_to_hub.py)"]
+        Extract["Extract encoder sub-module"]:::logic
+        Verify["Verify safe-tensors only"]:::logic
+        ModelCard["Assemble Model Card README"]:::logic
+        Publish["HfApi.upload_folder()"]:::logic
+        
+        Extract --> Verify
+        Verify --> ModelCard
+        ModelCard --> Publish
+    end
+
+    GCS -->|"checkpoint file"| Load
+    GCS -->|"checkpoint file"| Extract
+    Publish -->|"safetensors & config"| HF
+```
+
+---
+
+*Generated: 2026-08-10*
+*Architecture version: Phase 20 (Hexcrystal Encoder & Validation Support)*
