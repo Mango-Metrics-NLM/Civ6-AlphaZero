@@ -16,7 +16,6 @@ _GUARDED_MODULES = [
     ("alpha_zero.hexcrystal.hub_mixin", "hub"),
     ("alpha_zero.core.transformer_hub_mixin", "hub"),
     ("alpha_zero.core.muzero_hub_mixin", "hub"),
-    ("alpha_zero.hub.upload", "hub"),
 ]
 
 

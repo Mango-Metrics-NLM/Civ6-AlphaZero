@@ -26,17 +26,25 @@ class TestNoTokenInModelCard:
     @pytest.mark.parametrize("token", _FAKE_TOKENS)
     def test_token_not_in_card(self, token):
         """No fake token should appear in the generated card text."""
-        # Even if someone accidentally puts a token in metadata fields.
+        # Even if someone accidentally puts a token in metadata fields,
+        # we verify that generate_model_card does not silently strip it
+        # (awareness test) and that the card is a non-empty string.
         meta = ModelCardMetadata(
             model_name="test",
             description=f"Model trained with token {token}",
             training_details=f"Used API key: {token}",
         )
         card = generate_model_card(meta)
-        # The token WILL appear because it's in the description — but this
-        # test ensures we're aware of it. The real guard is on the upload side.
-        # This is a documentation/awareness test.
         assert isinstance(card, str)
+        assert len(card) > 0
+        # The token appears because it was explicitly placed in description/
+        # training_details — the real guard is on the upload side.  Asserting
+        # its presence here makes the test fail if generate_model_card ever
+        # starts silently redacting input fields, which would be a regression.
+        assert token in card, (
+            "generate_model_card unexpectedly removed the token from the card text; "
+            "if intentional, update this awareness test to reflect the new contract."
+        )
 
     def test_card_has_no_env_var_interpolation(self):
         """Model card should not accidentally expand env vars."""

@@ -4,8 +4,10 @@ Wraps ``HfApi.upload_folder`` with model-card generation, dry-run support,
 and structured logging.  Designed to be called by model-specific upload
 scripts without duplicating Hub interaction logic.
 
-**Import guard**: importing this module without ``huggingface_hub`` installed
-raises :class:`ImportError` with an actionable message.
+This module is importable without the ``hub`` extra.  ``huggingface_hub`` is
+only imported inside :func:`upload_model_to_hub` when ``dry_run=False``; an
+:class:`ImportError` with installation instructions is raised at that point if
+the extra is missing.
 
 Example::
 
@@ -130,7 +132,6 @@ def upload_model_to_hub(
             "alpha_zero.hub.upload requires the 'hub' extra. Install with:  pip install -e '.[hub]'"
         ) from exc
 
-    _auto_tmpdir = save_directory == Path(tempfile.gettempdir())
     api = HfApi(token=token)
     api.create_repo(repo_id=repo_id, exist_ok=True, private=private)
     api.upload_folder(

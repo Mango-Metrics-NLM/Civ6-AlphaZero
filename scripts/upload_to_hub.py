@@ -31,9 +31,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import torch
-
 from alpha_zero.hub.constants import DEFAULT_MODEL_TAGS, HF_ORG
+from alpha_zero.utils.checkpoint import safe_load_checkpoint
 
 logging.basicConfig(
     level=logging.INFO,
@@ -106,9 +105,14 @@ def _load_checkpoint(
         An instance of *model_class* with loaded weights.
     """
     logger.info("Loading checkpoint from %s", checkpoint_path)
-    data = torch.load(
-        str(checkpoint_path), map_location=device, weights_only=False,
-    )
+    result = safe_load_checkpoint(str(checkpoint_path), map_location=device)
+    data = result.data
+    if not result.loaded_safely:
+        logger.warning(
+            "Checkpoint %s was loaded with weights_only=False; "
+            "ensure the file comes from a trusted source.",
+            checkpoint_path,
+        )
 
     # Detect format.
     if isinstance(data, dict) and "state_dict" in data:
@@ -125,7 +129,7 @@ def _load_checkpoint(
     else:
         model = model_class()
 
-    model.load_state_dict(state_dict, strict=False)
+    model.load_state_dict(state_dict, strict=True)
     logger.info(
         "Loaded %d parameters from checkpoint",
         sum(p.numel() for p in model.parameters()),

@@ -224,8 +224,7 @@ class TestUploadPublish:
         )
 
 
-class TestHubUploadableProtocol:
-    """HubUploadable protocol is importable without the hub extra installed."""
+class TestHubUploadableProtocolLate:
 
     def test_protocol_importable(self):
         """Import guard on HfApi must not block protocol import."""

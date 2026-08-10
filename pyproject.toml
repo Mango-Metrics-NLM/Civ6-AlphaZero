@@ -195,7 +195,6 @@ ignore = [
 "scripts/benchmark_batch_selfplay.py" = ["E402"]  # sys.path bootstrap before alpha_zero imports
 "scripts/analyze_prod_v1.6.0.py" = ["N999"]  # Versioned script filename is intentional
 "tests/unit/test_jax_*.py" = ["E402"]  # pytest.importorskip guards precede imports
-"tests/unit/test_hexcrystal_hub_mixin.py" = ["E402"]  # pytest.importorskip guards precede imports
 "tests/unit/test_bridge_config.py" = ["E402"]  # platform skip markers precede imports
 "tests/scripts/test_run_baseline_eval.py" = ["E402"]  # sys.path bootstrap before imports
 
