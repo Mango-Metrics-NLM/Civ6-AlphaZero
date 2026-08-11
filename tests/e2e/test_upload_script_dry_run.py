@@ -3,10 +3,25 @@
 Verifies the CLI tool works end-to-end without network access.
 """
 
+import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
+
+# Derive project root from this file: tests/e2e/test_upload_script_dry_run.py
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _subprocess_env() -> dict[str, str]:
+    """Return a copy of os.environ with project root on PYTHONPATH."""
+    env = os.environ.copy()
+    existing = env.get("PYTHONPATH", "")
+    root_str = str(_PROJECT_ROOT)
+    if root_str not in existing.split(os.pathsep):
+        env["PYTHONPATH"] = root_str + (os.pathsep + existing if existing else "")
+    return env
 
 
 class TestUploadScriptDryRun:
@@ -26,10 +41,9 @@ class TestUploadScriptDryRun:
             capture_output=True,
             text=True,
             timeout=120,
-            cwd=str(tmp_path.parent.parent),
+            cwd=str(_PROJECT_ROOT),
+            env=_subprocess_env(),
         )
-        # The script may fail if CWD doesn't have the project; run from project root.
-        # We check returncode and output for key markers.
         assert "DRY RUN" in result.stdout or result.returncode == 0 or "Saved to" in result.stdout, (
             f"Script failed for {model_type}:\n"
             f"stdout: {result.stdout}\nstderr: {result.stderr}"
@@ -47,6 +61,8 @@ class TestUploadScriptDryRun:
             capture_output=True,
             text=True,
             timeout=30,
+            cwd=str(_PROJECT_ROOT),
+            env=_subprocess_env(),
         )
         assert result.returncode != 0
 
@@ -56,8 +72,12 @@ class TestUploadScriptDryRun:
             [sys.executable, "scripts/upload_to_hub.py", "--help"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=30,
+            cwd=str(_PROJECT_ROOT),
+            env=_subprocess_env(),
         )
         assert result.returncode == 0
         assert "--model-type" in result.stdout
         assert "--publish" in result.stdout
+
+

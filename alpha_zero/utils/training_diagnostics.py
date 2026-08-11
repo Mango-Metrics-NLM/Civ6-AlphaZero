@@ -951,7 +951,7 @@ def check_value_head(
     device = mcts.device if hasattr(mcts, "device") else "cpu"
     network.eval()
 
-    def _safe_reset():
+    def _safe_reset() -> tuple[dict[str, np.ndarray], dict[str, Any]]:
         for _ in range(5):
             try:
                 return env.reset()
