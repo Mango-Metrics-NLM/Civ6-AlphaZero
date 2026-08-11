@@ -206,7 +206,7 @@ class PreemptionHandler(PreemptionHandlerProtocol):
             import urllib.request
 
             req = urllib.request.Request(METADATA_URL, headers=METADATA_HEADERS)
-            with urllib.request.urlopen(req, timeout=2) as response:  # noqa: S310
+            with urllib.request.urlopen(req, timeout=2) as response:
                 result = response.read().decode().strip().lower()
                 return bool(result == "true")
         except Exception:
