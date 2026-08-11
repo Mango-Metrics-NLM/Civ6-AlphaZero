@@ -23,7 +23,7 @@ dev = [
     "pytest-xdist>=3.0.0",
     "pytest-timeout>=2.2.0",
     "mypy==1.19.1",
-    "ruff==0.15.8",
+    "ruff==0.16.2",
     "tqdm>=4.65.0",
     "types-tqdm>=4.65.0",
     "bandit>=1.7.0",
