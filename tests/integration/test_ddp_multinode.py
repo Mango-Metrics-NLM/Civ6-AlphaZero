@@ -17,7 +17,9 @@ import pytest
 import torch
 import torch.nn as nn
 
+from alpha_zero.distributed.ddp_config import DDPConfig
 from alpha_zero.distributed.ddp_learner import DDPLearner, DDPLearnerConfig
+from alpha_zero.distributed.learner import LearnerConfig
 from tests.fixtures.mock_distributed import (
     mock_ddp_context,
 )
@@ -358,10 +360,11 @@ class TestMixedDeviceScenarios:
         if not torch.cuda.is_available() or torch.cuda.device_count() < 2:
             pytest.skip("Test requires at least 2 CUDA devices")
 
-        config = DDPLearnerConfig(ddp_enabled=True, ddp_world_size=4, ddp_rank=2, ddp_local_rank=1)
+        ddp_config = DDPConfig(enabled=True, world_size=4, rank=2, local_rank=1, use_cuda=True, device_ids=[0, 1])
+        config = DDPLearnerConfig.from_learner_config(LearnerConfig(), ddp_config=ddp_config)
 
         with mock_ddp_context(
-            world_size=4, rank=2, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP"
+            world_size=4, rank=2, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP", mock_cuda=False
         ):
             learner = DDPLearner(
                 config=config,

@@ -297,6 +297,7 @@ def mock_ddp_context(
     world_size: int = 2,
     rank: int = 0,
     ddp_module_path: str | None = None,
+    mock_cuda: bool = True,
 ) -> Generator[MockDistributedBackend, None, None]:
     """Context manager for mocking DDP environment.
 
@@ -313,6 +314,7 @@ def mock_ddp_context(
         ddp_module_path: Optional path to patch DDP at (e.g.,
             'alpha_zero.distributed.ddp_learner.DDP'). If not provided,
             patches 'torch.nn.parallel.DistributedDataParallel'.
+        mock_cuda: Whether to mock CUDA to be unavailable.
 
     Yields:
         MockDistributedBackend instance with patches applied.
@@ -330,9 +332,12 @@ def mock_ddp_context(
 
     with backend.patch():
         with patch(ddp_patch_target, MockDDPWrapper):
-            with patch("torch.cuda.is_available", return_value=False):
-                with patch(
-                    "alpha_zero.distributed.ddp_config.DDPConfig.get_device",
-                    return_value="cpu",
-                ):
-                    yield backend
+            if mock_cuda:
+                with patch("torch.cuda.is_available", return_value=False):
+                    with patch(
+                        "alpha_zero.distributed.ddp_config.DDPConfig.get_device",
+                        return_value="cpu",
+                    ):
+                        yield backend
+            else:
+                yield backend

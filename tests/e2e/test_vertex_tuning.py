@@ -87,13 +87,13 @@ def test_tuning_job_submission(gcp_config: GCPConfig, mock_aiplatform: MagicMock
     # 1. CustomJob creation
     assert mock_aiplatform.CustomJob.called
     custom_job_call = mock_aiplatform.CustomJob.call_args
-    assert custom_job_call.kwargs["display_name"] == "civ6az-tuning-iter001"
+    assert custom_job_call.kwargs["display_name"] == "civ6az-mzwm-tuning-iter001"
     assert "worker_pool_specs" in custom_job_call.kwargs
 
     # 2. HyperparameterTuningJob creation
     assert mock_aiplatform.HyperparameterTuningJob.called
     tuning_job_call = mock_aiplatform.HyperparameterTuningJob.call_args
-    assert tuning_job_call.kwargs["display_name"] == "civ6az-tuning-iter001-tuning"
+    assert tuning_job_call.kwargs["display_name"] == "civ6az-mzwm-tuning-iter001-tuning"
     assert tuning_job_call.kwargs["max_trial_count"] == 10
     assert tuning_job_call.kwargs["parallel_trial_count"] == 2
     assert tuning_job_call.kwargs["metric_spec"] == metric_spec

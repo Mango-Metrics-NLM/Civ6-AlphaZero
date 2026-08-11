@@ -91,7 +91,7 @@ class TestVertexSubmission:
         _, kwargs = call_args
 
         # Check display name
-        assert kwargs["display_name"] == "civ6az-selfplay-iter005-worker00"
+        assert kwargs["display_name"] == "civ6az-mzwm-selfplay-iter005-worker00"
 
         # Check worker pool spec
         worker_specs = kwargs["worker_pool_specs"]
