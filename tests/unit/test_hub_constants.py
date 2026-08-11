@@ -10,8 +10,6 @@ import os
 from pathlib import Path
 from unittest import mock
 
-import pytest
-
 
 class TestHFOrg:
     """Tests for HF_ORG constant."""

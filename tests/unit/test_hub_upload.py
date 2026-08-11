@@ -16,8 +16,8 @@ import pytest
 # Guard: skip entire module if hub extra is missing.
 hf_hub = pytest.importorskip("huggingface_hub", reason="requires hub extra")
 
-from alpha_zero.hub.model_card import ModelCardMetadata
-from alpha_zero.hub.upload import HubUploadable, upload_model_to_hub
+from alpha_zero.hub.model_card import ModelCardMetadata  # noqa: E402
+from alpha_zero.hub.upload import HubUploadable, upload_model_to_hub  # noqa: E402
 
 
 class _FakeModel:

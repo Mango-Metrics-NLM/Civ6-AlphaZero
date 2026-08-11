@@ -7,8 +7,6 @@ Tests cover:
 - write_model_card file I/O
 """
 
-import pytest
-
 from alpha_zero.hub.model_card import (
     ModelCardMetadata,
     generate_model_card,

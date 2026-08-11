@@ -16,12 +16,15 @@ import torch
 # Guard: skip if hub extra is missing.
 hf_hub = pytest.importorskip("huggingface_hub", reason="requires hub extra")
 
-from alpha_zero.core.transformer_hub_mixin import (
+from alpha_zero.core.transformer_hub_mixin import (  # noqa: E402
     TRANSFORMER_HUB_TAGS,
     Civ6TransformerNetworkForHub,
     _config_to_flat_kwargs,
 )
-from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
+from alpha_zero.core.transformer_network import (  # noqa: E402
+    Civ6TransformerNetwork,
+    TransformerConfig,
+)
 
 
 class TestConstruction:
@@ -69,7 +72,7 @@ class TestSaveLoadRoundTrip:
 
         # Verify weight parity.
         for (name_a, param_a), (name_b, param_b) in zip(
-            original.named_parameters(), loaded.named_parameters(),
+            original.named_parameters(), loaded.named_parameters(), strict=True,
         ):
             assert name_a == name_b
             assert torch.allclose(param_a, param_b, atol=1e-6), (
@@ -108,7 +111,7 @@ class TestFromNetwork:
         hub = Civ6TransformerNetworkForHub.from_network(plain)
 
         for (n_p, p_p), (n_h, p_h) in zip(
-            plain.named_parameters(), hub.named_parameters(),
+            plain.named_parameters(), hub.named_parameters(), strict=True,
         ):
             assert n_p == n_h
             assert torch.equal(p_p, p_h), f"Weight mismatch for {n_p}"

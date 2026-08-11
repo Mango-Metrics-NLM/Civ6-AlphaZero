@@ -10,6 +10,7 @@ the Civ6 environment which is not yet packaged for Spaces.
 from __future__ import annotations
 
 import os
+from typing import Any
 
 try:
     from alpha_zero.hub.constants import HF_ORG
@@ -20,7 +21,7 @@ except ImportError:
 MODEL_REPO_ID = os.environ.get(
     "HF_MODEL_REPO", f"{HF_ORG}/civ6-alphazero-transformer",
 )
-TITLE = "🏛️ MicroCiv Explorer — Civ6 AlphaZero"
+TITLE = "🏛️ Civ6 AlphaZero — MicroCiv Explorer"
 DESCRIPTION = """
 Explore the Civ6 AlphaZero policy/value network.
 
@@ -29,7 +30,7 @@ Explore the Civ6 AlphaZero policy/value network.
 """
 
 
-def create_app():
+def create_app() -> Any:
     """Build and return the Gradio app."""
     try:
         import gradio as gr
@@ -58,7 +59,7 @@ def create_app():
                 policy_output = gr.Textbox(label="Top 5 Actions", lines=5)
                 model_info = gr.Textbox(label="Model Info", lines=3)
 
-        def analyze_position(board_json: str):
+        def analyze_position(board_json: str) -> tuple[float, str, str]:
             """Analyze a board position (placeholder)."""
             return (
                 0.0,

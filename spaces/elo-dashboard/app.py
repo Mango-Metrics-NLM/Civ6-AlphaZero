@@ -9,6 +9,7 @@ NOTE: This is scaffolding — full charts require tournament data.
 from __future__ import annotations
 
 import os
+from typing import Any
 
 try:
     from alpha_zero.hub.constants import HF_ORG
@@ -21,14 +22,15 @@ DATASET_REPO_ID = os.environ.get(
 )
 TITLE = "📊 Civ6 AlphaZero — ELO Dashboard"
 DESCRIPTION = """
-Track model improvement through ELO ratings and tournament results.
+Track model improvement through ELO ratings, win-rate matrices, and
+head-to-head comparisons across training iterations.
 
 - **Dataset**: Loaded from Hugging Face Hub
 - **Features**: Rating progression, win-rate matrix, head-to-head comparison
 """
 
 
-def create_app():
+def create_app() -> Any:
     """Build and return the Gradio app."""
     try:
         import gradio as gr

@@ -12,8 +12,8 @@ import torch
 # Guard: skip if hub extra is missing.
 hf_hub = pytest.importorskip("huggingface_hub", reason="requires hub extra")
 
-from alpha_zero.hub.model_card import ModelCardMetadata
-from alpha_zero.hub.upload import upload_model_to_hub
+from alpha_zero.hub.model_card import ModelCardMetadata  # noqa: E402
+from alpha_zero.hub.upload import upload_model_to_hub  # noqa: E402
 
 
 class TestTransformerPublishPipeline:
@@ -65,7 +65,7 @@ class TestTransformerPublishPipeline:
         # Verify reload produces identical weights.
         reloaded = Civ6TransformerNetworkForHub.from_pretrained(str(save_dir))
         for (n_a, p_a), (n_b, p_b) in zip(
-            model.named_parameters(), reloaded.named_parameters(),
+            model.named_parameters(), reloaded.named_parameters(), strict=True,
         ):
             assert n_a == n_b
             assert torch.allclose(p_a, p_b, atol=1e-6)
@@ -105,7 +105,7 @@ class TestMuZeroPublishPipeline:
 
         reloaded = MuZeroNetworkForHub.from_pretrained(str(save_dir))
         for (n_a, p_a), (n_b, p_b) in zip(
-            model.named_parameters(), reloaded.named_parameters(),
+            model.named_parameters(), reloaded.named_parameters(), strict=True,
         ):
             assert n_a == n_b
             assert torch.allclose(p_a, p_b, atol=1e-6)

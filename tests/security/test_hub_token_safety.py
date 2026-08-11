@@ -61,7 +61,7 @@ class TestNoTokenInSavedFiles:
 
     def test_config_json_clean(self, tmp_path):
         """config.json from save_pretrained should not contain tokens."""
-        hf_hub = pytest.importorskip("huggingface_hub", reason="requires hub extra")
+        pytest.importorskip("huggingface_hub", reason="requires hub extra")
 
         from alpha_zero.core.transformer_hub_mixin import Civ6TransformerNetworkForHub
 
@@ -87,9 +87,7 @@ class TestNoTokenInLogs:
 
     def test_upload_log_messages_clean(self, tmp_path, caplog):
         """Log output during upload should not contain tokens."""
-        hf_hub = pytest.importorskip("huggingface_hub", reason="requires hub extra")
-
-        from unittest import mock
+        pytest.importorskip("huggingface_hub", reason="requires hub extra")
 
         from alpha_zero.hub.upload import upload_model_to_hub
 
@@ -100,7 +98,7 @@ class TestNoTokenInLogs:
                 Path(save_directory).mkdir(parents=True, exist_ok=True)
                 (Path(save_directory) / "model.safetensors").write_text("fake")
 
-        fake_token = "hf_SECRETTOKEN12345678"
+        fake_token = "hf_SECRETTOKEN12345678"  # noqa: S105
 
         with caplog.at_level(logging.DEBUG, logger="alpha_zero.hub"):
             upload_model_to_hub(

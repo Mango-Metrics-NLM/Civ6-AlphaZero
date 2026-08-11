@@ -10,7 +10,6 @@ import sys
 
 import pytest
 
-
 # Each (module_path, expected_message_fragment) pair to test.
 _GUARDED_MODULES = [
     ("alpha_zero.hexcrystal.hub_mixin", "hub"),
@@ -26,14 +25,14 @@ class TestHubImportGuard:
     def test_import_guard_fires(self, module_path, fragment):
         """Importing hub modules without huggingface_hub raises ImportError."""
         code = (
-            f"import sys; "
-            f"sys.modules['huggingface_hub'] = None; "
-            f"try:\n"
+            "import sys\n"
+            "sys.modules['huggingface_hub'] = None\n"
+            "try:\n"
             f"    import {module_path}\n"
-            f"    sys.exit(1)\n"
-            f"except ImportError as e:\n"
+            "    sys.exit(1)\n"
+            "except ImportError as e:\n"
             f"    assert '{fragment}' in str(e).lower(), f'Bad message: {{e}}'\n"
-            f"    sys.exit(0)\n"
+            "    sys.exit(0)\n"
         )
         result = subprocess.run(
             [sys.executable, "-c", code],
