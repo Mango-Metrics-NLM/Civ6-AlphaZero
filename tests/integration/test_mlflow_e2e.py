@@ -23,7 +23,7 @@ pytestmark = pytest.mark.integration
 def _make_config(tmp_path: Path) -> MLflowConfig:
     return MLflowConfig(
         enabled=True,
-        tracking_uri=f"file://{tmp_path}/mlruns",
+        tracking_uri=(tmp_path / "mlruns").as_uri(),
         experiment_name="civ6_e2e_test",
         run_name="e2e_run",
         tags={"suite": "integration"},

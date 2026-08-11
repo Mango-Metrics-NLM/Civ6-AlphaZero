@@ -207,6 +207,7 @@ strict_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = false
 show_error_codes = true
+exclude = ["^spaces/", "^templates/"]
 
 [[tool.mypy.overrides]]
 module = "tqdm.*"

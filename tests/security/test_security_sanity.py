@@ -36,6 +36,8 @@ _SKIP_DIRS: frozenset[str] = frozenset(
         ".pytest_cache",
         "node_modules",
         ".venv",
+        ".venv2",
+        ".venv-scan",
         "venv",
         "htmlcov",
         ".tox",
