@@ -40,10 +40,6 @@ dev = [
     "huggingface_hub>=0.26,<1.0",
     "safetensors>=0.4",
 ]
-hub = [
-    "huggingface_hub>=0.26,<1.0",
-    "safetensors>=0.4",
-]
 gcp = [
     "google-cloud-aiplatform>=1.40.0",
     "google-cloud-storage>=2.14.0",
@@ -88,6 +84,20 @@ jax = [
 chess = [
     "chess>=1.11.0",
 ]
+# Hugging Face Hub integration. Opt-in; the hexcrystal encoder and other models
+# use PyTorchModelHubMixin for save_pretrained / from_pretrained support.
+hub = [
+    "huggingface_hub>=0.26,<1.0",
+    "safetensors>=0.4",
+]
+# Dataset export to Hugging Face Hub.
+datasets = [
+    "datasets>=2.18.0",
+]
+# Gradio Spaces for interactive demos.
+spaces = [
+    "gradio>=4.20.0",
+]
 # LLM evaluation harness (github.com/ianshank/Agents -> dist "langfuse-eval-harness").
 # Optional; the eval gate (scripts/run_llm_eval.py / `make eval-llm`) degrades
 # gracefully when this is not installed. Pinned to a commit SHA so the grader the
@@ -106,8 +116,9 @@ all = [
     "alpha_zero[jax]",
     "alpha_zero[chess]",
     "alpha_zero[monitoring]",
-    "alpha_zero[eval]",
     "alpha_zero[hub]",
+    "alpha_zero[datasets]",
+    "alpha_zero[eval]",
 ]
 
 
@@ -170,6 +181,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "ANN", "N803", "S108", "S603", "S607", "S310", "N806", "N812", "RUF012", "S110", "S104", "B017", "RUF003"]
 "**/tests/*" = ["S101", "ANN", "N803", "S108", "S603", "S607", "S310", "N806", "N812", "RUF012", "S110", "S104", "B017", "RUF003"]
+"tests/unit/test_hexcrystal_hub_mixin.py" = ["E402"]  # pytest.importorskip guards precede imports
 "scripts/*" = ["ANN", "S603", "S607", "S310", "S105", "E741"]  # Scripts use subprocess, URL calls, and short var names
 "alpha_zero/cloud/gcp/container_validator.py" = ["S603"]  # Internal subprocess call with validated input
 "alpha_zero/cloud/preemption.py" = ["S310"]  # GCE metadata URL is intentional
@@ -183,7 +195,6 @@ ignore = [
 "scripts/benchmark_batch_selfplay.py" = ["E402"]  # sys.path bootstrap before alpha_zero imports
 "scripts/analyze_prod_v1.6.0.py" = ["N999"]  # Versioned script filename is intentional
 "tests/unit/test_jax_*.py" = ["E402"]  # pytest.importorskip guards precede imports
-"tests/unit/test_hexcrystal_hub_mixin.py" = ["E402"]  # pytest.importorskip guards precede imports
 "tests/unit/test_bridge_config.py" = ["E402"]  # platform skip markers precede imports
 "tests/scripts/test_run_baseline_eval.py" = ["E402"]  # sys.path bootstrap before imports
 
@@ -258,6 +269,15 @@ module = ["jax.*", "jaxlib.*", "equinox.*", "optax.*", "jaxtyping.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = ["huggingface_hub.*", "safetensors.*", "datasets.*", "gradio.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "alpha_zero.hub.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
 
@@ -291,6 +311,7 @@ markers = [
     "smoke: marks smoke tests for quick validation (select with '-m smoke')",
     "requires_spacetimedb: marks tests requiring running SpacetimeDB instance",
     "requires_jax: marks tests requiring JAX installation (install with pip install -e '.[jax]')",
+    "requires_hub: marks tests requiring Hugging Face Hub (install with pip install -e '.[hub]')",
 ]
 
 [tool.coverage.run]

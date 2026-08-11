@@ -951,9 +951,20 @@ def check_value_head(
     device = mcts.device if hasattr(mcts, "device") else "cpu"
     network.eval()
 
+    def _safe_reset() -> tuple[dict[str, np.ndarray], dict[str, Any]]:
+        for _ in range(5):
+            try:
+                return env.reset()
+            except RuntimeError:
+                continue
+        return env.reset()
+
     for _ in range(n_positions):
         # Reset to random position
-        obs, _ = env.reset()
+        try:
+            obs, _ = _safe_reset()
+        except RuntimeError:
+            continue
 
         # Take some random steps to get varied positions
         for _ in range(np.random.randint(5, 30)):
@@ -964,7 +975,10 @@ def check_value_head(
             action = np.random.choice(valid_actions)
             obs, _, terminated, truncated, _ = env.step(action)
             if terminated or truncated:
-                obs, _ = env.reset()
+                try:
+                    obs, _ = _safe_reset()
+                except RuntimeError:
+                    pass
                 break
 
         # Get value prediction

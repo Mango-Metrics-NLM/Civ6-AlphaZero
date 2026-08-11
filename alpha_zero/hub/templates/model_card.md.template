@@ -1,0 +1,43 @@
+---
+library_name: $library_name
+tags:
+$tags_yaml
+license: $license
+---
+
+# $model_name
+
+$description
+
+## Model Details
+
+| Property | Value |
+|----------|-------|
+| **Library** | `$library_name` |
+| **Architecture** | $architecture |
+| **Parameters** | $num_parameters |
+| **License** | $license |
+
+## Training
+
+$training_details
+
+## Metrics
+
+$metrics
+
+## Usage
+
+```python
+from $import_path import $class_name
+
+# Load from Hugging Face Hub
+model = $class_name.from_pretrained("$repo_id")
+
+# Or load from a local directory
+model = $class_name.from_pretrained("./my-local-model")
+```
+
+## Citation
+
+$citation
