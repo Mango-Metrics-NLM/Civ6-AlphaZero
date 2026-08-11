@@ -75,7 +75,7 @@ class ProtocolValidationError(ValueError):
         super().__init__(" | ".join(parts))
 
 
-def _validate_required(data: dict, field: str, context: str = "") -> Any:
+def _validate_required(data: dict[str, Any], field: str, context: str = "") -> Any:
     """Validate that a required field exists.
 
     Args:
@@ -297,7 +297,7 @@ def _validate_list(
     field: str,
     context: str = "",
     default_factory: Callable[[], list] = list,
-) -> list:
+) -> list[Any]:
     """Validate list value.
 
     Args:
@@ -332,7 +332,7 @@ def _validate_dict(
     field: str,
     context: str = "",
     default_factory: Callable[[], dict] = dict,
-) -> dict:
+) -> dict[str, Any]:
     """Validate dict value.
 
     Args:
@@ -412,12 +412,12 @@ class Position:
     x: int
     y: int
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {"x": self.x, "y": self.y}
 
     @classmethod
-    def from_dict(cls, data: dict) -> Position:
+    def from_dict(cls, data: dict[str, Any]) -> Position:
         """Create from dictionary.
 
         Args:

@@ -2,9 +2,10 @@
 title: Civ6 AlphaZero ELO Dashboard
 emoji: 📊
 colorFrom: green
-colorTo: teal
+colorTo: green
 sdk: gradio
 sdk_version: "4.20.0"
+python_version: "3.12"
 app_file: app.py
 pinned: false
 license: mit
@@ -27,7 +28,7 @@ head-to-head comparisons across training iterations.
 This dashboard visualises how the Civ6 AlphaZero models improve over
 successive training runs using ELO tournament data published to the Hub.
 
-- **Dataset**: [`Mango-Metrics-NLM/civ6-elo-tournament`](https://huggingface.co/datasets/Mango-Metrics-NLM/civ6-elo-tournament)
+- **Dataset**: [`ianshank/civ6-elo-tournament`](https://huggingface.co/datasets/ianshank/civ6-elo-tournament)
 - **Algorithm**: Sequential testing + ELO rating system
 
 ## Features
@@ -44,22 +45,22 @@ successive training runs using ELO tournament data published to the Hub.
 > **Note**: This Space is currently scaffolded. Charts will be populated
 > once tournament data is published to the Hub dataset.
 > Track progress at the
-> [Civ6-AlphaZero GitHub repo](https://github.com/Mango-Metrics-NLM/Civ6-AlphaZero).
+> [Civ6-AlphaZero GitHub repo](https://github.com/ianshank/Civ6-AlphaZero).
 
 ## Environment Variables
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `HF_DATASET_REPO` | `Mango-Metrics-NLM/civ6-elo-tournament` | Dataset repo to load from Hub |
-| `HF_ORG` | `Mango-Metrics-NLM` | HF organisation override |
+| `HF_DATASET_REPO` | `ianshank/civ6-elo-tournament` | Dataset repo to load from Hub |
+| `HF_ORG` | `ianshank` | HF organisation override |
 
 ## Citation
 
 ```bibtex
 @software{civ6_alphazero_2025,
-  author = {Mango-Metrics-NLM},
+  author = {ianshank},
   title  = {Civ6 AlphaZero},
   year   = {2025},
-  url    = {https://github.com/Mango-Metrics-NLM/Civ6-AlphaZero}
+  url    = {https://github.com/ianshank/Civ6-AlphaZero}
 }
 ```

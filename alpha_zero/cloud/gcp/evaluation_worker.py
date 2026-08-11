@@ -203,7 +203,7 @@ def load_model(
 
 def save_results(
     config: GCPConfig,
-    results: dict,
+    results: dict[str, Any],
     iteration: int,
     model_version_new: int,
     model_version_old: int,

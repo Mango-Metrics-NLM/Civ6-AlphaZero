@@ -557,7 +557,7 @@ class SelfPlayActor:
         """Check if actor is running."""
         return self._running
 
-    def get_statistics(self) -> dict:
+    def get_statistics(self) -> dict[str, Any]:
         """Get actor statistics.
 
         Returns:

@@ -31,13 +31,13 @@ except ImportError as e:
     HAS_DEPENDENCIES = False
     IMPORT_ERROR = str(e)
     # Placeholders for type checking
-    BenchmarkConfig = None
-    BenchmarkResult = None
-    Benchmarker = None
-    BenchmarkSuite = None
-    benchmark_function = None
-    create_mechanics_benchmarks = None
-    time_function = None
+    BenchmarkConfig = None  # type: ignore[misc,assignment]
+    BenchmarkResult = None  # type: ignore[misc,assignment]
+    Benchmarker = None  # type: ignore[misc,assignment]
+    BenchmarkSuite = None  # type: ignore[misc,assignment]
+    benchmark_function = None  # type: ignore[assignment]
+    create_mechanics_benchmarks = None  # type: ignore[assignment]
+    time_function = None  # type: ignore[assignment]
 
 pytestmark = pytest.mark.skipif(
     not HAS_DEPENDENCIES, reason=f"Benchmark dependencies not available: {IMPORT_ERROR}"

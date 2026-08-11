@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Any
 
 import numpy as np
 
@@ -199,8 +199,8 @@ class GreedyHeuristicAgent(BaseAgent):
         self,
         action: int,
         action_space: Any,
-        own_units: list,
-        own_cities: list,
+        own_units: list[Any],
+        own_cities: list[Any],
         enemy_targets: list[tuple[int, int]],
         board_size: int,
     ) -> float:

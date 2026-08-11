@@ -353,7 +353,7 @@ class EnhancedMicroCivEnv(MicroCivEnv):
     # Ranged attack support
     # ------------------------------------------------------------------
 
-    def _execute_action(self, action: dict) -> tuple[float, bool, str]:
+    def _execute_action(self, action: dict[str, Any]) -> tuple[float, bool, str]:
         """Override to add ranged attack support."""
         action_type = action.get("type")
 

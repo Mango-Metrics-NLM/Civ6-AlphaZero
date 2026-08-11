@@ -224,7 +224,7 @@ class ActionSpace:
         """Number of action categories."""
         return len(ActionCategory)
 
-    def get_category_mask(self, game_state: dict) -> np.ndarray:
+    def get_category_mask(self, game_state: dict[str, Any]) -> np.ndarray:
         """Get mask for valid action categories.
 
         Args:
@@ -267,7 +267,7 @@ class ActionSpace:
 
         return mask
 
-    def get_full_mask(self, game_state: dict) -> np.ndarray:
+    def get_full_mask(self, game_state: dict[str, Any]) -> np.ndarray:
         """Get full action mask for all flat actions.
 
         Args:
@@ -352,8 +352,8 @@ class ActionSpace:
 
     def _get_unit_valid_actions(
         self,
-        unit: dict,
-        game_state: dict,
+        unit: dict[str, Any],
+        game_state: dict[str, Any],
     ) -> dict[int, list[tuple[int, int]]]:
         """Get valid actions and targets for a unit.
 
@@ -587,7 +587,7 @@ class MicroCivActionSpace:
             (1, 1),
         ]
 
-    def get_valid_mask(self, game_state: dict) -> np.ndarray:
+    def get_valid_mask(self, game_state: dict[str, Any]) -> np.ndarray:
         """Get valid action mask for current state.
 
         Args:
@@ -671,7 +671,7 @@ class MicroCivActionSpace:
 
         return mask
 
-    def decode_action(self, action_idx: int) -> dict:
+    def decode_action(self, action_idx: int) -> dict[str, Any]:
         """Decode flat action index to action dict.
 
         Args:
@@ -776,7 +776,7 @@ class MicroCivActionSpace:
 
         return False, f"Unknown action type: {action_type}"
 
-    def encode_action(self, action: dict) -> int:
+    def encode_action(self, action: dict[str, Any]) -> int:
         """Encode action dict to flat index.
 
         Args:

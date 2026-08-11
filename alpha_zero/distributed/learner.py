@@ -572,7 +572,7 @@ class Learner:
         """Check if learner is running."""
         return self._running
 
-    def get_statistics(self) -> dict:
+    def get_statistics(self) -> dict[str, Any]:
         """Get learner statistics.
 
         Returns:

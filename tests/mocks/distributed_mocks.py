@@ -239,11 +239,11 @@ class MockDDP(nn.Module):
         """Forward pass - delegates to wrapped module."""
         return self.module(*args, **kwargs)
 
-    def state_dict(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def state_dict(self, *args: Any, **kwargs: Any) -> dict[str, Any]:  # type: ignore[override]
         """Get state dict from wrapped module."""
         return self.module.state_dict(*args, **kwargs)
 
-    def load_state_dict(self, state_dict: dict[str, Any], **kwargs: Any) -> None:
+    def load_state_dict(self, state_dict: dict[str, Any], **kwargs: Any) -> None:  # type: ignore[override]
         """Load state dict into wrapped module."""
         self.module.load_state_dict(state_dict, **kwargs)
 
@@ -251,7 +251,7 @@ class MockDDP(nn.Module):
         """Get parameters from wrapped module."""
         return self.module.parameters(recurse)
 
-    def named_parameters(self, prefix: str = "", recurse: bool = True):
+    def named_parameters(self, prefix: str = "", recurse: bool = True):  # type: ignore[override]
         """Get named parameters from wrapped module."""
         return self.module.named_parameters(prefix, recurse)
 

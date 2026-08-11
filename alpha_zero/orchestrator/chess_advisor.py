@@ -28,7 +28,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Any
+from typing import Any, Callable
 
 import chess
 import numpy as np
@@ -157,7 +157,7 @@ class ChessAdvisor:
             return None
         return prior / total
 
-    def mcts_callback(self):  # noqa: ANN201
+    def mcts_callback(self) -> Callable[[object, np.ndarray], np.ndarray]:
         """Return a callable suitable for ``Civ6MCTS(llm_prior_fn=...)``.
 
         The returned function accepts ``(env, action_mask)`` and returns a

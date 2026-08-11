@@ -34,7 +34,7 @@ import os
 import random
 import sys
 import time
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Any
 
 if TYPE_CHECKING:
     from alpha_zero.cloud.gcp.orchestrator_state import OrchestratorState
@@ -986,7 +986,7 @@ def _run_tournament_cloud(
     config: GCPConfig,
     model_versions: list[int],
     args: argparse.Namespace,
-) -> dict:
+) -> dict[str, Any]:
     """Submit tournament as a Vertex AI job and wait for results.
 
     Args:
@@ -1043,7 +1043,7 @@ def run_post_run_evaluation(
     args: argparse.Namespace,
     wandb_logger: object | None = None,
     dry_run: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     """Run post-run tournament across model versions.
 
     Supports three execution modes:

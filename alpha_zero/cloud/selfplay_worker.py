@@ -28,7 +28,7 @@ import sys
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Any
 
 import numpy as np
 import torch
@@ -353,7 +353,7 @@ class CloudSelfPlayWorker:
         logger.debug(f"Saved trajectory {game_id} ({len(trajectory.examples)} examples)")
         return path
 
-    def run(self) -> dict:
+    def run(self) -> dict[str, Any]:
         """Run self-play and generate trajectories.
 
         Returns:

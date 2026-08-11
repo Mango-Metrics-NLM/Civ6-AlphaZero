@@ -115,7 +115,7 @@ class AtariEnv:
             "AtariEnv created: game=%s, spatial=%s, action_space=%d",
             self.config.game_name,
             self.config.spatial_size,
-            self.action_space.n,
+            self.action_space.n,  # type: ignore[attr-defined,attr-defined]
         )
 
     # ------------------------------------------------------------------
@@ -200,7 +200,7 @@ class AtariEnv:
         # Reward clipping
         clipped_reward = float(reward)
         if self.config.clip_rewards:
-            clipped_reward = float(np.sign(reward))
+            clipped_reward = float(np.sign(reward))  # type: ignore[call-overload,call-overload]
 
         self._episode_reward += float(reward)
 
@@ -265,7 +265,7 @@ class AtariEnv:
             vector[3] = float(self._done)
 
         # All actions always valid in Atari
-        action_mask = np.ones(self.action_space.n, dtype=np.float32)
+        action_mask = np.ones(self.action_space.n, dtype=np.float32)  # type: ignore[attr-defined,attr-defined]
 
         return {
             "spatial": spatial.astype(np.float32),
@@ -295,7 +295,7 @@ class AtariEnv:
         Returns:
             Binary mask array of shape ``(num_actions,)``.
         """
-        return np.ones(self.action_space.n, dtype=np.float32)
+        return np.ones(self.action_space.n, dtype=np.float32)  # type: ignore[attr-defined,attr-defined]
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -319,5 +319,5 @@ class AtariEnv:
         return (
             f"AtariEnv(game={self.config.game_name!r}, "
             f"spatial={self.config.spatial_channels}x{self.config.frame_height}x"
-            f"{self.config.frame_width}, actions={self.action_space.n})"
+            f"{self.config.frame_width}, actions={self.action_space.n})"  # type: ignore[attr-defined,attr-defined]
         )

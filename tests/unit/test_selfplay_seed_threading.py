@@ -15,6 +15,7 @@ historical behaviour so existing callers are unaffected.
 from __future__ import annotations
 
 import inspect
+from typing import Any
 
 import pytest
 import torch
@@ -23,7 +24,7 @@ from alpha_zero.cloud.gcp.selfplay_worker import run_selfplay
 from alpha_zero.cloud.gcp.training_worker import create_model
 from alpha_zero.envs.env_factory import create_game_env
 
-_SELFPLAY_KWARGS = {
+_SELFPLAY_KWARGS: dict[str, Any] = {
     "num_games": 2,
     "mcts_sims": 2,
     "mcts_type": "gumbel",

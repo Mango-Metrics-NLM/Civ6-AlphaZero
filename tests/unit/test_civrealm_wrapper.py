@@ -39,18 +39,18 @@ try:
 except Exception as e:
     # If import fails due to CivRealm server issues, skip tests
     IMPORT_ERROR = str(e)
-    CivRealmConfig = None
-    CivRealmEncoder = None
-    CivRealmActionHandler = None
-    CivRealmCurriculum = None
-    CivRealmWrapper = None
-    MiniGameTask = None
-    MockCivRealmEnv = None
-    TerrainType = None
-    UnitCategory = None
-    ActionType = None
-    create_civrealm_env = None
-    make = None
+    CivRealmConfig = None  # type: ignore[misc,assignment]
+    CivRealmEncoder = None  # type: ignore[misc,assignment]
+    CivRealmActionHandler = None  # type: ignore[misc,assignment]
+    CivRealmCurriculum = None  # type: ignore[misc,assignment]
+    CivRealmWrapper = None  # type: ignore[misc,assignment]
+    MiniGameTask = None  # type: ignore[misc,assignment]
+    MockCivRealmEnv = None  # type: ignore[misc,assignment]
+    TerrainType = None  # type: ignore[misc,assignment]
+    UnitCategory = None  # type: ignore[misc,assignment]
+    ActionType = None  # type: ignore[misc,assignment]
+    create_civrealm_env = None  # type: ignore[misc,assignment]
+    make = None  # type: ignore[misc,assignment]
     CIVREALM_AVAILABLE = False
 
 

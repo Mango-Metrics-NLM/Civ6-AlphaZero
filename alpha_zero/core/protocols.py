@@ -254,7 +254,7 @@ class EnvironmentProtocol(Protocol):
         """
         ...
 
-    def clone(self) -> EnvironmentProtocol:
+    def clone(self) -> Any:
         """Clone the environment state.
 
         Returns:

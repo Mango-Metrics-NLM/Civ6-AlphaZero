@@ -63,7 +63,7 @@ def _make_network(num_players: int = 4) -> MicroCivNetwork:
     env = _make_env(num_players=num_players)
     return MicroCivNetwork(
         board_size=BOARD_SIZE,
-        action_space_size=env.action_space.n,
+        action_space_size=int(env.action_space.n),
         num_res_blocks=NUM_RES,
         num_filters=NUM_FILTERS,
         spatial_channels=channels,
@@ -83,7 +83,7 @@ def _run_random_game(
         valid = np.where(mask > 0)[0]
         if len(valid) == 0:
             break
-        policy = np.zeros(env.action_space.n, dtype=np.float32)
+        policy = np.zeros(int(env.action_space.n), dtype=np.float32)
         policy[valid] = 1.0 / len(valid)
         history.append(
             {
@@ -170,8 +170,8 @@ class TestNPlayerTrainingLoop:
         batch_size = 8
         spatial = torch.randn(batch_size, channels, BOARD_SIZE, BOARD_SIZE)
         vector = torch.randn(batch_size, TestDefaults.VECTOR_DIM)
-        action_mask = torch.ones(batch_size, env.action_space.n)
-        target_policy = torch.softmax(torch.randn(batch_size, env.action_space.n), dim=-1)
+        action_mask = torch.ones(batch_size, int(env.action_space.n))
+        target_policy = torch.softmax(torch.randn(batch_size, int(env.action_space.n)), dim=-1)
         target_values = torch.zeros(batch_size, num_players)
 
         optimizer = torch.optim.Adam(net.parameters(), lr=0.01)

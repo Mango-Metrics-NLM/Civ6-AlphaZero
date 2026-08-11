@@ -164,6 +164,8 @@ measure the impact, and either keep (with evidence) or retire it.
 | Stagnation thresholds (`CIV6AZ_ELO_*`, `CIV6_STAGNATION_PATIENCE`) | Current net plateaus are real stalls | Replay a known-good run; confirm no false stop | 2026-05-30 |
 | Paranoid / Max-N MCTS variants | Net is too weak for naive Max-N | A/B the variants as the net strengthens | — |
 | `promotion_threshold = 0.55` | Below this, "improvement" is noise | Re-estimate from eval-game variance at current strength | — |
+| `85% test coverage gate` | New logic could silently break existing systems | Lower the gate and measure regression rates | 2026-08-11 |
+| `mypy --strict` compliance | Untyped code causes runtime AttributeError/TypeErrors | Relax strictness on isolated modules and track runtime failures | 2026-08-11 |
 
 > **Live example (this change):** the `PostToolUse` ruff `--fix` autolinter removed
 > two imports (`json`, `Sequence`) *between* edits, because at the instant of the

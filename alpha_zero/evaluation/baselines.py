@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable, Any
 
 import numpy as np
 
@@ -270,7 +270,7 @@ class HeuristicPlayer:
 
         return score
 
-    def _score_attack(self, action_info: dict, env: MicroCivEnv) -> float:
+    def _score_attack(self, action_info: dict[str, Any], env: MicroCivEnv) -> float:
         """Score an attack action."""
         base_score = 1.0 * self.weights.attack_weight
 
@@ -288,7 +288,7 @@ class HeuristicPlayer:
 
     def _score_move(
         self,
-        action_info: dict,
+        action_info: dict[str, Any],
         env: MicroCivEnv,
         observation: dict[str, np.ndarray],
     ) -> float:
@@ -309,7 +309,7 @@ class HeuristicPlayer:
 
         return score
 
-    def _score_found_city(self, action_info: dict, env: MicroCivEnv) -> float:
+    def _score_found_city(self, action_info: dict[str, Any], env: MicroCivEnv) -> float:
         """Score founding a city."""
         base_score = 1.5 * self.weights.expansion_weight
 
@@ -330,7 +330,7 @@ class HeuristicPlayer:
 
         return base_score
 
-    def _score_production(self, action_info: dict, env: MicroCivEnv) -> float:
+    def _score_production(self, action_info: dict[str, Any], env: MicroCivEnv) -> float:
         """Score a production action."""
         base_score = 0.8 * self.weights.production_weight
 

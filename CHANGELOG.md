@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Pre-PR Validations, Infrastructure & Validation Fixes (2026-08-11)
+
+- **Test Coverage Gates**: Enforced 85% test coverage requirement in `.github/workflows/ci.yml` and local Makefile to enforce strict regression safety.
+- **Hub & Spaces Automation**: Added `make publish-spaces` into Makefile to manage Hugging Face spaces deployment.
+- **Agentic Skills**: Added `type-fortification-skill` and `hub-publish-validator` skills to `SKILL.md` library to formalize knowledge transfer.
+- **Architecture Documentation**: Updated C4, README, and harness documents to reflect new integrations (SpaceTimeDB, HuggingFace Spaces).
+
 ### Added — Checkpoint validation wiring, GPU A/B evidence, and 100% mypy stabilization (2026-08-10)
 
 - **Wired `validate_encoder_state` into production GCP worker load sites**: Integration into `evaluation_worker.py` (after load_state_dict) and `selfplay_worker.py` (both Transformer and MuZero paths) ensures checkpoint mismatches are logged as warnings rather than silently degrading training/eval metrics.

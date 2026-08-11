@@ -54,7 +54,7 @@ class TestDUCTEndToEnd:
         env = MicroCivEnv(board_size=board, max_turns=50, num_players=num_players, seed=42)
         net = MicroCivNetwork(
             board_size=board,
-            action_space_size=env.action_space.n,
+            action_space_size=int(env.action_space.n),
             num_res_blocks=2,
             num_filters=32,
             spatial_channels=channels,
@@ -65,7 +65,7 @@ class TestDUCTEndToEnd:
 
         config = SimultaneousMCTSConfig(num_simulations=10)
         duct = DecoupledUCT(
-            config=config, num_players=num_players, action_space_size=env.action_space.n
+            config=config, num_players=num_players, action_space_size=int(env.action_space.n)
         )
         active_players = list(range(num_players))
         result = duct.search(env, net, active_players)
@@ -90,7 +90,7 @@ class TestDUCTEndToEnd:
         env = MicroCivEnv(board_size=board, max_turns=50, num_players=num_players, seed=42)
         net = MicroCivNetwork(
             board_size=board,
-            action_space_size=env.action_space.n,
+            action_space_size=int(env.action_space.n),
             num_res_blocks=2,
             num_filters=32,
             spatial_channels=channels,
@@ -101,7 +101,7 @@ class TestDUCTEndToEnd:
 
         config = SimultaneousMCTSConfig(num_simulations=10)
         duct = DecoupledUCT(
-            config=config, num_players=num_players, action_space_size=env.action_space.n
+            config=config, num_players=num_players, action_space_size=int(env.action_space.n)
         )
         active_players = list(range(num_players))
         result = duct.search(env, net, active_players)
@@ -109,7 +109,7 @@ class TestDUCTEndToEnd:
         for _, probs in result.items():
             action = int(np.argmax(probs))
             # Action should be within the valid action space
-            assert 0 <= action < env.action_space.n
+            assert action < int(env.action_space.n)
 
     def test_duct_probs_sum_to_one(self) -> None:
         """Verify each player's action probs from DUCT sum to ~1.0."""
@@ -124,7 +124,7 @@ class TestDUCTEndToEnd:
         env = MicroCivEnv(board_size=board, max_turns=50, num_players=num_players, seed=42)
         net = MicroCivNetwork(
             board_size=board,
-            action_space_size=env.action_space.n,
+            action_space_size=int(env.action_space.n),
             num_res_blocks=2,
             num_filters=32,
             spatial_channels=channels,
@@ -135,7 +135,7 @@ class TestDUCTEndToEnd:
 
         config = SimultaneousMCTSConfig(num_simulations=10)
         duct = DecoupledUCT(
-            config=config, num_players=num_players, action_space_size=env.action_space.n
+            config=config, num_players=num_players, action_space_size=int(env.action_space.n)
         )
         active_players = list(range(num_players))
         result = duct.search(env, net, active_players)

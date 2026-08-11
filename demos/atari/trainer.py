@@ -461,7 +461,7 @@ class AtariTrainer:
         # Environment (used to query action/observation spaces)
         env = AtariEnv(cfg.environment)
         self._env = env
-        num_actions = env.action_space.n
+        num_actions = env.action_space.n  # type: ignore[attr-defined]
 
         logger.info("Environment: %s (actions=%d)", env, num_actions)
 

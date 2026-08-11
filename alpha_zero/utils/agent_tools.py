@@ -655,7 +655,7 @@ class DebugHelper:
         return _inspect(obj, 0)
 
     @staticmethod
-    def trace_call(func_name: str, args: tuple, kwargs: dict) -> str:
+    def trace_call(func_name: str, args: tuple, kwargs: dict[str, Any]) -> str:
         """Generate a trace string for a function call.
 
         Args:

@@ -16,10 +16,10 @@ try:
     from alpha_zero.hub.constants import HF_ORG
 except ImportError:
     # Standalone Space context: alpha_zero package not installed.
-    HF_ORG = os.environ.get("HF_ORG", "Mango-Metrics-NLM")
+    HF_ORG = os.environ.get("HF_ORG", "ianshank")
 
 MODEL_REPO_ID = os.environ.get(
-    "HF_MODEL_REPO", f"{HF_ORG}/civ6-alphazero-transformer",
+    "HF_MODEL_REPO", f"{HF_ORG}/civ6-transformer",
 )
 TITLE = "🏛️ Civ6 AlphaZero — MicroCiv Explorer"
 DESCRIPTION = """

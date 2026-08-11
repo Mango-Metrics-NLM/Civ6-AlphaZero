@@ -203,7 +203,7 @@ class RAGAgentWorkflow:
     def register_hook(
         self,
         event: str,
-        callback: Callable,
+        callback: Callable[..., Any],
     ) -> None:
         """Register a hook for workflow events.
 

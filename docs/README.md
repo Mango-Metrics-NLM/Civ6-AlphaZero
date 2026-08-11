@@ -40,7 +40,7 @@ kept for context, not actively updated; archived material lives in
 | Document | Purpose | Status |
 |----------|---------|--------|
 | [`HARNESS_ENGINEERING_ANALYSIS.md`](HARNESS_ENGINEERING_ANALYSIS.md) | Harness-engineering design rationale | Reference |
-| [`NEXT_STEPS_ANALYSIS_2026-07.md`](NEXT_STEPS_ANALYSIS_2026-07.md) | Documentation-drift reconciliation scan | Historical |
+| [`NEXT_STEPS_ANALYSIS.md`](NEXT_STEPS_ANALYSIS.md) | Documentation-drift reconciliation scan | Historical |
 
 ## Governance & specs
 
