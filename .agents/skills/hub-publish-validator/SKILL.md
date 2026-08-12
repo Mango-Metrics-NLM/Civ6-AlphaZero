@@ -33,6 +33,7 @@ from alpha_zero.hub.model_card import ModelCardMetadata
 from pathlib import Path
 import json, re
 
+
 def validate_staged_dir(staged_dir: Path, repo_id: str) -> list[str]:
     """Return list of validation failures; empty list = pass."""
     failures = []

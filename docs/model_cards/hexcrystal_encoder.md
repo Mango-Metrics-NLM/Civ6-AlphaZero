@@ -21,7 +21,7 @@ the surrounding game code.
 from alpha_zero.hexcrystal.hub_mixin import HexSpatialEncoderForHub
 
 encoder = HexSpatialEncoderForHub.from_pretrained("<repo-id>")
-tokens = encoder(spatial)          # (B, C, H, W) -> (B, num_tokens, embed_dim)
+tokens = encoder(spatial)  # (B, C, H, W) -> (B, num_tokens, embed_dim)
 ```
 
 Install with `pip install -e '.[hub]'` from the source repository.

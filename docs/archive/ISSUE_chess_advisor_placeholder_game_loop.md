@@ -36,7 +36,7 @@ def _play_one_game(env, opponent, max_plies, rng=None):
         mask = obs["action_mask"]
         legal = np.flatnonzero(mask > 0)
         if env.current_player == agent_player:
-            action = int(rng.choice(legal))   # ← random move, no MCTS, no advisor
+            action = int(rng.choice(legal))  # ← random move, no MCTS, no advisor
         else:
             action = opponent.get_action(env, mask)
         obs, _, terminated, truncated, info = env.step(action)
@@ -46,11 +46,11 @@ def _play_one_game(env, opponent, max_plies, rng=None):
 The advisor is built but its callback is discarded:
 
 ```python
-advisor = _build_advisor(advisor_cfg, llm_cfg)   # constructed
+advisor = _build_advisor(advisor_cfg, llm_cfg)  # constructed
 ...
 for it in range(iterations):
     for _ in range(games_per_iter):
-        reward = _play_one_game(env, opponent, max_plies)   # advisor not passed in
+        reward = _play_one_game(env, opponent, max_plies)  # advisor not passed in
 ```
 
 End-to-end proof (from a smoke test outside the script) that the advisor *can*
@@ -62,12 +62,14 @@ from alpha_zero.orchestrator.chess_advisor import ChessAdvisor, ChessAdvisorConf
 from alpha_zero.utils.llm_client import LLMClient, LLMConfig, LLMProvider
 
 cfg = ChessAdvisorConfig(enabled=True, prior_weight=0.3, max_ply_for_prior=24)
-llm = LLMClient(LLMConfig(
-    provider=LLMProvider.OPENAI,
-    openai_api_key="lm-studio",
-    openai_base_url="http://localhost:1234/v1",
-    openai_model="qwen2.5-14b-instruct-1m",
-))
+llm = LLMClient(
+    LLMConfig(
+        provider=LLMProvider.OPENAI,
+        openai_api_key="lm-studio",
+        openai_base_url="http://localhost:1234/v1",
+        openai_model="qwen2.5-14b-instruct-1m",
+    )
+)
 adv = ChessAdvisor(cfg, llm_client=llm)
 prior = adv.prior_for_board(chess.Board())
 # → prior is a numpy array of shape (4672,), 15 non-zero indices,
@@ -88,6 +90,7 @@ Sketch (replacement for the random-move branch in `_play_one_game`):
 ```python
 from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig
 
+
 def _build_mcts(network, advisor, training_cfg):
     mcts_cfg = MCTSConfig(
         num_simulations=int(training_cfg.get("num_simulations", 64)),
@@ -100,14 +103,15 @@ def _build_mcts(network, advisor, training_cfg):
         llm_prior_weight=float(advisor.config.prior_weight) if advisor is not None else 0.5,
     )
 
+
 def _play_one_game(env, opponent, max_plies, mcts, rng=None):
     obs, _ = env.reset()
     agent_player = env.current_player
     for _ply in range(max_plies):
         mask = obs["action_mask"]
         if env.current_player == agent_player:
-            policy, _value = mcts.search(env, mask)         # uses Qwen prior
-            action = int(np.argmax(policy * mask))           # or sample for exploration
+            policy, _value = mcts.search(env, mask)  # uses Qwen prior
+            action = int(np.argmax(policy * mask))  # or sample for exploration
         else:
             action = opponent.get_action(env, mask)
         obs, _, terminated, truncated, info = env.step(action)
@@ -117,7 +121,7 @@ def _play_one_game(env, opponent, max_plies, mcts, rng=None):
 Caller threads the MCTS through:
 
 ```python
-network = _build_network(config.get("network", {}))   # placeholder; reuse existing factory
+network = _build_network(config.get("network", {}))  # placeholder; reuse existing factory
 mcts = _build_mcts(network, advisor, config.get("training", {}))
 for it in range(iterations):
     for _ in range(games_per_iter):

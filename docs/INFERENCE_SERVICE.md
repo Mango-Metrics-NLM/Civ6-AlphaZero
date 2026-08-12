@@ -308,10 +308,7 @@ print(f"Value estimate: {response.action_distribution.value_estimate:.3f}")
 print(f"Top 5 actions: {response.action_distribution.top_k_actions}")
 
 # Batch inference
-requests = [
-    InferenceRequest(game_state=create_random_game_state())
-    for _ in range(10)
-]
+requests = [InferenceRequest(game_state=create_random_game_state()) for _ in range(10)]
 responses = client.batch_infer(requests)
 print(f"Processed {len(responses)} requests")
 
@@ -502,18 +499,19 @@ from fastapi.security import HTTPBearer
 
 security = HTTPBearer()
 
+
 @app.post("/v1/infer")
-async def infer(request: InferenceRequest, credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def infer(
+    request: InferenceRequest, credentials: HTTPAuthorizationCredentials = Depends(security)
+):
     # Validate credentials
     if credentials.credentials != EXPECTED_API_KEY:
         raise HTTPException(status_code=401)
     ...
 
+
 # Client side
-client = InferenceClient(
-    "https://api.example.com",
-    api_key="your-secret-key"
-)
+client = InferenceClient("https://api.example.com", api_key="your-secret-key")
 ```
 
 ### Rate Limiting

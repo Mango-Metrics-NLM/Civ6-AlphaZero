@@ -88,7 +88,9 @@ def _import_model_class(model_type: str) -> type:
 
 
 def _load_checkpoint(
-    checkpoint_path: Path, model_class: type, device: str = "cpu",
+    checkpoint_path: Path,
+    model_class: type,
+    device: str = "cpu",
 ) -> Any:
     """Load a checkpoint and wrap it in the hub-enabled model class.
 
@@ -235,10 +237,7 @@ def main() -> int:
         class_name=entry["class"],
         repo_id=repo_id,
         # Only add tags not already in DEFAULT_MODEL_TAGS to avoid duplication.
-        tags=tuple(
-            tag for tag in (args.model_type, "civ6")
-            if tag not in DEFAULT_MODEL_TAGS
-        ),
+        tags=tuple(tag for tag in (args.model_type, "civ6") if tag not in DEFAULT_MODEL_TAGS),
     )
 
     save_dir = upload_model_to_hub(

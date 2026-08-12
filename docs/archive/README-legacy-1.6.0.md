@@ -1104,6 +1104,7 @@ pip install -e ".[all]"
 import asyncio
 from alpha_zero.rag import RAGPipeline, RAGConfig
 
+
 async def main():
     # Create pipeline with default configuration
     pipeline = await RAGPipeline.create()
@@ -1112,19 +1113,17 @@ async def main():
     await pipeline.ingest_text(
         "Early game strategy: Focus on expanding territory and building settlers.",
         source="strategy_guide.txt",
-        metadata={"category": "early_game"}
+        metadata={"category": "early_game"},
     )
 
     # Query for relevant context
-    result = await pipeline.query(
-        "How should I play the early game?",
-        top_k=5
-    )
+    result = await pipeline.query("How should I play the early game?", top_k=5)
 
     print(f"Context: {result.context}")
     print(f"Retrieved {len(result.documents)} documents")
 
     await pipeline.close()
+
 
 asyncio.run(main())
 ```
@@ -1164,9 +1163,11 @@ workflow = RAGAgentWorkflow(
 )
 await workflow.initialize()
 
+
 # Register hooks for custom processing
 async def pre_retrieve_hook(context):
     print(f"Searching for: {context.query}")
+
 
 workflow.register_hook("pre_retrieve", pre_retrieve_hook)
 

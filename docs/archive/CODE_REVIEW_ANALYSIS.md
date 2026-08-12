@@ -139,6 +139,7 @@ class TimeoutConfig:
 class MCTSEnvironment(Protocol):
     def _get_observation(self) -> dict[str, np.ndarray]: ...
 
+
 # But implementations have (microciv.py:614):
 class MicroCivEnv:
     def get_observation(self) -> dict[str, np.ndarray]: ...
@@ -274,7 +275,7 @@ def apply_env_overrides(self) -> "OrchestratorConfig":
     for key, value in os.environ.items():
         if not key.startswith(prefix):
             continue
-        parts = key[len(prefix):].lower().split("_", 1)
+        parts = key[len(prefix) :].lower().split("_", 1)
         section, attr = parts
         self._apply_override(section, attr, value)
     return self
@@ -349,11 +350,13 @@ class AutonomyLevel:
 @property
 def is_modified(self) -> bool: ...
 
+
 # Pattern 2: Result object with __bool__
 @dataclass
 class AgentResult:
     def __bool__(self) -> bool:
         return self.success
+
 
 # Pattern 3: Result object without __bool__
 @dataclass
@@ -368,6 +371,7 @@ class FeedbackLoopResult:
 ```python
 # Style 1 (older)
 def method(self, value: Optional[Path] = None): ...
+
 
 # Style 2 (newer, Python 3.10+)
 def method(self, value: Path | None = None): ...
@@ -392,6 +396,7 @@ def method(self, value: Path | None = None): ...
 ```python
 # alpha_zero/utils/configs.py
 
+
 @dataclass
 class RewardScaleConfig:
     score: float = 0.001
@@ -399,11 +404,13 @@ class RewardScaleConfig:
     unit: float = 0.01
     gold: float = 0.0001
 
+
 @dataclass
 class CategoricalLossConfig:
     support_size: int = 601
     max_value: float = 300.0
     min_value: float = -300.0
+
 
 @dataclass
 class TimeoutConfig:
@@ -418,6 +425,7 @@ class TimeoutConfig:
     agent_implementation: float = 600.0
     agent_testing: float = 600.0
     agent_verification: float = 300.0
+
 
 @dataclass
 class CacheConfig:
@@ -437,24 +445,31 @@ from typing import Protocol, Tuple
 import torch
 from torch import Tensor
 
+
 class NeuralNetwork(Protocol):
     """Any class that can forward pass and predict."""
-    def forward(self, spatial: Tensor, vector: Tensor,
-                action_mask: Tensor | None = None) -> Tuple[Tensor, Tensor]: ...
-    def predict(self, spatial: Tensor, vector: Tensor,
-                action_mask: Tensor | None = None) -> Tuple[Tensor, Tensor]: ...
+
+    def forward(
+        self, spatial: Tensor, vector: Tensor, action_mask: Tensor | None = None
+    ) -> Tuple[Tensor, Tensor]: ...
+    def predict(
+        self, spatial: Tensor, vector: Tensor, action_mask: Tensor | None = None
+    ) -> Tuple[Tensor, Tensor]: ...
     def save(self, path: str) -> None: ...
     @classmethod
     def load(cls, path: str) -> "NeuralNetwork": ...
 
+
 class SearchAlgorithm(Protocol):
     """Any class that can search and return actions."""
-    def search(self, state: dict, goals: list,
-               valid_actions: list) -> Tuple[int, dict]: ...
+
+    def search(self, state: dict, goals: list, valid_actions: list) -> Tuple[int, dict]: ...
     def reset(self) -> None: ...
+
 
 class StateEncoder(Protocol):
     """Any encoder that processes game state."""
+
     def encode(self, state: dict) -> Tensor: ...
     def encode_batch(self, states: list[dict]) -> Tensor: ...
 ```

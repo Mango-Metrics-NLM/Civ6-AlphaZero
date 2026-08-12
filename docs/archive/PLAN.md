@@ -181,6 +181,7 @@ class GameSession:
     config: WebConfig
     websockets: set[WebSocket]  # Connected WebSocket clients
 
+
 class GameSessionManager:
     """Thread-safe manager for concurrent game sessions."""
 
@@ -218,22 +219,31 @@ class GameSessionManager:
 Helper functions to convert game state into JSON-safe dicts for API responses:
 
 ```python
-def serialize_game_state(session: GameSession) -> dict: ...
+def serialize_game_state(session: GameSession) -> dict:
+    ...
     # Returns: session_id, phase, turn_number, current_player, human_player,
     #          board data (terrain grid, units, cities), valid_actions,
     #          game_over, winner
 
-def serialize_turn_result(result: TurnResult, action_space: MicroCivActionSpace) -> dict: ...
+
+def serialize_turn_result(result: TurnResult, action_space: MicroCivActionSpace) -> dict:
+    ...
     # Returns: action (decoded to human-readable), player, is_human,
     #          reward, ai_evaluation, top move probabilities, thinking_time
 
-def serialize_board_data(adapter: MicroCivGameAdapter) -> dict: ...
+
+def serialize_board_data(adapter: MicroCivGameAdapter) -> dict:
+    ...
     # Returns: terrain grid, unit positions/types/health, city positions/names
 
-def serialize_move_history(history: list[TurnResult], action_space) -> list[dict]: ...
+
+def serialize_move_history(history: list[TurnResult], action_space) -> list[dict]:
+    ...
     # Returns: list of decoded turn results
 
-def serialize_confidence(result: TurnResult, action_space) -> dict: ...
+
+def serialize_confidence(result: TurnResult, action_space) -> dict:
+    ...
     # Returns: win_probability bar data, top-5 moves with probabilities
 ```
 
@@ -656,17 +666,21 @@ markers = [
 ```python
 @pytest.fixture
 def web_config():
-    return WebConfig(board_size=8, max_turns=50, mcts_simulations=2,
-                     default_thinking_time=0.1, use_mcts=False)
+    return WebConfig(
+        board_size=8, max_turns=50, mcts_simulations=2, default_thinking_time=0.1, use_mcts=False
+    )
+
 
 @pytest.fixture
 def test_app(web_config):
     return create_app(web_config)
 
+
 @pytest.fixture
 async def client(test_app):
     async with httpx.AsyncClient(app=test_app, base_url="http://test") as c:
         yield c
+
 
 @pytest.fixture
 def game_adapter():
@@ -677,8 +691,8 @@ def game_adapter():
 ### 8.4 Test Markers
 
 ```python
-pytest.mark.web       # All web tests
-pytest.mark.asyncio   # Async tests (auto mode enabled in pyproject.toml)
+pytest.mark.web  # All web tests
+pytest.mark.asyncio  # Async tests (auto mode enabled in pyproject.toml)
 ```
 
 ---
@@ -689,6 +703,7 @@ All web components use the project's structured logger:
 
 ```python
 from alpha_zero.utils.logging_config import get_logger
+
 logger = get_logger(__name__)
 ```
 
