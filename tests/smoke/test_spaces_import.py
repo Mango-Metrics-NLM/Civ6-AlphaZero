@@ -97,9 +97,7 @@ def test_space_imports(space_name: str, module_name: str) -> None:
         if module_name in sys.modules:
             del sys.modules[module_name]
         mod = importlib.import_module(module_name)
-        assert hasattr(mod, "create_app"), (
-            f"Space '{space_name}' missing create_app() function"
-        )
+        assert hasattr(mod, "create_app"), f"Space '{space_name}' missing create_app() function"
     finally:
         sys.path.pop(0)
 

@@ -146,7 +146,7 @@ class TestGameHistoryItem:
 class TestSelfPlayActorInit:
     def test_init_creates_env(self, actor: SelfPlayActor) -> None:
         assert actor.env is not None
-        assert actor.action_space_size > 0
+        assert int(actor.action_space_size) > 0
 
     def test_init_no_network_yet(self, actor: SelfPlayActor) -> None:
         assert actor.network is None
@@ -402,7 +402,8 @@ class TestPlayGame:
 
         action_size = actor.action_space_size
         # Mock MCTS search to return uniform policy
-        uniform_policy = np.ones(action_size) / action_size
+        uniform_policy = np.ones(int(action_size)) / int(action_size)
+        assert actor.mcts is not None
         actor.mcts.search = MagicMock(return_value=(uniform_policy, 0.0))
         actor.mcts.select_action = MagicMock(return_value=0)
 
@@ -431,7 +432,8 @@ class TestPlayGame:
     def test_play_game_increments_game_id(self, actor: SelfPlayActor) -> None:
         actor._init_network()
         action_size = actor.action_space_size
-        uniform_policy = np.ones(action_size) / action_size
+        uniform_policy = np.ones(int(action_size)) / int(action_size)
+        assert actor.mcts is not None
         actor.mcts.search = MagicMock(return_value=(uniform_policy, 0.0))
         actor.mcts.select_action = MagicMock(return_value=0)
 

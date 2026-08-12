@@ -17,6 +17,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from multiprocessing import Manager, Queue
 from multiprocessing.managers import DictProxy, SyncManager
+from typing import Any
 
 import numpy as np
 import torch
@@ -237,7 +238,7 @@ class SharedStorage:
 
         logger.info("SharedStorage initialized")
 
-    def __getstate__(self) -> dict:
+    def __getstate__(self) -> dict[str, Any]:
         """Prepare state for pickling (exclude Manager)."""
         state = self.__dict__.copy()
         # Manager is not picklable, but the Proxies it creates ARE picklable
@@ -246,7 +247,7 @@ class SharedStorage:
             del state["_manager"]
         return state
 
-    def __setstate__(self, state: dict) -> None:
+    def __setstate__(self, state: dict[str, Any]) -> None:
         """Restore state after pickling."""
         self.__dict__.update(state)
         self._manager = None  # type: ignore[assignment]  # Manager only lives in the process that created it
@@ -393,7 +394,7 @@ class SharedStorage:
         """Check if stop has been requested."""
         return bool(self._state["should_stop"])
 
-    def add_loss_entry(self, entry: dict) -> None:
+    def add_loss_entry(self, entry: dict[str, Any]) -> None:
         """Add a loss history entry.
 
         Args:
@@ -409,7 +410,7 @@ class SharedStorage:
                 history = history[-1000:]
             self._state["loss_history"] = history
 
-    def add_eval_entry(self, entry: dict) -> None:
+    def add_eval_entry(self, entry: dict[str, Any]) -> None:
         """Add an evaluation history entry.
 
         Args:
@@ -424,7 +425,7 @@ class SharedStorage:
                 history = history[-100:]
             self._state["eval_history"] = history
 
-    def get_statistics(self) -> dict:
+    def get_statistics(self) -> dict[str, Any]:
         """Get current training statistics.
 
         Returns:
@@ -516,7 +517,7 @@ class DistributedReplayBuffer:
             f"DistributedReplayBuffer initialized (max_size={self.config.max_size})",
         )
 
-    def __getstate__(self) -> dict:
+    def __getstate__(self) -> dict[str, Any]:
         """Prepare state for pickling (exclude Manager and learner-only state)."""
         state = self.__dict__.copy()
         if "_manager" in state:
@@ -528,7 +529,7 @@ class DistributedReplayBuffer:
             del state["_buffer_lock"]
         return state
 
-    def __setstate__(self, state: dict) -> None:
+    def __setstate__(self, state: dict[str, Any]) -> None:
         """Restore state after pickling."""
         self.__dict__.update(state)
         self._manager = None  # type: ignore[assignment]
@@ -694,7 +695,7 @@ class DistributedReplayBuffer:
         """Check if buffer has enough examples for training."""
         return self.size() >= self.config.min_size
 
-    def get_statistics(self) -> dict:
+    def get_statistics(self) -> dict[str, Any]:
         """Get buffer statistics."""
         return {
             "total_trajectories": self._stats["total_trajectories"],

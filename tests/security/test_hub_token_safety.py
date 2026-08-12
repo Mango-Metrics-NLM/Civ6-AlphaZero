@@ -66,7 +66,10 @@ class TestNoTokenInSavedFiles:
         from alpha_zero.core.transformer_hub_mixin import Civ6TransformerNetworkForHub
 
         model = Civ6TransformerNetworkForHub(
-            spatial_channels=7, embed_dim=32, num_layers=2, num_heads=4,
+            spatial_channels=7,
+            embed_dim=32,
+            num_layers=2,
+            num_heads=4,
         )
         save_dir = tmp_path / "saved"
         model.save_pretrained(str(save_dir))

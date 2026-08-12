@@ -162,6 +162,7 @@ All 14 per-evaluation metrics logged via `log_evaluation_result()` and queryable
 
 ```python
 import mlflow
+
 mlflow.set_tracking_uri("sqlite:///mlflow.db")
 runs = mlflow.search_runs(experiment_names=["civ6az-post-run-eval"])
 print(runs[["metrics.win_rate", "metrics.total_games", "tags.model_version"]])

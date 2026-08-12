@@ -15,10 +15,11 @@ try:
     from alpha_zero.hub.constants import HF_ORG
 except ImportError:
     # Standalone Space context: alpha_zero package not installed.
-    HF_ORG = os.environ.get("HF_ORG", "Mango-Metrics-NLM")
+    HF_ORG = os.environ.get("HF_ORG", "ianshank")
 
 DATASET_REPO_ID = os.environ.get(
-    "HF_DATASET_REPO", f"{HF_ORG}/civ6-elo-tournament",
+    "HF_DATASET_REPO",
+    f"{HF_ORG}/civ6-elo-tournament",
 )
 TITLE = "📊 Civ6 AlphaZero — ELO Dashboard"
 DESCRIPTION = """
@@ -63,12 +64,16 @@ def create_app() -> Any:
             gr.Markdown("### Compare Two Model Versions")
             with gr.Row():
                 gr.Dropdown(
-                    label="Model A", choices=["v1", "v2", "v3"],
-                    value="v1", interactive=True,
+                    label="Model A",
+                    choices=["v1", "v2", "v3"],
+                    value="v1",
+                    interactive=True,
                 )
                 gr.Dropdown(
-                    label="Model B", choices=["v1", "v2", "v3"],
-                    value="v2", interactive=True,
+                    label="Model B",
+                    choices=["v1", "v2", "v3"],
+                    value="v2",
+                    interactive=True,
                 )
 
     return demo

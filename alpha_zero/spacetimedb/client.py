@@ -863,7 +863,7 @@ class SpacetimeDBClient:
         """Subscribe to metrics updates.
 
         Args:
-            callback: Function called with (step: int, metrics: dict) on update.
+            callback: Function called with (step: int, metrics: dict[str, Any]) on update.
         """
         self._events.on(METRICS_UPDATED, callback)
         logger.debug("Registered metrics subscription")
@@ -875,7 +875,7 @@ class SpacetimeDBClient:
         """Subscribe to training state changes.
 
         Args:
-            callback: Function called with (state: dict) on state change.
+            callback: Function called with (state: dict[str, Any]) on state change.
         """
         self._events.on(TRAINING_STATE_CHANGED, callback)
         logger.debug("Registered training state subscription")

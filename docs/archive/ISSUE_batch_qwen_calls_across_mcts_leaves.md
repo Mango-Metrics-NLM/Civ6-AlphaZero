@@ -66,17 +66,14 @@ massive latency win and is the right first step.
 ```python
 # alpha_zero/orchestrator/chess_advisor.py
 
+
 class ChessAdvisor:
-    async def priors_for_boards_async(
-        self, boards: list[chess.Board]
-    ) -> list[np.ndarray | None]:
+    async def priors_for_boards_async(self, boards: list[chess.Board]) -> list[np.ndarray | None]:
         """Return priors for many boards. Cached entries return synchronously;
         uncached entries are fetched concurrently via asyncio.gather."""
         ...
 
-    def priors_for_boards(
-        self, boards: list[chess.Board]
-    ) -> list[np.ndarray | None]:
+    def priors_for_boards(self, boards: list[chess.Board]) -> list[np.ndarray | None]:
         """Synchronous wrapper for callers in non-async contexts (MCTS)."""
         return asyncio.run(self.priors_for_boards_async(boards))
 ```
@@ -84,9 +81,10 @@ class ChessAdvisor:
 ```python
 # alpha_zero/core/civ6_mcts.py — Civ6MCTS.search restructure
 
+
 def search(self, env, add_noise=True):
     root = MCTSNode()
-    leaf_envs: list = []           # accumulator for batched prior fetch
+    leaf_envs: list = []  # accumulator for batched prior fetch
     leaf_nodes: list[MCTSNode] = []
     leaf_policies: list = []
     leaf_masks: list = []

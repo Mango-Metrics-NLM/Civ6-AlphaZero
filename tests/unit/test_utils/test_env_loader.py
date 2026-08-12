@@ -131,9 +131,13 @@ class TestLoadCiv6azEnv:
         load_civ6az_env(dotenv_path=path, override=True, warn_missing=False)
         assert os.environ["CIV6AZ_GCS_BUCKET"] == "new-bucket"
 
-    def test_warns_on_missing_required_vars(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_warns_on_missing_required_vars(
+        self, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Should log a warning when required variables are missing."""
         import logging
+
+        monkeypatch.setattr("alpha_zero.utils.env_loader._parse_dotenv", lambda x: {})
 
         with caplog.at_level(logging.WARNING):
             load_civ6az_env(dotenv_path=None, warn_missing=True)
@@ -188,8 +192,9 @@ class TestLoadCiv6azEnv:
 class TestRequireCiv6azEnv:
     """Tests for require_civ6az_env()."""
 
-    def test_raises_when_required_vars_missing(self) -> None:
+    def test_raises_when_required_vars_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should raise RuntimeError when required vars are not set."""
+        monkeypatch.setattr("alpha_zero.utils.env_loader._parse_dotenv", lambda x: {})
         with pytest.raises(RuntimeError, match="Missing required"):
             require_civ6az_env(dotenv_path=None)
 
@@ -199,8 +204,9 @@ class TestRequireCiv6azEnv:
         result = require_civ6az_env(dotenv_path=path)
         assert result["CIV6AZ_GCS_BUCKET"] == "civ6az-training"
 
-    def test_raises_with_descriptive_message(self) -> None:
+    def test_raises_with_descriptive_message(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Error message should include the missing variable name."""
+        monkeypatch.setattr("alpha_zero.utils.env_loader._parse_dotenv", lambda x: {})
         with pytest.raises(RuntimeError) as exc_info:
             require_civ6az_env(dotenv_path=None)
         assert "CIV6AZ_GCS_BUCKET" in str(exc_info.value) or "CIV6AZ_VERTEX_PROJECT" in str(

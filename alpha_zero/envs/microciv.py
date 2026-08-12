@@ -48,7 +48,7 @@ class Unit:
     moves_remaining: int = UNITS.WARRIOR_MOVES
     strength: int = UNITS.WARRIOR_STRENGTH
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "id": self.id,
@@ -74,7 +74,7 @@ class City:
     production_queue: str | None = None
     defense: int = GAME.DEFAULT_CITY_DEFENSE
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "id": self.id,
@@ -96,7 +96,7 @@ class Tile:
     features: list[str] = field(default_factory=list)
     yields: dict[str, int] = field(default_factory=lambda: {"food": 2, "production": 1})
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "type": self.terrain_type,
@@ -504,7 +504,7 @@ class MicroCivEnv(gym.Env):
                     return (nx, ny)
         return pos
 
-    def _execute_action(self, action: dict) -> tuple[float, bool, str]:
+    def _execute_action(self, action: dict[str, Any]) -> tuple[float, bool, str]:
         """Execute an action and return immediate reward with success status.
 
         Args:
@@ -817,7 +817,7 @@ class MicroCivEnv(gym.Env):
                 return False
         return True
 
-    def _get_game_state(self) -> dict:
+    def _get_game_state(self) -> dict[str, Any]:
         """Get current game state as dictionary."""
         return {
             "terrain": {pos: tile.to_dict() for pos, tile in self.terrain.items()},

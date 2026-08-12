@@ -35,20 +35,13 @@ except ImportError:
 
 requires_torch = pytest.mark.skipif(not _TORCH_AVAILABLE, reason="torch not installed")
 
-# ---------------------------------------------------------------------------
-# Guard: skip if the monitoring module doesn't exist yet
-# ---------------------------------------------------------------------------
-mlflow_evaluator = pytest.importorskip(
-    "alpha_zero.monitoring.mlflow_evaluator",
-    reason="alpha_zero/monitoring/mlflow_evaluator.py not yet implemented",
+from alpha_zero.monitoring.mlflow_evaluator import (  # noqa: E402
+    AlphaZeroMLflowEvaluator,
+    compute_action_diversity,
+    compute_policy_entropy,
+    compute_policy_top1_accuracy,
+    compute_value_mae,
 )
-
-compute_policy_entropy = mlflow_evaluator.compute_policy_entropy
-compute_value_mae = mlflow_evaluator.compute_value_mae
-compute_policy_top1_accuracy = mlflow_evaluator.compute_policy_top1_accuracy
-compute_action_diversity = mlflow_evaluator.compute_action_diversity
-AlphaZeroMLflowEvaluator = mlflow_evaluator.AlphaZeroMLflowEvaluator
-
 
 # ---------------------------------------------------------------------------
 # Helpers

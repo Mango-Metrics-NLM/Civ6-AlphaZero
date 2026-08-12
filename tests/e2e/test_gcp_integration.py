@@ -61,7 +61,7 @@ class TestGCSIntegration:
         # GCSCheckpointStorage doesn't have is_mock or _client attributes
         # Just verify it was created successfully
         assert manager is not None
-        logger.info(f"GCS client initialized for bucket: {e2e_cloud_config.bucket_name}")
+        logger.info(f"GCS client initialized for bucket: {e2e_cloud_config.bucket_name}")  # type: ignore
 
     def test_gcs_upload_download_small_file(
         self,
@@ -80,16 +80,16 @@ class TestGCSIntegration:
 
             # Upload
             remote_key = f"{test_path}/test_checkpoint.bin"
-            manager.upload_checkpoint(str(local_file), remote_key)
-            logger.info(f"Uploaded to: gs://{e2e_cloud_config.bucket_name}/{remote_key}")
+            manager.upload_checkpoint(str(local_file), remote_key)  # type: ignore
+            logger.info(f"Uploaded to: gs://{e2e_cloud_config.bucket_name}/{remote_key}")  # type: ignore
 
             # Verify upload by listing
-            checkpoints = manager.list_checkpoints(prefix=test_path)
+            checkpoints = manager.list_checkpoints(prefix=test_path)  # type: ignore
             assert any(remote_key in cp for cp in checkpoints), f"Upload not found in {checkpoints}"
 
             # Download to different location
             download_file = Path(tmpdir) / "downloaded.bin"
-            manager.download_checkpoint(remote_key, str(download_file))
+            manager.download_checkpoint(remote_key, str(download_file))  # type: ignore
 
             # Verify content
             downloaded_content = download_file.read_bytes()
@@ -110,13 +110,13 @@ class TestGCSIntegration:
             for i in range(3):
                 local_file = Path(tmpdir) / f"checkpoint_{i}.bin"
                 local_file.write_bytes(f"checkpoint {i}".encode())
-                manager.upload_checkpoint(
+                manager.upload_checkpoint(  # type: ignore
                     str(local_file),
                     f"{test_path}/checkpoint_{i}.bin",
                 )
 
             # List all checkpoints under test path
-            checkpoints = manager.list_checkpoints(prefix=test_path)
+            checkpoints = manager.list_checkpoints(prefix=test_path)  # type: ignore
             assert len(checkpoints) >= 3
             logger.info(f"Listed {len(checkpoints)} checkpoints")
 
@@ -134,14 +134,14 @@ class TestGCSIntegration:
             for i in range(2):
                 local_file = Path(tmpdir) / f"step_{i * 100}.bin"
                 local_file.write_bytes(f"step {i * 100}".encode())
-                manager.upload_checkpoint(
+                manager.upload_checkpoint(  # type: ignore
                     str(local_file),
                     f"{test_path}/step_{i * 100}.bin",
                 )
                 time.sleep(0.1)  # Small delay for timestamp ordering
 
             # Get latest checkpoint
-            latest = manager.get_latest_checkpoint(prefix=test_path)
+            latest = manager.get_latest_checkpoint(prefix=test_path)  # type: ignore
             assert latest is not None
             assert "step_100" in latest
             logger.info(f"Latest checkpoint: {latest}")
@@ -154,7 +154,7 @@ class TestVertexAIIntegration:
 
     def test_vertex_trainer_initialization(self, e2e_cloud_config: GCPConfig) -> None:
         """Test that Vertex AI trainer initializes with real credentials."""
-        from alpha_zero.cloud.gcp import VertexAITrainer
+        from alpha_zero.cloud.gcp import VertexAITrainer  # type: ignore
 
         trainer = VertexAITrainer(e2e_cloud_config)
         assert trainer.is_mock is False
@@ -162,7 +162,7 @@ class TestVertexAIIntegration:
 
     def test_vertex_job_spec_validation(self, e2e_cloud_config: GCPConfig) -> None:
         """Test creating a valid Vertex AI job spec (without submission)."""
-        from alpha_zero.cloud.gcp import VertexAITrainer
+        from alpha_zero.cloud.gcp import VertexAITrainer  # type: ignore
 
         trainer = VertexAITrainer(e2e_cloud_config)
 
@@ -185,7 +185,7 @@ class TestCloudLoggingIntegration:
 
     def test_cloud_logger_initialization(self, e2e_cloud_config: GCPConfig) -> None:
         """Test that Cloud Logger initializes with real credentials."""
-        from alpha_zero.cloud.gcp import CloudLogger
+        from alpha_zero.cloud.gcp import CloudLogger  # type: ignore
 
         logger_instance = CloudLogger(
             e2e_cloud_config,
@@ -198,7 +198,7 @@ class TestCloudLoggingIntegration:
 
     def test_cloud_logger_write(self, e2e_cloud_config: GCPConfig) -> None:
         """Test writing a log entry to Cloud Logging."""
-        from alpha_zero.cloud.gcp import CloudLogger
+        from alpha_zero.cloud.gcp import CloudLogger  # type: ignore
 
         cloud_logger = CloudLogger(
             e2e_cloud_config,
@@ -236,7 +236,7 @@ class TestFullCloudWorkflow:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Configure coordinator with real GCS
             config = CloudCoordinatorConfig(
-                cloud_config=e2e_cloud_config,
+                cloud_config=e2e_cloud_config,  # type: ignore
                 checkpoint_dir=tmpdir,
                 sync_interval=1.0,  # Fast sync for testing
                 enable_cloud_checkpoints=True,

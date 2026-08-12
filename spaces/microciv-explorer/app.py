@@ -16,10 +16,11 @@ try:
     from alpha_zero.hub.constants import HF_ORG
 except ImportError:
     # Standalone Space context: alpha_zero package not installed.
-    HF_ORG = os.environ.get("HF_ORG", "Mango-Metrics-NLM")
+    HF_ORG = os.environ.get("HF_ORG", "ianshank")
 
 MODEL_REPO_ID = os.environ.get(
-    "HF_MODEL_REPO", f"{HF_ORG}/civ6-alphazero-transformer",
+    "HF_MODEL_REPO",
+    f"{HF_ORG}/civ6-transformer",
 )
 TITLE = "🏛️ Civ6 AlphaZero — MicroCiv Explorer"
 DESCRIPTION = """
@@ -63,8 +64,7 @@ def create_app() -> Any:
             """Analyze a board position (placeholder)."""
             return (
                 0.0,
-                "Model not loaded — this is a Space scaffold.\n"
-                f"Would load from: {MODEL_REPO_ID}",
+                f"Model not loaded — this is a Space scaffold.\nWould load from: {MODEL_REPO_ID}",
                 f"Repo: {MODEL_REPO_ID}\nStatus: Scaffold only",
             )
 

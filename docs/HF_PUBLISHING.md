@@ -76,9 +76,7 @@ upload_model_to_hub(
 ```python
 from alpha_zero.core.transformer_hub_mixin import Civ6TransformerNetworkForHub
 
-model = Civ6TransformerNetworkForHub.from_pretrained(
-    "Mango-Metrics-NLM/civ6-alphazero-transformer"
-)
+model = Civ6TransformerNetworkForHub.from_pretrained("Mango-Metrics-NLM/civ6-alphazero-transformer")
 ```
 
 ## Publishing Datasets

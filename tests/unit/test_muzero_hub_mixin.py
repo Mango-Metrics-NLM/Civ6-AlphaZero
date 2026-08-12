@@ -32,16 +32,22 @@ class TestConstruction:
 
     def test_custom_kwargs(self):
         model = MuZeroNetworkForHub(
-            spatial_channels=7, spatial_size=8, num_res_blocks=2,
+            spatial_channels=7,
+            spatial_size=8,
+            num_res_blocks=2,
         )
         assert model.config.spatial_channels == 7
         assert model.config.spatial_size == 8
 
     def test_parameter_count_matches_parent(self):
         hub = MuZeroNetworkForHub(num_res_blocks=2, num_filters=32, spatial_size=8)
-        plain = MuZeroNetwork(MuZeroConfig(
-            num_res_blocks=2, num_filters=32, spatial_size=8,
-        ))
+        plain = MuZeroNetwork(
+            MuZeroConfig(
+                num_res_blocks=2,
+                num_filters=32,
+                spatial_size=8,
+            )
+        )
         hub_params = sum(p.numel() for p in hub.parameters())
         plain_params = sum(p.numel() for p in plain.parameters())
         assert hub_params == plain_params
@@ -53,7 +59,10 @@ class TestSaveLoadRoundTrip:
     def test_round_trip_preserves_weights(self, tmp_path):
         torch.manual_seed(42)
         original = MuZeroNetworkForHub(
-            spatial_channels=7, spatial_size=8, num_res_blocks=2, num_filters=32,
+            spatial_channels=7,
+            spatial_size=8,
+            num_res_blocks=2,
+            num_filters=32,
         )
         save_dir = tmp_path / "saved"
         original.save_pretrained(str(save_dir))
@@ -64,12 +73,12 @@ class TestSaveLoadRoundTrip:
         loaded = MuZeroNetworkForHub.from_pretrained(str(save_dir))
 
         for (name_a, param_a), (name_b, param_b) in zip(
-            original.named_parameters(), loaded.named_parameters(), strict=True,
+            original.named_parameters(),
+            loaded.named_parameters(),
+            strict=True,
         ):
             assert name_a == name_b
-            assert torch.allclose(param_a, param_b, atol=1e-6), (
-                f"Weight mismatch for {name_a}"
-            )
+            assert torch.allclose(param_a, param_b, atol=1e-6), f"Weight mismatch for {name_a}"
 
     def test_config_json_is_valid(self, tmp_path):
         model = MuZeroNetworkForHub(num_res_blocks=2, num_filters=32, spatial_size=8)
@@ -87,13 +96,18 @@ class TestFromNetwork:
     def test_from_network_preserves_weights(self):
         torch.manual_seed(42)
         config = MuZeroConfig(
-            spatial_channels=7, spatial_size=8, num_res_blocks=2, num_filters=32,
+            spatial_channels=7,
+            spatial_size=8,
+            num_res_blocks=2,
+            num_filters=32,
         )
         plain = MuZeroNetwork(config)
         hub = MuZeroNetworkForHub.from_network(plain)
 
         for (n_p, p_p), (n_h, p_h) in zip(
-            plain.named_parameters(), hub.named_parameters(), strict=True,
+            plain.named_parameters(),
+            hub.named_parameters(),
+            strict=True,
         ):
             assert n_p == n_h
             assert torch.equal(p_p, p_h), f"Weight mismatch for {n_p}"

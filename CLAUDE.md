@@ -753,8 +753,7 @@ client = create_llm_client()
 
 # Generate response
 response = await client.generate(
-    prompt="Analyze this game state...",
-    system_prompt="You are a Civ6 strategy expert."
+    prompt="Analyze this game state...", system_prompt="You are a Civ6 strategy expert."
 )
 
 # Synchronous version

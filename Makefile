@@ -105,7 +105,7 @@ lint-check:
 
 .PHONY: typecheck
 typecheck:
-	mypy alpha_zero/
+	mypy alpha_zero/ --strict
 
 .PHONY: test-unit
 test-unit:
@@ -117,7 +117,7 @@ test-integration:
 
 .PHONY: test-all
 test-all:
-	pytest tests/ -v --cov=alpha_zero --cov-report=term-missing --cov-report=html
+	pytest tests/ -v --cov=alpha_zero --cov-report=term-missing --cov-report=html --cov-fail-under=80
 
 .PHONY: test-storage
 test-storage:
@@ -153,6 +153,11 @@ upload-hub:
 .PHONY: export-datasets
 export-datasets:
 	$(PYTHON) scripts/export_dataset.py --type $(DATASET_TYPE) --source-path $(SOURCE_PATH) $(EXPORT_ARGS)
+
+.PHONY: publish-spaces
+publish-spaces:
+	huggingface-cli upload Mango-Metrics-NLM/Civ6-AlphaZero-Microciv-Explorer ./spaces/microciv-explorer --repo-type space
+	huggingface-cli upload Mango-Metrics-NLM/Civ6-AlphaZero-Elo-Dashboard ./spaces/elo-dashboard --repo-type space
 
 # ============================================================================
 # Docker Build

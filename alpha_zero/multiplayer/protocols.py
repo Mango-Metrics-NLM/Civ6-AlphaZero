@@ -28,7 +28,8 @@ if TYPE_CHECKING:
 class ActionSpace(Protocol):
     """Protocol for action space with size attribute."""
 
-    n: int
+    @property
+    def n(self) -> Any: ...
 
 
 @runtime_checkable
@@ -45,11 +46,11 @@ class MultiplayerEnvironment(Protocol):
         num_players: Total number of players in the game.
     """
 
-    action_space: ActionSpace
+    action_space: Any
     current_player: int
     num_players: int
 
-    def clone(self) -> MultiplayerEnvironment:
+    def clone(self) -> Any:
         """Create a deep copy of the environment for simulation."""
         ...
 
@@ -116,7 +117,7 @@ class MultiplayerNetwork(Protocol):
         """
         ...
 
-    def eval(self) -> None:
+    def eval(self) -> Any:
         """Set network to evaluation mode."""
         ...
 

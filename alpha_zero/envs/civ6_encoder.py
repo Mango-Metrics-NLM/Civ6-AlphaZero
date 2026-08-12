@@ -9,7 +9,7 @@ Vector tensor: (512,) - encodes turn, resources, techs, diplomacy, etc.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import numpy as np
 import torch
@@ -123,7 +123,7 @@ class Civ6StateEncoder:
         """
         self.config = config or EncoderConfig()
 
-    def encode(self, game_state: dict) -> tuple[torch.Tensor, torch.Tensor]:
+    def encode(self, game_state: dict[str, Any]) -> tuple[torch.Tensor, torch.Tensor]:
         """Encode game state to tensors.
 
         Args:
@@ -136,7 +136,7 @@ class Civ6StateEncoder:
         vector = self._encode_vector(game_state)
         return torch.from_numpy(spatial), torch.from_numpy(vector)
 
-    def _encode_spatial(self, game_state: dict) -> np.ndarray:
+    def _encode_spatial(self, game_state: dict[str, Any]) -> np.ndarray:
         """Encode spatial features.
 
         Args:
@@ -234,7 +234,7 @@ class Civ6StateEncoder:
 
         return spatial
 
-    def _encode_vector(self, game_state: dict) -> np.ndarray:
+    def _encode_vector(self, game_state: dict[str, Any]) -> np.ndarray:
         """Encode non-spatial features.
 
         Args:
@@ -360,7 +360,7 @@ class MicroCivEncoder:
         self._vis_channel = self._city_base + self.num_players
         self._bias_channel = self._vis_channel + 1
 
-    def encode(self, game_state: dict) -> tuple[torch.Tensor, torch.Tensor]:
+    def encode(self, game_state: dict[str, Any]) -> tuple[torch.Tensor, torch.Tensor]:
         """Encode game state.
 
         Args:
@@ -373,7 +373,7 @@ class MicroCivEncoder:
         vector = self._encode_vector(game_state)
         return torch.from_numpy(spatial), torch.from_numpy(vector)
 
-    def _encode_spatial(self, game_state: dict) -> np.ndarray:
+    def _encode_spatial(self, game_state: dict[str, Any]) -> np.ndarray:
         """Encode spatial features.
 
         Channel layout is player-relative: the current player is always
@@ -444,7 +444,7 @@ class MicroCivEncoder:
 
         return spatial
 
-    def _encode_vector(self, game_state: dict) -> np.ndarray:
+    def _encode_vector(self, game_state: dict[str, Any]) -> np.ndarray:
         """Encode vector features.
 
         Per-player stats use player-relative indexing (current player = 0).

@@ -52,11 +52,14 @@ print('Config:', json.dumps(cfg, indent=2))
 # Use the hub-publish-validator skill
 from pathlib import Path, re, json
 
-staged = Path('./release-staging')
+staged = Path("./release-staging")
 failures = []
-if not (staged / 'model.safetensors').exists(): failures.append('missing weights')
-if not (staged / 'config.json').exists(): failures.append('missing config')
-if len((staged / 'README.md').read_text()) < 500: failures.append('placeholder README')
+if not (staged / "model.safetensors").exists():
+    failures.append("missing weights")
+if not (staged / "config.json").exists():
+    failures.append("missing config")
+if len((staged / "README.md").read_text()) < 500:
+    failures.append("placeholder README")
 
 assert not failures, f"Pre-publish validation failed: {failures}"
 print("Validation passed — ready to publish")
@@ -93,6 +96,7 @@ After a complete release, verify:
 
 ```python
 from huggingface_hub import HfApi
+
 api = HfApi()
 info = api.repo_info("Mango-Metrics-NLM/civ6-encoder")
 assert info is not None

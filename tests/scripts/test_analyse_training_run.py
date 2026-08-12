@@ -16,20 +16,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Guard: skip gracefully if the script does not exist yet
-# ---------------------------------------------------------------------------
-scripts = pytest.importorskip(
-    "scripts.analyse_training_run",
-    reason="scripts/analyse_training_run.py not yet implemented",
+from scripts.analyse_training_run import (
+    PolicyLossTrend,
+    ValueHeadStability,
+    analyse_policy_loss,
+    analyse_value_stability,
+    build_training_summary,
 )
-
-analyse_policy_loss = scripts.analyse_policy_loss
-analyse_value_stability = scripts.analyse_value_stability
-build_training_summary = scripts.build_training_summary
-PolicyLossTrend = scripts.PolicyLossTrend
-ValueHeadStability = scripts.ValueHeadStability
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -34,7 +34,7 @@ class AtariGameSession:
         self._last_touch = time.time()
 
         # Build environment with rgb_array rendering for UI
-        env_config = AtariEnvConfig(
+        env_config = AtariEnvConfig(  # type: ignore[call-arg]
             game_name=ui_config.game,
             render_mode="rgb_array",
         )
@@ -44,7 +44,7 @@ class AtariGameSession:
         net_config = AtariNetworkConfig()
         self.network = AtariNetwork(
             config=net_config,
-            num_actions=self.env.action_space.n,
+            num_actions=self.env.action_space.n,  # type: ignore[attr-defined]
             spatial_size=env_config.spatial_size,
             spatial_channels=env_config.spatial_channels,
             vector_dim=env_config.vector_dim,
@@ -181,7 +181,7 @@ class AtariGameSession:
             device=self.ui_config.device,
         )
 
-        action_probs, root_value = mcts.search(self.env, add_noise=False)
+        action_probs, root_value = mcts.search(self.env, add_noise=False)  # type: ignore[arg-type]
         # MCTS tree root is a local in search(); not exposed via attribute
         self._last_mcts_root = getattr(mcts, "root", None)
 
@@ -229,7 +229,7 @@ class AtariGameSession:
             "total_reward": float(self._total_reward),
             "step": int(self._step_count),
             "done": self._done,
-            "num_actions": int(self.env.action_space.n),
+            "num_actions": int(self.env.action_space.n),  # type: ignore[attr-defined]
         }
 
     def get_frame_base64(self) -> str:
@@ -298,7 +298,7 @@ class AtariGameSession:
     def _get_raw_frame(self) -> np.ndarray | None:
         """Get the raw RGB frame from the environment."""
         try:
-            frame = self.env._env.render()
+            frame = self.env._env.render()  # type: ignore[var-annotated]
             if frame is not None:
                 return np.asarray(frame)
         except Exception:

@@ -57,7 +57,7 @@ class _VectorEncoder(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = F.relu(self.fc1(x))
         out = self.dropout(out)
-        return self.fc2(out)
+        return self.fc2(out)  # type: ignore[no-any-return]
 
 
 class _PolicyHead(nn.Module):
@@ -83,7 +83,7 @@ class _PolicyHead(nn.Module):
         s = F.relu(self.bn(self.conv(spatial)))
         s = s.view(s.size(0), -1)
         combined = torch.cat([s, vector], dim=1)
-        return self.fc2(F.relu(self.fc1(combined)))
+        return self.fc2(F.relu(self.fc1(combined)))  # type: ignore[no-any-return]
 
 
 class _ValueHead(nn.Module):

@@ -353,7 +353,7 @@ class CloudSelfPlayWorker:
         logger.debug(f"Saved trajectory {game_id} ({len(trajectory.examples)} examples)")
         return path
 
-    def run(self) -> dict:
+    def run(self) -> dict[str, Any]:
         """Run self-play and generate trajectories.
 
         Returns:

@@ -245,7 +245,7 @@ class BridgeConfig:
         """Create the communication directory if it doesn't exist."""
         self.comm_dir.mkdir(parents=True, exist_ok=True)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert configuration to dictionary.
 
         Returns:

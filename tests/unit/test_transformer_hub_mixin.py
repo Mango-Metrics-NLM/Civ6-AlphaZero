@@ -37,16 +37,23 @@ class TestConstruction:
 
     def test_custom_kwargs(self):
         model = Civ6TransformerNetworkForHub(
-            spatial_channels=7, embed_dim=32, num_layers=2, num_heads=4,
+            spatial_channels=7,
+            embed_dim=32,
+            num_layers=2,
+            num_heads=4,
         )
         assert model.config.spatial_channels == 7
         assert model.config.embed_dim == 32
 
     def test_parameter_count_matches_parent(self):
         hub = Civ6TransformerNetworkForHub(num_layers=2, num_heads=4, embed_dim=32)
-        plain = Civ6TransformerNetwork(TransformerConfig(
-            num_layers=2, num_heads=4, embed_dim=32,
-        ))
+        plain = Civ6TransformerNetwork(
+            TransformerConfig(
+                num_layers=2,
+                num_heads=4,
+                embed_dim=32,
+            )
+        )
         hub_params = sum(p.numel() for p in hub.parameters())
         plain_params = sum(p.numel() for p in plain.parameters())
         assert hub_params == plain_params
@@ -58,7 +65,10 @@ class TestSaveLoadRoundTrip:
     def test_round_trip_preserves_weights(self, tmp_path):
         torch.manual_seed(42)
         original = Civ6TransformerNetworkForHub(
-            spatial_channels=7, embed_dim=32, num_layers=2, num_heads=4,
+            spatial_channels=7,
+            embed_dim=32,
+            num_layers=2,
+            num_heads=4,
         )
         save_dir = tmp_path / "saved"
         original.save_pretrained(str(save_dir))
@@ -72,12 +82,12 @@ class TestSaveLoadRoundTrip:
 
         # Verify weight parity.
         for (name_a, param_a), (name_b, param_b) in zip(
-            original.named_parameters(), loaded.named_parameters(), strict=True,
+            original.named_parameters(),
+            loaded.named_parameters(),
+            strict=True,
         ):
             assert name_a == name_b
-            assert torch.allclose(param_a, param_b, atol=1e-6), (
-                f"Weight mismatch for {name_a}"
-            )
+            assert torch.allclose(param_a, param_b, atol=1e-6), f"Weight mismatch for {name_a}"
 
     def test_config_json_is_valid(self, tmp_path):
         model = Civ6TransformerNetworkForHub(embed_dim=32, num_layers=2, num_heads=4)
@@ -105,13 +115,18 @@ class TestFromNetwork:
     def test_from_network_preserves_weights(self):
         torch.manual_seed(42)
         config = TransformerConfig(
-            spatial_channels=7, embed_dim=32, num_layers=2, num_heads=4,
+            spatial_channels=7,
+            embed_dim=32,
+            num_layers=2,
+            num_heads=4,
         )
         plain = Civ6TransformerNetwork(config)
         hub = Civ6TransformerNetworkForHub.from_network(plain)
 
         for (n_p, p_p), (n_h, p_h) in zip(
-            plain.named_parameters(), hub.named_parameters(), strict=True,
+            plain.named_parameters(),
+            hub.named_parameters(),
+            strict=True,
         ):
             assert n_p == n_h
             assert torch.equal(p_p, p_h), f"Weight mismatch for {n_p}"

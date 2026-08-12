@@ -11,7 +11,7 @@
 The `VertexTournamentJob.launch()` method (line 1023 of `vertex_jobs.py`) sets:
 
 ```python
-command=["python", "-m", "alpha_zero.cloud.gcp.entrypoint"]
+command = ["python", "-m", "alpha_zero.cloud.gcp.entrypoint"]
 ```
 
 But the test at line 996 of `test_tournament_worker.py` asserts:

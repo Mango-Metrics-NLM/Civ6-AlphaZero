@@ -148,7 +148,9 @@ class TestUploadPublish:
                 save_directory=tmp_path / "out",
             )
             mock_instance.create_repo.assert_called_once_with(
-                repo_id="org/repo", exist_ok=True, private=False,
+                repo_id="org/repo",
+                exist_ok=True,
+                private=False,
             )
             mock_instance.upload_folder.assert_called_once()
 
@@ -164,7 +166,9 @@ class TestUploadPublish:
                 save_directory=tmp_path / "out",
             )
             mock_instance.create_repo.assert_called_once_with(
-                repo_id="org/repo", exist_ok=True, private=True,
+                repo_id="org/repo",
+                exist_ok=True,
+                private=True,
             )
 
     def test_publish_custom_commit_message(self, tmp_path):
@@ -225,7 +229,6 @@ class TestUploadPublish:
 
 
 class TestHubUploadableProtocolLate:
-
     def test_protocol_importable(self):
         """Import guard on HfApi must not block protocol import."""
         # This was M2 — HfApi used to be at module level.

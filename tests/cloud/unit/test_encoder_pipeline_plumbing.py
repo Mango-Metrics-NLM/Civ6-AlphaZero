@@ -194,7 +194,7 @@ class TestTrainingWorkerCreateModel:
 
         # Check that model has the correct config
         assert hasattr(model, "config")
-        assert model.config.encoder_type == "hex_crystalline"
+        assert model.config.encoder_type == "hex_crystalline"  # type: ignore[union-attr]
 
     def test_create_model_default_encoder(self) -> None:
         """create_model with default encoder_type creates patch_embed model."""
@@ -212,7 +212,7 @@ class TestTrainingWorkerCreateModel:
 
         # Check that model uses default encoder
         assert hasattr(model, "config")
-        assert model.config.encoder_type == "patch_embed"
+        assert model.config.encoder_type == "patch_embed"  # type: ignore[union-attr]
 
     def test_create_model_hex_encoder_has_correct_architecture(self) -> None:
         """Model created with hex_crystalline has correct spatial encoder."""
@@ -230,11 +230,11 @@ class TestTrainingWorkerCreateModel:
         assert isinstance(model, torch.nn.Module)
 
         # Verify config matches input
-        assert model.config.spatial_size == 8
-        assert model.config.action_space_size == 376
-        assert model.config.num_layers == 6
-        assert model.config.embed_dim == 64
-        assert model.config.encoder_type == "hex_crystalline"
+        assert model.config.spatial_size == 8  # type: ignore[union-attr]
+        assert model.config.action_space_size == 376  # type: ignore[union-attr]
+        assert model.config.num_layers == 6  # type: ignore[union-attr]
+        assert model.config.embed_dim == 64  # type: ignore[union-attr]
+        assert model.config.encoder_type == "hex_crystalline"  # type: ignore[union-attr]
 
     def test_create_model_patch_embed_encoder_has_correct_architecture(self) -> None:
         """Model created with patch_embed has correct spatial encoder."""
@@ -252,11 +252,11 @@ class TestTrainingWorkerCreateModel:
         assert isinstance(model, torch.nn.Module)
 
         # Verify config matches input
-        assert model.config.spatial_size == 8
-        assert model.config.action_space_size == 376
-        assert model.config.num_layers == 6
-        assert model.config.embed_dim == 64
-        assert model.config.encoder_type == "patch_embed"
+        assert model.config.spatial_size == 8  # type: ignore[union-attr]
+        assert model.config.action_space_size == 376  # type: ignore[union-attr]
+        assert model.config.num_layers == 6  # type: ignore[union-attr]
+        assert model.config.embed_dim == 64  # type: ignore[union-attr]
+        assert model.config.encoder_type == "patch_embed"  # type: ignore[union-attr]
 
 
 # =============================================================================
@@ -421,6 +421,6 @@ class TestEncoderTypePipelineIntegration:
         )
 
         # Verify encoder_type was applied
-        assert model.config.encoder_type == "hex_crystalline"
-        assert model.config.spatial_size == 16
-        assert model.config.action_space_size == 376
+        assert model.config.encoder_type == "hex_crystalline"  # type: ignore[union-attr]
+        assert model.config.spatial_size == 16  # type: ignore[union-attr]
+        assert model.config.action_space_size == 376  # type: ignore[union-attr]

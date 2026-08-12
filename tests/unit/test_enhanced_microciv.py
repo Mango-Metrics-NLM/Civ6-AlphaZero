@@ -245,7 +245,7 @@ class TestEnhancedMicroCivFogOfWar:
 
     def test_initial_visibility_limited(self, env: EnhancedMicroCivEnv):
         """After reset, not all tiles are visible."""
-        mask = env.fog_of_war.get_visibility_mask(0)
+        mask = env.fog_of_war.get_visibility_mask(0)  # type: ignore[union-attr]
         total_tiles = BOARD_SIZE * BOARD_SIZE
         visible_count = int((mask == 2).sum())
         unexplored_count = int((mask == 0).sum())
@@ -305,13 +305,15 @@ class TestEnhancedMicroCivFogOfWar:
         assert clone.fog_of_war is not None
 
         # Fog states should match
-        orig_mask = env.fog_of_war.get_visibility_mask(0)
+        orig_mask = env.fog_of_war.get_visibility_mask(0)  # type: ignore[union-attr]
         clone_mask = clone.fog_of_war.get_visibility_mask(0)
         assert np.array_equal(orig_mask, clone_mask)
 
         # Mutating the original should not affect the clone
         env.step(env.action_space_handler.end_turn_offset)
-        env.fog_of_war.get_visibility_mask(0)  # trigger update
+        env.fog_of_war.get_visibility_mask(
+            0
+        )  # trigger update  # type: ignore[union-attr]  # type: ignore[union-attr]  # type: ignore[union-attr]
         # Clone mask should still match the pre-step snapshot
         assert np.array_equal(clone_mask, clone.fog_of_war.get_visibility_mask(0))
 
@@ -344,14 +346,14 @@ class TestEnhancedMicroCivEconomy:
 
     def test_gold_changes_over_turns(self, env: EnhancedMicroCivEnv):
         """Gold balances change after processing turns."""
-        initial_gold_p0 = env.economy.get_gold(0)
-        initial_gold_p1 = env.economy.get_gold(1)
+        initial_gold_p0 = env.economy.get_gold(0)  # type: ignore[union-attr]
+        initial_gold_p1 = env.economy.get_gold(1)  # type: ignore[union-attr]
 
         # End several full turns (both players end turn each time)
         _play_end_turns(env, 5)
 
-        final_gold_p0 = env.economy.get_gold(0)
-        final_gold_p1 = env.economy.get_gold(1)
+        final_gold_p0 = env.economy.get_gold(0)  # type: ignore[union-attr]
+        final_gold_p1 = env.economy.get_gold(1)  # type: ignore[union-attr]
 
         # Gold should have changed for at least one player (cities produce income)
         gold_changed = final_gold_p0 != initial_gold_p0 or final_gold_p1 != initial_gold_p1
@@ -360,7 +362,7 @@ class TestEnhancedMicroCivEconomy:
     def test_economy_preserved_in_clone(self, env: EnhancedMicroCivEnv):
         """clone() should preserve economy state."""
         _play_end_turns(env, 3)
-        gold_before = env.economy.get_gold(0)
+        gold_before = env.economy.get_gold(0)  # type: ignore[union-attr]
 
         clone = env.clone()
         assert clone.economy is not None
@@ -514,8 +516,8 @@ class TestEnhancedMicroCivCityGrowth:
 
     def test_population_affects_production(self, env: EnhancedMicroCivEnv):
         """Higher population should yield a production bonus."""
-        bonus_1 = env.city_growth.get_production_bonus(1)
-        bonus_3 = env.city_growth.get_production_bonus(3)
+        bonus_1 = env.city_growth.get_production_bonus(1)  # type: ignore[union-attr]
+        bonus_3 = env.city_growth.get_production_bonus(3)  # type: ignore[union-attr]
         assert bonus_3 > bonus_1, "Higher population should produce more"
 
 

@@ -24,7 +24,10 @@ class TestTransformerPublishPipeline:
 
         torch.manual_seed(42)
         model = Civ6TransformerNetworkForHub(
-            spatial_channels=7, embed_dim=32, num_layers=2, num_heads=4,
+            spatial_channels=7,
+            embed_dim=32,
+            num_layers=2,
+            num_heads=4,
         )
 
         metadata = ModelCardMetadata(
@@ -65,7 +68,9 @@ class TestTransformerPublishPipeline:
         # Verify reload produces identical weights.
         reloaded = Civ6TransformerNetworkForHub.from_pretrained(str(save_dir))
         for (n_a, p_a), (n_b, p_b) in zip(
-            model.named_parameters(), reloaded.named_parameters(), strict=True,
+            model.named_parameters(),
+            reloaded.named_parameters(),
+            strict=True,
         ):
             assert n_a == n_b
             assert torch.allclose(p_a, p_b, atol=1e-6)
@@ -79,7 +84,10 @@ class TestMuZeroPublishPipeline:
 
         torch.manual_seed(42)
         model = MuZeroNetworkForHub(
-            spatial_channels=7, spatial_size=8, num_res_blocks=2, num_filters=32,
+            spatial_channels=7,
+            spatial_size=8,
+            num_res_blocks=2,
+            num_filters=32,
         )
 
         metadata = ModelCardMetadata(
@@ -105,7 +113,9 @@ class TestMuZeroPublishPipeline:
 
         reloaded = MuZeroNetworkForHub.from_pretrained(str(save_dir))
         for (n_a, p_a), (n_b, p_b) in zip(
-            model.named_parameters(), reloaded.named_parameters(), strict=True,
+            model.named_parameters(),
+            reloaded.named_parameters(),
+            strict=True,
         ):
             assert n_a == n_b
             assert torch.allclose(p_a, p_b, atol=1e-6)

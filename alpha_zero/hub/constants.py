@@ -38,7 +38,7 @@ DEFAULT_MODEL_TAGS: tuple[str, ...] = (
 )
 
 #: SPDX licence identifier used in model cards.
-DEFAULT_LICENSE: str = os.environ.get("HF_LICENSE", "MIT")
+DEFAULT_LICENSE: str = os.environ.get("HF_LICENSE", "mit")
 
 #: Path to the Markdown model-card template.
 CARD_TEMPLATE_PATH: Path = Path(

@@ -267,7 +267,7 @@ class CivRealmEncoder:
             f"{config.spatial_size}x{config.spatial_size}, vector={self.vector_dim}"
         )
 
-    def encode_observation(self, raw_obs: dict) -> dict[str, np.ndarray]:
+    def encode_observation(self, raw_obs: dict[str, Any]) -> dict[str, np.ndarray]:
         """Encode raw CivRealm observation to tensor format.
 
         Args:
@@ -286,7 +286,7 @@ class CivRealmEncoder:
             "action_mask": action_mask,
         }
 
-    def _encode_spatial(self, obs: dict) -> np.ndarray:
+    def _encode_spatial(self, obs: dict[str, Any]) -> np.ndarray:
         """Encode spatial features.
 
         Args:
@@ -404,7 +404,7 @@ class CivRealmEncoder:
 
         return spatial
 
-    def _encode_vector(self, obs: dict) -> np.ndarray:
+    def _encode_vector(self, obs: dict[str, Any]) -> np.ndarray:
         """Encode non-spatial (vector) features.
 
         Args:
@@ -512,7 +512,7 @@ class CivRealmEncoder:
 
         return vector
 
-    def _create_action_mask(self, obs: dict) -> np.ndarray:
+    def _create_action_mask(self, obs: dict[str, Any]) -> np.ndarray:
         """Create action mask from available actions.
 
         Args:
@@ -705,7 +705,7 @@ class CivRealmActionHandler:
 
         logger.debug(f"CivRealmActionHandler initialized with {self.action_size} actions")
 
-    def build_action_mapping(self, available_actions: dict) -> None:
+    def build_action_mapping(self, available_actions: dict[str, Any]) -> None:
         """Build mapping from action indices to CivRealm actions.
 
         Args:
@@ -736,7 +736,7 @@ class CivRealmActionHandler:
         }
         self._reverse_cache["end_turn"] = self.action_size - 1
 
-    def decode_action(self, action_idx: int, available_actions: dict) -> dict:
+    def decode_action(self, action_idx: int, available_actions: dict[str, Any]) -> dict[str, Any]:
         """Decode discrete action index to CivRealm action.
 
         Args:
@@ -765,7 +765,7 @@ class CivRealmActionHandler:
         logger.warning(f"Action index {action_idx} not found, falling back to end_turn")
         return {"type": "end_turn"}
 
-    def encode_action(self, action: dict, available_actions: dict) -> int:
+    def encode_action(self, action: dict[str, Any], available_actions: dict[str, Any]) -> int:
         """Encode CivRealm action to discrete index.
 
         Args:
@@ -786,7 +786,7 @@ class CivRealmActionHandler:
         # Default to end_turn
         return self.action_size - 1
 
-    def get_action_mask(self, available_actions: dict) -> np.ndarray:
+    def get_action_mask(self, available_actions: dict[str, Any]) -> np.ndarray:
         """Generate action mask from available actions.
 
         Args:
@@ -1173,7 +1173,7 @@ class MockCivRealmEnv:
 
         logger.info("Using MockCivRealmEnv (CivRealm not installed)")
 
-    def reset(self) -> dict:
+    def reset(self) -> dict[str, Any]:
         """Reset mock environment.
 
         Returns:
@@ -1183,7 +1183,7 @@ class MockCivRealmEnv:
         self._done = False
         return self._generate_mock_observation()
 
-    def step(self, action: dict) -> tuple[dict, float, bool, dict]:
+    def step(self, action: dict[str, Any]) -> tuple[dict, float, bool, dict]:
         """Execute mock action.
 
         Args:
@@ -1214,7 +1214,7 @@ class MockCivRealmEnv:
         """Close mock environment."""
         pass
 
-    def _generate_mock_observation(self) -> dict:
+    def _generate_mock_observation(self) -> dict[str, Any]:
         """Generate mock observation.
 
         Returns:
@@ -1350,7 +1350,7 @@ class CivRealmWrapper(gym.Env):
 
         # Internal state
         self._env: Any = None
-        self._current_obs: dict = {}
+        self._current_obs: dict[str, Any] = {}
         self._turn: int = 0
         self._done: bool = False
         self._truncated: bool = False

@@ -267,5 +267,5 @@ flowchart TD
 
 ---
 
-*Generated: 2026-08-10*
-*Architecture version: Phase 20 (Hexcrystal Encoder & Validation Support)*
+*Generated: 2026-08-11*
+*Architecture version: Phase 21 (Hexcrystal Encoder, SpaceTimeDB, & Spaces Integrations)*

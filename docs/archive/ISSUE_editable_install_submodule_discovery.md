@@ -136,6 +136,7 @@ path, but it's fully supported today and unambiguously works.
 # scripts/run_chess_training.py, after the docstring, before any alpha_zero import
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 ```
 

@@ -48,10 +48,12 @@ class TestEloDatasetExporter:
 
         # JSON file.
         (source / "elo_ratings.json").write_text(
-            json.dumps([
-                {"model": "v1", "elo": 1200, "games": 50},
-                {"model": "v2", "elo": 1350, "games": 100},
-            ]),
+            json.dumps(
+                [
+                    {"model": "v1", "elo": 1200, "games": 50},
+                    {"model": "v2", "elo": 1350, "games": 100},
+                ]
+            ),
             encoding="utf-8",
         )
 
@@ -223,7 +225,8 @@ class TestEloExporterPushToHub:
         source = tmp_path / "results"
         source.mkdir()
         (source / "elo_ratings.json").write_text(
-            '[{"model": "v1", "elo": 1200}]', encoding="utf-8",
+            '[{"model": "v1", "elo": 1200}]',
+            encoding="utf-8",
         )
         return source
 
@@ -324,7 +327,8 @@ class TestSingleDictJsonReplay:
         source.mkdir()
         # Single dict (not a list) — this exercises the else branch in export
         (source / "trajectory_data.json").write_text(
-            '{"episode": 0, "total_reward": 5.0}', encoding="utf-8",
+            '{"episode": 0, "total_reward": 5.0}',
+            encoding="utf-8",
         )
         config = DatasetExportConfig(
             source_dir=source,

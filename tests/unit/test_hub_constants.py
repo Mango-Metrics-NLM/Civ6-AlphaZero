@@ -108,7 +108,7 @@ class TestDefaultLicense:
         from alpha_zero.hub.constants import DEFAULT_LICENSE
 
         assert isinstance(DEFAULT_LICENSE, str)
-        assert DEFAULT_LICENSE == "MIT"
+        assert DEFAULT_LICENSE == "mit"
 
     def test_env_override(self):
         import importlib

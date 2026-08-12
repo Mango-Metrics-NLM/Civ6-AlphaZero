@@ -235,7 +235,7 @@ class UncivTile:
     civilian_unit: str | None = None
 
     @classmethod
-    def from_unciv_dict(cls, tile_data: dict, position: tuple[int, int]) -> UncivTile:
+    def from_unciv_dict(cls, tile_data: dict[str, Any], position: tuple[int, int]) -> UncivTile:
         """Create UncivTile from Unciv JSON tile data.
 
         Args:
@@ -262,7 +262,7 @@ class UncivTile:
             else None,
         )
 
-    def to_unciv_dict(self) -> dict:
+    def to_unciv_dict(self) -> dict[str, Any]:
         """Convert to Unciv JSON format.
 
         Returns:
@@ -321,7 +321,7 @@ class UncivUnit:
     action: str | None = None
 
     @classmethod
-    def from_unciv_dict(cls, unit_data: dict) -> UncivUnit:
+    def from_unciv_dict(cls, unit_data: dict[str, Any]) -> UncivUnit:
         """Create UncivUnit from Unciv JSON unit data.
 
         Args:
@@ -350,7 +350,7 @@ class UncivUnit:
             action=unit_data.get("action"),
         )
 
-    def to_unciv_dict(self) -> dict:
+    def to_unciv_dict(self) -> dict[str, Any]:
         """Convert to Unciv JSON format.
 
         Returns:
@@ -429,7 +429,7 @@ class UncivCity:
     food_stored: int = 0
 
     @classmethod
-    def from_unciv_dict(cls, city_data: dict) -> UncivCity:
+    def from_unciv_dict(cls, city_data: dict[str, Any]) -> UncivCity:
         """Create UncivCity from Unciv JSON city data.
 
         Args:
@@ -471,7 +471,7 @@ class UncivCity:
             else 0,
         )
 
-    def to_unciv_dict(self) -> dict:
+    def to_unciv_dict(self) -> dict[str, Any]:
         """Convert to Unciv JSON format.
 
         Returns:
@@ -538,7 +538,7 @@ class UncivPlayer:
     has_met: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_unciv_dict(cls, civ_data: dict) -> UncivPlayer:
+    def from_unciv_dict(cls, civ_data: dict[str, Any]) -> UncivPlayer:
         """Create UncivPlayer from Unciv JSON civilization data.
 
         Args:
@@ -592,7 +592,7 @@ class UncivPlayer:
             has_met=has_met,
         )
 
-    def to_unciv_dict(self) -> dict:
+    def to_unciv_dict(self) -> dict[str, Any]:
         """Convert to Unciv JSON format.
 
         Returns:
@@ -656,7 +656,7 @@ class UncivGameState:
     victory_types: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_unciv_json(cls, json_data: dict) -> UncivGameState:
+    def from_unciv_json(cls, json_data: dict[str, Any]) -> UncivGameState:
         """Create UncivGameState from Unciv JSON save data.
 
         Args:
@@ -738,7 +738,7 @@ class UncivGameState:
             ),
         )
 
-    def to_unciv_json(self) -> dict:
+    def to_unciv_json(self) -> dict[str, Any]:
         """Convert to Unciv JSON format.
 
         Returns:
@@ -1086,7 +1086,7 @@ class UncivInterface:
         except Exception as e:
             raise UncivSaveError(f"Error saving game state: {e}") from e
 
-    def convert_to_internal(self, unciv_state: UncivGameState | dict) -> dict:
+    def convert_to_internal(self, unciv_state: UncivGameState | dict) -> dict[str, Any]:
         """Convert Unciv game state to internal encoder format.
 
         This method converts the Unciv JSON format to the dictionary format
@@ -1282,7 +1282,7 @@ class UncivInterface:
         except Exception as e:
             raise UncivConversionError(f"Error converting to internal format: {e}") from e
 
-    def convert_to_unciv(self, internal_state: dict) -> dict:
+    def convert_to_unciv(self, internal_state: dict[str, Any]) -> dict[str, Any]:
         """Convert internal game state back to Unciv JSON format.
 
         Args:
@@ -1415,7 +1415,7 @@ class UncivInterface:
         except Exception as e:
             raise UncivConversionError(f"Error converting to Unciv format: {e}") from e
 
-    def get_valid_actions(self, state: dict) -> np.ndarray:
+    def get_valid_actions(self, state: dict[str, Any]) -> np.ndarray:
         """Get valid action mask for the current game state.
 
         Args:
@@ -1436,7 +1436,7 @@ class UncivInterface:
             actions_module.CityActionType,
         )
 
-    def apply_action(self, state: dict, action: int) -> dict:
+    def apply_action(self, state: dict[str, Any], action: int) -> dict[str, Any]:
         """Apply an action to the game state.
 
         This method decodes the flat action index, applies it to the state,
@@ -1719,7 +1719,7 @@ class UncivInterface:
 
         return (unciv_x, unciv_y)
 
-    def _calculate_tile_yields(self, tile: UncivTile) -> dict:
+    def _calculate_tile_yields(self, tile: UncivTile) -> dict[str, Any]:
         """Calculate base yields for a tile.
 
         Args:

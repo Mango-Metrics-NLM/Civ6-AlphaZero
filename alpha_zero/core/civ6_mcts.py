@@ -1906,7 +1906,7 @@ class MuZeroMCTS:
 
     def search(
         self,
-        observation: dict,
+        observation: dict[str, Any],
         action_mask: np.ndarray,
         add_noise: bool = True,
     ) -> tuple[np.ndarray, float]:

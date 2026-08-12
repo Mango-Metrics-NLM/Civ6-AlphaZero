@@ -1124,7 +1124,7 @@ class DDPLearner(Learner):
                 logger.info("Destroyed process group")
             self._process_group_initialized = False
 
-    def get_statistics(self) -> dict:
+    def get_statistics(self) -> dict[str, Any]:
         """Get learner statistics.
 
         Returns:

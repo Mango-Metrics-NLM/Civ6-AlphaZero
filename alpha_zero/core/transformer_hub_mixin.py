@@ -181,7 +181,8 @@ class Civ6TransformerNetworkForHub(Civ6TransformerNetwork, PyTorchModelHubMixin)
 
     @classmethod
     def from_transformer_config(
-        cls, config: TransformerConfig,
+        cls,
+        config: TransformerConfig,
     ) -> Civ6TransformerNetworkForHub:
         """Build a hub-enabled network from a :class:`TransformerConfig`.
 
@@ -195,7 +196,8 @@ class Civ6TransformerNetworkForHub(Civ6TransformerNetwork, PyTorchModelHubMixin)
 
     @classmethod
     def from_network(
-        cls, network: Civ6TransformerNetwork,
+        cls,
+        network: Civ6TransformerNetwork,
     ) -> Civ6TransformerNetworkForHub:
         """Copy a plain network's config and weights into a hub-enabled one.
 

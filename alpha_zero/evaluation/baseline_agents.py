@@ -199,8 +199,8 @@ class GreedyHeuristicAgent(BaseAgent):
         self,
         action: int,
         action_space: Any,
-        own_units: list,
-        own_cities: list,
+        own_units: list[Any],
+        own_cities: list[Any],
         enemy_targets: list[tuple[int, int]],
         board_size: int,
     ) -> float:
