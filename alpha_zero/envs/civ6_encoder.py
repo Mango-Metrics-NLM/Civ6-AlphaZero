@@ -9,7 +9,7 @@ Vector tensor: (512,) - encodes turn, resources, techs, diplomacy, etc.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import ClassVar, Any
+from typing import Any, ClassVar
 
 import numpy as np
 import torch

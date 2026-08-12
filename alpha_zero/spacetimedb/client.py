@@ -13,7 +13,7 @@ import asyncio
 import logging
 import uuid
 from collections.abc import Callable, Coroutine
-from typing import TYPE_CHECKING, Any, TypeVar, cast, Any
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from alpha_zero.spacetimedb.connection import ConnectionManager
 from alpha_zero.spacetimedb.events import (

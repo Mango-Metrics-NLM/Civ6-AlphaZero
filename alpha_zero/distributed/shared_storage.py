@@ -1,4 +1,3 @@
-from typing import Any
 """Shared storage for distributed AlphaZero training.
 
 Provides:
@@ -18,6 +17,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from multiprocessing import Manager, Queue
 from multiprocessing.managers import DictProxy, SyncManager
+from typing import Any
 
 import numpy as np
 import torch

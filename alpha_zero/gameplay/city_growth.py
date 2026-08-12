@@ -111,7 +111,9 @@ class CityGrowthSystem:
             + (current_population - 1) * self.config.growth_threshold_scaling
         )
 
-    def calculate_food_surplus(self, city: dict[str, Any], tile_yields: list[dict[str, int]]) -> int:
+    def calculate_food_surplus(
+        self, city: dict[str, Any], tile_yields: list[dict[str, int]]
+    ) -> int:
         """Calculate the per-turn food surplus for a city.
 
         Total food is the sum of the ``"food"`` key from every worked

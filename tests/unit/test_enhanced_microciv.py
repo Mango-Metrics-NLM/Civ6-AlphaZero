@@ -311,7 +311,9 @@ class TestEnhancedMicroCivFogOfWar:
 
         # Mutating the original should not affect the clone
         env.step(env.action_space_handler.end_turn_offset)
-        env.fog_of_war.get_visibility_mask(0)  # trigger update  # type: ignore[union-attr]  # type: ignore[union-attr]  # type: ignore[union-attr]
+        env.fog_of_war.get_visibility_mask(
+            0
+        )  # trigger update  # type: ignore[union-attr]  # type: ignore[union-attr]  # type: ignore[union-attr]
         # Clone mask should still match the pre-step snapshot
         assert np.array_equal(clone_mask, clone.fog_of_war.get_visibility_mask(0))
 

@@ -360,11 +360,16 @@ class TestMixedDeviceScenarios:
         if not torch.cuda.is_available() or torch.cuda.device_count() < 2:
             pytest.skip("Test requires at least 2 CUDA devices")
 
-        ddp_config = DDPConfig(enabled=True, world_size=4, rank=2, local_rank=1, use_cuda=True, device_ids=[0, 1])
+        ddp_config = DDPConfig(
+            enabled=True, world_size=4, rank=2, local_rank=1, use_cuda=True, device_ids=[0, 1]
+        )
         config = DDPLearnerConfig.from_learner_config(LearnerConfig(), ddp_config=ddp_config)
 
         with mock_ddp_context(
-            world_size=4, rank=2, ddp_module_path="alpha_zero.distributed.ddp_learner.DDP", mock_cuda=False
+            world_size=4,
+            rank=2,
+            ddp_module_path="alpha_zero.distributed.ddp_learner.DDP",
+            mock_cuda=False,
         ):
             learner = DDPLearner(
                 config=config,

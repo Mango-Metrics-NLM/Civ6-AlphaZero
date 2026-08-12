@@ -131,10 +131,12 @@ class TestLoadCiv6azEnv:
         load_civ6az_env(dotenv_path=path, override=True, warn_missing=False)
         assert os.environ["CIV6AZ_GCS_BUCKET"] == "new-bucket"
 
-    def test_warns_on_missing_required_vars(self, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_warns_on_missing_required_vars(
+        self, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Should log a warning when required variables are missing."""
         import logging
-        
+
         monkeypatch.setattr("alpha_zero.utils.env_loader._parse_dotenv", lambda x: {})
 
         with caplog.at_level(logging.WARNING):
