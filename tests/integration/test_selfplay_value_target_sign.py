@@ -165,15 +165,15 @@ class TestBatchSelfPlayValueSigns:
         """
         from alpha_zero.cloud.gcp.selfplay_worker import run_batch_selfplay, run_selfplay
 
-        common = dict(
-            model=small_model,
-            num_games=2,
-            mcts_sims=_MCTS_SIMS,
-            board_size=_BOARD_SIZE,
-            max_turns=_MAX_TURNS,
-            gumbel_num_actions=_GUMBEL_ACTIONS,
-            device="cpu",
-        )
+        common = {
+            "model": small_model,
+            "num_games": 2,
+            "mcts_sims": _MCTS_SIMS,
+            "board_size": _BOARD_SIZE,
+            "max_turns": _MAX_TURNS,
+            "gumbel_num_actions": _GUMBEL_ACTIONS,
+            "device": "cpu",
+        }
         seq = run_selfplay(mcts_type="gumbel", **common)
         batch = run_batch_selfplay(num_parallel_games=2, max_batch_size=4, **common)
 
