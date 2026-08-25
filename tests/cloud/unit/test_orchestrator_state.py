@@ -462,8 +462,10 @@ class TestRunIterationsDryRun:
         mock_cost.estimate_job_cost.return_value = 0.10
         mock_cost_cls.return_value = mock_cost
 
-        # Win rate below threshold
-        mock_eval.return_value = (True, 0.40)
+        # Win rate below threshold. The third element is the policy verdict;
+        # None means "no verdict available", so resolve_promotion() falls back
+        # to the legacy win_rate >= threshold comparison this test asserts on.
+        mock_eval.return_value = (True, 0.40, None)
 
         # Enable evaluation (need model_version > 0)
         dry_run_args.evaluation_games = 30

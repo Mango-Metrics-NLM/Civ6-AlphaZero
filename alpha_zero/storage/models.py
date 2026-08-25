@@ -16,6 +16,19 @@ from typing import Any
 
 from alpha_zero.utils.compat import UTC
 
+#: Schema version stamped into every :class:`EvaluationResult` written from now on.
+#:
+#: Bumped to 2 when score-rate fields were added. Records written before that
+#: carry no ``schema_version`` key at all, and :meth:`EvaluationResult.from_dict`
+#: deliberately reads a *different* default (:data:`LEGACY_EVALUATION_SCHEMA_VERSION`)
+#: than the field declares, so a pre-change record stays distinguishable from a
+#: post-change one. Defaulting both to the same value would make them identical
+#: on read, which would defeat the point of stamping a version at all.
+EVALUATION_SCHEMA_VERSION = 2
+
+#: Version attributed to a stored record that predates ``schema_version``.
+LEGACY_EVALUATION_SCHEMA_VERSION = 1
+
 
 @dataclass
 class ModelMetadata:
@@ -198,6 +211,14 @@ class EvaluationResult:
         promoted: Whether candidate was promoted to champion.
         timestamp: ISO timestamp of evaluation completion.
         game_results: Optional detailed results per game.
+        schema_version: Version of this record's shape. Absent in records
+            written before score-rate fields existed, which read back as
+            :data:`LEGACY_EVALUATION_SCHEMA_VERSION`.
+        score_rate: Candidate score rate, scoring a draw as half a point.
+            ``None`` on records written before this field existed -- which is
+            not the same as 0.0, and callers must not conflate them.
+        ci_low: Lower bound of the score-rate confidence interval, if computed.
+        ci_high: Upper bound of the score-rate confidence interval, if computed.
     """
 
     iteration: int
@@ -211,6 +232,10 @@ class EvaluationResult:
     promoted: bool
     timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     game_results: list[dict[str, Any]] = field(default_factory=list)
+    schema_version: int = EVALUATION_SCHEMA_VERSION
+    score_rate: float | None = None
+    ci_low: float | None = None
+    ci_high: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -235,6 +260,13 @@ class EvaluationResult:
             promoted=data.get("promoted", False),
             timestamp=data.get("timestamp", datetime.now(UTC).isoformat()),
             game_results=data.get("game_results", []),
+            # Note the asymmetric default: a record with no schema_version
+            # predates these fields, so it reads back as the legacy version
+            # rather than as the current one.
+            schema_version=data.get("schema_version", LEGACY_EVALUATION_SCHEMA_VERSION),
+            score_rate=data.get("score_rate"),
+            ci_low=data.get("ci_low"),
+            ci_high=data.get("ci_high"),
         )
 
     @classmethod
@@ -244,6 +276,8 @@ class EvaluationResult:
 
 
 __all__ = [
+    "EVALUATION_SCHEMA_VERSION",
+    "LEGACY_EVALUATION_SCHEMA_VERSION",
     "CheckpointMetadata",
     "EvaluationResult",
     "ModelMetadata",

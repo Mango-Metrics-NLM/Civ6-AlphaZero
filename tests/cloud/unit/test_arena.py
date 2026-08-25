@@ -66,6 +66,7 @@ class TestArenaResult:
             "draws",
             "losses",
             "total_games",
+            "score_rate",
         }
         assert set(result_dict.keys()) == expected_keys
 
@@ -81,6 +82,7 @@ class TestArenaResult:
         assert result_dict["draws"] == result.draws
         assert result_dict["losses"] == result.losses
         assert result_dict["total_games"] == result.total_games
+        assert result_dict["score_rate"] == result.score_rate
 
 
 # =============================================================================

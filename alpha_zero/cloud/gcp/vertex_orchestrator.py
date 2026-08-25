@@ -54,6 +54,11 @@ from alpha_zero.cloud.gcp.vertex_jobs import (
     VertexSelfPlayJob,
     VertexTrainingJob,
 )
+from alpha_zero.evaluation.promotion import (
+    PromotionVerdict,
+    log_promotion_decision,
+    verdict_from_results,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -822,6 +827,29 @@ def run_training_phase(
     return False
 
 
+def resolve_promotion(verdict: PromotionVerdict | None, win_rate: float, threshold: float) -> bool:
+    """Decide promotion, preferring a policy verdict over the raw scalar.
+
+    Both orchestration loops gate on this, so the production loop and the CLI
+    loop cannot drift apart, and neither can the complementary comparison that
+    feeds curriculum progression.
+
+    Args:
+        verdict: Policy verdict, or ``None`` when the evaluation artifact
+            predates per-outcome counts (or the phase was skipped/dry-run).
+        win_rate: Legacy scalar from the artifact.
+        threshold: Configured win-rate threshold.
+
+    Returns:
+        Whether to promote. Falls back to the historical
+        ``win_rate >= threshold`` comparison whenever no verdict is available,
+        so a stale artifact behaves exactly as it always has.
+    """
+    if verdict is not None:
+        return verdict.promoted
+    return win_rate >= threshold
+
+
 def run_evaluation_phase(
     config: GCPConfig,
     client: VertexAIClient,
@@ -831,7 +859,7 @@ def run_evaluation_phase(
     args: argparse.Namespace,
     dry_run: bool = False,
     max_retries: int = 2,
-) -> tuple[bool, float]:
+) -> tuple[bool, float, PromotionVerdict | None]:
     """Run model evaluation phase.
 
     Args:
@@ -848,7 +876,7 @@ def run_evaluation_phase(
         Tuple of (success, win_rate). win_rate is 0.0 on failure.
     """
     if args.evaluation_games <= 0:
-        return True, 0.0  # Skip evaluation
+        return True, 0.0, None  # Skip evaluation
 
     if dry_run:
         logger.info(
@@ -857,7 +885,7 @@ def run_evaluation_phase(
             model_version_old,
             args.evaluation_games,
         )
-        return True, 0.55  # Simulated win rate
+        return True, 0.55, None  # Simulated win rate
 
     extra_args = build_evaluation_extra_args(args)
     eval_manager = VertexEvaluationJob(config, client)
@@ -898,7 +926,7 @@ def run_evaluation_phase(
                     result.error_message,
                 )
                 if attempt == max_retries:
-                    return False, 0.0
+                    return False, 0.0, None
                 continue
 
             # Load results from GCS
@@ -913,10 +941,23 @@ def run_evaluation_phase(
                     win_rate * 100,
                     model_version_old,
                 )
-                return True, win_rate
+                # Decide here, where the per-outcome counts still exist. By the
+                # time the gate runs, only the scalar survives.
+                verdict = verdict_from_results(eval_results)
+                if verdict is not None:
+                    log_promotion_decision(
+                        verdict,
+                        target=logger,
+                        context={
+                            "iteration": iteration,
+                            "model_version_new": model_version_new,
+                            "model_version_old": model_version_old,
+                        },
+                    )
+                return True, win_rate, verdict
 
             logger.warning("Could not load evaluation results from GCS")
-            return True, 0.0
+            return True, 0.0, None
 
         except (VertexJobError, PreemptionError) as e:
             logger.error(
@@ -926,11 +967,11 @@ def run_evaluation_phase(
                 e,
             )
             if attempt == max_retries:
-                return False, 0.0
+                return False, 0.0, None
         finally:
             os.environ.pop("MLFLOW_RUN_NAME", None)
 
-    return False, 0.0
+    return False, 0.0, None
 
 
 def _apply_model_subsampling(
@@ -1279,10 +1320,14 @@ def run_iterations(
         win_rate = 0.0
         eval_cost = 0.0
         rejected = False
+        # None means "no policy verdict available" -- skipped phase, dry run, or
+        # an artifact without per-outcome counts. resolve_promotion() falls back
+        # to the legacy scalar comparison in that case.
+        eval_verdict: PromotionVerdict | None = None
 
         if args.evaluation_games > 0 and model_version > 0:
             eval_start = time.time()
-            eval_ok, win_rate = run_evaluation_phase(
+            eval_ok, win_rate, eval_verdict = run_evaluation_phase(
                 config=config,
                 client=client,
                 iteration=iteration,
@@ -1312,7 +1357,7 @@ def run_iterations(
 
             # Evaluation gate
             threshold = eval_win_threshold
-            if win_rate < threshold:
+            if not resolve_promotion(eval_verdict, win_rate, threshold):
                 logger.warning(
                     "Model rejected: win_rate=%.2f%% < threshold=%.2f%%",
                     win_rate * 100,
@@ -1761,6 +1806,7 @@ def main() -> int:
             # Initialize metrics for logging
             win_rate = 0.0
             eval_cost = 0.0
+            eval_verdict: PromotionVerdict | None = None
 
             # Phase 3: Evaluation (optional)
             if args.evaluation_games > 0 and model_version > 0:
@@ -1771,7 +1817,7 @@ def main() -> int:
                     model_version,
                     args.evaluation_games,
                 )
-                eval_ok, win_rate = run_evaluation_phase(
+                eval_ok, win_rate, eval_verdict = run_evaluation_phase(
                     config=config,
                     client=client,
                     iteration=iteration,
@@ -1820,18 +1866,29 @@ def main() -> int:
                         break
                     continue
 
-                if eval_ok and win_rate < args.evaluation_win_threshold:
+                promoted = resolve_promotion(eval_verdict, win_rate, args.evaluation_win_threshold)
+                if eval_ok and not promoted:
                     logger.warning(
                         "New model rejected: win_rate=%.2f%% < threshold=%.2f%%",
                         win_rate * 100,
                         args.evaluation_win_threshold * 100,
                     )
                     new_version = model_version  # Keep old model
+                elif eval_ok:
+                    # The promote path had no log line at all; a promotion was
+                    # only inferable from the version number in a later message.
+                    logger.info(
+                        "New model promoted: v%d -> v%d (win_rate=%.2f%%)",
+                        model_version,
+                        new_version,
+                        win_rate * 100,
+                    )
 
-                # Record results for curriculum progression
+                # Record results for curriculum progression. Uses the same
+                # resolver as the gate so the two cannot disagree.
                 if curriculum_manager is not None and eval_ok:
                     curriculum_manager.record_game(
-                        won=(win_rate >= args.evaluation_win_threshold),
+                        won=promoted,
                         metrics={"win_rate": win_rate},
                     )
 
