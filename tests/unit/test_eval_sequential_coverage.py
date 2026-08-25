@@ -338,15 +338,24 @@ class TestSequentialTester:
         for i in range(10):
             tester.record_game(20 + i, winner=-1)
         low, high = tester.get_confidence_interval()
-        # The z-score implementation returns negative values for alpha < 0.5,
-        # which can cause low > high. Just verify both bounds are in [0, 1].
+        # Regression guard for the inverted-quantile defect: ``_get_z_score``
+        # used to negate the Abramowitz & Stegun quantile for every alpha < 0.5,
+        # which returned the bounds swapped (low > high) and inverted both
+        # decision branches. A correct interval must be ordered and must bracket
+        # the observed proportion.
+        point_estimate = tester._wins / (tester._wins + tester._losses)
         assert 0.0 <= low <= 1.0
         assert 0.0 <= high <= 1.0
+        assert low < high, f"CI bounds returned swapped: ({low}, {high})"
+        assert low < point_estimate < high, (
+            f"CI ({low}, {high}) must bracket p_hat={point_estimate}"
+        )
 
     def test_get_z_score(self):
-        # For alpha=0.025 (<0.5), sign is -1, so z is approximately -1.96
+        # The quantile must be POSITIVE. Asserting on abs(z) is what allowed the
+        # sign defect to survive: it passes for both +1.96 and -1.96.
         z = SequentialTester._get_z_score(0.025)
-        assert abs(z) == pytest.approx(1.96, abs=0.05)
+        assert z == pytest.approx(1.96, abs=0.05)
 
         z = SequentialTester._get_z_score(0.5)
         assert z == 0.0

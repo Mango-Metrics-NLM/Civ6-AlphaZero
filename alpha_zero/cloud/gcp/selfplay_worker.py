@@ -445,6 +445,32 @@ def compute_temperature(
         return temperature
 
 
+def outcome_value_for_player(winner: int | None, player: int) -> float:
+    """Classic AlphaZero value target for one position, from ``player``'s view.
+
+    ``+1`` if ``player`` won, ``-1`` if another player won, ``0`` for a draw.
+
+    This exists because the game outcome must be signed **per position**. The
+    terminal reward returned by ``env.step`` is relative to whoever was
+    ``current_player`` at the terminal action, so broadcasting it to every
+    position gives roughly half of them the wrong sign in a two-player zero-sum
+    game. ``env.winner`` is absolute and therefore frame-independent.
+
+    Matches the ``winner_take_all`` convention the local pipeline already uses
+    (``alpha_zero/training_civ6.py``).
+
+    Args:
+        winner: Winning player index, or ``None`` for a draw.
+        player: The player to move at the position being labelled.
+
+    Returns:
+        The value target in ``[-1.0, 1.0]``.
+    """
+    if winner is None:
+        return 0.0
+    return 1.0 if int(winner) == int(player) else -1.0
+
+
 def run_selfplay(
     model: torch.nn.Module,
     num_games: int,
@@ -490,7 +516,7 @@ def run_selfplay(
         - vector: list of vector features (flattened)
         - policies: MCTS search policies (action probability distributions)
         - actions: actions taken at each step
-        - rewards: final game outcome (propagated to all states)
+        - rewards: game outcome signed per player-to-move (+1/-1/0)
     """
     # For dry run, return dummy trajectories without needing actual env/MCTS
     if dry_run:
@@ -505,7 +531,8 @@ def run_selfplay(
                 "vector": [[0.0] * vector_dim for _ in range(5)],
                 "policies": [[1.0 / 100] * 100 for _ in range(5)],
                 "actions": [0] * 5,
-                "rewards": [0.5] * 5,
+                "players": [i % 2 for i in range(5)],
+                "rewards": [1.0 if i % 2 == 0 else -1.0 for i in range(5)],
             }
             dummy_trajectories.append(dummy_traj)
         return dummy_trajectories
@@ -597,6 +624,7 @@ def run_selfplay(
             "action_masks": [],
             "policies": [],
             "actions": [],
+            "players": [],
         }
 
         env.reset()
@@ -639,21 +667,28 @@ def run_selfplay(
             trajectory["action_masks"].append(action_mask_flat)
             trajectory["policies"].append(policy.tolist() if hasattr(policy, "tolist") else policy)
             trajectory["actions"].append(int(action))
+            # Player to move at this position. MicroCiv advances current_player
+            # only inside _end_turn, so a player takes many actions per turn and
+            # the acting player cannot be recovered from the step index.
+            trajectory["players"].append(int(env.current_player))
 
-            # Take action
+            # Take action. The step reward is deliberately not captured: the
+            # value target comes from the absolute winner, not from a reward
+            # whose sign depends on whose turn it was at termination.
             step_result = env.step(action)
-            reward = float(step_result[1])
             done = bool(step_result[2]) or bool(step_result[3])  # terminated or truncated
+            final_info = step_result[4] if len(step_result) > 4 else {}
 
         # Track failed games
         if game_failed:
             failed_games += 1
             logger.warning("Game %d/%d failed, skipping", game_idx + 1, num_games)
-        # Propagate final reward to all states (only if we collected data and game didn't fail)
+        # Sign the game outcome per player-to-move (only if we collected data).
         elif trajectory["spatial"]:
-            final_value = reward
-            num_steps = len(trajectory["spatial"])
-            trajectory["rewards"] = [final_value] * num_steps
+            winner = final_info.get("winner", getattr(env, "winner", None))
+            trajectory["rewards"] = [
+                outcome_value_for_player(winner, player) for player in trajectory["players"]
+            ]
             trajectories.append(trajectory)
 
         elapsed = time.time() - start_time
@@ -725,7 +760,7 @@ def run_muzero_selfplay(
 
     Returns:
         List of trajectory dictionaries with MuZero-specific fields:
-        - spatial, vector, policies, actions, rewards (same as AlphaZero)
+        - spatial, vector, policies, actions, players, rewards (same as AlphaZero)
         - reward_targets: per-step reward predictions for training
         - value_targets: per-step value targets for training
     """
@@ -743,9 +778,10 @@ def run_muzero_selfplay(
                     [1.0 / _ACTION_SPACE_SIZE] * _ACTION_SPACE_SIZE for _ in range(num_steps)
                 ],
                 "actions": [0] * num_steps,
-                "rewards": [0.5] * num_steps,
+                "players": [i % 2 for i in range(num_steps)],
+                "rewards": [1.0 if i % 2 == 0 else -1.0 for i in range(num_steps)],
                 "reward_targets": [0.0] * num_steps,
-                "value_targets": [0.5] * num_steps,
+                "value_targets": [1.0 if i % 2 == 0 else -1.0 for i in range(num_steps)],
                 "algorithm": "muzero",
             }
             dummy_trajectories.append(dummy_traj)
@@ -807,6 +843,7 @@ def run_muzero_selfplay(
             "action_masks": [],
             "policies": [],
             "actions": [],
+            "players": [],
             "reward_targets": [],
             "value_targets": [],
             "algorithm": "muzero",
@@ -860,10 +897,14 @@ def run_muzero_selfplay(
                 float(value_estimate) if value_estimate is not None else 0.0
             )
 
+            # Player to move at this position (see outcome_value_for_player).
+            trajectory["players"].append(int(env.current_player))
+
             # Take action
             step_result = env.step(action)
             reward = float(step_result[1])
             done = bool(step_result[2]) or bool(step_result[3])
+            final_info = step_result[4] if len(step_result) > 4 else {}
             trajectory["reward_targets"].append(reward)
 
         # Handle completed game
@@ -871,9 +912,10 @@ def run_muzero_selfplay(
             failed_games += 1
             logger.warning("MuZero game %d/%d failed", game_idx + 1, num_games)
         elif trajectory["spatial"]:
-            final_value = reward
-            num_steps = len(trajectory["spatial"])
-            trajectory["rewards"] = [final_value] * num_steps
+            winner = final_info.get("winner", getattr(env, "winner", None))
+            trajectory["rewards"] = [
+                outcome_value_for_player(winner, player) for player in trajectory["players"]
+            ]
             trajectories.append(trajectory)
 
         elapsed = time.time() - start_time
@@ -1001,14 +1043,13 @@ def run_batch_selfplay(
 
         # Initialize per-env trajectory storage
         batch_trajectories: list[dict[str, Any]] = [
-            {"spatial": [], "vector": [], "policies": [], "actions": []} for _ in range(batch_size)
+            {"spatial": [], "vector": [], "policies": [], "actions": [], "players": []}
+            for _ in range(batch_size)
         ]
 
         # Track which envs are still active
         active = [True] * batch_size + [False] * (num_parallel_games - batch_size)
         turn = 0
-        # Initialize rewards before the loop to avoid potential NameError
-        rewards = np.zeros(num_parallel_games, dtype=np.float32)
 
         while any(active) and turn < max_turns:
             # Get active environment indices
@@ -1057,9 +1098,13 @@ def run_batch_selfplay(
                     action_probs.tolist() if hasattr(action_probs, "tolist") else action_probs
                 )
                 batch_trajectories[env_idx]["actions"].append(int(action))
+                # Player to move at this position (see outcome_value_for_player).
+                batch_trajectories[env_idx]["players"].append(
+                    int(vec_env.get_env(env_idx).current_player)
+                )
 
             # Step all environments
-            rewards, terminated, truncated, _ = vec_env.step_all(actions)
+            _rewards, terminated, truncated, _ = vec_env.step_all(actions)
 
             # Update active mask
             for i in active_indices:
@@ -1073,12 +1118,14 @@ def run_batch_selfplay(
         for i in range(batch_size):
             traj = batch_trajectories[i]
             if traj["spatial"]:
-                # Get final reward from last step
-                # For games that ended, use the actual reward
-                # For truncated games, use 0.0
-                final_reward = float(rewards[i]) if not active[i] else 0.0
-                num_steps = len(traj["spatial"])
-                traj["rewards"] = [final_reward] * num_steps
+                # Sign the outcome per player-to-move, from the absolute winner.
+                # This also removes a divergence from the sequential path, which
+                # previously labelled unfinished games with their last observed
+                # reward while this path labelled every position 0.0.
+                winner = getattr(vec_env.get_env(i), "winner", None)
+                traj["rewards"] = [
+                    outcome_value_for_player(winner, player) for player in traj["players"]
+                ]
                 trajectories.append(traj)
                 batch_games += 1
 

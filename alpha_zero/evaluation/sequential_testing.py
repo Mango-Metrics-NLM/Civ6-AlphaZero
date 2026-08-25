@@ -417,19 +417,21 @@ class SequentialTester:
         if alpha >= 0.5:
             return 0.0
 
-        # Abramowitz and Stegun approximation
-        p = alpha
-        sign = 1 if p > 0.5 else -1
-        p = min(p, 1 - p)
+        # Abramowitz & Stegun 26.2.23 returns the UPPER-tail quantile for the
+        # tail mass min(alpha, 1 - alpha), i.e. it is already positive. A prior
+        # implementation multiplied it by ``-1`` for every alpha < 0.5, which is
+        # every real significance level. That made ``get_confidence_interval``
+        # return its bounds swapped (low > high), inverting both decision
+        # branches in ``get_decision``: the accept test fired on the upper bound
+        # (anti-conservative) and the reject test on the lower bound.
+        p = min(alpha, 1 - alpha)
 
         t = math.sqrt(-2 * math.log(p))
 
         c0, c1, c2 = 2.515517, 0.802853, 0.010328
         d1, d2, d3 = 1.432788, 0.189269, 0.001308
 
-        z = t - (c0 + c1 * t + c2 * t * t) / (1 + d1 * t + d2 * t * t + d3 * t * t * t)
-
-        return sign * z
+        return t - (c0 + c1 * t + c2 * t * t) / (1 + d1 * t + d2 * t * t + d3 * t * t * t)
 
     def get_result(self) -> SequentialTestResult:
         """Get full result including statistics.

@@ -116,7 +116,7 @@ class TestEvaluationRetry:
         args = MagicMock()
         args.evaluation_games = 0
 
-        ok, wr = run_evaluation_phase(
+        ok, wr, _verdict = run_evaluation_phase(
             config=config,
             client=client,
             iteration=1,
@@ -139,7 +139,7 @@ class TestEvaluationRetry:
         args = MagicMock()
         args.evaluation_games = 20
 
-        ok, wr = run_evaluation_phase(
+        ok, wr, _verdict = run_evaluation_phase(
             config=config,
             client=client,
             iteration=1,

@@ -39,7 +39,26 @@ class ArenaResult:
 
     @property
     def win_rate(self) -> float:
+        """Wins over all games, counting a draw as a loss.
+
+        Preserved verbatim: this is the statistic the deployed promotion gate
+        has always compared against its threshold, and changing it here would
+        silently change which models get promoted. Its ceiling is
+        ``1 - draw_rate``, so prefer :attr:`score_rate` for new consumers.
+        """
         return self.wins / max(self.total_games, 1)
+
+    @property
+    def score_rate(self) -> float:
+        """Points taken over points available, scoring a draw as half a point.
+
+        Delegates to :mod:`alpha_zero.evaluation.scoring` so the arena, the
+        promotion gate, and the offline A/B tooling all agree on one
+        definition.
+        """
+        from alpha_zero.evaluation.scoring import score_rate
+
+        return score_rate(self.wins, self.draws, self.losses)
 
     @property
     def draw_rate(self) -> float:
@@ -58,6 +77,10 @@ class ArenaResult:
             "draws": self.draws,
             "losses": self.losses,
             "total_games": self.total_games,
+            # Added so the persisted artifact carries a draw-aware statistic.
+            # save_results() splats this mapping, so the key reaches GCS with
+            # no schema change, and readers that do not know it ignore it.
+            "score_rate": self.score_rate,
         }
 
 
@@ -201,7 +224,17 @@ def run_arena(
             elapsed,
         )
 
-    # Log arena metrics to W&B
+    arena_result = ArenaResult(
+        wins=wins,
+        losses=losses,
+        draws=draws,
+        total_games=num_games,
+    )
+
+    # Metrics route to MLflow through WandbCompatAdapter despite the historical
+    # naming; see alpha_zero/utils/experiment_tracker.py. Rates are read off the
+    # result object rather than recomputed, so a logged metric cannot drift from
+    # the value the promotion gate sees.
     total_elapsed = time.time() - start_time
     try:
         from alpha_zero.utils.experiment_tracker import log_metrics
@@ -212,16 +245,13 @@ def run_arena(
                 "arena/wins": wins,
                 "arena/losses": losses,
                 "arena/draws": draws,
-                "arena/win_rate": wins / max(num_games, 1),
+                "arena/win_rate": arena_result.win_rate,
+                "arena/score_rate": arena_result.score_rate,
+                "arena/draw_rate": arena_result.draw_rate,
                 "arena/games_per_minute": num_games / max(total_elapsed / 60, 0.001),
             }
         )
     except ImportError:
         logger.debug("experiment tracker not available, skipping arena metrics logging")
 
-    return ArenaResult(
-        wins=wins,
-        losses=losses,
-        draws=draws,
-        total_games=num_games,
-    )
+    return arena_result

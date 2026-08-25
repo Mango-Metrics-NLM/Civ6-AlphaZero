@@ -248,8 +248,8 @@ class TestDryRunPhases:
         gcp_config: GCPConfig,
         base_args: argparse.Namespace,
     ) -> None:
-        """Evaluation dry run returns (True, 0.55) simulated win rate."""
-        ok, win_rate = run_evaluation_phase(
+        """Evaluation dry run returns (True, 0.55, None) simulated win rate."""
+        ok, win_rate, verdict = run_evaluation_phase(
             config=gcp_config,
             client=None,
             iteration=1,
@@ -260,6 +260,8 @@ class TestDryRunPhases:
         )
         assert ok is True
         assert win_rate == 0.55
+        # A dry run launches no arena, so there are no counts to decide from.
+        assert verdict is None
 
     def test_evaluation_skipped_when_zero_games(
         self,
@@ -268,7 +270,7 @@ class TestDryRunPhases:
     ) -> None:
         """Evaluation is skipped when evaluation_games=0."""
         base_args.evaluation_games = 0
-        ok, win_rate = run_evaluation_phase(
+        ok, win_rate, _verdict = run_evaluation_phase(
             config=gcp_config,
             client=None,
             iteration=1,
