@@ -259,6 +259,28 @@ class TestVerdict:
         ):
             assert key in payload, f"missing {key}"
 
+    def test_to_dict_ci_mirrors_the_verdict_fields_per_policy(self) -> None:
+        """The serialized ci fields mean *what the verdict carries*, per policy.
+
+        Before the merge order was fixed, the summary's always-computed
+        diagnostic interval overwrote the verdict fields, so the legacy
+        policy's deliberate ``None`` serialized as if an interval had been
+        consulted. The legacy verdict carries no interval; the score-rate
+        policies carry theirs, and the payload must agree with the verdict
+        either way.
+        """
+        legacy = evaluate_promotion(142, 588, 70, PromotionConfig(policy="legacy_win_rate"))
+        assert legacy.ci_low is None and legacy.ci_high is None
+        payload = legacy.to_dict()
+        assert payload["ci_low"] is None
+        assert payload["ci_high"] is None
+
+        for policy in ("score_rate", "score_rate_lower_bound"):
+            verdict = evaluate_promotion(142, 588, 70, PromotionConfig(policy=policy))
+            payload = verdict.to_dict()
+            assert payload["ci_low"] == verdict.ci_low is not None, policy
+            assert payload["ci_high"] == verdict.ci_high is not None, policy
+
     def test_carries_the_confidence_interval_for_interval_policies(self) -> None:
         verdict = evaluate_promotion(142, 588, 70, PromotionConfig(policy="score_rate_lower_bound"))
         assert verdict.ci_low is not None and verdict.ci_high is not None

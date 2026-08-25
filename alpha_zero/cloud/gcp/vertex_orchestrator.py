@@ -230,8 +230,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--evaluation_win_threshold",
         type=float,
-        default=0.55,
-        help="Win rate threshold to accept new model",
+        default=None,
+        help=(
+            "Promotion threshold for the gate's statistic (win rate under the "
+            "default legacy policy, score rate under the draw-aware ones). "
+            "When omitted, CIV6AZ_PROMOTION_THRESHOLD decides, then 0.55."
+        ),
     )
 
     # Curriculum learning (disabled by default)
@@ -851,6 +855,21 @@ def resolve_promotion(verdict: PromotionVerdict | None, win_rate: float, thresho
     return win_rate >= threshold
 
 
+def resolve_evaluation_threshold(args: argparse.Namespace) -> float:
+    """Resolve the promotion threshold with explicit precedence.
+
+    An explicitly passed ``--evaluation_win_threshold`` wins; otherwise the
+    env-aware :class:`PromotionConfig` default applies, so setting
+    ``CIV6AZ_PROMOTION_THRESHOLD`` (the documented opt-in) is honoured
+    whenever the CLI flag is absent. Despite the flag's historical name, the
+    value gates whichever statistic the selected promotion policy uses.
+    """
+    cli_value = getattr(args, "evaluation_win_threshold", None)
+    if cli_value is not None:
+        return float(cli_value)
+    return PromotionConfig().threshold
+
+
 def run_evaluation_phase(
     config: GCPConfig,
     client: VertexAIClient,
@@ -947,11 +966,11 @@ def run_evaluation_phase(
                 )
                 # Decide here, where the per-outcome counts still exist. By the
                 # time the gate runs, only the scalar survives.
-                # Thread the CLI threshold through the verdict computation so the
-                # verdict reflects the actual promotion policy, not the environment default.
-                eval_config = PromotionConfig(
-                    threshold=getattr(args, "evaluation_win_threshold", 0.55)
-                )
+                # Thread the resolved threshold through the verdict so the verdict
+                # and the scalar fallback gate on the same number. The threshold
+                # bounds whichever statistic the selected policy uses -- win rate
+                # under the legacy default, score rate under the draw-aware ones.
+                eval_config = PromotionConfig(threshold=resolve_evaluation_threshold(args))
                 verdict = verdict_from_results(eval_results, config=eval_config)
                 if verdict is not None:
                     log_promotion_decision(
@@ -1438,6 +1457,10 @@ def main() -> int:
     """
     args = parse_args()
     setup_logging()
+
+    # Resolve the promotion threshold once: explicit CLI > CIV6AZ_ env > default.
+    # Every later read of args.evaluation_win_threshold sees the same float.
+    args.evaluation_win_threshold = resolve_evaluation_threshold(args)
 
     # ARCHITECTURE GUARD: Detect if we're inside a Vertex AI container.
     # Vertex AI sets CLOUD_ML_JOB_ID for all custom jobs.  The orchestrator

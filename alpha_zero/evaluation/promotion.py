@@ -236,19 +236,29 @@ class PromotionVerdict:
         return self.decision is PromotionDecision.PROMOTE
 
     def to_dict(self) -> dict[str, Any]:
-        """Flat mapping suitable for logging and metric backends."""
-        payload: dict[str, Any] = {
-            "decision": self.decision.value,
-            "promoted": self.promoted,
-            "policy": self.policy,
-            "statistic_name": self.statistic_name,
-            "statistic": self.statistic,
-            "threshold": self.threshold,
-            "reason": self.reason,
-            "ci_low": self.ci_low,
-            "ci_high": self.ci_high,
-        }
-        payload.update(self.summary.to_dict())
+        """Flat mapping suitable for logging and metric backends.
+
+        The summary is merged first and the verdict's own fields overlaid
+        second, so ``ci_low``/``ci_high`` always mean *the interval the policy
+        consulted* -- ``None`` for a point-estimate policy, never the
+        summary's diagnostic interval masquerading as a decision input. The
+        diagnostic interval stays recomputable from the counts and
+        ``confidence`` the payload carries.
+        """
+        payload: dict[str, Any] = dict(self.summary.to_dict())
+        payload.update(
+            {
+                "decision": self.decision.value,
+                "promoted": self.promoted,
+                "policy": self.policy,
+                "statistic_name": self.statistic_name,
+                "statistic": self.statistic,
+                "threshold": self.threshold,
+                "reason": self.reason,
+                "ci_low": self.ci_low,
+                "ci_high": self.ci_high,
+            }
+        )
         return payload
 
 

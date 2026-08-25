@@ -87,6 +87,20 @@ class TestInterval:
             assert low <= score_rate(wins, draws, losses) <= high
             assert low < high, f"zero-width interval for {(wins, draws, losses)}"
 
+    def test_all_draw_record_keeps_positive_width_around_half(self) -> None:
+        """Deliberate: N observed draws do not prove the population is draw-only.
+
+        The pseudo-count adjustment keeps positive width so a finite all-draw
+        sample never claims perfect certainty; the width shrinks with n, and
+        such a record still can never promote (its lower bound sits below any
+        threshold above 0.5).
+        """
+        low, high = score_interval(0, 50, 0)
+        assert low < 0.5 < high
+        big_low, big_high = score_interval(0, 400, 0)
+        assert (big_high - big_low) < (high - low)
+        assert promotion_decision(0, 400, 0, threshold=0.55) is not PromotionDecision.PROMOTE
+
     def test_bounds_clipped_to_unit_interval(self) -> None:
         low, high = score_interval(50, 0, 0)
         assert low >= 0.0 and high <= 1.0

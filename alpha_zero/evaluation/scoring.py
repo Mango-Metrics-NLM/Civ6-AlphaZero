@@ -128,6 +128,13 @@ def score_interval(
 
     Normal approximation to the mean of a bounded variable using the plug-in
     ternary variance. Bounds are ordered and clipped to ``[0, 1]``.
+
+    The pseudo-count adjustment below applies to *every* degenerate record,
+    all-draw ones included: observing only draws does not prove the population
+    draw rate is 1.0, so the interval deliberately keeps positive width around
+    0.5 rather than claiming perfect certainty from a finite sample. (An
+    all-draw record still can never promote -- its lower bound sits below any
+    threshold above 0.5.) The width vanishes as ``n`` grows.
     """
     if confidence not in _Z_TWO_SIDED:
         raise ValueError(f"confidence must be one of {sorted(_Z_TWO_SIDED)}, got {confidence}")

@@ -22,7 +22,11 @@ import pytest
 
 from alpha_zero.cloud.gcp.arena import ArenaResult
 from alpha_zero.cloud.gcp.evaluation_worker import load_results, save_results
-from alpha_zero.cloud.gcp.vertex_orchestrator import resolve_promotion
+from alpha_zero.cloud.gcp.vertex_orchestrator import (
+    parse_args,
+    resolve_evaluation_threshold,
+    resolve_promotion,
+)
 from alpha_zero.evaluation.promotion import PromotionConfig, verdict_from_results
 from alpha_zero.evaluation.scoring import PromotionDecision
 
@@ -241,3 +245,43 @@ class TestBackwardsCompatibility:
         raw = json.loads(next(iter(gcs.blobs.values())).decode("utf-8"))
         assert "win_rate" in raw
         assert isinstance(raw["win_rate"], float)
+
+
+class TestThresholdPrecedence:
+    """--evaluation_win_threshold: explicit CLI > CIV6AZ_ env > default.
+
+    The flag defaults to None precisely so that omitting it leaves the
+    documented CIV6AZ_PROMOTION_THRESHOLD opt-in alive; a concrete argparse
+    default would silently override the env var on every invocation.
+    """
+
+    def test_cli_flag_wins_over_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CIV6AZ_PROMOTION_THRESHOLD", "0.52")
+        monkeypatch.setattr("sys.argv", ["prog", "--evaluation_win_threshold", "0.60"])
+        args = parse_args()
+        assert resolve_evaluation_threshold(args) == 0.60
+
+    def test_env_applies_when_flag_omitted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CIV6AZ_PROMOTION_THRESHOLD", "0.52")
+        monkeypatch.setattr("sys.argv", ["prog"])
+        args = parse_args()
+        assert args.evaluation_win_threshold is None
+        assert resolve_evaluation_threshold(args) == 0.52
+
+    def test_default_when_neither_is_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("CIV6AZ_PROMOTION_THRESHOLD", raising=False)
+        monkeypatch.delenv("CIV6_PROMOTION_THRESHOLD", raising=False)
+        monkeypatch.setattr("sys.argv", ["prog"])
+        args = parse_args()
+        assert resolve_evaluation_threshold(args) == 0.55
+
+    def test_verdict_and_scalar_fallback_gate_on_the_same_number(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The defect the first fix introduced: env-set threshold dead on the
+        verdict path while the scalar fallback still honoured it."""
+        monkeypatch.setenv("CIV6AZ_PROMOTION_THRESHOLD", "0.52")
+        monkeypatch.setattr("sys.argv", ["prog"])
+        threshold = resolve_evaluation_threshold(parse_args())
+        config = PromotionConfig(threshold=threshold)
+        assert config.threshold == 0.52
