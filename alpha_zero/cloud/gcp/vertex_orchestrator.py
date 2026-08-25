@@ -55,6 +55,7 @@ from alpha_zero.cloud.gcp.vertex_jobs import (
     VertexTrainingJob,
 )
 from alpha_zero.evaluation.promotion import (
+    PromotionConfig,
     PromotionVerdict,
     log_promotion_decision,
     verdict_from_results,
@@ -873,7 +874,10 @@ def run_evaluation_phase(
         max_retries: Maximum number of retry attempts on failure.
 
     Returns:
-        Tuple of (success, win_rate). win_rate is 0.0 on failure.
+        Tuple of (success, win_rate, promotion_verdict).
+        - success: whether evaluation completed (not dry-run/skipped)
+        - win_rate: scalar win rate (candidate_wins / num_games), 0.0 on failure
+        - promotion_verdict: PromotionVerdict or None if not computed
     """
     if args.evaluation_games <= 0:
         return True, 0.0, None  # Skip evaluation
@@ -943,7 +947,12 @@ def run_evaluation_phase(
                 )
                 # Decide here, where the per-outcome counts still exist. By the
                 # time the gate runs, only the scalar survives.
-                verdict = verdict_from_results(eval_results)
+                # Thread the CLI threshold through the verdict computation so the
+                # verdict reflects the actual promotion policy, not the environment default.
+                eval_config = PromotionConfig(
+                    threshold=getattr(args, "evaluation_win_threshold", 0.55)
+                )
+                verdict = verdict_from_results(eval_results, config=eval_config)
                 if verdict is not None:
                     log_promotion_decision(
                         verdict,
@@ -1358,11 +1367,19 @@ def run_iterations(
             # Evaluation gate
             threshold = eval_win_threshold
             if not resolve_promotion(eval_verdict, win_rate, threshold):
-                logger.warning(
-                    "Model rejected: win_rate=%.2f%% < threshold=%.2f%%",
-                    win_rate * 100,
-                    threshold * 100,
-                )
+                if eval_verdict is not None:
+                    logger.warning(
+                        "Model rejected by %s policy: %s (win_rate=%.2f%%)",
+                        eval_verdict.policy or "unknown",
+                        eval_verdict.decision.name,
+                        win_rate * 100,
+                    )
+                else:
+                    logger.warning(
+                        "Model rejected: win_rate=%.2f%% < threshold=%.2f%%",
+                        win_rate * 100,
+                        threshold * 100,
+                    )
                 rejected = True
 
         total_cost = sp_cost + train_cost + eval_cost
@@ -1868,11 +1885,19 @@ def main() -> int:
 
                 promoted = resolve_promotion(eval_verdict, win_rate, args.evaluation_win_threshold)
                 if eval_ok and not promoted:
-                    logger.warning(
-                        "New model rejected: win_rate=%.2f%% < threshold=%.2f%%",
-                        win_rate * 100,
-                        args.evaluation_win_threshold * 100,
-                    )
+                    if eval_verdict is not None:
+                        logger.warning(
+                            "New model rejected by %s policy: %s (win_rate=%.2f%%)",
+                            eval_verdict.policy or "unknown",
+                            eval_verdict.decision.name,
+                            win_rate * 100,
+                        )
+                    else:
+                        logger.warning(
+                            "New model rejected: win_rate=%.2f%% < threshold=%.2f%%",
+                            win_rate * 100,
+                            args.evaluation_win_threshold * 100,
+                        )
                     new_version = model_version  # Keep old model
                 elif eval_ok:
                     # The promote path had no log line at all; a promotion was

@@ -318,12 +318,18 @@ class TestRunSelfplay:
             assert "vector" in traj
             assert "policies" in traj
             assert "actions" in traj
+            assert "players" in traj
             assert "rewards" in traj
 
             # Verify spatial and vector have same length
             assert len(traj["spatial"]) == len(traj["vector"])
             assert len(traj["spatial"]) == len(traj["policies"])
+            assert len(traj["spatial"]) == len(traj["players"])
             assert len(traj["spatial"]) == len(traj["rewards"])
+
+            # Dry-run payloads follow the real reward semantics: signed
+            # per player-to-move, drawn from the {-1, 0, +1} alphabet.
+            assert all(r in (-1.0, 0.0, 1.0) for r in traj["rewards"])
 
     def test_dry_run_trajectory_shapes(self, mock_model: MockModel) -> None:
         """Test that dry run trajectory shapes are correct."""

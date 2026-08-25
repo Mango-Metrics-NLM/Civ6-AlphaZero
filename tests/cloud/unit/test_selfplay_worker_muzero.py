@@ -288,10 +288,15 @@ class TestRunMuZeroSelfplay:
         assert "vector" in traj
         assert "policies" in traj
         assert "actions" in traj
+        assert "players" in traj
         assert "rewards" in traj
         # MuZero-specific keys
         assert "reward_targets" in traj
         assert "value_targets" in traj
+        # Dry-run payloads follow the real reward semantics: signed per
+        # player-to-move, drawn from the {-1, 0, +1} alphabet.
+        assert all(r in (-1.0, 0.0, 1.0) for r in traj["rewards"])
+        assert all(v in (-1.0, 0.0, 1.0) for v in traj["value_targets"])
 
     def test_dry_run_trajectory_lengths_consistent(self, gcp_config: GCPConfig) -> None:
         """Test that all trajectory arrays have consistent lengths."""

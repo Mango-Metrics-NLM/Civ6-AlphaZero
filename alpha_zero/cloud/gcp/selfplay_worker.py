@@ -531,7 +531,8 @@ def run_selfplay(
                 "vector": [[0.0] * vector_dim for _ in range(5)],
                 "policies": [[1.0 / 100] * 100 for _ in range(5)],
                 "actions": [0] * 5,
-                "rewards": [0.5] * 5,
+                "players": [i % 2 for i in range(5)],
+                "rewards": [1.0 if i % 2 == 0 else -1.0 for i in range(5)],
             }
             dummy_trajectories.append(dummy_traj)
         return dummy_trajectories
@@ -777,9 +778,10 @@ def run_muzero_selfplay(
                     [1.0 / _ACTION_SPACE_SIZE] * _ACTION_SPACE_SIZE for _ in range(num_steps)
                 ],
                 "actions": [0] * num_steps,
-                "rewards": [0.5] * num_steps,
+                "players": [i % 2 for i in range(num_steps)],
+                "rewards": [1.0 if i % 2 == 0 else -1.0 for i in range(num_steps)],
                 "reward_targets": [0.0] * num_steps,
-                "value_targets": [0.5] * num_steps,
+                "value_targets": [1.0 if i % 2 == 0 else -1.0 for i in range(num_steps)],
                 "algorithm": "muzero",
             }
             dummy_trajectories.append(dummy_traj)
