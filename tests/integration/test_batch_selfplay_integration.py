@@ -394,3 +394,76 @@ class TestBatchActionMasks:
         for traj in trajectories:
             lengths = {field: len(traj[field]) for field in per_step_fields}
             assert len(set(lengths.values())) == 1, f"ragged trajectory: {lengths}"
+
+
+class TestBatchGamesReachTheirOwnEnd:
+    """Batch games must be bounded by the environment, not by an action counter.
+
+    The loop's step counter counts batched *actions* while ``max_turns`` is the
+    environment's *game-turn* limit, and MicroCiv spans many actions per turn.
+    Comparing the two directly stopped every game at roughly a sixth of its
+    length, before any environment could truncate itself -- so ``winner`` was
+    always ``None`` and every position was labelled 0.0. Shape and length
+    assertions all passed while the value targets were uniformly degenerate.
+    """
+
+    @pytest.mark.timeout(300)
+    def test_games_are_not_cut_off_at_max_turns_actions(self, small_model):
+        """Trajectories must exceed max_turns steps, since a turn spans actions."""
+        from alpha_zero.cloud.gcp.selfplay_worker import run_batch_selfplay
+
+        max_turns = 12
+        trajectories = run_batch_selfplay(
+            model=small_model,
+            num_games=2,
+            mcts_sims=2,
+            board_size=_BOARD_SIZE,
+            max_turns=max_turns,
+            num_parallel_games=2,
+            max_batch_size=_MAX_BATCH_SIZE,
+            gumbel_num_actions=2,
+            device="cpu",
+        )
+
+        assert trajectories, "batch self-play produced no trajectories"
+        lengths = [len(t["spatial"]) for t in trajectories]
+        assert all(n != max_turns for n in lengths), (
+            f"trajectory length exactly equals max_turns {lengths} — the loop is "
+            "capping on action steps again, not letting the environment finish"
+        )
+        assert max(lengths) > max_turns, (
+            f"no trajectory exceeded {max_turns} steps {lengths}; a game turn "
+            "spans several actions, so real games are longer than the turn limit"
+        )
+
+    @pytest.mark.timeout(300)
+    def test_value_targets_are_not_uniformly_degenerate(self, small_model):
+        """Across games, value targets must carry signal rather than all zeros.
+
+        A single game may legitimately draw (0.0 throughout). Every game drawing,
+        every time, is the signature of games being cut off before they finish.
+        """
+        from alpha_zero.cloud.gcp.selfplay_worker import run_batch_selfplay
+
+        rewards: set[float] = set()
+        for _ in range(3):
+            for traj in run_batch_selfplay(
+                model=small_model,
+                num_games=2,
+                mcts_sims=2,
+                board_size=_BOARD_SIZE,
+                max_turns=12,
+                num_parallel_games=2,
+                max_batch_size=_MAX_BATCH_SIZE,
+                gumbel_num_actions=2,
+                device="cpu",
+            ):
+                rewards.update(traj["rewards"])
+            if rewards - {0.0}:
+                break
+
+        assert rewards, "no trajectories were produced at all"
+        assert rewards - {0.0}, (
+            "every value target across every game was 0.0 — games are not "
+            "reaching a decisive outcome, so the value head has nothing to learn"
+        )

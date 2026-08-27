@@ -1286,7 +1286,7 @@ def create_transformer_network(
     spatial_channels: int = 13,
     spatial_size: int = 16,
     vector_dim: int = 64,
-    action_space_size: int = 381,
+    action_space_size: int = 376,
     model_size: str = "small",
     **kwargs: Any,
 ) -> Civ6TransformerNetwork:

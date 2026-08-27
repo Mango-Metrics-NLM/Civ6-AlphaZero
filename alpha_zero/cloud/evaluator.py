@@ -353,6 +353,23 @@ class CloudEvaluator:
             config=self._promotion_config,
         )
 
+    def _promotion_statistic(self, candidate_wins: int, champion_wins: int, draws: int) -> float:
+        """The configured policy's statistic, computed without side effects.
+
+        ``_promotion_verdict`` is the decision path and logs when a record makes
+        promotion arithmetically impossible. Early stopping polls after every
+        game, so calling it there would repeat that warning hundreds of times
+        per evaluation; the statistic itself is what the heuristic needs.
+        """
+        logger_name = "alpha_zero.evaluation.promotion"
+        promotion_logger = logging.getLogger(logger_name)
+        previous_level = promotion_logger.level
+        promotion_logger.setLevel(logging.ERROR)
+        try:
+            return self._promotion_verdict(candidate_wins, champion_wins, draws).statistic
+        finally:
+            promotion_logger.setLevel(previous_level)
+
     def _should_early_stop(
         self,
         candidate_wins: int,
@@ -373,13 +390,17 @@ class CloudEvaluator:
         if total < self.config.early_stop_threshold:
             return False, ""
 
-        # Use the configured policy's own statistic so early stopping and the
-        # final gate never measure different quantities -- otherwise a
-        # draw-aware policy could be stopped early by a draws-as-losses
-        # heuristic that the final gate would not have agreed with. Under the
-        # default legacy_win_rate policy this is candidate_wins / total, i.e.
-        # byte-identical to the historical behaviour.
-        statistic = self._promotion_verdict(candidate_wins, champion_wins, draws).statistic
+        # Use the configured policy's own statistic rather than a fixed
+        # draws-as-losses win rate, so a draw-aware policy is not stopped early
+        # by a heuristic measuring something else. Under the default
+        # legacy_win_rate policy this is candidate_wins / total -- byte-identical
+        # to the historical behaviour.
+        #
+        # This is a heuristic, deliberately not the gate: an interval policy
+        # such as score_rate_lower_bound decides on confidence bounds, and
+        # stopping early shrinks n, which can only widen them. Treat an early
+        # stop as "no longer worth more games", not as the verdict.
+        statistic = self._promotion_statistic(candidate_wins, champion_wins, draws)
 
         # If clearly winning
         if statistic > self.config.promotion_threshold + self.config.early_stop_margin:
@@ -467,10 +488,16 @@ class CloudEvaluator:
 
         # Create evaluation result. score_rate/ci_low/ci_high are shadow
         # statistics recorded alongside the legacy win_rate: they describe the
-        # same games under the draw-aware scoring, so a policy change can be
-        # evaluated against history before it is adopted. Both CI bounds are
-        # None under the default legacy policy by design -- readers must not
-        # read that as 0.0.
+        # same games under draw-aware scoring, so a policy change can be
+        # evaluated against history before it is adopted.
+        #
+        # These are the summary's *diagnostic* interval, which summarize()
+        # always computes -- matching EvaluationResult's documented meaning
+        # ("the score-rate confidence interval, if computed"). That is
+        # deliberately NOT PromotionVerdict.ci_low, which carries a different
+        # contract: the interval the policy actually consulted, None for a
+        # point-estimate policy such as the default. Same field name, two
+        # meanings, so the distinction is worth stating here.
         eval_result = EvaluationResult(
             iteration=self.config.iteration,
             candidate_version=self._candidate_version,
@@ -534,7 +561,7 @@ class CloudEvaluator:
             # The full decision, not just the boolean: score_rate_lower_bound
             # can return "inconclusive", which collapses to promoted=False and
             # would otherwise be indistinguishable from a genuine rejection.
-            "decision": str(verdict.decision),
+            "decision": verdict.decision.value,
             "promotion_policy": verdict.policy,
             "score_rate": verdict.summary.score_rate,
             "ci_low": verdict.summary.ci_low,

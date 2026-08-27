@@ -240,16 +240,17 @@ def load_trajectories(
     """Load trajectories from specified iterations."""
     if dry_run:
         logger.info("Dry run: creating dummy trajectories")
-        spatial_dim = ENCODER_SPATIAL_CHANNELS * board_size * board_size
-        vector_dim = 64
-        policy_val = 1.0 / action_space_size
+        # Built by the same helper self-play uses, so a dry run exercises the
+        # real trajectory shape. The previous local literal carried no
+        # action_masks (so --dry_run always took the all-ones fallback and could
+        # never catch a mask regression), no actions/players, and a reward of
+        # 0.5 that outcome_value_for_player cannot produce.
+        from alpha_zero.cloud.gcp.selfplay_worker import dummy_trajectory
+
         return [
-            {
-                "spatial": [[0.0] * spatial_dim],
-                "vector": [[0.0] * vector_dim],
-                "policies": [[policy_val] * action_space_size],
-                "rewards": [0.5],
-            }
+            dummy_trajectory(
+                board_size=board_size, num_steps=1, action_space_size=action_space_size
+            )
             for _ in range(1000)
         ]
 
@@ -571,6 +572,7 @@ def prepare_dataset(
     spatial_list = []
     vector_list = []
     action_masks_list = []
+    mask_fallbacks = 0
     policies = []
     values = []
 
@@ -579,6 +581,9 @@ def prepare_dataset(
     for traj in trajectories:
         # Handle both old format (states) and new format (spatial + vector)
         if "spatial" in traj:
+            # Hoisted out of the per-position loop: this runs once per
+            # trajectory rather than millions of times per iteration.
+            stored_masks = traj.get("action_masks") or []
             for i, spatial in enumerate(traj["spatial"]):
                 spatial_list.append(spatial)
                 vector_list.append(traj["vector"][i])
@@ -587,11 +592,11 @@ def prepare_dataset(
                 # key presence: a game that failed before its first committed
                 # step can carry an empty "action_masks" list, which passes an
                 # `in` check and then indexes out of range.
-                stored_masks = traj.get("action_masks") or []
                 if i < len(stored_masks):
                     action_masks_list.append(stored_masks[i])
                 else:
                     action_masks_list.append([1.0] * action_space_size)
+                    mask_fallbacks += 1
                 policies.append(traj["policies"][i])
                 values.append(traj["rewards"][i])
         else:
@@ -610,6 +615,23 @@ def prepare_dataset(
                 action_masks_list.append([1.0] * action_space_size)
                 policies.append(traj["policies"][i])
                 values.append(traj["rewards"][i])
+
+    # Report mask coverage. An all-ones fallback silently disables masked policy
+    # loss for the affected positions -- exactly the silence that let batch
+    # self-play train against illegal actions unnoticed. Say so out loud.
+    if mask_fallbacks:
+        total_positions = len(action_masks_list)
+        report = logger.warning if mask_fallbacks == total_positions else logger.info
+        report(
+            "Action-mask fallback used for %d/%d positions (%.1f%%): those samples "
+            "train with masked policy loss disabled. Expected only for trajectories "
+            "written before masks were recorded.",
+            mask_fallbacks,
+            total_positions,
+            100.0 * mask_fallbacks / max(total_positions, 1),
+        )
+    else:
+        logger.debug("All %d positions carry a stored action mask", len(action_masks_list))
 
     # Convert to tensors
     spatial_tensor = torch.tensor(spatial_list, dtype=torch.float32)

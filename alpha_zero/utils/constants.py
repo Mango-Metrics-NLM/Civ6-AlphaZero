@@ -414,9 +414,21 @@ class ActionSpaceConstants:
         move_actions = max_units * self.DIRECTIONS_COUNT
         attack_actions = max_units * self.DIRECTIONS_COUNT
         skip_actions = max_units
+        # One found-city action per unit slot. Omitting this block returned 356
+        # while MicroCivActionSpace.total_size is 376, and validate_constants
+        # asserted the same wrong figure -- so the error validated itself green
+        # and seeded the 356 literals scattered through the cloud workers.
+        found_city_actions = max_units
         produce_actions = max_cities * unit_types
 
-        return end_turn + move_actions + attack_actions + skip_actions + produce_actions
+        return (
+            end_turn
+            + move_actions
+            + attack_actions
+            + skip_actions
+            + found_city_actions
+            + produce_actions
+        )
 
 
 # =============================================================================
@@ -598,7 +610,7 @@ def validate_constants() -> list[str]:
         errors.append("Terrain ratios must sum to 1.0")
 
     # Check action space computation
-    expected = 356  # MicroCiv default
+    expected = 376  # Must match MicroCivActionSpace.total_size (civ6_actions.py)
     computed = ACTION_SPACE.compute_microciv_action_space_size()
     if computed != expected:
         errors.append(f"Action space mismatch: expected {expected}, got {computed}")

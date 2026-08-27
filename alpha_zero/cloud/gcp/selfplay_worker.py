@@ -59,6 +59,13 @@ _SPATIAL_CHANNELS: int = _DEFAULT_NET_CONFIG.spatial_channels
 _VECTOR_DIM: int = _DEFAULT_NET_CONFIG.vector_dim
 _ACTION_SPACE_SIZE: int = _DEFAULT_NET_CONFIG.action_space_size
 
+# Upper bound on actions within a single game turn, used only as a runaway guard.
+# MicroCiv advances its turn counter inside _end_turn, so one game turn spans many
+# actions (~6 with the default unit count, more as units accumulate). A loop that
+# caps on actions while the environment truncates on turns would stop games long
+# before they finish -- see the safety cap in run_batch_selfplay.
+MAX_ACTIONS_PER_GAME_TURN: int = 64
+
 
 def setup_logging(worker_id: int) -> None:
     """Configure logging for worker."""
@@ -582,7 +589,10 @@ def append_step(
 
 
 def dummy_trajectory(
-    board_size: int, num_steps: int = 5, algorithm: str | None = None
+    board_size: int,
+    num_steps: int = 5,
+    algorithm: str | None = None,
+    action_space_size: int | None = None,
 ) -> dict[str, Any]:
     """Build one dry-run trajectory matching the real per-step shapes.
 
@@ -594,25 +604,31 @@ def dummy_trajectory(
         board_size: Board edge length used for the spatial plane size.
         num_steps: Number of dummy positions to emit.
         algorithm: Optional algorithm tag; ``"muzero"`` adds MuZero targets.
+        action_space_size: Width of the policy and mask rows. Defaults to the
+            shared network config so a caller with a non-default action space
+            (``--action_space_size``) does not get mismatched widths.
 
     Returns:
         A fully populated trajectory dict.
     """
+    width = _ACTION_SPACE_SIZE if action_space_size is None else int(action_space_size)
     trajectory = new_trajectory(algorithm)
     trajectory["spatial"] = [
         [0.0] * (_SPATIAL_CHANNELS * board_size * board_size) for _ in range(num_steps)
     ]
     trajectory["vector"] = [[0.0] * _VECTOR_DIM for _ in range(num_steps)]
-    trajectory["action_masks"] = [[1.0] * _ACTION_SPACE_SIZE for _ in range(num_steps)]
-    trajectory["policies"] = [
-        [1.0 / _ACTION_SPACE_SIZE] * _ACTION_SPACE_SIZE for _ in range(num_steps)
-    ]
+    trajectory["action_masks"] = [[1.0] * width for _ in range(num_steps)]
+    trajectory["policies"] = [[1.0 / width] * width for _ in range(num_steps)]
     trajectory["actions"] = [0] * num_steps
     trajectory["players"] = [i % 2 for i in range(num_steps)]
-    trajectory["rewards"] = [1.0 if i % 2 == 0 else -1.0 for i in range(num_steps)]
+    # Label through the real signing function rather than restating its result,
+    # so a dry run exercises the same code path production data goes through.
+    trajectory["rewards"] = [
+        outcome_value_for_player(0, player) for player in trajectory["players"]
+    ]
     if algorithm == "muzero":
         trajectory["reward_targets"] = [0.0] * num_steps
-        trajectory["value_targets"] = [1.0 if i % 2 == 0 else -1.0 for i in range(num_steps)]
+        trajectory["value_targets"] = list(trajectory["rewards"])
     return trajectory
 
 
@@ -706,7 +722,10 @@ def run_selfplay(
 
         # Build variant-aware MCTS kwargs to avoid passing invalid params
         puct_variants = {"puct", "civ6"}
-        gumbel_variants = {"gumbel"}
+        # batch_gumbel is a Gumbel variant: when it reaches this sequential path
+        # (num_parallel_games == 1) it must still honour --gumbel_num_actions,
+        # otherwise the flag is silently dropped for BatchMCTSConfig's default.
+        gumbel_variants = {"gumbel", BATCH_MCTS_TYPE}
 
         mcts_kwargs: dict[str, Any] = {
             "num_simulations": mcts_sims,
@@ -1137,7 +1156,15 @@ def run_batch_selfplay(
         active = [True] * batch_size + [False] * (num_parallel_games - batch_size)
         turn = 0
 
-        while any(active) and turn < max_turns:
+        # Cap on ACTION steps, not game turns. `turn` below counts batched action
+        # steps, while `max_turns` is the environment's own game-turn limit --
+        # comparing them directly stopped every game after ~max_turns/6 turns, so
+        # no environment ever reached its own truncation, `winner` stayed None,
+        # and every position was labelled 0.0. The environments terminate
+        # themselves via step_all; this budget is only a runaway guard.
+        action_budget = max_turns * MAX_ACTIONS_PER_GAME_TURN
+
+        while any(active) and turn < action_budget:
             # Get active environment indices
             active_indices = [i for i in range(num_parallel_games) if active[i]]
             if not active_indices:
@@ -1169,9 +1196,12 @@ def run_batch_selfplay(
             for idx, env_idx in enumerate(active_indices):
                 action_probs, _ = results[idx]
 
-                # Compute temperature for this turn
+                # Temperature is scheduled against the environment's own game
+                # turn: `turn` here counts action steps, which run far ahead of
+                # game turns and would push the schedule past its threshold
+                # almost immediately.
                 temp = compute_temperature(
-                    turn=turn,
+                    turn=int(getattr(vec_env.get_env(env_idx), "turn", turn)),
                     max_turns=max_turns,
                     temperature=temperature,
                     temperature_threshold=temperature_threshold,
@@ -1203,19 +1233,47 @@ def run_batch_selfplay(
 
         # Finalize trajectories for completed games
         batch_games = 0
+        unfinished_games = 0
+        outcome_counts = {"win": 0, "loss": 0, "draw": 0}
         for i in range(batch_size):
             traj = batch_trajectories[i]
             if traj["spatial"]:
                 # Sign the outcome per player-to-move, from the absolute winner.
-                # This also removes a divergence from the sequential path, which
-                # previously labelled unfinished games with their last observed
-                # reward while this path labelled every position 0.0.
-                winner = getattr(vec_env.get_env(i), "winner", None)
+                env_i = vec_env.get_env(i)
+                winner = getattr(env_i, "winner", None)
                 traj["rewards"] = [
                     outcome_value_for_player(winner, player) for player in traj["players"]
                 ]
+                # A game the loop cut short is not a draw -- it is an unlabelled
+                # game being recorded as one. Count them so a budget that is too
+                # small shows up in the logs instead of quietly flattening every
+                # value target to 0.0.
+                if winner is None and not bool(getattr(env_i, "done", False)):
+                    unfinished_games += 1
+                if winner is None:
+                    outcome_counts["draw"] += 1
+                else:
+                    outcome_counts["win"] += 1
                 trajectories.append(traj)
                 batch_games += 1
+
+        if unfinished_games:
+            logger.warning(
+                "Batch %d: %d/%d games hit the %d-action budget before finishing; "
+                "their positions are labelled 0.0 like a draw. Raise max_turns or "
+                "MAX_ACTIONS_PER_GAME_TURN if this is not rare.",
+                batch_num,
+                unfinished_games,
+                batch_games,
+                action_budget,
+            )
+        logger.info(
+            "Batch %d outcomes: %d decided, %d drawn/unfinished (of %d games)",
+            batch_num,
+            outcome_counts["win"],
+            outcome_counts["draw"],
+            batch_games,
+        )
 
         games_completed += batch_games
         batch_elapsed = time.time() - batch_start

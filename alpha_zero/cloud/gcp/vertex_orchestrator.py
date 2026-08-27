@@ -42,6 +42,7 @@ if TYPE_CHECKING:
 from alpha_zero.cloud.gcp.config import (
     BATCH_MCTS_TYPE,
     DEFAULT_MCTS_TYPE,
+    MUZERO_MCTS_TYPE,
     VALID_MCTS_TYPES,
     GCPConfig,
     NetworkArchitectureConfig,
@@ -879,6 +880,24 @@ def resolve_evaluation_threshold(args: argparse.Namespace) -> float:
     return PromotionConfig().threshold
 
 
+def resolve_effective_mcts_type(args: argparse.Namespace) -> str:
+    """The MCTS variant the self-play worker will actually receive.
+
+    ``--algorithm=muzero`` overrides ``--mcts_type`` when the worker arguments
+    are built, so reading ``args.mcts_type`` directly gives the user's input
+    rather than what runs -- and any advice derived from it can be wrong.
+
+    Args:
+        args: Parsed orchestrator arguments.
+
+    Returns:
+        The effective MCTS variant name.
+    """
+    if getattr(args, "algorithm", None) == MUZERO_MCTS_TYPE:
+        return MUZERO_MCTS_TYPE
+    return str(getattr(args, "mcts_type", DEFAULT_MCTS_TYPE))
+
+
 def warn_on_ignored_parallelism(args: argparse.Namespace) -> bool:
     """Warn when vectorized self-play is requested but will not run.
 
@@ -900,8 +919,22 @@ def warn_on_ignored_parallelism(args: argparse.Namespace) -> bool:
         ``True`` when a warning was emitted (the request will be ignored).
     """
     num_parallel = int(getattr(args, "num_parallel_games", 1) or 1)
-    mcts_type = getattr(args, "mcts_type", DEFAULT_MCTS_TYPE)
-    if num_parallel > 1 and mcts_type not in (BATCH_MCTS_TYPE, "muzero"):
+    mcts_type = resolve_effective_mcts_type(args)
+
+    if mcts_type == MUZERO_MCTS_TYPE:
+        # MuZero's self-play path takes no num_parallel_games at all, so a
+        # parallelism request is dropped just as completely here as anywhere
+        # else. Previously exempted, which left the one case the fix was for.
+        if num_parallel > 1:
+            logger.warning(
+                "num_parallel_games=%d ignored: MuZero self-play is sequential "
+                "and has no vectorized path.",
+                num_parallel,
+            )
+            return True
+        return False
+
+    if num_parallel > 1 and mcts_type != BATCH_MCTS_TYPE:
         logger.warning(
             "num_parallel_games=%d requested but mcts_type=%s: vectorized "
             "self-play runs only with --mcts_type=%s, so this run will use "
@@ -912,6 +945,20 @@ def warn_on_ignored_parallelism(args: argparse.Namespace) -> bool:
             BATCH_MCTS_TYPE,
         )
         return True
+
+    if mcts_type == BATCH_MCTS_TYPE and num_parallel <= 1:
+        # The inverse mistake, and the likelier one now that the default is 1:
+        # batch MCTS driving a single environment pays the batching overhead
+        # with none of the benefit.
+        logger.warning(
+            "mcts_type=%s with num_parallel_games=%d runs batched search over a "
+            "single environment -- all of the overhead, none of the throughput. "
+            "Pass --num_parallel_games>1 to actually batch.",
+            BATCH_MCTS_TYPE,
+            num_parallel,
+        )
+        return True
+
     return False
 
 
