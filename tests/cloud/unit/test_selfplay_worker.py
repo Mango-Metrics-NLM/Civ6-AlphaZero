@@ -618,6 +618,38 @@ class TestSelfplayActionMaskStorage:
             for f in ("spatial", "vector", "action_masks", "policies", "actions", "players")
         } == {1}
 
+    def test_append_step_is_all_or_nothing(self) -> None:
+        """A malformed observation must not leave the trajectory ragged.
+
+        The helper exists to make unequal per-step field lengths
+        unrepresentable. Appending field by field would defeat that: a missing
+        "action_mask" would raise only after spatial and vector had already
+        been written, producing exactly the ragged state the trainer indexes
+        past.
+        """
+        import numpy as np
+
+        from alpha_zero.cloud.gcp.selfplay_worker import append_step, new_trajectory
+
+        trajectory = new_trajectory()
+        with pytest.raises(KeyError):
+            append_step(
+                trajectory,
+                observation={
+                    "spatial": np.zeros((1, 2, 2), dtype=np.float32),
+                    "vector": np.zeros(3, dtype=np.float32),
+                    # no "action_mask"
+                },
+                policy=[1.0],
+                action=0,
+                player=0,
+            )
+
+        assert all(len(values) == 0 for values in trajectory.values()), (
+            f"partial write left the trajectory ragged: "
+            f"{ {k: len(v) for k, v in trajectory.items()} }"
+        )
+
     def test_dry_run_trajectories_carry_masks(self) -> None:
         """Dry runs must produce the same shape as real self-play.
 

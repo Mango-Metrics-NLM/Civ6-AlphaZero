@@ -565,12 +565,20 @@ def append_step(
         player: The player to move at this position (see
             :func:`outcome_value_for_player`).
     """
-    trajectory["spatial"].append(observation["spatial"].flatten().tolist())
-    trajectory["vector"].append(observation["vector"].flatten().tolist())
-    trajectory["action_masks"].append(observation["action_mask"].flatten().tolist())
-    trajectory["policies"].append(policy.tolist() if hasattr(policy, "tolist") else policy)
-    trajectory["actions"].append(int(action))
-    trajectory["players"].append(int(player))
+    # Build the whole row before touching the trajectory. Appending field by
+    # field would leave the lists ragged if a later field raised (a malformed
+    # observation missing "action_mask", say) -- which is the exact state this
+    # helper exists to make unrepresentable.
+    row = {
+        "spatial": observation["spatial"].flatten().tolist(),
+        "vector": observation["vector"].flatten().tolist(),
+        "action_masks": observation["action_mask"].flatten().tolist(),
+        "policies": policy.tolist() if hasattr(policy, "tolist") else policy,
+        "actions": int(action),
+        "players": int(player),
+    }
+    for field, value in row.items():
+        trajectory[field].append(value)
 
 
 def dummy_trajectory(
