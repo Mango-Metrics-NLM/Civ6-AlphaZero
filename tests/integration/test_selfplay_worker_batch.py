@@ -10,7 +10,11 @@ Run with:
 from __future__ import annotations
 
 import argparse
+import logging
 from unittest.mock import patch
+
+from alpha_zero.cloud.gcp.config import BATCH_MCTS_TYPE, DEFAULT_MCTS_TYPE
+from alpha_zero.cloud.gcp.selfplay_worker import should_use_batch
 
 # ============================================================================
 # Test: Batch Mode Detection
@@ -18,72 +22,58 @@ from unittest.mock import patch
 
 
 class TestBatchModeDetection:
-    """Tests for the use_batch flag logic in main()."""
+    """Tests for the batch dispatch decision in the self-play worker.
+
+    These call ``should_use_batch`` directly. They previously re-implemented
+    the boolean inline in each test body, which meant they passed regardless of
+    what the worker actually did -- the dispatch could have been deleted
+    outright without a single failure.
+    """
 
     def test_batch_enabled_when_parallel_and_batch_gumbel(self):
         """Batch mode activates with num_parallel_games>1 + batch_gumbel."""
         args = argparse.Namespace(
             num_parallel_games=4,
-            mcts_type="batch_gumbel",
+            mcts_type=BATCH_MCTS_TYPE,
             dry_run=False,
         )
-        use_batch = (
-            args.num_parallel_games > 1 and args.mcts_type == "batch_gumbel" and not args.dry_run
-        )
-        assert use_batch is True
+        assert should_use_batch(args) is True
 
     def test_batch_disabled_for_single_game(self):
         """Batch mode disabled when num_parallel_games=1."""
         args = argparse.Namespace(
             num_parallel_games=1,
-            mcts_type="batch_gumbel",
+            mcts_type=BATCH_MCTS_TYPE,
             dry_run=False,
         )
-        use_batch = (
-            args.num_parallel_games > 1 and args.mcts_type == "batch_gumbel" and not args.dry_run
-        )
-        assert use_batch is False
+        assert should_use_batch(args) is False
 
     def test_batch_disabled_for_non_batch_gumbel(self):
-        """Batch mode disabled when mcts_type is 'gumbel' (not 'batch_gumbel')."""
+        """Plain gumbel does not batch, however many parallel games are asked for."""
         args = argparse.Namespace(
             num_parallel_games=4,
-            mcts_type="gumbel",
+            mcts_type=DEFAULT_MCTS_TYPE,
             dry_run=False,
         )
-        use_batch = (
-            args.num_parallel_games > 1 and args.mcts_type == "batch_gumbel" and not args.dry_run
-        )
-        assert use_batch is False
+        assert should_use_batch(args) is False
 
     def test_batch_disabled_for_dry_run(self):
-        """Batch mode disabled during dry runs."""
+        """Dry runs return synthetic trajectories without an engine."""
         args = argparse.Namespace(
             num_parallel_games=4,
-            mcts_type="batch_gumbel",
+            mcts_type=BATCH_MCTS_TYPE,
             dry_run=True,
         )
-        use_batch = (
-            args.num_parallel_games > 1 and args.mcts_type == "batch_gumbel" and not args.dry_run
-        )
-        assert use_batch is False
+        assert should_use_batch(args) is False
 
     def test_batch_disabled_for_muzero(self):
-        """Batch mode disabled when mcts_type is muzero."""
+        """MuZero has its own self-play path."""
         args = argparse.Namespace(
             num_parallel_games=4,
             mcts_type="muzero",
             dry_run=False,
         )
-        use_batch = (
-            args.num_parallel_games > 1 and args.mcts_type == "batch_gumbel" and not args.dry_run
-        )
-        assert use_batch is False
-
-
-# ============================================================================
-# Test: VALID_MCTS_TYPES
-# ============================================================================
+        assert should_use_batch(args) is False
 
 
 class TestMCTSTypesConfig:
@@ -109,41 +99,91 @@ class TestMCTSTypesConfig:
 
 
 class TestOrchestratorArgs:
-    """Tests that vertex_orchestrator passes batch parameters to containers."""
+    """Tests the orchestrator's real parallelism handling, not a copy of it."""
 
-    def test_num_parallel_games_in_container_args(self):
-        """Orchestrator should include --num_parallel_games in worker args when > 1."""
-        # Simulate the orchestrator's logic from vertex_orchestrator.py L420-422
-        args = argparse.Namespace(num_parallel_games=8)
-        extra: list[str] = []
+    def test_default_is_sequential_and_self_consistent(self):
+        """The default invocation must not advertise batching it will not do.
 
-        num_parallel = getattr(args, "num_parallel_games", 1)
-        if num_parallel > 1:
-            extra.append(f"--num_parallel_games={num_parallel}")
+        The default was ``--num_parallel_games=4`` against a default
+        ``--mcts_type=gumbel``, which fails the worker's dispatch gate: every
+        unflagged run forwarded a parallelism flag that was then discarded.
+        """
+        from alpha_zero.cloud.gcp.vertex_orchestrator import parse_args
 
-        assert "--num_parallel_games=8" in extra
+        with patch("sys.argv", ["vertex_orchestrator"]):
+            args = parse_args()
 
-    def test_single_game_does_not_add_flag(self):
-        """Orchestrator should not add flag when num_parallel_games=1."""
-        args = argparse.Namespace(num_parallel_games=1)
-        extra: list[str] = []
+        assert args.num_parallel_games == 1
+        assert (
+            should_use_batch(
+                argparse.Namespace(
+                    num_parallel_games=args.num_parallel_games,
+                    mcts_type=args.mcts_type,
+                    dry_run=False,
+                )
+            )
+            is False
+        )
 
-        num_parallel = getattr(args, "num_parallel_games", 1)
-        if num_parallel > 1:
-            extra.append(f"--num_parallel_games={num_parallel}")
+    def test_warns_when_parallelism_would_be_ignored(self, caplog):
+        """Requesting parallelism without the batch variant must not be silent."""
+        from alpha_zero.cloud.gcp.vertex_orchestrator import warn_on_ignored_parallelism
 
-        assert len(extra) == 0
+        args = argparse.Namespace(num_parallel_games=4, mcts_type=DEFAULT_MCTS_TYPE)
+        with caplog.at_level(logging.WARNING):
+            warned = warn_on_ignored_parallelism(args)
 
-    def test_default_parallel_games(self):
-        """Default should be 1 if attribute missing."""
-        args = argparse.Namespace()
-        num_parallel = getattr(args, "num_parallel_games", 1)
-        assert num_parallel == 1
+        assert warned is True
+        assert BATCH_MCTS_TYPE in caplog.text
 
+    def test_no_warning_when_configuration_is_coherent(self, caplog):
+        """A correctly configured batch run, and a sequential run, stay quiet."""
+        from alpha_zero.cloud.gcp.vertex_orchestrator import warn_on_ignored_parallelism
 
-# ============================================================================
-# Test: Temperature Computation
-# ============================================================================
+        with caplog.at_level(logging.WARNING):
+            assert not warn_on_ignored_parallelism(
+                argparse.Namespace(num_parallel_games=4, mcts_type=BATCH_MCTS_TYPE)
+            )
+            assert not warn_on_ignored_parallelism(
+                argparse.Namespace(num_parallel_games=1, mcts_type=DEFAULT_MCTS_TYPE)
+            )
+        assert caplog.text == ""
+
+    def test_warning_does_not_mutate_mcts_type(self):
+        """The warning must not rewrite args: the namespace is shared.
+
+        ``args.mcts_type`` also feeds the evaluation, arena and tournament
+        phases, so silently promoting it for self-play would change the search
+        algorithm those phases use as a side effect.
+        """
+        from alpha_zero.cloud.gcp.vertex_orchestrator import warn_on_ignored_parallelism
+
+        args = argparse.Namespace(num_parallel_games=4, mcts_type=DEFAULT_MCTS_TYPE)
+        warn_on_ignored_parallelism(args)
+        assert args.mcts_type == DEFAULT_MCTS_TYPE
+        assert args.num_parallel_games == 4
+
+    def test_extra_args_include_parallelism_only_when_requested(self):
+        """Worker args carry the flag only when parallelism is actually asked for.
+
+        Driven through ``parse_args`` rather than a hand-built namespace so the
+        test exercises the real argument surface and cannot drift from it.
+        """
+        from alpha_zero.cloud.gcp.vertex_orchestrator import (
+            build_selfplay_extra_args,
+            parse_args,
+        )
+
+        with patch("sys.argv", ["o", "--mcts_type", BATCH_MCTS_TYPE, "--num_parallel_games", "8"]):
+            parallel_args = parse_args()
+        with patch("sys.argv", ["o", "--mcts_type", BATCH_MCTS_TYPE]):
+            sequential_args = parse_args()
+
+        parallel = build_selfplay_extra_args(parallel_args)
+        sequential = build_selfplay_extra_args(sequential_args)
+
+        assert "--num_parallel_games=8" in parallel
+        assert not any(a.startswith("--num_parallel_games") for a in sequential)
 
 
 class TestComputeTemperature:

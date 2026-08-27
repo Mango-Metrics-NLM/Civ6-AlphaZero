@@ -46,6 +46,12 @@ VALID_MCTS_TYPES: tuple[str, ...] = ("civ6", "gumbel", "batch_gumbel", "muzero")
 # Default MCTS type when none is specified.
 DEFAULT_MCTS_TYPE: str = "gumbel"
 
+# The only MCTS variant that drives vectorized (batched) self-play. The
+# self-play worker dispatches to the batch path solely on this value, so the
+# orchestrator and the worker must agree on it -- hence one constant rather
+# than the string literal both previously carried.
+BATCH_MCTS_TYPE: str = "batch_gumbel"
+
 
 def get_gpu_costs() -> dict[str, float]:
     """Get GPU costs, allowing env-var overrides.
