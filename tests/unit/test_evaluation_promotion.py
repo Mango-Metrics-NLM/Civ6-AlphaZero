@@ -171,7 +171,10 @@ class TestConfig:
         [
             ({"policy": "nope"}, "unknown policy"),
             ({"threshold": 1.5}, "threshold must be in"),
-            ({"confidence": 0.0}, "confidence must be in"),
+            ({"confidence": 0.0}, "confidence must be one of"),
+            # 0.975 is inside (0, 1) but absent from score_interval's z-table:
+            # it used to pass validation and raise mid-evaluation instead.
+            ({"confidence": 0.975}, "confidence must be one of"),
             ({"min_games": -1}, "min_games must be non-negative"),
         ],
     )
