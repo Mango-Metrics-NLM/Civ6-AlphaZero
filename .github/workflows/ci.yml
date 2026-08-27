@@ -13,6 +13,7 @@ concurrency:
 jobs:
   lint:
     name: Lint & Type Check
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,6 +53,7 @@ jobs:
 
   test:
     name: Test (Python ${{ matrix.python-version }})
+    timeout-minutes: 40
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -91,6 +93,7 @@ jobs:
 
   cloud-tests:
     name: Cloud Unit Tests
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -118,6 +121,7 @@ jobs:
 
   security:
     name: Security Scan
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -147,6 +151,7 @@ jobs:
 
   governance:
     name: Governance Gates
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -189,6 +194,7 @@ jobs:
 
   eval-harness:
     name: LLM Eval Harness
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     # Enforcing since 2026-07-25 (harden-lint-and-type-gates): the observation
     # window closed with consecutive green runs, e.g. run 30156956859 on the
@@ -223,6 +229,7 @@ jobs:
 
   coverage:
     name: Coverage Report
+    timeout-minutes: 50
     runs-on: ubuntu-latest
     needs: [lint, test, cloud-tests, security]
 
