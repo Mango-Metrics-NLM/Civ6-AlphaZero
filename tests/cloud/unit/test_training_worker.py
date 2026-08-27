@@ -248,6 +248,37 @@ class TestBatchTrajectoryReachesTrainer:
         assert action_mask_tensor.min().item() == 0.0
         assert action_mask_tensor[-1].min().item() == 1.0
 
+    def test_legacy_states_format_counts_as_mask_fallback(self, caplog) -> None:
+        """A legacy-only dataset must not report full mask coverage.
+
+        The legacy ``states`` format carries no masks at all, so every one of
+        its positions takes the all-ones fallback. Counting only the new-format
+        misses meant a run made entirely of legacy trajectories logged "all
+        positions carry a stored action mask" while none did -- the instrument
+        reporting the opposite of the truth it exists to report.
+        """
+        import logging
+
+        from alpha_zero.cloud.gcp.training_worker import prepare_dataset
+
+        legacy = {
+            "states": [[0.0] * (13 * 8 * 8)] * 2,
+            "policies": [[1.0 / 376] * 376] * 2,
+            "rewards": [1.0, -1.0],
+        }
+
+        with caplog.at_level(logging.INFO):
+            dataset = prepare_dataset([legacy])
+
+        _, _, action_mask_tensor, _, _ = dataset.tensors
+        assert action_mask_tensor.min().item() == 1.0, "expected the all-ones fallback"
+        assert "fallback" in caplog.text.lower(), (
+            "legacy positions used the fallback but coverage was not reported"
+        )
+        assert "All " not in caplog.text or "carry a stored action mask" not in caplog.text, (
+            "reported full mask coverage for a dataset with no masks at all"
+        )
+
     def test_empty_mask_list_falls_back_instead_of_raising(self) -> None:
         """An empty action_masks list must not index out of range.
 

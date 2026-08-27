@@ -1427,15 +1427,25 @@ def main() -> int:
         # warning here: a parallelism request paired with a non-batch MCTS type
         # is silently dropped, and the run looks batched while running
         # sequentially.
-        if args.num_parallel_games > 1 and not use_batch and not use_muzero:
-            logger.warning(
-                "num_parallel_games=%d ignored: vectorized self-play requires "
-                "--mcts_type=%s (got %s)%s. Running sequential self-play.",
-                args.num_parallel_games,
-                BATCH_MCTS_TYPE,
-                args.mcts_type,
-                " and is disabled under --dry_run" if args.dry_run else "",
-            )
+        if args.num_parallel_games > 1 and not use_batch:
+            # MuZero is warned about too, not exempted: run_muzero_selfplay takes
+            # no num_parallel_games at all, so the request is dropped just as
+            # completely there as anywhere else.
+            if use_muzero:
+                logger.warning(
+                    "num_parallel_games=%d ignored: MuZero self-play is sequential "
+                    "and has no vectorized path.",
+                    args.num_parallel_games,
+                )
+            else:
+                logger.warning(
+                    "num_parallel_games=%d ignored: vectorized self-play requires "
+                    "--mcts_type=%s (got %s)%s. Running sequential self-play.",
+                    args.num_parallel_games,
+                    BATCH_MCTS_TYPE,
+                    args.mcts_type,
+                    " and is disabled under --dry_run" if args.dry_run else "",
+                )
 
         if use_muzero:
             # MuZero self-play: load MuZero model and use dynamics-based MCTS

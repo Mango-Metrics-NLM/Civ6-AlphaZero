@@ -612,7 +612,12 @@ def prepare_dataset(
             for i, state in enumerate(traj["states"]):
                 spatial_list.append(state)
                 vector_list.append([0.0] * vector_dim)
+                # The legacy format has no masks at all, so every one of these
+                # positions takes the fallback. Counting them keeps the coverage
+                # report honest -- otherwise a run made entirely of legacy
+                # trajectories reported full mask coverage.
                 action_masks_list.append([1.0] * action_space_size)
+                mask_fallbacks += 1
                 policies.append(traj["policies"][i])
                 values.append(traj["rewards"][i])
 
