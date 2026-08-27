@@ -6,12 +6,19 @@ Separation of concerns: :mod:`alpha_zero.evaluation.scoring` owns the statistics
 
 Why a registry rather than a branch
 -----------------------------------
-Four sites in this repository independently decide whether to promote a model,
-and they disagree with each other:
+Several sites in this repository independently decide whether to promote a
+model, and they disagree with each other:
 
-* ``cloud/gcp/arena.py`` -> ``vertex_orchestrator.py`` (the deployed path)
-* ``cloud/evaluator.py``
-* ``orchestrator/curriculum.py`` (curriculum rung promotion)
+* ``cloud/gcp/arena.py`` -> ``vertex_orchestrator.py`` -- the deployed path;
+  ``cloudbuild.yaml`` builds only ``dockerfiles/Dockerfile.vertex``, whose
+  entrypoint routes here.
+* ``cloud/evaluator.py`` -- **legacy, not deployed.** Reached only by
+  ``dockerfiles/Dockerfile.evaluator``, which nothing but the ``Makefile`` and
+  ``docker-compose.yml`` (local development) builds. Listed because it is a
+  divergence risk if revived, not because it decides production promotions.
+* ``orchestrator/curriculum.py`` (curriculum rung promotion) -- a different
+  question entirely: a rolling win rate over iterations, with no
+  champion-versus-candidate record to score.
 
 Each reimplements the comparison inline. Routing them through one registered
 policy makes the decision rule a single, testable, swappable component -- the
@@ -37,6 +44,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from alpha_zero.evaluation.scoring import (
+    SUPPORTED_CONFIDENCE_LEVELS,
     PromotionDecision,
     ScoreSummary,
     score_rate,
@@ -174,8 +182,14 @@ class PromotionConfig:
             )
         if not 0.0 <= self.threshold <= 1.0:
             errors.append(f"threshold must be in [0, 1], got {self.threshold}")
-        if not 0.0 < self.confidence < 1.0:
-            errors.append(f"confidence must be in (0, 1), got {self.confidence}")
+        # Check membership, not just the open interval: score_interval() has a
+        # finite z-table, so a value like 0.975 passes a range check here and
+        # then raises mid-evaluation, after the games have already been played.
+        if self.confidence not in SUPPORTED_CONFIDENCE_LEVELS:
+            errors.append(
+                f"confidence must be one of {list(SUPPORTED_CONFIDENCE_LEVELS)}, "
+                f"got {self.confidence}"
+            )
         if self.min_games < 0:
             errors.append(f"min_games must be non-negative, got {self.min_games}")
         if errors:

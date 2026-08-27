@@ -17,6 +17,16 @@ Environment Variables:
     CIV6_NUM_GAMES: Number of games to play
     CIV6_NUM_SIMULATIONS: MCTS simulations per move
     CIV6_DEVICE: PyTorch device (cuda/cpu)
+
+
+.. warning::
+
+   **LEGACY -- not the deployed self-play path.** ``cloudbuild.yaml`` builds
+   only ``dockerfiles/Dockerfile.vertex``, which routes through
+   ``alpha_zero.cloud.gcp.entrypoint`` to
+   ``alpha_zero/cloud/gcp/selfplay_worker.py``. This module is reached only by
+   ``dockerfiles/Dockerfile.selfplay`` (Makefile / docker-compose local
+   development) and hardcodes ``SimpleMCTS``. Prefer the ``gcp`` worker.
 """
 
 from __future__ import annotations
