@@ -3,7 +3,8 @@
 > **Method.** This document was produced by scanning the codebase and documentation with
 > three parallel verification agents (batch self-play status; fog-of-war and N-player
 > gaps; repository health and debt), synthesizing a position, and then submitting the
-> draft to an independent adversarial peer review before publication. Every claim below
+> draft to an independent adversarial peer review (verdict: approve-with-edits; all
+> required edits are incorporated below). Every claim below
 > carries a `file:line` citation verified on branch head `7b7112b` (2026-08-24).
 > Supersedes `docs/NEXT_STEPS_ANALYSIS.md` (2026-08-11), several of whose claims are
 > contradicted by the repository (see Finding F7).
@@ -14,18 +15,25 @@
 
 **Recommendation: pause M4 feature work for roughly two weeks and run a
 "Validation Iteration Zero" — a small, budget-capped, end-to-end training run on the
-fixed code path — preceded by four small correctness fixes it depends on. Then resume
-M4 features in dependency order (N-player MCTS wiring first, fog of war second).**
+fixed code path — preceded by the three small correctness fixes it depends on (F1–F3).
+Then resume M4 features in dependency order (N-player MCTS wiring first, fog of war
+second). Validation Iteration Zero exits when three artifacts exist: a passing
+convergence-gate report on the fixed path, a batch-vs-sequential benchmark in
+`docs/evidence/`, and a promotion-policy shadow report.**
 
-The reason is simple: on 2026-08-24/25 the project discovered that **every one of its
-269 promoted model versions was trained on partially corrupted data** (value targets
-mislabelled from the wrong player's perspective, `CLAUDE.md` §5.2 2026-08-25) **and
+The reason is simple: on 2026-08-24 the project discovered that **its entire promoted
+cloud model lineage — v0–v218+ per `NEXT_STEPS.md:55-58`, numbered toward v269 by the
+orchestrator PRD — was trained on partially corrupted data** (value targets mislabelled
+from the wrong player's perspective in all three cloud self-play paths; the local
+`training_civ6.py` path was always correct — `CLAUDE.md` §5.2, commit `0d5adee`) **and
 promoted through a gate that scores draws as losses** (`alpha_zero/cloud/gcp/arena.py:41`).
 The fixes are merged but **no training run has validated them**. Meanwhile this review
 found a third, undocumented defect of the same family: the batch self-play path drops
 `action_masks` from trajectories, silently disabling masked policy loss for all
 batch-generated data (Finding F1). Accelerating self-play throughput before validating
-the fixed loop would multiply the rate at which invalid data is produced.
+the fixed loop would multiply the rate at which invalid data is produced. Two further
+fixes (the fog mask leak, F5, and doc-sync, F7) are worth doing early but do **not**
+block the validation run and are sequenced accordingly.
 
 ---
 
@@ -34,14 +42,16 @@ the fixed loop would multiply the rate at which invalid data is produced.
 | # | Finding | Evidence | Severity |
 |---|---------|----------|----------|
 | F1 | **Batch self-play drops `action_masks`.** `run_batch_selfplay` initializes trajectories without the key (`alpha_zero/cloud/gcp/selfplay_worker.py:1044-1047`); the trainer silently substitutes an all-ones mask (`alpha_zero/cloud/gcp/training_worker.py:586-589`), so batch-generated samples train with masked cross-entropy disabled. The parity test that should catch it excludes `action_masks` from its asserted key set and is vacuous on empty output (`tests/integration/test_batch_selfplay_integration.py:268-271`). | verified in code | **High** — silent training-quality regression on the flagship M4 feature |
-| F2 | **Orchestrator defaults silently fall through to sequential self-play.** Default `--num_parallel_games=4` (`alpha_zero/cloud/gcp/vertex_orchestrator.py:214-217`) with default `--mcts_type=gumbel` (`:195`) fails the batch dispatch gate (`selfplay_worker.py:1277-1279`) with no warning: a run that *looks* batch-configured runs sequential. | verified in code | Medium |
-| F3 | **The promotion-policy registry is wired into only one of two decision sites.** `vertex_orchestrator.py:835-855` consults `PromotionVerdict`; `alpha_zero/cloud/evaluator.py:396` remains a bare `win_rate >= threshold` that never consults the registry (same raw statistic in the early-stop check at `:321`). Nothing in any config, runbook, or workflow opts into `score_rate`. | verified in code | Medium-High |
+| F2 | **Orchestrator defaults silently fall through to sequential self-play.** Default `--num_parallel_games=4` (`alpha_zero/cloud/gcp/vertex_orchestrator.py:214-217`) with default `--mcts_type=gumbel` (the constant itself: `alpha_zero/cloud/gcp/config.py:47`; argparse wiring at `vertex_orchestrator.py:192-198`) fails the batch dispatch gate (`selfplay_worker.py:1277-1279`) with no warning: a run that *looks* batch-configured runs sequential. | verified in code | Medium |
+| F3 | **The promotion-policy registry is wired into only one of two decision sites.** `vertex_orchestrator.py:835-855` consults `PromotionVerdict`; `alpha_zero/cloud/evaluator.py:396` remains a bare `win_rate >= threshold` that never consults the registry (same raw statistic in the early-stop check at `:321`). Nothing in any config, runbook, or workflow opts into `score_rate`. **Severity corrected 2026-08-27 (down from Medium-High):** the second site is *not* deployed — `cloudbuild.yaml:22` builds only `dockerfiles/Dockerfile.vertex`, whose entrypoint routes through `cloud/gcp/entrypoint.py`; `cloud/evaluator.py` is reached only by `Dockerfile.evaluator`, which nothing but `Makefile:192` and `docker-compose.yml:132` (local dev) builds. This is divergence risk and documentation honesty, not a live promotion defect — and `promotion.py:9-14` itself described it as a peer of the deployed path. | verified in code | Low-Medium (hygiene) |
 | F4 | **Fog-of-war search is structurally blocked on N-player MCTS.** `DeterminizedMCTS.search` requires its base search to return a per-player value dict (`alpha_zero/multiplayer/determinization.py:248,269`); only `NPlayerMCTS.search` does (`alpha_zero/multiplayer/mcts.py:78-82`) — `Civ6MCTS`/`GumbelMCTS` return scalars (`alpha_zero/core/civ6_mcts.py:512-516`). CLAUDE.md §13 item 2 presents these as independent work items; they are sequential. | verified in code | Medium (planning) |
-| F5 | **The fog action-mask leak is confirmed and standalone.** The encoder receives the fogged state while the action mask is recomputed from a fresh unmasked state (`alpha_zero/envs/microciv.py:839-848`, comment: "action mask uses full state"); `get_valid_actions()` has no fog path (`:868-875`). Additionally, the `fog_of_war_enabled: true` knob in `orchestrator/config.py:403` and three YAMLs is dead config — no consumer constructs an env from it. | verified in code | Medium (latent — fog is default-off and unexposed from `training_civ6.py`) |
-| F6 | **The 85% coverage gate measures roughly half the codebase.** 139 of 316 real modules (~48% of LOC) are omitted (`pyproject.toml` `[tool.coverage.run]`, 49 patterns), including all of `alpha_zero/cloud/` — the package where F1–F3 and both 2026-08 production bugs live. Root cause: every CI job installs only `.[dev]` (`.github/workflows/ci.yml:39,81,114,133,248`), so `web`/`gcp`/`distributed` extras can never import in the coverage job. | verified in config | High (systemic) |
-| F7 | **Both forward-looking docs are stale.** `docs/NEXT_STEPS_ANALYSIS.md` (2026-08-11) claims "100% mypy --strict" (CI runs mypy *without* `--strict`, `ci.yml:49`) and "85% enforced in Makefile" (`Makefile:120` is `--cov-fail-under=80`), and recommends scaling work while unaware of the correctness bugs found two weeks later. `ROADMAP.md:56` still lists the PR #72 champion-load fix as pending; it landed under a different mechanism (`--resume_from=latest`, `vertex_orchestrator.py:428-495,616-620`). CLAUDE.md's skip-count ("11 sites / 17 tests") is stale against 92 present sites (mostly legitimate environment gates). | verified | Medium |
-| F8 | **Flagship claims have no committed evidence artifacts.** `docs/evidence/` contains exactly one study (`hexcrystal_ab/`). The 5–10× batch speedup is aspiration (`docs/prd/prd-batch-selfplay.md:7`), not measurement — a benchmark harness exists (`scripts/benchmark_batch_selfplay.py`) but writes no artifact. The v1.8.0 live-bridge milestone is 4 turns, END_TURN-only, on random weights, recorded as prose only (`NEXT_STEPS.md:9-11,38-42,55-58`). | verified | Medium |
-| F9 | **Checkpoint lineage v0–v268 predates the value-sign fix.** `0d5adee` (2026-08-24) is on the default branch but no run, evidence entry, or ledger event validates it. `NEXT_STEPS.md:55-58` recommends demoing a trained checkpoint from that lineage — which would demo a model trained on partially inverted labels and promoted by the draw-hostile gate. | verified | High (sequencing) |
+| F5 | **The fog action-mask leak is confirmed and standalone.** The encoder receives the fogged state while the action mask is recomputed from a fresh unmasked state (`alpha_zero/envs/microciv.py:839-848`, comment: "action mask uses full state"); `get_valid_actions()` has no fog path (`:868-875`). Additionally, the `fog_of_war_enabled` knob in `orchestrator/config.py:403` and four YAMLs is dead config — no consumer constructs an env from it. | verified in code | Medium (latent — fog is default-off and unexposed from `training_civ6.py`) |
+| F6 | **The 85% coverage gate measures roughly half the codebase.** 139 of 316 real modules (~48% of LOC) are omitted (`pyproject.toml` `[tool.coverage.run]`, 49 patterns), including all of `alpha_zero/cloud/` — the package where F1–F3 and both 2026-08 production bugs live. Root cause: every test/coverage CI job installs only `.[dev]` (`.github/workflows/ci.yml:39,81,114,133,248`; the sole exception is `eval-harness` with `.[eval]`), so `web`/`gcp`/`distributed` extras can never import in the coverage job. | verified in config | High (systemic) |
+| F7 | **Both forward-looking docs are stale.** `docs/NEXT_STEPS_ANALYSIS.md` (2026-08-11) claims "100% mypy --strict" (CI runs mypy *without* `--strict`, `ci.yml:50-51`) and "85% enforced in Makefile" (`Makefile:120` is `--cov-fail-under=80`), and recommends scaling work while unaware of the correctness bugs found two weeks later. `ROADMAP.md:56` still lists the PR #72 champion-load fix as pending; it landed under a different mechanism (`--resume_from=latest`, `vertex_orchestrator.py:428-495,616-620`). CLAUDE.md's skip-count ("11 sites / 17 tests") is badly stale — grep for skip/skipif/importorskip/xfail markers across `tests/` finds ~90+ sites by any counting rule (mostly legitimate environment gates: CUDA, optional extras). | verified | Medium |
+| F8 | **Flagship claims have no committed evidence artifacts.** `docs/evidence/` contains exactly one study (`hexcrystal_ab/`). The 5–10× batch speedup is aspiration (`docs/prd/prd-batch-selfplay.md:7`), not measurement — a benchmark harness exists (`scripts/benchmark_batch_selfplay.py`, logs to MLflow/stdout) but writes no *committed* artifact. The v1.8.0 live-bridge milestone is 4 turns, mostly END_TURN, on random weights, recorded as prose only (`NEXT_STEPS.md:9-11,38-42,55-58`). | verified | Medium |
+| F9 | **The promoted checkpoint lineage (v0–v218+ per `NEXT_STEPS.md:55-58`) predates the value-sign fix.** `0d5adee` (2026-08-24) is merged (an ancestor of head via PR #112) but no run, evidence entry, or ledger event validates it. `NEXT_STEPS.md:55-58` recommends demoing a trained checkpoint from that lineage — which would demo a model trained on partially inverted labels and promoted by the draw-hostile gate. | verified | High (sequencing) |
+
+*Severity legend: **High** = actively corrupts data or decisions in the deployed path; **Medium** = degrades correctness, planning, or evidence without corrupting the live loop; **Low-Medium (hygiene)** = no live impact, but a divergence or accuracy risk worth closing.*
 
 ---
 
@@ -53,7 +63,7 @@ the N-player training pipeline landed 2026-07-05 and the remaining work (Max-N s
 wiring) is a genuine integration job over components that are already written and
 individually tested (`NPlayerMCTS` 393 lines, `NPlayerEnvAdapter` 244 lines). Fog of war
 has an implemented env flag, a tested `DeterminizedMCTS`, and a named list of wiring
-tasks. The project's momentum since 2026-08-01 (46 commits: HF Hub publishing, encoder
+tasks. The project's momentum since 2026-08-01 (~47 commits: HF Hub publishing, encoder
 A/B with +31 Elo evidence, correctness sweep) shows the team ships. The fastest route to
 M5 is to finish M4's three feature bullets in order and keep moving. Throughput first,
 because every later experiment — N-player runs, fog runs, convergence gates — gets
@@ -64,9 +74,12 @@ because every later experiment — N-player runs, fog runs, convergence gates �
 The thesis assumes the training loop produces valid data and valid promotions. The
 evidence says it did neither, and may still not:
 
-1. **The data was wrong.** All three self-play paths mislabelled ~half of every
-   two-player trajectory's value targets until 2026-08-24 (CLAUDE.md §5.2). All 269
-   promoted models were trained on that data. The fix is unvalidated by any run (F9).
+1. **The data was wrong.** All three *cloud* self-play paths
+   (`cloud/gcp/selfplay_worker.py` — sequential, MuZero, and batch) mislabelled ~half
+   of every two-player trajectory's value targets until 2026-08-24 (CLAUDE.md §5.2;
+   the local `training_civ6.py` path was always correct). The promoted lineage in GCS
+   was produced by the cloud path and trained on that data. The fix is unvalidated by
+   any run (F9).
 2. **The gate was wrong.** Promotion scored draws as losses, capping the statistic at
    `1 − draw_rate` (CLAUDE.md §5.3); the corrected policy exists but is default-off,
    opted into by nothing, and one of the two decision sites bypasses the registry
@@ -87,7 +100,7 @@ convergence run validates the fixes.
 ## Rebuttal (a third perspective): the unit of value is neither features nor hygiene — it is *validated evidence*
 
 Both positions above optimize a proxy. The thesis optimizes shipped code; the
-counter-argument optimizes process purity. This project's charter defines its actual
+counter-argument optimizes hygiene completeness. This project's charter defines its actual
 differentiator differently: *"engineered like a product … typed, tested, gated, and
 observable"* (`PROJECT_CHARTER.md` §1), with skill that "demonstrably compounds across
 training generations." The binding constraint on that vision today is not missing
@@ -106,7 +119,7 @@ value-sign and champion-load fixes, closing F9; (b) reports `score_rate` alongsi
 `legacy_win_rate` in shadow mode, producing the evidence needed to flip the promotion
 default deliberately rather than by fiat (F3); (c) benchmarks batch vs sequential
 self-play and commits the artifact `docs/evidence/` has been missing (F8, F1-dependent).
-Only four small fixes block this run, and all are days, not weeks. Features then resume
+Only three small fixes block this run (F1-F3), and all are days, not weeks. Features then resume
 on a foundation the project can *prove* works — which is also the honest precondition
 for the thesis's own goal, since an N-player or fog-of-war run on an unvalidated loop
 would be uninterpretable.
@@ -117,17 +130,26 @@ would be uninterpretable.
 
 ### Phase 1 — Unblock (≈1 week of code, all small)
 
+**Blocking for Phase 2** — the validation run cannot be interpreted without these:
+
 | Item | Size | Closes |
 |------|------|--------|
-| Emit `action_masks` from `run_batch_selfplay` (mirror the sequential path at `selfplay_worker.py:667`); tighten the parity test to true key-set equality and non-vacuity | S (~15 lines + test) | F1 |
+| Emit `action_masks` from `run_batch_selfplay` (mirror the sequential path at `selfplay_worker.py:667`); tighten the parity test to true key-set equality and non-vacuity | S | F1 |
+| Warn when `num_parallel_games>1` with a non-batch `mcts_type`, and make the shipped defaults self-consistent | S | F2 |
 | Wire the promotion registry into `cloud/evaluator.py:396` (and the early-stop check at `:321`) so both decision sites consult one policy | S | F3 |
-| Warn (or auto-promote `gumbel`→`batch_gumbel`) when `num_parallel_games>1` with a non-batch `mcts_type`; set `mcts_type: batch_gumbel` in one Vertex config | S | F2 |
-| Fix the fog mask leak: compute the action mask from the same fogged `game_state` (`microciv.py:846-848`) and add a fog path to `get_valid_actions()`; delete or wire the dead `fog_of_war_enabled` config knob | S–M (semantics decision: legality of actions targeting unseen tiles) | F5 |
-| Doc-sync: correct `ROADMAP.md:56`, retire `docs/NEXT_STEPS_ANALYSIS.md` to `docs/archive/`, refresh CLAUDE.md skip-count and the 2026-08-25 date | XS | F7 |
+
+**Non-blocking, do early** — worth fixing, but neither gates the run:
+
+| Item | Size | Closes |
+|------|------|--------|
+| Fix the fog mask leak: derive the action mask from the same fogged `game_state` and add a fog path to `get_valid_actions()`; resolve the dead `fog_of_war_enabled` knob | S–M (carries a semantics decision — the fogged mask is *over-permissive* for `found_city`, not merely less informative — so it needs its own OpenSpec change and is sequenced as a follow-up PR) | F5 |
+| Doc-sync: correct `ROADMAP.md:56`, archive `docs/NEXT_STEPS_ANALYSIS.md`, refresh the CLAUDE.md skip-count and value-sign dates | XS | F7 |
 
 ### Phase 2 — Validation Iteration Zero (≈1 week wall-clock; **requires explicit human sign-off per NG-7 before any cloud spend**)
 
-- Budget-capped Vertex run (suggested cap: the T4-Spot tier, ≤ $25) on the fixed path:
+- Budget-capped Vertex run (suggested cap: the T4-Spot tier, ≤ $25) **and capped at
+  ≤1000 games** — CLAUDE.md §3.2 makes anything above that a prohibited action, and the
+  `pretooluse_guard.sh` hook enforces it mechanically. On the fixed path:
   convergence gate re-run, `value_sign_accuracy` tracked (`training_worker.py:754`),
   `score_rate` shadow-reported next to `legacy_win_rate`.
 - Batch-vs-sequential benchmark via `scripts/benchmark_batch_selfplay.py`, committed to
@@ -137,6 +159,10 @@ would be uninterpretable.
   `pre-value-sign-fix` in lineage metadata; do not demo them live (F9).
 
 ### Phase 3 — Resume M4 features, in dependency order (≈3–5 weeks)
+
+> **Requires its own sign-off.** Item 1 changes MCTS wiring across more than three
+> modules and touches the network's value view, which CLAUDE.md §3.2 classifies as
+> confirm-first. Approving this document is not approval to start Phase 3.
 
 1. **N-player MCTS wiring (Gap B first — it is the prerequisite).** Branch
    `run_self_play` on `num_players > 2` to build `NPlayerMCTS`; one absolute→relative

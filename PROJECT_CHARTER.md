@@ -4,7 +4,7 @@
 > agents (and sub-agents) read first to stay on track. It changes rarely and only by
 > deliberate decision — not per task. Day-to-day, changeable work lives in
 > [`NEXT_STEPS.md`](NEXT_STEPS.md) (with the current reconciliation in
-> [`docs/NEXT_STEPS_ANALYSIS_2026-07.md`](docs/NEXT_STEPS_ANALYSIS_2026-07.md));
+> [`docs/NEXT_STEPS_CASE_2026-08.md`](docs/NEXT_STEPS_CASE_2026-08.md));
 > architecture detail in [`docs/architecture/C4_ARCHITECTURE.md`](docs/architecture/C4_ARCHITECTURE.md)
 > and [`docs/architecture.md`](docs/architecture.md). If a task seems to require changing
 > this charter, **stop and raise it explicitly** rather than editing it in passing.
@@ -165,7 +165,7 @@ scope; they may never relax an invariant.)*
   invariants.
 - Authority order when documents disagree: this charter (what and what-not) →
   `CLAUDE.md` (how: gates, permissions, KB workflow) → `NEXT_STEPS.md` +
-  `docs/NEXT_STEPS_ANALYSIS_2026-07.md` (what now) → `ROADMAP.md` (what next) →
+  `docs/NEXT_STEPS_CASE_2026-08.md` (what now) → `ROADMAP.md` (what next) →
   `docs/architecture/C4_ARCHITECTURE.md`, `docs/architecture.md`,
   `docs/MODULE_REFERENCE.md` (how it is built).
 - Put concrete, changeable to-dos in `NEXT_STEPS.md`, not here.

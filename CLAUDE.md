@@ -413,7 +413,7 @@ When making changes, update the relevant sections below:
 | 2026-07-13 | W&B fully retired; MLflow sole tracker | SDK swap verified complete (zero `import wandb` in `alpha_zero/`). `resolve_tracker_enabled()` unifies enablement (`CIV6AZ_MLFLOW_ENABLED` > `MLFLOW_ENABLED` > legacy `WANDB_ENABLED`, warns). Orchestrator `WandbConfig` = deprecated bridge via `to_mlflow_config()`; `--no-wandb`/`--no-tracking` disable ALL tracking. `utils/wandb_logger.py` shim deleted (lazy `alpha_zero.utils.WandbLogger` alias remains, warns). Adapter hardened: numpy/nested metric coercion, `run_name` property (fixes run-group propagation), `alert()` also warns in logs. |
 | 2026-07-25 | OpenSpec governance + deterministic validators | Enterprise docs overhaul managed as one OpenSpec change (`openspec/`). Four stdlib-only validators (`scripts/validate_openspec.py`, `validate_kb.py`, `validate_skills.py`, `check_doc_sync.py`; exit 0/1/2; tests in `tests/governance/`) enforced by Claude hooks, `.pre-commit-config.yaml` (ruff pinned to CI's version — 0.15.8 as of 2026-07-25), and a CI `governance` job. `check_doc_sync.py` blocks doc drift (version triple, MODULE_REFERENCE counts, README forbidden patterns, unknown extras, links, changelog-version). Skills gained frontmatter + validation gates; added `openspec-propose`/`openspec-archive`/`doc-sync`/`release`. Stale docs archived to `docs/archive/` (archive-not-delete). |
 | 2026-07-25 | PostToolUse autofix defers F401 **and** RUF100 | `--extend-ignore F401` alone made existing `# noqa: F401` directives look unused, so RUF100 `--fix` stripped them and re-exposed the imports to CI's F401 gate. Deferring both keeps intentional availability-probe imports intact (`.claude/hooks/posttooluse_lint.sh`). |
-| 2026-08-25 | Per-player value targets in cloud self-play | All three self-play paths in `cloud/gcp/selfplay_worker.py` broadcast one terminal scalar to every position. That reward is relative to whoever was `current_player` at the terminal action, and MicroCiv advances `current_player` only inside `_end_turn` (~6.8 actions/turn), so ~half of every two-player trajectory was labelled from the opponent's perspective. Now signed per position from `env.winner` (absolute). `training_civ6.py` always did this correctly via `relative_value_vector`; only the cloud path diverged. Diagnostic: `value_sign_accuracy` (`training_worker.py:754`). |
+| 2026-08-25 (commit `0d5adee`, authored 2026-08-24) | Per-player value targets in cloud self-play | All three self-play paths in `cloud/gcp/selfplay_worker.py` broadcast one terminal scalar to every position. That reward is relative to whoever was `current_player` at the terminal action, and MicroCiv advances `current_player` only inside `_end_turn` (~6.8 actions/turn), so ~half of every two-player trajectory was labelled from the opponent's perspective. Now signed per position from `env.winner` (absolute). `training_civ6.py` always did this correctly via `relative_value_vector`; only the cloud path diverged. Diagnostic: `value_sign_accuracy` (`training_worker.py:754`). |
 | 2026-08-25 | Promotion scoring SSOT + policy registry | Three incompatible definitions of "win rate" were live at once; the production one (`cloud/gcp/arena.py:41`) scores every draw as a loss, capping the statistic at `1 - draw_rate` so promotion is impossible above a 45% draw rate. `evaluation/scoring.py` owns the statistics (ternary variance — a binomial interval on fractional successes is too wide by exactly `draw_rate/4`); `evaluation/promotion.py` owns the decision as a registered, swappable policy. Default `legacy_win_rate` reproduces deployed behaviour exactly; opt in via `CIV6AZ_PROMOTION_POLICY`. |
 | 2026-08-25 | `EvaluationResult` schema versioning | Added `schema_version`, `score_rate`, `ci_low`, `ci_high`. The `from_dict` read default is deliberately **asymmetric** with the field default so pre-change records (which carry no key) stay distinguishable from post-change ones; defaulting both the same would make them identical on read. |
 
@@ -431,7 +431,7 @@ When making changes, update the relevant sections below:
 | `serving/` + `inference/` omitted from coverage gate | They require the `web` extra (fastapi/uvicorn), absent from the default-CI `[dev]` install, so they cannot be imported in CI's coverage job. `serving/` has unit tests (`tests/unit/test_serving/`, `importorskip`-guarded) but stays in the omit list until CI installs the `web` extra. |
 | Coverage instrumentation crashes under nightly numpy 2.4 + coverage C-tracer | Local-only sandbox issue ("cannot load module more than once"); run tests without `--cov`, or use pinned numpy. CI uses pinned versions and is unaffected. **Partial workaround (2026-08-09):** `COVERAGE_CORE=pytrace` selects coverage's pure-Python tracer and avoids the crash — but only for `--cov` targets that do **not** import numpy. `COVERAGE_CORE=pytrace pytest tests/unit/test_hexcrystal_*.py --cov=alpha_zero.hexcrystal` works (measured 87.10%); `--cov=alpha_zero.utils.checkpoint` still crashes, because coverage importing a numpy-dependent module on top of conftest's import is the double load. CI remains the gate for numpy-importing modules. |
 | ~~MicroCiv hardcoded for 2 players~~ (resolved 2026-07-05) | Env + encoder N-player (2–6); training pipeline now N-player too. **G7/G8/G9 all done**: `training_civ6.py` threads `num_players` (per-player `value_vector`, `compute_nplayer_value_loss`, `CurrentPlayerValueView` scalar-MCTS adapter). 2-player path byte-identical. Tests: `tests/unit/test_nplayer_training_pipeline.py`. Train: `python -m alpha_zero.training_civ6 --num_players 4`. |
-| ~~12 DDP tests xfailed~~ (stale — corrected 2026-07-05) | DDP tests use CUDA `skipif`, not `xfail`. Repo has exactly one real `xfail` (`test_phase2.py:381`). Real static-skip debt (re-measured 2026-07-25): 11 skip sites / 17 tests, none W&B-related — the W&B skips vanished with the 2026-07-13 retirement. Remaining skips: planned-API stubs, full-game-state suites, and one flaky concurrency test (`test_buffer_edge_cases.py`). |
+| ~~12 DDP tests xfailed~~ (stale — corrected 2026-07-05) | DDP tests use CUDA `skipif`, not `xfail`. Repo has exactly one real `xfail` (`test_phase2.py:381`). **Re-measured 2026-08-27 with a stated rule** (`grep -rEc '@pytest\.mark\.(skip|skipif|xfail)|pytest\.(skip|importorskip)\(' tests/`): **124 sites across 68 files** — the earlier "11 sites / 17 tests" figure counted only static `@pytest.mark.skip`, which is why it looked an order of magnitude smaller. Most are legitimate environment gates (CUDA, optional extras: `hub`, `web`/fastapi, GCS, SpacetimeDB, JAX). Genuine debt is three items: the class-level skip on `UncivInterface.parse_multiplayer_save` (a planned method that does not exist), one disabled flaky concurrency test (`test_buffer_edge_cases.py`), and one "DUCT not yet implemented" skip. Quote the rule with the number — a bare count is not reproducible. |
 | mlruns/ file-store deprecated | Run `scripts/migrate_mlflow_to_sqlite.py` to migrate to `sqlite:///mlflow.db` |
 | test_deployment_infra.py: 6 failures | Require .env file not present locally; skip with `pytest -m 'not env_required'` |
 | ~~Two divergent `WandbConfig` classes~~ (resolved 2026-07-13) | `utils/wandb_logger.py` shim deleted; orchestrator `WandbConfig` is now an explicit deprecated bridge (`to_mlflow_config()`), `MLflowConfig` single-source. |
@@ -1226,19 +1226,38 @@ project has since shipped through v1.8.0:
 > `tests/unit/test_distributed_*.py` files, and the repo contains exactly one
 > `xfail` (`tests/integration/test_phase2.py:381`) plus one CUDA `skipif`.
 
-1. **Batch self-play in cloud**: ~70% done, not unstarted. `BatchGumbelMCTS`
-   (`core/batch_mcts.py`) + `VectorizedMicroCivEnv` are fully wired into
-   `cloud/gcp/selfplay_worker.py:run_batch_selfplay()` and tested. What remains:
-   no config sets `mcts_type: batch_gumbel`, `dockerfiles/Dockerfile.selfplay`
-   entrypoints the *other* worker (`cloud/selfplay_worker.py`, which hardcodes
-   `SimpleMCTS`), and the claimed 5-10x has no benchmark artifact.
-2. **Fog of war** (gap G10): partly done. Fog is implemented in `MicroCivEnv`
-   (flag, default off) and the encoder; `DeterminizedMCTS`
+1. **Batch self-play in cloud**: wired and tested, but not yet the production
+   path and not yet measured. `BatchGumbelMCTS` (`core/batch_mcts.py`) +
+   `VectorizedMicroCivEnv` drive `cloud/gcp/selfplay_worker.py:run_batch_selfplay()`.
+   **Corrected 2026-08-27:** that path emitted no `action_masks`, and
+   `training_worker.prepare_dataset` substitutes an all-ones mask for a missing
+   key — so every batch-generated sample trained with masked policy loss
+   disabled. Fixed, with the trajectory shape now built by shared helpers
+   (`new_trajectory`/`append_step`) so a path cannot omit a field, and the batch
+   loop committing per-step fields atomically (it previously appended
+   observations before a search that could fail, leaving ragged trajectories the
+   trainer would index past). What remains: no config selects `batch_gumbel`
+   (`--num_parallel_games` now defaults to 1 and warns when parallelism is
+   requested with a variant that cannot use it, rather than silently running
+   sequential), `dockerfiles/Dockerfile.selfplay` entrypoints the *other* worker
+   (`cloud/selfplay_worker.py`, now banner-marked LEGACY — it hardcodes
+   `SimpleMCTS` and nothing but the Makefile/docker-compose builds it), and the
+   claimed 5-10x still has no benchmark artifact.
+2. **Fog of war** (gap G10): partly done, and the remaining items are
+   **sequential, not parallel**. Fog is implemented in `MicroCivEnv` (flag,
+   default off) and the encoder; `DeterminizedMCTS`
    (`multiplayer/determinization.py`) is written and tested but has **zero call
-   sites**. Remaining: wire it into self-play, expose a fog flag from
-   `training_civ6.py`, and fix the action-mask information leak
-   (`envs/microciv.py:843-848` masks the observation but recomputes the mask
-   from unmasked state).
+   sites**. Remaining, in order: (a) fix the action-mask information leak
+   (`envs/microciv.py` masks the observation but recomputes the mask from
+   unmasked state, and `get_valid_actions()` has no fog path at all) — note the
+   fogged mask becomes *over-permissive* for `found_city` next to a hidden enemy
+   city, which the executor then rejects without clearing the unit's moves, so
+   this needs a semantics decision and its own OpenSpec change; (b) expose a fog
+   flag from `training_civ6.py` (the `fog_of_war_enabled` knob in
+   `orchestrator/config.py` and four YAMLs is inert — no consumer builds an env
+   from it); (c) wire `DeterminizedMCTS` into self-play — **blocked on N-player
+   MCTS**: its `search` expects a per-player value dict, which only
+   `NPlayerMCTS.search` returns; `Civ6MCTS`/`GumbelMCTS` return scalars.
 3. **Coverage**: Bring omitted modules (`serving/`, `inference/`, cloud infra) under the gate so it
    can keep tightening (gate re-tightened 80% → 85% on 2026-07-13 at 89.69% measured; omit-list
    shrink is the remaining work); `serving/` now has unit tests but stays omitted (needs the `web` extra,
