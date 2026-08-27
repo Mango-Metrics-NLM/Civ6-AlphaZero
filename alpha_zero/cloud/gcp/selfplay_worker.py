@@ -24,9 +24,12 @@ import logging
 import math
 import sys
 import time
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import torch
+
+if TYPE_CHECKING:
+    import numpy as np
 
 try:
     import psutil
@@ -37,6 +40,7 @@ except ImportError:
     _PSUTIL_AVAILABLE = False
 
 from alpha_zero.cloud.gcp.config import (
+    BATCH_MCTS_TYPE,
     DEFAULT_MCTS_TYPE,
     VALID_MCTS_TYPES,
     GCPConfig,
@@ -471,6 +475,139 @@ def outcome_value_for_player(winner: int | None, player: int) -> float:
     return 1.0 if int(winner) == int(player) else -1.0
 
 
+# --- Trajectory construction -------------------------------------------------
+#
+# All three self-play paths (sequential, MuZero, batch) persist the same base
+# trajectory shape. They previously built it inline, three times over, and the
+# batch path silently omitted ``action_masks`` -- which the trainer then
+# substitutes with an all-ones mask, disabling masked policy loss for every
+# batch-generated sample. These helpers give the shape one definition so a path
+# cannot forget a field.
+#
+# The stored object stays a plain ``dict``: shards are pickled
+# (``gcp/storage.py``) and read back across a rolling window of iterations, so a
+# dataclass here would be a cross-version unpickling hazard.
+
+_TRAJECTORY_FIELDS: tuple[str, ...] = (
+    "spatial",
+    "vector",
+    "action_masks",
+    "policies",
+    "actions",
+    "players",
+)
+
+
+def should_use_batch(args: argparse.Namespace) -> bool:
+    """Whether this invocation runs vectorized (batched) self-play.
+
+    Batching requires **both** more than one parallel game and the batch MCTS
+    variant; it is additionally disabled under ``--dry_run``, which returns
+    synthetic trajectories without building an engine. Any other combination
+    runs sequential self-play, so a parallelism request paired with a
+    non-batch ``mcts_type`` is silently ignored -- ``main`` warns when that
+    happens.
+
+    Args:
+        args: Parsed worker arguments.
+
+    Returns:
+        ``True`` when :func:`run_batch_selfplay` should drive this run.
+    """
+    return (
+        int(getattr(args, "num_parallel_games", 1) or 1) > 1
+        and getattr(args, "mcts_type", DEFAULT_MCTS_TYPE) == BATCH_MCTS_TYPE
+        and not getattr(args, "dry_run", False)
+    )
+
+
+def new_trajectory(algorithm: str | None = None) -> dict[str, Any]:
+    """Create an empty trajectory with every per-step field present.
+
+    Args:
+        algorithm: Optional algorithm tag (e.g. ``"muzero"``) recorded on the
+            trajectory and used by the trainer to select its target builder.
+            MuZero trajectories also carry ``reward_targets``/``value_targets``.
+
+    Returns:
+        A trajectory dict whose per-step lists are all empty.
+    """
+    trajectory: dict[str, Any] = {field: [] for field in _TRAJECTORY_FIELDS}
+    if algorithm == "muzero":
+        trajectory["reward_targets"] = []
+        trajectory["value_targets"] = []
+        trajectory["algorithm"] = algorithm
+    elif algorithm is not None:
+        trajectory["algorithm"] = algorithm
+    return trajectory
+
+
+def append_step(
+    trajectory: dict[str, Any],
+    *,
+    observation: dict[str, np.ndarray],
+    policy: Any,
+    action: int,
+    player: int,
+) -> None:
+    """Append one position to ``trajectory``, writing every per-step field.
+
+    Callers must invoke this only after the search that produced ``policy``
+    has succeeded, so a failed search never leaves the per-step lists ragged
+    (unequal lengths make ``prepare_dataset`` index past the shorter list).
+
+    Args:
+        trajectory: Trajectory from :func:`new_trajectory`, mutated in place.
+        observation: The ``env.get_observation()`` dict for this position,
+            carrying ``spatial``, ``vector`` and ``action_mask``.
+        policy: Search policy for this position (array-like or list).
+        action: The action selected at this position.
+        player: The player to move at this position (see
+            :func:`outcome_value_for_player`).
+    """
+    trajectory["spatial"].append(observation["spatial"].flatten().tolist())
+    trajectory["vector"].append(observation["vector"].flatten().tolist())
+    trajectory["action_masks"].append(observation["action_mask"].flatten().tolist())
+    trajectory["policies"].append(policy.tolist() if hasattr(policy, "tolist") else policy)
+    trajectory["actions"].append(int(action))
+    trajectory["players"].append(int(player))
+
+
+def dummy_trajectory(
+    board_size: int, num_steps: int = 5, algorithm: str | None = None
+) -> dict[str, Any]:
+    """Build one dry-run trajectory matching the real per-step shapes.
+
+    Dimensions come from :class:`NetworkArchitectureConfig` rather than
+    literals so a dry run cannot emit, say, a 100-wide policy against a
+    376-wide action space.
+
+    Args:
+        board_size: Board edge length used for the spatial plane size.
+        num_steps: Number of dummy positions to emit.
+        algorithm: Optional algorithm tag; ``"muzero"`` adds MuZero targets.
+
+    Returns:
+        A fully populated trajectory dict.
+    """
+    trajectory = new_trajectory(algorithm)
+    trajectory["spatial"] = [
+        [0.0] * (_SPATIAL_CHANNELS * board_size * board_size) for _ in range(num_steps)
+    ]
+    trajectory["vector"] = [[0.0] * _VECTOR_DIM for _ in range(num_steps)]
+    trajectory["action_masks"] = [[1.0] * _ACTION_SPACE_SIZE for _ in range(num_steps)]
+    trajectory["policies"] = [
+        [1.0 / _ACTION_SPACE_SIZE] * _ACTION_SPACE_SIZE for _ in range(num_steps)
+    ]
+    trajectory["actions"] = [0] * num_steps
+    trajectory["players"] = [i % 2 for i in range(num_steps)]
+    trajectory["rewards"] = [1.0 if i % 2 == 0 else -1.0 for i in range(num_steps)]
+    if algorithm == "muzero":
+        trajectory["reward_targets"] = [0.0] * num_steps
+        trajectory["value_targets"] = [1.0 if i % 2 == 0 else -1.0 for i in range(num_steps)]
+    return trajectory
+
+
 def run_selfplay(
     model: torch.nn.Module,
     num_games: int,
@@ -521,21 +658,7 @@ def run_selfplay(
     # For dry run, return dummy trajectories without needing actual env/MCTS
     if dry_run:
         logger.info("Dry run: creating dummy trajectories")
-        # MicroCivEncoder.TOTAL_CHANNELS = 13 for spatial encoding
-        spatial_channels = 13
-        vector_dim = 64
-        dummy_trajectories: list[dict[str, Any]] = []
-        for _ in range(num_games):
-            dummy_traj: dict[str, Any] = {
-                "spatial": [[0.0] * (spatial_channels * board_size * board_size) for _ in range(5)],
-                "vector": [[0.0] * vector_dim for _ in range(5)],
-                "policies": [[1.0 / 100] * 100 for _ in range(5)],
-                "actions": [0] * 5,
-                "players": [i % 2 for i in range(5)],
-                "rewards": [1.0 if i % 2 == 0 else -1.0 for i in range(5)],
-            }
-            dummy_trajectories.append(dummy_traj)
-        return dummy_trajectories
+        return [dummy_trajectory(board_size) for _ in range(num_games)]
 
     # Extract temperature params from override before the game loop
     # These are action selection params, not MCTS config fields
@@ -618,14 +741,7 @@ def run_selfplay(
             **mcts_kwargs,
         )
 
-        trajectory: dict[str, Any] = {
-            "spatial": [],
-            "vector": [],
-            "action_masks": [],
-            "policies": [],
-            "actions": [],
-            "players": [],
-        }
+        trajectory: dict[str, Any] = new_trajectory()
 
         env.reset()
         done = False
@@ -658,19 +774,17 @@ def run_selfplay(
                 game_failed = True
                 break  # Skip this game, move to next
 
-            # Store experience - flatten spatial and vector for storage
-            spatial_flat = obs["spatial"].flatten().tolist()
-            vector_flat = obs["vector"].flatten().tolist()
-            action_mask_flat = obs["action_mask"].flatten().tolist()
-            trajectory["spatial"].append(spatial_flat)
-            trajectory["vector"].append(vector_flat)
-            trajectory["action_masks"].append(action_mask_flat)
-            trajectory["policies"].append(policy.tolist() if hasattr(policy, "tolist") else policy)
-            trajectory["actions"].append(int(action))
-            # Player to move at this position. MicroCiv advances current_player
-            # only inside _end_turn, so a player takes many actions per turn and
-            # the acting player cannot be recovered from the step index.
-            trajectory["players"].append(int(env.current_player))
+            # Store experience. Player to move at this position: MicroCiv
+            # advances current_player only inside _end_turn, so a player takes
+            # many actions per turn and the acting player cannot be recovered
+            # from the step index.
+            append_step(
+                trajectory,
+                observation=obs,
+                policy=policy,
+                action=action,
+                player=env.current_player,
+            )
 
             # Take action. The step reward is deliberately not captured: the
             # value target comes from the absolute winner, not from a reward
@@ -766,26 +880,7 @@ def run_muzero_selfplay(
     """
     if dry_run:
         logger.info("Dry run: creating dummy MuZero trajectories")
-        dummy_trajectories: list[dict[str, Any]] = []
-        for _ in range(num_games):
-            num_steps = 5
-            dummy_traj: dict[str, Any] = {
-                "spatial": [
-                    [0.0] * (_SPATIAL_CHANNELS * board_size * board_size) for _ in range(num_steps)
-                ],
-                "vector": [[0.0] * _VECTOR_DIM for _ in range(num_steps)],
-                "policies": [
-                    [1.0 / _ACTION_SPACE_SIZE] * _ACTION_SPACE_SIZE for _ in range(num_steps)
-                ],
-                "actions": [0] * num_steps,
-                "players": [i % 2 for i in range(num_steps)],
-                "rewards": [1.0 if i % 2 == 0 else -1.0 for i in range(num_steps)],
-                "reward_targets": [0.0] * num_steps,
-                "value_targets": [1.0 if i % 2 == 0 else -1.0 for i in range(num_steps)],
-                "algorithm": "muzero",
-            }
-            dummy_trajectories.append(dummy_traj)
-        return dummy_trajectories
+        return [dummy_trajectory(board_size, algorithm="muzero") for _ in range(num_games)]
 
     # Extract temperature params
     sel_temperature = 1.0
@@ -837,17 +932,7 @@ def run_muzero_selfplay(
             **mcts_kwargs,
         )
 
-        trajectory: dict[str, Any] = {
-            "spatial": [],
-            "vector": [],
-            "action_masks": [],
-            "policies": [],
-            "actions": [],
-            "players": [],
-            "reward_targets": [],
-            "value_targets": [],
-            "algorithm": "muzero",
-        }
+        trajectory: dict[str, Any] = new_trajectory(algorithm="muzero")
 
         env.reset()
         done = False
@@ -882,23 +967,19 @@ def run_muzero_selfplay(
                 game_failed = True
                 break
 
-            # Store experience
-            spatial_flat = obs["spatial"].flatten().tolist()
-            vector_flat = obs["vector"].flatten().tolist()
-            action_mask_flat = obs["action_mask"].flatten().tolist()
-            trajectory["spatial"].append(spatial_flat)
-            trajectory["vector"].append(vector_flat)
-            trajectory["action_masks"].append(action_mask_flat)
-            trajectory["policies"].append(policy.tolist() if hasattr(policy, "tolist") else policy)
-            trajectory["actions"].append(int(action))
+            # Store experience (player to move: see outcome_value_for_player).
+            append_step(
+                trajectory,
+                observation=obs,
+                policy=policy,
+                action=action,
+                player=env.current_player,
+            )
 
             # Store value estimate from MCTS root for training targets
             trajectory["value_targets"].append(
                 float(value_estimate) if value_estimate is not None else 0.0
             )
-
-            # Player to move at this position (see outcome_value_for_player).
-            trajectory["players"].append(int(env.current_player))
 
             # Take action
             step_result = env.step(action)
@@ -1042,10 +1123,7 @@ def run_batch_selfplay(
         vec_env.reset_all()
 
         # Initialize per-env trajectory storage
-        batch_trajectories: list[dict[str, Any]] = [
-            {"spatial": [], "vector": [], "policies": [], "actions": [], "players": []}
-            for _ in range(batch_size)
-        ]
+        batch_trajectories: list[dict[str, Any]] = [new_trajectory() for _ in range(batch_size)]
 
         # Track which envs are still active
         active = [True] * batch_size + [False] * (num_parallel_games - batch_size)
@@ -1057,13 +1135,14 @@ def run_batch_selfplay(
             if not active_indices:
                 break
 
-            # Collect observations for active envs before search
-            for i in active_indices:
-                obs = vec_env.get_env(i).get_observation()
-                spatial_flat = obs["spatial"].flatten().tolist()
-                vector_flat = obs["vector"].flatten().tolist()
-                batch_trajectories[i]["spatial"].append(spatial_flat)
-                batch_trajectories[i]["vector"].append(vector_flat)
+            # Collect observations for active envs before search. These are
+            # buffered rather than appended: a failed search below breaks out
+            # of the loop, and appending here would leave spatial/vector longer
+            # than policies/actions/players -- a ragged trajectory that makes
+            # the trainer index past the shorter lists.
+            pending_observations: dict[int, dict[str, np.ndarray]] = {
+                i: vec_env.get_env(i).get_observation() for i in active_indices
+            }
 
             # Get environments for batch search
             envs = [vec_env.get_env(i) for i in active_indices]
@@ -1093,14 +1172,15 @@ def run_batch_selfplay(
                 action = batch_mcts.select_action(action_probs, temperature=temp)
                 actions[env_idx] = action
 
-                # Store policy and action
-                batch_trajectories[env_idx]["policies"].append(
-                    action_probs.tolist() if hasattr(action_probs, "tolist") else action_probs
-                )
-                batch_trajectories[env_idx]["actions"].append(int(action))
-                # Player to move at this position (see outcome_value_for_player).
-                batch_trajectories[env_idx]["players"].append(
-                    int(vec_env.get_env(env_idx).current_player)
+                # Commit the buffered observation together with the search
+                # result, so every per-step field advances in lockstep.
+                # Player to move at this position: see outcome_value_for_player.
+                append_step(
+                    batch_trajectories[env_idx],
+                    observation=pending_observations[env_idx],
+                    policy=action_probs,
+                    action=action,
+                    player=vec_env.get_env(env_idx).current_player,
                 )
 
             # Step all environments
@@ -1274,10 +1354,22 @@ def main() -> int:
 
         # Run self-play (batch, MuZero, or sequential based on configuration)
         start_time = time.time()
-        use_batch = (
-            args.num_parallel_games > 1 and args.mcts_type == "batch_gumbel" and not args.dry_run
-        )
+        use_batch = should_use_batch(args)
         use_muzero = args.mcts_type == "muzero"
+
+        # The worker can be launched standalone, so repeat the orchestrator's
+        # warning here: a parallelism request paired with a non-batch MCTS type
+        # is silently dropped, and the run looks batched while running
+        # sequentially.
+        if args.num_parallel_games > 1 and not use_batch and not use_muzero:
+            logger.warning(
+                "num_parallel_games=%d ignored: vectorized self-play requires "
+                "--mcts_type=%s (got %s)%s. Running sequential self-play.",
+                args.num_parallel_games,
+                BATCH_MCTS_TYPE,
+                args.mcts_type,
+                " and is disabled under --dry_run" if args.dry_run else "",
+            )
 
         if use_muzero:
             # MuZero self-play: load MuZero model and use dynamics-based MCTS

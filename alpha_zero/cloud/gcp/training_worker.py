@@ -582,9 +582,14 @@ def prepare_dataset(
             for i, spatial in enumerate(traj["spatial"]):
                 spatial_list.append(spatial)
                 vector_list.append(traj["vector"][i])
-                # Use stored mask if available; fall back to all-ones (legacy trajectories)
-                if "action_masks" in traj:
-                    action_masks_list.append(traj["action_masks"][i])
+                # Use the stored mask when this position has one; fall back to
+                # all-ones for legacy trajectories. The guard is on length, not
+                # key presence: a game that failed before its first committed
+                # step can carry an empty "action_masks" list, which passes an
+                # `in` check and then indexes out of range.
+                stored_masks = traj.get("action_masks") or []
+                if i < len(stored_masks):
+                    action_masks_list.append(stored_masks[i])
                 else:
                     action_masks_list.append([1.0] * action_space_size)
                 policies.append(traj["policies"][i])
