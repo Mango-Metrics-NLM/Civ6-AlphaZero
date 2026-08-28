@@ -1,32 +1,34 @@
 {
     "last_session_id": "session_01D2xbKx2mGWNXXHnE5Eoohv",
-    "last_timestamp": "2026-08-27T22:40:00Z",
+    "last_timestamp": "2026-08-28T02:50:00Z",
     "active_branch": "claude/next-steps-codebase-review-ir7b0e",
-    "current_focus": "PR #113 (draft): Phase 1 correctness fixes for the cloud self-play and promotion paths, plus the next-steps case doc that motivated them. CI running on 269cd39 at handoff.",
+    "current_focus": "PR #114 (draft): post-#113 follow-ups plus the smoke-test/thread fixes and Validation Iteration Zero, the project's first recorded run. CI green on all seven core jobs at 0c394f9; 8380698 pushed after.",
     "resume_pointers": {
-        "current_task": "Confirm CI green on PR #113, then start the fog-of-war mask-leak PR",
+        "current_task": "Confirm CI green on 8380698, then pick up fog-of-war or the coverage omit-list shrink",
         "blocked_on": [],
         "next_steps": [
-            "Verify CI run 33122315457 (head 269cd39) is green; the coverage job cannot move for these fixes because alpha_zero/cloud/ is coverage-omitted (case doc finding F6)",
-            "Fog-of-war mask leak as its own PR: extract _get_observable_state() used by BOTH get_observation and get_valid_actions (today the mask is recomputed from a second, unmasked _get_game_state()); decide found_city semantics -- the fogged mask is OVER-permissive next to a hidden enemy city and the executor rejects without clearing moves_remaining, so lean on burning the settler's moves as the failed-move path does",
-            "That fog PR needs its own OpenSpec change (behavior, not just a defect fix) and the first test that asserts the mask hides anything -- none exists today",
-            "Batch-vs-sequential benchmark artifact into docs/evidence/batch_selfplay/ (scripts/benchmark_batch_selfplay.py exists but writes nothing committable); note run_batch_selfplay takes no seed, so parity can be compared on schema but not content",
-            "Validation Iteration Zero requires explicit human sign-off per charter NG-7, capped at <=1000 games per CLAUDE.md 3.2",
-            "After merge, run the openspec-archive skill for fix-selfplay-and-promotion-correctness as a separate PR"
+            "Verify CI on head 8380698 (evidence + ledger + evaluate_against_random logging)",
+            "Coverage omit-list shrink as a DRAFT PR: cloud/gcp imports fine without the GCP SDK and CI already runs 1,025 of its tests then discards the data, but it measures 60.0% against the 66.1% needed -- land it as draft and read the real global number off CI before retuning the threshold (the ~85.3% recovery figure is arithmetic on an unverified anchor, inside its own error bar)",
+            "Fog-of-war mask leak: extract _get_observable_state() used by BOTH get_observation and get_valid_actions; still blocked in practice because DeterminizedMCTS and NPlayerMCTS both have zero call sites",
+            "Add a --seed flag to training_civ6.py and seed MicroCivEnv.reset() in the eval path -- the five-probe spread (0.25-0.40 on one checkpoint) is the evidence that this blocks any before/after comparison",
+            "Consider making evaluate_against_random return a draw-aware statistic; only the logging changed, the return value is still wins/num_games for compatibility"
         ]
     },
     "context_files": [
-        "docs/NEXT_STEPS_CASE_2026-08.md",
-        "openspec/changes/fix-selfplay-and-promotion-correctness/design.md",
-        "kb/handoffs/20260827-devsqe-to-prepr-selfplay-promotion-correctness.md",
-        "alpha_zero/cloud/gcp/selfplay_worker.py",
-        "alpha_zero/envs/microciv.py"
+        "docs/evidence/validation_iteration_zero/validation_iteration_zero_report.md",
+        "docs/runbooks/promotion-gate.md",
+        "alpha_zero/utils/device.py",
+        "alpha_zero/training_civ6.py",
+        "kb/handoffs/20260827-devsqe-to-prepr-selfplay-promotion-correctness.md"
     ],
     "known_issues": [
-        "cloud/evaluator.py and cloud/selfplay_worker.py are NOT deployed (cloudbuild builds only Dockerfile.vertex); both now carry LEGACY banners. Changes there are divergence-prevention, not production fixes.",
-        "alpha_zero/cloud/ is entirely coverage-omitted, so none of these fixes move the coverage number -- do not cite coverage as evidence they are tested.",
-        "training_civ6 and distributed.coordinator dry runs are CPU-bound and exceed practical local timeouts; neither imports any module changed here (verified by AST import check).",
-        "run_batch_selfplay accepts no seed while run_selfplay does, so batch/sequential parity tests can compare schema but never content.",
+        "cloud/evaluator.py and cloud/selfplay_worker.py are NOT deployed (cloudbuild builds only Dockerfile.vertex); both carry LEGACY banners.",
+        "alpha_zero/cloud/ is entirely coverage-omitted, so fixes there do not move the coverage number -- do not cite coverage as evidence they are tested.",
+        "RESOLVED 2026-08-28: 'dry runs exceed practical local timeouts' was a symptom of the --dry_run inner-dimension bug and the torch thread pathology. --dry_run now completes in 16.4s. distributed.coordinator --dry_run is still unverified.",
+        "CORRECTED 2026-08-28: Validation Iteration Zero did NOT need NG-7 sign-off; NG-7 governs cloud spend and >1000-game runs. It ran locally on 100 games.",
+        "Batched CPU training still runs at torch's default thread count, ~17x slower than optimal on an oversubscribed VM. Deliberate (real hardware benefits); use OMP_NUM_THREADS=2 per run.",
+        "training_civ6.py has no --seed flag and MicroCivEnv.reset() is unseeded in the eval path, so no run or probe is exactly reproducible.",
+        "run_batch_selfplay now accepts a seed; run_selfplay (training_civ6) still does not.",
         "Encoder transfer gap (carried forward): the Civ6 bridge builds at 84 channels while all training produces 13, so no checkpoint this repo produces will drive the bridge."
     ]
 }
