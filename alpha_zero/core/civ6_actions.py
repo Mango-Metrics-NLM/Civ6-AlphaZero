@@ -19,6 +19,8 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
+from alpha_zero.utils.constants import GAME
+
 # Module-level logger
 logger = logging.getLogger(__name__)
 
@@ -644,9 +646,14 @@ class MicroCivActionSpace:
                 # Found City (only for settlers)
                 if unit.get("type") == "settler":
                     # Check for nearby cities
+                    # Must stay in step with the executor's own check in
+                    # MicroCivEnv._execute_action, which reads the same
+                    # constant. These were a literal 3 here and
+                    # GAME.MIN_CITY_DISTANCE there: identical today, and a
+                    # silent mask/executor divergence the moment one changes.
                     has_nearby_city = any(
-                        abs(c.get("position")[0] - pos[0]) <= 3
-                        and abs(c.get("position")[1] - pos[1]) <= 3
+                        abs(c.get("position")[0] - pos[0]) <= GAME.MIN_CITY_DISTANCE
+                        and abs(c.get("position")[1] - pos[1]) <= GAME.MIN_CITY_DISTANCE
                         for c in cities
                     )
                     if not has_nearby_city:

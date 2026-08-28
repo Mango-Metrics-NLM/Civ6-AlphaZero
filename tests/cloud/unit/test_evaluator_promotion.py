@@ -14,6 +14,8 @@ divergence risk if revived. These tests pin the two properties that matter:
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from alpha_zero.cloud.evaluator import CloudEvaluator, EvaluatorConfig
@@ -157,3 +159,135 @@ class TestEarlyStopIsPolicyConsistent:
         monkeypatch.setenv("CIV6AZ_PROMOTION_POLICY", "score_rate")
         aware_stop, _ = _evaluator(**kwargs)._should_early_stop(wins, losses, draws)
         assert aware_stop is False
+
+
+class TestRunWiringEndToEnd:
+    """Cover ``CloudEvaluator.run()`` itself, which no test executed.
+
+    The promotion wiring added in #113 -- the verdict call, the shadow
+    statistics on ``EvaluationResult``, the structured decision log, and the
+    keys in the returned dict -- all live inside ``run()``. Measured at 0%
+    coverage, so any refactor of that block shipped unverified. These tests
+    stub out model loading and match play so the decision path can be driven
+    directly.
+    """
+
+    def _evaluator(self, record, *, threshold=0.55, monkeypatch=None, num_games=None):
+        """Build an evaluator whose matches replay a fixed W/D/L record."""
+        wins, draws, losses = record
+        total = wins + draws + losses
+        config = EvaluatorConfig(
+            promotion_threshold=threshold,
+            num_games=num_games or total,
+            early_stop_threshold=10**9,  # never early-stop; we want the full record
+        )
+        evaluator = CloudEvaluator(config=config, storage=_CountingStorage())
+
+        # Skip real model loading: run() only needs both models to be present.
+        evaluator._load_models = lambda: True  # type: ignore[method-assign]
+        evaluator._candidate_model = object()  # type: ignore[assignment]
+        evaluator._champion_model = object()  # type: ignore[assignment]
+        evaluator._candidate_version = 2
+        evaluator._champion_version = 1
+
+        outcomes = [True] * wins + [None] * draws + [False] * losses
+        it = iter(outcomes)
+        evaluator._play_match = lambda first: {  # type: ignore[method-assign]
+            "candidate_won": next(it, None)
+        }
+
+        promoted_calls: list[int] = []
+        evaluator._promote_candidate = lambda: promoted_calls.append(1)  # type: ignore[method-assign]
+        return evaluator, promoted_calls
+
+    def test_default_policy_rejects_draw_heavy_record_end_to_end(self) -> None:
+        """The full path, not just the helper, refuses the draw-heavy record."""
+        evaluator, promoted = self._evaluator(_DRAW_HEAVY)
+
+        result = evaluator.run()
+
+        assert result["promoted"] is False
+        assert result["decision"] == "reject"
+        assert promoted == [], "a rejected candidate must not be promoted"
+
+    def test_promotion_path_runs_and_records(self) -> None:
+        """A genuine winner promotes, and the saved record says so."""
+        evaluator, promoted = self._evaluator((80, 0, 20))
+
+        result = evaluator.run()
+
+        assert result["promoted"] is True
+        assert result["decision"] == "promote"
+        assert promoted == [1], "a promoted candidate must call _promote_candidate"
+        saved = evaluator.storage.saved
+        assert len(saved) == 1
+        assert saved[0].promoted is True
+
+    def test_decision_string_is_the_enum_value_not_its_repr(self) -> None:
+        """``decision`` must be comparable to PromotionDecision values.
+
+        ``PromotionDecision`` is a ``(str, Enum)``, not a ``StrEnum``, so
+        ``str(...)`` yields "PromotionDecision.PROMOTE". A consumer comparing
+        against ``.value`` would never match.
+        """
+        from alpha_zero.evaluation.scoring import PromotionDecision
+
+        evaluator, _ = self._evaluator((80, 0, 20))
+        result = evaluator.run()
+
+        assert result["decision"] == PromotionDecision.PROMOTE.value
+        assert "PromotionDecision" not in result["decision"]
+
+    def test_inconclusive_does_not_promote_and_stays_distinguishable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An interval policy's "not enough evidence" is not a rejection.
+
+        ``PromotionVerdict.promoted`` collapses INCONCLUSIVE to False, which is
+        correct — but the distinction must survive into the reported result, or
+        an under-powered evaluation is indistinguishable from a candidate that
+        genuinely lost. It matters downstream: the stagnation counter reads
+        ``promoted``, so an inconclusive run would otherwise be counted as a
+        non-promotion.
+        """
+        monkeypatch.setenv("CIV6AZ_PROMOTION_POLICY", "score_rate_lower_bound")
+        monkeypatch.setenv("CIV6AZ_PROMOTION_MIN_GAMES", "1000")
+
+        evaluator, promoted = self._evaluator((6, 0, 4), threshold=0.55)
+        result = evaluator.run()
+
+        assert result["promotion_policy"] == "score_rate_lower_bound"
+        assert result["decision"] == "inconclusive"
+        assert result["promoted"] is False
+        assert promoted == [], "an inconclusive verdict must not promote"
+
+    def test_shadow_statistics_are_persisted(self) -> None:
+        """score_rate reaches the saved record; CI bounds keep their meaning."""
+        evaluator, _ = self._evaluator(_DRAW_HEAVY)
+
+        result = evaluator.run()
+        saved = evaluator.storage.saved[0]
+
+        wins, draws, losses = _DRAW_HEAVY
+        assert saved.score_rate == pytest.approx(score_rate(wins, draws, losses))
+        assert result["score_rate"] == pytest.approx(saved.score_rate)
+        # Under the default point-estimate policy the summary still computes a
+        # diagnostic interval, so these are floats -- but None is a legal value
+        # for other policies and must never be read as 0.0.
+        for bound in (saved.ci_low, saved.ci_high):
+            assert bound is None or isinstance(bound, float)
+
+    def test_evaluation_result_survives_json_round_trip(self) -> None:
+        """A None CI bound must not become 0.0 through serialization."""
+        from alpha_zero.storage.models import EvaluationResult
+
+        evaluator, _ = self._evaluator((80, 0, 20))
+        evaluator.run()
+        saved = evaluator.storage.saved[0]
+
+        restored = EvaluationResult.from_dict(json.loads(saved.to_json()))
+
+        assert restored.promoted == saved.promoted
+        assert restored.score_rate == pytest.approx(saved.score_rate)
+        assert restored.ci_low == saved.ci_low
+        assert restored.ci_high == saved.ci_high

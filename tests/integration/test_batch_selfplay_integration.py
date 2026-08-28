@@ -345,6 +345,46 @@ class TestBatchActionMasks:
             "(1.0 means masking is effectively disabled)"
         )
 
+    @pytest.mark.timeout(60)
+    def test_terminates_when_a_batch_makes_no_progress(self, small_model, monkeypatch):
+        """A batch that produces nothing must stop the run, not repeat forever.
+
+        The outer loop's only advance is ``games_completed += batch_games``. A
+        deterministic failure on a batch's *first* search leaves ``batch_games``
+        at zero, so the identical batch would be retried indefinitely -- on a
+        cloud worker, a job burning GPU hours in silence.
+
+        The sibling alignment test below deliberately fails on the *second*
+        call, because it needs a committed step to go ragged from. That is the
+        right shape for what it asserts, and it is also why it cannot see this:
+        its first batch always succeeds and the loop always advances.
+        """
+        from alpha_zero.cloud.gcp.selfplay_worker import run_batch_selfplay
+        from alpha_zero.core.batch_mcts import BatchGumbelMCTS
+
+        def always_fails(self, envs, add_noise=False):
+            raise RuntimeError("induced deterministic search failure")
+
+        monkeypatch.setattr(BatchGumbelMCTS, "batch_search", always_fails)
+
+        # The timeout mark is the real assertion: before the no-progress guard
+        # this call never returned.
+        trajectories = run_batch_selfplay(
+            model=small_model,
+            num_games=4,
+            mcts_sims=_MCTS_SIMS,
+            board_size=_BOARD_SIZE,
+            max_turns=_MAX_TURNS,
+            num_parallel_games=2,
+            max_batch_size=_MAX_BATCH_SIZE,
+            gumbel_num_actions=_GUMBEL_ACTIONS,
+            device="cpu",
+        )
+
+        assert trajectories == [], (
+            f"a run whose every search failed should yield no trajectories, got {len(trajectories)}"
+        )
+
     @pytest.mark.timeout(120)
     def test_trajectories_stay_aligned_when_search_fails(self, small_model, monkeypatch):
         """A mid-game search failure must not leave per-step fields ragged.
@@ -423,14 +463,15 @@ class TestBatchGamesReachTheirOwnEnd:
             max_batch_size=_MAX_BATCH_SIZE,
             gumbel_num_actions=2,
             device="cpu",
+            seed=17,
         )
 
         assert trajectories, "batch self-play produced no trajectories"
         lengths = [len(t["spatial"]) for t in trajectories]
-        assert all(n != max_turns for n in lengths), (
-            f"trajectory length exactly equals max_turns {lengths} — the loop is "
-            "capping on action steps again, not letting the environment finish"
-        )
+        # Deliberately only the inequality: a game can legitimately end at
+        # exactly max_turns steps, so asserting no length equals it would fail
+        # on a valid outcome. Exceeding the turn limit in *steps* is the real
+        # signal, since a game turn spans several actions.
         assert max(lengths) > max_turns, (
             f"no trajectory exceeded {max_turns} steps {lengths}; a game turn "
             "spans several actions, so real games are longer than the turn limit"
@@ -445,8 +486,12 @@ class TestBatchGamesReachTheirOwnEnd:
         """
         from alpha_zero.cloud.gcp.selfplay_worker import run_batch_selfplay
 
+        # Seeded: this asserts on game *outcomes*, so an unseeded version would
+        # be a test whose pass depends on how the dice fell. Several seeds are
+        # tried because a single seed can legitimately produce an all-draw
+        # batch; what must not happen is every game of every batch drawing.
         rewards: set[float] = set()
-        for _ in range(3):
+        for seed in (11, 23, 42):
             for traj in run_batch_selfplay(
                 model=small_model,
                 num_games=2,
@@ -457,6 +502,7 @@ class TestBatchGamesReachTheirOwnEnd:
                 max_batch_size=_MAX_BATCH_SIZE,
                 gumbel_num_actions=2,
                 device="cpu",
+                seed=seed,
             ):
                 rewards.update(traj["rewards"])
             if rewards - {0.0}:

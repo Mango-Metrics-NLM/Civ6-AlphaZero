@@ -1072,6 +1072,7 @@ def run_batch_selfplay(
     temperature: float = 1.0,
     temperature_threshold: int = 30,
     gameplay_preset: str = "default",
+    seed: int | None = None,
 ) -> list[dict]:
     """Run batch self-play games using BatchGumbelMCTS and vectorized environments.
 
@@ -1091,6 +1092,12 @@ def run_batch_selfplay(
         temperature_schedule: Temperature decay schedule type.
         temperature: Base temperature for action selection.
         temperature_threshold: Turn for temperature=0 (threshold schedule).
+        gameplay_preset: Gameplay preset name.
+        seed: Base RNG seed. Environment ``i`` is seeded with ``seed + i``,
+            matching the sequential path's ``seed + game_idx`` convention;
+            ``None`` leaves them unseeded. This seeds the environments only --
+            see the note at the config construction below about the global RNG
+            that Gumbel action sampling draws from.
 
     Returns:
         List of trajectory dictionaries (same format as run_selfplay).
@@ -1110,11 +1117,19 @@ def run_batch_selfplay(
     )
 
     # Create vectorized environment
+    # Seed the environments so a batch run is reproducible, matching the
+    # sequential path's `seed + game_idx` convention (env i gets seed + i).
+    #
+    # Two caveats worth knowing: VectorizedEnvConfig treats seed_offset == 0 as
+    # "unseeded", so --seed 0 means no seed; and the environments are only half
+    # the randomness -- gumbel_sample_actions draws from the *global* numpy RNG,
+    # so a caller wanting full reproducibility must seed that too.
     env_config = VectorizedEnvConfig(
         num_envs=num_parallel_games,
         board_size=board_size,
         max_turns=max_turns,
         gameplay_preset=gameplay_preset,
+        seed_offset=0 if seed is None else seed,
     )
     vec_env = VectorizedMicroCivEnv(config=env_config)
 
@@ -1277,6 +1292,23 @@ def run_batch_selfplay(
 
         games_completed += batch_games
         batch_elapsed = time.time() - batch_start
+
+        # A batch that produced nothing has made no progress, and the outer
+        # loop's only advance is games_completed += batch_games -- so a
+        # deterministic failure (a checkpoint whose architecture the search
+        # cannot run, an OOM, a shape mismatch) would re-run the identical
+        # batch forever. On a cloud worker that is a job burning GPU hours in
+        # silence. Stop and return what was collected instead.
+        if batch_games == 0:
+            logger.error(
+                "Batch %d produced no trajectories; every game in it failed or "
+                "collected no positions. Stopping after %d/%d games rather than "
+                "retrying an identical batch indefinitely.",
+                batch_num,
+                games_completed,
+                num_games,
+            )
+            break
 
         logger.info(
             "Batch %d: %d games in %.1fs (%.1f games/min), total %d/%d",
