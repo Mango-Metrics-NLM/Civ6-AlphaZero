@@ -30,17 +30,30 @@ Read `kb/sessions/dev-sqe.state.json` to understand the current task and progres
 This is a gate, not a formality: a `DEV-SQE-HANDOFF` must not be emitted unless
 lint and types are clean and the touched tests pass. Run and capture:
 ```bash
-pytest tests/unit/ -v --tb=short 2>&1 | tail -20
-pytest --cov=alpha_zero --cov-report=term-missing 2>&1 | tail -10
-ruff check alpha_zero/ 2>&1
-mypy alpha_zero/ --ignore-missing-imports 2>&1 | tail -20
+make verify          # lint + format + types + the suites CI runs + validators
+make test-all        # coverage, mirroring CI's coverage job (gate: 85%)
 ```
 
+`make verify` is the single definition of the gate — see the `verify` skill.
+Do not hand-assemble the sequence here: the version that used to live in this
+file ran `ruff check alpha_zero/` (CI checks the whole repo and also runs
+`ruff format --check`), `mypy --ignore-missing-imports` (CI passes no such
+flag), coverage with no threshold, and none of the sanity, cloud, security or
+governance suites. Passing it did not imply passing CI.
+
 For a focused change, also run the specific touched modules
-(`pytest tests/unit/<file>.py -q`) and `mypy` on the changed files. If the
-environment cannot run the suite (e.g. a missing heavy dependency), say so
-explicitly in the handoff and flag that CI must be the gate — do not silently
-claim green. Include pass/fail counts and coverage percentage in the handoff.
+(`pytest tests/unit/<file>.py -q`). If the environment cannot run the suite
+(e.g. a missing heavy dependency), say so explicitly in the handoff and flag
+that CI must be the gate — do not silently claim green. Include pass/fail
+counts in the handoff.
+
+**Coverage honesty:** `alpha_zero/cloud/*` is in the coverage omit list, so
+changes confined to the cloud path cannot move the coverage number. Say that
+plainly rather than reporting an unchanged percentage as if it were evidence.
+
+**When adding a regression test for a bug you just fixed, run the
+`negative-control` skill** and record the result. A test that has never been
+seen to fail is not yet known to discriminate.
 
 ### 4. Write Summary
 

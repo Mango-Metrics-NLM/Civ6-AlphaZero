@@ -21,8 +21,15 @@ case "$rel" in
   kb/*)
     python3 scripts/validate_kb.py --path "$rel" --quiet || exit 2
     ;;
-  .claude/skills/*)
+  .claude/skills/*|.agents/skills/*)
     python3 scripts/validate_skills.py --path "$rel" --quiet || exit 2
+    ;;
+  CLAUDE.md|README.md|CONTRIBUTING.md|CHANGELOG.md|ROADMAP.md|docs/*|pyproject.toml|alpha_zero/__init__.py|setup.py)
+    # Documentation drift is otherwise caught only by CI, so it lives in the
+    # tree for a whole session. This validator has no --path mode (its checks
+    # are cross-file by nature) but a whole-repo run costs ~100ms, which is
+    # affordable at edit time.
+    python3 scripts/check_doc_sync.py --quiet || exit 2
     ;;
 esac
 exit 0

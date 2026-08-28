@@ -3,7 +3,7 @@
 > **Themes, not dates.** Milestone *detail* changes here; the charter
 > ([`PROJECT_CHARTER.md`](PROJECT_CHARTER.md) §5) only names the themes and is amended
 > far more rarely. Tactical, changeable to-dos live in [`NEXT_STEPS.md`](NEXT_STEPS.md)
-> and its reconciliation, [`docs/NEXT_STEPS_ANALYSIS_2026-07.md`](docs/NEXT_STEPS_ANALYSIS_2026-07.md).
+> and its reconciliation, [`docs/NEXT_STEPS_CASE_2026-08.md`](docs/NEXT_STEPS_CASE_2026-08.md).
 > What actually shipped is recorded in [`CHANGELOG.md`](CHANGELOG.md).
 
 | Theme | Name | Status |
@@ -52,9 +52,16 @@ Make N-player training real and self-play fast; pay down debt. *(Active.)*
   `--num_players` / `--scoring_method`; Max-N backprop and opponent modeling in
   self-play remain).
 - Wire `BatchGumbelMCTS` + `VectorizedMicroCivEnv` into the cloud containers
-  (5–10× self-play throughput).
-- Land the champion-load fix on the cloud training path (PR #72) and re-run the
-  convergence gate.
+  (5–10× self-play throughput). The wiring exists in `cloud/gcp/selfplay_worker.py`
+  and is tested; what remains is a config that selects it and a measured
+  benchmark — the 5–10× figure is a target, not an observation. Batch
+  trajectories omitted `action_masks` until 2026-08-27, so any data generated
+  by this path before then trained with masked policy loss disabled.
+- ~~Land the champion-load fix on the cloud training path (PR #72)~~ *(landed;
+  the mechanism changed — `--model_version` was removed in favour of
+  `--resume_from=latest`, which resolves the incumbent from GCS in
+  `vertex_orchestrator._resolve_resume_token`)*. Re-running the convergence gate
+  is still open, and now also needs to cover the 2026-08-24 value-sign fix.
 - ~~Finish the W&B → MLflow sweep~~ *(done 2026-07-13: SDK swap verified complete,
   configs/toggles unified with legacy env fallback, dead suites replaced by MLflow
   equivalents; `run_sweep.py` ported to Optuna)*; add fixtures for the skipped

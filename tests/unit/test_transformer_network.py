@@ -717,10 +717,14 @@ class TestTransformerIntegration:
         network = create_transformer_network(model_size="tiny")
         optimizer = torch.optim.Adam(network.parameters(), lr=0.001)
 
-        # Generate batch
+        # Generate batch. The policy width comes from the network rather than a
+        # literal: this asserted 4x381, the value the module's own config warns
+        # is "a known incorrect value" (MicroCivEnv uses 376), so the test both
+        # encoded the bug and blocked its correction.
+        action_space_size = network.config.action_space_size
         spatial = torch.randn(4, 13, 16, 16)
         vector = torch.randn(4, 64)
-        target_policy = F.softmax(torch.randn(4, 381), dim=-1)
+        target_policy = F.softmax(torch.randn(4, action_space_size), dim=-1)
         target_value = torch.randn(4)
 
         # Forward pass

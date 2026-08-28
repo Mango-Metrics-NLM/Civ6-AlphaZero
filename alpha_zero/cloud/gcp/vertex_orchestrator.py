@@ -40,7 +40,9 @@ if TYPE_CHECKING:
     from alpha_zero.cloud.gcp.orchestrator_state import OrchestratorState
 
 from alpha_zero.cloud.gcp.config import (
+    BATCH_MCTS_TYPE,
     DEFAULT_MCTS_TYPE,
+    MUZERO_MCTS_TYPE,
     VALID_MCTS_TYPES,
     GCPConfig,
     NetworkArchitectureConfig,
@@ -210,11 +212,19 @@ def parse_args() -> argparse.Namespace:
     )
 
     # Vectorized self-play (opt-in, requires batch_gumbel MCTS)
+    #
+    # Default is 1 (sequential). It was 4, which combined with the default
+    # --mcts_type=gumbel to fail the worker's batch dispatch gate: every
+    # unflagged run advertised vectorized self-play and silently ran
+    # sequential. 1 is what those runs actually did.
     parser.add_argument(
         "--num_parallel_games",
         type=int,
-        default=4,
-        help="Number of parallel games per worker (1=sequential, >1=vectorized)",
+        default=1,
+        help=(
+            f"Number of parallel games per worker (1=sequential; >1 requires "
+            f"--mcts_type={BATCH_MCTS_TYPE} and is otherwise ignored)"
+        ),
     )
     parser.add_argument(
         "--max_batch_size",
@@ -870,6 +880,88 @@ def resolve_evaluation_threshold(args: argparse.Namespace) -> float:
     return PromotionConfig().threshold
 
 
+def resolve_effective_mcts_type(args: argparse.Namespace) -> str:
+    """The MCTS variant the self-play worker will actually receive.
+
+    ``--algorithm=muzero`` overrides ``--mcts_type`` when the worker arguments
+    are built, so reading ``args.mcts_type`` directly gives the user's input
+    rather than what runs -- and any advice derived from it can be wrong.
+
+    Args:
+        args: Parsed orchestrator arguments.
+
+    Returns:
+        The effective MCTS variant name.
+    """
+    if getattr(args, "algorithm", None) == MUZERO_MCTS_TYPE:
+        return MUZERO_MCTS_TYPE
+    return str(getattr(args, "mcts_type", DEFAULT_MCTS_TYPE))
+
+
+def warn_on_ignored_parallelism(args: argparse.Namespace) -> bool:
+    """Warn when vectorized self-play is requested but will not run.
+
+    The self-play worker dispatches to the batch path only when
+    ``num_parallel_games > 1`` **and** ``mcts_type`` is
+    :data:`~alpha_zero.cloud.gcp.config.BATCH_MCTS_TYPE`. Any other
+    combination silently runs sequential self-play while still forwarding
+    ``--num_parallel_games``, so the run looks batch-configured and is not.
+
+    This only warns; it deliberately does not rewrite ``args.mcts_type``.
+    That namespace is shared with the evaluation, arena and tournament
+    phases, so a rewrite here would change the search algorithm those phases
+    use as a side effect of a self-play setting.
+
+    Args:
+        args: Parsed orchestrator arguments.
+
+    Returns:
+        ``True`` when a warning was emitted (the request will be ignored).
+    """
+    num_parallel = int(getattr(args, "num_parallel_games", 1) or 1)
+    mcts_type = resolve_effective_mcts_type(args)
+
+    if mcts_type == MUZERO_MCTS_TYPE:
+        # MuZero's self-play path takes no num_parallel_games at all, so a
+        # parallelism request is dropped just as completely here as anywhere
+        # else. Previously exempted, which left the one case the fix was for.
+        if num_parallel > 1:
+            logger.warning(
+                "num_parallel_games=%d ignored: MuZero self-play is sequential "
+                "and has no vectorized path.",
+                num_parallel,
+            )
+            return True
+        return False
+
+    if num_parallel > 1 and mcts_type != BATCH_MCTS_TYPE:
+        logger.warning(
+            "num_parallel_games=%d requested but mcts_type=%s: vectorized "
+            "self-play runs only with --mcts_type=%s, so this run will use "
+            "sequential self-play. Pass --mcts_type=%s to enable batching.",
+            num_parallel,
+            mcts_type,
+            BATCH_MCTS_TYPE,
+            BATCH_MCTS_TYPE,
+        )
+        return True
+
+    if mcts_type == BATCH_MCTS_TYPE and num_parallel <= 1:
+        # The inverse mistake, and the likelier one now that the default is 1:
+        # batch MCTS driving a single environment pays the batching overhead
+        # with none of the benefit.
+        logger.warning(
+            "mcts_type=%s with num_parallel_games=%d runs batched search over a "
+            "single environment -- all of the overhead, none of the throughput. "
+            "Pass --num_parallel_games>1 to actually batch.",
+            BATCH_MCTS_TYPE,
+            num_parallel,
+        )
+        return True
+
+    return False
+
+
 def run_evaluation_phase(
     config: GCPConfig,
     client: VertexAIClient,
@@ -1461,6 +1553,9 @@ def main() -> int:
     # Resolve the promotion threshold once: explicit CLI > CIV6AZ_ env > default.
     # Every later read of args.evaluation_win_threshold sees the same float.
     args.evaluation_win_threshold = resolve_evaluation_threshold(args)
+
+    # Surface a parallelism request the self-play worker would silently drop.
+    warn_on_ignored_parallelism(args)
 
     # ARCHITECTURE GUARD: Detect if we're inside a Vertex AI container.
     # Vertex AI sets CLOUD_ML_JOB_ID for all custom jobs.  The orchestrator

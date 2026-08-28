@@ -577,14 +577,91 @@ class TestMain:
 class TestSelfplayActionMaskStorage:
     """Tests that selfplay trajectories include action_masks."""
 
-    def test_trajectory_dict_has_action_masks_key(self) -> None:
-        """run_selfplay trajectories must include 'action_masks' key."""
-        import inspect
+    def test_new_trajectory_declares_action_masks(self) -> None:
+        """Every self-play path starts from a trajectory that has the field.
 
-        import alpha_zero.cloud.gcp.selfplay_worker as sw
+        This used to grep ``run_selfplay``'s source text for the string
+        "action_masks" -- a check that could pass while the value was never
+        stored, and that broke as soon as the append moved behind a shared
+        helper. All three paths now build their trajectory here, so asserting
+        on the constructor covers each of them behaviorally.
+        """
+        from alpha_zero.cloud.gcp.selfplay_worker import new_trajectory
 
-        # Check that 'action_masks' appears in the run_selfplay source code
-        src = inspect.getsource(sw.run_selfplay)
-        assert "action_masks" in src, (
-            "run_selfplay must initialize and store action_masks in trajectory dict"
+        assert "action_masks" in new_trajectory()
+        assert "action_masks" in new_trajectory(algorithm="muzero")
+
+    def test_append_step_stores_the_mask(self) -> None:
+        """A committed step records the observation's action mask verbatim."""
+        import numpy as np
+
+        from alpha_zero.cloud.gcp.selfplay_worker import append_step, new_trajectory
+
+        trajectory = new_trajectory()
+        mask = np.array([1.0, 0.0, 1.0], dtype=np.float32)
+        append_step(
+            trajectory,
+            observation={
+                "spatial": np.zeros((1, 2, 2), dtype=np.float32),
+                "vector": np.zeros(3, dtype=np.float32),
+                "action_mask": mask,
+            },
+            policy=np.array([0.5, 0.0, 0.5], dtype=np.float32),
+            action=0,
+            player=1,
         )
+
+        assert trajectory["action_masks"] == [[1.0, 0.0, 1.0]]
+        # Every per-step field advances together, so nothing can go ragged.
+        assert {
+            len(trajectory[f])
+            for f in ("spatial", "vector", "action_masks", "policies", "actions", "players")
+        } == {1}
+
+    def test_append_step_is_all_or_nothing(self) -> None:
+        """A malformed observation must not leave the trajectory ragged.
+
+        The helper exists to make unequal per-step field lengths
+        unrepresentable. Appending field by field would defeat that: a missing
+        "action_mask" would raise only after spatial and vector had already
+        been written, producing exactly the ragged state the trainer indexes
+        past.
+        """
+        import numpy as np
+
+        from alpha_zero.cloud.gcp.selfplay_worker import append_step, new_trajectory
+
+        trajectory = new_trajectory()
+        with pytest.raises(KeyError):
+            append_step(
+                trajectory,
+                observation={
+                    "spatial": np.zeros((1, 2, 2), dtype=np.float32),
+                    "vector": np.zeros(3, dtype=np.float32),
+                    # no "action_mask"
+                },
+                policy=[1.0],
+                action=0,
+                player=0,
+            )
+
+        assert all(len(values) == 0 for values in trajectory.values()), (
+            f"partial write left the trajectory ragged: "
+            f"{ {k: len(v) for k, v in trajectory.items()} }"
+        )
+
+    def test_dry_run_trajectories_carry_masks(self) -> None:
+        """Dry runs must produce the same shape as real self-play.
+
+        A dry-run trajectory previously carried a 100-wide policy against a
+        376-wide action space and no mask at all.
+        """
+        from alpha_zero.cloud.gcp.config import NetworkArchitectureConfig
+        from alpha_zero.cloud.gcp.selfplay_worker import dummy_trajectory
+
+        expected_width = NetworkArchitectureConfig().action_space_size
+        for algorithm in (None, "muzero"):
+            traj = dummy_trajectory(board_size=8, algorithm=algorithm)
+            assert len(traj["action_masks"][0]) == expected_width
+            assert len(traj["policies"][0]) == expected_width
+            assert len(traj["action_masks"]) == len(traj["spatial"])

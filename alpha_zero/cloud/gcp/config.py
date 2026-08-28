@@ -46,6 +46,19 @@ VALID_MCTS_TYPES: tuple[str, ...] = ("civ6", "gumbel", "batch_gumbel", "muzero")
 # Default MCTS type when none is specified.
 DEFAULT_MCTS_TYPE: str = "gumbel"
 
+# The only MCTS variant that drives vectorized (batched) self-play. The
+# self-play worker dispatches to the batch path solely on this value, so the
+# orchestrator and the worker must agree on it -- hence one constant rather
+# than the string literal both previously carried.
+BATCH_MCTS_TYPE: str = "batch_gumbel"
+
+# MuZero has its own self-play path (dynamics-based search, no env cloning) and
+# does not support vectorized batching. Named for the same reason as the batch
+# variant above: several modules compare against it.
+# (Do not start a comment line with "# type:" here -- mypy reads that as a type
+# comment and reports a syntax error.)
+MUZERO_MCTS_TYPE: str = "muzero"
+
 
 def get_gpu_costs() -> dict[str, float]:
     """Get GPU costs, allowing env-var overrides.

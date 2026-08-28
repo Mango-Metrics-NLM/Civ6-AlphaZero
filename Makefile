@@ -103,9 +103,17 @@ lint-check:
 	ruff check .
 	ruff format --check .
 
+# Matches the CI `lint` job exactly. Use `typecheck-strict` for the harsher
+# local pass -- CI does NOT run --strict, so a --strict failure is not a gate.
+# Invoked as `python -m mypy` because a mypy resolved from an isolated tool venv
+# cannot see this project's installed type stubs and reports phantom errors.
 .PHONY: typecheck
 typecheck:
-	mypy alpha_zero/ --strict
+	$(PYTHON) -m mypy alpha_zero/ --show-error-codes
+
+.PHONY: typecheck-strict
+typecheck-strict:
+	$(PYTHON) -m mypy alpha_zero/ --strict
 
 .PHONY: test-unit
 test-unit:
@@ -115,28 +123,67 @@ test-unit:
 test-integration:
 	pytest tests/integration/ -v --tb=short
 
+# Mirrors the CI `coverage` job: same suites, same marker filter, same gate.
+# It previously ran the whole tests/ tree at --cov-fail-under=80 while CI used
+# 85 over a narrower set, so passing locally proved nothing about CI.
 .PHONY: test-all
 test-all:
-	pytest tests/ -v --cov=alpha_zero --cov-report=term-missing --cov-report=html --cov-fail-under=80
+	pytest tests/unit/ tests/sanity/ tests/integration/ tests/cloud/unit/ \
+		-m "not slow and not requires_env" \
+		--ignore=tests/unit/test_distributed \
+		--cov=alpha_zero --cov-report=term-missing --cov-report=html \
+		--cov-fail-under=85
 
 .PHONY: test-storage
 test-storage:
 	pytest tests/unit/test_storage_backend.py tests/unit/test_replay_buffer.py -v
 
+.PHONY: test-sanity
+test-sanity:
+	pytest tests/sanity/ -v --tb=short
+
+.PHONY: test-cloud
+test-cloud:
+	pytest tests/cloud/unit/ -v --tb=short
+
+.PHONY: test-security
+test-security:
+	pytest tests/security/ -v --tb=short
+
+.PHONY: test-governance
+test-governance:
+	pytest -c tests/governance/pytest.ini --confcutdir=tests/governance tests/governance
+
+# The suites CI runs, in CI's order and with CI's marker filters.
 .PHONY: test
-test: test-unit
+test:
+	pytest tests/unit/ -v --tb=short -x -m "not slow"
+	pytest tests/sanity/ -v --tb=short
+	pytest tests/integration/ -v --tb=short -m "not slow and not requires_env" -x
+	pytest tests/cloud/unit/ -v --tb=short -x
 
 .PHONY: validate
 validate:
 	$(PYTHON) scripts/validate_openspec.py
-	$(PYTHON) scripts/validate_kb.py
+	$(PYTHON) scripts/validate_kb.py --git
 	$(PYTHON) scripts/validate_skills.py
 	$(PYTHON) scripts/check_doc_sync.py
 
+# Self-installing: pre-commit is not a declared dependency, so the bare
+# `pre-commit install` this used to run failed on a clean checkout and left
+# .pre-commit-config.yaml (including the doc-sync and KB gates) entirely inert.
 .PHONY: hooks-install
 hooks-install:
-	pre-commit install --install-hooks
-	pre-commit install --hook-type pre-push
+	$(PYTHON) -m pip install --quiet pre-commit
+	$(PYTHON) -m pre_commit install --install-hooks
+	$(PYTHON) -m pre_commit install --hook-type pre-push
+
+# One command that reproduces every CI gate, in CI's order. The handoff skills
+# and any pre-PR check should call this rather than restating the sequence --
+# six hand-assembled invocations is how the local and CI gates drifted apart.
+.PHONY: verify
+verify: lint-check typecheck test test-security test-governance validate
+	@echo "verify: all CI gates reproduced locally"
 
 .PHONY: eval-llm
 eval-llm:

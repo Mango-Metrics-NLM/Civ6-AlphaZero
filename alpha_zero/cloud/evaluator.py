@@ -1,5 +1,16 @@
 """Cloud-native model evaluator for Vertex AI.
 
+.. warning::
+
+   **LEGACY -- not the deployed evaluation path.** ``cloudbuild.yaml`` builds
+   only ``dockerfiles/Dockerfile.vertex``, whose entrypoint routes through
+   ``alpha_zero.cloud.gcp.entrypoint``. This module is reached only by
+   ``dockerfiles/Dockerfile.evaluator``, which nothing but the ``Makefile``
+   and ``docker-compose.yml`` (local development) builds. The deployed
+   promotion decision lives in ``alpha_zero/cloud/gcp/vertex_orchestrator.py``
+   (``resolve_promotion``). Changes here do not affect production; they keep
+   this path from diverging if it is ever revived.
+
 Compares candidate models against the current champion using
 head-to-head matches.
 
@@ -16,6 +27,9 @@ Environment Variables:
     CIV6_EVAL_GAMES: Number of evaluation games
     CIV6_PROMOTION_THRESHOLD: Win rate required for promotion
     CIV6_DEVICE: PyTorch device (cuda/cpu)
+    CIV6AZ_PROMOTION_POLICY: Promotion policy name (default ``legacy_win_rate``,
+        which reproduces the historical ``wins / total`` gate exactly). See
+        ``alpha_zero/evaluation/promotion.py`` for the registry.
 """
 
 from __future__ import annotations
@@ -32,6 +46,12 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import torch
 
+from alpha_zero.evaluation.promotion import (
+    PromotionConfig,
+    PromotionVerdict,
+    evaluate_promotion,
+    log_promotion_decision,
+)
 from alpha_zero.storage import StorageConfig, create_storage_backend
 from alpha_zero.storage.models import EvaluationResult, ModelMetadata
 from alpha_zero.utils.compat import UTC
@@ -141,6 +161,13 @@ class CloudEvaluator:
         self.storage = storage
 
         self.device = torch.device(config.device if torch.cuda.is_available() else "cpu")
+
+        # One promotion config for both the early-stop check and the final
+        # gate, so they can never measure different statistics. The threshold
+        # comes from this evaluator's own config (preserving --promotion_threshold
+        # and CIV6_PROMOTION_THRESHOLD precedence); policy/confidence/min_games
+        # resolve from CIV6AZ_PROMOTION_* via PromotionConfig's field defaults.
+        self._promotion_config = PromotionConfig(threshold=config.promotion_threshold)
 
         self._candidate_model: MicroCivNetwork | None = None
         self._champion_model: MicroCivNetwork | None = None
@@ -295,6 +322,54 @@ class CloudEvaluator:
             "candidate_played_first": candidate_plays_first,
         }
 
+    def _promotion_verdict(
+        self,
+        candidate_wins: int,
+        champion_wins: int,
+        draws: int,
+    ) -> PromotionVerdict:
+        """Score a head-to-head record under the configured promotion policy.
+
+        The single place this class decides anything about promotion, so the
+        early-stop heuristic and the final gate cannot drift apart.
+
+        Note the argument order: this class counts
+        ``(candidate_wins, champion_wins, draws)`` while the policy signature is
+        ``(wins, draws, losses)``. The mapping below is by keyword precisely
+        because a positional call would transpose draws and losses silently.
+
+        Args:
+            candidate_wins: Games the candidate won.
+            champion_wins: Games the champion won (losses, from the candidate's view).
+            draws: Drawn games.
+
+        Returns:
+            The policy's verdict, carrying the decision, statistic and summary.
+        """
+        return evaluate_promotion(
+            wins=candidate_wins,
+            draws=draws,
+            losses=champion_wins,
+            config=self._promotion_config,
+        )
+
+    def _promotion_statistic(self, candidate_wins: int, champion_wins: int, draws: int) -> float:
+        """The configured policy's statistic, computed without side effects.
+
+        ``_promotion_verdict`` is the decision path and logs when a record makes
+        promotion arithmetically impossible. Early stopping polls after every
+        game, so calling it there would repeat that warning hundreds of times
+        per evaluation; the statistic itself is what the heuristic needs.
+        """
+        logger_name = "alpha_zero.evaluation.promotion"
+        promotion_logger = logging.getLogger(logger_name)
+        previous_level = promotion_logger.level
+        promotion_logger.setLevel(logging.ERROR)
+        try:
+            return self._promotion_verdict(candidate_wins, champion_wins, draws).statistic
+        finally:
+            promotion_logger.setLevel(previous_level)
+
     def _should_early_stop(
         self,
         candidate_wins: int,
@@ -315,14 +390,24 @@ class CloudEvaluator:
         if total < self.config.early_stop_threshold:
             return False, ""
 
-        win_rate = candidate_wins / total
+        # Use the configured policy's own statistic rather than a fixed
+        # draws-as-losses win rate, so a draw-aware policy is not stopped early
+        # by a heuristic measuring something else. Under the default
+        # legacy_win_rate policy this is candidate_wins / total -- byte-identical
+        # to the historical behaviour.
+        #
+        # This is a heuristic, deliberately not the gate: an interval policy
+        # such as score_rate_lower_bound decides on confidence bounds, and
+        # stopping early shrinks n, which can only widen them. Treat an early
+        # stop as "no longer worth more games", not as the verdict.
+        statistic = self._promotion_statistic(candidate_wins, champion_wins, draws)
 
         # If clearly winning
-        if win_rate > self.config.promotion_threshold + self.config.early_stop_margin:
+        if statistic > self.config.promotion_threshold + self.config.early_stop_margin:
             return True, "decisive_lead"
 
         # If clearly losing
-        if win_rate < self.config.promotion_threshold - self.config.early_stop_margin:
+        if statistic < self.config.promotion_threshold - self.config.early_stop_margin:
             return True, "decisive_loss"
 
         return False, ""
@@ -393,9 +478,26 @@ class CloudEvaluator:
         # Calculate final statistics
         total_games = candidate_wins + champion_wins + draws
         win_rate = candidate_wins / total_games if total_games > 0 else 0.0
-        promoted = win_rate >= self.config.promotion_threshold
 
-        # Create evaluation result
+        # Route the decision through the promotion-policy registry. Keyword
+        # arguments are deliberate: this function's locals are ordered
+        # (candidate_wins, champion_wins, draws) while the policy signature is
+        # (wins, draws, losses), so positional calls transpose silently.
+        verdict = self._promotion_verdict(candidate_wins, champion_wins, draws)
+        promoted = verdict.promoted
+
+        # Create evaluation result. score_rate/ci_low/ci_high are shadow
+        # statistics recorded alongside the legacy win_rate: they describe the
+        # same games under draw-aware scoring, so a policy change can be
+        # evaluated against history before it is adopted.
+        #
+        # These are the summary's *diagnostic* interval, which summarize()
+        # always computes -- matching EvaluationResult's documented meaning
+        # ("the score-rate confidence interval, if computed"). That is
+        # deliberately NOT PromotionVerdict.ci_low, which carries a different
+        # contract: the interval the policy actually consulted, None for a
+        # point-estimate policy such as the default. Same field name, two
+        # meanings, so the distinction is worth stating here.
         eval_result = EvaluationResult(
             iteration=self.config.iteration,
             candidate_version=self._candidate_version,
@@ -407,10 +509,24 @@ class CloudEvaluator:
             win_rate=win_rate,
             promoted=promoted,
             game_results=game_results,
+            score_rate=verdict.summary.score_rate,
+            ci_low=verdict.summary.ci_low,
+            ci_high=verdict.summary.ci_high,
         )
 
         # Save evaluation result
         self.storage.save_evaluation(eval_result)
+
+        # Structured record of which policy decided, on what statistic.
+        log_promotion_decision(
+            verdict,
+            target=logger,
+            context={
+                "iteration": self.config.iteration,
+                "candidate_version": self._candidate_version,
+                "champion_version": self._champion_version,
+            },
+        )
 
         # Promote if successful
         if promoted:
@@ -442,6 +558,14 @@ class CloudEvaluator:
             "draws": draws,
             "win_rate": win_rate,
             "promoted": promoted,
+            # The full decision, not just the boolean: score_rate_lower_bound
+            # can return "inconclusive", which collapses to promoted=False and
+            # would otherwise be indistinguishable from a genuine rejection.
+            "decision": verdict.decision.value,
+            "promotion_policy": verdict.policy,
+            "score_rate": verdict.summary.score_rate,
+            "ci_low": verdict.summary.ci_low,
+            "ci_high": verdict.summary.ci_high,
             "stagnation_detected": stagnation["stagnation_detected"],
             "consecutive_non_promotions": stagnation["consecutive_non_promotions"],
             "elapsed_seconds": elapsed,

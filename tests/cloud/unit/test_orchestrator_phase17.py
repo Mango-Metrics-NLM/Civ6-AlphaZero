@@ -146,9 +146,16 @@ class TestPhase17Defaults:
         assert args.value_head_dim == 64
 
     def test_default_num_parallel_games(self) -> None:
-        """num_parallel_games default is 4 (vectorized)."""
+        """num_parallel_games defaults to 1 (sequential).
+
+        It was 4, which combined with the default ``--mcts_type=gumbel`` to fail
+        the self-play worker's batch dispatch gate: the flag was forwarded to
+        every worker and then discarded, so the default run advertised
+        vectorized self-play and ran sequentially. 1 is what those runs did.
+        Vectorized self-play is opt-in via ``--mcts_type=batch_gumbel``.
+        """
         args = self._parse_defaults()
-        assert args.num_parallel_games == 4
+        assert args.num_parallel_games == 1
 
 
 # =============================================================================

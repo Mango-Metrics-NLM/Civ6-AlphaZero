@@ -52,6 +52,10 @@ __all__ = [
 # ``sequential_testing._get_z_score`` return a negative quantile.
 _Z_TWO_SIDED = {0.90: 1.6448536269514722, 0.95: 1.959963984540054, 0.99: 2.5758293035489004}
 
+#: Confidence levels :func:`score_interval` can evaluate. Exposed so callers can
+#: validate configuration up front rather than failing mid-evaluation.
+SUPPORTED_CONFIDENCE_LEVELS: tuple[float, ...] = tuple(sorted(_Z_TWO_SIDED))
+
 
 class PromotionDecision(str, Enum):
     """Outcome of a promotion test.

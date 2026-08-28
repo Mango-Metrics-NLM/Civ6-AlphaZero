@@ -162,3 +162,135 @@ class TestTrajectoryDatasetRemoved:
         assert not hasattr(tw, "TrajectoryDataset"), (
             "TrajectoryDataset class should have been removed as dead code"
         )
+
+
+class TestBatchTrajectoryReachesTrainer:
+    """End-to-end guard: masks produced by self-play must survive to training.
+
+    The batch self-play path previously omitted ``action_masks`` entirely, and
+    ``prepare_dataset`` silently substituted an all-ones mask -- so masked
+    policy loss was disabled for every batch-generated sample with nothing in
+    the pipeline reporting a problem. These tests cover the seam between the
+    two: what self-play writes, through storage, to what the trainer reads.
+    """
+
+    def _selfplay_trajectory(self, num_steps: int = 3) -> dict:
+        """Build a trajectory the way the self-play worker now builds one."""
+        import numpy as np
+
+        from alpha_zero.cloud.gcp.config import NetworkArchitectureConfig
+        from alpha_zero.cloud.gcp.selfplay_worker import append_step, new_trajectory
+
+        trajectory = new_trajectory()
+        action_space_size = NetworkArchitectureConfig().action_space_size
+        for step in range(num_steps):
+            mask = np.zeros(action_space_size, dtype=np.float32)
+            mask[: 10 + step] = 1.0  # a genuinely partial mask
+            observation = {
+                "spatial": np.zeros((13, 8, 8), dtype=np.float32),
+                "vector": np.zeros(64, dtype=np.float32),
+                "action_mask": mask,
+            }
+            append_step(
+                trajectory,
+                observation=observation,
+                policy=np.full(action_space_size, 1.0 / action_space_size),
+                action=step,
+                player=step % 2,
+            )
+        trajectory["rewards"] = [1.0 if i % 2 == 0 else -1.0 for i in range(num_steps)]
+        return trajectory
+
+    def test_mask_survives_pickle_round_trip_to_dataset(self, tmp_path) -> None:
+        """A stored trajectory must still carry real masks when training reads it.
+
+        Shards are pickled (and LZMA-compressed) on the way to GCS. This
+        exercises that hop directly rather than trusting the in-memory dict.
+        """
+        import lzma
+        import pickle
+
+        from alpha_zero.cloud.gcp.training_worker import prepare_dataset
+
+        trajectory = self._selfplay_trajectory()
+        blob = lzma.compress(pickle.dumps([trajectory]))
+        # S301 is suppressed below: the blob is created by this test, not
+        # untrusted input -- and pickling is exactly what the storage layer does.
+        restored = pickle.loads(lzma.decompress(blob))  # noqa: S301
+
+        dataset = prepare_dataset(restored)
+        _, _, action_mask_tensor, _, _ = dataset.tensors
+
+        # The all-ones fallback is what this guards against: a real mask has
+        # both legal and illegal entries.
+        assert action_mask_tensor.min().item() == 0.0, (
+            "mask reached the trainer as all-ones -- masked policy loss is disabled"
+        )
+        assert action_mask_tensor.max().item() == 1.0
+
+    def test_mixed_legacy_and_current_trajectories(self) -> None:
+        """A rolling window contains both pre- and post-fix shards."""
+        from alpha_zero.cloud.gcp.training_worker import prepare_dataset
+
+        current = self._selfplay_trajectory(num_steps=2)
+        legacy = {
+            "spatial": current["spatial"],
+            "vector": current["vector"],
+            "policies": current["policies"],
+            "rewards": current["rewards"],
+        }
+
+        dataset = prepare_dataset([current, legacy])
+        _, _, action_mask_tensor, _, _ = dataset.tensors
+
+        assert action_mask_tensor.shape[0] == 4, "expected both trajectories' steps"
+        # Legacy rows fall back to all-ones; current rows keep their real mask.
+        assert action_mask_tensor.min().item() == 0.0
+        assert action_mask_tensor[-1].min().item() == 1.0
+
+    def test_legacy_states_format_counts_as_mask_fallback(self, caplog) -> None:
+        """A legacy-only dataset must not report full mask coverage.
+
+        The legacy ``states`` format carries no masks at all, so every one of
+        its positions takes the all-ones fallback. Counting only the new-format
+        misses meant a run made entirely of legacy trajectories logged "all
+        positions carry a stored action mask" while none did -- the instrument
+        reporting the opposite of the truth it exists to report.
+        """
+        import logging
+
+        from alpha_zero.cloud.gcp.training_worker import prepare_dataset
+
+        legacy = {
+            "states": [[0.0] * (13 * 8 * 8)] * 2,
+            "policies": [[1.0 / 376] * 376] * 2,
+            "rewards": [1.0, -1.0],
+        }
+
+        with caplog.at_level(logging.INFO):
+            dataset = prepare_dataset([legacy])
+
+        _, _, action_mask_tensor, _, _ = dataset.tensors
+        assert action_mask_tensor.min().item() == 1.0, "expected the all-ones fallback"
+        assert "fallback" in caplog.text.lower(), (
+            "legacy positions used the fallback but coverage was not reported"
+        )
+        assert "All " not in caplog.text or "carry a stored action mask" not in caplog.text, (
+            "reported full mask coverage for a dataset with no masks at all"
+        )
+
+    def test_empty_mask_list_falls_back_instead_of_raising(self) -> None:
+        """An empty action_masks list must not index out of range.
+
+        A game that fails before committing its first step can persist an empty
+        list. A key-presence guard passes that through and then raises
+        IndexError mid-training; the guard must be on length.
+        """
+        from alpha_zero.cloud.gcp.training_worker import prepare_dataset
+
+        trajectory = self._selfplay_trajectory(num_steps=2)
+        trajectory["action_masks"] = []
+
+        dataset = prepare_dataset([trajectory])
+        _, _, action_mask_tensor, _, _ = dataset.tensors
+        assert action_mask_tensor.min().item() == 1.0, "expected all-ones fallback"

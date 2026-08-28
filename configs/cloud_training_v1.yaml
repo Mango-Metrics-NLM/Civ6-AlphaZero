@@ -30,6 +30,12 @@ selfplay:
   mcts_type: gumbel
   mcts_simulations: 16
   gumbel_num_actions: 8
+  # Vectorized (batched) self-play is opt-in and requires BOTH settings:
+  # mcts_type must be batch_gumbel and num_parallel_games must exceed 1.
+  # With any other mcts_type the worker ignores num_parallel_games and runs
+  # sequential self-play (it logs a warning when it does).
+  num_parallel_games: 1               # >1 requires mcts_type: batch_gumbel
+  max_batch_size: 64                  # Inference batch ceiling when vectorized
 
 # --- Network ---
 network:

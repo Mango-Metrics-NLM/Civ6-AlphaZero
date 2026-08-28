@@ -193,7 +193,14 @@ class TestBatchSelfplayTrajectories:
             device="cpu",
         )
 
-        required_keys = {"spatial", "vector", "policies", "actions", "rewards"}
+        required_keys = {
+            "spatial",
+            "vector",
+            "action_masks",
+            "policies",
+            "actions",
+            "rewards",
+        }
         for traj in trajectories:
             assert required_keys.issubset(traj.keys()), (
                 f"Missing keys: {required_keys - set(traj.keys())}"
@@ -220,9 +227,11 @@ class TestBatchSelfplayTrajectories:
             n_steps = len(traj["spatial"])
             assert n_steps > 0, "Trajectory should have at least 1 step"
             assert len(traj["vector"]) == n_steps
+            assert len(traj["action_masks"]) == n_steps
             assert len(traj["policies"]) == n_steps
             assert len(traj["actions"]) == n_steps
             assert len(traj["rewards"]) == n_steps
+            assert len(traj["players"]) == n_steps
 
 
 # ============================================================================
@@ -264,8 +273,197 @@ class TestBatchVsSequentialConsistency:
             device="cpu",
         )
 
-        if batch_trajs and seq_trajs:
-            # Both should have at minimum these common keys
-            common_keys = {"spatial", "vector", "policies", "actions", "rewards"}
-            assert common_keys.issubset(batch_trajs[0].keys())
-            assert common_keys.issubset(seq_trajs[0].keys())
+        # Assert non-emptiness BEFORE comparing. These assertions previously sat
+        # inside `if batch_trajs and seq_trajs:`, so the test passed silently
+        # whenever either path returned nothing -- which is exactly what happens
+        # when self-play breaks.
+        assert batch_trajs, "batch self-play produced no trajectories"
+        assert seq_trajs, "sequential self-play produced no trajectories"
+
+        # Full key-set equality, not issubset: a subset check cannot detect a
+        # path that omits a field (this is how the missing action_masks in the
+        # batch path went unnoticed).
+        assert set(batch_trajs[0]) == set(seq_trajs[0]), (
+            f"key sets diverge: batch-only={set(batch_trajs[0]) - set(seq_trajs[0])}, "
+            f"sequential-only={set(seq_trajs[0]) - set(batch_trajs[0])}"
+        )
+
+
+# ============================================================================
+# Test: Action-mask integrity (regression guard for the all-ones fallback)
+# ============================================================================
+
+
+class TestBatchActionMasks:
+    """The batch path must persist real action masks, not nothing.
+
+    When ``action_masks`` is absent the trainer substitutes an all-ones mask
+    (``training_worker.prepare_dataset``), which silently disables masked
+    policy loss: the network is trained to put probability mass on illegal
+    actions. Shape and length assertions alone cannot catch that, because an
+    all-ones mask satisfies every one of them -- hence the density assertion
+    below.
+    """
+
+    @pytest.mark.timeout(120)
+    def test_masks_are_present_and_informative(self, small_model):
+        """Stored masks must be binary, correctly sized, and actually masking."""
+        from alpha_zero.cloud.gcp.selfplay_worker import run_batch_selfplay
+
+        trajectories = run_batch_selfplay(
+            model=small_model,
+            num_games=1,
+            mcts_sims=_MCTS_SIMS,
+            board_size=_BOARD_SIZE,
+            max_turns=_MAX_TURNS,
+            num_parallel_games=1,
+            max_batch_size=_MAX_BATCH_SIZE,
+            gumbel_num_actions=_GUMBEL_ACTIONS,
+            device="cpu",
+        )
+
+        assert trajectories, "batch self-play produced no trajectories"
+
+        all_masks = []
+        for traj in trajectories:
+            assert traj["action_masks"], "trajectory carries no action masks"
+            for step, mask in enumerate(traj["action_masks"]):
+                # Width must match the policy the mask is meant to constrain.
+                assert len(mask) == len(traj["policies"][step]), (
+                    f"mask width {len(mask)} != policy width "
+                    f"{len(traj['policies'][step])} at step {step}"
+                )
+                assert set(mask) <= {0.0, 1.0}, "masks must be binary"
+                assert sum(mask) >= 1.0, "every position needs >=1 legal action"
+            all_masks.extend(traj["action_masks"])
+
+        # The assertion that distinguishes "fixed" from "still broken": an
+        # all-ones mask would pass every check above.
+        density = float(np.mean([np.mean(m) for m in all_masks]))
+        assert 0.0 < density < 1.0, (
+            f"mask density {density} implies masks are degenerate "
+            "(1.0 means masking is effectively disabled)"
+        )
+
+    @pytest.mark.timeout(120)
+    def test_trajectories_stay_aligned_when_search_fails(self, small_model, monkeypatch):
+        """A mid-game search failure must not leave per-step fields ragged.
+
+        The batch loop reads observations before searching. If those were
+        appended eagerly, a failed search would leave ``spatial`` longer than
+        ``policies``/``players``, and the trainer -- which iterates ``spatial``
+        and indexes the others -- would raise IndexError on real data.
+        """
+        from alpha_zero.cloud.gcp.selfplay_worker import run_batch_selfplay
+        from alpha_zero.core.batch_mcts import BatchGumbelMCTS
+
+        real_search = BatchGumbelMCTS.batch_search
+        calls = {"n": 0}
+
+        def flaky_search(self, envs, add_noise=False):
+            calls["n"] += 1
+            if calls["n"] >= 2:
+                raise RuntimeError("induced batch search failure")
+            return real_search(self, envs, add_noise=add_noise)
+
+        monkeypatch.setattr(BatchGumbelMCTS, "batch_search", flaky_search)
+
+        trajectories = run_batch_selfplay(
+            model=small_model,
+            num_games=1,
+            mcts_sims=_MCTS_SIMS,
+            board_size=_BOARD_SIZE,
+            max_turns=_MAX_TURNS,
+            num_parallel_games=1,
+            max_batch_size=_MAX_BATCH_SIZE,
+            gumbel_num_actions=_GUMBEL_ACTIONS,
+            device="cpu",
+        )
+
+        assert calls["n"] >= 2, "the induced failure never triggered"
+
+        per_step_fields = (
+            "spatial",
+            "vector",
+            "action_masks",
+            "policies",
+            "actions",
+            "players",
+            "rewards",
+        )
+        for traj in trajectories:
+            lengths = {field: len(traj[field]) for field in per_step_fields}
+            assert len(set(lengths.values())) == 1, f"ragged trajectory: {lengths}"
+
+
+class TestBatchGamesReachTheirOwnEnd:
+    """Batch games must be bounded by the environment, not by an action counter.
+
+    The loop's step counter counts batched *actions* while ``max_turns`` is the
+    environment's *game-turn* limit, and MicroCiv spans many actions per turn.
+    Comparing the two directly stopped every game at roughly a sixth of its
+    length, before any environment could truncate itself -- so ``winner`` was
+    always ``None`` and every position was labelled 0.0. Shape and length
+    assertions all passed while the value targets were uniformly degenerate.
+    """
+
+    @pytest.mark.timeout(300)
+    def test_games_are_not_cut_off_at_max_turns_actions(self, small_model):
+        """Trajectories must exceed max_turns steps, since a turn spans actions."""
+        from alpha_zero.cloud.gcp.selfplay_worker import run_batch_selfplay
+
+        max_turns = 12
+        trajectories = run_batch_selfplay(
+            model=small_model,
+            num_games=2,
+            mcts_sims=2,
+            board_size=_BOARD_SIZE,
+            max_turns=max_turns,
+            num_parallel_games=2,
+            max_batch_size=_MAX_BATCH_SIZE,
+            gumbel_num_actions=2,
+            device="cpu",
+        )
+
+        assert trajectories, "batch self-play produced no trajectories"
+        lengths = [len(t["spatial"]) for t in trajectories]
+        assert all(n != max_turns for n in lengths), (
+            f"trajectory length exactly equals max_turns {lengths} — the loop is "
+            "capping on action steps again, not letting the environment finish"
+        )
+        assert max(lengths) > max_turns, (
+            f"no trajectory exceeded {max_turns} steps {lengths}; a game turn "
+            "spans several actions, so real games are longer than the turn limit"
+        )
+
+    @pytest.mark.timeout(300)
+    def test_value_targets_are_not_uniformly_degenerate(self, small_model):
+        """Across games, value targets must carry signal rather than all zeros.
+
+        A single game may legitimately draw (0.0 throughout). Every game drawing,
+        every time, is the signature of games being cut off before they finish.
+        """
+        from alpha_zero.cloud.gcp.selfplay_worker import run_batch_selfplay
+
+        rewards: set[float] = set()
+        for _ in range(3):
+            for traj in run_batch_selfplay(
+                model=small_model,
+                num_games=2,
+                mcts_sims=2,
+                board_size=_BOARD_SIZE,
+                max_turns=12,
+                num_parallel_games=2,
+                max_batch_size=_MAX_BATCH_SIZE,
+                gumbel_num_actions=2,
+                device="cpu",
+            ):
+                rewards.update(traj["rewards"])
+            if rewards - {0.0}:
+                break
+
+        assert rewards, "no trajectories were produced at all"
+        assert rewards - {0.0}, (
+            "every value target across every game was 0.0 — games are not "
+            "reaching a decisive outcome, so the value head has nothing to learn"
+        )

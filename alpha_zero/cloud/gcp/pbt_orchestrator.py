@@ -738,16 +738,22 @@ def _local_arena_runner(
     try:
         import torch
 
+        from alpha_zero.cloud.gcp.config import NetworkArchitectureConfig
         from alpha_zero.cloud.gcp.evaluation_worker import run_arena
         from alpha_zero.orchestrator.config import NetworkConfig
         from alpha_zero.utils.factories import create_network
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # Derive board_size/action_space from environment or fallback to defaults
-        # In a real run, these should come from Global Config
-        board_size = int(os.environ.get("CIV6AZ_BOARD_SIZE", 6))
-        action_space_size = int(os.environ.get("CIV6AZ_ACTION_SPACE", 158))
+        # Network geometry comes from the shared config, which reads the
+        # canonical CIV6AZ_BOARD_SIZE / CIV6AZ_ACTION_SPACE_SIZE variables.
+        # This previously read "CIV6AZ_ACTION_SPACE" -- a name nothing sets --
+        # and fell back to 158, a width that matches no checkpoint in the
+        # repository, so any arena run built a policy head that could not load
+        # a champion.
+        net_arch = NetworkArchitectureConfig.from_env()
+        board_size = net_arch.board_size
+        action_space_size = net_arch.action_space_size
 
         net_config = NetworkConfig()
 
