@@ -54,11 +54,11 @@
 
 ## 4. Documentation sync
 
-- [ ] 4.1 (S) `ROADMAP.md`: record that the champion-load fix landed via
+- [x] 4.1 (S) `ROADMAP.md`: record that the champion-load fix landed via
       `--resume_from=latest`; fix the broken analysis-doc link
-- [ ] 4.2 (S) Archive `docs/NEXT_STEPS_ANALYSIS.md` and update the referring link
+- [x] 4.2 (S) Archive `docs/NEXT_STEPS_ANALYSIS.md` and update the referring link
       in `docs/README.md` in the same commit (the link gate resolves it)
-- [ ] 4.3 (S) `CLAUDE.md`: refresh the stale skip-count with its counting rule;
+- [x] 4.3 (S) `CLAUDE.md`: refresh the stale skip-count with its counting rule;
       note the fog/N-player dependency; date-correct the value-sign entries
-- [ ] 4.4 (S) Finish the peer-review edits to `docs/NEXT_STEPS_CASE_2026-08.md`,
+- [x] 4.4 (S) Finish the peer-review edits to `docs/NEXT_STEPS_CASE_2026-08.md`,
       including correcting its own claim about the second promotion site
