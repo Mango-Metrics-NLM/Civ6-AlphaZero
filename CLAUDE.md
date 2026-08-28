@@ -270,7 +270,7 @@ When making changes, update the relevant sections below:
 | `pytest tests/ -v --cov=alpha_zero` | Run tests with coverage |
 | `ruff check alpha_zero/` | Lint Python code |
 | `mypy alpha_zero/` | Type check |
-| `make verify` | **Reproduce every CI gate locally** (lint, format, types, CI's four suites, security, governance, validators) — use this instead of hand-assembling the sequence |
+| `make verify` | **Reproduce every CI gate locally** (lint, format, types, CI's four suites, security incl. bandit, governance, validators, coverage, LLM eval gate) — use this instead of hand-assembling the sequence |
 | `make test-all` | Coverage, mirroring CI's coverage job (gate: 85%) |
 | `make typecheck` | Type check as CI runs it (`python -m mypy alpha_zero/`) |
 | `make typecheck-strict` | Harsher local `--strict` pass — **not** a CI gate |
@@ -315,10 +315,11 @@ When making changes, update the relevant sections below:
 | `make local-test` | Run local docker-compose test |
 | `make local-smoke` | Run smoke test (1 game + 1 step) |
 | `docker-compose up -d` | Start local testing environment |
-| `python -m infra.vertex_launcher --mode=selfplay --iteration=0 --dry-run` | Self-play job dry run |
-| `python -m infra.vertex_launcher --mode=train --iteration=0 --dry-run` | Training job dry run |
-| `python -m infra.vertex_launcher --mode=eval --iteration=0 --dry-run` | Evaluation job dry run |
-| `python -m alpha_zero.cloud.selfplay_worker --help` | Self-play worker options |
+| `python -m alpha_zero.cloud.gcp.vertex_orchestrator --help` | **The deployed orchestrator.** `cloudbuild.yaml` builds only `Dockerfile.vertex`, which entrypoints `alpha_zero.cloud.gcp.entrypoint` |
+| `python -m infra.vertex_launcher --mode=selfplay --iteration=0 --dry-run` | Self-play job dry run — **legacy, not deployed**: resolves `civ6-selfplay:latest` and friends, images no build pipeline produces |
+| `python -m infra.vertex_launcher --mode=train --iteration=0 --dry-run` | Training job dry run — legacy, not deployed |
+| `python -m infra.vertex_launcher --mode=eval --iteration=0 --dry-run` | Evaluation job dry run — legacy, not deployed |
+| `python -m alpha_zero.cloud.selfplay_worker --help` | Self-play worker options — **legacy** (hardcodes SimpleMCTS); the deployed worker is `alpha_zero.cloud.gcp.selfplay_worker` |
 | `python -m alpha_zero.cloud.trainer --help` | Trainer options |
 | `python -m alpha_zero.cloud.evaluator --help` | Evaluator options |
 
@@ -355,6 +356,7 @@ When making changes, update the relevant sections below:
 | `python scripts/migrate_mlflow_to_sqlite.py --help` | MLflow migration tool |
 | `mlflow ui --backend-store-uri sqlite:///mlflow.db` | Launch MLflow UI |
 | `python scripts/analyse_training_run.py --help` | Training run analysis |
+| `python scripts/summarize_training_log.py RUN.log --out DIR` | Turn a training log into committable evidence (JSON + report) |
 | `python scripts/post_run_evaluation.py --help` | Post-run ELO + baseline eval |
 | `python scripts/run_baseline_eval.py --help` | Baseline evaluation (random/heuristic) |
 
@@ -422,20 +424,24 @@ When making changes, update the relevant sections below:
 | 2026-08-27 | Batch self-play bounded by the environment, not an action counter | `run_batch_selfplay`'s loop counted MCTS *action* steps against `max_turns`, the environment's *game-turn* limit. MicroCiv spans ~6 actions per turn, so games stopped at roughly a sixth of their length, no environment reached its own truncation, `winner` stayed `None`, and `outcome_value_for_player` labelled every position 0.0 — the value head trained on a constant. The loop now bounds on `max_turns * MAX_ACTIONS_PER_GAME_TURN` as a runaway guard only, logs games that hit it, and schedules temperature against the environment's own turn. Shape-only tests (keys, alignment, mask density) all pass against uniformly-zero targets, so the regression tests assert content: trajectories exceed `max_turns` steps, and value targets are not uniformly zero. |
 | 2026-08-27 | One trajectory shape for every self-play path | `new_trajectory`/`append_step`/`dummy_trajectory` in `cloud/gcp/selfplay_worker.py`, adopted by the sequential, MuZero, batch and both dry-run paths (and the trainer's, which was a fourth inline builder). `append_step` commits all fields or none. The stored object stays a plain `dict`: shards are pickled and read across a rolling window by older and newer trainers, so a dataclass would be a cross-version hazard. |
 | 2026-08-27 | Local gates mirror CI (`make verify`) | The Makefile had drifted from CI on four axes (coverage 80 vs 85, coverage scope, `mypy --strict` vs plain, `validate_kb --git`), so passing locally proved nothing. `make verify` is now the single definition; the DEV-SQE handoff calls it. New `verify` and `negative-control` skills; the latter exists because every defect in this branch's history shipped under a green suite. |
+| 2026-08-28 | `DryRunProfile` owns every dry-run magic number | `--dry_run` bounded only the outer loop (iterations/games/epochs/eval-games) and left `board_size`/`max_turns`/`num_simulations` at production defaults, so the documented smoke test was 24 full-size games and ran 3h33m without completing. Inner dimensions are now overridden only where the caller left the `TrainingConfig` default, so explicit flags and every existing test config still win. |
+| 2026-08-28 | `inference_thread_limit()` caps torch threads for batch-of-1 search | MCTS evaluates one position at a time; torch sizes its intra-op pool to the core count and the per-operator OpenMP barrier (default *active*, spinning) then dominates. Measured on a 4-vCPU box: 1.54 ms/forward at 2 threads vs 347 ms at 4 — 225x. Applied only around self-play and evaluation so batched training keeps torch's default, which does scale with cores on real hardware. Opt out with `CIV6AZ_INFERENCE_THREADS=auto`. |
 | 2026-08-25 | `EvaluationResult` schema versioning | Added `schema_version`, `score_rate`, `ci_low`, `ci_high`. The `from_dict` read default is deliberately **asymmetric** with the field default so pre-change records (which carry no key) stay distinguishable from post-change ones; defaulting both the same would make them identical on read. |
 
 ### 5.3 Known Issues
 
 | Issue | Workaround |
 |-------|------------|
-| Promotion gate scores draws as losses by default | `cloud/gcp/arena.py:41` is `wins / total`, so the statistic's ceiling is `1 - draw_rate`. Set `CIV6AZ_PROMOTION_POLICY=score_rate` (or `score_rate_lower_bound`) to gate draw-aware. Default is unchanged deliberately — flipping it changes which candidates get promoted. |
+| Promotion gate cannot promote at the shipped defaults | Measured: 73.5% draws at `board_size=8`/`max_turns=30` (`docs/evidence/hexcrystal_ab/`), so `legacy_win_rate`'s ceiling is `1 - draw_rate` = 0.265 against a 0.55 threshold — arithmetically impossible. Switching policy alone is *not* enough: 0.55 read as a **score** rate demands ~+35 Elo from one iteration, and rejects a measured +31 Elo model (score_rate 0.545). Fix and arithmetic: **[`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md)** — recommends `CIV6AZ_PROMOTION_POLICY=score_rate_lower_bound` with `CIV6AZ_PROMOTION_THRESHOLD=0.52` (~+14 Elo, significance-gated). Code defaults deliberately unchanged. The upstream problem is the draw rate, not the threshold. |
 | No GPU in dev environment | Training works on CPU (slower) |
+| Batched CPU training is also hit by the OpenMP spin-wait pathology | `inference_thread_limit()` covers self-play/eval only; the training phase keeps torch's default because more cores genuinely help on real hardware. On an oversubscribed VM that default is ~17x slower at batch 128 (795 ms vs 47 ms). Fix per-run with the standard `OMP_NUM_THREADS=2`, or `OMP_WAIT_POLICY=passive` (which alone took a 4-thread forward from 342 ms to 5.8 ms). Must be set before torch is imported, so no library call can do it for you. |
 | download.pytorch.org index blocked in web sessions | Use plain `pip install torch` (PyPI wheel works; verified 2026-07-13 with torch 2.13.0) — only the `--index-url https://download.pytorch.org/...` path is blocked. Full test suite then runs locally. |
 | `PostToolUse` ruff `--fix` can strip imports mid-task | If you add an import in one edit and its first use in a later edit, the autofix removes it as unused. Re-add the import after the use exists; see guardrail audit in `docs/HARNESS_ENGINEERING_ANALYSIS.md` §6. |
 | SimpleMCTS random rollout is weak | Use neural network MCTS after initial training |
 | Windows multiprocessing spawn | Use `if __name__ == "__main__"` guard |
 | pytest-xdist not always installed | Tests run without parallel flag if missing |
 | `serving/` + `inference/` omitted from coverage gate | They require the `web` extra (fastapi/uvicorn), absent from the default-CI `[dev]` install, so they cannot be imported in CI's coverage job. `serving/` has unit tests (`tests/unit/test_serving/`, `importorskip`-guarded) but stays in the omit list until CI installs the `web` extra. |
+| `alpha_zero/cloud/*` omitted from the coverage gate — the deployed path | **Measured 2026-08-28**, correcting the stale rationale in `pyproject.toml` ("require GCP SDK, Vertex AI, GCS"): all 33 `cloud/gcp` modules import cleanly with **no** Google SDK present (every `from google...` is function-local or `TYPE_CHECKING`-guarded), and CI's `cloud-tests` job already runs 1,025 of their tests on `.[dev]` alone. So no extra is needed — but un-omitting is **not** a one-liner: `cloud/gcp` **measures 60.0%** (cloud unit + batch integration + the cloud-touching unit tests; 51.1% from the cloud tests alone) against the **66.1%** it must hold. The implied global drop is **89.69% → ~83.8% (CI red)** — but note that 89.69% is the *documented CI anchor*, not a local measurement: `tests/unit/` cannot complete in the dev sandbox (four attempts wedged, three without coverage at all), so the global figure is arithmetic on one unverified input and the path-to-green below has **under half a point of margin — inside the error bar**. Land the un-omit as a draft PR that deliberately lets CI's coverage job report the real number *before* retuning the gate; do not plan against the derived figure. Path to green: omit the argparse/entrypoint shims individually (`cli.py`, `__main__.py`, `container_healthcheck.py`, +0.8pt), then add tests for `quota_manager.py` (287 stmts, 0%, no test file at all), `lifecycle.py` and `pipeline_cache.py`. Estimated 1–2 weeks. This is where every bug fixed in #113 lived, so the gate cannot see that whole class of defect. |
 | Coverage instrumentation crashes under nightly numpy 2.4 + coverage C-tracer | Local-only sandbox issue ("cannot load module more than once"); run tests without `--cov`, or use pinned numpy. CI uses pinned versions and is unaffected. **Partial workaround (2026-08-09):** `COVERAGE_CORE=pytrace` selects coverage's pure-Python tracer and avoids the crash — but only for `--cov` targets that do **not** import numpy. `COVERAGE_CORE=pytrace pytest tests/unit/test_hexcrystal_*.py --cov=alpha_zero.hexcrystal` works (measured 87.10%); `--cov=alpha_zero.utils.checkpoint` still crashes, because coverage importing a numpy-dependent module on top of conftest's import is the double load. CI remains the gate for numpy-importing modules. |
 | ~~MicroCiv hardcoded for 2 players~~ (resolved 2026-07-05) | Env + encoder N-player (2–6); training pipeline now N-player too. **G7/G8/G9 all done**: `training_civ6.py` threads `num_players` (per-player `value_vector`, `compute_nplayer_value_loss`, `CurrentPlayerValueView` scalar-MCTS adapter). 2-player path byte-identical. Tests: `tests/unit/test_nplayer_training_pipeline.py`. Train: `python -m alpha_zero.training_civ6 --num_players 4`. |
 | ~~12 DDP tests xfailed~~ (stale — corrected 2026-07-05) | DDP tests use CUDA `skipif`, not `xfail`. Repo has exactly one real `xfail` (`test_phase2.py:381`). **Re-measured 2026-08-27 with a stated rule** (`grep -rEc '@pytest\.mark\.(skip|skipif|xfail)|pytest\.(skip|importorskip)\(' tests/`): **124 sites across 68 files** — the earlier "11 sites / 17 tests" figure counted only static `@pytest.mark.skip`, which is why it looked an order of magnitude smaller. Most are legitimate environment gates (CUDA, optional extras: `hub`, `web`/fastapi, GCS, SpacetimeDB, JAX). Genuine debt is three items: the class-level skip on `UncivInterface.parse_multiplayer_save` (a planned method that does not exist), one disabled flaky concurrency test (`test_buffer_edge_cases.py`), and one "DUCT not yet implemented" skip. Quote the rule with the number — a bare count is not reproducible. |
@@ -459,6 +465,8 @@ When making changes, update the relevant sections below:
 | MLflowLogger lifecycle | FAILED vs FINISHED status now set correctly on context manager exit | 2026-05-21 |
 | StrategyAdvisor `.complete()` mismatch | Added `LLMClient.complete()` alias → `generate_sync(prompt).content`; advisor's `llm_client.complete(prompt)` call path no longer `AttributeError`s against a real client | 2026-06-20 |
 | Orchestrator asserts stripped under `python -O` | 24 `assert self._x is not None` init-guards → `_require()` raising `RuntimeError`; safe under `-O` | 2026-06-20 |
+| `--dry_run` never completed (3h33m, measured) | Inner dimensions bounded via `DryRunProfile`; smoke test now exits 0 in 16.4s | 2026-08-28 |
+| Network self-play ~200x slower than the random-rollout baseline | Torch intra-op threads capped around batch-of-1 inference (`inference_thread_limit`); the SimpleMCTS/network-MCTS cliff (10.9s vs 321s per 20 games) disappeared | 2026-08-28 |
 | `serving/` had zero tests | Added `tests/unit/test_serving/test_inference_server.py` (12 tests, endpoints + `_load_model` paths, fastapi `importorskip`) | 2026-06-20 |
 
 ### 5.5 Information to Preserve
@@ -1302,6 +1310,9 @@ across a three-role workflow pipeline: Planning → DEV-SQE → Pre-PR.
 - DEV-SQE → Planning: `DESIGN-GAP` event (feedback loop)
 - Pre-PR → DEV-SQE: `QA-GAP` event (feedback loop)
 - Pre-PR → Planning: `SCOPE-CHANGE` event (feedback loop)
+- Any role: `VALIDATION-RUN` event when a training/evaluation run produces
+  committed evidence under `docs/evidence/` (records that the code was
+  actually executed, not merely changed)
 
 ### 14.4 Handoff Skills
 - Planning: `.claude/skills/planning-handoff/SKILL.md`

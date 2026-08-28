@@ -29,7 +29,11 @@ cost, and so a broken install degrades to a clear message instead of an
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
+from collections.abc import Iterator
+from types import ModuleType
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -37,7 +41,15 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["place_network", "resolve_device", "resolve_device_str"]
+__all__ = [
+    "DEFAULT_MAX_INFERENCE_THREADS",
+    "INFERENCE_THREADS_ENV_VAR",
+    "inference_thread_limit",
+    "place_network",
+    "resolve_device",
+    "resolve_device_str",
+    "resolve_inference_threads",
+]
 
 _VALID_PREFIXES = ("cpu", "cuda", "mps")
 
@@ -107,6 +119,20 @@ def _resolve_name(requested: str | None) -> str:
     )
 
 
+def _import_torch() -> ModuleType | None:
+    """Import torch lazily, returning None on a broken or absent install.
+
+    Mirrors the inline try/import the resolver functions above use; the thread
+    helpers need the module object itself rather than just a fallback value.
+    """
+    try:
+        import torch
+    except Exception:  # pragma: no cover - exercised only on a broken install
+        logger.warning("torch is unavailable; leaving thread configuration untouched")
+        return None
+    return torch
+
+
 def _mps_available(torch_module: object) -> bool:
     """Return True when Apple MPS is usable, tolerating older torch builds."""
     backends = getattr(torch_module, "backends", None)
@@ -169,3 +195,122 @@ def resolve_device(requested: str | None = None) -> torch.device:
             "use resolve_device_str() if a string is sufficient"
         ) from exc
     return torch.device(name)
+
+
+# --------------------------------------------------------------------------
+# CPU thread count for single-state inference
+# --------------------------------------------------------------------------
+#
+# MCTS evaluates one position at a time, so every self-play forward pass is a
+# batch of exactly 1. Torch defaults its intra-op pool to the core count, and
+# splitting a tiny tensor across every core costs far more than it saves: the
+# OpenMP barrier is entered per operator, and its default *active* wait policy
+# spins. On an oversubscribed VM the spinning threads and the worker threads
+# fight for the same cores.
+#
+# Measured on this project's 4-vCPU CI-class box (MicroCivNetwork, 561k params,
+# 6x6 board, torch 2.13, batch of 1):
+#
+#     threads=1   1.72 ms      threads=3    20.72 ms
+#     threads=2   1.54 ms      threads=4   347.12 ms
+#
+# 225x, from thread count alone -- which is why network-guided self-play looked
+# unusably slow while the random-rollout baseline did not: SimpleMCTS never
+# calls the network.
+#
+# The cap is applied only around inference. Batched training genuinely does
+# scale with cores on a real machine, so it keeps torch's own default; capping
+# globally would trade this bug for a slower trainer.
+
+#: Threads to use for single-state inference when nothing else is configured.
+#: Above 2 the intra-op split costs more than it saves for a batch of 1.
+DEFAULT_MAX_INFERENCE_THREADS = 2
+
+#: Set to a positive integer to pin the inference thread count, or to ``0`` /
+#: ``"auto"`` to leave torch's default untouched (opting out entirely).
+INFERENCE_THREADS_ENV_VAR = "CIV6AZ_INFERENCE_THREADS"
+
+
+def resolve_inference_threads(requested: int | None = None) -> int | None:
+    """Resolve the intra-op thread count to use for single-state inference.
+
+    Precedence: explicit *requested* argument, then ``CIV6AZ_INFERENCE_THREADS``,
+    then :data:`DEFAULT_MAX_INFERENCE_THREADS` capped by torch's current setting
+    (so a single-core box is never asked for two threads).
+
+    Returns ``None`` to mean "change nothing", which is what ``0``, ``"auto"``
+    and an unparseable env value all resolve to. Returning ``None`` rather than
+    raising keeps a typo in an env var from taking down a training run; it is
+    logged.
+    """
+    if requested is not None:
+        return requested if requested > 0 else None
+
+    raw = os.environ.get(INFERENCE_THREADS_ENV_VAR)
+    if raw is not None:
+        value = raw.strip().lower()
+        if value in {"auto", ""}:
+            return None
+        try:
+            parsed = int(value)
+        except ValueError:
+            logger.warning(
+                "%s=%r is not an integer or 'auto'; leaving torch threads unchanged.",
+                INFERENCE_THREADS_ENV_VAR,
+                raw,
+            )
+            return None
+        return parsed if parsed > 0 else None
+
+    torch_module = _import_torch()
+    if torch_module is None:
+        return None
+    try:
+        current = int(torch_module.get_num_threads())
+    except Exception:  # pragma: no cover - defensive
+        return None
+    return min(current, DEFAULT_MAX_INFERENCE_THREADS)
+
+
+@contextlib.contextmanager
+def inference_thread_limit(requested: int | None = None) -> Iterator[int | None]:
+    """Temporarily cap torch's intra-op threads for a single-state inference phase.
+
+    Yields the thread count actually applied, or ``None`` when the setting was
+    left alone. The previous value is always restored, including on exception,
+    so a training phase that follows self-play keeps torch's default.
+
+    A no-op when torch is missing or refuses the call, so callers can wrap a
+    phase unconditionally without guarding for either case.
+    """
+    threads = resolve_inference_threads(requested)
+    torch_module = _import_torch()
+    if threads is None or torch_module is None:
+        yield None
+        return
+
+    try:
+        previous = int(torch_module.get_num_threads())
+    except Exception:  # pragma: no cover - defensive
+        yield None
+        return
+
+    if previous == threads:
+        yield threads
+        return
+
+    try:
+        torch_module.set_num_threads(threads)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("Could not set torch threads to %s: %s", threads, exc)
+        yield None
+        return
+
+    logger.debug("Inference thread cap: %s -> %s", previous, threads)
+    try:
+        yield threads
+    finally:
+        try:
+            torch_module.set_num_threads(previous)
+        except Exception:  # pragma: no cover - defensive
+            logger.warning("Failed to restore torch thread count to %s", previous)

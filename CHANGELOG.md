@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Self-play data correctness, promotion decisions, and honest gates (2026-08-27/28)
+
+- **Batch self-play labelled every position 0.0.** The loop counted MCTS *action*
+  steps against `max_turns`, the environment's *game-turn* limit, and a game turn
+  spans ~6 actions — so games stopped at roughly a sixth of their length, no
+  environment reached its own truncation, `winner` stayed `None`, and the value head
+  trained on a constant. Measured: a 20-action budget left the environment at game
+  turn 3 of 20. Now bounded by an action budget that exists only as a runaway guard,
+  with unfinished games logged rather than silently recorded as draws.
+- **Batch self-play stored no `action_masks`.** `prepare_dataset` substitutes an
+  all-ones mask when the key is absent, so every batch-generated sample trained with
+  masked policy loss disabled. Trajectory construction is now one shared helper
+  (`new_trajectory`/`append_step`/`dummy_trajectory`) used by all self-play paths and
+  both dry-run stubs; `append_step` commits every per-step field or none.
+- **Batch self-play could hang forever.** The outer loop advanced only on completed
+  games, so a deterministic first-search failure retried an identical batch
+  indefinitely — on a cloud worker, a job burning GPU hours in silence.
+- **Arena rejected a variant it documents as supported.** `run_arena` passed the
+  Gumbel-family `num_sampled_actions` unconditionally, so `mcts_type="civ6"` raised
+  `TypeError` on the first game of every run, in the deployed evaluation path.
+- **Self-play parallelism was requested and silently ignored.**
+  `--num_parallel_games` defaulted to 4 against a default `gumbel`, which fails the
+  batch dispatch gate; the flag was forwarded to every worker and discarded. Default
+  is now 1 — what those runs actually did — with warnings on both sides.
+- **Action-space constants had drifted.**
+  `compute_microciv_action_space_size()` returned 356 against a real 376 and
+  `validate_constants` asserted the same wrong number, so the error validated itself
+  green. `pbt_orchestrator` read an env var nothing sets, defaulting to a width
+  matching no checkpoint. `create_transformer_network` defaulted to the value its own
+  module warns is incorrect.
+- **Promotion**: the legacy evaluator now decides through the policy registry (the
+  default reproduces the historical arithmetic exactly), records draw-aware shadow
+  statistics, and reports the enum *value* rather than its repr. `PromotionConfig`
+  validates confidence against the z-table instead of failing mid-evaluation.
+
+### Added — Observability and honest local gates (2026-08-27/28)
+
+- Mask coverage, batch outcome composition and unfinished-game counts are now logged;
+  that silence is what hid the missing masks.
+- `run_batch_selfplay` accepts a `seed`, so batch runs are reproducible and
+  regressions bisectable. The sequential path already had one.
+- `make verify` reproduces every CI gate — it shipped omitting coverage, bandit and
+  the eval gate while claiming otherwise. New `verify` and `negative-control` skills;
+  per-job `timeout-minutes` in CI; a truthful SessionStart bootstrap; and a PreToolUse
+  guard whose regexes match what they claim (five push-to-main bypasses closed).
+- `docs/runbooks/promotion-gate.md`: the shipped promotion defaults cannot promote at
+  the measured 73.5% draw rate, and switching policy alone still rejects a +31 Elo
+  model. Documents the arithmetic and the recommended configuration.
+
 ### Added — Pre-PR Validations, Infrastructure & Validation Fixes (2026-08-11)
 
 - **Test Coverage Gates**: Enforced 85% test coverage requirement in `.github/workflows/ci.yml` and local Makefile to enforce strict regression safety.

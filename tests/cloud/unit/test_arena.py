@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 import torch
 
 from alpha_zero.cloud.gcp.arena import ArenaResult, run_arena
@@ -526,3 +527,57 @@ class TestRunArena:
         call_kwargs = mock_create_env.call_args[1]
         assert call_kwargs["board_size"] == 16
         assert call_kwargs["max_turns"] == 50
+
+
+class TestArenaMCTSVariantKwargs:
+    """Arena must build an MCTS for every variant it documents as supported.
+
+    ``create_mcts`` rejects unknown keyword arguments, and arena passed the
+    Gumbel-family ``num_sampled_actions`` unconditionally -- so ``civ6``, which
+    ``run_arena``'s own docstring lists as an option, raised TypeError on the
+    first game of every run. This is the deployed evaluation path.
+
+    The existing variant tests parametrize over ``parse_args`` only, which is
+    why they read as end-to-end coverage while never constructing a search.
+    """
+
+    @pytest.mark.parametrize("variant", ["civ6", "gumbel", "batch_gumbel"])
+    def test_every_documented_variant_constructs(self, variant: str) -> None:
+        """Building a search for each variant must not raise on kwargs."""
+        import torch
+
+        from alpha_zero.cloud.gcp.arena import _GUMBEL_VARIANTS
+        from alpha_zero.core.mcts_factory import create_mcts
+
+        class _Net(torch.nn.Module):
+            def predict(self, *args, **kwargs):  # pragma: no cover - not called
+                raise AssertionError("network should not be evaluated here")
+
+        # Exactly the kwargs arena builds for this variant.
+        kwargs: dict = {"num_simulations": 2}
+        if variant in _GUMBEL_VARIANTS:
+            kwargs["num_sampled_actions"] = 4
+
+        create_mcts(variant=variant, network=_Net(), device="cpu", **kwargs)
+
+    def test_gumbel_variants_set_matches_the_factory(self) -> None:
+        """The set arena filters on must agree with what the factory accepts."""
+        import torch
+
+        from alpha_zero.cloud.gcp.arena import _GUMBEL_VARIANTS
+        from alpha_zero.core.mcts_factory import create_mcts
+
+        class _Net(torch.nn.Module):
+            def predict(self, *args, **kwargs):  # pragma: no cover - not called
+                raise AssertionError("network should not be evaluated here")
+
+        for variant in ("civ6",):
+            with pytest.raises(TypeError):
+                create_mcts(
+                    variant=variant,
+                    network=_Net(),
+                    device="cpu",
+                    num_simulations=2,
+                    num_sampled_actions=4,
+                )
+            assert variant not in _GUMBEL_VARIANTS

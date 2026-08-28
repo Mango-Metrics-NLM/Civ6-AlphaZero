@@ -1,0 +1,73 @@
+{
+  "description": "Five independent 20-game probes of the final checkpoint against a random opponent, seats rotated, 6 MCTS simulations (evaluate_against_random uses num_simulations // 2). Repeated because a single probe is not reproducible: the opponent RNG is seeded but MicroCivEnv.reset() is not, and training_civ6.py exposes no --seed flag, so each probe draws a fresh map. The first sample (score_rate 0.25) is an outlier against the other four.",
+  "interpretation": "The model is worse than a random opponent at this budget: every probe's draw-aware score rate is below 0.5. The legacy win rate reported by evaluate_against_random (0.00-0.05) understates it badly, because a 50-75% draw rate is scored entirely as losses -- the same draw-blindness as the deployed promotion gate (docs/runbooks/promotion-gate.md). The draw rate here is close to the 73.5% measured independently in docs/evidence/hexcrystal_ab/, which supports that runbook's conclusion that the draw rate, not the threshold, is the upstream problem.",
+  "provenance": {
+    "board_size": 8,
+    "checkpoint": "iteration 5 (latest.pt) of the validation run",
+    "env_reset_seed": null,
+    "eval_num_simulations": 6,
+    "git_revision": "0c394f98d7f7ffbf4accfa65e139a471abc99f59",
+    "max_turns": 20,
+    "opponent_rng_seed": 0,
+    "python_version": "3.11.15",
+    "timestamp_utc": "2026-08-28T02:44:22.752446+00:00"
+  },
+  "samples": [
+    {
+      "draw": 10,
+      "draw_rate": 0.5,
+      "games": 20,
+      "legacy_win_rate": 0.0,
+      "loss": 10,
+      "score_rate": 0.25,
+      "win": 0
+    },
+    {
+      "draw": 14,
+      "draw_rate": 0.7,
+      "games": 20,
+      "legacy_win_rate": 0.05,
+      "loss": 5,
+      "score_rate": 0.4,
+      "win": 1
+    },
+    {
+      "draw": 15,
+      "draw_rate": 0.75,
+      "games": 20,
+      "legacy_win_rate": 0.0,
+      "loss": 5,
+      "score_rate": 0.375,
+      "win": 0
+    },
+    {
+      "draw": 14,
+      "draw_rate": 0.7,
+      "games": 20,
+      "legacy_win_rate": 0.0,
+      "loss": 6,
+      "score_rate": 0.35,
+      "win": 0
+    },
+    {
+      "draw": 13,
+      "draw_rate": 0.65,
+      "games": 20,
+      "legacy_win_rate": 0.05,
+      "loss": 6,
+      "score_rate": 0.375,
+      "win": 1
+    }
+  ],
+  "summary": {
+    "draw_rate_max": 0.75,
+    "draw_rate_median": 0.7,
+    "draw_rate_min": 0.5,
+    "games_per_probe": 20,
+    "legacy_win_rate_max": 0.05,
+    "probes": 5,
+    "score_rate_max": 0.4,
+    "score_rate_median": 0.375,
+    "score_rate_min": 0.25
+  }
+}

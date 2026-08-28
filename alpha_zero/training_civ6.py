@@ -13,7 +13,7 @@ import logging
 import os
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol, TypedDict, cast
 
 import numpy as np
@@ -39,7 +39,7 @@ from alpha_zero.multiplayer.scoring import (
     compute_player_values,
     compute_rankings,
 )
-from alpha_zero.utils.device import resolve_device_str
+from alpha_zero.utils.device import inference_thread_limit, resolve_device_str
 
 # Configure logging
 logging.basicConfig(
@@ -115,6 +115,80 @@ class TrainingConfig:
         # Resolve rather than merely warn: an unresolved "cuda" on a CPU-only
         # host would otherwise crash later inside .to().
         self.device = resolve_device_str(self.device)
+
+
+#: Evaluation games played per checkpoint on a normal (non-dry) run.
+DEFAULT_EVAL_GAMES = 20
+
+#: Config fields that dominate dry-run cost. These are the *inner* dimensions:
+#: total work scales roughly as
+#: ``games * max_turns * actions_per_turn * num_simulations`` against a network
+#: whose forward cost grows with ``board_size ** 2``.
+_INNER_DIMENSION_FIELDS: tuple[str, ...] = ("board_size", "max_turns", "num_simulations")
+
+
+@dataclass(frozen=True)
+class DryRunProfile:
+    """The bounded shape of a ``--dry_run`` smoke test.
+
+    ``--dry_run`` used to shrink only the *outer* loop -- iterations, games per
+    iteration, epochs, evaluation games -- while leaving ``board_size``,
+    ``max_turns`` and ``num_simulations`` at their production defaults (16, 200,
+    50). Since cost is dominated by those inner dimensions, the "quick test run"
+    was really 24 full-size games with full-depth search: measured at over 3.5
+    hours of CPU without finishing, against a documented success criterion that
+    says it completes.
+
+    Every dry-run magic number now lives here, in one place, so the smoke test's
+    shape can be read and changed without hunting through :func:`train`.
+    """
+
+    # Outer loop: always applied when dry_run is set.
+    num_iterations: int = 2
+    num_games_per_iteration: int = 2
+    num_epochs: int = 1
+    num_eval_games: int = 2
+
+    # Inner dimensions: applied only to fields left at their TrainingConfig
+    # default, so an explicit --board_size 12 still wins. See apply_to.
+    board_size: int = 6
+    max_turns: int = 8
+    num_simulations: int = 4
+
+    def apply_to(self, config: TrainingConfig) -> TrainingConfig:
+        """Return *config* with unset inner dimensions bounded for a smoke test.
+
+        A field is overridden only when it still holds its :class:`TrainingConfig`
+        default, so a caller who deliberately asked for a larger board keeps it.
+        The trade-off: a caller who explicitly passes the default value is
+        indistinguishable from one who omitted the flag, and gets the smoke-test
+        value. That is the right default for a flag whose entire purpose is to
+        finish quickly.
+
+        The original config is not mutated; a copy is returned.
+        """
+        defaults = TrainingConfig()
+        overrides = {
+            field: getattr(self, field)
+            for field in _INNER_DIMENSION_FIELDS
+            if getattr(config, field) == getattr(defaults, field)
+        }
+        if not overrides:
+            logger.debug("dry-run: all inner dimensions set explicitly; none overridden")
+            return config
+        for field, value in overrides.items():
+            logger.info(
+                "dry-run: bounding %s %s -> %s (pass --%s to override)",
+                field,
+                getattr(config, field),
+                value,
+                field,
+            )
+        return replace(config, **overrides)
+
+
+#: The profile used by every ``dry_run=True`` code path.
+DRY_RUN_PROFILE = DryRunProfile()
 
 
 @dataclass
@@ -532,9 +606,12 @@ def run_self_play(
         )
         mcts = Civ6MCTS(_mcts_network(network, config), mcts_config, device=config.device)  # type: ignore[arg-type]
 
-    for _ in tqdm(range(num_games), desc="Self-play"):
-        game_examples = self_play_game(env, mcts, config)
-        examples.extend(game_examples)
+    # MCTS evaluates one position at a time, so this whole phase is batch-of-1
+    # inference. See alpha_zero.utils.device for why that needs a thread cap.
+    with inference_thread_limit():
+        for _ in tqdm(range(num_games), desc="Self-play"):
+            game_examples = self_play_game(env, mcts, config)
+            examples.extend(game_examples)
 
     return examples
 
@@ -660,7 +737,18 @@ def evaluate_against_random(
         num_games: Number of games to play.
 
     Returns:
-        Win rate against random player.
+        Win rate against random player: ``wins / num_games``.
+
+    Note:
+        Draws count against this statistic, exactly as they do in the deployed
+        promotion gate (``cloud/gcp/arena.py``; see
+        ``docs/runbooks/promotion-gate.md``). A measured example: the final
+        checkpoint of the 2026-08-28 validation run scored 0 wins / 10 draws /
+        10 losses over 20 games, which this function reports as ``0.0`` -- a
+        number that reads as "lost every game" but did not. The return value is
+        left as-is for backwards compatibility; the win/draw/loss breakdown and
+        the draw-aware score rate are logged so the figure can be interpreted
+        rather than guessed at.
     """
     env = MicroCivEnv(
         board_size=config.board_size,
@@ -672,33 +760,51 @@ def evaluate_against_random(
     mcts = Civ6MCTS(_mcts_network(network, config), mcts_config, device=config.device)  # type: ignore[arg-type]
 
     wins = 0
+    draws = 0
     rng = np.random.default_rng()
 
-    for game_idx in range(num_games):
-        _obs, _info = env.reset()
-        # Rotate which seat the network occupies across all players.
-        network_player = game_idx % config.num_players
+    # Batch-of-1 inference, same as self-play; see run_self_play.
+    with inference_thread_limit():
+        for game_idx in range(num_games):
+            _obs, _info = env.reset()
+            # Rotate which seat the network occupies across all players.
+            network_player = game_idx % config.num_players
 
-        while True:
-            if env.current_player == network_player:
-                # Network's turn
-                action_probs, _ = mcts.search(env, add_noise=False)  # type: ignore[arg-type]
-                action = mcts.select_action(action_probs, temperature=0.0)
-            else:
-                # Random player's turn
-                mask = env.get_valid_actions()
-                valid = np.where(mask > 0)[0]
-                action = rng.choice(valid) if len(valid) > 0 else 0
+            while True:
+                if env.current_player == network_player:
+                    # Network's turn
+                    action_probs, _ = mcts.search(env, add_noise=False)  # type: ignore[arg-type]
+                    action = mcts.select_action(action_probs, temperature=0.0)
+                else:
+                    # Random player's turn
+                    mask = env.get_valid_actions()
+                    valid = np.where(mask > 0)[0]
+                    action = rng.choice(valid) if len(valid) > 0 else 0
 
-            _obs, _, terminated, truncated, info = env.step(action)
+                _obs, _, terminated, truncated, info = env.step(action)
 
-            if terminated or truncated:
-                winner = info.get("winner")
-                if winner == network_player:
-                    wins += 1
-                break
+                if terminated or truncated:
+                    winner = info.get("winner")
+                    if winner == network_player:
+                        wins += 1
+                    elif winner is None:
+                        draws += 1
+                    break
 
-    return wins / num_games
+    losses = num_games - wins - draws
+    win_rate = wins / num_games
+    logger.info(
+        "Eval vs random: %d W / %d D / %d L over %d games "
+        "(win rate %.1f%%, draw-aware score rate %.3f, draw rate %.1f%%)",
+        wins,
+        draws,
+        losses,
+        num_games,
+        win_rate * 100,
+        (wins + 0.5 * draws) / num_games,
+        draws / num_games * 100,
+    )
+    return win_rate
 
 
 def train(config: TrainingConfig, dry_run: bool = False) -> None:
@@ -706,8 +812,13 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
 
     Args:
         config: Training configuration.
-        dry_run: If True, run minimal training for testing.
+        dry_run: If True, bound the run to a smoke test via DRY_RUN_PROFILE.
     """
+    # Bound the *inner* dimensions before anything reads them -- the env below
+    # is built from config.board_size / max_turns, so this has to come first.
+    if dry_run:
+        config = DRY_RUN_PROFILE.apply_to(config)
+
     # Create directories
     os.makedirs(config.checkpoint_dir, exist_ok=True)
     os.makedirs(config.log_dir, exist_ok=True)
@@ -759,8 +870,10 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
     replay_buffer = ReplayBuffer(max_size=config.replay_buffer_size)
 
     # Training loop
-    num_iterations = 2 if dry_run else config.num_iterations
-    num_games = 2 if dry_run else config.num_games_per_iteration
+    num_iterations = DRY_RUN_PROFILE.num_iterations if dry_run else config.num_iterations
+    num_games = (
+        DRY_RUN_PROFILE.num_games_per_iteration if dry_run else config.num_games_per_iteration
+    )
 
     for iteration in range(num_iterations):
         logger.info(f"\n{'=' * 50}")
@@ -800,7 +913,7 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
             )
 
             # Train for multiple epochs
-            num_epochs = 1 if dry_run else config.num_epochs
+            num_epochs = DRY_RUN_PROFILE.num_epochs if dry_run else config.num_epochs
             for epoch in range(num_epochs):
                 losses = train_epoch(network, optimizer, dataloader, config)
                 logger.info(
@@ -817,7 +930,7 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
             win_rate = evaluate_against_random(
                 network,
                 config,
-                num_games=10 if dry_run else 20,
+                num_games=DRY_RUN_PROFILE.num_eval_games if dry_run else DEFAULT_EVAL_GAMES,
             )
             logger.info(f"Win rate vs random: {win_rate:.1%}")
 

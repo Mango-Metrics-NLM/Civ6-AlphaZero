@@ -257,13 +257,14 @@ mlflow ui --backend-store-uri ./mlruns --port 5000   # inspect training runs
 ## Testing & quality gates
 
 ```bash
-make test            # unit tests
-make test-all        # full suite with coverage
+make verify          # every CI gate in one pass — run before opening a PR
+make test            # the four suites CI runs
+make test-all        # coverage, mirroring CI's coverage job (gate: 85%)
 make lint            # ruff
-make typecheck       # mypy (blocking in CI)
-make validate        # governance validators (openspec, kb, skills)
+make typecheck       # mypy, exactly as CI runs it
+make validate        # governance validators (openspec, kb, skills, doc-sync)
 make eval-llm        # LLM eval gate (offline)
-make hooks-install   # install the git pre-commit / pre-push hooks
+make hooks-install   # install pre-commit + the git pre-commit / pre-push hooks
 ```
 
 CI enforces a **coverage gate of 85%** on `alpha_zero/` (`--cov-fail-under=85`,
