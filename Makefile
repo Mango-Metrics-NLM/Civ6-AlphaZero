@@ -49,8 +49,10 @@ help:
 	@echo "  make typecheck         Run type checking (mypy)"
 	@echo "  make test-unit         Run unit tests"
 	@echo "  make test-integration  Run integration tests"
+	@echo "  make verify            Reproduce EVERY CI gate locally (run before a PR)"
 	@echo "  make test-all          Run all tests with coverage"
 	@echo "  make validate          Run governance validators (openspec, kb, skills, doc-sync)"
+	@echo "  make hooks-install     Install pre-commit + git hooks (self-installing)"
 	@echo "  make eval-llm          Run LLM eval-harness gate (StrategyAdvisor analyze + report, offline)"
 	@echo ""
 	@echo "Docker:"
@@ -146,9 +148,13 @@ test-sanity:
 test-cloud:
 	pytest tests/cloud/unit/ -v --tb=short
 
+# Mirrors CI's `security` job, which runs BOTH the pytest suite and a bandit
+# scan. The bandit half was missing entirely, so `make verify` could pass while
+# CI's security job failed.
 .PHONY: test-security
 test-security:
 	pytest tests/security/ -v --tb=short
+	bandit -r alpha_zero/ -s B101 --severity-level high --confidence-level high
 
 .PHONY: test-governance
 test-governance:
@@ -181,9 +187,14 @@ hooks-install:
 # One command that reproduces every CI gate, in CI's order. The handoff skills
 # and any pre-PR check should call this rather than restating the sequence --
 # six hand-assembled invocations is how the local and CI gates drifted apart.
+# Every gate CI enforces, in CI's order. Keep this in step with
+# .github/workflows/ci.yml -- when they drift, passing locally stops meaning
+# anything, which is the failure this target exists to prevent. It previously
+# omitted the coverage job, the bandit scan and the eval gate while claiming to
+# reproduce everything.
 .PHONY: verify
-verify: lint-check typecheck test test-security test-governance validate
-	@echo "verify: all CI gates reproduced locally"
+verify: lint-check typecheck test test-security test-governance validate test-all eval-llm
+	@echo "verify: reproduced CI's lint, type, test, security, governance, coverage and eval gates"
 
 .PHONY: eval-llm
 eval-llm:
@@ -342,9 +353,15 @@ setup-secrets:
 # Vertex AI
 # ============================================================================
 
+# BROKEN: `pipelines/` does not exist in this repository and never has, so this
+# target fails immediately. Kept with the failure made explicit rather than
+# silently advertising a deployment path that cannot work. The live orchestrator
+# is `python -m alpha_zero.cloud.gcp.vertex_orchestrator`.
 .PHONY: deploy-pipeline
 deploy-pipeline:
-	$(PYTHON) -m pipelines.civ6_pipeline --submit
+	@echo "deploy-pipeline is not implemented: the 'pipelines' package does not exist."
+	@echo "Use: $(PYTHON) -m alpha_zero.cloud.gcp.vertex_orchestrator --help"
+	@exit 1
 
 .PHONY: run-iteration
 run-iteration:

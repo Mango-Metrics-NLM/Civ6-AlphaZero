@@ -270,7 +270,7 @@ When making changes, update the relevant sections below:
 | `pytest tests/ -v --cov=alpha_zero` | Run tests with coverage |
 | `ruff check alpha_zero/` | Lint Python code |
 | `mypy alpha_zero/` | Type check |
-| `make verify` | **Reproduce every CI gate locally** (lint, format, types, CI's four suites, security, governance, validators) — use this instead of hand-assembling the sequence |
+| `make verify` | **Reproduce every CI gate locally** (lint, format, types, CI's four suites, security incl. bandit, governance, validators, coverage, LLM eval gate) — use this instead of hand-assembling the sequence |
 | `make test-all` | Coverage, mirroring CI's coverage job (gate: 85%) |
 | `make typecheck` | Type check as CI runs it (`python -m mypy alpha_zero/`) |
 | `make typecheck-strict` | Harsher local `--strict` pass — **not** a CI gate |
@@ -315,10 +315,11 @@ When making changes, update the relevant sections below:
 | `make local-test` | Run local docker-compose test |
 | `make local-smoke` | Run smoke test (1 game + 1 step) |
 | `docker-compose up -d` | Start local testing environment |
-| `python -m infra.vertex_launcher --mode=selfplay --iteration=0 --dry-run` | Self-play job dry run |
-| `python -m infra.vertex_launcher --mode=train --iteration=0 --dry-run` | Training job dry run |
-| `python -m infra.vertex_launcher --mode=eval --iteration=0 --dry-run` | Evaluation job dry run |
-| `python -m alpha_zero.cloud.selfplay_worker --help` | Self-play worker options |
+| `python -m alpha_zero.cloud.gcp.vertex_orchestrator --help` | **The deployed orchestrator.** `cloudbuild.yaml` builds only `Dockerfile.vertex`, which entrypoints `alpha_zero.cloud.gcp.entrypoint` |
+| `python -m infra.vertex_launcher --mode=selfplay --iteration=0 --dry-run` | Self-play job dry run — **legacy, not deployed**: resolves `civ6-selfplay:latest` and friends, images no build pipeline produces |
+| `python -m infra.vertex_launcher --mode=train --iteration=0 --dry-run` | Training job dry run — legacy, not deployed |
+| `python -m infra.vertex_launcher --mode=eval --iteration=0 --dry-run` | Evaluation job dry run — legacy, not deployed |
+| `python -m alpha_zero.cloud.selfplay_worker --help` | Self-play worker options — **legacy** (hardcodes SimpleMCTS); the deployed worker is `alpha_zero.cloud.gcp.selfplay_worker` |
 | `python -m alpha_zero.cloud.trainer --help` | Trainer options |
 | `python -m alpha_zero.cloud.evaluator --help` | Evaluator options |
 
@@ -436,6 +437,7 @@ When making changes, update the relevant sections below:
 | Windows multiprocessing spawn | Use `if __name__ == "__main__"` guard |
 | pytest-xdist not always installed | Tests run without parallel flag if missing |
 | `serving/` + `inference/` omitted from coverage gate | They require the `web` extra (fastapi/uvicorn), absent from the default-CI `[dev]` install, so they cannot be imported in CI's coverage job. `serving/` has unit tests (`tests/unit/test_serving/`, `importorskip`-guarded) but stays in the omit list until CI installs the `web` extra. |
+| `alpha_zero/cloud/*` omitted from the coverage gate — the deployed path | **Measured 2026-08-28**, correcting the stale rationale in `pyproject.toml` ("require GCP SDK, Vertex AI, GCS"): all 33 `cloud/gcp` modules import cleanly with **no** Google SDK present (every `from google...` is function-local or `TYPE_CHECKING`-guarded), and CI's `cloud-tests` job already runs 1,025 of their tests on `.[dev]` alone. So no extra is needed — but un-omitting is **not** a one-liner: `cloud/gcp` measures **60.0%** against the **66.1%** it must hold, dropping the global gate **89.69% → 83.79%** (CI red). Path to green: omit the argparse/entrypoint shims individually (`cli.py`, `__main__.py`, `container_healthcheck.py`, +0.8pt), then add tests for `quota_manager.py` (287 stmts, 0%, no test file at all), `lifecycle.py` and `pipeline_cache.py`. Estimated 1–2 weeks. This is where every bug fixed in #113 lived, so the gate cannot see that whole class of defect. |
 | Coverage instrumentation crashes under nightly numpy 2.4 + coverage C-tracer | Local-only sandbox issue ("cannot load module more than once"); run tests without `--cov`, or use pinned numpy. CI uses pinned versions and is unaffected. **Partial workaround (2026-08-09):** `COVERAGE_CORE=pytrace` selects coverage's pure-Python tracer and avoids the crash — but only for `--cov` targets that do **not** import numpy. `COVERAGE_CORE=pytrace pytest tests/unit/test_hexcrystal_*.py --cov=alpha_zero.hexcrystal` works (measured 87.10%); `--cov=alpha_zero.utils.checkpoint` still crashes, because coverage importing a numpy-dependent module on top of conftest's import is the double load. CI remains the gate for numpy-importing modules. |
 | ~~MicroCiv hardcoded for 2 players~~ (resolved 2026-07-05) | Env + encoder N-player (2–6); training pipeline now N-player too. **G7/G8/G9 all done**: `training_civ6.py` threads `num_players` (per-player `value_vector`, `compute_nplayer_value_loss`, `CurrentPlayerValueView` scalar-MCTS adapter). 2-player path byte-identical. Tests: `tests/unit/test_nplayer_training_pipeline.py`. Train: `python -m alpha_zero.training_civ6 --num_players 4`. |
 | ~~12 DDP tests xfailed~~ (stale — corrected 2026-07-05) | DDP tests use CUDA `skipif`, not `xfail`. Repo has exactly one real `xfail` (`test_phase2.py:381`). **Re-measured 2026-08-27 with a stated rule** (`grep -rEc '@pytest\.mark\.(skip|skipif|xfail)|pytest\.(skip|importorskip)\(' tests/`): **124 sites across 68 files** — the earlier "11 sites / 17 tests" figure counted only static `@pytest.mark.skip`, which is why it looked an order of magnitude smaller. Most are legitimate environment gates (CUDA, optional extras: `hub`, `web`/fastapi, GCS, SpacetimeDB, JAX). Genuine debt is three items: the class-level skip on `UncivInterface.parse_multiplayer_save` (a planned method that does not exist), one disabled flaky concurrency test (`test_buffer_edge_cases.py`), and one "DUCT not yet implemented" skip. Quote the rule with the number — a bare count is not reproducible. |

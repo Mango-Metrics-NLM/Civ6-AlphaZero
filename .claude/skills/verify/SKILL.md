@@ -44,10 +44,16 @@ resolve to an isolated tool venv that cannot see this project's type stubs. If
 it reports a tool/interpreter split, use `python3 -m mypy`, not `mypy`; the
 bare command reports dozens of phantom `import-untyped` errors.
 
-### 3. Coverage is a separate, slower gate
+### 3. What it covers
 
-`make verify` deliberately does not run coverage: `make test-all` does, and it
-mirrors CI's `coverage` job. Note that `alpha_zero/cloud/*` is in the coverage
+`make verify` runs lint, format, types, CI's four test suites, security
+(pytest **and** the bandit scan CI runs), governance, the four validators,
+coverage (`test-all`, mirroring CI's gate), and the LLM eval gate.
+
+It did not always. It shipped omitting coverage, bandit and `eval-llm` while its
+own echo claimed "all CI gates reproduced locally" — the exact drift this target
+exists to prevent, in the target itself. If you add a CI job, add it here too;
+when the two lists diverge, passing locally stops meaning anything. Note that `alpha_zero/cloud/*` is in the coverage
 omit list, so changes there cannot move the number — never cite coverage as
 evidence that cloud-path work is tested.
 

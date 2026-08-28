@@ -21,10 +21,20 @@ make hooks-install          # installs the pre-commit and pre-push git hooks
 ## Development loop
 
 ```bash
+make verify        # EVERY CI gate, in CI's order — run this before opening a PR
+```
+
+`make verify` is the single definition of the gate. Prefer it over assembling the
+sequence by hand: the hand-assembled version drifted from CI on four axes (coverage
+threshold, coverage scope, mypy flags, and whether the KB immutability check ran), so
+passing it proved nothing about CI. The individual targets remain available for a
+faster inner loop:
+
+```bash
 make lint          # ruff check/format, whole repo (0.15.8, 100-char lines)
-make typecheck     # mypy (blocking in CI; must exit 0)
-make test          # unit tests
-make test-all      # full suite with coverage
+make typecheck     # mypy, exactly as CI runs it (typecheck-strict is local-only)
+make test          # the four suites CI runs, with CI's marker filters
+make test-all      # coverage, mirroring CI's coverage job (gate: 85%)
 make validate      # governance validators (openspec, kb, skills, doc-sync)
 make eval-llm      # LLM eval gate (offline)
 ```

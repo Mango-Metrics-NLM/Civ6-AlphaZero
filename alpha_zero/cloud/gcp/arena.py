@@ -22,8 +22,14 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
+from typing import Any
 
 import torch
+
+from alpha_zero.cloud.gcp.config import BATCH_MCTS_TYPE
+
+# Variants that accept the Gumbel-family `num_sampled_actions` parameter.
+_GUMBEL_VARIANTS: frozenset[str] = frozenset({"gumbel", BATCH_MCTS_TYPE})
 
 logger = logging.getLogger(__name__)
 
@@ -161,19 +167,27 @@ def run_arena(
             gameplay_preset=gameplay_preset,
             seed=None if seed is None else seed + game_idx,
         )
+        # num_sampled_actions is a Gumbel-family parameter; create_mcts rejects
+        # unknown kwargs, so passing it unconditionally made mcts_type="civ6"
+        # -- an option this function's own docstring advertises -- raise
+        # TypeError on the first game of every arena run.
+        mcts_kwargs: dict[str, Any] = {
+            "num_simulations": mcts_sims,
+        }
+        if mcts_type in _GUMBEL_VARIANTS:
+            mcts_kwargs["num_sampled_actions"] = gumbel_num_actions
+
         mcts_a = create_mcts(
             variant=mcts_type,
             network=model_a,
             device=str(device),
-            num_simulations=mcts_sims,
-            num_sampled_actions=gumbel_num_actions,
+            **mcts_kwargs,
         )
         mcts_b = create_mcts(
             variant=mcts_type,
             network=model_b,
             device=str(device),
-            num_simulations=mcts_sims,
-            num_sampled_actions=gumbel_num_actions,
+            **mcts_kwargs,
         )
 
         _obs, _info = env.reset()
