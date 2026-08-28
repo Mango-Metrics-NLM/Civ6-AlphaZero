@@ -428,7 +428,7 @@ When making changes, update the relevant sections below:
 
 | Issue | Workaround |
 |-------|------------|
-| Promotion gate scores draws as losses by default | `cloud/gcp/arena.py:41` is `wins / total`, so the statistic's ceiling is `1 - draw_rate`. Set `CIV6AZ_PROMOTION_POLICY=score_rate` (or `score_rate_lower_bound`) to gate draw-aware. Default is unchanged deliberately — flipping it changes which candidates get promoted. |
+| Promotion gate cannot promote at the shipped defaults | Measured: 73.5% draws at `board_size=8`/`max_turns=30` (`docs/evidence/hexcrystal_ab/`), so `legacy_win_rate`'s ceiling is `1 - draw_rate` = 0.265 against a 0.55 threshold — arithmetically impossible. Switching policy alone is *not* enough: 0.55 read as a **score** rate demands ~+35 Elo from one iteration, and rejects a measured +31 Elo model (score_rate 0.545). Fix and arithmetic: **[`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md)** — recommends `CIV6AZ_PROMOTION_POLICY=score_rate_lower_bound` with `CIV6AZ_PROMOTION_THRESHOLD=0.52` (~+14 Elo, significance-gated). Code defaults deliberately unchanged. The upstream problem is the draw rate, not the threshold. |
 | No GPU in dev environment | Training works on CPU (slower) |
 | download.pytorch.org index blocked in web sessions | Use plain `pip install torch` (PyPI wheel works; verified 2026-07-13 with torch 2.13.0) — only the `--index-url https://download.pytorch.org/...` path is blocked. Full test suite then runs locally. |
 | `PostToolUse` ruff `--fix` can strip imports mid-task | If you add an import in one edit and its first use in a later edit, the autofix removes it as unused. Re-add the import after the use exists; see guardrail audit in `docs/HARNESS_ENGINEERING_ANALYSIS.md` §6. |
