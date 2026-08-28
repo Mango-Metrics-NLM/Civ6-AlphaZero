@@ -737,7 +737,18 @@ def evaluate_against_random(
         num_games: Number of games to play.
 
     Returns:
-        Win rate against random player.
+        Win rate against random player: ``wins / num_games``.
+
+    Note:
+        Draws count against this statistic, exactly as they do in the deployed
+        promotion gate (``cloud/gcp/arena.py``; see
+        ``docs/runbooks/promotion-gate.md``). A measured example: the final
+        checkpoint of the 2026-08-28 validation run scored 0 wins / 10 draws /
+        10 losses over 20 games, which this function reports as ``0.0`` -- a
+        number that reads as "lost every game" but did not. The return value is
+        left as-is for backwards compatibility; the win/draw/loss breakdown and
+        the draw-aware score rate are logged so the figure can be interpreted
+        rather than guessed at.
     """
     env = MicroCivEnv(
         board_size=config.board_size,
@@ -749,6 +760,7 @@ def evaluate_against_random(
     mcts = Civ6MCTS(_mcts_network(network, config), mcts_config, device=config.device)  # type: ignore[arg-type]
 
     wins = 0
+    draws = 0
     rng = np.random.default_rng()
 
     # Batch-of-1 inference, same as self-play; see run_self_play.
@@ -775,9 +787,24 @@ def evaluate_against_random(
                     winner = info.get("winner")
                     if winner == network_player:
                         wins += 1
+                    elif winner is None:
+                        draws += 1
                     break
 
-    return wins / num_games
+    losses = num_games - wins - draws
+    win_rate = wins / num_games
+    logger.info(
+        "Eval vs random: %d W / %d D / %d L over %d games "
+        "(win rate %.1f%%, draw-aware score rate %.3f, draw rate %.1f%%)",
+        wins,
+        draws,
+        losses,
+        num_games,
+        win_rate * 100,
+        (wins + 0.5 * draws) / num_games,
+        draws / num_games * 100,
+    )
+    return win_rate
 
 
 def train(config: TrainingConfig, dry_run: bool = False) -> None:

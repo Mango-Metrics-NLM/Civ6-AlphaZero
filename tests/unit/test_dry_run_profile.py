@@ -108,3 +108,67 @@ class TestProfileShape:
         for name in _INNER_DIMENSION_FIELDS:
             assert name in config_fields, f"{name} is not a TrainingConfig field"
             assert name in profile_fields, f"{name} is not a DryRunProfile field"
+
+
+class TestEvalDrawAccounting:
+    """`evaluate_against_random` returns wins/games, so draws count as losses.
+
+    That is the same draw-blindness as the deployed promotion gate. The return
+    value is kept for backwards compatibility; these tests pin that the
+    breakdown is *reported*, so a 0.0 cannot be misread as "lost every game".
+    """
+
+    @staticmethod
+    def _scripted_env(outcomes: list[int | None]):
+        """An env stub that ends each game immediately with a scripted winner.
+
+        ``current_player`` is a seat the network never occupies, so every move
+        takes the random-opponent branch and no MCTS double is needed.
+        """
+        from unittest.mock import MagicMock
+
+        import numpy as np
+
+        env = MagicMock()
+        env.current_player = 99
+        env.num_players = 2
+        state = {"game": 0}
+
+        def _step(_action):
+            winner = outcomes[state["game"]]
+            state["game"] += 1
+            return None, 0.0, True, False, {"winner": winner}
+
+        env.reset.return_value = (None, {})
+        env.step.side_effect = _step
+        env.get_valid_actions.return_value = np.array([1, 0, 1])
+        return env
+
+    def test_draws_are_reported_and_excluded_from_wins(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from unittest.mock import patch
+
+        from alpha_zero.training_civ6 import evaluate_against_random
+
+        # Seats rotate 0,1,0,1 across four games, so these winners give
+        # 1 win, 2 draws, 1 loss.
+        outcomes: list[int | None] = [0, None, None, 0]
+        config = TrainingConfig(board_size=8, max_turns=10, num_simulations=2)
+
+        with (
+            patch(
+                "alpha_zero.training_civ6.MicroCivEnv",
+                return_value=self._scripted_env(outcomes),
+            ),
+            patch("alpha_zero.training_civ6.Civ6MCTS"),
+            patch("alpha_zero.training_civ6._mcts_network"),
+            caplog.at_level("INFO"),
+        ):
+            rate = evaluate_against_random(object(), config, num_games=4)  # type: ignore[arg-type]
+
+        # Two of the four games were draws, and they are invisible in the return
+        # value -- which is the whole point of also logging the breakdown.
+        assert rate == pytest.approx(0.25)
+        assert "1 W / 2 D / 1 L" in caplog.text
+        assert "draw-aware score rate 0.500" in caplog.text

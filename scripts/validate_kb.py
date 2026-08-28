@@ -58,6 +58,11 @@ CURRENT_EVENTS = frozenset(
         "DESIGN-GAP",
         "QA-GAP",
         "SCOPE-CHANGE",
+        # A training/evaluation run that produced committed evidence. The three
+        # workflow roles only ever recorded process events, so the ledger could
+        # not answer "was this code ever run, and what happened?" -- the gap that
+        # docs/evidence/validation_iteration_zero/ was created to close.
+        "VALIDATION-RUN",
     }
 )
 # Retired event names, tolerated only before the cutoff.

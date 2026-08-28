@@ -181,3 +181,18 @@ def test_k5_unarchived_missing_openspec_change_still_fails(tmp_path, monkeypatch
     )
     assert vk.main(["--no-git"]) == 1
     assert "K5" in capsys.readouterr().err
+
+
+def test_validation_run_is_an_accepted_event(tmp_path, monkeypatch, capsys):
+    """A run that produced evidence must be recordable.
+
+    Before this event existed the ledger could only hold process events, so
+    "was this code ever run?" was unanswerable from the KB.
+    """
+    _point_at(monkeypatch, tmp_path)
+    _write_ledger(
+        tmp_path,
+        '{"event": "VALIDATION-RUN", "timestamp": "2026-08-28T02:45:00Z", "session_id": "s"}',
+    )
+    assert vk.main(["--no-git"]) == 0
+    assert "K3" not in capsys.readouterr().err

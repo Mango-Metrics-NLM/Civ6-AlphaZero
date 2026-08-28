@@ -1310,6 +1310,9 @@ across a three-role workflow pipeline: Planning → DEV-SQE → Pre-PR.
 - DEV-SQE → Planning: `DESIGN-GAP` event (feedback loop)
 - Pre-PR → DEV-SQE: `QA-GAP` event (feedback loop)
 - Pre-PR → Planning: `SCOPE-CHANGE` event (feedback loop)
+- Any role: `VALIDATION-RUN` event when a training/evaluation run produces
+  committed evidence under `docs/evidence/` (records that the code was
+  actually executed, not merely changed)
 
 ### 14.4 Handoff Skills
 - Planning: `.claude/skills/planning-handoff/SKILL.md`

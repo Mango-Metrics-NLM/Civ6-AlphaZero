@@ -1,0 +1,389 @@
+{
+  "action_space_size": 376,
+  "device": "cpu",
+  "exit_code": 0,
+  "iterations": [
+    {
+      "epochs": [
+        {
+          "epoch": 1,
+          "policy_loss": 1.8838,
+          "total_loss": 2.1235,
+          "value_loss": 0.2397
+        },
+        {
+          "epoch": 2,
+          "policy_loss": 1.8803,
+          "total_loss": 1.8903,
+          "value_loss": 0.01
+        },
+        {
+          "epoch": 3,
+          "policy_loss": 1.8921,
+          "total_loss": 1.8934,
+          "value_loss": 0.0013
+        },
+        {
+          "epoch": 4,
+          "policy_loss": 1.8834,
+          "total_loss": 1.8839,
+          "value_loss": 0.0006
+        },
+        {
+          "epoch": 5,
+          "policy_loss": 1.8746,
+          "total_loss": 1.8749,
+          "value_loss": 0.0003
+        },
+        {
+          "epoch": 6,
+          "policy_loss": 1.8894,
+          "total_loss": 1.8898,
+          "value_loss": 0.0004
+        },
+        {
+          "epoch": 7,
+          "policy_loss": 1.8558,
+          "total_loss": 1.8568,
+          "value_loss": 0.001
+        },
+        {
+          "epoch": 8,
+          "policy_loss": 1.8679,
+          "total_loss": 1.8686,
+          "value_loss": 0.0007
+        },
+        {
+          "epoch": 9,
+          "policy_loss": 1.8212,
+          "total_loss": 1.8216,
+          "value_loss": 0.0004
+        },
+        {
+          "epoch": 10,
+          "policy_loss": 1.8435,
+          "total_loss": 1.8438,
+          "value_loss": 0.0004
+        }
+      ],
+      "iteration": 1,
+      "selfplay_examples": 2568,
+      "selfplay_games": 20,
+      "selfplay_seconds": 127.6,
+      "total_iterations": 5,
+      "training_seconds": 46.1,
+      "win_rate_vs_random": 0.05
+    },
+    {
+      "epochs": [
+        {
+          "epoch": 1,
+          "policy_loss": 1.8672,
+          "total_loss": 1.9292,
+          "value_loss": 0.062
+        },
+        {
+          "epoch": 2,
+          "policy_loss": 1.8472,
+          "total_loss": 1.8558,
+          "value_loss": 0.0085
+        },
+        {
+          "epoch": 3,
+          "policy_loss": 1.8623,
+          "total_loss": 1.8631,
+          "value_loss": 0.0008
+        },
+        {
+          "epoch": 4,
+          "policy_loss": 1.8488,
+          "total_loss": 1.849,
+          "value_loss": 0.0002
+        },
+        {
+          "epoch": 5,
+          "policy_loss": 1.8217,
+          "total_loss": 1.8219,
+          "value_loss": 0.0002
+        },
+        {
+          "epoch": 6,
+          "policy_loss": 1.8421,
+          "total_loss": 1.8423,
+          "value_loss": 0.0002
+        },
+        {
+          "epoch": 7,
+          "policy_loss": 1.8317,
+          "total_loss": 1.8318,
+          "value_loss": 0.0001
+        },
+        {
+          "epoch": 8,
+          "policy_loss": 1.8385,
+          "total_loss": 1.8385,
+          "value_loss": 0.0001
+        },
+        {
+          "epoch": 9,
+          "policy_loss": 1.8278,
+          "total_loss": 1.8325,
+          "value_loss": 0.0047
+        },
+        {
+          "epoch": 10,
+          "policy_loss": 1.8181,
+          "total_loss": 1.821,
+          "value_loss": 0.0029
+        }
+      ],
+      "iteration": 2,
+      "selfplay_examples": 2555,
+      "selfplay_games": 20,
+      "selfplay_seconds": 127.9,
+      "total_iterations": 5,
+      "training_seconds": 98.9,
+      "win_rate_vs_random": 0.1
+    },
+    {
+      "epochs": [
+        {
+          "epoch": 1,
+          "policy_loss": 1.8338,
+          "total_loss": 1.8821,
+          "value_loss": 0.0483
+        },
+        {
+          "epoch": 2,
+          "policy_loss": 1.8475,
+          "total_loss": 1.8553,
+          "value_loss": 0.0078
+        },
+        {
+          "epoch": 3,
+          "policy_loss": 1.817,
+          "total_loss": 1.8173,
+          "value_loss": 0.0003
+        },
+        {
+          "epoch": 4,
+          "policy_loss": 1.795,
+          "total_loss": 1.7987,
+          "value_loss": 0.0037
+        },
+        {
+          "epoch": 5,
+          "policy_loss": 1.8106,
+          "total_loss": 1.8115,
+          "value_loss": 0.0009
+        },
+        {
+          "epoch": 6,
+          "policy_loss": 1.8073,
+          "total_loss": 1.8088,
+          "value_loss": 0.0014
+        },
+        {
+          "epoch": 7,
+          "policy_loss": 1.8047,
+          "total_loss": 1.8056,
+          "value_loss": 0.0009
+        },
+        {
+          "epoch": 8,
+          "policy_loss": 1.7818,
+          "total_loss": 1.7873,
+          "value_loss": 0.0055
+        },
+        {
+          "epoch": 9,
+          "policy_loss": 1.7813,
+          "total_loss": 1.785,
+          "value_loss": 0.0037
+        },
+        {
+          "epoch": 10,
+          "policy_loss": 1.78,
+          "total_loss": 1.7847,
+          "value_loss": 0.0048
+        }
+      ],
+      "iteration": 3,
+      "selfplay_examples": 2432,
+      "selfplay_games": 20,
+      "selfplay_seconds": 128.4,
+      "total_iterations": 5,
+      "training_seconds": 145.9,
+      "win_rate_vs_random": 0.0
+    },
+    {
+      "epochs": [
+        {
+          "epoch": 1,
+          "policy_loss": 1.8049,
+          "total_loss": 1.8396,
+          "value_loss": 0.0347
+        },
+        {
+          "epoch": 2,
+          "policy_loss": 1.7972,
+          "total_loss": 1.799,
+          "value_loss": 0.0018
+        },
+        {
+          "epoch": 3,
+          "policy_loss": 1.7805,
+          "total_loss": 1.7807,
+          "value_loss": 0.0002
+        },
+        {
+          "epoch": 4,
+          "policy_loss": 1.7704,
+          "total_loss": 1.7705,
+          "value_loss": 0.0001
+        },
+        {
+          "epoch": 5,
+          "policy_loss": 1.7641,
+          "total_loss": 1.7642,
+          "value_loss": 0.0001
+        },
+        {
+          "epoch": 6,
+          "policy_loss": 1.7568,
+          "total_loss": 1.7569,
+          "value_loss": 0.0001
+        },
+        {
+          "epoch": 7,
+          "policy_loss": 1.7554,
+          "total_loss": 1.7556,
+          "value_loss": 0.0002
+        },
+        {
+          "epoch": 8,
+          "policy_loss": 1.7501,
+          "total_loss": 1.7502,
+          "value_loss": 0.0001
+        },
+        {
+          "epoch": 9,
+          "policy_loss": 1.7477,
+          "total_loss": 1.7479,
+          "value_loss": 0.0001
+        },
+        {
+          "epoch": 10,
+          "policy_loss": 1.7431,
+          "total_loss": 1.7432,
+          "value_loss": 0.0001
+        }
+      ],
+      "iteration": 4,
+      "selfplay_examples": 2501,
+      "selfplay_games": 20,
+      "selfplay_seconds": 119.5,
+      "total_iterations": 5,
+      "training_seconds": 208.4,
+      "win_rate_vs_random": 0.1
+    },
+    {
+      "epochs": [
+        {
+          "epoch": 1,
+          "policy_loss": 1.7969,
+          "total_loss": 1.8497,
+          "value_loss": 0.0527
+        },
+        {
+          "epoch": 2,
+          "policy_loss": 1.7798,
+          "total_loss": 1.7848,
+          "value_loss": 0.005
+        },
+        {
+          "epoch": 3,
+          "policy_loss": 1.7633,
+          "total_loss": 1.7659,
+          "value_loss": 0.0026
+        },
+        {
+          "epoch": 4,
+          "policy_loss": 1.7558,
+          "total_loss": 1.7579,
+          "value_loss": 0.002
+        },
+        {
+          "epoch": 5,
+          "policy_loss": 1.7489,
+          "total_loss": 1.7513,
+          "value_loss": 0.0023
+        },
+        {
+          "epoch": 6,
+          "policy_loss": 1.7449,
+          "total_loss": 1.7483,
+          "value_loss": 0.0034
+        },
+        {
+          "epoch": 7,
+          "policy_loss": 1.7361,
+          "total_loss": 1.7363,
+          "value_loss": 0.0002
+        },
+        {
+          "epoch": 8,
+          "policy_loss": 1.7276,
+          "total_loss": 1.7277,
+          "value_loss": 0.0001
+        },
+        {
+          "epoch": 9,
+          "policy_loss": 1.7224,
+          "total_loss": 1.7225,
+          "value_loss": 0.0001
+        },
+        {
+          "epoch": 10,
+          "policy_loss": 1.7207,
+          "total_loss": 1.7208,
+          "value_loss": 0.0001
+        }
+      ],
+      "iteration": 5,
+      "selfplay_examples": 2389,
+      "selfplay_games": 20,
+      "selfplay_seconds": 122.8,
+      "total_iterations": 5,
+      "training_seconds": 257.3,
+      "win_rate_vs_random": 0.0
+    }
+  ],
+  "network_parameters": 570367,
+  "num_players": 2,
+  "provenance": {
+    "config": {
+      "OMP_NUM_THREADS": 2,
+      "batch_size": 128,
+      "board_size": 8,
+      "learning_rate": 0.001,
+      "max_turns": 20,
+      "mcts": "civ6",
+      "num_epochs": 10,
+      "num_games": 20,
+      "num_iterations": 5,
+      "num_simulations": 12,
+      "save_interval": 1,
+      "seed": "none"
+    },
+    "device": "cpu",
+    "git_revision": "0c394f98d7f7ffbf4accfa65e139a471abc99f59",
+    "python_version": "3.11.15",
+    "timestamp_utc": "2026-08-28T02:44:55.233985+00:00",
+    "torch_version": "2.13.0+cu130"
+  },
+  "scoring_method": "winner_take_all",
+  "spatial_channels": 13,
+  "value_head": "scalar",
+  "wall_clock_seconds": 1478.521
+}
