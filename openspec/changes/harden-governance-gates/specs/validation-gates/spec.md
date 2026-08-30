@@ -23,10 +23,17 @@ which CI reads rather than restates.
 
 ### Requirement: Deterministic validation of Agent.md persona documents
 
-Every importable package under `alpha_zero/` SHALL carry an `Agent.md` whose
+Every **top-level** package under `alpha_zero/` SHALL carry an `Agent.md` whose
 structure is machine-checkable: a heading naming a real module, a persona
 statement, the required sections, coverage literals matching the canonical gate,
 and file references that resolve.
+
+Scoped to top-level deliberately. `alpha_zero/` holds 29 top-level packages and 44
+importable packages in total; the nested 15 are implementation subdivisions
+(`hierarchical/goals`, `rag/stores`, and so on) whose ownership is already stated
+by their parent's persona document. Requiring a persona doc per nested package
+would produce thin files that restate the parent. A substantial new subpackage
+still warrants one — `alpha_zero/core/mcts/` has its own.
 
 #### Scenario: A persona document references a file that no longer exists
 
@@ -35,10 +42,15 @@ and file references that resolve.
 - **THEN** the agents validator reports A6 and exits non-zero, unless that line
   carries the `<!-- validate-agents: allow -->` marker
 
-#### Scenario: A new package ships without a persona document
+#### Scenario: A new top-level package ships without a persona document
 
-- **WHEN** a directory under `alpha_zero/` contains `__init__.py` but no `Agent.md`
+- **WHEN** a direct child directory of `alpha_zero/` contains `__init__.py` but no `Agent.md`
 - **THEN** the agents validator reports A5 and exits non-zero
+
+#### Scenario: A `--path` target does not exist
+
+- **WHEN** the validator is invoked with `--path` naming a missing or non-`Agent.md` file
+- **THEN** it reports A0 and exits non-zero, rather than silently validating nothing
 
 ### Requirement: Both skill trees are gated
 

@@ -117,15 +117,23 @@ _PACKAGE = "alpha_zero.core.mcts"
 def _module_imports(rel_path: str) -> set[str]:
     """Absolute module names imported at module scope by ``rel_path``.
 
-    Relative imports are resolved to absolute names. A first version compared
-    ``ast.ImportFrom.module`` verbatim, which records ``from .base import X`` as
-    ``"base"`` -- so a variant could reacquire the dependency this split removed
-    and the layering assertions would still pass. ``node.level`` is the number of
-    leading dots; ``level == 1`` means the module's own package.
+    Two ways a forbidden edge could hide from an earlier version of this helper,
+    both now closed:
+
+    1. **Relative spelling.** Comparing ``ast.ImportFrom.module`` verbatim records
+       ``from .base import X`` as ``"base"``, which never matches the absolute
+       name. ``node.level`` is the number of leading dots; ``level == 1`` is the
+       module's own package.
+    2. **Deferral.** Walking only ``tree.body`` misses a function-local
+       ``from .base import MCTSNode``. Function-local imports are a legitimate
+       repo-wide pattern for breaking import cycles -- there are 45 of them -- but
+       there is no legitimate reason to defer one of the two edges this split
+       removed, and allowing it would let the dependency return invisibly. So the
+       whole AST is walked.
     """
     tree = ast.parse(pathlib.Path(rel_path).read_text())
     found: set[str] = set()
-    for node in tree.body:  # module scope only -- deferred imports are exempt
+    for node in ast.walk(tree):  # whole AST: a deferred import must not hide
         if isinstance(node, ast.ImportFrom):
             if node.level:
                 # `from . import base` records the names; `from .base import X`
@@ -146,9 +154,9 @@ def _module_imports(rel_path: str) -> set[str]:
 def test_independent_variants_do_not_depend_on_base(variant: str) -> None:
     """``gumbel`` and ``muzero`` carry their own node/config types.
 
-    They must not import ``alpha_zero.core.mcts.base``; the shared Gumbel
-    helpers live in ``gumbel_ops`` precisely so ``muzero`` need not import
-    ``gumbel`` either.
+    They must not import ``alpha_zero.core.mcts.base`` at module scope *or*
+    inside a function; the shared Gumbel helpers live in ``gumbel_ops`` precisely
+    so ``muzero`` need not import ``gumbel`` either.
     """
     imports = _module_imports(f"alpha_zero/core/mcts/{variant}.py")
     assert "alpha_zero.core.mcts.base" not in imports

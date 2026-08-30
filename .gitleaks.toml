@@ -6,11 +6,23 @@
 # hand-written pattern list. This config adds an independent, rule-driven scanner
 # so the guarantee does not depend on that list staying current.
 #
-# Baseline at adoption (gitleaks 8.30.0, 2026-08-30): **0 findings across 525
-# commits of history** and 0 in the tracked tree. The gate is therefore blocking
-# from day one — there is no burndown and no grandfathered finding.
+# Baseline (gitleaks 8.30.0, 2026-08-30). Be precise about what is and is not
+# clean, because the first version of this comment overstated it:
 #
-# Run locally with `make security-secrets`; CI runs the same two scans.
+#   * Tracked tree: 0 findings.
+#   * Branch lineage reachable from HEAD (528 commits): 0 findings. This is what
+#     the blocking gate scans — `gitleaks git . --log-opts="HEAD"`.
+#   * Repo-wide, across every ref: **NOT clean.** A real Weights & Biases API key
+#     was committed on 2026-03-19 in 87cd68a2, on the unmerged branch
+#     feature/sprint6-validation-and-nplayer-foundation. It requires rotation, not
+#     a config change. See docs/runbooks/secret-scanning.md and CLAUDE.md §5.3.
+#
+# The original "0 findings across 525 commits of history" claim was measured on a
+# clone that predated `git fetch --all`, so it never covered the branch carrying
+# the key. The gate was made blocking on that incomplete measurement.
+#
+# Run locally with `make security-secrets` (the two blocking scans) or
+# `make security-secrets-audit` (repo-wide, non-blocking).
 
 # Inherit the upstream ruleset rather than restating it, so new detections arrive
 # with a version bump instead of a config rewrite.
@@ -35,7 +47,6 @@ paths = [
     '''^node_modules/''',
     '''^\.git/''',
     '''\.egg-info/''',
-    '''^docs/archive/''',
 ]
 
 # Deliberately fake credentials used to prove redaction and rejection logic.

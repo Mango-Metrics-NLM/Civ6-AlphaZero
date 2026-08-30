@@ -23,7 +23,7 @@ This directory provides comprehensive testing:
 - **Structural / contract tests**: pin an interface rather than a behaviour — import-shim
   identity, `mock.patch` reachability through a shim, and package layering asserted by parsing
   ASTs (`tests/unit/test_mcts_split_backcompat.py`)
-- **Governance tests** (4 files): the deterministic validators (openspec, kb, skills, agents,
+- **Governance tests** (5 files): the deterministic validators (openspec, kb, skills, agents,
   doc-sync). Run with their own `pytest.ini` and `--confcutdir` so they load neither the root
   `addopts` nor the torch-importing `tests/conftest.py`
 - **Script tests** (8 files): entry points under `scripts/`
@@ -55,7 +55,7 @@ tests/
 │   ├── unit/          # 54 files — GCP component tests
 │   └── smoke/         # 2 files — cloud smoke tests
 ├── e2e/               # 8 files — end-to-end pipeline tests
-├── governance/        # 4 files — validator tests (own pytest.ini, --confcutdir)
+├── governance/        # 5 files — validator tests (own pytest.ini, --confcutdir)
 ├── scripts/           # 8 files — scripts/ entry-point tests
 ├── inference/         # inference service tests
 ├── regression/        # Known bug reproductions + repo-hygiene invariants

@@ -9,6 +9,9 @@ become a re-export shim is what prompted this).
 
 Checks (error codes are stable and referenced by ``tests/governance/``):
 
+  A0  a ``--path`` target exists and is named ``Agent.md`` (a missing or
+      misnamed target is an error, not a silent pass -- the PostToolUse hook
+      calls ``--path``, so exiting 0 would make a stale path look validated)
   A1  the H1 is ``# Agent.md — <dotted.module.path>`` and that path resolves to
       a real directory
   A2  a ``## Persona`` section exists and names a role as ``You are the **X**``
@@ -18,7 +21,9 @@ Checks (error codes are stable and referenced by ``tests/governance/``):
   A4  every coverage-percentage literal equals the canonical gate from
       ``pyproject.toml`` -- the same rule ``validate_skills.py`` S4 applies to
       skills, which caught a stale 80% in ``tests/Agent.md``
-  A5  every importable package under ``alpha_zero/`` has an ``Agent.md``
+  A5  every **top-level** package under ``alpha_zero/`` has an ``Agent.md``
+      (nested subpackages are covered by their parent's document; see the
+      validation-gates spec for why)
   A6  every backticked ``*.py`` literal resolves, relative to the documented
       module directory or the repo root. A line carrying
       ``<!-- validate-agents: allow -->`` is exempt -- the same escape hatch
@@ -208,7 +213,15 @@ def main(argv: list[str] | None = None) -> int:
             target = Path(args.path)
             if not target.is_absolute():
                 target = REPO_ROOT / target
-            if target.is_file() and target.name == "Agent.md":
+            # A missing or misnamed target is an error, never a silent pass. The
+            # PostToolUse hook invokes --path, so falling through to exit 0 would
+            # make a stale path read as a clean validation -- the failure mode
+            # that makes a gate worthless.
+            if not target.is_file():
+                issues.append(Issue("A0", "path does not exist", target))
+            elif target.name != "Agent.md":
+                issues.append(Issue("A0", f"not an Agent.md file: {target.name}", target))
+            else:
                 _validate_agent_doc(target, issues, gate)
         else:
             _validate_all(issues, gate)

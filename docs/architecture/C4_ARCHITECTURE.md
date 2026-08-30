@@ -227,7 +227,7 @@ flowchart TD
 | Module | Lines | Contents | Depends on |
 |---|---:|---|---|
 | `mcts_protocols.py` | 161 | `MCTSNetwork`, `MuZeroNetworkProtocol`, `ActionSpace`, `MCTSEnvironment` | — |
-| `gumbel_ops.py` | 100 | `gumbel_sample_actions`, `compute_completed_q` | — |
+| `gumbel_ops.py` | 98 | `gumbel_sample_actions`, `compute_completed_q` | — |
 | `base.py` | 217 | `MCTSConfig`, `MCTSNode`, `_env_current_player` | — |
 | `puct.py` | 396 | `Civ6MCTS` | `base`, `mcts_protocols` |
 | `simple.py` | 190 | `SimpleMCTS` | `base`, `mcts_protocols` |

@@ -214,3 +214,22 @@ def test_json_mode_emits_machine_readable_issues(tmp_path, monkeypatch, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is False
     assert any(issue["code"] == "A6" for issue in payload["issues"])
+
+
+def test_a0_missing_path_is_an_error(tmp_path, monkeypatch, capsys):
+    """`--path` naming a missing file must fail, not silently validate nothing.
+
+    The PostToolUse hook invokes `--path`, so exiting 0 here would make a stale
+    path read as a clean validation.
+    """
+    _point_at(monkeypatch, tmp_path)
+    assert va.main(["--path", str(tmp_path / "nope" / "Agent.md")]) == 1
+    assert "A0" in capsys.readouterr().err
+
+
+def test_a0_non_agent_md_target_is_an_error(tmp_path, monkeypatch, capsys):
+    _point_at(monkeypatch, tmp_path)
+    other = tmp_path / "README.md"
+    other.write_text("# not a persona doc\n", encoding="utf-8")
+    assert va.main(["--path", str(other)]) == 1
+    assert "A0" in capsys.readouterr().err

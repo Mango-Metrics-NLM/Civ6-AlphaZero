@@ -22,6 +22,7 @@ every PR.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -48,6 +49,19 @@ def _git(*args: str) -> str:
         check=False,
     )
     return result.stdout
+
+
+def _gitleaks_allowlist_paths() -> list[str]:
+    """Extract the `paths = [...]` regexes from the `[allowlist]` table.
+
+    Deliberately a small hand parser rather than a TOML dependency: these
+    governance-adjacent tests stay stdlib-only, like the validators.
+    """
+    text = _GITLEAKS_CONFIG.read_text(encoding="utf-8")
+    match = re.search(r"^paths\s*=\s*\[(.*?)^\]", text, re.S | re.M)
+    if match is None:
+        return []
+    return re.findall(r"\'\'\'(.*?)\'\'\'", match.group(1), re.S)
 
 
 def _ignore_entries() -> list[str]:
@@ -120,13 +134,45 @@ class TestSecretScanningConfig:
             "restating a frozen subset of it"
         )
 
-    @pytest.mark.parametrize("catch_all", ["'''.*'''", '""".*"""', "'.*'", '".*"'])
-    def test_allowlist_is_not_a_catch_all(self, catch_all: str) -> None:
-        """A `.*` allowlist entry would make the scan pass unconditionally."""
-        text = _GITLEAKS_CONFIG.read_text(encoding="utf-8")
-        assert catch_all not in text, (
-            f"gitleaks allowlist contains catch-all {catch_all!r}; the gate would "
-            "report success while detecting nothing"
+    def test_allowlist_does_not_match_ordinary_source_paths(self) -> None:
+        """Validate the allowlist's *behaviour*, not four exact spellings.
+
+        The first version of this test looked for the literal strings ``.*``
+        wrapped in quotes. An equivalent catch-all spelled ``^.*$`` contains none
+        of them, matches every path, and left the test green -- a gate that
+        reports success while detecting nothing.
+
+        This compiles the real allowlist patterns and asserts that none of them
+        matches ordinary tracked source.
+        """
+        patterns = _gitleaks_allowlist_paths()
+        assert patterns, "no allowlist paths parsed from .gitleaks.toml -- parser drift?"
+
+        probes = [
+            "alpha_zero/core/civ6_network.py",
+            "alpha_zero/core/mcts/gumbel_ops.py",
+            "scripts/validate_agents.py",
+            "tests/unit/test_mcts_split_backcompat.py",
+            "README.md",
+            "Makefile",
+        ]
+        for raw in patterns:
+            compiled = re.compile(raw)
+            hits = [p for p in probes if compiled.search(p)]
+            assert not hits, (
+                f"gitleaks allowlist pattern {raw!r} matches ordinary source {hits}; "
+                "an over-broad exemption hides real secrets"
+            )
+
+    def test_catch_all_allowlist_would_be_detected(self) -> None:
+        """Negative control for the check above, exercised without editing the repo.
+
+        Proves the behavioural assertion actually discriminates: a ``^.*$`` entry
+        -- which the previous string-matching version accepted -- is caught here.
+        """
+        catch_all = re.compile(r"^.*$")
+        assert catch_all.search("alpha_zero/core/civ6_network.py"), (
+            "the probe path must be matched by a catch-all, or this control proves nothing"
         )
 
     def test_pinned_version_is_single_sourced(self) -> None:

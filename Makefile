@@ -38,7 +38,11 @@ PIP ?= pip3
 # with `make security-secrets GITLEAKS_VERSION=x.y.z`. GITLEAKS_BIN lets a machine
 # with gitleaks already on PATH skip the download entirely.
 GITLEAKS_VERSION ?= 8.30.0
-GITLEAKS_BIN ?= $(shell command -v gitleaks 2>/dev/null || echo $(CURDIR)/.tools/gitleaks)
+# Default to the managed, version-pinned binary. Defaulting to whatever `gitleaks`
+# happens to be on PATH would silently run a different ruleset from CI and defeat
+# the pin two lines above. Override explicitly to opt out:
+#   make security-secrets GITLEAKS_BIN=/usr/local/bin/gitleaks
+GITLEAKS_BIN ?= $(CURDIR)/.tools/gitleaks
 GITLEAKS_CONFIG ?= .gitleaks.toml
 
 # ============================================================================
@@ -137,7 +141,7 @@ test-integration:
 # 85 over a narrower set, so passing locally proved nothing about CI.
 .PHONY: test-all
 test-all:
-	$(PYTHON) -m pytest tests/unit/ tests/sanity/ tests/integration/ tests/cloud/unit/ \
+	$(PYTHON) -m pytest tests/unit/ tests/sanity/ tests/integration/ tests/cloud/unit/ tests/regression/ \
 		-m "not slow and not requires_env" \
 		--ignore=tests/unit/test_distributed \
 		--cov=alpha_zero --cov-report=term-missing --cov-report=html \
@@ -170,13 +174,38 @@ test-security:
 print-gitleaks-version:
 	@echo $(GITLEAKS_VERSION)
 
+# Fetch the pinned gitleaks binary only when it is not already available.
+# Resolves the release artifact for THIS platform: CLAUDE.md 2.1 requires
+# cross-platform support, and always fetching linux_x64 installed an unusable
+# binary on macOS and ARM -- silently, since `make verify` would then fail on a
+# confusing exec error rather than on the missing tool.
+# Artifact names verified against the v8.30.0 release.
 .PHONY: gitleaks-install
 gitleaks-install:
 	@if [ ! -x "$(GITLEAKS_BIN)" ]; then \
-		echo "Installing gitleaks $(GITLEAKS_VERSION) -> $(CURDIR)/.tools"; \
+		os=$$(uname -s); arch=$$(uname -m); \
+		case "$$os" in \
+			Linux)   plat=linux ;; \
+			Darwin)  plat=darwin ;; \
+			MINGW*|MSYS*|CYGWIN*) plat=windows ;; \
+			*) echo "gitleaks: unsupported OS '$$os'. Install it yourself and set GITLEAKS_BIN." >&2; exit 1 ;; \
+		esac; \
+		case "$$arch" in \
+			x86_64|amd64)  cpu=x64 ;; \
+			arm64|aarch64) cpu=arm64 ;; \
+			*) echo "gitleaks: unsupported arch '$$arch'. Install it yourself and set GITLEAKS_BIN." >&2; exit 1 ;; \
+		esac; \
+		if [ "$$plat" = "windows" ]; then ext=zip; else ext=tar.gz; fi; \
+		url="https://github.com/gitleaks/gitleaks/releases/download/v$(GITLEAKS_VERSION)/gitleaks_$(GITLEAKS_VERSION)_$${plat}_$${cpu}.$${ext}"; \
+		echo "Installing gitleaks $(GITLEAKS_VERSION) ($${plat}_$${cpu}) -> $(CURDIR)/.tools"; \
 		mkdir -p $(CURDIR)/.tools; \
-		curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v$(GITLEAKS_VERSION)/gitleaks_$(GITLEAKS_VERSION)_linux_x64.tar.gz" \
-			| tar -xz -C $(CURDIR)/.tools gitleaks; \
+		if [ "$$ext" = "zip" ]; then \
+			curl -sSfL "$$url" -o $(CURDIR)/.tools/gitleaks.zip && \
+			unzip -oq $(CURDIR)/.tools/gitleaks.zip -d $(CURDIR)/.tools && \
+			rm -f $(CURDIR)/.tools/gitleaks.zip; \
+		else \
+			curl -sSfL "$$url" | tar -xz -C $(CURDIR)/.tools gitleaks; \
+		fi; \
 	fi
 
 # Secret scan: the tracked tree AND the built branch's own history. History
@@ -213,6 +242,7 @@ test-governance:
 test:
 	$(PYTHON) -m pytest tests/unit/ -v --tb=short -x -m "not slow"
 	$(PYTHON) -m pytest tests/sanity/ -v --tb=short
+	$(PYTHON) -m pytest tests/regression/ -v --tb=short
 	$(PYTHON) -m pytest tests/integration/ -v --tb=short -m "not slow and not requires_env" -x
 	$(PYTHON) -m pytest tests/cloud/unit/ -v --tb=short -x
 
