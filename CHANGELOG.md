@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — AQA: a test suite that nothing runs is not a gate (2026-08-30)
+
+The review finding that `tests/regression/` was enumerated by no CI job and no
+make target was fixed for that one directory. The *category* was not, and five
+more suites were in exactly the same position — present, passing by hand, gating
+nothing:
+
+| Suite | What running it revealed |
+|---|---|
+| `tests/scripts/` | **3 real failures.** `pandas` and `mlflow` imported directly rather than through `pytest.importorskip`, so absent optional extras were errors, not skips |
+| `tests/e2e/` | 70 passing tests |
+| `tests/cloud/smoke/` | 36 passing tests |
+| `tests/smoke/` | 30 passing tests |
+| `tests/inference/` | skip-guarded, never invoked |
+
+All five are now wired into CI and `make test`, and the three `tests/scripts/`
+failures are guarded. `tests/test_sanity.py` — an unreferenced two-line
+`assert True` at the tests root — was removed rather than wired; a test that
+cannot fail cannot gate anything.
+
+**`tests/regression/test_suite_wiring_regression.py`** turns the finding into a
+standing invariant: every directory under `tests/` holding collectible tests must
+be named by some CI pytest invocation, or listed in `NOT_GATED` with a reason.
+It also holds `make test` to the CI jobs it claims to mirror. The workflow is
+parsed with `yaml`, not regex — a hand parser over YAML is exactly how the skills
+validator came to validate a folded block scalar vacuously. Enumeration mirrors
+pytest's own collection rule (a `test_*` function, or a `Test*` class with a
+`test_*` method) rather than the filename glob, so `tests/test_constants.py` —
+a constants module holding `class TestDefaults` and no tests — does not demand a
+CI wiring for a suite that does not exist.
+
+**`tests/regression/test_selfplay_determinism_regression.py`** pins the CI
+failure that prompted this: identical environment seed, global RNG seed and
+network weights must reproduce identical play, and the global-RNG coupling that
+made `run_batch_selfplay(seed=...)` insufficient stays asserted in both
+directions.
+
+**`tests/regression/test_validator_cli_regression.py`** generalises the
+`--path` hole from the one validator that had it to every validator that accepts
+the flag, and adds the regression cover that the `GITLEAKS_BIN` default and the
+cross-platform installer shipped without.
+
+### Fixed — `validate_agents.py` crashed while reporting a bad `--path` (2026-08-30)
+
+Reporting `A0` for a path outside the repository called
+`Path.relative_to(REPO_ROOT)` unguarded and died with a `ValueError` traceback
+instead of printing its own diagnostic. The exit code was non-zero either way,
+so a check that only asserted "exits non-zero" — the obvious test to write for
+the original finding — would have called it fixed. The new CLI regression tests
+assert the diagnostic, not just the code.
+
+
 ### Fixed — The governance gates now actually gate (2026-08-30)
 
 Review of the previous commit returned 13 findings; all were correct. Four were the

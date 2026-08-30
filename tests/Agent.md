@@ -58,7 +58,8 @@ tests/
 ├── governance/        # 5 files — validator tests (own pytest.ini, --confcutdir)
 ├── scripts/           # 8 files — scripts/ entry-point tests
 ├── inference/         # inference service tests
-├── regression/        # Known bug reproductions + repo-hygiene invariants
+├── regression/        # Known bug reproductions, repo-hygiene invariants,
+│                     #   and the AQA meta-gate that every suite is actually run
 ├── sanity/            # Import sanity checks (auto-discovers new modules)
 ├── security/          # Security vulnerability checks
 ├── smoke/             # Quick sanity checks
@@ -94,7 +95,7 @@ tests/
 | Tool | Purpose |
 |------|---------|
 | `make verify` | **The gate.** Every CI job in one pass — lint, format, types, four suites, security, governance, validators, coverage, eval |
-| `make test` | The four CI suites in CI's order and marker filters |
+| `make test` | Every suite CI's `test` + `cloud-tests` jobs run, in CI's order and marker filters (pinned by `tests/regression/test_suite_wiring_regression.py`) |
 | `make test-all` | CI's coverage job, gate 85% (measured 89.30% on 2026-08-30) |
 | `make test-governance` | Validator tests, isolated from the root conftest |
 | `make security-secrets` | gitleaks over the tracked tree and full history |

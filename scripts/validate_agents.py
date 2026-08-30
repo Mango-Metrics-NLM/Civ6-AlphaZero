@@ -84,7 +84,16 @@ class Issue:
     warning: bool = False
 
     def render(self) -> str:
-        rel = self.file.relative_to(REPO_ROOT) if self.file.is_absolute() else self.file
+        # `relative_to` raises for an absolute path outside the repo, which is
+        # exactly the shape of the A0 case this renderer has to report:
+        # `--path /nonexistent/...` crashed with a ValueError traceback instead
+        # of printing its own diagnostic. Fall back to the absolute path.
+        rel: Path | str = self.file
+        if self.file.is_absolute():
+            try:
+                rel = self.file.relative_to(REPO_ROOT)
+            except ValueError:
+                rel = self.file
         where = f"{rel}:{self.line}" if self.line else str(rel)
         level = "WARNING" if self.warning else "ERROR"
         return f"{level} {where}: {self.code} {self.message}"
