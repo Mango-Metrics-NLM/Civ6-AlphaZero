@@ -380,6 +380,7 @@ class NeuralNetworkPlayer:
         mcts_simulations: int = 50,
         temperature: float = 0.0,
         name: str = "nn_player",
+        seed: int | None = None,
     ) -> None:
         """Initialize neural network player.
 
@@ -390,6 +391,14 @@ class NeuralNetworkPlayer:
             mcts_simulations: Number of MCTS simulations if using MCTS
             temperature: Temperature for action sampling (0 = greedy)
             name: Display name for this player
+            seed: Seed for action sampling and the MCTS search. ``None`` means
+                unseeded, matching the previous behaviour.
+
+                Its siblings ``RandomPlayer`` and ``HeuristicPlayer`` both took
+                a seed and owned a generator; this class sampled from the global
+                numpy RNG, so the *evaluated agent* was the unseeded part of an
+                otherwise seeded evaluation. Only matters when
+                ``temperature > 0`` -- at temperature 0 selection is argmax.
         """
         import torch
 
@@ -398,6 +407,8 @@ class NeuralNetworkPlayer:
         self.use_mcts = use_mcts
         self.mcts_simulations = mcts_simulations
         self.temperature = temperature
+        self._seed = seed
+        self._rng = np.random.default_rng(seed)
         self._games_played = 0
 
         # Move network to device
@@ -419,6 +430,9 @@ class NeuralNetworkPlayer:
                 c_puct=1.5,
                 dirichlet_alpha=0.3,
                 dirichlet_epsilon=0.0,  # No noise during evaluation
+                # Offset so the search does not share a stream with this
+                # player's own action sampling.
+                seed=None if self._seed is None else self._seed + 1,
             )
             self.mcts = Civ6MCTS(
                 network=self.network,
@@ -473,7 +487,7 @@ class NeuralNetworkPlayer:
         if self.temperature > 0:
             action_probs = np.power(action_probs, 1.0 / self.temperature)
             action_probs = action_probs / action_probs.sum()
-            action = np.random.choice(len(action_probs), p=action_probs)
+            action = self._rng.choice(len(action_probs), p=action_probs)
         else:
             action = int(np.argmax(action_probs))
 
@@ -517,7 +531,7 @@ class NeuralNetworkPlayer:
 
         # Select action
         if self.temperature > 0:
-            action = np.random.choice(len(policy), p=policy)
+            action = self._rng.choice(len(policy), p=policy)
         else:
             action = int(np.argmax(policy))
 

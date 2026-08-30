@@ -228,6 +228,7 @@ def run_baseline_eval(
     board_size: int = 8,
     action_space_size: int = 376,
     dry_run: bool = False,
+    seed: int | None = None,
 ) -> dict[str, dict[str, float]]:
     """Evaluate the final model against baseline agents.
 
@@ -238,6 +239,8 @@ def run_baseline_eval(
         board_size: Board size.
         action_space_size: Action space size.
         dry_run: If True, return synthetic results without playing games.
+        seed: Base RNG seed. ``None`` leaves the evaluation unseeded, which is
+            what made a single probe unrepeatable.
 
     Returns:
         Dict mapping baseline name → ``{win_rate, draw_rate, loss_rate, total_games}``.
@@ -278,11 +281,15 @@ def run_baseline_eval(
         model.eval()
 
         # Wrap model as Civ6MCTS — required by EvaluationPipeline
-        mcts_cfg = MCTSConfig(num_simulations=25)  # low sims for fast eval
+        mcts_cfg = MCTSConfig(
+            num_simulations=25,  # low sims for fast eval
+            # Offset past the pipeline's per-game env range (`seed + i`).
+            seed=None if seed is None else seed + n_games,
+        )
         _network: Any = model  # nn.Module satisfies MCTSNetwork at runtime; cast for mypy
         mcts_agent = Civ6MCTS(network=_network, config=mcts_cfg, device=device)
 
-        pipeline = EvaluationPipeline(board_size=board_size, max_turns=60)
+        pipeline = EvaluationPipeline(board_size=board_size, max_turns=60, seed=seed)
 
         results: dict[str, dict[str, float]] = {}
         for name, method in [
@@ -358,6 +365,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--skip_baseline_eval", action="store_true")
     p.add_argument("--skip_tournament", action="store_true")
     p.add_argument("--dry_run", action="store_true")
+    p.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Base RNG seed for the baseline evaluation, so a probe can be repeated",
+    )
     p.add_argument("--log_level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return p.parse_args(argv)
 
@@ -476,6 +489,7 @@ def main(argv: list[str] | None = None) -> int:
                 board_size=args.board_size,
                 action_space_size=args.action_space_size,
                 dry_run=args.dry_run,
+                seed=args.seed,
             )
             log_eval_results_to_mlflow(ml, eval_results)
 
