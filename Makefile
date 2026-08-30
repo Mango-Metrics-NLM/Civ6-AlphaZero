@@ -97,13 +97,13 @@ install-cloud: install
 
 .PHONY: lint
 lint:
-	ruff check . --fix
-	ruff format .
+	$(PYTHON) -m ruff check . --fix
+	$(PYTHON) -m ruff format .
 
 .PHONY: lint-check
 lint-check:
-	ruff check .
-	ruff format --check .
+	$(PYTHON) -m ruff check .
+	$(PYTHON) -m ruff format --check .
 
 # Matches the CI `lint` job exactly. Use `typecheck-strict` for the harsher
 # local pass -- CI does NOT run --strict, so a --strict failure is not a gate.
@@ -119,18 +119,18 @@ typecheck-strict:
 
 .PHONY: test-unit
 test-unit:
-	pytest tests/unit/ -v --tb=short
+	$(PYTHON) -m pytest tests/unit/ -v --tb=short
 
 .PHONY: test-integration
 test-integration:
-	pytest tests/integration/ -v --tb=short
+	$(PYTHON) -m pytest tests/integration/ -v --tb=short
 
 # Mirrors the CI `coverage` job: same suites, same marker filter, same gate.
 # It previously ran the whole tests/ tree at --cov-fail-under=80 while CI used
 # 85 over a narrower set, so passing locally proved nothing about CI.
 .PHONY: test-all
 test-all:
-	pytest tests/unit/ tests/sanity/ tests/integration/ tests/cloud/unit/ \
+	$(PYTHON) -m pytest tests/unit/ tests/sanity/ tests/integration/ tests/cloud/unit/ \
 		-m "not slow and not requires_env" \
 		--ignore=tests/unit/test_distributed \
 		--cov=alpha_zero --cov-report=term-missing --cov-report=html \
@@ -138,35 +138,35 @@ test-all:
 
 .PHONY: test-storage
 test-storage:
-	pytest tests/unit/test_storage_backend.py tests/unit/test_replay_buffer.py -v
+	$(PYTHON) -m pytest tests/unit/test_storage_backend.py tests/unit/test_replay_buffer.py -v
 
 .PHONY: test-sanity
 test-sanity:
-	pytest tests/sanity/ -v --tb=short
+	$(PYTHON) -m pytest tests/sanity/ -v --tb=short
 
 .PHONY: test-cloud
 test-cloud:
-	pytest tests/cloud/unit/ -v --tb=short
+	$(PYTHON) -m pytest tests/cloud/unit/ -v --tb=short
 
 # Mirrors CI's `security` job, which runs BOTH the pytest suite and a bandit
 # scan. The bandit half was missing entirely, so `make verify` could pass while
 # CI's security job failed.
 .PHONY: test-security
 test-security:
-	pytest tests/security/ -v --tb=short
-	bandit -r alpha_zero/ -s B101 --severity-level high --confidence-level high
+	$(PYTHON) -m pytest tests/security/ -v --tb=short
+	$(PYTHON) -m bandit -r alpha_zero/ -s B101 --severity-level high --confidence-level high
 
 .PHONY: test-governance
 test-governance:
-	pytest -c tests/governance/pytest.ini --confcutdir=tests/governance tests/governance
+	$(PYTHON) -m pytest -c tests/governance/pytest.ini --confcutdir=tests/governance tests/governance
 
 # The suites CI runs, in CI's order and with CI's marker filters.
 .PHONY: test
 test:
-	pytest tests/unit/ -v --tb=short -x -m "not slow"
-	pytest tests/sanity/ -v --tb=short
-	pytest tests/integration/ -v --tb=short -m "not slow and not requires_env" -x
-	pytest tests/cloud/unit/ -v --tb=short -x
+	$(PYTHON) -m pytest tests/unit/ -v --tb=short -x -m "not slow"
+	$(PYTHON) -m pytest tests/sanity/ -v --tb=short
+	$(PYTHON) -m pytest tests/integration/ -v --tb=short -m "not slow and not requires_env" -x
+	$(PYTHON) -m pytest tests/cloud/unit/ -v --tb=short -x
 
 .PHONY: validate
 validate:
@@ -202,7 +202,7 @@ eval-llm:
 
 .PHONY: test-hub
 test-hub:
-	pytest tests/unit/test_hub_*.py tests/unit/test_transformer_hub_mixin.py tests/unit/test_muzero_hub_mixin.py tests/integration/test_hub_publish_pipeline.py -v
+	$(PYTHON) -m pytest tests/unit/test_hub_*.py tests/unit/test_transformer_hub_mixin.py tests/unit/test_muzero_hub_mixin.py tests/integration/test_hub_publish_pipeline.py -v
 
 .PHONY: upload-hub
 upload-hub:

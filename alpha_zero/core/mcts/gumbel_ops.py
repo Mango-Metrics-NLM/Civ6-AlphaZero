@@ -96,5 +96,3 @@ def compute_completed_q(
     completed_q = q_value + sigma * root_value
 
     return completed_q
-
-
